@@ -365,8 +365,8 @@ public:
 			this->name = name;
 		}
 	}
-	void add(const char *name, string content);
-	void add(const char *name, const char *content);
+	void add(const char *name, string content, eTypeItem typeItem = _string);
+	void add(const char *name, const char *content, eTypeItem typeItem = _string);
 	void add(const char *name, int64_t content);
 	void add(const char *name);
 	JsonExport *addArray(const char *name);
@@ -398,7 +398,7 @@ string intToString(u_int16_t i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
 string floatToString(double d);
-string floatToString(double d, unsigned precision);
+string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
 string boolToString(bool b);
 

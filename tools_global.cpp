@@ -213,13 +213,13 @@ string JsonExport::getJson(JsonExport */*parent*/) {
 	return(outStr.str());
 }
 
-void JsonExport::add(const char *name, string content) {
-	this->add(name, content.c_str());
+void JsonExport::add(const char *name, string content, eTypeItem typeItem) {
+	this->add(name, content.c_str(), typeItem);
 }
 
-void JsonExport::add(const char *name, const char *content) {
+void JsonExport::add(const char *name, const char *content, eTypeItem typeItem) {
 	JsonExport_template<string> *item = new FILE_LINE(38010) JsonExport_template<string>;
-	item->setTypeItem(_string);
+	item->setTypeItem(typeItem);
 	item->setName(name);
 	string content_esc;
 	const char *ptr = content;
@@ -343,11 +343,20 @@ string floatToString(double d) {
 	return(outStr.str());
 }
 
-string floatToString(double d, unsigned precision) {
+string floatToString(double d, unsigned precision, bool adjustDec) {
 	ostringstream outStr;
 	outStr << fixed << setprecision(precision);
 	outStr << d;
-	return(outStr.str());
+	string rslt = outStr.str();
+	if(adjustDec && rslt.find('.') != string::npos) {
+		while(rslt[rslt.length() - 1] == '0') {
+			rslt.resize(rslt.length() - 1);
+		}
+		if(rslt[rslt.length() - 1] == '.') {
+			rslt.resize(rslt.length() - 1);
+		}
+	}
+	return(rslt);
 }
 
 string pointerToString(void *p) {

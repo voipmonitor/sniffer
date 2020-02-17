@@ -4,6 +4,9 @@
 #include "billing.h"
 
 
+#define UNSET_STRING string("'unset'")
+
+
 extern int opt_id_sensor;
 extern int opt_nocdr;
 
@@ -326,6 +329,9 @@ bool cBillingExclude::checkNumber(const char *number, eBilingSide side) {
 }
 
 bool cBillingExclude::checkDomain(const char *domain, eBilingSide side) {
+	if(!domain) {
+		return(false);
+	}
 	lock();
 	bool rslt = side == _billing_side_src ? 
 		     list_domain_src.check(domain) :
@@ -669,8 +675,8 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 	cBillingRuleNumber::eNumberType number_type_default = this->use_for_number_type == cBillingRuleNumber::_number_type_na ?
 							       cBillingRuleNumber::_number_type_both : this->use_for_number_type;
 	cPeakDefinition peak_definition = this->peak_definition;
+	bool findNumber = false;
 	if(numbers.size()) {
-		bool findNumber = false;
 		unsigned useRegexMatchLength = 0;
 		unsigned useNumberPrefixLength = 0;
 		for(unsigned pass = 0; pass < 3 && !findNumber; pass++) {
@@ -687,21 +693,32 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 				unsigned regex_match_length = 0;
 				switch(pass) {
 				case 0:
-					if((*iter)->number_fixed.length() &&
-					   (((number_format == cBillingRuleNumber::_number_format_original || 
-					      number_format == cBillingRuleNumber::_number_format_both) &&
-					     (*iter)->number_fixed == number) ||
-					    (number_normalized &&
-					     (number_format == cBillingRuleNumber::_number_format_normalized || 
-					      number_format == cBillingRuleNumber::_number_format_both) &&
-					     (*iter)->number_fixed == number_normalized))) {
-						if(debug) {
-							debug->push_back(dstring("fixed", 
-										 (*iter)->number_fixed + 
-										 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
-										 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
+					if((*iter)->number_fixed.length()) {
+						if((number_format == cBillingRuleNumber::_number_format_original || 
+						    number_format == cBillingRuleNumber::_number_format_both) &&
+						   (*iter)->number_fixed == number) {
+							ok = true;
+							if(debug) {
+								debug->push_back(dstring("match rule: 'fixed' " + (*iter)->number_fixed + ", " +
+											 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+											 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+											 "for number",
+											 (*number ? number : UNSET_STRING)));
+							}
 						}
-						ok = true;
+						if(number_normalized &&
+						   (number_format == cBillingRuleNumber::_number_format_normalized || 
+						    number_format == cBillingRuleNumber::_number_format_both) &&
+						   (*iter)->number_fixed == number_normalized) {
+							ok = true;
+							if(debug) {
+								debug->push_back(dstring("match rule: 'fixed' " + (*iter)->number_fixed + ", " +
+											 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+											 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+											 "for normalized number",
+											 (*number_normalized ? number_normalized : UNSET_STRING)));
+							}
+						}
 					}
 					break;
 				case 1:
@@ -717,6 +734,14 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 									for(unsigned i = 0; i < matches.size(); i++) {
 										if(matches[i].length() > regex_match_length) {
 											regex_match_length = matches[i].length();
+											if(debug) {
+												debug->push_back(dstring("match rule: 'regex' " + (*iter)->number_regex + ", " +
+															 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+															 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+															 "for number",
+															 (*number ? number : UNSET_STRING) + 
+															 " (match length " + intToString(regex_match_length) + ")"));
+											}
 										}
 									}
 								}
@@ -729,42 +754,56 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 									for(unsigned i = 0; i < matches.size(); i++) {
 										if(matches[i].length() > regex_match_length) {
 											regex_match_length = matches[i].length();
+											if(debug) {
+												debug->push_back(dstring("match rule: 'regex' " + (*iter)->number_regex + ", " +
+															 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+															 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+															 "for normalized number",
+															 (*number_normalized ? number_normalized : UNSET_STRING) + 
+															 " (match length " + intToString(regex_match_length) + ")"));
+											}
 										}
 									}
 								}
 							}
 							if(regex_match_length > 0 &&
 							   (!useRegexMatchLength || regex_match_length > useRegexMatchLength)) {
-								if(debug) {
-									debug->push_back(dstring("regex", 
-												 (*iter)->number_regex + 
-												 " match length: " + intToString(regex_match_length) +
-												 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
-												 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
-								}
 								ok = true;
 							}
 						}
 					}
 					break;
 				case 2:
-					if((*iter)->number_prefix.length() &&
-					   (((number_format == cBillingRuleNumber::_number_format_original || 
-					      number_format == cBillingRuleNumber::_number_format_both) &&
-					     (*iter)->number_prefix == string(number, min(strlen(number), (*iter)->number_prefix.length()))) ||
-					    (number_normalized &&
-					     (number_format == cBillingRuleNumber::_number_format_normalized || 
-					      number_format == cBillingRuleNumber::_number_format_both) &&
-					     (*iter)->number_prefix == string(number_normalized, min(strlen(number_normalized), (*iter)->number_prefix.length())))) &&
-					   (!useNumberPrefixLength || (*iter)->number_prefix.length() > useNumberPrefixLength)) {
-						if(debug) {
-							debug->push_back(dstring("prefix", 
-										 (*iter)->number_prefix + 
-										 " prefix length: " + intToString((*iter)->number_prefix.length()) +
-										 " format: " + cBillingRuleNumber::numberFormatString(number_format) + 
-										 " type: " + cBillingRuleNumber::numberTypeString(number_type)));
+					if((*iter)->number_prefix.length()) {
+						if((number_format == cBillingRuleNumber::_number_format_original || 
+						    number_format == cBillingRuleNumber::_number_format_both) &&
+						   (*iter)->number_prefix == string(number, min(strlen(number), (*iter)->number_prefix.length())) &&
+						   (!useNumberPrefixLength || (*iter)->number_prefix.length() > useNumberPrefixLength)) {
+							ok = true;
+							if(debug) {
+								debug->push_back(dstring("match rule: 'prefix' " + (*iter)->number_prefix + ", " +
+											 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+											 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+											 "for number",
+											 (*number ? number : UNSET_STRING) + 
+											 " (prefix length " +  intToString((*iter)->number_prefix.length()) + ")"));
+							}
 						}
-						ok = true;
+						if(number_normalized &&
+						   (number_format == cBillingRuleNumber::_number_format_normalized || 
+						    number_format == cBillingRuleNumber::_number_format_both) &&
+						   (*iter)->number_prefix == string(number_normalized, min(strlen(number_normalized), (*iter)->number_prefix.length())) &&
+						   (!useNumberPrefixLength || (*iter)->number_prefix.length() > useNumberPrefixLength)) {
+							ok = true;
+							if(debug) {
+								debug->push_back(dstring("match rule: 'prefix' " + (*iter)->number_prefix + ", " +
+											 "format: '" + cBillingRuleNumber::numberFormatString(number_format) + "', " +
+											 "type: '" + cBillingRuleNumber::numberTypeString(number_type) + "' " +
+											 "for normalized number",
+											 (*number_normalized ? number_normalized : UNSET_STRING) + 
+											 " (prefix length " +  intToString((*iter)->number_prefix.length()) + ")"));
+							}
+						}
 					}
 					break;
 				}
@@ -801,6 +840,26 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 	   (peak_definition.enable && !price_peak)) {
 		return(0);
 	}
+	if(!findNumber) {
+		if(debug) {
+			debug->push_back(dstring(string(numbers.size() ? 
+							 "no match any rule for number " +
+							 (*number ? number : UNSET_STRING) +
+							 " (normalized to " +
+							 (*number_normalized ? number_normalized : UNSET_STRING) +
+							 ")" : 
+							 "not exists number rules") + 
+						 " - use default tariff (price and t1/t2) from type/rules " + name,
+						 ""));
+		}
+	}
+	if(debug) {
+		debug->push_back(dstring("used tariff",
+					 (peak_definition.enable ?
+					   "price (peak/off-peak): " + floatToString(price_peak, 6, true) + "/" + floatToString(price, 6, true) :
+					   "price: " + floatToString(price, 6, true)) + ", " +
+					 "t1/t2: " + intToString(t1) + "/" + intToString(t2)));
+	}
 	double rslt_price = 0;
 	int duration_rest = duration;
 	tm time_iter = time_tm;
@@ -820,10 +879,18 @@ double cBillingRule::billing(time_t time, unsigned duration, const char *number,
 		}
 		unsigned t = count_iter == 0 ? t1 : t2;
 		duration_iter = (duration_iter / t + (duration_iter % t ? 1 : 0)) * t;
-		rslt_price += (duration_iter / t) *
-			      (peak ? price_peak : price) * t / 60;
+		double price_iter = (duration_iter / t) *
+				    (peak ? price_peak : price) * t / 60;
+		rslt_price += price_iter;
 		time_iter = dateTimeAdd(time_iter, duration_iter, timezone);
 		duration_rest -= duration_iter;
+		if(debug) {
+			debug->push_back(dstring("price iteration",
+						 (peak_definition.enable ? string("peak: ") + (peak ? "peak" : "off-peak") + ", " : "") +
+						 "tariff: " + floatToString(peak ? price_peak : price, 6, true) + " " + intToString(t1) + "/" + intToString(t2) + ", " +
+						 "duration: " + intToString(duration_iter) + ", " +
+						 "price: " + floatToString(price_iter, 6, true))); 
+		}
 		++count_iter;
 	}
 	return(rslt_price);
@@ -998,6 +1065,21 @@ double cCurrency::getExchangeRateToMainCurency(unsigned from_id) {
 	return(exchangeRate);
 }
 
+string cCurrency::getCurrencyCode(unsigned id) {
+	string code;
+	if(id) {
+		lock();
+		for(list<sCurrencyItem>::iterator iter = items.begin(); iter != items.end(); iter++) {
+			if(iter->id == id) {
+				code = iter->code;
+				break;
+			}
+		}
+		unlock();
+	}
+	return(code);
+}
+
 
 cBilling::cBilling() {
 	_sync = 0;
@@ -1073,31 +1155,93 @@ bool cBilling::billing(time_t time, unsigned duration,
 		unsigned customer_assignment_id = 0;
 		*operator_id = assignments->findBillingRuleIdForIP(ip_dst, _billing_ta_operator,
 								   &operator_assignment_id);
-		if(!*operator_id) {
+		if(*operator_id) {
+			if(operator_debug) {
+				operator_debug->push_back(dstring("assign operator for called ip " + 
+								  (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING),
+								  assignments->operators[operator_assignment_id]->name));
+				operator_debug->push_back(dstring("select operator type/rules for called ip " + 
+								  (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING),
+								  rules->rules[*operator_id]->name));
+			}
+		} else {
 			*operator_id = assignments->findBillingRuleIdForNumber(number_dst, _billing_ta_operator,
 									       &operator_assignment_id, countryPrefixes);
+			if(*operator_id && operator_debug) {
+				operator_debug->push_back(dstring("assign operator for called number " + 
+								  (*number_dst ? number_dst : UNSET_STRING),
+								  assignments->operators[operator_assignment_id]->name));
+				operator_debug->push_back(dstring("select operator type/rules for called number " + 
+								  (*number_dst ? number_dst : UNSET_STRING),
+								  rules->rules[*operator_id]->name));
+			}
+		}
+		if(!*operator_id) {
+			if(operator_debug) {
+				operator_debug->push_back(dstring("not exists operator for caleld ip " + 
+								  (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING) + 
+								  " or called number " + 
+								  (*number_dst ? number_dst : UNSET_STRING),
+								  ""));
+			}
 		}
 		*customer_id = assignments->findBillingRuleIdForIP(ip_src, _billing_ta_customer,
 								   &customer_assignment_id);
-		if(!*customer_id) {
+		if(*customer_id) {
+			if(customer_debug) {
+				customer_debug->push_back(dstring("assign customer for caller ip " + 
+								  (ip_src.isSet() ? ip_src.getString() : UNSET_STRING),
+								  assignments->customers[customer_assignment_id]->name));
+				customer_debug->push_back(dstring("select customer type/rules for caller ip " + 
+								  (ip_src.isSet() ? ip_src.getString() : UNSET_STRING),
+								  rules->rules[*customer_id]->name));
+			}
+		} else {
 			*customer_id = assignments->findBillingRuleIdForNumber(number_src, _billing_ta_customer,
 									       &customer_assignment_id, countryPrefixes);
+			if(*customer_id && customer_debug) {
+				customer_debug->push_back(dstring("assign customer for caller number " + 
+								  (*number_src ? number_src : UNSET_STRING),
+								  assignments->customers[customer_assignment_id]->name));
+				customer_debug->push_back(dstring("select customer type/rules for caller number " + 
+								  (*number_src ? number_src : UNSET_STRING),
+								  rules->rules[*customer_id]->name));
+			}
 		}
 		if(!*customer_id) {
+			if(customer_debug) {
+				customer_debug->push_back(dstring("not exists customer for caller ip " + 
+								  (ip_src.isSet() ? ip_src.getString() : UNSET_STRING) + 
+								  " or caller number " + 
+								  (*number_src ? number_src : UNSET_STRING),
+								  ""));
+			}
 			*customer_id = rules->getDefaultCustomerBillingId();
+			if(*customer_id && customer_debug) {
+				customer_debug->push_back(dstring("select default customer type/rules",
+								  rules->rules[*customer_id]->name));
+			}
 		}
 		if(*operator_id) {
 			rslt = true;
 			string number_dst_normalized_billing = assignments->operators[operator_assignment_id]->checkInternational.numberNormalized(number_dst, countryPrefixes);
+			if(operator_debug) {
+				if(number_dst_normalized_billing != number_dst) {
+					operator_debug->push_back(dstring("called number " + 
+									  (*number_dst ? number_dst : UNSET_STRING) + 
+									  " normalized to", 
+									  number_dst_normalized_billing));
+				}
+			}
 			cStateHolidays *holidays = rules->rules[*operator_id]->holiday_id ?
 						     &this->holidays->holidays[rules->rules[*operator_id]->holiday_id] :
 						     NULL;
 			bool isLocalNumber = countryPrefixes->isLocal(number_dst, &assignments->operators[operator_assignment_id]->checkInternational);
 			if(operator_debug) {
-				operator_debug->push_back(dstring("dst number normalized", number_dst_normalized_billing));
-				operator_debug->push_back(dstring("type number", isLocalNumber ? "local" : "international"));
+				operator_debug->push_back(dstring("called number detected as", 
+								  isLocalNumber ? "local" : "international"));
 			}
-			*operator_price = rules->rules[*operator_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
+			*operator_price = rules->rules[*operator_id]->billing(time, duration, number_dst, number_dst_normalized_billing.c_str(),
 									      isLocalNumber, holidays, gui_timezone.c_str(),
 									      operator_debug);
 			*operator_currency_id = rules->rules[*operator_id]->currency_id;
@@ -1107,6 +1251,14 @@ bool cBilling::billing(time_t time, unsigned duration,
 			string number_dst_normalized_billing = customer_assignment_id ?
 								assignments->customers[customer_assignment_id]->checkInternational.numberNormalized(number_dst, countryPrefixes) :
 								number_dst_normalized;
+			if(customer_debug) {
+				if(number_dst_normalized_billing != number_dst) {
+					customer_debug->push_back(dstring("called number " + 
+									  (*number_dst ? number_dst : UNSET_STRING) +
+									  " normalized to", 
+									  number_dst_normalized_billing));
+				}
+			}
 			cStateHolidays *holidays = rules->rules[*customer_id]->holiday_id ?
 						     &this->holidays->holidays[rules->rules[*customer_id]->holiday_id] :
 						     NULL;
@@ -1115,10 +1267,10 @@ bool cBilling::billing(time_t time, unsigned duration,
 								   checkInternational;
 			bool isLocalNumber = countryPrefixes->isLocal(number_dst, _checkInternational);
 			if(customer_debug) {
-				customer_debug->push_back(dstring("dst number normalized", number_dst_normalized_billing));
-				customer_debug->push_back(dstring("type number", isLocalNumber ? "local" : "international"));
+				customer_debug->push_back(dstring("called number detected as", 
+								  isLocalNumber ? "local" : "international"));
 			}
-			*customer_price = rules->rules[*customer_id]->billing(time, duration, number_dst, number_dst_normalized.c_str(),
+			*customer_price = rules->rules[*customer_id]->billing(time, duration, number_dst, number_dst_normalized_billing.c_str(),
 									      isLocalNumber, holidays, gui_timezone.c_str(),
 									      customer_debug);
 			*customer_currency_id = rules->rules[*customer_id]->currency_id;
@@ -1228,6 +1380,236 @@ vector<cBilling::sAgregationTypePart> cBilling::getAgregTypeParts(sBillingAgrega
 		rslt.push_back(typeParts[i]);
 	}
 	return(rslt);
+}
+
+string cBilling::getCurrencyCode(unsigned id) {
+	string code;
+	lock();
+	if(isSet() && currency) {
+		code = currency->getCurrencyCode(id);
+	}
+	unlock();
+	return(code);
+}
+
+string cBilling::test(string calls_string, bool json_rslt) {
+	vector<string> calls;
+	vector<string> rslts;
+	if(file_exists(calls_string)) {
+		FILE *file = fopen(calls_string.c_str(), "r");
+		calls_string = "";
+		if(file) {
+			char line[1000];
+			while(fgets(line, sizeof(line), file)) {
+				char *lf = strchr(line, '\n');
+				if(lf) {
+					*lf = 0;
+				}
+				if(*line) {
+					if(!calls_string.empty()) {
+						calls_string += ';';
+					}
+					calls_string += line;
+				}
+			}
+			fclose(file);
+		}
+	}
+	if(!calls_string.empty()) {
+		if(calls_string[0] == '{' && calls_string[calls_string.length() - 1] == '}') {
+			calls_string = '[' + calls_string + ']';
+		}
+		if(calls_string[0] == '[' && calls_string[calls_string.length() - 1] == ']') {
+			JsonItem jsonCalls;
+			jsonCalls.parse(calls_string);
+			for(unsigned int i = 0; i < jsonCalls.getLocalCount(); i++) {
+				JsonItem *jsonCall = jsonCalls.getLocalItem(i);
+				string id = jsonCall->getValue("id");
+				string sensor_id = jsonCall->getValue("sensor_id");
+				string time = jsonCall->getValue("time");
+				string duration = jsonCall->getValue("duration");
+				string ip_src = jsonCall->getValue("ip_src");
+				string ip_dst = jsonCall->getValue("ip_dst");
+				string number_src = jsonCall->getValue("number_src");
+				string number_dst = jsonCall->getValue("number_dst");
+				string domain_src = jsonCall->getValue("domain_src");
+				string domain_dst = jsonCall->getValue("domain_dst");
+				string rslt = test(id.c_str(), time.c_str(), duration.c_str(),
+						   ip_src.c_str(), ip_dst.c_str(),
+						   number_src.c_str(), number_dst.c_str(),
+						   domain_src.c_str(), domain_dst.c_str(),
+						   sensor_id.c_str(),
+						   NULL, NULL,
+						   json_rslt);
+				if(!rslt.empty()) {
+					rslts.push_back(rslt);
+				}
+			}
+		} else {
+			calls = split(calls_string, ';');
+			for(unsigned i = 0; i < calls.size(); i++) {
+				vector<string> call = split(calls[i], ',');
+				if(call.size() >= 6) {
+					const char *time = call[0].c_str();
+					const char *duration = call[1].c_str();
+					const char *number_src = call[2].c_str();
+					const char *number_dst = call[3].c_str();
+					const char *ip_src = call[4].c_str();
+					const char *ip_dst = call[5].c_str();
+					const char *verify_operator_price = call.size() >= 7 ? call[6].c_str() : NULL;
+					const char *verify_customer_price =  call.size() >= 8 ? call[7].c_str() : NULL;
+					const char *domain_src = call.size() >= 9 ? call[8].c_str() : NULL;
+					const char *domain_dst = call.size() >= 10 ? call[9].c_str() : NULL;
+					const char *sensor_id = call.size() >= 11 ? call[10].c_str() : NULL;
+					string rslt = test(NULL, time, duration,
+							   ip_src, ip_dst,
+							   number_src, number_dst,
+							   domain_src, domain_dst,
+							   sensor_id,
+							   verify_operator_price, verify_customer_price,
+							   json_rslt);
+					if(!rslt.empty()) {
+						rslts.push_back(rslt);
+					}
+				}
+			}
+		}
+		if(rslts.size()) {
+			if(json_rslt) {
+				if(rslts.size() == 1) {
+					return(rslts[0]);
+				}
+				string rslt = "[";
+				for(unsigned i = 0; i < rslts.size(); i++) {
+					if(i) {
+						rslt += ",";
+					}
+					rslt += rslts[i];
+				}
+				rslt += "]";
+				return(rslt);
+			} else {
+				string rslt;
+				for(unsigned i = 0; i < rslts.size(); i++) {
+					if(i) {
+						rslt += "---\n";
+					}
+					rslt += rslts[i];
+				}
+				return(rslt);
+			}
+		}
+	}
+	return("");
+}
+
+string cBilling::test(const char *id, const char *time, const char *duration,
+		      const char *ip_src, const char *ip_dst,
+		      const char *number_src, const char *number_dst,
+		      const char *domain_src, const char *domain_dst,
+		      const char *sensor_id,
+		      const char *verify_operator_price, const char *verify_customer_price,
+		      bool json_rslt) {
+	double operator_price; 
+	double customer_price;
+	unsigned operator_currency_id;
+	unsigned customer_currency_id;
+	unsigned operator_id;
+	unsigned customer_id;
+	vector<dstring> operator_debug, customer_debug;
+	billing(stringToTime(time), atoi(duration),
+		 str_2_vmIP(ip_src), str_2_vmIP(ip_dst),
+		 number_src, number_dst,
+		 domain_src, domain_dst,
+		 &operator_price, &customer_price,
+		 &operator_currency_id, &customer_currency_id,
+		 &operator_id, &customer_id, &operator_debug, &customer_debug);
+	if(json_rslt) {
+		JsonExport call;
+		if(id) {
+			call.add("id", id);
+		}
+		call.add("calldate", time);
+		call.add("duration", duration);
+		call.add("ip_src", ip_src);
+		call.add("ip_dst", ip_dst);
+		call.add("number_src", number_src);
+		call.add("number_dst", number_dst);
+		if(domain_src) {
+			call.add("domain_src", domain_src);
+		}
+		if(domain_dst) {
+			call.add("domain_dst", domain_dst);
+		}
+		call.add("operator_price", floatToString(operator_price, 6, true), JsonExport::_number);
+		call.add("operator_currency_id", operator_currency_id);
+		call.add("operator_currency_code", getCurrencyCode(operator_currency_id));
+		call.add("operator_id", operator_id);
+		call.add("customer_price", floatToString(customer_price, 6, true), JsonExport::_number);
+		call.add("customer_currency_id", customer_currency_id);
+		call.add("customer_currency_code", getCurrencyCode(customer_currency_id));
+		call.add("customer_id", customer_id);
+		JsonExport *call_operator_debug = call.addArray("operator_debug");
+		for(unsigned i = 0; i < operator_debug.size(); i++) {
+			JsonExport item;
+			item.setTypeItem(JsonExport::_array);
+			item.add(NULL, operator_debug[i][0]);
+			item.add(NULL, operator_debug[i][1]);
+			call_operator_debug->addJson(NULL, item.getJson());
+		}
+		JsonExport *call_customer_debug = call.addArray("customer_debug");
+		for(unsigned i = 0; i < customer_debug.size(); i++) {
+			JsonExport item;
+			item.setTypeItem(JsonExport::_array);
+			item.add(NULL, customer_debug[i][0]);
+			item.add(NULL, customer_debug[i][1]);
+			call_customer_debug->addJson(NULL, item.getJson());
+		}
+		return(call.getJson());
+	} else {
+		ostringstream out;
+		unsigned labelWidth = 30;
+		out << fixed;
+		out << setw(labelWidth) << left << "calldate, duration:" << time << ", " << duration << endl;
+		out << setw(labelWidth) << left << "numbers:" << number_src << " -> " << number_dst << endl;
+		out << setw(labelWidth) << left << "IP:" << ip_src << " -> " << ip_dst << endl;
+		out << setw(labelWidth) << left << "rslt operator price:" << operator_price;
+		if(verify_operator_price && *verify_operator_price) {
+			double _verify_operator_price = atof(verify_operator_price);
+			if(round(_verify_operator_price * 1e6) == round(operator_price * 1e6)) {
+				out << " (OK)";
+			} else {
+				out << " (errror - " << _verify_operator_price << ")";
+			}
+		}
+		out << " / currency id: " << operator_currency_id << " / operator id: " << operator_id << endl;
+		for(unsigned i = 0; i < operator_debug.size(); i++) {
+			out << " - " << operator_debug[i][0];
+			if(!operator_debug[i][1].empty()) {
+				out << " : " << operator_debug[i][1];
+			}
+			out << endl;
+		}
+		out << setw(labelWidth) << left << "rslt customer price:" << customer_price;
+		if(verify_customer_price && *verify_customer_price) {
+			double test_customer_price = atof(verify_customer_price);
+			if(round(test_customer_price * 1e6) == round(customer_price * 1e6)) {
+				out << " (OK)";
+			} else {
+				out << " (errror - " << test_customer_price << ")";
+			}
+		}
+		out << " / currency id: " << customer_currency_id << " / customer id: " << customer_id << endl;
+		for(unsigned i = 0; i < customer_debug.size(); i++) {
+			out << " - " << customer_debug[i][0];
+			if(!customer_debug[i][1].empty()) {
+				out << " : " << customer_debug[i][1];
+			}
+			out << endl;
+		}
+		return(out.str());
+	}
+	return("");
 }
 
 

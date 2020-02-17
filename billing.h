@@ -283,6 +283,7 @@ public:
 	void load(SqlDb *sqlDb = NULL);
 	void clear(bool useLock = true);
 	double getExchangeRateToMainCurency(unsigned from_id);
+	string getCurrencyCode(unsigned id);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -329,6 +330,15 @@ public:
 		return(agreg_settings->settings);
 	}
 	static vector<sAgregationTypePart> getAgregTypeParts(sBillingAgregationSettings *settings);
+	string getCurrencyCode(unsigned id);
+	string test(string calls_string, bool json_rslt);
+	string test(const char *id, const char *time, const char *duration,
+		    const char *ip_src, const char *ip_dst,
+		    const char *number_src, const char *number_dst,
+		    const char *domain_src, const char *domain_dst,
+		    const char *sensor_id,
+		    const char *verify_operator_price, const char *verify_customer_price,
+		    bool json_rslt);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
