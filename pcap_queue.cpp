@@ -91,8 +91,6 @@ extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
 extern int opt_pcapdump;
-extern int opt_pcapdump_all;
-extern char opt_pcapdump_all_path[1024];
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern int opt_mirrorip;
@@ -2756,7 +2754,6 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	memset(&this->filterData, 0, sizeof(this->filterData));
 	this->filterDataUse = false;
 	this->pcapDumpHandle = NULL;
-	this->pcapDumpLength = 0;
 	this->pcapLinklayerHeaderType = 0;
 	// CONFIG
 	extern int opt_promisc;
@@ -4239,26 +4236,8 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
-			if(opt_pcapdump_all) {
-				if(this->pcapDumpHandle &&
-				   this->pcapDumpLength > opt_pcapdump_all * 1000000ull) {
-					pcap_dump_close(this->pcapDumpHandle);
-					this->pcapDumpHandle = NULL;
-					this->pcapDumpLength = 0;
-				}
-				if(!this->pcapDumpHandle) {
-					char pname[2048];
-					snprintf(pname, sizeof(pname ), "%s/dump-%s-%s.pcap", 
-						 opt_pcapdump_all_path[0] ? opt_pcapdump_all_path : getPcapdumpDir(),
-						 this->interfaceName.c_str(), 
-						 sqlDateTimeString(time(NULL)).c_str());
-					this->pcapDumpHandle = pcap_dump_open(global_pcap_handle, pname);
-				}
-				pcap_dump((u_char*)this->pcapDumpHandle, HPH(hpii.header_packet), HPP(hpii.header_packet));
-				this->pcapDumpLength += HPH(hpii.header_packet)->caplen;
-			}
 			bool okPush = true;;
-			if(opt_udpfrag || opt_pcapdump_all) {
+			if(opt_udpfrag) {
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 							NULL, 0,
 							ppf_defrag | ppf_returnZeroInCheckData);

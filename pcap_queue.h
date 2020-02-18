@@ -451,7 +451,6 @@ protected:
 	bpf_program filterData;
 	bool filterDataUse;
 	pcap_dumper_t *pcapDumpHandle;
-	u_int64_t pcapDumpLength;
 	int pcapLinklayerHeaderType;
 	size_t pcap_snaplen;
 	pcapProcessData ppd;
