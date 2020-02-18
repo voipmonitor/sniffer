@@ -39,6 +39,13 @@ then
 	exit 0;
 fi
 
+if [ "a$1" == "a--no-user-input" ]
+then
+	NOUSERINPUT=yes
+else
+	NOUSERINPUT=""
+fi
+
 echo "Installing /$AUDIODIR"
 mkdir -p /$AUDIODIR
 cp $AUDIODIR/* /$AUDIODIR/
@@ -52,8 +59,10 @@ cp $INITDIR/$SENSOR /$INITDIR/
 
 # ask/set spool directory, usage # as a delimiter in sed
 DEFSPOOLDIR=/var/spool/voipmonitor
-echo -n "Enter spool directory [$DEFSPOOLDIR]: "
-read TMPSPOOL
+if [ -z $NOUSERINPUT ]; then
+	echo -n "Enter spool directory [$DEFSPOOLDIR]: "
+	read TMPSPOOL
+fi
 if [ -z "$TMPSPOOL" ]; then
 	SPOOLDIR=$DEFSPOOLDIR
 else
@@ -65,8 +74,10 @@ mkdir $SPOOLDIR
 
 # ask/set sniffing interface(s)
 DEFINT=eth0
-echo -n "Enter sniffing interface(s). More interface names must separated by comma. [$DEFINT]: "
-read TMPINT
+if [ -z $NOUSERINPUT ]; then
+	echo -n "Enter sniffing interface(s). More interface names must separated by comma. [$DEFINT]: "
+	read TMPINT
+fi
 if [ -z "$TMPINT" ]; then
 	INTERFACE=$DEFINT
 else
@@ -76,8 +87,10 @@ sed -i "s#^interface[\t= ]\+.*\$#interface = $INTERFACE#" $CFGDIR/$SENSOR.conf
 
 # ask/set maxpool size
 DEFMAXPOOLSIZE=102400
-echo -n "Enter max pool size for pcaps store (in MB). [$DEFMAXPOOLSIZE]: "
-read TMPMAXPOOLSIZE
+if [ -z $NOUSERINPUT ]; then
+	echo -n "Enter max pool size for pcaps store (in MB). [$DEFMAXPOOLSIZE]: "
+	read TMPMAXPOOLSIZE
+fi
 if [ -z "$TMPMAXPOOLSIZE" ]; then
 	MAXPOOLSIZE=$DEFMAXPOOLSIZE
 else
