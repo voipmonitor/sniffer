@@ -2429,6 +2429,7 @@ public:
 private:
 	bool check_number(const char *number);
 	bool check_name(const char *name);
+	bool check_lsr(const char *lsr);
 private:
 	int lastResponseNum;
 	int lastResponseNumLength;
@@ -2440,7 +2441,9 @@ private:
 	string name;
 	CheckString *name_check;
 	cRegExp *name_regexp;
- 
+	string lsr;
+	CheckString *lsr_check;
+	cRegExp *lsr_regexp;
 };
 
 class NoStoreCdrRules {

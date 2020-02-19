@@ -10169,6 +10169,8 @@ NoStoreCdrRule::NoStoreCdrRule() {
 	number_regexp = NULL;
 	name_check = NULL;
 	name_regexp = NULL;
+	lsr_check = NULL;
+	lsr_regexp = NULL;
 }
 
 NoStoreCdrRule::~NoStoreCdrRule() {
@@ -10183,6 +10185,12 @@ NoStoreCdrRule::~NoStoreCdrRule() {
 	}
 	if(name_regexp) {
 		delete name_regexp;
+	}
+	if(lsr_check) {
+		delete lsr_check;
+	}
+	if(lsr_regexp) {
+		delete lsr_regexp;
 	}
 }
 
@@ -10207,6 +10215,11 @@ bool NoStoreCdrRule::check(Call *call) {
 			ok = false;
 		}
 	}
+	if(ok && lsr.length()) {
+		if(!check_lsr(call->lastSIPresponse)) {
+			ok = false;
+		}
+	}
 	return(ok);
 }
 
@@ -10226,7 +10239,8 @@ void NoStoreCdrRule::set(const char *pattern) {
 	const char *cond_prefix[] = {
 		"ip",
 		"number",
-		"name"
+		"name",
+		"lsr"
 	};
 	for(unsigned i = 0; i < sizeof(cond_prefix) / sizeof(cond_prefix[0]); i++) {
 		const char *cond_prefix_pos = strcasestr(pattern, cond_prefix[i]);
@@ -10267,6 +10281,12 @@ void NoStoreCdrRule::set(const char *pattern) {
 						if(!string_is_alphanumeric(name.c_str()) && check_regexp(name.c_str())) {
 							name_regexp = new FILE_LINE(0) cRegExp(name.c_str());
 						}
+					} else if(i == 3) {
+						lsr = cond_data;
+						lsr_check = new FILE_LINE(0) CheckString(lsr.c_str());
+						if(!string_is_alphanumeric(lsr.c_str()) && check_regexp(lsr.c_str())) {
+							lsr_regexp = new FILE_LINE(0) cRegExp(lsr.c_str());
+						}
 					}
 				}
 			}
@@ -10286,6 +10306,11 @@ bool NoStoreCdrRule::check_number(const char *number) {
 bool NoStoreCdrRule::check_name(const char *name) {
 	return((name_check && name_check->check(name)) ||
 	       (name_regexp && name_regexp->match(name)));
+}
+
+bool NoStoreCdrRule::check_lsr(const char *lsr) {
+	return((lsr_check && lsr_check->check(lsr)) ||
+	       (lsr_regexp && lsr_regexp->match(lsr)));
 }
 
 NoStoreCdrRules::~NoStoreCdrRules() {
