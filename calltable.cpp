@@ -6450,12 +6450,6 @@ string Call::get_proxies_str() {
 	return(sipproxies);
 }
 
-void Call::proxy_add(vmIP sipproxyip) {
-	proxies_lock();
-	proxies.push_back(sipproxyip);
-	proxies_unlock();
-}
-
 void Call::createListeningBuffers() {
 	pthread_mutex_lock(&listening_worker_run_lock);
 	for(int i = 0; i < 2; i++) {
@@ -6500,6 +6494,34 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 	if(dport) {
 		dport->clear();
 	}
+	vmIP saddr, daddr;
+	list<vmIP> proxies;
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
+		if(iter->confirmed) {
+			if(!saddr.isSet() && !daddr.isSet()) {
+				saddr = iter->saddr;
+				daddr = iter->daddr;
+				if(dport) {
+					*dport = iter->dport;
+				}
+			}
+			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
+				proxies.push_back(iter->saddr);
+			}
+			if(iter->daddr != saddr && iter->daddr != daddr && find(proxies.begin(), proxies.end(), iter->daddr) == proxies.end()) {
+				proxies.push_back(daddr);
+				daddr = iter->daddr;
+				if(dport) {
+					*dport = iter->dport;
+				}
+			}
+		}
+	}
+	/* old version
 	vmIP saddr, 
 	     daddr, 
 	     lastsaddr;
@@ -6532,6 +6554,7 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 			}
 		}
 	}
+	*/
 	return(daddr);
 }
 

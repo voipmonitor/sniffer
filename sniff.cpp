@@ -3846,6 +3846,16 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(sverb.dump_call_flags && call->flags != flags_old) {
 			cout << "set flags for ip " << packetS->saddr_().getString() << " -> " << packetS->daddr_().getString() << " : " << printCallFlags(call->flags) << endl;
 		}
+		if(!reverseInviteSdaddr) {
+			if(packetS->saddr_() != call->getSipcallerip() && !call->in_proxy(packetS->saddr_())) {
+				call->proxy_add(packetS->saddr_());
+			}
+			if(packetS->daddr_() != call->getSipcallerip() && packetS->daddr_() != call->getSipcalledip() && !call->in_proxy(packetS->daddr_())) {
+				call->proxy_add(call->getSipcalledip());
+				call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+			}
+		}
+		/* old version
 		if(!reverseInviteSdaddr && !existInviteSdaddr) {
 			bool updateDest = false;
 			if(call->getSipcalledip() != packetS->daddr_() && call->getSipcallerip() != packetS->daddr_() && 
@@ -3865,6 +3875,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->lastsipcallerip = packetS->saddr_();
 			}
 		}
+		*/
 	}
 
 	if(opt_norecord_header) {

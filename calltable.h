@@ -1289,7 +1289,19 @@ public:
 	void proxies_undup(set<vmIP> *proxies_undup);
 	string get_proxies_str();
 
-	void proxy_add(vmIP sipproxyip);
+	void proxy_add(vmIP sipproxyip) {
+		if(sipproxyip.isSet()) {
+			proxies_lock();
+			proxies.push_back(sipproxyip);
+			proxies_unlock();
+		}
+	}
+	bool in_proxy(vmIP ip) {
+		proxies_lock();
+		bool rslt = find(proxies.begin(), proxies.end(), ip) != proxies.end();
+		proxies_unlock();
+		return(rslt);
+	}
 	
 	void createListeningBuffers();
 	void destroyListeningBuffers();
