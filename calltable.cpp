@@ -6508,7 +6508,16 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 		for(unsigned i = 0; i < *iter_order; i++) {
 			iter++;
 		}
-		if(iter->confirmed) {
+		bool exists = false;
+		list<Call::sInviteSD_Addr>::iterator iter_check_exists = invite_sdaddr.begin();
+		for(unsigned i = 0; i < (*iter_order - 1); i++) {
+			if(iter_check_exists->saddr == iter->saddr && iter_check_exists->daddr == iter->daddr) {
+				exists = true;
+				break;
+			}
+			iter_check_exists++;
+		}
+		if(iter->confirmed && !exists) {
 			if((daddr != iter->daddr && saddr != iter->daddr && 
 			    lastsaddr != iter->saddr) ||
 			   lastsaddr == iter->saddr) {

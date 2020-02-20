@@ -3846,7 +3846,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(sverb.dump_call_flags && call->flags != flags_old) {
 			cout << "set flags for ip " << packetS->saddr_().getString() << " -> " << packetS->daddr_().getString() << " : " << printCallFlags(call->flags) << endl;
 		}
-		if(!reverseInviteSdaddr) {
+		if(!reverseInviteSdaddr && !existInviteSdaddr) {
 			bool updateDest = false;
 			if(call->getSipcalledip() != packetS->daddr_() && call->getSipcallerip() != packetS->daddr_() && 
 			   call->lastsipcallerip != packetS->saddr_()) {
