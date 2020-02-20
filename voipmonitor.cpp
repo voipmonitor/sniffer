@@ -7222,7 +7222,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		for(unsigned i = 0; i < opt_cdr_sip_response_reg_remove.size(); i++) {
 			if(!check_regexp(opt_cdr_sip_response_reg_remove[i].c_str())) {
 				syslog(LOG_WARNING, "invalid regexp %s for cdr_sip_response_reg_remove", opt_cdr_sip_response_reg_remove[i].c_str());
-				opt_cdr_ua_reg_remove.erase(opt_cdr_sip_response_reg_remove.begin() + i);
+				opt_cdr_sip_response_reg_remove.erase(opt_cdr_sip_response_reg_remove.begin() + i);
 				--i;
 			}
 		}
