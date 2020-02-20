@@ -207,7 +207,7 @@ bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
-int opt_rtpip_find_endpoints = 0;
+int opt_rtpip_find_endpoints = 1;
 bool opt_rtpip_find_endpoints_set = false;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
