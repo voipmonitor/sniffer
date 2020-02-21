@@ -2884,7 +2884,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			if(is_terminating()) {
 				USLEEP(100000);
 			} else {
-				sleep(1);
+				sleep(min(1 + pass * 2,  60u));
 			}
 			syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
 		}
