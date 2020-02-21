@@ -2981,10 +2981,24 @@ void MySqlStore_process::store() {
 					this->unlock();
 					break;
 				}
-				string query = this->query_buff.front();
-				this->query_buff.pop_front();
-				this->unlock();
-				this->queryByRemoteSocket(query.c_str());
+				if(this->query_buff.size() == 1) {
+					string query = this->query_buff.front();
+					this->query_buff.pop_front();
+					this->unlock();
+					this->queryByRemoteSocket(query.c_str());
+				} else {
+					string queries;
+					for(unsigned i = 0; i < 500; i++) {
+						if(this->query_buff.size() == 0) {
+							break;
+						}
+						string query = this->query_buff.front();
+						queries += "L" + intToString(query.length()) + ":" + query + "\n";
+						this->query_buff.pop_front();
+					}
+					this->unlock();
+					this->queryByRemoteSocket(queries.c_str());
+				}
 			} else {
 				string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
 				string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
