@@ -31,12 +31,16 @@ struct sSnifferServerVerbose {
 struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
+		mysql_queue_limit = 0;
+		mysql_concat_limit = 100;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
 	}
 	string host;
 	unsigned port;
+	unsigned mysql_queue_limit;
+	unsigned mysql_concat_limit;
 };
 
 
@@ -48,6 +52,7 @@ struct sSnifferClientOptions {
 		packetbuffer_sender = false;
 		mysql_new_store = 0;
 		mysql_set_id = false;
+		mysql_concat_limit = 100;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -68,6 +73,7 @@ struct sSnifferClientOptions {
 	bool packetbuffer_sender;
 	int mysql_new_store;
 	bool mysql_set_id;
+	unsigned mysql_concat_limit;
 };
 
 
@@ -187,6 +193,7 @@ public:
 	~cSnifferServer();
 	void setSqlStore(class MySqlStore *sqlStore);
 	void sql_query_lock(const char *query_str, int id);
+	unsigned int sql_queue_size();
 	bool isSetSqlStore() {
 		return(sqlStore != NULL);
 	}

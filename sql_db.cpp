@@ -2872,21 +2872,33 @@ void MySqlStore_process::query(const char *query_str) {
 
 void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 	unsigned maxPass = 100000;
+	unsigned nextUsleepAfterError = 0;
+	bool quietlyError = false;
+	bool keepConnectAfterError = false;
 	for(unsigned int pass = 0; pass < maxPass; pass++) {
 		if(is_terminating() > 1 && pass > 2) {
 			break;
 		}
 		if(pass > 0) {
-			if(this->remote_socket) {
+			if(!keepConnectAfterError && this->remote_socket) {
 				delete this->remote_socket;
 				this->remote_socket = NULL;
 			}
 			if(is_terminating()) {
 				USLEEP(100000);
 			} else {
-				sleep(min(1 + pass * 2,  60u));
+				if(nextUsleepAfterError) {
+					usleep(nextUsleepAfterError);
+				} else {
+					sleep(min(1 + pass * 2,  60u));
+				}
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
+			if(!quietlyError) {
+				syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
+			}
+			nextUsleepAfterError = 0;
+			quietlyError = false;
+			keepConnectAfterError = false;
 		}
 		if(!this->remote_socket) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
@@ -2962,7 +2974,39 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		if(response == "OK") {
 			break;
 		} else {
-			syslog(LOG_ERR, "send store query error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
+			bool next_attempt = true;
+			string error;
+			if(response.empty()) {
+				error = "response is empty";
+			} else if(response[0] == '{' && response[response.length() - 1] == '}') {
+				JsonItem jsonResponse;
+				jsonResponse.parse(response);
+				error = jsonResponse.getValue("error");
+				string next_attempt_str = jsonResponse.getValue("next_attempt");
+				if(!next_attempt_str.empty()) {
+					next_attempt = atoi(next_attempt_str.c_str());
+				}
+				string usleep_str = jsonResponse.getValue("usleep");
+				if(!usleep_str.empty()) {
+					nextUsleepAfterError = atol(usleep_str.c_str());
+				}
+				string quietly_str = jsonResponse.getValue("quietly");
+				if(!quietly_str.empty()) {
+					quietlyError = atoi(quietly_str.c_str());
+				}
+				string keep_connect_str = jsonResponse.getValue("keep_connect");
+				if(!keep_connect_str.empty()) {
+					keepConnectAfterError = atoi(keep_connect_str.c_str());
+				}
+			} else {
+				error = response;
+			}
+			if(!quietlyError) {
+				syslog(LOG_ERR, "send store query error: %s", error.c_str());
+			}
+			if(!next_attempt) {
+				break;
+			}
 		}
 	}
 }
@@ -2981,14 +3025,14 @@ void MySqlStore_process::store() {
 					this->unlock();
 					break;
 				}
-				if(this->query_buff.size() == 1) {
+				if(this->query_buff.size() == 1 || snifferClientOptions.mysql_concat_limit <= 1) {
 					string query = this->query_buff.front();
 					this->query_buff.pop_front();
 					this->unlock();
 					this->queryByRemoteSocket(query.c_str());
 				} else {
 					string queries;
-					for(unsigned i = 0; i < 500; i++) {
+					for(unsigned i = 0; i < snifferClientOptions.mysql_concat_limit; i++) {
 						if(this->query_buff.size() == 0) {
 							break;
 						}
@@ -4170,7 +4214,7 @@ int MySqlStore::convStoreId(int id) {
 	if(maxThreads > 1) {
 		ssize_t queryThreadMinSize = -1;
 		for(int i = 0; i < maxThreads; i++) {
-			int qtSize = this->getSize(id + i);
+			int qtSize = this->getSize(id + i + 1);
 			if(qtSize < 0) {
 				qtSize = 0;
 			}

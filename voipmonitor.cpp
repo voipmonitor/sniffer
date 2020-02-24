@@ -1419,7 +1419,10 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 				}
 				sqlDb->checkDbMode();
 				if(!opt_database_backup) {
-					if (!opt_disable_dbupgradecheck && !is_read_from_file_simple()) {
+					if(!(opt_disable_dbupgradecheck || is_read_from_file_simple() ||
+					     (is_client() && 
+					      ((snifferClientOptions.remote_query && snifferClientOptions.remote_store) ||
+					       snifferClientOptions.packetbuffer_sender)))) {
 						if(sqlDb->createSchema(connectId)) {
 							sqlDb->checkSchema(connectId);
 						} else {
@@ -7018,6 +7021,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_concat_limit", &snifferServerOptions.mysql_concat_limit));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();

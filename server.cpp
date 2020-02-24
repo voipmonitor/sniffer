@@ -202,6 +202,16 @@ void cSnifferServer::sql_query_lock(const char *query_str, int id) {
 	// TODO NEW STORE
 	sqlStore->query_lock(query_str, sqlStore->convStoreId(id));
 }
+
+unsigned int cSnifferServer::sql_queue_size() {
+	while(!sqlStore) {
+		if(is_terminating()) {
+			return(0);
+		}
+		USLEEP(1000);
+	}
+	return(sqlStore->getAllSize(true));
+}
  
 void cSnifferServer::createConnection(cSocket *socket) {
 	if(is_terminating() || terminate) {
@@ -459,6 +469,9 @@ void cSnifferServerConnection::cp_service() {
 		if(useSetId()) {
 			ok_parameters.add("mysql_set_id", useSetId());
 		}
+		if(snifferServerOptions.mysql_concat_limit) {
+			ok_parameters.add("mysql_concat_limit", snifferServerOptions.mysql_concat_limit);
+		}
 		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
 	} else {
@@ -691,36 +704,47 @@ void cSnifferServerConnection::cp_store() {
 			queryStr = string((char*)query, queryLength);
 		}
 		if(!queryStr.empty()) {
-			size_t posStoreIdSeparator = queryStr.find('|');
-			if(posStoreIdSeparator != string::npos) {
-				int storeId = atoi(queryStr.c_str());
-				if(queryStr[posStoreIdSeparator + 1] == 'L' && isdigit(queryStr[posStoreIdSeparator + 2])) {
-					list<string> queriesStr;
-					size_t pos = posStoreIdSeparator + 1;
-					do {
-						if(queryStr[pos] != 'L') {
-							syslog(LOG_ERR, "missing 'L' separator");
-							break;
+			if(snifferServerOptions.mysql_queue_limit &&
+			   server->sql_queue_size() > snifferServerOptions.mysql_queue_limit) {
+				JsonExport exp;
+				exp.add("error", "sql queue is full");
+				exp.add("next_attempt", true);
+				exp.add("usleep", 5000000);
+				exp.add("quietly", true);
+				exp.add("keep_connect", true);
+				socket->writeBlock(exp.getJson(), cSocket::_te_aes);
+			} else {
+				size_t posStoreIdSeparator = queryStr.find('|');
+				if(posStoreIdSeparator != string::npos) {
+					int storeId = atoi(queryStr.c_str());
+					if(queryStr[posStoreIdSeparator + 1] == 'L' && isdigit(queryStr[posStoreIdSeparator + 2])) {
+						list<string> queriesStr;
+						size_t pos = posStoreIdSeparator + 1;
+						do {
+							if(queryStr[pos] != 'L') {
+								syslog(LOG_ERR, "cSnifferServerConnection::cp_store: missing 'L' separator");
+								break;
+							}
+							unsigned length = atoi(queryStr.c_str() + pos + 1);
+							size_t pos_sep = queryStr.find(':', pos);
+							if(pos_sep == string::npos) {
+								syslog(LOG_ERR, "cSnifferServerConnection::cp_store: missing ':' separator");
+								break;
+							}
+							pos = pos_sep + 1;
+							queriesStr.push_back(queryStr.substr(pos, length));
+							pos += length + 1;
+						} while(pos < queryStr.length());
+						for(list<string>::iterator iter = queriesStr.begin(); iter != queriesStr.end(); iter++) {
+							server->sql_query_lock(iter->c_str(), 
+									      storeId);
 						}
-						unsigned length = atoi(queryStr.c_str() + pos + 1);
-						size_t pos_sep = queryStr.find(':', pos);
-						if(pos_sep == string::npos) {
-							syslog(LOG_ERR, "missing ':' separator");
-							break;
-						}
-						pos = pos_sep + 1;
-						queriesStr.push_back(queryStr.substr(pos, length));
-						pos += length + 1;
-					} while(pos < queryStr.length());
-					for(list<string>::iterator iter = queriesStr.begin(); iter != queriesStr.end(); iter++) {
-						server->sql_query_lock(iter->c_str(), 
-								      storeId);
+					} else {
+						server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
+								       storeId);
 					}
-				} else {
-					server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
-							       storeId);
+					socket->writeBlock("OK", cSocket::_te_aes);
 				}
-				socket->writeBlock("OK", cSocket::_te_aes);
 			}
 		}
 		++counter;
@@ -1020,6 +1044,9 @@ bool cSnifferClientService::receive_process_loop_begin() {
 											0;
 						snifferClientOptions.mysql_set_id = !rsltConnectData_json.getValue("mysql_set_id").empty() &&
 										    atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
+						if(!rsltConnectData_json.getValue("mysql_concat_limit").empty()) {
+							snifferClientOptions.mysql_concat_limit = atoi(rsltConnectData_json.getValue("mysql_concat_limit").c_str());
+						}
 					}
 					opt_enable_responses_sender = !rsltConnectData_json.getValue("enable_responses_sender").empty();
 				} else {
@@ -1041,6 +1068,28 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	if(SS_VERBOSE().start_client) {
 		ostringstream verbstr;
 		verbstr << "START SNIFFER SERVICE";
+		vector<string> params;
+		if(snifferClientOptions.remote_query) {
+			params.push_back("remote_query: yes");
+		}
+		if(snifferClientOptions.remote_store) {
+			params.push_back("remote_store: yes");
+		}
+		if(snifferClientOptions.packetbuffer_sender) {
+			params.push_back("packetbuffer_sender: yes");
+		}
+		if(snifferClientOptions.mysql_new_store) {
+			params.push_back("mysql_new_store(s): yes");
+		}
+		if(snifferClientOptions.mysql_set_id) {
+			params.push_back("mysql_set_id(s): yes");
+		}
+		if(snifferClientOptions.mysql_concat_limit) {
+			params.push_back("mysql_concat_limit: " + intToString(snifferClientOptions.mysql_concat_limit));
+		}
+		if(params.size()) {
+			verbstr << ' ' << implode(params, ", ");
+		}
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	return(true);
