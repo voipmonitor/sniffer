@@ -3353,6 +3353,7 @@ int main(int argc, char *argv[]) {
 			return(1);
 		}
 		extern int rtp_stream_analysis(const char *pcap, bool onlyRtp);
+		useIPv6 = true;
 		opt_nocdr = true;
 		opt_jitterbuffer_f1 = 1;
 		opt_jitterbuffer_f2 = 1;
