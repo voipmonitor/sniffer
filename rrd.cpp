@@ -578,12 +578,20 @@ void RrdCharts::_queueThread() {
 				if(sverb.rrd_info) {
 					syslog(LOG_NOTICE, "call rrdttol: %s", item->rrd_cmd.c_str());
 				}
-				if(vm_pexec(item->rrd_cmd.c_str(), &item->result)) {
+				SimpleBuffer error;
+				if(vm_pexec(item->rrd_cmd.c_str(), &item->result, &error)) {
 					if(!item->result.size()) {
-						item->error = "failed output from rrdtool";
+						item->error = error.size() ? (char*)error : "failed output from rrdtool";
 					}
 				} else {
 					item->error = "failed run rrdtool";
+				}
+				if(sverb.rrd_info) {
+					if(item->error.length()) {
+						syslog(LOG_NOTICE, "rrdttol error: %s", item->error.c_str());
+					} else {
+						syslog(LOG_NOTICE, "rrdttol result size: %u", item->result.size());
+					}
 				}
 				item->completed = true;
 				rrd_unlock();

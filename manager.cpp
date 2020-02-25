@@ -2378,7 +2378,6 @@ int Mgmt_creategraph(Mgmt_params *params) {
 		string color = args.size() > 8 ? args[8] : "";
 		string chart_type;
 		string series_type;
-		string error;
 		if(args[1] == "PSA") {
 			chart_type = RRD_CHART_PS;
 			series_type= RRD_CHART_SERIES_PSA;
