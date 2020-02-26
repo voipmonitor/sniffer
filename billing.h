@@ -203,7 +203,7 @@ public:
 	void freeNumbers();
 	double billing(time_t time, unsigned duration, const char *number, const char *number_normalized,
 		       bool isLocalNumber, cStateHolidays *holidays, const char *timezone,
-		       vector<dstring> *debug = NULL);
+		       vector<string> *debug = NULL);
 private:
 	unsigned id;
 	string name;
@@ -318,7 +318,7 @@ public:
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id,
-		     vector<dstring> *operator_debug = NULL, vector<dstring> *customer_debug = NULL);
+		     vector<string> *operator_debug = NULL, vector<string> *customer_debug = NULL);
 	bool saveAggregation(time_t time,
 			     vmIP ip_src, vmIP ip_dst,
 			     const char *number_src, const char *number_dst,
