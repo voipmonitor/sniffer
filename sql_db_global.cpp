@@ -180,9 +180,9 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				SqlDb *sqlDb = createSqlObject();
 				SqlDb_row row;
 				row.add(rslt, columnId);
-				row.add(stringValueInput, columnStringValue);
+				row.add(sqlEscapeString(stringValueInput),  columnStringValue);
 				for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
-					row.add(iter->value, iter->field);
+					row.add(sqlEscapeString(iter->value), iter->field);
 				}
 				extern MySqlStore *sqlStore;
 				sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER);
