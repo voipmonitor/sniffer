@@ -682,8 +682,8 @@ void rrd_charts_init() {
 	ch = rrd_charts.addChart(RRD_CHART_callscounter, "Number of calls");
 	ch->setStdDb();
 	ch->setVerticalLabel("calls");
-	ch->addValue(RRD_VALUE_inv, "INVs", "00FF00", 0, 200000);
-	ch->addValue(RRD_VALUE_reg, "REGs", "99FF00", 0, 200000);
+	ch->addValue(RRD_VALUE_inv, "INVs", "00FF00", 0, 500000);
+	ch->addValue(RRD_VALUE_reg, "REGs", "99FF00", 0, 500000);
 	g = new FILE_LINE(0) RrdChartSeriesGroup;
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_inv, "INVs max", "00FF00", "MAX", "AREA", true));
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_inv, "INVs avg", "0000FF", "AVERAGE", "LINE1", false));
