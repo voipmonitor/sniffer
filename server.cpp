@@ -691,6 +691,13 @@ void cSnifferServerConnection::cp_query() {
 }
 
 void cSnifferServerConnection::cp_store() {
+	while(!dbDataIsSet()) {
+		if(is_terminating()) {
+			delete this;
+			return;
+		}
+		USLEEP(1000);
+	}
 	if(!rsaAesInit()) {
 		delete this;
 		return;

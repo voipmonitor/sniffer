@@ -8829,14 +8829,20 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 
 
 void dbDataInit(SqlDb *sqlDb) {
-	dbData = new FILE_LINE(0) cSqlDbData();
+	cSqlDbData *_dbData = new FILE_LINE(0) cSqlDbData();
 	if(!opt_nocdr) {
-		dbData->init(!isCloud() && !is_client() && !is_sender() &&
+		_dbData->init(!isCloud() && !is_client() && !is_sender() &&
 			     !is_read_from_file_simple(), 
-			     500000, sqlDb);
+			     is_server() ? 0 : 1000000, sqlDb);
 	}
+	dbData = _dbData;
 }
 
 void dbDataTerm() {
 	delete dbData;
+	dbData = NULL;
+}
+
+bool dbDataIsSet() {
+	return(dbData != NULL);
 }

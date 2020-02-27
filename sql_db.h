@@ -1176,6 +1176,7 @@ private:
 
 void dbDataInit(SqlDb *sqlDb);
 void dbDataTerm();
+bool dbDataIsSet();
 
 
 #endif
