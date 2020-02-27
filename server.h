@@ -193,6 +193,7 @@ public:
 	~cSnifferServer();
 	void setSqlStore(class MySqlStore *sqlStore);
 	void sql_query_lock(const char *query_str, int id);
+	int conv_store_id(int id);
 	unsigned int sql_queue_size();
 	bool isSetSqlStore() {
 		return(sqlStore != NULL);
@@ -217,6 +218,8 @@ private:
 	volatile bool terminate;
 	map<class cSnifferServerConnection*, bool> connection_threads;
 	volatile int connection_threads_sync;
+	size_t sql_queue_size_size;
+	u_int64_t sql_queue_size_time_ms;
 };
 
 

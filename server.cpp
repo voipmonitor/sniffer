@@ -175,6 +175,8 @@ cSnifferServer::cSnifferServer() {
 	sqlStore = NULL;
 	terminate = false;
 	connection_threads_sync = 0;
+	sql_queue_size_size = 0;
+	sql_queue_size_time_ms = 0;
 }
 
 cSnifferServer::~cSnifferServer() {
@@ -193,14 +195,11 @@ void cSnifferServer::setSqlStore(MySqlStore *sqlStore) {
 }
 
 void cSnifferServer::sql_query_lock(const char *query_str, int id) {
-	while(!sqlStore) {
-		if(is_terminating()) {
-			return;
-		}
-		USLEEP(1000);
-	}
-	// TODO NEW STORE
-	sqlStore->query_lock(query_str, sqlStore->convStoreId(id));
+	sqlStore->query_lock(query_str, id);
+}
+
+int cSnifferServer::conv_store_id(int id) {
+	return(sqlStore->convStoreId(id));
 }
 
 unsigned int cSnifferServer::sql_queue_size() {
@@ -210,7 +209,12 @@ unsigned int cSnifferServer::sql_queue_size() {
 		}
 		USLEEP(1000);
 	}
-	return(sqlStore->getAllSize(true));
+	u_int64_t act_time_ms = getTimeMS_rdtsc();
+	if(act_time_ms > sql_queue_size_time_ms + 200) {
+		sql_queue_size_size = sqlStore->getAllSize(true);
+		sql_queue_size_time_ms = act_time_ms;
+	}
+	return(sql_queue_size_size);
 }
  
 void cSnifferServer::createConnection(cSocket *socket) {
@@ -709,7 +713,7 @@ void cSnifferServerConnection::cp_store() {
 				JsonExport exp;
 				exp.add("error", "sql queue is full");
 				exp.add("next_attempt", true);
-				exp.add("usleep", 5000000);
+				exp.add("usleep", 1000000);
 				exp.add("quietly", true);
 				exp.add("keep_connect", true);
 				socket->writeBlock(exp.getJson(), cSocket::_te_aes);
@@ -717,6 +721,14 @@ void cSnifferServerConnection::cp_store() {
 				size_t posStoreIdSeparator = queryStr.find('|');
 				if(posStoreIdSeparator != string::npos) {
 					int storeId = atoi(queryStr.c_str());
+					while(!server->isSetSqlStore()) {
+						if(is_terminating()) {
+							delete this;
+							return;
+						}
+						USLEEP(1000);
+					}
+					storeId = server->conv_store_id(storeId);
 					if(queryStr[posStoreIdSeparator + 1] == 'L' && isdigit(queryStr[posStoreIdSeparator + 2])) {
 						list<string> queriesStr;
 						size_t pos = posStoreIdSeparator + 1;
@@ -736,12 +748,10 @@ void cSnifferServerConnection::cp_store() {
 							pos += length + 1;
 						} while(pos < queryStr.length());
 						for(list<string>::iterator iter = queriesStr.begin(); iter != queriesStr.end(); iter++) {
-							server->sql_query_lock(iter->c_str(), 
-									      storeId);
+							server->sql_query_lock(iter->c_str(), storeId);
 						}
 					} else {
-						server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), 
-								       storeId);
+						server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), storeId);
 					}
 					socket->writeBlock("OK", cSocket::_te_aes);
 				}
