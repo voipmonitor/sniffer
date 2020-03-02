@@ -50,6 +50,7 @@ extern int opt_dscp;
 extern int opt_enable_http_enum_tables;
 extern int opt_enable_webrtc_table;
 extern int opt_mysqlcompress;
+extern char opt_mysqlcompress_type[256];
 extern int opt_mysql_enable_transactions;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
@@ -72,15 +73,16 @@ extern char mysql_database[256];
 extern char mysql_user[256];
 extern char mysql_password[256];
 extern int opt_mysql_port;
+extern char mysql_socket[256];
 extern mysqlSSLOptions optMySsl;
 
 extern char mysql_2_host[256];
 extern char mysql_2_database[256];
 extern char mysql_2_user[256];
 extern char mysql_2_password[256];
-extern mysqlSSLOptions optMySsl_2;
-
 extern int opt_mysql_2_port;
+extern char mysql_2_socket[256];
+extern mysqlSSLOptions optMySsl_2;
 
 extern char opt_mysql_timezone[256];
 extern int opt_mysql_client_compress;
@@ -379,12 +381,14 @@ SqlDb::~SqlDb() {
 	}
 }
 
-void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, bool showversion, mysqlSSLOptions *sslOpt) {
+void SqlDb::setConnectParameters(string server, string user, string password, string database, u_int16_t port, string socket, 
+				 bool showversion, mysqlSSLOptions *sslOpt) {
 	this->conn_server = server;
 	this->conn_user = user;
 	this->conn_password = password;
 	this->conn_database = database;
 	this->conn_port = port;
+	this->conn_socket = socket;
 	this->conn_showversion = showversion;
 	if (sslOpt) {
 		this->conn_sslkey = sslOpt->key;
@@ -1499,10 +1503,9 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(false);
 		}
-
 		bool reconnect = 1;
 		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
-
+		string connect_via_str;
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {
 				if(this->hMysqlRes) {
@@ -1550,12 +1553,34 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(opt_mysql_connect_timeout) {
 				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
 			}
-			this->hMysqlConn = mysql_real_connect(
-						this->hMysql,
-						conn_server_ip.c_str(), this->conn_user.c_str(), this->conn_password.c_str(), NULL,
-						this->conn_port ? this->conn_port : opt_mysql_port,
-						NULL, 
-						CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
+			bool isLocalhost = conn_server_ip == "localhost" || conn_server_ip == "127.0.0.1";
+			for(int connectPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectPass <= 2; ++connectPass) {
+				const char *_host = 
+					connectPass == 0 ? (const char*)NULL : 
+					connectPass == 1 ? "localhost" : 
+							   (isLocalhost ? 
+							     "127.0.0.1" : 
+							     conn_server_ip.c_str());
+				const char *_socket = 
+					connectPass == 0 ? this->conn_socket.c_str() : 
+					connectPass == 1 ? (const char*)NULL : 
+							   (const char*)NULL;
+				this->hMysqlConn = mysql_real_connect(
+							this->hMysql,
+							_host, 
+							this->conn_user.c_str(),
+							this->conn_password.c_str(),
+							NULL,
+							this->conn_port ? this->conn_port : opt_mysql_port,
+							_socket, 
+							CLIENT_MULTI_RESULTS | (opt_mysql_client_compress ? CLIENT_COMPRESS : 0));
+				if(this->hMysqlConn) {
+					connect_via_str = _socket ? 
+							   "socket " + string(_socket) : 
+							   _host;
+					break;
+				}
+			}
 			if(!this->hMysqlConn) {
 				break;
 			}
@@ -1649,8 +1674,12 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 				while(this->fetchRow());
 				if(this->conn_showversion) {
-					syslog(LOG_INFO, "connect - db version %s (%i) %s / maximum partitions: %i", 
-					       this->getDbVersionString().c_str(), this->getDbVersion(), this->getDbName().c_str(), this->getMaximumPartitions());
+					syslog(LOG_INFO, "connect - db version %s (%i) %s / maximum partitions: %i / connect via %s", 
+					       this->getDbVersionString().c_str(), 
+					       this->getDbVersion(), 
+					       this->getDbName().c_str(), 
+					       this->getMaximumPartitions(),
+					       connect_via_str.c_str());
 				}
 			}
 			sql_disable_next_attempt_if_error = 0;
@@ -2784,7 +2813,7 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 }
 	
 MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
-				       const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+				       const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 				       const char *cloud_host, const char *cloud_token, bool cloud_router, int concatLimit, mysqlSSLOptions *mySSLOpt) {
 	this->id = id;
 	this->parentStore = parentStore;
@@ -2799,7 +2828,7 @@ MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
 	this->lastQueryTime = 0;
 	this->queryCounter = 0;
 	this->sqlDb = new FILE_LINE(29003) SqlDb_mysql();
-	this->sqlDb->setConnectParameters(host, user, password, database, port, true, mySSLOpt);
+	this->sqlDb->setConnectParameters(host, user, password, database, port, socket, true, mySSLOpt);
 	if(cloud_host && *cloud_host) {
 		this->sqlDb->setCloudParameters(cloud_host, cloud_token, cloud_router);
 	}
@@ -3355,13 +3384,14 @@ string MySqlStore::QFileConfig::getDirectory() {
 	return(this->directory.empty() ? getQueryCacheDir() : this->directory);
 }
 
-MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+MySqlStore::MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 		       const char *cloud_host, const char *cloud_token, bool cloud_router, mysqlSSLOptions *mySSLOpt) {
 	this->host = host;
 	this->user = user;
 	this->password = password;
 	this->database = database;
 	this->port = port;
+	this->socket = socket;
 	this->mySSLOptions = mySSLOpt;
 	if(cloud_host) {
 		this->cloud_host = cloud_host;
@@ -4031,6 +4061,7 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 						store ? store->password.c_str() : this->password.c_str(), 
 						store ? store->database.c_str() : this->database.c_str(),
 						store ? store->port : this->port,
+						store ? store->socket.c_str() : this->socket.c_str(),
 						this->isCloud() ? this->cloud_host.c_str() : NULL, this->cloud_token.c_str(), this->cloud_router,
 						this->defaultConcatLimit,
 						store ? store->mySSLOptions : this->mySSLOptions);
@@ -4406,9 +4437,9 @@ SqlDb *createSqlObject(int connectId) {
 		}
 		sqlDb = new FILE_LINE(29010) SqlDb_mysql();
 		if(connectId == 1) {
-			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, true, &optMySsl_2);
+			sqlDb->setConnectParameters(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, mysql_2_socket, true, &optMySsl_2);
 		} else {
-			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, true, &optMySsl);
+			sqlDb->setConnectParameters(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket, true, &optMySsl);
 			if(isCloud()) {
 				extern char cloud_host[256];
 				extern char cloud_token[256];
@@ -4603,7 +4634,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? "ROW_FORMAT=COMPRESSED" : "";
+	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
 	string partDayName = this->getPartDayName(limitDay);
 	
@@ -4777,6 +4808,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		extern char opt_database_backup_from_mysql_user[256];
 		extern char opt_database_backup_from_mysql_password[256];
 		extern unsigned int opt_database_backup_from_mysql_port;
+		extern char opt_database_backup_from_mysql_socket[256];
 		extern mysqlSSLOptions optMySSLBackup;
 		SqlDb_mysql *sqlDbSrc = new FILE_LINE(29013) SqlDb_mysql();
 		sqlDbSrc->setConnectParameters(opt_database_backup_from_mysql_host, 
@@ -4784,7 +4816,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 					       opt_database_backup_from_mysql_password,
 					       opt_database_backup_from_mysql_database,
 					       opt_database_backup_from_mysql_port,
-						true, &optMySSLBackup);
+					       opt_database_backup_from_mysql_socket,
+					       true, &optMySSLBackup);
 		if(sqlDbSrc->existsColumn("cdr", "price_operator_mult100") &&
 		   sqlDbSrc->existsColumn("cdr", "price_customer_mult100")) {
 			extPrecisionBilling = false;
@@ -5956,7 +5989,7 @@ bool SqlDb_mysql::createSchema_tables_billing_agregation() {
 		return(true);
 	}
 	this->clearLastError();
-	string compress = opt_mysqlcompress ? "ROW_FORMAT=COMPRESSED" : "";
+	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 	for(unsigned i = 0; i < typeParts.size(); i++) {
 		this->query(string(
@@ -6007,7 +6040,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? "ROW_FORMAT=COMPRESSED" : "";
+	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
 	string partDayName = this->getPartDayName(limitDay);
 
@@ -6108,7 +6141,7 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? "ROW_FORMAT=COMPRESSED" : "";
+	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
 	string partDayName = this->getPartDayName(limitDay);
 

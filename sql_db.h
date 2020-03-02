@@ -19,6 +19,9 @@
 #include "sql_db_global.h"
 
 
+#define MYSQL_ROW_FORMAT_COMPRESSED "ROW_FORMAT=COMPRESSED"
+
+
 using namespace std;
 
 
@@ -234,7 +237,9 @@ public:
 public:
 	SqlDb();
 	virtual ~SqlDb();
-	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, bool showversion = true, mysqlSSLOptions *sslOpt = NULL);
+	void setConnectParameters(string server, string user, string password, string database = "", u_int16_t port = 0, string socket = "",
+				  bool showversion = true, 
+				  mysqlSSLOptions *sslOpt = NULL);
 	void setCloudParameters(string cloud_host, string cloud_token, bool cloud_router);
 	void setLoginTimeout(ulong loginTimeout);
 	void setDisableSecureAuth(bool disableSecureAuth = true);
@@ -436,6 +441,7 @@ protected:
 	string conn_password;
 	string conn_database;
 	u_int16_t conn_port;
+	string conn_socket;
 	char *conn_sslkey;
 	char *conn_sslcert;
 	char *conn_sslcacert;
@@ -713,7 +719,7 @@ private:
 class MySqlStore_process {
 public:
 	MySqlStore_process(int id, class MySqlStore *parentStore,
-			   const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+			   const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 			   const char *cloud_host, const char *cloud_token, bool cloud_router, int concatLimit, mysqlSSLOptions *mySSLOpt);
 	~MySqlStore_process();
 	void connect();
@@ -885,7 +891,7 @@ private:
 		u_int64_t time;
 	};
 public:
-	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port,
+	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true, mysqlSSLOptions *mySSLOpt = NULL);
 	~MySqlStore();
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
@@ -969,6 +975,7 @@ private:
 	string password;
 	string database;
 	u_int16_t port;
+	string socket;
 	mysqlSSLOptions *mySSLOptions;
 	string cloud_host;
 	string cloud_token;

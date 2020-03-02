@@ -9792,6 +9792,7 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	extern bool opt_cdr_partition_oldver;
 	extern int opt_create_old_partitions;
 	extern int opt_mysqlcompress;
+	extern char opt_mysqlcompress_type[256];
 	
 	string limitDay;
 	string partDayName;
@@ -9800,10 +9801,7 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay, enableOldPartition);
 	}
 	
-	string compress = "";
-	if(opt_mysqlcompress) {
-		compress = "ROW_FORMAT=COMPRESSED";
-	}
+	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	sqlDb->query(string(
