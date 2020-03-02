@@ -1554,17 +1554,17 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
 			}
 			bool isLocalhost = conn_server_ip == "localhost" || conn_server_ip == "127.0.0.1";
-			for(int connectPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectPass <= 2; ++connectPass) {
+			for(int connectLocalhostPass = (isLocalhost ? (!this->conn_socket.empty() ? 0 : 1) : 2); connectLocalhostPass <= 2; ++connectLocalhostPass) {
 				const char *_host = 
-					connectPass == 0 ? (const char*)NULL : 
-					connectPass == 1 ? "localhost" : 
-							   (isLocalhost ? 
-							     "127.0.0.1" : 
-							     conn_server_ip.c_str());
+					connectLocalhostPass == 0 ? (const char*)NULL : 
+					connectLocalhostPass == 1 ? "localhost" : 
+								    (isLocalhost ? 
+								      "127.0.0.1" : 
+								      conn_server_ip.c_str());
 				const char *_socket = 
-					connectPass == 0 ? this->conn_socket.c_str() : 
-					connectPass == 1 ? (const char*)NULL : 
-							   (const char*)NULL;
+					connectLocalhostPass == 0 ? this->conn_socket.c_str() : 
+					connectLocalhostPass == 1 ? (const char*)NULL : 
+								    (const char*)NULL;
 				this->hMysqlConn = mysql_real_connect(
 							this->hMysql,
 							_host, 
