@@ -1830,6 +1830,7 @@ void *storing_cdr( void */*dummy*/ ) {
 		for(int pass  = 0; pass < 10; pass++) {
 			calltable->lock_calls_queue();
 			calls_queue_size = calltable->calls_queue.size();
+			calltable->unlock_calls_queue();
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
 			unsigned calls_for_store_count = 0;
@@ -1859,11 +1860,12 @@ void *storing_cdr( void */*dummy*/ ) {
 				++storing_cdr_next_threads_count;
 				USLEEP(250000);
 			}
+			calltable->lock_calls_queue();
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
+				calltable->unlock_calls_queue();
 				bool isPcapClose = call->isPcapsClose();
 				if(!isPcapClose) {
-					calltable->unlock_calls_queue();
 					// Close SIP and SIP+RTP dump files ASAP to save file handles
 					call->getPcap()->close();
 					call->getPcapSip()->close();
@@ -1882,15 +1884,12 @@ void *storing_cdr( void */*dummy*/ ) {
 						calls_for_store.push_back(call);
 					}
 					++calls_for_store_count;
-					if(!isPcapClose) {
-						calltable->lock_calls_queue();
-					}
+					calltable->lock_calls_queue();
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
+					--calls_queue_position;
 				} else {
-					if(!isPcapClose) {
-						calltable->lock_calls_queue();
-					}
+					calltable->lock_calls_queue();
 				}
 				++calls_queue_position;
 			}
