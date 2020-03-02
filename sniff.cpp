@@ -8096,6 +8096,9 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 
 void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 	process_packet_sip_call(packetS);
+	if(idPreProcessThread == 0) {
+		_process_packet__cleanup_calls(packetS->header_pt, __FILE__, __LINE__);
+	}
 	if(packetS->_findCall && packetS->call) {
 		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
 	}

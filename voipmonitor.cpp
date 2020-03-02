@@ -1939,10 +1939,10 @@ void *storing_cdr( void */*dummy*/ ) {
 					}
 					++counter;
 				}
-				calltable->lock_calls_deletequeue();
 				if(useConvertToWav) {
 					calltable->lock_calls_audioqueue();
 				}
+				list<Call*> calls_for_delete;
 				counter = 0;
 				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
 					if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
@@ -1954,15 +1954,19 @@ void *storing_cdr( void */*dummy*/ ) {
 							call->destroyCall();
 							delete call;
 						} else {
-							calltable->calls_deletequeue.push_back(*iter_call);
+							calls_for_delete.push_back(*iter_call);
 						}
 					}
 					++counter;
 				}
-				calltable->unlock_calls_deletequeue();
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
+				calltable->lock_calls_deletequeue();
+				for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+					calltable->calls_deletequeue.push_back(*iter_call);
+				}
+				calltable->unlock_calls_deletequeue();
 				delete [] indikConvertToWav;
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
@@ -2076,10 +2080,10 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			}
 			++counter;
 		}
-		calltable->lock_calls_deletequeue();
 		if(useConvertToWav) {
 			calltable->lock_calls_audioqueue();
 		}
+		list<Call*> calls_for_delete;
 		counter = 0;
 		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
 			if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
@@ -2091,15 +2095,19 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 					call->destroyCall();
 					delete call;
 				} else {
-					calltable->calls_deletequeue.push_back(*iter_call);
+					calls_for_delete.push_back(*iter_call);
 				}
 			}
 			++counter;
 		}
-		calltable->unlock_calls_deletequeue();
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
+		calltable->lock_calls_deletequeue();
+		for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+			calltable->calls_deletequeue.push_back(*iter_call);
+		}
+		calltable->unlock_calls_deletequeue();
 		delete [] indikConvertToWav;
 		storing_cdr_next_threads_calls[indexNextThread]->clear();
 		bool stop = false;
