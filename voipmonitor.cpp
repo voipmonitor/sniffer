@@ -1400,7 +1400,9 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 			   sqlDb->getDbName() == "mysql" &&
 			   sqlDb->getDbMajorVersion() >= 8) {
 				if(is_support_for_mysql_new_store()) {
-					opt_mysql_enable_new_store = true;
+					if(opt_mysql_enable_new_store < 1) {
+						opt_mysql_enable_new_store = true;
+					}
 				} else {
 					if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
 						connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
@@ -4606,8 +4608,6 @@ void main_term_read() {
 	delete calltable;
 	calltable = NULL;
 	
-	dbDataTerm();
-	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
 	
@@ -4672,6 +4672,8 @@ void main_term_read() {
 	}
 	
 	CountryDetectTerm();
+	
+	dbDataTerm();
 	
 	if(opt_enable_billing) {
 		termBilling();
