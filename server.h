@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <queue>
+#include <list>
 
 #include "cloud_router/cloud_router_base.h"
 
@@ -193,6 +194,7 @@ public:
 	~cSnifferServer();
 	void setSqlStore(class MySqlStore *sqlStore);
 	void sql_query_lock(const char *query_str, int id);
+	void sql_query_lock(list<string> *query_str, int id);
 	int conv_store_id(int id);
 	unsigned int sql_queue_size();
 	bool isSetSqlStore() {

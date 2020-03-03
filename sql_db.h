@@ -903,6 +903,7 @@ public:
 	void query(const char *query_str, int id);
 	void query(string query_str, int id);
 	void query_lock(const char *query_str, int id);
+	void query_lock(list<string> *query_str, int id);
 	void query_lock(string query_str, int id);
 	// qfiles
 	void query_to_file(const char *query_str, int id);

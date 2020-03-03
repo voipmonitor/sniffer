@@ -198,6 +198,10 @@ void cSnifferServer::sql_query_lock(const char *query_str, int id) {
 	sqlStore->query_lock(query_str, id);
 }
 
+void cSnifferServer::sql_query_lock(list<string> *query_str, int id) {
+	sqlStore->query_lock(query_str, id);
+}
+
 int cSnifferServer::conv_store_id(int id) {
 	return(sqlStore->convStoreId(id));
 }
@@ -754,9 +758,7 @@ void cSnifferServerConnection::cp_store() {
 							queriesStr.push_back(queryStr.substr(pos, length));
 							pos += length + 1;
 						} while(pos < queryStr.length());
-						for(list<string>::iterator iter = queriesStr.begin(); iter != queriesStr.end(); iter++) {
-							server->sql_query_lock(iter->c_str(), storeId);
-						}
+						server->sql_query_lock(&queriesStr, storeId);
 					} else {
 						server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), storeId);
 					}

@@ -3556,6 +3556,26 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	}
 }
 
+void MySqlStore::query_lock(list<string> *query_str, int id) {
+	if(!query_str->size()) {
+		return;
+	}
+	if(qfileConfig.enable) {
+		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
+			query_to_file(iter->c_str(), id);
+		}
+	} else {
+		MySqlStore_process* process = this->find(id);
+		process->lock();
+		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
+			for(int i = 0; i < max(sverb.multiple_store && id != 99 ? sverb.multiple_store : 0, 1); i++) {
+				process->query(iter->c_str());
+			}
+		}
+		process->unlock();
+	}
+}
+
 void MySqlStore::query_lock(string query_str, int id) {
 	query_lock(query_str.c_str(), id);
 }
