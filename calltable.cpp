@@ -2506,6 +2506,31 @@ Call::convertRawToWav() {
 	int bdir = 0;
 	
 	bool useWavMix = opt_saveaudio_wav_mix;
+	if(useWavMix && connect_duration_s() > 3600) {
+		int maxsamplerate = 0;
+		for(int i = 0; i <= 1; i++) {
+			/* open playlist */
+			char rawinfo_extension[100];
+			snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
+			strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str());
+			pl = fopen(rawInfo, "r");
+			if(pl) {
+				while(fgets(line, 256, pl)) {
+					line[strlen(line)] = '\0'; // remove '\n' which is last character
+					sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+					int samplerate = 1000 * get_ticks_bycodec(codec);
+					if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
+					if(maxsamplerate < samplerate) {
+						maxsamplerate = samplerate;
+					}
+				}
+				fclose(pl);
+			}
+		}
+		if(connect_duration_s() * maxsamplerate * 2 > 512 * 1024 * 1024) {
+			useWavMix = false;
+		}
+	}
 	bool force_convert_raw_to_wav = this->call_id == string("conv-raw-info") &&
 					!force_spool_path.empty();
 
@@ -3108,13 +3133,13 @@ Call::convertRawToWav() {
 			wavMix = NULL;
 		}
 		
-	}
+		if(i == 0 and opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
+			a_mos_lqo = mos_lqo(wav0, samplerate);
+		}
+		if(i == 1 and opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
+			b_mos_lqo = mos_lqo(wav1, samplerate);
+		}
 
-	if(opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
-		a_mos_lqo = mos_lqo(wav0, samplerate);
-	}
-	if(opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
-		b_mos_lqo = mos_lqo(wav1, samplerate);
 	}
 
 	if(adir == 1 && bdir == 1) {
