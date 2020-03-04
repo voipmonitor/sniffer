@@ -2976,7 +2976,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		}
 		string query_str_with_id = intToString(CONV_ID_FOR_REMOTE_STORE(id)) + '|' + query_str;
 		bool okSendQuery = true;
-		if(query_str_with_id.length() > 100) {
+		if(FALSE && query_str_with_id.length() > 100) {
 			cGzip gzipCompressQuery;
 			u_char *queryGzip;
 			size_t queryGzipLength;
