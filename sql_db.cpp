@@ -3160,7 +3160,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	static unsigned counter;
 	static unsigned sumTimeMS;
 	unsigned long startTimeMS = getTimeMS();
-	size_t queries_size;
+	size_t queries_size = 0;
 	if(sverb.store_process_query_compl_time) {
 		queries_size = queries->size();
 	}
