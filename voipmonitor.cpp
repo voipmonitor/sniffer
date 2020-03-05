@@ -548,6 +548,7 @@ bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
 bool opt_disable_rtp_warning = false;
 int opt_hash_modify_queue_length_ms = 0;
+bool opt_disable_process_sdp = false;
 
 char opt_php_path[1024];
 
@@ -6737,6 +6738,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_sdp_multiplication_warning", &opt_disable_sdp_multiplication_warning));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_process_sdp", &opt_disable_process_sdp));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -7045,6 +7047,9 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_concat_limit", &snifferServerOptions.mysql_concat_limit));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_type_compress", (int*)&snifferServerOptions.type_compress))
+					->addValues("gzip:1|zip:1|lzo:2")
+					->setDefaultValueStr("yes"));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 				advanced();
@@ -10652,6 +10657,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "hash_queue_length_ms", NULL))) {
 		opt_hash_modify_queue_length_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "disable_process_sdp", NULL))) {
+		opt_disable_process_sdp = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

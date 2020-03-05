@@ -2923,6 +2923,11 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
 		 char *callidstr, char *to, char *branch) {
  
+	extern bool opt_disable_process_sdp;
+	if(opt_disable_process_sdp) {
+		return;
+	}
+ 
 	char *sdp;
 	if(sdplen) {
 		sdp = from_data;

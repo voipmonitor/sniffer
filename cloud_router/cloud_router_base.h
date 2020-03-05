@@ -305,16 +305,16 @@ public:
 		~sReadBuffer() {
 			clear();
 		}
-		void add(u_char *data, size_t dataLen) {
+		void add(u_char *data, size_t dataLen, size_t inc = 0) {
 			if(!data || !dataLen) {
 				return;
 			}
 			if(!buffer || capacity < length + dataLen) {
 				if(!buffer) {
-					capacity = dataLen * 2;
+					capacity = max(dataLen * 2, inc);
 					buffer = new FILE_LINE(0) u_char[capacity];
 				} else {
-					capacity = length + dataLen * 2;
+					capacity = length + max(dataLen * 2, inc);
 					u_char *buffer_new = new FILE_LINE(0) u_char[capacity];
 					memcpy(buffer_new, buffer, length);
 					delete [] buffer;
@@ -323,6 +323,23 @@ public:
 			}
 			memcpy(buffer + length, data, dataLen);
 			length += dataLen;
+		}
+		void needFreeSize(size_t size, size_t inc = 0) {
+			if(!buffer || capacity - length < size) {
+				if(!buffer) {
+					capacity = max(size * 2, inc);
+					buffer = new FILE_LINE(0) u_char[capacity];
+				} else {
+					capacity = length + max(size * 2, inc);
+					u_char *buffer_new = new FILE_LINE(0) u_char[capacity];
+					memcpy(buffer_new, buffer, length);
+					delete [] buffer;
+					buffer = buffer_new;
+				}
+			}
+		}
+		void incLength(size_t size) {
+			length += size;
 		}
 		void set(u_char *buffer, size_t length) {
 			if(this->buffer) {
@@ -365,7 +382,7 @@ public:
 	cSocketBlock(const char *name, bool autoClose = false);
 	bool writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode = _te_na, string xor_key = "");
 	bool writeBlock(string str, eTypeEncode typeCode = _te_na, string xor_key = "");
-	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0);
+	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0, size_t bufferIncLength = 0);
 	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0);
 	u_char *readBlockTimeout(size_t *dataLen, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false) {
 		return(readBlock(dataLen, typeCode, xor_key, quietEwouldblock, timeout));

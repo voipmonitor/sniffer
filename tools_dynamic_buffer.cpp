@@ -423,7 +423,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 								 (char*)SimpleBuffer((char*)"LZO", 3).data() : 
 								 (char*)"LZO", 
 								3, 0, true)) {
-						this->setError("snappy compress_ev failed");
+						this->setError("lzo compress_ev failed");
 						return(false);
 					}
 				}

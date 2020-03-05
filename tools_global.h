@@ -608,6 +608,25 @@ private:
 };
 
 
+class cLzo {
+public:
+	cLzo();
+	~cLzo();
+public:
+	bool compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength, bool withHeader = true);
+	bool decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength);
+	string decompressString(u_char *buffer, size_t bufferLength);
+	bool isCompress(u_char *buffer, size_t bufferLength);
+private:
+	void init();
+	void term();
+private:
+	bool use_1_11;
+	u_char *wrkmem;
+	const char *header_string;
+};
+
+
 class cResolver {
 public:
 	enum eTypeResolve {

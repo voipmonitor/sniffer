@@ -875,81 +875,83 @@ bool cSocketBlock::writeBlock(string str, eTypeEncode typeEncode, string xor_key
 	return(writeBlock((u_char*)str.c_str(), str.length(), typeEncode, xor_key));
 }
 
-u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock, u_int16_t timeout) {
+u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string xor_key, bool quietEwouldblock, u_int16_t timeout, size_t bufferIncLength) {
 	if(!timeout) {
 		timeout = timeouts.readblock;
 	}
-	size_t bufferLength = 10 * 1024;
-	u_char *buffer = new FILE_LINE(0) u_char[bufferLength];
+	size_t maxReadLength = 10 * 1024;
 	bool rsltRead = true;
 	readBuffer.clear();
 	size_t readLength = sizeof(sBlockHeader);
 	bool blockHeaderOK = false;
 	u_int64_t startTime = getTimeUS();
-	while((rsltRead = read(buffer, &readLength, quietEwouldblock))) {
-		if(readLength) {
-			readBuffer.add(buffer, readLength);
-			if(!blockHeaderOK) {
-				if(readBuffer.length >= sizeof(sBlockHeader)) {
-					if(readBuffer.okBlockHeader()) {
-						blockHeaderOK = true;
-					} else {
-						rsltRead = false;
+	do {
+		readBuffer.needFreeSize(readLength, bufferIncLength);
+		rsltRead = read(readBuffer.buffer + readBuffer.length, &readLength, quietEwouldblock);
+		if(rsltRead) {
+			if(readLength) {
+				readBuffer.incLength(readLength);
+				if(!blockHeaderOK) {
+					if(readBuffer.length >= sizeof(sBlockHeader)) {
+						if(readBuffer.okBlockHeader()) {
+							blockHeaderOK = true;
+						} else {
+							rsltRead = false;
+							break;
+						}
+					}
+				}
+				if(blockHeaderOK) {
+					if(readBuffer.length >= readBuffer.lengthBlockHeader(true)) {
+						if(typeEncode == _te_xor && !xor_key.empty()) {
+							xorData(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), xor_key.c_str(), xor_key.length(), 0);
+						} else if(typeEncode == _te_rsa && rsa.isSetPrivKey()) {
+							u_char *rsa_data = readBuffer.buffer + sizeof(sBlockHeader);
+							size_t rsa_data_len = readBuffer.lengthBlockHeader();
+							if(rsa.private_decrypt(&rsa_data, &rsa_data_len, false)) {
+								size_t new_buffer_length = rsa_data_len + sizeof(sBlockHeader);
+								u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
+								memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
+								((sBlockHeader*)new_buffer)->length = rsa_data_len;
+								memcpy(new_buffer + sizeof(sBlockHeader), rsa_data, rsa_data_len);
+								readBuffer.set(new_buffer, new_buffer_length);
+								delete [] rsa_data;
+							} else {
+								rsltRead = false;
+							}
+						} else if(typeEncode == _te_aes) {
+							u_char *aes_data;
+							size_t aes_data_len;
+							if(aes.decrypt(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), &aes_data, &aes_data_len, true)) {
+								size_t new_buffer_length = aes_data_len + sizeof(sBlockHeader);
+								u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
+								memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
+								((sBlockHeader*)new_buffer)->length = aes_data_len;
+								memcpy(new_buffer + sizeof(sBlockHeader), aes_data, aes_data_len);
+								readBuffer.set(new_buffer, new_buffer_length);
+								delete [] aes_data;
+							} else  {
+								rsltRead = false;
+							}
+						}
+						if(rsltRead && !checkSumReadBuffer()) {
+							rsltRead = false;
+						}
 						break;
 					}
 				}
-			}
-			if(blockHeaderOK) {
-				if(readBuffer.length >= readBuffer.lengthBlockHeader(true)) {
-					if(typeEncode == _te_xor && !xor_key.empty()) {
-						xorData(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), xor_key.c_str(), xor_key.length(), 0);
-					} else if(typeEncode == _te_rsa && rsa.isSetPrivKey()) {
-						u_char *rsa_data = readBuffer.buffer + sizeof(sBlockHeader);
-						size_t rsa_data_len = readBuffer.lengthBlockHeader();
-						if(rsa.private_decrypt(&rsa_data, &rsa_data_len, false)) {
-							size_t new_buffer_length = rsa_data_len + sizeof(sBlockHeader);
-							u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
-							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
-							((sBlockHeader*)new_buffer)->length = rsa_data_len;
-							memcpy(new_buffer + sizeof(sBlockHeader), rsa_data, rsa_data_len);
-							readBuffer.set(new_buffer, new_buffer_length);
-							delete [] rsa_data;
-						} else {
-							rsltRead = false;
-						}
-					} else if(typeEncode == _te_aes) {
-						u_char *aes_data;
-						size_t aes_data_len;
-						if(aes.decrypt(readBuffer.buffer + sizeof(sBlockHeader), readBuffer.lengthBlockHeader(), &aes_data, &aes_data_len, true)) {
-							size_t new_buffer_length = aes_data_len + sizeof(sBlockHeader);
-							u_char *new_buffer = new FILE_LINE(0) u_char[new_buffer_length];
-							memcpy(new_buffer, readBuffer.buffer, sizeof(sBlockHeader));
-							((sBlockHeader*)new_buffer)->length = aes_data_len;
-							memcpy(new_buffer + sizeof(sBlockHeader), aes_data, aes_data_len);
-							readBuffer.set(new_buffer, new_buffer_length);
-							delete [] aes_data;
-						} else  {
-							rsltRead = false;
-						}
-					}
-					if(rsltRead && !checkSumReadBuffer()) {
-						rsltRead = false;
-					}
+			} else {
+				USLEEP(1000);
+				if((timeout && getTimeUS() > startTime + timeout * 1000000ull) || terminate) {
+					rsltRead = false;
 					break;
 				}
 			}
-		} else {
-			USLEEP(1000);
-			if((timeout && getTimeUS() > startTime + timeout * 1000000ull) || terminate) {
-				rsltRead = false;
-				break;
-			}
+			readLength = blockHeaderOK ?
+				      min(maxReadLength, readBuffer.lengthBlockHeader(true) - readBuffer.length) :
+				      min(maxReadLength, sizeof(sBlockHeader) - readBuffer.length);
 		}
-		readLength = blockHeaderOK ?
-			      min(bufferLength, readBuffer.lengthBlockHeader(true) - readBuffer.length) :
-			      min(bufferLength, sizeof(sBlockHeader) - readBuffer.length);
-	}
-	delete [] buffer;
+	} while(rsltRead);
 	if(rsltRead) {
 		*dataLen = readBuffer.lengthBlockHeader();
 		return(readBuffer.buffer + sizeof(sBlockHeader));
@@ -1147,6 +1149,7 @@ void *cServer::listen_process(void *arg) {
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	((sListenParams*)arg)->server->listen_process(((sListenParams*)arg)->index);
+	delete (sListenParams*)arg;
 	return(NULL);
 }
 

@@ -29,11 +29,18 @@ struct sSnifferServerVerbose {
 };
 
 
+enum eServerClientTypeCompress {
+	_cs_compress_na,
+	_cs_compress_gzip,
+	_cs_compress_lzo
+};
+
 struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
 		mysql_queue_limit = 0;
 		mysql_concat_limit = 100;
+		type_compress = _cs_compress_gzip;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -42,6 +49,7 @@ struct sSnifferServerOptions {
 	unsigned port;
 	unsigned mysql_queue_limit;
 	unsigned mysql_concat_limit;
+	eServerClientTypeCompress type_compress;
 };
 
 
@@ -54,6 +62,7 @@ struct sSnifferClientOptions {
 		mysql_new_store = 0;
 		mysql_set_id = false;
 		mysql_concat_limit = 100;
+		type_compress = _cs_compress_gzip;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -75,6 +84,7 @@ struct sSnifferClientOptions {
 	int mysql_new_store;
 	bool mysql_set_id;
 	unsigned mysql_concat_limit;
+	eServerClientTypeCompress type_compress;
 };
 
 

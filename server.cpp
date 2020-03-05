@@ -480,6 +480,7 @@ void cSnifferServerConnection::cp_service() {
 		if(snifferServerOptions.mysql_concat_limit) {
 			ok_parameters.add("mysql_concat_limit", snifferServerOptions.mysql_concat_limit);
 		}
+		ok_parameters.add("type_compress", snifferServerOptions.type_compress);
 		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
 	} else {
@@ -608,7 +609,7 @@ void cSnifferServerConnection::cp_responses() {
 	size_t responseLength;
 	unsigned counter = 0;
 	while(!server->isTerminate() &&
-	      (response = socket->readBlock(&responseLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	      (response = socket->readBlock(&responseLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		u_char response_last_char = response[responseLength - 1];
 		response[responseLength - 1] = 0;
 		u_char *response_task_id_separator = (u_char*)strchr((char*)response, '#');
@@ -648,7 +649,7 @@ void cSnifferServerConnection::cp_query() {
 	size_t queryLength;
 	unsigned counter = 0;
 	while(!server->isTerminate() &&
-	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		string queryStr;
 		cGzip gzipDecompressQuery;
 		if(gzipDecompressQuery.isCompress(query, queryLength)) {
@@ -710,11 +711,14 @@ void cSnifferServerConnection::cp_store() {
 	size_t queryLength;
 	unsigned counter = 0;
 	while(!server->isTerminate() &&
-	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		string queryStr;
 		cGzip gzipDecompressQuery;
+		cLzo lzoDecompressQuery;
 		if(gzipDecompressQuery.isCompress(query, queryLength)) {
 			queryStr = gzipDecompressQuery.decompressString(query, queryLength);
+		} else if(lzoDecompressQuery.isCompress(query, queryLength)) {
+			queryStr = lzoDecompressQuery.decompressString(query, queryLength);
 		} else {
 			queryStr = string((char*)query, queryLength);
 		}
@@ -787,7 +791,7 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
 	while(!server->isTerminate() &&
-	      (block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0)) != NULL) {
+	      (block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		if(is_readend() || !pcapQueueQ) {
 			break;
 		}
@@ -1065,6 +1069,9 @@ bool cSnifferClientService::receive_process_loop_begin() {
 										    atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
 						if(!rsltConnectData_json.getValue("mysql_concat_limit").empty()) {
 							snifferClientOptions.mysql_concat_limit = atoi(rsltConnectData_json.getValue("mysql_concat_limit").c_str());
+						}
+						if(!rsltConnectData_json.getValue("type_compress").empty()) {
+							snifferClientOptions.type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
 						}
 					}
 					opt_enable_responses_sender = !rsltConnectData_json.getValue("enable_responses_sender").empty();

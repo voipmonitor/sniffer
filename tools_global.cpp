@@ -1034,6 +1034,92 @@ void cGzip::term() {
 }
 
 
+cLzo::cLzo() {
+	use_1_11 = true;
+	wrkmem = NULL;
+	header_string = "LZO";
+}
+
+cLzo::~cLzo() {
+	term();
+}
+
+bool cLzo::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_t *cbufferLength, bool withHeader) {
+	size_t header_string_length = 0;
+	size_t header_length = 0;
+	size_t compress_buffer_length = bufferLength + bufferLength/16 + 64 + 3;
+	if(withHeader) {
+		header_string_length = strlen(header_string);
+		header_length = header_string_length + sizeof(u_int32_t);
+		compress_buffer_length += header_length;
+	}
+	*cbuffer = new FILE_LINE(0) u_char[compress_buffer_length];
+	init();
+	int lzoRslt = use_1_11 ?
+		       lzo1x_1_11_compress(buffer, bufferLength, *cbuffer + header_length, cbufferLength, wrkmem) :
+		       lzo1x_1_compress(buffer, bufferLength, *cbuffer + header_length, cbufferLength, wrkmem);
+	if(lzoRslt == LZO_E_OK) {
+		if(withHeader) {
+			memcpy(*cbuffer, header_string, header_string_length);
+			*(u_int32_t*)(*cbuffer + header_string_length) = bufferLength;
+			*cbufferLength += header_length;
+		}
+		return(true);
+	} else {
+		delete [] *cbuffer;
+		return(false);
+	}
+}
+
+bool cLzo::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, size_t *dbufferLength) {
+	size_t header_string_length = strlen(header_string);
+	size_t header_length = header_string_length + sizeof(u_int32_t);
+	if(bufferLength < header_length) {
+		return(false);
+	}
+	*dbufferLength = *(u_int32_t*)(buffer + header_string_length);
+	*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
+	init();
+	int lzoRslt = lzo1x_decompress_safe(buffer + header_length, bufferLength - header_length, *dbuffer, dbufferLength, wrkmem);
+	if(lzoRslt == LZO_E_OK) {
+		return(true);
+	} else {
+		delete [] *dbuffer;
+		return(false);
+	}
+}
+
+string cLzo::decompressString(u_char *buffer, size_t bufferLength) {
+	u_char *dbuffer;
+	size_t dbufferLength;
+	if(decompress(buffer, bufferLength, &dbuffer, &dbufferLength)) {
+		string rslt = string((char*)dbuffer, dbufferLength);
+		delete [] dbuffer;
+		return(rslt);
+	} else {
+		return("");
+	}
+}
+
+void cLzo::init() {
+	if(!wrkmem) {
+		wrkmem = new FILE_LINE(0) u_char[use_1_11 ? LZO1X_1_11_MEM_COMPRESS : LZO1X_1_MEM_COMPRESS];
+	}
+}
+
+void cLzo::term() {
+	if(wrkmem) {
+		delete wrkmem;
+		wrkmem = NULL;
+	}
+}
+
+bool cLzo::isCompress(u_char *buffer, size_t bufferLength) {
+	size_t header_string_length = strlen(header_string);
+	return(bufferLength > header_string_length && !memcmp(buffer, header_string, header_string_length));
+}
+
+
 cResolver::cResolver() {
 	use_lock = true;
 	res_timeout = 120;
