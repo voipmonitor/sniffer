@@ -1055,10 +1055,12 @@ bool cLzo::compress(u_char *buffer, size_t bufferLength, u_char **cbuffer, size_
 	}
 	*cbuffer = new FILE_LINE(0) u_char[compress_buffer_length];
 	init();
+	lzo_uint lzo_dst_len;
 	int lzoRslt = use_1_11 ?
-		       lzo1x_1_11_compress(buffer, bufferLength, *cbuffer + header_length, cbufferLength, wrkmem) :
-		       lzo1x_1_compress(buffer, bufferLength, *cbuffer + header_length, cbufferLength, wrkmem);
+		       lzo1x_1_11_compress(buffer, bufferLength, *cbuffer + header_length, &lzo_dst_len, wrkmem) :
+		       lzo1x_1_compress(buffer, bufferLength, *cbuffer + header_length, &lzo_dst_len, wrkmem);
 	if(lzoRslt == LZO_E_OK) {
+		*cbufferLength = lzo_dst_len;
 		if(withHeader) {
 			memcpy(*cbuffer, header_string, header_string_length);
 			*(u_int32_t*)(*cbuffer + header_string_length) = bufferLength;
@@ -1080,8 +1082,10 @@ bool cLzo::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, siz
 	*dbufferLength = *(u_int32_t*)(buffer + header_string_length);
 	*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
 	init();
-	int lzoRslt = lzo1x_decompress_safe(buffer + header_length, bufferLength - header_length, *dbuffer, dbufferLength, wrkmem);
+	lzo_uint lzo_dst_len;
+	int lzoRslt = lzo1x_decompress_safe(buffer + header_length, bufferLength - header_length, *dbuffer, &lzo_dst_len, wrkmem);
 	if(lzoRslt == LZO_E_OK) {
+		*dbufferLength= lzo_dst_len;
 		return(true);
 	} else {
 		delete [] *dbuffer;
