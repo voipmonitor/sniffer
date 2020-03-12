@@ -39,7 +39,7 @@ struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
 		mysql_queue_limit = 0;
-		mysql_concat_limit = 100;
+		mysql_concat_limit = 1000;
 		type_compress = _cs_compress_gzip;
 	}
 	bool isEnable() {
@@ -61,7 +61,7 @@ struct sSnifferClientOptions {
 		packetbuffer_sender = false;
 		mysql_new_store = 0;
 		mysql_set_id = false;
-		mysql_concat_limit = 100;
+		mysql_concat_limit = 1000;
 		type_compress = _cs_compress_gzip;
 	}
 	bool isEnable() {

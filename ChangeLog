@@ -1,3 +1,20 @@
+26.11 12.03.2020
+================
+- add test billing [VG-2019]
+- rtpip_find_endpoints is now enabled by default (if calls are routed through SIP proxies with RTP proxies, enable this option so the main caller and called stream will not be selected from/to sip proxy but from real caller / called destination) [VS-1039]
+- Skip CDR now works for every SIP packets and not only for first INVITE which allows to skip CDR creation with any regexp rule [VS-1036]
+- added --no-user-input parameter for disabling user interactive input in the install script [VG-2053]
+- add support for 'last sip response' test/regexp condition in parameter cdr_ignore_response (cdr_ignore_response = 503 lsr=Call\sThrottled, 403 name=abc ip=1.2.3.4, 404 number=%123%, 405 number=.*123.* ip=1.2.3.0/24) 
+- fix sip proxy IP could be swapped between destination IP for some cases [VS-1041]
+- fix error handling when invalid regexp is set in cdr_sip_response_reg_remove 
+- lower frequency of error log with failed connection in client/server mode
+- client / server - new options server_sql_queue_limit, server_sql_concat_limit, fix CPU bound query processing from multiple sniffers 
+- auto enable ipv6 for parameter rtp-stream-analysis
+- fix error handling in manager command 'graph' [VG-2062]
+- new server_sql_queue_limit, server_sql_concat_limit options for server/client 
+- Increased rrddb max value for calls count INV/REG
+
+
 26.10 12.02.2020
 ================
 - signifficantly reduce calling usleep/nanosleep in busy wait loops. Some virtualisation plaforms are sensitive to low usleep(<400) and causes almost 100% CPU load on host even when sniffer is doing nothing [VS-1034]
