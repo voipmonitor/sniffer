@@ -76,6 +76,14 @@
 #include "filter_mysql.h"
 #include "sniff_inline.h"
 
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX (static_cast<size_t>(-1))
+# endif
+#endif
+
 extern char mac[32];
 extern int verbosity;
 extern int opt_pcap_dump_bufflength;
