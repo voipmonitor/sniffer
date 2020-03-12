@@ -331,8 +331,10 @@ int opt_skinny = 0;
 int opt_mgcp = 0;
 vmIP opt_skinny_ignore_rtpip;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
-int opt_read_from_file = 0;
+bool opt_dedup_input_file = false;
+bool opt_read_from_file = false;
 char opt_read_from_file_fname[1024] = "";
+char opt_dedup_fname[1024] = "";
 bool opt_read_from_file_no_sip_reassembly = false;
 char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
@@ -7399,6 +7401,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"t2_boost", 0, 0, 337},
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
+	    {"dedup-pcap", 1, 0, 341},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7817,7 +7820,7 @@ void get_command_line_arguments() {
 					opt_scanpcapdir[0] = '\0';
 				} else {
 					strcpy(opt_read_from_file_fname, optarg);
-					opt_read_from_file = 1;
+					opt_read_from_file = true;
 					opt_scanpcapdir[0] = '\0';
 					opt_cachedir[0] = '\0';
 					opt_enable_preprocess_packet = 0;
@@ -8000,6 +8003,25 @@ void get_command_line_arguments() {
 				opt_save_sip_subscribe = true;
 				opt_save_sip_notify = true;
 				break;
+			case 341:
+				if(sscanf(optarg, "%s %s", opt_read_from_file_fname, opt_dedup_fname) != 2) {
+					cerr << "dedup pcap: bad arguments" << endl;
+					exit(1);
+				}
+				opt_read_from_file = true;
+				opt_scanpcapdir[0] = '\0';
+				opt_cachedir[0] = '\0';
+				opt_enable_preprocess_packet = 0;
+				opt_enable_process_rtp_packet = 0;
+				opt_dedup_input_file = true;
+				opt_nocdr = 1;
+				opt_pcap_dump_tar = 0;
+				opt_pcap_split = 0;
+				opt_saveGRAPH = 0;
+				opt_dup_check = 1;
+				opt_dup_check_ipheader = 0;
+				opt_dup_check_ipheader_ignore_ttl = 1;
+				break;
 		}
 		if(optarg) {
 			delete [] optarg;
@@ -8143,7 +8165,7 @@ void set_context_config() {
 		opt_enable_webrtc_table = true;
 	}
 	
-	if(opt_read_from_file) {
+	if(is_read_from_file_simple()) {
 		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
