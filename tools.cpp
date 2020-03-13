@@ -66,6 +66,14 @@
 #include <jemalloc/jemalloc.h>
 #endif
 
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX (static_cast<size_t>(-1))
+# endif
+#endif
+
 #include "calltable.h"
 #include "rtp.h"
 #include "tools.h"
