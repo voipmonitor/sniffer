@@ -7586,31 +7586,40 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 					node_call = node_call->next;
 				}
 				if(!found) {
-					if(count >= opt_sdp_multiplication) {
-						// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
-						if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
-							static u_int64_t lastTimeSyslog = 0;
-							u_int64_t actTime = getTimeMS();
-							if(actTime - 10 * 1000 > lastTimeSyslog) {
-								string call_ids;
-								node_call = node->calls;
-								while(node_call != NULL) {
-									if(!call_ids.empty()) {
-										call_ids += " ";
+					if(opt_sdp_multiplication == 0 && count == 1 && node->calls && node->calls->call) {
+						--node->calls->call->rtp_ip_port_counter;
+						node->calls->call = call;
+						node->calls->iscaller = iscaller;
+						node->calls->is_rtcp = is_rtcp;
+						node->calls->sdp_flags = sdp_flags;
+						++call->rtp_ip_port_counter;
+					} else {
+						if(opt_sdp_multiplication > 0 && count >= opt_sdp_multiplication) {
+							// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
+							if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
+								static u_int64_t lastTimeSyslog = 0;
+								u_int64_t actTime = getTimeMS();
+								if(actTime - 10 * 1000 > lastTimeSyslog) {
+									string call_ids;
+									node_call = node->calls;
+									while(node_call != NULL) {
+										if(!call_ids.empty()) {
+											call_ids += " ";
+										}
+										call_ids += string("[") + node_call->call->fbasename + "]";
+										node_call = node_call->next;
 									}
-									call_ids += string("[") + node_call->call->fbasename + "]";
-									node_call = node_call->next;
+									syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
+									       call->fbasename, addr.getString().c_str(), (int)port,
+									       call_ids.c_str(),
+									       opt_sdp_multiplication);
+									call->syslog_sdp_multiplication = true;
+									lastTimeSyslog = actTime;
 								}
-								syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
-								       call->fbasename, addr.getString().c_str(), (int)port,
-								       call_ids.c_str(),
-								       opt_sdp_multiplication);
-								call->syslog_sdp_multiplication = true;
-								lastTimeSyslog = actTime;
 							}
+							if (useLock) unlock_calls_hash();
+							return;
 						}
-						if (useLock) unlock_calls_hash();
-						return;
 					}
 				 
 					// the same ip/port is shared with some other call which is not yet in node - add it
