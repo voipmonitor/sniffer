@@ -1,3 +1,11 @@
+26.12 13.03.2020
+================
+- document option sdp_multiplication (new option sdp_multiplication=0)
+- add file deduplication option usage: voipmonitor --config-file=/etc/voipmonitor.conf --dedup-pcap='SRC.pcap DST.pcap' [VG-1816]
+- fix issue with missing procedure __insert if it was deleted by concurrent process (if same sniffers sends CDR with the same id_sensor)
+- fix audio wav cretion for very long calls [VS-1044]
+
+
 26.11 12.03.2020
 ================
 - add test billing [VG-2019]
