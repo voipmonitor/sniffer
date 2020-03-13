@@ -102,7 +102,6 @@ extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_ziplevel_sip;
 extern int opt_pcap_dump_ziplevel_rtp;
 extern int opt_pcap_dump_ziplevel_graph;
-extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -3303,7 +3302,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->useBufferLength = 0;
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
-	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
+	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
 	this->call = call;

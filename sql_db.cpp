@@ -54,8 +54,6 @@ extern char opt_mysqlcompress_type[256];
 extern int opt_mysql_enable_transactions;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
-extern int opt_read_from_file;
-extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
@@ -1965,6 +1963,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						  this->getLastError() == ER_PARSE_ERROR ||
 						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
 						  this->getLastError() == ER_SAME_NAME_PARTITION ||
+						  this->getLastError() == ER_SP_DOES_NOT_EXIST ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
@@ -3244,18 +3243,26 @@ void MySqlStore_process::__store(string beginProcedure, string endProcedure, str
 		this->sqlDb->query(dropProcQuery.c_str());
 		string preparedQueries = queries;
 		::prepareQuery(this->sqlDb->getSubtypeDb(), preparedQueries, false, passComplete ? 2 : 1);
-		if(!this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
-				       beginProcedure + 
-				       preparedQueries + 
-				       endProcedure,
-				       false,
-				       dropProcQuery.c_str())) {
-			if(sverb.store_process_query) {
-				cout << "store_process_query_" << this->id << ": " << "ERROR" << endl
-				     << this->sqlDb->getLastErrorString() << endl;
+		bool rsltQuery = false;
+		unsigned maxPassIfMissingQuery = 10;
+		unsigned counterPassIfMissingQuery = 0;
+		do {
+			if(counterPassIfMissingQuery) {
+				sleep(1);
 			}
-		}
-		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
+			++counterPassIfMissingQuery;
+			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
+					      beginProcedure + 
+					      preparedQueries + 
+					      endProcedure,
+					      false,
+					      dropProcQuery.c_str())) {
+				rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
+			} else {
+				rsltQuery = false;
+			}
+		} while(!rsltQuery && this->sqlDb->getLastError() == ER_SP_DOES_NOT_EXIST &&
+			counterPassIfMissingQuery < maxPassIfMissingQuery);
 		/* deadlock debugging
 		rsltQuery = false;
 		this->sqlDb->setLastError(ER_LOCK_DEADLOCK, "deadlock");
@@ -3432,7 +3439,7 @@ MySqlStore::~MySqlStore() {
 		extern bool opt_autoload_from_sqlvmexport;
 		if(opt_autoload_from_sqlvmexport &&
 		   this->getAllSize() &&
-		   !opt_read_from_file && !opt_pb_read_from_file[0]) {
+		   !is_read_from_file()) {
 			extern MySqlStore *sqlStore;
 			sqlStore->exportToFile(NULL, "auto", false, true);
 		}

@@ -148,8 +148,6 @@ extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
-extern int opt_read_from_file;
-extern char opt_pb_read_from_file[256];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
@@ -168,6 +166,8 @@ extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern PreProcessPacket *preProcessPacketCallX[];
 extern bool opt_disable_sdp_multiplication_warning;
+extern bool opt_dedup_input_file;
+extern char opt_dedup_fname[1024];
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -380,6 +380,10 @@ Call_abstract::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtens
 
 string
 Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
+	if (opt_dedup_input_file) {
+		string dedupfname(opt_dedup_fname);
+		return(dedupfname);
+	}
 	string pathname = get_pathname(typeSpoolFile);
 	string filename = get_filename(typeSpoolFile, fileExtension);
 	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
@@ -7582,31 +7586,40 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 					node_call = node_call->next;
 				}
 				if(!found) {
-					if(count >= opt_sdp_multiplication) {
-						// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
-						if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
-							static u_int64_t lastTimeSyslog = 0;
-							u_int64_t actTime = getTimeMS();
-							if(actTime - 10 * 1000 > lastTimeSyslog) {
-								string call_ids;
-								node_call = node->calls;
-								while(node_call != NULL) {
-									if(!call_ids.empty()) {
-										call_ids += " ";
+					if(opt_sdp_multiplication == 0 && count == 1 && node->calls && node->calls->call) {
+						--node->calls->call->rtp_ip_port_counter;
+						node->calls->call = call;
+						node->calls->iscaller = iscaller;
+						node->calls->is_rtcp = is_rtcp;
+						node->calls->sdp_flags = sdp_flags;
+						++call->rtp_ip_port_counter;
+					} else {
+						if(opt_sdp_multiplication > 0 && count >= opt_sdp_multiplication) {
+							// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
+							if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
+								static u_int64_t lastTimeSyslog = 0;
+								u_int64_t actTime = getTimeMS();
+								if(actTime - 10 * 1000 > lastTimeSyslog) {
+									string call_ids;
+									node_call = node->calls;
+									while(node_call != NULL) {
+										if(!call_ids.empty()) {
+											call_ids += " ";
+										}
+										call_ids += string("[") + node_call->call->fbasename + "]";
+										node_call = node_call->next;
 									}
-									call_ids += string("[") + node_call->call->fbasename + "]";
-									node_call = node_call->next;
+									syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
+									       call->fbasename, addr.getString().c_str(), (int)port,
+									       call_ids.c_str(),
+									       opt_sdp_multiplication);
+									call->syslog_sdp_multiplication = true;
+									lastTimeSyslog = actTime;
 								}
-								syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
-								       call->fbasename, addr.getString().c_str(), (int)port,
-								       call_ids.c_str(),
-								       opt_sdp_multiplication);
-								call->syslog_sdp_multiplication = true;
-								lastTimeSyslog = actTime;
 							}
+							if (useLock) unlock_calls_hash();
+							return;
 						}
-						if (useLock) unlock_calls_hash();
-						return;
 					}
 				 
 					// the same ip/port is shared with some other call which is not yet in node - add it
@@ -8630,7 +8643,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 			bool closeCall = false;
 			if(!currtime || call->force_close) {
 				closeCall = true;
-				if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+				if(!is_read_from_file()) {
 					call->force_terminate = true;
 				}
 			} else if(call->typeIs(SKINNY_NEW) ||
@@ -8787,7 +8800,7 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		bool closeReg = false;
 		if(!currtime || reg->force_close) {
 			closeReg = true;
-			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+			if(!is_read_from_file()) {
 				reg->force_terminate = true;
 			}
 		} else {
