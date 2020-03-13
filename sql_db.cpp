@@ -54,8 +54,6 @@ extern char opt_mysqlcompress_type[256];
 extern int opt_mysql_enable_transactions;
 extern pthread_mutex_t mysqlconnect_lock;      
 extern int opt_mos_lqo;
-extern int opt_read_from_file;
-extern char opt_pb_read_from_file[256];
 extern int opt_enable_fraud;
 extern bool _save_sip_history;
 extern bool opt_sql_time_utc;
@@ -3441,7 +3439,7 @@ MySqlStore::~MySqlStore() {
 		extern bool opt_autoload_from_sqlvmexport;
 		if(opt_autoload_from_sqlvmexport &&
 		   this->getAllSize() &&
-		   !opt_read_from_file && !opt_pb_read_from_file[0]) {
+		   !is_read_from_file()) {
 			extern MySqlStore *sqlStore;
 			sqlStore->exportToFile(NULL, "auto", false, true);
 		}

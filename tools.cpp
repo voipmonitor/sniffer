@@ -76,6 +76,14 @@
 #include "filter_mysql.h"
 #include "sniff_inline.h"
 
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX (static_cast<size_t>(-1))
+# endif
+#endif
+
 extern char mac[32];
 extern int verbosity;
 extern int opt_pcap_dump_bufflength;
@@ -86,7 +94,6 @@ extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_ziplevel_sip;
 extern int opt_pcap_dump_ziplevel_rtp;
 extern int opt_pcap_dump_ziplevel_graph;
-extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -3287,7 +3294,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->useBufferLength = 0;
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
-	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
+	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
 	this->call = call;

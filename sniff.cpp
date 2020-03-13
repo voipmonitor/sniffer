@@ -198,7 +198,6 @@ extern int opt_skiprtpdata;
 extern char opt_silenceheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
-extern int opt_read_from_file;
 extern int opt_saverfc2833;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
@@ -275,7 +274,7 @@ static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int 
 				   vmIP saddr, vmPort source, vmIP daddr, vmPort dest,
 				   Call *call, const char *descr = NULL);
 
-#define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
+#define logPacketSipMethodCall_enable ((is_read_from_file_simple() && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
 
 typedef struct pcap_hdr_s {
 	u_int32_t magic_number;   /* magic number */
@@ -6847,7 +6846,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	}
  
 	if(!sip_method ||
-	   (!opt_read_from_file && descr && strstr(descr, "we are not interested"))) {
+	   (!is_read_from_file_simple() && descr && strstr(descr, "we are not interested"))) {
 		return;
 	}
 	
@@ -6934,7 +6933,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		       << descr;
 	}
 	
-	if(opt_read_from_file) {
+	if(is_read_from_file_simple()) {
 		cout << outStr.str() << endl;
 	} else {
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
