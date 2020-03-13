@@ -2177,7 +2177,7 @@ public:
 	public:
 		cWav(u_int64_t start, unsigned bytes_per_sample, unsigned samplerate);
 		~cWav();
-		bool load(const char *wavFileName);
+		bool load(const char *wavFileName, unsigned samplerate_dst);
 		u_int64_t getEnd(bool withoutEndSilence) {
 			return(start + 
 			       get_length_samples(withoutEndSilence) * 1000000ull / samplerate);
@@ -2263,7 +2263,7 @@ cWavMix::cWav::~cWav() {
 	}
 }
 
-bool cWavMix::cWav::load(const char *wavFileName) {
+bool cWavMix::cWav::load(const char *wavFileName, unsigned samplerate_dst) {
 	u_int32_t fileSize = GetFileSize(wavFileName);
 	if(!fileSize) {
 		return(false);
@@ -2272,26 +2272,54 @@ bool cWavMix::cWav::load(const char *wavFileName) {
 	if(!file) {
 		return(false);
 	}
-	wav_buffer = new FILE_LINE(0) u_char[fileSize];
 	u_int32_t wav_buffer_pos = 0;
-	u_int32_t readLength;
-	while((readLength = fread(wav_buffer + wav_buffer_pos, 1, min(fileSize - wav_buffer_pos, (u_int32_t)1024 * 16), file)) > 0) {
-		wav_buffer_pos += readLength;
-		if(wav_buffer_pos >= fileSize) {
-			break;
+	if(samplerate_dst > samplerate) {
+		u_int32_t wav_buffer_length = (u_int64_t)fileSize * samplerate_dst / samplerate;
+		wav_buffer = new FILE_LINE(0) u_char[wav_buffer_length + 100];
+		unsigned read_buffer_length = 16 * 1024;
+		u_char *read_buffer = new FILE_LINE(0) u_char[read_buffer_length];
+		u_int32_t read_pos;
+		u_int32_t readLength;
+		while((readLength = fread(read_buffer, 1, read_buffer_length, file)) > 0) {
+			for(u_int32_t i = 0; i < readLength; i++) {
+				wav_buffer[wav_buffer_pos++] = read_buffer[i];
+				if(!((i + 1) % bytes_per_sample)) {
+					while((u_int64_t)(read_pos + i) * samplerate_dst / samplerate > wav_buffer_pos) {
+						for(int j = bytes_per_sample - 1; j >= 0; j--) {
+							wav_buffer[wav_buffer_pos++] = read_buffer[i - j];
+						}
+					}
+				}
+				if(wav_buffer_pos >= wav_buffer_length) {
+					break;
+				}
+			}
+			read_pos += readLength;
+			if(wav_buffer_pos >= wav_buffer_length) {
+				break;
+			}
+		}
+		delete [] read_buffer;
+		samplerate = samplerate_dst;
+	} else {
+		wav_buffer = new FILE_LINE(0) u_char[fileSize];
+		u_int32_t wav_buffer_pos = 0;
+		u_int32_t readLength;
+		while((readLength = fread(wav_buffer + wav_buffer_pos, 1, min(fileSize - wav_buffer_pos, (u_int32_t)1024 * 16), file)) > 0) {
+			wav_buffer_pos += readLength;
+			if(wav_buffer_pos >= fileSize) {
+				break;
+			}
 		}
 	}
 	fclose(file);
-	if(wav_buffer_pos < fileSize) {
-		if(wav_buffer_pos) {
-			fileSize = wav_buffer_pos;
-		} else {
-			delete [] wav_buffer;
-			wav_buffer = NULL;
-			return(false);
-		}
+	if(wav_buffer_pos > 0) {
+		length_samples = wav_buffer_pos / bytes_per_sample;
+	} else {
+		delete [] wav_buffer;
+		wav_buffer = NULL;
+		return(false);
 	}
-	length_samples = fileSize / bytes_per_sample;
 	while(end_silence_samples < length_samples) {
 		u_int32_t check_pos = (length_samples - end_silence_samples - 1) * bytes_per_sample;
 		bool silence = true;
@@ -2325,6 +2353,8 @@ bool cWavMix::cWav::load(const char *wavFileName) {
 		cout << "load wav"
 		     << " " << wavFileName
 		     << " start " << start
+		     << " samplerate " << samplerate
+		     << " samplerate_dst " << samplerate_dst
 		     << " length_samples " << length_samples << " " << ((float)length_samples/samplerate)
 		     << " end_silence_samples " << end_silence_samples << " " << ((float)end_silence_samples/samplerate)
 		     << endl;
@@ -2367,7 +2397,7 @@ bool cWavMix::addWav(const char *wavFileName, u_int64_t start,
 	cWav *wav = new FILE_LINE(0) cWav(start,
 					  bytes_per_sample ? bytes_per_sample : this->bytes_per_sample, 
 					  samplerate ? samplerate : this->samplerate);
-	if(wav->load(wavFileName)) {
+	if(wav->load(wavFileName, this->samplerate)) {
 		wavs.push_back(wav);
 		return(true);
 	} else {
@@ -3126,7 +3156,7 @@ Call::convertRawToWav() {
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 			
 			if(wavMix && file_exists(wav)) {
-				wavMix->addWav(wav, getTimeUS(rawf->tv));
+				wavMix->addWav(wav, getTimeUS(rawf->tv), 0, samplerate);
 			}
 		}
 		if(!sverb.noaudiounlink) unlink(rawInfo);
