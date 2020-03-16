@@ -259,6 +259,7 @@ extern int opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
+extern bool opt_dedup_input_file;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -6573,6 +6574,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%u.pcap", getPcapdumpDir(), (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
+	} else if (opt_dedup_input_file) {
+		extern char opt_dedup_fname[1024];
+		tmppcap = pcap_dump_open(handle, opt_dedup_fname);
 	}
 
 	unsigned long lastStatTimeMS = 0;
@@ -6583,6 +6587,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 	}
+	int tmp_ppf_param = opt_dedup_input_file ? (ppf_dedup | ppf_calcMD5) : ppf_all;
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -6666,11 +6671,13 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,
-				ppf_all,
+				tmp_ppf_param,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
 		}
-
+		if (opt_dedup_input_file) {
+			continue;
+		}
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[ppd.header_udp->get_source()] || sipportmatrix[ppd.header_udp->get_dest()]))) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
@@ -6733,7 +6740,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		manager_parse_command_disable();
 	}
 
-	if(opt_pcapdump) {
+	if(opt_pcapdump || opt_dedup_input_file) {
 		pcap_dump_close(tmppcap);
 	}
 }

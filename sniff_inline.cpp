@@ -52,6 +52,7 @@ extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
 extern unsigned int duplicate_counter;
+extern bool opt_dedup_input_file;
 
 
 #if SNIFFER_INLINE_FUNCTIONS
@@ -792,7 +793,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	cout << endl;
 	#endif
 	
-	if((ppf & ppf_dump) && ppd->header_ip) {
+	if((ppf & ppf_dump) && ppd->header_ip || opt_dedup_input_file && (ppf & ppf_dedup)) {
 		if(pcapDumpHandle) {
 			if(header_packet) {
 				pcap_dump((u_char*)pcapDumpHandle, HPH(*header_packet), HPP(*header_packet));
