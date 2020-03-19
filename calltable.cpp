@@ -166,8 +166,6 @@ extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern PreProcessPacket *preProcessPacketCallX[];
 extern bool opt_disable_sdp_multiplication_warning;
-extern bool opt_dedup_input_file;
-extern char opt_dedup_fname[1024];
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -380,10 +378,6 @@ Call_abstract::get_filename(eTypeSpoolFile typeSpoolFile, const char *fileExtens
 
 string
 Call_abstract::get_pathfilename(eTypeSpoolFile typeSpoolFile, const char *fileExtension) {
-	if (opt_dedup_input_file) {
-		string dedupfname(opt_dedup_fname);
-		return(dedupfname);
-	}
 	string pathname = get_pathname(typeSpoolFile);
 	string filename = get_filename(typeSpoolFile, fileExtension);
 	return(pathname + (pathname.length() && pathname[pathname.length() - 1] != '/' ? "/" : "") +
