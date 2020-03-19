@@ -4257,139 +4257,206 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		this->applyRtcpXrDataToRtp();
 		
 		if(sverb.rtp_streams) {
-			cout << "call " << call_id << endl;
+			for(int i = 0; i < ssrc_n; i++) {
+				cout << "RTP stream: " 
+				     << hex << rtp[i]->ssrc << dec << " : "
+				     << rtp[i]->saddr.getString() << " -> "
+				     << rtp[i]->daddr.getString() << " /"
+				     << " iscaller: " << rtp[i]->iscaller << " " 
+				     << " packets received: " << rtp[i]->s->received << " "
+				     << " packets lost: " << rtp[i]->s->lost << " "
+				     << " ssrc index: " << rtp[i]->ssrc_index << " "
+				     << " ok_other_ip_side_by_sip: " << rtp[i]->ok_other_ip_side_by_sip << " " 
+				     << " payload: " << rtp[i]->first_codec << " "
+				     << endl;
+			}
 		}
 		
-		bool is_stream_over_proxy[MAX_SSRC_PER_CALL];
-		if(opt_rtpip_find_endpoints) {
-			for(unsigned i = 0; i < MAX_SSRC_PER_CALL; i++) {
-				is_stream_over_proxy[i] = false;
+		int indexes[MAX_SSRC_PER_CALL];
+		int ssrc_indexes_n = ssrc_n;
+		bool rtpab_ok = false;
+		
+		if(ssrc_indexes_n == 1) {
+			rtpab[rtp[0]->iscaller ? 0 : 1] = rtp[0];
+			rtpab_ok = true;
+		} else if(ssrc_indexes_n == 2) {
+			if(rtp[0]->iscaller != rtp[1]->iscaller) {
+				if(rtp[0]->iscaller) {
+					rtpab[0] = rtp[0];
+					rtpab[1] = rtp[1];
+				} else {
+					rtpab[0] = rtp[1];
+					rtpab[1] = rtp[0];
+				}
+				rtpab_ok = true;
+			} else if(rtp[0]->saddr == rtp[1]->daddr &&
+				  rtp[1]->saddr == rtp[0]->daddr) {
+				rtpab[0] = rtp[0];
+				rtpab[1] = rtp[1];
+				rtpab[1]->iscaller = !rtpab[0]->iscaller;
+				rtpab_ok = true;
 			}
-			for(int i = 0; i < 2; i++) {
-				bool _iscaller = i == 0 ? 1 : 0;
-				for(int j = 0; j < ssrc_n; j++) {
-					if(rtp[j]->iscaller == _iscaller &&
-					   rtp[j]->saddr != rtp[j]->daddr) {
-						for(int k = 0; k < ssrc_n; k++) {
-							if(k != j &&
-							   rtp[k]->iscaller == _iscaller &&
-							   rtp[k]->saddr != rtp[k]->daddr &&
-							   rtp[k]->daddr == rtp[j]->saddr) {
-								is_stream_over_proxy[j] = true;
-								if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
-									cout << "RTP - stream over proxy: " 
-									     << hex << rtp[j]->ssrc << dec << " : "
-									     << rtp[j]->saddr.getString() << " -> "
-									     << rtp[j]->daddr.getString() << " /"
-									     << " iscaller: " << rtp[j]->iscaller << " " 
-									     << " packets received: " << rtp[j]->s->received << " "
-									     << " packets lost: " << rtp[j]->s->lost << " "
-									     << " ssrc index: " << rtp[j]->ssrc_index << " "
-									     << " ok_other_ip_side_by_sip: " << rtp[j]->ok_other_ip_side_by_sip << " " 
-									     << " payload: " << rtp[j]->first_codec << " "
-									     << endl;
+		}
+		
+		if(!rtpab_ok) {
+			// init indexex
+			for(int i = 0; i < ssrc_indexes_n; i++) {
+				indexes[i] = i;
+			}
+			// bubble sort
+			for(int k = 0; k < ssrc_indexes_n; k++) {
+				for(int j = 0; j < ssrc_indexes_n; j++) {
+					if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > (rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
+						int kTmp = indexes[k];
+						indexes[k] = indexes[j];
+						indexes[j] = kTmp;
+					}
+				}
+			}
+			if(ssrc_indexes_n > 2 &&
+			   ((rtp[indexes[2]]->stats.received + rtp[indexes[2]]->stats.lost) == 0 ||
+			    (rtp[indexes[1]]->stats.received + rtp[indexes[1]]->stats.lost) / (rtp[indexes[2]]->stats.received + rtp[indexes[2]]->stats.lost) > 10) &&
+			   rtp[indexes[0]]->first_codec >= 0 && rtp[indexes[1]]->first_codec >= 0) {
+				if(rtp[indexes[0]]->iscaller != rtp[indexes[1]]->iscaller) {
+					if(rtp[indexes[0]]->iscaller) {
+						rtpab[0] = rtp[indexes[0]];
+						rtpab[1] = rtp[indexes[1]];
+					} else {
+						rtpab[0] = rtp[indexes[1]];
+						rtpab[1] = rtp[indexes[0]];
+					}
+					rtpab_ok = true;
+				} else if(rtp[indexes[0]]->saddr == rtp[indexes[1]]->daddr &&
+					  rtp[indexes[1]]->saddr == rtp[indexes[0]]->daddr) {
+					rtpab[0] = rtp[indexes[0]];
+					rtpab[1] = rtp[indexes[1]];
+					rtpab[1]->iscaller = !rtpab[0]->iscaller;
+					rtpab_ok = true;
+				}
+			}
+		}
+		
+		if(!rtpab_ok) {
+			if(opt_rtpip_find_endpoints) {
+				bool skip_stream[MAX_SSRC_PER_CALL];
+				memset(skip_stream, 0, sizeof(skip_stream));
+				bool set_skip_stream = false;
+				for(int i = 0; i < 2; i++) {
+					bool _iscaller = i == 0 ? 1 : 0;
+					for(int j = 0; j < ssrc_indexes_n; j++) {
+						if(rtp[indexes[j]]->iscaller == _iscaller &&
+						   rtp[indexes[j]]->saddr != rtp[indexes[j]]->daddr) {
+							for(int k = 0; k < ssrc_indexes_n; k++) {
+								if(k != j &&
+								   rtp[indexes[k]]->iscaller == _iscaller &&
+								   rtp[indexes[k]]->saddr != rtp[indexes[k]]->daddr &&
+								   rtp[indexes[k]]->daddr == rtp[indexes[j]]->saddr) {
+									skip_stream[indexes[j]] = true;
+									set_skip_stream = true;
+									if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
+										cout << "RTP - stream over proxy: " 
+										     << hex << rtp[indexes[j]]->ssrc << dec << " : "
+										     << rtp[indexes[j]]->saddr.getString() << " -> "
+										     << rtp[indexes[j]]->daddr.getString() << " /"
+										     << " iscaller: " << rtp[indexes[j]]->iscaller << " " 
+										     << " packets received: " << rtp[indexes[j]]->s->received << " "
+										     << " packets lost: " << rtp[indexes[j]]->s->lost << " "
+										     << " ssrc index: " << rtp[indexes[j]]->ssrc_index << " "
+										     << " ok_other_ip_side_by_sip: " << rtp[indexes[j]]->ok_other_ip_side_by_sip << " " 
+										     << " payload: " << rtp[indexes[j]]->first_codec << " "
+										     << endl;
+									}
+									break;
 								}
-								break;
 							}
 						}
 					}
 				}
-			}
-		}
-	 
-		// sort all RTP streams by received packets + loss packets descend and save only those two with the biggest received packets.
-		int indexes[MAX_SSRC_PER_CALL];
-		int ssrc_indexes_n = 0;
-		// init indexex
-		for(int i = 0; i < ssrc_n; i++) {
-			if(!opt_rtpip_find_endpoints || !is_stream_over_proxy[i]) {
-				indexes[ssrc_indexes_n++] = i;
-			}
-		}
-		// bubble sort
-		for(int k = 0; k < ssrc_indexes_n; k++) {
-			for(int j = 0; j < ssrc_indexes_n; j++) {
-				if((rtp[indexes[k]]->stats.received + rtp[indexes[k]]->stats.lost) > ( rtp[indexes[j]]->stats.received + rtp[indexes[j]]->stats.lost)) {
-					int kTmp = indexes[k];
-					indexes[k] = indexes[j];
-					indexes[j] = kTmp;
-				}
-			}
-		}
-
-		// find first caller and first called
-		bool rtpab_ok[2] = {false, false};
-		bool pass_rtpab_simple = typeIs(MGCP) ||
-					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
-		if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_indexes_n >= 2 &&
-		   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1 &&
-		   rtp[indexes[0]]->first_codec >= 0 && rtp[indexes[1]]->first_codec >= 0) {
-			if(ssrc_indexes_n == 2) {
-				pass_rtpab_simple = true;
-			} else {
-				unsigned callerStreams = 0;
-				unsigned calledStreams = 0;
-				unsigned callerReceivedPackets[MAX_SSRC_PER_CALL];
-				unsigned calledReceivedPackets[MAX_SSRC_PER_CALL];
-				for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-					callerReceivedPackets[i] = 0;
-					calledReceivedPackets[i] = 0;
-				}
-				for(int k = 0; k < ssrc_indexes_n; k++) {
-					if(rtp[indexes[k]]->iscaller) {
-						callerReceivedPackets[callerStreams++] = rtp[indexes[k]]->s->received;
-					} else {
-						calledReceivedPackets[calledStreams++] = rtp[indexes[k]]->s->received;
+				if(set_skip_stream) {
+					int _ssrc_indexes_n = 0;
+					for(int i = 0; i < ssrc_indexes_n; i++) {
+						if(!skip_stream[indexes[i]]) {
+							indexes[_ssrc_indexes_n++] = indexes[i];
+						}
 					}
+					ssrc_indexes_n = _ssrc_indexes_n;
 				}
-				if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
-				   (!calledReceivedPackets[1] || (calledReceivedPackets[0] / calledReceivedPackets[1]) > 5)) {
+			}
+		 
+			// find first caller and first called
+			bool rtpab_ok[2] = {false, false};
+			bool pass_rtpab_simple = typeIs(MGCP) ||
+						 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
+			if(!pass_rtpab_simple && typeIs(INVITE) && ssrc_indexes_n >= 2 &&
+			   (rtp[indexes[0]]->iscaller + rtp[indexes[1]]->iscaller) == 1 &&
+			   rtp[indexes[0]]->first_codec >= 0 && rtp[indexes[1]]->first_codec >= 0) {
+				if(ssrc_indexes_n == 2) {
 					pass_rtpab_simple = true;
-				}
-			}
-		}
-		for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 3); pass_rtpab++) {
-			for(int k = 0; k < ssrc_indexes_n; k++) {
-				if(pass_rtpab == 0) {
-					if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
-						cout << "RTP - final stream: " 
-						     << hex << rtp[indexes[k]]->ssrc << dec << " : "
-						     << rtp[indexes[k]]->saddr.getString() << " -> "
-						     << rtp[indexes[k]]->daddr.getString() << " /"
-						     << " iscaller: " << rtp[indexes[k]]->iscaller << " " 
-						     << " packets received: " << rtp[indexes[k]]->s->received << " "
-						     << " packets lost: " << rtp[indexes[k]]->s->lost << " "
-						     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
-						     << " ok_other_ip_side_by_sip: " << rtp[indexes[k]]->ok_other_ip_side_by_sip << " " 
-						     << " payload: " << rtp[indexes[k]]->first_codec << " "
-						     << endl;
+				} else {
+					unsigned callerStreams = 0;
+					unsigned calledStreams = 0;
+					unsigned callerReceivedPackets[MAX_SSRC_PER_CALL];
+					unsigned calledReceivedPackets[MAX_SSRC_PER_CALL];
+					for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
+						callerReceivedPackets[i] = 0;
+						calledReceivedPackets[i] = 0;
 					}
-				}
-				if(rtp[indexes[k]]->stats.received &&
-				   (pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || 
-				    (pass_rtpab == 1 && rtp[indexes[k]]->first_codec >= 0) ||
-				    pass_rtpab == 2)) {
-					if(!rtpab_ok[0] &&
-					   rtp[indexes[k]]->iscaller && 
-					   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
-						rtpab[0] = rtp[indexes[k]];
+					for(int k = 0; k < ssrc_indexes_n; k++) {
+						if(rtp[indexes[k]]->iscaller) {
+							callerReceivedPackets[callerStreams++] = rtp[indexes[k]]->s->received;
+						} else {
+							calledReceivedPackets[calledStreams++] = rtp[indexes[k]]->s->received;
+						}
 					}
-					if(!rtpab_ok[1] &&
-					   !rtp[indexes[k]]->iscaller && 
-					   (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
-						rtpab[1] = rtp[indexes[k]];
+					if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
+					   (!calledReceivedPackets[1] || (calledReceivedPackets[0] / calledReceivedPackets[1]) > 5)) {
+						pass_rtpab_simple = true;
 					}
 				}
 			}
-			if(!pass_rtpab_simple && pass_rtpab == 0) {
-				if(rtpab[0]) {
-					rtpab_ok[0] = true;
+			for(int pass_rtpab = 0; pass_rtpab < (pass_rtpab_simple ? 1 : 3); pass_rtpab++) {
+				for(int k = 0; k < ssrc_indexes_n; k++) {
+					if(pass_rtpab == 0) {
+						if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
+							cout << "RTP - final stream: " 
+							     << hex << rtp[indexes[k]]->ssrc << dec << " : "
+							     << rtp[indexes[k]]->saddr.getString() << " -> "
+							     << rtp[indexes[k]]->daddr.getString() << " /"
+							     << " iscaller: " << rtp[indexes[k]]->iscaller << " " 
+							     << " packets received: " << rtp[indexes[k]]->s->received << " "
+							     << " packets lost: " << rtp[indexes[k]]->s->lost << " "
+							     << " ssrc index: " << rtp[indexes[k]]->ssrc_index << " "
+							     << " ok_other_ip_side_by_sip: " << rtp[indexes[k]]->ok_other_ip_side_by_sip << " " 
+							     << " payload: " << rtp[indexes[k]]->first_codec << " "
+							     << endl;
+						}
+					}
+					if(rtp[indexes[k]]->stats.received &&
+					   (pass_rtpab_simple || rtp[indexes[k]]->ok_other_ip_side_by_sip || 
+					    (pass_rtpab == 1 && rtp[indexes[k]]->first_codec >= 0) ||
+					    pass_rtpab == 2)) {
+						if(!rtpab_ok[0] &&
+						   rtp[indexes[k]]->iscaller && 
+						   (!rtpab[0] || rtp[indexes[k]]->stats.received > rtpab[0]->stats.received)) {
+							rtpab[0] = rtp[indexes[k]];
+						}
+						if(!rtpab_ok[1] &&
+						   !rtp[indexes[k]]->iscaller && 
+						   (!rtpab[1] || rtp[indexes[k]]->stats.received > rtpab[1]->stats.received)) {
+							rtpab[1] = rtp[indexes[k]];
+						}
+					}
 				}
-				if(rtpab[1]) {
-					rtpab_ok[1] = true;
-				}
-				if(rtpab_ok[0] && rtpab_ok[1]) {
-					break;
+				if(!pass_rtpab_simple && pass_rtpab == 0) {
+					if(rtpab[0]) {
+						rtpab_ok[0] = true;
+					}
+					if(rtpab[1]) {
+						rtpab_ok[1] = true;
+					}
+					if(rtpab_ok[0] && rtpab_ok[1]) {
+						break;
+					}
 				}
 			}
 		}
@@ -4411,7 +4478,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 		}
-
+		
 		if(opt_silencedetect && existsColumns.cdr_silencedetect) {
 			if(caller_silence > 0 or caller_noise > 0) {
 				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
