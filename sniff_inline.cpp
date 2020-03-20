@@ -793,7 +793,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	cout << endl;
 	#endif
 	
-	if((ppf & ppf_dump) && ppd->header_ip || opt_dedup_input_file && (ppf & ppf_dedup)) {
+	if(((ppf & ppf_dump) && ppd->header_ip) || (opt_dedup_input_file && (ppf & ppf_dedup))) {
 		if(pcapDumpHandle) {
 			if(header_packet) {
 				pcap_dump((u_char*)pcapDumpHandle, HPH(*header_packet), HPP(*header_packet));
