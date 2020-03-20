@@ -1,3 +1,12 @@
+26.13 20.03.2020
+================
+- fix missing RTP in caller or called for some cases [VS-1053]
+- add samplerate convert (if need) to cWavMix (create audio) [VS-1049]
+- voipmonitor --dedup-pcap='SRC.pcap DST.pcap' [VG-1816]
+- removing unnecessary calls system(cmd) from convertRawToWav [VS-1044]
+- fix audio mixing (broken in 26.12)
+
+
 26.12 13.03.2020
 ================
 - document option sdp_multiplication (new option sdp_multiplication=0)

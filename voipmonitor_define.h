@@ -2,7 +2,7 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "26.12"
+#define RTPSENSOR_VERSION "26.13"
 #define NAT
 
 #define FORMAT_WAV	1
