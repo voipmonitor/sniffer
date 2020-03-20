@@ -1405,12 +1405,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		*record_dtmf = true;
 	}
 	
-	if(iscaller) {
-		last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
-	} else {
-		last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
-	}
-
 	if(!packetS->isRtpUdptlOkDataLen() && !sverb.process_rtp_header) {
 		//Ignoring RTP packets without data
 		if (sverb.read_rtp) syslog(LOG_DEBUG,"RTP packet skipped because of its datalen: %i", packetS->datalen_());
@@ -1450,6 +1444,12 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 				//if(verbosity > 1) printf("found seq[%u] saddr[%u] dport[%u]\n", tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
 				// found 
 			 
+				if(rtp[i]->iscaller) {
+					last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
+				} else {
+					last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
+				}
+
 				if(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) {
 					*disable_save = true;
 					return(false);
@@ -1553,6 +1553,22 @@ read:
 	// adding new RTP source
 	if(ssrc_n < MAX_SSRC_PER_CALL) {
 	 
+		for(int i = 0; i < ssrc_n; i++) {
+			if(rtp[i]->saddr == packetS->daddr_() &&
+			   rtp[i]->daddr == packetS->saddr_() &&
+			   rtp[i]->sport == packetS->dest_() &&
+			   rtp[i]->dport == packetS->source_() &&
+			   rtp[i]->iscaller == iscaller) {
+				iscaller = !rtp[i]->iscaller;
+			}
+		}
+		
+		if(iscaller) {
+			last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
+		} else {
+			last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
+		}
+		
 		if(udptl) {
 			while(__sync_lock_test_and_set(&rtplock, 1)) {
 				USLEEP(100);
