@@ -2724,7 +2724,6 @@ Call::convertRawToWav() {
 				break;
 			case PAYLOAD_SILK24:
 				samplerate = 24000;
-				system(cmd);
 				break;
 			case PAYLOAD_ISAC16:
 				samplerate = 16000;
@@ -2751,13 +2750,11 @@ Call::convertRawToWav() {
 			case PAYLOAD_XOPUS24:
 			case PAYLOAD_OPUS24:
 				samplerate = 24000;
-				system(cmd);
 				break;
 			case PAYLOAD_VXOPUS48:
 			case PAYLOAD_XOPUS48:
 			case PAYLOAD_OPUS48:
 				samplerate = 48000;
-				system(cmd);
 				break;
 			case PAYLOAD_G722:
 			case PAYLOAD_G722116:
