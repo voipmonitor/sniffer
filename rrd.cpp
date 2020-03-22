@@ -758,8 +758,8 @@ void rrd_charts_init() {
 	ch->addValue(RRD_VALUE_PS_S1, "SIP packets/second", "FF0000", 0, 1000000);
 	ch->addValue(RRD_VALUE_PS_SR, "SIP REG packets/second", "FF00FF", 0, 1000000);
 	ch->addValue(RRD_VALUE_PS_SM, "SIP MES packets/second", "FFFF00", 0, 1000000);
-	ch->addValue(RRD_VALUE_PS_R, "RTP packets/second", "00FFFF", 0, 1000000);
-	ch->addValue(RRD_VALUE_PS_A, "all packets/second", "999966", 0, 1000000);
+	ch->addValue(RRD_VALUE_PS_R, "RTP packets/second", "00FFFF", 0, 100000000);
+	ch->addValue(RRD_VALUE_PS_A, "all packets/second", "999966", 0, 100000000);
 	// ** PSC
 	g = new FILE_LINE(0) RrdChartSeriesGroup;
 	g->setName("Calls counter");
