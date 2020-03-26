@@ -123,6 +123,8 @@ DEPENDSCPP:=${shell find . -type f -name '*.cpp' -print}
 -include Makefile.deps
 
 Makefile.deps:
+	rm Makefile.deps
+	touch Makefile.deps
 	cp /dev/null Makefile.deps
 	for F in $(DEPENDSC); do \
 	 D=`dirname $$F | sed "s/^\.\///"`; \
