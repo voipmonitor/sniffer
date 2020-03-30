@@ -155,6 +155,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      u_int &header_ip_offset, int &protocol, u_int16_t &vlan) {
 	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
+	int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
 	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
@@ -178,8 +179,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			}
 			header_ip_offset += sizeof(sll_header);
 			break;
+		case DLT_ATM_RFC1483:
 		case DLT_EN10MB:
-			header_eth = (ether_header*)packet;
+			header_eth = (ether_header*)((char*)packet + link_header_offset);
 			ether_type = htons(header_eth->ether_type);
 			switch(ether_type) {
 			case 0x8100:
@@ -191,7 +193,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			case 0x88A8:
 				// IEEE 8021ad
 				header_ip_offset = 4;
-				protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + 2));
+				protocol = htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + 2));
 				if(protocol == 0x8100) {
 					// VLAN tag
 					exists_vlan = true;
@@ -199,9 +201,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				break;
 			case 0x8864:
 				// PPPoE
-				if(htons(*(u_int16_t*)(packet + sizeof(ether_header) + 6)) == 0x0021) { // Point To Point protocol IPv4
+				if(htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + 6)) == 0x0021) { // Point To Point protocol IPv4
 					if(header_ppp_o_e) {
-						*header_ppp_o_e = packet + sizeof(ether_header);
+						*header_ppp_o_e = packet + link_header_offset + sizeof(ether_header);
 					}
 					header_ip_offset = 8;
 					protocol = ETHERTYPE_IP;
@@ -215,7 +217,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				header_ip_offset = 0;
 				u_int8_t mpls_bottomOfLabelStackFlag;
 				do {
-					mpls_bottomOfLabelStackFlag = *((u_int8_t*)packet + sizeof(ether_header) + header_ip_offset + 2) & 1;
+					mpls_bottomOfLabelStackFlag = *((u_int8_t*)packet + link_header_offset + sizeof(ether_header) + header_ip_offset + 2) & 1;
 					header_ip_offset += 4;
 				} while(mpls_bottomOfLabelStackFlag == 0);
 				protocol = ETHERTYPE_IP;
@@ -227,14 +229,14 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			if(exists_vlan) {
 				u_int16_t _protocol;
 				do {
-					vlan = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
-					_protocol = htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 2));
+					vlan = htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + header_ip_offset)) & 0xFFF;
+					_protocol = htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + header_ip_offset + 2));
 					header_ip_offset += 4;
 				} while(_protocol == 0x8100);
 				if(_protocol == 0x8864 && // PPPoE
-				   htons(*(u_int16_t*)(packet + sizeof(ether_header) + header_ip_offset + 6)) == 0x0021) { // Point To Point protocol IPv4
+				   htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + header_ip_offset + 6)) == 0x0021) { // Point To Point protocol IPv4
 					if(header_ppp_o_e) {
-						*header_ppp_o_e = packet + header_ip_offset + sizeof(ether_header);
+						*header_ppp_o_e = packet + link_header_offset + header_ip_offset + sizeof(ether_header);
 					}
 					header_ip_offset += 8;
 					protocol = ETHERTYPE_IP;
@@ -242,7 +244,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					protocol = _protocol;
 				}
 			}
-			header_ip_offset += sizeof(ether_header);
+			header_ip_offset += link_header_offset + sizeof(ether_header);
 			break;
 		case DLT_RAW:
 			header_ip_offset = 0;
