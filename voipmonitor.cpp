@@ -746,7 +746,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
-bool opt_ifaces_optimize = false;
+bool opt_ifaces_optimize = true;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
