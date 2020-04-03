@@ -746,6 +746,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
+bool opt_ifaces_optimize = false;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -3231,6 +3232,9 @@ int main(int argc, char *argv[]) {
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
+		if(opt_ifaces_optimize) {
+			handleInterfaceOptions();
+		}
 	}
 	
 	check_context_config();
@@ -6388,6 +6392,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_hosts("interface_ip_filter", &if_filter_ip, &if_filter_net));
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -8902,6 +8907,9 @@ int eval_config(string inistr) {
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strcpy_null_term(ifname, value);
+	}
+	if((value = ini.GetValue("general", "interfaces_optimize", NULL))) {
+		opt_ifaces_optimize = yesno( value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
