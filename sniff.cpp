@@ -198,7 +198,6 @@ extern int opt_skiprtpdata;
 extern char opt_silenceheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
-extern int opt_read_from_file;
 extern int opt_saverfc2833;
 extern livesnifferfilter_use_siptypes_s livesnifferfilterUseSipTypes;
 extern int opt_skipdefault;
@@ -260,6 +259,7 @@ extern int opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
+extern bool opt_dedup_input_file;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -275,7 +275,7 @@ static void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int 
 				   vmIP saddr, vmPort source, vmIP daddr, vmPort dest,
 				   Call *call, const char *descr = NULL);
 
-#define logPacketSipMethodCall_enable ((opt_read_from_file && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
+#define logPacketSipMethodCall_enable ((is_read_from_file_simple() && verbosity > 2) || verbosityE > 1 || sverb.sip_packets)
 
 typedef struct pcap_hdr_s {
 	u_int32_t magic_number;   /* magic number */
@@ -6579,6 +6579,9 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%u.pcap", getPcapdumpDir(), (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
+	} else if (opt_dedup_input_file) {
+		extern char opt_dedup_fname[1024];
+		tmppcap = pcap_dump_open(handle, opt_dedup_fname);
 	}
 
 	unsigned long lastStatTimeMS = 0;
@@ -6589,6 +6592,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 	}
+	int tmp_ppf_param = opt_dedup_input_file ? (ppf_dedup | ppf_calcMD5) : ppf_all;
 	while (!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
@@ -6672,11 +6676,13 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,
-				ppf_all,
+				tmp_ppf_param,
 				&ppd, global_pcap_dlink, tmppcap, ifname)) {
 			continue;
 		}
-
+		if (opt_dedup_input_file) {
+			continue;
+		}
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[ppd.header_udp->get_source()] || sipportmatrix[ppd.header_udp->get_dest()]))) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
@@ -6739,7 +6745,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		manager_parse_command_disable();
 	}
 
-	if(opt_pcapdump) {
+	if(opt_pcapdump || opt_dedup_input_file) {
 		pcap_dump_close(tmppcap);
 	}
 }
@@ -6852,7 +6858,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	}
  
 	if(!sip_method ||
-	   (!opt_read_from_file && descr && strstr(descr, "we are not interested"))) {
+	   (!is_read_from_file_simple() && descr && strstr(descr, "we are not interested"))) {
 		return;
 	}
 	
@@ -6939,7 +6945,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 		       << descr;
 	}
 	
-	if(opt_read_from_file) {
+	if(is_read_from_file_simple()) {
 		cout << outStr.str() << endl;
 	} else {
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());

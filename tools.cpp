@@ -66,6 +66,14 @@
 #include <jemalloc/jemalloc.h>
 #endif
 
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX (static_cast<size_t>(-1))
+# endif
+#endif
+
 #include "calltable.h"
 #include "rtp.h"
 #include "tools.h"
@@ -77,6 +85,14 @@
 #include "sniff_inline.h"
 #include "sql_db.h"
 
+#ifndef SIZE_MAX
+# ifdef __SIZE_MAX__
+#  define SIZE_MAX __SIZE_MAX__
+# else
+#  define SIZE_MAX (static_cast<size_t>(-1))
+# endif
+#endif
+
 extern char mac[32];
 extern int verbosity;
 extern int opt_pcap_dump_bufflength;
@@ -87,7 +103,6 @@ extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_ziplevel_sip;
 extern int opt_pcap_dump_ziplevel_rtp;
 extern int opt_pcap_dump_ziplevel_graph;
-extern int opt_read_from_file;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -99,6 +114,7 @@ extern string binaryNameWithPath;
 extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
+extern vector<string> ifnamev;
 
 extern TarQueue *tarQueue[2];
 using namespace std;
@@ -2153,22 +2169,25 @@ int findPIDinPSline (char *line) {
 	return(atoi(line));
 }
 
-bool isBashPresent(void) {
-	FILE *cmd_pipe = popen("bash --version 2>&1", "r");
+bool binaryFilePresence(const char *cmd, const char *searchstr) {
+	FILE *cmd_pipe = popen(cmd, "r");
 	char buffRslt[512];
 
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);
-	return(strstr(buffRslt, " bash:") ? false : true);
+	return(strstr(buffRslt, searchstr) ? false : true);
+}
+
+bool isBashPresent(void) {
+	return(binaryFilePresence("bash --version 2>&1", " bash:"));
 }
 
 bool isPSrightVersion(void) {
-	FILE *cmd_pipe = popen("ps -V 2>&1", "r");
-	char buffRslt[512];
+	return(binaryFilePresence("ps -V 2>&1", "ps:"));
+}
 
-	fgets(buffRslt, 512, cmd_pipe);
-	pclose(cmd_pipe);
-	return(strstr(buffRslt, "ps:") ? false : true);
+bool isEthtoolInstalled(void) {
+	return(binaryFilePresence("ethtool --version 2>&1", " ethtool:"));
 }
 
 list<int> getPids(string app, string grep_search) {
@@ -3288,7 +3307,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->useBufferLength = 0;
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
-	this->enableAsyncWrite = enableAsyncWrite && !opt_read_from_file;
+	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
 	this->typeCompress = typeCompress;
 	this->dumpHandler = dumpHandler;
 	this->call = call;
@@ -6820,4 +6839,66 @@ bool file_put_contents(const char *filename, SimpleBuffer *content, string *erro
 	}
 	fclose(file);
 	return(true);
+}
+
+bool getInterfaceOption(const char *param, const char *searchstr, const char *iface, char sep, char *result) {
+	char buff[512];
+	char *ret;
+	snprintf(buff, sizeof(buff), "ethtool %s %s 2>&1", param, iface);
+	FILE *cmd_pipe = popen(buff, "r");
+	do {
+		if(!fgets(buff, 512, cmd_pipe)) {
+			ret = NULL;
+			break;
+		}
+	} while (!(ret = strstr(buff, searchstr)));
+	pclose(cmd_pipe);
+	if (ret) {
+		char *p = strrchr(buff, sep);
+		if(p) {
+			strncpy(result, ++p, 512);
+			return(true);
+		}
+	}
+	printf("Can't get value from 'ethtool %s %s'\n", param, iface);
+	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'", param, iface);
+	return(false);
+}
+
+void setInterfaceOption(const char *param, const char *option, const char *iface, int value) {
+	char cmd[512];
+	int retval;
+	string buff;
+	snprintf(cmd, sizeof(cmd), "ethtool %s %s %s %i 2>&1", param, iface, option, value);
+	buff = pexec(cmd, &retval);
+	if (retval == 0 || (retval / 0xff) == 80 /* same value */) {
+		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
+		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
+	} else {
+		printf("Can't set interface 'ethtool %s %s %s %i'): %i\n", param, iface, option, value, retval);
+		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i'): %i", param, iface, option, value, retval);
+	}
+}
+
+void handleInterfaceOptions(void) {
+	if(!isEthtoolInstalled()) {
+		printf("ethtool binary is not installed so NIC's options can't be set.\n");
+		syslog(LOG_NOTICE, "ethtool binary is not installed so NIC's options can't be set.");
+		return;
+	}
+	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
+		char rslt[512];
+		if(getInterfaceOption("-g", "RX:", (*iface).c_str(), '\t', rslt)) {
+			int maxval = atoi(rslt);
+			if (maxval > 0) {
+				setInterfaceOption("-G", "rx", (*iface).c_str(), maxval);
+			}
+		}
+		if(getInterfaceOption("-c", "rx-usecs:", (*iface).c_str(), ' ', rslt)) {
+			int curval = atoi(rslt);
+			if(curval < 500) {
+				setInterfaceOption("-C", "rx-usecs", (*iface).c_str(), 1022);
+			}
+		}
+	}
 }

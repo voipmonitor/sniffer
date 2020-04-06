@@ -190,7 +190,7 @@ inline u_int64_t getTimeNS() {
 #ifdef CLOUD_ROUTER_SERVER
 #define USLEEP(us) usleep(us);
 #else
-#define USLEEP(us) usleep(us, -1, __FILE__, __LINE__);
+#define USLEEP(us) usleep(us, __FILE__, __LINE__);
 #define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
 inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line) {
  	unsigned int rslt_useconds = useconds;
@@ -227,6 +227,15 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	}
 	usleep(rslt_useconds);
 	return(rslt_useconds);
+}
+inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
+	extern sVerbose sverb;
+	if(sverb.usleep_stats) {
+		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
+		usleep_stats_add(useconds, 1, file, line);
+	}
+	usleep(useconds);
+	return(useconds);
 }
 #endif
 

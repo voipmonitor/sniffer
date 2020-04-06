@@ -149,8 +149,6 @@ extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
-extern int opt_read_from_file;
-extern char opt_pb_read_from_file[256];
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
@@ -9582,7 +9580,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 			bool closeCall = false;
 			if(!currtime || call->force_close) {
 				closeCall = true;
-				if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+				if(!is_read_from_file()) {
 					call->force_terminate = true;
 				}
 			} else if(call->typeIs(SKINNY_NEW) ||
@@ -9739,7 +9737,7 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		bool closeReg = false;
 		if(!currtime || reg->force_close) {
 			closeReg = true;
-			if(!opt_read_from_file && !opt_pb_read_from_file[0]) {
+			if(!is_read_from_file()) {
 				reg->force_terminate = true;
 			}
 		} else {

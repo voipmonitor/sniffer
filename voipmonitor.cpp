@@ -333,8 +333,10 @@ int opt_skinny = 0;
 int opt_mgcp = 0;
 vmIP opt_skinny_ignore_rtpip;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
-int opt_read_from_file = 0;
+bool opt_dedup_input_file = false;
+bool opt_read_from_file = false;
 char opt_read_from_file_fname[1024] = "";
+char opt_dedup_fname[1024] = "";
 bool opt_read_from_file_no_sip_reassembly = false;
 char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
@@ -746,6 +748,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
+bool opt_ifaces_optimize = true;
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -3249,6 +3252,11 @@ int main(int argc, char *argv[]) {
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
+#ifndef FREEBSD
+		if(opt_ifaces_optimize) {
+			handleInterfaceOptions();
+		}
+#endif
 	}
 	
 	check_context_config();
@@ -6423,6 +6431,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_hosts("interface_ip_filter", &if_filter_ip, &if_filter_net));
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -7437,6 +7446,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"t2_boost", 0, 0, 337},
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
+	    {"dedup-pcap", 1, 0, 341},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7859,7 +7869,7 @@ void get_command_line_arguments() {
 					opt_scanpcapdir[0] = '\0';
 				} else {
 					strcpy(opt_read_from_file_fname, optarg);
-					opt_read_from_file = 1;
+					opt_read_from_file = true;
 					opt_scanpcapdir[0] = '\0';
 					opt_cachedir[0] = '\0';
 					opt_enable_preprocess_packet = 0;
@@ -8042,6 +8052,25 @@ void get_command_line_arguments() {
 				opt_save_sip_subscribe = true;
 				opt_save_sip_notify = true;
 				break;
+			case 341:
+				if(sscanf(optarg, "%s %s", opt_read_from_file_fname, opt_dedup_fname) != 2) {
+					cerr << "dedup pcap: bad arguments" << endl;
+					exit(1);
+				}
+				opt_read_from_file = true;
+				opt_scanpcapdir[0] = '\0';
+				opt_cachedir[0] = '\0';
+				opt_enable_preprocess_packet = 0;
+				opt_enable_process_rtp_packet = 0;
+				opt_dedup_input_file = true;
+				opt_nocdr = 1;
+				opt_pcap_dump_tar = 0;
+				opt_pcap_split = 0;
+				opt_saveGRAPH = 0;
+				opt_dup_check = 1;
+				opt_dup_check_ipheader = 0;
+				opt_dup_check_ipheader_ignore_ttl = 1;
+				break;
 		}
 		if(optarg) {
 			delete [] optarg;
@@ -8185,7 +8214,7 @@ void set_context_config() {
 		opt_enable_webrtc_table = true;
 	}
 	
-	if(opt_read_from_file) {
+	if(is_read_from_file_simple()) {
 		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
@@ -8922,6 +8951,9 @@ int eval_config(string inistr) {
 
 	if((value = ini.GetValue("general", "interface", NULL))) {
 		strcpy_null_term(ifname, value);
+	}
+	if((value = ini.GetValue("general", "interfaces_optimize", NULL))) {
+		opt_ifaces_optimize = yesno( value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();

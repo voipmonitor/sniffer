@@ -63,7 +63,6 @@ extern int opt_inbanddtmf;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern int opt_fasdetect;
-extern int opt_read_from_file;
 extern SqlDb *sqlDbSaveCall;
 extern int opt_mysqlstore_max_threads_cdr;
 extern MySqlStore *sqlStore;

@@ -333,6 +333,7 @@ unsigned long long copy_file(const char *src, const char *dst, bool move = false
 inline unsigned long long move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
+void handleInterfaceOptions(void);
 
 /* obsolete
 void cloud_activecheck_success();
