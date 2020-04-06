@@ -84,7 +84,7 @@ cChartDataItem::cChartDataItem() {
 }
 
 void cChartDataItem::add(Call *call, 
-			 int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+			 unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 cChartSeries *series, cChartIntervalSeriesData *intervalSeries,
 			 u_int32_t calldate_from, u_int32_t calldate_to) {
 	if(series->isArea() ||
@@ -422,7 +422,7 @@ void cChartDataPool::createPool(u_int32_t timeFrom, u_int32_t timeTo) {
 	memset((void*)this->pool, 0, (timeTo - timeFrom + 1) * sizeof(u_int32_t));
 }
 
-void cChartDataPool::add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartDataPool::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 cChartSeries *series, cChartInterval *interval,
 			 u_int32_t calldate_from, u_int32_t calldate_to) {
 	unsigned int from, to;
@@ -588,7 +588,7 @@ void cChartIntervalSeriesData::prepareData() {
 	param_map = series->param_map;
 }
 
-void cChartIntervalSeriesData::add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartIntervalSeriesData::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 				   u_int32_t calldate_from, u_int32_t calldate_to) {
 	lock_data();
 	double value;
@@ -736,7 +736,7 @@ void cChartInterval::setInterval(u_int32_t timeFrom, u_int32_t timeTo) {
 	init();
 }
 
-void cChartInterval::add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartInterval::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 u_int32_t calldate_from, u_int32_t calldate_to,
 			 map<cChartSeries*, bool> *filters) {
 	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {

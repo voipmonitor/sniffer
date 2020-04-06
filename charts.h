@@ -99,7 +99,7 @@ struct sChartTypeDef {
 class cChartDataItem {
 public:
 	cChartDataItem();
-	void add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+	void add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 class cChartSeries *series, class cChartIntervalSeriesData *intervalSeries,
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	string json(class cChartSeries *series);
@@ -134,7 +134,7 @@ public:
 	~cChartDataPool();
 	void createPool(u_int32_t timeFrom, u_int32_t timeTo);
 	void initPoolRslt();
-	void add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+	void add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 class cChartSeries *series, class cChartInterval *interval,
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	string json(class cChartSeries *series, class cChartInterval *interval);
@@ -152,7 +152,7 @@ public:
 	cChartIntervalSeriesData(class cChartSeries *series = NULL, class cChartInterval *interval = NULL);
 	~cChartIntervalSeriesData();
 	void prepareData();
-	void add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+	void add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	void store(class cChartInterval *interval, SqlDb *sqlDb);
 	void lock_data() { __SYNC_LOCK(sync_data); }
@@ -177,7 +177,7 @@ public:
 	cChartInterval();
 	~cChartInterval();
 	void setInterval(u_int32_t timeFrom, u_int32_t timeTo);
-	void add(Call *call, int call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+	void add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to,
 		 map<cChartSeries*, bool> *filters);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
