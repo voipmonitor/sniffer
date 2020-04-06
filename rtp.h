@@ -615,6 +615,22 @@ public:
 	}
 
 	void rtp_stream_analysis_output();
+	
+	double mos_min_from_avg(bool *null, bool prefer_f2 = false);
+	double mos_min_from_min(bool *null, bool prefer_f2 = false);
+	double mos_xr_min(bool *null);
+	double mos_xr_avg(bool *null);
+	double mos_silence_min(bool *null);
+	double mos_silence_avg(bool *null);
+	double packet_loss(bool *null);
+	double jitter_avg(bool *null);
+	double jitter_max(bool *null);
+	double delay_sum(bool *null);
+	double delay_cnt(bool *null);
+	double jitter_rtcp_avg(bool *null);
+	double jitter_rtcp_max(bool *null);
+	double fr_rtcp_avg(bool *null);
+	double fr_rtcp_max(bool *null);
 
 private: 
 	/*

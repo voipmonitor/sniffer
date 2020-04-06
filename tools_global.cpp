@@ -221,23 +221,7 @@ void JsonExport::add(const char *name, const char *content, eTypeItem typeItem) 
 	JsonExport_template<string> *item = new FILE_LINE(38010) JsonExport_template<string>;
 	item->setTypeItem(typeItem);
 	item->setName(name);
-	string content_esc;
-	const char *ptr = content;
-	while(*ptr) {
-		switch (*ptr) {
-		case '\\':	content_esc += "\\\\"; break;
-		case '"':	content_esc += "\\\""; break;
-		case '/':	content_esc += "\\/"; break;
-		case '\b':	content_esc += "\\b"; break;
-		case '\f':	content_esc += "\\f"; break;
-		case '\n':	content_esc += "\\n"; break;
-		case '\r':	content_esc += "\\r"; break;
-		case '\t':	content_esc += "\\t"; break;
-		default:	content_esc += *ptr; break;
-		}
-		++ptr;
-	}
-	item->setContent(content_esc);
+	item->setContent(json_string_escape(content));
 	items.push_back(item);
 }
 
@@ -303,6 +287,27 @@ string JsonExport_template<type_item>::getJson(JsonExport *parent) {
 		}
 	}
 	return(outStr.str());
+}
+
+
+string json_string_escape(const char *str) {
+	string str_esc;
+	const char *ptr = str;
+	while(*ptr) {
+		switch (*ptr) {
+		case '\\':	str_esc += "\\\\"; break;
+		case '"':	str_esc += "\\\""; break;
+		case '/':	str_esc += "\\/"; break;
+		case '\b':	str_esc += "\\b"; break;
+		case '\f':	str_esc += "\\f"; break;
+		case '\n':	str_esc += "\\n"; break;
+		case '\r':	str_esc += "\\r"; break;
+		case '\t':	str_esc += "\\t"; break;
+		default:	str_esc += *ptr; break;
+		}
+		++ptr;
+	}
+	return(str_esc);
 }
 
 
@@ -382,6 +387,7 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 }
 
 
+#ifndef CLOUD_ROUTER_SERVER
 struct sUsleepStatsId {
 	string file;
 	int line;
@@ -466,6 +472,7 @@ void usleep_stats_clear() {
 		__SYNC_UNLOCK(usleepStatsSync);
 	}
 }
+#endif
 
 
 static char base64[64];
@@ -1034,6 +1041,7 @@ void cGzip::term() {
 }
 
 
+#ifdef HAVE_LIBLZO
 cLzo::cLzo() {
 	use_1_11 = true;
 	wrkmem = NULL;
@@ -1122,6 +1130,7 @@ bool cLzo::isCompress(u_char *buffer, size_t bufferLength) {
 	size_t header_string_length = strlen(header_string);
 	return(bufferLength > header_string_length && !memcmp(buffer, header_string, header_string_length));
 }
+#endif
 
 
 cResolver::cResolver() {

@@ -95,6 +95,7 @@
 #include "tcmalloc_hugetables.h"
 #include "log_buffer.h"
 #include "heap_chunk.h"
+#include "charts.h"
 
 #ifndef FREEBSD
 #define BACKTRACE 1
@@ -326,6 +327,7 @@ int opt_rtpfromsdp_onlysip = 0;
 int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
+bool opt_charts_cache = false;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
@@ -769,6 +771,7 @@ unsigned int gthread_num = 0;
 int opt_pcapdump = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
+bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
@@ -818,6 +821,7 @@ volatile int terminating;	// if set to 1, sniffer will terminate
 int terminating_moving_cache;	// if set to 1, worker thread will terminate
 int terminating_storing_cdr;	// if set to 1, worker thread will terminate
 int terminating_storing_registers;
+int terminating_charts_cache;
 int terminated_call_cleanup;
 int terminated_async;
 int terminated_tar_flush_queue[2];
@@ -1962,11 +1966,19 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
-				calltable->lock_calls_deletequeue();
-				for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-					calltable->calls_deletequeue.push_back(*iter_call);
+				if(opt_charts_cache) {
+					calltable->lock_calls_charts_cache_queue();
+					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+						calltable->calls_charts_cache_queue.push_back(*iter_call);
+					}
+					calltable->unlock_calls_charts_cache_queue();
+				} else {
+					calltable->lock_calls_deletequeue();
+					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+						calltable->calls_deletequeue.push_back(*iter_call);
+					}
+					calltable->unlock_calls_deletequeue();
 				}
-				calltable->unlock_calls_deletequeue();
 				delete [] indikConvertToWav;
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
@@ -2103,11 +2115,19 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
-		calltable->lock_calls_deletequeue();
-		for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-			calltable->calls_deletequeue.push_back(*iter_call);
+		if(opt_charts_cache) {
+			calltable->lock_calls_charts_cache_queue();
+			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+				calltable->calls_charts_cache_queue.push_back(*iter_call);
+			}
+			calltable->unlock_calls_charts_cache_queue();
+		} else {
+			calltable->lock_calls_deletequeue();
+			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
+				calltable->calls_deletequeue.push_back(*iter_call);
+			}
+			calltable->unlock_calls_deletequeue();
 		}
-		calltable->unlock_calls_deletequeue();
 		delete [] indikConvertToWav;
 		storing_cdr_next_threads_calls[indexNextThread]->clear();
 		bool stop = false;
@@ -3841,6 +3861,9 @@ int main_init_read() {
 	}
 	
 	dbDataInit(sqlDbInit);
+	if(opt_charts_cache) {
+		chartsCacheInit(sqlDbInit);
+	}
 
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
 	
@@ -4071,6 +4094,9 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
+		if(opt_charts_cache) {
+			calltable->processCallsInChartsCache_start();
+		}
 	}
 
 	if(opt_cachedir[0] != '\0') {
@@ -4581,6 +4607,9 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 	}
+	if(opt_charts_cache) {
+		calltable->processCallsInChartsCache_stop();
+	}
 	while(calltable->calls_queue.size() != 0) {
 			call = calltable->calls_queue.front();
 			calltable->calls_queue.pop_front();
@@ -4623,6 +4652,10 @@ void main_term_read() {
 	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
+	
+	if(opt_charts_cache) {
+		chartsCacheStore(true);
+	}
 	
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
@@ -4687,6 +4720,9 @@ void main_term_read() {
 	CountryDetectTerm();
 	
 	dbDataTerm();
+	if(opt_charts_cache) {
+		chartsCacheTerm();
+	}
 	
 	if(opt_enable_billing) {
 		termBilling();
@@ -6293,6 +6329,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
@@ -7052,6 +7089,7 @@ void cConfig::addConfigItems() {
 					->setDefaultValueStr("yes"));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
@@ -7553,6 +7591,10 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
 	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
+	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
+	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
+	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
+								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9979,6 +10021,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
+	if((value = ini.GetValue("general", "disable_cdr_indexes_rtp", NULL))) {
+		opt_disable_cdr_indexes_rtp = yesno(value);
+	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
 		opt_t2_boost = yesno(value);
 	}
@@ -10074,6 +10119,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
+	}
+	if((value = ini.GetValue("general", "charts_cache", NULL))) {
+		opt_charts_cache = yesno(value);
 	}
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
 		strcpy_null_term(opt_convert_char, value);

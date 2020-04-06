@@ -2269,13 +2269,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(!storing_cdr_cpu.empty()) {
 			outStrStat << "storing[" << storing_cdr_cpu << "%] ";
 		}
-		if(opt_rrd) {
-			extern RrdCharts rrd_charts;
-			double rrd_charts_cpu = rrd_charts.getCpuUsageQueueThreadPerc(true);
-			if(rrd_charts_cpu > 0) {
-				 outStrStat << "RRD[" << setprecision(1) << rrd_charts_cpu << "%] ";
-			}
-		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
 		   calls_counter > (int)calltable->calls_list_count() * 2) {
@@ -2285,6 +2278,26 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			  calls_counter < calltable->calls_list_count() * 1.5) {
 			extern void storing_cdr_next_thread_remove();
 			storing_cdr_next_thread_remove();
+		}
+		extern bool opt_charts_cache;
+		if(opt_charts_cache) {
+			double chc_cpu_avg;
+			string chc_cpu = calltable->processCallsInChartsCache_cpuUsagePerc(&chc_cpu_avg);
+			if(!chc_cpu.empty()) {
+				outStrStat << "charts[" << chc_cpu << "%] ";
+			}
+			if(chc_cpu_avg > opt_cpu_limit_new_thread_high) {
+				calltable->processCallsInChartsCache_thread_add();
+			} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
+				calltable->processCallsInChartsCache_thread_remove();
+			}
+		}
+		if(opt_rrd) {
+			extern RrdCharts rrd_charts;
+			double rrd_charts_cpu = rrd_charts.getCpuUsageQueueThreadPerc(true);
+			if(rrd_charts_cpu > 0) {
+				 outStrStat << "RRD[" << setprecision(1) << rrd_charts_cpu << "%] ";
+			}
 		}
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());

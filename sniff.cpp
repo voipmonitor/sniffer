@@ -2631,6 +2631,11 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
+	if(sverb.sipcallerip_filter[0] &&
+	   packetS->saddr_().getString() != sverb.sipcallerip_filter) {
+		return(NULL);
+	}
+ 
 	if(opt_callslimit != 0 and opt_callslimit < (calls_counter + registers_counter)) {
 		if(verbosity > 0) {
 			static u_int64_t lastTimeSyslog = 0;

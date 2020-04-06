@@ -20,6 +20,7 @@
 
 #ifndef CLOUD_ROUTER_SERVER
 #include "common.h"
+#include "config.h"
 #endif
 
 #ifdef FREEBSD
@@ -391,6 +392,8 @@ private:
 	type_item content;
 };
 
+string json_string_escape(const char *str);
+
 
 string intToString(int i);
 string intToString(long long i);
@@ -608,6 +611,7 @@ private:
 };
 
 
+#ifdef HAVE_LIBLZO
 class cLzo {
 public:
 	cLzo();
@@ -625,6 +629,7 @@ private:
 	u_char *wrkmem;
 	const char *header_string;
 };
+#endif
 
 
 class cResolver {

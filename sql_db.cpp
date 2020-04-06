@@ -108,6 +108,8 @@ extern sSnifferServerClientOptions snifferServerClientOptions;
 
 extern int opt_load_query_from_files;
 
+extern bool opt_disable_cdr_indexes_rtp;
+
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -147,25 +149,28 @@ SqlDb_row::operator int() {
 
 void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table) {
 	if(!content.isSet() && null) {
-		this->add((const char*)NULL, fieldName);
+		this->add((const char*)NULL, fieldName, 0, 0, _ift_ip)
+		     ->ifv.v_ip = content;
 	} else {
 		if(VM_IPV6_B) {
 			if(sqlDb->isIPv6Column(table, fieldName)) {
-				this->add(string(MYSQL_VAR_PREFIX) + content._getStringForMysqlIpColumn(6), fieldName);
+				this->add(string(MYSQL_VAR_PREFIX) + content._getStringForMysqlIpColumn(6), fieldName, false, _ift_ip)
+				    ->ifv.v_ip = content;
 				return;
 			}
 		}
 		char str_content[100];
 		snprintf(str_content, sizeof(str_content), "%u", content.getIPv4());
-		this->add(str_content, fieldName);
+		this->add(str_content, fieldName, 0, 0, _ift_ip)
+			->ifv.v_ip = content;
 	}
 }
 
 void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
 	if(use_ms) {
-		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName);
+		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate);
 	} else {
-		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName);
+		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate);
 	}
 }
 
@@ -1965,6 +1970,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						  this->getLastError() == ER_PARSE_ERROR ||
 						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
 						  this->getLastError() == ER_SAME_NAME_PARTITION ||
+						  this->getLastError() == ER_SP_DOES_NOT_EXIST ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else {
@@ -3244,18 +3250,26 @@ void MySqlStore_process::__store(string beginProcedure, string endProcedure, str
 		this->sqlDb->query(dropProcQuery.c_str());
 		string preparedQueries = queries;
 		::prepareQuery(this->sqlDb->getSubtypeDb(), preparedQueries, false, passComplete ? 2 : 1);
-		if(!this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
-				       beginProcedure + 
-				       preparedQueries + 
-				       endProcedure,
-				       false,
-				       dropProcQuery.c_str())) {
-			if(sverb.store_process_query) {
-				cout << "store_process_query_" << this->id << ": " << "ERROR" << endl
-				     << this->sqlDb->getLastErrorString() << endl;
+		bool rsltQuery = false;
+		unsigned maxPassIfMissingQuery = 10;
+		unsigned counterPassIfMissingQuery = 0;
+		do {
+			if(counterPassIfMissingQuery) {
+				sleep(1);
 			}
-		}
-		bool rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
+			++counterPassIfMissingQuery;
+			if(this->sqlDb->query(string("create procedure ") + procedureName + "()" + 
+					      beginProcedure + 
+					      preparedQueries + 
+					      endProcedure,
+					      false,
+					      dropProcQuery.c_str())) {
+				rsltQuery = this->sqlDb->query(string("call ") + procedureName + "();", this->enableFixDeadlock);
+			} else {
+				rsltQuery = false;
+			}
+		} while(!rsltQuery && this->sqlDb->getLastError() == ER_SP_DOES_NOT_EXIST &&
+			counterPassIfMissingQuery < maxPassIfMissingQuery);
 		/* deadlock debugging
 		rsltQuery = false;
 		this->sqlDb->setLastError(ER_LOCK_DEADLOCK, "deadlock");
@@ -5023,9 +5037,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 `price_customer_mult100` int unsigned DEFAULT NULL,\
 				 `price_customer_currency_id` tinyint unsigned DEFAULT NULL,") + 
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`calldate`, `ID`)," :
 			"PRIMARY KEY (`ID`),") + 
-		"KEY `calldate` (`calldate`),\
+		"KEY `ID` (`ID`),\
 		KEY `callend` (`callend`),\
 		KEY `duration` (`duration`),\
 		KEY `source` (`caller`),\
@@ -5039,8 +5053,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
 		KEY `bye` (`bye`),\
 		KEY `a_saddr` (`a_saddr`),\
-		KEY `b_saddr` (`b_saddr`),\
-		KEY `a_lost` (`a_lost`),\
+		KEY `b_saddr` (`b_saddr`)," +
+		(opt_disable_cdr_indexes_rtp ? "" :
+		"KEY `a_lost` (`a_lost`),\
 		KEY `b_lost` (`b_lost`),\
 		KEY `a_maxjitter` (`a_maxjitter`),\
 		KEY `b_maxjitter` (`b_maxjitter`),\
@@ -5049,14 +5064,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `a_rtcp_maxjitter` (`a_rtcp_maxjitter`),\
 		KEY `b_rtcp_loss` (`b_rtcp_loss`),\
 		KEY `b_rtcp_maxfr` (`b_rtcp_maxfr`),\
-		KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),\
-		KEY `a_ua_id` (`a_ua_id`),\
-		KEY `b_ua_id` (`b_ua_id`),\
-		KEY `a_avgjitter_mult10` (`a_avgjitter_mult10`),\
+		KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),") +
+		"KEY `a_ua_id` (`a_ua_id`),\
+		KEY `b_ua_id` (`b_ua_id`)," + 
+		(opt_disable_cdr_indexes_rtp ? "" :
+		"KEY `a_avgjitter_mult10` (`a_avgjitter_mult10`),\
 		KEY `b_avgjitter_mult10` (`b_avgjitter_mult10`),\
 		KEY `a_rtcp_avgjitter_mult10` (`a_rtcp_avgjitter_mult10`),\
-		KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),\
-		KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
+		KEY `b_rtcp_avgjitter_mult10` (`b_rtcp_avgjitter_mult10`),") +
+		"KEY `lastSIPresponse_id` (`lastSIPresponse_id`),\
 		KEY `reason_sip_text_id` (`reason_sip_text_id`),\
 		KEY `reason_q850_text_id` (`reason_q850_text_id`),\
 		KEY `payload` (`payload`),\
@@ -8904,8 +8920,10 @@ void dbDataInit(SqlDb *sqlDb) {
 }
 
 void dbDataTerm() {
-	delete dbData;
-	dbData = NULL;
+	if(dbData) {
+		delete dbData;
+		dbData = NULL;
+	}
 }
 
 bool dbDataIsSet() {

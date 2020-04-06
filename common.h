@@ -112,6 +112,9 @@ struct sVerbose {
 	int screen_popup_syslog;
 	int cleanup_calls;
 	int usleep_stats;
+	int charts_cache_only;
+	int charts_cache_filters_eval;
+	char sipcallerip_filter[100];
 	int _debug1;
 	int _debug2;
 	int _debug3;

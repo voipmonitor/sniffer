@@ -75,6 +75,7 @@
 #include "tar.h"
 #include "filter_mysql.h"
 #include "sniff_inline.h"
+#include "sql_db.h"
 
 extern char mac[32];
 extern int verbosity;
@@ -6025,6 +6026,605 @@ void cStringCache::clear() {
 }
 
 
+void cEvalFormula::sValue::setFromField(void *_field) {
+	SqlDb_row::SqlDb_rowField *field = (SqlDb_row::SqlDb_rowField*)_field;
+	null();
+	switch(field->ifv.type) {
+	case SqlDb_row::_ift_int:
+		v_type = _v_int;
+		v_int = field->ifv.v._int;
+		break;
+	case SqlDb_row::_ift_int_u:
+		v_type = _v_int;
+		v_int = field->ifv.v._int_u;
+		break;
+	case SqlDb_row::_ift_double:
+		v_type = _v_float;
+		v_float = field->ifv.v._double;
+		break;
+	case SqlDb_row::_ift_ip:
+		v_type = _v_ip;
+		v_ip = field->ifv.v_ip;
+		break;
+	default:
+		v_type = _v_string;
+		v_string = field->content;
+		break;
+	}
+	if(field->null) {
+		v_null = true;
+	}
+}
+
+cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned level) {
+	unsigned length_max = strlen(formula);
+	sValue operand1;
+	while(pos < length_max) {
+		debug_output(level, string("*** ") + (formula + pos));
+		unsigned pos_operand1_end = 0;
+		string operand1_u_operator = "";
+		bool operand1_bb = false;
+		if(operand1.isEmpty()) {
+			operand1 = getOperand(formula, pos, &pos_operand1_end, &operand1_u_operator);
+			if(operand1.isEmpty()) {
+				operand1 = getBracketsBlock(formula, pos, &pos_operand1_end, &operand1_u_operator);
+				if(!operand1.isEmpty()) {
+					operand1_bb = true;
+				}
+			}
+		} else {
+			pos_operand1_end = pos;
+		}
+		debug_output(level, "operand_1: " + operand1.getString());
+		if(operand1_bb) {
+			if(specEvalBB(&operand1, level)) {
+				debug_output(level, "operand_1_rslt: " + operand1.getString());
+			} else if(needEvalBB(NULL, &operand1_u_operator, &operand1)) {
+				operand1 = e(operand1.getString().c_str(), 0, level + 1);
+				debug_output(level, "operand_1_rslt: " + operand1.getString());
+			}
+		}
+		if(operand1.isEmpty()) {
+			return(sValue());
+		} else if(!operand1_u_operator.empty()) {
+			operand1 = e_u_operator(operand1, operand1_u_operator);
+			debug_output(level, "operand_1_rslt: (" + operand1_u_operator + ") " + operand1.getString());
+		}
+		unsigned pos_operator1_end = 0;
+		unsigned operator1_level = 0;
+		string operator1 = getB_Operator(formula, pos_operand1_end, &pos_operator1_end, &operator1_level);
+		if(operator1.empty()) {
+			return(operand1);
+		} else {
+			debug_output(level, "operator_1: " + operator1 + " / " + intToString(operator1_level));
+		}
+		unsigned pos_operand2_end = 0;
+		string operand2_u_operator = "";
+		bool operand2_bb = false;
+		sValue operand2 = getOperand(formula, pos_operator1_end, &pos_operand2_end, &operand2_u_operator);
+		if(operand2.isEmpty()) {
+			operand2 = getBracketsBlock(formula, pos_operator1_end, &pos_operand2_end, &operand2_u_operator);
+			if(!operand2.isEmpty()) {
+				operand2_bb = true;
+			}
+		}
+		if(operand2.isEmpty()) {
+			return(operand1);
+		}
+		debug_output(level, "operand_2: " + operand2.getString());
+		unsigned pos_operator2_end = 0; 
+		unsigned operator2_level = 0;
+		string operator2 = getB_Operator(formula, pos_operand2_end, &pos_operator2_end, &operator2_level);
+		if(!(!operator2.empty() && operator2_level < operator1_level)) {
+			if(operand2_bb) {
+				if(specEvalBB(&operand2, level)) {
+					debug_output(level, "operand_2_rslt: " + operand2.getString());
+				} else if(needEvalBB(&operator1, &operand2_u_operator, &operand2)) {
+					operand2 = e(operand2.getString().c_str(), 0, level + 1);
+					debug_output(level, "operand_2_rslt: " + operand2.getString());
+				}
+			}
+			if(!operand2_u_operator.empty()) {
+			       operand2 = e_u_operator(operand2, operand2_u_operator);
+			       debug_output(level, "operand_2_rslt: (" + operand2_u_operator + ") " + operand2.getString());
+			}
+		}
+		if(!operator2.empty()) {
+			debug_output(level, "operator_2: " + operator2 + " / " + intToString(operator2_level));
+			if(operator2_level < operator1_level) {
+				operand2 = e(formula, pos_operator1_end, level + 1);
+				sValue rslt = e_b_operator(operand1, operand2, operator1);
+				debug_output(level, "RSLT: " + rslt.getString());
+				return(rslt);
+			} else {
+				operand1 = e_b_operator(operand1, operand2, operator1);
+				pos = pos_operand2_end;
+			}
+		} else {
+			sValue rslt = e_b_operator(operand1, operand2, operator1);
+			debug_output(level, "RSLT: " + rslt.getString());
+			return(rslt);
+		}
+	}
+	return(sValue());
+}
+
+cEvalFormula::sValue cEvalFormula::e_u_operator(sValue operand, string oper) {
+	if(oper == "not") {
+		return(!operand);
+	}
+	return(sValue());
+}
+
+cEvalFormula::sValue cEvalFormula::e_b_operator(sValue operand1, sValue operand2, string oper) {
+	if(oper == "<<") {
+		return(operand1 << operand2);
+	} else if(oper == ">>") {
+		return(operand1 >> operand2);
+	} else if(oper == "&") {
+		return(operand1 & operand2);
+	} else if(oper == "|") {
+		return(operand1 | operand2);
+	} else if(oper == "*") {
+		return(operand1 * operand2);
+	} else if(oper == "/") {
+		return(operand1 / operand2);
+	} else if(oper == "+") {
+		return(operand1 + operand2);
+	} else if(oper == "-") {
+		return(operand1 - operand2);
+	} else if(oper == "<") {
+		return(operand1 < operand2);
+	} else if(oper == "<=") {
+		return(operand1 <= operand2);
+	} else if(oper == ">") {
+		return(operand1 > operand2);
+	} else if(oper == ">=") {
+		return(operand1 >= operand2);
+	} else if(oper == "==") {
+		return(operand1 == operand2);
+	} else if(oper == "!=" || oper == "<>") {
+		return(operand1 != operand2);
+	} else if(oper == "like") {
+		return(operand1.like(operand2));
+	} else if(oper == "not like") {
+		sValue rslt_like = operand1.like(operand2);
+		return(!rslt_like);
+	} else if(oper == "&&" || oper == "and") {
+		return(operand1 && operand2);
+	} else if(oper == "||" || oper == "or") {
+		return(operand1 || operand2);
+	}
+	return(sValue());
+}
+
+cEvalFormula::sValue cEvalFormula::getOperand(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
+	unsigned _pos_end = 0;
+	*u_operator = getU_Operator(formula, pos, &_pos_end);
+	if(!u_operator->empty()) {
+		pos = _pos_end;
+	}
+	unsigned length = 0;
+	unsigned length_space = 0;
+	unsigned length_max = strlen(formula);
+	for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+		++length_space;
+	}
+	pos += length_space;
+	char typeOperand = 0;
+	if(isDigit(formula[pos])) {
+		typeOperand = 'n';
+	} else if(formula[pos] == '"' || formula[pos] == '\'') {
+		typeOperand = 's';
+	} else if(enableOperandReplace()) {
+		typeOperand = 'r';
+	} else {
+		return(sValue());
+	}
+	for(unsigned i = 0; (pos + i) < length_max; i++) {
+		bool end = false;
+		switch(typeOperand) {
+		case 'n':
+			if(isDigit(formula[pos + i])) {
+				++length;
+			} else {
+				end = true;;
+			}
+			break;
+		case 's':
+			++length;
+			if(i > 0 && formula[pos + i] == formula[pos]) {
+				end = true;
+			}
+			break;
+		case 'r':
+			if(isOperandChar(formula[pos + i], i)) {
+				++length;
+			} else {
+				end = true;
+			}
+			break;
+		}
+		if(end) {
+			break;
+		}
+	}
+	if(length) {
+		if(typeOperand == 'r') {
+			sValue v;
+			if(operandReplace(&v, string(formula + pos, length))) {
+				*pos_end = pos + length;
+				return(v);
+			}
+		} else {
+			*pos_end = pos + length;
+			return(typeOperand == 'n' ?
+				(string(formula + pos, length).find('.') != string::npos ? 
+				  sValue(atof(string(formula + pos, length).c_str())) :
+				  sValue((int64_t)atoll(string(formula + pos, length).c_str()))) :
+				sValue(string(formula + pos + 1, length - 2)));
+		}
+	}
+	return(sValue());
+}
+
+string cEvalFormula::getBracketsBlock(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator) {
+	unsigned _pos_end = 0;
+	*u_operator = getU_Operator(formula, pos, &_pos_end);
+	if(!u_operator->empty()) {
+		pos = _pos_end;
+	}
+	unsigned length = 0;
+	unsigned length_space = 0;
+	unsigned length_max = strlen(formula);
+	for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+		++length_space;
+	}
+	pos += length_space;
+	int brackets = 0;
+	for(unsigned i = 0; (pos + i) < length_max; i++) {
+		if(brackets == 0 && length == 0 && isLeftBracket(formula[pos + i])) {
+			brackets = 1;
+			++length;
+		} else if(isLeftBracket(formula[pos + i])) {
+			++brackets;
+			++length;
+		} else if(isRightBracket(formula[pos + i])) {
+			--brackets;
+			++length;
+			if(brackets == 0) {
+				break;
+			}
+		} else {
+			++length;
+		}
+	}
+	if(length && brackets == 0) {
+		*pos_end = pos + length;
+		return(string(formula + pos + 1, length - 2));
+	} else {
+		return("");
+	}
+}
+
+string cEvalFormula::getU_Operator(const char *formula, unsigned pos, unsigned *pos_end) {
+	unsigned length = 0;
+	unsigned length_space = 0;
+	unsigned length_max = strlen(formula);
+	for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+		++length_space;
+	}
+	pos += length_space;
+	if(!isEndOperator(*(formula + pos)) &&
+	   isOperator_u(formula + pos, &length)) {
+		*pos_end = pos + length;
+		return(strlwr(string(formula + pos, length)));
+	}
+	return("");
+}
+
+string cEvalFormula::getB_Operator(const char *formula, unsigned pos, unsigned *pos_end, unsigned *level) {
+	unsigned length = 0;
+	unsigned length_space = 0;
+	unsigned length_max = strlen(formula);
+	for(unsigned i = 0; (pos + i) < length_max && isSpace(formula[pos + i]); i++) {
+		++length_space;
+	}
+	pos += length_space;
+	if(!isEndOperator(*(formula + pos)) &&
+	   isOperator_b(formula + pos, &length, level)) {
+		*pos_end = pos + length;
+		return(strlwr(string(formula + pos, length)));
+	}
+	return("");
+}
+
+bool cEvalFormula::isOperator_u(const char *try_operator, unsigned *length) {
+	_isOperator(u_operators, try_operator, length, NULL);
+	return(*length > 0);
+}
+
+bool cEvalFormula::isOperator_b(const char *try_operator, unsigned *length, unsigned *level) {
+	_isOperator(b_operators, try_operator, length, level);
+	return(*length > 0);
+}
+
+void cEvalFormula::_isOperator(sLevelOperator *table, const char *try_operator, unsigned *length, unsigned *level) {
+	if(!table[0].length) {
+		for(unsigned i = 0; table[i].oper; i++) {
+			table[i].length = strlen(table[i].oper);
+		}
+	}
+	*length = 0;
+	for(unsigned i = 0; table[i].oper; i++) {
+		if(!strncasecmp(try_operator, table[i].oper, table[i].length) &&
+		   (!table[i].need_end || isEndOperator(*(try_operator + table[i].length))) &&
+		   (!*length || table[i].length > *length)) {
+			*length = table[i].length;
+			if(level) {
+				*level = table[i].level;
+			}
+		}
+	}
+}
+
+bool cEvalFormula::specEvalBB(sValue *bb, unsigned level) {
+	return(false);
+}
+
+bool cEvalFormula::needEvalBB(string *b_operator, string *u_operator, sValue *bb) {
+	return(true);
+}
+
+cEvalFormula::sLevelOperator cEvalFormula::b_operators[] = {
+	{  5, "<<" }, { 5, ">>" },
+	{ 10, "&" }, { 10, "|" },
+	{ 20, "*" }, { 20, "/" },
+	{ 30, "+" }, { 30, "-" },
+	{ 40, "<" }, { 40, "<=" }, { 40, ">" }, { 40, ">=" }, { 40, "==" }, { 40, "!=" }, { 40, "<>" }, { 40, "like", 1 }, { 40, "not like", 1 },
+	{ 50, "&&" },
+	{ 60, "||" },
+	{ 70, "and", 1 },
+	{ 80, "or", 1 },
+	{  0, NULL }
+};
+
+cEvalFormula::sLevelOperator cEvalFormula::u_operators[] = {
+	{ 0, "not", 1 },
+	{  0, NULL }
+};
+
+cEvalFormula::sValue cEvalSqlFormula::e_u_operator(sValue operand, string oper) {
+	if(oper == "inet_aton" || oper == "inet6_aton") {
+		vmIP ip;
+		ip.setFromString(operand.getString().c_str());
+		return(sValue(ip));
+	}
+	if(oper == "coalesce") {
+		if(operand.v_type == _v_list) {
+			if(operand.v_list.size() > 0) {
+				for(unsigned i = 0; i < operand.v_list.size(); i++) {
+					if(!operand.v_list[i].v_null) {
+						return(operand.v_list[i]);
+					}
+				}
+			} else {
+				sValue rslt;
+				rslt.v_null = true;
+				return(rslt);
+			}
+		} else {
+			return(operand);
+		}
+	}
+	if(oper == "greatest" || oper == "least") {
+		if(operand.v_type == _v_list) {
+			if(operand.v_list.size() > 0) {
+				sValue rslt = operand.v_list[0];
+				for(unsigned i = 1; i < operand.v_list.size(); i++) {
+					if((oper == "greatest" ? operand.v_list[i] > rslt : operand.v_list[i] < rslt).getBool()) {
+						rslt = operand.v_list[i];
+					}
+					return(rslt);
+				}
+			} else {
+				sValue rslt;
+				rslt.v_null = true;
+				return(rslt);
+			}
+		} else {
+			return(operand);
+		}
+	}
+	if(oper == "if") {
+		if(operand.v_type == _v_list && operand.v_list.size() == 3) {
+			return(operand.v_list[0].getBool() ? operand.v_list[1] : operand.v_list[2]);
+		} else {
+			sValue rslt;
+			rslt.v_null = true;
+			return(rslt);
+		}
+	}
+	return(cEvalFormula::e_u_operator(operand, oper));
+}
+
+cEvalFormula::sValue cEvalSqlFormula::e_b_operator(sValue operand1, sValue operand2, string oper) {
+	if(oper == "/") {
+		if(operand1.v_type == _v_int && operand2.v_type == _v_int) {
+			operand1.v_type = _v_float;
+			operand1.v_float = operand1.v_int;
+		}
+		return(operand1 / operand2);
+	}
+	if(oper == "=") {
+		return(operand1 == operand2);
+	}
+	if(oper == "is") {
+		return(sValue(operand1.v_null == operand2.v_null));
+	}
+	if(oper == "is not") {
+		return(sValue(operand1.v_null != operand2.v_null));
+	}
+	if(oper == "in" || oper == "not in") {
+		if(operand2.v_type == _v_list) {
+			for(unsigned i = 0; i < operand2.v_list.size(); i++) {
+				if((operand1 == operand2.v_list[i]).getBool()) {
+					if(oper[0] != 'n') {
+						return(sValue(true));
+					}
+				}
+			}
+		} else if((operand1 == operand2).getBool()) {
+			return(sValue(oper[0] != 'n'));
+		}
+		return(sValue(oper[0] == 'n'));
+	}
+	if(oper == ",") {
+		sValue rslt;
+		if(operand1.v_type == _v_list) {
+			rslt = operand1;
+		} else {
+			rslt.v_type = _v_list;
+			rslt.v_list.push_back(operand1);
+		}
+		rslt.v_list.push_back(operand2);
+		return(rslt);
+	}
+	return(cEvalFormula::e_b_operator(operand1, operand2, oper));
+}
+
+bool cEvalSqlFormula::isOperator_u(const char *try_operator, unsigned *length) {
+	_isOperator(u_operators_sql, try_operator, length, NULL);
+	if(*length > 0) {
+		return(true);
+	}
+	return(cEvalFormula::isOperator_u(try_operator, length));
+}
+
+bool cEvalSqlFormula::isOperator_b(const char *try_operator, unsigned *length, unsigned *level) {
+	_isOperator(b_operators_sql, try_operator, length, level);
+	if(*length > 0) {
+		return(true);
+	}
+	return(cEvalFormula::isOperator_b(try_operator, length, level));
+}
+
+bool cEvalSqlFormula::specEvalBB(sValue *bb, unsigned level) {
+	size_t posToTable;
+	size_t posToCond;
+	if(bb->v_type == _v_string && 
+	   bb->v_string.find("select ") == 0 &&
+	   (posToTable = bb->v_string.find(" from ")) != string::npos &&
+	   (posToCond = bb->v_string.find(" where ")) != string::npos) {
+		string column;
+		string table;
+		string cond;
+		column = strlwr(bb->v_string.substr(7, posToTable - 7));
+		int column_type = column == "cdr_id" ? 1 :
+				  column == "count(*)" ? 2 : 
+				  column.find("max(") != string::npos ? 3 :
+				  column.find("min(") != string::npos ? 4 :
+				  0;
+		string column_column;
+		if(column_type == 3 || column_type == 4) {
+			size_t pos_end = column.find(')');
+			if(pos_end != string::npos) {
+				column_column = column.substr(4, pos_end - 4);
+			}
+		}
+		posToTable += 6;
+		size_t posEndTable = posToTable;
+		while(!isSpace(bb->v_string[posEndTable])) {
+			++posEndTable;
+		}
+		table = bb->v_string.substr(posToTable, posEndTable - posToTable);
+		cond = bb->v_string.substr(posToCond + 7);
+		int childTableSize = data->sqlChildTableSize(&table, data2);
+		if(childTableSize > 0) {
+			unsigned count = 0;
+			sValue rslt;
+			for(int i = 0; i < childTableSize; i++) {
+				setChildIndex(&table, i);
+				sValue rslt_row = e(cond.c_str(), 0, level + 1);
+				if(rslt_row.getBool()) {
+					++count;
+					if(column_type == 1) {
+						break;
+					}
+					if(column_type == 3 || column_type == 4) {
+						sValue rslt_column = e(column_column.c_str(), 0, level + 2);
+						if(count == 1) {
+							rslt = rslt_column;
+						} else {
+							if((column_type == 3 ? rslt_column > rslt : rslt_column < rslt).getBool()) {
+								rslt = rslt_column;
+							}
+						}
+					}
+				}
+			}
+			clearChildIndex();
+			if(count > 0) {
+				switch(column_type) {
+				case 1:
+					*bb = sValue(1);
+					bb->v_id = true;
+					break;
+				case 2:
+					*bb = sValue(count);
+					break;
+				case 3:
+				case 4:
+					*bb = rslt;
+				}
+			} else {
+				*bb = sValue(false);
+			}
+		} else {
+			*bb = sValue(false);
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool cEvalSqlFormula::needEvalBB(string *b_operator, string *u_operator, sValue *bb) {
+	return(true);
+}
+
+bool cEvalSqlFormula::operandReplace(sValue *value, string operand) {
+	if(!strcasecmp(operand.c_str(), "null")) {
+		*value = sValue(0);
+		value->v_null = true;
+		return(true);
+	}
+	if(data &&
+	   data->sqlFormulaOperandReplace(value, operand, data2, 
+					  child_table ? child_table : NULL, child_index)) {
+		return(true);
+	}
+	*value = sValue(operand);
+	return(true);
+}
+
+cEvalFormula::sLevelOperator cEvalSqlFormula::b_operators_sql[] = {
+	{  20, "/" },
+	{  41, "is", 1 }, {  41, "is not", 1 },
+	{  42, "=" }, {  42, "in", 1 }, {  42, "not in", 1 },
+	{ 100, "," },
+	{   0, NULL }
+};
+
+cEvalFormula::sLevelOperator cEvalSqlFormula::u_operators_sql[] = {
+	{ 0, "inet_aton", 1 }, { 0, "inet6_aton", 1 },
+	{ 0, "coalesce", 1 },
+	{ 0, "greatest", 1 },
+	{ 0, "least", 1 },
+	{ 0, "if", 1 },
+	{ 0, NULL }
+};
+
+
 bool matchResponseCode(int code, int size, int testCode) {
 	if(testCode > 0) {
 		int lrn = testCode;
@@ -6079,23 +6679,6 @@ int log10int(long int v) {
 	}
 	return(l - 1);
 }
-
-
-cEvalFormula::sLevelOperator cEvalFormula::b_operators[] = {
-	{ 0, "*" }, { 0, "/" },
-	{ 1, "+" }, { 1, "-" },
-	{ 2, "<" }, { 2, "<=" }, { 2, ">" }, { 2, ">=" }, { 2, "==" }, { 2, "!=" }, { 2, "<>" }, { 2, "like" },
-	{ 3, "&&" },
-	{ 4, "||" },
-	{ 5, "and" },
-	{ 6, "or" },
-	{ 0, NULL }
-};
-
-const char *cEvalFormula::u_operators[] = {
-	"not",
-	NULL
-};
 
 
 unsigned RTPSENSOR_VERSION_INT() {

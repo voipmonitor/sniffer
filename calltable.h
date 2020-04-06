@@ -25,10 +25,12 @@
 #include <list>
 #include <set>
 #include <deque>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <time.h>
 #include <limits.h>
+#include <semaphore.h>
 
 #include <pcap.h>
 
@@ -146,6 +148,8 @@
 
 #define enable_save_dtmf_db		(flags & FLAG_SAVEDTMFDB)
 #define enable_save_dtmf_pcap(call)	(call->flags & FLAG_SAVEDTMFPCAP)
+
+#define MAXIMUM_CHC_THREADS 3
 
 struct s_dtmf {
 	enum e_type {
@@ -410,7 +414,7 @@ struct sCseq {
 class Call_abstract {
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
-	~Call_abstract() {
+	virtual ~Call_abstract() {
 		alloc_flag = 0;
 	}
 	int getTypeBase() { return(type_base); }
@@ -479,10 +483,13 @@ private:
 	volatile u_int16_t chunkBuffersCount;
 };
 
+struct sChartsCacheCallData {
+};
+
 /**
   * This class implements operations on call
 */
-class Call : public Call_abstract {
+class Call : public Call_abstract, public cEvalSqlData {
 public:
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
@@ -645,6 +652,7 @@ public:
 public:
 	bool is_ssl;			//!< call was decrypted
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
 	volatile int rtplock;
 	unsigned long call_id_len;	//!< length of call-id 	
@@ -775,9 +783,11 @@ public:
 	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	vmIP sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
 	vmIP sipcalledip_mod;
+	vmIP sipcalledip_rslt;
 	vmPort sipcallerport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport_mod;
+	vmPort sipcalledport_rslt;
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	vmIP lastsipcallerip;
 	bool sipcallerdip_reverse;
@@ -1041,6 +1051,8 @@ public:
 	 *
 	*/
 	int convertRawToWav();
+	
+	void selectRtpAB();
  
 	/**
 	 * @brief save call to database
@@ -1520,6 +1532,15 @@ public:
 	void txt_unlock() {
 		__sync_lock_release(&this->_txt_lock);
 	}
+	
+	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
+	bool sqlFormulaOperandReplace(cEvalFormula::sValue *value, string operand, void *callData, 
+				      string *child_table, unsigned child_index);
+	int sqlChildTableSize(string *child_table, void *callData);
+	
+	bool isEmptyCdrRow() {
+		return(cdr.isEmpty());
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1531,6 +1552,7 @@ private:
 	PcapDumper pcapRtp;
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
 	volatile int _hash_add_lock;
+	int payload_rslt;
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
@@ -1546,6 +1568,14 @@ public:
 	bool rtp_from_multiple_sensors;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
+private:
+	SqlDb_row cdr;
+	SqlDb_row cdr_next;
+	SqlDb_row cdr_next_ch[CDR_NEXT_MAX];
+	SqlDb_row cdr_country_code;
+	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL];
+	unsigned rtp_rows_count;
+	vector<d_item2<vmIPport, bool> > sdp_rows_list;
 friend class RTPsecure;
 };
 
@@ -1756,6 +1786,7 @@ public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
 	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
+	deque<Call*> calls_charts_cache_queue;
 	deque<Call*> registers_queue;
 	deque<Call*> registers_deletequeue;
 	deque<Ss7*> ss7_queue;
@@ -1798,6 +1829,7 @@ public:
 	*/
 	void lock_calls_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&qlock);*/ };
 	void lock_calls_audioqueue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_audioqueue, 1)) USLEEP(10); /*pthread_mutex_lock(&qaudiolock);*/ };
+	void lock_calls_charts_cache_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_charts_cache_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&qaudiolock);*/ };
 	void lock_calls_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_deletequeue, 1)) USLEEP(10); /*pthread_mutex_lock(&qdellock);*/ };
 	void lock_registers_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_queue, 1)) USLEEP(10); };
 	void lock_registers_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) USLEEP(10); };
@@ -1817,6 +1849,7 @@ public:
 	*/
 	void unlock_calls_queue() { __sync_lock_release(&this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ };
 	void unlock_calls_audioqueue() { __sync_lock_release(&this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ };
+	void unlock_calls_charts_cache_queue() { __sync_lock_release(&this->_sync_lock_calls_charts_cache_queue); /*pthread_mutex_unlock(&qcharts_chache_lock);*/ };
 	void unlock_calls_deletequeue() { __sync_lock_release(&this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ };
 	void unlock_registers_queue() { __sync_lock_release(&this->_sync_lock_registers_queue); };
 	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); };
@@ -2210,6 +2243,14 @@ public:
 	void setAudioQueueTerminating() {
 		audioQueueTerminating = 1;
 	}
+	
+	void processCallsInChartsCache_start();
+	void processCallsInChartsCache_stop();
+	void processCallsInChartsCache_thread(int threadIndex);
+	static void *_processCallsInChartsCache_thread(void *_threadIndex);
+	void processCallsInChartsCache_thread_add();
+	void processCallsInChartsCache_thread_remove();
+	string processCallsInChartsCache_cpuUsagePerc(double *avg);
 
 	void destroyCallsIfPcapsClosed();
 	void destroyRegistersIfPcapsClosed();
@@ -2235,6 +2276,7 @@ private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
 	pthread_mutex_t qaudiolock;	//!< mutex locking calls_audioqueue
+	pthread_mutex_t qcharts_chache_lock;
 	pthread_mutex_t qdellock;	//!< mutex locking calls_deletequeue
 	pthread_mutex_t flock;		//!< mutex locking calls_queue
 	pthread_mutex_t calls_listMAPlock;
@@ -2259,6 +2301,7 @@ private:
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;
 	volatile int _sync_lock_calls_audioqueue;
+	volatile int _sync_lock_calls_charts_cache_queue;
 	volatile int _sync_lock_calls_deletequeue;
 	volatile int _sync_lock_registers_queue;
 	volatile int _sync_lock_registers_deletequeue;
@@ -2285,6 +2328,18 @@ private:
 	list<sHashModifyData> hash_modify_queue;
 	u_int64_t hash_modify_queue_begin_ms;
 	volatile int _sync_lock_hash_modify_queue;
+	
+	pthread_t chc_threads[MAXIMUM_CHC_THREADS];
+	int chc_threads_tid[MAXIMUM_CHC_THREADS];
+	pstat_data chc_threads_pstat_data[MAXIMUM_CHC_THREADS][2];
+	sem_t chc_threads_sem[MAXIMUM_CHC_THREADS][2];
+	bool chc_threads_init[MAXIMUM_CHC_THREADS];
+	list<Call*> *chc_threads_calls[MAXIMUM_CHC_THREADS];
+	volatile int chc_threads_count;
+	volatile int chc_threads_count_mod;
+	volatile int chc_threads_count_mod_request;
+	volatile int chc_threads_count_sync;
+	unsigned chc_threads_count_last_change;
 	
 };
 

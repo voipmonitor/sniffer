@@ -110,30 +110,19 @@ int wav_update_header(FILE *f)
 }
 
 int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stereo) {
-	FILE *f_in1 = NULL;
-	FILE *f_in2 = NULL;
+	FILE *f_in[2] = { NULL, NULL };
 	FILE *f_out = NULL;
 
-	char *bitstream_buf1 = NULL;
-	char *bitstream_buf2 = NULL;
-	char *p1;
-	char *f1;
-	char *p2;
-	char *f2;
-	short int zero = 0;
-	long file_size1;
-	long file_size2 = 0;
-
 	/* combine two wavs */
-	f_in1 = fopen(in1, "r");
-	if(!f_in1) {
+	f_in[0] = fopen(in1, "r");
+	if(!f_in[0]) {
 		syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in1);
 		return 1;
 	}
 	if(in2 != NULL) {
-		f_in2 = fopen(in2, "r");
-		if(!f_in2) {
-			fclose(f_in1);
+		f_in[1] = fopen(in2, "r");
+		if(!f_in[1]) {
+			fclose(f_in[0]);
 			syslog(LOG_ERR,"File [%s] cannot be opened for read.\n", in2);
 			return 1;
 		}
@@ -156,10 +145,10 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 		}
 	}
 	if(!f_out) {
-		if(f_in1 != NULL)
-			fclose(f_in1);
-		if(f_in2 != NULL)
-			fclose(f_in2);
+		if(f_in[0] != NULL)
+			fclose(f_in[0]);
+		if(f_in[1] != NULL)
+			fclose(f_in[1]);
 		syslog(LOG_ERR,"File [%s] cannot be opened for write.\n", out);
 		return 1;
 	}
@@ -167,86 +156,57 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 	setvbuf(f_out, f_out_buffer, _IOFBF, 32768);
 
 	wav_write_header(f_out, samplerate, stereo);
-
-	fseek(f_in1, 0, SEEK_END);
-	file_size1 = ftell(f_in1);
-	fseek(f_in1, 0, SEEK_SET);
-
-	if(in2 != NULL) {
-		fseek(f_in2, 0, SEEK_END);
-		file_size2 = ftell(f_in2);
-		fseek(f_in2, 0, SEEK_SET);
-	}
-
-	bitstream_buf1 = new FILE_LINE(6001) char[file_size1];
-	if(!bitstream_buf1) {
-		if(f_in1 != NULL)
-			fclose(f_in1);
-		if(f_in2 != NULL)
-			fclose(f_in2);
-		if(f_out != NULL)
-			fclose(f_out);
-		syslog(LOG_ERR,"Cannot malloc bitsream_buf1[%ld]", file_size1);
-		return 1;
-	}
-
-	if(in2 != NULL) {
-		bitstream_buf2 = new FILE_LINE(6002) char[file_size2];
-		if(!bitstream_buf2) {
-			fclose(f_in1);
-			fclose(f_in2);
-			fclose(f_out);
-			delete [] bitstream_buf1;
-			syslog(LOG_ERR,"Cannot malloc bitsream_buf2[%ld]", file_size1);
-			return 1;
+	
+	unsigned buff_length = 1024 * 1024;
+	char *buff[2] = { NULL, NULL };
+	unsigned read_length[2] = { 0, 0 };
+	unsigned buff_pos[2] = { 0, 0 };
+	char *p[2] = { NULL, NULL };
+	for (unsigned i = 0; i < 2; i++) {
+		if (f_in[i]) {
+			buff[i] = new FILE_LINE(0) char[buff_length];
+			read_length[i] = fread(buff[i], 1, buff_length, f_in[i]);
+			if (read_length[i]) {
+				p[i] = buff[i]; 
+			}
 		}
 	}
-	fread(bitstream_buf1, file_size1, 1, f_in1);
-	p1 = bitstream_buf1;
-	f1 = bitstream_buf1 + file_size1;
-
-	if(in2 != NULL) {
-		fread(bitstream_buf2, file_size2, 1, f_in2);
-		p2 = bitstream_buf2;
-		f2 = bitstream_buf2 + file_size2;
-	} else {
-		p2 = f2 = 0;
-	}
-
-	while(p1 < f1 || p2 < f2 ) {
-		if(p1 < f1 && p2 < f2) {
+	
+	short int zero = 0;
+	while (p[0] || p[1]) {
+		if (p[0] && p[1]) {
 			if(stereo) {
 			/* stereo */
 				if(swap) {
-					fwrite(p2, 2, 1, f_out);
-					fwrite(p1, 2, 1, f_out);
+					fwrite(p[1], 2, 1, f_out);
+					fwrite(p[0], 2, 1, f_out);
 				} else {
-					fwrite(p1, 2, 1, f_out);
-					fwrite(p2, 2, 1, f_out);
+					fwrite(p[0], 2, 1, f_out);
+					fwrite(p[1], 2, 1, f_out);
 				}
 			} else {
 			/* mono */
-				slinear_saturated_add((short int*)p1, (short int*)p2);
-				fwrite(p1, 2, 1, f_out);
+				slinear_saturated_add((short int*)p[0], (short int*)p[1]);
+				fwrite(p[0], 2, 1, f_out);
 			}
-			p1 += 2;
-			p2 += 2;
-		} else if ( p1 < f1 ) {
+			buff_pos[0] += 2;
+			buff_pos[1] += 2;
+		} else if (p[0]) {
 			if(swap) {
 				if(stereo) {
 					fwrite(&zero, 2, 1, f_out);
 				}
-				fwrite(p1, 2, 1, f_out);
+				fwrite(p[0], 2, 1, f_out);
 			} else {
-				fwrite(p1, 2, 1, f_out);
+				fwrite(p[0], 2, 1, f_out);
 				if(stereo) {
 					fwrite(&zero, 2, 1, f_out);
 				}
 			}
-			p1 += 2;
-		} else if ( p2 < f2 ) {
+			buff_pos[0] += 2;
+		} else if (p[1]) {
 			if(swap) {
-				fwrite(p2, 2, 1, f_out);
+				fwrite(p[1], 2, 1, f_out);
 				if(stereo) {
 					fwrite(&zero, 2, 1, f_out);
 				}
@@ -254,20 +214,34 @@ int wav_mix(char *in1, char *in2, char *out, int samplerate, int swap, int stere
 				if(stereo) {
 					fwrite(&zero, 2, 1, f_out);
 				}
-				fwrite(p2, 2, 1, f_out);
+				fwrite(p[1], 2, 1, f_out);
 			}
-			p2 += 2;
+			buff_pos[1] += 2;
+		}
+		for (unsigned i = 0; i < 2; i++) {
+			if (read_length[i] > 0 && buff_pos[i] >= read_length[i]) {
+				read_length[i] = fread(buff[i], 1, buff_length, f_in[i]);
+				buff_pos[i] = 0;
+			}
+			if (read_length[i] > 0) {
+				p[i] = buff[i] + buff_pos[i];
+			} else {
+				p[i] = NULL;
+			}
 		}
 	}
 
 	wav_update_header(f_out);
-	if(bitstream_buf1)
-		delete [] bitstream_buf1;
-	if(bitstream_buf2)
-		delete [] bitstream_buf2;
 	fclose(f_out);
-	fclose(f_in1);
-	if(f_in2) fclose(f_in2);
+	
+	for(unsigned i = 0; i < 2; i++) {
+		if(f_in[i]) {
+			fclose(f_in[i]);
+		}
+		if(buff[i]) {
+			delete [] buff[i];
+		}
+	}
 
 	return 0;
 }
