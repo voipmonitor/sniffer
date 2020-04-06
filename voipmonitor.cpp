@@ -3232,9 +3232,11 @@ int main(int argc, char *argv[]) {
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
+#ifndef FREEBSD
 		if(opt_ifaces_optimize) {
 			handleInterfaceOptions();
 		}
+#endif
 	}
 	
 	check_context_config();
