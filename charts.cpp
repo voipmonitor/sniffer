@@ -181,7 +181,7 @@ string cChartDataItem::json(cChartSeries *series) {
 			stringstream ci_stream;
 			ci_stream << '{';
 			unsigned counter = 0;
-			for(map<volatile unsigned int, volatile unsigned int>::iterator iter = this->count_intervals.begin(); iter != this->count_intervals.end(); iter++) {
+			for(map<unsigned int, unsigned int>::iterator iter = this->count_intervals.begin(); iter != this->count_intervals.end(); iter++) {
 				if(counter) {
 					ci_stream << ',';
 				}
@@ -504,7 +504,7 @@ string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval
 			if(this->all_intervals.size()) {
 				string sum = "{";
 				unsigned counter = 0;
-				for(map<volatile unsigned int, volatile unsigned int>::iterator iter = this->all_intervals.begin(); iter != this->all_intervals.end(); iter++) {
+				for(map<unsigned int, unsigned int>::iterator iter = this->all_intervals.begin(); iter != this->all_intervals.end(); iter++) {
 					if(counter) {
 						sum += ',';
 					}

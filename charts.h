@@ -109,7 +109,7 @@ private:
 	volatile double sum;
 	vector<float> values;
 	volatile unsigned int count;
-	map<volatile unsigned int, volatile unsigned int> count_intervals;
+	map<unsigned int, unsigned int> count_intervals;
 	volatile unsigned int countAll;
 	volatile unsigned int countConected;
 	volatile unsigned int sumDuration;
@@ -140,7 +140,7 @@ public:
 	string json(class cChartSeries *series, class cChartInterval *interval);
 private:
 	volatile unsigned int all;
-	map<volatile unsigned int, volatile unsigned int> all_intervals;
+	map<unsigned int, unsigned int> all_intervals;
 	volatile unsigned int all_fi;
 	volatile unsigned int all_li;
 	volatile u_int32_t *pool;
