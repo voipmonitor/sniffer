@@ -3658,10 +3658,15 @@ public:
 		vmIP v_ip;
 		vector<sValue> v_list;
 	};
-	struct sLevelOperator {
+	struct sOperator {
+		enum eFlags {
+			_need_end = 1,
+			_short_eval_and = 2,
+			_short_eval_or = 4
+		};
 		unsigned level;
 		const char *oper;
-		bool need_end;
+		int flags;
 		unsigned length;
 	};
 public:
@@ -3669,17 +3674,17 @@ public:
 		this->debug = debug;
 	}
 	sValue e(const char *formula, unsigned pos = 0, unsigned level = 0);
-	virtual sValue e_u_operator(sValue operand, string oper);
-	virtual sValue e_b_operator(sValue operand1, sValue operand2, string oper);
-	sValue getOperand(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator);
-	string getBracketsBlock(const char *formula, unsigned pos, unsigned *pos_end, string *u_operator);
-	string getU_Operator(const char *formula, unsigned pos, unsigned *pos_end);
-	string getB_Operator(const char *formula, unsigned pos, unsigned *pos_end, unsigned *level);
-	virtual bool isOperator_u(const char *try_operator, unsigned *length_operator);
-	virtual bool isOperator_b(const char *try_operator, unsigned *length_operator, unsigned *level);
-	void _isOperator(sLevelOperator *table, const char *try_operator, unsigned *length, unsigned *level);
+	virtual sValue e_u_operator(sValue operand, sOperator *oper);
+	virtual sValue e_b_operator(sValue operand1, sValue operand2, sOperator *oper);
+	sValue getOperand(const char *formula, unsigned pos, unsigned *pos_end, sOperator **oper);
+	string getBracketsBlock(const char *formula, unsigned pos, unsigned *pos_end, sOperator **oper);
+	sOperator *getU_Operator(const char *formula, unsigned pos, unsigned *pos_end);
+	sOperator *getB_Operator(const char *formula, unsigned pos, unsigned *pos_end);
+	virtual bool isOperator_u(const char *try_operator, sOperator **oper);
+	virtual bool isOperator_b(const char *try_operator, sOperator **oper);
+	void _isOperator(sOperator *table, const char *try_operator, sOperator **oper);
 	virtual bool specEvalBB(sValue *bb, unsigned level);
-	virtual bool needEvalBB(string *b_operator, string *u_operator, sValue *bb);
+	virtual bool needEvalBB(sOperator *b_operator, sOperator *u_operator, sValue *bb);
 	bool isSpace(char ch) {
 		return(ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n');
 	}
@@ -3720,9 +3725,12 @@ public:
 			cout << debug_str << endl;
 		}
 	}
+	inline bool eqOperator(sOperator *oper, const char *cmp) {
+		return(oper->oper[0] == cmp[0] && !strcmp(oper->oper, cmp));
+	}
 private:
-	static sLevelOperator b_operators[];
-	static sLevelOperator u_operators[];
+	static sOperator b_operators[];
+	static sOperator u_operators[];
 	bool debug;
 };
 
@@ -3758,12 +3766,12 @@ public:
 		this->child_table = NULL;
 		this->child_index = 0;
 	}
-	virtual sValue e_u_operator(sValue operand, string oper);
-	virtual sValue e_b_operator(sValue operand1, sValue operand2, string oper);
-	virtual bool isOperator_u(const char *try_operator, unsigned *length_operator);
-	virtual bool isOperator_b(const char *try_operator, unsigned *length_operator, unsigned *level);
+	virtual sValue e_u_operator(sValue operand, sOperator *oper);
+	virtual sValue e_b_operator(sValue operand1, sValue operand2, sOperator *oper);
+	virtual bool isOperator_u(const char *try_operator, sOperator **oper);
+	virtual bool isOperator_b(const char *try_operator, sOperator **oper);
 	virtual bool specEvalBB(sValue *bb, unsigned level);
-	virtual bool needEvalBB(string *b_operator, string *u_operator, sValue *bb);
+	virtual bool needEvalBB(sOperator *b_operator, sOperator *u_operator, sValue *bb);
 	virtual bool enableOperandReplace() {
 		return(true);
 	}
@@ -3774,8 +3782,8 @@ public:
 	}
 	virtual bool operandReplace(sValue *value, string operand);
 private:
-	static sLevelOperator b_operators_sql[];
-	static sLevelOperator u_operators_sql[];
+	static sOperator b_operators_sql[];
+	static sOperator u_operators_sql[];
 	cEvalSqlData *data;
 	void *data2;
 	string *child_table;
