@@ -6906,3 +6906,31 @@ void handleInterfaceOptions(void) {
 		}
 	}
 }
+
+void checkSwapUsage(void) {
+	pid_t pid = getpid();
+	char buff[128];
+	snprintf(buff, sizeof(buff), "/proc/%i/smaps", pid);
+	FILE *smaps = fopen(buff, "r");
+	if(!smaps) {
+		syslog(LOG_ERR, "Can't open smaps file %s: %i", buff, errno);
+		return;
+	}
+	unsigned long swapSize = 0;
+	while(fgets(buff, sizeof(buff), smaps)) {
+		if(strstr(buff, "Swap:")) {
+			char *p = strchr(buff, ' ');
+			if (p) {
+				unsigned int i = atoi(p);
+				swapSize += i;
+			}
+		}
+	}
+	fclose(smaps);
+	if (swapSize > 0) {
+		extern bool reportedSwapState;
+		syslog(LOG_WARNING, "Sensor code is in the swap: %lu KBytes", swapSize);
+		cLogSensor::log(cLogSensor::notice, "The sensor's memory is in the swap. This can lead to performance degradation. Please consider to disable the swap.");
+		reportedSwapState = true;
+	}
+}

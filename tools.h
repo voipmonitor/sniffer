@@ -334,6 +334,7 @@ inline unsigned long long move_file(const char *src, const char *dst, bool auto_
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);
+void checkSwapUsage(void);
 
 /* obsolete
 void cloud_activecheck_success();
