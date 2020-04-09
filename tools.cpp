@@ -6929,8 +6929,9 @@ void checkSwapUsage(void) {
 	fclose(smaps);
 	if (swapSize > 0) {
 		extern bool reportedSwapState;
-		syslog(LOG_WARNING, "Sensor code is in the swap: %lu KBytes", swapSize);
-		cLogSensor::log(cLogSensor::notice, "The sensor's memory is in the swap. This can lead to performance degradation. Please consider to disable the swap.");
+		char note[256];
+		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%lu KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
+		cLogSensor::log(cLogSensor::notice, note);
 		reportedSwapState = true;
 	}
 }
