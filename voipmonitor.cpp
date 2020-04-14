@@ -535,6 +535,7 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_ifdrop_limit = 20;
+bool reportedSwapState = false;
 
 int opt_sdp_multiplication = 3;
 bool opt_both_side_for_check_direction = true;
@@ -4363,6 +4364,9 @@ int main_init_read() {
 				u_int64_t endTimeMS = getTimeMS_rdtsc();
 				if(endTimeMS > startTimeMS) {
 					timeProcessStatMS = endTimeMS - startTimeMS;
+				}
+				if (!reportedSwapState) {
+					checkSwapUsage();
 				}
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
