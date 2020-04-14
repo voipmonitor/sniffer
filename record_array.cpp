@@ -18,7 +18,7 @@ string RecordArrayField::getJson() {
 	case tf_port:
 		return(v_port.getString());
 	case tf_float:
-		return(floatToString(v.d));
+		return(!isnan(v.d) ? floatToString(v.d) : "null");
 	case tf_pointer:
 		return('"' + pointerToString(v.p) + '"');
 	case tf_time:
