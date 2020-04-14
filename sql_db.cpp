@@ -7170,69 +7170,69 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	}
 	if(this->checkNeedAlterAdd("cdr", "store last rtp from end", opt_last_rtp_from_end,
 				   log, &tableSize, &existsColumns.cdr_last_rtp_from_end,
-				   "a_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL,
-				   "b_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL,
-				   NULL) > 0) {
+				   "a_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   "b_last_rtp_from_end", existsColumns.cdr_calldate_ms ? "decimal(9,3) signed default null" : "SMALLINT SIGNED DEFAULT NULL", NULL_CHAR_PTR,
+				   NULL_CHAR_PTR) > 0) {
 		existsColumns.cdr_a_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("decimal") != string::npos;
 		existsColumns.cdr_b_last_rtp_from_end_time_ms = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("decimal") != string::npos;
 	}
 	this->checkNeedAlterAdd("cdr", "store sip ports", opt_cdr_sipport,
 				log, &tableSize, &existsColumns.cdr_sipport,
-				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL,
-				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL,
-				NULL);
+				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL_CHAR_PTR,
+				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	extern int opt_silencedetect;
 	this->checkNeedAlterAdd("cdr", "silencedetect", opt_silencedetect,
 				log, &tableSize, &existsColumns.cdr_silencedetect,
-				"caller_silence", "tinyint unsigned default NULL", NULL,
-				"called_silence", "tinyint unsigned default NULL", NULL,
-				"caller_silence_end", "smallint default NULL", NULL,
-				"called_silence_end", "smallint default NULL", NULL,
-				NULL);
+				"caller_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+				"called_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+				"caller_silence_end", "smallint default NULL", NULL_CHAR_PTR,
+				"called_silence_end", "smallint default NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	extern int opt_clippingdetect;
 	this->checkNeedAlterAdd("cdr", "clippingdetect", opt_clippingdetect,
 				log, &tableSize, &existsColumns.cdr_clippingdetect,
-				"caller_clipping_div3", "smallint unsigned default NULL", NULL,
-				"called_clipping_div3", "smallint unsigned default NULL", NULL,
-				NULL);
+				"caller_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
+				"called_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "rctp_fraclost_pktcount", true,
 				log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,
-				"a_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL,
-				"b_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL,
-				NULL);
+				"a_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
+				"b_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "rtp ptime", true,
 				log, &tableSize, &existsColumns.cdr_rtp_ptime,
-				"a_rtp_ptime", "tinyint unsigned default NULL", NULL,
-				"b_rtp_ptime", "tinyint unsigned default NULL", NULL,
-				NULL);
+				"a_rtp_ptime", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+				"b_rtp_ptime", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "dscp", opt_dscp,
 				log, &tableSize, &existsColumns.cdr_dscp,
-				"dscp", "int unsigned DEFAULT NULL", NULL,
-				NULL);
+				"dscp", "int unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "mos lqo", opt_mos_lqo,
 				log, &tableSize, &existsColumns.cdr_mos_lqo,
-				"a_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"a_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_lqo_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "flags", true,
 				log, &tableSize, &existsColumns.cdr_flags,
-				"flags", "bigint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "maximum retransmissions invite", true,
 				log, &tableSize, &existsColumns.cdr_max_retransmission_invite,
-				"max_retransmission_invite", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"max_retransmission_invite", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 
 	if(this->existsTable("billing")) {
 		if(!this->existsColumn("cdr", "price_operator_mult100") &&
 		   !this->existsColumn("cdr", "price_operator_mult1000000")) {
 			this->checkNeedAlterAdd("cdr", "billing feature", true,
 						log, &tableSize, NULL,
-						"price_operator_mult1000000", "BIGINT UNSIGNED", NULL,
-						"price_operator_currency_id", "TINYINT UNSIGNED", NULL,
-						"price_customer_mult1000000", "BIGINT UNSIGNED", NULL,
-						"price_customer_currency_id", "TINYINT UNSIGNED", NULL,
-						NULL);
+						"price_operator_mult1000000", "BIGINT UNSIGNED", NULL_CHAR_PTR,
+						"price_operator_currency_id", "TINYINT UNSIGNED", NULL_CHAR_PTR,
+						"price_customer_mult1000000", "BIGINT UNSIGNED", NULL_CHAR_PTR,
+						"price_customer_currency_id", "TINYINT UNSIGNED", NULL_CHAR_PTR,
+						NULL_CHAR_PTR);
 		} else if(this->existsExtPrecissionBilling() &&
 			  this->existsColumn("cdr", "price_operator_mult100") &&
 			  !this->existsColumn("cdr", "price_operator_mult1000000")) {
@@ -7266,48 +7266,48 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	
 	this->checkNeedAlterAdd("cdr", "SIP header 'reason'", true,
 				log, &tableSize, &existsColumns.cdr_reason,
-				"reason_sip_cause", "smallint unsigned DEFAULT NULL", NULL,
+				"reason_sip_cause", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"reason_sip_text_id", "mediumint unsigned DEFAULT NULL", "reason_sip_text_id (reason_sip_text_id)",
-				"reason_q850_cause", "smallint unsigned DEFAULT NULL", NULL,
+				"reason_q850_cause", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"reason_q850_text_id", "mediumint unsigned DEFAULT NULL", "reason_q850_text_id (reason_q850_text_id)",
-				NULL);
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "SIP response time", true,
 				log, &tableSize, &existsColumns.cdr_response_time_100,
-				"response_time_100", "smallint unsigned DEFAULT NULL", NULL,
-				"response_time_xxx", "smallint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"response_time_100", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"response_time_xxx", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	existsColumns.cdr_response_time_100 = this->existsColumn("cdr", "response_time_100");
 	existsColumns.cdr_response_time_xxx = this->existsColumn("cdr", "response_time_xxx");
 	//14.0
 	this->checkNeedAlterAdd("cdr", "MOS min", true,
 				log, &tableSize, &existsColumns.cdr_mos_min,
-				"a_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"a_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"a_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"a_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	//14.3
 	this->checkNeedAlterAdd("cdr", "MOS RTCP XR", true,
 				log, &tableSize, &existsColumns.cdr_mos_xr,
-				"a_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"a_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	//23.7
 	this->checkNeedAlterAdd("cdr", "Columns MOS Silence", true,
 				log, &tableSize, &existsColumns.cdr_mos_silence,
-				"a_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"a_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				"b_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"a_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr", "Vlan", true,
 				log, &tableSize, &existsColumns.cdr_vlan,
-				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)", NULL,
-				NULL);
+				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	
 	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
 	
@@ -7319,36 +7319,36 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr_next", "cdr spool index", true,
 				log, &tableSize, &existsColumns.cdr_next_spool_index,
-				"spool_index", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_next", "cdr hold", true,
 				log, &tableSize, &existsColumns.cdr_next_hold,
-				"hold", "varchar(1024) DEFAULT NULL", NULL,
-				NULL);
+				"hold", "varchar(1024) DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr_rtp", "rtp destination port", opt_cdr_rtpport,
 				log, &tableSize, &existsColumns.cdr_rtp_dport,
-				"dport", "smallint unsigned DEFAULT NULL AFTER `daddr`", NULL,
-				NULL);
+				"dport", "smallint unsigned DEFAULT NULL AFTER `daddr`", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "rtp source port", opt_cdr_rtpsrcport,
 				log, &tableSize, &existsColumns.cdr_rtp_sport,
-				"sport", "smallint unsigned DEFAULT NULL AFTER `saddr`", NULL,
-				NULL);
+				"sport", "smallint unsigned DEFAULT NULL AFTER `saddr`", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "rtp index of stream", true,
 				log, &tableSize, &existsColumns.cdr_rtp_index,
-				"index", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "flags", true,
 				log, &tableSize, &existsColumns.cdr_rtp_flags,
-				"flags", "bigint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "rtp duration", true,
 				log, &tableSize, &existsColumns.cdr_rtp_duration,
-				"duration", string(column_type_duration_ms("float") + " DEFAULT NULL").c_str(), NULL,
-				NULL);
+				"duration", string(column_type_duration_ms("float") + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
@@ -7356,8 +7356,8 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr_dtmf", "type", opt_dbdtmf,
 				log, &tableSize, &existsColumns.cdr_dtmf_type,
-				"type", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"type", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_cdr_child(bool log) {
@@ -7494,16 +7494,16 @@ void SqlDb_mysql::checkColumns_message(bool log) {
 	existsColumns.message_content_length = this->existsColumn("message", "content_length");
 	this->checkNeedAlterAdd("message", "SIP response time", true,
 				log, &tableSize, &existsColumns.message_response_time,
-				"response_time", "smallint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"response_time", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("message", "message spool index", true,
 				log, &tableSize, &existsColumns.message_spool_index,
-				"spool_index", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("message", "Vlan", true,
 				log, &tableSize, &existsColumns.message_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
-				NULL);
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_message_child(bool log) {
@@ -7594,24 +7594,24 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 	this->checkNeedAlterAdd("register_state", "register_state spool index", true,
 				log, &tableSize, &existsColumns.register_state_spool_index,
-				"spool_index", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_state", "register_state flags", true,
 				log, &tableSize, &existsColumns.register_state_flags,
-				"flags", "bigint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_state", "register_state vlan", true,
 				log, &tableSize, &existsColumns.register_state_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
-				NULL);
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,
-				"spool_index", "tinyint unsigned DEFAULT NULL", NULL,
-				NULL);
+				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed vlan", true,
 				log, &tableSize, &existsColumns.register_failed_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
-				NULL);
+				NULL_CHAR_PTR);
 	existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
 }
 
@@ -7649,7 +7649,7 @@ void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 	this->checkNeedAlterAdd("sip_msg", "sip_msg vlan", true,
 				log, &tableSize, &existsColumns.sip_msg_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
-				NULL);
+				NULL_CHAR_PTR);
 }
 
 void SqlDb_mysql::checkColumns_other(bool /*log*/) {

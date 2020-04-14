@@ -21,6 +21,8 @@
 
 #define MYSQL_ROW_FORMAT_COMPRESSED "ROW_FORMAT=COMPRESSED"
 
+#define NULL_CHAR_PTR (const char*)NULL
+
 
 using namespace std;
 
