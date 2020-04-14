@@ -30,7 +30,7 @@ bool cRecordFilterItem_Call::check(void *rec, bool */*findInBlackList*/) {
 			string value = iter != custom_headers.end() ? iter->second : "";
 			filter_data = filter_data.substr(0, pos[0]) + "'" + value + "'" + filter_data.substr(pos[1] + 2);
 		}
-		cEvalFormula f;
+		cEvalFormula f(cEvalFormula::_est_na);
 		return(f.e(filter_data.c_str()).getBool());
 	}
 	return(true);

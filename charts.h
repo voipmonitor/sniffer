@@ -199,9 +199,11 @@ friend class cCharts;
 class cChartFilter {
 public:
 	cChartFilter(const char *filter);
+	~cChartFilter();
 	bool check(Call *call, void *callData);
 private:
 	string filter;
+	cEvalFormula::sSplitOperands *filter_s;
 };
 
 class cChartNerLsrFilter {

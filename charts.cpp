@@ -778,18 +778,92 @@ void cChartInterval::clear() {
 
 cChartFilter::cChartFilter(const char *filter) {
 	this->filter = filter;
+	this->filter_s = NULL;
 }
 
-bool cChartFilter::check(Call *call, void *callData) {
-	if(sverb.charts_cache_filters_eval) {
-		cout << " * FILTER: " << filter << endl;
+cChartFilter::~cChartFilter() {
+	if(filter_s) {
+		delete filter_s;
 	}
-	cEvalSqlFormula f(sverb.charts_cache_filters_eval);
-	f.setData(call, callData);
-	bool rslt = f.e(filter.c_str()).getBool();
+}
+
+/*
+u_int64_t __cc;
+u_int64_t __ss;
+u_int64_t __cc2;
+u_int64_t __ss2;
+*/
+
+bool cChartFilter::check(Call *call, void *callData) {
+ 
+	/*
+	string f1 = "(1 + 2 * 3) * (1 + 2 * 3)";
+	//string f1 = "cdr.duration > 10";
+	cEvalFormula::sSplitOperands so;
+	cEvalSqlFormula f2(true);
+	f2.setData(call, callData);
+	cEvalFormula::sValue rslt1 = f2.e(f1.c_str(), 0, 0, 0, &so);
+	cout << rslt1.getString() << endl;
+	cEvalFormula::sValue rslt2 = f2.e(&so);
+	cout << rslt2.getString() << endl;
+	cout << "---" << endl;
+	*/
+	
+	//string filter = "((((cdr.sipcallerip = inet_aton('192.168.1.12')) OR (cdr.sipcalledip = inet_aton('192.168.1.12')))))";
+	//string filter = "(( ( ( (((cdr.sipcalledip = inet_aton('187.60.52.104')))) ) ) OR cdr.id in (select cdr_id from cdr_proxy where ( ( (((dst = inet_aton('187.60.52.104')))) ) ) ))) AND ( (wvch_sip_response.lastSIPresponse LIKE '%Call Throttled') ) AND cdr.id_sensor = 72";
+	//string filter = "(cdr.sipcalledip = inet_aton('187.60.52.104') OR cdr.id in (select cdr_id from cdr_proxy where dst = inet_aton('187.60.52.104'))) AND wvch_sip_response.lastSIPresponse LIKE '%Call Throttled' AND cdr.id_sensor = 72";
+	//string filter = "cdr.sipcalledip = inet_aton('187.60.52.104') AND wvch_sip_response.lastSIPresponse LIKE '%Call Throttled' AND cdr.id_sensor = 72";
+	//string filter = "cdr.sipcalledip = inet_aton('187.60.52.104') AND wvch_sip_response.lastSIPresponse LIKE '%Call Throttled'";
+	//string filter = "cdr.sipcalledip = inet_aton('187.60.52.104')";
+	//string filter = "wvch_sip_response.lastSIPresponse LIKE '%Call Throttled'";
+	
+	//cout << filter << endl;
+ 
+	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
+	f.setSqlData(cEvalFormula::_estd_call, call, callData);
+	
+	/*
+	u_int64_t s = getTimeUS();
+	for(unsigned i = 0; i < 10000; i++) {
+		f.e(filter.c_str()).getBool();
+	}
+	u_int64_t e = getTimeUS();
+	cout << "0: " << e - s <<  endl;
+	__ss += e - s;
+	++__cc;
+	cout << __cc << " / " << __ss <<  endl;
+	*/
+
+	//bool rslt = f.e(filter.c_str()).getBool();
+	
+	///*
+	bool rslt;
+	if(!filter_s) {
+		filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+		if(sverb.charts_cache_filters_eval) {
+			cout << " * FILTER: " << filter << endl;
+		}
+		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s).getBool();
+	} else {
+		rslt = f.e(filter_s).getBool();
+	}
 	if(sverb.charts_cache_filters_eval) {
 		cout << " * RSLT: " << rslt << endl;
 	}
+	//*/
+	
+	/*
+	s = getTimeUS();
+	for(unsigned i = 0; i < 10000; i++) {
+		f.e(filter_s).getBool();
+	}
+	e = getTimeUS();
+	cout << "1: " << e - s <<  endl;
+	__ss2 += e - s;
+	++__cc2;
+	cout << __cc2 << " / " << __ss2 <<  endl;
+	*/
+	
 	return(rslt);
 }
 
@@ -935,7 +1009,18 @@ void cCharts::load(SqlDb *sqlDb) {
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
+	
+	//unsigned counter = 0;
+	
 	while((row = rows.fetchRow())) {
+	 
+		/*
+		++counter;
+		if(counter <= 0) {
+			continue;
+		}
+		*/
+		
 		if(series.find(row["config_id"]) != series.end()) {
 			series_orphans.erase(row["config_id"]);
 		} else {
@@ -944,6 +1029,13 @@ void cCharts::load(SqlDb *sqlDb) {
 									       row["config"].c_str());
 			series[series_i->config_id] = series_i;
 		}
+		
+		/*
+		if(counter >= 1000) {
+			break;
+		}
+		*/
+		
 	}
 	for(map<string, cChartSeries*>::iterator iter = series_orphans.begin(); iter != series_orphans.end(); iter++) {
 		if(!iter->second->used_counter && !seriesIsUsed(iter->first.c_str())) {
@@ -1195,7 +1287,32 @@ bool chartsCacheIsSet() {
 
 void chartsCacheAddCall(Call *call, void *callData) {
 	if(chartsCache) {
-		chartsCache->add(call, callData);
+		//chartsCache->add(call, callData);
+	 
+		///*
+		u_int64_t s = getTimeUS();
+		for(unsigned i = 0; i < 1; i++) {
+	 
+			chartsCache->add(call, callData);
+			
+		}
+		u_int64_t e = getTimeUS();
+		cout << "*: " << e - s <<  endl;
+		
+		for(unsigned p = 0; p < 10; p++) {
+		
+		s = getTimeUS();
+		for(unsigned i = 0; i < 1; i++) {
+	 
+			chartsCache->add(call, callData);
+			
+		}
+		e = getTimeUS();
+		cout << "*: " << e - s <<  endl;
+		
+		}
+		//*/
+		
 	}
 }
 

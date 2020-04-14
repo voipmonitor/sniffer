@@ -489,7 +489,7 @@ struct sChartsCacheCallData {
 /**
   * This class implements operations on call
 */
-class Call : public Call_abstract, public cEvalSqlData {
+class Call : public Call_abstract {
 public:
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
@@ -1534,7 +1534,7 @@ public:
 	}
 	
 	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
-	bool sqlFormulaOperandReplace(cEvalFormula::sValue *value, string operand, void *callData, 
+	bool sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *callData, 
 				      string *child_table, unsigned child_index);
 	int sqlChildTableSize(string *child_table, void *callData);
 	

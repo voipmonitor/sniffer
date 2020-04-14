@@ -5419,7 +5419,7 @@ void test() {
 		 
 		}
 	 
-		cEvalFormula f(true);
+		cEvalFormula f(cEvalFormula::_est_na, true);
 		f.e("3*(2 * 3 + 4 * 5 + (2+8))");
 		f.e("'abcd' like '%bc%' and 'abcd' like 'abc%' and 'abcd' like '%bcd'");
 		break;

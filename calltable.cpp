@@ -4213,34 +4213,25 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	}
 }
 
-bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string operand, void *_callData, 
+bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *_callData, 
 				    string *child_table, unsigned child_index) {
-	operand = strlwr(operand);
-	string table;
-	string column;
-	size_t tableSeparatorPos = operand.find('.');
-	if(tableSeparatorPos != string::npos) {
-		table = operand.substr(0, tableSeparatorPos);
-		column = operand.substr(tableSeparatorPos + 1);
-	} else {
-		column = operand;
-	}
-	if(table[0] == '`' && table[table.length() - 1] == '`') {
-		table = table.substr(1, table.length() - 2);
-	}
-	if(column[0] == '`' && column[column.length() - 1] == '`') {
-		column = column.substr(1, column.length() - 2);
-	}
 	//sChartsCacheCallData *callData = (sChartsCacheCallData*)_callData;
+ 
+	/*
+	*value = cEvalFormula::sValue(1);
+	//value->null();
+	return(true);
+	*/
+ 
 	SqlDb_row::SqlDb_rowField *field = NULL;
 	if(child_table) {
-		if(column == "cdr_id" || column == "id") {
+		if(*column == "cdr_id" || *column == "id") {
 			*value = cEvalFormula::sValue(1);
 			value->v_id = true;
 			return(true);
 		}
 		if(!strncasecmp(child_table->c_str(), "cdr_next", 7)) {
-			table = strlwr(*child_table);
+			table = child_table;
 			child_table = NULL;
 		} else if(!strcasecmp(child_table->c_str(), "cdr_proxy")) {
 			list<vmIP>::iterator iter = proxies.begin();
@@ -4252,7 +4243,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string operand,
 			for(unsigned i = 0; i < child_index; i++) {
 				++iter;
 			}
-			if(column == "lastsipresponse") {
+			if(*column == "lastsipresponse") {
 				*value = cEvalFormula::sValue(iter->SIPresponse);
 				return(true);
 			}
@@ -4261,99 +4252,99 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string operand,
 			for(unsigned i = 0; i < child_index; i++) {
 				++iter;
 			}
-			if(column == "lastsipresponse") {
+			if(*column == "lastsipresponse") {
 				*value = cEvalFormula::sValue(iter->SIPresponse);
 				return(true);
 			}
-			if(column == "request") {
+			if(*column == "request") {
 				*value = cEvalFormula::sValue(iter->SIPrequest);
 				return(true);
 			}
 		} else if(!strcasecmp(child_table->c_str(), "cdr_rtp")) {
-			if(column == "saddr") {
+			if(*column == "saddr") {
 				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->saddr);
 				return(true);
 			}
-			if(column == "daddr") {
+			if(*column == "daddr") {
 				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->daddr);
 				return(true);
 			}
-			if(column == "sport") {
+			if(*column == "sport") {
 				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->sport.getPort());
 				return(true);
 			}
-			if(column == "dport") {
+			if(*column == "dport") {
 				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->dport.getPort());
 				return(true);
 			}
-			if(column == "received") {
+			if(*column == "received") {
 				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->s->received);
 				return(true);
 			}
 		} else if(!strcasecmp(child_table->c_str(), "cdr_sdp")) {
-			if(column == "ip") {
+			if(*column == "ip") {
 				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.ip);
 				return(true);
 			}
-			if(column == "port") {
+			if(*column == "port") {
 				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.port);
 				return(true);
 			}
-			if(column == "is_caller") {
+			if(*column == "is_caller") {
 				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item2);
 				return(true);
 			}
 		}
 	}
 	if(!child_table) {
-		if(column == "id" && (table.empty() || table == "cdr")) {
+		if(*column == "id" && (table->empty() || *table == "cdr")) {
 			*value = cEvalFormula::sValue(1);
 			value->v_id = true;
 			return(true);
 		}
-		if(column == "lastsipresponse") {
+		if(*column == "lastsipresponse") {
 			*value = cEvalFormula::sValue(lastSIPresponse);
 			return(true);
 		}
-		if(column == "reason") {
-			*value = cEvalFormula::sValue(table.find("sip") != string::npos ? reason_sip_text : reason_q850_text);
+		if(*column == "reason") {
+			*value = cEvalFormula::sValue(table->find("sip") != string::npos ? reason_sip_text : reason_q850_text);
 			return(true);
 		}
-		if(column == "ua") {
-			*value = cEvalFormula::sValue(table.find("a_ua") != string::npos ? a_ua : b_ua);
+		if(*column == "ua") {
+			*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? a_ua : b_ua);
 			return(true);
 		}
-		if(table == "cdr") {
+		if(*table == "cdr") {
 			if(this->cdr) {
-				field = this->cdr.getField(column);
+				field = this->cdr.getField(*column);
 			}
-		} else if(!strncmp(table.c_str(), "cdr_next", 7)) {
-			if(table[8] == '_') {
-				int ch_index = atof(table.c_str() + 9);
+		} else if(!strncmp(table->c_str(), "cdr_next", 7)) {
+			if((*table)[8] == '_') {
+				int ch_index = atof(table->c_str() + 9);
 				if(ch_index > 0 && ch_index <= CDR_NEXT_MAX && this->cdr_next_ch[ch_index - 1]) {
-					field = this->cdr_next_ch[ch_index - 1].getField(column);
+					field = this->cdr_next_ch[ch_index - 1].getField(*column);
 				}
 			} else {
-				field = this->cdr_next.getField(column);
+				field = this->cdr_next.getField(*column);
 			}
-		} else if(table == "cdr_country_code") {
-			field = this->cdr_country_code.getField(column);
+		} else if(*table == "cdr_country_code") {
+			field = this->cdr_country_code.getField(*column);
 		}
 		if(!field) {
-			field = this->cdr.getField(column);
+			field = this->cdr.getField(*column);
 			if(!field) {
-				field = this->cdr_next.getField(column);
+				field = this->cdr_next.getField(*column);
 			}
 			if(!field) {
 				for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-					field = this->cdr_next_ch[i].getField(column);
+					field = this->cdr_next_ch[i].getField(*column);
 					if(field) {
 						break;
 					}
 				}
 			}
 			if(!field) {
-				field = this->cdr_country_code.getField(column);
+				field = this->cdr_country_code.getField(*column);
 			}
 		}
 		if(field) {
