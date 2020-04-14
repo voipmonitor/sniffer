@@ -2295,7 +2295,7 @@ bool cWavMix::cWav::load(const char *wavFileName, unsigned samplerate_dst) {
 		wav_buffer = new FILE_LINE(0) u_char[wav_buffer_length + 100];
 		unsigned read_buffer_length = 16 * 1024;
 		u_char *read_buffer = new FILE_LINE(0) u_char[read_buffer_length];
-		u_int32_t read_pos;
+		u_int32_t read_pos = 0;
 		u_int32_t readLength;
 		while((readLength = fread(read_buffer, 1, read_buffer_length, file)) > 0) {
 			for(u_int32_t i = 0; i < readLength; i++) {
