@@ -535,8 +535,8 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_ifdrop_limit = 20;
-bool reportedSwapState = false;
-bool reportedMysqlSwapState = false;
+int swapDelayCount = 0;
+int swapMysqlDelayCount = 0;
 
 int opt_sdp_multiplication = 3;
 bool opt_both_side_for_check_direction = true;
@@ -4346,7 +4346,7 @@ int main_init_read() {
 		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt && rightPSversion && bashPresent) {
 			wdt = new FILE_LINE(0) WDT;
 		}
-		
+
 		while(!is_terminating()) {
 			long timeProcessStatMS = 0;
 			if(_counter) {
@@ -4367,10 +4367,10 @@ int main_init_read() {
 				if(endTimeMS > startTimeMS) {
 					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
-				if (!reportedSwapState) {
+				if (--swapDelayCount < 0) {
 					checkSwapUsage();
 				}
-				if (!reportedMysqlSwapState) {
+				if (--swapMysqlDelayCount < 0) {
 					checkMysqlSwapUsage();
 				}
 			}
