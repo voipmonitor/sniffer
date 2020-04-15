@@ -670,6 +670,7 @@ int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
 
 int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 	response_data_columns.clear();
+	response_data_columns_types.clear();
 	response_data.clear();
 	response_data_rows = 0;
 	response_data_index = 0;
