@@ -3248,7 +3248,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
-	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
+	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
 		runAt = time(NULL);
 		string localActTime = sqlDateTimeString(runAt);
