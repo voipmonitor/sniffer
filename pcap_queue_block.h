@@ -277,10 +277,19 @@ struct pcap_block_store {
 		}
 		return(this->offsets[this->offsets_size - 1] < this->size);
 	}
-	bool check_headers() {
+	bool check_headers(string **error) {
 		for(size_t i = 0; i < this->count; i++) {
 			pcap_pkthdr_plus *header = (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
-			if(header->header_fix_size.caplen > 65535 || header->header_ip_offset > 1000) {
+			if(header->header_fix_size.caplen > 65535) {
+				if(error) {
+					*error = new FILE_LINE(0) string("caplen = " + intToString(header->header_fix_size.caplen));
+				}
+				return(false);
+			}
+			if(header->header_ip_offset > 1000) {
+				if(error) {
+					*error = new FILE_LINE(0) string("header_ip_offset = " + intToString(header->header_ip_offset));
+				}
 				return(false);
 			}
 		}

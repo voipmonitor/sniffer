@@ -5606,10 +5606,15 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 	*error = "";
 	*warning = "";
 	if(rsltAddRestoreChunk > 0) {
+		string *check_headers_error = NULL;
 		if(!blockStore->check_offsets()) {
 			*error = "bad offsets";
-		} else if(!blockStore->size_compress && !blockStore->check_headers()) {
+		} else if(!blockStore->size_compress && !blockStore->check_headers(&check_headers_error)) {
 			*error = "bad headers";
+			if(check_headers_error) {
+				*error += " - " + *check_headers_error;
+				delete check_headers_error;
+			}
 		}
 	} else if(rsltAddRestoreChunk < 0) {
 		*error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
@@ -5887,10 +5892,15 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 							string error;
 							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer); 
 							if(rsltAddRestoreChunk > 0) {
+								string *check_headers_error = NULL;
 								if(!blockStore->check_offsets()) {
 									error = "bad offsets";
-								} else if(!blockStore->size_compress && !blockStore->check_headers()) {
+								} else if(!blockStore->size_compress && !blockStore->check_headers(&check_headers_error)) {
 									error = "bad headers";
+									if(check_headers_error) {
+										error += " - " + *check_headers_error;
+										delete check_headers_error;
+									}
 								} else {
 									if(require_confirmation < 0) {
 										require_confirmation = blockStore->require_confirmation;
@@ -6652,6 +6662,9 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		} else {
 			syslog(LOG_ERR, "send packetbuffer block error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
 			pcapQueueQ->externalError = "send packetbuffer block error: " + (response.empty() ? "response is empty" : ("bad response - " + response));
+			if(response.find("bad header") != string::npos) {
+				maxPass = pass + 10;
+			}
 		}
 	}
 	return(ok);
