@@ -115,6 +115,7 @@ extern char configfile[1024];
 extern int ownPidStart;
 extern int ownPidFork;
 extern vector<string> ifnamev;
+pid_t mysqlPid = 0;
 
 extern TarQueue *tarQueue[2];
 using namespace std;
@@ -7090,16 +7091,15 @@ void handleInterfaceOptions(void) {
 	}
 }
 
-void checkSwapUsage(void) {
-	pid_t pid = getpid();
+long getSwapUsage(int pid) {
 	char buff[128];
 	snprintf(buff, sizeof(buff), "/proc/%i/smaps", pid);
 	FILE *smaps = fopen(buff, "r");
 	if(!smaps) {
-		syslog(LOG_ERR, "Can't open smaps file %s: %i", buff, errno);
-		return;
+		syslog(LOG_ERR, "Can't open smaps file %s: errno %i", buff, errno);
+		return(-1);
 	}
-	unsigned long swapSize = 0;
+	long swapSize = 0;
 	while(fgets(buff, sizeof(buff), smaps)) {
 		if(strstr(buff, "Swap:")) {
 			char *p = strchr(buff, ' ');
@@ -7110,10 +7110,48 @@ void checkSwapUsage(void) {
 		}
 	}
 	fclose(smaps);
+	return(swapSize);
+}
+
+pid_t findMysqlProcess(void) {
+	char buff[16];
+	FILE *cmd_pipe = popen("pgrep 'mysqld$'", "r");
+	if(cmd_pipe) {
+		if (fgets(buff, sizeof(buff), cmd_pipe)) {
+			return(atoi(buff));
+		}
+	}
+	return(0);
+}
+
+void checkMysqlSwapUsage(void) {
+	extern bool reportedMysqlSwapState;
+	if(!mysqlPid) {
+		mysqlPid = findMysqlProcess();
+		if(!mysqlPid) {
+			reportedMysqlSwapState = true;
+			syslog(LOG_INFO, "Mysql's pid not found so mysql's swap usage will not be checked.");
+			return;
+		}
+	}
+	long swapSize = getSwapUsage(mysqlPid);
+	if(swapSize < 0) { /* mysql restart ?! zero pid  */
+		mysqlPid = 0;
+	} else if (swapSize > 0) {
+		char note[256];
+		snprintf(note, sizeof(note), "The mysql's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
+		cLogSensor::log(cLogSensor::notice, note);
+		reportedMysqlSwapState = true;
+	}
+}
+
+void checkSwapUsage(void) {
+	pid_t pid = getpid();
+	long swapSize = getSwapUsage(pid);
 	if (swapSize > 0) {
 		extern bool reportedSwapState;
 		char note[256];
-		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%lu KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
+		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
 		cLogSensor::log(cLogSensor::notice, note);
 		reportedSwapState = true;
 	}

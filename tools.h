@@ -335,6 +335,7 @@ bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);
 void checkSwapUsage(void);
+void checkMysqlSwapUsage(void);
 
 /* obsolete
 void cloud_activecheck_success();
