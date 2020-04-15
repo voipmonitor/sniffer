@@ -552,6 +552,7 @@ bool opt_disable_sdp_multiplication_warning = false;
 bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
+int opt_jitter_forcemark_transit_threshold = 2;
 bool opt_disable_rtp_warning = false;
 int opt_hash_modify_queue_length_ms = 0;
 bool opt_disable_process_sdp = false;
@@ -6877,6 +6878,7 @@ void cConfig::addConfigItems() {
 					->addValues("keep_rtp_packets:2"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_transit_threshold", &opt_jitter_forcemark_transit_threshold));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
@@ -10150,6 +10152,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpmap_combination", NULL))) {
 		opt_rtpmap_combination = yesno(value);
+	}
+	if((value = ini.GetValue("general", "jitter_forcemark_transit_threshold", NULL))) {
+		opt_jitter_forcemark_transit_threshold = atoi(value);
 	}
 	if((value = ini.GetValue("general", "disable_rtp_warning", NULL))) {
 		opt_disable_rtp_warning = yesno(value);
