@@ -1196,7 +1196,12 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 
 			forcemark = _forcemark_diff_seq;
 		} else {
-	
+			if(ROT_SEQ(last_seq + 2) == seq) {
+				int64_t transit = ((int64_t)(getTimeUS(header_ts) - getTimeUS(s->lastTimeRec)) - (int64_t)((getTimestamp() - s->lastTimeStamp)/(samplerate/1000.0)*1000));
+				if((transit >= 0 ? transit : -transit) < 1000ll) {
+					forcemark = _forcemark_diff_seq;
+				}
+			}
 			// this fixes jumps in .graph in case of pcaket loss 	
 			s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
 			struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
