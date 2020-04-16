@@ -73,6 +73,7 @@ extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern char *opt_rtp_stream_analysis_params;
 extern int opt_jitter_forcemark_transit_threshold;
+extern int opt_jitter_forcemark_delta_threshold;
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -1198,9 +1199,12 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			forcemark = _forcemark_diff_seq;
 		} else {
 			if(ROT_SEQ(last_seq + 2) == seq) {
-				int64_t transit = ((int64_t)(getTimeUS(header_ts) - getTimeUS(s->lastTimeRec)) - (int64_t)((getTimestamp() - s->lastTimeStamp)/(samplerate/1000.0)*1000));
-				if((transit >= 0 ? transit : -transit) < opt_jitter_forcemark_transit_threshold * 1000) {
-					forcemark = _forcemark_diff_seq;
+				int64_t delta = (int64_t)((getTimestamp() - s->lastTimeStamp)/(samplerate/1000.0)*1000);
+				if(delta > opt_jitter_forcemark_delta_threshold * 1000ll) {
+					int64_t transit = ((int64_t)(getTimeUS(header_ts) - getTimeUS(s->lastTimeRec)) - (int64_t)((getTimestamp() - s->lastTimeStamp)/(samplerate/1000.0)*1000));
+					if((transit >= 0 ? transit : -transit) < opt_jitter_forcemark_transit_threshold * 1000ll) {
+						forcemark = _forcemark_diff_seq;
+					}
 				}
 			}
 			// this fixes jumps in .graph in case of pcaket loss 	
