@@ -7096,6 +7096,9 @@ long getSwapUsage(int pid) {
 	snprintf(buff, sizeof(buff), "/proc/%i/smaps", pid);
 	FILE *smaps = fopen(buff, "r");
 	if(!smaps) {
+		if(errno == EACCES) {
+			return(-2);
+		}
 		syslog(LOG_ERR, "Can't open smaps file %s: errno %i", buff, errno);
 		return(-1);
 	}
@@ -7116,43 +7119,56 @@ long getSwapUsage(int pid) {
 pid_t findMysqlProcess(void) {
 	char buff[16];
 	FILE *cmd_pipe = popen("pgrep 'mysqld$'", "r");
+	int retval = 0;
 	if(cmd_pipe) {
 		if (fgets(buff, sizeof(buff), cmd_pipe)) {
-			return(atoi(buff));
+			retval = atoi(buff);
 		}
+		pclose(cmd_pipe);
 	}
-	return(0);
+	return(retval);
 }
 
+/* we have 10sec loop */
+#define SEVEN_DAYS 60480
+#define ONE_HOUR 360
 void checkMysqlSwapUsage(void) {
-	extern bool reportedMysqlSwapState;
+	extern int swapMysqlDelayCount;
 	if(!mysqlPid) {
 		mysqlPid = findMysqlProcess();
 		if(!mysqlPid) {
-			reportedMysqlSwapState = true;
-			syslog(LOG_INFO, "Mysql's pid not found so mysql's swap usage will not be checked.");
+			syslog(LOG_INFO, "Mysql's pid not found so mysql's swap usage will not be checked for next seven days.");
+			swapMysqlDelayCount = SEVEN_DAYS;
 			return;
 		}
 	}
 	long swapSize = getSwapUsage(mysqlPid);
-	if(swapSize < 0) { /* mysql restart ?! zero pid  */
+	if(swapSize == -1) { /* mysql restart ?! zero pid  */
 		mysqlPid = 0;
+	} else if(swapSize == -2) {
+		mysqlPid = 0;
+		syslog(LOG_INFO, "I don't have privileges to read mysql's smaps file so mysql's swap usage will not be checkedi for next seven days.");
+		swapMysqlDelayCount = SEVEN_DAYS;
 	} else if (swapSize > 0) {
 		char note[256];
 		snprintf(note, sizeof(note), "The mysql's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
 		cLogSensor::log(cLogSensor::notice, note);
-		reportedMysqlSwapState = true;
+		swapMysqlDelayCount = SEVEN_DAYS;
+	} else {
+		swapMysqlDelayCount = ONE_HOUR;
 	}
 }
 
 void checkSwapUsage(void) {
+	extern int swapDelayCount;
 	pid_t pid = getpid();
 	long swapSize = getSwapUsage(pid);
 	if (swapSize > 0) {
-		extern bool reportedSwapState;
 		char note[256];
 		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
 		cLogSensor::log(cLogSensor::notice, note);
-		reportedSwapState = true;
+		swapDelayCount = SEVEN_DAYS;
+	} else {
+		swapDelayCount = ONE_HOUR;
 	}
 }
