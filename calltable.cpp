@@ -215,6 +215,7 @@ extern cSqlDbData *dbData;
 extern char *opt_rtp_stream_analysis_params;
 
 extern bool opt_charts_cache;
+extern bool opt_charts_cache_ip_boost;
 extern int terminating_charts_cache;
 extern volatile int terminating;
 
@@ -4214,7 +4215,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 }
 
 bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *_callData, 
-				    string *child_table, unsigned child_index) {
+				    string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord) {
 	//sChartsCacheCallData *callData = (sChartsCacheCallData*)_callData;
  
 	/*
@@ -4223,76 +4224,119 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 	return(true);
 	*/
  
+	int table_enum = 0;
+	int child_table_enum = 0;
 	SqlDb_row::SqlDb_rowField *field = NULL;
 	if(child_table) {
 		if(*column == "cdr_id" || *column == "id") {
 			*value = cEvalFormula::sValue(1);
 			value->v_id = true;
+			if(ord) {
+				ord->u.s.column = 1;
+			}
 			return(true);
 		}
-		if(!strncasecmp(child_table->c_str(), "cdr_next", 7)) {
+		child_table_enum = getTableEnumIndex(child_table);
+		if(child_table_enum >= _t_cdr_next && child_table_enum < _t_cdr_next_end) {
 			table = child_table;
 			child_table = NULL;
-		} else if(!strcasecmp(child_table->c_str(), "cdr_proxy")) {
-			list<vmIP>::iterator iter = proxies.begin();
-			for(unsigned i = 0; i < child_index; i++) {
-				++iter;
+			table_enum = child_table_enum;
+		} else {
+			int column_index = 0;
+			switch(child_table_enum) {
+			case _t_cdr_proxy:
+				{
+				list<vmIP>::iterator iter = proxies.begin();
+				for(unsigned i = 0; i < child_index; i++) {
+					++iter;
+				}
+				if(*column == "dst") {
+					*value = cEvalFormula::sValue(*iter);
+					column_index = 1;
+					return(true);
+				}
+				}
+				break;
+			case _t_cdr_sipresp:
+				{
+				list<sSipResponse>::iterator iter = SIPresponse.begin();
+				for(unsigned i = 0; i < child_index; i++) {
+					++iter;
+				}
+				if(*column == "lastsipresponse") {
+					*value = cEvalFormula::sValue(iter->SIPresponse);
+					column_index = 1;
+					return(true);
+				}
+				}
+				break;
+			case _t_cdr_siphistory:
+				{
+				list<sSipHistory>::iterator iter = SIPhistory.begin();
+				for(unsigned i = 0; i < child_index; i++) {
+					++iter;
+				}
+				if(*column == "lastsipresponse") {
+					*value = cEvalFormula::sValue(iter->SIPresponse);
+					column_index = 1;
+					return(true);
+				}
+				if(*column == "request") {
+					*value = cEvalFormula::sValue(iter->SIPrequest);
+					column_index = 2;
+					return(true);
+				}
+				}
+				break;
+			case _t_cdr_rtp:
+				if(*column == "saddr") {
+					*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->saddr);
+					column_index = 1;
+					return(true);
+				}
+				if(*column == "daddr") {
+					*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->daddr);
+					column_index = 2;
+					return(true);
+				}
+				if(*column == "sport") {
+					*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->sport.getPort());
+					column_index = 3;
+					return(true);
+				}
+				if(*column == "dport") {
+					*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->dport.getPort());
+					column_index = 4;
+					return(true);
+				}
+				if(*column == "received") {
+					*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->s->received);
+					column_index = 5;
+					return(true);
+				}
+				break;
+			case _t_cdr_sdp:
+				if(*column == "ip") {
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.ip);
+					column_index = 1;
+					return(true);
+				}
+				if(*column == "port") {
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.port);
+					column_index = 2;
+					return(true);
+				}
+				if(*column == "is_caller") {
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item2);
+					column_index = 3;
+					return(true);
+				}
+				break;
 			}
-		} else if(!strcasecmp(child_table->c_str(), "cdr_sipresp")) {
-			list<sSipResponse>::iterator iter = SIPresponse.begin();
-			for(unsigned i = 0; i < child_index; i++) {
-				++iter;
-			}
-			if(*column == "lastsipresponse") {
-				*value = cEvalFormula::sValue(iter->SIPresponse);
-				return(true);
-			}
-		} else if(!strcasecmp(child_table->c_str(), "cdr_siphistory")) {
-			list<sSipHistory>::iterator iter = SIPhistory.begin();
-			for(unsigned i = 0; i < child_index; i++) {
-				++iter;
-			}
-			if(*column == "lastsipresponse") {
-				*value = cEvalFormula::sValue(iter->SIPresponse);
-				return(true);
-			}
-			if(*column == "request") {
-				*value = cEvalFormula::sValue(iter->SIPrequest);
-				return(true);
-			}
-		} else if(!strcasecmp(child_table->c_str(), "cdr_rtp")) {
-			if(*column == "saddr") {
-				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->saddr);
-				return(true);
-			}
-			if(*column == "daddr") {
-				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->daddr);
-				return(true);
-			}
-			if(*column == "sport") {
-				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->sport.getPort());
-				return(true);
-			}
-			if(*column == "dport") {
-				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->dport.getPort());
-				return(true);
-			}
-			if(*column == "received") {
-				*value = cEvalFormula::sValue(rtp[rtp_rows_indexes[child_index]]->s->received);
-				return(true);
-			}
-		} else if(!strcasecmp(child_table->c_str(), "cdr_sdp")) {
-			if(*column == "ip") {
-				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.ip);
-				return(true);
-			}
-			if(*column == "port") {
-				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.port);
-				return(true);
-			}
-			if(*column == "is_caller") {
-				*value = cEvalFormula::sValue(sdp_rows_list[child_index].item2);
-				return(true);
+			if(column_index && ord) {
+				ord->u.s.child_table = child_table_enum;
+				ord->u.s.child_index = child_index;
+				ord->u.s.column = column_index;
 			}
 		}
 	}
@@ -4300,55 +4344,79 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 		if(*column == "id" && (table->empty() || *table == "cdr")) {
 			*value = cEvalFormula::sValue(1);
 			value->v_id = true;
+			if(ord) {
+				ord->u.s.column = 1;
+			}
 			return(true);
 		}
 		if(*column == "lastsipresponse") {
 			*value = cEvalFormula::sValue(lastSIPresponse);
+			if(ord) {
+				ord->u.s.column = 2;
+			}
 			return(true);
 		}
 		if(*column == "reason") {
 			*value = cEvalFormula::sValue(table->find("sip") != string::npos ? reason_sip_text : reason_q850_text);
+			if(ord) {
+				ord->u.s.column = table->find("sip") != string::npos ? 3 : 4;
+			}
 			return(true);
 		}
 		if(*column == "ua") {
 			*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? a_ua : b_ua);
+			if(ord) {
+				ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
+			}
 			return(true);
 		}
-		if(*table == "cdr") {
-			if(this->cdr) {
-				field = this->cdr.getField(*column);
+		if(!table_enum) {
+			table_enum = getTableEnumIndex(table);
+		}
+		int indexField;
+		if(table_enum == _t_cdr) {
+			field = this->cdr.getField(*column, &indexField);
+		} else if(table_enum == _t_cdr_next) {
+			field = this->cdr_next.getField(*column, &indexField);
+		} else if(table_enum > _t_cdr_next && table_enum < _t_cdr_next_end) {
+			int ch_index = table_enum - _t_cdr_next;
+			if(ch_index > 0 && ch_index <= CDR_NEXT_MAX) {
+				field = this->cdr_next_ch[ch_index - 1].getField(*column, &indexField);
 			}
-		} else if(!strncmp(table->c_str(), "cdr_next", 7)) {
-			if((*table)[8] == '_') {
-				int ch_index = atof(table->c_str() + 9);
-				if(ch_index > 0 && ch_index <= CDR_NEXT_MAX && this->cdr_next_ch[ch_index - 1]) {
-					field = this->cdr_next_ch[ch_index - 1].getField(*column);
-				}
-			} else {
-				field = this->cdr_next.getField(*column);
-			}
-		} else if(*table == "cdr_country_code") {
-			field = this->cdr_country_code.getField(*column);
+		} else if(table_enum == _t_cdr_country_code) {
+			field = this->cdr_country_code.getField(*column, &indexField);
 		}
 		if(!field) {
-			field = this->cdr.getField(*column);
-			if(!field) {
-				field = this->cdr_next.getField(*column);
-			}
-			if(!field) {
-				for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-					field = this->cdr_next_ch[i].getField(*column);
-					if(field) {
-						break;
+			field = this->cdr.getField(*column, &indexField);
+			if(field) {
+				table_enum = _t_cdr;
+			} else {
+				field = this->cdr_next.getField(*column, &indexField);
+				if(field) {
+					table_enum = _t_cdr_next;
+				} else {
+					for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+						field = this->cdr_next_ch[i].getField(*column, &indexField);
+						if(field) {
+							table_enum = _t_cdr_next + i + 1;
+							break;
+						}
 					}
 				}
 			}
 			if(!field) {
-				field = this->cdr_country_code.getField(*column);
+				field = this->cdr_country_code.getField(*column, &indexField);
+				if(field) {
+					table_enum = _t_cdr_country_code;
+				}
 			}
 		}
 		if(field) {
 			value->setFromField(field);
+			if(ord) {
+				ord->u.s.table = table_enum;
+				ord->u.s.column = indexField + 1;
+			}
 			return(true);
 		} else {
 			value->null();
@@ -4357,22 +4425,47 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 	return(false);
 }
 
-int Call::sqlChildTableSize(string *child_table, void *_callData) {
+int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 	//sChartsCacheCallData *callData = (sChartsCacheCallData*)_callData;
-	if(!strncasecmp(child_table->c_str(), "cdr_next", 7)) {
+	int enumTable = getTableEnumIndex(child_table);
+	if(enumTable < _t_cdr_next_end) {
 		return(1);
-	} else if(!strcasecmp(child_table->c_str(), "cdr_proxy")) {
-		return(proxies.size());
-	} else if(!strcasecmp(child_table->c_str(), "cdr_sipresp")) {
-		return(SIPresponse.size());
-	} else if(!strcasecmp(child_table->c_str(), "cdr_siphistory")) {
-		return(SIPhistory.size());
-	} else if(!strcasecmp(child_table->c_str(), "cdr_rtp")) {
-		return(rtp_rows_count);
-	} else if(!strcasecmp(child_table->c_str(), "cdr_sdp")) {
-		return(sdp_rows_list.size());
+	} else {
+		switch(enumTable) {
+		case _t_cdr_proxy:
+			return(proxies.size());
+		case _t_cdr_sipresp:
+			return(SIPresponse.size());
+		case _t_cdr_siphistory:
+			return(SIPhistory.size());
+		case _t_cdr_rtp:
+			return(rtp_rows_count);
+		case _t_cdr_sdp:
+			return(sdp_rows_list.size());
+		}
 	}
 	return(-1);
+}
+
+int Call::getTableEnumIndex(string *table) {
+	if(!strcasecmp(table->c_str(), "cdr")) {
+		return(_t_cdr);
+	} else if(!strncasecmp(table->c_str(), "cdr_next", 7)) {
+		if((*table)[8] == '_') {
+			int ch_index = atof(table->c_str() + 9);
+			if(ch_index > 0 && ch_index <= CDR_NEXT_MAX) {
+				return(_t_cdr_next + ch_index);
+			}
+		} else {
+			return(_t_cdr_next);
+		}
+	}
+	return(!strcasecmp(table->c_str(), "cdr_country_code") ? _t_cdr_country_code :
+	       !strcasecmp(table->c_str(), "cdr_proxy") ? _t_cdr_proxy :
+	       !strcasecmp(table->c_str(), "cdr_sipresp") ? _t_cdr_sipresp :
+	       !strcasecmp(table->c_str(), "cdr_siphistory") ? _t_cdr_siphistory :
+	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
+	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp : 0);
 }
 
 int Call::detectCallerdByLabelInXml(const char *label) {
@@ -7780,6 +7873,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 		memset(chc_threads_pstat_data[i], 0, sizeof(chc_threads_pstat_data[i][2]));
 		chc_threads_init[i] = false;
 		chc_threads_calls[i] = NULL;
+		chc_cache[i] = NULL;
 	}
 	chc_threads_count = 0;
 	chc_threads_count_mod = 0;
@@ -7803,6 +7897,12 @@ Calltable::~Calltable() {
 	
 	if(asyncSystemCommand) {
 		delete asyncSystemCommand;
+	}
+	
+	for(int i = 0; i < MAXIMUM_CHC_THREADS; i++) {
+		if(chc_cache[i]) {
+			delete chc_cache[i]; 
+		}
 	}
 	
 };
@@ -8925,6 +9025,9 @@ void Calltable::processCallsInChartsCache_stop() {
 
 void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	chc_threads_tid[threadIndex] = get_unix_tid();
+	if(!chc_cache[threadIndex] && opt_charts_cache_ip_boost) {
+		chc_cache[threadIndex] = new FILE_LINE(0) cFiltersCache(2000, 10000);
+	}
 	if(threadIndex == 0) {
 		chc_threads_calls[0] = new FILE_LINE(0) list<Call*>;
 		while(1) {
@@ -8979,7 +9082,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					Call *call = *iter_call;
 					if(!call->isEmptyCdrRow()) {
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(call, &chartsCacheCallData);
+						chartsCacheAddCall(call, &chartsCacheCallData, chc_cache[threadIndex]);
 					}
 					calls_for_delete.push_back(call);
 				}
@@ -9003,7 +9106,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			}
 			__sync_lock_release(&chc_threads_count_sync);
 			chartsCacheStore();
-			chartsCacheCleanupIntervals();
+			chartsCacheCleanup();
 			chartsCacheReload();
 			USLEEP(100000);
 			if(terminating_charts_cache && (!chc_count || terminating > 1)) {
@@ -9026,7 +9129,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				Call *call = *iter_call;
 				if(!call->isEmptyCdrRow()) {
 					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAddCall(call, &chartsCacheCallData);
+					chartsCacheAddCall(call, &chartsCacheCallData, chc_cache[threadIndex]);
 				}
 				calls_for_delete.push_back(call);
 			}

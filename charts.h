@@ -3,6 +3,8 @@
 
 #include <string>
 #include <vector>
+#include <queue>
+#include <map>
 
 #include "sql_db.h"
 #include "calltable.h"
@@ -179,7 +181,7 @@ public:
 	void setInterval(u_int32_t timeFrom, u_int32_t timeTo);
 	void add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to,
-		 map<cChartSeries*, bool> *filters);
+		 map<class cChartFilter*, bool> *filters_map);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
 	void init();
 	void clear();
@@ -198,12 +200,21 @@ friend class cCharts;
 
 class cChartFilter {
 public:
-	cChartFilter(const char *filter);
+	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
 	~cChartFilter();
-	bool check(Call *call, void *callData);
+	bool check(Call *call, void *callData, class cFiltersCache *filtersCache);
 private:
 	string filter;
+	string filter_only_sip_ip;
+	string filter_without_sip_ip;
 	cEvalFormula::sSplitOperands *filter_s;
+	cEvalFormula::sSplitOperands *filter_only_sip_ip_s;
+	cEvalFormula::sSplitOperands *filter_without_sip_ip_s;
+	bool ip_filter_contain_sipcallerip;
+	bool ip_filter_contain_sipcalledip;
+	volatile int used_counter;
+friend class cChartSeries;
+friend class cCharts;
 };
 
 class cChartNerLsrFilter {
@@ -246,7 +257,7 @@ private:
 
 class cChartSeries {
 public:
-	cChartSeries(unsigned int id, const char *config_id, const char *config);
+	cChartSeries(unsigned int id, const char *config_id, const char *config, cCharts *charts);
 	~cChartSeries();
 	void clear();
 	bool isIntervals() { 
@@ -255,7 +266,7 @@ public:
 	bool isArea() { 
 		return(def.subType == _chartSubType_area); 
 	}
-	bool checkFilters(Call *call, void *callData);
+	bool checkFilters(map<class cChartFilter*, bool> *filters_map);
 private:
 	unsigned int id;
 	string config_id;
@@ -282,16 +293,20 @@ public:
 	void load(SqlDb *sqlDb);
 	void reload();
 	void clear();
-	void add(Call *call, void *callData);
-	void checkFilters(Call *call, void *callData, map<cChartSeries*, bool> *filters);
+	cChartFilter* getFilter(const char *filter, bool enableAdd, 
+				const char *filter_only_sip_ip, const char *filter_without_sip_ip);
+	cChartFilter* addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
+	void add(Call *call, void *callData, class cFiltersCache *filtersCache);
+	void checkFilters(Call *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache);
 	void store(bool forceAll = false);
-	void cleanup_intervals();
+	void cleanup();
 	bool seriesIsUsed(const char *config_id);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
 private:
 	map<string, cChartSeries*> series;
 	map<u_int32_t, cChartInterval*> intervals;
+	map<string, cChartFilter*> filters;
 	u_int32_t first_interval;
 	u_int32_t last_interval;
 	unsigned maxValuesPartsForPercentile;
@@ -310,12 +325,40 @@ friend class cChartInterval;
 friend class Call;
 };
 
+class cFilterCacheItem {
+public:
+	inline cFilterCacheItem(unsigned limit);
+	inline int get(vmIP *ip);
+	inline void add(vmIP *ip, bool set);
+	inline int get(vmIP *ip1, vmIP *ip2);
+	inline void add(vmIP *ip1, vmIP *ip2, bool set);
+private:
+	unsigned limit;
+	queue<vmIP> ip_queue;
+	map<vmIP, bool> ip_map;
+	queue<d_item<vmIP> > ip2_queue;
+	map<d_item<vmIP>, bool> ip2_map;
+};
+
+class cFiltersCache {
+public:
+	cFiltersCache(unsigned limit, unsigned limit2);
+	~cFiltersCache();
+	int get(cChartFilter *filter, vmIP *ip);
+	void add(cChartFilter *filter, vmIP *ip, bool set);
+	int get(cChartFilter *filter, vmIP *ip1, vmIP *ip2);
+	void add(cChartFilter *filter, vmIP *ip1, vmIP *ip2, bool set);
+private:
+	unsigned limit, limit2;
+	map<cChartFilter*, cFilterCacheItem*> cache_map;
+};
+
 void chartsCacheInit(SqlDb *sqlDb);
 void chartsCacheTerm();
 bool chartsCacheIsSet();
-void chartsCacheAddCall(Call *call, void *callData);
+void chartsCacheAddCall(Call *call, void *callData, cFiltersCache *filtersCache);
 void chartsCacheStore(bool forceAll = false);
-void chartsCacheCleanupIntervals();
+void chartsCacheCleanup();
 void chartsCacheReload();
 
 

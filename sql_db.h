@@ -229,9 +229,12 @@ public:
 		}
 		return(0);
 	}
-	SqlDb_rowField *getField(string fieldName) {
+	SqlDb_rowField *getField(string fieldName, int *_indexField = NULL) {
 		int indexField = this->getIndexField(fieldName);
 		if(indexField >= 0) {
+			if(_indexField) {
+				*_indexField = indexField;
+			}
 			return(&row[indexField]);
 		}
 		return(NULL);

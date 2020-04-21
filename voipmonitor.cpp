@@ -328,6 +328,7 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 bool opt_charts_cache = false;
+bool opt_charts_cache_ip_boost = false;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
@@ -7113,6 +7114,7 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
@@ -10174,6 +10176,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);
+	}
+	if((value = ini.GetValue("general", "charts_cache_ip_boost", NULL))) {
+		opt_charts_cache_ip_boost = yesno(value);
 	}
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
 		strcpy_null_term(opt_convert_char, value);

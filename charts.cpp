@@ -738,9 +738,9 @@ void cChartInterval::setInterval(u_int32_t timeFrom, u_int32_t timeTo) {
 
 void cChartInterval::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 u_int32_t calldate_from, u_int32_t calldate_to,
-			 map<cChartSeries*, bool> *filters) {
+			 map<cChartFilter*, bool> *filters_map) {
 	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
-		if((*filters)[iter->second->series]) {
+		if(iter->second->series->checkFilters(filters_map)) {
 			iter->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval, 
 					  calldate_from, calldate_to);
 		}
@@ -776,25 +776,138 @@ void cChartInterval::clear() {
 }
 
 
-cChartFilter::cChartFilter(const char *filter) {
+cChartFilter::cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip) {
 	this->filter = filter;
+	this->filter_only_sip_ip = filter_only_sip_ip;
+	this->filter_without_sip_ip = filter_without_sip_ip;
 	this->filter_s = NULL;
+	this->filter_only_sip_ip_s = NULL;
+	this->filter_without_sip_ip_s = NULL;
+	ip_filter_contain_sipcallerip = strcasestr(filter_only_sip_ip, "sipcallerip") != NULL;
+	ip_filter_contain_sipcalledip = strcasestr(filter_only_sip_ip, "sipcalledip") != NULL;
+	used_counter = 0;
 }
 
 cChartFilter::~cChartFilter() {
 	if(filter_s) {
 		delete filter_s;
 	}
+	if(filter_only_sip_ip_s) {
+		delete filter_only_sip_ip_s;
+	}
+	if(filter_without_sip_ip_s) {
+		delete filter_without_sip_ip_s;
+	}
 }
 
-/*
+
+#define TEST_CHECK_FILTER 0
+#define TEST_FILTER 1
+
+#if TEST_CHECK_FILTER == 1
 u_int64_t __cc;
 u_int64_t __ss;
 u_int64_t __cc2;
 u_int64_t __ss2;
-*/
+#endif
 
-bool cChartFilter::check(Call *call, void *callData) {
+bool cChartFilter::check(Call *call, void *callData, cFiltersCache *filtersCache) {
+ 
+#if TEST_CHECK_FILTER == 1
+ 
+#if TEST_FILTER == 1
+ 
+	string filter = 
+"(1=1) AND ((( ( ( ((cdr.called LIKE '114200%' OR cdr.called LIKE '114260%' OR cdr.called LIKE '14200%' OR cdr.called LIKE '14209%' OR cdr.called LIKE '14260%' OR cdr.called LIKE '14269%' OR cdr.called LIKE '14310%' OR cdr.called LIKE '14319%' OR cdr.called LIKE '131200%' OR cdr.called LIKE '131260%' OR cdr.called LIKE '31200%' OR cdr.called LIKE '31209%' OR cdr.called LIKE '31260%' OR cdr.called LIKE '31269%' OR cdr.called LIKE '31310%' OR cdr.called LIKE '31319%')) ) ) "
+"AND"
+" ( (((cdr.sipcalledip = inet_aton('200.170.204.162')) OR (cdr.sipcalledip = inet_aton('200.170.204.164')) OR (cdr.sipcalledip = inet_aton('200.170.204.166')))) ) AND ( ( (((cdr.sipcallerip = inet_aton('10.1.0.203')) OR (cdr.sipcallerip = inet_aton('10.1.0.185')) OR (cdr.sipcallerip = inet_aton('10.1.0.170')) OR (cdr.sipcallerip = inet_aton('10.1.0.205')) OR (cdr.sipcallerip = inet_aton('10.1.0.204')) OR (cdr.sipcallerip = inet_aton('10.1.0.206')) OR (cdr.sipcallerip = inet_aton('10.1.0.162')) OR (cdr.sipcallerip = inet_aton('10.1.0.202')) OR (cdr.sipcallerip = inet_aton('10.1.0.163')) OR (cdr.sipcallerip = inet_aton('10.1.0.207')) OR (cdr.sipcallerip = inet_aton('10.1.0.208')) OR (cdr.sipcallerip = inet_aton('10.1.0.45')) OR (cdr.sipcallerip = inet_aton('10.1.0.51')) OR (cdr.sipcallerip = inet_aton('10.1.0.164')) OR (cdr.sipcallerip = inet_aton('10.1.0.165')) OR (cdr.sipcallerip = inet_aton('10.1.0.210')) OR (cdr.sipcallerip = inet_aton('10.1.0.201')) OR (cdr.sipcallerip = inet_aton('10.1.0.209')) OR (cdr.sipcallerip = inet_aton('10.0.0.201')) OR (cdr.sipcallerip = inet_aton('10.0.0.74')) OR (cdr.sipcallerip = inet_aton('10.0.0.134')) OR (cdr.sipcallerip = inet_aton('10.0.0.197')) OR (cdr.sipcallerip = inet_aton('10.0.0.77')) OR (cdr.sipcallerip = inet_aton('10.0.0.32')) OR (cdr.sipcallerip = inet_aton('10.0.0.31')) OR (cdr.sipcallerip = inet_aton('10.0.0.82')) OR (cdr.sipcallerip = inet_aton('10.0.0.120')) OR (cdr.sipcallerip = inet_aton('10.0.0.84')) OR (cdr.sipcallerip = inet_aton('10.0.0.40')) OR (cdr.sipcallerip = inet_aton('10.0.0.41')) OR (cdr.sipcallerip = inet_aton('10.0.0.39')) OR (cdr.sipcallerip = inet_aton('10.0.0.36')) OR (cdr.sipcallerip = inet_aton('10.2.0.31')) OR (cdr.sipcallerip = inet_aton('10.1.0.64')) OR (cdr.sipcallerip = inet_aton('10.1.0.65')) OR (cdr.sipcallerip = inet_aton('10.1.0.66')) OR (cdr.sipcallerip = inet_aton('10.1.0.67')) OR (cdr.sipcallerip = inet_aton('10.1.0.63')) OR (cdr.sipcallerip = inet_aton('10.1.0.68')) OR (cdr.sipcallerip = inet_aton('10.1.0.139')) OR (cdr.sipcallerip = inet_aton('10.1.0.140')) OR (cdr.sipcallerip = inet_aton('10.1.0.141')) OR (cdr.sipcallerip = inet_aton('10.1.0.62')) OR (cdr.sipcallerip = inet_aton('10.1.0.142')))) ) ) )) OR (( ( ( ((cdr.called LIKE '64200%' OR cdr.called LIKE '64209%' OR cdr.called LIKE '64260%' OR cdr.called LIKE '64269%')) ) ) AND ( (((cdr.sipcallerip = inet_aton('200.170.204.162')) OR (cdr.sipcallerip = inet_aton('200.170.204.164')) OR (cdr.sipcallerip = inet_aton('200.170.204.166')))) ) AND ( ( (((cdr.sipcalledip = inet_aton('10.1.0.203')) OR (cdr.sipcalledip = inet_aton('10.1.0.185')) OR (cdr.sipcalledip = inet_aton('10.1.0.170')) OR (cdr.sipcalledip = inet_aton('10.1.0.205')) OR (cdr.sipcalledip = inet_aton('10.1.0.204')) OR (cdr.sipcalledip = inet_aton('10.1.0.206')) OR (cdr.sipcalledip = inet_aton('10.1.0.162')) OR (cdr.sipcalledip = inet_aton('10.1.0.202')) OR (cdr.sipcalledip = inet_aton('10.1.0.163')) OR (cdr.sipcalledip = inet_aton('10.1.0.207')) OR (cdr.sipcalledip = inet_aton('10.1.0.208')) OR (cdr.sipcalledip = inet_aton('10.1.0.45')) OR (cdr.sipcalledip = inet_aton('10.1.0.51')) OR (cdr.sipcalledip = inet_aton('10.1.0.164')) OR (cdr.sipcalledip = inet_aton('10.1.0.165')) OR (cdr.sipcalledip = inet_aton('10.1.0.210')) OR (cdr.sipcalledip = inet_aton('10.1.0.201')) OR (cdr.sipcalledip = inet_aton('10.1.0.209')) OR (cdr.sipcalledip = inet_aton('10.0.0.201')) OR (cdr.sipcalledip = inet_aton('10.0.0.74')) OR (cdr.sipcalledip = inet_aton('10.0.0.134')) OR (cdr.sipcalledip = inet_aton('10.0.0.197')) OR (cdr.sipcalledip = inet_aton('10.0.0.77')) OR (cdr.sipcalledip = inet_aton('10.0.0.32')) OR (cdr.sipcalledip = inet_aton('10.0.0.31')) OR (cdr.sipcalledip = inet_aton('10.0.0.82')) OR (cdr.sipcalledip = inet_aton('10.0.0.120')) OR (cdr.sipcalledip = inet_aton('10.0.0.84')) OR (cdr.sipcalledip = inet_aton('10.0.0.40')) OR (cdr.sipcalledip = inet_aton('10.0.0.41')) OR (cdr.sipcalledip = inet_aton('10.0.0.39')) OR (cdr.sipcalledip = inet_aton('10.0.0.36')) OR (cdr.sipcalledip = inet_aton('10.2.0.31')) OR (cdr.sipcalledip = inet_aton('10.1.0.64')) OR (cdr.sipcalledip = inet_aton('10.1.0.65')) OR (cdr.sipcalledip = inet_aton('10.1.0.66')) OR (cdr.sipcalledip = inet_aton('10.1.0.67')) OR (cdr.sipcalledip = inet_aton('10.1.0.63')) OR (cdr.sipcalledip = inet_aton('10.1.0.68')) OR (cdr.sipcalledip = inet_aton('10.1.0.139')) OR (cdr.sipcalledip = inet_aton('10.1.0.140')) OR (cdr.sipcalledip = inet_aton('10.1.0.141')) OR (cdr.sipcalledip = inet_aton('10.1.0.62')) OR (cdr.sipcalledip = inet_aton('10.1.0.142')))) ) ) )))";
+
+	/*filter =
+"( ( (((cdr.sipcallerip = inet_aton('10.1.0.203')) OR (cdr.sipcallerip = inet_aton('10.1.0.185')) OR (cdr.sipcallerip = inet_aton('10.1.0.170')) OR (cdr.sipcallerip = inet_aton('10.1.0.205')) OR (cdr.sipcallerip = inet_aton('10.1.0.204')) OR (cdr.sipcallerip = inet_aton('10.1.0.206')) OR (cdr.sipcallerip = inet_aton('10.1.0.162')) OR (cdr.sipcallerip = inet_aton('10.1.0.202')) OR (cdr.sipcallerip = inet_aton('10.1.0.163')) OR (cdr.sipcallerip = inet_aton('10.1.0.207')) OR (cdr.sipcallerip = inet_aton('10.1.0.208')) OR (cdr.sipcallerip = inet_aton('10.1.0.45')) OR (cdr.sipcallerip = inet_aton('10.1.0.51')) OR (cdr.sipcallerip = inet_aton('10.1.0.164')) OR (cdr.sipcallerip = inet_aton('10.1.0.165')) OR (cdr.sipcallerip = inet_aton('10.1.0.210')) OR (cdr.sipcallerip = inet_aton('10.1.0.201')) OR (cdr.sipcallerip = inet_aton('10.1.0.209')) OR (cdr.sipcallerip = inet_aton('10.0.0.201')) OR (cdr.sipcallerip = inet_aton('10.0.0.74')) OR (cdr.sipcallerip = inet_aton('10.0.0.134')) OR (cdr.sipcallerip = inet_aton('10.0.0.197')) OR (cdr.sipcallerip = inet_aton('10.0.0.77')) OR (cdr.sipcallerip = inet_aton('10.0.0.32')) OR (cdr.sipcallerip = inet_aton('10.0.0.31')) OR (cdr.sipcallerip = inet_aton('10.0.0.82')) OR (cdr.sipcallerip = inet_aton('10.0.0.120')) OR (cdr.sipcallerip = inet_aton('10.0.0.84')) OR (cdr.sipcallerip = inet_aton('10.0.0.40')) OR (cdr.sipcallerip = inet_aton('10.0.0.41')) OR (cdr.sipcallerip = inet_aton('10.0.0.39')) OR (cdr.sipcallerip = inet_aton('10.0.0.36')) OR (cdr.sipcallerip = inet_aton('10.2.0.31')) OR (cdr.sipcallerip = inet_aton('10.1.0.64')) OR (cdr.sipcallerip = inet_aton('10.1.0.65')) OR (cdr.sipcallerip = inet_aton('10.1.0.66')) OR (cdr.sipcallerip = inet_aton('10.1.0.67')) OR (cdr.sipcallerip = inet_aton('10.1.0.63')) OR (cdr.sipcallerip = inet_aton('10.1.0.68')) OR (cdr.sipcallerip = inet_aton('10.1.0.139')) OR (cdr.sipcallerip = inet_aton('10.1.0.140')) OR (cdr.sipcallerip = inet_aton('10.1.0.141')) OR (cdr.sipcallerip = inet_aton('10.1.0.62')) OR (cdr.sipcallerip = inet_aton('10.1.0.142')))) ) )";*/
+
+	/*filter =
+"(cdr.sipcallerip = inet_aton('10.1.0.203')) OR (cdr.sipcallerip = inet_aton('10.1.0.185'))";
+
+	filter =
+"(cdr.sipcallerip = inet_aton('10.1.0.203'))";*/
+
+	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
+	f.setSqlData(cEvalFormula::_estd_call, call, callData);
+
+	u_int64_t s,e;
+	/*s = getTimeUS();
+	for(unsigned i = 0; i < 10000; i++) {
+		f.e(filter.c_str()).getBool();
+	}
+	e = getTimeUS();
+	cout << "0: " << floatToString((e - s) / 10000., 3) <<  endl;*/
+	
+	bool rslt;
+	if(!filter_s) {
+		filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s).getBool();
+		unsigned c = 0;
+		while(f.e_opt(filter_s)) {
+			++c;
+		}
+		cout << "opt " << c << endl;
+	} else {
+		rslt = f.e(filter_s).getBool();
+	}
+	
+	s = getTimeUS();
+	unsigned l = 1000000;
+	for(unsigned i = 0; i < l; i++) {
+		f.e(filter_s).getBool();
+	}
+	e = getTimeUS();
+	cout << "1: " << floatToString((e - s) / (double)l, 3) <<  endl;
+	
+	f.e(filter_s).getBool();
+	
+	return(rslt);
+ 
+#else
+ 
+	cout << " filter : " << filter << endl;
+ 
+	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
+	f.setSqlData(cEvalFormula::_estd_call, call, callData);
+
+	u_int64_t s = getTimeUS();
+	for(unsigned i = 0; i < 10000; i++) {
+		f.e(filter.c_str()).getBool();
+	}
+	u_int64_t e = getTimeUS();
+	cout << "0: " << floatToString((e - s) / 10000., 3) <<  endl;
+	__ss += e - s;
+	++__cc;
+	cout << __cc << " / " << __ss <<  endl;
+	
+	bool rslt;
+	if(!filter_s) {
+		filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s).getBool();
+		while(f.e_opt(filter_s));
+	} else {
+		rslt = f.e(filter_s).getBool();
+	}
+	
+	s = getTimeUS();
+	for(unsigned i = 0; i < 10000; i++) {
+		f.e(filter_s).getBool();
+	}
+	e = getTimeUS();
+	cout << "1: " << floatToString((e - s) / 10000., 3) <<  endl;
+	__ss2 += e - s;
+	++__cc2;
+	cout << __cc2 << " / " << __ss2 <<  endl;
+	
+	return(rslt);
+
+#endif
+ 
+#else
  
 	/*
 	string f1 = "(1 + 2 * 3) * (1 + 2 * 3)";
@@ -818,25 +931,53 @@ bool cChartFilter::check(Call *call, void *callData) {
 	//string filter = "wvch_sip_response.lastSIPresponse LIKE '%Call Throttled'";
 	
 	//cout << filter << endl;
+	
+	if(filtersCache) {
+		vmIP *ip1 = NULL, *ip2 = NULL;
+		int useIP = ip_filter_contain_sipcallerip && ip_filter_contain_sipcalledip ? 2 : 
+			    ip_filter_contain_sipcallerip || ip_filter_contain_sipcalledip ? 1 : 0;
+		int rsltCache = -2;
+		if(useIP == 2) {
+			ip1 = &call->sipcallerip[0];
+			ip2 = &call->sipcalledip_rslt;
+			rsltCache = filtersCache->get(this, ip1, ip2);
+		} else if(useIP == 1) {
+			ip1 = ip_filter_contain_sipcallerip ? &call->sipcallerip[0] : &call->sipcalledip_rslt;
+			rsltCache = filtersCache->get(this, ip1);
+		}
+		switch(rsltCache) {
+		case 1:
+			if(filter_without_sip_ip.empty()) {
+				return(true);
+			}
+			break;
+		case 0:
+			return(false);
+		case -1:
+			cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
+			f.setSqlData(cEvalFormula::_estd_call, call, callData);
+			bool rslt;
+			if(!filter_only_sip_ip_s) {
+				filter_only_sip_ip_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+				rslt = f.e(filter_only_sip_ip.c_str(), 0, 0, 0, filter_only_sip_ip_s).getBool();
+				while(f.e_opt(filter_only_sip_ip_s));
+			} else {
+				rslt = f.e(filter_only_sip_ip_s).getBool();
+			}
+			if(useIP == 2) {
+				filtersCache->add(this, ip1, ip2, rslt);
+			} else if(useIP == 1) {
+				filtersCache->add(this, ip1, rslt);
+			}
+			if(!rslt) {
+				return(false);
+			}
+			break;
+		}
+	}
  
 	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
 	f.setSqlData(cEvalFormula::_estd_call, call, callData);
-	
-	/*
-	u_int64_t s = getTimeUS();
-	for(unsigned i = 0; i < 10000; i++) {
-		f.e(filter.c_str()).getBool();
-	}
-	u_int64_t e = getTimeUS();
-	cout << "0: " << e - s <<  endl;
-	__ss += e - s;
-	++__cc;
-	cout << __cc << " / " << __ss <<  endl;
-	*/
-
-	//bool rslt = f.e(filter.c_str()).getBool();
-	
-	///*
 	bool rslt;
 	if(!filter_s) {
 		filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
@@ -844,27 +985,18 @@ bool cChartFilter::check(Call *call, void *callData) {
 			cout << " * FILTER: " << filter << endl;
 		}
 		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s).getBool();
+		while(f.e_opt(filter_s));
 	} else {
 		rslt = f.e(filter_s).getBool();
 	}
 	if(sverb.charts_cache_filters_eval) {
 		cout << " * RSLT: " << rslt << endl;
 	}
-	//*/
-	
-	/*
-	s = getTimeUS();
-	for(unsigned i = 0; i < 10000; i++) {
-		f.e(filter_s).getBool();
-	}
-	e = getTimeUS();
-	cout << "1: " << e - s <<  endl;
-	__ss2 += e - s;
-	++__cc2;
-	cout << __cc2 << " / " << __ss2 <<  endl;
-	*/
 	
 	return(rslt);
+	
+#endif
+	
 }
 
 
@@ -888,7 +1020,7 @@ void cChartNerLsrFilter::parseData(JsonItem *jsonData) {
 }
 
 
-cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *config) {
+cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *config, cCharts *charts) {
 	this->id = id;
 	this->config_id = config_id;
 	JsonItem jsonConfig;
@@ -922,8 +1054,11 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 		jsonFilters.parse(_filters);
 		for(unsigned i = 0; i < jsonFilters.getLocalCount(); i++) {
 			JsonItem *item = jsonFilters.getLocalItem(i);
-			string filterItem = item->getLocalValue();
-			cChartFilter *filter = new FILE_LINE(0) cChartFilter(filterItem.c_str());
+			string filter_main = item->getValue("main");
+			string filter_only_sip_ip = item->getValue("only_sip_ip");
+			string filter_without_sip_ip = item->getValue("without_sip_ip");
+			cChartFilter *filter = charts->getFilter(filter_main.c_str(), true, filter_only_sip_ip.c_str(), filter_without_sip_ip.c_str());
+			__SYNC_INC(filter->used_counter);
 			filters.push_back(filter);
 		}
 	}
@@ -944,7 +1079,7 @@ cChartSeries::~cChartSeries() {
 
 void cChartSeries::clear() {
 	for(vector<cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
-		delete *iter;
+		__SYNC_DEC((*iter)->used_counter);
 	}
 	filters.clear();
 	if(ner_lsr_filter) {
@@ -953,13 +1088,14 @@ void cChartSeries::clear() {
 	}
 }
 
-bool cChartSeries::checkFilters(Call *call, void *callData) {
+bool cChartSeries::checkFilters(map<cChartFilter*, bool> *filters_map) {
 	if(!filters.size()) {
 		return(true);
 	}
 	bool rslt = true;
 	for(unsigned i = 0; i < filters.size(); i++) {
-		if(!filters[i]->check(call, callData)) {
+		cChartFilter *filter = filters[i];
+		if(!(*filters_map)[filter]) {
 			rslt = false;
 			break;
 		}
@@ -991,6 +1127,9 @@ cCharts::~cCharts() {
 	clear();
 }
 
+//#define LOAD_FROM 1
+//#define LOAD_TO 1000
+
 void cCharts::load(SqlDb *sqlDb) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
@@ -1009,33 +1148,28 @@ void cCharts::load(SqlDb *sqlDb) {
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
-	
-	//unsigned counter = 0;
-	
+	unsigned counter_rows = 0;
 	while((row = rows.fetchRow())) {
-	 
-		/*
-		++counter;
-		if(counter <= 0) {
+		++counter_rows;
+		#ifdef LOAD_FROM
+		if(counter_rows < LOAD_FROM) {
 			continue;
 		}
-		*/
-		
+		#endif
 		if(series.find(row["config_id"]) != series.end()) {
 			series_orphans.erase(row["config_id"]);
 		} else {
 			cChartSeries *series_i = new FILE_LINE(0) cChartSeries(atol(row["id"].c_str()),
 									       row["config_id"].c_str(), 
-									       row["config"].c_str());
+									       row["config"].c_str(),
+									       this);
 			series[series_i->config_id] = series_i;
 		}
-		
-		/*
-		if(counter >= 1000) {
+		#ifdef LOAD_TO
+		if(counter_rows > LOAD_TO) {
 			break;
 		}
-		*/
-		
+		#endif
 	}
 	for(map<string, cChartSeries*>::iterator iter = series_orphans.begin(); iter != series_orphans.end(); iter++) {
 		if(!iter->second->used_counter && !seriesIsUsed(iter->first.c_str())) {
@@ -1075,11 +1209,33 @@ void cCharts::clear() {
 		delete iter->second;
 	}
 	series.clear();
+	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+		delete iter->second;
+	}
+	filters.clear();
 }
 
-void cCharts::add(Call *call, void *callData) {
-	map<cChartSeries*, bool> filters;
-	this->checkFilters(call, callData, &filters);
+cChartFilter* cCharts::getFilter(const char *filter, bool enableAdd,
+				 const char *filter_only_sip_ip, const char *filter_without_sip_ip) {
+	map<string, cChartFilter*>::iterator iter = filters.find(filter);
+	if(iter != filters.end()) {
+		return(iter->second);
+	}
+	if(enableAdd) {
+		return(addFilter(filter, filter_only_sip_ip, filter_without_sip_ip));
+	}
+	return(NULL);
+}
+
+cChartFilter* cCharts::addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip) {
+	cChartFilter *chFilter = new FILE_LINE(0) cChartFilter(filter, filter_only_sip_ip, filter_without_sip_ip);
+	filters[filter] = chFilter;
+	return(chFilter);
+}
+
+void cCharts::add(Call *call, void *callData, cFiltersCache *filtersCache) {
+	map<cChartFilter*, bool> filters_map;
+	this->checkFilters(call, callData, &filters_map, filtersCache);
 	u_int64_t calltime_us = call->calltime_us();
 	u_int64_t callend_us = call->callend_us();
 	u_int64_t calltime_min_s = calltime_us / 1000 / 1000 / 60 * 60;
@@ -1107,14 +1263,14 @@ void cCharts::add(Call *call, void *callData) {
 			unlock_intervals();
 			interval->add(call, i, i == 0, i == intervals_begin.size() - 1, i == 0,
 				      calltime_us / 1000 / 1000, callend_us / 1000 / 1000,
-				      &filters);
+				      &filters_map);
 		}
 	}
 }
 
-void cCharts::checkFilters(Call *call, void *callData, map<cChartSeries*, bool> *filters) {
-	for(map<string, cChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
-		(*filters)[iter->second] = iter->second->checkFilters(call, callData);
+void cCharts::checkFilters(Call *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache) {
+	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+		(*filters_map)[iter->second] = iter->second->check(call, callData, filtersCache);
 	}
 }
 
@@ -1152,7 +1308,7 @@ void cCharts::store(bool forceAll) {
 	last_store_at_real = real_time;
 }
 
-void cCharts::cleanup_intervals() {
+void cCharts::cleanup() {
 	if(!first_interval) {
 		return;
 	}
@@ -1173,6 +1329,14 @@ void cCharts::cleanup_intervals() {
 		}
 	}
 	unlock_intervals();
+	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); ) {
+		if(!iter->second->used_counter) {
+			delete iter->second;
+			filters.erase(iter++);
+		} else {
+			iter++;
+		}
+	}
 	this->last_cleanup_at = first_interval;
 }
 
@@ -1183,6 +1347,107 @@ bool cCharts::seriesIsUsed(const char *config_id) {
 		}
 	}
 	return(false);
+}
+
+
+cFilterCacheItem::cFilterCacheItem(unsigned limit) {
+	this->limit = limit;
+}
+
+int cFilterCacheItem::get(vmIP *ip) {
+	map<vmIP, bool>::iterator iter = ip_map.find(*ip);
+	if(iter != ip_map.end()) {
+		return(iter->second);
+	}
+	return(-1);
+}
+
+void cFilterCacheItem::add(vmIP *ip, bool set) {
+	while(ip_queue.size() >= limit) {
+		vmIP e_ip = ip_queue.front();
+		ip_queue.pop();
+		ip_map.erase(e_ip);
+	}
+	ip_queue.push(*ip);
+	ip_map[*ip] = set;
+}
+
+int cFilterCacheItem::get(vmIP *ip1, vmIP *ip2) {
+	map<d_item<vmIP>, bool>::iterator iter = ip2_map.find(d_item<vmIP>(*ip1, *ip2));
+	if(iter != ip2_map.end()) {
+		return(iter->second);
+	}
+	return(-1);
+}
+
+void cFilterCacheItem::add(vmIP *ip1, vmIP *ip2, bool set) {
+	while(ip2_queue.size() >= limit) {
+		d_item<vmIP> e_ip = ip2_queue.front();
+		ip2_queue.pop();
+		ip2_map.erase(e_ip);
+	}
+	d_item<vmIP> ip(*ip1, *ip2);
+	ip2_queue.push(ip);
+	ip2_map[ip] = set;
+}
+
+cFiltersCache::cFiltersCache(unsigned limit, unsigned limit2) {
+	this->limit = limit;
+	this->limit2 = limit2;
+}
+
+cFiltersCache::~cFiltersCache() {
+	for(map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.begin(); iter != cache_map.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+int cFiltersCache::get(cChartFilter *filter, vmIP *ip) {
+	cFilterCacheItem *cache_item;
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	if(iter != cache_map.end()) {
+		cache_item = iter->second;
+	} else {
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
+		cache_map[filter] = cache_item;
+	}
+	return(cache_item->get(ip));
+}
+
+void cFiltersCache::add(cChartFilter *filter, vmIP *ip, bool set) {
+	cFilterCacheItem *cache_item;
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	if(iter != cache_map.end()) {
+		cache_item = iter->second;
+	} else {
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
+		cache_map[filter] = cache_item;
+	}
+	cache_item->add(ip, set);
+}
+
+int cFiltersCache::get(cChartFilter *filter, vmIP *ip1, vmIP *ip2) {
+	cFilterCacheItem *cache_item;
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	if(iter != cache_map.end()) {
+		cache_item = iter->second;
+	} else {
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit2);
+		cache_map[filter] = cache_item;
+	}
+	return(cache_item->get(ip1, ip2));
+}
+
+void cFiltersCache::add(cChartFilter *filter, vmIP *ip1, vmIP *ip2, bool set) {
+	cFilterCacheItem *cache_item;
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	if(iter != cache_map.end()) {
+		cache_item = iter->second;
+	} else {
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit2);
+		cache_map[filter] = cache_item;
+	}
+	cache_item->add(ip1, ip2, set);
 }
 
 
@@ -1285,15 +1550,17 @@ bool chartsCacheIsSet() {
 	return(chartsCache != NULL);
 }
 
-void chartsCacheAddCall(Call *call, void *callData) {
+#define TEST_ADD_CALL 0
+
+void chartsCacheAddCall(Call *call, void *callData, cFiltersCache *filtersCache) {
 	if(chartsCache) {
-		//chartsCache->add(call, callData);
 	 
-		///*
+#if TEST_ADD_CALL == 1
+	 
 		u_int64_t s = getTimeUS();
 		for(unsigned i = 0; i < 1; i++) {
 	 
-			chartsCache->add(call, callData);
+			chartsCache->add(call, callData, filtersCache);
 			
 		}
 		u_int64_t e = getTimeUS();
@@ -1304,14 +1571,20 @@ void chartsCacheAddCall(Call *call, void *callData) {
 		s = getTimeUS();
 		for(unsigned i = 0; i < 1; i++) {
 	 
-			chartsCache->add(call, callData);
+			chartsCache->add(call, callData, filtersCache);
 			
 		}
 		e = getTimeUS();
 		cout << "*: " << e - s <<  endl;
 		
 		}
-		//*/
+		
+#else
+
+		chartsCache->add(call, callData, filtersCache);
+		
+#endif
+	 
 		
 	}
 }
@@ -1322,9 +1595,9 @@ void chartsCacheStore(bool forceAll) {
 	}
 }
 
-void chartsCacheCleanupIntervals() {
+void chartsCacheCleanup() {
 	if(chartsCache) {
-		chartsCache->cleanup_intervals();
+		chartsCache->cleanup();
 	}
 }
 

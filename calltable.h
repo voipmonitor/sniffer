@@ -484,6 +484,7 @@ private:
 };
 
 struct sChartsCacheCallData {
+	map<u_int32_t, cEvalFormula::sValue> value_map;
 };
 
 /**
@@ -491,6 +492,17 @@ struct sChartsCacheCallData {
 */
 class Call : public Call_abstract {
 public:
+	enum eTable {
+		_t_cdr = 1,
+		_t_cdr_next = 2,
+		_t_cdr_next_end = 20,
+		_t_cdr_country_code = 21,
+		_t_cdr_proxy,
+		_t_cdr_sipresp,
+		_t_cdr_siphistory,
+		_t_cdr_rtp,
+		_t_cdr_sdp
+	};
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -1535,8 +1547,10 @@ public:
 	
 	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
 	bool sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *callData, 
-				      string *child_table, unsigned child_index);
+				      string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord);
 	int sqlChildTableSize(string *child_table, void *callData);
+	
+	int getTableEnumIndex(string *table);
 	
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());
@@ -2340,6 +2354,7 @@ private:
 	volatile int chc_threads_count_mod_request;
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
+	class cFiltersCache *chc_cache[MAXIMUM_CHC_THREADS];
 	
 };
 

@@ -3373,6 +3373,8 @@ private:
 };
 
 
+#define EF_VECTOR_VALUES(ptr) ((vector<cEvalFormula::sValue>*)ptr)
+
 class cEvalFormula {
 public:
 	enum eEvalSpecType {
@@ -3384,12 +3386,13 @@ public:
 		_estd_call
 	};
 	enum eValueType {
-		_v_na,
-		_v_int,
-		_v_float,
-		_v_string,
-		_v_ip,
-		_v_list
+		_v_na      = 0x00,
+		_v_int     = 0x01,
+		_v_float   = 0x02,
+		_v_dynamic = 0x10,
+		_v_string  = 0x11,
+		_v_ip      = 0x12,
+		_v_list    = 0x13
 	};
 	struct sValueStr {
 		sValueStr() {
@@ -3419,267 +3422,170 @@ public:
 		unsigned pos;
 		unsigned length;
 	};
-	struct sValue {
-		sValue() {
+	struct sValue_data {
+		eValueType v_type : 8;
+		bool v_null : 1;
+		bool v_id : 1;
+		bool v_dyn : 1;
+		int v_str_wildcard : 2;
+		union {
+			int64_t _int;
+			double _float;
+			string *_string;
+			vmIP *_ip;
+			void *_list;
+			void *__pt;
+		} v;
+	};
+	struct sValue : public sValue_data {
+		inline sValue() {
 			null();
 		}
-		~sValue() {
-			free_dynamic_items();
+		inline ~sValue() {
+			if(v_dyn) {
+				free_dynamic_items();
+			}
 		}
-		sValue(int v) {
+		inline sValue(int v) {
 			null();
 			v_type = _v_int;
 			this->v._int = v;
 		}
-		sValue(unsigned int v) {
+		inline sValue(unsigned int v) {
 			null();
 			v_type = _v_int;
 			this->v._int = v;
 		}
-		sValue(int64_t v) {
+		inline sValue(int64_t v) {
 			null();
 			v_type = _v_int;
 			this->v._int = v;
 		}
-		sValue(double v) {
+		inline sValue(double v) {
 			null();
 			v_type = _v_float;
 			this->v._float = v;
 		}
-		sValue(string v) {
+		inline sValue(string v) {
 			null();
 			v_type = _v_string;
 			this->v._string = new FILE_LINE(0) string(v);
+			this->v_dyn = true;
 		}
-		sValue(vmIP v) {
+		inline sValue(vmIP v) {
 			null();
 			v_type = _v_ip;
 			this->v._ip = new FILE_LINE(0) vmIP(v);
+			this->v_dyn = true;
 		}
-		sValue(const sValue &v) {
-			null();
-			cloneFrom(&v);
+		inline sValue(const sValue &from) {
+			copy(&from);
+			if(from.v_dyn) {
+				clone_dynamic_items(&from);
+			}
 		}
-		sValue& operator = (const sValue& v) {
-			free_dynamic_items();
-			cloneFrom(&v);
+		inline sValue& operator = (const sValue& from) {
+			if(v_dyn) {
+				free_dynamic_items();
+			}
+			copy(&from);
+			if(from.v_dyn) {
+				clone_dynamic_items(&from);
+			}
 			return(*this);
 		}
-		void null() {
+		inline void null() {
 			memset(this, 0, sizeof(*this));
 		}
-		void free_dynamic_items() {
-			if(v.__pt) {
-				switch(v_type) {
-				case _v_string:
-					delete v._string;
-					break;
-				case _v_ip:
-					delete v._ip;
-					break;
-				case _v_list:
-					delete v._list;
-					break;
-				default:
-					break;
-				}
+		inline void copy(const sValue *from) {
+			*(sValue_data*)this = *(sValue_data*)from;
+		}
+		inline void free_dynamic_items() {
+			switch(v_type) {
+			case _v_string:
+				delete v._string;
+				break;
+			case _v_ip:
+				delete v._ip;
+				break;
+			case _v_list:
+				delete EF_VECTOR_VALUES(v._list);
+				break;
+			default:
+				break;
 			}
 		}
-		void cloneFrom(const sValue *from) {
-			memcpy(this, from, sizeof(*this));
-			if(from->v.__pt) {
-				switch(from->v_type) {
-				case _v_string:
-					v._string = new FILE_LINE(0) string(*from->v._string);
-					break;
-				case _v_ip:
-					v._ip = new FILE_LINE(0) vmIP(*from->v._ip);
-					break;
-				case _v_list:
-					v._list = new FILE_LINE(0) vector<sValue>;
-					*v._list = *from->v._list;
-					break;
-				default:
-					break;
-				}
+		inline void clone_dynamic_items(const sValue *from) {
+			switch(from->v_type) {
+			case _v_string:
+				v._string = new FILE_LINE(0) string(*from->v._string);
+				break;
+			case _v_ip:
+				v._ip = new FILE_LINE(0) vmIP(*from->v._ip);
+				break;
+			case _v_list:
+				v._list = new FILE_LINE(0) vector<sValue>;
+				*(EF_VECTOR_VALUES(v._list)) = *(EF_VECTOR_VALUES(from->v._list));
+				break;
+			default:
+				break;
 			}
 		}
-		void moveFrom(sValue *from) {
-			memcpy(this, from, sizeof(*this));
+		inline void moveFrom(sValue *from) {
+			copy(from);
 			from->null();
 		}
 		void setFromField(void *field);
-		bool isEmpty() {
+		inline bool isEmpty() {
 			return(v_type == _v_na);
 		}
-		bool getBool() {
+		inline bool getBool() {
 			return(v_type == _v_int ? v._int != 0 :
 			       v_type == _v_float ? v._float != 0 :
 			       v_type == _v_string && v._string ? !v._string->empty() : 
 			       v_type == _v_ip && v._ip ? v._ip->isSet() : 
 			       false);
 		}
-		int64_t getInteger() {
+		inline int64_t getInteger() {
 			return(v_type == _v_int ? v._int :
 			       v_type == _v_float ? (int64_t)v._float :
 			       v_type == _v_string && v._string ? atoll(v._string->c_str()) : 
 			       0);
 		}
-		double getFloat() {
+		inline double getFloat() {
 			return(v_type == _v_int ? (double)v._int :
 			       v_type == _v_float ? v._float :
 			       v_type == _v_string && v._string ? atof(v._string->c_str()) : 
 			       0);
 		}
-		string getString() {
+		inline string getString() {
 			return(v_type == _v_int ? intToString((long long)v._int) :
 			       v_type == _v_float ? floatToString(v._float) :
 			       v_type == _v_string && v._string ? *v._string : 
 			       v_type == _v_ip && v._ip ? v._ip->getString() : 
 			       "");
 		}
-		vmIP getIP() {
-			return(v_type == _v_string && v._string ? str_2_vmIP(v._string->c_str()) : 
+		inline vmIP getIP() {
+			return(v_type == _v_int ? ipv4_2_vmIP(v._int) :
+			       v_type == _v_string && v._string ? str_2_vmIP(v._string->c_str()) : 
 			       v_type == _v_ip && v._ip ? *v._ip : 
 			       vmIP());
 		}
-		sValue arithm(sValue &v2, string oper) {
-			sValue rslt;
-			if(this->v_type != _v_na && v2.v_type != _v_na) {
-				if(this->v_type == v2.v_type) {
-					rslt.v_type = this->v_type;
-					if(oper == "*") {
-						switch(this->v_type) {
-						case _v_int:
-							rslt.v._int = this->v._int * v2.v._int;
-							break;
-						case _v_float:
-							rslt.v._float = this->v._float * v2.v._float;
-							break;
-						default:
-							break;
-						}
-					} else if(oper == "/") {
-						switch(this->v_type) {
-						case _v_int:
-							if(v2.v._int) {
-								rslt.v._int = this->v._int / v2.v._int;
-							}
-							break;
-						case _v_float:
-							if(v2.v._float) {
-								rslt.v._float = this->v._float / v2.v._float;
-							}
-							break;
-						default:
-							break;
-						}
-					} else if(oper == "+") {
-						switch(this->v_type) {
-						case _v_int:
-							rslt.v._int = this->v._int + v2.v._int;
-							break;
-						case _v_float:
-							rslt.v._float = this->v._float + v2.v._float;
-							break;
-						default:
-							break;
-						}
-					} else if(oper == "-") {
-						switch(this->v_type) {
-						case _v_int:
-							rslt.v._int = this->v._int - v2.v._int;
-							break;
-						case _v_float:
-							rslt.v._float = this->v._float - v2.v._float;
-							break;
-						default:
-							break;
-						}
-					}
-				} else {
-					if(oper == "*") {
-						rslt.v._float = this->getFloat() * v2.getFloat();
-						rslt.v_type = _v_float;
-					} else if(oper == "/") {
-						if(v2.getFloat()) {
-							rslt.v._float = this->getFloat() / v2.getFloat();
-							rslt.v_type = _v_float;
-						}
-					} else if(oper == "+") {
-						rslt.v._float = this->getFloat() + v2.getFloat();
-						rslt.v_type = _v_float;
-					} else if(oper == "-") {
-						rslt.v._float = this->getFloat() - v2.getFloat();
-						rslt.v_type = _v_float;
-					}
-				}
-			}
-			return(rslt);
-		}
-		sValue like(sValue &pattern_v) {
-			/*
-			string _pattern = pattern_v.getString();
-			const char *reg_spec_chars = ".\\+*?[^]$(){}=!<>|:-#";
-			string pattern;
-			for(unsigned i = 0; i < _pattern.length(); i++) {
-				if(strchr(reg_spec_chars, _pattern[i])) {
-					pattern += '\\';
-				}
-				pattern += _pattern[i];
-			}
-			if(pattern.length()) {
-				if(pattern[0] == '%') {
-					pattern = ".*" + pattern.substr(1);
-				} else {
-					pattern = "^" + pattern;
-				}
-				if(pattern[pattern.length() - 1] == '%') {
-					pattern = pattern.substr(0, pattern.length() - 1) + ".*";
-				} else {
-					pattern = pattern + "$";
-				}
-				return(sValue(reg_match(this->getString().c_str(), pattern.c_str())));
-			}
-			*/
-			
-			// TODO: support for ___
-			
-			if(pattern_v.v_type == _v_string && pattern_v.v._string) {
-				unsigned pattern_v_length = pattern_v.v._string->length();
-				if(pattern_v_length) {
-					bool rslt;
-					string str = this->getString().c_str();
-					if((*pattern_v.v._string)[0] == '%') {
-						if((*pattern_v.v._string)[pattern_v_length - 1] == '%') {
-							rslt = strcasestr(str.c_str(), pattern_v.v._string->substr(1, pattern_v_length - 2).c_str()) != NULL;
-						} else {
-							rslt = str.length() >= pattern_v_length - 1 &&
-							       !strncasecmp(str.c_str() + str.length() - (pattern_v_length - 1), pattern_v.v._string->substr(1).c_str(), pattern_v_length - 1);
-						}
-					} else if((*pattern_v.v._string)[pattern_v_length - 1] == '%') {
-						rslt = !strncasecmp(str.c_str(), pattern_v.v._string->c_str(), pattern_v_length - 1);
-					} else {
-						rslt = !strcasecmp(str.c_str(), pattern_v.v._string->c_str());
-					}
-					return(sValue(rslt));
-				}
-			}
-			return(sValue(false));
-		}
-		friend sValue operator << (sValue &v1, sValue &v2) {
+		sValue arithm(sValue &v2, string oper);
+		inline sValue like(sValue &pattern_v);
+		inline friend sValue operator << (sValue &v1, sValue &v2) {
 			return(sValue(v1.getInteger() << v2.getInteger()));
 		}
-		friend sValue operator >> (sValue &v1, sValue &v2) {
+		inline friend sValue operator >> (sValue &v1, sValue &v2) {
 			return(sValue(v1.getInteger() >> v2.getInteger()));
 		}
-		friend sValue operator & (sValue &v1, sValue &v2) {
+		inline friend sValue operator & (sValue &v1, sValue &v2) {
 			return(sValue(v1.getInteger() & v2.getInteger()));
 		}
-		friend sValue operator | (sValue &v1, sValue &v2) {
+		inline friend sValue operator | (sValue &v1, sValue &v2) {
 			return(sValue(v1.getInteger() | v2.getInteger()));
 		}
-		friend sValue operator ! (sValue &v) {
+		inline friend sValue operator ! (sValue &v) {
 			sValue rslt;
 			if(v.v_type != _v_na) {
 				rslt.v_type = _v_int;
@@ -3688,19 +3594,19 @@ public:
 			}
 			return(rslt);
 		}
-		friend sValue operator * (sValue &v1, sValue &v2) {
+		inline friend sValue operator * (sValue &v1, sValue &v2) {
 			return(v1.arithm(v2, "*"));
 		}
-		friend sValue operator / (sValue &v1, sValue &v2) {
+		inline friend sValue operator / (sValue &v1, sValue &v2) {
 			return(v1.arithm(v2, "/"));
 		}
-		friend sValue operator + (sValue &v1, sValue &v2) {
+		inline friend sValue operator + (sValue &v1, sValue &v2) {
 			return(v1.arithm(v2, "+"));
 		}
-		friend sValue operator - (sValue &v1, sValue &v2) {
+		inline friend sValue operator - (sValue &v1, sValue &v2) {
 			return(v1.arithm(v2, "-"));
 		}
-		friend sValue operator < (sValue &v1, sValue &v2) {
+		inline friend sValue operator < (sValue &v1, sValue &v2) {
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() < v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() < v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() < v2.getInteger() ? 1 : 0) :
@@ -3708,7 +3614,7 @@ public:
 			       v1.v_type != _v_na && v2.v_type != _v_na ? sValue(v1.getInteger() < v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator <= (sValue &v1, sValue &v2) {
+		inline friend sValue operator <= (sValue &v1, sValue &v2) {
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() <= v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() <= v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() <= v2.getInteger() ? 1 : 0) :
@@ -3716,7 +3622,7 @@ public:
 			       v1.v_type != _v_na && v2.v_type != _v_na ? sValue(v1.getInteger() <= v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator > (sValue &v1, sValue &v2) {
+		inline friend sValue operator > (sValue &v1, sValue &v2) {
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() > v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() > v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() > v2.getInteger() ? 1 : 0) :
@@ -3724,7 +3630,7 @@ public:
 			       v1.v_type != _v_na && v2.v_type != _v_na ? sValue(v1.getInteger() > v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator >= (sValue &v1, sValue &v2) {
+		inline friend sValue operator >= (sValue &v1, sValue &v2) {
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() >= v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() >= v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() >= v2.getInteger() ? 1 : 0) :
@@ -3732,15 +3638,16 @@ public:
 			       v1.v_type != _v_na && v2.v_type != _v_na ?sValue(v1.getInteger() >= v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator == (sValue &v1, sValue &v2) {
-			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() == v2.getIP() ? 1 : 0) :
+		inline friend sValue operator == (sValue &v1, sValue &v2) {
+			return(v1.v_type == _v_ip && v2.v_type == _v_ip ? sValue(*v1.v._ip == *v2.v._ip ? 1 : 0) :
+			       v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() == v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() == v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() == v2.getInteger() ? 1 : 0) :
 			       v1.v_type == _v_string || v2.v_type == _v_string ? sValue(v1.getString() == v2.getString() ? 1 : 0) :
 			       v1.v_type != _v_na && v2.v_type != _v_na ? sValue(v1.getInteger() == v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator != (sValue &v1, sValue &v2) {
+		inline friend sValue operator != (sValue &v1, sValue &v2) {
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() != v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() != v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() != v2.getInteger() ? 1 : 0) :
@@ -3748,27 +3655,51 @@ public:
 			       v1.v_type != _v_na && v2.v_type != _v_na ? sValue(v1.getInteger() != v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator && (sValue &v1, sValue &v2) {
+		inline friend sValue operator && (sValue &v1, sValue &v2) {
 			return(v1.v_type != _v_na && v2.v_type != _v_na ?
 				sValue(v1.getInteger() && v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		friend sValue operator || (sValue &v1, sValue &v2) {
+		inline friend sValue operator || (sValue &v1, sValue &v2) {
 			return(v1.v_type != _v_na && v2.v_type != _v_na ?
 				sValue(v1.getInteger() || v2.getInteger() ? 1 : 0) :
 				sValue());
 		}
-		eValueType v_type;
-		bool v_null;
-		bool v_id;
-		union {
-			int64_t _int;
-			double _float;
-			string *_string;
-			vmIP *_ip;
-			vector<sValue> *_list;
-			void *__pt;
-		} v;
+	};
+	enum eOperator {
+		_o_na,
+		_o_shift_l,
+		_o_shift_r,
+		_o_b_and,
+		_o_b_or,
+		_o_mult,
+		_o_div,
+		_o_add,
+		_o_sub,
+		_o_cmp_lt,
+		_o_cmp_le,
+		_o_cmp_gt,
+		_o_cmp_ge,
+		_o_cmp_eq,
+		_o_cmp_neq,
+		_o_like,
+		_o_not_like,
+		_o_and,
+		_o_or,
+		_o_not,
+		_o_sql_div,
+		_o_sql_is,
+		_o_sql_is_not,
+		_o_sql_eq,
+		_o_sql_in,
+		_o_sql_not_in,
+		_o_sql_comma,
+		_o_sql_inet_aton,
+		_o_sql_inet6_aton,
+		_o_sql_coalesce,
+		_o_sql_greatest,
+		_o_sql_least,
+		_o_sql_if
 	};
 	struct sOperator {
 		enum eFlags {
@@ -3778,8 +3709,23 @@ public:
 		};
 		unsigned level;
 		const char *oper;
+		eOperator e_oper;
 		int flags;
 		unsigned length;
+	};
+	struct sOperandReplaceData {
+		sOperandReplaceData() {
+			u.i = 0;
+		}
+		union {
+			u_int32_t i;
+			struct {
+				u_int8_t table;
+				u_int8_t column;
+				u_int8_t child_table;
+				u_int8_t child_index;
+			} s;
+		} u;
 	};
 	struct sSplitOperands {
 		enum eSubType {
@@ -3795,28 +3741,35 @@ public:
 		};
 		sSplitOperands(int type) {
 			this->type = type;
+			operands_count = 0;
+			operands = NULL;
+			u_operators = NULL;
+			b_operators = NULL;
 			cond_s = NULL;
 		}
 		~sSplitOperands() {
-			for(unsigned i = 0; i < operands.size(); i++) {
-				delete operands[i];
-			}
+			clearOperands();
 			if(cond_s) {
 				delete cond_s;
 			}
 		}
-		sValue e(cEvalFormula *f, unsigned level = 0, bool *existsSpecType = NULL);
+		inline sValue e_opt(cEvalFormula *f, unsigned level, bool *existsSpecType, bool *opt);
+		inline sValue e(cEvalFormula *f, unsigned level = 0);
+		void addOperand(sSplitOperands *operand);
+		void clearOperands();
 		int type;
 		sValue value;
-		vector<sSplitOperands*> operands;
-		map<unsigned, sOperator*> u_operators;
-		map<unsigned, sOperator*> b_operators;
+		sSplitOperands** operands;
+		unsigned operands_count;
+		eOperator *u_operators;
+		eOperator *b_operators;
 		eSubType subType;
 		eColumnType columnType;
 		string table;
 		string column;
 		string cond;
 		cEvalFormula::sSplitOperands *cond_s;
+		cEvalFormula::sOperandReplaceData ord;
 	};
 public:
 	cEvalFormula(eEvalSpecType evalSpecType, bool debug = false) {
@@ -3828,44 +3781,47 @@ public:
 		sql_child_index = 0;
 	}
 	sValue e(const char *formula, unsigned pos = 0, unsigned length = 0, unsigned level = 0, sSplitOperands *splitOperands = NULL);
+	bool e_opt(sSplitOperands *splitOperands);
 	sValue e(sSplitOperands *splitOperands);
-	sValue e_u_operator(sValue &operand, sOperator *oper);
-	sValue e_b_operator(sValue &operand1, sValue &operand2, sOperator *oper);
-	sValue getOperand(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end, sOperator **u_operator, sSplitOperands **splitOperands);
-	sValueStr getBracketsBlock(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end, sOperator **oper);
-	sOperator *getU_Operator(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end);
-	sOperator *getB_Operator(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end);
-	bool isOperator_u(const char *try_operator, sOperator **oper);
-	bool isOperator_b(const char *try_operator, sOperator **oper);
-	void _isOperator(sOperator *table, const char *try_operator, sOperator **oper);
-	bool specEvalBB(sValueStr *bb, sValue *bb_rslt, unsigned level, sSplitOperands **splitOperands);
-	bool isSpace(char ch) {
+	inline sValue e_u_operator(sValue &operand, eOperator oper);
+	inline sValue e_u_operator(sValue &operand, sOperator *oper);
+	inline sValue e_b_operator(sValue &operand1, sValue &operand2, eOperator oper);
+	inline sValue e_b_operator(sValue &operand1, sValue &operand2, sOperator *oper);
+	inline sValue getOperand(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end, sOperator **u_operator, sSplitOperands **splitOperands);
+	inline sValueStr getBracketsBlock(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end, sOperator **oper);
+	inline sOperator *getU_Operator(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end);
+	inline sOperator *getB_Operator(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end);
+	inline bool isOperator_u(const char *try_operator, sOperator **oper);
+	inline bool isOperator_b(const char *try_operator, sOperator **oper);
+	inline void _isOperator(sOperator *table, const char *try_operator, sOperator **oper);
+	inline bool specEvalBB(sValueStr *bb, sValue *bb_rslt, unsigned level, sSplitOperands **splitOperands);
+	inline bool isSpace(char ch) {
 		return(ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n');
 	}
-	bool isAlpha(char ch) {
+	inline bool isAlpha(char ch) {
 		return((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'));
 	}
-	bool isDigit(char ch) {
+	inline bool isDigit(char ch) {
 		return((ch >= '0' && ch <= '9') || ch == '.');
 	}
-	bool isLeftBracket(char ch) {
+	inline bool isLeftBracket(char ch) {
 		return(ch == '(');
 	}
-	bool isRightBracket(char ch) {
+	inline bool isRightBracket(char ch) {
 		return(ch == ')');
 	}
-	bool isBrackets(char ch) {
+	inline bool isBrackets(char ch) {
 		return(isLeftBracket(ch) || isRightBracket(ch));
 	}
-	bool isEndOperator(char ch) {
+	inline bool isEndOperator(char ch) {
 		return(!ch ||
 		       isSpace(ch) ||
 		       isBrackets(ch));
 	}
-	bool enableSqlOperandReplace() {
+	inline bool enableSqlOperandReplace() {
 		return(evalSpecType == _est_sql);
 	}
-	bool isOperandChar(char ch, unsigned pos) {
+	inline bool isOperandChar(char ch, unsigned pos) {
 		if(evalSpecType == _est_sql) {
 			return((pos > 0 &&
 				(isDigit(ch) || ch == '-' || ch == '.')) ||
@@ -3873,16 +3829,13 @@ public:
 		}
 		return(false);
 	}
-	void debug_output(unsigned level, string debug_str) {
+	inline void debug_output(unsigned level, string debug_str) {
 		if(debug) {
 			for(unsigned i = 0; i < level * 3; i++) {
 				cout << ' ';
 			}
 			cout << debug_str << endl;
 		}
-	}
-	inline bool eqOperator(sOperator *oper, const char *cmp) {
-		return(oper->oper[0] == cmp[0] && !strcmp(oper->oper, cmp));
 	}
 	void setSqlData(eEvalSqlTypeData sql_data_type, void *sql_data, void *sql_data2) {
 		this->sql_data_type = sql_data_type;
@@ -3897,9 +3850,9 @@ public:
 		this->sql_child_table = NULL;
 		this->sql_child_index = 0;
 	}
-	bool sqlOperandReplace(sValue *value, string operand, sSplitOperands **splitOperands);
-	bool evalSqlSubselect(string *table, string *column, string *cond, sSplitOperands::eColumnType column_type, sValue *rslt, unsigned level,
-			      cEvalFormula::sSplitOperands **cond_s);
+	inline bool sqlOperandReplace(sValue *value, string operand, sSplitOperands **splitOperands);
+	inline bool evalSqlSubselect(string *table, string *column, string *cond, sSplitOperands::eColumnType column_type, sValue *rslt, unsigned level,
+				     cEvalFormula::sSplitOperands **cond_s);
 public:
 	static sOperator b_operators[];
 	static sOperator u_operators[];

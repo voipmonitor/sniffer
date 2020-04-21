@@ -6063,17 +6063,130 @@ void cEvalFormula::sValue::setFromField(void *_field) {
 		v._float = field->ifv.v._double;
 		break;
 	case SqlDb_row::_ift_ip:
-		v_type = _v_ip;
-		v._ip = new FILE_LINE(0) vmIP(field->ifv.v_ip);
+		if(field->ifv.v_ip.is_v6()) {
+			v_type = _v_ip;
+			v._ip = &field->ifv.v_ip;
+		} else {
+			v_type = _v_int;
+			v._int = field->ifv.v_ip.ip.v4.n;
+		}
 		break;
 	default:
 		v_type = _v_string;
-		v._string = new FILE_LINE(0) string(field->content);
+		v._string = &field->content;
 		break;
 	}
 	if(field->null) {
 		v_null = true;
 	}
+}
+
+cEvalFormula::sValue cEvalFormula::sValue::arithm(sValue &v2, string oper) {
+	sValue rslt;
+	if(this->v_type != _v_na && v2.v_type != _v_na) {
+		if(this->v_type == v2.v_type) {
+			rslt.v_type = this->v_type;
+			if(oper == "*") {
+				switch(this->v_type) {
+				case _v_int:
+					rslt.v._int = this->v._int * v2.v._int;
+					break;
+				case _v_float:
+					rslt.v._float = this->v._float * v2.v._float;
+					break;
+				default:
+					break;
+				}
+			} else if(oper == "/") {
+				switch(this->v_type) {
+				case _v_int:
+					if(v2.v._int) {
+						rslt.v._int = this->v._int / v2.v._int;
+					}
+					break;
+				case _v_float:
+					if(v2.v._float) {
+						rslt.v._float = this->v._float / v2.v._float;
+					}
+					break;
+				default:
+					break;
+				}
+			} else if(oper == "+") {
+				switch(this->v_type) {
+				case _v_int:
+					rslt.v._int = this->v._int + v2.v._int;
+					break;
+				case _v_float:
+					rslt.v._float = this->v._float + v2.v._float;
+					break;
+				default:
+					break;
+				}
+			} else if(oper == "-") {
+				switch(this->v_type) {
+				case _v_int:
+					rslt.v._int = this->v._int - v2.v._int;
+					break;
+				case _v_float:
+					rslt.v._float = this->v._float - v2.v._float;
+					break;
+				default:
+					break;
+				}
+			}
+		} else {
+			if(oper == "*") {
+				rslt.v._float = this->getFloat() * v2.getFloat();
+				rslt.v_type = _v_float;
+			} else if(oper == "/") {
+				if(v2.getFloat()) {
+					rslt.v._float = this->getFloat() / v2.getFloat();
+					rslt.v_type = _v_float;
+				}
+			} else if(oper == "+") {
+				rslt.v._float = this->getFloat() + v2.getFloat();
+				rslt.v_type = _v_float;
+			} else if(oper == "-") {
+				rslt.v._float = this->getFloat() - v2.getFloat();
+				rslt.v_type = _v_float;
+			}
+		}
+	}
+	return(rslt);
+}
+
+cEvalFormula::sValue cEvalFormula::sValue::like(sValue &pattern_v) {
+	if(pattern_v.v_type == _v_string && pattern_v.v._string) {
+		unsigned pattern_v_length = pattern_v.v._string->length();
+		if(pattern_v_length) {
+			if(!pattern_v.v_str_wildcard) {
+				pattern_v.v_str_wildcard = pattern_v.v._string->find('_') ? 2 : 1;
+			}
+			bool rslt;
+			string str = this->getString().c_str();
+			if((*pattern_v.v._string)[0] == '%') {
+				if((*pattern_v.v._string)[pattern_v_length - 1] == '%') {
+					rslt = strcasestr(str.c_str(), pattern_v.v._string->substr(1, pattern_v_length - 2).c_str()) != NULL;
+				} else {
+					rslt = str.length() >= pattern_v_length - 1 &&
+					       !(pattern_v.v_str_wildcard == 2 ?
+						  strncasecmp_wildcard(str.c_str() + str.length() - (pattern_v_length - 1), pattern_v.v._string->substr(1).c_str(), pattern_v_length - 1, "_") :
+						  strncasecmp(str.c_str() + str.length() - (pattern_v_length - 1), pattern_v.v._string->substr(1).c_str(), pattern_v_length - 1));
+				}
+			} else if((*pattern_v.v._string)[pattern_v_length - 1] == '%') {
+				rslt = !(pattern_v.v_str_wildcard == 2 ?
+					  strncasecmp_wildcard(str.c_str(), pattern_v.v._string->c_str(), pattern_v_length - 1, "_") :
+					  strncasecmp(str.c_str(), pattern_v.v._string->c_str(), pattern_v_length - 1));
+			} else {
+				rslt = !(pattern_v.v_str_wildcard == 2 ?
+					  strcasecmp_wildcard(str.c_str(), pattern_v.v._string->c_str(), "_") :
+					  strcasecmp(str.c_str(), pattern_v.v._string->c_str()));
+			}
+			return(sValue(rslt));
+		}
+	}
+	return(sValue(false));
 }
 
 cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned length, unsigned level, sSplitOperands *splitOperands) {
@@ -6092,7 +6205,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 			operand1 = getOperand(formula, pos, pos_max, &pos_operand1_end, &operand1_u_operator, splitOperands ? &splitOperand1 : NULL);
 			if(!operand1.isEmpty()) {
 				if(splitOperands) {
-					splitOperands->operands.push_back(splitOperand1);
+					splitOperands->addOperand(splitOperand1);
 				}
 			} else {
 				operand1_bb = getBracketsBlock(formula, pos, pos_max, &pos_operand1_end, &operand1_u_operator);
@@ -6110,7 +6223,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 		if(!operand1_bb.isEmpty()) {
 			if(specEvalBB(&operand1_bb, &operand1, level, splitOperands ? &splitOperand1 : NULL)) {
 				if(splitOperands) {
-					splitOperands->operands.push_back(splitOperand1);
+					splitOperands->addOperand(splitOperand1);
 				}
 				if(debug) debug_output(level, "operand_1_rslt: " + operand1.getString());
 			} else {
@@ -6119,7 +6232,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 				}
 				operand1 = e(operand1_bb.str, operand1_bb.pos, operand1_bb.length, level + 1, splitOperands ? splitOperand1 : NULL);
 				if(splitOperands) {
-					splitOperands->operands.push_back(splitOperand1);
+					splitOperands->addOperand(splitOperand1);
 				}
 				if(debug) debug_output(level, "operand_1_rslt: " + operand1.getString());
 			}
@@ -6129,7 +6242,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 		} else if(operand1_u_operator) {
 			operand1 = e_u_operator(operand1, operand1_u_operator);
 			if(splitOperands) {
-				splitOperands->u_operators[splitOperands->operands.size() - 1] = operand1_u_operator;
+				splitOperands->u_operators[splitOperands->operands_count - 1] = operand1_u_operator->e_oper;
 			}
 			if(debug) debug_output(level, "operand_1_rslt: (" + string(operand1_u_operator->oper) + ") " + operand1.getString());
 		}
@@ -6139,7 +6252,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 			return(operand1);
 		} else {
 			if(splitOperands) {
-				splitOperands->b_operators[splitOperands->operands.size() - 1] = operator1;
+				splitOperands->b_operators[splitOperands->operands_count - 1] = operator1->e_oper;
 			}
 			if(debug) debug_output(level, "operator_1: " + string(operator1->oper) + " / " + intToString(operator1->level));
 		}
@@ -6173,7 +6286,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 			if(!operand2_bb.isEmpty()) {
 				if(specEvalBB(&operand2_bb, &operand2, level, splitOperands ? &splitOperand2 : NULL)) {
 					if(splitOperands) {
-						splitOperands->operands.push_back(splitOperand2);
+						splitOperands->addOperand(splitOperand2);
 					}
 					if(debug) debug_output(level, "operand_2_rslt: " + operand2.getString());
 				} else {
@@ -6182,19 +6295,19 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 					}
 					operand2 = e(operand2_bb.str, operand2_bb.pos, operand2_bb.length, level + 1, splitOperands ? splitOperand2 : NULL);
 					if(splitOperands) {
-						splitOperands->operands.push_back(splitOperand2);
+						splitOperands->addOperand(splitOperand2);
 					}
 					if(debug) debug_output(level, "operand_2_rslt: " + operand2.getString());
 				}
 			} else {
 				if(splitOperands && splitOperand2) {
-					splitOperands->operands.push_back(splitOperand2);
+					splitOperands->addOperand(splitOperand2);
 				}
 			}
 			if(operand2_u_operator) {
 				operand2 = e_u_operator(operand2, operand2_u_operator);
 				if(splitOperands) {
-					splitOperands->u_operators[splitOperands->operands.size() - 1] = operand2_u_operator;
+					splitOperands->u_operators[splitOperands->operands_count - 1] = operand2_u_operator->e_oper;
 				}
 				if(debug) debug_output(level, "operand_2_rslt: (" + string(operand2_u_operator->oper) + ") " + operand2.getString());
 			}
@@ -6210,7 +6323,7 @@ cEvalFormula::sValue cEvalFormula::e(const char *formula, unsigned pos, unsigned
 				}
 				operand2 = e(formula, pos_operator1_end, 0, level + 1, splitOperands ? splitOperand2 : NULL);
 				if(splitOperands) {
-					splitOperands->operands.push_back(splitOperand2);
+					splitOperands->addOperand(splitOperand2);
 				}
 				sValue rslt = e_b_operator(operand1, operand2, operator1);
 				if(debug) debug_output(level, "RSLT: " + rslt.getString());
@@ -6232,40 +6345,51 @@ cEvalFormula::sValue cEvalFormula::e(sSplitOperands *splitOperands) {
 	return(splitOperands->e(this));
 }
 
-cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned level, bool *existsSpecType) {
+bool cEvalFormula::e_opt(sSplitOperands *splitOperands) {
+	bool existsSpecType = false;
+	bool opt = false;
+	splitOperands->e_opt(this, 0, &existsSpecType, &opt);
+	return(opt);
+}
+
+#define DEBUG_SO_E_OPT false
+
+cEvalFormula::sValue cEvalFormula::sSplitOperands::e_opt(cEvalFormula *f, unsigned level, bool *existsSpecType, bool *opt) {
+	if(existsSpecType) *existsSpecType = false;
+	if(opt) *opt = false;
 	if(type == 0) {
-		if(existsSpecType) *existsSpecType = false;
-		if(operands.size()) {
+		if(operands_count) {
 			sValue rslt, operand, *operand_pt;
-			bool shortEval = false;
-			for(unsigned i = 0; i < operands.size(); i++) {
-				if(i > 0 && b_operators[i - 1] &&
-				   (((b_operators[i - 1]->flags & sOperator::_short_eval_and) && !rslt.getBool()) ||
-				    ((b_operators[i - 1]->flags & sOperator::_short_eval_or) && rslt.getBool()))) {
-					shortEval = true;
-					break;
-				}
+			for(unsigned i = 0; i < operands_count; i++) {
 				operand_pt = NULL;
 				if(operands[i]->type == 0 &&
-				   !operands[i]->operands.size()) {
+				   !operands[i]->operands_count) {
 					operand_pt = &operands[i]->value;
 					if(u_operators[i]) {
 						operand = f->e_u_operator(*operand_pt, u_operators[i]);
 						operand_pt = NULL;
-						u_operators[i] = NULL;
+						u_operators[i] = _o_na;
 						operands[i]->value = operand;
 					}
 				} else {
 					bool _existsSpecType;
-					operand = operands[i]->e(f, level + 1, &_existsSpecType);
+					bool _opt;
+					operand = operands[i]->e_opt(f, level + 1, &_existsSpecType, &_opt);
 					if(_existsSpecType) {
 						if(existsSpecType) *existsSpecType = true;
 					}
+					if(_opt) {
+						if(opt) *opt = true;
+					}
 				}
+				#if DEBUG_SO_E_OPT
 				if(f->debug) f->debug_output(level, "operand: " + operand.getString());
+				#endif
 				if(u_operators[i]) {
 					operand = f->e_u_operator(operand, u_operators[i]);
+					#if DEBUG_SO_E_OPT
 					if(f->debug) f->debug_output(level, "operand_rslt: (" + string(u_operators[i]->oper) + ") " + operand.getString());
+					#endif
 				}
 				if(i == 0) {
 					if(operand_pt) {
@@ -6279,20 +6403,22 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 					} else {
 						rslt = f->e_b_operator(rslt, operand, b_operators[i - 1]);
 					}
+					#if DEBUG_SO_E_OPT
 					if(f->debug) {
 						f->debug_output(level, "operator: " + string(b_operators[i - 1]->oper));
 						f->debug_output(level, "rslt: " + rslt.getString());
 					}
+					#endif
 				}
 			}
-			if(existsSpecType && !*existsSpecType && !shortEval) {
+			if(existsSpecType && !*existsSpecType) {
 				value = rslt;
-				for(unsigned i = 0; i < operands.size(); i++) {
-					delete operands[i];
-				}
-				operands.clear();
+				clearOperands();
+				if(opt) *opt = true;
 			}
+			#if DEBUG_SO_E_OPT
 			if(f->debug) f->debug_output(level, "RSLT: " + rslt.getString());
+			#endif
 			return(rslt);
 		} else {
 			return(value);
@@ -6301,17 +6427,18 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 		sValue value;
 		if(f->sql_data) {
 			if(subType == _st_field) {
-				if(f->sql_data_type == _estd_call &&
-				   ((Call*)f->sql_data)->sqlFormulaOperandReplace(&value, &table, &column, f->sql_data2,
-										  f->sql_child_table ? f->sql_child_table : NULL, f->sql_child_index)) {
-					if(f->debug) f->debug_output(level, "subst: " + table + "." + column + " -> " + value.getString());
-					if(existsSpecType) *existsSpecType = true;
-					return(value);
-				}
+				value = 1;
+				#if DEBUG_SO_E_OPT
+				if(f->debug) f->debug_output(level, "subst: " + table + "." + column + " -> " + value.getString());
+				#endif
+				if(existsSpecType) *existsSpecType = true;
+				return(value);
 			} else if(subType == _st_subselect) {
 				f->evalSqlSubselect(&table, &column, &cond, columnType, &value, level, 
 						    &cond_s);
+				#if DEBUG_SO_E_OPT
 				if(f->debug) f->debug_output(level, "subselect rslt: " + value.getString());
+				#endif
 				if(existsSpecType) *existsSpecType = true;
 				return(value);
 			}
@@ -6320,135 +6447,325 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 		if(existsSpecType) *existsSpecType = false;
 		return(value);
 	}
+	sValue value;
+	value.v_null = true;
+	return(value);
 }
 
-cEvalFormula::sValue cEvalFormula::e_u_operator(sValue &operand, sOperator *oper) {
-	if(evalSpecType == _est_sql) {
-		if(eqOperator(oper, "inet_aton") || eqOperator(oper, "inet6_aton")) {
-			vmIP ip;
-			ip.setFromString(operand.getString().c_str());
+#define DEBUG_SO_E false
+
+cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned level) {
+	if(type == 0) {
+		if(operands_count) {
+			sValue rslt, operand, *operand_pt;
+			for(unsigned i = 0; i < operands_count; i++) {
+				if(i > 0 && b_operators[i - 1] &&
+				   ((b_operators[i - 1] == _o_and && !rslt.getBool()) ||
+				    (b_operators[i - 1] == _o_or && rslt.getBool()))) {
+					break;
+				}
+				operand_pt = NULL;
+				if(operands[i]->type == 0 &&
+				   !operands[i]->operands_count) {
+					operand_pt = &operands[i]->value;
+					if(u_operators[i]) {
+						operand = f->e_u_operator(*operand_pt, u_operators[i]);
+						operand_pt = NULL;
+						u_operators[i] = _o_na;
+						operands[i]->value = operand;
+					}
+				} else {
+					operand = operands[i]->e(f, level + 1/*, &_existsSpecType*/);
+				}
+				#if DEBUG_SO_E
+				if(f->debug) f->debug_output(level, "operand: " + operand.getString());
+				#endif
+				if(u_operators[i]) {
+					operand = f->e_u_operator(operand, u_operators[i]);
+					#if DEBUG_SO_E
+					if(f->debug) f->debug_output(level, "operand_rslt: (" + string(u_operators[i]->oper) + ") " + operand.getString());
+					#endif
+				}
+				if(i == 0) {
+					if(operand_pt) {
+						rslt = *operand_pt;
+					} else {
+						rslt.moveFrom(&operand);
+					}
+				} else {
+					if(operand_pt) {
+						if((b_operators[i - 1] == _o_or || b_operators[i - 1] == _o_sql_eq) && rslt.v_type == _v_int && operand_pt->v_type == _v_int) {
+							rslt.v._int = b_operators[i - 1] == _o_or ?
+								       rslt.v._int || operand_pt->v._int :
+								       rslt.v._int == operand_pt->v._int;
+						} else {
+							rslt = f->e_b_operator(rslt, *operand_pt, b_operators[i - 1]);
+						}
+					} else {
+						if((b_operators[i - 1] == _o_or || b_operators[i - 1] == _o_sql_eq) && rslt.v_type == _v_int && operand.v_type == _v_int) {
+							rslt.v._int = b_operators[i - 1] == _o_or ?
+								       rslt.v._int || operand.v._int :
+								       rslt.v._int == operand.v._int;
+						} else {
+							rslt = f->e_b_operator(rslt, operand, b_operators[i - 1]);
+						}
+					}
+					#if DEBUG_SO_E
+					if(f->debug) {
+						f->debug_output(level, "operator: " + string(b_operators[i - 1]->oper));
+						f->debug_output(level, "rslt: " + rslt.getString());
+					}
+					#endif
+				}
+			}
+			#if DEBUG_SO_E
+			if(f->debug) f->debug_output(level, "RSLT: " + rslt.getString());
+			#endif
+			return(rslt);
+		} else {
+			return(value);
+		}
+	} else if(type == 1) {
+		sValue value;
+		if(f->sql_data) {
+			if(subType == _st_field) {
+				map<u_int32_t, sValue> *value_map = &((sChartsCacheCallData*)f->sql_data2)->value_map;
+				if(ord.u.i) {
+					map<u_int32_t, sValue>::iterator iter = value_map->find(ord.u.i);
+					if(iter != value_map->end()) {
+						return(iter->second);
+					}
+				}
+				if(f->sql_data_type == _estd_call &&
+				   ((Call*)f->sql_data)->sqlFormulaOperandReplace(&value, &table, &column, f->sql_data2,
+										  f->sql_child_table ? f->sql_child_table : NULL, f->sql_child_index, NULL)) {
+					#if DEBUG_SO_E
+					if(f->debug) f->debug_output(level, "subst: " + table + "." + column + " -> " + value.getString());
+					#endif
+					if(ord.u.i) {
+						(*value_map)[ord.u.i] = value;
+					}
+					return(value);
+				}
+			} else if(subType == _st_subselect) {
+				f->evalSqlSubselect(&table, &column, &cond, columnType, &value, level, 
+						    &cond_s);
+				#if DEBUG_SO_E
+				if(f->debug) f->debug_output(level, "subselect rslt: " + value.getString());
+				#endif
+				return(value);
+			}
+		}
+		value.v_null = true;
+		return(value);
+	}
+	sValue value;
+	value.v_null = true;
+	return(value);
+}
+
+void cEvalFormula::sSplitOperands::addOperand(sSplitOperands *operand) {
+	sSplitOperands** operands_new = new FILE_LINE(0) sSplitOperands*[operands_count + 1];
+	eOperator *u_operators_new = new FILE_LINE(0) eOperator[operands_count + 1];
+	eOperator *b_operators_new = new FILE_LINE(0) eOperator[operands_count + 1];
+	for(unsigned i = 0; i < operands_count; i++) {
+		operands_new[i] = operands[i];
+		u_operators_new[i] = u_operators[i];
+		b_operators_new[i] = b_operators[i];
+	}
+	operands_new[operands_count] = operand;
+	u_operators_new[operands_count] = _o_na;
+	b_operators_new[operands_count] = _o_na;
+	++operands_count;
+	if(operands) delete [] operands;
+	operands = operands_new;
+	if(u_operators) delete [] u_operators;
+	u_operators = u_operators_new;
+	if(b_operators) delete [] b_operators;
+	b_operators = b_operators_new;
+}
+
+void cEvalFormula::sSplitOperands::clearOperands() {
+	if(operands) {
+		for(unsigned i = 0; i < operands_count; i++) {
+			delete operands[i];
+		}
+		delete [] operands;
+		operands = NULL;
+	}
+	if(u_operators) {
+		delete [] u_operators;
+		u_operators = NULL;
+	}
+	if(b_operators) {
+		delete b_operators;
+		b_operators = NULL;
+	}
+	operands_count = 0;
+}
+
+cEvalFormula::sValue cEvalFormula::e_u_operator(sValue &operand, eOperator oper) {
+	switch(oper) {
+	case _o_not:
+		return(!operand);
+	case _o_sql_inet_aton:
+	case _o_sql_inet6_aton:
+		{
+		vmIP ip;
+		ip.setFromString(operand.getString().c_str());
+		if(ip.is_v6()) {
 			return(sValue(ip));
+		} else  {
+			return(sValue(ip.ip.v4.n));
 		}
-		if(eqOperator(oper, "coalesce")) {
-			if(operand.v_type == _v_list) {
-				if(operand.v._list && operand.v._list->size() > 0) {
-					for(unsigned i = 0; i < operand.v._list->size(); i++) {
-						if(!(*operand.v._list)[i].v_null) {
-							return((*operand.v._list)[i]);
-						}
+		}
+		break;
+	case _o_sql_coalesce:
+		if(operand.v_type == _v_list) {
+			if(operand.v._list && EF_VECTOR_VALUES(operand.v._list)->size() > 0) {
+				for(unsigned i = 0; i < EF_VECTOR_VALUES(operand.v._list)->size(); i++) {
+					if(!(*EF_VECTOR_VALUES(operand.v._list))[i].v_null) {
+						return((*EF_VECTOR_VALUES(operand.v._list))[i]);
 					}
-				} else {
-					sValue rslt;
-					rslt.v_null = true;
-					return(rslt);
 				}
-			} else {
-				return(operand);
-			}
-		}
-		if(eqOperator(oper, "greatest") || eqOperator(oper, "least")) {
-			if(operand.v_type == _v_list) {
-				if(operand.v._list && operand.v._list->size() > 0) {
-					sValue rslt = (*operand.v._list)[0];
-					for(unsigned i = 1; i < operand.v._list->size(); i++) {
-						if((eqOperator(oper, "greatest") ? (*operand.v._list)[i] > rslt : (*operand.v._list)[i] < rslt).getBool()) {
-							rslt = (*operand.v._list)[i];
-						}
-						return(rslt);
-					}
-				} else {
-					sValue rslt;
-					rslt.v_null = true;
-					return(rslt);
-				}
-			} else {
-				return(operand);
-			}
-		}
-		if(eqOperator(oper, "if")) {
-			if(operand.v_type == _v_list && operand.v._list && operand.v._list->size() == 3) {
-				return((*operand.v._list)[0].getBool() ? (*operand.v._list)[1] : (*operand.v._list)[2]);
 			} else {
 				sValue rslt;
 				rslt.v_null = true;
 				return(rslt);
 			}
+		} else {
+			return(operand);
 		}
+		break;
+	case _o_sql_greatest:
+	case _o_sql_least:
+		if(operand.v_type == _v_list) {
+			if(operand.v._list && EF_VECTOR_VALUES(operand.v._list)->size() > 0) {
+				sValue rslt = (*EF_VECTOR_VALUES(operand.v._list))[0];
+				for(unsigned i = 1; i < EF_VECTOR_VALUES(operand.v._list)->size(); i++) {
+					if((oper == _o_sql_greatest ? (*EF_VECTOR_VALUES(operand.v._list))[i] > rslt : (*EF_VECTOR_VALUES(operand.v._list))[i] < rslt).getBool()) {
+						rslt = (*EF_VECTOR_VALUES(operand.v._list))[i];
+					}
+					return(rslt);
+				}
+			} else {
+				sValue rslt;
+				rslt.v_null = true;
+				return(rslt);
+			}
+		} else {
+			return(operand);
+		}
+		break;
+	case _o_sql_if:
+		if(operand.v_type == _v_list && operand.v._list && EF_VECTOR_VALUES(operand.v._list)->size() == 3) {
+			return((*EF_VECTOR_VALUES(operand.v._list))[0].getBool() ? (*EF_VECTOR_VALUES(operand.v._list))[1] : (*EF_VECTOR_VALUES(operand.v._list))[2]);
+		} else {
+			sValue rslt;
+			rslt.v_null = true;
+			return(rslt);
+		}
+		break;
+	default:
+		break;
 	}
-	if(eqOperator(oper, "not")) {
-		return(!operand);
+	return(sValue());
+}
+
+cEvalFormula::sValue cEvalFormula::e_u_operator(sValue &operand, sOperator *oper) {
+	return(e_u_operator(operand, oper->e_oper));
+}
+
+cEvalFormula::sValue cEvalFormula::e_b_operator(sValue &operand1, sValue &operand2, eOperator oper) {
+	switch(oper) {
+	case _o_shift_l:
+		return(operand1 << operand2);
+	case _o_shift_r:
+		return(operand1 >> operand2);
+	case _o_b_and:
+		return(operand1 & operand2);
+	case _o_b_or:
+		return(operand1 | operand2);
+	case _o_mult:
+		return(operand1 * operand2);
+	case _o_div:
+		return(operand1 / operand2);
+	case _o_add:
+		return(operand1 + operand2);
+	case _o_sub:
+		return(operand1 - operand2);
+	case _o_cmp_lt:
+		return(operand1 < operand2);
+	case _o_cmp_le:
+		return(operand1 <= operand2);
+	case _o_cmp_gt:
+		return(operand1 > operand2);
+	case _o_cmp_ge:
+		return(operand1 >= operand2);
+	case _o_cmp_eq:
+		return(operand1 == operand2);
+	case _o_cmp_neq:
+		return(operand1 != operand2);
+	case _o_like:
+		return(operand1.like(operand2));
+	case _o_not_like:
+		{
+		sValue rslt_like = operand1.like(operand2);
+		return(!rslt_like);
+		}
+	case _o_and:
+		return(operand1 && operand2);
+	case _o_or:
+		return(operand1 || operand2);
+	case _o_sql_div:
+		if(operand1.v_type == _v_int && operand2.v_type == _v_int && operand2.v._int) {
+			sValue rslt;
+			rslt.v_type = _v_float;
+			rslt.v._float = (double)operand1.v._int / operand2.v._int;
+		}
+		return(operand1 / operand2);
+	case _o_sql_eq:
+		return(operand1 == operand2);
+	case _o_sql_is:
+		return(sValue(operand1.v_null == operand2.v_null));
+	case _o_sql_is_not:
+		return(sValue(operand1.v_null != operand2.v_null));
+	case _o_sql_in:
+	case _o_sql_not_in:
+		if(operand2.v_type == _v_list && operand2.v._list) {
+			for(unsigned i = 0; i < EF_VECTOR_VALUES(operand2.v._list)->size(); i++) {
+				if((operand1 == (*EF_VECTOR_VALUES(operand2.v._list))[i]).getBool()) {
+					if(oper == _o_sql_in) {
+						return(sValue(true));
+					}
+				}
+			}
+		} else if((operand1 == operand2).getBool()) {
+			return(sValue(oper == _o_sql_in));
+		}
+		return(sValue(oper == _o_sql_not_in));
+	case _o_sql_comma:
+		{
+		sValue rslt;
+		if(operand1.v_type == _v_list) {
+			rslt = operand1;
+		} else {
+			rslt.v_type = _v_list;
+			rslt.v._list =  new FILE_LINE(0) vector<sValue>;
+			rslt.v_dyn = true;
+			EF_VECTOR_VALUES(rslt.v._list)->push_back(operand1);
+		}
+		EF_VECTOR_VALUES(rslt.v._list)->push_back(operand2);
+		return(rslt);
+		}
+	default:
+		break;
 	}
 	return(sValue());
 }
 
 cEvalFormula::sValue cEvalFormula::e_b_operator(sValue &operand1, sValue &operand2, sOperator *oper) {
-	if(evalSpecType == _est_sql) {
-		if(eqOperator(oper, "/")) {
-			if(operand1.v_type == _v_int && operand2.v_type == _v_int && operand2.v._int) {
-				sValue rslt;
-				rslt.v_type = _v_float;
-				rslt.v._float = (double)operand1.v._int / operand2.v._int;
-			}
-			return(operand1 / operand2);
-		}
-		if(eqOperator(oper, "=")) {
-			return(operand1 == operand2);
-		}
-		if(eqOperator(oper, "is")) {
-			return(sValue(operand1.v_null == operand2.v_null));
-		}
-		if(eqOperator(oper, "is not")) {
-			return(sValue(operand1.v_null != operand2.v_null));
-		}
-		if(eqOperator(oper, "in") || eqOperator(oper, "not in")) {
-			if(operand2.v_type == _v_list && operand2.v._list) {
-				for(unsigned i = 0; i < operand2.v._list->size(); i++) {
-					if((operand1 == (*operand2.v._list)[i]).getBool()) {
-						if(oper->oper[0] != 'n') {
-							return(sValue(true));
-						}
-					}
-				}
-			} else if((operand1 == operand2).getBool()) {
-				return(sValue(oper->oper[0] != 'n'));
-			}
-			return(sValue(oper->oper[0] == 'n'));
-		}
-		if(eqOperator(oper, ",")) {
-			sValue rslt;
-			if(operand1.v_type == _v_list) {
-				rslt = operand1;
-			} else {
-				rslt.v_type = _v_list;
-				rslt.v._list =  new FILE_LINE(0) vector<sValue>;
-				rslt.v._list->push_back(operand1);
-			}
-			rslt.v._list->push_back(operand2);
-			return(rslt);
-		}
-	}
-	if(eqOperator(oper, "<<")) return(operand1 << operand2);
-	if(eqOperator(oper, ">>")) return(operand1 >> operand2);
-	if(eqOperator(oper, "&")) return(operand1 & operand2);
-	if(eqOperator(oper, "|")) return(operand1 | operand2);
-	if(eqOperator(oper, "*")) return(operand1 * operand2);
-	if(eqOperator(oper, "/")) return(operand1 / operand2);
-	if(eqOperator(oper, "+")) return(operand1 + operand2);
-	if(eqOperator(oper, "-")) return(operand1 - operand2);
-	if(eqOperator(oper, "<")) return(operand1 < operand2);
-	if(eqOperator(oper, "<=")) return(operand1 <= operand2);
-	if(eqOperator(oper, ">")) return(operand1 > operand2);
-	if(eqOperator(oper, ">=")) return(operand1 >= operand2);
-	if(eqOperator(oper, "==")) return(operand1 == operand2);
-	if(eqOperator(oper, "!=") || eqOperator(oper, "<>")) return(operand1 != operand2);
-	if(eqOperator(oper, "like")) return(operand1.like(operand2));
-	if(eqOperator(oper, "not like")) {
-		sValue rslt_like = operand1.like(operand2);
-		return(!rslt_like);
-	}
-	if(eqOperator(oper, "&&") || eqOperator(oper, "and")) return(operand1 && operand2);
-	if(eqOperator(oper, "||") || eqOperator(oper, "or")) return(operand1 || operand2);
-	return(sValue());
+	return(e_b_operator(operand1, operand2, oper->e_oper));
 }
 
 cEvalFormula::sValue cEvalFormula::getOperand(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end, sOperator **u_operator, sSplitOperands **splitOperands) {
@@ -6708,13 +7025,15 @@ bool cEvalFormula::sqlOperandReplace(sValue *value, string operand, sSplitOperan
 		}
 		transform(table.begin(), table.end(), table.begin(), ::tolower);
 		transform(column.begin(), column.end(), column.begin(), ::tolower);
+		sOperandReplaceData ord;
 		if(((Call*)sql_data)->sqlFormulaOperandReplace(value, &table, &column, sql_data2, 
-							       sql_child_table ? sql_child_table : NULL, sql_child_index)) {
+							       sql_child_table ? sql_child_table : NULL, sql_child_index, &ord)) {
 			if(splitOperands) {
 				sSplitOperands *splitSqlOperands = new FILE_LINE(0) sSplitOperands(1);
 				splitSqlOperands->subType = sSplitOperands::_st_field;
 				splitSqlOperands->table = table;
 				splitSqlOperands->column = column;
+				splitSqlOperands->ord = ord;
 				*splitOperands = splitSqlOperands;
 			}
 			return(true);
@@ -6755,7 +7074,7 @@ bool cEvalFormula::evalSqlSubselect(string *table, string *column, string *cond,
 				if(column_type == sSplitOperands::_ct_max || column_type == sSplitOperands::_ct_min) {
 					sValue rslt_column;
 					((Call*)sql_data)->sqlFormulaOperandReplace(&rslt_column, table, column, sql_data2, 
-										    sql_child_table ? sql_child_table : NULL, sql_child_index);
+										    sql_child_table ? sql_child_table : NULL, sql_child_index, NULL);
 					if(count == 1) {
 						rslt_value = rslt_column;
 					} else {
@@ -6794,41 +7113,41 @@ bool cEvalFormula::evalSqlSubselect(string *table, string *column, string *cond,
 }
 
 cEvalFormula::sOperator cEvalFormula::b_operators[] = {
-	{  5, "<<" }, { 5, ">>" },
-	{ 10, "&" }, { 10, "|" },
-	{ 20, "*" }, { 20, "/" },
-	{ 30, "+" }, { 30, "-" },
-	{ 40, "<" }, { 40, "<=" }, { 40, ">" }, { 40, ">=" }, { 40, "==" }, { 40, "!=" }, { 40, "<>" }, 
-	{ 40, "like", sOperator::_need_end }, { 40, "not like", sOperator::_need_end },
-	{ 50, "&&", sOperator::_short_eval_and },
-	{ 60, "||", sOperator::_short_eval_or },
-	{ 70, "and", sOperator::_short_eval_and | sOperator::_need_end },
-	{ 80, "or", sOperator::_short_eval_or | sOperator::_need_end },
-	{  0, NULL }
+	{  5, "<<", _o_shift_l }, { 5, ">>", _o_shift_r },
+	{ 10, "&", _o_b_and }, { 10, "|", _o_b_or },
+	{ 20, "*", _o_mult }, { 20, "/", _o_div },
+	{ 30, "+", _o_add }, { 30, "-", _o_sub },
+	{ 40, "<", _o_cmp_lt }, { 40, "<=", _o_cmp_le }, { 40, ">", _o_cmp_gt }, { 40, ">=", _o_cmp_ge }, { 40, "==", _o_cmp_eq }, { 40, "!=", _o_cmp_neq }, { 40, "<>", _o_cmp_neq }, 
+	{ 40, "like", _o_like, sOperator::_need_end }, { 40, "not like", _o_not_like, sOperator::_need_end },
+	{ 50, "&&", _o_and, sOperator::_short_eval_and },
+	{ 60, "||", _o_or, sOperator::_short_eval_or },
+	{ 70, "and", _o_and, sOperator::_short_eval_and | sOperator::_need_end },
+	{ 80, "or", _o_or, sOperator::_short_eval_or | sOperator::_need_end },
+	{  0, NULL, _o_na }
 };
 
 cEvalFormula::sOperator cEvalFormula::u_operators[] = {
-	{ 0, "not", sOperator::_need_end },
-	{ 0, NULL }
+	{ 0, "not", _o_not, sOperator::_need_end },
+	{ 0, NULL, _o_na }
 };
 
 cEvalFormula::sOperator cEvalFormula::b_operators_sql[] = {
-	{  20, "/" },
-	{  41, "is", sOperator::_need_end }, {  41, "is not", sOperator::_need_end },
-	{  42, "=" }, 
-	{  42, "in", sOperator::_need_end }, {  42, "not in", sOperator::_need_end },
-	{ 100, "," },
-	{   0, NULL }
+	{  20, "/", _o_sql_div },
+	{  41, "is", _o_sql_is, sOperator::_need_end }, {  41, "is not", _o_sql_is_not, sOperator::_need_end },
+	{  42, "=", _o_sql_eq }, 
+	{  42, "in", _o_sql_in, sOperator::_need_end }, {  42, "not in", _o_sql_not_in, sOperator::_need_end },
+	{ 100, ",", _o_sql_comma },
+	{   0, NULL, _o_na }
 };
 
 cEvalFormula::sOperator cEvalFormula::u_operators_sql[] = {
-	{ 0, "inet_aton", sOperator::_need_end }, 
-	{ 0, "inet6_aton", sOperator::_need_end },
-	{ 0, "coalesce", sOperator::_need_end },
-	{ 0, "greatest", sOperator::_need_end },
-	{ 0, "least", sOperator::_need_end },
-	{ 0, "if", sOperator::_need_end },
-	{ 0, NULL }
+	{ 0, "inet_aton", _o_sql_inet_aton, sOperator::_need_end }, 
+	{ 0, "inet6_aton", _o_sql_inet6_aton, sOperator::_need_end },
+	{ 0, "coalesce", _o_sql_coalesce, sOperator::_need_end },
+	{ 0, "greatest", _o_sql_greatest, sOperator::_need_end },
+	{ 0, "least", _o_sql_least, sOperator::_need_end },
+	{ 0, "if", _o_sql_if, sOperator::_need_end },
+	{ 0, NULL, _o_na }
 };
 
 
