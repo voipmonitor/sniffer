@@ -2289,18 +2289,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(!chc_cpu.empty()) {
 					outStrStat  << chc_cpu << "%";
 				}
-				if(counter_charts_cache) {
+				if(counter_charts_cache / statPeriod) {
 					if(!chc_cpu.empty()) {
 						outStrStat  << "/";
 					}
-					outStrStat  << counter_charts_cache;
+					outStrStat  << (counter_charts_cache / statPeriod);
 				}
 				outStrStat << "] ";
 			}
-			if(chc_cpu_avg > opt_cpu_limit_new_thread_high) {
-				calltable->processCallsInChartsCache_thread_add();
-			} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
-				calltable->processCallsInChartsCache_thread_remove();
+			if(pcapStatCounter > 2) {
+				if(chc_cpu_avg > opt_cpu_limit_new_thread_high) {
+					calltable->processCallsInChartsCache_thread_add();
+				} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
+					calltable->processCallsInChartsCache_thread_remove();
+				}
 			}
 			counter_charts_cache = 0;
 		}

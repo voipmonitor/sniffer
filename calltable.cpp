@@ -7870,7 +7870,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	for(int i = 0; i < MAXIMUM_CHC_THREADS; i++) {
 		chc_threads_tid[i] = 0;
 		chc_threads[i] = 0;
-		memset(chc_threads_pstat_data[i], 0, sizeof(chc_threads_pstat_data[i][2]));
+		memset(chc_threads_pstat_data[i], 0, sizeof(chc_threads_pstat_data[i]));
 		chc_threads_init[i] = false;
 		chc_threads_calls[i] = NULL;
 		chc_cache[i] = NULL;
