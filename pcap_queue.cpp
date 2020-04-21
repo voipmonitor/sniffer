@@ -2281,16 +2281,28 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		extern bool opt_charts_cache;
 		if(opt_charts_cache) {
+			extern u_int32_t counter_charts_cache;
 			double chc_cpu_avg;
 			string chc_cpu = calltable->processCallsInChartsCache_cpuUsagePerc(&chc_cpu_avg);
-			if(!chc_cpu.empty()) {
-				outStrStat << "charts[" << chc_cpu << "%] ";
+			if(!chc_cpu.empty() || counter_charts_cache) {
+				outStrStat << "charts[";
+				if(!chc_cpu.empty()) {
+					outStrStat  << chc_cpu << "%";
+				}
+				if(counter_charts_cache) {
+					if(!chc_cpu.empty()) {
+						outStrStat  << "/";
+					}
+					outStrStat  << counter_charts_cache;
+				}
+				outStrStat << "] ";
 			}
 			if(chc_cpu_avg > opt_cpu_limit_new_thread_high) {
 				calltable->processCallsInChartsCache_thread_add();
 			} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
 				calltable->processCallsInChartsCache_thread_remove();
 			}
+			counter_charts_cache = 0;
 		}
 		if(opt_rrd) {
 			extern RrdCharts rrd_charts;

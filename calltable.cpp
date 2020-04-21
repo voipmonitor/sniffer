@@ -9023,6 +9023,8 @@ void Calltable::processCallsInChartsCache_stop() {
 	__sync_lock_release(&chc_threads_count_sync);
 }
 
+u_int32_t counter_charts_cache;
+
 void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	chc_threads_tid[threadIndex] = get_unix_tid();
 	if(!chc_cache[threadIndex] && opt_charts_cache_ip_boost) {
@@ -9069,7 +9071,11 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				++chc_count;
 				calltable->calls_charts_cache_queue.pop_front();
 				--chc_size;
+				if(chc_count >= 1000) {
+					break;
+				}
 			}
+			counter_charts_cache += chc_count;
 			calltable->unlock_calls_charts_cache_queue();
 			if(chc_count) {
 				if(chc_threads_count > 1) {
@@ -9108,7 +9114,9 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			chartsCacheStore();
 			chartsCacheCleanup();
 			chartsCacheReload();
-			USLEEP(100000);
+			if(!chc_size) {
+				USLEEP(100000);
+			}
 			if(terminating_charts_cache && (!chc_count || terminating > 1)) {
 				break;
 			}
