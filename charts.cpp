@@ -418,8 +418,8 @@ cChartDataPool::~cChartDataPool() {
 }
 
 void cChartDataPool::createPool(u_int32_t timeFrom, u_int32_t timeTo) {
-	this->pool = new FILE_LINE(0) u_int32_t[timeTo - timeFrom + 1];
-	memset((void*)this->pool, 0, (timeTo - timeFrom + 1) * sizeof(u_int32_t));
+	this->pool = new FILE_LINE(0) u_int32_t[timeTo - timeFrom];
+	memset((void*)this->pool, 0, (timeTo - timeFrom) * sizeof(u_int32_t));
 }
 
 void cChartDataPool::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
@@ -478,7 +478,7 @@ string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval
 	unsigned int sum = 0;
 	unsigned int count = 0;
 	string pool_str = "[";
-	for(unsigned int i = 0; i < interval->timeTo - interval->timeFrom + 1; i++) {
+	for(unsigned int i = 0; i < interval->timeTo - interval->timeFrom; i++) {
 		if(i) {
 			pool_str += ',';
 		}
@@ -712,7 +712,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 	cache_row.add(sqlDateTimeString(interval->timeFrom), "from_time");
 	cache_row.add(chart_data, "chart_data");
 	if(opt_id_sensor > 0) {
-		cache_row.add(opt_id_sensor, "id_sensor");
+		cache_row.add(opt_id_sensor, "sensor_id");
 	}
 	string insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
 			    sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true));
