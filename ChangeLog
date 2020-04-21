@@ -1,3 +1,17 @@
+26.14 20.04.2020
+================
+- Increase RRDs limit for packets count all/RTP to 100000000 
+- do not add packet loss (and do not lower MOS score) in cases when there is >500ms RTP gap with missing MARK bit but timestamp difference is within range <10ms which is valid silence or gap [VS-1038] [VS-1051]
+- Added support for RFC1483 (LLC-encapsulated ATM) link-layer type
+- set rx queue and coalesce rx-usecs on sniffing interfaces with ethtool utility (option interfaces_optimize default is yes) [VS-1057]
+- send warning when sniffer is swapped [VG-2088]
+- fix crash when compiled with wireshark for SS7 support [VS-1061]
+- fix crash when downloading audio from GUI [VS-1060]
+- fix empty active calls for some cases [VG-2090]
+- fix bad headers error (when in nonstandard configuration) in client-server mode [VS-1050]
+- fix capture reloading in client-server if ipv6 is enabled [VG-2087]
+
+
 26.13 20.03.2020
 ================
 - fix missing RTP in caller or called for some cases [VS-1053]
