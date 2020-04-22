@@ -4865,7 +4865,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 					}
 					++sumBlocksCounterIn[0];
 					if(opt_nonstop_read) {
-						this->new_blockstore(blockStoreIndex);
+						blockStore[blockStoreIndex] = this->new_blockstore(blockStoreIndex);
 					} else {
 						blockStore[blockStoreIndex] = NULL;
 					}
