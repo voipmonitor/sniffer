@@ -459,7 +459,7 @@ void cChartDataPool::add(Call *call, unsigned call_interval, bool firstInterval,
 		unsigned int duration = calldate_to - calldate_from;
 		unsigned int calldate_from_connected = calldate_from + (duration - connect_duration);
 		from = ::max(calldate_from_connected, interval->timeFrom);
-		to = ::min(calldate_to, interval->timeTo);
+		to = ::min(calldate_to, interval->timeTo - 1);
 		//int secondsConnected = to - calldate_from_connected + 1;
 		int secondsConnected = to - from;
 		if(secondsConnected > 0) {
