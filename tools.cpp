@@ -2198,7 +2198,7 @@ list<int> getPids(string app, string grep_search) {
 #ifdef FREEBSD
 	cmd = "ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ " + app + " ' | grep '" + grep_search + "'";
 #else
-	cmd = "ps -C '" + app + "' -o pid,args | grep '" + grep_search + "'";
+	cmd = "ps -C '" + app.substr(0, 15) + "' -o pid,args | grep '" + grep_search + "'";
 #endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
 	while(fgets(buffRslt, 512, cmd_pipe)) {
@@ -2363,19 +2363,6 @@ string WDT::getConfigFile() {
 	extern string configfilename;
 	return(configfilename);
 }
-
-
-std::string getCmdLine() {
-	FILE *fcmdline = fopen(("/proc/" + intToString(getpid()) + "/cmdline").c_str(), "r");
-	if(fcmdline) {
-		char cmdline[1024];
-		fgets(cmdline, sizeof(cmdline), fcmdline);
-		fclose(fcmdline);
-		return(cmdline);
-	}
-	return("");
-}
-
 
 std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");
