@@ -7354,8 +7354,8 @@ bool getInterfaceOption(const char *param, const char *searchstr, const char *if
 			return(true);
 		}
 	}
-	printf("Can't get value from 'ethtool %s %s'\n", param, iface);
-	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'", param, iface);
+	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error.\n", param, iface);
+	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error.", param, iface);
 	return(false);
 }
 
@@ -7369,15 +7369,15 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
 		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
 	} else {
-		printf("Can't set interface 'ethtool %s %s %s %i'): %i\n", param, iface, option, value, retval);
-		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i'): %i", param, iface, option, value, retval);
+		printf("Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.\n", param, iface, option, value, retval);
+		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.", param, iface, option, value, retval);
 	}
 }
 
 void handleInterfaceOptions(void) {
 	if(!isEthtoolInstalled()) {
-		printf("ethtool binary is not installed so NIC's options can't be set.\n");
-		syslog(LOG_NOTICE, "ethtool binary is not installed so NIC's options can't be set.");
+		printf("ethtool binary is not installed so NIC's options can't be set. This is not a fatal error.\n");
+		syslog(LOG_NOTICE, "ethtool binary is not installed so NIC's options can't be set. This is not a fatal error.");
 		return;
 	}
 	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
