@@ -7376,8 +7376,8 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 
 void handleInterfaceOptions(void) {
 	if(!isEthtoolInstalled()) {
-		printf("ethtool binary is not installed so NIC's options can't be set. This is not a fatal error.\n");
-		syslog(LOG_NOTICE, "ethtool binary is not installed so NIC's options can't be set. This is not a fatal error.");
+		printf("ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.\n");
+		syslog(LOG_NOTICE, "ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.");
 		return;
 	}
 	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
