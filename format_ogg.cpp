@@ -399,6 +399,7 @@ int ogg_mix(char *in1, char *in2, char *out, int stereo, int samplerate, double 
 	}
 
 	ogg_close(&ogg, f_out);
+	fclose(f_out);
 
 	for(unsigned i = 0; i < 2; i++) {
 		if(f_in[i]) {
