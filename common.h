@@ -114,6 +114,7 @@ struct sVerbose {
 	int usleep_stats;
 	int charts_cache_only;
 	int charts_cache_filters_eval;
+	int charts_cache_filters_eval_rslt;
 	char sipcallerip_filter[100];
 	int _debug1;
 	int _debug2;

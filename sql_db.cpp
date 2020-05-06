@@ -125,6 +125,18 @@ cSqlDbData *dbData;
 #define CONV_ID_FOR_REMOTE_STORE(id) CONV_ID(id)
 
 
+string SqlDb_row::SqlDb_rowField::getContentForCsv() {
+	switch(ifv.type) {
+	case _ift_ip:
+		return(ifv.v_ip.getString());
+	case _ift_calldate:
+		return(intToString(ifv.v._int_u));
+	default:
+		break;
+	}
+	return(content);
+}
+
 string SqlDb_row::operator [] (const char *fieldName) {
 	int indexField = this->getIndexField(fieldName);
 	if(indexField >= 0 && (unsigned)indexField < row.size()) {
@@ -148,7 +160,7 @@ SqlDb_row::operator int() {
 void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table) {
 	if(!content.isSet() && null) {
 		this->add((const char*)NULL, fieldName, 0, 0, _ift_ip)
-		     ->ifv.v_ip = content;
+		    ->ifv.v_ip = content;
 	} else {
 		if(VM_IPV6_B) {
 			if(sqlDb->isIPv6Column(table, fieldName)) {
@@ -160,15 +172,17 @@ void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, con
 		char str_content[100];
 		snprintf(str_content, sizeof(str_content), "%u", content.getIPv4());
 		this->add(str_content, fieldName, 0, 0, _ift_ip)
-			->ifv.v_ip = content;
+		    ->ifv.v_ip = content;
 	}
 }
 
 void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
 	if(use_ms) {
-		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate);
+		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate)
+		    ->ifv.v._int_u = calldate_us;
 	} else {
-		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate);
+		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate)
+		    ->ifv.v._int_u = calldate_us;
 	}
 }
 
@@ -214,6 +228,11 @@ void SqlDb_row::add_duration(int64_t duration_us, string fieldName, bool use_ms,
 	}
 }
 
+void SqlDb_row::add_cb_string(string content, string fieldName, int cb_type) {
+	this->add(content, fieldName, false, _ift_cb_string)
+	    ->ifv.cb_type = cb_type;
+}
+
 int SqlDb_row::_getIndexField(string fieldName) {
 	return(this->sqlDb->getIndexField(fieldName));
 }
@@ -231,6 +250,10 @@ string SqlDb_row::implodeFields(string separator, string border) {
 	return(rslt);
 }
 
+string SqlDb_row::implodeFieldsToCsv() {
+	return(implodeFields(",", "\""));
+}
+
 string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll) {
 	string rslt;
 	for(size_t i = 0; i < this->row.size(); i++) {
@@ -241,6 +264,10 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			rslt += this->row[i].content.substr(12);
 		} else if(this->row[i].content.substr(0, 14) == MYSQL_CODEBOOK_ID_PREFIX) {
 			rslt += this->row[i].content;
+		} else if(this->row[i].ifv.type == _ift_cb_string){
+			string nameValue = dbData->getCbNameForType((cSqlDbCodebook::eTypeCodebook)this->row[i].ifv.cb_type) + ";" + this->row[i].content;
+			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
+			rslt += fieldContent;
 		} else {
 			rslt += border + 
 				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
@@ -262,10 +289,45 @@ string SqlDb_row::implodeFieldContent(string separator, string fieldBorder, stri
 			rslt += this->row[i].content.substr(12);
 		} else if(this->row[i].content.substr(0, 14) == MYSQL_CODEBOOK_ID_PREFIX) {
 			rslt += this->row[i].content;
+		} else if(this->row[i].ifv.type == _ift_cb_string){
+			string nameValue = dbData->getCbNameForType((cSqlDbCodebook::eTypeCodebook)this->row[i].ifv.cb_type) + ";" + this->row[i].content;
+			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
+			rslt += fieldContent;
 		} else {
 			rslt += contentBorder + 
 				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
 				contentBorder;
+		}
+	}
+	return(rslt);
+}
+
+string SqlDb_row::implodeContentTypeToCsv(bool enableSqlString) {
+	string rslt;
+	for(size_t i = 0; i < this->row.size(); i++) {
+		if(i) { rslt += ","; }
+		if(this->row[i].null) {
+			rslt += string(1, '0' + _ift_null);
+		} else if(enableSqlString && this->row[i].content.substr(0, 12) == MYSQL_VAR_PREFIX) {
+			rslt += '"' + 
+				string(1, '0' + _ift_sql) + ':' +
+				this->row[i].content.substr(12) +
+				'"';
+		} else if(this->row[i].content.substr(0, 14) == MYSQL_CODEBOOK_ID_PREFIX) {
+			rslt += '"' + 
+				string(1, '0' + _ift_cb_old) + ':' +
+				this->row[i].content + 
+				'"';
+		} else if(this->row[i].ifv.type == _ift_cb_string) {
+			rslt += '"' + 
+				string(1, '0' + this->row[i].ifv.type + this->row[i].ifv.cb_type) + ':' +
+				this->row[i].content + 
+				'"';
+		} else {
+			rslt += '"' + 
+				string(1, '0' + this->row[i].ifv.type) + ':' +
+				this->row[i].getContentForCsv() + 
+				'"';
 		}
 	}
 	return(rslt);
@@ -3172,7 +3234,8 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	if(useNewStore() || opt_load_query_from_files || is_server()) {
 		string queries_str_old_store;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-			if(iter->find(_MYSQL_QUERY_END_new) == string::npos) {
+			if(strncmp(iter->c_str(), "csv", 3) &&
+			   iter->find(_MYSQL_QUERY_END_new) == string::npos) {
 				queries_str_old_store += *iter;
 				queries->erase(iter++);
 			} else {

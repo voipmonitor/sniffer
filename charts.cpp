@@ -1,5 +1,7 @@
 #include "charts.h"
 
+#include "calltable.h"
+
 
 extern int opt_nocdr;
 extern int opt_id_sensor;
@@ -83,7 +85,7 @@ cChartDataItem::cChartDataItem() {
 	this->countShort = 0;
 }
 
-void cChartDataItem::add(Call *call, 
+void cChartDataItem::add(sChartsCallData *call, 
 			 unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 cChartSeries *series, cChartIntervalSeriesData *intervalSeries,
 			 u_int32_t calldate_from, u_int32_t calldate_to) {
@@ -104,7 +106,11 @@ void cChartDataItem::add(Call *call,
 		{
 		double value;
 		bool value_null;
-		call->getChartCacheValue(series->def.chartType, &value, NULL, &value_null, chartsCache);
+		if(call->type == sChartsCallData::_call) {
+			call->call()->getChartCacheValue(series->def.chartType, &value, NULL, &value_null, chartsCache);
+		} else {
+			Call::getChartCacheValue(call->tables_content(), series->def.chartType, &value, NULL, &value_null, chartsCache);
+		}
 		if(!value_null && (value || series->def.enableZero)) {
 			if(series->def.percType != _chartPercType_NA) {
 				this->values.push_back(value);
@@ -130,9 +136,17 @@ void cChartDataItem::add(Call *call,
 			   series->def.chartType == _chartType_asr ||
 			   (firstInterval && beginInInterval)) {
 				++this->countAll;
-				if(call->connect_time_us) {
-					++this->countConected;
-					this->sumDuration += call->connect_duration_s();
+				if(call->type == sChartsCallData::_call) {
+					if(call->call()->connect_time_us) {
+						++this->countConected;
+						this->sumDuration += call->call()->connect_duration_s();
+					}
+				} else {
+					double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
+					if(connect_duration > 0) {
+						++this->countConected;
+						this->sumDuration += connect_duration;
+					}
 				}
 			}
 			break;
@@ -143,10 +157,19 @@ void cChartDataItem::add(Call *call,
 				++this->countAll;
 				double lsr;
 				bool lsr_null;
-				call->getChartCacheValue(_chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
-				if(call->connect_time_us ||
-				   series->ner_lsr_filter->check((unsigned)lsr)) {
-					++this->count;
+				if(call->type == sChartsCallData::_call) {
+					call->call()->getChartCacheValue(_chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
+					if(call->call()->connect_time_us ||
+					   series->ner_lsr_filter->check((unsigned)lsr)) {
+						++this->count;
+					}
+				} else {
+					Call::getChartCacheValue(call->tables_content(), _chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
+					double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
+					if(connect_duration > 0 ||
+					   series->ner_lsr_filter->check((unsigned)lsr)) {
+						++this->count;
+					}
 				}
 			}
 			break;
@@ -155,12 +178,23 @@ void cChartDataItem::add(Call *call,
 	case _chartSubType_perc:
 		switch(series->def.chartType) {
 		case _chartType_count_perc_short:
-			if(call->connect_time_us) {
-				unsigned int connectDuration = call->connect_duration_s();
-				++this->countConected;
-				if(intervalSeries->param.size() && 
-				   connectDuration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
-					++this->countShort;
+			if(call->type == sChartsCallData::_call) {
+				if(call->call()->connect_time_us) {
+					unsigned int connect_duration = call->call()->connect_duration_s();
+					++this->countConected;
+					if(intervalSeries->param.size() && 
+					   connect_duration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
+						++this->countShort;
+					}
+				}
+			} else {
+				double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
+				if(connect_duration > 0) {
+					++this->countConected;
+					if(intervalSeries->param.size() && 
+					   connect_duration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
+						++this->countShort;
+					}
 				}
 			}
 			break;
@@ -422,7 +456,7 @@ void cChartDataPool::createPool(u_int32_t timeFrom, u_int32_t timeTo) {
 	memset((void*)this->pool, 0, (timeTo - timeFrom) * sizeof(u_int32_t));
 }
 
-void cChartDataPool::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 cChartSeries *series, cChartInterval *interval,
 			 u_int32_t calldate_from, u_int32_t calldate_to) {
 	unsigned int from, to;
@@ -455,18 +489,25 @@ void cChartDataPool::add(Call *call, unsigned call_interval, bool firstInterval,
 		}
 		break;
 	case _chartType_minutes:
-		unsigned int connect_duration = call->connect_duration_s();
+		unsigned int connect_duration;
+		if(call->type == sChartsCallData::_call) {
+			connect_duration = call->call()->connect_duration_s();
+		} else {
+			connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration");
+		}
 		unsigned int duration = calldate_to - calldate_from;
 		unsigned int calldate_from_connected = calldate_from + (duration - connect_duration);
 		from = ::max(calldate_from_connected, interval->timeFrom);
-		to = ::min(calldate_to, interval->timeTo - 1);
+		to = ::min(calldate_to, interval->timeTo);
 		//int secondsConnected = to - calldate_from_connected + 1;
 		int secondsConnected = to - from;
 		if(secondsConnected > 0) {
 			 this->all += secondsConnected;
+			 /*
 			 for(unsigned int i = from; i <= to; i++) {
 				 this->pool[i - interval->timeFrom] += i - calldate_from_connected + 1;
 			 }
+			 */
 		}
 		break;
 	}
@@ -588,13 +629,17 @@ void cChartIntervalSeriesData::prepareData() {
 	param_map = series->param_map;
 }
 
-void cChartIntervalSeriesData::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartIntervalSeriesData::add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 				   u_int32_t calldate_from, u_int32_t calldate_to) {
 	lock_data();
 	double value;
 	string value_str;
 	bool value_null;
-	call->getChartCacheValue(series->def.chartType, &value, &value_str, &value_null, chartsCache);
+	if(call->type == sChartsCallData::_call) {
+		call->call()->getChartCacheValue(series->def.chartType, &value, &value_str, &value_null, chartsCache);
+	} else {
+		Call::getChartCacheValue(call->tables_content(), series->def.chartType, &value, &value_str, &value_null, chartsCache);
+	}
 	if(this->series->isIntervals()) {
 		if(value_null) {
 			unlock_data();
@@ -736,7 +781,7 @@ void cChartInterval::setInterval(u_int32_t timeFrom, u_int32_t timeTo) {
 	init();
 }
 
-void cChartInterval::add(Call *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
+void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 u_int32_t calldate_from, u_int32_t calldate_to,
 			 map<cChartFilter*, bool> *filters_map) {
 	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
@@ -811,7 +856,7 @@ u_int64_t __cc2;
 u_int64_t __ss2;
 #endif
 
-bool cChartFilter::check(Call *call, void *callData, cFiltersCache *filtersCache) {
+bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
  
 #if TEST_CHECK_FILTER == 1
  
@@ -933,17 +978,26 @@ bool cChartFilter::check(Call *call, void *callData, cFiltersCache *filtersCache
 	//cout << filter << endl;
 	
 	if(filtersCache) {
-		vmIP *ip1 = NULL, *ip2 = NULL;
+		vmIP ip1, ip2;
 		int useIP = ip_filter_contain_sipcallerip && ip_filter_contain_sipcalledip ? 2 : 
 			    ip_filter_contain_sipcallerip || ip_filter_contain_sipcalledip ? 1 : 0;
 		int rsltCache = -2;
 		if(useIP == 2) {
-			ip1 = &call->sipcallerip[0];
-			ip2 = &call->sipcalledip_rslt;
-			rsltCache = filtersCache->get(this, ip1, ip2);
+			if(call->type == sChartsCallData::_call) {
+				ip1 = call->call()->sipcallerip[0];
+				ip2 = call->call()->sipcalledip_rslt;
+			} else {
+				ip1 = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip");
+				ip2 = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip");
+			}
+			rsltCache = filtersCache->get(this, &ip1, &ip2);
 		} else if(useIP == 1) {
-			ip1 = ip_filter_contain_sipcallerip ? &call->sipcallerip[0] : &call->sipcalledip_rslt;
-			rsltCache = filtersCache->get(this, ip1);
+			if(call->type == sChartsCallData::_call) {
+				ip1 = ip_filter_contain_sipcallerip ? call->call()->sipcallerip[0] : call->call()->sipcalledip_rslt;
+			} else {
+				ip1 = call->tables_content()->getValue_ip(Call::_t_cdr, ip_filter_contain_sipcallerip ? "sipcallerip" : "sipcalledip");
+			}
+			rsltCache = filtersCache->get(this, &ip1);
 		}
 		switch(rsltCache) {
 		case 1:
@@ -965,9 +1019,9 @@ bool cChartFilter::check(Call *call, void *callData, cFiltersCache *filtersCache
 				rslt = f.e(filter_only_sip_ip_s).getBool();
 			}
 			if(useIP == 2) {
-				filtersCache->add(this, ip1, ip2, rslt);
+				filtersCache->add(this, &ip1, &ip2, rslt);
 			} else if(useIP == 1) {
-				filtersCache->add(this, ip1, rslt);
+				filtersCache->add(this, &ip1, rslt);
 			}
 			if(!rslt) {
 				return(false);
@@ -989,7 +1043,7 @@ bool cChartFilter::check(Call *call, void *callData, cFiltersCache *filtersCache
 	} else {
 		rslt = f.e(filter_s).getBool();
 	}
-	if(sverb.charts_cache_filters_eval) {
+	if(sverb.charts_cache_filters_eval || sverb.charts_cache_filters_eval_rslt) {
 		cout << " * RSLT: " << rslt << endl;
 	}
 	
@@ -1107,6 +1161,7 @@ bool cChartSeries::checkFilters(map<cChartFilter*, bool> *filters_map) {
 cCharts::cCharts() {
 	first_interval = 0;
 	last_interval = 0;
+	act_first_interval = 0;
 	maxValuesPartsForPercentile = 1000;
 	maxLengthSipResponseText = 0; // 24;
 	intervalStorePeriod = 2 * 60;
@@ -1183,21 +1238,35 @@ void cCharts::load(SqlDb *sqlDb) {
 }
 
 void cCharts::reload() {
-	if(!first_interval) {
+	if(!act_first_interval) {
 		return;
 	}
 	if(!last_reload_at) {
-		last_reload_at = first_interval;
+		last_reload_at = act_first_interval;
 		return;
 	}
-	if(!(first_interval > last_reload_at && first_interval - last_reload_at >= intervalReload)) {
+	if(!(act_first_interval > last_reload_at && act_first_interval - last_reload_at >= intervalReload)) {
 		return;
 	}
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setMaxQueryPass(1);
 	load(sqlDb);
 	delete sqlDb;
-	last_reload_at = first_interval;
+	last_reload_at = act_first_interval;
+}
+
+void cCharts::initIntervals() {
+	if(this->first_interval) {
+		u_int32_t first_interval = getTimeS() / 60 * 60 + 10 * 60;
+		lock_intervals();
+		while(this->first_interval < first_interval) {
+			u_int32_t interval_begin = this->first_interval + 60;
+			intervals[interval_begin] = new FILE_LINE(0) cChartInterval();
+			intervals[interval_begin]->setInterval(interval_begin, interval_begin + 60);
+			this->first_interval = interval_begin;
+		}
+		unlock_intervals();
+	}
 }
 
 void cCharts::clear() {
@@ -1233,59 +1302,72 @@ cChartFilter* cCharts::addFilter(const char *filter, const char *filter_only_sip
 	return(chFilter);
 }
 
-void cCharts::add(Call *call, void *callData, cFiltersCache *filtersCache) {
+void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
 	map<cChartFilter*, bool> filters_map;
 	this->checkFilters(call, callData, &filters_map, filtersCache);
-	u_int64_t calltime_us = call->calltime_us();
-	u_int64_t callend_us = call->callend_us();
+	u_int64_t calltime_us;
+	u_int64_t callend_us;
+	if(call->type == sChartsCallData::_call) {
+		calltime_us = call->call()->calltime_us();
+		callend_us = call->call()->callend_us();
+	} else {
+		calltime_us = call->tables_content()->getValue_int(Call::_t_cdr, "calldate");
+		callend_us = call->tables_content()->getValue_int(Call::_t_cdr, "callend");
+	}
 	u_int64_t calltime_min_s = calltime_us / 1000 / 1000 / 60 * 60;
 	u_int64_t callend_min_s = callend_us / 1000 / 1000 / 60 * 60;
-	vector<u_int32_t> intervals_begin;
+	list<u_int32_t> intervals_begin;
 	for(u_int64_t acttime_min_s = calltime_min_s; acttime_min_s <= callend_min_s; acttime_min_s += 60) {
+		if(acttime_min_s > act_first_interval) {
+			act_first_interval = acttime_min_s;
+		}
 		intervals_begin.push_back(acttime_min_s);
-		if(acttime_min_s > first_interval) {
-			first_interval = acttime_min_s;
-		}
-		if(!last_interval || acttime_min_s < last_interval) {
-			last_interval = acttime_min_s;
-		}
 	}
-	for(unsigned i = 0; i < intervals_begin.size(); i++) {
-		if(intervals_begin[i] <= first_interval &&
-		   first_interval - intervals_begin[i] < intervalExpiration) {
-			cChartInterval* interval;
+	unsigned interval_counter = 0;
+	for(list<u_int32_t>::iterator iter = intervals_begin.begin(); iter != intervals_begin.end(); iter++) {
+		u_int32_t interval_begin = *iter;
+		if(act_first_interval - interval_begin < intervalExpiration) {
+			cChartInterval* interval = NULL;
 			lock_intervals();
-			if(!intervals[intervals_begin[i]]) {
-				intervals[intervals_begin[i]] = new FILE_LINE(0) cChartInterval();
-				intervals[intervals_begin[i]]->setInterval(intervals_begin[i], intervals_begin[i] + 60);
+			interval = intervals[interval_begin];
+			if(!intervals[interval_begin]) {
+				if(interval_begin > first_interval) {
+					first_interval = interval_begin;
+				}
+				if(!last_interval || interval_begin < last_interval) {
+					last_interval = interval_begin;
+				}
+				interval = new FILE_LINE(0) cChartInterval();
+				interval->setInterval(interval_begin, interval_begin + 60);
+				intervals[interval_begin] = interval;
 			}
-			interval = intervals[intervals_begin[i]];
 			unlock_intervals();
-			interval->add(call, i, i == 0, i == intervals_begin.size() - 1, i == 0,
+			interval->add(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
 				      calltime_us / 1000 / 1000, callend_us / 1000 / 1000,
 				      &filters_map);
 		}
+		++interval_counter;
 	}
 }
 
-void cCharts::checkFilters(Call *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache) {
+void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache) {
 	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
 		(*filters_map)[iter->second] = iter->second->check(call, callData, filtersCache);
 	}
 }
 
 void cCharts::store(bool forceAll) {
-	if(!first_interval) {
+	if(!act_first_interval) {
 		return;
 	}
 	u_int32_t real_time = getTimeS();
 	if(!forceAll) {
 		if(!last_store_at) {
-			last_store_at = first_interval;
+			last_store_at = act_first_interval;
 			last_store_at_real = real_time;
 			return;
 		}
-		if(!((first_interval > last_store_at && first_interval - last_store_at >= intervalStorePeriod) ||
+		if(!((act_first_interval > last_store_at && act_first_interval - last_store_at >= intervalStorePeriod) ||
 		     (real_time > last_store_at_real && real_time - last_store_at_real >= intervalStorePeriod))) {
 			return;
 		}
@@ -1295,35 +1377,36 @@ void cCharts::store(bool forceAll) {
 	}
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); iter++) {
 		if(forceAll || 
-		   (!iter->second->last_store_at && first_interval > iter->first && 
-		    first_interval - iter->first >= intervalStorePeriod) ||
-		   (iter->second->last_store_at && first_interval > iter->second->last_store_at && 
-		    first_interval - iter->second->last_store_at >= intervalStorePeriod) ||
+		   (!iter->second->last_store_at && act_first_interval > iter->first && 
+		    act_first_interval - iter->first >= intervalStorePeriod) ||
+		   (iter->second->last_store_at && act_first_interval > iter->second->last_store_at && 
+		    act_first_interval - iter->second->last_store_at >= intervalStorePeriod) ||
 		   (iter->second->last_store_at_real && real_time > iter->second->last_store_at_real && 
 		    real_time - iter->second->last_store_at_real >= intervalStorePeriod)) {
-			iter->second->store(first_interval, real_time, sqlDbStore);
+			iter->second->store(act_first_interval, real_time, sqlDbStore);
 		}
 	}
-	last_store_at = first_interval;
+	last_store_at = act_first_interval;
 	last_store_at_real = real_time;
 }
 
 void cCharts::cleanup() {
-	if(!first_interval) {
+	if(!act_first_interval) {
 		return;
 	}
 	if(!last_cleanup_at) {
-		last_cleanup_at = first_interval;
+		last_cleanup_at = act_first_interval;
 		return;
 	}
-	if(!(first_interval > last_cleanup_at && first_interval - last_cleanup_at >= intervalStorePeriod)) {
+	if(!(act_first_interval > last_cleanup_at && act_first_interval - last_cleanup_at >= intervalStorePeriod)) {
 		return;
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(first_interval > iter->first && first_interval - iter->first > intervalExpiration) {
+		if(act_first_interval > iter->first && act_first_interval - iter->first > intervalExpiration) {
 			delete iter->second;
 			intervals.erase(iter++);
+			last_interval = iter->first;
 		} else {
 			iter++;
 		}
@@ -1337,7 +1420,7 @@ void cCharts::cleanup() {
 			iter++;
 		}
 	}
-	this->last_cleanup_at = first_interval;
+	this->last_cleanup_at = act_first_interval;
 }
 
 bool cCharts::seriesIsUsed(const char *config_id) {
@@ -1551,16 +1634,27 @@ bool chartsCacheIsSet() {
 }
 
 #define TEST_ADD_CALL 0
+#define TEST_ADD_CALL_FILTERS_CACHE 0
 
-void chartsCacheAddCall(Call *call, void *callData, cFiltersCache *filtersCache) {
+void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
 	if(chartsCache) {
 	 
+		/*
+		static int _i = 0;
+		cout << "*** " << (++_i) << endl;
+		*/
+	 
 #if TEST_ADD_CALL == 1
+
+		cFiltersCache *_filtersCache = NULL;
+		#if TEST_ADD_CALL_FILTERS_CACHE
+		_filtersCache = filtersCache;
+		#endif
 	 
 		u_int64_t s = getTimeUS();
 		for(unsigned i = 0; i < 1; i++) {
 	 
-			chartsCache->add(call, callData, filtersCache);
+			chartsCache->add(call, callData, _filtersCache);
 			
 		}
 		u_int64_t e = getTimeUS();
@@ -1571,7 +1665,7 @@ void chartsCacheAddCall(Call *call, void *callData, cFiltersCache *filtersCache)
 		s = getTimeUS();
 		for(unsigned i = 0; i < 1; i++) {
 	 
-			chartsCache->add(call, callData, filtersCache);
+			chartsCache->add(call, callData, _filtersCache);
 			
 		}
 		e = getTimeUS();
@@ -1584,7 +1678,6 @@ void chartsCacheAddCall(Call *call, void *callData, cFiltersCache *filtersCache)
 		chartsCache->add(call, callData, filtersCache);
 		
 #endif
-	 
 		
 	}
 }
@@ -1604,5 +1697,11 @@ void chartsCacheCleanup() {
 void chartsCacheReload() {
 	if(chartsCache) {
 		chartsCache->reload();
+	}
+}
+
+void chartsCacheInitIntervals() {
+	if(chartsCache) {
+		chartsCache->initIntervals();
 	}
 }

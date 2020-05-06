@@ -327,6 +327,7 @@ inline bool isCloud() {
 
 int useNewStore();
 bool useSetId();
+bool useCsvStoreFormat();
 
 typedef struct mysqlSSLOptions {
 	char key[PATH_MAX];

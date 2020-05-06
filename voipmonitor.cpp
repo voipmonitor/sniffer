@@ -328,6 +328,7 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 bool opt_charts_cache = false;
+bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
@@ -411,6 +412,7 @@ int opt_mysql_enable_multiple_rows_insert = 1;
 int opt_mysql_max_multiple_rows_insert = 20;
 int opt_mysql_enable_new_store = 0;
 bool opt_mysql_enable_set_id = false;
+bool opt_csv_store_format = false;
 int opt_cdr_sip_response_number_max_length = 0;
 vector<string> opt_cdr_sip_response_reg_remove;
 int opt_cdr_ua_enable = 1;
@@ -1935,6 +1937,11 @@ void *storing_cdr( void */*dummy*/ ) {
 					if(!opt_nocdr) {
 						if(call->typeIs(INVITE) or call->typeIs(SKINNY_NEW) or call->typeIs(MGCP)) {
 							call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
+							/* debug
+							call->lastSIPresponseNum = 503;
+							strcpy(call->lastSIPresponse, "503 eee");
+							call->saveToDb(!is_read_from_file_simple() || isCloud() || is_client());
+							*/
 						}
 						if(call->typeIs(MESSAGE)) {
 							call->saveMessageToDb();
@@ -1974,10 +1981,10 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
-				if(opt_charts_cache) {
+				if(opt_charts_cache && !opt_charts_cache_store) {
 					calltable->lock_calls_charts_cache_queue();
 					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-						calltable->calls_charts_cache_queue.push_back(*iter_call);
+						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
 					}
 					calltable->unlock_calls_charts_cache_queue();
 				} else {
@@ -2123,10 +2130,10 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
-		if(opt_charts_cache) {
+		if(opt_charts_cache && !opt_charts_cache_store) {
 			calltable->lock_calls_charts_cache_queue();
 			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
-				calltable->calls_charts_cache_queue.push_back(*iter_call);
+				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
 			}
 			calltable->unlock_calls_charts_cache_queue();
 		} else {
@@ -5414,6 +5421,18 @@ void test() {
 	 
 		{
 		 
+		string csv = "abc,,\"\",\"def\",\"ghi\"";
+		cDbStrings strings;
+		strings.explodeCsv(csv.c_str());
+		strings.setZeroTerm();
+		strings.print();
+		cout << "---" << endl;
+		 
+		}
+		break;
+	 
+		{
+		 
 		unsigned int usleepSumTime = 0;
 		unsigned int usleepCounter = 0;
 		
@@ -6396,6 +6415,7 @@ void cConfig::addConfigItems() {
 					->addValues("per_query:2"));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("csv_store_format", &opt_csv_store_format));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -7114,6 +7134,7 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
@@ -7619,6 +7640,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
+	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	//
@@ -9783,6 +9805,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
 	}
+	if((value = ini.GetValue("general", "csv_store_format"))) {
+		opt_csv_store_format = yesno(value);
+	}
 	if((value = ini.GetValue("general", "mysqlhost", NULL))) {
 		strcpy_null_term(mysql_host, value);
 	}
@@ -10176,6 +10201,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);
+	}
+	if((value = ini.GetValue("general", "charts_cache_store", NULL))) {
+		opt_charts_cache_store = yesno(value);
 	}
 	if((value = ini.GetValue("general", "charts_cache_ip_boost", NULL))) {
 		opt_charts_cache_ip_boost = yesno(value);
@@ -11491,6 +11519,13 @@ bool useSetId() {
 	}
 	extern bool opt_mysql_enable_set_id;
 	return(opt_mysql_enable_set_id);
+}
+
+bool useCsvStoreFormat() {
+	return(useNewStore() &&
+	       useSetId() && 
+	       opt_mysql_enable_multiple_rows_insert &&
+	       opt_csv_store_format);
 }
 
 

@@ -4,6 +4,7 @@
 
 #include "sql_db_global.h"
 #include "sql_db.h"
+#include "calltable.h"
 
 
 extern char sql_driver[256];
@@ -583,8 +584,8 @@ static escChar escCharsMysql[] = {
 	{ '\'', '\'' },
 	{ '"' , '"' },
 	{ '\\', '\\' },
-	{ '\n', '\n' },		// new line feed
-	{ '\r', '\r' },		// cariage return
+	{ '\n', 'n' },		// new line feed
+	{ '\r', 'r' },		// cariage return
 	// remove after create function test_escape
 	//{ '\t', '\t' }, 	// tab
 	//{ '\v', '\v' }, 	// vertical tab
@@ -723,160 +724,195 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 	list<string> ig;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		vector<string> query_vect = split(iter->c_str(), q_delim, false, false, false);
-		bool setIdMainRecord = false;
-		u_int64_t idMainRecord = 0;
-		if(enable_set_id) {
+		if(!strncmp(iter->c_str(), "csv", 3)) {
+			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
+			vector<string> query_vect = split(iter->c_str(), "\n", false, false);
 			for(unsigned i = 0; i < query_vect.size(); i++) {
-				size_t cbIdPrefixPos = string::npos;
-				size_t cbIdLengthSeparatorPos = string::npos;
-				size_t cbIdValueSeparatorPos = string::npos;
-				while((cbIdPrefixPos = query_vect[i].find(MYSQL_CODEBOOK_ID_PREFIX)) != string::npos &&
-				      (cbIdLengthSeparatorPos = query_vect[i].find(":", cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length())) != string::npos &&
-				      (cbIdValueSeparatorPos = query_vect[i].find(";", cbIdLengthSeparatorPos + 1)) != string::npos) {
-					unsigned nameValueLength = atoi(query_vect[i].c_str() + cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length());
-					unsigned endPos = cbIdLengthSeparatorPos + nameValueLength;
-					if(endPos < query_vect[i].length() - 2 &&
-					   (query_vect[i][endPos + 1] == ',' ||
-					    query_vect[i][endPos + 1] == ')' ||
-					    (query_vect[i][endPos + 1] == ' ' && query_vect[i][endPos + 2] == ')'))) {
-						string cb_name = query_vect[i].substr(cbIdLengthSeparatorPos + 1, cbIdValueSeparatorPos - cbIdLengthSeparatorPos - 1);
-						string cb_value = query_vect[i].substr(cbIdValueSeparatorPos + 1, nameValueLength - (cbIdValueSeparatorPos - cbIdLengthSeparatorPos - 1) - 1);
-						//cout << "/" << cb_name << "/" << cb_value << "/" << endl;
-						string cb_insert;
-						unsigned cb_id = dbData->getCbId(cb_name.c_str(), cb_value.c_str(), true, false,
-										 &cb_insert, sqlDb);
-						if(!cb_insert.empty()) {
-							cb_inserts->push_back(cb_insert);
-						}
-						string cb_id_str = cb_id ? intToString(cb_id) : "NULL";
-						//cout << cb_id_str << endl;
-						query_vect[i] = query_vect[i].substr(0, cbIdPrefixPos) + cb_id_str + query_vect[i].substr(cbIdLengthSeparatorPos + 1 + nameValueLength);
-						//cout << query_vect[i] << endl;
-					} else {
-						query_vect[i] = query_vect[i].substr(0, cbIdPrefixPos) + MYSQL_CODEBOOK_ID_PREFIX_SUBST + query_vect[i].substr(cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length());
+				tablesContent->addCsvRow(query_vect[i].c_str());
+			}
+			string mainTable = tablesContent->getMainTable();
+			if(!mainTable.empty()) {
+				bool charts_cache = false;
+				if(mainTable == "cdr") {
+					int store_flags_columnIndex;
+					int store_flags = tablesContent->getValue_int(Call::_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
+					if(store_flags_columnIndex >= 0) {
+						tablesContent->removeColumn(Call::_t_cdr, store_flags_columnIndex);
+						charts_cache = store_flags & Call::_sf_charts_cache;
 					}
 				}
-			}
-			string tableMainRecord;
-			for(unsigned i = 0; i < query_vect.size(); i++) {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length) &&
-				   query_vect[i].find(MYSQL_MAIN_INSERT_ID) != string::npos) {
-					size_t sepTable = query_vect[i].find("INTO");
-					size_t endSepTable = query_vect[i].find("(");
-					if(sepTable != string::npos && endSepTable != string::npos && endSepTable > sepTable) {
-						tableMainRecord = query_vect[i].substr(sepTable + 4, endSepTable - sepTable - 4);
-						trim(tableMainRecord);
-						setIdMainRecord = true;
-						break;
-					}
-				}
-			}
-			if(setIdMainRecord) {
-				idMainRecord = dbData->getAiId(tableMainRecord.c_str(), NULL, sqlDb);
-			}
-		}
-		if(enable_multiple_rows_insert) {
-			if(setIdMainRecord) {
-				for(unsigned i = 0; i < query_vect.size(); ) {
-					find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, intToString(idMainRecord));
-					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
-						ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length));
-						query_vect.erase(query_vect.begin() + i);
-					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-						ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
-						query_vect.erase(query_vect.begin() + i);
-					} else {
-						i++;
-					}
+				tablesContent->substCB(dbData, cb_inserts);
+				u_int64_t main_id = 0;
+				tablesContent->substAI(dbData, &main_id);
+				tablesContent->insertQuery(&ig, sqlDb);
+				if(charts_cache) {
+					extern Calltable *calltable;
+					calltable->lock_calls_charts_cache_queue();
+					calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
+					calltable->unlock_calls_charts_cache_queue();
+				} else {
+					delete tablesContent;
 				}
 			} else {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-					bool allItemsIsMIG = true;
-					for(unsigned i = 1; i < query_vect.size(); i++) {
-						if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-							allItemsIsMIG = false;
+				delete tablesContent;
+			}
+			iter++;
+		} else {
+			vector<string> query_vect = split(iter->c_str(), q_delim, false, false, false);
+			bool setIdMainRecord = false;
+			u_int64_t idMainRecord = 0;
+			if(enable_set_id) {
+				for(unsigned i = 0; i < query_vect.size(); i++) {
+					size_t cbIdPrefixPos = string::npos;
+					size_t cbIdLengthSeparatorPos = string::npos;
+					size_t cbIdValueSeparatorPos = string::npos;
+					while((cbIdPrefixPos = query_vect[i].find(MYSQL_CODEBOOK_ID_PREFIX)) != string::npos &&
+					      (cbIdLengthSeparatorPos = query_vect[i].find(":", cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length())) != string::npos &&
+					      (cbIdValueSeparatorPos = query_vect[i].find(";", cbIdLengthSeparatorPos + 1)) != string::npos) {
+						unsigned nameValueLength = atoi(query_vect[i].c_str() + cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length());
+						unsigned endPos = cbIdLengthSeparatorPos + nameValueLength;
+						if(endPos < query_vect[i].length() - 2 &&
+						   (query_vect[i][endPos + 1] == ',' ||
+						    query_vect[i][endPos + 1] == ')' ||
+						    (query_vect[i][endPos + 1] == ' ' && query_vect[i][endPos + 2] == ')'))) {
+							string cb_name = query_vect[i].substr(cbIdLengthSeparatorPos + 1, cbIdValueSeparatorPos - cbIdLengthSeparatorPos - 1);
+							string cb_value = query_vect[i].substr(cbIdValueSeparatorPos + 1, nameValueLength - (cbIdValueSeparatorPos - cbIdLengthSeparatorPos - 1) - 1);
+							//cout << "/" << cb_name << "/" << cb_value << "/" << endl;
+							string cb_insert;
+							unsigned cb_id = dbData->getCbId(cb_name.c_str(), cb_value.c_str(), true, false,
+											 &cb_insert, sqlDb);
+							if(!cb_insert.empty()) {
+								cb_inserts->push_back(cb_insert);
+							}
+							string cb_id_str = cb_id ? intToString(cb_id) : "NULL";
+							//cout << cb_id_str << endl;
+							query_vect[i] = query_vect[i].substr(0, cbIdPrefixPos) + cb_id_str + query_vect[i].substr(cbIdLengthSeparatorPos + 1 + nameValueLength);
+							//cout << query_vect[i] << endl;
+						} else {
+							query_vect[i] = query_vect[i].substr(0, cbIdPrefixPos) + MYSQL_CODEBOOK_ID_PREFIX_SUBST + query_vect[i].substr(cbIdPrefixPos + MYSQL_CODEBOOK_ID_PREFIX.length());
+						}
+					}
+				}
+				string tableMainRecord;
+				for(unsigned i = 0; i < query_vect.size(); i++) {
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length) &&
+					   query_vect[i].find(MYSQL_MAIN_INSERT_ID) != string::npos) {
+						size_t sepTable = query_vect[i].find("INTO");
+						size_t endSepTable = query_vect[i].find("(");
+						if(sepTable != string::npos && endSepTable != string::npos && endSepTable > sepTable) {
+							tableMainRecord = query_vect[i].substr(sepTable + 4, endSepTable - sepTable - 4);
+							trim(tableMainRecord);
+							setIdMainRecord = true;
 							break;
 						}
 					}
-					if(allItemsIsMIG) {
-						for(unsigned i = 0; i < query_vect.size(); i++) {
-							ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
-						}
-						queries->erase(iter++);
-						continue;
-					}
 				}
-				bool existsNIG = false;
-				for(unsigned i = 1; i < query_vect.size(); i++) {
-					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-						existsNIG = true;
-						break;
-					}
+				if(setIdMainRecord) {
+					idMainRecord = dbData->getAiId(tableMainRecord.c_str(), NULL, sqlDb);
 				}
-				if(existsNIG) {
-					++counterQueriesWithNextInsertGroup;
-					unsigned counterMI_ID_old = 0;
+			}
+			if(enable_multiple_rows_insert) {
+				if(setIdMainRecord) {
 					for(unsigned i = 0; i < query_vect.size(); ) {
-						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
-						unsigned counter_replace_MI_ID_old;
-						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
-						if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+						find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, intToString(idMainRecord));
+						if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
+							ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length));
+							query_vect.erase(query_vect.begin() + i);
+						} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
 							ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
 							query_vect.erase(query_vect.begin() + i);
 						} else {
-							if(counter_replace_MI_ID_old) {
-								++counterMI_ID_old;
-							}
 							i++;
 						}
 					}
-					for(unsigned i = 0; i < query_vect.size(); ) {
-						if(i < query_vect.size() - 1 &&
-						   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
-						   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
-							if(counterMI_ID_old > 0 &&
-							   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
-								--counterMI_ID_old;
-							}
-							query_vect.erase(query_vect.begin() + i);
-							query_vect.erase(query_vect.begin() + i);
-						} else {
-							i++;
-						}
-					}
-					if(counterMI_ID_old == 1) {
-						for(unsigned i = 0; i < query_vect.size(); ) {
-							if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
-								query_vect.erase(query_vect.begin() + i);
+				} else {
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[0], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+						bool allItemsIsMIG = true;
+						for(unsigned i = 1; i < query_vect.size(); i++) {
+							if(!MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+								allItemsIsMIG = false;
 								break;
+							}
+						}
+						if(allItemsIsMIG) {
+							for(unsigned i = 0; i < query_vect.size(); i++) {
+								ig.push_back(query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length));
+							}
+							queries->erase(iter++);
+							continue;
+						}
+					}
+					bool existsNIG = false;
+					for(unsigned i = 1; i < query_vect.size(); i++) {
+						if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+							existsNIG = true;
+							break;
+						}
+					}
+					if(existsNIG) {
+						++counterQueriesWithNextInsertGroup;
+						unsigned counterMI_ID_old = 0;
+						for(unsigned i = 0; i < query_vect.size(); ) {
+							find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID, MYSQL_MAIN_INSERT_ID2 + "_" + intToString(counterQueriesWithNextInsertGroup));
+							unsigned counter_replace_MI_ID_old;
+							find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
+							if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+								ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
+								query_vect.erase(query_vect.begin() + i);
+							} else {
+								if(counter_replace_MI_ID_old) {
+									++counterMI_ID_old;
+								}
+								i++;
+							}
+						}
+						for(unsigned i = 0; i < query_vect.size(); ) {
+							if(i < query_vect.size() - 1 &&
+							   MYSQL_EXISTS_PREFIX_S(query_vect[i], MYSQL_IF) &&
+							   MYSQL_EXISTS_PREFIX_S(query_vect[i + 1], MYSQL_ENDIF)) {
+								if(counterMI_ID_old > 0 &&
+								   query_vect[i].find(MYSQL_MAIN_INSERT_ID_OLD2) != string::npos) {
+									--counterMI_ID_old;
+								}
+								query_vect.erase(query_vect.begin() + i);
+								query_vect.erase(query_vect.begin() + i);
 							} else {
 								i++;
 							}
 						}
+						if(counterMI_ID_old == 1) {
+							for(unsigned i = 0; i < query_vect.size(); ) {
+								if(MYSQL_EXISTS_PREFIX_S(query_vect[i], ("set " + MYSQL_MAIN_INSERT_ID_OLD2))) {
+									query_vect.erase(query_vect.begin() + i);
+									break;
+								} else {
+									i++;
+								}
+							}
+						}
 					}
 				}
 			}
-		}
-		for(unsigned i = 0; i < query_vect.size(); i++) {
-			if(query_vect[i][0] == ':') {
-				if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length);
-				} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
-					query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
+			for(unsigned i = 0; i < query_vect.size(); i++) {
+				if(query_vect[i][0] == ':') {
+					if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_new, _MYSQL_MAIN_INSERT_new_length)) {
+						query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_new_length);
+					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_MAIN_INSERT_GROUP_new, _MYSQL_MAIN_INSERT_GROUP_new_length)) {
+						query_vect[i] = query_vect[i].substr(_MYSQL_MAIN_INSERT_GROUP_new_length);
+					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
+						query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length);
+					} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
+						query_vect[i] = query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length);
+					}
+				}
+				if(enable_new_store == 2) {
+					queries_list->push_back(query_vect[i]);
+				} else {
+					*queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
 				}
 			}
-			if(enable_new_store == 2) {
-				queries_list->push_back(query_vect[i]);
-			} else {
-				*queries_str += sqlEscapeString(query_vect[i]) + _MYSQL_QUERY_END_new;
-			}
+			iter++;
 		}
-		iter++;
 	}
 	#if 1
 	if(ig.size()) {

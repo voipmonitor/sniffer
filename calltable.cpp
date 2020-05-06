@@ -215,6 +215,7 @@ extern cSqlDbData *dbData;
 extern char *opt_rtp_stream_analysis_params;
 
 extern bool opt_charts_cache;
+extern bool opt_charts_cache_store;
 extern bool opt_charts_cache_ip_boost;
 extern int terminating_charts_cache;
 extern volatile int terminating;
@@ -4214,6 +4215,259 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	}
 }
 
+void Call::getChartCacheValue(cDbTablesContent *tablesContent,
+			      int type, double *value, string *value_str, bool *null, cCharts *chartsCache) {
+	bool setNull = false;
+	double v = 0;
+	string v_str;
+	switch(type) {
+	case _chartType_total:
+	case _chartType_count:
+	case _chartType_cps:
+	case _chartType_minutes:
+	case _chartType_count_perc_short:
+		v = 1;
+		break;
+	case _chartType_mos:
+		v = tablesContent->getValue_float(_t_cdr, "mos_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		/*
+		{
+		const char *c[] = { "a_mos_f1_mult10", "a_mos_f2_mult10", "a_mos_adapt_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		*/
+		break;
+	case _chartType_mos_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		/*
+		{
+		const char *c[] = { "b_mos_f1_mult10", "b_mos_f2_mult10", "b_mos_adapt_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		*/
+		break;
+	case _chartType_mos_xr_avg:
+		{
+		const char *c[] = { "a_mos_xr_mult10", "b_mos_xr_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		break;
+	case _chartType_mos_xr_avg_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_xr_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_xr_avg_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_xr_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_xr_min:
+		{
+		const char *c[] = { "a_mos_xr_min_mult10", "b_mos_xr_min_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		break;
+	case _chartType_mos_xr_min_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_xr_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_xr_min_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_xr_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_silence_avg:
+		{
+		const char *c[] = { "a_mos_silence_mult10", "b_mos_silence_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		break;
+	case _chartType_mos_silence_avg_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_silence_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_silence_avg_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_silence_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_silence_min:
+		{
+		const char *c[] = { "a_mos_silence_min_mult10", "b_mos_silence_min_mult10", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, true, true, &setNull);
+		if(!setNull && v) v /= 10;
+		}
+		break;
+	case _chartType_mos_silence_min_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_silence_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_silence_min_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_silence_min_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_lqo_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_mos_lqo_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_mos_lqo_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_mos_lqo_mult10", true, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_packet_lost:
+		v = tablesContent->getValue_float(_t_cdr, "packet_loss_perc_mult1000", false, &setNull);
+		if(!setNull && v) v /= 1000;
+		break;
+	case _chartType_packet_lost_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_packet_loss_perc_mult1000", false, &setNull);
+		if(!setNull && v) v /= 1000;
+		break;
+	case _chartType_packet_lost_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_packet_loss_perc_mult1000", false, &setNull);
+		if(!setNull && v) v /= 1000;
+		break;
+	case _chartType_jitter:
+		v = tablesContent->getValue_float(_t_cdr, "jitter_mult10", false, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_delay:
+		{
+		bool delay_sum_null;
+		double delay_sum = tablesContent->getValue_float(_t_cdr, "delay_sum", false, &delay_sum_null);
+		bool connect_duration_null;
+		double connect_duration = tablesContent->getValue_float(_t_cdr, "connect_duration", false, &connect_duration_null);
+		if(!delay_sum_null && !connect_duration_null && connect_duration > 0) {
+			v = delay_sum / connect_duration;
+		} else {
+			setNull = true;
+		}
+		}
+		break;
+	case _chartType_rtcp_avgjitter:
+		v = tablesContent->getValue_float(_t_cdr, "rtcp_avgjitter_mult10", false, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_rtcp_maxjitter:
+		{
+		const char *c[] = { "a_rtcp_maxjitter", "b_rtcp_maxjitter", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
+		}
+		break;
+	case _chartType_rtcp_avgfr:
+		v = tablesContent->getValue_float(_t_cdr, "rtcp_avgfr_mult10", false, &setNull);
+		if(!setNull && v) v /= (10 * 2.56);
+		break;
+	case _chartType_rtcp_maxfr:
+		{
+		const char *c[] = { "a_rtcp_maxfr", "b_rtcp_maxfr", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
+		if(!setNull && v) v /= 2.56;
+		}
+		break;
+	case _chartType_silence:
+		{
+		const char *c[] = { "caller_silence", "called_silence", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
+		}
+		break;
+	case _chartType_silence_caller:
+		v = tablesContent->getValue_float(_t_cdr, "caller_silence", false, &setNull);
+		break;
+	case _chartType_silence_called:
+		v = tablesContent->getValue_float(_t_cdr, "called_silence", false, &setNull);
+		break;
+	case _chartType_silence_end:
+		{
+		const char *c[] = { "caller_silence_end", "called_silence_end", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
+		}
+		break;
+	case _chartType_silence_end_caller:
+		v = tablesContent->getValue_float(_t_cdr, "caller_silence_end", false, &setNull);
+		break;
+	case _chartType_silence_end_called:
+		v = tablesContent->getValue_float(_t_cdr, "called_silence_end", false, &setNull);
+		break;
+	case _chartType_clipping:
+		{
+		const char *c[] = { "caller_clipping_div3", "called_clipping_div3", NULL };
+		v = tablesContent->getMinMaxValue(_t_cdr, c, false, false, &setNull);
+		if(!setNull && v) v *= 3;
+		}
+		break;
+	case _chartType_clipping_caller:
+		v = tablesContent->getValue_float(_t_cdr, "caller_clipping_div3", false, &setNull);
+		if(!setNull && v) v *= 3;
+		break;
+	case _chartType_clipping_called:
+		v = tablesContent->getValue_float(_t_cdr, "called_clipping_div3", false, &setNull);
+		if(!setNull && v) v *= 3;
+		break;
+	case _chartType_pdd:
+		v = tablesContent->getValue_float(_t_cdr, "progress_time", false, &setNull);
+		break;
+	case _chartType_acd_avg:
+	case _chartType_acd:
+	case _chartType_asr_avg:
+	case _chartType_asr:
+	case _chartType_ner_avg:
+	case _chartType_ner:
+		v = 1;
+		break;
+	case _chartType_sipResp:
+		v = tablesContent->getValue_int(_t_cdr, "lastSIPresponseNum", false, &setNull);
+		break;
+	case _chartType_sipResponse:
+		v_str = tablesContent->getValue_string(_t_cdr, "lastSIPresponse_id", &setNull);
+		if(!setNull) {
+			if(v_str[0]) {
+				if(chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
+					v_str.resize(chartsCache->maxLengthSipResponseText);
+				}
+			} else {
+				v_str = "000 not response";
+			}
+		}
+		break;
+	case _chartType_sipResponse_base:
+		v = tablesContent->getValue_int(_t_cdr, "lastSIPresponseNum", false, &setNull);
+		if(!setNull && v) { while(v >= 10) v = (int)(v / 10); }
+		break;
+	case _chartType_codecs:
+		v = tablesContent->getValue_int(_t_cdr, "payload", false, &setNull);
+		break;
+	case _chartType_IP_src:
+		v_str = tablesContent->getValue_string(_t_cdr, "sipcallerip");
+		break;
+	case _chartType_IP_dst:
+		v_str = tablesContent->getValue_string(_t_cdr, "sipcallerip");
+		break;
+	case _chartType_domain_src:
+		v_str = tablesContent->getValue_string(_t_cdr, "caller_domain");
+		break;
+	case _chartType_domain_dst:
+		v_str = tablesContent->getValue_string(_t_cdr, "called_domain");
+		break;
+	}
+	if(setNull) {
+		v = 0; 
+		v_str = "";
+	}
+	if(value) *value = v;
+	if(value_str) *value_str = v_str;
+	if(null) {
+		*null = setNull;
+	}
+}
+
 bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *_callData, 
 				    string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord) {
 	//sChartsCacheCallData *callData = (sChartsCacheCallData*)_callData;
@@ -4340,8 +4594,95 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			}
 		}
 	}
-	if(!child_table) {
-		if(*column == "id" && (table->empty() || *table == "cdr")) {
+	if(*column == "id" && (table->empty() || *table == "cdr")) {
+		*value = cEvalFormula::sValue(1);
+		value->v_id = true;
+		if(ord) {
+			ord->u.s.column = 1;
+		}
+		return(true);
+	}
+	if(*column == "lastsipresponse") {
+		*value = cEvalFormula::sValue(lastSIPresponse);
+		if(ord) {
+			ord->u.s.column = 2;
+		}
+		return(true);
+	} else if(*column == "reason") {
+		*value = cEvalFormula::sValue(table->find("sip") != string::npos ? reason_sip_text : reason_q850_text);
+		if(ord) {
+			ord->u.s.column = table->find("sip") != string::npos ? 3 : 4;
+		}
+		return(true);
+	} else if(*column == "ua") {
+		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? a_ua : b_ua);
+		if(ord) {
+			ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
+		}
+		return(true);
+	}
+	if(!table_enum) {
+		table_enum = getTableEnumIndex(table);
+	}
+	int indexField = 0;
+	if(table_enum == _t_cdr) {
+		field = this->cdr.getField(*column, &indexField);
+	} else if(table_enum == _t_cdr_next) {
+		field = this->cdr_next.getField(*column, &indexField);
+	} else if(table_enum > _t_cdr_next && table_enum < _t_cdr_next_end) {
+		int ch_index = table_enum - _t_cdr_next;
+		if(ch_index > 0 && ch_index <= CDR_NEXT_MAX) {
+			field = this->cdr_next_ch[ch_index - 1].getField(*column, &indexField);
+		}
+	} else if(table_enum == _t_cdr_country_code) {
+		field = this->cdr_country_code.getField(*column, &indexField);
+	}
+	if(!field) {
+		field = this->cdr.getField(*column, &indexField);
+		if(field) {
+			table_enum = _t_cdr;
+		} else {
+			field = this->cdr_next.getField(*column, &indexField);
+			if(field) {
+				table_enum = _t_cdr_next;
+			} else {
+				for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
+					field = this->cdr_next_ch[i].getField(*column, &indexField);
+					if(field) {
+						table_enum = _t_cdr_next + i + 1;
+						break;
+					}
+				}
+			}
+		}
+		if(!field) {
+			field = this->cdr_country_code.getField(*column, &indexField);
+			if(field) {
+				table_enum = _t_cdr_country_code;
+			}
+		}
+	}
+	if(field) {
+		value->setFromField(field);
+		if(ord) {
+			ord->u.s.table = table_enum;
+			ord->u.s.column = indexField + 1;
+		}
+		return(true);
+	} else {
+		value->null();
+	}
+	return(false);
+}
+
+bool Call::sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
+				    cEvalFormula::sValue *value, string *table, string *column, void *callData, 
+				    string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord) {
+	int table_enum = 0;
+	int child_table_enum = 0;
+	sDbString *column_str = NULL;
+	if(child_table) {
+		if(*column == "cdr_id" || *column == "id") {
 			*value = cEvalFormula::sValue(1);
 			value->v_id = true;
 			if(ord) {
@@ -4349,78 +4690,87 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			}
 			return(true);
 		}
-		if(*column == "lastsipresponse") {
-			*value = cEvalFormula::sValue(lastSIPresponse);
-			if(ord) {
-				ord->u.s.column = 2;
-			}
-			return(true);
+ 		child_table_enum = getTableEnumIndex(child_table);
+		if(child_table_enum >= _t_cdr_next && child_table_enum < _t_cdr_next_end) {
+			table = child_table;
+			table_enum = child_table_enum;
 		}
-		if(*column == "reason") {
-			*value = cEvalFormula::sValue(table->find("sip") != string::npos ? reason_sip_text : reason_q850_text);
-			if(ord) {
-				ord->u.s.column = table->find("sip") != string::npos ? 3 : 4;
-			}
-			return(true);
+	}
+	if(*column == "id" && (table->empty() || *table == "cdr")) {
+		*value = cEvalFormula::sValue(1);
+		value->v_id = true;
+		if(ord) {
+			ord->u.s.column = 1;
 		}
-		if(*column == "ua") {
-			*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? a_ua : b_ua);
-			if(ord) {
-				ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
-			}
-			return(true);
+		return(true);
+	}
+	unsigned table_enum_subst = 0;
+	string column_subst;
+	if(*column == "lastsipresponse") {
+		if(child_table_enum) {
+			table_enum_subst = child_table_enum;
+			column_subst = "SIPresponse_id";
+		} else {
+			table_enum_subst = _t_cdr;
+			column_subst = "lastSIPresponse_id";
 		}
+	} else if(*column == "request") {
+		if(child_table_enum) {
+			table_enum_subst = child_table_enum;
+			column_subst = "SIPrequest_id";
+		}
+	} else if(*column == "reason") {
+		table_enum_subst = _t_cdr;
+		column_subst = table->find("sip") != string::npos ? "reason_sip_id" : "reason_q850_id";
+	} else if(*column == "ua") {
+		table_enum_subst = _t_cdr;
+		column_subst = table->find("a_ua") != string::npos ? "a_ua_id" : "b_ua_id";
+	} else if(child_table_enum) {
+		table_enum_subst = child_table_enum;
+	}
+	int columnIndex = 0;
+	if(table_enum_subst) {
+		column_str = tablesContent->findColumn(table_enum_subst, !column_subst.empty() ? column_subst.c_str() : column->c_str(), child_index, &columnIndex);
+	} else {
 		if(!table_enum) {
 			table_enum = getTableEnumIndex(table);
 		}
-		int indexField;
-		if(table_enum == _t_cdr) {
-			field = this->cdr.getField(*column, &indexField);
-		} else if(table_enum == _t_cdr_next) {
-			field = this->cdr_next.getField(*column, &indexField);
-		} else if(table_enum > _t_cdr_next && table_enum < _t_cdr_next_end) {
-			int ch_index = table_enum - _t_cdr_next;
-			if(ch_index > 0 && ch_index <= CDR_NEXT_MAX) {
-				field = this->cdr_next_ch[ch_index - 1].getField(*column, &indexField);
-			}
-		} else if(table_enum == _t_cdr_country_code) {
-			field = this->cdr_country_code.getField(*column, &indexField);
-		}
-		if(!field) {
-			field = this->cdr.getField(*column, &indexField);
-			if(field) {
+		column_str = tablesContent->findColumn(table_enum, column->c_str(), child_index, &columnIndex);
+		if(!column_str) {
+			column_str = tablesContent->findColumn(_t_cdr, column->c_str(), child_index, &columnIndex);
+			if(column_str) {
 				table_enum = _t_cdr;
 			} else {
-				field = this->cdr_next.getField(*column, &indexField);
-				if(field) {
+				column_str = tablesContent->findColumn(_t_cdr_next, column->c_str(), child_index, &columnIndex);
+				if(column_str) {
 					table_enum = _t_cdr_next;
 				} else {
 					for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
-						field = this->cdr_next_ch[i].getField(*column, &indexField);
-						if(field) {
+						column_str = tablesContent->findColumn(_t_cdr_next + i + 1, column->c_str(), child_index, &columnIndex);
+						if(column_str) {
 							table_enum = _t_cdr_next + i + 1;
 							break;
 						}
 					}
 				}
 			}
-			if(!field) {
-				field = this->cdr_country_code.getField(*column, &indexField);
-				if(field) {
+			if(!column_str) {
+				column_str = tablesContent->findColumn(_t_cdr_country_code, column->c_str(), child_index, &columnIndex);
+				if(column_str) {
 					table_enum = _t_cdr_country_code;
 				}
 			}
 		}
-		if(field) {
-			value->setFromField(field);
-			if(ord) {
-				ord->u.s.table = table_enum;
-				ord->u.s.column = indexField + 1;
-			}
-			return(true);
-		} else {
-			value->null();
+	}
+	if(column_str) {
+		value->setFromDbString(column_str);
+		if(ord) {
+			ord->u.s.table = table_enum;
+			ord->u.s.column = columnIndex + 1;
+			ord->u.s.child_table = child_table_enum;
+			ord->u.s.child_index = child_index;
 		}
+		return(true);
 	}
 	return(false);
 }
@@ -4907,9 +5257,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			++iter_undup;
 		}
 		if(opt_mysql_enable_multiple_rows_insert && cdrproxy_rows.size()) {
-			query_str_cdrproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					      sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_proxy_table, &cdrproxy_rows, opt_mysql_max_multiple_rows_insert, 
-											     MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			if(useCsvStoreFormat()) {
+				query_str_cdrproxy += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_proxy") + cdrproxy_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+				for(unsigned i = 0; i < cdrproxy_rows.size(); i++) {
+					query_str_cdrproxy += MYSQL_MAIN_INSERT_CSV_ROW("cdr_proxy") + cdrproxy_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				}
+			} else {
+				query_str_cdrproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						      sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_proxy_table, &cdrproxy_rows, opt_mysql_max_multiple_rows_insert, 
+												     MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			}
 		}
 	}
 
@@ -5519,7 +5876,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	adjustSipResponse(lastSIPresponse, 0);
 	
-	if(opt_charts_cache && sverb.charts_cache_only) {
+	if(opt_charts_cache && !opt_charts_cache_store && sverb.charts_cache_only) {
 		return(0);
 	}
 	
@@ -5527,7 +5884,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		string query_str;
 		
 		if(useSetId()) {
-			cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, lastSIPresponse), "lastSIPresponse_id");
+			cdr.add_cb_string(lastSIPresponse, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
 		} else {
 			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
 			if(_cb_id) {
@@ -5542,7 +5899,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(existsColumns.cdr_reason) {
 			if(reason_sip_text.length()) {
 				if(useSetId()) {
-					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_reason_sip, reason_sip_text), "reason_sip_text_id");
+					cdr.add_cb_string(reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
 				} else {
 					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), false, true);
 					if(_cb_id) {
@@ -5557,7 +5914,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(reason_q850_text.length()) {
 				if(useSetId()) {
-					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_reason_q850, reason_q850_text), "reason_q850_text_id");
+					cdr.add_cb_string(reason_q850_text, "reason_q850_text_id", cSqlDbCodebook::_cb_reason_q850);
 				} else {
 					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), false, true);
 					if(_cb_id) {
@@ -5574,7 +5931,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(opt_cdr_ua_enable) {
 			if(a_ua[0]) {
 				if(useSetId()) {
-					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, a_ua), "a_ua_id");
+					cdr.add_cb_string(a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
 					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
 					if(_cb_id) {
@@ -5589,7 +5946,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(b_ua[0]) {
 				if(useSetId()) {
-					cdr.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, b_ua), "b_ua_id");
+					cdr.add_cb_string(b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
 					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
 					if(_cb_id) {
@@ -5718,8 +6075,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
 			}
 		}
-		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
-			     sqlDbSaveCall->insertQuery(sql_cdr_table, cdr));
+		if(useCsvStoreFormat()) {
+			if(opt_charts_cache && opt_charts_cache_store) {
+				cdr.add(_sf_charts_cache, "store_flags");
+			}
+			query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
+				     MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+		} else {
+			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
+				     sqlDbSaveCall->insertQuery(sql_cdr_table, cdr));
+		}
 		if(useNewStore()) {
 			if(!useSetId()) {
 				query_str += MYSQL_GET_MAIN_INSERT_ID + 
@@ -5731,8 +6096,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		cdr_next.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-		query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-			     sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next));
+		if(useCsvStoreFormat()) {
+			query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_next") + cdr_next.implodeFields(",", "\"") + MYSQL_CSV_END +
+				     MYSQL_MAIN_INSERT_CSV_ROW("cdr_next") + cdr_next.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+		} else {
+			query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+				     sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next));
+		}
 		
 		if(!cdr_callid_lock_name.empty()) {
 			query_str +=
@@ -5743,25 +6113,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(unsigned i = 0; i < CDR_NEXT_MAX; i++) {
 			if(cdr_next_ch_name[i][0]) {
 				cdr_next_ch[i].add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQuery(cdr_next_ch_name[i], cdr_next_ch[i]));
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(cdr_next_ch_name[i]) + cdr_next_ch[i].implodeFields(",", "\"") + MYSQL_CSV_END +
+						     MYSQL_MAIN_INSERT_CSV_ROW(cdr_next_ch_name[i]) + cdr_next_ch[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQuery(cdr_next_ch_name[i], cdr_next_ch[i]));
+				}
 				existsNextCh = true;
 			}
 		}
 		if(existsNextCh && custom_headers_cdr) {
-			string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this, INVITE, NULL);
-			if(!queryForSaveUseInfo.empty()) {
-				vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
-				for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {
-					query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
+			if(useCsvStoreFormat()) {
+				// TODO
+			} else {
+				string queryForSaveUseInfo = custom_headers_cdr->getQueryForSaveUseInfo(this, INVITE, NULL);
+				if(!queryForSaveUseInfo.empty()) {
+					vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
+					for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {
+						query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
+					}
 				}
 			}
 		}
 		
 		if(opt_cdr_country_code) {
 			cdr_country_code.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-				     sqlDbSaveCall->insertQuery("cdr_country_code", cdr_country_code));
+			if(useCsvStoreFormat()) {
+				query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_country_code") + cdr_country_code.implodeFields(",", "\"") + MYSQL_CSV_END +
+					     MYSQL_MAIN_INSERT_CSV_ROW("cdr_country_code") + cdr_country_code.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+			} else {
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+					     sqlDbSaveCall->insertQuery("cdr_country_code", cdr_country_code));
+			}
 		}
 
 		if(!useNewStore() &&
@@ -5837,9 +6221,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(opt_mysql_enable_multiple_rows_insert && rtp_rows.size()) {
-			query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-				     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_table, &rtp_rows, opt_mysql_max_multiple_rows_insert, 
-										    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			if(useCsvStoreFormat()) {
+				query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_rtp") + rtp_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+				for(unsigned i = 0; i < rtp_rows.size(); i++) {
+					query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_rtp") + rtp_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				}
+			} else {
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_table, &rtp_rows, opt_mysql_max_multiple_rows_insert, 
+											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			}
 		}
 		
 		if(opt_save_sdp_ipport) {
@@ -5863,9 +6254,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			if(opt_mysql_enable_multiple_rows_insert && sdp_rows.size()) {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_sdp_table, &sdp_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(sql_cdr_sdp_table) + sdp_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < sdp_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW(sql_cdr_sdp_table) + sdp_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_sdp_table, &sdp_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
 			}
 		}
 		
@@ -5888,9 +6286,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			if(opt_mysql_enable_multiple_rows_insert && txt_rows.size()) {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_txt_table, &txt_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(sql_cdr_txt_table) + txt_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < txt_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW(sql_cdr_txt_table) + txt_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_txt_table, &txt_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
 			}
 		}
 
@@ -5922,9 +6327,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			if(opt_mysql_enable_multiple_rows_insert && dtmf_rows.size()) {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_dtmf_table, &dtmf_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(sql_cdr_dtmf_table) + dtmf_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < dtmf_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW(sql_cdr_dtmf_table) + dtmf_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_dtmf_table, &dtmf_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
 			}
 		}
 
@@ -5961,29 +6373,33 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			if(opt_mysql_enable_multiple_rows_insert && sipresp_rows.size()) {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sipresp", &sipresp_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_sipresp") + sipresp_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < sipresp_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_sipresp") + sipresp_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_sipresp", &sipresp_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
 			}
 		}
 		
 		if(_save_sip_history) {
-			vector<SqlDb_row> siphist_rows[3];
+			vector<SqlDb_row> siphist_rows;
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
 				bool enableMultiInsert = true;
-				int indexMultiInsert = 0;
 				SqlDb_row siphist;
 				siphist.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
 					if(useSetId()) {
-						siphist.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest), "SIPrequest_id");
-						indexMultiInsert += 1;
+						siphist.add_cb_string(iterSiphistory->SIPrequest, "SIPrequest_id", cSqlDbCodebook::_cb_sip_request);
 					} else {
 						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), false, true);
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPrequest_id");
-							indexMultiInsert += 1;
 						} else {
 							query_str += MYSQL_ADD_QUERY_END(string("set @sip_req_id = ") + 
 								     "getIdOrInsertSIPREQUEST(" + sqlEscapeStringBorder(iterSiphistory->SIPrequest.c_str()) + ")");
@@ -5992,17 +6408,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
+					siphist.add((const char*)NULL, "SIPresponseNum");
+					siphist.add((const char*)NULL, "SIPresponse_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
+					siphist.add((const char*)NULL, "SIPrequest_id");
 					siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					if(useSetId()) {
-						siphist.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse), "SIPresponse_id");
-						indexMultiInsert += 2;
+						siphist.add_cb_string(iterSiphistory->SIPresponse, "SIPresponse_id", cSqlDbCodebook::_cb_sip_response);
 					} else {
 						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiphistory->SIPresponse.c_str(), false, true);
 						if(_cb_id) {
 							siphist.add(_cb_id, "SIPresponse_id");
-							indexMultiInsert += 2;
 						} else {
 							query_str += MYSQL_ADD_QUERY_END(string("set @sip_resp_id = ") + 
 								     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(iterSiphistory->SIPresponse.c_str()) + ")");
@@ -6015,20 +6432,23 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
 				}
-				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert && indexMultiInsert) {
-					siphist_rows[indexMultiInsert - 1].push_back(siphist);
+				if(opt_mysql_enable_multiple_rows_insert && enableMultiInsert/* && indexMultiInsert*/) {
+					siphist_rows.push_back(siphist);
 				} else {
 					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
 						     sqlDbSaveCall->insertQuery("cdr_siphistory", siphist));
 				}
 			}
-			if(opt_mysql_enable_multiple_rows_insert) {
-				for(unsigned i = 0; i < sizeof(siphist_rows) / sizeof(siphist_rows[0]); i++) {
-					if(siphist_rows[i].size()) {
-						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-							     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_siphistory", &siphist_rows[i], opt_mysql_max_multiple_rows_insert, 
-													    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			if(opt_mysql_enable_multiple_rows_insert && siphist_rows.size()) {
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_siphistory") + siphist_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < siphist_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_siphistory") + siphist_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
 					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_siphistory", &siphist_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 				}
 			}
 		}
@@ -6061,15 +6481,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			if(opt_mysql_enable_multiple_rows_insert && tar_part_rows.size()) {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_tar_part", &tar_part_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_tar_part") + tar_part_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < tar_part_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_tar_part") + tar_part_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert("cdr_tar_part", &tar_part_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
 			}
 		}
 		
 		if(billingAggregationsInserts.size()) {
-			for(list<string>::iterator iter = billingAggregationsInserts.begin(); iter != billingAggregationsInserts.end(); iter++) {
-				query_str += MYSQL_ADD_QUERY_END(*iter);
+			if(useCsvStoreFormat()) {
+				// TODO
+			} else {
+				for(list<string>::iterator iter = billingAggregationsInserts.begin(); iter != billingAggregationsInserts.end(); iter++) {
+					query_str += MYSQL_ADD_QUERY_END(*iter);
+				}
 			}
 		}
 		
@@ -8974,10 +9405,10 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
 			call->convertRawToWav();
-			if(opt_charts_cache) {
+			if(opt_charts_cache && !opt_charts_cache_store) {
 				calltable->lock_calls_charts_cache_queue();
-				calltable->calls_charts_cache_queue.push_back(call);
-				calltable->unlock_calls_deletequeue();
+				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
+				calltable->unlock_calls_charts_cache_queue();
 			} else {
 				calltable->lock_calls_deletequeue();
 				calltable->calls_deletequeue.push_back(call);
@@ -9031,7 +9462,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 		chc_cache[threadIndex] = new FILE_LINE(0) cFiltersCache(2000, 10000);
 	}
 	if(threadIndex == 0) {
-		chc_threads_calls[0] = new FILE_LINE(0) list<Call*>;
+		chc_threads_calls[0] = new FILE_LINE(0) list<sChartsCallData>;
 		while(1) {
 			while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
 			chc_threads_count_mod = chc_threads_count_mod_request;
@@ -9043,7 +9474,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			if(chc_threads_count_mod > 0) {
 				syslog(LOG_NOTICE, "charts cache - creating next thread %i", chc_threads_count);
 				if(!chc_threads_init[chc_threads_count]) {
-					chc_threads_calls[chc_threads_count] = new FILE_LINE(0) list<Call*>;
+					chc_threads_calls[chc_threads_count] = new FILE_LINE(0) list<sChartsCallData>;
 					for(int i = 0; i < 2; i++) {
 						sem_init(&chc_threads_sem[chc_threads_count][i], 0, 0);
 					}
@@ -9062,11 +9493,11 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			size_t chc_count = 0;
 			size_t chc_size = calltable->calls_charts_cache_queue.size();
 			while(chc_size > 0) {
-				Call *call = calltable->calls_charts_cache_queue.front();
+				sChartsCallData callData = calltable->calls_charts_cache_queue.front();
 				if(chc_threads_count > 1) {
-					chc_threads_calls[chc_count % chc_threads_count]->push_back(call);
+					chc_threads_calls[chc_count % chc_threads_count]->push_back(callData);
 				} else {
-					chc_threads_calls[0]->push_back(call);
+					chc_threads_calls[0]->push_back(callData);
 				}
 				++chc_count;
 				calltable->calls_charts_cache_queue.pop_front();
@@ -9084,13 +9515,20 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					}
 				}
 				list<Call*> calls_for_delete;
-				for(list<Call*>::iterator iter_call = chc_threads_calls[threadIndex]->begin(); iter_call != chc_threads_calls[threadIndex]->end(); iter_call++) {
-					Call *call = *iter_call;
-					if(!call->isEmptyCdrRow()) {
+				for(list<sChartsCallData>::iterator iter_call_data = chc_threads_calls[threadIndex]->begin(); iter_call_data != chc_threads_calls[threadIndex]->end(); iter_call_data++) {
+					if(iter_call_data->type == sChartsCallData::_call) {
+						Call *call = (Call*)iter_call_data->data;
+						if(!call->isEmptyCdrRow()) {
+							sChartsCacheCallData chartsCacheCallData;
+							chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_cache[threadIndex]);
+						}
+						calls_for_delete.push_back(call);
+					} else {
+						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(call, &chartsCacheCallData, chc_cache[threadIndex]);
+						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_cache[threadIndex]);
+						delete tablesContent;
 					}
-					calls_for_delete.push_back(call);
 				}
 				if(calls_for_delete.size()) {
 					calltable->lock_calls_deletequeue();
@@ -9114,6 +9552,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			chartsCacheStore();
 			chartsCacheCleanup();
 			chartsCacheReload();
+			chartsCacheInitIntervals();
 			if(!chc_size) {
 				USLEEP(100000);
 			}
@@ -9133,13 +9572,20 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				break;
 			}
 			list<Call*> calls_for_delete;
-			for(list<Call*>::iterator iter_call = chc_threads_calls[threadIndex]->begin(); iter_call != chc_threads_calls[threadIndex]->end(); iter_call++) {
-				Call *call = *iter_call;
-				if(!call->isEmptyCdrRow()) {
+			for(list<sChartsCallData>::iterator iter_call_data = chc_threads_calls[threadIndex]->begin(); iter_call_data != chc_threads_calls[threadIndex]->end(); iter_call_data++) {
+				if(iter_call_data->type == sChartsCallData::_call) {
+					Call *call = (Call*)iter_call_data->data;
+					if(!call->isEmptyCdrRow()) {
+						sChartsCacheCallData chartsCacheCallData;
+						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_cache[threadIndex]);
+					}
+					calls_for_delete.push_back(call);
+				} else {
+					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAddCall(call, &chartsCacheCallData, chc_cache[threadIndex]);
+					chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_cache[threadIndex]);
+					delete tablesContent;
 				}
-				calls_for_delete.push_back(call);
 			}
 			if(calls_for_delete.size()) {
 				calltable->lock_calls_deletequeue();

@@ -5733,6 +5733,470 @@ void cCsv::dump() {
 }
 
 
+void sDbString::substCB(cSqlDbData *dbData, list<string> *cb_inserts) {
+	if((flags & SqlDb_row::_ift_base) >= SqlDb_row::_ift_cb_string) {
+		string cb_insert;
+		cb_id = dbData->getCbId((cSqlDbCodebook::eTypeCodebook)((flags & SqlDb_row::_ift_base) - SqlDb_row::_ift_cb_string), str, true, false,
+					&cb_insert);
+		if(!cb_insert.empty()) {
+			cb_inserts->push_back(cb_insert);
+		}
+		//cout << "CB: " << flags << " / " << str << " / " << cb_id << endl;
+	}
+}
+
+void sDbString::substAI(cSqlDbData *dbData, u_int64_t *ai_id, const char *table_name) {
+	if(flags == SqlDb_row::_ift_sql &&
+	   !strcmp(str, MYSQL_MAIN_INSERT_ID.c_str())) {
+		if(!*ai_id) {
+			*ai_id = dbData->getAiId(table_name);
+		}
+		this->ai_id = *ai_id;
+		//cout << "AI: " << flags << " / " << str << " / " << *ai_id << endl;
+	}
+}
+
+cDbStrings::cDbStrings(unsigned capacity, unsigned capacity_inc) {
+	if(capacity) {
+		strings = new FILE_LINE(0) sDbString[capacity];
+		this->capacity = capacity;
+		this->capacity_inc = capacity_inc ? capacity_inc : capacity;
+	} else {
+		strings = NULL;
+		this->capacity = 0;
+		this->capacity_inc = capacity_inc ? capacity_inc : 1;
+	}
+	size = 0;
+	strings_map = NULL;
+	zero_term_set = false;
+}
+
+cDbStrings::~cDbStrings() {
+	if(strings_map) {
+		delete strings_map;
+	}
+	if(strings) {
+		delete [] strings;
+	}
+}
+
+void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
+	if(size == capacity) {
+		sDbString *strings_new = new FILE_LINE(0) sDbString[capacity + capacity_inc];
+		if(strings) {
+			memcpy(strings_new, strings, size * sizeof(sDbString));
+			delete [] strings;
+		}
+		strings = strings_new;
+		capacity += capacity_inc;
+	}
+	strings[size].begin = begin;
+	strings[size].offset = offset;
+	strings[size].length = length;
+	++size;
+}
+
+void cDbStrings::explodeCsv(const char *csv) {
+	unsigned lengthCsv = strlen(csv);
+	while(lengthCsv &&
+	      (csv[lengthCsv - 1] == '\r' || csv[lengthCsv - 1] == '\n')) {
+		--lengthCsv;
+	}
+	unsigned pos = 0;
+	while(pos < lengthCsv) {
+		bool is_string = csv[pos] == '"';
+		const char *nextSep = strstr(csv + pos, is_string ? "\"," : ",");
+		if(is_string) {
+			while(nextSep && *(nextSep - 1) == '\\') {
+				nextSep = strstr(nextSep + 1, is_string ? "\"," : ",");
+			}
+		}
+		if(nextSep) {
+			unsigned nextSepPos = nextSep - csv;
+			if(is_string) {
+				add(csv, pos + 1, nextSepPos - pos - 1);
+			} else {
+				add(csv, pos, nextSepPos - pos);
+			}
+			pos = nextSepPos + (is_string ? 2 : 1);
+		} else {
+			if(is_string) {
+				add(csv, pos + 1, lengthCsv - pos - 2);
+			} else {
+				add(csv, pos, lengthCsv - pos);
+			}
+			break;
+		}
+	}
+}
+
+void cDbStrings::setZeroTerm() {
+	for(unsigned i = 0; i < size; i++) {
+		strings[i].setZeroTerm();
+	}
+	zero_term_set = true;
+}
+
+void cDbStrings::setNextData() {
+	for(unsigned i = 0; i < size; i++) {
+		strings[i].setNextData();
+	}
+}
+
+void cDbStrings::createMap(bool icase) {
+	strings_map = new FILE_LINE(0) map<sDbString, unsigned>;
+	for(unsigned i = 0; i < size; i++) {
+		strings[i].setStr();
+		strings[i].icase = icase;
+		(*strings_map)[strings[i]] = i;
+	}
+	icase_map = icase;
+}
+
+void cDbStrings::print() {
+	for(unsigned i = 0; i < size; i++) {
+		if(zero_term_set) {
+			cout << '|' << string(strings[i].begin + strings[i].offset, strings[i].length) << '|' << endl;
+		} else {
+			cout << '|' << (strings[i].begin + strings[i].offset) << '|' << endl;
+		}
+	}
+}
+
+void cDbStrings::substCB(cSqlDbData *dbData, list<string> *cb_inserts) {
+	for(unsigned i = 0; i < size; i++) {
+		strings[i].substCB(dbData, cb_inserts);
+	}
+}
+
+void cDbStrings::substAI(cSqlDbData *dbData, u_int64_t *ai_id, const char *table_name) {
+	for(unsigned i = 0; i < size; i++) {
+		strings[i].substAI(dbData, ai_id, table_name);
+	}
+}
+
+string cDbStrings::implodeInsertColumns() {
+	string separator = ",";
+	string border = "`";
+	string rslt;
+	unsigned counter = 0;
+	for(size_t i = 0; i < size; i++) {
+		if(!strings[i].begin) {
+			continue;
+		}
+		if(counter) { rslt += separator; }
+		rslt += border + (strings[i].begin + strings[i].offset) + border;
+		++counter;
+	}
+	return(rslt);
+}
+
+string cDbStrings::implodeInsertValues(const char *table, cDbStrings *header, SqlDb *sqlDb) {
+	string separator = ",";
+	string string_border = "'";
+	string rslt = "( ";
+	unsigned counter = 0;
+	for(size_t i = 0; i < size; i++) {
+		if(!strings[i].begin) {
+			continue;
+		}
+		if(counter) { rslt += separator; }
+		if(strings[i].flags & SqlDb_row::_ift_null) {
+			rslt += "NULL";
+		} else {
+			switch(strings[i].flags & SqlDb_row::_ift_base) {
+			case SqlDb_row::_ift_string:
+				rslt += string_border + strings[i].str + string_border;
+				break;
+			case SqlDb_row::_ift_int:
+			case SqlDb_row::_ift_int_u:
+			case SqlDb_row::_ift_double:
+				rslt += strings[i].str;
+				break;
+			case SqlDb_row::_ift_ip:
+				if(VM_IPV6_B && sqlDb->isIPv6Column(table, header->strings[i].getStr())) {
+					rslt += string("inet6_aton('") + strings[i].str + "')";
+				} else {
+					rslt += intToString(str_2_vmIP(strings[i].str).getIPv4());
+				}
+				break;
+			case SqlDb_row::_ift_calldate:
+				rslt += string_border + sqlEscapeString(sqlDateTimeString_us2ms(atoll(strings[i].str))) + string_border;
+				break;
+			case SqlDb_row::_ift_sql:
+				if(strings[i].ai_id) {
+					rslt += intToString(strings[i].ai_id);
+				}
+				break;
+			default:
+				if((strings[i].flags & SqlDb_row::_ift_base) >= SqlDb_row::_ift_cb_string && strings[i].cb_id) {
+					rslt += intToString(strings[i].cb_id);
+				} else {
+					rslt += "NULL";
+				}
+			}
+		}
+		++counter;
+	}
+	rslt += " )";
+	return(rslt);
+}
+
+cDbTableContent::cDbTableContent(const char *table_name) {
+	this->table_name = table_name;
+}
+
+cDbTableContent::~cDbTableContent() {
+	header.destroy();
+	for(vector<sRow>::iterator iter = rows.begin(); iter != rows.end(); iter++) {
+		iter->destroy();
+	}
+}
+
+void cDbTableContent::addHeader(const char *source) {
+	char *content = new FILE_LINE(0) char[strlen(source) + 1];
+	strcpy(content, source);
+	header.content = content;
+	header.items = new FILE_LINE(0) cDbStrings(100);
+	header.items->explodeCsv(content);
+	header.items->setZeroTerm();
+	header.items->createMap(true);
+}
+
+void cDbTableContent::addRow(const char *source) {
+	char *content = new FILE_LINE(0) char[strlen(source) + 1];
+	strcpy(content, source);
+	sRow row;
+	row.content = content;
+	row.items = new FILE_LINE(0) cDbStrings(100);
+	row.items->explodeCsv(content);
+	row.items->setZeroTerm();
+	row.items->setNextData();
+	rows.push_back(row);
+}
+
+void cDbTableContent::substCB(class cSqlDbData *dbData, list<string> *cb_inserts) {
+	for(vector<sRow>::iterator iter = rows.begin(); iter != rows.end(); iter++) {
+		iter->items->substCB(dbData, cb_inserts);
+	}
+}
+
+void cDbTableContent::substAI(class cSqlDbData *dbData, u_int64_t *ai_id) {
+	//cout << "TABLE: " << table_name << endl;
+	for(vector<sRow>::iterator iter = rows.begin(); iter != rows.end(); iter++) {
+		iter->items->substAI(dbData, ai_id, table_name.c_str());
+	}
+}
+
+string cDbTableContent::insertQuery(SqlDb *sqlDb) {
+	string insert_str = "INSERT INTO " + table_name + " ( ";
+	insert_str += header.items->implodeInsertColumns();
+	insert_str += " ) VALUES ";
+	unsigned counter = 0;
+	for(vector<sRow>::iterator iter = rows.begin(); iter != rows.end(); iter++) {
+		if(counter) {
+			insert_str += ",";
+		}
+		insert_str += iter->items->implodeInsertValues(table_name.c_str(), header.items, sqlDb);
+		++counter;
+	}
+	return(insert_str);
+}
+
+cDbTablesContent::cDbTablesContent() {
+}
+
+cDbTablesContent::~cDbTablesContent() {
+	for(vector<cDbTableContent*>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		delete *iter;
+	}
+}
+
+void cDbTablesContent::addCsvRow(const char *source) {
+	bool header = false;
+	bool row = false;
+	string table;
+	if(!strncmp(source, "csv_header:", 11)) {
+		header = true;
+		source += 11;
+	} else if(!strncmp(source, "csv_row:", 8)) {
+		row = true;
+		source += 8;
+	}
+	if(row || header) {
+		const char *tableEndSeparator = strchr(source, ':');
+		if(tableEndSeparator) {
+			table = string(source, tableEndSeparator - source);
+			source = tableEndSeparator + 1;
+			cDbTableContent *tableContent;
+			map<string, cDbTableContent*>::iterator iter = tables_map.find(table);
+			if(iter != tables_map.end()) {
+				tableContent = iter->second;
+			} else {
+				tableContent = new FILE_LINE(0) cDbTableContent(table.c_str());
+				tables.push_back(tableContent);
+				tables_map[table] = tableContent;
+				unsigned table_enum = Call::getTableEnumIndex(&table);
+				if(table_enum) {
+					tables_enum_map[table_enum] = tableContent;
+				}
+			}
+			if(header) {
+				tableContent->addHeader(source);
+			} else if(row) {
+				tableContent->addRow(source);
+			}
+		}
+	}
+}
+
+void cDbTablesContent::substCB(class cSqlDbData *dbData, list<string> *cb_inserts) {
+	for(vector<cDbTableContent*>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		(*iter)->substCB(dbData, cb_inserts);
+	}
+}
+
+void cDbTablesContent::substAI(class cSqlDbData *dbData, u_int64_t *ai_id) {
+	for(vector<cDbTableContent*>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		(*iter)->substAI(dbData, ai_id);
+	}
+}
+
+string cDbTablesContent::getMainTable() {
+	if(tables.size()) {
+		return(tables[0]->table_name);
+	}
+	return("");
+}
+
+void cDbTablesContent::insertQuery(list<string> *dst, SqlDb *sqlDb) {
+	for(vector<cDbTableContent*>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		dst->push_back((*iter)->insertQuery(sqlDb));
+	}
+}
+
+sDbString *cDbTablesContent::findColumn(const char *table, const char *column, unsigned rowIndex, int *columnIndex) {
+	map<string, cDbTableContent*>::iterator iter = tables_map.find(table);
+	if(iter != tables_map.end() && rowIndex < iter->second->rows.size()) {
+		int _columnIndex = iter->second->header.items->findIndex(column);
+		if(columnIndex) {
+			*columnIndex = _columnIndex;
+		}
+		if(_columnIndex >= 0 && _columnIndex < (int)iter->second->rows[rowIndex].items->size) {
+			return(&iter->second->rows[rowIndex].items->strings[_columnIndex]);
+		}
+	} else {
+		if(columnIndex) {
+			*columnIndex = -2;
+		}
+	}
+	return(NULL);
+}
+
+sDbString *cDbTablesContent::findColumn(unsigned table_enum, const char *column, unsigned rowIndex, int *columnIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end() && rowIndex < iter->second->rows.size()) {
+		int _columnIndex = iter->second->header.items->findIndex(column);
+		if(columnIndex) {
+			*columnIndex = _columnIndex;
+		}
+		if(_columnIndex >= 0 && _columnIndex < (int)iter->second->rows[rowIndex].items->size) {
+			return(&iter->second->rows[rowIndex].items->strings[_columnIndex]);
+		}
+	} else {
+		if(columnIndex) {
+			*columnIndex = -2;
+		}
+	}
+	return(NULL);
+}
+
+int cDbTablesContent::getCountRows(const char *table) {
+	map<string, cDbTableContent*>::iterator iter = tables_map.find(table);
+	if(iter != tables_map.end()) {
+		return(iter->second->rows.size());
+	}
+	return(-1);
+}
+
+int cDbTablesContent::getCountRows(unsigned table_enum) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end()) {
+		return(iter->second->rows.size());
+	}
+	return(-1);
+}
+
+const char *cDbTablesContent::getValue_str(unsigned table_enum, const char *column, bool *null, unsigned rowIndex, int *columnIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end() && rowIndex < iter->second->rows.size()) {
+		int _columnIndex = iter->second->header.items->findIndex(column);
+		if(columnIndex) {
+			*columnIndex = _columnIndex;
+		}
+		if(_columnIndex >= 0 && _columnIndex < (int)iter->second->rows[rowIndex].items->size) {
+			if(null) {
+				*null = iter->second->rows[rowIndex].items->strings[_columnIndex].flags & SqlDb_row::_ift_null;
+			}
+			return(iter->second->rows[rowIndex].items->strings[_columnIndex].str);
+		} else {
+			if(null) {
+				*null = true;
+			}
+		}
+	} else {
+		if(columnIndex) {
+			*columnIndex = -2;
+		}
+	}
+	return(NULL);
+}
+
+double cDbTablesContent::getMinMaxValue(unsigned table_enum, const char *columns[], bool min, bool onlyNotZero, bool *null) {
+	double rslt = nan("0");
+	if(null) {
+		*null = true;
+	}
+	for(unsigned i = 0; columns[i]; i++) {
+		double v;
+		bool v_null;
+		v = getValue_float(table_enum, columns[i], false, &v_null);
+		if(!v_null &&
+		   (!onlyNotZero || v != 0) &&
+		   (isnan(rslt) ||
+		    (min ? v < rslt : v > rslt))) {
+			rslt = v;
+			if(null) {
+				*null = false;
+			}
+		}
+	}
+	return(rslt);
+}
+
+void cDbTablesContent::removeColumn(unsigned table_enum, const char *column) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end()) {
+		int columnIndex = iter->second->header.items->findIndex(column);
+		if(columnIndex >= 0) {
+			iter->second->header.items->strings[columnIndex].begin = NULL;
+			for(unsigned i = 0; i < iter->second->rows.size(); i++) {
+				iter->second->rows[i].items->strings[columnIndex].begin = NULL;
+			}
+		}
+	}
+}
+
+void cDbTablesContent::removeColumn(unsigned table_enum, unsigned columnIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end()) {
+		iter->second->header.items->strings[columnIndex].begin = NULL;
+		for(unsigned i = 0; i < iter->second->rows.size(); i++) {
+			iter->second->rows[i].items->strings[columnIndex].begin = NULL;
+		}
+	}
+}
+
 bool is_ok_pcap_header(pcap_sf_pkthdr *header, pcap_sf_pkthdr *prev_header) {
 	return(header->ts.tv_sec >= prev_header->ts.tv_sec && 
 	       header->ts.tv_sec < prev_header->ts.tv_sec + 60 * 60 && 
@@ -6081,6 +6545,48 @@ void cEvalFormula::sValue::setFromField(void *_field) {
 	}
 }
 
+void cEvalFormula::sValue::setFromDbString(sDbString *dbString) {
+	null();
+	switch(dbString->flags) {
+	case SqlDb_row::_ift_int:
+		v_type = _v_int;
+		v._int = atoll(dbString->str);
+		break;
+	case SqlDb_row::_ift_int_u:
+		v_type = _v_int;
+		v._int = atoll(dbString->str);
+		break;
+	case SqlDb_row::_ift_double:
+		v_type = _v_float;
+		v._float = atof(dbString->str);
+		break;
+	case SqlDb_row::_ift_ip:
+		{
+		vmIP ip;
+		ip.setFromString(dbString->str);
+		if(ip.is_v6()) {
+			v_type = _v_ip;
+			v._ip = &ip;
+		} else {
+			v_type = _v_int;
+			v._int = ip.ip.v4.n;
+		}
+		}
+		break;
+	case SqlDb_row::_ift_calldate:
+		// TODO
+		break;
+	case SqlDb_row::_ift_null:
+		v_type = _v_int;
+		v._int = 0;
+		v_null = true;
+		break;
+	default:
+		*this = sValue(dbString->str);
+		break;
+	}
+}
+
 cEvalFormula::sValue cEvalFormula::sValue::arithm(sValue &v2, string oper) {
 	sValue rslt;
 	if(this->v_type != _v_na && v2.v_type != _v_na) {
@@ -6161,7 +6667,7 @@ cEvalFormula::sValue cEvalFormula::sValue::like(sValue &pattern_v) {
 		unsigned pattern_v_length = pattern_v.v._string->length();
 		if(pattern_v_length) {
 			if(!pattern_v.v_str_wildcard) {
-				pattern_v.v_str_wildcard = pattern_v.v._string->find('_') ? 2 : 1;
+				pattern_v.v_str_wildcard = (pattern_v.v._string->find('_') != string::npos) ? 2 : 1;
 			}
 			bool rslt;
 			string str = this->getString().c_str();
@@ -6383,12 +6889,12 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e_opt(cEvalFormula *f, unsign
 					}
 				}
 				#if DEBUG_SO_E_OPT
-				if(f->debug) f->debug_output(level, "operand: " + operand.getString());
+				if(f->debug) f->debug_output(level, "operand: " + (operand_pt ? operand_pt : &operand)->getString());
 				#endif
 				if(u_operators[i]) {
 					operand = f->e_u_operator(operand, u_operators[i]);
 					#if DEBUG_SO_E_OPT
-					if(f->debug) f->debug_output(level, "operand_rslt: (" + string(u_operators[i]->oper) + ") " + operand.getString());
+					if(f->debug) f->debug_output(level, "operand_rslt: (" + intToString(u_operators[i]) + ") " + operand.getString());
 					#endif
 				}
 				if(i == 0) {
@@ -6405,7 +6911,7 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e_opt(cEvalFormula *f, unsign
 					}
 					#if DEBUG_SO_E_OPT
 					if(f->debug) {
-						f->debug_output(level, "operator: " + string(b_operators[i - 1]->oper));
+						f->debug_output(level, "operator: " + intToString(b_operators[i - 1]));
 						f->debug_output(level, "rslt: " + rslt.getString());
 					}
 					#endif
@@ -6475,15 +6981,15 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 						operands[i]->value = operand;
 					}
 				} else {
-					operand = operands[i]->e(f, level + 1/*, &_existsSpecType*/);
+					operand = operands[i]->e(f, level + 1);
 				}
 				#if DEBUG_SO_E
-				if(f->debug) f->debug_output(level, "operand: " + operand.getString());
+				if(f->debug) f->debug_output(level, "operand: " + (operand_pt ? operand_pt : &operand)->getString());
 				#endif
 				if(u_operators[i]) {
 					operand = f->e_u_operator(operand, u_operators[i]);
 					#if DEBUG_SO_E
-					if(f->debug) f->debug_output(level, "operand_rslt: (" + string(u_operators[i]->oper) + ") " + operand.getString());
+					if(f->debug) f->debug_output(level, "operand_rslt: (" + intToString(u_operators[i]) + ") " + operand.getString());
 					#endif
 				}
 				if(i == 0) {
@@ -6512,7 +7018,7 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 					}
 					#if DEBUG_SO_E
 					if(f->debug) {
-						f->debug_output(level, "operator: " + string(b_operators[i - 1]->oper));
+						f->debug_output(level, "operator: " + intToString(b_operators[i - 1]));
 						f->debug_output(level, "rslt: " + rslt.getString());
 					}
 					#endif
@@ -6531,14 +7037,19 @@ cEvalFormula::sValue cEvalFormula::sSplitOperands::e(cEvalFormula *f, unsigned l
 			if(subType == _st_field) {
 				map<u_int32_t, sValue> *value_map = &((sChartsCacheCallData*)f->sql_data2)->value_map;
 				if(ord.u.i) {
+					ord.u.s.child_index = f->sql_child_index;
 					map<u_int32_t, sValue>::iterator iter = value_map->find(ord.u.i);
 					if(iter != value_map->end()) {
 						return(iter->second);
 					}
 				}
 				if(f->sql_data_type == _estd_call &&
-				   ((Call*)f->sql_data)->sqlFormulaOperandReplace(&value, &table, &column, f->sql_data2,
-										  f->sql_child_table ? f->sql_child_table : NULL, f->sql_child_index, NULL)) {
+				   (((sChartsCallData*)(f->sql_data))->type == sChartsCallData::_call ?
+				    ((sChartsCallData*)(f->sql_data))->call()->sqlFormulaOperandReplace(&value, &table, &column, f->sql_data2,
+													f->sql_child_table ? f->sql_child_table : NULL, f->sql_child_index, NULL) :
+				    Call::sqlFormulaOperandReplace(((sChartsCallData*)(f->sql_data))->tables_content(),
+								   &value, &table, &column, f->sql_data2,
+								   f->sql_child_table ? f->sql_child_table : NULL, f->sql_child_index, NULL))) {
 					#if DEBUG_SO_E
 					if(f->debug) f->debug_output(level, "subst: " + table + "." + column + " -> " + value.getString());
 					#endif
@@ -7026,8 +7537,12 @@ bool cEvalFormula::sqlOperandReplace(sValue *value, string operand, sSplitOperan
 		transform(table.begin(), table.end(), table.begin(), ::tolower);
 		transform(column.begin(), column.end(), column.begin(), ::tolower);
 		sOperandReplaceData ord;
-		if(((Call*)sql_data)->sqlFormulaOperandReplace(value, &table, &column, sql_data2, 
-							       sql_child_table ? sql_child_table : NULL, sql_child_index, &ord)) {
+		if(((sChartsCallData*)sql_data)->type == sChartsCallData::_call ?
+		    ((sChartsCallData*)sql_data)->call()->sqlFormulaOperandReplace(value, &table, &column, sql_data2, 
+										   sql_child_table ? sql_child_table : NULL, sql_child_index, &ord) :
+		    Call::sqlFormulaOperandReplace(((sChartsCallData*)sql_data)->tables_content(),
+						   value, &table, &column, sql_data2, 
+						   sql_child_table ? sql_child_table : NULL, sql_child_index, &ord)) {
 			if(splitOperands) {
 				sSplitOperands *splitSqlOperands = new FILE_LINE(0) sSplitOperands(1);
 				splitSqlOperands->subType = sSplitOperands::_st_field;
@@ -7049,7 +7564,12 @@ bool cEvalFormula::sqlOperandReplace(sValue *value, string operand, sSplitOperan
 
 bool cEvalFormula::evalSqlSubselect(string *table, string *column, string *cond, sSplitOperands::eColumnType column_type, sValue *rslt, unsigned level,
 				    cEvalFormula::sSplitOperands **cond_s) {
-	int childTableSize = ((Call*)sql_data)->sqlChildTableSize(table, sql_data2);
+	int childTableSize = 0;
+	if(((sChartsCallData*)sql_data)->type == sChartsCallData::_call) {
+		childTableSize = ((sChartsCallData*)sql_data)->call()->sqlChildTableSize(table, sql_data2);
+	} else {
+		childTableSize = ((sChartsCallData*)sql_data)->tables_content()->getCountRows(table->c_str());
+	}
 	if(childTableSize > 0) {
 		unsigned count = 0;
 		sValue rslt_value;
@@ -7073,8 +7593,14 @@ bool cEvalFormula::evalSqlSubselect(string *table, string *column, string *cond,
 				}
 				if(column_type == sSplitOperands::_ct_max || column_type == sSplitOperands::_ct_min) {
 					sValue rslt_column;
-					((Call*)sql_data)->sqlFormulaOperandReplace(&rslt_column, table, column, sql_data2, 
-										    sql_child_table ? sql_child_table : NULL, sql_child_index, NULL);
+					if(((sChartsCallData*)sql_data)->type == sChartsCallData::_call) {
+						((sChartsCallData*)sql_data)->call()->sqlFormulaOperandReplace(&rslt_column, table, column, sql_data2, 
+													       sql_child_table ? sql_child_table : NULL, sql_child_index, NULL);
+					} else {
+						Call::sqlFormulaOperandReplace(((sChartsCallData*)sql_data)->tables_content(), 
+									       &rslt_column, table, column, sql_data2,
+									       sql_child_table ? sql_child_table : NULL, sql_child_index, NULL);
+					}
 					if(count == 1) {
 						rslt_value = rslt_column;
 					} else {

@@ -503,6 +503,9 @@ public:
 		_t_cdr_rtp,
 		_t_cdr_sdp
 	};
+	enum eStoreFlags {
+		_sf_charts_cache = 1
+	};
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -1546,11 +1549,16 @@ public:
 	}
 	
 	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
+	static void getChartCacheValue(cDbTablesContent *tablesContent,
+				       int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
 	bool sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, string *column, void *callData, 
 				      string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord);
+	static bool sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
+					     cEvalFormula::sValue *value, string *table, string *column, void *callData, 
+					     string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord);
 	int sqlChildTableSize(string *child_table, void *callData);
 	
-	int getTableEnumIndex(string *table);
+	static int getTableEnumIndex(string *table);
 	
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());
@@ -1767,6 +1775,22 @@ private:
 };
 
 
+struct sChartsCallData {
+	enum eType {
+		_call,
+		_tables_content
+	};
+	eType type;
+	void *data;
+	sChartsCallData(eType type, void *data) {
+		this->type = type;
+		this->data = data;
+	}
+	inline Call* call() { return((Call*)data); }
+	inline cDbTablesContent* tables_content() { return((cDbTablesContent*)data); }
+};
+
+
 /**
   * This class implements operations on Call list
 */
@@ -1800,7 +1824,7 @@ public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
 	deque<Call*> calls_deletequeue; //!< this queue is used for asynchronous storing CDR by the worker thread
-	deque<Call*> calls_charts_cache_queue;
+	deque<sChartsCallData> calls_charts_cache_queue;
 	deque<Call*> registers_queue;
 	deque<Call*> registers_deletequeue;
 	deque<Ss7*> ss7_queue;
@@ -2348,7 +2372,7 @@ private:
 	pstat_data chc_threads_pstat_data[MAXIMUM_CHC_THREADS][2];
 	sem_t chc_threads_sem[MAXIMUM_CHC_THREADS][2];
 	bool chc_threads_init[MAXIMUM_CHC_THREADS];
-	list<Call*> *chc_threads_calls[MAXIMUM_CHC_THREADS];
+	list<sChartsCallData> *chc_threads_calls[MAXIMUM_CHC_THREADS];
 	volatile int chc_threads_count;
 	volatile int chc_threads_count_mod;
 	volatile int chc_threads_count_mod_request;

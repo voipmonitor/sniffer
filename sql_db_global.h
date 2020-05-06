@@ -218,6 +218,9 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const
 #define _MYSQL_QUERY_END_SUBST_new "_\\_'Qe'_\\_;\n"
 #define _MYSQL_QUERY_END_SUBST_old ";\n"
 #define MYSQL_QUERY_END_SUBST string(useNewStore() ? _MYSQL_QUERY_END_SUBST_new : _MYSQL_QUERY_END_SUBST_old)
+
+#define MYSQL_CSV_END "\n"
+
 #define MYSQL_IF string(":IF ")
 #define MYSQL_ENDIF string(":ENDIF")
 #define MYSQL_ENDIF_QE (string(":ENDIF") + MYSQL_QUERY_END)
@@ -233,6 +236,10 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const
 #define MYSQL_MAIN_INSERT_GROUP string(useNewStore() ? _MYSQL_MAIN_INSERT_GROUP_new : "")
 #define MYSQL_NEXT_INSERT string(useNewStore() ? _MYSQL_NEXT_INSERT_new : "")
 #define MYSQL_NEXT_INSERT_GROUP string(useNewStore() ? _MYSQL_NEXT_INSERT_GROUP_new : "")
+
+#define MYSQL_MAIN_INSERT_CSV_HEADER(table) (string("csv_header:") + table + ':')
+#define MYSQL_MAIN_INSERT_CSV_ROW(table) (string("csv_row:") + table + ':')
+
 #define MYSQL_MAIN_INSERT_ID string("@MI_NEW_ID")
 #define MYSQL_MAIN_INSERT_ID_OLD string("@MI_OLD_ID")
 #define MYSQL_MAIN_INSERT_ID2 string("@MI_new_ID")

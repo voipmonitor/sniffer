@@ -38,16 +38,22 @@ public:
 		_ift_int_u,
 		_ift_double,
 		_ift_ip,
-		_ift_calldate
+		_ift_calldate,
+		_ift_sql,
+		_ift_cb_old,
+		_ift_cb_string = 0x10,
+		_ift_base      = 0x1F,
+		_ift_null      = 0x20
 	};
-	struct eInternalFieldValue {
-		eInternalFieldType type;
+	struct sInternalFieldValue {
+		int type;
 		union {
-			long long int _int;
-			unsigned long long int _int_u;
+			int64_t _int;
+			u_int64_t _int_u;
 			double _double;
 		} v;
 		vmIP v_ip;
+		int cb_type;
 	};
 	struct SqlDb_rowField {
 		SqlDb_rowField(const char *content, string fieldName = "", int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_na) {
@@ -61,7 +67,7 @@ public:
 			this->fieldName = fieldName;
 			this->null = !content;
 			this->type = type;
-			this->ifv.type = ift;
+			this->ifv.type = ift | (!content ? _ift_null : 0);
 			this->length = length;
 		}
 		SqlDb_rowField(string content, string fieldName = "", bool null = false, int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_na) {
@@ -69,14 +75,15 @@ public:
 			this->fieldName = fieldName;
 			this->null = null;
 			this->type = type;
-			this->ifv.type = ift;
+			this->ifv.type = ift | (null ? _ift_null : 0);
 			this->length = length;
 		}
+		string getContentForCsv();
 		string content;
 		string fieldName;
 		bool null;
 		int type;
-		eInternalFieldValue ifv;
+		sInternalFieldValue ifv;
 		unsigned long length;
 	};
 	SqlDb_row(SqlDb *sqlDb = NULL) {
@@ -191,6 +198,7 @@ public:
 	void add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms);
 	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, u_int64_t limit = 0);
 	void add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, int64_t limit = 0);
+	void add_cb_string(string content, string fieldName, int cb_type);
 	int getIndexField(string fieldName) {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
@@ -250,8 +258,10 @@ public:
 		return(false);
 	}
 	string implodeFields(string separator = ",", string border = "");
+	string implodeFieldsToCsv();
 	string implodeContent(string separator = ",", string border = "'", bool enableSqlString = false, bool escapeAll = false);
 	string implodeFieldContent(string separator = ",", string fieldBorder = "`", string contentBorder = "'", bool enableSqlString = false, bool escapeAll = false);
+	string implodeContentTypeToCsv(bool enableSqlString = false);
 	string keyvalList(string separator);
 	size_t getCountFields();
 	void removeFieldsIfNotContainIn(map<string, int> *fields);
