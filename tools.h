@@ -1140,8 +1140,6 @@ private:
 	pid_t pid;
 };
 
-std::string getCmdLine();
-
 std::string pexec(char*, int *exitCode = NULL);
 
 class IP {

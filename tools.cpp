@@ -2198,7 +2198,7 @@ list<int> getPids(string app, string grep_search) {
 #ifdef FREEBSD
 	cmd = "ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ " + app + " ' | grep '" + grep_search + "'";
 #else
-	cmd = "ps -C '" + app + "' -o pid,args | grep '" + grep_search + "'";
+	cmd = "ps -C '" + app.substr(0, 15) + "' -o pid,args | grep '" + grep_search + "'";
 #endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
 	while(fgets(buffRslt, 512, cmd_pipe)) {
@@ -2363,19 +2363,6 @@ string WDT::getConfigFile() {
 	extern string configfilename;
 	return(configfilename);
 }
-
-
-std::string getCmdLine() {
-	FILE *fcmdline = fopen(("/proc/" + intToString(getpid()) + "/cmdline").c_str(), "r");
-	if(fcmdline) {
-		char cmdline[1024];
-		fgets(cmdline, sizeof(cmdline), fcmdline);
-		fclose(fcmdline);
-		return(cmdline);
-	}
-	return("");
-}
-
 
 std::string pexec(char* cmd, int *exitCode) {
 	FILE* pipe = popen(cmd, "r");
@@ -7893,8 +7880,8 @@ bool getInterfaceOption(const char *param, const char *searchstr, const char *if
 			return(true);
 		}
 	}
-	printf("Can't get value from 'ethtool %s %s'\n", param, iface);
-	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'", param, iface);
+	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error.\n", param, iface);
+	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error.", param, iface);
 	return(false);
 }
 
@@ -7908,15 +7895,15 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
 		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
 	} else {
-		printf("Can't set interface 'ethtool %s %s %s %i'): %i\n", param, iface, option, value, retval);
-		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i'): %i", param, iface, option, value, retval);
+		printf("Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.\n", param, iface, option, value, retval);
+		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.", param, iface, option, value, retval);
 	}
 }
 
 void handleInterfaceOptions(void) {
 	if(!isEthtoolInstalled()) {
-		printf("ethtool binary is not installed so NIC's options can't be set.\n");
-		syslog(LOG_NOTICE, "ethtool binary is not installed so NIC's options can't be set.");
+		printf("ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.\n");
+		syslog(LOG_NOTICE, "ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.");
 		return;
 	}
 	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
