@@ -1,3 +1,10 @@
+26.15 20.04.2020
+================
+- fix saveaudio = ogg (add missing fclose) [VS-1065]
+- adjust error log for missingn ethtool [VS-1057]
+- fix new voipmonitor instance did not killed old watchdog script 
+
+
 26.14 20.04.2020
 ================
 - Increase RRDs limit for packets count all/RTP to 100000000 

@@ -7983,7 +7983,7 @@ void checkMysqlSwapUsage(void) {
 		swapMysqlDelayCount = SEVEN_DAYS;
 	} else if (swapSize > 0) {
 		char note[256];
-		snprintf(note, sizeof(note), "The mysql's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
+		snprintf(note, sizeof(note), "The mysql's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap. For more info see http://www.voipmonitor.org/doc/Swap", swapSize);
 		cLogSensor::log(cLogSensor::notice, note);
 		swapMysqlDelayCount = SEVEN_DAYS;
 	} else {
@@ -7997,7 +7997,7 @@ void checkSwapUsage(void) {
 	long swapSize = getSwapUsage(pid);
 	if (swapSize > 0) {
 		char note[256];
-		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap.", swapSize);
+		snprintf(note, sizeof(note), "The sensor's memory is in the swap (%li KB). This can lead to performance degradation. Please consider to disable the swap. For more info see http://www.voipmonitor.org/doc/Swap", swapSize);
 		cLogSensor::log(cLogSensor::notice, note);
 		swapDelayCount = SEVEN_DAYS;
 	} else {
