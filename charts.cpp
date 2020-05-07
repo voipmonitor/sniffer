@@ -748,9 +748,11 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 	if(this->dataMultiseriesItem) {
 		chart_data = this->dataMultiseriesItem->json(this->series, this);
 	}
-	if(chart_data.empty()) {
+	if(chart_data.empty() ||
+	   chart_data == last_chart_data) {
 		return;
 	}
+	last_chart_data = chart_data;
 	SqlDb_row cache_row;
 	cache_row.add(this->series->id, "series_id");
 	cache_row.add("TA_MINUTES", "type");
@@ -788,9 +790,9 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 		if(iter->second->series->checkFilters(filters_map)) {
 			iter->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval, 
 					  calldate_from, calldate_to);
+			++counter_add;
 		}
 	}
-	++counter_add;
 }
 
 void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb) {
@@ -1635,6 +1637,8 @@ bool chartsCacheIsSet() {
 
 #define TEST_ADD_CALL 0
 #define TEST_ADD_CALL_FILTERS_CACHE 0
+#define TEST_ADD_CALL_PASSES_1 10
+#define TEST_ADD_CALL_PASSES_2 1
 
 void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
 	if(chartsCache) {
@@ -1660,10 +1664,10 @@ void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *fi
 		u_int64_t e = getTimeUS();
 		cout << "*: " << e - s <<  endl;
 		
-		for(unsigned p = 0; p < 10; p++) {
+		for(unsigned p = 0; p < TEST_ADD_CALL_PASSES_1; p++) {
 		
 		s = getTimeUS();
-		for(unsigned i = 0; i < 1; i++) {
+		for(unsigned i = 0; i < TEST_ADD_CALL_PASSES_2; i++) {
 	 
 			chartsCache->add(call, callData, _filtersCache);
 			

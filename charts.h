@@ -168,6 +168,7 @@ private:
 	vector<string> param;
 	map<string_icase, int> param_map;
 	volatile int sync_data;
+	string last_chart_data;
 friend class cChartDataItem;
 friend class cChartDataMultiseriesItem;
 friend class cChartInterval;

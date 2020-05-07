@@ -9629,6 +9629,10 @@ void Calltable::processCallsInChartsCache_thread_add() {
 }
 
 void Calltable::processCallsInChartsCache_thread_remove() {
+ 
+	return;
+	// suppress - unstable !
+ 
 	if(getTimeS() > chc_threads_count_last_change + 120) {
 		if(chc_threads_count > 1 &&
 		   chc_threads_count_mod == 0 &&
