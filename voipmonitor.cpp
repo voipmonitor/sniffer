@@ -328,6 +328,7 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 bool opt_charts_cache = false;
+int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
 char opt_convert_char[64] = "";
@@ -7134,6 +7135,7 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
 				advanced();
@@ -10201,6 +10203,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);
+	}
+	if((value = ini.GetValue("general", "charts_cache_max_threads", NULL))) {
+		opt_charts_cache_max_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "charts_cache_store", NULL))) {
 		opt_charts_cache_store = yesno(value);

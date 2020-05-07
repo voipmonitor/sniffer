@@ -149,7 +149,6 @@
 #define enable_save_dtmf_db		(flags & FLAG_SAVEDTMFDB)
 #define enable_save_dtmf_pcap(call)	(call->flags & FLAG_SAVEDTMFPCAP)
 
-#define MAXIMUM_CHC_THREADS 3
 
 struct s_dtmf {
 	enum e_type {
@@ -1794,6 +1793,7 @@ struct sChartsCallData {
 /**
   * This class implements operations on Call list
 */
+
 class Calltable {
 private:
 	struct sAudioQueueThread {
@@ -1819,6 +1819,15 @@ private:
 		int8_t is_rtcp;
 		s_sdp_flags sdp_flags;
 		bool use_hash_queue_counter;
+	};
+	struct sChcThreadData {
+		pthread_t thread;
+		int tid;
+		pstat_data pstat[2];
+		sem_t sem[2];
+		bool init;
+		list<sChartsCallData> *calls;
+		class cFiltersCache *cache;
 	};
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
@@ -2367,18 +2376,12 @@ private:
 	u_int64_t hash_modify_queue_begin_ms;
 	volatile int _sync_lock_hash_modify_queue;
 	
-	pthread_t chc_threads[MAXIMUM_CHC_THREADS];
-	int chc_threads_tid[MAXIMUM_CHC_THREADS];
-	pstat_data chc_threads_pstat_data[MAXIMUM_CHC_THREADS][2];
-	sem_t chc_threads_sem[MAXIMUM_CHC_THREADS][2];
-	bool chc_threads_init[MAXIMUM_CHC_THREADS];
-	list<sChartsCallData> *chc_threads_calls[MAXIMUM_CHC_THREADS];
+	sChcThreadData *chc_threads;
 	volatile int chc_threads_count;
 	volatile int chc_threads_count_mod;
 	volatile int chc_threads_count_mod_request;
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
-	class cFiltersCache *chc_cache[MAXIMUM_CHC_THREADS];
 	
 };
 
