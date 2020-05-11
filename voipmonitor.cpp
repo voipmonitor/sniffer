@@ -4393,8 +4393,10 @@ int main_init_read() {
 					if (--swapDelayCount < 0) {
 						checkSwapUsage();
 					}
-					if (--swapMysqlDelayCount < 0) {
-						checkMysqlSwapUsage();
+					if (!isCloud()) {
+						if (--swapMysqlDelayCount < 0) {
+							checkMysqlSwapUsage();
+						}
 					}
 				}
 			}
