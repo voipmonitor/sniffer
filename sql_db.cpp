@@ -3598,6 +3598,7 @@ void MySqlStore::loadFromQFiles_start() {
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10, "ipacc_agreg2");
 			}
+			this->addLoadFromQFile((STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10, "charts_cache");
 		} else {
 			extern int opt_mysqlstore_concat_limit_cdr;
 			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
@@ -4378,6 +4379,7 @@ int MySqlStore::getMaxThreadsForStoreId(int id) {
 	extern int opt_mysqlstore_max_threads_webrtc;
 	extern int opt_mysqlstore_max_threads_ipacc_base;
 	extern int opt_mysqlstore_max_threads_ipacc_agreg2;
+	extern int opt_mysqlstore_max_threads_charts_cache;
 	int maxThreads = 1;
 	switch((id / 10) * 10) {
 	case (STORE_PROC_ID_CDR_1 / 10) * 10:
@@ -4402,6 +4404,9 @@ int MySqlStore::getMaxThreadsForStoreId(int id) {
 	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
 		maxThreads = opt_mysqlstore_max_threads_ipacc_agreg2;
 		break;
+	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
+		maxThreads = opt_mysqlstore_max_threads_charts_cache;
+		break;
 	}
 	return(maxThreads);
 }
@@ -4413,6 +4418,7 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 	extern int opt_mysqlstore_concat_limit_http;
 	extern int opt_mysqlstore_concat_limit_webrtc;
 	extern int opt_mysqlstore_concat_limit_ipacc;
+	extern int opt_mysqlstore_concat_limit;
 	int concatLimit = 0;
 	switch((id / 10) * 10) {
 	case (STORE_PROC_ID_CDR_1 / 10) * 10:
@@ -4434,6 +4440,9 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 	case (STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10:
 	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
 		concatLimit = opt_mysqlstore_concat_limit_ipacc;
+		break;
+	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
+		concatLimit = opt_mysqlstore_concat_limit;
 		break;
 	}
 	return(concatLimit);
