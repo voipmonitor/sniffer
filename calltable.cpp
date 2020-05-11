@@ -145,6 +145,7 @@ extern int opt_mysqlstore_max_threads_cdr;
 extern int opt_mysqlstore_max_threads_message;
 extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
+extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
 extern int opt_silencedetect;
@@ -6076,13 +6077,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += MYSQL_GET_MAIN_INSERT_ID_OLD;
 			}
 		}
-		if(useCsvStoreFormat()) {
-			if(opt_charts_cache && opt_charts_cache_store) {
-				cdr.add(_sf_charts_cache, "store_flags");
-			}
-			query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
-				     MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
-		} else {
+		if(!useCsvStoreFormat()) {
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 				     sqlDbSaveCall->insertQuery(sql_cdr_table, cdr));
 		}
@@ -6539,14 +6534,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				counterSqlStore % opt_mysqlstore_max_threads_cdr : 
 				0);
 		++counterSqlStore;
-		if(useNewStore()) {
-			for(unsigned r = 0; r < 1; r++) {
-				sqlStore->query_lock(query_str.c_str(), storeId);
+		if(useCsvStoreFormat()) {
+			if(existsChartsCacheServer()) {
+				SqlDb_row::SqlDb_rowField *f_store_flags = cdr.add(_sf_db, "store_flags");
+				string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
+						       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				sqlStore->query_lock((query_str_cdr + query_str).c_str(), storeId);
+				f_store_flags->content = intToString(_sf_charts_cache);
+				f_store_flags->ifv.v._int = _sf_charts_cache;
+				query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
+						MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				sqlStore->query_lock((query_str_cdr + query_str).c_str(),
+						     STORE_PROC_ID_CHARTS_CACHE_1 + 
+						     (opt_mysqlstore_max_threads_charts_cache > 1 &&
+						      sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_1) > 1000 ? 
+						       counterSqlStore % opt_mysqlstore_max_threads_charts_cache : 
+						       0));
+			} else {
+				cdr.add(_sf_db | (opt_charts_cache && opt_charts_cache_store ? _sf_charts_cache : 0), "store_flags");
+				string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
+						       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				sqlStore->query_lock((query_str_cdr + query_str).c_str(), storeId);
 			}
 		} else {
-			for(unsigned r = 0; r < 1; r++) {
-				sqlStore->query_lock(query_str.c_str(), storeId);
-			}
+			sqlStore->query_lock(query_str.c_str(), storeId);
 		}
 		
 		//cout << endl << endl << query_str << endl << endl << endl;

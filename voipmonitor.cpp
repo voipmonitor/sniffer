@@ -710,8 +710,12 @@ cCR_Receiver_service *cloud_receiver = NULL;
 cCR_ResponseSender *cloud_response_sender = NULL;
 
 extern sSnifferServerOptions snifferServerOptions;
-extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferServerClientOptions snifferServerClientOptions;
+
+sSnifferClientOptions snifferClientOptions;
+sSnifferClientOptions snifferClientOptions_charts_cache;
+cSnifferClientService *snifferClientService;
+cSnifferClientService *snifferClientService_charts_cache;
 
 char ssh_host[1024] = "";
 int ssh_port = 22;
@@ -925,6 +929,7 @@ int opt_mysqlstore_max_threads_http = 1;
 int opt_mysqlstore_max_threads_webrtc = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
+int opt_mysqlstore_max_threads_charts_cache = 1;
 int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
@@ -3634,7 +3639,11 @@ int main(int argc, char *argv[]) {
 			opt_load_query_from_files_inotify = true;
 		}
 	} else if(is_client()) {
-		snifferClientStart();
+		snifferClientService = snifferClientStart(&snifferClientOptions, snifferClientService);
+		if(opt_charts_cache && opt_charts_cache_store &&
+		   !snifferClientOptions_charts_cache.host.empty()) {
+			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, snifferClientService_charts_cache);
+		}
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
@@ -3777,7 +3786,10 @@ int main(int argc, char *argv[]) {
 	if(isCloud()) {
 		stop_cloud_receiver();
 	} else if(is_client()) {
-		snifferClientStop();
+		snifferClientStop(snifferClientService);
+		if(snifferClientService_charts_cache) {
+			snifferClientStop(snifferClientService_charts_cache);
+		}
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStop();
 	}
@@ -6403,6 +6415,8 @@ void cConfig::addConfigItems() {
 					->setMaximum(9)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42108) cConfigItem_integer("mysqlstore_max_threads_ipacc_agreg2", &opt_mysqlstore_max_threads_ipacc_agreg2))
 					->setMaximum(9)->setMinimum(1));
+				addConfigItem((new FILE_LINE(42108) cConfigItem_integer("mysqlstore_max_threads_charts_cache", &opt_mysqlstore_max_threads_charts_cache))
+					->setMaximum(9)->setMinimum(1));
 				addConfigItem(new FILE_LINE(42109) cConfigItem_integer("mysqlstore_limit_queue_register", &opt_mysqlstore_limit_queue_register));
 				addConfigItem(new FILE_LINE(42110) cConfigItem_yesno("mysqltransactions", &opt_mysql_enable_transactions));
 				addConfigItem(new FILE_LINE(42111) cConfigItem_yesno("mysqltransactions_cdr", &opt_mysql_enable_transactions_cdr));
@@ -7122,6 +7136,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_bind_port", &snifferServerOptions.port));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination", &snifferClientOptions.host));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_destination_port", &snifferClientOptions.port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_destination_charts_cache", &snifferClientOptions_charts_cache.host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_destination_port_charts_cache", &snifferClientOptions_charts_cache.port));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_query", &snifferClientOptions.remote_query));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
@@ -10559,6 +10575,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_ipacc_agreg2", NULL))) {
 		opt_mysqlstore_max_threads_ipacc_agreg2 = max(min(atoi(value), 9), 1);
 	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_charts_cache", NULL))) {
+		opt_mysqlstore_max_threads_charts_cache = max(min(atoi(value), 9), 1);
+	}
 	
 	if((value = ini.GetValue("general", "mysqlstore_limit_queue_register", NULL))) {
 		opt_mysqlstore_limit_queue_register = atoi(value);
@@ -11531,6 +11550,10 @@ bool useCsvStoreFormat() {
 	       useSetId() && 
 	       opt_mysql_enable_multiple_rows_insert &&
 	       opt_csv_store_format);
+}
+
+bool existsChartsCacheServer() {
+	return(snifferClientService_charts_cache);
 }
 
 

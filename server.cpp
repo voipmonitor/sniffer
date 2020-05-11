@@ -10,13 +10,10 @@
 extern int opt_id_sensor;
 
 sSnifferServerOptions snifferServerOptions;
-sSnifferClientOptions snifferClientOptions;
 sSnifferServerClientOptions snifferServerClientOptions;
 sSnifferServerGuiTasks snifferServerGuiTasks;
 sSnifferServerServices snifferServerServices;
 cSnifferServer *snifferServer;
-cSnifferClientService *snifferClientService;
-cSnifferClientResponseSender *snifferClientResponseSender;
 
 static bool opt_enable_responses_sender;
 
@@ -948,11 +945,29 @@ cSnifferClientService::cSnifferClientService(int32_t sensor_id, const char *sens
 	this->sensor_version = sensor_version;
 	port = 0;
 	connection_ok = false;
+	client_options = NULL;
 	response_sender = NULL;
 }
 
-void cSnifferClientService::setResponseSender(cSnifferClientResponseSender *response_sender) {
-	this->response_sender = response_sender;
+cSnifferClientService::~cSnifferClientService() {
+	if(response_sender) {
+		 delete response_sender;
+	}
+}
+
+void cSnifferClientService::setClientOptions(sSnifferClientOptions *client_options) {
+	this->client_options = client_options;
+}
+
+void cSnifferClientService::createResponseSender() {
+	response_sender = new FILE_LINE(0) cSnifferClientResponseSender();
+	response_sender->start(client_options->host, client_options->port);
+}
+
+void cSnifferClientService::stopResponseSender() {
+	if(response_sender) {
+		response_sender->stop();
+	}
 }
 
 bool cSnifferClientService::start(string host, u_int16_t port) {
@@ -1062,16 +1077,16 @@ bool cSnifferClientService::receive_process_loop_begin() {
 							set_context_config();
 						}
 					} else {
-						snifferClientOptions.mysql_new_store = !rsltConnectData_json.getValue("mysql_new_store").empty() ?
-											atoi(rsltConnectData_json.getValue("mysql_new_store").c_str()) :
-											0;
-						snifferClientOptions.mysql_set_id = !rsltConnectData_json.getValue("mysql_set_id").empty() &&
-										    atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
+						client_options->mysql_new_store = !rsltConnectData_json.getValue("mysql_new_store").empty() ?
+										   atoi(rsltConnectData_json.getValue("mysql_new_store").c_str()) :
+										   0;
+						client_options->mysql_set_id = !rsltConnectData_json.getValue("mysql_set_id").empty() &&
+									       atoi(rsltConnectData_json.getValue("mysql_set_id").c_str());
 						if(!rsltConnectData_json.getValue("mysql_concat_limit").empty()) {
-							snifferClientOptions.mysql_concat_limit = atoi(rsltConnectData_json.getValue("mysql_concat_limit").c_str());
+							client_options->mysql_concat_limit = atoi(rsltConnectData_json.getValue("mysql_concat_limit").c_str());
 						}
 						if(!rsltConnectData_json.getValue("type_compress").empty()) {
-							snifferClientOptions.type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
+							client_options->type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
 						}
 					}
 					opt_enable_responses_sender = !rsltConnectData_json.getValue("enable_responses_sender").empty();
@@ -1095,23 +1110,23 @@ bool cSnifferClientService::receive_process_loop_begin() {
 		ostringstream verbstr;
 		verbstr << "START SNIFFER SERVICE";
 		vector<string> params;
-		if(snifferClientOptions.remote_query) {
+		if(client_options->remote_query) {
 			params.push_back("remote_query: yes");
 		}
-		if(snifferClientOptions.remote_store) {
+		if(client_options->remote_store) {
 			params.push_back("remote_store: yes");
 		}
-		if(snifferClientOptions.packetbuffer_sender) {
+		if(client_options->packetbuffer_sender) {
 			params.push_back("packetbuffer_sender: yes");
 		}
-		if(snifferClientOptions.mysql_new_store) {
+		if(client_options->mysql_new_store) {
 			params.push_back("mysql_new_store(s): yes");
 		}
-		if(snifferClientOptions.mysql_set_id) {
+		if(client_options->mysql_set_id) {
 			params.push_back("mysql_set_id(s): yes");
 		}
-		if(snifferClientOptions.mysql_concat_limit) {
-			params.push_back("mysql_concat_limit: " + intToString(snifferClientOptions.mysql_concat_limit));
+		if(client_options->mysql_concat_limit) {
+			params.push_back("mysql_concat_limit: " + intToString(client_options->mysql_concat_limit));
 		}
 		if(params.size()) {
 			verbstr << ' ' << implode(params, ", ");
@@ -1342,31 +1357,27 @@ void snifferServerSetSqlStore(MySqlStore *sqlStore) {
 }
 
 
-void snifferClientStart() {
-	snifferClientStop();
-	snifferClientResponseSender = new FILE_LINE(0) cSnifferClientResponseSender();
-	snifferClientResponseSender->start(snifferClientOptions.host, snifferClientOptions.port);
+cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, cSnifferClientService *snifferClientServiceOld) {
+	if(snifferClientServiceOld) {
+		snifferClientStop(snifferClientServiceOld);
+	}
 	extern char opt_sensor_string[128];
-	snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
-	snifferClientService->setResponseSender(snifferClientResponseSender);
+	cSnifferClientService *snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
+	snifferClientService->setClientOptions(clientOptions);
+	snifferClientService->createResponseSender();
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
-	snifferClientService->start(snifferClientOptions.host, snifferClientOptions.port);
+	snifferClientService->start(clientOptions->host, clientOptions->port);
 	while(!snifferClientService->isStartOk() && !is_terminating()) {
 		USLEEP(100000);
 	}
+	return(snifferClientService);
 }
 
 
-void snifferClientStop() {
-	if(snifferClientResponseSender) {
-		snifferClientResponseSender->stop();
-	}
+void snifferClientStop(cSnifferClientService *snifferClientService) {
+	snifferClientService->stopResponseSender();
 	if(snifferClientService) {
 		delete snifferClientService;
 		snifferClientService = NULL;
-	}
-	if(snifferClientResponseSender) {
-		delete snifferClientResponseSender;
-		snifferClientResponseSender = NULL;
 	}
 }

@@ -503,7 +503,8 @@ public:
 		_t_cdr_sdp
 	};
 	enum eStoreFlags {
-		_sf_charts_cache = 1
+		_sf_db = 1,
+		_sf_charts_cache = 2
 	};
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {

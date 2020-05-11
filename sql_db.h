@@ -117,27 +117,31 @@ public:
 		row.push_back(SqlDb_rowField(content, fieldName, null, 0, 0, ift));
 		return(&row[row.size() - 1]);
 	}
-	void add(int content, string fieldName, bool null = false) {
+	SqlDb_rowField *add(int content, string fieldName, bool null = false) {
+		SqlDb_rowField *f;
 		if(!content && null) {
-			this->add((const char*)NULL, fieldName, 0, 0, _ift_int)
-			    ->ifv.v._int = content;
+			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int);
+			f->ifv.v._int = content;
 		} else {
 			char str_content[100];
 			snprintf(str_content, sizeof(str_content), "%i", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int)
-			    ->ifv.v._int = content;
+			f = this->add(str_content, fieldName, 0, 0, _ift_int);
+			f->ifv.v._int = content;
 		}
+		return(f);
 	}
-	void add(unsigned int content, string fieldName, bool null = false) {
+	SqlDb_rowField *add(unsigned int content, string fieldName, bool null = false) {
+		SqlDb_rowField *f;
 		if(!content && null) {
-			this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u)
-			    ->ifv.v._int_u = content;
+			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u);
+			f->ifv.v._int_u = content;
 		} else {
 			char str_content[100];
 			snprintf(str_content, sizeof(str_content), "%u", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int_u)
-			    ->ifv.v._int_u = content;
+			f = this->add(str_content, fieldName, 0, 0, _ift_int_u);
+			f->ifv.v._int_u = content;
 		}
+		return(f);
 	}
 	void add(long int content, string fieldName, bool null = false) {
 		if(!content && null) {

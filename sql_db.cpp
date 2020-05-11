@@ -102,6 +102,7 @@ extern int opt_ptime;
 extern bool cloud_db;
 
 extern sSnifferClientOptions snifferClientOptions;
+extern sSnifferClientOptions snifferClientOptions_charts_cache;
 extern sSnifferServerClientOptions snifferServerClientOptions;
 
 extern int opt_load_query_from_files;
@@ -2971,6 +2972,9 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 	unsigned nextUsleepAfterError = 0;
 	bool quietlyError = false;
 	bool keepConnectAfterError = false;
+	sSnifferClientOptions *_snifferClientOptions = id / 10 == STORE_PROC_ID_CHARTS_CACHE_1 / 10 ?
+							&snifferClientOptions_charts_cache :
+							&snifferClientOptions;
 	for(unsigned int pass = 0; pass < maxPass; pass++) {
 		if(is_terminating() > 1 && pass > 2) {
 			break;
@@ -2998,7 +3002,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		}
 		if(!this->remote_socket) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
-			this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+			this->remote_socket->setHostPort(_snifferClientOptions->host, _snifferClientOptions->port);
 			if(!this->remote_socket->connect()) {
 				syslog(LOG_ERR, "send store query error: %s", "failed connect to cloud router");
 				continue;
@@ -3043,8 +3047,8 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		}
 		string query_str_with_id = intToString(CONV_ID_FOR_REMOTE_STORE(id)) + '|' + query_str;
 		bool okSendQuery = true;
-		if(query_str_with_id.length() > 100 && snifferClientOptions.type_compress != _cs_compress_na) {
-			if(snifferClientOptions.type_compress == _cs_compress_gzip) {
+		if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {
+			if(_snifferClientOptions->type_compress == _cs_compress_gzip) {
 				cGzip gzipCompressQuery;
 				u_char *queryGzip;
 				size_t queryGzipLength;
@@ -3054,7 +3058,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 					}
 					delete [] queryGzip;
 				}
-			} else if(snifferClientOptions.type_compress == _cs_compress_lzo) {
+			} else if(_snifferClientOptions->type_compress == _cs_compress_lzo) {
 				cLzo lzoCompressQuery;
 				u_char *queryLzo;
 				size_t queryLzoLength;

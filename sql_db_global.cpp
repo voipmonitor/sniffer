@@ -732,20 +732,21 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 			}
 			string mainTable = tablesContent->getMainTable();
 			if(!mainTable.empty()) {
-				bool charts_cache = false;
+				int store_flags = 0;
 				if(mainTable == "cdr") {
 					int store_flags_columnIndex;
-					int store_flags = tablesContent->getValue_int(Call::_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
+					store_flags = tablesContent->getValue_int(Call::_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
 					if(store_flags_columnIndex >= 0) {
 						tablesContent->removeColumn(Call::_t_cdr, store_flags_columnIndex);
-						charts_cache = store_flags & Call::_sf_charts_cache;
 					}
 				}
-				tablesContent->substCB(dbData, cb_inserts);
-				u_int64_t main_id = 0;
-				tablesContent->substAI(dbData, &main_id);
-				tablesContent->insertQuery(&ig, sqlDb);
-				if(charts_cache) {
+				if(!store_flags || (store_flags & Call::_sf_db)) {
+					tablesContent->substCB(dbData, cb_inserts);
+					u_int64_t main_id = 0;
+					tablesContent->substAI(dbData, &main_id);
+					tablesContent->insertQuery(&ig, sqlDb);
+				}
+				if(store_flags & Call::_sf_charts_cache) {
 					extern Calltable *calltable;
 					calltable->lock_calls_charts_cache_queue();
 					calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));

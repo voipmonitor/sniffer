@@ -300,7 +300,10 @@ private:
 class cSnifferClientService : public cReceiver {
 public:
 	cSnifferClientService(int32_t sensor_id, const char *sensor_string, unsigned sensor_version);
-	void setResponseSender(class cSnifferClientResponseSender *response_sender);
+	~cSnifferClientService();
+	void setClientOptions(sSnifferClientOptions *client_options);
+	void createResponseSender();
+	void stopResponseSender();
 	bool start(string host, u_int16_t port);
 	virtual bool receive_process_loop_begin();
 	virtual void evData(u_char *data, size_t dataLen);
@@ -312,7 +315,8 @@ protected:
 	u_int16_t port;
 	bool connection_ok;
 	string connect_from;
-	cSnifferClientResponseSender *response_sender;
+	sSnifferClientOptions *client_options;
+	class cSnifferClientResponseSender *response_sender;
 };
 
 
@@ -365,8 +369,8 @@ private:
 void snifferServerStart();
 void snifferServerStop();
 void snifferServerSetSqlStore(MySqlStore *sqlStore);
-void snifferClientStart();
-void snifferClientStop();
+cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, cSnifferClientService *snifferClientServiceOld = NULL);
+void snifferClientStop(cSnifferClientService *snifferClientService);
 
 
 #endif //SERVER_H
