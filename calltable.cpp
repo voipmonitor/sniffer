@@ -9538,13 +9538,13 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 						Call *call = (Call*)iter_call_data->data;
 						if(!call->isEmptyCdrRow()) {
 							sChartsCacheCallData chartsCacheCallData;
-							chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache);
+							chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						}
 						calls_for_delete.push_back(call);
 					} else {
 						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache);
+						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						delete tablesContent;
 					}
 				}
@@ -9595,13 +9595,13 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					Call *call = (Call*)iter_call_data->data;
 					if(!call->isEmptyCdrRow()) {
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache);
+						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					}
 					calls_for_delete.push_back(call);
 				} else {
 					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache);
+					chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					delete tablesContent;
 				}
 			}

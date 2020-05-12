@@ -6,6 +6,7 @@
 extern int opt_nocdr;
 extern int opt_id_sensor;
 extern MySqlStore *sqlStore;
+extern int opt_charts_cache_max_threads;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -830,24 +831,34 @@ cChartFilter::cChartFilter(const char *filter, const char *filter_only_sip_ip, c
 	this->filter = filter;
 	this->filter_only_sip_ip = filter_only_sip_ip;
 	this->filter_without_sip_ip = filter_without_sip_ip;
-	this->filter_s = NULL;
-	this->filter_only_sip_ip_s = NULL;
-	this->filter_without_sip_ip_s = NULL;
+	this->filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands*[opt_charts_cache_max_threads];
+	this->filter_only_sip_ip_s = new FILE_LINE(0) cEvalFormula::sSplitOperands*[opt_charts_cache_max_threads];
+	this->filter_without_sip_ip_s = new FILE_LINE(0) cEvalFormula::sSplitOperands*[opt_charts_cache_max_threads];
+	for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+		this->filter_s[i] = NULL;
+		this->filter_only_sip_ip_s[i] = NULL;
+		this->filter_without_sip_ip_s[i] = NULL;
+	}
 	ip_filter_contain_sipcallerip = strcasestr(filter_only_sip_ip, "sipcallerip") != NULL;
 	ip_filter_contain_sipcalledip = strcasestr(filter_only_sip_ip, "sipcalledip") != NULL;
 	used_counter = 0;
 }
 
 cChartFilter::~cChartFilter() {
-	if(filter_s) {
-		delete filter_s;
+	for(int i = 0; i < opt_charts_cache_max_threads; i++) {
+		if(filter_s[i]) {
+			delete filter_s[i];
+		}
+		if(filter_only_sip_ip_s[i]) {
+			delete filter_only_sip_ip_s[i];
+		}
+		if(filter_without_sip_ip_s[i]) {
+			delete filter_without_sip_ip_s[i];
+		}
 	}
-	if(filter_only_sip_ip_s) {
-		delete filter_only_sip_ip_s;
-	}
-	if(filter_without_sip_ip_s) {
-		delete filter_without_sip_ip_s;
-	}
+	delete [] filter_s;
+	delete [] filter_only_sip_ip_s;
+	delete [] filter_without_sip_ip_s;
 }
 
 
@@ -861,7 +872,7 @@ u_int64_t __cc2;
 u_int64_t __ss2;
 #endif
 
-bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
+bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
  
 #if TEST_CHECK_FILTER == 1
  
@@ -1016,12 +1027,12 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *f
 			cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
 			f.setSqlData(cEvalFormula::_estd_call, call, callData);
 			bool rslt;
-			if(!filter_only_sip_ip_s) {
-				filter_only_sip_ip_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
-				rslt = f.e(filter_only_sip_ip.c_str(), 0, 0, 0, filter_only_sip_ip_s).getBool();
-				while(f.e_opt(filter_only_sip_ip_s));
+			if(!filter_only_sip_ip_s[threadIndex]) {
+				filter_only_sip_ip_s[threadIndex] = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+				rslt = f.e(filter_only_sip_ip.c_str(), 0, 0, 0, filter_only_sip_ip_s[threadIndex]).getBool();
+				while(f.e_opt(filter_only_sip_ip_s[threadIndex]));
 			} else {
-				rslt = f.e(filter_only_sip_ip_s).getBool();
+				rslt = f.e(filter_only_sip_ip_s[threadIndex]).getBool();
 			}
 			if(useIP == 2) {
 				filtersCache->add(this, &ip1, &ip2, rslt);
@@ -1034,19 +1045,19 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *f
 			break;
 		}
 	}
- 
+	
 	cEvalFormula f(cEvalFormula::_est_sql, sverb.charts_cache_filters_eval);
 	f.setSqlData(cEvalFormula::_estd_call, call, callData);
 	bool rslt;
-	if(!filter_s) {
-		filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+	if(!filter_s[threadIndex]) {
+		filter_s[threadIndex] = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
 		if(sverb.charts_cache_filters_eval) {
 			cout << " * FILTER: " << filter << endl;
 		}
-		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s).getBool();
-		while(f.e_opt(filter_s));
+		rslt = f.e(filter.c_str(), 0, 0, 0, filter_s[threadIndex]).getBool();
+		while(f.e_opt(filter_s[threadIndex]));
 	} else {
-		rslt = f.e(filter_s).getBool();
+		rslt = f.e(filter_s[threadIndex]).getBool();
 	}
 	if(sverb.charts_cache_filters_eval || sverb.charts_cache_filters_eval_rslt) {
 		cout << " * RSLT: " << rslt << endl;
@@ -1307,9 +1318,9 @@ cChartFilter* cCharts::addFilter(const char *filter, const char *filter_only_sip
 	return(chFilter);
 }
 
-void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
+void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
 	map<cChartFilter*, bool> filters_map;
-	this->checkFilters(call, callData, &filters_map, filtersCache);
+	this->checkFilters(call, callData, &filters_map, filtersCache, threadIndex);
 	u_int64_t calltime_us;
 	u_int64_t callend_us;
 	if(call->type == sChartsCallData::_call) {
@@ -1357,9 +1368,9 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 	}
 }
 
-void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache) {
+void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache, int threadIndex) {
 	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
-		(*filters_map)[iter->second] = iter->second->check(call, callData, filtersCache);
+		(*filters_map)[iter->second] = iter->second->check(call, callData, filtersCache, threadIndex);
 	}
 }
 
@@ -1645,7 +1656,7 @@ bool chartsCacheIsSet() {
 #define TEST_ADD_CALL_PASSES_1 10
 #define TEST_ADD_CALL_PASSES_2 1
 
-void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache) {
+void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
 	if(chartsCache) {
 	 
 		/*
@@ -1663,7 +1674,7 @@ void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *fi
 		u_int64_t s = getTimeUS();
 		for(unsigned i = 0; i < 1; i++) {
 	 
-			chartsCache->add(call, callData, _filtersCache);
+			chartsCache->add(call, callData, _filtersCache, threadIndex);
 			
 		}
 		u_int64_t e = getTimeUS();
@@ -1674,7 +1685,7 @@ void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *fi
 		s = getTimeUS();
 		for(unsigned i = 0; i < TEST_ADD_CALL_PASSES_2; i++) {
 	 
-			chartsCache->add(call, callData, _filtersCache);
+			chartsCache->add(call, callData, _filtersCache, threadIndex);
 			
 		}
 		e = getTimeUS();
@@ -1684,7 +1695,7 @@ void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *fi
 		
 #else
 
-		chartsCache->add(call, callData, filtersCache);
+		chartsCache->add(call, callData, filtersCache, threadIndex);
 		
 #endif
 		

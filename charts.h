@@ -203,14 +203,14 @@ class cChartFilter {
 public:
 	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
 	~cChartFilter();
-	bool check(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache);
+	bool check(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
 private:
 	string filter;
 	string filter_only_sip_ip;
 	string filter_without_sip_ip;
-	cEvalFormula::sSplitOperands *filter_s;
-	cEvalFormula::sSplitOperands *filter_only_sip_ip_s;
-	cEvalFormula::sSplitOperands *filter_without_sip_ip_s;
+	cEvalFormula::sSplitOperands **filter_s;
+	cEvalFormula::sSplitOperands **filter_only_sip_ip_s;
+	cEvalFormula::sSplitOperands **filter_without_sip_ip_s;
 	bool ip_filter_contain_sipcallerip;
 	bool ip_filter_contain_sipcalledip;
 	volatile int used_counter;
@@ -298,8 +298,8 @@ public:
 	cChartFilter* getFilter(const char *filter, bool enableAdd, 
 				const char *filter_only_sip_ip, const char *filter_without_sip_ip);
 	cChartFilter* addFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
-	void add(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache);
-	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache);
+	void add(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
+	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache, int threadIndex);
 	void store(bool forceAll = false);
 	void cleanup();
 	bool seriesIsUsed(const char *config_id);
@@ -360,7 +360,7 @@ private:
 void chartsCacheInit(SqlDb *sqlDb);
 void chartsCacheTerm();
 bool chartsCacheIsSet();
-void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache);
+void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex);
 void chartsCacheStore(bool forceAll = false);
 void chartsCacheCleanup();
 void chartsCacheReload();
