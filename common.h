@@ -116,6 +116,7 @@ struct sVerbose {
 	int charts_cache_filters_eval;
 	int charts_cache_filters_eval_rslt;
 	char sipcallerip_filter[100];
+	char sipcalledip_filter[100];
 	int _debug1;
 	int _debug2;
 	int _debug3;

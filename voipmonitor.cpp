@@ -7663,6 +7663,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
+	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")
+								strcpy_null_term(sverb.sipcalledip_filter, verbParam.c_str() + 19);
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

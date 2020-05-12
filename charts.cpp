@@ -1316,8 +1316,10 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 		calltime_us = call->tables_content()->getValue_int(Call::_t_cdr, "calldate");
 		callend_us = call->tables_content()->getValue_int(Call::_t_cdr, "callend");
 	}
-	u_int64_t calltime_min_s = calltime_us / 1000 / 1000 / 60 * 60;
-	u_int64_t callend_min_s = callend_us / 1000 / 1000 / 60 * 60;
+	u_int32_t calltime_s = calltime_us / 1000000;
+	u_int32_t callend_s = callend_us / 1000000;
+	u_int64_t calltime_min_s = calltime_s / 60 * 60;
+	u_int64_t callend_min_s = callend_s / 60 * 60;
 	list<u_int32_t> intervals_begin;
 	for(u_int64_t acttime_min_s = calltime_min_s; acttime_min_s <= callend_min_s; acttime_min_s += 60) {
 		if(acttime_min_s > act_first_interval) {
@@ -1345,7 +1347,7 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 			}
 			unlock_intervals();
 			interval->add(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
-				      calltime_us / 1000 / 1000, callend_us / 1000 / 1000,
+				      calltime_s, callend_s,
 				      &filters_map);
 		}
 		++interval_counter;

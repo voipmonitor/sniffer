@@ -180,10 +180,10 @@ void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, con
 void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
 	if(use_ms) {
 		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate)
-		    ->ifv.v._int_u = calldate_us;
+		    ->ifv.v._int_u = (u_int64_t)round(calldate_us / 1000.) * 1000ull;
 	} else {
 		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate)
-		    ->ifv.v._int_u = calldate_us;
+		    ->ifv.v._int_u = TIME_US_TO_S(calldate_us) * 1000000ull;
 	}
 }
 
