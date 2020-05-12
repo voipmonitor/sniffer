@@ -142,8 +142,9 @@ void cChartDataItem::add(sChartsCallData *call,
 						this->sumDuration += call->call()->connect_duration_s();
 					}
 				} else {
-					double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
-					if(connect_duration > 0) {
+					bool connect_duration_null;
+					unsigned int connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+					if(!connect_duration_null) {
 						++this->countConected;
 						this->sumDuration += connect_duration;
 					}
@@ -165,8 +166,9 @@ void cChartDataItem::add(sChartsCallData *call,
 					}
 				} else {
 					Call::getChartCacheValue(call->tables_content(), _chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
-					double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
-					if(connect_duration > 0 ||
+					bool connect_duration_null;
+					call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+					if(!connect_duration_null ||
 					   series->ner_lsr_filter->check((unsigned)lsr)) {
 						++this->count;
 					}
@@ -188,8 +190,9 @@ void cChartDataItem::add(sChartsCallData *call,
 					}
 				}
 			} else {
-				double connect_duration = call->tables_content()->getValue_float(Call::_t_cdr, "connect_duration");
-				if(connect_duration > 0) {
+				bool connect_duration_null;
+				unsigned int connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+				if(!connect_duration_null) {
 					++this->countConected;
 					if(intervalSeries->param.size() && 
 					   connect_duration < (unsigned)atoi(intervalSeries->param[0].c_str())) {
