@@ -4766,15 +4766,18 @@ bool Call::sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
 	}
 	if(column_str) {
 		value->setFromDbString(column_str);
-		if(ord) {
-			ord->u.s.table = table_enum;
-			ord->u.s.column = columnIndex + 1;
-			ord->u.s.child_table = child_table_enum;
-			ord->u.s.child_index = child_index;
-		}
-		return(true);
+	} else {
+		value->v_type = cEvalFormula::_v_int;
+		value->v._int = 0;
+		value->v_null = true;
 	}
-	return(false);
+	if(ord) {
+		ord->u.s.table = table_enum;
+		ord->u.s.column = columnIndex + 1;
+		ord->u.s.child_table = child_table_enum;
+		ord->u.s.child_index = child_index;
+	}
+	return(true);
 }
 
 int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
@@ -5364,15 +5367,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add_duration(duration_us(), "duration", existsColumns.cdr_duration_ms);
 	if(progress_time_us) {
 		cdr.add_duration(progress_time_us - first_packet_time_us, "progress_time", existsColumns.cdr_progress_time_ms);
+	} else {
+		cdr.add(0, "progress_time", true);
 	}
 	if(first_rtp_time_us) {
 		cdr.add_duration(first_rtp_time_us  - first_packet_time_us, "first_rtp_time", existsColumns.cdr_first_rtp_time_ms);
+	} else {
+		cdr.add(0, "first_rtp_time", true);
 	}
 	if(connect_time_us) {
 		cdr.add_duration(connect_duration_us(), "connect_duration", existsColumns.cdr_connect_duration_ms);
+	} else {
+		cdr.add(0, "connect_duration", true);
 	}
-	if(existsColumns.cdr_vlan && VLAN_IS_SET(vlan)) {
-		cdr.add(vlan, "vlan");
+	if(existsColumns.cdr_vlan) {
+		if(VLAN_IS_SET(vlan)) {
+			cdr.add(vlan, "vlan");
+		} else {
+			cdr.add(0, "vlan", true);
+		}
 	}
 	if(existsColumns.cdr_last_rtp_from_end && !use_sdp_sendonly) {
 		if(last_rtp_a_packet_time_us) {
@@ -9636,7 +9649,7 @@ void *Calltable::_processCallsInChartsCache_thread(void *_threadIndex) {
 }
 
 void Calltable::processCallsInChartsCache_thread_add() {
-	if(getTimeS() > chc_threads_count_last_change + 120) {
+	if(getTimeS() > chc_threads_count_last_change + 30) {
 		if(chc_threads_count < opt_charts_cache_max_threads &&
 		   chc_threads_count_mod == 0 &&
 		   chc_threads_count_mod_request == 0) {
@@ -9651,7 +9664,7 @@ void Calltable::processCallsInChartsCache_thread_remove() {
 	return;
 	// suppress - unstable !
  
-	if(getTimeS() > chc_threads_count_last_change + 120) {
+	if(getTimeS() > chc_threads_count_last_change + 300) {
 		if(chc_threads_count > 1 &&
 		   chc_threads_count_mod == 0 &&
 		   chc_threads_count_mod_request == 0) {

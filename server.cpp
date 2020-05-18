@@ -8,6 +8,7 @@
 
 
 extern int opt_id_sensor;
+extern Calltable *calltable;
 
 sSnifferServerOptions snifferServerOptions;
 sSnifferServerClientOptions snifferServerClientOptions;
@@ -212,7 +213,7 @@ unsigned int cSnifferServer::sql_queue_size() {
 	}
 	u_int64_t act_time_ms = getTimeMS_rdtsc();
 	if(act_time_ms > sql_queue_size_time_ms + 200) {
-		sql_queue_size_size = sqlStore->getAllSize(true);
+		sql_queue_size_size = sqlStore->getAllSize(true) +  calltable->calls_charts_cache_queue.size();
 		sql_queue_size_time_ms = act_time_ms;
 	}
 	return(sql_queue_size_size);
@@ -759,9 +760,13 @@ void cSnifferServerConnection::cp_store() {
 							queriesStr.push_back(queryStr.substr(pos, length));
 							pos += length + 1;
 						} while(pos < queryStr.length());
-						server->sql_query_lock(&queriesStr, storeId);
+						if(!sverb.suppress_server_store) {
+							server->sql_query_lock(&queriesStr, storeId);
+						}
 					} else {
-						server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), storeId);
+						if(!sverb.suppress_server_store) {
+							server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), storeId);
+						}
 					}
 					socket->writeBlock("OK", cSocket::_te_aes);
 				}

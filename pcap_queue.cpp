@@ -108,6 +108,7 @@ extern int opt_mysqlstore_max_threads_register;
 extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
+extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
@@ -1636,6 +1637,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							}
 						}
 					}
+					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
+						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_CHARTS_CACHE_1 + i);
+						if(sizeSQLq >= 0) {
+							if(i) {
+								outStr << " ch" << (i+1) << ":";
+							} else {
+								outStr << " ch:";
+								if(sizeSQLq < 0) {
+									sizeSQLq = 0;
+								}
+							}
+							outStr << sizeSQLq;
+						}
+					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
 						sizeSQLq = sqlStoreLog->getSize(STORE_PROC_ID_MESSAGE_1 + i);
 						if(sizeSQLq >= (i ? 1 : 0)) {
@@ -2293,8 +2308,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					if(!chc_cpu.empty()) {
 						outStrStat  << "/";
 					}
-					outStrStat  << (counter_charts_cache / statPeriod);
+					outStrStat  << (counter_charts_cache / statPeriod) << "ps";
 				}
+				if(!chc_cpu.empty()) {
+					outStrStat  << "/";
+				}
+				outStrStat  << calltable->calls_charts_cache_queue.size() << "q";
 				outStrStat << "] ";
 			}
 			if(pcapStatCounter > 2) {
@@ -3104,8 +3123,8 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			}
 			this->lastPacketTimeUS = packetTime;
 		} else {
-			if((heapPerc + heapTrashPerc) > 80) {
-				USLEEP(1);
+			if(heapPerc > 5) {
+				USLEEP(50);
 			}
 		}
 		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {

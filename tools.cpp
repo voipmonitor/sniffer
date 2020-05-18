@@ -3410,7 +3410,7 @@ bool FileZipHandler::read(unsigned length) {
 }
 
 bool FileZipHandler::is_ok_decompress() {
-	return(!this->compressStream || this-compressStream->isOk());
+	return(!this->compressStream || this->compressStream->isOk());
 }
 
 bool FileZipHandler::is_eof() {
@@ -6655,6 +6655,13 @@ cEvalFormula::sValue cEvalFormula::sValue::like(sValue &pattern_v) {
 		if(pattern_v_length) {
 			if(!pattern_v.v_str_wildcard) {
 				pattern_v.v_str_wildcard = (pattern_v.v._string->find('_') != string::npos) ? 2 : 1;
+				size_t pos_enc_grid;
+				if((pos_enc_grid = pattern_v.v._string->find("\\%23")) != string::npos) {
+					string _str = pattern_v.v._string->substr(pos_enc_grid + 1);
+					pattern_v.v._string->resize(pos_enc_grid);
+					pattern_v.v._string->append(_str);
+					--pattern_v_length;
+				}
 			}
 			bool rslt;
 			string str = this->getString().c_str();

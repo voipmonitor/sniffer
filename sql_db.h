@@ -852,6 +852,7 @@ private:
 			flushAt = 0;
 			is_open = false;
 			_sync = 0;
+			_lines = 0;
 		}
 		bool open(const char *filename, u_int64_t createAt) {
 			this->filename = filename;
@@ -898,6 +899,7 @@ private:
 		u_int64_t flushAt;
 		volatile bool is_open;
 		volatile int _sync;
+		unsigned _lines;
 	};
 	struct QFileConfig {
 		QFileConfig() {

@@ -3878,6 +3878,11 @@ int main(int argc, char *argv[]) {
 		delete logBuffer;
 		logBuffer = NULL;
 	}
+	
+	#if DEBUG_STORE_COUNT
+	extern void out_db_cnt();
+	out_db_cnt();
+	#endif
 
 	return(0);
 }
@@ -7661,10 +7666,13 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
+	else if(verbParam == "charts_cache_filters_eval_rslt_true")	
+								sverb.charts_cache_filters_eval_rslt = 1;
 	else if(verbParam.substr(0, 19) == "sipcallerip_filter=")
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")
 								strcpy_null_term(sverb.sipcalledip_filter, verbParam.c_str() + 19);
+	else if(verbParam == "suppress_server_store")		sverb.suppress_server_store = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

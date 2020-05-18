@@ -3825,6 +3825,9 @@ public:
 			return(v1.arithm(v2, "-"));
 		}
 		inline friend sValue operator < (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() < v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() < v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() < v2.getInteger() ? 1 : 0) :
@@ -3833,6 +3836,9 @@ public:
 				sValue());
 		}
 		inline friend sValue operator <= (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() <= v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() <= v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() <= v2.getInteger() ? 1 : 0) :
@@ -3841,6 +3847,9 @@ public:
 				sValue());
 		}
 		inline friend sValue operator > (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() > v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() > v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() > v2.getInteger() ? 1 : 0) :
@@ -3849,6 +3858,9 @@ public:
 				sValue());
 		}
 		inline friend sValue operator >= (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() >= v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() >= v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() >= v2.getInteger() ? 1 : 0) :
@@ -3857,6 +3869,9 @@ public:
 				sValue());
 		}
 		inline friend sValue operator == (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip && v2.v_type == _v_ip ? sValue(*v1.v._ip == *v2.v._ip ? 1 : 0) :
 			       v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() == v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() == v2.getFloat() ? 1 : 0) :
@@ -3866,6 +3881,9 @@ public:
 				sValue());
 		}
 		inline friend sValue operator != (sValue &v1, sValue &v2) {
+			if(v1.v_null || v2.v_null) {
+				return(sValue(0));
+			}
 			return(v1.v_type == _v_ip || v2.v_type == _v_ip ? sValue(v1.getIP() != v2.getIP() ? 1 : 0) :
 			       v1.v_type == _v_float || v2.v_type == _v_float ? sValue(v1.getFloat() != v2.getFloat() ? 1 : 0) :
 			       v1.v_type == _v_int || v2.v_type == _v_int ? sValue(v1.getInteger() != v2.getInteger() ? 1 : 0) :

@@ -712,7 +712,7 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *
 	}
 	return rsltString;
 }
-
+ 
 
 void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
@@ -749,6 +749,10 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				if(store_flags & Call::_sf_charts_cache) {
 					extern Calltable *calltable;
 					calltable->lock_calls_charts_cache_queue();
+					#if DEBUG_STORE_COUNT
+					extern map<int, u_int64_t> _charts_cache_cnt;
+					++_charts_cache_cnt[0];
+					#endif
 					calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
 					calltable->unlock_calls_charts_cache_queue();
 				} else {

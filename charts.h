@@ -203,7 +203,7 @@ class cChartFilter {
 public:
 	cChartFilter(const char *filter, const char *filter_only_sip_ip, const char *filter_without_sip_ip);
 	~cChartFilter();
-	bool check(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
+	bool check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, class cFiltersCache *filtersCache, int threadIndex);
 private:
 	string filter;
 	string filter_only_sip_ip;
@@ -301,7 +301,7 @@ public:
 	void add(sChartsCallData *call, void *callData, class cFiltersCache *filtersCache, int threadIndex);
 	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache, int threadIndex);
 	void store(bool forceAll = false);
-	void cleanup();
+	void cleanup(bool forceAll = false);
 	bool seriesIsUsed(const char *config_id);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
@@ -328,29 +328,68 @@ friend class cChartInterval;
 friend class Call;
 };
 
+struct sFilterCache_call_ipv4_comb {
+	union {
+		struct {
+			u_int32_t src;
+			u_int32_t dst;
+			u_int32_t proxy[2];
+		} d;
+		u_int64_t a[2];
+	} u;
+	inline void set(sChartsCallData *call);
+	friend inline const bool operator == (const sFilterCache_call_ipv4_comb &d1, const sFilterCache_call_ipv4_comb &d2) {
+		return(d1.u.a[0] == d2.u.a[0] &&
+		       d1.u.a[1] == d2.u.a[1]);
+	}
+	friend inline const bool operator < (const sFilterCache_call_ipv4_comb &d1, const sFilterCache_call_ipv4_comb &d2) {
+		return(d1.u.a[0] < d2.u.a[0] ? 1 : d1.u.a[0] > d2.u.a[0] ? 0 :
+		       d1.u.a[1] < d2.u.a[1]);
+	}
+};
+
+struct sFilterCache_call_ipv6_comb {
+	vmIP src;
+	vmIP dst;
+	vmIP proxy[2];
+	inline void set(sChartsCallData *call);
+	friend inline const bool operator == (const sFilterCache_call_ipv6_comb &d1, const sFilterCache_call_ipv6_comb &d2) {
+		return(d1.src == d2.src &&
+		       d1.dst == d2.dst &&
+		       d1.proxy[0] == d2.proxy[0] &&
+		       d1.proxy[1] == d2.proxy[1]);
+	}
+	friend inline const bool operator < (const sFilterCache_call_ipv6_comb &d1, const sFilterCache_call_ipv6_comb &d2) {
+		return(d1.src < d2.src ? 1 : d1.src > d2.src ? 0 :
+		       d1.dst < d2.dst ? 1 : d1.dst > d2.dst ? 0 :
+		       d1.proxy[0] < d2.proxy[0] ? 1 : d1.proxy[0] > d2.proxy[0] ? 0 :
+		       d1.proxy[1] < d2.proxy[1]);
+	}
+};
+
 class cFilterCacheItem {
 public:
 	inline cFilterCacheItem(unsigned limit);
-	inline int get(vmIP *ip);
-	inline void add(vmIP *ip, bool set);
-	inline int get(vmIP *ip1, vmIP *ip2);
-	inline void add(vmIP *ip1, vmIP *ip2, bool set);
+	inline int get(sFilterCache_call_ipv4_comb *ip_comb);
+	inline int get(sFilterCache_call_ipv6_comb *ip_comb);
+	inline void add(sFilterCache_call_ipv4_comb *ip_comb, bool set);
+	inline void add(sFilterCache_call_ipv6_comb *ip_comb, bool set);
 private:
 	unsigned limit;
-	queue<vmIP> ip_queue;
-	map<vmIP, bool> ip_map;
-	queue<d_item<vmIP> > ip2_queue;
-	map<d_item<vmIP>, bool> ip2_map;
+	queue<sFilterCache_call_ipv4_comb> ipv4_comb_queue;
+	map<sFilterCache_call_ipv4_comb, bool> ipv4_comb_map;
+	queue<sFilterCache_call_ipv6_comb> ipv6_comb_queue;
+	map<sFilterCache_call_ipv6_comb, bool> ipv6_comb_map;
 };
 
 class cFiltersCache {
 public:
 	cFiltersCache(unsigned limit, unsigned limit2);
 	~cFiltersCache();
-	int get(cChartFilter *filter, vmIP *ip);
-	void add(cChartFilter *filter, vmIP *ip, bool set);
-	int get(cChartFilter *filter, vmIP *ip1, vmIP *ip2);
-	void add(cChartFilter *filter, vmIP *ip1, vmIP *ip2, bool set);
+	int get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb);
+	int get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb);
+	void add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set);
+	void add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb, bool set);
 private:
 	unsigned limit, limit2;
 	map<cChartFilter*, cFilterCacheItem*> cache_map;
@@ -362,7 +401,7 @@ void chartsCacheTerm();
 bool chartsCacheIsSet();
 void chartsCacheAddCall(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex);
 void chartsCacheStore(bool forceAll = false);
-void chartsCacheCleanup();
+void chartsCacheCleanup(bool forceAll = false);
 void chartsCacheReload();
 void chartsCacheInitIntervals();
 

@@ -125,6 +125,15 @@ cSqlDbData *dbData;
 #define CONV_ID_FOR_QFILE(id) CONV_ID(id)
 #define CONV_ID_FOR_REMOTE_STORE(id) CONV_ID(id)
 
+#if DEBUG_STORE_COUNT
+map<int, u_int64_t> _store_cnt;
+map<int, u_int64_t> _store_old_cnt;
+map<int, u_int64_t> _query_lock_cnt;
+map<int, u_int64_t> _query_to_file_cnt;
+map<int, u_int64_t> _loadFromQFile_cnt;
+map<int, u_int64_t> _charts_cache_cnt;
+#endif
+
 
 string SqlDb_row::SqlDb_rowField::getContentForCsv() {
 	switch(ifv.type) {
@@ -3140,6 +3149,9 @@ void MySqlStore_process::store() {
 				if(this->query_buff.size() == 1 || snifferClientOptions.mysql_concat_limit <= 1) {
 					string query = this->query_buff.front();
 					this->query_buff.pop_front();
+					#if DEBUG_STORE_COUNT
+					++_store_cnt[id];
+					#endif
 					this->unlock();
 					this->queryByRemoteSocket(query.c_str());
 				} else {
@@ -3151,6 +3163,9 @@ void MySqlStore_process::store() {
 						string query = this->query_buff.front();
 						queries += "L" + intToString(query.length()) + ":" + query + "\n";
 						this->query_buff.pop_front();
+						#if DEBUG_STORE_COUNT
+						++_store_cnt[id];
+						#endif
 					}
 					this->unlock();
 					this->queryByRemoteSocket(queries.c_str());
@@ -3190,6 +3205,9 @@ void MySqlStore_process::store() {
 					this->unlock();
 				} else {
 					this->query_buff.pop_front();
+					#if DEBUG_STORE_COUNT
+					++_store_cnt[id];
+					#endif
 					this->unlock();
 					queryqueue.push_back(query);
 				}
@@ -3242,6 +3260,9 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 			   iter->find(_MYSQL_QUERY_END_new) == string::npos) {
 				queries_str_old_store += *iter;
 				queries->erase(iter++);
+				#if DEBUG_STORE_COUNT
+				++_store_old_cnt[id];
+				#endif
 			} else {
 				iter++;
 			}
@@ -3642,6 +3663,9 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	} else {
 		MySqlStore_process* process = this->find(id);
 		process->lock();
+		#if DEBUG_STORE_COUNT
+		++_query_lock_cnt[id];
+		#endif
 		for(int i = 0; i < max(sverb.multiple_store && id != 99 ? sverb.multiple_store : 0, 1); i++) {
 			process->query(query_str);
 		}
@@ -3688,17 +3712,23 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	}
 	unlock_qfiles();
 	qfile->lock();
+	#if DEBUG_STORE_COUNT
+	++_query_to_file_cnt[id];
+	#endif
 	if(qfile->isOpen() &&
 	   qfile->isExceedPeriod(qfileConfig.period)) {
 		if(sverb.qfiles) {
 			cout << "*** CLOSE QFILE " << qfile->filename 
-			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
+			     << " - time: " << sqlDateTimeString(time(NULL)) 
+			     << " / lines: " << qfile->_lines
+			     << endl;
 		}
 		qfile->close();
 	}
 	if(!qfile->isOpen()) {
 		u_int64_t actTime = getTimeMS();
 		string qfilename = getQFilename(idc, actTime);
+		qfile->_lines = 0;
 		if(qfile->open(qfilename.c_str(), actTime)) {
 			if(sverb.qfiles) {
 				cout << "*** OPEN QFILE " << qfile->filename 
@@ -3723,6 +3753,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 			qfile->fileZipHandler->flushBuffer();
 			qfile->flushAt = actTimeMS;
 		}
+		++qfile->_lines;
 	}
 	qfile->unlock();
 }
@@ -3894,13 +3925,13 @@ int MySqlStore::getCountQFiles(int id) {
 
 bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 	bool ok = true;
+	unsigned _lines = 0;
 	if(sverb.qfiles) {
 		cout << "*** START " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
 	FileZipHandler *fileZipHandler = new FILE_LINE(29006) FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
 	fileZipHandler->open(tsf_na, filename);
-	unsigned int counter = 0;
 	bool copyBadFileToTemp = false;
 	while(!fileZipHandler->is_eof() && fileZipHandler->is_ok_decompress() && fileZipHandler->read(8 * 1024)) {
 		string lineQuery;
@@ -3931,6 +3962,10 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				ok = false;
 				continue;
 			}
+			#if DEBUG_STORE_COUNT
+			++_loadFromQFile_cnt[id];
+			#endif
+			++_lines;
 			if(!onlyCheck) {
 				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
 				int queryThreadId = id;
@@ -3966,20 +4001,22 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				}
 				query_lock(query.c_str(), queryThreadId);
 			}
-			++counter;
 		}
 	}
 	if(!fileZipHandler->is_ok_decompress()) {
-		syslog(LOG_ERR, "decompress error in qfile %s", filename);
+		syslog(LOG_ERR, "decompress error in qfile: %s / lines: %u", filename, _lines);
 	}
 	fileZipHandler->close();
 	delete fileZipHandler;
 	if(!onlyCheck) {
 		unlink(filename);
+		//rename(filename, find_and_replace(filename, "qoq", "_qoq").c_str());
 	}
 	if(sverb.qfiles) {
 		cout << "*** END " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
-		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
+		     << " - time: " << sqlDateTimeString(time(NULL)) 
+		     << " / lines: " << _lines 
+		     << endl;
 	}
 	return(ok);
 }
@@ -9004,3 +9041,33 @@ void dbDataTerm() {
 bool dbDataIsSet() {
 	return(dbData != NULL);
 }
+
+
+#if DEBUG_STORE_COUNT
+void out_db_cnt() {
+	cout << "* _query_to_file_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _query_to_file_cnt.begin(); iter != _query_to_file_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+	cout << "* _loadFromQFile_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _loadFromQFile_cnt.begin(); iter != _loadFromQFile_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+	cout << "* _query_lock_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _query_lock_cnt.begin(); iter != _query_lock_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+	cout << "* _store_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _store_cnt.begin(); iter != _store_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+	cout << "* _store_old_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _store_old_cnt.begin(); iter != _store_old_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+	cout << "* _charts_cache_cnt" << endl;
+	for(map<int, u_int64_t>::iterator iter = _charts_cache_cnt.begin(); iter != _charts_cache_cnt.end(); iter++) {
+		cout << iter->first << " : " << iter->second << endl;
+	}
+}
+#endif

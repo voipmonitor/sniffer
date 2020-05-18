@@ -551,7 +551,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->zipStreamDecompress->avail_out = this->decompressBufferLength;
 			this->zipStreamDecompress->next_out = (unsigned char*)this->decompressBuffer;
 			int inflateRslt = inflate(this->zipStreamDecompress, Z_NO_FLUSH);
-			if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END) {
+			if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END || inflateRslt == Z_BUF_ERROR) {
 				int have = this->decompressBufferLength - this->zipStreamDecompress->avail_out;
 				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
 					this->setError("zip decompress_ev failed");

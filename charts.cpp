@@ -316,7 +316,7 @@ string cChartDataItem::json(cChartSeries *series) {
 			break;
 		case _chartType_asr_avg:
 		case _chartType_asr:
-			if(this->countConected) {
+			if(this->countAll) {
 				JsonExport exp;
 				exp.add("_", "cmp2");
 				exp.add("v1", this->countConected);
@@ -326,7 +326,7 @@ string cChartDataItem::json(cChartSeries *series) {
 			break;
 		case _chartType_ner_avg:
 		case _chartType_ner:
-			if(this->count) {
+			if(this->countAll) {
 				JsonExport exp;
 				exp.add("_", "cmp2");
 				exp.add("v1", this->count);
@@ -767,7 +767,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 	}
 	string insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
 			    sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true));
-	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CDR_1);
+	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE_1);
 }
 
 
@@ -872,7 +872,7 @@ u_int64_t __cc2;
 u_int64_t __ss2;
 #endif
 
-bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *filtersCache, int threadIndex) {
+bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6, void *ip_comb, cFiltersCache *filtersCache, int threadIndex) {
  
 #if TEST_CHECK_FILTER == 1
  
@@ -994,27 +994,9 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *f
 	//cout << filter << endl;
 	
 	if(filtersCache) {
-		vmIP ip1, ip2;
-		int useIP = ip_filter_contain_sipcallerip && ip_filter_contain_sipcalledip ? 2 : 
-			    ip_filter_contain_sipcallerip || ip_filter_contain_sipcalledip ? 1 : 0;
-		int rsltCache = -2;
-		if(useIP == 2) {
-			if(call->type == sChartsCallData::_call) {
-				ip1 = call->call()->sipcallerip[0];
-				ip2 = call->call()->sipcalledip_rslt;
-			} else {
-				ip1 = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip");
-				ip2 = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip");
-			}
-			rsltCache = filtersCache->get(this, &ip1, &ip2);
-		} else if(useIP == 1) {
-			if(call->type == sChartsCallData::_call) {
-				ip1 = ip_filter_contain_sipcallerip ? call->call()->sipcallerip[0] : call->call()->sipcalledip_rslt;
-			} else {
-				ip1 = call->tables_content()->getValue_ip(Call::_t_cdr, ip_filter_contain_sipcallerip ? "sipcallerip" : "sipcalledip");
-			}
-			rsltCache = filtersCache->get(this, &ip1);
-		}
+		int rsltCache = ip_comb_v6 ?
+				 filtersCache->get(this, (sFilterCache_call_ipv6_comb*)ip_comb) :
+				 filtersCache->get(this, (sFilterCache_call_ipv4_comb*)ip_comb);
 		switch(rsltCache) {
 		case 1:
 			if(filter_without_sip_ip.empty()) {
@@ -1034,10 +1016,10 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *f
 			} else {
 				rslt = f.e(filter_only_sip_ip_s[threadIndex]).getBool();
 			}
-			if(useIP == 2) {
-				filtersCache->add(this, &ip1, &ip2, rslt);
-			} else if(useIP == 1) {
-				filtersCache->add(this, &ip1, rslt);
+			if(ip_comb_v6) {
+				filtersCache->add(this, (sFilterCache_call_ipv6_comb*)ip_comb, rslt);
+			} else {
+				filtersCache->add(this, (sFilterCache_call_ipv4_comb*)ip_comb, rslt);
 			}
 			if(!rslt) {
 				return(false);
@@ -1059,8 +1041,17 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, cFiltersCache *f
 	} else {
 		rslt = f.e(filter_s[threadIndex]).getBool();
 	}
-	if(sverb.charts_cache_filters_eval || sverb.charts_cache_filters_eval_rslt) {
-		cout << " * RSLT: " << rslt << endl;
+	if(sverb.charts_cache_filters_eval || sverb.charts_cache_filters_eval_rslt || sverb.charts_cache_filters_eval_rslt_true) {
+		if(sverb.charts_cache_filters_eval_rslt_true || rslt) {
+			if(sverb.charts_cache_filters_eval_rslt) {
+				if(call->type == sChartsCallData::_call) {
+					cout << call->call()->call_id;
+				} else {
+					cout << call->tables_content()->getValue_str(Call::_t_cdr_next, "fbasename");
+				}
+			}
+			cout << " * RSLT: " << rslt << endl;
+		}
 	}
 	
 	return(rslt);
@@ -1181,7 +1172,7 @@ cCharts::cCharts() {
 	maxValuesPartsForPercentile = 1000;
 	maxLengthSipResponseText = 0; // 24;
 	intervalStorePeriod = 2 * 60;
-	intervalExpiration = 30 * 60;
+	intervalExpiration = 2 * 60 * 60;
 	intervalReload = 10 * 60;
 	sqlDbStore = NULL;
 	last_store_at = 0;
@@ -1275,11 +1266,14 @@ void cCharts::initIntervals() {
 	if(this->first_interval) {
 		u_int32_t first_interval = getTimeS() / 60 * 60 + 10 * 60;
 		lock_intervals();
-		while(this->first_interval < first_interval) {
-			u_int32_t interval_begin = this->first_interval + 60;
-			intervals[interval_begin] = new FILE_LINE(0) cChartInterval();
-			intervals[interval_begin]->setInterval(interval_begin, interval_begin + 60);
-			this->first_interval = interval_begin;
+		if(this->first_interval < first_interval &&
+		   first_interval - this->first_interval < 2 * 60 * 60) {
+			while(this->first_interval < first_interval) {
+				u_int32_t interval_begin = this->first_interval + 60;
+				intervals[interval_begin] = new FILE_LINE(0) cChartInterval();
+				intervals[interval_begin]->setInterval(interval_begin, interval_begin + 60);
+				this->first_interval = interval_begin;
+			}
 		}
 		unlock_intervals();
 	}
@@ -1369,8 +1363,18 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 }
 
 void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache, int threadIndex) {
-	for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
-		(*filters_map)[iter->second] = iter->second->check(call, callData, filtersCache, threadIndex);
+	if(useIPv6) {
+		sFilterCache_call_ipv6_comb ipv6_comb;
+		ipv6_comb.set(call);
+		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+			(*filters_map)[iter->second] = iter->second->check(call, callData, true, &ipv6_comb, filtersCache, threadIndex);
+		}
+	} else {
+		sFilterCache_call_ipv4_comb ipv4_comb;
+		ipv4_comb.set(call);
+		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
+			(*filters_map)[iter->second] = iter->second->check(call, callData, false, &ipv4_comb, filtersCache, threadIndex);
+		}
 	}
 }
 
@@ -1408,20 +1412,23 @@ void cCharts::store(bool forceAll) {
 	last_store_at_real = real_time;
 }
 
-void cCharts::cleanup() {
+void cCharts::cleanup(bool forceAll) {
 	if(!act_first_interval) {
 		return;
 	}
-	if(!last_cleanup_at) {
-		last_cleanup_at = act_first_interval;
-		return;
-	}
-	if(!(act_first_interval > last_cleanup_at && act_first_interval - last_cleanup_at >= intervalStorePeriod)) {
-		return;
+	if(!forceAll) {
+		if(!last_cleanup_at) {
+			last_cleanup_at = act_first_interval;
+			return;
+		}
+		if(!(act_first_interval > last_cleanup_at && act_first_interval - last_cleanup_at >= intervalStorePeriod)) {
+			return;
+		}
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
-		if(act_first_interval > iter->first && act_first_interval - iter->first > intervalExpiration) {
+		if(forceAll ||
+		   (act_first_interval > iter->first && act_first_interval - iter->first > intervalExpiration)) {
 			delete iter->second;
 			intervals.erase(iter++);
 			last_interval = iter->first;
@@ -1451,45 +1458,101 @@ bool cCharts::seriesIsUsed(const char *config_id) {
 }
 
 
+void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
+	u.a[1] = 0;
+	if(call->type == sChartsCallData::_call) {
+		u.d.src = call->call()->sipcallerip[0].getIPv4();
+		u.d.dst = call->call()->sipcalledip_rslt.getIPv4();
+		unsigned proxies_counter = 0;
+		for(list<vmIP>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
+			u.d.proxy[proxies_counter++] = iter->getIPv4();
+			if(proxies_counter == sizeof(u.d.proxy) / sizeof(u.d.proxy[0]) - 1) {
+				break;
+			}
+		}
+	} else {
+		u.d.src = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip").getIPv4();
+		u.d.dst = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip").getIPv4();
+		int proxy_count = call->tables_content()->getCountRows(Call::_t_cdr_proxy);
+		if(proxy_count > 0) {
+			for(int i = 0; i < min((int)(sizeof(u.d.proxy) / sizeof(u.d.proxy[0])), proxy_count); i++) {
+				u.d.proxy[i] = call->tables_content()->getValue_ip(Call::_t_cdr_proxy, "dst", NULL, i).getIPv4();
+			}
+		}
+	}
+}
+
+void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
+	proxy[0].clear();
+	proxy[1].clear();
+	if(call->type == sChartsCallData::_call) {
+		src = call->call()->sipcallerip[0].getIPv6();
+		dst = call->call()->sipcalledip_rslt.getIPv6();
+		unsigned proxies_counter = 0;
+		for(list<vmIP>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
+			proxy[proxies_counter++] = *iter;
+			if(proxies_counter == sizeof(proxy) / sizeof(proxy[0]) - 1) {
+				break;
+			}
+		}
+		while(proxies_counter < sizeof(proxy) / sizeof(proxy[0])) {
+			proxy[proxies_counter++].clear();
+		}
+	} else {
+		src = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip");
+		dst = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip");
+		unsigned proxies_counter = 0;
+		int proxy_count = call->tables_content()->getCountRows(Call::_t_cdr_proxy);
+		if(proxy_count > 0) {
+			while(proxies_counter < min((unsigned)(sizeof(proxy) / sizeof(proxy[0])), (unsigned)proxy_count)) {
+				proxy[proxies_counter] = call->tables_content()->getValue_ip(Call::_t_cdr_proxy, "dst", NULL, proxies_counter);
+				++proxies_counter;
+			}
+		}
+		while(proxies_counter < sizeof(proxy) / sizeof(proxy[0])) {
+			proxy[proxies_counter++].clear();
+		}
+	}
+}
+
 cFilterCacheItem::cFilterCacheItem(unsigned limit) {
 	this->limit = limit;
 }
 
-int cFilterCacheItem::get(vmIP *ip) {
-	map<vmIP, bool>::iterator iter = ip_map.find(*ip);
-	if(iter != ip_map.end()) {
+int cFilterCacheItem::get(sFilterCache_call_ipv4_comb *ip_comb) {
+	map<sFilterCache_call_ipv4_comb, bool>::iterator iter = ipv4_comb_map.find(*ip_comb);
+	if(iter != ipv4_comb_map.end()) {
 		return(iter->second);
 	}
 	return(-1);
 }
 
-void cFilterCacheItem::add(vmIP *ip, bool set) {
-	while(ip_queue.size() >= limit) {
-		vmIP e_ip = ip_queue.front();
-		ip_queue.pop();
-		ip_map.erase(e_ip);
-	}
-	ip_queue.push(*ip);
-	ip_map[*ip] = set;
-}
-
-int cFilterCacheItem::get(vmIP *ip1, vmIP *ip2) {
-	map<d_item<vmIP>, bool>::iterator iter = ip2_map.find(d_item<vmIP>(*ip1, *ip2));
-	if(iter != ip2_map.end()) {
+int cFilterCacheItem::get(sFilterCache_call_ipv6_comb *ip_comb) {
+	map<sFilterCache_call_ipv6_comb, bool>::iterator iter = ipv6_comb_map.find(*ip_comb);
+	if(iter != ipv6_comb_map.end()) {
 		return(iter->second);
 	}
 	return(-1);
 }
 
-void cFilterCacheItem::add(vmIP *ip1, vmIP *ip2, bool set) {
-	while(ip2_queue.size() >= limit) {
-		d_item<vmIP> e_ip = ip2_queue.front();
-		ip2_queue.pop();
-		ip2_map.erase(e_ip);
+void cFilterCacheItem::add(sFilterCache_call_ipv4_comb *ip_comb, bool set) {
+	while(ipv4_comb_queue.size() >= limit) {
+		sFilterCache_call_ipv4_comb e_ip_comb = ipv4_comb_queue.front();
+		ipv4_comb_queue.pop();
+		ipv4_comb_map.erase(e_ip_comb);
 	}
-	d_item<vmIP> ip(*ip1, *ip2);
-	ip2_queue.push(ip);
-	ip2_map[ip] = set;
+	ipv4_comb_queue.push(*ip_comb);
+	ipv4_comb_map[*ip_comb] = set;
+}
+
+void cFilterCacheItem::add(sFilterCache_call_ipv6_comb *ip_comb, bool set) {
+	while(ipv4_comb_queue.size() >= limit) {
+		sFilterCache_call_ipv6_comb e_ip_comb = ipv6_comb_queue.front();
+		ipv6_comb_queue.pop();
+		ipv6_comb_map.erase(e_ip_comb);
+	}
+	ipv6_comb_queue.push(*ip_comb);
+	ipv6_comb_map[*ip_comb] = set;
 }
 
 cFiltersCache::cFiltersCache(unsigned limit, unsigned limit2) {
@@ -1503,7 +1566,7 @@ cFiltersCache::~cFiltersCache() {
 	}
 }
 
-int cFiltersCache::get(cChartFilter *filter, vmIP *ip) {
+int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb) {
 	cFilterCacheItem *cache_item;
 	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
 	if(iter != cache_map.end()) {
@@ -1512,10 +1575,10 @@ int cFiltersCache::get(cChartFilter *filter, vmIP *ip) {
 		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
 		cache_map[filter] = cache_item;
 	}
-	return(cache_item->get(ip));
+	return(cache_item->get(ip_comb));
 }
 
-void cFiltersCache::add(cChartFilter *filter, vmIP *ip, bool set) {
+int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb) {
 	cFilterCacheItem *cache_item;
 	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
 	if(iter != cache_map.end()) {
@@ -1524,33 +1587,32 @@ void cFiltersCache::add(cChartFilter *filter, vmIP *ip, bool set) {
 		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
 		cache_map[filter] = cache_item;
 	}
-	cache_item->add(ip, set);
+	return(cache_item->get(ip_comb));
 }
 
-int cFiltersCache::get(cChartFilter *filter, vmIP *ip1, vmIP *ip2) {
+void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set) {
 	cFilterCacheItem *cache_item;
 	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {
-		cache_item = new FILE_LINE(0) cFilterCacheItem(limit2);
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
 		cache_map[filter] = cache_item;
 	}
-	return(cache_item->get(ip1, ip2));
+	cache_item->add(ip_comb, set);
 }
 
-void cFiltersCache::add(cChartFilter *filter, vmIP *ip1, vmIP *ip2, bool set) {
+void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb, bool set) {
 	cFilterCacheItem *cache_item;
 	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
 	if(iter != cache_map.end()) {
 		cache_item = iter->second;
 	} else {
-		cache_item = new FILE_LINE(0) cFilterCacheItem(limit2);
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
 		cache_map[filter] = cache_item;
 	}
-	cache_item->add(ip1, ip2, set);
+	cache_item->add(ip_comb, set);
 }
-
 
 eChartType chartTypeFromString(string chartType) {
 	return(chartType == "TCH_total" ? _chartType_total :
@@ -1708,9 +1770,9 @@ void chartsCacheStore(bool forceAll) {
 	}
 }
 
-void chartsCacheCleanup() {
+void chartsCacheCleanup(bool forceAll) {
 	if(chartsCache) {
-		chartsCache->cleanup();
+		chartsCache->cleanup(forceAll);
 	}
 }
 

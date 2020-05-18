@@ -47,6 +47,7 @@
 #include "options.h"
 #include "server.h"
 #include "filter_mysql.h"
+#include "charts.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -425,6 +426,7 @@ int Mgmt_alloc_test(Mgmt_params *params);
 int Mgmt_tcmalloc_stats(Mgmt_params *params);
 int Mgmt_hashtable_stats(Mgmt_params *params);
 int Mgmt_usleep_stats(Mgmt_params *params);
+int Mgmt_charts_cache(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -533,6 +535,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_tcmalloc_stats,
 	Mgmt_hashtable_stats,
 	Mgmt_usleep_stats,
+	Mgmt_charts_cache,
 	NULL
 };
 
@@ -4542,6 +4545,24 @@ int Mgmt_usleep_stats(Mgmt_params *params) {
 	string usleepStats = usleep_stats(useconds_lt);
 	usleep_stats_clear();
 	return(params->sendString(usleepStats));
+}
+
+int Mgmt_charts_cache(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"charts_cache_store_all", "charts_cache_store_all"},
+			{"charts_cache_cleanup_all", "charts_cache_cleanup_all"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "store_all") != NULL) {
+		chartsCacheStore(true);
+	} else if(strstr(params->buf, "cleanup_all") != NULL) {
+		chartsCacheCleanup(true);
+	}
+	return(0);
 }
 
 int Mgmt_memcrash_test(Mgmt_params *params) {

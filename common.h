@@ -115,8 +115,10 @@ struct sVerbose {
 	int charts_cache_only;
 	int charts_cache_filters_eval;
 	int charts_cache_filters_eval_rslt;
+	int charts_cache_filters_eval_rslt_true;
 	char sipcallerip_filter[100];
 	char sipcalledip_filter[100];
+	int suppress_server_store;
 	int _debug1;
 	int _debug2;
 	int _debug3;
