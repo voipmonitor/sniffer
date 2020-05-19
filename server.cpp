@@ -1158,7 +1158,12 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 cSnifferClientResponse::cSnifferClientResponse(string gui_task_id, string command, cSnifferClientResponseSender *response_sender) {
 	this->gui_task_id = gui_task_id;
 	this->command = command;
-	this->response_sender = response_sender;
+	if(command.find("file_exists") != string::npos ||
+	   command.find("fileexists") != string::npos) {
+		this->response_sender = response_sender;
+	} else {
+		this->response_sender = NULL;
+	}
 }
 
 bool cSnifferClientResponse::start(string host, u_int16_t port) {
