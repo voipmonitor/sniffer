@@ -263,6 +263,7 @@ public:
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
 	void load(SqlDb *sqlDb = NULL);
+	void loadFile();
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags);
 	void dump();
         static void dump2man(ostringstream &oss);

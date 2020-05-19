@@ -813,6 +813,7 @@ SIP_HEADERfilter::~SIP_HEADERfilter() {
 }
 
 void SIP_HEADERfilter::load(SqlDb *sqlDb) {
+	this->loadFile();
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -866,6 +867,44 @@ void SIP_HEADERfilter::load(SqlDb *sqlDb) {
 	loadTime = getTimeMS();
 	if(sverb.capture_filter) {
 		syslog(LOG_NOTICE, "SIP_HEADERfilter::load");
+	}
+}
+
+void SIP_HEADERfilter::loadFile() {
+	extern char opt_capture_rules_sip_header_file[1024];
+	if (is_sender() || is_client_packetbuffer_sender() || !opt_capture_rules_sip_header_file[0]) {
+		return;
+	}
+	cCsv csv;
+	csv.setFirstRowContainFieldNames();
+	csv.load(opt_capture_rules_sip_header_file);
+	unsigned rowsCount = csv.getRowsCount();
+	vector<db_row> vectDbRow;
+	for (unsigned i = 1; i <= rowsCount; i++) {
+		map<string, string> row;
+		csv.getRow(i, &row);
+		count++;
+		db_row *filterRow = new (db_row);
+		filterRow->header = trim_str(row["header"]);
+		filterRow->content = trim_str(row["content"]);
+		filterRow->prefix = trim_str(row["content_type"]) == "prefix";
+		filterRow->regexp = trim_str(row["content_type"]) == "regexp";
+		this->loadBaseDataRow(&row, filterRow);
+		vectDbRow.push_back(*filterRow);
+		delete filterRow;
+	}
+	for (size_t i = 0; i < vectDbRow.size(); ++i) {
+		item_data item;
+		item.direction = 0;
+		item.prefix = vectDbRow[i].prefix;
+		item.regexp = vectDbRow[i].regexp;
+		item.flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		if (item.regexp) {
+			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
+		} else {
+			data[vectDbRow[i].header].strict_prefix[vectDbRow[i].content] = item;
+		}
+		++count;
 	}
 }
 

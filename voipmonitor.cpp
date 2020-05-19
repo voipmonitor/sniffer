@@ -614,6 +614,7 @@ unsigned int graph_silence = GRAPH_SILENCE;
 unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
 char opt_capture_rules_telnum_file[1024];
+char opt_capture_rules_sip_header_file[1024];
 bool opt_detect_alone_bye = false;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
@@ -6496,6 +6497,7 @@ void cConfig::addConfigItems() {
 			setDisableIfEnd();
 				advanced();
 				addConfigItem(new FILE_LINE(42148) cConfigItem_string("capture_rules_telnum_file", opt_capture_rules_telnum_file, sizeof(opt_capture_rules_telnum_file)));
+				addConfigItem(new FILE_LINE(42148) cConfigItem_string("capture_rules_sip_header_file", opt_capture_rules_sip_header_file, sizeof(opt_capture_rules_sip_header_file)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("time_precision_in_ms", &opt_time_precision_in_ms));
 		subgroup("scaling");
@@ -10321,6 +10323,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "capture_rules_telnum_file", NULL))) {
 		strcpy_null_term(opt_capture_rules_telnum_file, value);
+	}
+	if((value = ini.GetValue("general", "capture_rules_sip_header_file", NULL))) {
+		strcpy_null_term(opt_capture_rules_sip_header_file, value);
 	}
 	if((value = ini.GetValue("general", "detect_alone_bye", NULL))) {
 		opt_detect_alone_bye = yesno(value);
