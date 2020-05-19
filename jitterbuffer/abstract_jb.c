@@ -388,7 +388,7 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 		if(!f->ignore && (chan->rawstream || chan->audiobuf) && (chan->codec != 13 && chan->codec != 19)) { 
 			//write frame to file
 			stmp = (short int)f->datalen;
-			if(CODEC_LEN && (chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR)) {
+			if(CODEC_LEN && (chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR || chan->codec == PAYLOAD_AMRWB)) {
 				if(chan->rawstream) {
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 				}
@@ -422,7 +422,7 @@ void save_empty_frame(struct ast_channel *chan) {
 		   chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || 
 		   chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || 
 		   chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || 
-		   chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR) {
+		   chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR || chan->codec == PAYLOAD_AMRWB) {
 			if(chan->codec == PAYLOAD_G723) {
 				short int zero = 0;
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
@@ -539,7 +539,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if((chan->rawstream || chan->audiobuf) && f->data && f->datalen > 0 && (chan->codec != 13 && chan->codec != 19)) {
 				//write frame to file
 				stmp = (short int)f->datalen;
-				if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR) {
+				if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR || chan->codec == PAYLOAD_AMRWB) {
 					if(chan->rawstream) {
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 					}
