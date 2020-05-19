@@ -157,7 +157,12 @@ void cCR_Receiver_service::evData(u_char *data, size_t dataLen) {
 cCR_Client_response::cCR_Client_response(string gui_task_id, string command, cCR_ResponseSender *response_sender) {
 	this->gui_task_id = gui_task_id;
 	this->command = command;
-	this->response_sender = response_sender;
+	if(command.find("file_exists") != string::npos ||
+	   command.find("fileexists") != string::npos) {
+		this->response_sender = response_sender;
+	} else {
+		this->response_sender = NULL;
+	}
 }
 
 bool cCR_Client_response::start(string host, u_int16_t port) {
