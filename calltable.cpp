@@ -3165,6 +3165,18 @@ Call::convertRawToWav() {
 				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRNB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
 				system(cmd);
 				break;
+			case PAYLOAD_AMRWB:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s amrwb \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-amrnb \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRWB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
 			default:
 				if (++unknown_codec_counter > 2) {
 					syslog(LOG_ERR, "Call [%s] has more than 2 parts with the unsupported codec [%s][%d].\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
