@@ -43,7 +43,7 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 	baseRow->script = sqlRow->isNull("script") ? -1 : atoi((*sqlRow)["script"].c_str());
 	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
 	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
-	baseRow->spool_2 = sqlRow->isNull("spool_2") ? 0 : atoi((*sqlRow)["spool_2"].c_str());
+	baseRow->spool_2 = sqlRow->isNull("spool_2") ? -1 : atoi((*sqlRow)["spool_2"].c_str());
 }
 
 void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow) {
@@ -59,7 +59,7 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 	baseRow->script = isStringNull((*row)["script"]) ? -1 : atoi((*row)["script"].c_str());
 	baseRow->mos_lqo = isStringNull((*row)["mos_lqo"]) ? -1 : atoi((*row)["mos_lqo"].c_str());
 	baseRow->hide_message = isStringNull((*row)["hide_message"]) ? -1 : atoi((*row)["hide_message"].c_str());
-	baseRow->spool_2 = isStringNull((*row)["spool_2"]) ? 0 : atoi((*row)["spool_2"].c_str());
+	baseRow->spool_2 = isStringNull((*row)["spool_2"]) ? -1 : atoi((*row)["spool_2"].c_str());
 }
 
 unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
@@ -105,7 +105,8 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	if(baseRow->hide_message == 1)		flags |= FLAG_HIDEMSG;
 	else if(baseRow->hide_message == 0)	flags |= FLAG_SHOWMSG;
 	
-	if(baseRow->spool_2)			flags |= FLAG_SPOOL_2;
+	if(baseRow->spool_2 == 1)		flags |= FLAG_SPOOL_2_SET;
+	else if(baseRow->spool_2 == 0)		flags |= FLAG_SPOOL_2_UNSET;
 	
 	return(flags);
 }
@@ -151,7 +152,8 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, 
 	if(filterFlags & FLAG_HIDEMSG)					*callFlags |= FLAG_HIDEMESSAGE;
 	if(filterFlags & FLAG_SHOWMSG)					*callFlags &= ~FLAG_HIDEMESSAGE;
 	
-	if(filterFlags & FLAG_SPOOL_2)					*callFlags |= FLAG_USE_SPOOL_2;
+	if(filterFlags & FLAG_SPOOL_2_SET)				*callFlags |= FLAG_USE_SPOOL_2;
+	if(filterFlags & FLAG_SPOOL_2_UNSET)				*callFlags &= ~FLAG_USE_SPOOL_2;
 }
 
 /* IPfilter class */

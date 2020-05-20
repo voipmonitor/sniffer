@@ -2629,6 +2629,34 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 	detect_branch(packetS, branch, branch_length, detected);
 }
 
+inline void setCallFlags(unsigned int *flags,
+			 vmIP ip_src, vmIP ip_dst,
+			 char *caller, char *called,
+			 char *caller_domain, char *called_domain,
+			 ParsePacket::ppContentsX *parseContents) {
+	unsigned int flags_old = *flags;
+	IPfilter::add_call_flags(flags, ip_src, ip_dst, true);
+	if(sverb.dump_call_flags && *flags != flags_old) {
+		cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(*flags) << endl;
+		flags_old = *flags;
+	}
+	TELNUMfilter::add_call_flags(flags, caller, called, true);
+	if(sverb.dump_call_flags && *flags != flags_old) {
+		cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(*flags) << endl;
+		flags_old = *flags;
+	}
+	DOMAINfilter::add_call_flags(flags, caller_domain, called_domain, true);
+	if(sverb.dump_call_flags && *flags != flags_old) {
+		cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(*flags) << endl;
+		flags_old = *flags;
+	}
+	SIP_HEADERfilter::add_call_flags(parseContents, flags, true);
+	if(sverb.dump_call_flags && *flags != flags_old) {
+		cout << "set flags for headers : " << printCallFlags(*flags) << endl;
+		flags_old = *flags;
+	}
+}
+
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
 	if(sverb.sipcallerip_filter[0] &&
@@ -2654,36 +2682,18 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, sip_method, &data_callerd);
- 
+	
 	//flags
 	unsigned int flags = 0;
-	unsigned int flags_old = 0;
 	set_global_flags(flags);
 	if(sverb.dump_call_flags) {
 		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
 	}
-	IPfilter::add_call_flags(&flags, packetS->saddr_(), packetS->daddr_(), true);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for ip " << packetS->saddr_().getString() << " -> " << packetS->daddr_().getString() << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
-	}
-	TELNUMfilter::add_call_flags(&flags, data_callerd.caller, data_callerd.called, true);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for number " << data_callerd.caller << " -> " << data_callerd.called << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
-	}
-	DOMAINfilter::add_call_flags(&flags, data_callerd.caller_domain, data_callerd.called_domain, true);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for domain " << data_callerd.caller_domain << " -> " << data_callerd.called_domain << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
-	}
-	SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, true);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for headers : " << printCallFlags(flags) << endl;
-		flags_old = flags;
-	}
-
+	setCallFlags(&flags,
+		     packetS->saddr_(), packetS->daddr_(),
+		     data_callerd.caller, data_callerd.called,
+		     data_callerd.caller_domain, data_callerd.called_domain,
+		     &packetS->parseContents);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -3855,10 +3865,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->called_invite_branch_map[branch] = called_invite;
 			}
 		}
-		unsigned int flags_old = call->flags;
-		IPfilter::add_call_flags(&(call->flags), packetS->saddr_(), packetS->daddr_());
-		if(sverb.dump_call_flags && call->flags != flags_old) {
-			cout << "set flags for ip " << packetS->saddr_().getString() << " -> " << packetS->daddr_().getString() << " : " << printCallFlags(call->flags) << endl;
+		if(!existInviteSdaddr) {
+			setCallFlags((unsigned int*)&call->flags,
+				     packetS->saddr_(), packetS->daddr_(),
+				     call->caller, call->called,
+				     call->caller_domain, call->called_domain,
+				     &packetS->parseContents);
 		}
 		if(!reverseInviteSdaddr) {
 			if(packetS->saddr_() != call->getSipcallerip() && !call->in_proxy(packetS->saddr_())) {
