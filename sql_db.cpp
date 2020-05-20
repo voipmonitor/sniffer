@@ -5149,9 +5149,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 `price_customer_mult100` int unsigned DEFAULT NULL,\
 				 `price_customer_currency_id` tinyint unsigned DEFAULT NULL,") + 
 		(opt_cdr_partition ? 
-			"PRIMARY KEY (`calldate`, `ID`)," :
+			"PRIMARY KEY (`ID`, `calldate`)," :
 			"PRIMARY KEY (`ID`),") + 
-		"KEY `ID` (`ID`),\
+		"KEY `calldate` (`calldate`),\
 		KEY `callend` (`callend`),\
 		KEY `duration` (`duration`),\
 		KEY `source` (`caller`),\
