@@ -4,7 +4,10 @@
 
 #include "sql_db_global.h"
 #include "sql_db.h"
+
+#ifndef CLOUD_ROUTER_SERVER
 #include "calltable.h"
+#endif
 
 
 extern char sql_driver[256];
@@ -724,6 +727,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 	list<string> ig;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
+		#ifndef CLOUD_ROUTER_SERVER
 		if(!strncmp(iter->c_str(), "csv", 3)) {
 			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
 			vector<string> query_vect = split(iter->c_str(), "\n", false, false);
@@ -763,6 +767,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 			}
 			iter++;
 		} else {
+		#endif
 			vector<string> query_vect = split(iter->c_str(), q_delim, false, false, false);
 			bool setIdMainRecord = false;
 			u_int64_t idMainRecord = 0;
@@ -917,7 +922,9 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				}
 			}
 			iter++;
+		#ifndef CLOUD_ROUTER_SERVER
 		}
+		#endif
 	}
 	#if 1
 	if(ig.size()) {
