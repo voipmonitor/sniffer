@@ -3243,8 +3243,10 @@ int main(int argc, char *argv[]) {
 
 	if(is_read_from_file_simple()) {
 		if(is_client()) {
-			puts("Client mode does not support reading from a file.\n");
-			return(0);
+			if(!strstr(opt_sensor_string, "load_pcap_user_id")) {
+				puts("Client mode does not support reading from a file.\n");
+				return(0);
+			}
 		} else if(is_sender()) {
 			puts("Mirror sender mode does not support reading from a file.\n");
 			return(0);
