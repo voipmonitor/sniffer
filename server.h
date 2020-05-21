@@ -61,7 +61,7 @@ struct sSnifferClientOptions {
 		packetbuffer_sender = false;
 		mysql_new_store = 0;
 		mysql_set_id = false;
-		mysql_concat_limit = 1000;
+		mysql_concat_limit = 0; // set only from server due compatibility client/server with different versions
 		type_compress = _cs_compress_gzip;
 	}
 	bool isEnable() {
