@@ -7832,7 +7832,7 @@ string SqlDb_mysql::column_type_duration_ms(const char *base_type) {
 
 bool SqlDb_mysql::checkSourceTables() {
 	bool ok = true;
-	vector<string> sourceTables = this->getSourceTables();
+	vector<string> sourceTables = this->getSourceTables(tt_main);
 	sql_disable_next_attempt_if_error = 1;
 	for(size_t i = 0; i < sourceTables.size(); i++) {
 		if(!this->query("select * from " + sourceTables[i] + " limit 1")) {
@@ -8003,20 +8003,22 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		slaveIdToMasterColumn = "message_id";
 	}
 	for(size_t i = 0; i < slaveTables.size() && !is_terminating(); i++) {
-		if(!descDir) {
-			this->copyFromSourceTableSlave(sqlDbSrc,
-						       tableName, slaveTables[i].c_str(),
-						       slaveIdToMasterColumn.c_str(), 
-						       "calldate", "calldate",
-						       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
-						       limit * 10);
-		} else {
-			this->copyFromSourceTableSlave(sqlDbSrc,
-						       tableName, slaveTables[i].c_str(),
-						       slaveIdToMasterColumn.c_str(), 
-						       "calldate", "calldate",
-						       useMinIdInSrc, 0,
-						       limit * 10, true);
+		if(sqlDbSrc->existsTable(slaveTables[i])) {
+			if(!descDir) {
+				this->copyFromSourceTableSlave(sqlDbSrc,
+							       tableName, slaveTables[i].c_str(),
+							       slaveIdToMasterColumn.c_str(), 
+							       "calldate", "calldate",
+							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
+							       limit * 10);
+			} else {
+				this->copyFromSourceTableSlave(sqlDbSrc,
+							       tableName, slaveTables[i].c_str(),
+							       slaveIdToMasterColumn.c_str(), 
+							       "calldate", "calldate",
+							       useMinIdInSrc, 0,
+							       limit * 10, true);
+			}
 		}
 	}
 }
