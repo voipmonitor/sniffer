@@ -479,6 +479,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
 	seenbyeandok_time_usec = 0;
+	seencancelandok = false;
+	seencancelandok_time_usec = 0;
+	seenauthfailed = false;
+	seenauthfailed_time_usec = 0;
 	unconfirmed_bye = false;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;

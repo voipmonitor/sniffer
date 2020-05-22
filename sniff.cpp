@@ -252,6 +252,7 @@ extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
+extern bool opt_ignore_rtp_after_auth_failed;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
@@ -3496,9 +3497,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(packetS->sip_method == INVITE) {
 		// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 		// if(!call->seenbye) {
-		call->setSeenbye(false, 0, packetS->get_callid());
-		call->setSeenbyeAndOk(false, 0, packetS->get_callid());
-		call->setSeencancelAndOk(false, 0, packetS->get_callid());
+		call->setSeenBye(false, 0, packetS->get_callid());
+		call->setSeenByeAndOk(false, 0, packetS->get_callid());
+		call->setSeenCancelAndOk(false, 0, packetS->get_callid());
+		call->setSeenAuthFailed(false, 0, packetS->get_callid());
 		call->destroy_call_at = 0;
 		call->destroy_call_at_bye = 0;
 		call->destroy_call_at_bye_confirmed = 0;
@@ -3613,7 +3615,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
 			call->setByeCseq(&packetS->cseq);
-			call->setSeenbye(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+			call->setSeenBye(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen bye\n");
 			if(opt_enable_fraud && isFraudReady()) {
@@ -3687,7 +3689,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						}
 					}
 					if(okByeRes2xx) {
-						call->setSeenbyeAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+						call->setSeenByeAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 						call->unconfirmed_bye = false;
 						
 						// update who hanged up 
@@ -3790,7 +3792,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
 					++count_sip_cancel_confirmed;
-					call->setSeencancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
+					call->setSeenCancelAndOk(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
@@ -3836,6 +3838,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;
+				} else if(lastSIPresponseNum == 403) {
+					call->setSeenAuthFailed(true, getTimeUS(packetS->header_pt), packetS->get_callid());
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
 					call->removeFindTables(&packetS->header_pt->ts);
@@ -4969,7 +4973,10 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 				     getTimeUS(packetS->header_pt) > call->seenbyeandok_time_usec) &&
 				   !(opt_ignore_rtp_after_cancel_confirmed &&
 				     call->seencancelandok && call->seencancelandok_time_usec &&
-				     getTimeUS(packetS->header_pt) > call->seencancelandok_time_usec)) {
+				     getTimeUS(packetS->header_pt) > call->seencancelandok_time_usec) &&
+				   !(opt_ignore_rtp_after_auth_failed &&
+				     call->seenauthfailed && call->seenauthfailed_time_usec &&
+				     getTimeUS(packetS->header_pt) > call->seenauthfailed_time_usec)) {
 					/*
 					if(getTimeUS(packetS->header_pt) < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
 						continue;
@@ -8859,6 +8866,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			   !(opt_ignore_rtp_after_cancel_confirmed &&
 			     call->seencancelandok && call->seencancelandok_time_usec &&
 			     getTimeUS(packetS->header_pt) > call->seencancelandok_time_usec) &&
+			   !(opt_ignore_rtp_after_auth_failed &&
+			     call->seenauthfailed && call->seenauthfailed_time_usec &&
+			     getTimeUS(packetS->header_pt) > call->seenauthfailed_time_usec) &&
 			   !(opt_hash_modify_queue_length_ms && call->end_call_rtp) &&
 			   !(call->flags & FLAG_SKIPCDR)) {
 				++counter_rtp_packets[1];

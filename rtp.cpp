@@ -1039,7 +1039,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	this->last_packet_time_us = pcap_header_us;
 
 	if(owner && !is_read_from_file_simple()) {
-		u_int64_t seenbyeandok_time_usec = owner->getSeenbyeAndOkTimeUS();
+		u_int64_t seenbyeandok_time_usec = owner->getSeenByeAndOkTimeUS();
 		if(seenbyeandok_time_usec && getTimeUS(header) > seenbyeandok_time_usec) {
 			return(false);
 		}

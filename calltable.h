@@ -532,6 +532,8 @@ public:
 			seenbyeandok_time_usec = 0;
 			seencancelandok = false;
 			seencancelandok_time_usec = 0;
+			seenauthfailed = false;
+			seenauthfailed_time_usec = 0;
 		}
 		bool seenbye;
 		u_int64_t seenbye_time_usec;
@@ -539,6 +541,8 @@ public:
 		u_int64_t seenbyeandok_time_usec;
 		bool seencancelandok;
 		u_int64_t seencancelandok_time_usec;
+		bool seenauthfailed;
+		u_int64_t seenauthfailed_time_usec;
 	};
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
@@ -705,6 +709,8 @@ public:
 	u_int64_t seenbyeandok_time_usec;
 	bool seencancelandok;		//!< true if we see SIP OK TO CANCEL within the Call
 	u_int64_t seencancelandok_time_usec;
+	bool seenauthfailed;
+	u_int64_t seenauthfailed_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
@@ -1425,7 +1431,7 @@ public:
 	vmPort getSipcalledport() {
 		return(sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
 	}
-	void setSeenbye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
+	void setSeenBye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
 		this->seenbye = seenbye;
 		this->seenbye_time_usec = seenbye_time_usec;
 		if(isSetCallidMergeHeader() &&
@@ -1438,7 +1444,7 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	void setSeenbyeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
+	void setSeenByeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
 		this->seenbyeandok = seenbyeandok;
 		this->seenbyeandok_time_usec = seenbyeandok_time_usec;
 		if(isSetCallidMergeHeader() &&
@@ -1451,7 +1457,7 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	void setSeencancelAndOk(bool seencancelandok, u_int64_t seencancelandok_time_usec, const char *call_id) {
+	void setSeenCancelAndOk(bool seencancelandok, u_int64_t seencancelandok_time_usec, const char *call_id) {
 		this->seencancelandok = seencancelandok;
 		this->seencancelandok_time_usec = seencancelandok_time_usec;
 		if(isSetCallidMergeHeader() &&
@@ -1464,7 +1470,20 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	u_int64_t getSeenbyeTimeUS() {
+	void setSeenAuthFailed(bool seenauthfailed, u_int64_t seenauthfailed_time_usec, const char *call_id) {
+		this->seenauthfailed = seenauthfailed;
+		this->seenauthfailed_time_usec = seenauthfailed_time_usec;
+		if(isSetCallidMergeHeader() &&
+		   call_id && *call_id) {
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seenauthfailed = seenauthfailed;
+				mergecalls[call_id].seenauthfailed_time_usec = seenauthfailed_time_usec;
+			}
+			mergecalls_unlock();
+		}
+	}
+	u_int64_t getSeenByeTimeUS() {
 		if(isSetCallidMergeHeader()) {
 			u_int64_t seenbye_time_usec = 0;
 			mergecalls_lock();
@@ -1482,7 +1501,7 @@ public:
 		}
 		return(seenbye ? seenbye_time_usec : 0);
 	}
-	u_int64_t getSeenbyeAndOkTimeUS() {
+	u_int64_t getSeenByeAndOkTimeUS() {
 		if(isSetCallidMergeHeader()) {
 			u_int64_t seenbyeandok_time_usec = 0;
 			mergecalls_lock();
@@ -1499,6 +1518,42 @@ public:
 			return(seenbyeandok_time_usec);
 		}
 		return(seenbyeandok ? seenbyeandok_time_usec : 0);
+	}
+	u_int64_t getSeenCancelAndOkTimeUS() {
+		if(isSetCallidMergeHeader()) {
+			u_int64_t seencancelandok_time_usec = 0;
+			mergecalls_lock();
+			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+				if(!it->second.seencancelandok || !it->second.seencancelandok_time_usec) {
+					mergecalls_unlock();
+					return(0);
+				}
+				if(seencancelandok_time_usec < it->second.seencancelandok_time_usec) {
+					seencancelandok_time_usec = it->second.seencancelandok_time_usec;
+				}
+			}
+			mergecalls_unlock();
+			return(seencancelandok_time_usec);
+		}
+		return(seencancelandok ? seencancelandok_time_usec : 0);
+	}
+	u_int64_t getSeenAuthFailedTimeUS() {
+		if(isSetCallidMergeHeader()) {
+			u_int64_t seenauthfailed_time_usec = 0;
+			mergecalls_lock();
+			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+				if(!it->second.seenauthfailed || !it->second.seenauthfailed_time_usec) {
+					mergecalls_unlock();
+					return(0);
+				}
+				if(seenauthfailed_time_usec < it->second.seenauthfailed_time_usec) {
+					seenauthfailed_time_usec = it->second.seenauthfailed_time_usec;
+				}
+			}
+			mergecalls_unlock();
+			return(seenauthfailed_time_usec);
+		}
+		return(seenauthfailed ? seenauthfailed_time_usec : 0);
 	}
 	int setByeCseq(sCseq *cseq) {
 		unsigned index;
