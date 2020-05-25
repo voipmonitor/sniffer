@@ -2958,8 +2958,8 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			sdp = from_data;
 			sdplen = datalen;
 		} else {
-			unsigned datalen = packetS->sipDataLen - (from_data - (packetS->data_()+ packetS->sipDataOffset));
-			sdp = strstr(from_data, "\r\n\r\n");
+			unsigned datalen = packetS->sipDataLen - (from_data - (packetS->data_() + packetS->sipDataOffset));
+			sdp = strnstr(from_data, "\r\n\r\n", datalen);
 			if(!sdp) return;
 			sdp += 4;
 			sdplen = datalen - (sdp - from_data);
