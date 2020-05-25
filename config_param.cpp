@@ -2078,7 +2078,16 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 		JsonItem *item = jsonData.getLocalItem(i);
 		string config_name = item->getValue("name");
 		string value = item->getValue("value");
-		int set = atoi(item->getValue("set").c_str());
+		int set = 0;
+		if(!config_name.empty() || !value.empty()) {
+			set = atoi(item->getValue("set").c_str());
+		} else {
+			if(item->getLocalCount() > 0) {
+				config_name = item->getLocalItem(0)->getLocalName();
+				value = item->getLocalItem(0)->getLocalValue();
+				set = 1;
+			}
+		}
 		if(!onlyIfSet || set) {
 			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
 			if(iter_map != config_map.end()) {
