@@ -1,3 +1,18 @@
+26.16 26.05.2020
+================
+- amr wb support [VS-487]
+- fix long calls ogg download [VG-2111]
+- fix pcap upload in client/server mode [VG-2109]
+- apply all capture rule types in new invite [VS-1071]
+- fix db compatibility in various client/server modes 
+- fix backup / migration db when some tables do not exist [VS-1067]
+- new option ignore_rtp_after_auth_failed (default yes) [VS-1067]
+- simplify json input - now it can be used --json_config='[{"id_sensor":"11"}]' instead of --json_config='[{"name":"id_sensor","value":"11","set":1}]'
+- fix crash in SDP processing if data are garbled [VS-1063]
+- new way to load capture rules from csv - capture_rules_sip_header_file = capturerules_sip_header.csv
+- revert primary index of cdr to ID, calldate (change was sent by mistake)
+
+
 26.15 20.04.2020
 ================
 - fix saveaudio = ogg (add missing fclose) [VS-1065]
