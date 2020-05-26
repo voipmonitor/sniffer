@@ -4022,6 +4022,22 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			break;
 		case _chartType_delay:
 			setNull = true;
+			for(unsigned i = 0; i < 2; i++) {
+				if(rtpab[i]) {
+					bool _null_s = false;
+					bool _null_c = false;
+					double _v_s = rtpab[i]->delay_sum(&_null_s);
+					double _v_c = rtpab[i]->delay_cnt(&_null_c);
+					if(!_null_s && !_null_c && _v_c != 0) {
+						setNull = false;
+						if(_v_s / _v_c > v) {
+							v = _v_s / _v_c;
+						}
+					}
+				}
+			}
+			/* xPDV v2
+			setNull = true;
 			if(connect_duration_s()) {
 				for(unsigned i = 0; i < 2; i++) {
 					if(rtpab[i]) {
@@ -4039,6 +4055,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 					v /= connect_duration_s();
 				}
 			}
+			*/
 			break;
 		case _chartType_rtcp_avgjitter:
 		case _chartType_rtcp_maxjitter:
@@ -4357,6 +4374,9 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		if(!setNull && v) v /= 10;
 		break;
 	case _chartType_delay:
+		v = tablesContent->getValue_float(_t_cdr, "delay_avg_mult100", false, &setNull);
+		if(!setNull && v) v /= 100;
+		/* xPDV v2
 		{
 		bool delay_sum_null;
 		double delay_sum = tablesContent->getValue_float(_t_cdr, "delay_sum", false, &delay_sum_null);
@@ -4368,6 +4388,7 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 			setNull = true;
 		}
 		}
+		*/
 		break;
 	case _chartType_rtcp_avgjitter:
 		v = tablesContent->getValue_float(_t_cdr, "rtcp_avgjitter_mult10", false, &setNull);
