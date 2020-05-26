@@ -1174,10 +1174,11 @@ void CleanSpool::cleanThreadProcess() {
 		int _minGbForAutoReindex = 5;
 		if(freeSpacePercent < _minPercentForAutoReindex && 
 		   freeSpaceGB < _minGbForAutoReindex) {
-			syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing convert_filesindex", spoolIndex);
 			if(opt_cleanspool_use_files) {
+				syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing reindex_all", spoolIndex);
 				reindex_all("call from clean_spooldir - low spool disk space");
 			} else {
+				syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing reloadSpoolDataDir", spoolIndex);
 				reloadSpoolDataDir(false, true);
 			}
 			freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(tsf_main), true) / 100;
@@ -1207,7 +1208,7 @@ void CleanSpool::cleanThreadProcess() {
 				}
 				delete sqlDb;
 			} else {
-				usedSizeGB = spoolData.getSumSize() / (1024 * 1024 * 1024);
+				usedSizeGB = (double)spoolData.getSumSize() / (1024 * 1024 * 1024);
 			}
 			maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_other.autocleanspoolminpercent / 100, (double)opt_other.autocleanmingb)) * 1024;
 			if(maxpoolsize > 1000 &&
@@ -1224,7 +1225,14 @@ void CleanSpool::cleanThreadProcess() {
 					"maxpoolsize set to value",
 				       maxpoolsize);
 			} else {
-				syslog(LOG_ERR, "cleanspool[%i]: incorrect set autocleanspoolminpercent and autocleanspoolmingb", spoolIndex);
+				char criticalLowSpoolSpace_str[1024];
+				snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
+					 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB",
+					 spoolIndex,
+					 getSpoolDir(tsf_main),
+					 usedSizeGB,
+					 freeSpaceGB);
+				cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
 				maxpoolsize = 0;
 			}
 		}
