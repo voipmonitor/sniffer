@@ -2791,6 +2791,7 @@ void store_crash_bt_to_db() {
 				for(unsigned i = 0; i < flags.size(); i++) {
 					if(flags[i] == "nefm") {
 						crash_bt_content += "not enough free memory\n";
+						cLogSensor::log(cLogSensor::error, "The previous sniffer run was terminated due to insufficient allocable RAM.");
 					} else if(flags[i] == "term") {
 						crash_bt_content += "terminating\n";
 					} else if(flags[i] == "missing_addr2line") {
