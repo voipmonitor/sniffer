@@ -2981,7 +2981,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 	unsigned nextUsleepAfterError = 0;
 	bool quietlyError = false;
 	bool keepConnectAfterError = false;
-	sSnifferClientOptions *_snifferClientOptions = id / 10 == STORE_PROC_ID_CHARTS_CACHE_1 / 10 ?
+	sSnifferClientOptions *_snifferClientOptions = id / 10 == STORE_PROC_ID_CHARTS_CACHE_1 / 10 && snifferClientOptions_charts_cache.isSetHostPort() ?
 							&snifferClientOptions_charts_cache :
 							&snifferClientOptions;
 	for(unsigned int pass = 0; pass < maxPass; pass++) {
@@ -3140,23 +3140,33 @@ void MySqlStore_process::store() {
 		unsigned queryqueue_length = 0;
 		while(1) {
 			++this->threadRunningCounter;
-			if(snifferClientOptions.isEnableRemoteStore()) {
+			if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ||
+			   snifferClientOptions.isEnableRemoteStore()) {
+				unsigned concat_limit = id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ?
+							 10000 :
+							 snifferClientOptions.mysql_concat_limit;
 				this->lock();
 				if(this->query_buff.size() == 0) {
 					this->unlock();
 					break;
 				}
-				if(this->query_buff.size() == 1 || snifferClientOptions.mysql_concat_limit <= 1) {
+				if(this->query_buff.size() == 1 || concat_limit <= 1) {
 					string query = this->query_buff.front();
 					this->query_buff.pop_front();
 					#if DEBUG_STORE_COUNT
 					++_store_cnt[id];
 					#endif
 					this->unlock();
-					this->queryByRemoteSocket(query.c_str());
+					if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) {
+						while(!add_rchs_query(query.c_str(), true)) {
+							USLEEP(1000);
+						}
+					} else {
+						this->queryByRemoteSocket(query.c_str());
+					}
 				} else {
 					string queries;
-					for(unsigned i = 0; i < snifferClientOptions.mysql_concat_limit; i++) {
+					for(unsigned i = 0; i < concat_limit; i++) {
 						if(this->query_buff.size() == 0) {
 							break;
 						}
@@ -3168,7 +3178,13 @@ void MySqlStore_process::store() {
 						#endif
 					}
 					this->unlock();
-					this->queryByRemoteSocket(queries.c_str());
+					if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) {
+						while(!add_rchs_query(queries.c_str(), true)) {
+							USLEEP(1000);
+						}
+					} else {
+						this->queryByRemoteSocket(queries.c_str());
+					}
 				}
 			} else {
 				string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
@@ -3529,7 +3545,7 @@ MySqlStore::~MySqlStore() {
 		iter->second->setEnableTerminatingIfEmpty(true);
 		iter->second->waitForTerminate();
 	}
-	if(!qfileConfig.enable && !loadFromQFileConfig.enable) {
+	if(!qfileConfig.enableAny() && !loadFromQFileConfig.enable) {
 		extern bool opt_autoload_from_sqlvmexport;
 		if(opt_autoload_from_sqlvmexport &&
 		   this->getAllSize() &&
@@ -3541,7 +3557,7 @@ MySqlStore::~MySqlStore() {
 	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
 		delete iter->second;
 	}
-	if(qfileConfig.enable) {
+	if(qfileConfig.enableAny()) {
 		if(this->qfilesCheckperiodThread) {
 			pthread_join(this->qfilesCheckperiodThread, NULL);
 		}
@@ -3557,8 +3573,11 @@ MySqlStore::~MySqlStore() {
 	}
 }
 
-void MySqlStore::queryToFiles(bool enable, const char *directory, int period) {
+void MySqlStore::queryToFiles(bool enable, const char *directory, int period, 
+			      bool enable_charts, bool enable_charts_remote) {
 	qfileConfig.enable = enable;
+	qfileConfig.enable_charts = enable_charts;
+	qfileConfig.enable_charts_remote = enable_charts_remote;
 	if(directory) {
 		qfileConfig.directory = directory;
 	}
@@ -3568,7 +3587,7 @@ void MySqlStore::queryToFiles(bool enable, const char *directory, int period) {
 }
 
 void MySqlStore::queryToFilesTerminate() {
-	if(qfileConfig.enable) {
+	if(qfileConfig.enableAny()) {
 		qfileConfig.terminate = true;
 		USLEEP(250000);
 		closeAllQFiles();
@@ -3577,7 +3596,7 @@ void MySqlStore::queryToFilesTerminate() {
 }
 
 void MySqlStore::queryToFiles_start() {
-	if(qfileConfig.enable) {
+	if(qfileConfig.enableAny()) {
 		vm_pthread_create("query cache - check",
 				  &this->qfilesCheckperiodThread, NULL, this->threadQFilesCheckPeriod, this, __FILE__, __LINE__);
 	}
@@ -3620,6 +3639,7 @@ void MySqlStore::loadFromQFiles_start() {
 				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10, "ipacc_agreg2");
 			}
 			this->addLoadFromQFile((STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10, "charts_cache");
+			this->addLoadFromQFile((STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10, "charts_cache_remote");
 		} else {
 			extern int opt_mysqlstore_concat_limit_cdr;
 			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
@@ -3631,7 +3651,7 @@ void MySqlStore::loadFromQFiles_start() {
 }
 
 void MySqlStore::connect(int id) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -3642,7 +3662,7 @@ void MySqlStore::query(const char *query_str, int id) {
 	if(!query_str || !*query_str) {
 		return;
 	}
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		query_to_file(query_str, id);
 	} else {
 		MySqlStore_process* process = this->find(id);
@@ -3658,7 +3678,7 @@ void MySqlStore::query_lock(const char *query_str, int id) {
 	if(!query_str || !*query_str) {
 		return;
 	}
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		query_to_file(query_str, id);
 	} else {
 		MySqlStore_process* process = this->find(id);
@@ -3677,7 +3697,7 @@ void MySqlStore::query_lock(list<string> *query_str, int id) {
 	if(!query_str->size()) {
 		return;
 	}
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
 			query_to_file(iter->c_str(), id);
 		}
@@ -3967,10 +3987,12 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 			#endif
 			++_lines;
 			if(!onlyCheck) {
+				int minId = id % 10 ? id : id + 1;
+				int maxId = minId + loadFromQFilesThreadData[id].storeThreads - 1;
 				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
-				int queryThreadId = id;
+				int queryThreadId = minId;
 				ssize_t queryThreadMinSize = -1;
-				for(int qtid = id; qtid < (id + loadFromQFilesThreadData[id].storeThreads); qtid++) {
+				for(int qtid = minId; qtid <= maxId; qtid++) {
 					int qtSize = this->getSize(qtid);
 					if(qtSize < 0) {
 						qtSize = 0;
@@ -4090,7 +4112,7 @@ unsigned MySqlStore::getLoadFromQFilesCount() {
 }
 
 void MySqlStore::lock(int id) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4098,7 +4120,7 @@ void MySqlStore::lock(int id) {
 }
 
 void MySqlStore::unlock(int id) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4106,7 +4128,7 @@ void MySqlStore::unlock(int id) {
 }
 
 void MySqlStore::setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	if(id > 0) {
@@ -4122,7 +4144,7 @@ void MySqlStore::setEnableTerminatingDirectly(int id, bool enableTerminatingDire
 }
 
 void MySqlStore::setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmpty) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	if(id > 0) {
@@ -4138,7 +4160,7 @@ void MySqlStore::setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmp
 }
 
 void MySqlStore::setEnableTerminatingIfSqlError(int id, bool enableTerminatingIfSqlError) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	if(id > 0) {
@@ -4154,7 +4176,7 @@ void MySqlStore::setEnableTerminatingIfSqlError(int id, bool enableTerminatingIf
 }
 
 void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4162,7 +4184,7 @@ void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
 }
 
 void MySqlStore::setConcatLimit(int id, int concatLimit) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4175,7 +4197,7 @@ int MySqlStore::getConcatLimit(int id) {
 }
 
 void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4183,7 +4205,7 @@ void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
 }
 
 void MySqlStore::setEnableFixDeadlock(int id, bool enableFixDeadlock) {
-	if(qfileConfig.enable) {
+	if(qfileConfigEnable(id)) {
 		return;
 	}
 	MySqlStore_process* process = this->find(id);
@@ -4442,6 +4464,7 @@ int MySqlStore::getMaxThreadsForStoreId(int id) {
 		maxThreads = opt_mysqlstore_max_threads_ipacc_agreg2;
 		break;
 	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
+	case (STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10:
 		maxThreads = opt_mysqlstore_max_threads_charts_cache;
 		break;
 	}
@@ -4479,6 +4502,7 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 		concatLimit = opt_mysqlstore_concat_limit_ipacc;
 		break;
 	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
+	case (STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10:
 		concatLimit = opt_mysqlstore_concat_limit;
 		break;
 	}
@@ -4522,6 +4546,8 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			continue;
 		}
 		string minFile = me->getMinQFile(id);
+		int minId = id % 10 ? id : id + 1;
+		int maxId = minId + me->loadFromQFilesThreadData[id].storeThreads - 1;
 		if(minFile.empty()) {
 			USLEEP(250000);
 		} else {
@@ -4529,8 +4555,8 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			while((me->isCloud() ?
 				(me->getSize(id) > me->getConcatLimit(id)) :
 			       opt_query_cache_speed ? 
-			        (me->getActiveIdsVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) == me->loadFromQFilesThreadData[id].storeThreads) :
-			        (me->getSizeVect(id, id + me->loadFromQFilesThreadData[id].storeThreads - 1) > 0)) && 
+			        (me->getActiveIdsVect(minId, maxId) == me->loadFromQFilesThreadData[id].storeThreads) :
+			        (me->getSizeVect(minId, maxId) > 0)) && 
 			      !is_terminating()) {
 				USLEEP(100000);
 			}

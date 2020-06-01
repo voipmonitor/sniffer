@@ -4,6 +4,7 @@
 
 #include "sql_db_global.h"
 #include "sql_db.h"
+#include "server.h"
 
 #ifndef CLOUD_ROUTER_SERVER
 #include "calltable.h"
@@ -12,6 +13,7 @@
 
 extern char sql_driver[256];
 extern char odbc_driver[256];
+extern bool opt_charts_cache;
 
 
 string SqlDb_condField::getCondStr(list<SqlDb_condField> *cond, const char *fieldBorder, const char *contentBorder, const char *typeDb) {
@@ -751,14 +753,22 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 					tablesContent->insertQuery(&ig, sqlDb);
 				}
 				if(store_flags & Call::_sf_charts_cache) {
-					extern Calltable *calltable;
-					calltable->lock_calls_charts_cache_queue();
-					#if DEBUG_STORE_COUNT
-					extern map<int, u_int64_t> _charts_cache_cnt;
-					++_charts_cache_cnt[0];
-					#endif
-					calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
-					calltable->unlock_calls_charts_cache_queue();
+					if(existsRemoteChartServer()) {
+						extern MySqlStore *sqlStore;
+						sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE1);
+						delete tablesContent;
+					} else if(opt_charts_cache) {
+						extern Calltable *calltable;
+						calltable->lock_calls_charts_cache_queue();
+						#if DEBUG_STORE_COUNT
+						extern map<int, u_int64_t> _charts_cache_cnt;
+						++_charts_cache_cnt[0];
+						#endif
+						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
+						calltable->unlock_calls_charts_cache_queue();
+					} else {
+						delete tablesContent;
+					}
 				} else {
 					delete tablesContent;
 				}

@@ -1236,6 +1236,7 @@ cReceiver::cReceiver() {
 	receive_socket = NULL;
 	receive_thread = 0;
 	start_ok = false;
+	use_encode_data = false;
 }
 
 cReceiver::~cReceiver() {
@@ -1300,7 +1301,7 @@ void cReceiver::receive_process() {
 			start_ok = true;
 			u_char *data;
 			size_t dataLen;
-			data = receive_socket->readBlockTimeout(&dataLen, 30);
+			data = receive_socket->readBlockTimeout(&dataLen, 30, use_encode_data ? cSocket::_te_aes : cSocket::_te_na, "", false, 1024 * 1024);
 			if(data) {
 				if(string((char*)data, dataLen) != "ping") {
 					evData(data, dataLen);

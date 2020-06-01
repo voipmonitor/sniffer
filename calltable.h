@@ -1833,7 +1833,8 @@ private:
 struct sChartsCallData {
 	enum eType {
 		_call,
-		_tables_content
+		_tables_content,
+		_csv
 	};
 	eType type;
 	void *data;

@@ -63,6 +63,7 @@ struct sSnifferClientOptions {
 		mysql_set_id = false;
 		mysql_concat_limit = 0; // set only from server due compatibility client/server with different versions
 		type_compress = _cs_compress_gzip;
+		remote_chart_server = false;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -76,6 +77,12 @@ struct sSnifferClientOptions {
 	bool isEnablePacketBufferSender() {
 		return(isEnable() && packetbuffer_sender);
 	}
+	bool isRemoteChartServer() {
+		return(isEnable() && remote_chart_server);
+	}
+	bool isSetHostPort() {
+		return(!host.empty() && port);
+	}
 	string host;
 	unsigned port;
 	bool remote_query;
@@ -84,6 +91,7 @@ struct sSnifferClientOptions {
 	int mysql_new_store;
 	bool mysql_set_id;
 	unsigned mysql_concat_limit;
+	bool remote_chart_server;
 	eServerClientTypeCompress type_compress;
 };
 
@@ -159,6 +167,7 @@ struct sSnifferServerService {
 		connect_port = 0;
 		sensor_id = 0;
 		service_connection = NULL;
+		remote_chart_server = false;
 	}
 	vmIP connect_ip;
 	u_int16_t connect_port;
@@ -167,6 +176,7 @@ struct sSnifferServerService {
 	class cSnifferServerConnection *service_connection;
 	string aes_ckey;
 	string aes_ivec;
+	bool remote_chart_server;
 };
 
 
@@ -181,6 +191,9 @@ public:
 	class cSnifferServerConnection *getServiceConnection(int32_t sensor_id, const char *sensor_string);
 	bool getAesKeys(int32_t sensor_id, const char *sensor_string, string *ckey, string *ivec);
 	string listJsonServices();
+	bool add_rchs_query(const char *query, bool checkMaxSize);
+	bool add_rchs_query(string *query, bool checkMaxSize);
+	string *get_rchs_query();
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
@@ -192,9 +205,23 @@ private:
 	void unlock() {
 		__sync_lock_release(&_sync_lock);
 	}
+	void lock_rchs() {
+		while(__sync_lock_test_and_set(&_sync_rchs, 1)) {
+			if(SYNC_LOCK_USLEEP) {
+				USLEEP(SYNC_LOCK_USLEEP);
+			}
+		}
+	}
+	void unlock_rchs() {
+		__sync_lock_release(&_sync_rchs);
+	}
 public:
 	map<string, sSnifferServerService> services;
 	volatile int _sync_lock;
+	volatile int remote_chart_server;
+	queue<string*> rchs_query_queue;
+	unsigned rchs_query_queue_max_size; 
+	volatile int _sync_rchs;
 };
 
 
@@ -371,6 +398,10 @@ void snifferServerStop();
 void snifferServerSetSqlStore(MySqlStore *sqlStore);
 cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, cSnifferClientService *snifferClientServiceOld = NULL);
 void snifferClientStop(cSnifferClientService *snifferClientService);
+bool existsRemoteChartServer();
+size_t getRemoteChartServerQueueSize();
+bool add_rchs_query(const char *query, bool checkMaxSize);
+bool add_rchs_query(string *query, bool checkMaxSize);
 
 
 #endif //SERVER_H

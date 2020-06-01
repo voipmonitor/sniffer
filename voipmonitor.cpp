@@ -979,6 +979,8 @@ char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
 bool opt_save_query_to_files;
+bool opt_save_query_charts_to_files;
+bool opt_save_query_charts_remote_to_files;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
 int opt_query_cache_speed;
@@ -3276,7 +3278,7 @@ int main(int argc, char *argv[]) {
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
 #ifndef FREEBSD
-		if(opt_ifaces_optimize) {
+		if(opt_ifaces_optimize && !sverb.suppress_fork) {
 			handleInterfaceOptions();
 		}
 #endif
@@ -3904,7 +3906,7 @@ int main_init_read() {
 	}
 	
 	dbDataInit(sqlDbInit);
-	if(opt_charts_cache) {
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 		chartsCacheInit(sqlDbInit);
 	}
 
@@ -4057,7 +4059,8 @@ int main_init_read() {
 		initIpacc();
 	}
 	
-	if(opt_save_query_to_files) {
+	if(opt_save_query_to_files || 
+	   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files) {
 		sqlStore->queryToFiles_start();
 		if(sqlStore_2) {
 			sqlStore_2->queryToFiles_start();
@@ -4137,7 +4140,7 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
-		if(opt_charts_cache) {
+		if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 			calltable->processCallsInChartsCache_start();
 		}
 	}
@@ -4399,7 +4402,7 @@ int main_init_read() {
 				if(endTimeMS > startTimeMS) {
 					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
-				if(!is_read_from_file()) {
+				if(!is_read_from_file() && !sverb.suppress_fork) {
 					if (--swapDelayCount < 0) {
 						checkSwapUsage();
 					}
@@ -4568,6 +4571,10 @@ void main_term_read() {
 	calltable->cleanup_registers(NULL);
 	calltable->cleanup_ss7(NULL);
 
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+		chartsCacheStore(true);
+	}
+	
 	set_terminating();
 
 	regfailedcache->prune(0);
@@ -4660,7 +4667,7 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 	}
-	if(opt_charts_cache) {
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 		calltable->processCallsInChartsCache_stop();
 	}
 	while(calltable->calls_queue.size() != 0) {
@@ -4705,10 +4712,6 @@ void main_term_read() {
 	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
-	
-	if(opt_charts_cache) {
-		chartsCacheStore(true);
-	}
 	
 	pthread_mutex_destroy(&mysqlconnect_lock);
 	extern SqlDb *sqlDbSaveCall;
@@ -4773,7 +4776,7 @@ void main_term_read() {
 	CountryDetectTerm();
 	
 	dbDataTerm();
-	if(opt_charts_cache) {
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 		chartsCacheTerm();
 	}
 	
@@ -4803,8 +4806,10 @@ void main_init_sqlstore() {
 		if(opt_load_query_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
 								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router, &optMySsl);
-			if(opt_save_query_to_files) {
-				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
+			if(opt_save_query_to_files || 
+			   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files) {
+				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period, 
+						       opt_save_query_charts_to_files, opt_save_query_charts_remote_to_files);
 			}
 			if(use_mysql_2()) {
 				sqlStore_2 = new FILE_LINE(42038) MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, mysql_2_socket,
@@ -6376,6 +6381,10 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("no"));
 				advanced();
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts"))
+					->setDefaultValueStr("no"));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts_remote"))
+					->setDefaultValueStr("no"));
 				addConfigItem(new FILE_LINE(42079) cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("query_cache_check_utf", &opt_query_cache_check_utf));
 			normal();
@@ -7156,6 +7165,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_chart_server", &snifferClientOptions.remote_chart_server));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_concat_limit", &snifferServerOptions.mysql_concat_limit));
@@ -7359,6 +7369,27 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "query_cache") {
 		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
+	if(configItem->config_name == "query_cache") {
+		if(configItem->getValueInt()) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
+	if(configItem->config_name == "query_cache_charts") {
+		if(configItem->getValueInt()) {
+			opt_save_query_charts_to_files = true;
+			opt_load_query_from_files = 1;
+			opt_load_query_from_files_inotify = true;
+		}
+	}
+	if(configItem->config_name == "query_cache_charts_remote") {
+		if(configItem->getValueInt()) {
+			opt_save_query_charts_remote_to_files = true;
 			opt_load_query_from_files = 1;
 			opt_load_query_from_files_inotify = true;
 		}
@@ -7680,6 +7711,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")
 								strcpy_null_term(sverb.sipcalledip_filter, verbParam.c_str() + 19);
 	else if(verbParam == "suppress_server_store")		sverb.suppress_server_store = 1;
+	else if(verbParam == "suppress_fork")			sverb.suppress_fork = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8310,6 +8342,8 @@ void set_context_config() {
 		}
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_to_files = false;
+		opt_save_query_charts_to_files = false;
+		opt_save_query_charts_remote_to_files = false;
 		opt_load_query_from_files = 0;
 		opt_t2_boost = false;
 	}
@@ -8358,7 +8392,9 @@ void set_context_config() {
 		opt_cleanspool_use_files = false;
 	}
 	
-	if(opt_save_query_to_files || opt_load_query_from_files) {
+	if(opt_save_query_to_files || 
+	   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files ||
+	   opt_load_query_from_files) {
 		opt_autoload_from_sqlvmexport = false;
 	}
 	
@@ -8607,6 +8643,7 @@ void create_spool_dirs() {
 bool check_complete_parameters() {
 	if (!is_read_from_file() && ifname[0] == '\0' && opt_scanpcapdir[0] == '\0' && 
 	    !is_server() &&
+	    !is_remote_chart_server() &&
 	    !is_set_gui_params() &&
 	    !printConfigStruct && !printConfigFile && !is_receiver() &&
 	    !opt_test){
@@ -10962,6 +10999,16 @@ int eval_config(string inistr) {
 		opt_load_query_from_files = 1;
 		opt_load_query_from_files_inotify = true;
 	}
+	if((value = ini.GetValue("general", "query_cache_charts", NULL)) && yesno(value)) {
+		opt_save_query_charts_to_files = true;
+		opt_load_query_from_files = 1;
+		opt_load_query_from_files_inotify = true;
+	}
+	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL)) && yesno(value)) {
+		opt_save_query_charts_remote_to_files = true;
+		opt_load_query_from_files = 1;
+		opt_load_query_from_files_inotify = true;
+	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);
 	}
@@ -11285,6 +11332,10 @@ bool is_client() {
 
 bool is_client_packetbuffer_sender() {
 	return(snifferClientOptions.isEnablePacketBufferSender());
+}
+
+bool is_remote_chart_server() {
+	return(snifferClientOptions.remote_chart_server);
 }
 
 int check_set_rtp_threads(int num_rtp_threads) {

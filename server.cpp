@@ -84,6 +84,9 @@ void sSnifferServerGuiTasks::setTaskState(string id, sSnifferServerGuiTask::eTas
 
 sSnifferServerServices::sSnifferServerServices() {
 	_sync_lock = 0;
+	remote_chart_server = 0;
+	_sync_rchs = 0;
+	rchs_query_queue_max_size = 10000;
 }
 
 void sSnifferServerServices::add(sSnifferServerService *service) {
@@ -95,6 +98,9 @@ void sSnifferServerServices::add(sSnifferServerService *service) {
 		iter->second.service_connection->doTerminate();
 	}
 	services[id] = *service;
+	if(service->remote_chart_server) {
+		__SYNC_INC(remote_chart_server);
+	}
 	unlock();
 }
 
@@ -103,6 +109,9 @@ void sSnifferServerServices::remove(sSnifferServerService *service) {
 	string id = getIdService(service->sensor_id, service->sensor_string.c_str());
 	map<string, sSnifferServerService>::iterator iter = services.find(id);
 	if(iter != services.end()) {
+		if(iter->second.remote_chart_server) {
+			__SYNC_DEC(remote_chart_server);
+		}
 		services.erase(iter);
 	}
 	unlock();
@@ -168,6 +177,48 @@ string sSnifferServerServices::listJsonServices() {
 	return(expServices.getJson());
 }
 
+bool sSnifferServerServices::add_rchs_query(const char *query, bool checkMaxSize) {
+	bool rslt;
+	string *query_string = new FILE_LINE(0) string(query);
+	lock_rchs();
+	if(checkMaxSize && rchs_query_queue.size() >= rchs_query_queue_max_size) {
+		rslt = false;
+	} else {
+		rchs_query_queue.push(query_string);
+		rslt = true;
+	}
+	unlock_rchs();
+	return(rslt);
+}
+
+bool sSnifferServerServices::add_rchs_query(string *query, bool checkMaxSize) {
+	bool rslt;
+	lock_rchs();
+	if(checkMaxSize && rchs_query_queue.size() >= rchs_query_queue_max_size) {
+		rslt = false;
+	} else {
+		rchs_query_queue.push(query);
+		rslt = true;
+	}
+	unlock_rchs();
+	return(rslt);
+}
+
+string *sSnifferServerServices::get_rchs_query() {
+	string *query_string = NULL;
+	if(rchs_query_queue.size()) {
+		lock();
+		if(rchs_query_queue.size()) {
+			query_string = rchs_query_queue.front();
+			if(query_string) {
+				rchs_query_queue.pop();
+			}
+		}
+		unlock();
+	}
+	return(query_string);
+}
+
 
 cSnifferServer::cSnifferServer() {
 	sqlStore = NULL;
@@ -213,7 +264,8 @@ unsigned int cSnifferServer::sql_queue_size() {
 	}
 	u_int64_t act_time_ms = getTimeMS_rdtsc();
 	if(act_time_ms > sql_queue_size_time_ms + 200) {
-		sql_queue_size_size = sqlStore->getAllSize(true) +  calltable->calls_charts_cache_queue.size();
+		sql_queue_size_size = sqlStore->getAllSize(true) + 
+				      (calltable ? calltable->calls_charts_cache_queue.size() : 0);
 		sql_queue_size_time_ms = act_time_ms;
 	}
 	return(sql_queue_size_size);
@@ -455,8 +507,13 @@ void cSnifferServerConnection::cp_service() {
 		delete this;
 		return;
 	}
-	bool checkPingResponse = !jsonPasswordAesKeys.getValue("check_ping_response").empty();
-	bool autoParameters = !jsonPasswordAesKeys.getValue("auto_parameters").empty();
+	bool checkPingResponse = atoi(jsonPasswordAesKeys.getValue("check_ping_response").c_str()) > 0;
+	bool autoParameters = atoi(jsonPasswordAesKeys.getValue("auto_parameters").c_str()) > 0;
+	bool remote_chart_server = atoi(jsonPasswordAesKeys.getValue("remote_chart_server").c_str()) > 0; 
+	bool use_encode_data = atoi(jsonPasswordAesKeys.getValue("use_encode_data").c_str()) > 0;
+	if(use_encode_data) {
+		socket->set_aes_keys(aes_ckey, aes_ivec);
+	}
 	string okAndParameters;
 	if(autoParameters) {
 		JsonExport ok_parameters;
@@ -509,6 +566,7 @@ void cSnifferServerConnection::cp_service() {
 	service.service_connection = this;
 	service.aes_ckey = aes_ckey;
 	service.aes_ivec = aes_ivec;
+	service.remote_chart_server = remote_chart_server;
 	snifferServerServices.add(&service);
 	u_int64_t lastWriteTimeUS = 0;
 	while(!server->isTerminate() &&
@@ -529,31 +587,76 @@ void cSnifferServerConnection::cp_service() {
 		sSnifferServerGuiTask task = getTask();
 		if(!task.id.empty()) {
 			string idCommand = task.id + "/" + task.command;
-			socket->writeBlock(idCommand);
+			socket->writeBlock(idCommand, use_encode_data ? cSocket::_te_aes : cSocket::_te_na);
 			lastWriteTimeUS = time_us;
-		} else {
-			if(time_us > lastWriteTimeUS + 5000000ull) {
-				socket->writeBlock("ping");
-				if(checkPingResponse) {
-					string pingResponse;
-					if(!socket->readBlockTimeout(&pingResponse, 5) ||
-					   pingResponse != "pong") {
-						if(SS_VERBOSE().connect_info) {
-							ostringstream verbstr;
-							verbstr << "SNIFFER SERVICE DISCONNECT: "
-								<< "sensor_id: " << sensor_id;
-							if(!sensor_string.empty()) {
-								verbstr << ", " << "sensor_string: " << sensor_string;
-							}
-							syslog(LOG_INFO, "%s", verbstr.str().c_str());
+			continue;
+		}
+		if(remote_chart_server) {
+			string *rchs_query = snifferServerServices.get_rchs_query();
+			if(rchs_query) {
+				bool okSend = true;
+				if(snifferServerOptions.type_compress == _cs_compress_gzip) {
+					cGzip gzipCompressQuery;
+					u_char *queryGzip;
+					size_t queryGzipLength;
+					if(gzipCompressQuery.compressString(*rchs_query, &queryGzip, &queryGzipLength)) {
+						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryGzip, queryGzipLength)).c_str(), queryGzipLength, 
+								       use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
+							okSend = false;
 						}
-						break;
+						delete [] queryGzip;
+					}
+				} else if(snifferServerOptions.type_compress == _cs_compress_lzo) {
+					cLzo lzoCompressQuery;
+					u_char *queryLzo;
+					size_t queryLzoLength;
+					if(lzoCompressQuery.compress((u_char*)rchs_query->c_str(), rchs_query->length(), &queryLzo, &queryLzoLength)) {
+						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryLzo, queryLzoLength)).c_str(), queryLzoLength, 
+								       use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
+							okSend = false;
+						}
+						delete [] queryLzo;
+					}
+				} else {
+					if(!socket->writeBlock(("rch:" + *rchs_query).c_str(), use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
+						okSend = false;
 					}
 				}
-				lastWriteTimeUS = time_us;
+				if(!okSend) {
+					add_rchs_query(rchs_query, false);
+					continue;
+				}
+				string response;
+				if(socket->readBlockTimeout(&response, 5) &&
+				   response == "OK") {
+					delete rchs_query;
+				} else {
+					add_rchs_query(rchs_query, false);
+				}
+				continue;
 			}
-			USLEEP(1000);
 		}
+		if(time_us > lastWriteTimeUS + 5000000ull) {
+			socket->writeBlock("ping", use_encode_data ? cSocket::_te_aes : cSocket::_te_na);
+			if(checkPingResponse) {
+				string pingResponse;
+				if(!socket->readBlockTimeout(&pingResponse, 5) ||
+				   pingResponse != "pong") {
+					if(SS_VERBOSE().connect_info) {
+						ostringstream verbstr;
+						verbstr << "SNIFFER SERVICE DISCONNECT: "
+							<< "sensor_id: " << sensor_id;
+						if(!sensor_string.empty()) {
+							verbstr << ", " << "sensor_string: " << sensor_string;
+						}
+						syslog(LOG_INFO, "%s", verbstr.str().c_str());
+					}
+					break;
+				}
+			}
+			lastWriteTimeUS = time_us;
+		}
+		USLEEP(1000);
 	}
 	if(!orphan) {
 		snifferServerServices.remove(&service);
@@ -962,6 +1065,9 @@ cSnifferClientService::~cSnifferClientService() {
 
 void cSnifferClientService::setClientOptions(sSnifferClientOptions *client_options) {
 	this->client_options = client_options;
+	if(client_options->remote_chart_server) {
+		use_encode_data = true;
+	}
 }
 
 void cSnifferClientService::createResponseSender() {
@@ -1035,6 +1141,8 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	}
 	json_keys.add("check_ping_response", true);
 	json_keys.add("auto_parameters", true);
+	json_keys.add("remote_chart_server", client_options->remote_chart_server);
+	json_keys.add("use_encode_data", use_encode_data);
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
 			receive_socket->setError("failed send sesnor_id & aes keys");
@@ -1143,14 +1251,64 @@ bool cSnifferClientService::receive_process_loop_begin() {
 
 void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 	receive_socket->writeBlock("OK");
-	string idCommand = string((char*)data, dataLen);
-	size_t idCommandSeparatorPos = idCommand.find('/'); 
-	if(idCommandSeparatorPos != string::npos) {
-		cSnifferClientResponse *response = new FILE_LINE(0) cSnifferClientResponse(
-				idCommand.substr(0, idCommandSeparatorPos), 
-				idCommand.substr(idCommandSeparatorPos + 1),
-				opt_enable_responses_sender ? response_sender : NULL);
-		response->start(receive_socket->getHost(), receive_socket->getPort());
+	if(dataLen > 4 && !strncmp((char*)data, "rch:", 4)) {
+		if(!calltable) {
+			while(!calltable) {
+				USLEEP(100000);
+			}
+			USLEEP(100000);
+		}
+		while(calltable->calls_charts_cache_queue.size() > 100000) {
+			USLEEP(10000);
+		}
+		string queryStr;
+		cGzip gzipDecompressQuery;
+		cLzo lzoDecompressQuery;
+		if(gzipDecompressQuery.isCompress(data + 4, dataLen - 4)) {
+			queryStr = gzipDecompressQuery.decompressString(data + 4, dataLen - 4);
+		} else if(lzoDecompressQuery.isCompress(data + 4, dataLen - 4)) {
+			queryStr = lzoDecompressQuery.decompressString(data + 4, dataLen - 4);
+		} else {
+			queryStr = string((char*)data + 4, dataLen - 4);
+		}
+		if(queryStr[0] == 'L' && isdigit(queryStr[1])) {
+			size_t pos = 0;
+			do {
+				if(queryStr[pos] != 'L') {
+					syslog(LOG_ERR, "cSnifferClientService::evData: missing 'L' separator");
+					break;
+				}
+				unsigned length = atoi(queryStr.c_str() + pos + 1);
+				size_t pos_sep = queryStr.find(':', pos);
+				if(pos_sep == string::npos) {
+					syslog(LOG_ERR, "cSnifferClientService::evData: missing ':' separator");
+					break;
+				}
+				pos = pos_sep + 1;
+				calltable->lock_calls_charts_cache_queue();
+				calltable->calls_charts_cache_queue.push_back(sChartsCallData(
+					sChartsCallData::_csv, 
+					new FILE_LINE(0) string(queryStr.substr(pos, length))));
+				calltable->unlock_calls_charts_cache_queue();
+				pos += length + 1;
+			} while(pos < queryStr.length());
+		} else {
+			calltable->lock_calls_charts_cache_queue();
+			calltable->calls_charts_cache_queue.push_back(sChartsCallData(
+				sChartsCallData::_csv, 
+				new FILE_LINE(0) string(queryStr)));
+			calltable->unlock_calls_charts_cache_queue();
+		}
+	} else {
+		string idCommand = string((char*)data, dataLen);
+		size_t idCommandSeparatorPos = idCommand.find('/'); 
+		if(idCommandSeparatorPos != string::npos) {
+			cSnifferClientResponse *response = new FILE_LINE(0) cSnifferClientResponse(
+					idCommand.substr(0, idCommandSeparatorPos), 
+					idCommand.substr(idCommandSeparatorPos + 1),
+					opt_enable_responses_sender ? response_sender : NULL);
+			response->start(receive_socket->getHost(), receive_socket->getPort());
+		}
 	}
 }
 
@@ -1390,4 +1548,23 @@ void snifferClientStop(cSnifferClientService *snifferClientService) {
 		delete snifferClientService;
 		snifferClientService = NULL;
 	}
+}
+
+
+bool existsRemoteChartServer() {
+	return(snifferServerServices.remote_chart_server);
+}
+
+
+size_t getRemoteChartServerQueueSize() {
+	return(snifferServerServices.rchs_query_queue.size());
+}
+
+
+bool add_rchs_query(const char *query, bool checkMaxSize) {
+	return(snifferServerServices.add_rchs_query(query, checkMaxSize));
+}
+
+bool add_rchs_query(string *query, bool checkMaxSize) {
+	return(snifferServerServices.add_rchs_query(query, checkMaxSize));
 }

@@ -388,8 +388,8 @@ public:
 	bool writeBlock(string str, eTypeEncode typeCode = _te_na, string xor_key = "");
 	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0, size_t bufferIncLength = 0);
 	bool readBlock(string *str, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0);
-	u_char *readBlockTimeout(size_t *dataLen, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false) {
-		return(readBlock(dataLen, typeCode, xor_key, quietEwouldblock, timeout));
+	u_char *readBlockTimeout(size_t *dataLen, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, size_t bufferIncLength = 0) {
+		return(readBlock(dataLen, typeCode, xor_key, quietEwouldblock, timeout, bufferIncLength));
 	}
 	bool readBlockTimeout(string *str, u_int16_t timeout, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false) {
 		return(readBlock(str, typeCode, xor_key, quietEwouldblock, timeout));
@@ -479,6 +479,7 @@ protected:
 	cSocketBlock *receive_socket;
 	pthread_t receive_thread;
 	bool start_ok;
+	bool use_encode_data;
 	map<cSocket::eSocketError, string> errorTypeStrings;
 };
 

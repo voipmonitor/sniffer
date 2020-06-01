@@ -119,6 +119,7 @@ struct sVerbose {
 	char sipcallerip_filter[100];
 	char sipcalledip_filter[100];
 	int suppress_server_store;
+	int suppress_fork;
 	int _debug1;
 	int _debug2;
 	int _debug3;

@@ -790,6 +790,7 @@ public:
 	bool connected();
 	void query(const char *query_str);
 	void queryByRemoteSocket(const char *query_str);
+	void queryByServiceConnection(const char *query_str);
 	void store();
 	void _store(string beginProcedure, string endProcedure, list<string> *queries);
 	void __store(list<string> *queries);
@@ -904,13 +905,20 @@ private:
 	struct QFileConfig {
 		QFileConfig() {
 			enable = false;
+			enable_charts = false;
+			enable_charts_remote = false;
 			terminate = false;
 			period = 10;
 			inotify = false;
 			inotify_ready = false;
 		}
 		string getDirectory();
+		bool enableAny() {
+			return(enable || enable_charts || enable_charts_remote);
+		}
 		bool enable;
+		bool enable_charts;
+		bool enable_charts_remote;
 		bool terminate;
 		string directory;
 		int period;
@@ -959,7 +967,8 @@ public:
 	MySqlStore(const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 		   const char *cloud_host = NULL, const char *cloud_token = NULL, bool cloud_router = true, mysqlSSLOptions *mySSLOpt = NULL);
 	~MySqlStore();
-	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0);
+	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0,
+			  bool enable_charts = false, bool enable_charts_remote = false);
 	void queryToFilesTerminate();
 	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0);
 	void queryToFiles_start();
@@ -1033,6 +1042,20 @@ private:
 	}
 	void unlock_qfiles() {
 		__sync_lock_release(&this->_sync_qfiles);
+	}
+	bool idIsNotCharts(int id) {
+		return(!idIsCharts(id) && !idIsChartsRemote(id));
+	}
+	bool idIsCharts(int id) {
+		return(id / 10 == STORE_PROC_ID_CHARTS_CACHE_1 / 10);
+	}
+	bool idIsChartsRemote(int id) {
+		return(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10);
+	}
+	bool qfileConfigEnable(int id) {
+		return(idIsNotCharts(id) ? qfileConfig.enable :
+		       idIsCharts(id) ? qfileConfig.enable_charts :
+		       idIsChartsRemote(id) ? qfileConfig.enable_charts_remote : false);
 	}
 private:
 	map<int, MySqlStore_process*> processes;

@@ -61,6 +61,7 @@
 #include "options.h"
 #include "sniff_proc_class.h"
 #include "charts.h"
+#include "server.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -221,6 +222,8 @@ extern bool opt_charts_cache_store;
 extern bool opt_charts_cache_ip_boost;
 extern int terminating_charts_cache;
 extern volatile int terminating;
+
+extern sSnifferClientOptions snifferClientOptions;
 
 
 sCallField callFields[] = {
@@ -8360,7 +8363,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	hash_modify_queue_begin_ms = 0;
 	_sync_lock_hash_modify_queue = 0;
 	
-	if(opt_charts_cache) {
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 		chc_threads = new FILE_LINE(0) sChcThreadData[opt_charts_cache_max_threads];
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			chc_threads[i].tid = 0;
@@ -8395,7 +8398,7 @@ Calltable::~Calltable() {
 		delete asyncSystemCommand;
 	}
 	
-	if(opt_charts_cache) {
+	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			if(chc_threads[i].cache) {
 				delete chc_threads[i].cache; 
@@ -9523,6 +9526,7 @@ void Calltable::processCallsInChartsCache_stop() {
 }
 
 u_int32_t counter_charts_cache;
+u_int64_t counter_charts_cache_delay_us;
 
 void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	chc_threads[threadIndex].tid = get_unix_tid();
@@ -9570,13 +9574,13 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				++chc_count;
 				calltable->calls_charts_cache_queue.pop_front();
 				--chc_size;
-				if(chc_count >= 1000) {
+				if(chc_count >= 5000) {
 					break;
 				}
 			}
-			counter_charts_cache += chc_count;
 			calltable->unlock_calls_charts_cache_queue();
 			if(chc_count) {
+				u_int64_t _start = getTimeUS();
 				if(chc_threads_count > 1) {
 					for(int i = 1; i < chc_threads_count; i++) {
 						sem_post(&chc_threads[i].sem[0]);
@@ -9584,18 +9588,40 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				}
 				list<Call*> calls_for_delete;
 				for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-					if(iter_call_data->type == sChartsCallData::_call) {
+					switch(iter_call_data->type) {
+					case sChartsCallData::_call:
+						{
 						Call *call = (Call*)iter_call_data->data;
 						if(!call->isEmptyCdrRow()) {
 							sChartsCacheCallData chartsCacheCallData;
 							chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						}
 						calls_for_delete.push_back(call);
-					} else {
+						}
+						break;
+					case sChartsCallData::_tables_content:
+						{
 						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 						sChartsCacheCallData chartsCacheCallData;
 						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						delete tablesContent;
+						}
+						break;
+					case sChartsCallData::_csv:
+						{
+						string *csv = (string*)iter_call_data->data;
+						cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
+						vector<string> query_vect = split(csv->c_str(), "\n", false, false);
+						for(unsigned i = 0; i < query_vect.size(); i++) {
+							tablesContent->addCsvRow(query_vect[i].c_str());
+						}
+						sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
+						sChartsCacheCallData chartsCacheCallData;
+						chartsCacheAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+						delete tablesContent;
+						delete csv;
+						}
+						break;
 					}
 				}
 				if(calls_for_delete.size()) {
@@ -9611,6 +9637,9 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 						sem_wait(&chc_threads[i].sem[1]);
 					}
 				}
+				u_int64_t _end = getTimeUS();
+				counter_charts_cache += chc_count;
+				counter_charts_cache_delay_us += _end - _start;
 				if(chc_threads_count_mod < 0) {
 					--chc_threads_count;
 					chc_threads_count_mod = 0;
@@ -9641,18 +9670,40 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 			}
 			list<Call*> calls_for_delete;
 			for(list<sChartsCallData>::iterator iter_call_data = chc_threads[threadIndex].calls->begin(); iter_call_data != chc_threads[threadIndex].calls->end(); iter_call_data++) {
-				if(iter_call_data->type == sChartsCallData::_call) {
+				switch(iter_call_data->type) {
+				case sChartsCallData::_call:
+					{
 					Call *call = (Call*)iter_call_data->data;
 					if(!call->isEmptyCdrRow()) {
 						sChartsCacheCallData chartsCacheCallData;
 						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					}
 					calls_for_delete.push_back(call);
-				} else {
+					}
+					break;
+				case sChartsCallData::_tables_content:
+					{
 					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 					sChartsCacheCallData chartsCacheCallData;
 					chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					delete tablesContent;
+					}
+					break;
+				case sChartsCallData::_csv:
+					{
+					string *csv = (string*)iter_call_data->data;
+					cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
+					vector<string> query_vect = split(csv->c_str(), "\n", false, false);
+					for(unsigned i = 0; i < query_vect.size(); i++) {
+						tablesContent->addCsvRow(query_vect[i].c_str());
+					}
+					sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
+					sChartsCacheCallData chartsCacheCallData;
+					chartsCacheAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+					delete tablesContent;
+					delete csv;
+					}
+					break;
 				}
 			}
 			if(calls_for_delete.size()) {
