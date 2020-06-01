@@ -4,9 +4,9 @@
 
 #include "sql_db_global.h"
 #include "sql_db.h"
-#include "server.h"
 
 #ifndef CLOUD_ROUTER_SERVER
+#include "server.h"
 #include "calltable.h"
 #endif
 
