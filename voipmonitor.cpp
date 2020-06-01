@@ -244,7 +244,7 @@ int opt_rtp_check_timestamp = 0;
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
-int opt_ringbuffer = 10;	// ring buffer in MB 
+int opt_ringbuffer = 50;	// ring buffer in MB 
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
 int opt_sip_options = 0;
 int opt_sip_subscribe = 0;
