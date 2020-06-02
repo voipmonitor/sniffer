@@ -216,9 +216,7 @@ extern cSqlDbData *dbData;
 
 extern char *opt_rtp_stream_analysis_params;
 
-extern bool opt_charts_cache;
 extern int opt_charts_cache_max_threads;
-extern bool opt_charts_cache_store;
 extern bool opt_charts_cache_ip_boost;
 extern int terminating_charts_cache;
 extern volatile int terminating;
@@ -5931,7 +5929,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	adjustSipResponse(lastSIPresponse, 0);
 	
-	if(opt_charts_cache && !opt_charts_cache_store && sverb.charts_cache_only) {
+	if(useChartsCacheInProcessCall() && sverb.charts_cache_only) {
 		return(0);
 	}
 	
@@ -6604,7 +6602,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						       counterSqlStore % opt_mysqlstore_max_threads_charts_cache : 
 						       0));
 			} else {
-				cdr.add(_sf_db | (opt_charts_cache && opt_charts_cache_store ? _sf_charts_cache : 0), "store_flags");
+				cdr.add(_sf_db | (useChartsCacheInStore() ? _sf_charts_cache : 0), "store_flags");
 				string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
 						       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
 				sqlStore->query_lock((query_str_cdr + query_str).c_str(), storeId);
@@ -8363,7 +8361,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	hash_modify_queue_begin_ms = 0;
 	_sync_lock_hash_modify_queue = 0;
 	
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		chc_threads = new FILE_LINE(0) sChcThreadData[opt_charts_cache_max_threads];
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			chc_threads[i].tid = 0;
@@ -8398,7 +8396,7 @@ Calltable::~Calltable() {
 		delete asyncSystemCommand;
 	}
 	
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			if(chc_threads[i].cache) {
 				delete chc_threads[i].cache; 
@@ -9476,7 +9474,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
 			call->convertRawToWav();
-			if(opt_charts_cache && !opt_charts_cache_store) {
+			if(useChartsCacheInProcessCall()) {
 				calltable->lock_calls_charts_cache_queue();
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
 				calltable->unlock_calls_charts_cache_queue();

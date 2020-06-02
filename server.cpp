@@ -535,6 +535,13 @@ void cSnifferServerConnection::cp_service() {
 		if(snifferServerOptions.mysql_concat_limit) {
 			ok_parameters.add("mysql_concat_limit", snifferServerOptions.mysql_concat_limit);
 		}
+		if(useCsvStoreFormat()) {
+			ok_parameters.add("csv_store_format", useCsvStoreFormat());
+		}
+		extern bool opt_charts_cache_store;
+		if(opt_charts_cache_store) {
+			ok_parameters.add("charts_cache_store", true);
+		}
 		ok_parameters.add("type_compress", snifferServerOptions.type_compress);
 		ok_parameters.add("enable_responses_sender", true);
 		okAndParameters = ok_parameters.getJson();
@@ -1198,6 +1205,10 @@ bool cSnifferClientService::receive_process_loop_begin() {
 						if(!rsltConnectData_json.getValue("mysql_concat_limit").empty()) {
 							client_options->mysql_concat_limit = atoi(rsltConnectData_json.getValue("mysql_concat_limit").c_str());
 						}
+						client_options->csv_store_format = !rsltConnectData_json.getValue("csv_store_format").empty() &&
+										   atoi(rsltConnectData_json.getValue("csv_store_format").c_str());
+						client_options->charts_cache_store = !rsltConnectData_json.getValue("charts_cache_store").empty() &&
+										     atoi(rsltConnectData_json.getValue("charts_cache_store").c_str());
 						if(!rsltConnectData_json.getValue("type_compress").empty()) {
 							client_options->type_compress = (eServerClientTypeCompress)atoi(rsltConnectData_json.getValue("type_compress").c_str());
 						}
@@ -1239,7 +1250,13 @@ bool cSnifferClientService::receive_process_loop_begin() {
 			params.push_back("mysql_set_id(s): yes");
 		}
 		if(client_options->mysql_concat_limit) {
-			params.push_back("mysql_concat_limit: " + intToString(client_options->mysql_concat_limit));
+			params.push_back("mysql_concat_limit(s): " + intToString(client_options->mysql_concat_limit));
+		}
+		if(client_options->csv_store_format) {
+			params.push_back("csv_store_format(s): yes");
+		}
+		if(client_options->charts_cache_store) {
+			params.push_back("charts_cache_store(s): yes");
 		}
 		if(params.size()) {
 			verbstr << ' ' << implode(params, ", ");

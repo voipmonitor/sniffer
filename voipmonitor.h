@@ -329,6 +329,9 @@ inline bool isCloud() {
 int useNewStore();
 bool useSetId();
 bool useCsvStoreFormat();
+bool useChartsCacheInProcessCall();
+bool useChartsCacheInStore();
+bool useChartsCacheProcessThreads();
 bool existsChartsCacheServer();
 
 typedef struct mysqlSSLOptions {

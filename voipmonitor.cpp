@@ -1991,7 +1991,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
-				if(opt_charts_cache && !opt_charts_cache_store) {
+				if(useChartsCacheInProcessCall()) {
 					calltable->lock_calls_charts_cache_queue();
 					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -2140,7 +2140,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
-		if(opt_charts_cache && !opt_charts_cache_store) {
+		if(useChartsCacheInProcessCall()) {
 			calltable->lock_calls_charts_cache_queue();
 			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -3647,7 +3647,7 @@ int main(int argc, char *argv[]) {
 		}
 	} else if(is_client()) {
 		snifferClientService = snifferClientStart(&snifferClientOptions, snifferClientService);
-		if(opt_charts_cache && opt_charts_cache_store &&
+		if(useChartsCacheInStore() &&
 		   !snifferClientOptions_charts_cache.host.empty()) {
 			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, snifferClientService_charts_cache);
 		}
@@ -3906,7 +3906,7 @@ int main_init_read() {
 	}
 	
 	dbDataInit(sqlDbInit);
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
 
@@ -4140,7 +4140,7 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
-		if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+		if(useChartsCacheProcessThreads()) {
 			calltable->processCallsInChartsCache_start();
 		}
 	}
@@ -4571,7 +4571,7 @@ void main_term_read() {
 	calltable->cleanup_registers(NULL);
 	calltable->cleanup_ss7(NULL);
 
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
 	}
 	
@@ -4667,7 +4667,7 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 	}
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		calltable->processCallsInChartsCache_stop();
 	}
 	while(calltable->calls_queue.size() != 0) {
@@ -4776,7 +4776,7 @@ void main_term_read() {
 	CountryDetectTerm();
 	
 	dbDataTerm();
-	if(opt_charts_cache || snifferClientOptions.remote_chart_server) {
+	if(useChartsCacheProcessThreads()) {
 		chartsCacheTerm();
 	}
 	
@@ -11625,7 +11625,21 @@ bool useCsvStoreFormat() {
 	return(useNewStore() &&
 	       useSetId() && 
 	       opt_mysql_enable_multiple_rows_insert &&
-	       opt_csv_store_format);
+	       ((is_client() && snifferClientOptions.csv_store_format) ||
+		opt_csv_store_format));
+}
+
+bool useChartsCacheInProcessCall() {
+	return(opt_charts_cache && !opt_charts_cache_store);
+}
+
+bool useChartsCacheInStore() {
+	return((opt_charts_cache && opt_charts_cache_store) ||
+	       (is_client() && snifferClientOptions.charts_cache_store));
+}
+
+bool useChartsCacheProcessThreads() {
+	return(opt_charts_cache || snifferClientOptions.remote_chart_server);
 }
 
 bool existsChartsCacheServer() {

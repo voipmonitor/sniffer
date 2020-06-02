@@ -62,6 +62,8 @@ struct sSnifferClientOptions {
 		mysql_new_store = 0;
 		mysql_set_id = false;
 		mysql_concat_limit = 0; // set only from server due compatibility client/server with different versions
+		csv_store_format = false;
+		charts_cache_store = false;
 		type_compress = _cs_compress_gzip;
 		remote_chart_server = false;
 	}
@@ -91,6 +93,8 @@ struct sSnifferClientOptions {
 	int mysql_new_store;
 	bool mysql_set_id;
 	unsigned mysql_concat_limit;
+	bool csv_store_format;
+	bool charts_cache_store;
 	bool remote_chart_server;
 	eServerClientTypeCompress type_compress;
 };
