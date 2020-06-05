@@ -145,7 +145,22 @@ void cSqlDbCodebook::setAutoLoadPeriod(unsigned autoLoadPeriod) {
 
 unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, bool enableAutoLoad,
 			       cSqlDbAutoIncrement *autoincrement, string *insertQuery, SqlDb *sqlDb) {
-	string stringValue = stringValueInput;
+	string stringValueInputSafe;
+	extern cUtfConverter utfConverter;
+	#ifndef CLOUD_ROUTER_SERVER
+	if(useSetId() && !utfConverter.is_ascii(stringValueInput)) {
+		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
+	} else {
+		stringValueInputSafe = stringValueInput;
+	}
+	#else
+	if(!utfConverter.is_ascii(stringValueInput)) {
+		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
+	} else {
+		stringValueInputSafe = stringValueInput;
+	}
+	#endif
+	string stringValue = stringValueInputSafe;
 	if(!caseSensitive) {
 		std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
 	}
@@ -186,7 +201,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				SqlDb *sqlDb = createSqlObject();
 				SqlDb_row row;
 				row.add(rslt, columnId);
-				row.add(sqlEscapeString(stringValueInput),  columnStringValue);
+				row.add(sqlEscapeString(stringValueInputSafe),  columnStringValue);
 				for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 					row.add(sqlEscapeString(iter->value), iter->field);
 				}
@@ -206,7 +221,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				}
 				if(!rslt) {
 					SqlDb_row row;
-					row.add(stringValueInput, columnStringValue);
+					row.add(stringValueInputSafe, columnStringValue);
 					for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 						row.add(iter->value, iter->field);
 					}
@@ -220,7 +235,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 		#else
 			rslt = autoincrement->getId(this->table.c_str());
 			string columns = columnId + "," + columnStringValue;
-			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValueInput);
+			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValueInputSafe);
 			for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
 				columns += "," + iter->field;
 				values += "," + sqlEscapeStringBorder(iter->value);
