@@ -634,11 +634,12 @@ void cSnifferServerConnection::cp_service() {
 					continue;
 				}
 				string response;
-				if(socket->readBlockTimeout(&response, 5) &&
+				if(socket->readBlockTimeout(&response, 30) &&
 				   response == "OK") {
 					delete rchs_query;
 				} else {
 					add_rchs_query(rchs_query, false);
+					USLEEP(500000);
 				}
 				continue;
 			}
@@ -1267,7 +1268,6 @@ bool cSnifferClientService::receive_process_loop_begin() {
 }
 
 void cSnifferClientService::evData(u_char *data, size_t dataLen) {
-	receive_socket->writeBlock("OK");
 	if(dataLen > 4 && !strncmp((char*)data, "rch:", 4)) {
 		if(!calltable) {
 			while(!calltable) {
@@ -1275,18 +1275,30 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 			}
 			USLEEP(100000);
 		}
-		while(calltable->calls_charts_cache_queue.size() > 100000) {
-			USLEEP(10000);
+		if(calltable->calls_charts_cache_queue.size() > 100000) {
+			receive_socket->writeBlock("queue is full");
+			return;
 		}
 		string queryStr;
 		cGzip gzipDecompressQuery;
 		cLzo lzoDecompressQuery;
 		if(gzipDecompressQuery.isCompress(data + 4, dataLen - 4)) {
 			queryStr = gzipDecompressQuery.decompressString(data + 4, dataLen - 4);
+			if(queryStr.empty()) {
+				receive_socket->writeBlock("error in decompress zip");
+				return;
+			}
 		} else if(lzoDecompressQuery.isCompress(data + 4, dataLen - 4)) {
 			queryStr = lzoDecompressQuery.decompressString(data + 4, dataLen - 4);
+			if(queryStr.empty()) {
+				receive_socket->writeBlock("error in decompress lzo");
+				return;
+			}
 		} else {
 			queryStr = string((char*)data + 4, dataLen - 4);
+		}
+		if(!receive_socket->writeBlock("OK")) {
+			return;
 		}
 		if(queryStr[0] == 'L' && isdigit(queryStr[1])) {
 			size_t pos = 0;

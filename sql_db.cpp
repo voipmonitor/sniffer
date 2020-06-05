@@ -2044,6 +2044,10 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						  this->getLastError() == ER_SP_DOES_NOT_EXIST ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
+					} else if(useNewStore() == 2 && useSetId() && this->getLastError() == ER_DUP_ENTRY) {
+						if(pass < this->maxQueryPass - 2) {
+							pass = this->maxQueryPass - 2;
+						}
 					} else {
 						if(this->getLastError() == ER_SP_ALREADY_EXISTS) {
 							if(!mysql_query(this->hMysqlConn, "repair table mysql.proc")) {
@@ -3143,7 +3147,7 @@ void MySqlStore_process::store() {
 			if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ||
 			   snifferClientOptions.isEnableRemoteStore()) {
 				unsigned concat_limit = id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ?
-							 10000 :
+							 1000 :
 							 snifferClientOptions.mysql_concat_limit;
 				this->lock();
 				if(this->query_buff.size() == 0) {
