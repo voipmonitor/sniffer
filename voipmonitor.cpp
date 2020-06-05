@@ -331,6 +331,7 @@ bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
+int opt_charts_cache_queue_limit = 100000;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
@@ -7178,6 +7179,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_queue_limit", &opt_charts_cache_queue_limit));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
@@ -10284,6 +10286,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "charts_cache_ip_boost", NULL))) {
 		opt_charts_cache_ip_boost = yesno(value);
+	}
+	if((value = ini.GetValue("general", "charts_cache_queue_limit", NULL))) {
+		opt_charts_cache_queue_limit = atoi(value);
 	}
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
 		strcpy_null_term(opt_convert_char, value);

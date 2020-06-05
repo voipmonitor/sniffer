@@ -576,6 +576,7 @@ void cSnifferServerConnection::cp_service() {
 	service.remote_chart_server = remote_chart_server;
 	snifferServerServices.add(&service);
 	u_int64_t lastWriteTimeUS = 0;
+	u_int64_t wait_remote_chart_server_processing_to_time_ms = 0;
 	while(!server->isTerminate() &&
 	      !terminate) {
 		u_int64_t time_us = getTimeUS();
@@ -598,7 +599,10 @@ void cSnifferServerConnection::cp_service() {
 			lastWriteTimeUS = time_us;
 			continue;
 		}
-		if(remote_chart_server) {
+		if(remote_chart_server &&
+		   (!wait_remote_chart_server_processing_to_time_ms ||
+		    getTimeMS() > wait_remote_chart_server_processing_to_time_ms)) {
+			wait_remote_chart_server_processing_to_time_ms = 0;
 			string *rchs_query = snifferServerServices.get_rchs_query();
 			if(rchs_query) {
 				bool okSend = true;
@@ -631,6 +635,8 @@ void cSnifferServerConnection::cp_service() {
 				}
 				if(!okSend) {
 					add_rchs_query(rchs_query, false);
+					syslog(LOG_NOTICE, "failed send data to remote chart client - try again after 1s");
+					wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
 					continue;
 				}
 				string response;
@@ -639,7 +645,13 @@ void cSnifferServerConnection::cp_service() {
 					delete rchs_query;
 				} else {
 					add_rchs_query(rchs_query, false);
-					USLEEP(500000);
+					if(response.empty()) {
+						syslog(LOG_NOTICE, "failed receive confirmation from remote chart client - try again after 1s");
+						wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
+					} else {
+						syslog(LOG_NOTICE, "remote chart client sent error '%s' - try again after 1s", response.c_str());
+						wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
+					}
 				}
 				continue;
 			}
@@ -1275,7 +1287,8 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 			}
 			USLEEP(100000);
 		}
-		if(calltable->calls_charts_cache_queue.size() > 100000) {
+		extern int opt_charts_cache_queue_limit;
+		if(calltable->calls_charts_cache_queue.size() > (unsigned)opt_charts_cache_queue_limit) {
 			receive_socket->writeBlock("queue is full");
 			return;
 		}
@@ -1300,6 +1313,7 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 		if(!receive_socket->writeBlock("OK")) {
 			return;
 		}
+		list<string*> csv_list;
 		if(queryStr[0] == 'L' && isdigit(queryStr[1])) {
 			size_t pos = 0;
 			do {
@@ -1314,20 +1328,17 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 					break;
 				}
 				pos = pos_sep + 1;
-				calltable->lock_calls_charts_cache_queue();
-				calltable->calls_charts_cache_queue.push_back(sChartsCallData(
-					sChartsCallData::_csv, 
-					new FILE_LINE(0) string(queryStr.substr(pos, length))));
-				calltable->unlock_calls_charts_cache_queue();
+				csv_list.push_back(new FILE_LINE(0) string(queryStr.substr(pos, length)));
 				pos += length + 1;
 			} while(pos < queryStr.length());
 		} else {
-			calltable->lock_calls_charts_cache_queue();
-			calltable->calls_charts_cache_queue.push_back(sChartsCallData(
-				sChartsCallData::_csv, 
-				new FILE_LINE(0) string(queryStr)));
-			calltable->unlock_calls_charts_cache_queue();
+			csv_list.push_back(new FILE_LINE(0) string(queryStr));
 		}
+		calltable->lock_calls_charts_cache_queue();
+		for(list<string*>::iterator iter = csv_list.begin(); iter != csv_list.end(); iter++) {
+			calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_csv, *iter));
+		}
+		calltable->unlock_calls_charts_cache_queue();
 	} else {
 		string idCommand = string((char*)data, dataLen);
 		size_t idCommandSeparatorPos = idCommand.find('/'); 

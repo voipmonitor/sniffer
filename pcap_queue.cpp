@@ -2356,7 +2356,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStrStat << "] ";
 			}
 			if(pcapStatCounter > 2) {
-				if(chc_cpu_avg > opt_cpu_limit_new_thread_high) {
+				extern int opt_charts_cache_queue_limit;
+				if(chc_cpu_avg > opt_cpu_limit_new_thread_high &&
+				   calltable->calls_charts_cache_queue.size() > (unsigned)opt_charts_cache_queue_limit / 3) {
 					calltable->processCallsInChartsCache_thread_add();
 				} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
 					calltable->processCallsInChartsCache_thread_remove();
