@@ -1243,6 +1243,54 @@ vmIP cResolver::resolve_by_system_host(const char *host) {
 	return(ip);
 }
 
+std::vector<string> cResolver::resolve_allips(const char *host, eTypeResolve typeResolve) {
+	std::vector<string> ips;
+	vmIP ip;
+	struct addrinfo req, *res;
+	memset(&req, 0, sizeof(req));
+	req.ai_family = AF_UNSPEC;
+	req.ai_socktype = SOCK_STREAM;
+	if(typeResolve == _typeResolve_default) {
+		#if defined(__arm__)
+			typeResolve = _typeResolve_system_host;
+		#else
+			typeResolve = _typeResolve_std;
+		#endif
+	}
+	if (typeResolve == _typeResolve_std) {
+		if(getaddrinfo(host, NULL, &req, &res) == 0) {
+			while(res) {
+				if(res->ai_family == AF_INET) {
+					ip.setIPv4(((sockaddr_in*)res->ai_addr)->sin_addr.s_addr, true);
+					ips.insert(ips.begin(), ip.getString());
+				}
+				#if VM_IPV6
+				else if(VM_IPV6_B && res->ai_family == AF_INET6) {
+					ip.setIPv6(((sockaddr_in6*)res->ai_addr)->sin6_addr, true);
+					ips.push_back(ip.getString());
+				}
+				#endif
+				ip.clear();
+				res = res->ai_next;
+			}
+		}
+	} else if (typeResolve == _typeResolve_system_host) {
+		FILE *cmd_pipe = popen((string("host ") + host + " 2>/dev/null").c_str(), "r");
+		if(cmd_pipe) {
+			char bufRslt[512];
+			while(fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+				vector<string> try_ip = split(bufRslt, split(",|;|\t| |\n", '|'), true);
+				for(unsigned i = 0; i < try_ip.size(); i++) {
+					if(ip_is_valid(try_ip[i].c_str())) {
+						ips.push_back(try_ip[i].c_str());
+					}
+				}
+			}
+			pclose(cmd_pipe);
+		}
+	}
+	return(ips);
+}
 
 cUtfConverter::cUtfConverter() {
 	cnv_utf8 = NULL;

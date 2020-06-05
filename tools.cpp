@@ -564,27 +564,40 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 				hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
 				host = host.substr(posEndHostProtPrefix + 1);
 			}
-			string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
-			if(!hostIP.empty()) {
+			extern char opt_curlproxy[256];
+			if(opt_curlproxy[0]) {
+				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
+			}
+			std::vector<string> hostIPs = cResolver::resolve_allips(host.c_str(), cResolver::_typeResolve_default);
+			if(hostIPs.size()) {
 				headers = curl_slist_append(headers, ("Host: " + host).c_str());
 				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-				curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
-				if(verbosity > 1) {
-					syslog(LOG_NOTICE, "get_url_file %s", (hostProtPrefix +  hostIP + path).c_str());
+				for (std::size_t i = 0; i < hostIPs.size(); i++) {
+					string ipurl;
+					if (hostIPs[i].find(':') != std::string::npos) {
+						ipurl = hostProtPrefix + "[" + hostIPs[i] + "]" + path;
+					} else {
+						ipurl = hostProtPrefix + hostIPs[i] + path;
+					}
+					curl_easy_setopt(curl, CURLOPT_URL, ipurl.c_str());
+					if(verbosity > 1) {
+						syslog(LOG_NOTICE, "get_url_file %s", ipurl.c_str());
+					}
+					if(curl_easy_perform(curl) == CURLE_OK) {
+						rslt = true;
+						break;
+					}
 				}
 			} else {
 				curl_easy_setopt(curl, CURLOPT_URL, url);
 				if(verbosity > 1) {
 					syslog(LOG_NOTICE, "get_url_file %s", url);
 				}
+				if(curl_easy_perform(curl) == CURLE_OK) {
+					rslt = true;
+				}
 			}
-			extern char opt_curlproxy[256];
-			if(opt_curlproxy[0]) {
-				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
-			}
-			if(curl_easy_perform(curl) == CURLE_OK) {
-				rslt = true;
-			} else {
+			if (!rslt) {
 				if(error) {
 					*error = errorBuffer;
 				}
