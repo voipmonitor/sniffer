@@ -169,6 +169,9 @@ private:
 	map<string_icase, int> param_map;
 	volatile int sync_data;
 	string last_chart_data;
+	u_int32_t created_at_s;
+	u_int32_t updated_at_s;
+	u_int32_t store_counter;
 friend class cChartDataItem;
 friend class cChartDataMultiseriesItem;
 friend class cChartInterval;

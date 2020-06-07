@@ -593,6 +593,9 @@ cChartIntervalSeriesData::cChartIntervalSeriesData(cChartSeries *series, cChartI
 	this->dataPool = NULL;
 	this->dataMultiseriesItem = NULL;
 	this->sync_data = 0;
+	this->created_at_s = getTimeS();
+	this->updated_at_s = 0;
+	this->store_counter = 0;
 	__SYNC_INC(series->used_counter);
 }
 
@@ -759,15 +762,27 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 	last_chart_data = chart_data;
 	SqlDb_row cache_row;
 	cache_row.add(this->series->id, "series_id");
-	cache_row.add("TA_MINUTES", "type");
 	cache_row.add(sqlDateTimeString(interval->timeFrom), "from_time");
-	cache_row.add(chart_data, "chart_data");
+	cache_row.add("TA_MINUTES", "type");
 	if(opt_id_sensor > 0) {
 		cache_row.add(opt_id_sensor, "sensor_id");
 	}
-	string insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
-			    sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true));
+	cache_row.add(sqlDateTimeString(created_at_s), "created_at");
+	cache_row.add(chart_data, "chart_data");
+	string insert_str;
+	if(!store_counter) {
+		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
+			     sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true));
+	} else {
+		SqlDb_row cache_row_update;
+		cache_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
+		cache_row_update.add(store_counter  + 1, "updated_counter");
+		cache_row_update.add(chart_data, "chart_data");
+		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
+			     sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true, &cache_row_update));
+	}
 	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE_1);
+	++store_counter;
 }
 
 
