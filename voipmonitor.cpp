@@ -1075,6 +1075,10 @@ int opt_hugepages_second_heap = 0;
 
 int opt_numa_balancing_set = numa_balancing_set_autodisable;
 
+int opt_mirror_connect_maximum_time_diff_s = 2;
+int opt_client_server_connect_maximum_time_diff_s = 2;
+int opt_receive_packetbuffer_maximum_time_diff_s = 30;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -6536,6 +6540,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42148) cConfigItem_string("capture_rules_sip_header_file", opt_capture_rules_sip_header_file, sizeof(opt_capture_rules_sip_header_file)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("time_precision_in_ms", &opt_time_precision_in_ms));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mirror_connect_maximum_time_diff_s", &opt_mirror_connect_maximum_time_diff_s));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -7173,6 +7178,7 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_type_compress", (int*)&snifferServerOptions.type_compress))
 					->addValues("gzip:1|zip:1|lzo:2")
 					->setDefaultValueStr("yes"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
@@ -7188,6 +7194,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("receive_packetbuffer_maximum_time_diff_s", &opt_receive_packetbuffer_maximum_time_diff_s));
 					expert();
 					addConfigItem(new FILE_LINE(42465) cConfigItem_integer("rtpthread-buffer",  &rtpthreadbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
@@ -10413,6 +10420,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "time_precision_in_ms", NULL))) {
 		opt_time_precision_in_ms = yesno(value);
 	}
+	if((value = ini.GetValue("general", "mirror_connect_maximum_time_diff_s", NULL))) {
+		opt_mirror_connect_maximum_time_diff_s = atoi(value);
+	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
 					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end_base :
@@ -11062,6 +11072,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "receiver_check_id_sensor", NULL))) {
 		opt_receiver_check_id_sensor = yesno(value);
+	}
+	if((value = ini.GetValue("general", "receive_packetbuffer_maximum_time_diff_s", NULL))) {
+		opt_receive_packetbuffer_maximum_time_diff_s = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "udp_port_l2tp", NULL))) {

@@ -566,7 +566,8 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	if(!restoreFromStore &&
 	   this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
-		if(abs((int)(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600) - (int)(getTimeS() % 3600)) > 30) {
+		extern int opt_receive_packetbuffer_maximum_time_diff_s;
+		if(abs((int)(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600) - (int)(getTimeS() % 3600)) > opt_receive_packetbuffer_maximum_time_diff_s) {
 			return(-7);
 		} else {
 			((pcap_block_store_header*)this->restoreBuffer)->time_s = 0;
@@ -5907,7 +5908,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										syslog(LOG_NOTICE, "reported sensor time: %s for sensor id: %i", sensorTime.c_str(), sensorId);
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
-										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > 2) {
+										extern int opt_mirror_connect_maximum_time_diff_s;
+										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > opt_mirror_connect_maximum_time_diff_s) {
 											cLogSensor::log(cLogSensor::error, 
 													"sensor is not allowed to connect because of different time",
 													"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
