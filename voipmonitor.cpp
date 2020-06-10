@@ -3215,6 +3215,7 @@ int main(int argc, char *argv[]) {
 	
 	if(useNewCONFIG || printConfigStruct || printConfigFile) {
 		CONFIG.addConfigItems();
+		CONFIG.clearToDefaultValues();
 	}
 	if(configfile[0]) {
 		if(useNewCONFIG) {
@@ -6772,7 +6773,9 @@ void cConfig::addConfigItems() {
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
-		addConfigItem(new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny));
+		addConfigItem((new FILE_LINE(42257) cConfigItem_yesno("skinny", &opt_skinny))
+			->setDefaultValueStr("2000")
+			->setClearBeforeFirstSet());
 		addConfigItem(new FILE_LINE(0) cConfigItem_ports("skinny_port", skinnyportmatrix));
 		addConfigItem(new FILE_LINE(42258) cConfigItem_ip("skinny_ignore_rtpip", &opt_skinny_ignore_rtpip));
 			advanced();
@@ -6820,7 +6823,9 @@ void cConfig::addConfigItems() {
 	group("SIP protocol / headers");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix)));
+			addConfigItem((new FILE_LINE(42270) cConfigItem_ports("sipport", sipportmatrix))
+				->setDefaultValueStr("5060")
+				->setClearBeforeFirstSet());
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("call_id_alternative", opt_call_id_alternative, sizeof(opt_call_id_alternative)));
