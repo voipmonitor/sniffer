@@ -5563,7 +5563,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(rtp[i] &&
 		   !(rtp[i]->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) &&
 		   (rtp[i]->s->received or !existsColumns.cdr_rtp_index || (rtp[i]->s->received == 0 && rtp_zeropackets_stored == false)) &&
-		   rtp[i]->first_codec != -1) {
+		   (sverb.process_rtp_header || rtp[i]->first_codec != -1)) {
 			rtp_rows_indexes[rtp_rows_count++] = i;
 		}
 	}
@@ -5630,6 +5630,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			payload[i] = rtpab[i]->first_codec;
 			if(payload[i] >= 0) {
 				cdr.add(payload[i], c+"_payload");
+			} else if(sverb.process_rtp_header) {
+				cdr.add(0, c+"_payload");
 			}
 			
 			// build a_sl1 - b_sl10 fields
@@ -6223,7 +6225,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 			SqlDb_row rtps;
 			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			rtps.add(rtp[i]->first_codec, "payload");
+			if(rtp[i]->first_codec >= 0) {
+				rtps.add(rtp[i]->first_codec, "payload");
+			} else if(sverb.process_rtp_header) {
+				rtps.add(0, "payload");
+			}
 			rtps.add(rtp[i]->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			rtps.add(rtp[i]->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			if(existsColumns.cdr_rtp_sport) {
