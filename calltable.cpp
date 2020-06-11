@@ -1958,18 +1958,18 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 		}
 	}
 	if(enable_save_packet) {
-		if ((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) &&
-		    !this->isfax && !record_dtmf && !packetS->isStun() && !packetS->isDtls()) {
-			if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
-			   packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
+		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
+			if(packetS->isStun() || packetS->isDtls()) {
+				save_packet(this, packetS, TYPE_RTP, forceVirtualUdp);
+			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
+			          packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
 				unsigned int tmp_u32 = packetS->header_pt->caplen;
 				packetS->header_pt->caplen = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
 								 packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
 				save_packet(this, packetS, TYPE_RTP);
 				packetS->header_pt->caplen = tmp_u32;
 			}
-		} else if((this->flags & FLAG_SAVERTP) || this->isfax ||
-		          record_dtmf || packetS->isStun() || packetS->isDtls()) {
+		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
 			save_packet(this, packetS, TYPE_RTP, forceVirtualUdp);
 		}
 	}
