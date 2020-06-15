@@ -427,6 +427,10 @@ void SqlDb_rows::clear() {
 SqlDb::SqlDb() {
 	this->clearLastError();
 	this->conn_port = 0;
+	this->conn_sslkey = NULL;
+	this->conn_sslcert = NULL;
+	this->conn_sslcacert = NULL;
+	this->conn_sslcapath = NULL;
 	this->conn_disable_secure_auth = false;
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
@@ -471,6 +475,11 @@ void SqlDb::setConnectParameters(string server, string user, string password, st
 		this->conn_sslcacert = sslOpt->caCert;
 		this->conn_sslcapath = sslOpt->caPath;
 		this->conn_sslciphers = sslOpt->ciphers;
+	} else {
+		this->conn_sslkey = NULL;
+		this->conn_sslcert = NULL;
+		this->conn_sslcacert = NULL;
+		this->conn_sslcapath = NULL;
 	}
 }
 
@@ -1594,21 +1603,25 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->hMysql = mysql_init(NULL);
 			bool enabledSSL = false;
 #ifdef MYSQL_WITHOUT_SSL_SUPPORT
-			if (strlen(this->conn_sslkey) || strlen(this->conn_sslcert) || strlen(this->conn_sslcacert) ||
-			    strlen(this->conn_sslcapath) || this->conn_sslciphers.length()) {
+			if ((this->conn_sslkey && strlen(this->conn_sslkey)) || 
+			    (this->conn_sslcert && strlen(this->conn_sslcert)) || 
+			    (this->conn_sslcacert && strlen(this->conn_sslcacert)) ||
+			    (this->conn_sslcapath && strlen(this->conn_sslcapath)) || 
+			    this->conn_sslciphers.length()) {
 				syslog(LOG_WARNING, "Mysql SSL options was not recognized in the mysql library so SSL/TLS connection to the Mysql server will not work.");
 			}
 #else
-			if (strlen(this->conn_sslkey) && strlen(this->conn_sslcert)) {
+			if (this->conn_sslkey && strlen(this->conn_sslkey) && 
+			    this->conn_sslcert && strlen(this->conn_sslcert)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_KEY, this->conn_sslkey);
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CERT, this->conn_sslcert);
 				enabledSSL = true;
 			}
-			if (strlen(this->conn_sslcacert)) {
+			if (this->conn_sslcacert && strlen(this->conn_sslcacert)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CA, this->conn_sslcacert);
 				enabledSSL = true;
 			}
-			if (strlen(this->conn_sslcapath)) {
+			if (this->conn_sslcapath && strlen(this->conn_sslcapath)) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CAPATH, this->conn_sslcapath);
 				enabledSSL = true;
 			}
