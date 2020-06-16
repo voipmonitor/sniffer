@@ -150,6 +150,37 @@ public:
 		int voippacket;
 		volatile int used;
 	};
+	struct s_ipacc_data {
+		~s_ipacc_data();
+		unsigned int interval_time;
+		t_ipacc_buffer ipacc_buffer;
+	};
+	struct s_cache {
+		s_cache() {
+			custIpCache = NULL;
+			nextIpCache = NULL;
+			custPnCache = NULL;
+			custIpCustomerCache = NULL;
+			init();
+		}
+		~s_cache() {
+			term();
+		}
+		class CustIpCache *custIpCache;
+		class NextIpCache *nextIpCache;
+		class CustPhoneNumberCache *custPnCache;
+		class CustIpCustomerCache *custIpCustomerCache;
+		void init();
+		void term();
+	};
+	struct s_save_thread_data {
+		pthread_t thread;
+		int tid;
+		pstat_data pstat[2];
+		sem_t sem[2];
+		s_ipacc_data *data;
+		s_cache cache;
+	};
 public:
 	Ipacc();
 	~Ipacc();
@@ -157,30 +188,34 @@ public:
 	void init();
 	void term();
 	int refreshCustIpCache();
-	void save(int indexIpaccBuffer, unsigned int interval_time_limit = 0);
+	void save(t_ipacc_buffer *ipacc_buffer, s_cache *cache);
 	inline void add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket);
-	unsigned int lengthBuffer() {
-		return(ipacc_buffer[0].size() + ipacc_buffer[1].size());
-	}
+	unsigned int lengthBuffer();
 	class CustIpCache *getCustIpCache() {
-		return(custIpCache);
+		return(save_thread_data[0].cache.custIpCache);
 	}
 	class CustPhoneNumberCache *getCustPnCache() {
-		return(custPnCache);
+		return(save_thread_data[0].cache.custPnCache);
 	}
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData);
 	void startThread();
+	void stopThread();
+	string getCpuUsagePerc();
 private:
 	void *outThreadFunction();
+	void lock_map_ipacc_data() {
+		__SYNC_LOCK(map_ipacc_data_sync);
+	}
+	void unlock_map_ipacc_data() {
+		__SYNC_UNLOCK(map_ipacc_data_sync);
+	}
+	void processSave_thread(int threadIndex);
+	static void *_processSave_thread(void *_threadIndex);
 private:
-	t_ipacc_buffer ipacc_buffer[2];
-	int sync_save_ipacc_buffer[2];
-	unsigned int last_flush_interval_time;
-	class CustIpCache *custIpCache;
-	class NextIpCache *nextIpCache;
-	class CustPhoneNumberCache *custPnCache;
-	class CustIpCustomerCache *custIpCustomerCache;
+	map<unsigned int, s_ipacc_data*> map_ipacc_data;
+	unsigned last_ipacc_time;
+	s_ipacc_data *last_ipacc_data;
+	volatile int map_ipacc_data_sync;
+	unsigned map_ipacc_data_save_limit;
 	SqlDb *sqlDbSave;
 	packet *qring;
 	unsigned int qringmax;
@@ -189,6 +224,9 @@ private:
 	pthread_t out_thread_handle;
 	int outThreadId;
 	pstat_data threadPstatData[2];
+	unsigned save_thread_count;
+	s_save_thread_data *save_thread_data;
+	int terminating_save_threads;
 friend inline void *_Ipacc_outThreadFunction(void *arg);
 };
 
@@ -420,5 +458,6 @@ string getIpaccCpuUsagePerc();
 void initIpacc();
 void termIpacc();
 void ipaccStartThread();
+void ipaccStopThread();
 
 #endif

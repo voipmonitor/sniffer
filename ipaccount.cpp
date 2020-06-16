@@ -99,16 +99,88 @@ inline void *_Ipacc_outThreadFunction(void *arg) {
 	return(((Ipacc*)arg)->outThreadFunction());
 }
 
+Ipacc::s_ipacc_data::~s_ipacc_data() {
+	t_ipacc_buffer::iterator iter;
+	for(iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); iter++) {
+		delete iter->second;
+	}
+}
+
+void Ipacc::s_cache::init() {
+	if(get_customer_by_ip_sql_driver[0] && get_customer_by_ip_odbc_dsn[0]) {
+		custIpCache = new FILE_LINE(12004) CustIpCache();
+		custIpCache->setConnectParams(
+			get_customer_by_ip_sql_driver, 
+			get_customer_by_ip_odbc_dsn, 
+			get_customer_by_ip_odbc_user, 
+			get_customer_by_ip_odbc_password, 
+			get_customer_by_ip_odbc_driver);
+		custIpCache->setConnectParamsRadius(
+			get_radius_ip_driver,
+			get_radius_ip_host,
+			get_radius_ip_db,
+			get_radius_ip_user,
+			get_radius_ip_password,
+			get_radius_ip_disable_secure_auth);
+		custIpCache->setQueryes(
+			get_customer_by_ip_query, 
+			get_customers_ip_query);
+		custIpCache->setQueryesRadius(
+			get_customers_radius_name_query, 
+			get_radius_ip_query,
+			get_radius_ip_query_where);
+		custIpCache->connect();
+		if(get_customers_ip_query[0]) {
+			custIpCache->fetchAllIpQueryFromDb();
+			custIpCache->setMaxQueryPass(2);
+		}
+	} else {
+		custIpCustomerCache = new FILE_LINE(0) CustIpCustomerCache();
+	}
+	if(isSqlDriver("mysql")) {
+		nextIpCache = new FILE_LINE(12005) NextIpCache();
+		nextIpCache->connect();
+		nextIpCache->fetch();
+		nextIpCache->setMaxQueryPass(2);
+	}
+	if(get_customer_by_pn_sql_driver[0] && get_customer_by_pn_odbc_dsn[0]) {
+		custPnCache = new FILE_LINE(12006) CustPhoneNumberCache();
+		custPnCache->setConnectParams(
+			get_customer_by_pn_sql_driver, 
+			get_customer_by_pn_odbc_dsn, 
+			get_customer_by_pn_odbc_user, 
+			get_customer_by_pn_odbc_password, 
+			get_customer_by_pn_odbc_driver);
+		custPnCache->setQueryes(get_customers_pn_query);
+		custPnCache->connect();
+		if(get_customers_pn_query[0]) {
+			custPnCache->fetchPhoneNumbersFromDb();
+			custPnCache->setMaxQueryPass(2);
+		}
+	}
+}
+
+void Ipacc::s_cache::term() {
+	if(custIpCache) {
+		delete custIpCache;
+	}
+	if(nextIpCache) {
+		delete nextIpCache;
+	}
+	if(custPnCache) {
+		delete custPnCache;
+	}
+	if(custIpCustomerCache) {
+		delete custIpCustomerCache;
+	}
+}
+
 Ipacc::Ipacc() {
-	sync_save_ipacc_buffer[0] = 0;
-	sync_save_ipacc_buffer[1] = 0;
-	last_flush_interval_time = 0;
-	custIpCache = NULL;
-	nextIpCache = NULL;
-	custPnCache = NULL;
-	custIpCustomerCache = NULL;
 	sqlDbSave = NULL;
-	
+	map_ipacc_data_sync = 0;
+	map_ipacc_data_save_limit = 2;
+	last_ipacc_time = 0;
+	last_ipacc_data = NULL;
 	qringmax = 10000;
 	readit = 0;
 	writeit = 0;
@@ -117,12 +189,22 @@ Ipacc::Ipacc() {
 		qring[i].used = 0;
 	}
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
-	
+	save_thread_count = 2;
+	save_thread_data = new FILE_LINE(0) s_save_thread_data[save_thread_count];
+	for(unsigned i = 0; i < save_thread_count; i++) {
+		save_thread_data[i].tid = 0;
+		save_thread_data[i].thread = 0;
+		memset(save_thread_data[i].pstat, 0, sizeof(save_thread_data[i].pstat));
+		save_thread_data[i].data = NULL;
+	}
+	terminating_save_threads = 0;
 	init();
 }
 
 Ipacc::~Ipacc() {
+	stopThread();
 	delete [] qring;
+	delete [] save_thread_data;
 	term();
 }
 
@@ -146,7 +228,145 @@ inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, i
 	}
 }
 
-void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
+void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
+	if(cache->custIpCache) {
+		cache->custIpCache->flush();
+	}
+	if(cache->nextIpCache) {
+		cache->nextIpCache->flush();
+	}
+	if(cache->custPnCache) {
+		cache->custPnCache->flush();
+	}
+	if(cache->custIpCustomerCache) {
+		cache->custIpCustomerCache->flush();
+	}
+	octects_t *ipacc_data;
+	unsigned int src_id_customer,
+		     dst_id_customer;
+	bool src_ip_next,
+	     dst_ip_next;
+	map<unsigned int,IpaccAgreg*> agreg;
+	map<unsigned int, IpaccAgreg*>::iterator agregIter;
+	char insertQueryBuff[1000];
+	/*
+	sqlStore->lock(STORE_PROC_ID_IPACC_1);
+	if(opt_ipacc_sniffer_agregate) {
+		for(int i = 1; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+			sqlStore->lock(STORE_PROC_ID_IPACC_1 + i);
+		}
+	}
+	*/
+	int _counter  = 0;
+	bool enableClear = true;
+	t_ipacc_buffer::iterator iter;
+	for(iter = ipacc_buffer->begin(); iter != ipacc_buffer->end(); iter++) {
+		ipacc_data = iter->second;
+		if(ipacc_data->octects == 0) {
+			ipacc_data->erase = true;
+		} else if(true /*!interval_time_limit ||  ipacc_data->interval_time <= interval_time_limit*/) {
+			src_id_customer = cache->custIpCache ? cache->custIpCache->getCustByIp(iter->first.saddr) : 
+					  cache->custIpCustomerCache ? cache->custIpCustomerCache->getCustomerId(iter->first.saddr) : 0;
+			src_ip_next = cache->nextIpCache ? cache->nextIpCache->isIn(iter->first.saddr) : false;
+			dst_id_customer = cache->custIpCache ? cache->custIpCache->getCustByIp(iter->first.daddr) : 
+					  cache->custIpCustomerCache ? cache->custIpCustomerCache->getCustomerId(iter->first.daddr) : 0;
+			dst_ip_next = cache->nextIpCache ? cache->nextIpCache->isIn(iter->first.daddr) : false;
+			if(!cache->custIpCache || 
+			   !opt_ipacc_agregate_only_customers_on_any_side ||
+  			   src_id_customer || dst_id_customer ||
+			   src_ip_next || dst_ip_next) {
+				if(!opt_ipacc_only_agregation) {
+					if(isTypeDb("mysql")) {
+						snprintf(insertQueryBuff, sizeof(insertQueryBuff),
+							"insert into ipacc ("
+								"interval_time, saddr, src_id_customer, daddr, dst_id_customer, proto, port, "
+								"octects, numpackets, voip, do_agr_trigger"
+							") values ("
+								"'%s', %s, %u, %s, %u, %u, %u, %u, %u, %u, %u)",
+							sqlDateTimeString(ipacc_data->interval_time).c_str(),
+							iter->first.saddr.getStringForMysqlIpColumn("ipacc", "saddr").c_str(),
+							src_id_customer,
+							iter->first.daddr.getStringForMysqlIpColumn("ipacc", "daddr").c_str(),
+							dst_id_customer,
+							iter->first.proto,
+							iter->first.port.getPort(),
+							ipacc_data->octects,
+							ipacc_data->numpackets,
+							ipacc_data->voippacket,
+							opt_ipacc_sniffer_agregate ? 0 : 1);
+						sqlStore->query_lock(insertQueryBuff, 
+								     STORE_PROC_ID_IPACC_1 + 
+								     (opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0));
+					} else {
+						SqlDb_row row;
+						string ipacc_table = "ipacc";
+						row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
+						row.add(iter->first.saddr, "saddr", false, sqlDbSave, ipacc_table.c_str());
+						if(src_id_customer) {
+							row.add(src_id_customer, "src_id_customer");
+						}
+						row.add(iter->first.daddr, "daddr", false, sqlDbSave, ipacc_table.c_str());
+						if(dst_id_customer) {
+							row.add(dst_id_customer, "dst_id_customer");
+						}
+						row.add(iter->first.proto, "proto");
+						row.add(iter->first.port.getPort(), "port");
+						row.add(ipacc_data->octects, "octects");
+						row.add(ipacc_data->numpackets, "numpackets");
+						row.add(ipacc_data->voippacket, "voip");
+						row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
+						sqlDbSave->insert(ipacc_table, row);
+					}
+				}
+				++_counter;
+				if(opt_ipacc_sniffer_agregate) {
+					agregIter = agreg.find(ipacc_data->interval_time);
+					if(agregIter == agreg.end()) {
+						agreg[ipacc_data->interval_time] = new FILE_LINE(12002) IpaccAgreg;
+						agregIter = agreg.find(ipacc_data->interval_time);
+					}
+					agregIter->second->add(
+						iter->first.saddr, iter->first.daddr, 
+						src_id_customer, dst_id_customer, 
+						src_ip_next, dst_ip_next,
+						iter->first.proto, iter->first.port,
+						ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
+				}
+			}
+			ipacc_data->erase = true;
+		}/* else {
+			enableClear = false;
+		}*/
+	}
+	for (iter = ipacc_buffer->begin(); iter != ipacc_buffer->end();) {
+		if(iter->second->erase) {
+			delete iter->second;
+			if(!enableClear) {
+				ipacc_buffer->erase(iter++);
+				continue;
+			}
+		}
+		iter++;
+	}
+	if(enableClear) {
+		ipacc_buffer->clear();
+	}
+	/*
+	sqlStore->unlock(STORE_PROC_ID_IPACC_1);
+	if(opt_ipacc_sniffer_agregate) {
+		for(int i = 1; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
+			sqlStore->unlock(STORE_PROC_ID_IPACC_1 + i);
+		}
+	}
+	*/
+	if(opt_ipacc_sniffer_agregate) {
+		for(agregIter = agreg.begin(); agregIter != agreg.end(); ++agregIter) {
+			agregIter->second->save(agregIter->first);
+			delete agregIter->second;
+		}
+	}
+	
+	/*
 	if(custIpCache) {
 		custIpCache->flush();
 	}
@@ -286,9 +506,56 @@ void Ipacc::save(int indexIpaccBuffer, unsigned int interval_time_limit) {
 	__sync_sub_and_fetch(&sync_save_ipacc_buffer[indexIpaccBuffer], 1);
 	
 	//printf("flush\n");
+	
+	*/
 }
 
 inline void Ipacc::add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket) {
+	unsigned int cur_interval_time = timestamp / opt_ipacc_interval * opt_ipacc_interval;
+	s_ipacc_data *ipacc_data;
+	if(last_ipacc_time && last_ipacc_time == cur_interval_time) {
+		ipacc_data = last_ipacc_data;
+	} else {
+		if(last_ipacc_time && cur_interval_time / opt_ipacc_interval <= last_ipacc_time / opt_ipacc_interval - map_ipacc_data_save_limit) {
+			return;
+		}
+		lock_map_ipacc_data();
+		map<unsigned int, s_ipacc_data*>::iterator iter = map_ipacc_data.find(cur_interval_time);
+		if(iter != map_ipacc_data.end()) {
+			ipacc_data = iter->second;
+		} else {
+			ipacc_data = new FILE_LINE(0) s_ipacc_data;
+			ipacc_data->interval_time = cur_interval_time;
+			map_ipacc_data[cur_interval_time] = ipacc_data;
+			if(cur_interval_time > last_ipacc_time) {
+				last_ipacc_time = cur_interval_time;
+				last_ipacc_data = ipacc_data;
+			}
+		}
+		unlock_map_ipacc_data();
+	}
+	t_ipacc_buffer_key key;
+	key.saddr = saddr;
+	key.daddr = daddr;
+	key.port = port;
+	key.proto = proto;
+	t_ipacc_buffer::iterator iter = ipacc_data->ipacc_buffer.find(key);
+	if(iter != ipacc_data->ipacc_buffer.end()) {
+		octects_t *octects_data = iter->second;
+		octects_data->octects += packetlen;
+		octects_data->numpackets++;
+		octects_data->interval_time = cur_interval_time;
+		octects_data->voippacket = voippacket;
+	} else {
+		octects_t *octects_data = new FILE_LINE(0) octects_t;
+		octects_data->octects += packetlen;
+		octects_data->numpackets++;
+		octects_data->interval_time = cur_interval_time;
+		octects_data->voippacket = voippacket;
+		ipacc_data->ipacc_buffer[key] = octects_data;
+	}
+
+	/*
 	t_ipacc_buffer_key key;
 	key.saddr = saddr;
 	key.daddr = daddr;
@@ -325,125 +592,84 @@ inline void Ipacc::add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort p
 		tmp->voippacket = voippacket;
 //		printf("key[%s] %u\n", key.c_str(), tmp->octects);
 	}
+	*/
+}
+
+unsigned int Ipacc::lengthBuffer() {
+	unsigned int sum_size = 0;
+	lock_map_ipacc_data();
+	for(map<unsigned int, s_ipacc_data*>::iterator iter = map_ipacc_data.begin(); iter != map_ipacc_data.end(); iter++) {
+		sum_size += iter->second->ipacc_buffer.size();
+	}
+	unlock_map_ipacc_data();
+	return(sum_size);
 }
 
 void Ipacc::init() {
 	sqlDbSave = createSqlObject();
-
-	if(get_customer_by_ip_sql_driver[0] && get_customer_by_ip_odbc_dsn[0]) {
-		custIpCache = new FILE_LINE(12004) CustIpCache();
-		custIpCache->setConnectParams(
-			get_customer_by_ip_sql_driver, 
-			get_customer_by_ip_odbc_dsn, 
-			get_customer_by_ip_odbc_user, 
-			get_customer_by_ip_odbc_password, 
-			get_customer_by_ip_odbc_driver);
-		custIpCache->setConnectParamsRadius(
-			get_radius_ip_driver,
-			get_radius_ip_host,
-			get_radius_ip_db,
-			get_radius_ip_user,
-			get_radius_ip_password,
-			get_radius_ip_disable_secure_auth);
-		custIpCache->setQueryes(
-			get_customer_by_ip_query, 
-			get_customers_ip_query);
-		custIpCache->setQueryesRadius(
-			get_customers_radius_name_query, 
-			get_radius_ip_query,
-			get_radius_ip_query_where);
-		custIpCache->connect();
-		if(get_customers_ip_query[0]) {
-			custIpCache->fetchAllIpQueryFromDb();
-			custIpCache->setMaxQueryPass(2);
-		}
-	} else {
-		custIpCustomerCache = new FILE_LINE(0) CustIpCustomerCache();
-	}
-	if(isSqlDriver("mysql")) {
-		nextIpCache = new FILE_LINE(12005) NextIpCache();
-		nextIpCache->connect();
-		nextIpCache->fetch();
-		nextIpCache->setMaxQueryPass(2);
-	}
-	if(get_customer_by_pn_sql_driver[0] && get_customer_by_pn_odbc_dsn[0]) {
-		custPnCache = new FILE_LINE(12006) CustPhoneNumberCache();
-		custPnCache->setConnectParams(
-			get_customer_by_pn_sql_driver, 
-			get_customer_by_pn_odbc_dsn, 
-			get_customer_by_pn_odbc_user, 
-			get_customer_by_pn_odbc_password, 
-			get_customer_by_pn_odbc_driver);
-		custPnCache->setQueryes(get_customers_pn_query);
-		custPnCache->connect();
-		if(get_customers_pn_query[0]) {
-			custPnCache->fetchPhoneNumbersFromDb();
-			custPnCache->setMaxQueryPass(2);
-		}
-	}
 }
 
 void Ipacc::term() {
-	if(custIpCache) {
-		delete custIpCache;
-	}
-	if(nextIpCache) {
-		delete nextIpCache;
-	}
-	if(custPnCache) {
-		delete custPnCache;
-	}
-	if(custIpCustomerCache) {
-		delete custIpCustomerCache;
-	}
-	t_ipacc_buffer::iterator iter;
-	for(int i = 0; i < 2; i++) {
-		for(iter = ipacc_buffer[i].begin(); iter != ipacc_buffer[i].end(); ++iter) {
-			delete iter->second;
-		}
+	for(map<unsigned int, s_ipacc_data*>::iterator iter = map_ipacc_data.begin(); iter != map_ipacc_data.end(); iter++) {
+		delete iter->second;
 	}
 	delete sqlDbSave;
 }
 
 int Ipacc::refreshCustIpCache() {
-	if(custIpCache) {
-		custIpCache->clear();
-		return(custIpCache->fetchAllIpQueryFromDb());
+	if(save_thread_data[0].cache.custIpCache) {
+		save_thread_data[0].cache.custIpCache->clear();
+		return(save_thread_data[0].cache.custIpCache->fetchAllIpQueryFromDb());
 	}
-	if(custIpCustomerCache) {
-		return(custIpCustomerCache->load(true, true));
+	if(save_thread_data[0].cache.custIpCustomerCache) {
+		return(save_thread_data[0].cache.custIpCustomerCache->load(true, true));
 	}
 	return(0);
 }
 
-void Ipacc::preparePstatData() {
-	if(this->outThreadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
-		}
-		pstat_get_data(this->outThreadId, this->threadPstatData);
+string Ipacc::getCpuUsagePerc() {
+	ostringstream outStr;
+	outStr << fixed;
+	double cpu = get_cpu_usage_perc(this->outThreadId, this->threadPstatData);
+	if(cpu > 0) {
+		outStr << setprecision(1) << cpu << "a%";
 	}
-}
-
-double Ipacc::getCpuUsagePerc(bool preparePstatData) {
-	if(preparePstatData) {
-		this->preparePstatData();
-	}
-	if(this->outThreadId) {
-		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
-			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[0], &this->threadPstatData[1],
-				&ucpu_usage, &scpu_usage);
-			return(ucpu_usage + scpu_usage);
+	for(unsigned i = 0; i < save_thread_count; i++) {
+		cpu = get_cpu_usage_perc(save_thread_data[i].tid, save_thread_data[i].pstat);
+		if(cpu > 0) {
+			if(outStr.str().length()) {
+				outStr << "/";
+			}
+			outStr << setprecision(1) << cpu << "b%";
 		}
 	}
-	return(-1);
+	return(outStr.str());
 }
 
 void Ipacc::startThread() {
 	vm_pthread_create("ipaccount",
 			  &this->out_thread_handle, NULL, _Ipacc_outThreadFunction, this, __FILE__, __LINE__);
+	for(unsigned i = 0; i < save_thread_count; i++) {
+		if(i > 0) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&save_thread_data[i].sem[j], 0, 0);
+			}
+		}
+		vm_pthread_create((string("ipacc save - ") + (i == 0 ? "main thread" : "next thread " + intToString(i))).c_str(),
+				  &save_thread_data[i].thread, NULL, _processSave_thread, (void*)(long)i, __FILE__, __LINE__);
+	}
+}
+
+void Ipacc::stopThread() {
+	terminating_save_threads = 1;
+	pthread_join(save_thread_data[0].thread, NULL);
+	for(unsigned i = 1; i < save_thread_count; i++) {
+		sem_post(&save_thread_data[i].sem[0]);
+		pthread_join(save_thread_data[i].thread, NULL);
+		for(int j = 0; j < 2; j++) {
+			sem_destroy(&save_thread_data[i].sem[j]);
+		}
+	}
 }
 
 void *Ipacc::outThreadFunction() {
@@ -466,8 +692,68 @@ void *Ipacc::outThreadFunction() {
 	return(NULL);
 }
 
+void Ipacc::processSave_thread(int threadIndex) {
+	save_thread_data[threadIndex].tid = get_unix_tid();
+	if(threadIndex == 0) {
+		while(!terminating_save_threads) {
+			unsigned map_ipacc_data_size = map_ipacc_data.size();
+			if(map_ipacc_data_size <= map_ipacc_data_save_limit) {
+				 USLEEP(100000);
+				 continue;
+			}
+			for(unsigned i = 1; i < save_thread_count; i++) {
+				save_thread_data[i].data = NULL;
+			}
+			lock_map_ipacc_data();
+			unsigned data_counter = 0;
+			for(map<unsigned int, s_ipacc_data*>::iterator iter = map_ipacc_data.begin(); iter != map_ipacc_data.end(); ) {
+				save_thread_data[data_counter].data = iter->second;
+				map_ipacc_data.erase(iter++);
+				++data_counter;
+				if(data_counter >= save_thread_count ||
+				   data_counter >= map_ipacc_data_size - map_ipacc_data_save_limit) {
+					break;
+				}
+			}
+			unlock_map_ipacc_data();
+			if(data_counter > 0) {
+				if(data_counter > 1) {
+					for(unsigned i = 1; i < data_counter; i++) {
+						sem_post(&save_thread_data[i].sem[0]);
+					}
+				}
+				save(&save_thread_data[threadIndex].data->ipacc_buffer, &save_thread_data[threadIndex].cache);
+				delete save_thread_data[threadIndex].data;
+				if(data_counter > 1) {
+					for(unsigned i = 1; i < data_counter; i++) {
+						sem_wait(&save_thread_data[i].sem[1]);
+					}
+				}
+			} else {
+				USLEEP(100000);
+			}
+		}
+		terminating_save_threads = 2;
+	} else {
+		while(terminating_save_threads < 2) {
+			sem_wait(&save_thread_data[threadIndex].sem[0]);
+			if(terminating_save_threads == 2) {
+				break;
+			}
+			save(&save_thread_data[threadIndex].data->ipacc_buffer, &save_thread_data[threadIndex].cache);
+			delete save_thread_data[threadIndex].data;
+			sem_post(&save_thread_data[threadIndex].sem[1]);
+		}
+	}
+}
+
+void *Ipacc::_processSave_thread(void *_threadIndex) {
+	IPACC->processSave_thread((int)(long)_threadIndex);
+	return(NULL);
+}
+
 inline void ipacc_add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket) {
-	IPACC[0].push(timestamp, saddr, daddr, port, proto, packetlen, voippacket);
+	IPACC->push(timestamp, saddr, daddr, port, proto, packetlen, voippacket);
  
 	t_ipacc_live::iterator it;
 	octects_live_t *data;
@@ -629,9 +915,11 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			(i == 1 ?
 				sqlDateTimeString(time_interval / 3600 * 3600).c_str() :
 				sqlDateString(time_interval).c_str()));
+	/*
 	sqlStore->lock(
 		i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
 		(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
+	*/
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); iter1++) {
 		snprintf(insertQueryBuff, sizeof(insertQueryBuff),
 			"set @i = 0; "
@@ -711,22 +999,26 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter1->second->packets_voip_in,
 			iter1->second->packets_voip_out,
 			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
-		sqlStore->query(insertQueryBuff,
-				i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
-				(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
+		sqlStore->query_lock(insertQueryBuff,
+				     i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
+				     (i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
 	}
+	/*
 	sqlStore->unlock(
 		i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
 		(i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
+	*/
 	}
 	
 	map<AgregIP2, AgregData*>::iterator iter2;
 	agreg_table = "ipacc_agr2_hour";
 	agreg_time_field = "time_hour";
 	strcpy(agreg_time, sqlDateTimeString(time_interval / 3600 * 3600).c_str());
+	/*
 	for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
 		sqlStore->lock(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
 	}
+	*/
 	int _counter = 0;
 	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
 		snprintf(insertQueryBuff, sizeof(insertQueryBuff),
@@ -809,14 +1101,16 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter2->second->packets_voip_in,
 			iter2->second->packets_voip_out,
 			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
-		sqlStore->query(insertQueryBuff,
-				STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
-				(_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
+		sqlStore->query_lock(insertQueryBuff,
+				     STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
+				     (_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
 		++_counter;
 	}
+	/*
 	for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
 		sqlStore->unlock(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i);
 	}
+	*/
 }
 
 CustIpCache::CustIpCache() {
@@ -1378,43 +1672,44 @@ void octects_live_t::setFilter(const char *ipfilter) {
 }
 
 CustIpCache *getCustIpCache() {
-	return(IPACC ? IPACC[0].getCustIpCache() : NULL);
+	return(IPACC ? IPACC->getCustIpCache() : NULL);
 }
 
 CustPhoneNumberCache *getCustPnCache() {
-	return(IPACC ? IPACC[0].getCustPnCache() : NULL);
+	return(IPACC ? IPACC->getCustPnCache() : NULL);
 }
 
 int refreshCustIpCache() {
-	return(IPACC ? IPACC[0].refreshCustIpCache() : 0);
+	return(IPACC ? IPACC->refreshCustIpCache() : 0);
 }
 
 unsigned int lengthIpaccBuffer() {
-	return(IPACC ? IPACC[0].lengthBuffer() : 0);
+	return(IPACC ? IPACC->lengthBuffer() : 0);
 }
 
 string getIpaccCpuUsagePerc() {
-	ostringstream outStr;
 	if(IPACC) {
-		outStr << fixed;
-		double tipacc = IPACC[0].getCpuUsagePerc(true);
-		if(tipacc > 0) {
-			outStr << setprecision(1) << tipacc << "%";
-		}
+		return(IPACC->getCpuUsagePerc());
 	}
-	return(outStr.str());
+	return("");
 }
 
 void initIpacc() {
-	IPACC = new FILE_LINE(12015) Ipacc[1];
+	IPACC = new FILE_LINE(12015) Ipacc;
 }
 
 void termIpacc() {
-	delete [] IPACC;
+	delete IPACC;
 }
 
 void ipaccStartThread() {
 	if(IPACC) {
-		IPACC[0].startThread();
+		IPACC->startThread();
+	}
+}
+
+void ipaccStopThread() {
+	if(IPACC) {
+		IPACC->stopThread();
 	}
 }
