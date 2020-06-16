@@ -5850,6 +5850,23 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						forceStop = true;
 						break;
 					}
+					if(!(opt_pcap_queue_store_queue_max_disk_size &&
+					     !opt_pcap_queue_disk_folder.empty())) {
+						double heapPerc = buffersControl.getPercUsePB();
+						if(heapPerc > 90) {
+							syslog(LOG_NOTICE, "enforce close connection (heap is almost full) from %s:%i", 
+							       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+							       this->packetServerConnections[arg2]->socketClientPort.getPort());
+							this->packetServerConnections[arg2]->active = false;
+							forceStop = true;
+							USLEEP(500000);
+							break;
+						} else if(heapPerc > 85) {
+							USLEEP(10000);
+						} else if(heapPerc > 80) {
+							USLEEP(1000);
+						}
+					}
 					if(readLen) {
 						counterEmptyData = 0;
 						bufferLen += readLen;
