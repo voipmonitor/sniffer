@@ -1320,10 +1320,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
 
-	if(!VERBOSE && !DEBUG_VERBOSE) {
-		return;
-	}
-
 	if(this->instancePcapHandle) {
 		if(this->instancePcapHandle->initAllReadThreadsFinished) {
 			this->instancePcapHandle->prepareLogTraffic();
