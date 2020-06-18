@@ -4453,14 +4453,25 @@ int Mgmt_heapprof(Mgmt_params *params) {
 		return(0);
 	}
 	#if HAVE_LIBTCMALLOC_HEAPPROF
+	extern bool heap_profiler_is_running;
 	if(strstr(params->buf, startCmd)) {
-		HeapProfilerStart(strlen(params->buf) > strlen(startCmd) + 1 ? 
-				   params->buf + strlen(startCmd) + 1 : 
-				   "voipmonitor.hprof");
+		if(!heap_profiler_is_running) {
+			HeapProfilerStart(strlen(params->buf) > strlen(startCmd) + 1 ? 
+					   params->buf + strlen(startCmd) + 1 : 
+					   "voipmonitor.hprof");
+			heap_profiler_is_running = true;
+		}
 	} else if(strstr(params->buf, "heapprof_stop")) {
-		HeapProfilerStop();
+		if(heap_profiler_is_running) {
+			HeapProfilerStop();
+			heap_profiler_is_running = false;
+		}
 	} else if(strstr(params->buf, "heapprof_dump")) {
-		HeapProfilerDump("force dump via manager");
+		if(heap_profiler_is_running) {
+			HeapProfilerDump("force dump via manager");
+		} else {
+			return(params->sendString("heap profiler is not running"));
+		}
 	}
 	#else
 	return(params->sendString("heap profiler need build with tcmalloc (with heap profiler)"));

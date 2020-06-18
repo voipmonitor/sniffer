@@ -1083,6 +1083,8 @@ int opt_mirror_connect_maximum_time_diff_s = 2;
 int opt_client_server_connect_maximum_time_diff_s = 2;
 int opt_receive_packetbuffer_maximum_time_diff_s = 30;
 
+bool heap_profiler_is_running = false;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -8199,7 +8201,10 @@ void get_command_line_arguments() {
 				break;
 			case 342:
 				#if HAVE_LIBTCMALLOC_HEAPPROF
-				HeapProfilerStart(optarg && *optarg ? optarg : "voipmonitor.hprof");
+				if(!heap_profiler_is_running) {
+					HeapProfilerStart(optarg && *optarg ? optarg : "voipmonitor.hprof");
+					heap_profiler_is_running = true;
+				}
 				#else
 				syslog(LOG_NOTICE, "heap profiler need build with tcmalloc (with heap profiler)");
 				#endif

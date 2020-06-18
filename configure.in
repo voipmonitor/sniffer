@@ -205,6 +205,7 @@ if test "x$HAVE_LIBTCMALLOC_HEAPPROF" = "x1"; then
 	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc_minimal])
 	AC_DEFINE([HAVE_LIBTCMALLOC_HEAPPROF], [1], [Define if using libtcmalloc (with heap profiler)])
 	AC_SUBST([LIBTCMALLOC],["-ltcmalloc"])
+	AC_SUBST([HEAPPROF_CXXFLAG],["-fno-omit-frame-pointer"])
 	TCMALLOC_T="yes (with heap profiler)"
 fi
 OPENSSL_T=no

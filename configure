@@ -587,6 +587,7 @@ PACKAGE_URL=''
 ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+HEAPPROF_CXXFLAG
 LIBTCMALLOC
 LIBGNUTLSSTATIC
 LIBGNUTLS
@@ -4556,6 +4557,8 @@ $as_echo "#define HAVE_LIBTCMALLOC 1" >>confdefs.h
 $as_echo "#define HAVE_LIBTCMALLOC_HEAPPROF 1" >>confdefs.h
 
 	LIBTCMALLOC="-ltcmalloc"
+
+	HEAPPROF_CXXFLAG="-fno-omit-frame-pointer"
 
 	TCMALLOC_T="yes (with heap profiler)"
 fi
