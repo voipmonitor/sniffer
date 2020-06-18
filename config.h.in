@@ -67,8 +67,11 @@
 /* Define if using libss */
 #undef HAVE_LIBSSH
 
-/* Define if using libtcmalloc */
+/* Define if using libtcmalloc_minimal */
 #undef HAVE_LIBTCMALLOC
+
+/* Define if using libtcmalloc (with heap profiler) */
+#undef HAVE_LIBTCMALLOC_HEAPPROF
 
 /* Define to 1 if you have the `vorbis' library (-lvorbis). */
 #undef HAVE_LIBVORBIS

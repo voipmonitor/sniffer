@@ -56,6 +56,9 @@
 #if HAVE_LIBTCMALLOC
 #include <gperftools/malloc_extension.h>
 #endif
+#if HAVE_LIBTCMALLOC_HEAPPROF
+#include <gperftools/heap-profiler.h>
+#endif
 
 //#define BUFSIZE 1024
 //define BUFSIZE 20480
@@ -409,6 +412,7 @@ int Mgmt_ignore_rtcp_jitter(Mgmt_params *params);
 int Mgmt_convertchars(Mgmt_params *params);
 int Mgmt_natalias(Mgmt_params *params);
 int Mgmt_jemalloc_stat(Mgmt_params *params);
+int Mgmt_heapprof(Mgmt_params *params);
 int Mgmt_list_active_clients(Mgmt_params *params);
 int Mgmt_memory_stat(Mgmt_params *params);
 int Mgmt_sqlexport(Mgmt_params *params);
@@ -518,6 +522,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_convertchars,
 	Mgmt_natalias,
 	Mgmt_jemalloc_stat,
+	Mgmt_heapprof,
 	Mgmt_list_active_clients,
 	Mgmt_memory_stat,
 	Mgmt_sqlexport,
@@ -4433,6 +4438,34 @@ int Mgmt_jemalloc_stat(Mgmt_params *params) {
 	string jeMallocStat(bool full);
 	string rsltMemoryStat = jeMallocStat(strstr(params->buf, "full"));
 	return(params->sendString(&rsltMemoryStat));
+}
+
+int Mgmt_heapprof(Mgmt_params *params) {
+	const char *startCmd = "heapprof_start";
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{startCmd, "heapprof_start"},
+			{"heapprof_stop", "heapprof_stop"},
+			{"heapprof_dump", "heapprof_dump"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	#if HAVE_LIBTCMALLOC_HEAPPROF
+	if(strstr(params->buf, startCmd)) {
+		HeapProfilerStart(strlen(params->buf) > strlen(startCmd) + 1 ? 
+				   params->buf + strlen(startCmd) + 1 : 
+				   "voipmonitor.hprof");
+	} else if(strstr(params->buf, "heapprof_stop")) {
+		HeapProfilerStop();
+	} else if(strstr(params->buf, "heapprof_dump")) {
+		HeapProfilerDump("force dump via manager");
+	}
+	#else
+	return(params->sendString("heap profiler need build with tcmalloc (with heap profiler)"));
+	#endif
+	return(0);
 }
 
 /* obsolete

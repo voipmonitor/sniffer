@@ -147,7 +147,18 @@ AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma.
 AC_CHECK_LIB([lzo2], [main], HAVE_LIBLZO=1, AC_MSG_ERROR([Unable to find lzo. apt-get install liblzo2-dev | yum install lzo-devel]))
 AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_NOTICE([Unable to find gnutls - disabling SIP TLS decoder. apt-get install gnutls-dev | yum install gnutls-devel]))
 AC_CHECK_LIB([gcrypt], [gcry_check_version], HAVE_LIBGCRYPT=1, AC_MSG_NOTICE([Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel]))
-AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
+
+AC_ARG_WITH(heap_profiler, [  --with-heap_profiler    use tcmalloc library with heap profiler], [
+    HEAPPROF=1
+], [
+    HEAPPROF=0
+])
+if test "x$HEAPPROF" = "x1"
+then
+    AC_CHECK_LIB([tcmalloc], [tc_malloc], HAVE_LIBTCMALLOC_HEAPPROF=1, AC_MSG_NOTICE([Unable to find tcmalloc library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
+else
+    AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
+fi
 
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
@@ -186,9 +197,15 @@ if test "x$HAVE_LIBGNUTLS" = "x1" && test "x$HAVE_LIBGCRYPT" = "x1"; then
 fi
 TCMALLOC_T=no
 if test "x$HAVE_LIBTCMALLOC" = "x1"; then 
-	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc])
+	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc_minimal])
 	AC_SUBST([LIBTCMALLOC],["-ltcmalloc_minimal"])
 	TCMALLOC_T=yes
+fi
+if test "x$HAVE_LIBTCMALLOC_HEAPPROF" = "x1"; then 
+	AC_DEFINE([HAVE_LIBTCMALLOC], [1], [Define if using libtcmalloc_minimal])
+	AC_DEFINE([HAVE_LIBTCMALLOC_HEAPPROF], [1], [Define if using libtcmalloc (with heap profiler)])
+	AC_SUBST([LIBTCMALLOC],["-ltcmalloc"])
+	TCMALLOC_T="yes (with heap profiler)"
 fi
 OPENSSL_T=no
 if test "x$HAVE_OPENSSL101" = "x1"; then 

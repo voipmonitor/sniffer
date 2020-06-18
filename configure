@@ -663,6 +663,7 @@ with_libc_dir
 with_dpdk_include
 with_dpdk_lib
 with_mysql
+with_heap_profiler
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1287,6 +1288,7 @@ Optional Packages:
   --with-dpdk-include=PATH path to explicit include files
   --with-dpdk-lib=PATH path to explicit lib files
   --with-mysql=PATH path to mysql_config binary or mysql prefix dir
+  --with-heap_profiler    use tcmalloc library with heap profiler
 
 Some influential environment variables:
   CXX         C++ compiler command
@@ -4382,7 +4384,66 @@ else
 $as_echo "$as_me: Unable to find libgcrypt - disabling SIP TLS decoder. apt-get install libgcrypt-dev | yum install libgcrypt-devel" >&6;}
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc_minimal" >&5
+
+
+# Check whether --with-heap_profiler was given.
+if test "${with_heap_profiler+set}" = set; then :
+  withval=$with_heap_profiler;
+    HEAPPROF=1
+
+else
+
+    HEAPPROF=0
+
+fi
+
+if test "x$HEAPPROF" = "x1"
+then
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc" >&5
+$as_echo_n "checking for tc_malloc in -ltcmalloc... " >&6; }
+if ${ac_cv_lib_tcmalloc_tc_malloc+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ltcmalloc  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char tc_malloc ();
+int
+main ()
+{
+return tc_malloc ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_tcmalloc_tc_malloc=yes
+else
+  ac_cv_lib_tcmalloc_tc_malloc=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_tcmalloc_tc_malloc" >&5
+$as_echo "$ac_cv_lib_tcmalloc_tc_malloc" >&6; }
+if test "x$ac_cv_lib_tcmalloc_tc_malloc" = xyes; then :
+  HAVE_LIBTCMALLOC_HEAPPROF=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find tcmalloc library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/" >&5
+$as_echo "$as_me: Unable to find tcmalloc library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/" >&6;}
+fi
+
+else
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for tc_malloc in -ltcmalloc_minimal" >&5
 $as_echo_n "checking for tc_malloc in -ltcmalloc_minimal... " >&6; }
 if ${ac_cv_lib_tcmalloc_minimal_tc_malloc+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -4425,6 +4486,7 @@ else
 $as_echo "$as_me: Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/" >&6;}
 fi
 
+fi
 
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then
@@ -4485,6 +4547,17 @@ $as_echo "#define HAVE_LIBTCMALLOC 1" >>confdefs.h
 	LIBTCMALLOC="-ltcmalloc_minimal"
 
 	TCMALLOC_T=yes
+fi
+if test "x$HAVE_LIBTCMALLOC_HEAPPROF" = "x1"; then
+
+$as_echo "#define HAVE_LIBTCMALLOC 1" >>confdefs.h
+
+
+$as_echo "#define HAVE_LIBTCMALLOC_HEAPPROF 1" >>confdefs.h
+
+	LIBTCMALLOC="-ltcmalloc"
+
+	TCMALLOC_T="yes (with heap profiler)"
 fi
 OPENSSL_T=no
 if test "x$HAVE_OPENSSL101" = "x1"; then

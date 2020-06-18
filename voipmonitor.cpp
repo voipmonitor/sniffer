@@ -97,6 +97,10 @@
 #include "heap_chunk.h"
 #include "charts.h"
 
+#if HAVE_LIBTCMALLOC_HEAPPROF
+#include <gperftools/heap-profiler.h>
+#endif
+
 #ifndef FREEBSD
 #define BACKTRACE 1
 #endif
@@ -7561,6 +7565,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
+	    {"heap-profiler", 1, 0, 342},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8191,6 +8196,13 @@ void get_command_line_arguments() {
 				opt_dup_check = 1;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
+				break;
+			case 342:
+				#if HAVE_LIBTCMALLOC_HEAPPROF
+				HeapProfilerStart(optarg && *optarg ? optarg : "voipmonitor.hprof");
+				#else
+				syslog(LOG_NOTICE, "heap profiler need build with tcmalloc (with heap profiler)");
+				#endif
 				break;
 		}
 		if(optarg) {
