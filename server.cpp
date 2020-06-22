@@ -577,6 +577,7 @@ void cSnifferServerConnection::cp_service() {
 	snifferServerServices.add(&service);
 	u_int64_t lastWriteTimeUS = 0;
 	u_int64_t wait_remote_chart_server_processing_to_time_ms = 0;
+	unsigned errors_counter = 0;
 	while(!server->isTerminate() &&
 	      !terminate) {
 		u_int64_t time_us = getTimeUS();
@@ -590,6 +591,16 @@ void cSnifferServerConnection::cp_service() {
 				}
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
+			break;
+		}
+		if(errors_counter > 100) {
+			ostringstream verbstr;
+			verbstr << "SNIFFER SERVICE STOP (because too many errors): "
+				<< "sensor_id: " << sensor_id;
+			if(!sensor_string.empty()) {
+				verbstr << ", " << "sensor_string: " << sensor_string;
+			}
+			syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			break;
 		}
 		sSnifferServerGuiTask task = getTask();
@@ -637,12 +648,14 @@ void cSnifferServerConnection::cp_service() {
 					add_rchs_query(rchs_query, false);
 					syslog(LOG_NOTICE, "failed send data to remote chart client - try again after 1s");
 					wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
+					++errors_counter;
 					continue;
 				}
 				string response;
 				if(socket->readBlockTimeout(&response, 30) &&
 				   response == "OK") {
 					delete rchs_query;
+					errors_counter = 0;
 				} else {
 					add_rchs_query(rchs_query, false);
 					if(response.empty()) {
@@ -652,6 +665,7 @@ void cSnifferServerConnection::cp_service() {
 						syslog(LOG_NOTICE, "remote chart client sent error '%s' - try again after 1s", response.c_str());
 						wait_remote_chart_server_processing_to_time_ms = getTimeMS() + 1000;
 					}
+					++errors_counter;
 				}
 				continue;
 			}

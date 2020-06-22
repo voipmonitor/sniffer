@@ -350,6 +350,7 @@ char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
+int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 bool opt_nonstop_read = false;
@@ -7539,6 +7540,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"continue-after-read", 0, 0, 302},
 	    {"nonstop-read", 0, 0, 335},
 	    {"diff-days", 1, 0, 303},
+	    {"time-adjustment", 1, 0, 343},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
 	    {"run-cleanspool-maxdays", 1, 0, 312},
@@ -8018,6 +8020,9 @@ void get_command_line_arguments() {
 				break;
 			case 303:
 				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);
+				break;
+			case 343:
+				opt_pb_read_from_file_time_adjustment = atoll(optarg);
 				break;
 			case 304:
 			case 305:

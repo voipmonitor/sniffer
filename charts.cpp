@@ -768,7 +768,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 		cache_row.add(opt_id_sensor, "sensor_id");
 	}
 	cache_row.add(sqlDateTimeString(created_at_s), "created_at");
-	cache_row.add(chart_data, "chart_data");
+	cache_row.add(sqlEscapeString(chart_data), "chart_data");
 	string insert_str;
 	if(!store_counter) {
 		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
@@ -777,7 +777,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 		SqlDb_row cache_row_update;
 		cache_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
 		cache_row_update.add(store_counter  + 1, "updated_counter");
-		cache_row_update.add(chart_data, "chart_data");
+		cache_row_update.add(sqlEscapeString(chart_data), "chart_data");
 		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
 			     sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true, &cache_row_update));
 	}
