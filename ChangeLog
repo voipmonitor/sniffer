@@ -1,3 +1,23 @@
+26.17 24.06.2020
+================
+- change xPDV calculation so it will show median PDV now [VG-2115]
+- new options for client/server packet mirroring: mirror_connect_maximum_time_diff_s, client_server_connect_maximum_time_diff_s, receive_packetbuffer_maximum_time_diff_s [VS-1075]
+- log (syslog and GUI) 'Critical low disk space in spool' [VS-836]
+- log (syslog and GUI) if sniffer detects 'insufficient allocable RAM' before it crashes [VG-2084]
+- fix sensor upgrade in IPv6-only system. Now we try all ip addresses returned from DNS when downloading [VS-1072]
+- fix issue with non-ascii and utf characters like user agent and last sip response etc (only in mysql_enable_set_id mode) 
+- do not cut STUN and DTLS RTP packets for rtpsave=header 
+- fix check configuration values between mysql and default config [VG-2128]
+- fix uploading pcap without RTP payload (if rtpsave=header pcap was stored and reuploaded via sniffer/GUI) [VS-1076]
+- fix default mysql ssl values
+- fix set default values of mysql ssl parameters
+- add measure preventing overload packetbuffer in mirror receiver mode
+- add support for tcmalloc heap profiler
+- enable processing PcapQueue::pcapStat without verbose (-v1) [VS-1078]
+- break client/server connection when there are too much errors 
+- add more debug information for dssl 
+
+
 26.16 26.05.2020
 ================
 - amr wb support [VS-487]
