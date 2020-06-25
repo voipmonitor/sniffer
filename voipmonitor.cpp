@@ -4420,10 +4420,12 @@ int main_init_read() {
 					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
 				if(!is_read_from_file() && !sverb.suppress_fork) {
-					if (--swapDelayCount < 0) {
-						checkSwapUsage();
+					if (!is_client_packetbuffer_sender()) {
+						if (--swapDelayCount < 0) {
+							checkSwapUsage();
+						}
 					}
-					if (!isCloud()) {
+					if (!isCloud() && !is_client()) {
 						if (--swapMysqlDelayCount < 0) {
 							checkMysqlSwapUsage();
 						}
