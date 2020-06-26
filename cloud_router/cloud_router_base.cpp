@@ -36,12 +36,12 @@ cRsa::~cRsa() {
 	}
 }
 
-void cRsa::generate_keys() {
+void cRsa::generate_keys(unsigned keylen) {
 	#if __GNUC__ >= 8
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 	#endif
-	RSA *rsa = RSA_generate_key(2048, RSA_F4, 0, 0);
+	RSA *rsa = RSA_generate_key(keylen, RSA_F4, 0, 0);
 	#if __GNUC__ >= 8
 	#pragma GCC diagnostic pop
 	#endif
@@ -1281,6 +1281,7 @@ bool cReceiver::_connect(string host, u_int16_t port, unsigned loopSleepS) {
 
 void cReceiver::_close() {
 	if(receive_socket) {
+		receive_socket->close();
 		delete receive_socket;
 		receive_socket = NULL;
 	}

@@ -455,7 +455,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command)
 }
 
 void cSnifferServerConnection::cp_service() {
-	socket->generate_rsa_keys();
+	socket->generate_rsa_keys(4096);
 	JsonExport json_rsa_key;
 	json_rsa_key.add("rsa_key", socket->get_rsa_pub_key());
 	if(!socket->writeBlock(json_rsa_key.getJson())) {
@@ -1176,11 +1176,15 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	}
 	json_keys.add("check_ping_response", true);
 	json_keys.add("auto_parameters", true);
-	json_keys.add("remote_chart_server", client_options->remote_chart_server);
-	json_keys.add("use_encode_data", use_encode_data);
+	if(client_options->remote_chart_server) {
+		json_keys.add("remote_chart_server", client_options->remote_chart_server);
+	}
+	if(use_encode_data) {
+		json_keys.add("use_encode_data", use_encode_data);
+	}
 	if(!receive_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
 		if(!receive_socket->isError()) {
-			receive_socket->setError("failed send sesnor_id & aes keys");
+			receive_socket->setError("failed send sensor_id & aes keys");
 		}
 		_close();
 		return(false);

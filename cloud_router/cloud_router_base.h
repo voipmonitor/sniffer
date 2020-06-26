@@ -62,7 +62,7 @@ public:
 public:
 	cRsa();
 	~cRsa();
-	void generate_keys();
+	void generate_keys(unsigned keylen = 2048);
 	RSA *create_rsa(const char *key, eTypeKey typeKey);
 	RSA *create_rsa(eTypeKey typeKey);
 	bool public_encrypt(u_char **data, size_t *datalen, bool destroyOldData);
@@ -396,8 +396,8 @@ public:
 	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
 	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0);
-	void generate_rsa_keys() {
-		rsa.generate_keys();
+	void generate_rsa_keys(unsigned keylen = 2048) {
+		rsa.generate_keys(keylen);
 	}
 	string get_rsa_pub_key() {
 		return(rsa.getPubKey());
