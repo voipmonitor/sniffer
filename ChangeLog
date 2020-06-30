@@ -1,3 +1,9 @@
+26.17.1 26.06.2020
+==================
+- fix client / server connection (extend rsa key length for service connection to 4096), force close connection if failed, fix typo 'sesnor' [VS-1081]
+- adjust conditions for the swap checking.
+
+
 26.17 24.06.2020
 ================
 - change xPDV calculation so it will show median PDV now [VG-2115]
