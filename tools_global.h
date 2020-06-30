@@ -409,6 +409,7 @@ string intToString(long long i);
 string intToString(u_int16_t i);
 string intToString(u_int32_t i);
 string intToString(u_int64_t i);
+string intToString(int64_t i);
 string floatToString(double d);
 string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);

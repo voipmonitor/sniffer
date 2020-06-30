@@ -341,6 +341,12 @@ string intToString(u_int64_t i) {
 	return(outStr.str());
 }
 
+string intToString(int64_t i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 string floatToString(double d) {
 	ostringstream outStr;
 	outStr << fixed;

@@ -5875,20 +5875,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
 			if(existsColumns.cdr_price_operator_mult1000000) {
-				cdr.add(round(operator_price * 1000000), "price_operator_mult1000000");
+				cdr.add(round(operator_price * 1000000), "price_operator_mult1000000", operator_id == 0);
 			} else if(existsColumns.cdr_price_operator_mult100) {
-				cdr.add(round(operator_price * 100), "price_operator_mult100");
+				cdr.add(round(operator_price * 100), "price_operator_mult100", operator_id == 0);
 			}
 			if(existsColumns.cdr_price_customer_mult1000000) {
-				cdr.add(round(customer_price * 1000000), "price_customer_mult1000000");
+				cdr.add(round(customer_price * 1000000), "price_customer_mult1000000", customer_id == 0);
 			} else if(existsColumns.cdr_price_customer_mult100) {
-				cdr.add(round(customer_price * 100), "price_customer_mult100");
+				cdr.add(round(customer_price * 100), "price_customer_mult100", customer_id == 0);
 			}
 			if(existsColumns.cdr_price_operator_currency_id) {
-				cdr.add(operator_currency_id, "price_operator_currency_id");
+				cdr.add(operator_currency_id, "price_operator_currency_id", operator_currency_id == 0);
 			}
 			if(existsColumns.cdr_price_customer_currency_id) {
-				cdr.add(customer_currency_id, "price_customer_currency_id");
+				cdr.add(customer_currency_id, "price_customer_currency_id", customer_currency_id == 0);
 			}
 			if(operator_price > 0 || customer_price > 0) {
 				billing->saveAggregation(calltime_s(),

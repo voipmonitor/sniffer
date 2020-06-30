@@ -382,6 +382,11 @@ SqlDb_rows::~SqlDb_rows() {
 	}
 }
 
+void SqlDb_rows::push(SqlDb_row *row) {
+	row->clearSqlDb();
+	rows.push_back(*row);
+}
+
 SqlDb_row& SqlDb_rows::fetchRow() {
 	static SqlDb_row row_empty;
 	if(!iter_rows) {
@@ -1118,6 +1123,11 @@ int64_t SqlDb::insert(string table, vector<SqlDb_row> *rows) {
 }
 
 bool SqlDb::update(string table, SqlDb_row row, const char *whereCond) {
+	string query = this->updateQuery(table, row, whereCond);
+	return(this->query(query));
+}
+
+bool SqlDb::update(string table, SqlDb_row row, SqlDb_row whereCond) {
 	string query = this->updateQuery(table, row, whereCond);
 	return(this->query(query));
 }

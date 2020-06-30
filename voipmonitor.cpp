@@ -1016,6 +1016,7 @@ char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
 char *opt_cmp_config_params = NULL;
+char *opt_revaluation_params = NULL;
 bool is_gui_param = false;
 char opt_test_str[1024];
 
@@ -2900,6 +2901,7 @@ bool is_set_gui_params() {
 	       opt_test_regexp_gui_params ||
 	       opt_read_pcap_gui_params ||
 	       opt_cmp_config_params ||
+	       opt_revaluation_params ||
 	       is_gui_param);
 }
 
@@ -3504,6 +3506,10 @@ int main(int argc, char *argv[]) {
 			}
 			cout << endl;
 		}
+		return(0);
+	}
+	if(opt_revaluation_params) {
+		revaluationBilling(opt_revaluation_params);
 		return(0);
 	}
 	
@@ -7576,6 +7582,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
 	    {"heap-profiler", 1, 0, 342},
+	    {"revaluation", 1, 0, 344},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8219,6 +8226,12 @@ void get_command_line_arguments() {
 				#else
 				syslog(LOG_NOTICE, "heap profiler need build with tcmalloc (with heap profiler)");
 				#endif
+				break;
+			case 344:
+				if(!opt_revaluation_params) {
+					opt_revaluation_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_revaluation_params, optarg);
+				}
 				break;
 		}
 		if(optarg) {

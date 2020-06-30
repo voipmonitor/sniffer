@@ -305,6 +305,7 @@ vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
 string implode(vector<string> vect, const char *sep);
+string implode(list<u_int64_t> *items, const char *sep);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
 int msleep(long msec);
@@ -2608,6 +2609,7 @@ inline long int mktime(const char *str_time, const char *timezone) {
 	struct tm time;
 	memset(&time, 0, sizeof(struct tm));
 	strptime(str_time, "%Y-%m-%d %H:%M:%S", &time);
+	time.tm_isdst = -1;
 	return(mktime(&time, timezone));
 }
 

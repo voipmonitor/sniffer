@@ -279,6 +279,7 @@ class SqlDb_rows {
 public:
 	SqlDb_rows();
 	~SqlDb_rows();
+	void push(SqlDb_row *row);
 	SqlDb_row &fetchRow();
 	void initFetch();
 	unsigned countRow();
@@ -343,6 +344,7 @@ public:
 	virtual int64_t insert(string table, SqlDb_row row);
 	virtual int64_t insert(string table, vector<SqlDb_row> *rows);
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
+	virtual bool update(string table, SqlDb_row row, SqlDb_row whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int64_t getInsertId() = 0;
 	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);

@@ -318,6 +318,8 @@ public:
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id,
+		     unsigned force_operator_id = 0, unsigned force_customer_id = 0,
+		     bool use_exclude_rules = true,
 		     vector<string> *operator_debug = NULL, vector<string> *customer_debug = NULL);
 	bool saveAggregation(time_t time,
 			     vmIP ip_src, vmIP ip_dst,
@@ -339,6 +341,12 @@ public:
 		    const char *sensor_id,
 		    const char *verify_operator_price, const char *verify_customer_price,
 		    bool json_rslt);
+	void revaluationBilling(list<u_int64_t> *ids,
+				unsigned force_operator_id = 0, unsigned force_customer_id = 0,
+				bool use_exclude_rules = true);
+	void revaluationBilling(SqlDb_rows *rows, SqlDb *sqlDb,
+				unsigned force_operator_id = 0, unsigned force_customer_id = 0,
+				bool use_exclude_rules = true);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -365,6 +373,11 @@ private:
 void initBilling(SqlDb *sqlDb);
 void termBilling();
 void refreshBilling();
+
+void revaluationBilling(const char *params);
+void revaluationBilling(list<u_int64_t> *ids,
+			unsigned force_operator_id = 0, unsigned force_customer_id = 0,
+			bool use_exclude_rules = true);
 
 
 #endif //BILLING_H
