@@ -311,37 +311,49 @@ string json_string_escape(const char *str) {
 }
 
 
+string intToString(short int i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
 string intToString(int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
 }
 
-string intToString(long long i) {
+string intToString(long int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
 }
 
-string intToString(u_int16_t i) {
+string intToString(long long int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
 }
 
-string intToString(u_int32_t i) {
+string intToString(unsigned short int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
 }
 
-string intToString(u_int64_t i) {
+string intToString(unsigned int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());
 }
 
-string intToString(int64_t i) {
+string intToString(unsigned long int i) {
+	ostringstream outStr;
+	outStr << i;
+	return(outStr.str());
+}
+
+string intToString(unsigned long long int i) {
 	ostringstream outStr;
 	outStr << i;
 	return(outStr.str());

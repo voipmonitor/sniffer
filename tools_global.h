@@ -404,12 +404,14 @@ private:
 string json_string_escape(const char *str);
 
 
+string intToString(short int i);
 string intToString(int i);
-string intToString(long long i);
-string intToString(u_int16_t i);
-string intToString(u_int32_t i);
-string intToString(u_int64_t i);
-string intToString(int64_t i);
+string intToString(long int i);
+string intToString(long long int i);
+string intToString(unsigned short int i);
+string intToString(unsigned int i);
+string intToString(unsigned long int i);
+string intToString(unsigned long long int i);
 string floatToString(double d);
 string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
