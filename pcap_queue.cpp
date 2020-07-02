@@ -5038,10 +5038,10 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 		}
 		++counter;
-		if((!fetchPacketOk || blockStoreCount > 1) &&
-		   (!this->readThreadsCount || !(counter % 1000))) {
+		if(!fetchPacketOk || blockStoreCount > 1) {
 			for(int i = 0; i < blockStoreCount; i++) {
-				if(blockStore[i]->isFull_checkTimeout()) {
+				if((!fetchPacketOk || i != blockStoreIndex) &&
+				   blockStore[i]->isFull_checkTimeout()) {
 					this->push_blockstore(&blockStore[i]);
 					++sumBlocksCounterIn[0];
 					blockStore[i] = this->new_blockstore(i);
