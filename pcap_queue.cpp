@@ -532,7 +532,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	this->full = true;
 }
 
-int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool restoreFromStore) {
+int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool restoreFromStore, string *error) {
 	u_char *_buffer = buffer + (offset ? *offset : 0);
 	size_t _size = size - (offset ? *offset : 0);
 	if(_size <= 0) {
@@ -568,7 +568,12 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	   this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
 		extern int opt_receive_packetbuffer_maximum_time_diff_s;
-		if(abs((int)(((pcap_block_store_header*)this->restoreBuffer)->time_s % 3600) - (int)(getTimeS() % 3600)) > opt_receive_packetbuffer_maximum_time_diff_s) {
+		int timeDiff = abs((int64_t)(((pcap_block_store_header*)this->restoreBuffer)->time_s) - (int64_t)(getTimeS())) % 3600;
+		if(timeDiff > opt_receive_packetbuffer_maximum_time_diff_s) {
+			string _error = "Time difference between server and client (id_sensor:" + (((pcap_block_store_header*)this->restoreBuffer)->sensor_id > 0 ? intToString(((pcap_block_store_header*)this->restoreBuffer)->sensor_id) : "local") + ") is too big (" + intToString(timeDiff) + "s) - data cannot be received. Please synchronise time on both server and client. Or increase configuration option receive_packetbuffer_maximum_time_diff_s parameter on server.";
+			if(error) {
+				*error = _error;
+			}
 			return(-7);
 		} else {
 			((pcap_block_store_header*)this->restoreBuffer)->time_s = 0;
@@ -5680,10 +5685,10 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 }
 
 bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter) {
-	pcap_block_store *blockStore = new FILE_LINE(0) pcap_block_store;
-	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, NULL);
 	*error = "";
 	*warning = "";
+	pcap_block_store *blockStore = new FILE_LINE(0) pcap_block_store;
+	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, NULL, false, error);
 	if(rsltAddRestoreChunk > 0) {
 		string *check_headers_error = NULL;
 		if(!blockStore->check_offsets()) {
@@ -5696,7 +5701,9 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 			}
 		}
 	} else if(rsltAddRestoreChunk < 0) {
-		*error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
+		if(error->empty()) {
+			*error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
+		}
 	} 
 	if(error->empty()) {
 		if(*block_counter == blockStore->block_counter) {
@@ -5929,7 +5936,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
 										extern int opt_mirror_connect_maximum_time_diff_s;
-										if(abs(actualTimeSec % 3600 - sensorTimeSec % 3600) > opt_mirror_connect_maximum_time_diff_s) {
+										if((abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600) > opt_mirror_connect_maximum_time_diff_s) {
 											cLogSensor::log(cLogSensor::error, 
 													"sensor is not allowed to connect because of different time",
 													"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
@@ -5987,7 +5994,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						offsetBuffer = 0;
 						while(offsetBuffer < bufferLen) {
 							string error;
-							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer); 
+							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer, false, &error); 
 							if(rsltAddRestoreChunk > 0) {
 								string *check_headers_error = NULL;
 								if(!blockStore->check_offsets()) {
@@ -6034,7 +6041,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 									}
 								}
 							} else if(rsltAddRestoreChunk < 0) {
-								error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
+								if(error.empty()) {
+									error = blockStore->addRestoreChunk_getErrorString(rsltAddRestoreChunk);
+								}
 							} else {
 								offsetBuffer = bufferLen;
 							}
@@ -6045,10 +6054,27 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								u_int64_t actTimeMS = getTimeMS();
 								if(!lastTimeErrorLogMS ||
 								   actTimeMS > lastTimeErrorLogMS + 1000) {
-									syslog(LOG_ERR, "receive bad packetbuffer block (%s) in conection %s - %i",
-									       error.c_str(),
-									       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
-									       this->packetServerConnections[arg2]->socketClientPort.getPort());
+									static map<string, u_int32_t> map_errors;
+									static volatile int map_errors_sync = 0;
+									__SYNC_LOCK(map_errors_sync);
+									map<string, u_int32_t>::iterator map_errors_iter = map_errors.find(error);
+									if(map_errors_iter == map_errors.end() ||
+									   map_errors_iter->second > getTimeS() + 10 * 60) {
+										cLogSensor::log(cLogSensor::error, 
+												"error in receive packetbuffer block",
+												"connection from %s:%i, error: %s", 
+												this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+												this->packetServerConnections[arg2]->socketClientPort.getPort(),
+												error.c_str());
+										map_errors[error] = getTimeS();
+									} else {
+										syslog(LOG_ERR, 
+										       "error in receive packetbuffer block - connection from %s:%i, error: %s", 
+										       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
+										       this->packetServerConnections[arg2]->socketClientPort.getPort(),
+										       error.c_str());
+									}
+									__SYNC_UNLOCK(map_errors_sync);
 									lastTimeErrorLogMS = actTimeMS;
 								}
 								++countErrors;
@@ -6635,11 +6661,14 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 	while(!TERMINATING) {
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
+		if(buffersControl.getPercUsePB() > 70) {
+			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
+		}
 		rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
 		delete [] saveBuffer;
 		if(rslt) {
 			if(opt_pcap_queues_mirror_require_confirmation) {
-				char recv_data[100] = "";
+				char recv_data[1000] = "";
 				size_t recv_data_len = sizeof(recv_data);
 				bool rsltRead = this->_socketRead(this->socketHandle, (u_char*)recv_data, &recv_data_len, 4);
 				if(rsltRead && recv_data_len > 0) {
@@ -6738,6 +6767,9 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		bool okSendBlock = true;
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
+		if(buffersControl.getPercUsePB() > 70) {
+			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
+		}
 		if(!this->clientSocket->writeBlock(saveBuffer, sizeSaveBuffer, cSocket::_te_aes)) {
 			okSendBlock = false;
 		}
