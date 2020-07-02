@@ -3573,7 +3573,7 @@ int main(int argc, char *argv[]) {
 	thread_setup();
 	// end init
 
-	if(opt_rrd && is_read_from_file()) {
+	if(opt_rrd && (is_read_from_file() || sverb.suppress_fork)) {
 		//disable update of rrd statistics when reading packets from file
 		opt_rrd = 0;
 	}
