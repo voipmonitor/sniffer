@@ -1,3 +1,9 @@
+26.18 03.07.2020
+================
+- Support for billing recalculation [VG-2019]
+- Fix bug in packet mirroring client/server - time difference error could be wrong filling up all heap buffer 
+
+
 26.17.1 26.06.2020
 ==================
 - fix client / server connection (extend rsa key length for service connection to 4096), force close connection if failed, fix typo 'sesnor' [VS-1081]
