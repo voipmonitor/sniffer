@@ -929,10 +929,6 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 	size_t blockLength;
 	unsigned counter = 0;
 	u_int32_t block_counter = 0;
-	static map<string, u_int32_t> map_errors;
-	static volatile int map_errors_sync = 0;
-	static map<string, u_int32_t> map_warnings;
-	static volatile int map_warnings_sync = 0;
 	while(!server->isTerminate() &&
 	      (block = socket->readBlock(&blockLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
 		if(is_readend() || !pcapQueueQ) {
@@ -948,42 +944,18 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 		}
 		++counter;
 		if(!errorAddBlock.empty()) {
-			__SYNC_LOCK(map_errors_sync);
-			map<string, u_int32_t>::iterator map_errors_iter = map_errors.find(errorAddBlock);
-			if(map_errors_iter == map_errors.end() ||
-			   map_errors_iter->second > getTimeS() + 10 * 60) {
-				cLogSensor::log(cLogSensor::error, 
-						"error in receive packetbuffer block",
-						"connection from %s:%i, socket: %i, error: %s", 
-						socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
-						errorAddBlock.c_str());
-				map_errors[errorAddBlock] = getTimeS();
-			} else {
-				syslog(LOG_ERR, 
-				       "error in receive packetbuffer block - connection from %s:%i, socket: %i, error: %s", 
-				       socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
-				       errorAddBlock.c_str());
-			}
-			__SYNC_UNLOCK(map_errors_sync);
+			cLogSensor::log(cLogSensor::error, 
+					"error in receiving packets from client",
+					"connection from %s, error: %s", 
+					socket->getIP().c_str(),
+					errorAddBlock.c_str());
 		}
 		if(!warningAddBlock.empty()) {
-			__SYNC_LOCK(map_warnings_sync);
-			map<string, u_int32_t>::iterator map_warnings_iter = map_warnings.find(warningAddBlock);
-			if(map_warnings_iter == map_warnings.end() ||
-			   map_warnings_iter->second > getTimeS() + 10 * 60) {
-				cLogSensor::log(cLogSensor::warning, 
-						"warning in receive packetbuffer block",
-						"connection from %s:%i, socket: %i, warning: %s", 
-						socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
-						warningAddBlock.c_str());
-				map_warnings[warningAddBlock] = getTimeS();
-			} else {
-				syslog(LOG_WARNING, 
-				       "warning in receive packetbuffer block - connection from %s:%i, socket: %i, warning: %s", 
-				       socket->getIP().c_str(), socket->getPort(), socket->getHandle(),
-				       warningAddBlock.c_str());
-			}
-			__SYNC_UNLOCK(map_warnings_sync);
+			cLogSensor::log(cLogSensor::warning, 
+					"warning in receiving packets from client",
+					"connection from %s, warning: %s", 
+					socket->getIP().c_str(),
+					warningAddBlock.c_str());
 		}
 	}
 	delete this;
@@ -1044,13 +1016,13 @@ bool cSnifferServerConnection::rsaAesInit() {
 			time_t actualTimeSec = time(NULL);
 			time_t sensorTimeSec = stringToTime(sensorTime.c_str(), true);
 			extern int opt_client_server_connect_maximum_time_diff_s;
-			if((abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600) > opt_client_server_connect_maximum_time_diff_s) {
+			int timeDiff = abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600;
+			if(timeDiff > opt_client_server_connect_maximum_time_diff_s) {
 				cLogSensor::log(cLogSensor::error,  
 						"sensor is not allowed to connect because of different time",
-						"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
-						sqlDateTimeString(actualTimeSec, true).c_str(),
+						"Time difference between server and client (id_sensor:%i) is too big (%is). Please synchronise time on both server and client. Or increase configuration parameter client_server_connect_maximum_time_diff_s on server.",
 						sensorId,
-						sensorTime.c_str());
+						timeDiff);
 				socket->writeBlock("bad time");
 				return(false);
 			}

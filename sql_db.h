@@ -1267,8 +1267,8 @@ private:
 	void _save();
 private:
 	list<sItem> items;
-	static string last_subject_db;
-	static u_int32_t last_subject_db_at;
+	static map<string, u_int32_t> previous_logs;
+	static volatile int previous_logs_sync;
 };
 
 

@@ -8892,14 +8892,17 @@ void cLogSensor::log(eType type, const char *subject, const char *formatMessage,
 		message = message_buffer;
 		delete [] message_buffer;
 	}
-	time_t actTime = time(NULL);
-	bool enableSaveToDb = subject != last_subject_db ||
-			      last_subject_db_at + 60 < actTime;
-	log->_log(type, subject, message.c_str(), enableSaveToDb);
-	if(enableSaveToDb) {
-		last_subject_db = subject;
-		last_subject_db_at = actTime;
+	bool enableSaveToDb = false;
+	__SYNC_LOCK(previous_logs_sync);
+	string combSubjectMessage = string(subject) + " / " + message;
+	map<string, u_int32_t>::iterator previous_logs_iter = previous_logs.find(combSubjectMessage);
+	if(previous_logs_iter == previous_logs.end() ||
+	   previous_logs_iter->second + 2 * 60 < getTimeS()) {
+		enableSaveToDb = true;
+		previous_logs[combSubjectMessage] = getTimeS();
 	}
+	__SYNC_UNLOCK(previous_logs_sync);
+	log->_log(type, subject, message.c_str(), enableSaveToDb);
 	log->_end();
 	delete log;
 }
@@ -9048,8 +9051,8 @@ void cLogSensor::_save() {
 	delete sqlDb;
 }
 
-string cLogSensor::last_subject_db = "";
-u_int32_t cLogSensor::last_subject_db_at = 0;
+map<string, u_int32_t> cLogSensor::previous_logs;
+volatile int cLogSensor::previous_logs_sync = 0;
 
 
 string MYSQL_CODEBOOK_ID(int type, string value) {

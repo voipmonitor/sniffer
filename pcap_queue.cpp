@@ -570,7 +570,19 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 		extern int opt_receive_packetbuffer_maximum_time_diff_s;
 		int timeDiff = abs((int64_t)(((pcap_block_store_header*)this->restoreBuffer)->time_s) - (int64_t)(getTimeS())) % 3600;
 		if(timeDiff > opt_receive_packetbuffer_maximum_time_diff_s) {
-			string _error = "Time difference between server and client (id_sensor:" + (((pcap_block_store_header*)this->restoreBuffer)->sensor_id > 0 ? intToString(((pcap_block_store_header*)this->restoreBuffer)->sensor_id) : "local") + ") is too big (" + intToString(timeDiff) + "s) - data cannot be received. Please synchronise time on both server and client. Or increase configuration option receive_packetbuffer_maximum_time_diff_s parameter on server.";
+			string _error = 
+				string("Time difference between ") + 
+				(is_server() ? "server and client" : "mirror receiver and sender") + 
+				" (id_sensor:" + 
+				(((pcap_block_store_header*)this->restoreBuffer)->sensor_id > 0 ?
+				  intToString(((pcap_block_store_header*)this->restoreBuffer)->sensor_id) : 
+				  "local") + 
+				") is too big (" + intToString(timeDiff) + "s)" + 
+				" - data cannot be received. Please synchronise time on both " + 
+				(is_server() ? "server and client" : "mirror receiver and sender") + 
+				". Or increase configuration parameter receive_packetbuffer_maximum_time_diff_s on " + 
+				(is_server() ? "server" : "mirror receiver") + 
+				".";
 			if(error) {
 				*error = _error;
 			}
@@ -5936,13 +5948,13 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
 										extern int opt_mirror_connect_maximum_time_diff_s;
-										if((abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600) > opt_mirror_connect_maximum_time_diff_s) {
+										int timeDiff = abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600;
+										if(timeDiff > opt_mirror_connect_maximum_time_diff_s) {
 											cLogSensor::log(cLogSensor::error, 
 													"sensor is not allowed to connect because of different time",
-													"between receiver (%s) and sensor %i (%s) - please synchronize clocks on both server ",
-													sqlDateTimeString(actualTimeSec).c_str(),
+													"Time difference between mirror receiver and sender (id_sensor:%i) is too big (%is). Please synchronise time on both mirror receiver and sender. Or increase configuration parameter mirror_connect_maximum_time_diff_s on mirror receiver.",
 													sensorId,
-													sensorTime.c_str());
+													timeDiff);
 											string message = "bad time";
 											send(this->packetServerConnections[arg2]->socketClient, message.c_str(), message.length(), 0);	
 											this->packetServerConnections[arg2]->active = false;
@@ -6054,27 +6066,11 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 								u_int64_t actTimeMS = getTimeMS();
 								if(!lastTimeErrorLogMS ||
 								   actTimeMS > lastTimeErrorLogMS + 1000) {
-									static map<string, u_int32_t> map_errors;
-									static volatile int map_errors_sync = 0;
-									__SYNC_LOCK(map_errors_sync);
-									map<string, u_int32_t>::iterator map_errors_iter = map_errors.find(error);
-									if(map_errors_iter == map_errors.end() ||
-									   map_errors_iter->second > getTimeS() + 10 * 60) {
-										cLogSensor::log(cLogSensor::error, 
-												"error in receive packetbuffer block",
-												"connection from %s:%i, error: %s", 
-												this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
-												this->packetServerConnections[arg2]->socketClientPort.getPort(),
-												error.c_str());
-										map_errors[error] = getTimeS();
-									} else {
-										syslog(LOG_ERR, 
-										       "error in receive packetbuffer block - connection from %s:%i, error: %s", 
-										       this->packetServerConnections[arg2]->socketClientIP.getString().c_str(), 
-										       this->packetServerConnections[arg2]->socketClientPort.getPort(),
-										       error.c_str());
-									}
-									__SYNC_UNLOCK(map_errors_sync);
+									cLogSensor::log(cLogSensor::error, 
+											"error in receiving packets from mirror sender",
+											"connection from %s, error: %s", 
+											this->packetServerConnections[arg2]->socketClientIP.getString().c_str(),
+											error.c_str());
 									lastTimeErrorLogMS = actTimeMS;
 								}
 								++countErrors;
@@ -6753,8 +6749,11 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			string connectResponse;
 			if(!this->clientSocket->readBlock(&connectResponse) || connectResponse != "OK") {
 				if(!this->clientSocket->isError() && connectResponse != "OK") {
-					syslog(LOG_ERR, "send packetbuffer block error: %s", ("failed response from cloud router - " + connectResponse).c_str());
-					pcapQueueQ->externalError = "send packetbuffer block error: failed response from cloud router - " + connectResponse;
+					string errorStr = connectResponse == "bad time" ?
+							   "different time between server and client" :
+							   connectResponse;
+					syslog(LOG_ERR, "send packetbuffer block error: %s", ("failed response from server - " + errorStr).c_str());
+					pcapQueueQ->externalError = "send packetbuffer block error: failed response from server - " + errorStr;
 					delete this->clientSocket;
 					this->clientSocket = NULL;
 				} else {
