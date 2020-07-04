@@ -188,6 +188,9 @@ bool sSnifferServerServices::add_rchs_query(const char *query, bool checkMaxSize
 		rslt = true;
 	}
 	unlock_rchs();
+	if(!rslt) {
+		delete query_string;
+	}
 	return(rslt);
 }
 
