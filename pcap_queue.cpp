@@ -2590,6 +2590,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			heapFullCounter = 0;
 		}
 	}
+	
+	extern int opt_abort_if_rss_gt_gb;
+	if(opt_abort_if_rss_gt_gb > 0 && (int)(rss/1024/1024/1024) > opt_abort_if_rss_gt_gb) {
+		syslog(LOG_ERR, "RSS %i > %i - ABORT!",
+		       (int)(rss/1024/1024/1024), opt_abort_if_rss_gt_gb);
+		abort();
+	}
 }
 
 string PcapQueue::pcapDropCountStat() {

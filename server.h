@@ -400,7 +400,9 @@ private:
 void snifferServerStart();
 void snifferServerStop();
 void snifferServerSetSqlStore(MySqlStore *sqlStore);
-cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, cSnifferClientService *snifferClientServiceOld = NULL);
+cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, 
+					  const char *sensorString = NULL,
+					  cSnifferClientService *snifferClientServiceOld = NULL);
 void snifferClientStop(cSnifferClientService *snifferClientService);
 bool existsRemoteChartServer();
 size_t getRemoteChartServerQueueSize();

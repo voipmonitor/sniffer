@@ -336,6 +336,8 @@ int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
 bool opt_charts_cache_ip_boost = false;
 int opt_charts_cache_queue_limit = 100000;
+int opt_charts_cache_remote_queue_limit = 1000;
+int opt_charts_cache_remote_concat_limit = 1000;
 char opt_convert_char[64] = "";
 int opt_skinny = 0;
 int opt_mgcp = 0;
@@ -723,6 +725,7 @@ extern sSnifferServerClientOptions snifferServerClientOptions;
 sSnifferClientOptions snifferClientOptions;
 sSnifferClientOptions snifferClientOptions_charts_cache;
 cSnifferClientService *snifferClientService;
+cSnifferClientService **snifferClientNextServices;
 cSnifferClientService *snifferClientService_charts_cache;
 
 char ssh_host[1024] = "";
@@ -1084,6 +1087,9 @@ int opt_numa_balancing_set = numa_balancing_set_autodisable;
 int opt_mirror_connect_maximum_time_diff_s = 2;
 int opt_client_server_connect_maximum_time_diff_s = 2;
 int opt_receive_packetbuffer_maximum_time_diff_s = 30;
+
+int opt_abort_if_rss_gt_gb = 0;
+int opt_next_server_connections = 0;
 
 bool heap_profiler_is_running = false;
 
@@ -3669,10 +3675,23 @@ int main(int argc, char *argv[]) {
 			opt_load_query_from_files_inotify = true;
 		}
 	} else if(is_client()) {
-		snifferClientService = snifferClientStart(&snifferClientOptions, snifferClientService);
+		snifferClientService = snifferClientStart(&snifferClientOptions, NULL, snifferClientService);
+		if(opt_next_server_connections > 0) {
+			if(!snifferClientNextServices) {
+				snifferClientNextServices = new FILE_LINE(0) cSnifferClientService*[opt_next_server_connections];
+				for(int i = 0; i < opt_next_server_connections; i++) {
+					snifferClientNextServices[i] = NULL;
+				}
+			}
+			for(int i = 0; i < opt_next_server_connections; i++) {
+				snifferClientNextServices[i] = snifferClientStart(&snifferClientOptions, 
+										  ("next_service_" + intToString(i + 1)).c_str(),
+										  snifferClientNextServices[i]);
+			}
+		}
 		if(useChartsCacheInStore() &&
 		   !snifferClientOptions_charts_cache.host.empty()) {
-			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, snifferClientService_charts_cache);
+			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, NULL, snifferClientService_charts_cache);
 		}
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStart();
@@ -3817,6 +3836,12 @@ int main(int argc, char *argv[]) {
 		stop_cloud_receiver();
 	} else if(is_client()) {
 		snifferClientStop(snifferClientService);
+		if(opt_next_server_connections > 0) {
+			for(int i = 0; i < opt_next_server_connections; i++) {
+				snifferClientStop(snifferClientNextServices[i]);
+			}
+			delete [] snifferClientNextServices;
+		}
 		if(snifferClientService_charts_cache) {
 			snifferClientStop(snifferClientService_charts_cache);
 		}
@@ -7210,6 +7235,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_ip_boost", &opt_charts_cache_ip_boost));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_queue_limit", &opt_charts_cache_queue_limit));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_remote_queue_limit", &opt_charts_cache_remote_queue_limit));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_remote_concat_limit", &opt_charts_cache_remote_concat_limit));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
@@ -7240,6 +7267,8 @@ void cConfig::addConfigItems() {
 						->addValues(("autodisable:" + intToString(numa_balancing_set_autodisable) + "|" + 
 							     "enable:" + intToString(numa_balancing_set_enable) + "|" +
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -10340,6 +10369,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "charts_cache_queue_limit", NULL))) {
 		opt_charts_cache_queue_limit = atoi(value);
 	}
+	if((value = ini.GetValue("general", "charts_cache_remote_queue_limit", NULL))) {
+		opt_charts_cache_remote_queue_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "charts_cache_remote_concat_limit", NULL))) {
+		opt_charts_cache_remote_concat_limit = atoi(value);
+	}
 	if((value = ini.GetValue("general", "convertchar", NULL))) {
 		strcpy_null_term(opt_convert_char, value);
 	}
@@ -11174,6 +11209,9 @@ int eval_config(string inistr) {
 		} else {
 			opt_numa_balancing_set = yesno(value);
 		}
+	}
+	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
+		opt_abort_if_rss_gt_gb = atoi(value);
 	}
 	
 	/*

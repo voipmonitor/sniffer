@@ -86,7 +86,8 @@ sSnifferServerServices::sSnifferServerServices() {
 	_sync_lock = 0;
 	remote_chart_server = 0;
 	_sync_rchs = 0;
-	rchs_query_queue_max_size = 10000;
+	extern int opt_charts_cache_remote_queue_limit;
+	rchs_query_queue_max_size = opt_charts_cache_remote_queue_limit;
 }
 
 void sSnifferServerServices::add(sSnifferServerService *service) {
@@ -1596,12 +1597,16 @@ void snifferServerSetSqlStore(MySqlStore *sqlStore) {
 }
 
 
-cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, cSnifferClientService *snifferClientServiceOld) {
+cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions, 
+					  const char *sensorString,
+					  cSnifferClientService *snifferClientServiceOld) {
 	if(snifferClientServiceOld) {
 		snifferClientStop(snifferClientServiceOld);
 	}
 	extern char opt_sensor_string[128];
-	cSnifferClientService *snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, opt_sensor_string, RTPSENSOR_VERSION_INT());
+	cSnifferClientService *snifferClientService = new FILE_LINE(0) cSnifferClientService(opt_id_sensor > 0 ? opt_id_sensor : 0, 
+											     sensorString ? sensorString : opt_sensor_string, 
+											     RTPSENSOR_VERSION_INT());
 	snifferClientService->setClientOptions(clientOptions);
 	snifferClientService->createResponseSender();
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");

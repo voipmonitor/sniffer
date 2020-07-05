@@ -977,7 +977,7 @@ bool cGzip::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, si
 		zipStream->avail_out = decompressBufferLength;
 		zipStream->next_out = decompressBuffer;
 		int inflateRslt = inflate(zipStream, Z_NO_FLUSH);
-		if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END) {
+		if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END || inflateRslt == Z_BUF_ERROR) {
 			int have = decompressBufferLength - zipStream->avail_out;
 			destBuffer->add(decompressBuffer, have);
 		} else {

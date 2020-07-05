@@ -3169,8 +3169,9 @@ void MySqlStore_process::store() {
 			++this->threadRunningCounter;
 			if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ||
 			   snifferClientOptions.isEnableRemoteStore()) {
+				extern int opt_charts_cache_remote_concat_limit;
 				unsigned concat_limit = id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ?
-							 1000 :
+							 opt_charts_cache_remote_concat_limit :
 							 snifferClientOptions.mysql_concat_limit;
 				this->lock();
 				if(this->query_buff.size() == 0) {
