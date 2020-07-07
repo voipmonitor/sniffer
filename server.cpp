@@ -940,11 +940,14 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 		}
 		string errorAddBlock;
 		string warningAddBlock;
-		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, blockLength, &errorAddBlock, &warningAddBlock, &block_counter);
-		if(rsltAddBlock) {
-			socket->writeBlock("OK", cSocket::_te_aes);
-		} else {
-			socket->writeBlock(errorAddBlock, cSocket::_te_aes);
+		bool require_confirmation = true;
+		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, blockLength, &errorAddBlock, &warningAddBlock, &block_counter, &require_confirmation);
+		if(require_confirmation) {
+			if(rsltAddBlock) {
+				socket->writeBlock("OK", cSocket::_te_aes);
+			} else {
+				socket->writeBlock(errorAddBlock, cSocket::_te_aes);
+			}
 		}
 		++counter;
 		if(!errorAddBlock.empty()) {

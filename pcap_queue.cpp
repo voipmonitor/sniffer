@@ -5703,11 +5703,14 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 	}
 }
 
-bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter) {
+bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter, bool *require_confirmation) {
 	*error = "";
 	*warning = "";
 	pcap_block_store *blockStore = new FILE_LINE(0) pcap_block_store;
 	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, NULL, false, error);
+	if(bufferLen >= sizeof(pcap_block_store::pcap_block_store_header)) {
+		*require_confirmation = ((pcap_block_store::pcap_block_store_header*)buffer)->require_confirmation;
+	}
 	if(rsltAddRestoreChunk > 0) {
 		string *check_headers_error = NULL;
 		if(!blockStore->check_offsets()) {
@@ -6664,7 +6667,8 @@ bool PcapQueue_readFromFifo::socketWritePcapBlock(pcap_block_store *blockStore) 
 	while(!TERMINATING) {
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
-		if(buffersControl.getPercUsePB() > 70) {
+		if(!opt_pcap_queues_mirror_require_confirmation ||
+		   buffersControl.getPercUsePB() > 70) {
 			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
 		}
 		rslt = this->socketWrite(saveBuffer, sizeSaveBuffer);
@@ -6773,7 +6777,8 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 		bool okSendBlock = true;
 		size_t sizeSaveBuffer = blockStore->getSizeSaveBuffer();
 		u_char *saveBuffer = blockStore->getSaveBuffer(block_counter);
-		if(buffersControl.getPercUsePB() > 70) {
+		if(!opt_pcap_queues_mirror_require_confirmation ||
+		   buffersControl.getPercUsePB() > 70) {
 			((pcap_block_store::pcap_block_store_header*)saveBuffer)->time_s = 0;
 		}
 		if(!this->clientSocket->writeBlock(saveBuffer, sizeSaveBuffer, cSocket::_te_aes)) {
@@ -6785,21 +6790,26 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			pcapQueueQ->externalError = "send packetbuffer block error: failed send";
 			continue;
 		}
-		string response;
-		if(!this->clientSocket->readBlock(&response, cSocket::_te_aes)) {
-			syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read response");
-			pcapQueueQ->externalError = "send packetbuffer block error: failed read response";
-			continue;
-		}
-		if(response == "OK") {
+		if(opt_pcap_queues_mirror_require_confirmation) {
+			string response;
+			if(!this->clientSocket->readBlock(&response, cSocket::_te_aes)) {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed read response");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed read response";
+				continue;
+			}
+			if(response == "OK") {
+				ok = true;
+				break;
+			} else {
+				syslog(LOG_ERR, "send packetbuffer block error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
+				pcapQueueQ->externalError = "send packetbuffer block error: " + (response.empty() ? "response is empty" : ("bad response - " + response));
+				if(response.find("bad header") != string::npos) {
+					maxPass = pass + 10;
+				}
+			}
+		} else {
 			ok = true;
 			break;
-		} else {
-			syslog(LOG_ERR, "send packetbuffer block error: %s", response.empty() ? "response is empty" : ("bad response - " + response).c_str());
-			pcapQueueQ->externalError = "send packetbuffer block error: " + (response.empty() ? "response is empty" : ("bad response - " + response));
-			if(response.find("bad header") != string::npos) {
-				maxPass = pass + 10;
-			}
 		}
 	}
 	return(ok);
