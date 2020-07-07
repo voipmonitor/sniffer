@@ -594,7 +594,6 @@ cChartIntervalSeriesData::cChartIntervalSeriesData(cChartSeries *series, cChartI
 	this->dataMultiseriesItem = NULL;
 	this->sync_data = 0;
 	this->created_at_s = getTimeS();
-	this->updated_at_s = 0;
 	this->store_counter = 0;
 	__SYNC_INC(series->used_counter);
 }
@@ -787,8 +786,11 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 
 
 cChartInterval::cChartInterval() {
+	u_int32_t real_time = getTimeS();
+	created_at_real = real_time;
+	last_use_at_real = real_time;
 	last_store_at = 0;
-	last_store_at_real = getTimeS();
+	last_store_at_real = real_time;
 	counter_add = 0;
 }
 
@@ -805,12 +807,17 @@ void cChartInterval::setInterval(u_int32_t timeFrom, u_int32_t timeTo) {
 void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 			 u_int32_t calldate_from, u_int32_t calldate_to,
 			 map<cChartFilter*, bool> *filters_map) {
+	bool update = false;
 	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
 		if(iter->second->series->checkFilters(filters_map)) {
 			iter->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval, 
 					  calldate_from, calldate_to);
 			++counter_add;
+			update = true;
 		}
+	}
+	if(update) {
+		last_use_at_real = getTimeS();
 	}
 }
 
@@ -1182,18 +1189,19 @@ bool cChartSeries::checkFilters(map<cChartFilter*, bool> *filters_map) {
 
 cCharts::cCharts() {
 	first_interval = 0;
-	last_interval = 0;
-	act_first_interval = 0;
 	maxValuesPartsForPercentile = 1000;
 	maxLengthSipResponseText = 0; // 24;
-	intervalStorePeriod = 2 * 60;
+	intervalStore = 60;
+	intervalCleanup = 2 * 60;
 	intervalExpiration = 2 * 60 * 60;
 	intervalReload = 10 * 60;
 	sqlDbStore = NULL;
 	last_store_at = 0;
 	last_store_at_real = 0;
 	last_cleanup_at = 0;
+	last_cleanup_at_real = 0;
 	last_reload_at = 0;
+	last_reload_at_real = 0;
 	sync_intervals = 0;
 }
 
@@ -1260,21 +1268,25 @@ void cCharts::load(SqlDb *sqlDb) {
 }
 
 void cCharts::reload() {
-	if(!act_first_interval) {
+	if(!first_interval) {
 		return;
 	}
-	if(!last_reload_at) {
-		last_reload_at = act_first_interval;
+	u_int32_t real_time = getTimeS();
+	if(!last_reload_at || !last_reload_at_real) {
+		last_reload_at = first_interval;
+		last_reload_at_real = real_time;
 		return;
 	}
-	if(!(act_first_interval > last_reload_at && act_first_interval - last_reload_at >= intervalReload)) {
+	if(!((first_interval > last_reload_at && first_interval - last_reload_at >= intervalReload) &&
+	     (real_time > last_reload_at_real && real_time - last_reload_at_real >= intervalReload))) {
 		return;
 	}
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setMaxQueryPass(1);
 	load(sqlDb);
 	delete sqlDb;
-	last_reload_at = act_first_interval;
+	last_reload_at = first_interval;
+	last_reload_at_real = real_time;
 }
 
 void cCharts::initIntervals() {
@@ -1345,34 +1357,26 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 	u_int64_t callend_min_s = callend_s / 60 * 60;
 	list<u_int32_t> intervals_begin;
 	for(u_int64_t acttime_min_s = calltime_min_s; acttime_min_s <= callend_min_s; acttime_min_s += 60) {
-		if(acttime_min_s > act_first_interval) {
-			act_first_interval = acttime_min_s;
-		}
 		intervals_begin.push_back(acttime_min_s);
 	}
 	unsigned interval_counter = 0;
 	for(list<u_int32_t>::iterator iter = intervals_begin.begin(); iter != intervals_begin.end(); iter++) {
 		u_int32_t interval_begin = *iter;
-		if(act_first_interval - interval_begin < intervalExpiration) {
-			cChartInterval* interval = NULL;
-			lock_intervals();
-			interval = intervals[interval_begin];
-			if(!intervals[interval_begin]) {
-				if(interval_begin > first_interval) {
-					first_interval = interval_begin;
-				}
-				if(!last_interval || interval_begin < last_interval) {
-					last_interval = interval_begin;
-				}
-				interval = new FILE_LINE(0) cChartInterval();
-				interval->setInterval(interval_begin, interval_begin + 60);
-				intervals[interval_begin] = interval;
+		cChartInterval* interval = NULL;
+		lock_intervals();
+		interval = intervals[interval_begin];
+		if(!intervals[interval_begin]) {
+			if(interval_begin > first_interval) {
+				first_interval = interval_begin;
 			}
-			unlock_intervals();
-			interval->add(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
-				      calltime_s, callend_s,
-				      &filters_map);
+			interval = new FILE_LINE(0) cChartInterval();
+			interval->setInterval(interval_begin, interval_begin + 60);
+			intervals[interval_begin] = interval;
 		}
+		unlock_intervals();
+		interval->add(call, interval_counter, interval_counter == 0, interval_counter == intervals_begin.size() - 1, interval_counter == 0,
+			      calltime_s, callend_s,
+			      &filters_map);
 		++interval_counter;
 	}
 }
@@ -1394,18 +1398,18 @@ void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilt
 }
 
 void cCharts::store(bool forceAll) {
-	if(!act_first_interval) {
+	if(!first_interval) {
 		return;
 	}
 	u_int32_t real_time = getTimeS();
 	if(!forceAll) {
-		if(!last_store_at) {
-			last_store_at = act_first_interval;
+		if(!last_store_at || !last_store_at_real) {
+			last_store_at = first_interval;
 			last_store_at_real = real_time;
 			return;
 		}
-		if(!((act_first_interval > last_store_at && act_first_interval - last_store_at >= intervalStorePeriod) ||
-		     (real_time > last_store_at_real && real_time - last_store_at_real >= intervalStorePeriod))) {
+		if(!((first_interval > last_store_at && first_interval - last_store_at >= intervalStore / 2) ||
+		     (real_time > last_store_at_real && real_time - last_store_at_real >= intervalStore / 2))) {
 			return;
 		}
 	}
@@ -1414,39 +1418,42 @@ void cCharts::store(bool forceAll) {
 	}
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); iter++) {
 		if(forceAll || 
-		   (!iter->second->last_store_at && act_first_interval > iter->first && 
-		    act_first_interval - iter->first >= intervalStorePeriod) ||
-		   (iter->second->last_store_at && act_first_interval > iter->second->last_store_at && 
-		    act_first_interval - iter->second->last_store_at >= intervalStorePeriod) ||
+		   (!iter->second->last_store_at && first_interval > iter->first && 
+		    first_interval - iter->first >= intervalStore) ||
+		   (iter->second->last_store_at && first_interval > iter->second->last_store_at && 
+		    first_interval - iter->second->last_store_at >= intervalStore) ||
 		   (iter->second->last_store_at_real && real_time > iter->second->last_store_at_real && 
-		    real_time - iter->second->last_store_at_real >= intervalStorePeriod)) {
-			iter->second->store(act_first_interval, real_time, sqlDbStore);
+		    real_time - iter->second->last_store_at_real >= intervalStore)) {
+			iter->second->store(first_interval, real_time, sqlDbStore);
 		}
 	}
-	last_store_at = act_first_interval;
+	last_store_at = first_interval;
 	last_store_at_real = real_time;
 }
 
 void cCharts::cleanup(bool forceAll) {
-	if(!act_first_interval) {
+	if(!first_interval) {
 		return;
 	}
+	u_int32_t real_time = getTimeS();
 	if(!forceAll) {
-		if(!last_cleanup_at) {
-			last_cleanup_at = act_first_interval;
+		if(!last_cleanup_at || !last_cleanup_at_real) {
+			last_cleanup_at = first_interval;
+			last_cleanup_at_real = real_time;
 			return;
 		}
-		if(!(act_first_interval > last_cleanup_at && act_first_interval - last_cleanup_at >= intervalStorePeriod)) {
+		if(!((first_interval > last_cleanup_at && first_interval - last_cleanup_at >= intervalCleanup / 2) ||
+		     (real_time > last_cleanup_at_real && real_time - last_cleanup_at_real >= intervalCleanup / 2))) {
 			return;
 		}
 	}
 	lock_intervals();
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); ) {
 		if(forceAll ||
-		   (act_first_interval > iter->first && act_first_interval - iter->first > intervalExpiration)) {
+		   ((first_interval > iter->first && first_interval - iter->first > intervalExpiration) &&
+		    (real_time > max(iter->second->created_at_real, iter->second->last_use_at_real) && real_time - max(iter->second->created_at_real, iter->second->last_use_at_real) > intervalExpiration))) {
 			delete iter->second;
 			intervals.erase(iter++);
-			last_interval = iter->first;
 		} else {
 			iter++;
 		}
@@ -1460,7 +1467,8 @@ void cCharts::cleanup(bool forceAll) {
 			iter++;
 		}
 	}
-	this->last_cleanup_at = act_first_interval;
+	last_cleanup_at = first_interval;
+	last_cleanup_at_real = real_time;
 }
 
 bool cCharts::seriesIsUsed(const char *config_id) {

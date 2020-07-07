@@ -626,7 +626,7 @@ void cSnifferServerConnection::cp_service() {
 					u_char *queryGzip;
 					size_t queryGzipLength;
 					if(gzipCompressQuery.compressString(*rchs_query, &queryGzip, &queryGzipLength)) {
-						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryGzip, queryGzipLength)).c_str(), queryGzipLength, 
+						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryGzip, queryGzipLength)).c_str(), queryGzipLength + 4, 
 								       use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
 							okSend = false;
 						}
@@ -637,7 +637,7 @@ void cSnifferServerConnection::cp_service() {
 					u_char *queryLzo;
 					size_t queryLzoLength;
 					if(lzoCompressQuery.compress((u_char*)rchs_query->c_str(), rchs_query->length(), &queryLzo, &queryLzoLength)) {
-						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryLzo, queryLzoLength)).c_str(), queryLzoLength, 
+						if(!socket->writeBlock((u_char*)("rch:" + string((char*)queryLzo, queryLzoLength)).c_str(), queryLzoLength + 4, 
 								       use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
 							okSend = false;
 						}

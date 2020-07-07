@@ -1108,7 +1108,7 @@ bool cLzo::decompress(u_char *buffer, size_t bufferLength, u_char **dbuffer, siz
 	*dbufferLength = *(u_int32_t*)(buffer + header_string_length);
 	*dbuffer = new FILE_LINE(0) u_char[*dbufferLength];
 	init();
-	lzo_uint lzo_dst_len;
+	lzo_uint lzo_dst_len = *dbufferLength;
 	int lzoRslt = lzo1x_decompress_safe(buffer + header_length, bufferLength - header_length, *dbuffer, &lzo_dst_len, wrkmem);
 	if(lzoRslt == LZO_E_OK) {
 		*dbufferLength= lzo_dst_len;
