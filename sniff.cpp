@@ -75,6 +75,7 @@ and insert them into Call class.
 #include "ssl_dssl.h"
 #include "websocket.h"
 #include "options.h"
+#include "sniff_inline.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -9068,4 +9069,65 @@ void rtp_read_thread::term_thread_buffer() {
 
 size_t rtp_read_thread::qring_size() {
 	return(writeit >= readit ? writeit - readit : writeit + this->qring_length - readit);
+}
+
+
+void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
+		unsigned header_ip_offset, u_int64_t packet_time, 
+		u_char *data, unsigned datalen,
+		const char *file, unsigned line, const char *function, const char *descr) {
+	if(!sverb.trace_call) {
+		return;
+	}
+	if(!data) {
+		if(!header_ip_offset) {
+			sll_header *header_sll;
+			ether_header *header_eth;
+			int protocol;
+			u_int16_t vlan;
+			if(!parseEtherHeader(pcapLinkHeaderType, packet,
+					     header_sll, header_eth, NULL,
+					     header_ip_offset, protocol, vlan)) {
+				return;
+			}
+		}
+		iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
+		if(header_ip->get_protocol() == IPPROTO_UDP) {
+			udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+			datalen = get_udp_data_len(header_ip, header_udp, (char**)&data, packet, caplen);
+		} else if(header_ip->get_protocol() == IPPROTO_TCP) {
+			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+			datalen = get_tcp_data_len(header_ip, header_tcp, (char**)&data, packet, caplen);
+		}
+		if(!data) {
+			return;
+		}
+	}
+	if(datalen > 6 && !strncasecmp((char*)data, "INVITE", 6)) {
+		unsigned long callid_length; 
+		unsigned long gettagLimitLen = 0;
+		char *callid = gettag_ext(data, datalen, NULL,
+					  "\nCall-ID:", &callid_length, &gettagLimitLen);
+		if(callid && callid_length > 0) {
+			ostringstream str;
+			str << fixed;
+			str << string(callid, callid_length) << " / "
+			    << sqlDateString(packet_time / 1000000) << "." 
+			    << setw(6) << (packet_time % 1000000) << " / "
+			    << (getTimeUS() - packet_time) / 1e3 << " / "
+			    << file << ":" << line << " / "
+			    << function;
+			if(descr) {
+				str << " / " << descr;
+			}
+			static volatile int _sync = 0;
+			__SYNC_LOCK(_sync);
+			FILE *out_file = fopen(sverb.trace_call, "a");
+			if(out_file) {
+				fputs((str.str() + "\n").c_str(), out_file);
+				fclose(out_file);
+			}
+			__SYNC_UNLOCK(_sync);
+		}
+	}
 }

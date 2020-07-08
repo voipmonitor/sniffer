@@ -878,4 +878,10 @@ void _process_packet__cleanup_registers();
 #define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call))
 
 
+void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
+		unsigned header_ip_offset, u_int64_t packet_time, 
+		u_char *data, unsigned datalen,
+		const char *file, unsigned line, const char *function, const char *descr = NULL);
+
+
 #endif

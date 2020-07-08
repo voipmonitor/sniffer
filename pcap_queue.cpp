@@ -3705,6 +3705,14 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 		cout << "push MASTERSECRET " << typeThread << endl;
 	}
 	#endif
+	#if TRACE_CALL
+	if(sverb.trace_call) {
+		trace_call(HPP(*header_packet), HPH(*header_packet)->caplen, pcapLinklayerHeaderType,
+			   (*header_packet)->detect_headers ? (*header_packet)->header_ip_offset : 0, getTimeUS(HPH(*header_packet)->ts),
+			   NULL, 0,
+			   __FILE__, __LINE__, __FUNCTION__, ("push - thread " + intToString(typeThread)).c_str());
+	}
+	#endif
 	unsigned int _writeIndex;
 	if(writeIndex) {
 		_writeIndex = writeIndex - 1;
@@ -3850,6 +3858,14 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 		cout << "pop MASTERSECRET " << typeThread << endl;
 	}
 	#endif
+	#if TRACE_CALL
+	if(sverb.trace_call) {
+		trace_call(HPP(rslt_hpi.header_packet), HPH(rslt_hpi.header_packet)->caplen, pcapLinklayerHeaderType,
+			   rslt_hpi.header_packet->detect_headers ? rslt_hpi.header_packet->header_ip_offset : 0, getTimeUS(HPH(rslt_hpi.header_packet)->ts),
+			   NULL, 0,
+			   __FILE__, __LINE__, __FUNCTION__, ("pop - thread " + intToString(typeThread)).c_str());
+	}
+	#endif
 	++readIndexPos;
 	if(readIndexPos == readIndexCount) {
 		qring[_readIndex]->used = 0;
@@ -3928,7 +3944,7 @@ void PcapQueue_readFromInterfaceThread::cancelThread() {
 	hpii = this->prevThread->pop(); \
 	if(!hpii.header_packet) { \
 		this->pop_usleep_sum += USLEEP_C(100, this->counter_pop_usleep++); \
-		if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 200000) { \
+		if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 100000) { \
 			this->prevThread->setForcePush(); \
 			this->pop_usleep_sum_last_push = this->pop_usleep_sum; \
 		} \
@@ -4133,6 +4149,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 						cout << "get MASTERSECRET (1) " << typeThread << endl;
 					}
 					#endif
+					#if TRACE_CALL
+					if(sverb.trace_call) {
+						trace_call(pcap_next_ex_packet, pcap_next_ex_header->caplen, pcapLinklayerHeaderType,
+							   0, getTimeUS(pcap_next_ex_header->ts),
+							   NULL, 0,
+							   __FILE__, __LINE__, __FUNCTION__, ("get from pcap - thread " + intToString(typeThread)).c_str());
+					}
+					#endif
 					memcpy((u_char*)this->activeDetachBuffer + this->detachBufferWritePos,
 					       pcap_next_ex_header,
 					       sizeof(pcap_pkthdr));
@@ -4214,6 +4238,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 				#if TRACE_MASTER_SECRET
 				if(memmem(pcap_next_ex_packet, pcap_next_ex_header->caplen, "mastersecret", 12)) {
 					cout << "get MASTERSECRET (2) " << typeThread << endl;
+				}
+				#endif
+				#if TRACE_CALL
+				if(sverb.trace_call) {
+					trace_call(pcap_next_ex_packet, pcap_next_ex_header->caplen, pcapLinklayerHeaderType,
+						   0, getTimeUS(pcap_next_ex_header->ts),
+						   NULL, 0,
+						   __FILE__, __LINE__, __FUNCTION__, ("get from pcap - thread " + intToString(typeThread)).c_str());
 				}
 				#endif
 				if(res == -1) {
@@ -4333,6 +4365,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 					#if TRACE_MASTER_SECRET
 					if(memmem(HPP(header_packet_read), detach_buffer_header->caplen, "mastersecret", 12)) {
 						cout << "detach MASTERSECRET " << typeThread << endl;
+					}
+					#endif
+					#if TRACE_CALL
+					if(sverb.trace_call) {
+						trace_call(HPP(header_packet_read), detach_buffer_header->caplen, pcapLinklayerHeaderType,
+							   0, getTimeUS(detach_buffer_header->ts),
+							   NULL, 0,
+							   __FILE__, __LINE__, __FUNCTION__, ("detach -thread " + intToString(typeThread)).c_str());
 					}
 					#endif
 					this->push(&header_packet_read);
@@ -4520,6 +4560,14 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 				cout << "get MASTERSECRET (3) " << typeThread << endl;
 			}
 			#endif
+			#if TRACE_CALL
+			if(sverb.trace_call) {
+				trace_call(pcap_next_ex_packet, pcap_next_ex_header->caplen, pcapLinklayerHeaderType,
+					   0, getTimeUS(pcap_next_ex_header->ts),
+					   NULL, 0,
+					   __FILE__, __LINE__, __FUNCTION__, ("get from pcap - thread " + intToString(typeThread)).c_str());
+			}
+			#endif
 			sumPacketsSize[0] += pcap_next_ex_header->caplen;
 			pcap_header_plus2->clear();
 			if(opt_pcap_queue_use_blocks_read_check) {
@@ -4614,6 +4662,14 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 		#if TRACE_MASTER_SECRET
 		if(memmem(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, "mastersecret", 12)) {
 			cout << "process MASTERSECRET " << typeThread << endl;
+		}
+		#endif
+		#if TRACE_CALL
+		if(sverb.trace_call) {
+			trace_call(block->get_packet(i), block->get_header(i)->header_fix_size.caplen, pcapLinklayerHeaderType,
+				   0, getTimeUS(block->get_header(i)->header_fix_size.ts_tv_sec, block->get_header(i)->header_fix_size.ts_tv_usec),
+				   NULL, 0,
+				   __FILE__, __LINE__, __FUNCTION__, ("process block - typethread " + intToString(typeThread)).c_str());
 		}
 		#endif
 		switch(this->typeThread) {
@@ -4862,8 +4918,9 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				this->getInterfaceName(true).c_str(), 
 			sizeof(blockStore[i]->ifname) - 1);
 	}
-	unsigned int counter_pop = 0;
 	unsigned long counter = 0;
+	unsigned long pop_usleep_sum = 0;
+	unsigned long pop_usleep_sum_last_push = 0;
 	pcap_pkthdr_plus pcap_header_plus;
 	u_char existsThreadTimeFlags[1000];
 	unsigned int usleepCounter = 0;
@@ -4909,10 +4966,12 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			}
 			if(fetchPacketOk) {
 				usleepCounter = 0;
+				pop_usleep_sum = 0;
+				pop_usleep_sum_last_push = 0;
 			} else {
-				USLEEP_C(100, usleepCounter++);
+				pop_usleep_sum += USLEEP_C(100, usleepCounter++);
 			}
-			if(!(++counter_pop % 1000)) {
+			if(pop_usleep_sum > pop_usleep_sum_last_push + 100000) {
 				if(this->readThreadsCount == 1) {
 					if(!fetchPacketOk) {
 						this->readThreads[0]->setForcePUSH();
@@ -4925,6 +4984,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 						}
 					}
 				}
+				pop_usleep_sum_last_push = pop_usleep_sum;
 			}
 		} else if(opt_scanpcapdir[0] && this->pcapEnd) {
 			USLEEP(10000);
@@ -5030,6 +5090,14 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			#if TRACE_MASTER_SECRET
 			if(memmem(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, "mastersecret", 12)) {
 				cout << "add MASTERSECRET" << endl;
+			}
+			#endif
+			#if TRACE_CALL
+			if(sverb.trace_call) {
+				trace_call(HPP(*header_packet_fetch), HPH(*header_packet_fetch)->caplen, 0,
+					   (*header_packet_fetch)->detect_headers ? (*header_packet_fetch)->header_ip_offset : 0, getTimeUS(HPH(*header_packet_fetch)->ts),
+					   NULL, 0,
+					   __FILE__, __LINE__, __FUNCTION__, "before add to packetbuffer");
 			}
 			#endif
 			++sumPacketsCounterIn[0];
@@ -6213,6 +6281,16 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						memset(blockStore->is_voip, 0, blockStore->count);
 					}
 				}
+				#if TRACE_CALL
+				if(sverb.trace_call) {
+					for(size_t i = 0; i < blockStore->count; i++) {
+						trace_call((*blockStore)[i].packet, (*blockStore)[i].header->header_fix_size.caplen, 0,
+							   (*blockStore)[i].header->header_ip_offset, getTimeUS((*blockStore)[i].header->header_fix_size.ts_tv_sec, (*blockStore)[i].header->header_fix_size.ts_tv_usec),
+							   NULL, 0,
+							   __FILE__, __LINE__, __FUNCTION__, "before deque");
+					}
+				}
+				#endif
 			}
 			if((opt_pcap_queue_dequeu_window_length > 0 ||
 			    opt_pcap_queue_dequeu_need_blocks > 0) &&
@@ -7297,6 +7375,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		cout << "processPacket BYE " << endl;
 	} else if(memmem(data, datalen, "REGISTER sip", 12)) {
 		cout << "processPacket REGISTER " << endl;
+	}
+	#endif
+	#if TRACE_CALL
+	if(sverb.trace_call) {
+		trace_call(hp->packet, header->caplen, 0,
+			   0, getTimeUS(header->ts),
+			   (u_char*)data, datalen,
+			   __FILE__, __LINE__, __FUNCTION__, "process packet");
 	}
 	#endif
 
