@@ -769,11 +769,7 @@ TcpReassemblyLink::~TcpReassemblyLink() {
 	if(this->ethHeader) {
 		delete [] this->ethHeader;
 	}
-	for(int i = 0; i < 2; i++) {
-		if(this->remainData[i]) {
-			delete [] remainData[i];
-		}
-	}
+	clearRemainData(TcpReassemblyDataItem::DIRECTION_NA);
 	if(reassembly->getType() == TcpReassembly::ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
@@ -2127,16 +2123,17 @@ void TcpReassemblyLink::extCleanup(int id, bool all) {
 	}
 }
 
-void TcpReassemblyLink::setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction) {
+void TcpReassemblyLink::addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen) {
 	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
-	if(index >= 0) {
-		this->clearRemainData(direction);
-		if(data && datalen) {
-			this->remainData[index] = new FILE_LINE(36010) u_char[datalen];
-			memcpy(this->remainData[index], data, datalen);
-			this->remainDataLength[index] = datalen;
-		}
+	if(index >= 0 && data && datalen) {
+		sRemainDataItem item;
+		item.ack = ack;
+		item.seq = seq;
+		item.data = new FILE_LINE(0) u_char[datalen];
+		item.datalen = datalen;
+		memcpy(item.data, data, datalen);
+		this->remainData[index].push_back(item);
 	}
 }
 
@@ -2145,25 +2142,94 @@ void TcpReassemblyLink::clearRemainData(TcpReassemblyDataItem::eDirection direct
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
 	for(int i = 0; i < 2; i++) {
 		if(index < 0 || index == i) {
-			if(remainData[i]) {
-				delete [] remainData[i];
-				remainData[i] = NULL;
-				remainDataLength[i] = 0;
+			for(unsigned j = 0; j < remainData[i].size(); j++) {
+				delete [] remainData[i][j].data;
 			}
+			remainData[i].clear();
 		}
 	}
 }
 
-u_char *TcpReassemblyLink::getRemainData(TcpReassemblyDataItem::eDirection direction) {
+u_char *TcpReassemblyLink::completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen) {
 	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
-	return(index >= 0 ? remainData[index] : NULL);
+	if(index >= 0) {
+		*rslt_datalen = getRemainDataLength(direction) + datalen;
+		u_char *rslt_data = new FILE_LINE(0) u_char[*rslt_datalen];
+		if(ack && seq && existsAllAckSeq(direction)) {
+			map<u_int64_t, list<int> > sort_by_ack_seq;
+			for(unsigned i = 0; i < remainData[index].size(); i++) {
+				sort_by_ack_seq[(u_int64_t)remainData[index][i].ack << 32 | remainData[index][i].seq].push_back(i);
+			}
+			if(data && datalen) {
+				sort_by_ack_seq[(u_int64_t)ack << 32 | seq].push_back(-1);
+			}
+			u_int32_t offset = 0;
+			for(map<u_int64_t, list<int> >::iterator iter = sort_by_ack_seq.begin(); iter != sort_by_ack_seq.end(); iter++) {
+				if(iter->second.size()) {
+					for(list<int>::iterator iter_i = iter->second.begin(); iter_i != iter->second.end(); iter_i++) {
+						int i = *iter_i;
+						if(i >= 0) {
+							memcpy(rslt_data + offset, remainData[index][i].data, remainData[index][i].datalen);
+							offset += remainData[index][i].datalen;
+						} else {
+							memcpy(rslt_data + offset, data, datalen);
+							offset += datalen;
+						}
+					}
+				}
+			}
+		} else {
+			u_int32_t offset = 0;
+			for(unsigned i = 0; i < remainData[index].size(); i++) {
+				memcpy(rslt_data + offset, remainData[index][i].data, remainData[index][i].datalen);
+				offset += remainData[index][i].datalen;
+			}
+			if(data && datalen) {
+				memcpy(rslt_data + offset, data, datalen);
+				offset += datalen;
+			}
+		}
+		return(rslt_data);
+	}
+	*rslt_datalen = 0;
+	return(NULL);
 }
 
 u_int32_t TcpReassemblyLink::getRemainDataLength(TcpReassemblyDataItem::eDirection direction) {
 	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
-	return(index >= 0 && remainData[index] ? remainDataLength[index] : 0);
+	if(index >= 0) {
+		u_int32_t length = 0;
+		for(unsigned i = 0; i < remainData[index].size(); i++) {
+			length += remainData[index][i].datalen;
+		}
+		return(length);
+	}
+	return(0);
+}
+
+bool TcpReassemblyLink::existsRemainData(TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	if(index >= 0) {
+		return(remainData[index].size() > 0);
+	}
+	return(false);
+}
+
+bool TcpReassemblyLink::existsAllAckSeq(TcpReassemblyDataItem::eDirection direction) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	if(index >= 0) {
+		for(unsigned i = 0; i < remainData[index].size(); i++) {
+			if(!remainData[index][i].ack || !remainData[index][i].seq) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	return(false);
 }
 
 list<d_u_int32_t> *TcpReassemblyLink::getSipOffsets() {

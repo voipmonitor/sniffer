@@ -27,6 +27,7 @@ extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 
 SslData::SslData() {
 	this->counterProcessData = 0;
+	this->counterDecryptData = 0;
 }
 
 SslData::~SslData() {
@@ -71,8 +72,12 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				<< setw(5) << port_dst
 				<< "  len: " << setw(4) << dataItem->getDatalen();
 			u_int32_t ack = dataItem->getAck();
+			u_int32_t seq = dataItem->getSeq();
 			if(ack) {
 				(*debugStream) << "  ack: " << setw(5) << ack;
+			}
+			if(seq) {
+				(*debugStream) << "  seq: " << setw(5) << seq;
 			}
 			(*debugStream) << endl;
 		}
@@ -81,11 +86,9 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			u_char *ssl_data;
 			u_int32_t ssl_datalen;
 			bool alloc_ssl_data = false;
-			if(reassemblyLink->getRemainData(dataItem->getDirection())) {
+			if(reassemblyLink->existsRemainData(dataItem->getDirection())) {
 				ssl_datalen = reassemblyLink->getRemainDataLength(dataItem->getDirection()) + dataItem->getDatalen();
-				ssl_data = new FILE_LINE(33001) u_char[ssl_datalen];
-				memcpy(ssl_data, reassemblyLink->getRemainData(dataItem->getDirection()), reassemblyLink->getRemainDataLength(dataItem->getDirection()));
-				memcpy(ssl_data + reassemblyLink->getRemainDataLength(dataItem->getDirection()), dataItem->getData(), dataItem->getDatalen());
+				ssl_data = reassemblyLink->completeRemainData(dataItem->getDirection(), &ssl_datalen, dataItem->getAck(), dataItem->getSeq(), dataItem->getData(), dataItem->getDatalen());
 				alloc_ssl_data = true;
 			} else {
 				ssl_data = dataItem->getData();
@@ -124,7 +127,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			}
 			if(pass == 0) {
 				bool ok = false;
-				if(reassemblyLink->getRemainDataLength(dataItem->getDirection()) &&
+				if(reassemblyLink->existsRemainData(dataItem->getDirection()) &&
 				   !ssl_data_offset &&
 				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
 					// next pass with ignore remainData
@@ -134,7 +137,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 					}
 				} else {
 					if(ssl_data_offset < ssl_datalen) {
-						reassemblyLink->setRemainData(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getDirection());
+						reassemblyLink->clearRemainData(dataItem->getDirection());
+						reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
 						if(debugStream) {
 							(*debugStream) << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
 						}
@@ -159,7 +163,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				if(out.length()) {
 					(*debugStream) << "TS: " << dataItem->getTime().tv_sec << "." << dataItem->getTime().tv_usec << " " << _ip_src.getString() << " -> " << _ip_dst.getString() << " SIP " << rslt_decrypt[i].length() << " " << out << endl;
 				}
-				(*debugStream) << "DECRYPT DATA: " << rslt_decrypt[i] << endl;
+				++this->counterDecryptData;
+				(*debugStream) << "DECRYPT DATA " << this->counterDecryptData << " : " << rslt_decrypt[i] << endl;
 			}
 			if(!ethHeader || !ethHeaderLength) {
 				continue;

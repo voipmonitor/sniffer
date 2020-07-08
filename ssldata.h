@@ -83,6 +83,7 @@ private:
 			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid);
 private:
 	unsigned int counterProcessData;
+	unsigned int counterDecryptData;
 	ReassemblyBuffer reassemblyBuffer;
 };
 

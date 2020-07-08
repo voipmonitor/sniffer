@@ -520,6 +520,12 @@ public:
 		private:
 			TcpReassemblyLink *link;
 	};
+	struct sRemainDataItem {
+		u_int32_t ack;
+		u_int32_t seq;
+		u_char *data;
+		u_int32_t datalen;
+	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
 			  vmIP ip_src, vmIP ip_dst, 
 			  vmPort port_src, vmPort port_dst,
@@ -561,10 +567,6 @@ public:
 		this->sensor_ip = sensor_ip;
 		this->pid = pid;
 		this->uData = uData;
-		for(int i = 0; i < 2; i++) {
-			this->remainData[i] = NULL;
-			this->remainDataLength[i] = 0;
-		}
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
 	}
@@ -690,10 +692,12 @@ public:
 	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
-	void setRemainData(u_char *data, u_int32_t datalen, TcpReassemblyDataItem::eDirection direction);
+	void addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
-	u_char *getRemainData(TcpReassemblyDataItem::eDirection direction);
+	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
+	bool existsRemainData(TcpReassemblyDataItem::eDirection direction);
+	bool existsAllAckSeq(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();
 	void clearCompleteStreamsData();
 	bool checkDuplicitySeq(u_int32_t newSeq);
@@ -749,8 +753,7 @@ private:
 	vmIP sensor_ip;
 	sPacketInfoData pid;
 	void *uData;
-	u_char *remainData[2];
-	u_int32_t remainDataLength[2];
+	vector<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 friend class TcpReassembly;
