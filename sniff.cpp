@@ -3509,13 +3509,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->new_invite_after_lsr487 = true;
 		}
 		//update called number for each invite due to overlap-dialling
-		if ((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip()) || (opt_last_dest_number && !reverseInviteSdaddr)) {
+		if(((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip()) || opt_last_dest_number) && !reverseInviteSdaddr) {
+			char called[1024] = "";
 			get_sip_peername(packetS, "\nTo:", "\nt:",
-					 call->called, sizeof(call->called), ppntt_to, ppndt_called);
+					 called, sizeof(called), ppntt_to, ppndt_called);
+			if(strcmp(call->caller, called)) {
+				strcpy_null_term(call->called, called);
+			}
 			if(opt_destination_number_mode == 2) {
 				char called[1024] = "";
 				if(!get_sip_peername(packetS, "INVITE ", NULL, called, sizeof(called), ppntt_invite, ppndt_called) &&
-				   called[0] != '\0') {
+				   called[0] != '\0' && strcmp(call->caller, called)) {
 					strcpy_null_term(call->called, called);
 				}
 			}
