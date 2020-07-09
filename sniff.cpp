@@ -1895,19 +1895,26 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	unsigned sdp_media_start_count = 0;
 	char *sdp_media_start[sdp_media_start_max];
 	bool sdp_media_image[sdp_media_start_max];
+	bool sdp_media_video[sdp_media_start_max];
 	vmPort sdp_media_port[sdp_media_start_max];
 	while(sdp_media_start_count < sdp_media_start_max) {
 		bool image = false;
+		bool video = false;
 		vmPort port;
-		for(unsigned pass = 0; pass < 2; pass++) {
+		for(unsigned pass = 0; pass < 3; pass++) {
 			s = _gettag(sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 : sdp_text,
 				    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
-				    pass == 0 ? "m=audio " : "m=image ", 
+				    pass == 0 ? "m=audio " : 
+				    pass == 1 ? "m=image " : 
+						"m=video ",
 				    &l);
 			if(l > 0) {
 				if(port.setFromString(s).isSet()) {
 					if(pass == 1) {
 						image = true;
+					}
+					if(pass == 2) {
+						video = true;
 					}
 					break;
 				}
@@ -1916,6 +1923,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		if(l > 0) {
 			sdp_media_start[sdp_media_start_count] = s;
 			sdp_media_image[sdp_media_start_count] = image;
+			sdp_media_video[sdp_media_start_count] = video;
 			sdp_media_port[sdp_media_start_count] = port;
 			++sdp_media_start_count;
 		} else {
@@ -1928,6 +1936,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	}
 	
 	for(unsigned sdp_media_i = 0; sdp_media_i < sdp_media_start_count; sdp_media_i++) {
+		if(sdp_media_video[sdp_media_i]) {
+			continue;
+		}
 		char *sdp_media_text = sdp_media_start[sdp_media_i];
 		unsigned sdp_media_text_len = sdp_media_i < sdp_media_start_count - 1 ?
 					       sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i] :

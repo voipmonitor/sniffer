@@ -1153,6 +1153,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					codec = rtpmap[i].codec;
 					frame_size = rtpmap[i].frame_size;
 					found = 1;
+					break;
 				}
 			}
 			if(curpayload == 101 and !found) {
@@ -1165,6 +1166,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				for(int i = 0; i < MAX_RTPMAP; i++) {
 					if(rtpmap[i].is_set() && curpayload == rtpmap[i].payload) {
 						frame_size = rtpmap[i].frame_size;
+						break;
 					}
 				}
 			}
