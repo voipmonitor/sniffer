@@ -1306,14 +1306,18 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		      bool istcp, bool forceVirtualUdp) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
-		/*
+		static u_int64_t lastTimeDltSyslog = 0;
 		u_int64_t actTime = getTimeMS();
-		if(actTime - 1000 > lastTimeSyslog) {
-			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i)",
-			       dlt, this->fileName.c_str(), this->dlt);
+		if(actTime - 1000 > lastTimeSyslog &&
+		   actTime - 10000 > lastTimeDltSyslog) {
+			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i) - packet will not be saved%s",
+			       dlt, this->fileName.c_str(), this->dlt,
+			       !opt_convert_dlt_sll_to_en10 && ((dlt == DLT_LINUX_SLL && this->dlt == DLT_EN10MB) || (dlt == DLT_EN10MB && this->dlt == DLT_LINUX_SLL)) ?
+			        "; try configuration option convert_dlt_sll2en10 = yes" :
+				"");
 			lastTimeSyslog = actTime;
+			lastTimeDltSyslog = actTime;
 		}
-		*/
 		return;
 	}
 	extern unsigned int opt_maxpcapsize_mb;
