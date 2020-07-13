@@ -566,7 +566,7 @@ void cSnifferServerConnection::cp_service() {
 		}
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
-	if(!is_read_from_file_simple()) {
+	if(!is_read_from_file_simple() && !is_load_pcap_via_client(sensor_string.c_str())) {
 		updateSensorState(sensor_id);
 	}
 	sSnifferServerService service;

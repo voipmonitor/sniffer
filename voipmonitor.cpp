@@ -3273,7 +3273,7 @@ int main(int argc, char *argv[]) {
 
 	if(is_read_from_file_simple()) {
 		if(is_client()) {
-			if(!strstr(opt_sensor_string, "load_pcap_user_id")) {
+			if(!is_load_pcap_via_client(opt_sensor_string)) {
 				puts("Client mode does not support reading from a file.\n");
 				return(0);
 			}
@@ -11433,6 +11433,10 @@ bool is_client() {
 
 bool is_client_packetbuffer_sender() {
 	return(snifferClientOptions.isEnablePacketBufferSender());
+}
+
+bool is_load_pcap_via_client(const char *sensor_string) {
+	return(strstr(sensor_string, "load_pcap_user_id") != NULL);
 }
 
 bool is_remote_chart_server() {
