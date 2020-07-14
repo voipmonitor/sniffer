@@ -3841,6 +3841,7 @@ int main(int argc, char *argv[]) {
 				snifferClientStop(snifferClientNextServices[i]);
 			}
 			delete [] snifferClientNextServices;
+			snifferClientNextServices = NULL;
 		}
 		if(snifferClientService_charts_cache) {
 			snifferClientStop(snifferClientService_charts_cache);
