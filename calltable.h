@@ -123,6 +123,9 @@
 #define CDR_TELEVENT_EXISTS_RESPONSE	(1 << 9)
 #define CDR_SIP_FRAGMENTED		(1 << 10)
 #define CDR_RTP_FRAGMENTED		(1 << 11)
+#define CDR_SDP_EXISTS_MEDIA_TYPE_AUDIO	(1 << 12)
+#define CDR_SDP_EXISTS_MEDIA_TYPE_IMAGE	(1 << 13)
+#define CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO	(1 << 14)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -1643,6 +1646,9 @@ public:
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;
+	bool sdp_exists_media_type_audio;
+	bool sdp_exists_media_type_image;
+	bool sdp_exists_media_type_video;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
 private:

@@ -1910,11 +1910,18 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				    &l);
 			if(l > 0) {
 				if(port.setFromString(s).isSet()) {
-					if(pass == 1) {
+					switch(pass) {
+					case 0:
+						call->sdp_exists_media_type_audio = true;
+						break;
+					case 1:
+						call->sdp_exists_media_type_image = true;
 						image = true;
-					}
-					if(pass == 2) {
+						break;
+					case 2:
+						call->sdp_exists_media_type_video = true;
 						video = true;
+						break;
 					}
 					break;
 				}

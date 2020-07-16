@@ -659,6 +659,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	use_sdp_sendonly = false;
 	rtp_from_multiple_sensors = false;
 	
+	sdp_exists_media_type_audio = false;
+	sdp_exists_media_type_image = false;
+	sdp_exists_media_type_video = false;
+	
 	is_ssl = false;
 
 	rtp_zeropackets_stored = 0;
@@ -5273,6 +5277,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if (rtp_fragmented) {
 		cdr_flags |= CDR_RTP_FRAGMENTED;
+	}
+	if (sdp_exists_media_type_audio) {
+		cdr_flags |= CDR_SDP_EXISTS_MEDIA_TYPE_AUDIO;
+	}
+	if (sdp_exists_media_type_image) {
+		cdr_flags |= CDR_SDP_EXISTS_MEDIA_TYPE_IMAGE;
+	}
+	if (sdp_exists_media_type_video) {
+		cdr_flags |= CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO;
 	}
 
 	vmIP sipcalledip_confirmed;
