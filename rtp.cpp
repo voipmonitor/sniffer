@@ -1835,7 +1835,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 		}
 	} else {
-		if(last_ts != 0 and seq == ROT_SEQ(last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and prev_payload_len > 8) {
+		if(last_ts != 0 and seq == ROT_SEQ(last_seq + 1) and codec != PAYLOAD_TELEVENT and !getMarker() and 
+		   (prev_payload_len > 8 or (sverb.process_rtp_header and prev_payload_len == 0))) {
 			// packetization can change over time
 			int curpacketization = 0;
 
