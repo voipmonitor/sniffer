@@ -100,8 +100,15 @@ sed -i "s#^maxpoolsize[\t= ]\+.*\$#maxpoolsize = $MAXPOOLSIZE#" $CFGDIR/$SENSOR.
 
 
 echo "Installing $CFGDIR/$SENSOR.conf to /$CFGDIR/$SENSOR.conf. Edit this file to your needs"
-cp -i $CFGDIR/$SENSOR.conf /$CFGDIR/
-
+if [ -z $NOUSERINPUT ]; then
+	cp -i $CFGDIR/$SENSOR.conf /$CFGDIR/
+else
+	if [ -f /$CFGDIR/$SENSOR.conf ]; then
+		echo "File /$CFGDIR/$SENSOR.conf already exists, no copying."
+	else
+		cp $CFGDIR/$SENSOR.conf /$CFGDIR/
+	fi
+fi
 
 update-rc.d $SENSOR defaults &>/dev/null
 chkconfig --add $SENSOR &>/dev/null
