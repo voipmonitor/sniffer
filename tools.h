@@ -1574,9 +1574,19 @@ public:
 		_listPhoneNumber_sorted = 0;
 		_listPrefixes_sorted = 0;
 	}
+	~ListPhoneNumber() {
+		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+			delete *iter;
+		}
+	}
 	void add(const char *number, bool prefix = true) {
 		if(autoLock) lock();
-		if(!prefix) {
+		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
+			if(check_regexp(number)) {
+				cRegExp *regexp = new FILE_LINE(0) cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
+				listRegExp.push_back(regexp);
+			}
+		} else if(!prefix) {
 			listPhoneNumber.push_back(PhoneNumber(number, false));
 		} else {
 			listPrefixes.push_back(PhoneNumber(number, true));
@@ -1613,6 +1623,14 @@ public:
 				}
 			}
 		}
+		if(!rslt && listRegExp.size()) {
+			for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+				if((*iter)->match(check_number)) {
+					rslt = true;
+					break;
+				}
+			}
+		}
 		if(autoLock) unlock();
 		return(rslt);
 	}
@@ -1620,10 +1638,14 @@ public:
 		if(autoLock) lock();
 		listPhoneNumber.clear();
 		listPrefixes.clear();
+		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+			delete *iter;
+		}
+		listRegExp.clear();
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
-		return(!listPhoneNumber.size() && !listPrefixes.size());
+		return(!listPhoneNumber.size() && !listPrefixes.size() && !listRegExp.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -1634,6 +1656,7 @@ public:
 private:
 	std::vector<PhoneNumber> listPhoneNumber;
 	std::vector<PhoneNumber> listPrefixes;
+	std::list<cRegExp*> listRegExp;
 	bool autoLock;
 	volatile int _sync;
 	volatile int _listPhoneNumber_sorted;
