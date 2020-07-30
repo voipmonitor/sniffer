@@ -1882,10 +1882,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
-			} else if(codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) {
+			} else if(codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB) {
 				if(payload_len > 7) {
 					//printf("curpac[%u]\n", curpacketization);
-					curpacketization = (getTimestamp() - last_ts) / 8;
+					curpacketization = (getTimestamp() - last_ts) / (codec == PAYLOAD_AMR ? 8 : 16);
 				} else {
 					curpacketization = packetization;
 				}

@@ -1,3 +1,20 @@
+26.19 21.07.2020
+================
+- fix sending SIP packets in packetbuffer_sender=yes to some other instance for low SIP traffic [VS-1083]
+- fix large TLS INVITE packets [VS-1087]
+- fix sip overlap when both caller=A callee=A [VS-1085]
+- fix G711 codec instead of opus for calls which contains video (ignore m=video) [VS-1088]
+- reenable warning when capturing (interface=any) and packets have different DLT size (with suggestion to use convert_dlt_sll2en10 = yes) [VS-1086]
+- do not insert sensor and active calls when loading pcap from file [VS-1089]
+- store audio/image/video flag in CDR (video calls will be possible to filter now) [VS-559]
+- new  mirror_require_confirmation option which is recommended to disable on high traffic throughput 
+- new multiple service connections between client and server (increses connection performance) 
+- fix memory leak in queue between database server and chart cache server (if queue is full)
+- fix cGzip::decompress
+- fix loading pcap with verbose option -v,process_rtp_header if pcap contains variable packetization and packets were saved with rtpsave=header [VS-1090]
+- fix AMR-WB decoder [VS-487]
+
+
 26.18 03.07.2020
 ================
 - Support for billing recalculation [VG-2019]

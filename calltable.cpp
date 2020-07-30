@@ -3180,7 +3180,7 @@ Call::convertRawToWav() {
 				if(opt_keycheck[0] != '\0') {
 					snprintf(cmd, cmd_len, "vmcodecs %s amrwb \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
 				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-amrnb \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					snprintf(cmd, cmd_len, "voipmonitor-amrwb \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
 					cout << cmd << "\n";
 				}
 				cmd[cmd_len] = 0;
