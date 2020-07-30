@@ -2567,6 +2567,36 @@ bool string_is_alphanumeric(const char *s) {
 }
 
 
+bool str_like(const char *str, const char *pattern) {
+	unsigned str_length = strlen(str);
+	unsigned pattern_length = strlen(pattern);
+	if(pattern_length) {
+		bool pattern_contain_wildcard = strchr(pattern, '_') ? true : false;
+		bool rslt;
+		if(pattern[0] == '%') {
+			if(pattern[pattern_length - 1] == '%') {
+				rslt = strcasestr(str, string(pattern).substr(1, pattern_length - 2).c_str()) != NULL;
+			} else {
+				rslt = str_length >= pattern_length - 1 &&
+				       !(pattern_contain_wildcard ?
+					  strncasecmp_wildcard(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1, "_") :
+					  strncasecmp(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1));
+			}
+		} else if(pattern[pattern_length - 1] == '%') {
+			rslt = !(pattern_contain_wildcard ?
+				  strncasecmp_wildcard(str, pattern, pattern_length - 1, "_") :
+				  strncasecmp(str, pattern, pattern_length - 1));
+		} else {
+			rslt = !(pattern_contain_wildcard ?
+				  strcasecmp_wildcard(str, pattern, "_") :
+				  strcasecmp(str, pattern));
+		}
+		return(rslt);
+	}
+	return(false);
+}
+
+
 bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty) {
 	if(!vect_ip->size() && !vect_net->size()) {
 		return(trueIfVectEmpty);

@@ -417,6 +417,8 @@ std::string string_size(const char *s, unsigned size);
 bool string_is_numeric(const char *s);
 bool string_is_alphanumeric(const char *s);
 
+bool str_like(const char *str, const char *pattern);
+
 bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode);
 bool matchResponseCode(int code, int size, int testCode);
 std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes);

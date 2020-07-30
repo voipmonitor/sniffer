@@ -949,9 +949,17 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 	table = "[" + header;
 	if(records.size()) {
 		string filter = jsonParams.getValue("filter");
-		if(!filter.empty()) {
-			//cout << "FILTER: " << filter << endl;
+		string filter_user_restr = jsonParams.getValue("filter_user_restr");
+		if(!filter.empty() || !filter_user_restr.empty()) {
 			cRegisterFilter *regFilter = new FILE_LINE(0) cRegisterFilter(filter.c_str());
+			if(!filter.empty()) {
+				// cout << "FILTER: " << filter << endl;
+				regFilter->setFilter(filter.c_str());
+			}
+			if(!filter_user_restr.empty()) {
+				// cout << "FILTER (user_restr): " << filter_user_restr << endl;
+				regFilter->setFilter(filter_user_restr.c_str());
+			}
 			for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); ) {
 				if(!regFilter->check(&(*iter_rec))) {
 					iter_rec->free();

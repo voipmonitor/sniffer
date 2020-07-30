@@ -111,4 +111,95 @@ public:
 };
 
 
+class cUserRestriction {
+public:
+	enum eTypeSrc {
+		_ts_cdr,
+		_ts_message,
+		_ts_other
+	};
+	enum eCombCond {
+		_cc_and,
+		_cc_or
+	};
+public:
+	cUserRestriction();
+	~cUserRestriction();
+	void load(unsigned uid, bool *useCustomHeaders, SqlDb *sqlDb = NULL);
+	void apply();
+	void clear();
+	bool check(eTypeSrc type_src,
+		   vmIP *ip_src, vmIP *ip_dst,
+		   const char *number_src, const char *number_dst, const char *number_contact,
+		   const char *domain_src, const char *domain_dst, const char *domain_contact,
+		   u_int16_t vlan,
+		   map<string, string> *ch);
+private:
+	unsigned uid;
+	string src_ip;
+	string src_number;
+	string src_domain;
+	string src_vlan;
+	string src_ch_cdr;
+	string src_ch_message;
+	ListIP *cond_ip;
+	ListPhoneNumber *cond_number;
+	ListCheckString *cond_domain;
+	list<u_int16_t> *cond_vlan;
+	class cLogicHierarchyAndOr *cond_ch_cdr;
+	cLogicHierarchyAndOr *cond_ch_message;
+	eCombCond comb_cond;
+};
+
+
+class cLogicHierarchyAndOr {
+public:
+	class cItem {
+	public:
+		cItem(int level) {
+			this->level = level;
+		}
+		virtual ~cItem() {}
+	protected:
+		virtual bool eval(void */*data*/) {
+			return(true);
+		}
+	protected:
+		int level;
+	friend class cLogicHierarchyAndOr;
+	};
+public:
+	cLogicHierarchyAndOr();
+	virtual ~cLogicHierarchyAndOr();
+	void set(const char *src);
+	bool eval(void *data);
+protected:
+	virtual cItem *createItem(int level, const char *data);
+private:
+	bool eval(unsigned *index, void *data);
+	void clear();
+private:
+	vector<cItem*> items;
+};
+
+
+class cLogicHierarchyAndOr_custom_header : public cLogicHierarchyAndOr {
+public:
+	class cItemCustomHeader : public cItem {
+	public:
+		cItemCustomHeader(int level, const char *custom_header, const char *pattern) : cItem(level) {
+			this->custom_header = custom_header;
+			this->pattern = pattern;
+		}
+	protected:
+		virtual bool eval(void *data);
+	protected:
+		string custom_header;
+		string pattern;
+	};
+protected:
+	virtual cItem *createItem(int level, const char *data);
+};
+
+
 #endif
