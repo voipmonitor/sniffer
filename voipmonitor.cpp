@@ -2577,7 +2577,7 @@ void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 			crash_pnt = (void*) uc->uc_mcontext.gregs[REG_RIP] ;
 		#elif defined(__hppa__)
 			ucontext_t* uc = (ucontext_t*) secret;
-			crash_pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0×3UL ;
+			crash_pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0x3UL ;
 		#elif (defined (__ppc__)) || (defined (__powerpc__))
 			ucontext_t* uc = (ucontext_t*) secret;
 			crash_pnt = (void*) uc->uc_mcontext.regs->nip ;
