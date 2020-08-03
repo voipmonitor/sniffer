@@ -1042,6 +1042,8 @@ unsigned opt_udp_port_mgcp_gateway = 2427;
 unsigned opt_tcp_port_mgcp_callagent = 2727;
 unsigned opt_udp_port_mgcp_callagent = 2727;
 
+bool opt_icmp_process_data = false;
+
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
@@ -7252,6 +7254,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -11166,6 +11169,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "udp_port_vxlan", NULL))) {
 		opt_udp_port_vxlan = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "icmp_process_data", NULL))) {
+		opt_icmp_process_data = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

@@ -276,6 +276,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern unsigned opt_udp_port_l2tp;
 	extern unsigned opt_udp_port_tzsp;
 	extern unsigned opt_udp_port_vxlan;
+	extern bool opt_icmp_process_data;
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
@@ -386,6 +387,17 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 				*flags |= FLAG_AUDIOCODES;
 			}
 			return(header_ip->get_hdr_size() + udp_tcp_header_length + audiocodes.header_length_total);
+		}
+	} else if(opt_icmp_process_data &&
+		  header_ip->get_protocol() == IPPROTO_ICMP) {
+		// icmp protocol
+		unsigned int icmp_length = 8;
+		if(header_ip->get_tot_len() > header_ip->get_hdr_size() + icmp_length + sizeof(iphdr2) &&
+		   *(u_char*)((unsigned char*)header_ip + header_ip->get_hdr_size()) == 3 &&
+		   ((iphdr2*)((unsigned char*)header_ip + header_ip->get_hdr_size() + icmp_length))->version_is_ok()) {
+			return(header_ip->get_hdr_size() + icmp_length);
+		} else {
+			return(-1);
 		}
 	}
 	return(0);
