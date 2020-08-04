@@ -366,7 +366,7 @@ public:
 	string normalizeStringValuesForCmp(list<string> values);
 	bool enable_normalizeStringValuesForCmp() { return(true); }
 	bool enableMultiValues() { return(true); }
-	static unsigned setPortMartix(const char *port_str, char *port_matrix, unsigned port_max = 65535);
+	static unsigned setPortMatrix(const char *port_str, char *port_matrix, unsigned port_max = 65535);
 	static string getPortString(char *port_matrix, unsigned port_max = 65535);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);

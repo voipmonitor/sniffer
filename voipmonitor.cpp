@@ -7811,7 +7811,7 @@ void get_command_line_arguments() {
 				opt_ignoreRTCPjitter = atoi(optarg);
 				break;
 			case 199:
-				cConfigItem_ports::setPortMartix(optarg, skinnyportmatrix, 65535);
+				cConfigItem_ports::setPortMatrix(optarg, skinnyportmatrix, 65535);
 				break;
 			case 315:
 				{
@@ -7923,7 +7923,7 @@ void get_command_line_arguments() {
 				sipportmatrix[80] = 1;
 				break;
 			case 'Y':
-				cConfigItem_ports::setPortMartix(optarg, sipportmatrix, 65535);
+				cConfigItem_ports::setPortMatrix(optarg, sipportmatrix, 65535);
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
@@ -9049,7 +9049,7 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix) {
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
-		cConfigItem_ports::setPortMartix(i->pItem, port_matrix, 65535);
+		cConfigItem_ports::setPortMatrix(i->pItem, port_matrix, 65535);
 	}
 }
 

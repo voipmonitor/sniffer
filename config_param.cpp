@@ -973,7 +973,7 @@ list<string> cConfigItem_ports::getValueListStr() {
 
 string cConfigItem_ports::normalizeStringValueForCmp(string value) {
 	char *port_matrix = new char[this->port_max + 1];
-	cConfigItem_ports::setPortMartix(value.c_str(), port_matrix, this->port_max);
+	cConfigItem_ports::setPortMatrix(value.c_str(), port_matrix, this->port_max);
 	string rslt = getPortString(port_matrix, this->port_max);
 	delete [] port_matrix;
 	return(rslt);
@@ -983,14 +983,14 @@ string cConfigItem_ports::normalizeStringValuesForCmp(list<string> values) {
 	char *port_matrix = new char[this->port_max + 1];
 	memset(port_matrix, 0, this->port_max + 1);
 	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
-		cConfigItem_ports::setPortMartix(iter->c_str(), port_matrix, this->port_max);
+		cConfigItem_ports::setPortMatrix(iter->c_str(), port_matrix, this->port_max);
 	}
 	string rslt = getPortString(port_matrix, this->port_max);
 	delete [] port_matrix;
 	return(rslt);
 }
 
-unsigned cConfigItem_ports::setPortMartix(const char *port_str, char *port_matrix, unsigned port_max) {
+unsigned cConfigItem_ports::setPortMatrix(const char *port_str, char *port_matrix, unsigned port_max) {
 	unsigned set = 0;
 	vector<string> ports_str = split(port_str, split(",|;", "|"), true);
 	for(unsigned i = 0; i < ports_str.size(); i++) {
@@ -1058,7 +1058,7 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		ok += setPortMartix(iter->c_str(), param_port_matrix, this->port_max);
+		ok += setPortMatrix(iter->c_str(), param_port_matrix, this->port_max);
 	}
 	return(ok > 0);
 }
