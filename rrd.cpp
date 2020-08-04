@@ -368,9 +368,7 @@ RrdCharts::RrdCharts() {
 }
 
 RrdCharts::~RrdCharts() {
-	for(list<RrdChart*>::iterator iter = charts.begin(); iter != charts.end(); iter++) {
-		delete (*iter);
-	}
+	clearCharts();
 }
 
 RrdChart* RrdCharts::addChart(const char *dbname, const char *name, unsigned step) {
@@ -427,6 +425,14 @@ int RrdCharts::setValue(const char *valuename, double value, const char *dbname,
 
 int RrdCharts::addValue(const char *valuename, double value, const char *dbname) {
 	return(setValue(valuename, value, dbname, true));
+}
+
+void RrdCharts::clearCharts() {
+	for(list<RrdChart*>::iterator iter = charts.begin(); iter != charts.end(); iter++) {
+		delete (*iter);
+	}
+	charts.clear();
+	map_values.clear();
 }
 
 void RrdCharts::clearValues() {
@@ -810,6 +816,12 @@ void rrd_charts_init() {
 			->setPrecision(2, 2);
 			
 	rrd_charts.createMapValues();
+}
+
+void rrd_charts_term() {
+	if(opt_rrd) {
+		rrd_charts.clearCharts();
+	}
 }
 
 void rrd_charts_create() {

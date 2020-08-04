@@ -620,6 +620,14 @@ string find_and_replace(const char *source, const char *find, const char *replac
 	return(s_source);
 }
 
+string &find_and_replace_all(string &source, const string find, string replace) {
+	unsigned counter_replace;
+	do {
+		find_and_replace(source, find, replace, &counter_replace);
+	} while(counter_replace > 0);
+	return(source);
+}
+
 
 std::string &trim(std::string &s, const char *trimChars) {
 	if(!s.length()) {

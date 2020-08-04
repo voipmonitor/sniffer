@@ -3902,6 +3902,10 @@ int main(int argc, char *argv[]) {
 #endif
 	}
 	
+	if(opt_rrd) {
+		rrd_charts_term();
+	}
+	
 	if(_break) {
 		break;
 	}
@@ -8974,30 +8978,38 @@ bool check_complete_parameters() {
 // OBSOLETE
 
 void parse_config_item(const char *config, map<vmIPport, string> *item) {
-	vector<string> ip_port = split(config, ":", true);
-	if(ip_port.size() >= 2) {
-		vmIP ip = str_2_vmIP(ip_port[0].c_str());
-		vector<string> port_str = split(ip_port[1].c_str(), " ", true);
-		if(port_str.size() >= 1) {
-			unsigned port = atoi(port_str[0].c_str());
-			string key;
-			if(port_str.size() >= 2) {
-				key = port_str[1];
+	vmIP ip;
+	const char *port_str_str;
+	if(ip.setFromString(config, &port_str_str)) {
+		while(*port_str_str == ' ' || *port_str_str == '\t' || *port_str_str == ':') {
+			++port_str_str;
+		}
+		vector<string> port_str_array = split(port_str_str, " ", true);
+		if(port_str_array.size() >= 1) {
+			unsigned port = atoi(port_str_array[0].c_str());
+			string str;
+			if(port_str_array.size() >= 2) {
+				str = port_str_array[1];
 			}
 			if(ip.isSet() && port) {
-				(*item)[vmIPport(ip, port)] = key;
+				(*item)[vmIPport(ip, port)] = str;
+				// cout << ip.getString() << " : " << port << " " << str << endl;
 			}
 		}
 	}
 }
 
 void parse_config_item(const char *config, vector<vmIPport> *item) {
-	vector<string> ip_port = split(config, ":", true);
-	if(ip_port.size() >= 2) {
-		vmIP ip = str_2_vmIP(ip_port[0].c_str());
-		unsigned port = atoi(ip_port[1].c_str());
+	vmIP ip;
+	const char *port_str;
+	if(ip.setFromString(config, &port_str)) {
+		while(*port_str == ' ' || *port_str == '\t' || *port_str == ':') {
+			++port_str;
+		}
+		unsigned port = atoi(port_str);
 		if(ip.isSet() && port) {
 			item->push_back(vmIPport(ip, port));
+			// cout << ip.getString() << " : " << port << endl;
 		}
 	}
 }
@@ -9018,13 +9030,17 @@ void parse_config_item(const char *config, vector<vmIP> *item_ip, vector<vmIPmas
 }
 
 void parse_config_item(const char *config, nat_aliases_t *item) {
-	vector<string> ip_nat = split(config, split(" |:|=", "|"), true);
-	if(ip_nat.size() >= 2) {
-		vmIP _ip_nat[2];
-		if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
-			(*item)[_ip_nat[0]] = _ip_nat[1];
+	vmIP ip_nat[2];
+	const char *ip_nat_2_str;
+	if(ip_nat[0].setFromString(config, &ip_nat_2_str)) {
+		while(*ip_nat_2_str == ' ' || *ip_nat_2_str == '\t' || *ip_nat_2_str == ':' || *ip_nat_2_str == '=') {
+			++ip_nat_2_str;
+		}
+		if(ip_nat[1].setFromString(ip_nat_2_str, NULL)) {
+			(*item)[ip_nat[0]] = ip_nat[1];
+			// cout << ip_nat[0].getString() << " : " << ip_nat[1].getString() << endl;
 			if(verbosity > 3) {
-				printf("adding local_ip[%s] = extern_ip[%s]\n", _ip_nat[0].getString().c_str(), _ip_nat[1].getString().c_str());
+				printf("adding local_ip[%s] = extern_ip[%s]\n", ip_nat[0].getString().c_str(), ip_nat[1].getString().c_str());
 			}
 		}
 	}

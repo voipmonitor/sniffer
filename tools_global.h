@@ -423,6 +423,7 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 
 string &find_and_replace(string &source, const string find, string replace, unsigned *counter_replace = NULL);
 string find_and_replace(const char *source, const char *find, const char *replace, unsigned *counter_replace = NULL);
+string &find_and_replace_all(string &source, const string find, string replace);
 
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);

@@ -1280,7 +1280,7 @@ string cConfigItem_ip_ports::getValueStr(bool configFile) {
 					outStr << ';';
 				}
 			}
-			outStr << iter->ip.getString() << ':' << iter->port.getString();
+			outStr << iter->ip.getString(true) << ':' << iter->port.getString();
 			++counter;
 		}
 	}
@@ -1295,6 +1295,15 @@ list<string> cConfigItem_ip_ports::getValueListStr() {
 		}
 	}
 	return(l);
+}
+
+string cConfigItem_ip_ports::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, " :", ":");
+	find_and_replace(value, ": ", ":");
+	find_and_replace(value, "[", "");
+	find_and_replace(value, "]", "");
+	find_and_replace_all(value, "  ", " ");
+	return(value);
 }
 
 bool cConfigItem_ip_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
@@ -1316,15 +1325,19 @@ bool cConfigItem_ip_ports::setParamFromValuesStr(vector<string> list_values_str,
 	int ok = 0;
 	initBeforeSet();
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
-		vector<string> ip_port = split(iter->c_str(), ":", true);
-		if(ip_port.size() >= 2) {
-			vmIP ip = str_2_vmIP(ip_port[0].c_str());
-			unsigned port = atoi(ip_port[1].c_str());
+		vmIP ip;
+		const char *port_str;
+		if(ip.setFromString(iter->c_str(), &port_str)) {
+			while(*port_str == ' ' || *port_str == '\t' || *port_str == ':') {
+				++port_str;
+			}
+			unsigned port = atoi(port_str);
 			if(ip.isSet() && port) {
 				if(!ok && enableClearBeforeFirstSet) {
 					doClearBeforeFirstSet();
 				}
 				param_ip_ports->push_back(vmIPport(ip, port));
+				// cout << ip.getString() << " : " << port << endl;
 				++ok;
 			}
 		}
@@ -1359,7 +1372,7 @@ string cConfigItem_ip_port_str_map::getValueStr(bool configFile) {
 			}
 		}
 		vmIPport ip_port = iter->first;
-		outStr << ip_port.ip.getString() << ':' << ip_port.port.getString();
+		outStr << ip_port.ip.getString(true) << ':' << ip_port.port.getString();
 		if(!iter->second.empty()) {
 			outStr << ' ' << iter->second;
 		}
@@ -1379,9 +1392,11 @@ list<string> cConfigItem_ip_port_str_map::getValueListStr() {
 }
 
 string cConfigItem_ip_port_str_map::normalizeStringValueForCmp(string value) {
-	find_and_replace(value, "  ", " ");
 	find_and_replace(value, " :", ":");
 	find_and_replace(value, ": ", ":");
+	find_and_replace(value, "[", "");
+	find_and_replace(value, "]", "");
+	find_and_replace_all(value, "  ", " ");
 	return(value);
 }
 
@@ -1404,21 +1419,25 @@ bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_valu
 	int ok = 0;
 	initBeforeSet();
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
-		vector<string> ip_port = split(iter->c_str(), ":", true);
-		if(ip_port.size() >= 2) {
-			vmIP ip = str_2_vmIP(ip_port[0].c_str());
-			vector<string> port_str = split(ip_port[1].c_str(), " ", true);
-			if(port_str.size() >= 1) {
-				unsigned port = atoi(port_str[0].c_str());
+		vmIP ip;
+		const char *port_str_str;
+		if(ip.setFromString(iter->c_str(), &port_str_str)) {
+			while(*port_str_str == ' ' || *port_str_str == '\t' || *port_str_str == ':') {
+				++port_str_str;
+			}
+			vector<string> port_str_array = split(port_str_str, " ", true);
+			if(port_str_array.size() >= 1) {
+				unsigned port = atoi(port_str_array[0].c_str());
 				string str;
-				if(port_str.size() >= 2) {
-					str = port_str[1];
+				if(port_str_array.size() >= 2) {
+					str = port_str_array[1];
 				}
 				if(ip.isSet() && port) {
 					if(!ok && enableClearBeforeFirstSet) {
 						doClearBeforeFirstSet();
 					}
 					(*param_ip_port_string_map)[vmIPport(ip, port)] = str;
+					// cout << ip.getString() << " : " << port << " " << str << endl;
 					++ok;
 				}
 			}
@@ -1453,7 +1472,7 @@ string cConfigItem_nat_aliases::getValueStr(bool configFile) {
 				outStr << ';';
 			}
 		}
-		outStr << iter->first.getString() << ':' << iter->second.getString();
+		outStr << iter->first.getString(true) << ':' << iter->second.getString(true);
 		++counter;
 	}
 	return(outStr.str());
@@ -1468,7 +1487,11 @@ list<string> cConfigItem_nat_aliases::getValueListStr() {
 }
 
 string cConfigItem_nat_aliases::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, "=", " ");
 	find_and_replace(value, ":", " ");
+	find_and_replace(value, "[", "");
+	find_and_replace(value, "]", "");
+	find_and_replace_all(value, "  ", " ");
 	return(value);
 }
 
@@ -1491,17 +1514,21 @@ bool cConfigItem_nat_aliases::setParamFromValuesStr(vector<string> list_values_s
 	int ok = 0;
 	initBeforeSet();
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
-		vector<string> ip_nat = split(iter->c_str(), split(" |:|=", "|"), true);
-		if(ip_nat.size() >= 2) {
-			vmIP _ip_nat[2];
-			if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
+		vmIP ip_nat[2];
+		const char *ip_nat_2_str;
+		if(ip_nat[0].setFromString(iter->c_str(), &ip_nat_2_str)) {
+			while(*ip_nat_2_str == ' ' || *ip_nat_2_str == '\t' || *ip_nat_2_str == ':' || *ip_nat_2_str == '=') {
+				++ip_nat_2_str;
+			}
+			if(ip_nat[1].setFromString(ip_nat_2_str, NULL)) {
 				if(!ok && enableClearBeforeFirstSet) {
 					doClearBeforeFirstSet();
 				}
-				(*param_nat_aliases)[_ip_nat[0]] = _ip_nat[1];
+				(*param_nat_aliases)[ip_nat[0]] = ip_nat[1];
+				// cout << ip_nat[0].getString() << " : " << ip_nat[1].getString() << endl;
 				++ok;
 				if(verbosity > 3) {
-					printf("adding local_ip[%s] = extern_ip[%s]\n", _ip_nat[0].getString().c_str(), _ip_nat[1].getString().c_str());
+					printf("adding local_ip[%s] = extern_ip[%s]\n", ip_nat[0].getString().c_str(), ip_nat[1].getString().c_str());
 				}
 			}
 		}
@@ -1679,7 +1706,7 @@ string cConfigMap::comp(cConfigMap *other, cConfig *config, cConfig *defaultConf
 				outStr << "(//) " << iter1->first 
 				       << " = " 
 				       << iter1->second.valuesToStr()
-				       << " // (default value:) " 
+				       << (defaultConfig ? " // (default value:) " : " // ")
 				       << iter2->second.valuesToStr() << endl;
 			}
 		}

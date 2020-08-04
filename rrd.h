@@ -205,6 +205,7 @@ public:
 			   bool slope, bool icon);
 	int setValue(const char *valuename, double value, const char *dbname = NULL, bool add = false);
 	int addValue(const char *valuename, double value, const char *dbname = NULL);
+	void clearCharts();
 	void clearValues();
 	void createAll(bool skipIfExist = true);
 	void alterAll();
@@ -250,6 +251,7 @@ private:
 
 
 void rrd_charts_init();
+void rrd_charts_term();
 void rrd_charts_create();
 void rrd_charts_alter();
 void rrd_set_value(const char *valuename, double value, const char *dbname = NULL);

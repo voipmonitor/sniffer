@@ -123,7 +123,8 @@ struct vmIP {
 	}
 	#endif
 	bool setFromString(const char *ip);
-	std::string getString() const;
+	bool setFromString(const char *ip, const char **end_ptr);
+	std::string getString(bool ipv6_in_brackets = false) const;
 	std::string getStringForMysqlIpColumn(const char *table, const char *column) const;
 	std::string _getStringForMysqlIpColumn(int IPv) const;
 	inline bool isLocalhost() {

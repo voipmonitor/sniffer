@@ -448,6 +448,7 @@ public:
 	cConfigItem_ip_ports(const char* name, vector<vmIPport> *param);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
