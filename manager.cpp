@@ -1333,6 +1333,8 @@ void *manager_read_thread(void * arg) {
 	}
 	
 	parse_command(buf_long, clientInfo, NULL);
+	
+	termTimeCacheForThread();
 
 	return 0;
 }

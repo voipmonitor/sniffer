@@ -3945,6 +3945,8 @@ int main(int argc, char *argv[]) {
 	extern void out_db_cnt();
 	out_db_cnt();
 	#endif
+	
+	termTimeCacheForThread();
 
 	return(0);
 }

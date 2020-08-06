@@ -4631,6 +4631,19 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 
 
 volatile int _tz_sync;
+map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+volatile int timeCacheMap_sync;
+
+void termTimeCacheForThread() {
+	unsigned int tid = get_unix_tid();
+	while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+	map<unsigned int, sLocalTimeHourCache*>::iterator iter = timeCacheMap.find(tid);
+	if(iter != timeCacheMap.end()) {
+		delete iter->second;
+		timeCacheMap.erase(iter);
+	}
+	__sync_lock_release(&timeCacheMap_sync);
+}
 
 string getGuiTimezone(SqlDb *sqlDb) {
 	bool _createSqlObject = false;

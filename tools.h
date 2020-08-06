@@ -2555,9 +2555,14 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 		}
 		timeCache = timeCache_global;
 	} else {
-		#if defined(__arm__)
-			static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
-			static volatile int timeCacheMap_sync = 0;
+		#if not defined(__arm__)
+		static __thread sLocalTimeHourCache *timeCache_thread = NULL;
+		if(timeCache_thread) {
+			timeCache = timeCache_thread;
+		} else {
+		#endif
+			extern map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+			extern volatile int timeCacheMap_sync;
 			unsigned int tid = get_unix_tid();
 			while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
 			if(!timeCacheMap[tid]) {
@@ -2567,12 +2572,9 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 				timeCache = timeCacheMap[tid];
 			}
 			__sync_lock_release(&timeCacheMap_sync);
-		#else
-			static __thread sLocalTimeHourCache *timeCache_thread = NULL;
-			if(!timeCache_thread) {
-				timeCache_thread = new FILE_LINE(39014) sLocalTimeHourCache();
-			}
-			timeCache = timeCache_thread;
+		#if not defined(__arm__)
+			timeCache_thread = timeCache;
+		}
 		#endif
 	}
 	bool force_gmt = false;
@@ -2637,6 +2639,8 @@ inline long int mktime(const char *str_time, const char *timezone) {
 	time.tm_isdst = -1;
 	return(mktime(&time, timezone));
 }
+
+void termTimeCacheForThread();
 
 string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
