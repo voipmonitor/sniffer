@@ -29,6 +29,8 @@ extern bool opt_sip_register_compare_vlan;
 extern bool opt_sip_register_state_compare_from_num;
 extern bool opt_sip_register_state_compare_from_name;
 extern bool opt_sip_register_state_compare_from_domain;
+extern bool opt_sip_register_state_compare_contact_num;
+extern bool opt_sip_register_state_compare_contact_domain;
 extern bool opt_sip_register_state_compare_digest_realm;
 extern bool opt_sip_register_state_compare_ua;
 extern bool opt_sip_register_state_compare_sipalg;
@@ -210,8 +212,8 @@ bool RegisterState::isEq(Call *call, Register *reg) {
 	else if(REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
 	return(state == convRegisterState(call) &&
-	       //REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num) &&
-	       //REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain) &&
+	       (!opt_sip_register_state_compare_contact_num || REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) &&
+	       (!opt_sip_register_state_compare_contact_domain || REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain)) &&
 	       (!opt_sip_register_state_compare_from_num || REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, call->caller)) &&
 	       (!opt_sip_register_state_compare_from_name || REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, call->callername)) &&
 	       (!opt_sip_register_state_compare_from_domain || REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, call->caller_domain)) &&
@@ -268,10 +270,12 @@ Register::~Register() {
 
 void Register::update(Call *call) {
 	char *tmp_str;
-	if(!contact_num && call->contact_num[0]) {
+	if(!opt_sip_register_state_compare_contact_num &&
+	   !contact_num && call->contact_num[0]) {
 		contact_num = REG_NEW_STR(call->contact_num);
 	}
-	if(!contact_domain && call->contact_domain[0]) {
+	if(!opt_sip_register_state_compare_contact_domain &&
+	   !contact_domain && call->contact_domain[0]) {
 		contact_domain = REG_NEW_STR(call->contact_domain);
 	}
 	if(!digest_username && call->digest_username[0]) {
@@ -411,6 +415,12 @@ void Register::updateLastState(Call *call) {
 		if(!opt_sip_register_state_compare_digest_realm && 
 		   !state->digest_realm && call->digest_realm[0] && this->digest_realm) {
 			state->digest_realm = EQ_REG;
+		}
+		if(!opt_sip_register_state_compare_contact_num) {
+			this->updateLastStateItem(call->contact_num, this->contact_num, &state->contact_num);
+		}
+		if(!opt_sip_register_state_compare_contact_domain) {
+			this->updateLastStateItem(call->contact_domain, this->contact_domain, &state->contact_domain);
 		}
 		if(!opt_sip_register_state_compare_from_num) {
 			this->updateLastStateItem(call->caller, this->from_num, &state->from_num);
@@ -630,8 +640,8 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_sipcalledport].set(sipcalledport, RecordArrayField::tf_port);
 	rec->fields[rf_to_num].set(to_num);
 	rec->fields[rf_to_domain].set(to_domain);
-	rec->fields[rf_contact_num].set(contact_num);
-	rec->fields[rf_contact_domain].set(contact_domain);
+	rec->fields[rf_contact_num].set(state->contact_num == EQ_REG ? contact_num : state->contact_num);
+	rec->fields[rf_contact_domain].set(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain);
 	rec->fields[rf_digestusername].set(digest_username);
 	rec->fields[rf_id_sensor].set(state->id_sensor);
 	rec->fields[rf_fname].set(state->fname);
