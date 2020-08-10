@@ -955,7 +955,7 @@ int dsp_call_progress(struct dsp *dsp, short *data, int samples)
 	return __dsp_call_progress(dsp, data, samples);
 }
 
-static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsilence, int *totalnoise, int *frames_energy)
+static int __dsp_silence_noise(struct dsp *dsp, short *s, int len, int *totalsilence, int *totalnoise, u_int16_t *frames_energy)
 {
 	int accum;
 	int x;
@@ -1188,7 +1188,7 @@ int dsp_busydetect(struct dsp *dsp)
 	return res;
 }
 
-static int dsp_silence_noise_with_energy(struct dsp *dsp, short *data, int len, int *total, int *frames_energy, int noise)
+static int dsp_silence_noise_with_energy(struct dsp *dsp, short *data, int len, int *total, u_int16_t *frames_energy, int noise)
 {
 	if (noise) {
 		return __dsp_silence_noise(dsp, data, len, NULL, total, frames_energy);
@@ -1197,7 +1197,7 @@ static int dsp_silence_noise_with_energy(struct dsp *dsp, short *data, int len, 
 	}
 }
 
-int dsp_silence_with_energy(struct dsp *dsp, short *data, int len, int *totalsilence, int *frames_energy)
+int dsp_silence_with_energy(struct dsp *dsp, short *data, int len, int *totalsilence, u_int16_t *frames_energy)
 {
 	return dsp_silence_noise_with_energy(dsp, data, len, totalsilence, frames_energy, 0);
 }
@@ -1213,7 +1213,7 @@ int dsp_noise(struct dsp *dsp, short *data, int len, int *totalnoise)
 }
 
 
-int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress)
+int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress, u_int16_t *energylevel)
 {
 	int res = 0;
 	int digit = 0, fax_digit = 0;
@@ -1232,8 +1232,8 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 	dsp->mute_fragments = 0;
 
 	/* Need to run the silence detection stuff for silence suppression and busy detection */
-	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT)) {
-		*silence = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, NULL);
+	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT) || (dsp->features & DSP_FEATURE_ENERGYLEVEL)) {
+		*silence = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, energylevel);
 		if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
 	}
 

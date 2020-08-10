@@ -631,6 +631,8 @@ public:
 	double jitter_rtcp_max(bool *null);
 	double fr_rtcp_avg(bool *null);
 	double fr_rtcp_max(bool *null);
+	
+	void addEnergyLevel(u_int16_t energyLevel);
 
 private: 
 	/*
@@ -665,6 +667,8 @@ private:
 	class RTPsecure *srtp_decrypt;
 	
 	sRSA rsa;
+	
+	SimpleChunkBuffer *energylevels;
 	
 friend class Call;
 };

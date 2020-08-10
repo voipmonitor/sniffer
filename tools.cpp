@@ -3049,6 +3049,16 @@ void ParsePacket::setStdParse() {
 		}
 		addNode(findHeader.c_str(), typeNode_std);
 	}
+	
+	extern char opt_energylevelheader[128];
+	if(opt_energylevelheader[0] != '\0') {
+		string findHeader = opt_energylevelheader;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str(), typeNode_std);
+	}
+
 	extern char opt_silenceheader[128];
 	if(opt_silenceheader[0] != '\0') {
 		string findHeader = opt_silenceheader;
@@ -3057,7 +3067,7 @@ void ParsePacket::setStdParse() {
 		}
 		addNode(findHeader.c_str(), typeNode_std);
 	}
-
+	
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	extern CustomHeaders *custom_headers_sip_msg;

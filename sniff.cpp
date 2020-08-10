@@ -197,6 +197,7 @@ extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silenceheader[128];
+extern char opt_energylevelheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern int opt_saverfc2833;
@@ -3966,6 +3967,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	}
 
+	if(opt_energylevelheader[0] != '\0') {
+		char *energylevelheader_val = gettag_sip(packetS, opt_energylevelheader, &l);
+		if(energylevelheader_val) {
+			call->save_energylevels = true;
+		}
+	}
+	
 	// pause / unpause recording based on 182 queued / update & ok
 	if (opt_182queuedpauserecording) {
 		switch (packetS->sip_method) {

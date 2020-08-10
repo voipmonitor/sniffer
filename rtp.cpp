@@ -377,6 +377,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
+	
+	energylevels = NULL;
 
 }
 
@@ -551,6 +553,10 @@ RTP::~RTP() {
 
 	if(DSP) {
 		dsp_free(DSP);
+	}
+	
+	if(energylevels) {
+		delete energylevels;
 	}
 }
 
@@ -1951,7 +1957,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time_us && 
 			    (this->header_ts.tv_sec - TIME_US_TO_S(owner->connect_time_us) < 10) &&
 			    getTimeUS(this->header_ts) > owner->connect_time_us;
-	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect)
+	extern bool opt_save_energylevels;
+	extern char opt_energylevelheader[128];
+	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
 		int res;
@@ -1977,6 +1986,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				dsp_set_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
 			} else {
 				dsp_clear_feature(DSP, DSP_FEATURE_CALL_PROGRESS);
+			}
+			if (do_energylevels) {
+				dsp_set_feature(DSP, DSP_FEATURE_ENERGYLEVEL);
+			} else {
+				dsp_clear_feature(DSP, DSP_FEATURE_ENERGYLEVEL);
 			}
 		}
 
@@ -2010,12 +2024,13 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				}
 			}
 		}
-		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or do_fasdetect) {
+		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or do_fasdetect or do_energylevels) {
 			int silence0 = 0;
 			int totalsilence = 0;
 			int totalnoise = 0;
 			int res_call_progress = 0;
-			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise, &res_call_progress);
+			u_int16_t energylevel = 0;
+			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise, &res_call_progress, &energylevel);
 			if(silence0) {
 				if(!last_was_silence) {
 					sum_silence_changes++;
@@ -2048,6 +2063,9 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				if (do_fasdetect) {
 					owner->is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
 				}
+			}
+			if(do_energylevels) {
+				this->addEnergyLevel(energylevel);
 			}
 		}
 
@@ -2697,6 +2715,13 @@ double RTP::fr_rtcp_max(bool *null) {
 		if(null) *null = true;
 		return(0);
 	}
+}
+
+void RTP::addEnergyLevel(u_int16_t energyLevel) {
+	if(!energylevels) {
+		energylevels = new FILE_LINE(0) SimpleChunkBuffer();
+	}
+	energylevels->add((u_char*)&energyLevel, sizeof(energyLevel));
 }
 
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {

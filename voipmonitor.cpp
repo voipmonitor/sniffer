@@ -213,6 +213,7 @@ int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
+bool opt_save_energylevels = false;
 bool opt_rtpip_find_endpoints_set = false;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
@@ -326,6 +327,7 @@ char opt_silencedtmfseq[16] = "";
 char opt_silenceheader[128] = "";
 int opt_pauserecordingdtmf_timeout = 4;
 int opt_182queuedpauserecording = 0;
+char opt_energylevelheader[128] = "";
 int opt_vlan_siprtpsame = 0;
 int opt_rtpfromsdp_onlysip = 0;
 int opt_rtpfromsdp_onlysip_skinny = 1;
@@ -608,6 +610,7 @@ extern bool opt_pcap_queues_mirror_use_checksum;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_cdr_rtp_energylevels = 0;
 int opt_cleandatabase_ss7 = 0;
 int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
@@ -6514,6 +6517,7 @@ void cConfig::addConfigItems() {
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
+			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr_rtp_energylevels", &opt_cleandatabase_cdr_rtp_energylevels));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_ss7", &opt_cleandatabase_ss7));
 			addConfigItem(new FILE_LINE(42118) cConfigItem_integer("cleandatabase_http_enum", &opt_cleandatabase_http_enum));
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
@@ -6721,6 +6725,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels", &opt_save_energylevels));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
@@ -6996,6 +7001,8 @@ void cConfig::addConfigItems() {
 				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42321) cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
 			addConfigItem(new FILE_LINE(42322) cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("energylevelheader", opt_energylevelheader, sizeof(opt_energylevelheader)))
+				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42323) cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip_skinny", &opt_rtpfromsdp_onlysip_skinny));
@@ -9218,6 +9225,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc = atoi(value);
 	}
+	if((value = ini.GetValue("general", "cleandatabase_cdr_rtp_energylevels", NULL))) {
+		opt_cleandatabase_cdr_rtp_energylevels = atoi(value);
+	}
 	if((value = ini.GetValue("general", "cleandatabase_ss7", NULL))) {
 		opt_cleandatabase_ss7 = atoi(value);
 	}
@@ -9738,6 +9748,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "rtpip_find_endpoints", NULL))) {
 		opt_rtpip_find_endpoints = yesno(value);
 		opt_rtpip_find_endpoints_set = true;
+	}
+	if((value = ini.GetValue("general", "save-energylevels", NULL))) {
+		opt_save_energylevels = yesno(value);
 	}
 	if((value = ini.GetValue("general", "null_rtppayload", NULL))) {
 		opt_null_rtppayload = yesno(value);
@@ -10344,6 +10357,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "182queuedpauserecording", NULL))) {
 		opt_182queuedpauserecording = yesno(value);
+	}
+	if((value = ini.GetValue("general", "energylevelheader", NULL))) {
+		snprintf(opt_energylevelheader, sizeof(opt_energylevelheader), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);

@@ -63,6 +63,7 @@ extern int opt_cdr_country_code;
 extern int opt_message_country_code;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern bool opt_time_precision_in_ms;
+extern bool opt_save_energylevels;
 
 extern char sql_driver[256];
 
@@ -5396,6 +5397,32 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(opt_save_energylevels) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_rtp_energylevels` (\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") + 
+			"`index` tinyint unsigned DEFAULT NULL,\
+			`energylevels` mediumblob,\
+		KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_rtp_energylevels_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
@@ -7531,6 +7558,9 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
 	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
+	if(opt_save_energylevels) {
+		existsColumns.cdr_rtp_energylevels_calldate = this->existsColumn("cdr_rtp_energylevels", "calldate");
+	}
 	existsColumns.cdr_dtmf_calldate = this->existsColumn("cdr_dtmf", "calldate");
 	existsColumns.cdr_sipresp_calldate = this->existsColumn("cdr_sipresp", "calldate");
 	if(_save_sip_history) {
@@ -7545,6 +7575,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
+	if(opt_save_energylevels) {
+		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_energylevels_calldate_ms, "cdr_rtp_energylevels"));
+	}
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_dtmf_calldate_ms, "cdr_dtmf"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sipresp_calldate_ms, "cdr_sipresp"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_siphistory_calldate_ms, "cdr_siphistory"));
@@ -8266,6 +8299,9 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
 			if(typeTables & tt_child) {
 				tables.push_back("cdr_rtp");
+				if(opt_save_energylevels) {
+					tables.push_back("cdr_rtp_energylevels");
+				}
 				tables.push_back("cdr_dtmf");
 				tables.push_back("cdr_sipresp");
 				if(_save_sip_history) {
@@ -8562,6 +8598,7 @@ void createMysqlPartitionsIpacc() {
 
 void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_cdr;
+	extern int opt_cleandatabase_cdr_rtp_energylevels;
 	extern int opt_cleandatabase_http_enum;
 	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
@@ -8574,6 +8611,9 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, 0, sqlDb);
+	if(opt_save_energylevels) {
+		_dropMysqlPartitions("cdr_rtp_energylevels", opt_cleandatabase_cdr_rtp_energylevels ? opt_cleandatabase_cdr_rtp_energylevels : opt_cleandatabase_cdr, 0, sqlDb);
+	}
 	_dropMysqlPartitions("cdr_dtmf", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sipresp", opt_cleandatabase_cdr, 0, sqlDb);
 	if(_save_sip_history || sqlDb->existsTable("cdr_siphistory")) {

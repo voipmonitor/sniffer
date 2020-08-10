@@ -206,7 +206,7 @@ bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char 
 string sqlEscapeString(string inputStr, const char *typeDb = NULL);
 string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL);
 void fillEscTables();
-string _sqlEscapeString(const char *inputString, int length, const char *typeDb);
+string _sqlEscapeString(const char *inputString, int length, const char *typeDb, bool checkUtf = false);
 void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb, bool checkUtf = false);
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL);
