@@ -417,6 +417,8 @@ std::string string_size(const char *s, unsigned size);
 bool string_is_numeric(const char *s);
 bool string_is_alphanumeric(const char *s);
 
+bool str_like(const char *str, const char *pattern);
+
 bool matchResponseCodes(std::vector<pair<int, int> > & sipInfoCodes, int testCode);
 bool matchResponseCode(int code, int size, int testCode);
 std::vector<pair<int,int> > getResponseCodeSizes(std::vector<int> & Codes);
@@ -1572,9 +1574,19 @@ public:
 		_listPhoneNumber_sorted = 0;
 		_listPrefixes_sorted = 0;
 	}
+	~ListPhoneNumber() {
+		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+			delete *iter;
+		}
+	}
 	void add(const char *number, bool prefix = true) {
 		if(autoLock) lock();
-		if(!prefix) {
+		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
+			if(check_regexp(number)) {
+				cRegExp *regexp = new FILE_LINE(0) cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
+				listRegExp.push_back(regexp);
+			}
+		} else if(!prefix) {
 			listPhoneNumber.push_back(PhoneNumber(number, false));
 		} else {
 			listPrefixes.push_back(PhoneNumber(number, true));
@@ -1611,6 +1623,14 @@ public:
 				}
 			}
 		}
+		if(!rslt && listRegExp.size()) {
+			for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+				if((*iter)->match(check_number)) {
+					rslt = true;
+					break;
+				}
+			}
+		}
 		if(autoLock) unlock();
 		return(rslt);
 	}
@@ -1618,10 +1638,14 @@ public:
 		if(autoLock) lock();
 		listPhoneNumber.clear();
 		listPrefixes.clear();
+		for(std::list<cRegExp*>::iterator iter = listRegExp.begin(); iter != listRegExp.end(); iter++) {
+			delete *iter;
+		}
+		listRegExp.clear();
 		if(autoLock) unlock();
 	}
 	bool is_empty() {
-		return(!listPhoneNumber.size() && !listPrefixes.size());
+		return(!listPhoneNumber.size() && !listPrefixes.size() && !listRegExp.size());
 	}
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
@@ -1632,6 +1656,7 @@ public:
 private:
 	std::vector<PhoneNumber> listPhoneNumber;
 	std::vector<PhoneNumber> listPrefixes;
+	std::list<cRegExp*> listRegExp;
 	bool autoLock;
 	volatile int _sync;
 	volatile int _listPhoneNumber_sorted;
@@ -2530,9 +2555,14 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 		}
 		timeCache = timeCache_global;
 	} else {
-		#if defined(__arm__)
-			static map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
-			static volatile int timeCacheMap_sync = 0;
+		#if not defined(__arm__)
+		static __thread sLocalTimeHourCache *timeCache_thread = NULL;
+		if(timeCache_thread) {
+			timeCache = timeCache_thread;
+		} else {
+		#endif
+			extern map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+			extern volatile int timeCacheMap_sync;
 			unsigned int tid = get_unix_tid();
 			while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
 			if(!timeCacheMap[tid]) {
@@ -2542,12 +2572,9 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 				timeCache = timeCacheMap[tid];
 			}
 			__sync_lock_release(&timeCacheMap_sync);
-		#else
-			static __thread sLocalTimeHourCache *timeCache_thread = NULL;
-			if(!timeCache_thread) {
-				timeCache_thread = new FILE_LINE(39014) sLocalTimeHourCache();
-			}
-			timeCache = timeCache_thread;
+		#if not defined(__arm__)
+			timeCache_thread = timeCache;
+		}
 		#endif
 	}
 	bool force_gmt = false;
@@ -2612,6 +2639,8 @@ inline long int mktime(const char *str_time, const char *timezone) {
 	time.tm_isdst = -1;
 	return(mktime(&time, timezone));
 }
+
+void termTimeCacheForThread();
 
 string getGuiTimezone(class SqlDb *sqlDb = NULL);
 

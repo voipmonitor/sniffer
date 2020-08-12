@@ -5,6 +5,7 @@
 #include "calltable.h"
 #include "sniff.h"
 #include "pcap_queue_block.h"
+#include "filter_call.h"
 
 
 extern int opt_id_sensor;
@@ -338,11 +339,18 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 		day_of_week[i] = false;
 	}
 	day_of_week_set = false;
+	owner_uid = 0;
+	is_private = false;
+	use_user_restriction = false;
+	userRestriction = NULL;
 	storePcaps = false;
 	verbLog = NULL;
 }
 
 FraudAlert::~FraudAlert() {
+	if(userRestriction) {
+		delete userRestriction;
+	}
 	if(verbLog) {
 		fclose(verbLog);
 	}
@@ -354,7 +362,9 @@ bool FraudAlert::isReg() {
 	       type == _reg_expire);
 }
 
-bool FraudAlert::loadAlert(SqlDb *sqlDb) {
+bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_custom_headers, SqlDb *sqlDb) {
+	*useUserRestriction = false;
+	*useUserRestriction_custom_headers = false;
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -551,6 +561,18 @@ bool FraudAlert::loadAlert(SqlDb *sqlDb) {
 			}
 		}
 	}
+	owner_uid = atol(dbRow["owner_uid"].c_str());
+	is_private = atoi(dbRow["private"].c_str()) > 0;
+	use_user_restriction = atoi(dbRow["use_user_restriction"].c_str()) > 0;
+	if(owner_uid && use_user_restriction) {
+		*useUserRestriction = true;
+		userRestriction = new FILE_LINE(0) cUserRestriction;
+		bool _useCustomHeaders = false;
+		userRestriction->load(owner_uid, &_useCustomHeaders);
+		if(_useCustomHeaders) {
+			*useUserRestriction_custom_headers = true;
+		}
+	}
 	if(defStorePcaps()) {
 		storePcaps = atoi(dbRow["fraud_store_pcaps"].c_str());
 		storePcapsToPaths = dbRow["fraud_store_pcaps_to_path"];
@@ -668,6 +690,14 @@ bool FraudAlert::okFilterDomain(const char *domain) {
 }
 
 bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
+	if(userRestriction && !userRestriction->check(cUserRestriction::_ts_cdr,
+						      &callInfo->caller_ip, &callInfo->called_ip,
+						      callInfo->caller_number.c_str(), callInfo->called_number.c_str(), NULL,
+						      callInfo->caller_domain.c_str(), callInfo->called_domain.c_str(), NULL,
+						      callInfo->vlan,
+						      callInfo->custom_headers)) {
+		return(false);
+	}
 	if(!this->okFilterIp(callInfo->caller_ip, callInfo->called_ip)) {
 		return(false);
 	}
@@ -696,6 +726,14 @@ bool FraudAlert::okFilter(sFraudCallInfo *callInfo) {
 }
 
 bool FraudAlert::okFilter(sFraudRtpStreamInfo *rtpStreamInfo) {
+	if(userRestriction && !userRestriction->check(cUserRestriction::_ts_other,
+						      &rtpStreamInfo->rtp_src_ip, &rtpStreamInfo->rtp_dst_ip,
+						      NULL, NULL, NULL,
+						      NULL, NULL, NULL,
+						      VLAN_UNSET,
+						      NULL)) {
+		return(false);
+	}
 	if(!this->okFilterIp(rtpStreamInfo->rtp_src_ip, rtpStreamInfo->rtp_dst_ip)) {
 		return(false);
 	}
@@ -706,6 +744,14 @@ bool FraudAlert::okFilter(sFraudRtpStreamInfo *rtpStreamInfo) {
 }
 
 bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
+	if(userRestriction && !userRestriction->check(cUserRestriction::_ts_other,
+						      &eventInfo->src_ip, &eventInfo->dst_ip,
+						      NULL, NULL, NULL,
+						      NULL, NULL, NULL,
+						      VLAN_UNSET,
+						      NULL)) {
+		return(false);
+	}
 	if(!this->okFilterIp(eventInfo->src_ip, eventInfo->dst_ip)) {
 		return(false);
 	}
@@ -715,7 +761,15 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 	return(true);
 }
 
-bool FraudAlert::okFilter(sFraudRegisterInfo */*registerInfo*/) {
+bool FraudAlert::okFilter(sFraudRegisterInfo *registerInfo) {
+	if(userRestriction && !userRestriction->check(cUserRestriction::_ts_other,
+						      &registerInfo->sipcallerip, &registerInfo->sipcalledip,
+						      registerInfo->from_num.c_str(), registerInfo->to_num.c_str(), registerInfo->contact_num.c_str(),
+						      registerInfo->from_domain.c_str(), registerInfo->to_domain.c_str(), registerInfo->contact_domain.c_str(),
+						      VLAN_UNSET,
+						      NULL)) {
+		return(false);
+	}
 	return(true);
 }
 
@@ -2182,6 +2236,8 @@ FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
 	runPopCallInfoThread = false;
 	termPopCallInfoThread = false;
+	useUserRestriction = false;
+	useUserRestriction_custom_headers = false;
 	_sync_alerts = 0;
 	initPopCallInfoThread();
 	lastTimeCallsIsFull = 0;
@@ -2196,6 +2252,8 @@ FraudAlerts::~FraudAlerts() {
 }
 
 void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
+	useUserRestriction = false;
+	useUserRestriction_custom_headers = false;
 	if(lock) lock_alerts();
 	bool _createSqlObject = false;
 	if(!sqlDb) {
@@ -2253,11 +2311,19 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 			alert = new FILE_LINE(7027) FraudAlert_reg_expire(dbId);
 			break;
 		}
-		if(alert && alert->loadAlert(sqlDb)) {
+		bool _useUserRestriction = false;
+		bool _useUserRestriction_custom_headers = false;
+		if(alert && alert->loadAlert(&_useUserRestriction, &_useUserRestriction_custom_headers, sqlDb)) {
 			if(sverb.fraud_file_log  && alert->supportVerbLog()) {
 				alert->openVerbLog();
 			}
 			alerts.push_back(alert);
+			if(_useUserRestriction) {
+				useUserRestriction = true;
+			}
+			if(_useUserRestriction_custom_headers) {
+				useUserRestriction_custom_headers = true;
+			}
 		}
 	}
 	if(_createSqlObject) {
@@ -2282,65 +2348,65 @@ void FraudAlerts::clear(bool lock) {
 }
 
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
-	sFraudCallInfo callInfo;
-	this->completeCallInfo(&callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
-	pushToCallQueue(&callInfo);
+	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
+	pushToCallQueue(callInfo);
 }
 
 void FraudAlerts::connectCall(Call *call, u_int64_t at) {
-	sFraudCallInfo callInfo;
-	this->completeCallInfo(&callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
-	pushToCallQueue(&callInfo);
+	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
+	pushToCallQueue(callInfo);
 }
 
 void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
-	sFraudCallInfo callInfo;
-	this->completeCallInfo(&callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
-	pushToCallQueue(&callInfo);
+	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
+	pushToCallQueue(callInfo);
 }
 
 void FraudAlerts::endCall(Call *call, u_int64_t at) {
-	sFraudCallInfo callInfo;
-	this->completeCallInfo(&callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
-	pushToCallQueue(&callInfo);
+	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
+	pushToCallQueue(callInfo);
 }
 
 void FraudAlerts::beginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 				 Call *call, u_int64_t at) {
-	sFraudRtpStreamInfo rtpStreamInfo;
-	rtpStreamInfo.typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream;
-	rtpStreamInfo.rtp_src_ip = src_ip;
-	rtpStreamInfo.rtp_src_port = src_port;
-	rtpStreamInfo.rtp_dst_ip = dst_ip;
-	rtpStreamInfo.rtp_dst_port = dst_port;
-	rtpStreamInfo.at = at;
-	this->completeRtpStreamInfo(&rtpStreamInfo, call);
-	pushToRtpStreamQueue(&rtpStreamInfo);
+	sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
+	rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream;
+	rtpStreamInfo->rtp_src_ip = src_ip;
+	rtpStreamInfo->rtp_src_port = src_port;
+	rtpStreamInfo->rtp_dst_ip = dst_ip;
+	rtpStreamInfo->rtp_dst_port = dst_port;
+	rtpStreamInfo->at = at;
+	this->completeRtpStreamInfo(rtpStreamInfo, call);
+	pushToRtpStreamQueue(rtpStreamInfo);
 }
 
 void FraudAlerts::endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			       Call *call, u_int64_t at) {
-	sFraudRtpStreamInfo rtpStreamInfo;
-	rtpStreamInfo.typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_endStream;
-	rtpStreamInfo.rtp_src_ip = src_ip;
-	rtpStreamInfo.rtp_src_port = src_port;
-	rtpStreamInfo.rtp_dst_ip = dst_ip;
-	rtpStreamInfo.rtp_dst_port = dst_port;
-	rtpStreamInfo.at = at;
-	this->completeRtpStreamInfo(&rtpStreamInfo, call);
-	pushToRtpStreamQueue(&rtpStreamInfo);
+	sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
+	rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_endStream;
+	rtpStreamInfo->rtp_src_ip = src_ip;
+	rtpStreamInfo->rtp_src_port = src_port;
+	rtpStreamInfo->rtp_dst_ip = dst_ip;
+	rtpStreamInfo->rtp_dst_port = dst_port;
+	rtpStreamInfo->at = at;
+	this->completeRtpStreamInfo(rtpStreamInfo, call);
+	pushToRtpStreamQueue(rtpStreamInfo);
 }
 
 void FraudAlerts::evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
-	sFraudEventInfo eventInfo;
-	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
-	eventInfo.src_ip = ip;
-	eventInfo.sip_method = sip_method;
-	eventInfo.at = at;
+	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
+	eventInfo->src_ip = ip;
+	eventInfo->sip_method = sip_method;
+	eventInfo->at = at;
 	if(ua && ua_len) {
-		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
 	}
-	pushToEventQueue(&eventInfo);
+	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
@@ -2348,48 +2414,48 @@ void FraudAlerts::evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char 
 	if(opt_enable_fraud_store_pcaps && block_store) {
 		block_store->lock_packet(block_store_index, 0);
 	}
-	sFraudEventInfo eventInfo;
-	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_register;
-	eventInfo.src_ip = src_ip;
-	eventInfo.src_ip = dst_ip;
-	eventInfo.at = at;
-	eventInfo.block_store = block_store;
-	eventInfo.block_store_index = block_store_index;
-	eventInfo.dlt = dlt;
+	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_register;
+	eventInfo->src_ip = src_ip;
+	eventInfo->src_ip = dst_ip;
+	eventInfo->at = at;
+	eventInfo->block_store = block_store;
+	eventInfo->block_store_index = block_store_index;
+	eventInfo->dlt = dlt;
 	if(ua && ua_len) {
-		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
 	}
-	pushToEventQueue(&eventInfo);
+	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len) {
-	sFraudEventInfo eventInfo;
-	eventInfo.typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
-	eventInfo.src_ip = src_ip;
-	eventInfo.dst_ip = dst_ip;
-	eventInfo.at = at;
+	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
+	eventInfo->src_ip = src_ip;
+	eventInfo->dst_ip = dst_ip;
+	eventInfo->at = at;
 	if(ua && ua_len) {
-		eventInfo.ua = ua_len == -1 ? ua : string(ua, ua_len);
+		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
 	}
-	pushToEventQueue(&eventInfo);
+	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
-	sFraudRegisterInfo registerInfo;
-	this->completeRegisterInfo(&registerInfo, call);
-	registerInfo.state = state;
-	registerInfo.prev_state = prev_state;
-	registerInfo.prev_state_at = prev_state_at;
-	pushToRegisterQueue(&registerInfo);
+	sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
+	this->completeRegisterInfo(registerInfo, call);
+	registerInfo->state = state;
+	registerInfo->prev_state = prev_state;
+	registerInfo->prev_state_at = prev_state_at;
+	pushToRegisterQueue(registerInfo);
 }
 
 void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
-	sFraudRegisterInfo registerInfo;
-	this->completeRegisterInfo(&registerInfo, reg, regState);
-	registerInfo.state = state;
-	registerInfo.prev_state = prev_state;
-	registerInfo.prev_state_at = prev_state_at;
-	pushToRegisterQueue(&registerInfo);
+	sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
+	this->completeRegisterInfo(registerInfo, reg, regState);
+	registerInfo->state = state;
+	registerInfo->prev_state = prev_state;
+	registerInfo->prev_state_at = prev_state_at;
+	pushToRegisterQueue(registerInfo);
 }
 
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
@@ -2401,7 +2467,7 @@ void FraudAlerts::stopPopCallInfoThread(bool wait) {
 
 void FraudAlerts::pushToCallQueue(sFraudCallInfo *callInfo) {
 	if(callQueue.getSize() < maxLengthAsyncQueue) {
-		callQueue.push(*callInfo);
+		callQueue.push(callInfo);
 	} else {
 		u_int64_t actTime = getTimeMS_rdtsc();
 		if(actTime > lastTimeCallsIsFull + 5000) {
@@ -2413,7 +2479,7 @@ void FraudAlerts::pushToCallQueue(sFraudCallInfo *callInfo) {
 
 void FraudAlerts::pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo) {
 	if(rtpStreamQueue.getSize() < maxLengthAsyncQueue) {
-		rtpStreamQueue.push(*streamInfo);
+		rtpStreamQueue.push(streamInfo);
 	} else {
 		u_int64_t actTime = getTimeMS_rdtsc();
 		if(actTime > lastTimeRtpStreamsIsFull + 5000) {
@@ -2425,7 +2491,7 @@ void FraudAlerts::pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo) {
 
 void FraudAlerts::pushToEventQueue(sFraudEventInfo *eventInfo) {
 	if(eventQueue.getSize() < maxLengthAsyncQueue) {
-		eventQueue.push(*eventInfo);
+		eventQueue.push(eventInfo);
 	} else {
 		u_int64_t actTime = getTimeMS_rdtsc();
 		if(actTime > lastTimeEventsIsFull + 5000) {
@@ -2437,7 +2503,7 @@ void FraudAlerts::pushToEventQueue(sFraudEventInfo *eventInfo) {
 
 void FraudAlerts::pushToRegisterQueue(sFraudRegisterInfo *registerInfo) {
 	if(registerQueue.getSize() < maxLengthAsyncQueue) {
-		registerQueue.push(*registerInfo);
+		registerQueue.push(registerInfo);
 	} else {
 		u_int64_t actTime = getTimeMS_rdtsc();
 		if(actTime > lastTimeRegistersIsFull + 5000) {
@@ -2458,51 +2524,55 @@ void FraudAlerts::initPopCallInfoThread() {
 
 void FraudAlerts::popCallInfoThread() {
 	runPopCallInfoThread = true;
-	sFraudCallInfo callInfo;
-	sFraudRtpStreamInfo rtpStreamInfo;
-	sFraudEventInfo eventInfo;
-	sFraudRegisterInfo registerInfo;
+	sFraudCallInfo *callInfo;
+	sFraudRtpStreamInfo *rtpStreamInfo;
+	sFraudEventInfo *eventInfo;
+	sFraudRegisterInfo *registerInfo;
 	while(!is_terminating() && !termPopCallInfoThread) {
 		bool okPop = false;
 		if(callQueue.pop(&callInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				this->completeCallInfoAfterPop(&callInfo, &(*iter)->checkInternational);
-				(*iter)->evCall(&callInfo);
+				this->completeCallInfoAfterPop(callInfo, &(*iter)->checkInternational);
+				(*iter)->evCall(callInfo);
 			}
 			unlock_alerts();
+			delete callInfo;
 			okPop = true;
 		}
 		if(rtpStreamQueue.pop(&rtpStreamInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				this->completeRtpStreamInfoAfterPop(&rtpStreamInfo, &(*iter)->checkInternational);
-				(*iter)->evRtpStream(&rtpStreamInfo);
+				this->completeRtpStreamInfoAfterPop(rtpStreamInfo, &(*iter)->checkInternational);
+				(*iter)->evRtpStream(rtpStreamInfo);
 			}
 			unlock_alerts();
+			delete rtpStreamInfo;
 			okPop = true;
 		}
 		if(eventQueue.pop(&eventInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				(*iter)->evEvent(&eventInfo);
+				(*iter)->evEvent(eventInfo);
 			}
 			unlock_alerts();
-			if(opt_enable_fraud_store_pcaps && eventInfo.block_store) {
-				eventInfo.block_store->unlock_packet(eventInfo.block_store_index);
+			if(opt_enable_fraud_store_pcaps && eventInfo->block_store) {
+				eventInfo->block_store->unlock_packet(eventInfo->block_store_index);
 			}
+			delete eventInfo;
 			okPop = true;
 		}
 		if(registerQueue.pop(&registerInfo)) {
 			lock_alerts();
 			vector<FraudAlert*>::iterator iter;
 			for(iter = alerts.begin(); iter != alerts.end(); iter++) {
-				(*iter)->evRegister(&registerInfo);
+				(*iter)->evRegister(registerInfo);
 			}
 			unlock_alerts();
+			delete registerInfo;
 			okPop = true;
 		}
 		if(!okPop) {
@@ -2523,6 +2593,12 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->called_ip = call->sipcalledip[0];
 	callInfo->caller_domain = call->caller_domain;
 	callInfo->called_domain = call->called_domain;
+	callInfo->vlan = call->vlan;
+	if(useUserRestriction_custom_headers) {
+		extern CustomHeaders *custom_headers_cdr;
+		callInfo->custom_headers = new FILE_LINE(0) map<string, string>;
+		custom_headers_cdr->getHeaderValues(call, INVITE, callInfo->custom_headers);
+	}
 	switch(typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_beginCall:
 		callInfo->at_begin = at;

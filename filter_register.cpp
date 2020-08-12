@@ -3,7 +3,9 @@
 
 
 cRegisterFilter::cRegisterFilter(const char *filter) {
-	setFilter(filter);
+	if(filter) {
+		setFilter(filter);
+	}
 }
 
 void cRegisterFilter::setFilter(const char *filter) {

@@ -197,6 +197,7 @@ extern int opt_newdir;
 extern int opt_callslimit;
 extern int opt_skiprtpdata;
 extern char opt_silenceheader[128];
+extern char opt_energylevelheader[128];
 extern char opt_silencedtmfseq[16];
 extern int opt_skinny;
 extern int opt_saverfc2833;
@@ -2678,6 +2679,8 @@ inline unsigned int setCallFlags(unsigned int flags,
 	return(flags);
 }
 
+static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
+
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr){
  
 	if(sverb.sipcallerip_filter[0] &&
@@ -2860,6 +2863,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 */
 		}
 		if(opt_enable_fraud && isFraudReady()) {
+			if(needCustomHeadersForFraud()) {
+				process_packet__parse_custom_headers(call, packetS);
+			}
 			fraudBeginCall(call, packetS->header_pt->ts);
 		}
 		if(sip_method == INVITE) {
@@ -3094,7 +3100,6 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	}
 }
 
-static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
 static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
 static inline void process_packet__cleanup_calls(pcap_pkthdr *header, const char *file, int line);
 static inline void process_packet__cleanup_registers(pcap_pkthdr *header);
@@ -3139,7 +3144,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool detectCallerd = false;
 	const char *logPacketSipMethodCallDescr = NULL;
 	int merged;
-	bool process_packet__parse_custom_headers_done = false;
 	char branch[100] = "";
 	bool branch_detected = false;
 	char called_invite[1024] = "";
@@ -3642,6 +3646,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen bye\n");
 			if(opt_enable_fraud && isFraudReady()) {
+				if(needCustomHeadersForFraud()) {
+					process_packet__parse_custom_headers(call, packetS);
+				}
 				fraudSeenByeCall(call, packetS->header_pt->ts);
 			}
 		}
@@ -3753,6 +3760,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						if(!call->connect_time_us) {
 							call->connect_time_us = getTimeUS(packetS->header_pt);
 							if(opt_enable_fraud && isFraudReady()) {
+								if(needCustomHeadersForFraud()) {
+									process_packet__parse_custom_headers(call, packetS);
+								}
 								fraudConnectCall(call, packetS->header_pt->ts);
 							}
 						}
@@ -3776,7 +3786,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(!call->onCall_2XX) {
 						if(call->typeIs(INVITE)) {
 							process_packet__parse_custom_headers(call, packetS);
-							process_packet__parse_custom_headers_done = true;
 							ClientThreads.onCall(call->call_id.c_str(),
 									     lastSIPresponseNum, call->callername, call->caller, call->called,
 									     call->getSipcallerip(), call->getSipcalledip(),
@@ -3828,7 +3837,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(!call->onCall_18X) {
 				if(call->typeIs(INVITE)) {
 					process_packet__parse_custom_headers(call, packetS);
-					process_packet__parse_custom_headers_done = true;
 					ClientThreads.onCall(call->call_id.c_str(),
 							     lastSIPresponseNum, call->callername, call->caller, call->called,
 							     call->getSipcallerip(), call->getSipcalledip(),
@@ -3959,6 +3967,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	}
 
+	if(opt_energylevelheader[0] != '\0') {
+		char *energylevelheader_val = gettag_sip(packetS, opt_energylevelheader, &l);
+		if(energylevelheader_val) {
+			call->save_energylevels = true;
+		}
+	}
+	
 	// pause / unpause recording based on 182 queued / update & ok
 	if (opt_182queuedpauserecording) {
 		switch (packetS->sip_method) {
@@ -4049,10 +4064,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 
 	// check if we have custom headers
-	if(!process_packet__parse_custom_headers_done) {
-		process_packet__parse_custom_headers(call, packetS);
-		process_packet__parse_custom_headers_done = true;
-	}
+	process_packet__parse_custom_headers(call, packetS);
 	
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->header_pt, lastSIPresponseNum);
@@ -5111,12 +5123,16 @@ void process_packet_other(packet_s_stack *packetS) {
 }
 
 inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS) {
+	if(packetS->_customHeadersDone) {
+		return;
+	}
 	if(call->typeIs(INVITE) && custom_headers_cdr) {
 		custom_headers_cdr->parse(call, INVITE, NULL, packetS);
 	}
 	if(call->typeIs(MESSAGE) && custom_headers_message) {
 		custom_headers_message->parse(call, MESSAGE, NULL, packetS);
 	}
+	packetS->_customHeadersDone = true;
 }
 
 inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, timeval tv) {

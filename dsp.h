@@ -27,6 +27,7 @@
 #define DSP_FEATURE_BUSY_DETECT		(1 << 1)
 #define DSP_FEATURE_DIGIT_DETECT	(1 << 3)
 #define DSP_FEATURE_FAX_DETECT		(1 << 4)
+#define DSP_FEATURE_ENERGYLEVEL		(1 << 5)
 
 #define	DSP_DIGITMODE_DTMF			0				/*!< Detect DTMF digits */
 #define DSP_DIGITMODE_MF			1				/*!< Detect MF digits */
@@ -374,7 +375,7 @@ int dsp_set_call_progress_zone(struct dsp *dsp, char *zone);
 
 /*! \brief Return AST_FRAME_NULL frames when there is silence, AST_FRAME_BUSY on
    busies, and call progress, all dependent upon which features are enabled */
-int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress);
+int dsp_process(struct dsp *dsp, short *data, int len, char *event_digit, int *event_len, int *silence, int *totalsilence, int *totalnoise, int *res_call_progress, u_int16_t *energylevel);
 
 /*! \brief Return non-zero if this is silence.  Updates "totalsilence" with the total
    number of seconds of silence  */

@@ -742,6 +742,7 @@ public:
 
 	int silencerecording;
 	int recordingpausedby182;
+	bool save_energylevels;
 	int msgcount;
 	int regcount;
 	int regcount_after_4xx;

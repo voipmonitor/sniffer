@@ -343,7 +343,7 @@ public:
 				(subscribe && item->type == smt_subscribe) ||
 				(notify && item->type == smt_notify)) &&
 			       (ip_src.is_empty() || ip_src.checkIP(item->ip_src)) &&
-			       (ip_dst.is_empty() || ip_dst.checkIP(item->ip_src)) &&
+			       (ip_dst.is_empty() || ip_dst.checkIP(item->ip_dst)) &&
 			       (number_src.is_empty() || number_src.checkNumber(item->number_src.c_str())) &&
 			       (number_dst.is_empty() || number_dst.checkNumber(item->number_dst.c_str())) &&
 			       (domain_src.is_empty() || domain_src.check(item->domain_src.c_str())) &&

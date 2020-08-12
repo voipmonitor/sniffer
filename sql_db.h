@@ -1119,6 +1119,7 @@ struct sExistsColumns {
 	bool cdr_child_next_calldate_ms;
 	bool cdr_child_proxy_calldate_ms;
 	bool cdr_child_rtp_calldate_ms;
+	bool cdr_child_rtp_energylevels_calldate_ms;
 	bool cdr_child_dtmf_calldate_ms;
 	bool cdr_child_sipresp_calldate_ms;
 	bool cdr_child_siphistory_calldate_ms;
@@ -1161,6 +1162,7 @@ struct sExistsColumns {
 	bool cdr_next_spool_index;
 	bool cdr_next_hold;
 	bool cdr_rtp_calldate;
+	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;
 	bool cdr_rtp_dport;
 	bool cdr_rtp_index;

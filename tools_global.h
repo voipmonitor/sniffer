@@ -5,6 +5,7 @@
 #include <pcap.h>
 #include <time.h>
 #include <string>
+#include <list>
 #include <vector>
 #include <map>
 #include <regex.h>
@@ -423,6 +424,7 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 
 string &find_and_replace(string &source, const string find, string replace, unsigned *counter_replace = NULL);
 string find_and_replace(const char *source, const char *find, const char *replace, unsigned *counter_replace = NULL);
+string &find_and_replace_all(string &source, const string find, string replace);
 
 std::string &trim(std::string &s, const char *trimChars = NULL);
 std::string trim_str(std::string s, const char *trimChars = NULL);
@@ -593,6 +595,93 @@ private:
 	u_int32_t bufferLength;
 	u_int32_t bufferCapacity;
 	u_int32_t capacityReserve;
+};
+
+
+class SimpleChunkBuffer {
+private:
+	struct sChunk {
+		sChunk(u_char *data, u_int32_t dataLength, u_int32_t capacity) {
+			buffer = new FILE_LINE(0) u_char[max(dataLength, capacity)];
+			memcpy(buffer, data, dataLength);
+			length = dataLength;
+			this->capacity = max(dataLength, capacity);
+		}
+		sChunk(u_int32_t capacity) {
+			buffer = new FILE_LINE(0) u_char[capacity];
+			length = 0;
+			this->capacity = capacity;
+		}
+		~sChunk() {
+			delete [] buffer;
+		}
+		u_int32_t add(u_char *data, u_int32_t dataLength) {
+			if(isFull()) {
+				return(dataLength);
+			}
+			u_int32_t rest = 0;
+			if(dataLength > freeCapacity()) {
+				rest = dataLength - freeCapacity();
+				dataLength = freeCapacity();
+			}
+			memcpy(buffer + length, data, dataLength);
+			length += dataLength;
+			return(rest);
+		}
+		bool isFull() {
+			return(length >= capacity);
+		}
+		u_int32_t freeCapacity() {
+			return(capacity > length ? capacity - length : 0);
+		}
+		u_char *buffer;
+		u_int32_t length;
+		u_int32_t capacity;
+	};
+public:
+	SimpleChunkBuffer(u_int32_t minChunkLength = 1024) {
+		this->minChunkLength = minChunkLength;
+	}
+	~SimpleChunkBuffer() {
+		for(std::list<sChunk*>::iterator iter = buffer.begin(); iter != buffer.end(); iter++) {
+			delete *iter;
+		}
+	}
+	void add(u_char *data, u_int32_t dataLength) {
+		if(!buffer.size() || buffer.back()->isFull()) {
+			sChunk *chunk = new FILE_LINE(0) sChunk(data, dataLength, minChunkLength);
+			buffer.push_back(chunk);
+			return;
+		}
+		u_int32_t rest = buffer.back()->add(data, dataLength);
+		if(rest > 0) {
+			sChunk *chunk = new FILE_LINE(0) sChunk(data + dataLength - rest, rest, minChunkLength);
+			buffer.push_back(chunk);
+		}
+	}
+	u_int32_t size() {
+		u_int32_t size = 0;
+		for(std::list<sChunk*>::iterator iter = buffer.begin(); iter != buffer.end(); iter++) {
+			size += (*iter)->length;
+		}
+		return(size);
+	}
+	u_char *data() {
+		u_int32_t size = this->size();
+		if(!size) {
+			return(NULL);
+		}
+		u_char* data = new FILE_LINE(0) u_char[size];
+		u_int32_t pos = 0;
+		for(std::list<sChunk*>::iterator iter = buffer.begin(); iter != buffer.end(); iter++) {
+			memcpy(data + pos, (*iter)->buffer, (*iter)->length);
+			pos += (*iter)->length;
+		}
+		return(data);
+	}
+private:
+	u_int32_t minChunkLength;
+	std::list<sChunk*> buffer;
 };
 
 

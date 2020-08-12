@@ -213,6 +213,7 @@ int opt_use_libsrtp = 0;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
+bool opt_save_energylevels = false;
 bool opt_rtpip_find_endpoints_set = false;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
@@ -326,6 +327,7 @@ char opt_silencedtmfseq[16] = "";
 char opt_silenceheader[128] = "";
 int opt_pauserecordingdtmf_timeout = 4;
 int opt_182queuedpauserecording = 0;
+char opt_energylevelheader[128] = "";
 int opt_vlan_siprtpsame = 0;
 int opt_rtpfromsdp_onlysip = 0;
 int opt_rtpfromsdp_onlysip_skinny = 1;
@@ -483,6 +485,8 @@ bool opt_sip_register_compare_vlan = false;
 bool opt_sip_register_state_compare_from_num = false;
 bool opt_sip_register_state_compare_from_name = false;
 bool opt_sip_register_state_compare_from_domain = false;
+bool opt_sip_register_state_compare_contact_num = false;
+bool opt_sip_register_state_compare_contact_domain = false;
 bool opt_sip_register_state_compare_digest_realm = false;
 bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_state_compare_sipalg = false;
@@ -608,6 +612,7 @@ extern bool opt_pcap_queues_mirror_use_checksum;
 extern int opt_pcap_dispatch;
 extern int sql_noerror;
 int opt_cleandatabase_cdr = 0;
+int opt_cleandatabase_cdr_rtp_energylevels = 0;
 int opt_cleandatabase_ss7 = 0;
 int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
@@ -1041,6 +1046,8 @@ unsigned opt_tcp_port_mgcp_gateway = 2427;
 unsigned opt_udp_port_mgcp_gateway = 2427;
 unsigned opt_tcp_port_mgcp_callagent = 2727;
 unsigned opt_udp_port_mgcp_callagent = 2727;
+
+bool opt_icmp_process_data = false;
 
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
@@ -2575,7 +2582,7 @@ void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 			crash_pnt = (void*) uc->uc_mcontext.gregs[REG_RIP] ;
 		#elif defined(__hppa__)
 			ucontext_t* uc = (ucontext_t*) secret;
-			crash_pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0×3UL ;
+			crash_pnt = (void*) uc->uc_mcontext.sc_iaoq[0] & ~0x3UL ;
 		#elif (defined (__ppc__)) || (defined (__powerpc__))
 			ucontext_t* uc = (ucontext_t*) secret;
 			crash_pnt = (void*) uc->uc_mcontext.regs->nip ;
@@ -3900,6 +3907,10 @@ int main(int argc, char *argv[]) {
 #endif
 	}
 	
+	if(opt_rrd) {
+		rrd_charts_term();
+	}
+	
 	if(_break) {
 		break;
 	}
@@ -3939,6 +3950,8 @@ int main(int argc, char *argv[]) {
 	extern void out_db_cnt();
 	out_db_cnt();
 	#endif
+	
+	termTimeCacheForThread();
 
 	return(0);
 }
@@ -6506,6 +6519,7 @@ void cConfig::addConfigItems() {
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
+			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr_rtp_energylevels", &opt_cleandatabase_cdr_rtp_energylevels));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_ss7", &opt_cleandatabase_ss7));
 			addConfigItem(new FILE_LINE(42118) cConfigItem_integer("cleandatabase_http_enum", &opt_cleandatabase_http_enum));
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
@@ -6713,6 +6727,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels", &opt_save_energylevels));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
@@ -6931,6 +6946,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_num", &opt_sip_register_state_compare_from_num));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_name", &opt_sip_register_state_compare_from_name));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-from_domain", &opt_sip_register_state_compare_from_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-contact_num", &opt_sip_register_state_compare_contact_num));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-contact_domain", &opt_sip_register_state_compare_contact_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_realm", &opt_sip_register_state_compare_digest_realm));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-digest_ua", &opt_sip_register_state_compare_ua));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-sipalg", &opt_sip_register_state_compare_sipalg));
@@ -6988,6 +7005,8 @@ void cConfig::addConfigItems() {
 				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42321) cConfigItem_integer("pauserecordingdtmf_timeout", &opt_pauserecordingdtmf_timeout));
 			addConfigItem(new FILE_LINE(42322) cConfigItem_yesno("182queuedpauserecording", &opt_182queuedpauserecording));
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("energylevelheader", opt_energylevelheader, sizeof(opt_energylevelheader)))
+				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42323) cConfigItem_yesno("vlan_siprtpsame", &opt_vlan_siprtpsame));
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip_skinny", &opt_rtpfromsdp_onlysip_skinny));
@@ -7252,6 +7271,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -7804,7 +7824,7 @@ void get_command_line_arguments() {
 				opt_ignoreRTCPjitter = atoi(optarg);
 				break;
 			case 199:
-				cConfigItem_ports::setPortMartix(optarg, skinnyportmatrix, 65535);
+				cConfigItem_ports::setPortMatrix(optarg, skinnyportmatrix, 65535);
 				break;
 			case 315:
 				{
@@ -7916,7 +7936,7 @@ void get_command_line_arguments() {
 				sipportmatrix[80] = 1;
 				break;
 			case 'Y':
-				cConfigItem_ports::setPortMartix(optarg, sipportmatrix, 65535);
+				cConfigItem_ports::setPortMatrix(optarg, sipportmatrix, 65535);
 				break;
 			case 'm':
 				rtptimeout = atoi(optarg);
@@ -8971,30 +8991,38 @@ bool check_complete_parameters() {
 // OBSOLETE
 
 void parse_config_item(const char *config, map<vmIPport, string> *item) {
-	vector<string> ip_port = split(config, ":", true);
-	if(ip_port.size() >= 2) {
-		vmIP ip = str_2_vmIP(ip_port[0].c_str());
-		vector<string> port_str = split(ip_port[1].c_str(), " ", true);
-		if(port_str.size() >= 1) {
-			unsigned port = atoi(port_str[0].c_str());
-			string key;
-			if(port_str.size() >= 2) {
-				key = port_str[1];
+	vmIP ip;
+	const char *port_str_str;
+	if(ip.setFromString(config, &port_str_str)) {
+		while(*port_str_str == ' ' || *port_str_str == '\t' || *port_str_str == ':') {
+			++port_str_str;
+		}
+		vector<string> port_str_array = split(port_str_str, " ", true);
+		if(port_str_array.size() >= 1) {
+			unsigned port = atoi(port_str_array[0].c_str());
+			string str;
+			if(port_str_array.size() >= 2) {
+				str = port_str_array[1];
 			}
 			if(ip.isSet() && port) {
-				(*item)[vmIPport(ip, port)] = key;
+				(*item)[vmIPport(ip, port)] = str;
+				// cout << ip.getString() << " : " << port << " " << str << endl;
 			}
 		}
 	}
 }
 
 void parse_config_item(const char *config, vector<vmIPport> *item) {
-	vector<string> ip_port = split(config, ":", true);
-	if(ip_port.size() >= 2) {
-		vmIP ip = str_2_vmIP(ip_port[0].c_str());
-		unsigned port = atoi(ip_port[1].c_str());
+	vmIP ip;
+	const char *port_str;
+	if(ip.setFromString(config, &port_str)) {
+		while(*port_str == ' ' || *port_str == '\t' || *port_str == ':') {
+			++port_str;
+		}
+		unsigned port = atoi(port_str);
 		if(ip.isSet() && port) {
 			item->push_back(vmIPport(ip, port));
+			// cout << ip.getString() << " : " << port << endl;
 		}
 	}
 }
@@ -9015,13 +9043,17 @@ void parse_config_item(const char *config, vector<vmIP> *item_ip, vector<vmIPmas
 }
 
 void parse_config_item(const char *config, nat_aliases_t *item) {
-	vector<string> ip_nat = split(config, split(" |:|=", "|"), true);
-	if(ip_nat.size() >= 2) {
-		vmIP _ip_nat[2];
-		if(_ip_nat[0].setFromString(ip_nat[0].c_str()) && _ip_nat[1].setFromString(ip_nat[1].c_str())) {
-			(*item)[_ip_nat[0]] = _ip_nat[1];
+	vmIP ip_nat[2];
+	const char *ip_nat_2_str;
+	if(ip_nat[0].setFromString(config, &ip_nat_2_str)) {
+		while(*ip_nat_2_str == ' ' || *ip_nat_2_str == '\t' || *ip_nat_2_str == ':' || *ip_nat_2_str == '=') {
+			++ip_nat_2_str;
+		}
+		if(ip_nat[1].setFromString(ip_nat_2_str, NULL)) {
+			(*item)[ip_nat[0]] = ip_nat[1];
+			// cout << ip_nat[0].getString() << " : " << ip_nat[1].getString() << endl;
 			if(verbosity > 3) {
-				printf("adding local_ip[%s] = extern_ip[%s]\n", _ip_nat[0].getString().c_str(), _ip_nat[1].getString().c_str());
+				printf("adding local_ip[%s] = extern_ip[%s]\n", ip_nat[0].getString().c_str(), ip_nat[1].getString().c_str());
 			}
 		}
 	}
@@ -9030,7 +9062,7 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix) {
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
-		cConfigItem_ports::setPortMartix(i->pItem, port_matrix, 65535);
+		cConfigItem_ports::setPortMatrix(i->pItem, port_matrix, 65535);
 	}
 }
 
@@ -9196,6 +9228,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_cdr =
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_cdr_rtp_energylevels", NULL))) {
+		opt_cleandatabase_cdr_rtp_energylevels = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_ss7", NULL))) {
 		opt_cleandatabase_ss7 = atoi(value);
@@ -9393,6 +9428,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-from_domain", NULL))) {
 		opt_sip_register_state_compare_from_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-contact_num", NULL))) {
+		opt_sip_register_state_compare_contact_num = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-compare-contact_domain", NULL))) {
+		opt_sip_register_state_compare_contact_domain = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-state-compare-digest_realm", NULL))) {
 		opt_sip_register_state_compare_digest_realm = yesno(value);
@@ -9717,6 +9758,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "rtpip_find_endpoints", NULL))) {
 		opt_rtpip_find_endpoints = yesno(value);
 		opt_rtpip_find_endpoints_set = true;
+	}
+	if((value = ini.GetValue("general", "save-energylevels", NULL))) {
+		opt_save_energylevels = yesno(value);
 	}
 	if((value = ini.GetValue("general", "null_rtppayload", NULL))) {
 		opt_null_rtppayload = yesno(value);
@@ -10323,6 +10367,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "182queuedpauserecording", NULL))) {
 		opt_182queuedpauserecording = yesno(value);
+	}
+	if((value = ini.GetValue("general", "energylevelheader", NULL))) {
+		snprintf(opt_energylevelheader, sizeof(opt_energylevelheader), "\n%s:", value);
 	}
 	if((value = ini.GetValue("general", "vlan_siprtpsame", NULL))) {
 		opt_vlan_siprtpsame = yesno(value);
@@ -11166,6 +11213,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "udp_port_vxlan", NULL))) {
 		opt_udp_port_vxlan = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "icmp_process_data", NULL))) {
+		opt_icmp_process_data = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

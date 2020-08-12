@@ -7,7 +7,7 @@
 
 class cRegisterFilter : public cRecordFilter {
 public:
-	cRegisterFilter(const char *filter);
+	cRegisterFilter(const char *filter = NULL);
 	void setFilter(const char *filter);
 };
 

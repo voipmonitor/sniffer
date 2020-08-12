@@ -13,6 +13,7 @@
 #include "sql_db.h"
 #include "register.h"
 #include "filter_register.h"
+#include "header_packet.h"
 
 
 #define fraud_alert_rcc 21
@@ -213,6 +214,13 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 		at_end = 0;
 		at_last = 0;
 		local_called_ip = true;
+		vlan = VLAN_UNSET;
+		custom_headers = NULL;
+	}
+	~sFraudCallInfo() {
+		if(custom_headers) {
+			delete custom_headers;
+		}
 	}
 	eTypeCallInfo typeCallInfo;
 	int call_type;
@@ -226,6 +234,8 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	bool local_called_ip;
 	string caller_domain;
 	string called_domain;
+	u_int16_t vlan;
+	map<string, string> *custom_headers;
 	u_int64_t at_begin;
 	u_int64_t at_connect;
 	u_int64_t at_seen_bye;
@@ -394,7 +404,7 @@ public:
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	bool isReg();
-	bool loadAlert(SqlDb *sqlDb = NULL);
+	bool loadAlert(bool *useUserRestriction, bool *useUserRestriction_custom_headers, SqlDb *sqlDb = NULL);
 	void loadFraudDef(SqlDb *sqlDb = NULL);
 	eFraudAlertType getType() {
 		return(type);
@@ -498,6 +508,10 @@ protected:
 	int hour_to;
 	bool day_of_week[7];
 	bool day_of_week_set;
+	unsigned owner_uid;
+	bool is_private;
+	bool use_user_restriction;
+	class cUserRestriction *userRestriction;
 	bool storePcaps;
 	string storePcapsToPaths;
 	FILE *verbLog;
@@ -1109,6 +1123,9 @@ public:
 	string getGroupName(unsigned idGroup) {
 		return(groupsIP.getGroupName(idGroup));
 	}
+	bool needCustomHeaders() {
+		return(useUserRestriction_custom_headers);
+	}
 private:
 	void pushToCallQueue(sFraudCallInfo *callInfo);
 	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);
@@ -1132,10 +1149,10 @@ private:
 	}
 private:
 	vector<FraudAlert*> alerts;
-	SafeAsyncQueue<sFraudCallInfo> callQueue;
-	SafeAsyncQueue<sFraudRtpStreamInfo> rtpStreamQueue;
-	SafeAsyncQueue<sFraudEventInfo> eventQueue;
-	SafeAsyncQueue<sFraudRegisterInfo> registerQueue;
+	SafeAsyncQueue<sFraudCallInfo*> callQueue;
+	SafeAsyncQueue<sFraudRtpStreamInfo*> rtpStreamQueue;
+	SafeAsyncQueue<sFraudEventInfo*> eventQueue;
+	SafeAsyncQueue<sFraudRegisterInfo*> registerQueue;
 	u_int64_t lastTimeCallsIsFull;
 	u_int64_t lastTimeRtpStreamsIsFull;
 	u_int64_t lastTimeEventsIsFull;
@@ -1145,6 +1162,8 @@ private:
 	pthread_t threadPopCallInfo;
 	bool runPopCallInfoThread;
 	bool termPopCallInfoThread;
+	bool useUserRestriction;
+	bool useUserRestriction_custom_headers;
 	string gui_timezone;
 	volatile int _sync_alerts;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
@@ -1220,6 +1239,11 @@ inline bool isFraudReady() {
 	extern FraudAlerts *fraudAlerts;
         extern volatile int _fraudAlerts_ready;
 	return(fraudAlerts && _fraudAlerts_ready);
+}
+
+inline bool needCustomHeadersForFraud() {
+	extern FraudAlerts *fraudAlerts;
+	return(fraudAlerts && fraudAlerts->needCustomHeaders());
 }
 
 

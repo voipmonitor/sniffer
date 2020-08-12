@@ -361,11 +361,12 @@ struct packet_s_process : public packet_s_process_0 {
 	Call *call;
 	int merged;
 	Call *call_created;
-	bool _getCallID;
-	bool _getSipMethod;
-	bool _getLastSipResponse;
-	bool _findCall;
-	bool _createCall;
+	bool _getCallID : 1;
+	bool _getSipMethod : 1;
+	bool _getLastSipResponse : 1;
+	bool _findCall : 1;
+	bool _createCall : 1;
+	bool _customHeadersDone : 1;
 	inline packet_s_process() {
 		__type = _t_packet_s_process; 
 		init();
@@ -395,6 +396,7 @@ struct packet_s_process : public packet_s_process_0 {
 		_getLastSipResponse = false;
 		_findCall = false;
 		_createCall = false;
+		_customHeadersDone = false;
 	}
 	inline void term() {
 		packet_s_process_0::term();

@@ -169,6 +169,7 @@ extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern PreProcessPacket *preProcessPacketCallX[];
 extern bool opt_disable_sdp_multiplication_warning;
+extern bool opt_save_energylevels;
 
 volatile int calls_counter = 0;
 /* probably not used any more */
@@ -573,6 +574,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	}
 	silencerecording = 0;
 	recordingpausedby182 = 0;
+	save_energylevels = false;
 	rtppacketsinqueue = 0;
 	end_call_rtp = 0;
 	end_call_hash_removed = 0;
@@ -5231,6 +5233,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	string sql_cdr_proxy_table = "cdr_proxy";
 	string sql_cdr_rtp_table = "cdr_rtp";
+	string sql_cdr_rtp_energylevels_table = "cdr_rtp_energylevels";
 	string sql_cdr_sdp_table = "cdr_sdp";
 	string sql_cdr_txt_table = "cdr_txt";
 	string sql_cdr_dtmf_table = "cdr_dtmf";
@@ -6115,6 +6118,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += string("") +
 					(opt_cdr_country_code ? "  delete from cdr_country_code where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_rtp where cdr_id = @exists_call_id;\n" +
+					(opt_save_energylevels ? "  delete from cdr_rtp_energylevels where cdr_id = @exists_call_id;\n" : "") +
 					(enable_save_dtmf_db ? "  delete from cdr_dtmf where cdr_id = @exists_call_id;\n" : "") +
 					"  delete from cdr_sipresp where cdr_id = @exists_call_id;\n" +
 					(opt_pcap_dump_tar ? "  delete from cdr_tar_part where cdr_id = @exists_call_id;\n" : "") +
@@ -6297,6 +6301,56 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			} else {
 				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
 					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_table, &rtp_rows, opt_mysql_max_multiple_rows_insert, 
+											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+			}
+		}
+		
+		vector<SqlDb_row> rtp_el_rows;
+		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
+			int i = rtp_rows_indexes[ir];
+			if(rtp[i]->energylevels && rtp[i]->energylevels->size()) {
+				u_int32_t data_el_length = rtp[i]->energylevels->size();
+				u_char *data_el = rtp[i]->energylevels->data();
+				cGzip *zip = new FILE_LINE(0) cGzip;
+				size_t data_el_zip_length;
+				u_char *data_el_zip;
+				if(zip->compress(data_el, data_el_length, &data_el_zip, &data_el_zip_length) && data_el_zip_length > 0) {
+					SqlDb_row rtp_el;
+					rtp_el.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+					rtp_el.add(i + 1, "index");
+					rtp_el.add(MYSQL_VAR_PREFIX +
+						   "from_base64('" + 
+						   base64_encode((u_char*)data_el_zip, data_el_zip_length) +
+						   "')",
+						   "energylevels");
+					/*
+					string data_el_zip_e = _sqlEscapeString((char*)data_el_zip, data_el_zip_length, NULL);
+					rtp_el.add(data_el_zip_e, "energylevels");
+					*/
+					if(existsColumns.cdr_rtp_energylevels_calldate) {
+						rtp_el.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_energylevels_calldate_ms);
+					}
+					if(opt_mysql_enable_multiple_rows_insert) {
+						rtp_el_rows.push_back(rtp_el);
+					} else {
+						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+							     sqlDbSaveCall->insertQuery(sql_cdr_rtp_energylevels_table, rtp_el));
+					}
+					delete [] data_el_zip;
+				}
+				delete zip;
+				delete [] data_el;
+			}
+		}
+		if(opt_mysql_enable_multiple_rows_insert && rtp_el_rows.size()) {
+			if(useCsvStoreFormat()) {
+				query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_rtp_energylevels") + rtp_el_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+				for(unsigned i = 0; i < rtp_el_rows.size(); i++) {
+					query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_rtp_energylevels") + rtp_el_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+				}
+			} else {
+				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_energylevels_table, &rtp_el_rows, opt_mysql_max_multiple_rows_insert, 
 											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 			}
 		}
@@ -6740,6 +6794,40 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_calldate_ms);
 			}
 			sqlDbSaveCall->insert(sql_cdr_rtp_table, rtps);
+		}
+		
+		if(opt_save_energylevels) {
+			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
+				int i = rtp_rows_indexes[ir];
+				if(rtp[i]->energylevels && rtp[i]->energylevels->size()) {
+					u_int32_t data_el_length = rtp[i]->energylevels->size();
+					u_char *data_el = rtp[i]->energylevels->data();
+					cGzip *zip = new FILE_LINE(0) cGzip;
+					size_t data_el_zip_length;
+					u_char *data_el_zip;
+					if(zip->compress(data_el, data_el_length, &data_el_zip, &data_el_zip_length) && data_el_zip_length > 0) {
+						SqlDb_row rtp_el;
+						rtp_el.add(cdrID, "cdr_ID");
+						rtp_el.add(i + 1, "index");
+						rtp_el.add(MYSQL_VAR_PREFIX +
+							   "from_base64('" + 
+							   base64_encode((u_char*)data_el_zip, data_el_zip_length) + 
+							   "')",
+							   "energylevels");
+						/*
+						string data_el_zip_e = _sqlEscapeString((char*)data_el_zip, data_el_zip_length, NULL);
+						rtp_el.add(data_el_zip_e, "energylevels");
+						*/
+						if(existsColumns.cdr_rtp_energylevels_calldate) {
+							rtp_el.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_energylevels_calldate_ms);
+						}
+						sqlDbSaveCall->insert(sql_cdr_rtp_energylevels_table, rtp_el);
+						delete [] data_el_zip;
+					}
+					delete zip;
+					delete [] data_el;
+				}
+			}
 		}
 
 		if(opt_save_sdp_ipport) {

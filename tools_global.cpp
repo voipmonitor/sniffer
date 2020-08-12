@@ -27,6 +27,7 @@ void *vm_pthread_create_start_routine(void *arg) {
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
 	#ifndef CLOUD_ROUTER_SERVER
+	termTimeCacheForThread();
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "end thread '%s'", 
 		       thread_data.description.c_str());
@@ -618,6 +619,14 @@ string find_and_replace(const char *source, const char *find, const char *replac
 	string s_source = source;
 	find_and_replace(s_source, find, replace, counter_replace);
 	return(s_source);
+}
+
+string &find_and_replace_all(string &source, const string find, string replace) {
+	unsigned counter_replace;
+	do {
+		find_and_replace(source, find, replace, &counter_replace);
+	} while(counter_replace > 0);
+	return(source);
 }
 
 

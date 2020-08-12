@@ -2567,6 +2567,36 @@ bool string_is_alphanumeric(const char *s) {
 }
 
 
+bool str_like(const char *str, const char *pattern) {
+	unsigned str_length = strlen(str);
+	unsigned pattern_length = strlen(pattern);
+	if(pattern_length) {
+		bool pattern_contain_wildcard = strchr(pattern, '_') ? true : false;
+		bool rslt;
+		if(pattern[0] == '%') {
+			if(pattern[pattern_length - 1] == '%') {
+				rslt = strcasestr(str, string(pattern).substr(1, pattern_length - 2).c_str()) != NULL;
+			} else {
+				rslt = str_length >= pattern_length - 1 &&
+				       !(pattern_contain_wildcard ?
+					  strncasecmp_wildcard(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1, "_") :
+					  strncasecmp(str + str_length - (pattern_length - 1), string(pattern).substr(1).c_str(), pattern_length - 1));
+			}
+		} else if(pattern[pattern_length - 1] == '%') {
+			rslt = !(pattern_contain_wildcard ?
+				  strncasecmp_wildcard(str, pattern, pattern_length - 1, "_") :
+				  strncasecmp(str, pattern, pattern_length - 1));
+		} else {
+			rslt = !(pattern_contain_wildcard ?
+				  strcasecmp_wildcard(str, pattern, "_") :
+				  strcasecmp(str, pattern));
+		}
+		return(rslt);
+	}
+	return(false);
+}
+
+
 bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty) {
 	if(!vect_ip->size() && !vect_net->size()) {
 		return(trueIfVectEmpty);
@@ -3019,6 +3049,16 @@ void ParsePacket::setStdParse() {
 		}
 		addNode(findHeader.c_str(), typeNode_std);
 	}
+	
+	extern char opt_energylevelheader[128];
+	if(opt_energylevelheader[0] != '\0') {
+		string findHeader = opt_energylevelheader;
+		if(findHeader[findHeader.length() - 1] != ':') {
+			findHeader.append(":");
+		}
+		addNode(findHeader.c_str(), typeNode_std);
+	}
+
 	extern char opt_silenceheader[128];
 	if(opt_silenceheader[0] != '\0') {
 		string findHeader = opt_silenceheader;
@@ -3027,7 +3067,7 @@ void ParsePacket::setStdParse() {
 		}
 		addNode(findHeader.c_str(), typeNode_std);
 	}
-
+	
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	extern CustomHeaders *custom_headers_sip_msg;
@@ -4601,6 +4641,19 @@ void BogusDumper::dump(pcap_pkthdr* header, u_char* packet, int dlt, const char 
 
 
 volatile int _tz_sync;
+map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
+volatile int timeCacheMap_sync;
+
+void termTimeCacheForThread() {
+	unsigned int tid = get_unix_tid();
+	while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+	map<unsigned int, sLocalTimeHourCache*>::iterator iter = timeCacheMap.find(tid);
+	if(iter != timeCacheMap.end()) {
+		delete iter->second;
+		timeCacheMap.erase(iter);
+	}
+	__sync_lock_release(&timeCacheMap_sync);
+}
 
 string getGuiTimezone(SqlDb *sqlDb) {
 	bool _createSqlObject = false;

@@ -593,7 +593,7 @@ string sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 	if(!length) {
 		length = strlen(inputStr);
 	}
-	return _sqlEscapeString(inputStr, length, typeDb);
+	return _sqlEscapeString(inputStr, length, typeDb, true);
 }
 
 struct escChar {
@@ -639,7 +639,7 @@ void fillEscTables() {
 	}
 }
 
-string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
+string _sqlEscapeString(const char *inputStr, int length, const char *typeDb, bool checkUtf) {
 	bool mysql = false;
 	unsigned char (*escTable)[2] = NULL;
 	if(!typeDb || isTypeDb("mysql", typeDb)) {
@@ -673,7 +673,7 @@ string _sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
 		}
 	}
 	extern cUtfConverter utfConverter;
-	if(!utfConverter.check(rsltString.c_str())) {
+	if(checkUtf && !utfConverter.check(rsltString.c_str())) {
 		rsltString = utfConverter.remove_no_ascii(rsltString.c_str());
 	}
 	return(rsltString);
