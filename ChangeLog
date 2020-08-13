@@ -1,3 +1,18 @@
+26.20 12.08.2020
+================
+- add support ipv6 to configuration options natalias, sdp_ignore_ip_port, ssl_ipport) [VS-1092]
+- new save-energylevels feature (see voipmonitor.conf) [VG-2169]
+- support for user restriction in alerts [VG-1266]
+- add support for regular expression in group of numbers example - R(12[34].*) [VG-2161]
+- new option icmp_process_data enables searching for SIP data in the ICMP type 3 [VS-1091]
+- SIP REGISTER behaviour change - from this version SIP REGISTER are compared by number and domain part from Contact header (to change to old behaviour set sip-register-state-compare-contact_num = no, sip-register-state-compare-contact_domain = no [VS-1099] [VS-1100]
+- fix cp behavior with --no-user-input parameter [VS-1093]
+- fix gcc 10 
+- fix ip dst filter in options/subscribe/notify [VG-2165]
+- fix memory leak (one per thread) in conv_tz (active calls in GUI) [VS-1094]
+- document mirror_require_confirmation
+
+
 26.19 21.07.2020
 ================
 - fix sending SIP packets in packetbuffer_sender=yes to some other instance for low SIP traffic [VS-1083]
