@@ -899,7 +899,7 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 			}
 			int rslt = check_sip20((char*)ws_data,
 					       isTcp ?
-						min(len - ws.getHeaderLength(),
+						min((u_int64_t)(len - ws.getHeaderLength()),
 						    ws.getDataLength()) :
 						ws.getDataLength(), 
 					       parseContents, isTcp);
