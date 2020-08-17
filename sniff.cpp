@@ -897,7 +897,12 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 			if(!ws_data) {
 				return 0;
 			}
-			int rslt = check_sip20((char*)ws_data, ws.getDataLength(), parseContents, isTcp);
+			int rslt = check_sip20((char*)ws_data,
+					       isTcp ?
+						min((u_int64_t)(len - ws.getHeaderLength()),
+						    ws.getDataLength()) :
+						ws.getDataLength(), 
+					       parseContents, isTcp);
 			if(allocData) {
 				delete [] ws_data;
 			}
