@@ -401,7 +401,7 @@ bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
-int opt_ssl_store_sessions = 1;
+int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
