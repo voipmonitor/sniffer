@@ -1118,6 +1118,7 @@ void daemonizeOutput(string error);
 
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
+static void get_command_line_arguments_mysql();
 static void set_default_values();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
@@ -3271,6 +3272,7 @@ int main(int argc, char *argv[]) {
 	   !printConfigStruct && !printConfigFile &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
+			get_command_line_arguments_mysql();
 			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
 			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
@@ -7807,6 +7809,7 @@ void parse_verb_param(string verbParam) {
 }
 
 void get_command_line_arguments() {
+	get_command_line_arguments_mysql();
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
 		char *optarg = NULL;
@@ -8173,21 +8176,6 @@ void get_command_line_arguments() {
 			case 'U':
 				opt_packetbuffered=1;
 				break;
-			case 'h':
-				strcpy_null_term(mysql_host, optarg);
-				break;
-			case 'O':
-				opt_mysql_port = atoi(optarg);
-				break;
-			case 'b':
-				strcpy_null_term(mysql_database, optarg);
-				break;
-			case 'u':
-				strcpy_null_term(mysql_user, optarg);
-				break;
-			case 'p':
-				strcpy_null_term(mysql_password, optarg);
-				break;
 			case 'P':
 				strcpy_null_term(opt_pidfile, optarg);
 				break;
@@ -8288,6 +8276,28 @@ void get_command_line_arguments() {
 		}
 		if(optarg) {
 			delete [] optarg;
+		}
+	}
+}
+
+void get_command_line_arguments_mysql() {
+	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
+		switch(iter->first) {
+			case 'h':
+				strcpy_null_term(mysql_host, iter->second.c_str());
+				break;
+			case 'O':
+				opt_mysql_port = atoi(iter->second.c_str());
+				break;
+			case 'b':
+				strcpy_null_term(mysql_database, iter->second.c_str());
+				break;
+			case 'u':
+				strcpy_null_term(mysql_user, iter->second.c_str());
+				break;
+			case 'p':
+				strcpy_null_term(mysql_password, iter->second.c_str());
+				break;
 		}
 	}
 }
