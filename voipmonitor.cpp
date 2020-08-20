@@ -1053,6 +1053,10 @@ bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
 
+vmIP opt_opensips_dstip;
+vmIP opt_opensips_srcip;
+unsigned opt_opensips_port;
+
 SensorsMap sensorsMap;
 
 bool cloud_db = false;
@@ -7277,6 +7281,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("opensips_dstip",  &opt_opensips_dstip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("opensips_srcip",  &opt_opensips_srcip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("opensips_port",  &opt_opensips_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
@@ -11237,6 +11244,16 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
 		opt_tcp_port_audiocodes = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "opensips_dstip", NULL))) {
+		opt_opensips_dstip.setFromString(value);
+	}
+	if((value = ini.GetValue("general", "opensips_srcip", NULL))) {
+		opt_opensips_srcip.setFromString(value);
+	}
+	if((value = ini.GetValue("general", "opensips_port", NULL))) {
+		opt_opensips_port = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "socket_use_poll", NULL))) {

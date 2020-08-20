@@ -1499,7 +1499,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			strcpy(call->lastSIPresponse, "ON HOOK");
 			call->destroy_call_at = header->ts.tv_sec + 5;
 			if(!is_read_from_file_by_pb()) {
-				call->removeFindTables(0, true);
+				call->removeFindTables(NULL, true);
 			}
 			break;
 		case SKINNY_RINGOUT:
@@ -1788,7 +1788,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 					rtpmap[0].codec = codec;
 				}
 			}
-			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, header, 
+			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, NULL, 
 					       NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
@@ -1991,7 +1991,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			RTPMAP rtpmap[MAX_RTPMAP];
-			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, header, 
+			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, NULL, 
 					       NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}

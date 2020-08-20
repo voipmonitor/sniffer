@@ -154,6 +154,8 @@ extern cBuffersControl buffersControl;
 vm_atomic<string> pbStatString;
 vm_atomic<u_long> pbCountPacketDrop;
 
+u_int64_t opt_pb_read_from_file_acttime_diff;
+
 extern PcapQueue_readFromFifo *pcapQueueQ;
 
 void *_PcapQueue_threadFunction(void *arg);
@@ -3170,12 +3172,11 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			(*header)->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
 		}
 		if(opt_pb_read_from_file_acttime) {
-			static u_int64_t diffTime;
 			u_int64_t packetTime = getTimeUS(*header);
-			if(!diffTime) {
-				diffTime = getTimeUS() - packetTime - opt_pb_read_from_file_acttime_diff_days * 24 * 3600 *1000000ull;
+			if(!opt_pb_read_from_file_acttime_diff) {
+				opt_pb_read_from_file_acttime_diff = getTimeUS() - packetTime - opt_pb_read_from_file_acttime_diff_days * 24 * 3600 *1000000ull;
 			}
-			packetTime += diffTime;
+			packetTime += opt_pb_read_from_file_acttime_diff;
 			(*header)->ts.tv_sec = TIME_US_TO_S(packetTime);
 			(*header)->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
 		}

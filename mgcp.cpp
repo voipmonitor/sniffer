@@ -179,13 +179,13 @@ void *handle_mgcp(packet_s_process *packetS) {
 							break;
 						}
 					}
-					call->removeFindTables(0, true);
+					call->removeFindTables(NULL, true);
 					calltable->unlock_calls_listMAP();
 				} else {
 					calltable->lock_calls_listMAP();
 					map<sStreamId, Call*>::iterator callMAPIT = calltable->calls_by_stream_listMAP.find(sStreamId(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), true));
 					if(callMAPIT != calltable->calls_by_stream_listMAP.end()) {
-						callMAPIT->second->removeFindTables(0, true);
+						callMAPIT->second->removeFindTables(NULL, true);
 					}
 					calltable->unlock_calls_listMAP();
 				}
@@ -272,7 +272,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 		if(is_request && request_type == _mgcp_DLCX) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
 		} else {
-			call->shift_destroy_call_at(packetS->header_pt);
+			call->shift_destroy_call_at(packetS->getTime_s());
 		}
 		if(is_response) {
 			if(call->lastSIPresponseNum == 0 || call->lastSIPresponseNum < 300) {

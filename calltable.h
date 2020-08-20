@@ -983,7 +983,7 @@ public:
 	*/
 	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname = NULL);
 	inline bool _read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
-	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, bool forceVirtualUdp = false);
+	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
 
 	/**
 	 * @brief read RTCP packet 
@@ -1005,13 +1005,13 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
+	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
-	bool refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header, 
+	bool refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
 				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
-	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
+	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			      char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
 			      char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
@@ -1299,19 +1299,19 @@ public:
 		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
 	}
 	
-	void shift_destroy_call_at(pcap_pkthdr *header, int lastSIPresponseNum = 0) {
+	void shift_destroy_call_at(u_int32_t time_s, int lastSIPresponseNum = 0) {
 		extern int opt_quick_save_cdr;
 		if(this->destroy_call_at > 0) {
 			extern int opt_register_timeout;
 			time_t new_destroy_call_at = 
 				typeIs(REGISTER) ?
-					header->ts.tv_sec + opt_register_timeout :
+					time_s + opt_register_timeout :
 					(this->seenbyeandok ?
-						header->ts.tv_sec + (opt_quick_save_cdr == 2 ? 0 :
-								    (opt_quick_save_cdr ? 1 : 5)) :
+						time_s + (opt_quick_save_cdr == 2 ? 0 :
+							 (opt_quick_save_cdr ? 1 : 5)) :
 					 this->seenbye ?
-						header->ts.tv_sec + 60 :
-						header->ts.tv_sec + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5));
+						time_s + 60 :
+						time_s + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5));
 			if(new_destroy_call_at > this->destroy_call_at) {
 				this->destroy_call_at = new_destroy_call_at;
 			}

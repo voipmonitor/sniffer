@@ -992,7 +992,7 @@ Call::closeRawFiles() {
 
 /* add ip adress and port to this call */
 int
-Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
+Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		  char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
@@ -1003,7 +1003,7 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	}
 
 	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, header, 
+		if(this->refresh_data_ip_port(addr, port, ts, 
 					      rtp_crypto_config_list, iscaller, rtpmap, sdp_flags)) {
 			return 1;
 		}
@@ -1034,7 +1034,7 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 		this->ip_port[ipport_n].sdp_label = sdp_label;
 	}
 	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(header));
+		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(ts));
 		this->exists_crypto_suite_key = true;
 	}
 	if(to) {
@@ -1054,7 +1054,7 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 }
 
 bool 
-Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header, 
+Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
 			   list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
@@ -1093,7 +1093,7 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header,
 				}
 			}
 			// force mark bit for reinvite for both direction
-			u_int64_t _forcemark_time_us = getTimeUS(header);
+			u_int64_t _forcemark_time_us = getTimeUS(ts);
 			forcemark_lock();
 			forcemark_time.push_back(_forcemark_time_us);
 			if(sverb.forcemark) {
@@ -1127,7 +1127,7 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header,
 				calltable->unlock_calls_hash();
 			}
 			if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-				this->ip_port[i].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(header));
+				this->ip_port[i].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(ts));
 				this->exists_crypto_suite_key = true;
 			}
 			return true;
@@ -1137,7 +1137,7 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, pcap_pkthdr *header,
 }
 
 void
-Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, pcap_pkthdr *header, 
+Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		       char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
 		       char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
@@ -1151,12 +1151,12 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 			   (this->ip_port[sessidIndex].addr != addr ||
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port, &header->ts);
-				((Calltable*)calltable)->hashAdd(addr, port, &header->ts, this, iscaller, 0, sdp_flags);
+				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port, ts);
+				((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 				if(opt_rtcp) {
-					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), &header->ts, true);
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), ts, true);
 					if(!sdp_flags.rtcp_mux) {
-						((Calltable*)calltable)->hashAdd(addr, port.inc(), &header->ts, this, iscaller, 1, sdp_flags);
+						((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
 					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << addr.getString() << "/" << this->ip_port[sessidIndex].addr.getString() << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
@@ -1168,16 +1168,16 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 				}
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
-			this->refresh_data_ip_port(addr, port, header, 
+			this->refresh_data_ip_port(addr, port, ts, 
 						   rtp_crypto_config_list, iscaller, rtpmap, sdp_flags);
 			return;
 		}
 	}
-	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, header, 
+	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
 			     sessid, sdp_label, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, &header->ts, this, iscaller, 0, sdp_flags);
+		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
-			((Calltable*)calltable)->hashAdd(addr, port.inc(), &header->ts, this, iscaller, 1, sdp_flags);
+			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
 		}
 	}
 }
@@ -1878,7 +1878,7 @@ Call::read_dtls(struct packet_s *packetS) {
 }
 
 void
-Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, bool forceVirtualUdp) {
+Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp) {
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {

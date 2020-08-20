@@ -67,6 +67,15 @@ enum e_packet_s_type {
 	_t_packet_s_process
 };
 
+struct packet_s_opensips_subst {
+	vmIP saddr;
+	vmIP daddr;
+	vmPort source; 
+	vmPort dest;
+	timeval ts;
+	bool is_tcp;
+};
+
 struct packet_s {
 	u_int8_t __type;
 	#if USE_PACKET_NUMBER
@@ -98,9 +107,13 @@ struct packet_s {
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
 	sAudiocodes *audiocodes;
+	packet_s_opensips_subst *opensips_subst;
 	inline vmIP saddr_() {
 		if(audiocodes) {
 			return(audiocodes->packet_source_ip);
+		}
+		if(opensips_subst) {
+			return(opensips_subst->saddr);
 		}
 		return(_saddr);
 	}
@@ -108,17 +121,26 @@ struct packet_s {
 		if(audiocodes) {
 			return(audiocodes->packet_dest_ip);
 		}
+		if(opensips_subst) {
+			return(opensips_subst->daddr);
+		}
 		return(_daddr);
 	}
 	inline vmPort source_() {
 		if(audiocodes) {
 			return(audiocodes->packet_source_port);
 		}
+		if(opensips_subst) {
+			return(opensips_subst->source);
+		}
 		return(_source);
 	}
 	inline vmPort dest_() {
 		if(audiocodes) {
 			return(audiocodes->packet_dest_port);
+		}
+		if(opensips_subst) {
+			return(opensips_subst->dest);
 		}
 		return(_dest);
 	}
@@ -156,15 +178,56 @@ struct packet_s {
 		__type = _t_packet_s;
 		init();
 	}
+	inline u_int64_t getTimeUS() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(::getTimeUS(opensips_subst->ts));
+		}
+		return(::getTimeUS(header_pt->ts));
+	}
+	inline double getTimeSF() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(::getTimeSF(opensips_subst->ts));
+		}
+		return(::getTimeSF(header_pt->ts));
+	}
+	inline timeval getTimeval() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(opensips_subst->ts);
+		}
+		return(header_pt->ts);
+	}
+	inline timeval *getTimeval_pt() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(&opensips_subst->ts);
+		}
+		return(&header_pt->ts);
+	}
+	inline u_int32_t getTime_s() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(opensips_subst->ts.tv_sec);
+		}
+		return(header_pt->ts.tv_sec);
+	}
+	inline u_int32_t getTime_us() {
+		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
+			return(opensips_subst->ts.tv_usec);
+		}
+		return(header_pt->ts.tv_usec);
+	}
 	inline void init() {
 		_blockstore_lock = false;
 		_packet_alloc = false;
 		audiocodes = NULL;
+		opensips_subst = NULL;
 	}
 	inline void term() {
 		if(audiocodes) {
 			delete audiocodes;
 			audiocodes = NULL;
+		}
+		if(opensips_subst) {
+			delete opensips_subst;
+			opensips_subst = NULL;
 		}
 	}
 	inline void blockstore_lock(int lock_flag) {
@@ -463,8 +526,8 @@ struct packet_s_process : public packet_s_process_0 {
 };
 
 
-void save_packet(Call *call, packet_s *packetS, int type, bool forceVirtualUdp = false);
-void save_packet(Call *call, packet_s_process *packetS, int type, bool forceVirtualUdp = false);
+void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false);
+void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false);
 
 
 typedef struct {
