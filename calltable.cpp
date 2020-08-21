@@ -519,6 +519,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	a_ua[0] = '\0';
 	b_ua[0] = '\0';
 	memset(rtpmap, 0, sizeof(rtpmap));
+	memset(rtpmap_used_flags, 0, sizeof(rtpmap_used_flags));
 	rtp_cur[0] = NULL;
 	rtp_cur[1] = NULL;
 	rtp_prev[0] = NULL;
@@ -1769,18 +1770,23 @@ read:
 					   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
 		}
 		if(opt_rtpmap_by_callerd) {
-			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[isFillRtpMap(iscaller) ? iscaller : !iscaller], MAX_RTPMAP * sizeof(RTPMAP));
+			unsigned index_rtpmap = isFillRtpMap(iscaller) ? iscaller : !iscaller;
+			memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[index_rtpmap], MAX_RTPMAP * sizeof(RTPMAP));
+			rtpmap_used_flags[index_rtpmap] = true;
 		} else {
 			if(rtp[ssrc_n]->index_call_ip_port >= 0 && isFillRtpMap(rtp[ssrc_n]->index_call_ip_port)) {
 				memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[rtp[ssrc_n]->index_call_ip_port], MAX_RTPMAP * sizeof(RTPMAP));
+				rtpmap_used_flags[rtp[ssrc_n]->index_call_ip_port] = true;
 				if(index_call_ip_port_other_side >= 0 && isFillRtpMap(index_call_ip_port_other_side)) {
 					memcpy(this->rtp[ssrc_n]->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(RTPMAP));
+					rtpmap_used_flags[index_call_ip_port_other_side] = true;
 				}
 			} else {
 				for(int j = 0; j < 2; j++) {
 					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
 					if(index_ip_port_first_for_callerd >= 0) {
 						memcpy(this->rtp[ssrc_n]->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(RTPMAP));
+						rtpmap_used_flags[index_ip_port_first_for_callerd] = true;
 						break;
 					}
 				}

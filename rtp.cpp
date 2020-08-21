@@ -1162,6 +1162,30 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					break;
 				}
 			}
+			if(!found) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(rtpmap_other_side[i].is_set() && curpayload == rtpmap_other_side[i].payload) {
+						codec = rtpmap_other_side[i].codec;
+						frame_size = rtpmap_other_side[i].frame_size;
+						found = 1;
+						break;
+					}
+				}
+			}
+			if(!found && owner) {
+				for(int i = 0; i < MAX_IP_PER_CALL && !found; i++) {
+					if(!owner->rtpmap_used_flags[i]) {
+						for(int j = 0; j < MAX_RTPMAP; j++) {
+							if(owner->rtpmap[i][j].is_set() && curpayload == owner->rtpmap[i][j].payload) {
+								codec = owner->rtpmap[i][j].codec;
+								frame_size = owner->rtpmap[i][j].frame_size;
+								found = 1;
+								break;
+							}
+						}
+					}
+				}
+			}
 			if(curpayload == 101 and !found) {
 				// payload 101 was not in SDP, assume it is televent 
 				codec = PAYLOAD_TELEVENT;
