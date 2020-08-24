@@ -124,6 +124,7 @@ struct sCallDataPcap {
 	sCallDataPcap() {
 		call_data = NULL;
 		pcap = NULL;
+		pcap_save = false;
 		pcap_closed = false;
 	}
 	inline bool isSet() {

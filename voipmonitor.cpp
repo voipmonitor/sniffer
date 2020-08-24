@@ -6961,9 +6961,12 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-subscribe", &opt_sip_subscribe));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-notify", &opt_sip_notify));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
+				->addValues("nodb:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-subscribe", &opt_sip_subscribe))
+				->addValues("nodb:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-notify", &opt_sip_notify))
+				->addValues("nodb:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-options", &opt_save_sip_options));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
@@ -9468,13 +9471,16 @@ int eval_config(string inistr) {
 		opt_sip_register_save_all = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
-		opt_sip_options = yesno(value);
+		opt_sip_options = !strcasecmp(value, "nodb") ? 2 :
+				  yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-subscribe", NULL))) {
-		opt_sip_subscribe = yesno(value);
+		opt_sip_subscribe = !strcasecmp(value, "nodb") ? 2 :
+				    yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-notify", NULL))) {
-		opt_sip_notify = yesno(value);
+		opt_sip_notify = !strcasecmp(value, "nodb") ? 2 :
+				 yesno(value);
 	}
 	if((value = ini.GetValue("general", "save-sip-options", NULL))) {
 		opt_save_sip_options = yesno(value);
