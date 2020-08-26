@@ -311,6 +311,8 @@ int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_ipacc_interval = 300;
 int opt_ipacc_only_agregation = 0;
+int opt_ipacc_enable_agregation_both_sides = 1;
+int opt_ipacc_limit_agregation_both_sides = 0;
 bool opt_ipacc_sniffer_agregate = false;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
@@ -7075,6 +7077,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42357) cConfigItem_integer("ipaccount_interval", &opt_ipacc_interval));
 			addConfigItem(new FILE_LINE(42358) cConfigItem_integer("ipaccount_only_agregation", &opt_ipacc_only_agregation));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipaccount_enable_agregation_both_sides", &opt_ipacc_enable_agregation_both_sides));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipaccount_limit_agregation_both_sides", &opt_ipacc_limit_agregation_both_sides));
 				addConfigItem(new FILE_LINE(42359) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
 				addConfigItem(new FILE_LINE(42360) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
@@ -7344,10 +7348,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "create_old_partitions") {
 		opt_create_old_partitions = max(opt_create_old_partitions, (int)configItem->getValueInt());
 	}
-	if(configItem->config_name == "create_old_partitions_from") {
+	if(configItem->config_name == "create_old_partitions_from" && opt_create_old_partitions_from[0]) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_create_old_partitions_from));
 	}
-	if(configItem->config_name == "database_backup_from_date") {
+	if(configItem->config_name == "database_backup_from_date" && opt_database_backup_from_date[0]) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_database_backup_from_date));
 	}
 	if(configItem->config_name == "cachedir" && opt_cachedir[0]) {
@@ -10360,6 +10364,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ipaccount_only_agregation", NULL))) {
 		opt_ipacc_only_agregation = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_enable_agregation_both_sides", NULL))) {
+		opt_ipacc_enable_agregation_both_sides = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_limit_agregation_both_sides", NULL))) {
+		opt_ipacc_limit_agregation_both_sides = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ipaccount_sniffer_agregate", NULL))) {
 		opt_ipacc_sniffer_agregate = yesno(value);

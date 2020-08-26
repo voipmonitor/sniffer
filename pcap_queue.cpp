@@ -1442,7 +1442,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				       << "[" << calltable->ss7_queue.size() << "] ";
 			}
 			if(opt_ipaccount) {
-				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "] ";
+				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
 			}
 			if (opt_rrd) {
 				rrd_set_value(RRD_VALUE_inv, calltable->calls_list_count());

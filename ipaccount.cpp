@@ -50,6 +50,8 @@ extern char *ipaccountportmatrix;
 
 extern int opt_ipacc_interval;
 extern int opt_ipacc_only_agregation;
+extern int opt_ipacc_enable_agregation_both_sides;
+extern int opt_ipacc_limit_agregation_both_sides;
 extern bool opt_ipacc_sniffer_agregate;
 extern bool opt_ipacc_agregate_only_customers_on_main_side;
 extern bool opt_ipacc_agregate_only_customers_on_any_side;
@@ -97,13 +99,6 @@ Ipacc *IPACC;
 
 inline void *_Ipacc_outThreadFunction(void *arg) {
 	return(((Ipacc*)arg)->outThreadFunction());
-}
-
-Ipacc::s_ipacc_data::~s_ipacc_data() {
-	t_ipacc_buffer::iterator iter;
-	for(iter = ipacc_buffer.begin(); iter != ipacc_buffer.end(); iter++) {
-		delete iter->second;
-	}
 }
 
 void Ipacc::s_cache::init() {
@@ -228,7 +223,7 @@ inline void Ipacc::push(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, i
 	}
 }
 
-void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
+void Ipacc::save(unsigned int interval_time, t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 	if(cache->custIpCache) {
 		cache->custIpCache->flush();
 	}
@@ -241,7 +236,6 @@ void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 	if(cache->custIpCustomerCache) {
 		cache->custIpCustomerCache->flush();
 	}
-	octects_t *ipacc_data;
 	unsigned int src_id_customer,
 		     dst_id_customer;
 	bool src_ip_next,
@@ -258,13 +252,9 @@ void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 	}
 	*/
 	int _counter  = 0;
-	bool enableClear = true;
 	t_ipacc_buffer::iterator iter;
 	for(iter = ipacc_buffer->begin(); iter != ipacc_buffer->end(); iter++) {
-		ipacc_data = iter->second;
-		if(ipacc_data->octects == 0) {
-			ipacc_data->erase = true;
-		} else if(true /*!interval_time_limit ||  ipacc_data->interval_time <= interval_time_limit*/) {
+		if(iter->second.octects > 0) {
 			src_id_customer = cache->custIpCache ? cache->custIpCache->getCustByIp(iter->first.saddr) : 
 					  cache->custIpCustomerCache ? cache->custIpCustomerCache->getCustomerId(iter->first.saddr) : 0;
 			src_ip_next = cache->nextIpCache ? cache->nextIpCache->isIn(iter->first.saddr) : false;
@@ -283,16 +273,16 @@ void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 								"octects, numpackets, voip, do_agr_trigger"
 							") values ("
 								"'%s', %s, %u, %s, %u, %u, %u, %u, %u, %u, %u)",
-							sqlDateTimeString(ipacc_data->interval_time).c_str(),
+							sqlDateTimeString(interval_time).c_str(),
 							iter->first.saddr.getStringForMysqlIpColumn("ipacc", "saddr").c_str(),
 							src_id_customer,
 							iter->first.daddr.getStringForMysqlIpColumn("ipacc", "daddr").c_str(),
 							dst_id_customer,
 							iter->first.proto,
 							iter->first.port.getPort(),
-							ipacc_data->octects,
-							ipacc_data->numpackets,
-							ipacc_data->voippacket,
+							iter->second.octects,
+							iter->second.numpackets,
+							iter->first.voip,
 							opt_ipacc_sniffer_agregate ? 0 : 1);
 						sqlStore->query_lock(insertQueryBuff, 
 								     STORE_PROC_ID_IPACC_1 + 
@@ -300,7 +290,7 @@ void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 					} else {
 						SqlDb_row row;
 						string ipacc_table = "ipacc";
-						row.add(sqlDateTimeString(ipacc_data->interval_time).c_str(), "interval_time");
+						row.add(sqlDateTimeString(interval_time).c_str(), "interval_time");
 						row.add(iter->first.saddr, "saddr", false, sqlDbSave, ipacc_table.c_str());
 						if(src_id_customer) {
 							row.add(src_id_customer, "src_id_customer");
@@ -311,45 +301,29 @@ void Ipacc::save(t_ipacc_buffer *ipacc_buffer, s_cache *cache) {
 						}
 						row.add(iter->first.proto, "proto");
 						row.add(iter->first.port.getPort(), "port");
-						row.add(ipacc_data->octects, "octects");
-						row.add(ipacc_data->numpackets, "numpackets");
-						row.add(ipacc_data->voippacket, "voip");
+						row.add(iter->second.octects, "octects");
+						row.add(iter->second.numpackets, "numpackets");
+						row.add(iter->first.voip, "voip");
 						row.add(opt_ipacc_sniffer_agregate ? 0 : 1, "do_agr_trigger");
 						sqlDbSave->insert(ipacc_table, row);
 					}
 				}
 				++_counter;
 				if(opt_ipacc_sniffer_agregate) {
-					agregIter = agreg.find(ipacc_data->interval_time);
+					agregIter = agreg.find(interval_time);
 					if(agregIter == agreg.end()) {
-						agreg[ipacc_data->interval_time] = new FILE_LINE(12002) IpaccAgreg;
-						agregIter = agreg.find(ipacc_data->interval_time);
+						agreg[interval_time] = new FILE_LINE(12002) IpaccAgreg;
+						agregIter = agreg.find(interval_time);
 					}
 					agregIter->second->add(
 						iter->first.saddr, iter->first.daddr, 
 						src_id_customer, dst_id_customer, 
 						src_ip_next, dst_ip_next,
 						iter->first.proto, iter->first.port,
-						ipacc_data->octects, ipacc_data->numpackets, ipacc_data->voippacket);
+						iter->second.octects, iter->second.numpackets, iter->first.voip);
 				}
 			}
-			ipacc_data->erase = true;
-		}/* else {
-			enableClear = false;
-		}*/
-	}
-	for (iter = ipacc_buffer->begin(); iter != ipacc_buffer->end();) {
-		if(iter->second->erase) {
-			delete iter->second;
-			if(!enableClear) {
-				ipacc_buffer->erase(iter++);
-				continue;
-			}
 		}
-		iter++;
-	}
-	if(enableClear) {
-		ipacc_buffer->clear();
 	}
 	/*
 	sqlStore->unlock(STORE_PROC_ID_IPACC_1);
@@ -539,19 +513,15 @@ inline void Ipacc::add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort p
 	key.daddr = daddr;
 	key.port = port;
 	key.proto = proto;
+	key.voip = voippacket;
 	t_ipacc_buffer::iterator iter = ipacc_data->ipacc_buffer.find(key);
 	if(iter != ipacc_data->ipacc_buffer.end()) {
-		octects_t *octects_data = iter->second;
-		octects_data->octects += packetlen;
-		octects_data->numpackets++;
-		octects_data->interval_time = cur_interval_time;
-		octects_data->voippacket = voippacket;
+		iter->second.octects += packetlen;
+		iter->second.numpackets++;
 	} else {
-		octects_t *octects_data = new FILE_LINE(0) octects_t;
-		octects_data->octects += packetlen;
-		octects_data->numpackets++;
-		octects_data->interval_time = cur_interval_time;
-		octects_data->voippacket = voippacket;
+		octects_t octects_data;
+		octects_data.octects += packetlen;
+		octects_data.numpackets++;
 		ipacc_data->ipacc_buffer[key] = octects_data;
 	}
 
@@ -603,6 +573,10 @@ unsigned int Ipacc::lengthBuffer() {
 	}
 	unlock_map_ipacc_data();
 	return(sum_size);
+}
+
+unsigned int Ipacc::sizeBuffer() {
+	return(map_ipacc_data.size());
 }
 
 void Ipacc::init() {
@@ -722,7 +696,9 @@ void Ipacc::processSave_thread(int threadIndex) {
 						sem_post(&save_thread_data[i].sem[0]);
 					}
 				}
-				save(&save_thread_data[threadIndex].data->ipacc_buffer, &save_thread_data[threadIndex].cache);
+				save(save_thread_data[threadIndex].data->interval_time, 
+				     &save_thread_data[threadIndex].data->ipacc_buffer, 
+				     &save_thread_data[threadIndex].cache);
 				delete save_thread_data[threadIndex].data;
 				if(data_counter > 1) {
 					for(unsigned i = 1; i < data_counter; i++) {
@@ -740,7 +716,9 @@ void Ipacc::processSave_thread(int threadIndex) {
 			if(terminating_save_threads == 2) {
 				break;
 			}
-			save(&save_thread_data[threadIndex].data->ipacc_buffer, &save_thread_data[threadIndex].cache);
+			save(save_thread_data[threadIndex].data->interval_time, 
+			     &save_thread_data[threadIndex].data->ipacc_buffer, 
+			     &save_thread_data[threadIndex].cache);
 			delete save_thread_data[threadIndex].data;
 			sem_post(&save_thread_data[threadIndex].sem[1]);
 		}
@@ -832,9 +810,12 @@ IpaccAgreg::~IpaccAgreg() {
 	for(iter1 = this->map1.begin(); iter1 != this->map1.end(); ++iter1) {
 		delete iter1->second;
 	}
-	map<AgregIP2, AgregData*>::iterator iter2;
-	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); ++iter2) {
-		delete iter2->second;
+	map<AgregIP, map<vmIP, AgregData*> >::iterator iter21;
+	map<vmIP, AgregData*>::iterator iter22;
+	for(iter21 = this->map2.begin(); iter21 != this->map2.end(); ++iter21) {
+		for(iter22 = iter21->second.begin(); iter22 != iter21->second.end(); ++iter22) {
+			delete iter22->second;
+		}
 	}
 }
 
@@ -867,31 +848,65 @@ void IpaccAgreg::add(vmIP src, vmIP dst,
 			iter1->second->addIn(traffic, packets, voip);
 		}
 	}
-	AgregIP2 srcDstA(src, dst, proto, port), dstSrcA(dst, src, proto, port);
-	map<AgregIP2, AgregData*>::iterator iter2;
-	if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
-		iter2 = this->map2.find(srcDstA);
-		if(iter2 == this->map2.end()) {
-			AgregData *agregData = new FILE_LINE(12009) AgregData;
-			agregData->id_customer = src_id_customer;
-			agregData->id_customer2 = dst_id_customer;
-			agregData->addOut(traffic, packets, voip);
-			this->map2[srcDstA] = agregData;
-		} else {
-			iter2->second->addOut(traffic, packets, voip);
+	if(opt_ipacc_enable_agregation_both_sides) {
+		if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
+			AgregIP srcA(src, proto, port);
+			map<AgregIP, map<vmIP, AgregData*> >::iterator iter21;
+			map<vmIP, AgregData*>::iterator iter22;
+			if((iter21 = this->map2.find(srcA)) != this->map2.end() &&
+			   (iter22 = iter21->second.find(dst)) != iter21->second.end()) {
+				iter22->second->addOut(traffic, packets, voip);
+			} else {
+				AgregData *agregData = new FILE_LINE(12009) AgregData;
+				agregData->id_customer = src_id_customer;
+				agregData->id_customer2 = dst_id_customer;
+				agregData->addOut(traffic, packets, voip);
+				this->map2[srcA][dst] = agregData;
+			}
 		}
-	}
-	if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
-		iter2 = this->map2.find(dstSrcA);
-		if(iter2 == this->map2.end()) {
-			AgregData *agregData = new FILE_LINE(12010) AgregData;
-			agregData->id_customer = dst_id_customer;
-			agregData->id_customer2 = src_id_customer;
-			agregData->addIn(traffic, packets, voip);
-			this->map2[dstSrcA] = agregData;
-		} else {
-			iter2->second->addIn(traffic, packets, voip);
+		if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
+			AgregIP dstA(dst, proto, port);
+			map<AgregIP, map<vmIP, AgregData*> >::iterator iter21;
+			map<vmIP, AgregData*>::iterator iter22;
+			if((iter21 = this->map2.find(dstA)) != this->map2.end() &&
+			   (iter22 = iter21->second.find(src)) != iter21->second.end()) {
+				iter22->second->addIn(traffic, packets, voip);
+			} else {
+				AgregData *agregData = new FILE_LINE(12009) AgregData;
+				agregData->id_customer = dst_id_customer;
+				agregData->id_customer2 = src_id_customer;
+				agregData->addIn(traffic, packets, voip);
+				this->map2[dstA][src] = agregData;
+			}
 		}
+		/*
+		AgregIP2 srcDstA(src, dst, proto, port), dstSrcA(dst, src, proto, port);
+		map<AgregIP2, AgregData*>::iterator iter2;
+		if(src_id_customer || src_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
+			iter2 = this->map2.find(srcDstA);
+			if(iter2 == this->map2.end()) {
+				AgregData *agregData = new FILE_LINE(12009) AgregData;
+				agregData->id_customer = src_id_customer;
+				agregData->id_customer2 = dst_id_customer;
+				agregData->addOut(traffic, packets, voip);
+				this->map2[srcDstA] = agregData;
+			} else {
+				iter2->second->addOut(traffic, packets, voip);
+			}
+		}
+		if(dst_id_customer || dst_ip_next || !opt_ipacc_agregate_only_customers_on_main_side) {
+			iter2 = this->map2.find(dstSrcA);
+			if(iter2 == this->map2.end()) {
+				AgregData *agregData = new FILE_LINE(12010) AgregData;
+				agregData->id_customer = dst_id_customer;
+				agregData->id_customer2 = src_id_customer;
+				agregData->addIn(traffic, packets, voip);
+				this->map2[dstSrcA] = agregData;
+			} else {
+				iter2->second->addIn(traffic, packets, voip);
+			}
+		}
+		*/
 	}
 }
 
@@ -1010,7 +1025,8 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	*/
 	}
 	
-	map<AgregIP2, AgregData*>::iterator iter2;
+	map<AgregIP, map<vmIP, AgregData*> >::iterator iter21;
+	map<vmIP, AgregData*>::iterator iter22;
 	agreg_table = "ipacc_agr2_hour";
 	agreg_time_field = "time_hour";
 	strcpy(agreg_time, sqlDateTimeString(time_interval / 3600 * 3600).c_str());
@@ -1020,91 +1036,106 @@ void IpaccAgreg::save(unsigned int time_interval) {
 	}
 	*/
 	int _counter = 0;
-	for(iter2 = this->map2.begin(); iter2 != this->map2.end(); iter2++) {
-		snprintf(insertQueryBuff, sizeof(insertQueryBuff),
-			"set @i = 0; "
-			"while @i < 2 do "
-				"update %s set "
-					"traffic_in = traffic_in + %lu, "
-					"traffic_out = traffic_out + %lu, "
-					"traffic_sum = traffic_sum + %lu, "
-					"packets_in = packets_in + %lu, "
-					"packets_out = packets_out + %lu, "
-					"packets_sum = packets_sum + %lu, "
-					"traffic_voip_in = traffic_voip_in + %lu, "
-					"traffic_voip_out = traffic_voip_out + %lu, "
-					"traffic_voip_sum = traffic_voip_sum + %lu, "
-					"packets_voip_in = packets_voip_in + %lu, "
-					"packets_voip_out = packets_voip_out + %lu, "
-					"packets_voip_sum = packets_voip_sum + %lu "
-				"where %s = '%s' and "
-					"addr = %s and addr2 = %s  and customer_id = %u and "
-					"proto = %u and port = %u; "
-				"if(row_count() <= 0 and @i = 0) then "
-					"insert ignore into %s ("
-							"%s, addr, addr2, customer_id, proto, port, "
-							"traffic_in, traffic_out, traffic_sum, "
-							"packets_in, packets_out, packets_sum, "
-							"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
-							"packets_voip_in, packets_voip_out, packets_voip_sum"
-						") values ("
-							"'%s', %s, %s, %u, %u, %u, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu, "
-							"%lu, %lu, %lu);"
-					"if(row_count() > 0) then "
+	for(iter21 = this->map2.begin(); iter21 != this->map2.end(); iter21++) {
+		list<AgregDataWithIP> ad_ip;
+		for(iter22 = iter21->second.begin(); iter22 != iter21->second.end(); ++iter22) {
+			AgregDataWithIP ap_ip_item;
+			ap_ip_item.ip = iter22->first;
+			ap_ip_item.data = iter22->second;
+			ad_ip.push_back(ap_ip_item);
+		}
+		ad_ip.sort(AgregDataWithIP::compare_traffic_desc);
+		int _counter2 = 0;
+		for(list<AgregDataWithIP>::iterator iter_data = ad_ip.begin(); iter_data != ad_ip.end(); iter_data++) {
+			snprintf(insertQueryBuff, sizeof(insertQueryBuff),
+				"set @i = 0; "
+				"while @i < 2 do "
+					"update %s set "
+						"traffic_in = traffic_in + %lu, "
+						"traffic_out = traffic_out + %lu, "
+						"traffic_sum = traffic_sum + %lu, "
+						"packets_in = packets_in + %lu, "
+						"packets_out = packets_out + %lu, "
+						"packets_sum = packets_sum + %lu, "
+						"traffic_voip_in = traffic_voip_in + %lu, "
+						"traffic_voip_out = traffic_voip_out + %lu, "
+						"traffic_voip_sum = traffic_voip_sum + %lu, "
+						"packets_voip_in = packets_voip_in + %lu, "
+						"packets_voip_out = packets_voip_out + %lu, "
+						"packets_voip_sum = packets_voip_sum + %lu "
+					"where %s = '%s' and "
+						"addr = %s and addr2 = %s  and customer_id = %u and "
+						"proto = %u and port = %u; "
+					"if(row_count() <= 0 and @i = 0) then "
+						"insert ignore into %s ("
+								"%s, addr, addr2, customer_id, proto, port, "
+								"traffic_in, traffic_out, traffic_sum, "
+								"packets_in, packets_out, packets_sum, "
+								"traffic_voip_in, traffic_voip_out, traffic_voip_sum, "
+								"packets_voip_in, packets_voip_out, packets_voip_sum"
+							") values ("
+								"'%s', %s, %s, %u, %u, %u, "
+								"%lu, %lu, %lu, "
+								"%lu, %lu, %lu, "
+								"%lu, %lu, %lu, "
+								"%lu, %lu, %lu);"
+						"if(row_count() > 0) then "
+							"set @i = 2; "
+						"end if; "
+					"else "
 						"set @i = 2; "
 					"end if; "
-				"else "
-					"set @i = 2; "
-				"end if; "
-				"set @i = @i + 1; "
-			"end while",
-			agreg_table,
-			iter2->second->traffic_in,
-			iter2->second->traffic_out,
-			iter2->second->traffic_in + iter2->second->traffic_out,
-			iter2->second->packets_in,
-			iter2->second->packets_out,
-			iter2->second->packets_in + iter2->second->packets_out,
-			iter2->second->traffic_voip_in,
-			iter2->second->traffic_voip_out,
-			iter2->second->traffic_voip_in + iter2->second->traffic_voip_out,
-			iter2->second->packets_voip_in,
-			iter2->second->packets_voip_out,
-			iter2->second->packets_voip_in + iter2->second->packets_voip_out,
-			agreg_time_field,
-			agreg_time,
-			iter2->first.ip1.getStringForMysqlIpColumn(agreg_table, "addr").c_str(),
-			iter2->first.ip2.getStringForMysqlIpColumn(agreg_table, "addr2").c_str(),
-			iter2->second->id_customer,
-			iter2->first.proto,
-			iter2->first.port.getPort(),
-			agreg_table,
-			agreg_time_field,
-			agreg_time,
-			iter2->first.ip1.getStringForMysqlIpColumn(agreg_table, "addr").c_str(),
-			iter2->first.ip2.getStringForMysqlIpColumn(agreg_table, "addr2").c_str(),
-			iter2->second->id_customer,
-			iter2->first.proto,
-			iter2->first.port.getPort(),
-			iter2->second->traffic_in,
-			iter2->second->traffic_out,
-			iter2->second->traffic_in + iter2->second->traffic_out,
-			iter2->second->packets_in,
-			iter2->second->packets_out,
-			iter2->second->packets_in + iter2->second->packets_out,
-			iter2->second->traffic_voip_in,
-			iter2->second->traffic_voip_out,
-			iter2->second->traffic_voip_in + iter2->second->traffic_voip_out,
-			iter2->second->packets_voip_in,
-			iter2->second->packets_voip_out,
-			iter2->second->packets_voip_in + iter2->second->packets_voip_out);
-		sqlStore->query_lock(insertQueryBuff,
-				     STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
-				     (_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
-		++_counter;
+					"set @i = @i + 1; "
+				"end while",
+				agreg_table,
+				iter_data->data->traffic_in,
+				iter_data->data->traffic_out,
+				iter_data->data->traffic_in + iter_data->data->traffic_out,
+				iter_data->data->packets_in,
+				iter_data->data->packets_out,
+				iter_data->data->packets_in + iter_data->data->packets_out,
+				iter_data->data->traffic_voip_in,
+				iter_data->data->traffic_voip_out,
+				iter_data->data->traffic_voip_in + iter_data->data->traffic_voip_out,
+				iter_data->data->packets_voip_in,
+				iter_data->data->packets_voip_out,
+				iter_data->data->packets_voip_in + iter_data->data->packets_voip_out,
+				agreg_time_field,
+				agreg_time,
+				iter21->first.ip.getStringForMysqlIpColumn(agreg_table, "addr").c_str(),
+				iter_data->ip.getStringForMysqlIpColumn(agreg_table, "addr2").c_str(),
+				iter_data->data->id_customer,
+				iter21->first.proto,
+				iter21->first.port.getPort(),
+				agreg_table,
+				agreg_time_field,
+				agreg_time,
+				iter21->first.ip.getStringForMysqlIpColumn(agreg_table, "addr").c_str(),
+				iter_data->ip.getStringForMysqlIpColumn(agreg_table, "addr2").c_str(),
+				iter_data->data->id_customer,
+				iter21->first.proto,
+				iter21->first.port.getPort(),
+				iter_data->data->traffic_in,
+				iter_data->data->traffic_out,
+				iter_data->data->traffic_in + iter_data->data->traffic_out,
+				iter_data->data->packets_in,
+				iter_data->data->packets_out,
+				iter_data->data->packets_in + iter_data->data->packets_out,
+				iter_data->data->traffic_voip_in,
+				iter_data->data->traffic_voip_out,
+				iter_data->data->traffic_voip_in + iter_data->data->traffic_voip_out,
+				iter_data->data->packets_voip_in,
+				iter_data->data->packets_voip_out,
+				iter_data->data->packets_voip_in + iter_data->data->packets_voip_out);
+			sqlStore->query_lock(insertQueryBuff,
+					     STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
+					     (_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
+			++_counter;
+			++_counter2;
+			if(!opt_ipacc_limit_agregation_both_sides || _counter2 >= opt_ipacc_limit_agregation_both_sides) {
+				break;
+			}
+		}
 	}
 	/*
 	for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
@@ -1685,6 +1716,10 @@ int refreshCustIpCache() {
 
 unsigned int lengthIpaccBuffer() {
 	return(IPACC ? IPACC->lengthBuffer() : 0);
+}
+
+unsigned int sizeIpaccBuffer() {
+	return(IPACC ? IPACC->sizeBuffer() : 0);
 }
 
 string getIpaccCpuUsagePerc() {

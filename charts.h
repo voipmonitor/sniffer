@@ -353,6 +353,7 @@ struct sFilterCache_call_ipv4_comb {
 	}
 };
 
+#if VM_IPV6
 struct sFilterCache_call_ipv6_comb {
 	vmIP src;
 	vmIP dst;
@@ -371,20 +372,25 @@ struct sFilterCache_call_ipv6_comb {
 		       d1.proxy[1] < d2.proxy[1]);
 	}
 };
+#endif
 
 class cFilterCacheItem {
 public:
 	inline cFilterCacheItem(unsigned limit);
 	inline int get(sFilterCache_call_ipv4_comb *ip_comb);
-	inline int get(sFilterCache_call_ipv6_comb *ip_comb);
 	inline void add(sFilterCache_call_ipv4_comb *ip_comb, bool set);
+	#if VM_IPV6
+	inline int get(sFilterCache_call_ipv6_comb *ip_comb);
 	inline void add(sFilterCache_call_ipv6_comb *ip_comb, bool set);
+	#endif
 private:
 	unsigned limit;
 	queue<sFilterCache_call_ipv4_comb> ipv4_comb_queue;
 	map<sFilterCache_call_ipv4_comb, bool> ipv4_comb_map;
+	#if VM_IPV6
 	queue<sFilterCache_call_ipv6_comb> ipv6_comb_queue;
 	map<sFilterCache_call_ipv6_comb, bool> ipv6_comb_map;
+	#endif
 };
 
 class cFiltersCache {
@@ -392,9 +398,11 @@ public:
 	cFiltersCache(unsigned limit, unsigned limit2);
 	~cFiltersCache();
 	int get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb);
-	int get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb);
 	void add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set);
+	#if VM_IPV6
+	int get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb);
 	void add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb, bool set);
+	#endif
 private:
 	unsigned limit, limit2;
 	map<cChartFilter*, cFilterCacheItem*> cache_map;
