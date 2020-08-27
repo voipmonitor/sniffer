@@ -3086,8 +3086,8 @@ void ParsePacket::setStdParse() {
 		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 	}
 	
-	extern vmIP opt_opensips_dstip;
-	if(opt_opensips_dstip.isSet()) {
+	extern vmIP opt_kamailio_dstip;
+	if(opt_kamailio_dstip.isSet()) {
 		addNode("X-Siptrace-Fromip:", typeNode_std);
 		addNode("X-Siptrace-Toip:", typeNode_std);
 		addNode("X-Siptrace-Time:", typeNode_std);

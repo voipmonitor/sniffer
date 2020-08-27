@@ -714,7 +714,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	if(packetS->pid.flags & FLAG_AUDIOCODES) {
 		forceVirtualUdp = true;
 	}
-	if(packetS->opensips_subst) {
+	if(packetS->kamailio_subst) {
 		forceVirtualUdp = 2;
 	}
 	if(packetS->header_pt->caplen > 1000000) {
@@ -8313,12 +8313,12 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 
 void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	extern vmIP opt_opensips_dstip;
-	extern vmIP opt_opensips_srcip;
-	extern unsigned opt_opensips_port;
-	if(opt_opensips_dstip.isSet() && opt_opensips_dstip == packetS->daddr_() &&
-	   (!opt_opensips_srcip.isSet() || opt_opensips_srcip == packetS->saddr_()) &&
-	   (!opt_opensips_port || opt_opensips_port == packetS->dest_().port)) {
+	extern vmIP opt_kamailio_dstip;
+	extern vmIP opt_kamailio_srcip;
+	extern unsigned opt_kamailio_port;
+	if(opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
+	   (!opt_kamailio_srcip.isSet() || opt_kamailio_srcip == packetS->saddr_()) &&
+	   (!opt_kamailio_port || opt_kamailio_port == packetS->dest_().port)) {
 		unsigned long from_ip_l;
 		char *from_ip = gettag_sip(packetS, "\nX-Siptrace-Fromip:", &from_ip_l);
 		if(from_ip) {
@@ -8350,39 +8350,39 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 					}
 				}
 				if(ok_ip[0] && ok_ip[1]) {
-					packet_s_opensips_subst *opensips_subst = new FILE_LINE(0) packet_s_opensips_subst;
-					opensips_subst->is_tcp = is_tcp[0] || is_tcp[1];
-					opensips_subst->saddr = n_ip[0];
-					opensips_subst->daddr = n_ip[1];
-					opensips_subst->source = n_port[0];
-					opensips_subst->dest = n_port[1];
+					packet_s_kamailio_subst *kamailio_subst = new FILE_LINE(0) packet_s_kamailio_subst;
+					kamailio_subst->is_tcp = is_tcp[0] || is_tcp[1];
+					kamailio_subst->saddr = n_ip[0];
+					kamailio_subst->daddr = n_ip[1];
+					kamailio_subst->source = n_port[0];
+					kamailio_subst->dest = n_port[1];
 					unsigned long time_l;
 					char *time = gettag_sip(packetS, "\nX-Siptrace-Time:", &time_l);
 					bool time_ok = false;
 					if(time) {
 						char *p_sep_us = strnchr(time, ' ', time_l) ;
 						if(p_sep_us) {
-							opensips_subst->ts.tv_sec = atol(time);
-							opensips_subst->ts.tv_usec = atol(p_sep_us + 1);
+							kamailio_subst->ts.tv_sec = atol(time);
+							kamailio_subst->ts.tv_usec = atol(p_sep_us + 1);
 							extern char opt_pb_read_from_file[256];
 							extern int opt_pb_read_from_file_acttime;
 							extern u_int64_t opt_pb_read_from_file_acttime_diff;
 							if(opt_pb_read_from_file[0]) {
 								if(opt_pb_read_from_file_acttime) {
-									u_int64_t packetTime = getTimeUS(opensips_subst->ts);
+									u_int64_t packetTime = getTimeUS(kamailio_subst->ts);
 									packetTime += opt_pb_read_from_file_acttime_diff;
-									opensips_subst->ts.tv_sec = TIME_US_TO_S(packetTime);
-									opensips_subst->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
+									kamailio_subst->ts.tv_sec = TIME_US_TO_S(packetTime);
+									kamailio_subst->ts.tv_usec = TIME_US_TO_DEC_US(packetTime);
 								}
 							}
 							time_ok = true;
 						}
 					}
 					if(!time_ok) {
-						opensips_subst->ts.tv_sec = 0;
-						opensips_subst->ts.tv_usec = 0;
+						kamailio_subst->ts.tv_sec = 0;
+						kamailio_subst->ts.tv_usec = 0;
 					}
-					packetS->opensips_subst = opensips_subst;
+					packetS->kamailio_subst = kamailio_subst;
 				}
 			}
 		}

@@ -1,3 +1,12 @@
+26.21 27.08.2020
+================
+- added support for kamailio siptrace mirroring to the voipmonitor (see kamailio_* options) - this feature is mainly for encrypted traffic as unencrypted traffic can be sniffed directly by the voipmonitor [VS-952]
+- fix missing RTP streams if IP address is different than in SDP (in certain private/public NAT scenario) VS-1106
+- fix memory allocation issue in check_sip if websocket data is invalid [VS-1102]
+- add more option to sip-options/subscribe/notify to allow only active (in-memory) information (avoiding pulling data into database) - (nodb option) or allowing avoid pcap files but still having them in DB [VS-1103]
+- change default value for option ssl_store_sessions from 'memory' to 'persistent' which allows to decrypt stored SSL sessions after sniffer restarts 
+
+
 26.20 12.08.2020
 ================
 - add support ipv6 to configuration options natalias, sdp_ignore_ip_port, ssl_ipport) [VS-1092]
