@@ -1016,8 +1016,11 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 	//cout << filter << endl;
 	
 	if(filtersCache) {
-		int rsltCache = ip_comb_v6 ?
+		int rsltCache = 
+				#if VM_IPV6
+				ip_comb_v6 ?
 				 filtersCache->get(this, (sFilterCache_call_ipv6_comb*)ip_comb) :
+				#endif
 				 filtersCache->get(this, (sFilterCache_call_ipv4_comb*)ip_comb);
 		switch(rsltCache) {
 		case 1:
@@ -1038,9 +1041,12 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 			} else {
 				rslt = f.e(filter_only_sip_ip_s[threadIndex]).getBool();
 			}
+			#if VM_IPV6
 			if(ip_comb_v6) {
 				filtersCache->add(this, (sFilterCache_call_ipv6_comb*)ip_comb, rslt);
-			} else {
+			} else
+			#endif
+			{
 				filtersCache->add(this, (sFilterCache_call_ipv4_comb*)ip_comb, rslt);
 			}
 			if(!rslt) {
@@ -1382,13 +1388,16 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 }
 
 void cCharts::checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters_map, cFiltersCache *filtersCache, int threadIndex) {
+	#if VM_IPV6
 	if(useIPv6) {
 		sFilterCache_call_ipv6_comb ipv6_comb;
 		ipv6_comb.set(call);
 		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
 			(*filters_map)[iter->second] = iter->second->check(call, callData, true, &ipv6_comb, filtersCache, threadIndex);
 		}
-	} else {
+	} else 
+	#endif
+	{
 		sFilterCache_call_ipv4_comb ipv4_comb;
 		ipv4_comb.set(call);
 		for(map<string, cChartFilter*>::iterator iter = filters.begin(); iter != filters.end(); iter++) {
@@ -1505,6 +1514,7 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 	}
 }
 
+#if VM_IPV6
 void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 	proxy[0].clear();
 	proxy[1].clear();
@@ -1537,6 +1547,7 @@ void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 		}
 	}
 }
+#endif
 
 cFilterCacheItem::cFilterCacheItem(unsigned limit) {
 	this->limit = limit;
@@ -1545,14 +1556,6 @@ cFilterCacheItem::cFilterCacheItem(unsigned limit) {
 int cFilterCacheItem::get(sFilterCache_call_ipv4_comb *ip_comb) {
 	map<sFilterCache_call_ipv4_comb, bool>::iterator iter = ipv4_comb_map.find(*ip_comb);
 	if(iter != ipv4_comb_map.end()) {
-		return(iter->second);
-	}
-	return(-1);
-}
-
-int cFilterCacheItem::get(sFilterCache_call_ipv6_comb *ip_comb) {
-	map<sFilterCache_call_ipv6_comb, bool>::iterator iter = ipv6_comb_map.find(*ip_comb);
-	if(iter != ipv6_comb_map.end()) {
 		return(iter->second);
 	}
 	return(-1);
@@ -1568,6 +1571,15 @@ void cFilterCacheItem::add(sFilterCache_call_ipv4_comb *ip_comb, bool set) {
 	ipv4_comb_map[*ip_comb] = set;
 }
 
+#if VM_IPV6
+int cFilterCacheItem::get(sFilterCache_call_ipv6_comb *ip_comb) {
+	map<sFilterCache_call_ipv6_comb, bool>::iterator iter = ipv6_comb_map.find(*ip_comb);
+	if(iter != ipv6_comb_map.end()) {
+		return(iter->second);
+	}
+	return(-1);
+}
+
 void cFilterCacheItem::add(sFilterCache_call_ipv6_comb *ip_comb, bool set) {
 	while(ipv4_comb_queue.size() >= limit) {
 		sFilterCache_call_ipv6_comb e_ip_comb = ipv6_comb_queue.front();
@@ -1577,6 +1589,7 @@ void cFilterCacheItem::add(sFilterCache_call_ipv6_comb *ip_comb, bool set) {
 	ipv6_comb_queue.push(*ip_comb);
 	ipv6_comb_map[*ip_comb] = set;
 }
+#endif
 
 cFiltersCache::cFiltersCache(unsigned limit, unsigned limit2) {
 	this->limit = limit;
@@ -1601,18 +1614,6 @@ int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_com
 	return(cache_item->get(ip_comb));
 }
 
-int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb) {
-	cFilterCacheItem *cache_item;
-	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
-	if(iter != cache_map.end()) {
-		cache_item = iter->second;
-	} else {
-		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
-		cache_map[filter] = cache_item;
-	}
-	return(cache_item->get(ip_comb));
-}
-
 void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_comb, bool set) {
 	cFilterCacheItem *cache_item;
 	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
@@ -1623,6 +1624,19 @@ void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv4_comb *ip_co
 		cache_map[filter] = cache_item;
 	}
 	cache_item->add(ip_comb, set);
+}
+
+#if VM_IPV6
+int cFiltersCache::get(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb) {
+	cFilterCacheItem *cache_item;
+	map<cChartFilter*, cFilterCacheItem*>::iterator iter = cache_map.find(filter);
+	if(iter != cache_map.end()) {
+		cache_item = iter->second;
+	} else {
+		cache_item = new FILE_LINE(0) cFilterCacheItem(limit);
+		cache_map[filter] = cache_item;
+	}
+	return(cache_item->get(ip_comb));
 }
 
 void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_comb, bool set) {
@@ -1636,6 +1650,7 @@ void cFiltersCache::add(cChartFilter *filter, sFilterCache_call_ipv6_comb *ip_co
 	}
 	cache_item->add(ip_comb, set);
 }
+#endif
 
 eChartType chartTypeFromString(string chartType) {
 	return(chartType == "TCH_total" ? _chartType_total :

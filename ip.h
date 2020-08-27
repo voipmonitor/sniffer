@@ -1,8 +1,12 @@
 #ifndef IP_H
 #define IP_H
 
+#include "config.h"
 
+#ifndef VM_IPV6
 #define VM_IPV6 true
+#endif
+
 #if VM_IPV6
     extern bool useIPv6;
     #define VM_IPV6_B useIPv6

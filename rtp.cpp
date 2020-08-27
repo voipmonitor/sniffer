@@ -219,6 +219,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	samplerate = 8000;
 	first = true;
 	first_packet_time_us = 0;
+	memset(rtpmap, 0, sizeof(rtpmap));
+	memset(rtpmap_other_side, 0, sizeof(rtpmap_other_side));
 	s = new FILE_LINE(24001) source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
@@ -1160,6 +1162,30 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					frame_size = rtpmap[i].frame_size;
 					found = 1;
 					break;
+				}
+			}
+			if(!found) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(rtpmap_other_side[i].is_set() && curpayload == rtpmap_other_side[i].payload) {
+						codec = rtpmap_other_side[i].codec;
+						frame_size = rtpmap_other_side[i].frame_size;
+						found = 1;
+						break;
+					}
+				}
+			}
+			if(!found && owner) {
+				for(int i = 0; i < MAX_IP_PER_CALL && !found; i++) {
+					if(!owner->rtpmap_used_flags[i]) {
+						for(int j = 0; j < MAX_RTPMAP; j++) {
+							if(owner->rtpmap[i][j].is_set() && curpayload == owner->rtpmap[i][j].payload) {
+								codec = owner->rtpmap[i][j].codec;
+								frame_size = owner->rtpmap[i][j].frame_size;
+								found = 1;
+								break;
+							}
+						}
+					}
 				}
 			}
 			if(curpayload == 101 and !found) {

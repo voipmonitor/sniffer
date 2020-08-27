@@ -21,15 +21,9 @@ struct octects_t {
 	octects_t() {
 		octects = 0;
 		numpackets = 0;
-		interval_time = 0;
-		voippacket = 0;
-		erase = false;
 	}
-	unsigned int octects;
-	unsigned int numpackets;
-	unsigned int interval_time;
-	int voippacket;
-	bool erase;
+	u_int32_t octects;
+	u_int32_t numpackets;
 };
 
 struct octects_live_t {
@@ -122,21 +116,24 @@ struct t_ipacc_buffer_key {
 	vmIP daddr;
 	vmPort port; 
 	int proto;
+	bool voip;
 	inline bool operator == (const t_ipacc_buffer_key& other) const {
 		return(this->saddr == other.saddr &&
 		       this->daddr == other.daddr &&
 		       this->port == other.port &&
-		       this->proto == other.proto);
+		       this->proto == other.proto && 
+		       this->voip == other.voip);
 	}
 	inline bool operator < (const t_ipacc_buffer_key& other) const { 
 		return(this->saddr < other.saddr ? 1 : this->saddr > other.saddr ? 0 :
 		       this->daddr < other.daddr ? 1 : this->daddr > other.daddr ? 0 :
 		       this->port < other.port ? 1 : this->port > other.port ? 0 :
-		       this->proto < other.proto);
+		       this->proto < other.proto ? 1 : this->proto > other.proto ? 0 :
+		       this->voip < other.voip);
 	}
 };
 
-typedef map<t_ipacc_buffer_key, octects_t*> t_ipacc_buffer; 
+typedef map<t_ipacc_buffer_key, octects_t> t_ipacc_buffer; 
 
 class Ipacc {
 public:
@@ -151,7 +148,6 @@ public:
 		volatile int used;
 	};
 	struct s_ipacc_data {
-		~s_ipacc_data();
 		unsigned int interval_time;
 		t_ipacc_buffer ipacc_buffer;
 	};
@@ -188,9 +184,10 @@ public:
 	void init();
 	void term();
 	int refreshCustIpCache();
-	void save(t_ipacc_buffer *ipacc_buffer, s_cache *cache);
+	void save(unsigned int interval_time, t_ipacc_buffer *ipacc_buffer, s_cache *cache);
 	inline void add_octets(time_t timestamp, vmIP saddr, vmIP daddr, vmPort port, int proto, int packetlen, int voippacket);
 	unsigned int lengthBuffer();
+	unsigned int sizeBuffer();
 	class CustIpCache *getCustIpCache() {
 		return(save_thread_data[0].cache.custIpCache);
 	}
@@ -305,6 +302,14 @@ public:
 			       (this->port < other.port));
 		}
 	};
+	struct AgregDataWithIP {
+		vmIP ip;
+		AgregData *data;
+		static bool compare_traffic_desc(const AgregDataWithIP& first, const AgregDataWithIP& second) {
+			return((first.data->traffic_in + first.data->traffic_out) >
+			       (second.data->traffic_in + second.data->traffic_out));
+		}
+	};
 	~IpaccAgreg();
 	void add(vmIP src, vmIP dst,
 		 unsigned int src_id_customer, unsigned int dst_id_customer,
@@ -314,7 +319,7 @@ public:
 	void save(unsigned int time_interval);
 private:
 	map<AgregIP, AgregData*> map1;
-	map<AgregIP2, AgregData*> map2;
+	map<AgregIP, map<vmIP, AgregData*> > map2;
 };
 
 class CustIpCache {
@@ -454,6 +459,7 @@ CustIpCache *getCustIpCache();
 CustPhoneNumberCache *getCustPnCache();
 int refreshCustIpCache();
 unsigned int lengthIpaccBuffer();
+unsigned int sizeIpaccBuffer();
 string getIpaccCpuUsagePerc();
 void initIpacc();
 void termIpacc();

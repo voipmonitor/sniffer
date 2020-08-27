@@ -100,6 +100,14 @@ inline u_int32_t getTimeS(pcap_pkthdr* header = NULL) {
     return(time.tv_sec);
 }
 
+inline u_int32_t getTimeS(timeval &ts) {
+    return(ts.tv_sec);
+}
+
+inline u_int32_t getTimeS(timeval *ts) {
+    return(ts->tv_sec);
+}
+
 inline double getTimeSF(pcap_pkthdr* header = NULL) {
     if(header) {
          return(ts2double(header->ts.tv_sec, header->ts.tv_usec));
@@ -107,6 +115,10 @@ inline double getTimeSF(pcap_pkthdr* header = NULL) {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(ts2double(time.tv_sec, time.tv_nsec / 1000));
+}
+
+inline double getTimeSF(timeval &ts) {
+    return(ts2double(ts.tv_sec, ts.tv_usec));
 }
 
 inline u_int64_t getTimeMS(pcap_pkthdr* header = NULL) {
@@ -118,12 +130,31 @@ inline u_int64_t getTimeMS(pcap_pkthdr* header = NULL) {
     return(time.tv_sec * 1000ull + time.tv_nsec / 1000000);
 }
 
-inline u_int64_t getTimeMS(struct timeval *ts) {
+inline u_int64_t getTimeMS(timeval &ts) {
+    return(ts.tv_sec * 1000ull + ts.tv_usec / 1000);
+}
+
+inline u_int64_t getTimeMS(timeval *ts) {
     return(ts->tv_sec * 1000ull + ts->tv_usec / 1000);
 }
 
 inline u_int64_t getTimeMS(unsigned long tv_sec, unsigned long tv_usec) {
     return(tv_sec * 1000ull + tv_usec / 1000);
+}
+
+inline timeval zeroTimeval() {
+	timeval ts;
+	ts.tv_sec = 0;
+	ts.tv_usec = 0;
+	return(ts);
+}
+
+inline bool isSetTimeval(timeval &ts) {
+	return(ts.tv_sec);
+}
+
+inline bool isSetTimeval(timeval *ts) {
+	return(ts->tv_sec);
 }
 
 extern u_int64_t rdtsc_by_100ms;
@@ -167,6 +198,10 @@ inline u_int64_t getTimeUS(pcap_pkthdr *pkthdr) {
 
 inline u_int64_t getTimeUS(timeval &ts) {
     return(ts.tv_sec * 1000000ull + ts.tv_usec);
+}
+
+inline u_int64_t getTimeUS(timeval *ts) {
+    return(ts->tv_sec * 1000000ull + ts->tv_usec);
 }
 
 inline u_int64_t getTimeUS(const timeval &ts) {

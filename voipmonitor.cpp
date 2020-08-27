@@ -311,6 +311,8 @@ int opt_printinsertid = 0;
 int opt_ipaccount = 0;
 int opt_ipacc_interval = 300;
 int opt_ipacc_only_agregation = 0;
+int opt_ipacc_enable_agregation_both_sides = 1;
+int opt_ipacc_limit_agregation_both_sides = 0;
 bool opt_ipacc_sniffer_agregate = false;
 bool opt_ipacc_agregate_only_customers_on_main_side = true;
 bool opt_ipacc_agregate_only_customers_on_any_side = true;
@@ -401,7 +403,7 @@ bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
-int opt_ssl_store_sessions = 1;
+int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -1053,6 +1055,10 @@ bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
 
+vmIP opt_opensips_dstip;
+vmIP opt_opensips_srcip;
+unsigned opt_opensips_port;
+
 SensorsMap sensorsMap;
 
 bool cloud_db = false;
@@ -1118,6 +1124,7 @@ void daemonizeOutput(string error);
 
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
+static void get_command_line_arguments_mysql();
 static void set_default_values();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
@@ -3271,6 +3278,7 @@ int main(int argc, char *argv[]) {
 	   !printConfigStruct && !printConfigFile &&
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
+			get_command_line_arguments_mysql();
 			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
 			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
@@ -6955,9 +6963,12 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-subscribe", &opt_sip_subscribe));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-notify", &opt_sip_notify));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
+				->addValues("nodb:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-subscribe", &opt_sip_subscribe))
+				->addValues("nodb:2"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-notify", &opt_sip_notify))
+				->addValues("nodb:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-options", &opt_save_sip_options));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
@@ -7066,6 +7077,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42357) cConfigItem_integer("ipaccount_interval", &opt_ipacc_interval));
 			addConfigItem(new FILE_LINE(42358) cConfigItem_integer("ipaccount_only_agregation", &opt_ipacc_only_agregation));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipaccount_enable_agregation_both_sides", &opt_ipacc_enable_agregation_both_sides));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipaccount_limit_agregation_both_sides", &opt_ipacc_limit_agregation_both_sides));
 				addConfigItem(new FILE_LINE(42359) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
 				addConfigItem(new FILE_LINE(42360) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
@@ -7275,6 +7288,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("opensips_dstip",  &opt_opensips_dstip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ip("opensips_srcip",  &opt_opensips_srcip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("opensips_port",  &opt_opensips_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
@@ -7332,10 +7348,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "create_old_partitions") {
 		opt_create_old_partitions = max(opt_create_old_partitions, (int)configItem->getValueInt());
 	}
-	if(configItem->config_name == "create_old_partitions_from") {
+	if(configItem->config_name == "create_old_partitions_from" && opt_create_old_partitions_from[0]) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_create_old_partitions_from));
 	}
-	if(configItem->config_name == "database_backup_from_date") {
+	if(configItem->config_name == "database_backup_from_date" && opt_database_backup_from_date[0]) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(opt_database_backup_from_date));
 	}
 	if(configItem->config_name == "cachedir" && opt_cachedir[0]) {
@@ -7807,6 +7823,7 @@ void parse_verb_param(string verbParam) {
 }
 
 void get_command_line_arguments() {
+	get_command_line_arguments_mysql();
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
 		char *optarg = NULL;
@@ -8173,21 +8190,6 @@ void get_command_line_arguments() {
 			case 'U':
 				opt_packetbuffered=1;
 				break;
-			case 'h':
-				strcpy_null_term(mysql_host, optarg);
-				break;
-			case 'O':
-				opt_mysql_port = atoi(optarg);
-				break;
-			case 'b':
-				strcpy_null_term(mysql_database, optarg);
-				break;
-			case 'u':
-				strcpy_null_term(mysql_user, optarg);
-				break;
-			case 'p':
-				strcpy_null_term(mysql_password, optarg);
-				break;
 			case 'P':
 				strcpy_null_term(opt_pidfile, optarg);
 				break;
@@ -8288,6 +8290,28 @@ void get_command_line_arguments() {
 		}
 		if(optarg) {
 			delete [] optarg;
+		}
+	}
+}
+
+void get_command_line_arguments_mysql() {
+	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
+		switch(iter->first) {
+			case 'h':
+				strcpy_null_term(mysql_host, iter->second.c_str());
+				break;
+			case 'O':
+				opt_mysql_port = atoi(iter->second.c_str());
+				break;
+			case 'b':
+				strcpy_null_term(mysql_database, iter->second.c_str());
+				break;
+			case 'u':
+				strcpy_null_term(mysql_user, iter->second.c_str());
+				break;
+			case 'p':
+				strcpy_null_term(mysql_password, iter->second.c_str());
+				break;
 		}
 	}
 }
@@ -9451,13 +9475,16 @@ int eval_config(string inistr) {
 		opt_sip_register_save_all = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
-		opt_sip_options = yesno(value);
+		opt_sip_options = !strcasecmp(value, "nodb") ? 2 :
+				  yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-subscribe", NULL))) {
-		opt_sip_subscribe = yesno(value);
+		opt_sip_subscribe = !strcasecmp(value, "nodb") ? 2 :
+				    yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-notify", NULL))) {
-		opt_sip_notify = yesno(value);
+		opt_sip_notify = !strcasecmp(value, "nodb") ? 2 :
+				 yesno(value);
 	}
 	if((value = ini.GetValue("general", "save-sip-options", NULL))) {
 		opt_save_sip_options = yesno(value);
@@ -10337,6 +10364,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ipaccount_only_agregation", NULL))) {
 		opt_ipacc_only_agregation = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_enable_agregation_both_sides", NULL))) {
+		opt_ipacc_enable_agregation_both_sides = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ipaccount_limit_agregation_both_sides", NULL))) {
+		opt_ipacc_limit_agregation_both_sides = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ipaccount_sniffer_agregate", NULL))) {
 		opt_ipacc_sniffer_agregate = yesno(value);
@@ -11227,6 +11260,16 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
 		opt_tcp_port_audiocodes = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "opensips_dstip", NULL))) {
+		opt_opensips_dstip.setFromString(value);
+	}
+	if((value = ini.GetValue("general", "opensips_srcip", NULL))) {
+		opt_opensips_srcip.setFromString(value);
+	}
+	if((value = ini.GetValue("general", "opensips_port", NULL))) {
+		opt_opensips_port = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "socket_use_poll", NULL))) {

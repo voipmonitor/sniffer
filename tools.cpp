@@ -1303,7 +1303,7 @@ bool incorrectCaplenDetected = false;
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
 		      u_char *data, unsigned int datalen,
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-		      bool istcp, bool forceVirtualUdp) {
+		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
 		static u_int64_t lastTimeDltSyslog = 0;
@@ -1343,13 +1343,15 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 						    (istcp ? 
 						      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
 						      sizeof(udphdr2)) + 
-						    datalen) != header->caplen) {
+						    datalen) != header->caplen ||
+						   forceVirtualUdp == 2) {
 							pcap_pkthdr *_header;
 							u_char *_packet;
 							createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,
 										  (u_char*)packet, data, datalen,
 										  saddr, daddr, source, dest,
-										  header->ts.tv_sec, header->ts.tv_usec);
+										  ts && isSetTimeval(ts) ? ts->tv_sec : header->ts.tv_sec, 
+										  ts && isSetTimeval(ts) ? ts->tv_usec : header->ts.tv_usec);
 							header = _header;
 							packet = _packet;
 							use_virtualudppacket = true;
@@ -3082,6 +3084,13 @@ void ParsePacket::setStdParse() {
 	if(custom_headers_sip_msg) {
 		custom_headers_sip_msg->addToStdParse(this);
 		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
+	}
+	
+	extern vmIP opt_opensips_dstip;
+	if(opt_opensips_dstip.isSet()) {
+		addNode("X-Siptrace-Fromip:", typeNode_std);
+		addNode("X-Siptrace-Toip:", typeNode_std);
+		addNode("X-Siptrace-Time:", typeNode_std);
 	}
 	
 	/* obsolete
