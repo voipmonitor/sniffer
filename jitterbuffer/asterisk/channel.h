@@ -370,6 +370,11 @@ struct ast_channel {
 	
 	char audio_decode;
 	char prev_frame_is_dtmf;
+	
+	void *rtp_stream;
+	int enable_save_energylevels;
+	int last_datalen_energylevels;
+	
 };
 
 /*! \brief ast_channel_tech Properties */

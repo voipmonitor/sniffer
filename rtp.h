@@ -632,7 +632,8 @@ public:
 	double fr_rtcp_avg(bool *null);
 	double fr_rtcp_max(bool *null);
 	
-	void addEnergyLevel(u_int16_t energyLevel);
+	void addEnergyLevel(u_int16_t energyLevel, u_int16_t seq);
+	void addEnergyLevel(void *data, int datalen, int codec);
 
 private: 
 	/*
@@ -669,6 +670,9 @@ private:
 	sRSA rsa;
 	
 	SimpleChunkBuffer *energylevels;
+	u_int16_t energylevels_last_seq;
+	bool energylevels_via_jb;
+	u_int32_t energylevels_counter;
 	
 friend class Call;
 };

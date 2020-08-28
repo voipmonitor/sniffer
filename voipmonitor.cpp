@@ -214,6 +214,8 @@ unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disab
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
 bool opt_save_energylevels = false;
+bool opt_save_energylevels_check_seq = true;
+bool opt_save_energylevels_via_jb = true;
 bool opt_rtpip_find_endpoints_set = false;
 int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
@@ -6736,6 +6738,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpip_find_endpoints", &opt_rtpip_find_endpoints));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels", &opt_save_energylevels));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-check-seq", &opt_save_energylevels_check_seq));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-energylevels-via-jb", &opt_save_energylevels_via_jb));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
@@ -7816,6 +7820,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "suppress_fork")			sverb.suppress_fork = 1;
 	else if(verbParam.substr(0, 11) == "trace_call=")
 								{ sverb.trace_call = new FILE_LINE(0) char[strlen(verbParam.c_str() + 11) + 1]; strcpy(sverb.trace_call, verbParam.c_str() + 11); }
+	else if(verbParam == "energylevels")			sverb.energylevels = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9788,6 +9793,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "save-energylevels", NULL))) {
 		opt_save_energylevels = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save-energylevels-check-seq", NULL))) {
+		opt_save_energylevels_check_seq = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save-energylevels-via-jb", NULL))) {
+		opt_save_energylevels_via_jb = yesno(value);
 	}
 	if((value = ini.GetValue("general", "null_rtppayload", NULL))) {
 		opt_null_rtppayload = yesno(value);

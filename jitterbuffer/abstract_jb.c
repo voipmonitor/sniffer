@@ -103,6 +103,7 @@ struct ast_jb_impl
 
 extern void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen);
 //extern void test_raw(const char *descr, const char *data, unsigned int datalen);
+extern void save_rtp_energylevels(void *rtp_stream, void *data, int datalen, int codec);
 
 /* Implementation functions */
 /* fixed */
@@ -410,6 +411,10 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			memcpy(chan->lastbuf, f->data, f->datalen);
 			chan->lastbuflen = f->datalen; 
 		}       
+		if(!f->ignore && chan->enable_save_energylevels && chan->rtp_stream && (chan->codec == 0 || chan->codec == 8)) {
+			save_rtp_energylevels(chan->rtp_stream, f->data, f->datalen, chan->codec);
+			chan->last_datalen_energylevels = f->datalen;
+		}
 		ast_frfree(f);
 	}
 }       
@@ -484,6 +489,10 @@ void save_empty_frame(struct ast_channel *chan) {
 				}
 			}
 		}
+	}
+	if(chan->enable_save_energylevels && chan->rtp_stream && (chan->codec == 0 || chan->codec == 8) &&
+	   chan->last_datalen_energylevels > 0) {
+		save_rtp_energylevels(chan->rtp_stream, NULL, 0, chan->codec);
 	}
 }
 
@@ -561,6 +570,10 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				}
 				memcpy(chan->lastbuf, f->data, f->datalen);
 				chan->lastbuflen = f->datalen;
+			}
+			if(chan->enable_save_energylevels && chan->rtp_stream && f->data && f->datalen > 0 && (chan->codec == 0 || chan->codec == 8)) {
+				save_rtp_energylevels(chan->rtp_stream, f->data, f->datalen, chan->codec);
+				chan->last_datalen_energylevels = f->datalen;
 			}
 			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: %s frame with ts=%ld and len=%ld and seq=%d\n", jb, now, jb_get_actions[res], f->ts, f->len, f->seqno);
 			/* if frame is marked do not put previous interpolated frames to statistics 
@@ -678,6 +691,7 @@ void ast_jb_destroy(struct ast_channel *chan)
 		chan->lastbuf = NULL;
 		chan->lastbufsize = 0;
 		chan->lastbuflen = 0;
+		chan->last_datalen_energylevels = 0;
 	}
 	
 	struct ast_jb *jb = &chan->jb;

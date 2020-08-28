@@ -74,6 +74,10 @@ extern int opt_mysql_max_multiple_rows_insert;
 extern char *opt_rtp_stream_analysis_params;
 extern int opt_jitter_forcemark_transit_threshold;
 extern int opt_jitter_forcemark_delta_threshold;
+extern bool opt_save_energylevels;
+extern bool opt_save_energylevels_check_seq;
+extern bool opt_save_energylevels_via_jb;
+extern char opt_energylevelheader[128];
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -261,7 +265,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	last_stat_loss_perc_mult10 = 0;
 	codecchanged = false;
 	had_audio = false;
-
+	
 	channel_fix1 = new FILE_LINE(24002) ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
@@ -271,6 +275,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_fix1->lastbuflen = 0;
 	channel_fix1->resync = 1;
 	channel_fix1->audiobuf = NULL;
+	channel_fix1->rtp_stream = this;
 
 	channel_fix2  = new FILE_LINE(24003) ast_channel;
 	memset(channel_fix2, 0, sizeof(ast_channel));
@@ -281,6 +286,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_fix2->lastbuflen = 0;
 	channel_fix2->resync = 1;
 	channel_fix2->audiobuf = NULL;
+	channel_fix2->rtp_stream = this;
 
 	channel_adapt = new FILE_LINE(24004) ast_channel;
 	memset(channel_adapt, 0, sizeof(ast_channel));
@@ -291,6 +297,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_adapt->lastbuflen = 0;
 	channel_adapt->resync = 1;
 	channel_adapt->audiobuf = NULL;
+	channel_adapt->rtp_stream = this;
 
 	channel_record = new FILE_LINE(24005) ast_channel;
 	memset(channel_record, 0, sizeof(ast_channel));
@@ -302,6 +309,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_record->resync = 0;
 	channel_record->audiobuf = NULL;
 	channel_record->audio_decode = true;
+	channel_record->rtp_stream = this;
 	last_mos_time = 0;
 	mos_processed = false;
 	save_mos_graph_wait = false;
@@ -381,7 +389,22 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	srtp_decrypt = NULL;
 	
 	energylevels = NULL;
-
+	energylevels_last_seq = 0;
+	energylevels_via_jb = false;
+	if(opt_save_energylevels && opt_save_energylevels_via_jb) {
+		if(opt_jitterbuffer_f2) {
+			channel_fix2->enable_save_energylevels = 1;
+			energylevels_via_jb = true;
+		} else if(opt_jitterbuffer_f1) {
+			channel_fix1->enable_save_energylevels = 1;
+			energylevels_via_jb = true;
+		} else if(opt_jitterbuffer_adapt) {
+			channel_adapt->enable_save_energylevels = 1;
+			energylevels_via_jb = true;
+		}
+	}
+	energylevels_counter = 0;
+	
 }
 
 
@@ -653,6 +676,10 @@ void
 RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	if(codec == PAYLOAD_TELEVENT) return;
+	
+	bool do_energylevels = channel->enable_save_energylevels &&
+			       (!opt_energylevelheader[0] || (call_owner && ((Call*)call_owner)->save_energylevels)) &&
+			       (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA);
 
 	Call *owner = (Call*)call_owner;
 	if(owner and savePayload and owner->silencerecording) {
@@ -728,7 +755,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2));
 
-	if(savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
+	if(do_energylevels or savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -812,8 +839,10 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			channel->last_datalen = frame->datalen;
 		}
 	} else {
-		frame->datalen = 0;
-		frame->data = NULL;
+		if(!do_energylevels) {
+			frame->datalen = 0;
+			frame->data = NULL;
+		}
 		channel->rawstream = NULL;
 	}
 
@@ -1983,9 +2012,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	bool do_fasdetect = opt_fasdetect && !this->iscaller &&  owner->connect_time_us && 
 			    (this->header_ts.tv_sec - TIME_US_TO_S(owner->connect_time_us) < 10) &&
 			    getTimeUS(this->header_ts) > owner->connect_time_us;
-	extern bool opt_save_energylevels;
-	extern char opt_energylevelheader[128];
-	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));
+	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels)) &&
+			       !energylevels_via_jb;
 	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
@@ -2091,7 +2119,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				}
 			}
 			if(do_energylevels) {
-				this->addEnergyLevel(energylevel);
+				this->addEnergyLevel(energylevel, seq);
 			}
 		}
 
@@ -2509,20 +2537,20 @@ void RTP::rtp_stream_analysis_output() {
 	}
 	++rsa.counter;
 	int64_t transit = rsa.counter > 1 ? 
-			   ((int64_t)(getTimeUS(header_ts) - rsa.last_packet_time_us) -
-			    (int64_t)((getTimestamp() - rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
+			   (((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) -
+			    (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
 			   0;
 	double jitter = rsa.jitter + (double)(((transit < 0) ? -transit/1000. : transit/1000.) - rsa.jitter)/16. ;
 	cout << "rsa,"
 	     << rsa.counter << ","
-	     << (int64_t)(getTimeUS(header_ts) - rsa.first_packet_time_us) << ","
-	     << (int64_t)((getTimestamp() - rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
+	     << ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us) << ","
+	     << (((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
 	     << seq << ","
-	     << (rsa.counter > 1 ? (int64_t)(getTimeUS(header_ts) - rsa.last_packet_time_us) : 0) << ","
-	     << (rsa.counter > 1 ? (int64_t)((getTimestamp() - rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
+	     << (rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0) << ","
+	     << (rsa.counter > 1 ? (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
 	     << transit << ","
-	     << ((int64_t)((getTimestamp() - rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
-		 (int64_t)(getTimeUS(header_ts) - rsa.first_packet_time_us)) << ","
+	     << ((((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
+		 ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us)) << ","
 	     << this->jitter << ","
 	     << jitter << ","
 	     << (getHeader()->marker ? 1 : 0) << ","
@@ -2743,11 +2771,75 @@ double RTP::fr_rtcp_max(bool *null) {
 	}
 }
 
-void RTP::addEnergyLevel(u_int16_t energyLevel) {
+void RTP::addEnergyLevel(u_int16_t energyLevel, u_int16_t seq) {
+	bool ok_save = false;
+	if(!energylevels) {
+		energylevels = new FILE_LINE(0) SimpleChunkBuffer();
+		ok_save = true;
+	} else {
+		if(!opt_save_energylevels_check_seq) {
+			ok_save = true;
+		} else {
+			if(seq == ROT_SEQ(energylevels_last_seq + 1)) {
+				ok_save = true;
+			} else if(seq != energylevels_last_seq &&
+				  (u_int16_t)(seq - energylevels_last_seq) < MAX_DROPOUT) {
+					while(seq != ROT_SEQ(energylevels_last_seq + 1)) {
+						u_int16_t energyLevel_zero = 0;
+						energylevels->add((u_char*)&energyLevel_zero, sizeof(energyLevel_zero));
+						energylevels_last_seq = ROT_SEQ(energylevels_last_seq + 1);
+						if(sverb.energylevels) {
+							cout << " el " << "ssrc:" << hex << ssrc << dec 
+							     << " #:" << (++energylevels_counter) << " el:zero" << endl;
+						}
+					}
+					ok_save = true;
+			}
+		}
+	}
+	if(ok_save) {
+		energylevels->add((u_char*)&energyLevel, sizeof(energyLevel));
+		if(sverb.energylevels) {
+			cout << " el " << "ssrc:" << hex << ssrc << dec 
+			     << " #:" << (++energylevels_counter) << " el:" << energyLevel << " seq:" << seq << endl;
+		}
+		energylevels_last_seq = seq;
+	}
+}
+
+void RTP::addEnergyLevel(void *data, int datalen, int codec) {
+	if(!((!opt_energylevelheader[0] || (call_owner && ((Call*)call_owner)->save_energylevels)) &&
+	     (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA))) {
+		return;
+	}
 	if(!energylevels) {
 		energylevels = new FILE_LINE(0) SimpleChunkBuffer();
 	}
-	energylevels->add((u_char*)&energyLevel, sizeof(energyLevel));
+	if(data && datalen) {
+		u_int64_t accum = 0;
+		for(int i = 0; i < datalen; i++) {
+			accum += abs((int16_t)(codec == PAYLOAD_PCMU ? ULAW(((u_char*)data)[i]) : ALAW(((u_char*)data)[i])));
+		}
+		u_int16_t energylevel = accum / datalen;
+		energylevels->add((u_char*)&energylevel, sizeof(energylevel));
+		if(sverb.energylevels) {
+			cout << " el(jb) " << "ssrc:" << hex << ssrc << dec 
+			     << " #:" << (++energylevels_counter) << " el:" << energylevel << endl;
+		}
+	} else {
+		u_int16_t energyLevel_zero = 0;
+		energylevels->add((u_char*)&energyLevel_zero, sizeof(energyLevel_zero));
+		if(sverb.energylevels) {
+			cout << " el(jb) " << "ssrc:" << hex << ssrc << dec
+			     << " #:" << (++energylevels_counter) << " el:zero" << endl;
+		}
+	}
+}
+
+extern "C" {
+void save_rtp_energylevels(void *rtp_stream, void *data, int datalen, int codec) {
+	((RTP*)rtp_stream)->addEnergyLevel(data, datalen, codec);
+}
 }
 
 void burstr_calculate(struct ast_channel *chan, u_int32_t received, double *burstr, double *lossr, int lastinterval) {
