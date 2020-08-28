@@ -67,7 +67,7 @@ enum e_packet_s_type {
 	_t_packet_s_process
 };
 
-struct packet_s_opensips_subst {
+struct packet_s_kamailio_subst {
 	vmIP saddr;
 	vmIP daddr;
 	vmPort source; 
@@ -107,13 +107,13 @@ struct packet_s {
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
 	sAudiocodes *audiocodes;
-	packet_s_opensips_subst *opensips_subst;
+	packet_s_kamailio_subst *kamailio_subst;
 	inline vmIP saddr_() {
 		if(audiocodes) {
 			return(audiocodes->packet_source_ip);
 		}
-		if(opensips_subst) {
-			return(opensips_subst->saddr);
+		if(kamailio_subst) {
+			return(kamailio_subst->saddr);
 		}
 		return(_saddr);
 	}
@@ -121,8 +121,8 @@ struct packet_s {
 		if(audiocodes) {
 			return(audiocodes->packet_dest_ip);
 		}
-		if(opensips_subst) {
-			return(opensips_subst->daddr);
+		if(kamailio_subst) {
+			return(kamailio_subst->daddr);
 		}
 		return(_daddr);
 	}
@@ -130,8 +130,8 @@ struct packet_s {
 		if(audiocodes) {
 			return(audiocodes->packet_source_port);
 		}
-		if(opensips_subst) {
-			return(opensips_subst->source);
+		if(kamailio_subst) {
+			return(kamailio_subst->source);
 		}
 		return(_source);
 	}
@@ -139,8 +139,8 @@ struct packet_s {
 		if(audiocodes) {
 			return(audiocodes->packet_dest_port);
 		}
-		if(opensips_subst) {
-			return(opensips_subst->dest);
+		if(kamailio_subst) {
+			return(kamailio_subst->dest);
 		}
 		return(_dest);
 	}
@@ -179,38 +179,38 @@ struct packet_s {
 		init();
 	}
 	inline u_int64_t getTimeUS() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(::getTimeUS(opensips_subst->ts));
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(::getTimeUS(kamailio_subst->ts));
 		}
 		return(::getTimeUS(header_pt->ts));
 	}
 	inline double getTimeSF() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(::getTimeSF(opensips_subst->ts));
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(::getTimeSF(kamailio_subst->ts));
 		}
 		return(::getTimeSF(header_pt->ts));
 	}
 	inline timeval getTimeval() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(opensips_subst->ts);
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(kamailio_subst->ts);
 		}
 		return(header_pt->ts);
 	}
 	inline timeval *getTimeval_pt() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(&opensips_subst->ts);
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(&kamailio_subst->ts);
 		}
 		return(&header_pt->ts);
 	}
 	inline u_int32_t getTime_s() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(opensips_subst->ts.tv_sec);
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(kamailio_subst->ts.tv_sec);
 		}
 		return(header_pt->ts.tv_sec);
 	}
 	inline u_int32_t getTime_us() {
-		if(opensips_subst && isSetTimeval(opensips_subst->ts)) {
-			return(opensips_subst->ts.tv_usec);
+		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
+			return(kamailio_subst->ts.tv_usec);
 		}
 		return(header_pt->ts.tv_usec);
 	}
@@ -218,16 +218,16 @@ struct packet_s {
 		_blockstore_lock = false;
 		_packet_alloc = false;
 		audiocodes = NULL;
-		opensips_subst = NULL;
+		kamailio_subst = NULL;
 	}
 	inline void term() {
 		if(audiocodes) {
 			delete audiocodes;
 			audiocodes = NULL;
 		}
-		if(opensips_subst) {
-			delete opensips_subst;
-			opensips_subst = NULL;
+		if(kamailio_subst) {
+			delete kamailio_subst;
+			kamailio_subst = NULL;
 		}
 	}
 	inline void blockstore_lock(int lock_flag) {
