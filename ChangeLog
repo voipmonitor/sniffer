@@ -1,3 +1,8 @@
+26.21.1 28.08.2020
+==================
+- analyze energy levels after jitter buffer, fix basic energy levels calculation if jitter buffer will be disabled [VG-2169]
+
+
 26.21 27.08.2020
 ================
 - added support for kamailio siptrace mirroring to the voipmonitor (see kamailio_* options) - this feature is mainly for encrypted traffic as unencrypted traffic can be sniffed directly by the voipmonitor [VS-952]
