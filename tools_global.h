@@ -777,7 +777,7 @@ public:
 	};
 private:
 	struct sIP_time {
-		vmIP ip;
+		vector<vmIP> ips;
 		time_t at;
 		unsigned timeout;
 	};
@@ -795,7 +795,8 @@ public:
 	static string resolve_str(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
 		return(resolve_str(host.c_str(), timeout, typeResolve));
 	}
-	static std::vector<string> resolve_allips(const char *host, eTypeResolve typeResolve = _typeResolve_default);
+	std::vector<vmIP> resolve_allips(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	std::vector<string> resolve_allips_str(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
 private:
 	vmIP resolve_std(const char *host);
 	vmIP resolve_by_system_host(const char *host);

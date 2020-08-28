@@ -581,7 +581,8 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 			if(opt_curlproxy[0]) {
 				curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
 			}
-			std::vector<string> hostIPs = cResolver::resolve_allips(host.c_str(), cResolver::_typeResolve_default);
+			extern cResolver resolver;
+			std::vector<string> hostIPs = resolver.resolve_allips_str(host.c_str(), 0, cResolver::_typeResolve_default);
 			if(hostIPs.size()) {
 				headers = curl_slist_append(headers, ("Host: " + host).c_str());
 				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);

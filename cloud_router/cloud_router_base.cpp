@@ -19,7 +19,7 @@ extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose& CR_VERBOSE();
 extern bool opt_socket_use_poll;
 extern cResolver resolver;
-
+extern int verbosity;
 
 cRsa::cRsa() {
 	priv_rsa = NULL;
@@ -353,28 +353,40 @@ bool cSocket::connect(unsigned loopSleepS) {
 		if(passCounter > 1 && loopSleepS) {
 			sleep(loopSleepS);
 		}
-		rslt = true;
-		clearError();
-		ip = resolver.resolve(host);
-		if(!ip.isSet()) {
+		std::vector<vmIP> ips = resolver.resolve_allips(host.c_str());
+		if(!ips.size()) {
 			setError("failed resolve host name %s", host.c_str());
 			rslt = false;
 			continue;
 		}
-		int pass_call_socket = 0;
-		do {
-			handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP);
-			++pass_call_socket;
-		} while(handle == 0 && pass_call_socket < 5);
-		if(handle == -1) {
-			setError("cannot create socket");
-			rslt = false;
-			continue;
+		for (uint i = 0; i < ips.size(); i++) {
+			rslt = true;
+			clearError();
+			ip.clear();
+			ip = ips[i];
+			int pass_call_socket = 0;
+			do {
+				handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP);
+				++pass_call_socket;
+			} while(handle == 0 && pass_call_socket < 5);
+			if(handle == -1) {
+				if (verbosity > 1) {
+					syslog(LOG_ERR, "cannot create socket");
+				}
+				rslt = false;
+				continue;
+			}
+			if(socket_connect(handle, ip, port) == -1) {
+				if (verbosity > 1) {
+					syslog(LOG_ERR, "failed to connect to server [%s] resolved to ip %s error:[%s]", host.c_str(), ip.getString().c_str(), strerror(errno));
+				}
+				close();
+				rslt = false;
+				continue;
+			}
 		}
-		if(socket_connect(handle, ip, port) == -1) {
-			setError("failed to connect to server [%s] error:[%s]", host.c_str(), strerror(errno));
-			close();
-			rslt = false;
+		if (!rslt) {
+			setError("failed connection to all possible ips (%u) of the server %s : last error:[%s]", ips.size(), host.c_str(), strerror(errno));
 			continue;
 		}
 		int on = 1;
