@@ -236,6 +236,7 @@ public:
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
+	bool initRAW;
 	char *gfileRAW_buffer;
 	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
@@ -420,7 +421,7 @@ public:
 	 * @param channel pointer to the channel structure which holds statistics and jitterbuffer data
 	 *
 	*/
-	void jitterbuffer(struct ast_channel *channel, int savePayload);
+	void jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevels, bool mos_lqo);
 
 	void process_dtmf_rfc2833();
 
@@ -723,6 +724,9 @@ private:
 	uint32_t lasttime1;
 	uint32_t lasttime2;
 };
+
+
+u_int16_t get_energylevel(u_char *data, int datalen, int codec);
 
 
 #endif

@@ -245,6 +245,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	ssrc2 = 0;
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
+	initRAW = false;
 	last_interval_mosf1 = 45;
 	last_interval_mosf2 = 45;
 	last_interval_mosAD = 45;
@@ -392,16 +393,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	energylevels_last_seq = 0;
 	energylevels_via_jb = false;
 	if(opt_save_energylevels && opt_save_energylevels_via_jb) {
-		if(opt_jitterbuffer_f2) {
-			channel_fix2->enable_save_energylevels = 1;
-			energylevels_via_jb = true;
-		} else if(opt_jitterbuffer_f1) {
-			channel_fix1->enable_save_energylevels = 1;
-			energylevels_via_jb = true;
-		} else if(opt_jitterbuffer_adapt) {
-			channel_adapt->enable_save_energylevels = 1;
-			energylevels_via_jb = true;
-		}
+		channel_record->enable_save_energylevels = 1;
+		energylevels_via_jb = true;
 	}
 	energylevels_counter = 0;
 	
@@ -556,9 +549,11 @@ RTP::~RTP() {
 		RTP::dump();
 	}
 
-	if(gfileRAW) {
+	if(gfileRAW || initRAW) {
 		jitterbuffer_fixed_flush(channel_record);
-		fclose(gfileRAW);
+		if(gfileRAW) {
+			fclose(gfileRAW);
+		}
 	}
 
 	delete s;
@@ -673,16 +668,12 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 #if 1
 /* simulate jitterbuffer */
 void
-RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
+RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevels, bool mos_lqo) {
 
 	if(codec == PAYLOAD_TELEVENT) return;
-	
-	bool do_energylevels = channel->enable_save_energylevels &&
-			       (!opt_energylevelheader[0] || (call_owner && ((Call*)call_owner)->save_energylevels)) &&
-			       (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA);
 
 	Call *owner = (Call*)call_owner;
-	if(owner and savePayload and owner->silencerecording) {
+	if((save_audio || energylevels) && owner && owner->silencerecording) {
 		// skip recording 
 		frame->skip = 1;
 	} else {
@@ -755,7 +746,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 
 	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2));
 
-	if(do_energylevels or savePayload or (codec == PAYLOAD_G729 or codec == PAYLOAD_G723 or codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB)) {
+	if(save_audio || energylevels || mos_lqo ||
+	   (codec == PAYLOAD_G729 || codec == PAYLOAD_G723 || codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -825,9 +817,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 		frame->marker = 1;
 	}
 
-	if(savePayload) {
+	if(save_audio || energylevels || mos_lqo) {
 		channel->rawstream = gfileRAW;
-		Call *owner = (Call*)call_owner;
 		if(iscaller) {
 			owner->codec_caller = codec;
 			owner->audioBufferData[0].set(&channel->audiobuf, frame->seqno, this->ssrc, &this->header_ts);
@@ -839,10 +830,8 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 			channel->last_datalen = frame->datalen;
 		}
 	} else {
-		if(!do_energylevels) {
-			frame->datalen = 0;
-			frame->data = NULL;
-		}
+		frame->datalen = 0;
+		frame->data = NULL;
 		channel->rawstream = NULL;
 	}
 
@@ -855,7 +844,7 @@ RTP::jitterbuffer(struct ast_channel *channel, int savePayload) {
 	
 	if(!channel->jb_reseted) {
 		// initializing jitterbuffer 
-		if(savePayload) {
+		if(save_audio || energylevels) {
 			channel_record->jitter_max = frame->len * 3; 
 		}
 		
@@ -1130,13 +1119,24 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		return(false);
 	}
 	
-	bool recordingRequested = 
+	bool save_audio = 
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
 		 ((owner->flags & FLAG_SAVEAUDIO) ||
 		  owner->audioBufferData[0].audiobuffer || owner->audioBufferData[1].audiobuffer));
+	bool energylevels = 
+		opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));
+	bool mos_lqo = 
+		owner &&
+		((owner->flags & FLAG_RUNAMOSLQO) || (owner->flags & FLAG_RUNBMOSLQO)) &&
+		(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
+	bool use_channel_record =
+		((save_audio || energylevels) &&
+		 (!opt_saveaudio_answeronly ||
+		  (owner && owner->connect_time_us && getTimeUS(header) > owner->connect_time_us))) ||
+		mos_lqo;
 	
-	if(srtp_decrypt && (opt_srtp_rtp_decrypt || recordingRequested)) {
+	if(srtp_decrypt && (opt_srtp_rtp_decrypt || use_channel_record)) {
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
 		this->len = *len;
 	}
@@ -1457,20 +1457,6 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		resetgraph = true;
 	}
 	
-	bool recordingRequested_use_jitterbuffer_channel_record = false;
-	bool recordingRequested_enable_jitterbuffer_savepayload = false;
-	if(recordingRequested) {
-		// MOS LQO is calculated only if the call is connected 
-		recordingRequested_use_jitterbuffer_channel_record =
-			!owner ||
-			!((owner->flags & FLAG_RUNAMOSLQO) || (owner->flags & FLAG_RUNBMOSLQO)) || 
-			(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
-		recordingRequested_enable_jitterbuffer_savepayload = 
-			!opt_saveaudio_answeronly ||
-			!owner ||
-			(owner->connect_time_us && getTimeUS(header) > owner->connect_time_us);
-	}
-
 	// codec changed 
 	RTP *laststream = iscaller ? owner->lastcallerrtp : owner->lastcalledrtp;
 
@@ -1534,17 +1520,16 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				owner->last_calledcodec = codec;
 			}
 
-			if(recordingRequested) {
+			if(use_channel_record) {
 				//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
 				/* open file for raw codec */
-				unsigned long unique = getTimestamp();
-				char tmp[1024 + 100];
-				snprintf(tmp, sizeof(tmp), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, unique, codec, header->ts.tv_sec, header->ts.tv_usec);
-				if(gfileRAW)  {
+				if(gfileRAW || initRAW) {
 					jitterbuffer_fixed_flush(channel_record);
 					ast_jb_empty_and_reset(channel_record);
 					ast_jb_destroy(channel_record);
-					fclose(gfileRAW);
+					if(gfileRAW) {
+						fclose(gfileRAW);
+					}
 				} else {
 					/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
 					 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
@@ -1558,55 +1543,60 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 						prevrtp->len = *len;
 						prevrtp->header_ts = header_ts;
 						prevrtp->codec = prevrtp->prev_codec;
-						if(recordingRequested_use_jitterbuffer_channel_record) {
-							prevrtp->jitterbuffer(prevrtp->channel_record, recordingRequested_enable_jitterbuffer_savepayload);
-						}
+						prevrtp->jitterbuffer(prevrtp->channel_record, save_audio, energylevels, mos_lqo);
 					}
 				}
-				for(int passOpen = 0; passOpen < 2; passOpen++) {
-					if(passOpen == 1) {
-						char *pointToLastDirSeparator = strrchr(tmp, '/');
-						if(pointToLastDirSeparator) {
-							*pointToLastDirSeparator = 0;
-							spooldir_mkdir(tmp);
-							*pointToLastDirSeparator = '/';
-						} else {
+				unsigned long raw_unique = getTimestamp();
+				if(save_audio || mos_lqo) {
+					char raw_filename[1024 + 100];
+					snprintf(raw_filename, sizeof(raw_filename), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, raw_unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+					for(int passOpen = 0; passOpen < 2; passOpen++) {
+						if(passOpen == 1) {
+							char *pointToLastDirSeparator = strrchr(raw_filename, '/');
+							if(pointToLastDirSeparator) {
+								*pointToLastDirSeparator = 0;
+								spooldir_mkdir(raw_filename);
+								*pointToLastDirSeparator = '/';
+							} else {
+								break;
+							}
+						}
+						gfileRAW = fopen(raw_filename, "w");
+						if(gfileRAW) {
+							spooldir_file_chmod_own(raw_filename);
 							break;
 						}
 					}
-					gfileRAW = fopen(tmp, "w");
-					if(gfileRAW) {
-						spooldir_file_chmod_own(tmp);
-						break;
+					if(!gfileRAW_buffer) {
+						gfileRAW_buffer = new FILE_LINE(24007) char[32768];
+						if(gfileRAW_buffer == NULL) {
+							syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
+							exit(2);
+						}
+					}
+					if(!gfileRAW) {
+						syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", raw_filename, strerror (errno));
+					} else if(gfileRAW_buffer) {
+						setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
+					}
+					
+					/* write file info to "playlist" */
+					char rawinfo_filename[1024 + 100];
+					snprintf(rawinfo_filename, sizeof(rawinfo_filename), "%s.rawInfo", basefilename);
+					owner->iscaller_consecutive[iscaller] = 0;
+					bool gfileRAWInfo_exists = file_exists(rawinfo_filename);
+					FILE *gfileRAWInfo = fopen(rawinfo_filename, "a");
+					if(gfileRAWInfo) {
+						if(!gfileRAWInfo_exists) {
+							spooldir_file_chmod_own(rawinfo_filename);
+						}
+						fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, raw_unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
+						fclose(gfileRAWInfo);
+					} else {
+						syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
 					}
 				}
-				if(!gfileRAW_buffer) {
-					gfileRAW_buffer = new FILE_LINE(24007) char[32768];
-					if(gfileRAW_buffer == NULL) {
-						syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
-						exit(2);
-					}
-				}
-				if(!gfileRAW) {
-					syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", tmp, strerror (errno));
-				} else if(gfileRAW_buffer) {
-					setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
-				}
-
-				/* write file info to "playlist" */
-				snprintf(tmp, sizeof(tmp), "%s.rawInfo", basefilename);
-				owner->iscaller_consecutive[iscaller] = 0;
-				bool gfileRAWInfo_exists = file_exists(tmp);
-				FILE *gfileRAWInfo = fopen(tmp, "a");
-				if(gfileRAWInfo) {
-					if(!gfileRAWInfo_exists) {
-						spooldir_file_chmod_own(tmp);
-					}
-					fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
-					fclose(gfileRAWInfo);
-				} else {
-					syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
-				}
+				initRAW = true;
 			}
 		}
 	}
@@ -1734,18 +1724,18 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
 				if(opt_jitterbuffer_f1)
-					jitterbuffer(channel_fix1, 0);
+					jitterbuffer(channel_fix1, false, false, false);
 				if(opt_jitterbuffer_f2)
-					jitterbuffer(channel_fix2, 0);
+					jitterbuffer(channel_fix2, false, false, false);
 				if(opt_jitterbuffer_adapt)
-					jitterbuffer(channel_adapt, 0);
+					jitterbuffer(channel_adapt, false, false, false);
 			} 
 
 		} 
 #endif
 
 		/* for recording, we cannot loose any packet */
-		if(recordingRequested) {
+		if(use_channel_record) {
 			if(packetization < 10) {
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
@@ -1782,9 +1772,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					packetization = channel_record->packetization = default_packetization;
 				}
 			}
-			if(recordingRequested_use_jitterbuffer_channel_record &&
-			   checkDuplChannelRecordSeq(seq)) {
-				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
+			if(checkDuplChannelRecordSeq(seq)) {
+				jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 			}
 		}
 	} else if(packetization_iterator == 1) {
@@ -1825,11 +1814,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				packetization_iterator = 0;
 
 				/* for recording, we cannot loose any packet */
-				if(recordingRequested) {
+				if(use_channel_record) {
 					packetization = channel_record->packetization = default_packetization;
-					if(recordingRequested_use_jitterbuffer_channel_record &&
-					   checkDuplChannelRecordSeq(seq)) {
-						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
+					if(checkDuplChannelRecordSeq(seq)) {
+						jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 					}
 				}
 			} else {
@@ -1838,22 +1826,21 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
 
 				if(opt_jitterbuffer_f1)
-					jitterbuffer(channel_fix1, 0);
+					jitterbuffer(channel_fix1, false, false, false);
 				if(opt_jitterbuffer_f2)
-					jitterbuffer(channel_fix2, 0);
+					jitterbuffer(channel_fix2, false, false, false);
 				if(opt_jitterbuffer_adapt)
-					jitterbuffer(channel_adapt, 0);
-				if(recordingRequested) {
-					if(recordingRequested_use_jitterbuffer_channel_record &&
-					   checkDuplChannelRecordSeq(seq)) {
-						jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
+					jitterbuffer(channel_adapt, false, false, false);
+				if(use_channel_record) {
+					if(checkDuplChannelRecordSeq(seq)) {
+						jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 					}
 				}
 			}
 		} else {
 			packetization_iterator = 0;
 			/* for recording, we cannot loose any packet */
-			if(recordingRequested) {
+			if(use_channel_record) {
 				if(curpayload == PAYLOAD_G729) {
 					// if G729 packet len is 20, packet len is 20ms. In other cases - will be added later (do not have 40ms packetizations samples right now)
 					if(payload_len == 60) {
@@ -1889,9 +1876,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					packetization = channel_record->packetization = default_packetization;
 				}
 
-				if(recordingRequested_use_jitterbuffer_channel_record &&
-				   checkDuplChannelRecordSeq(seq)) {
-					jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
+				if(checkDuplChannelRecordSeq(seq)) {
+					jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 				}
 			}
 		}
@@ -1990,15 +1976,14 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 		//printf("packetization [%d]\n", packetization);
 		if(opt_jitterbuffer_f1)
-			jitterbuffer(channel_fix1, 0);
+			jitterbuffer(channel_fix1, false, false, false);
 		if(opt_jitterbuffer_f2)
-			jitterbuffer(channel_fix2, 0);
+			jitterbuffer(channel_fix2, false, false, false);
 		if(opt_jitterbuffer_adapt)
-			jitterbuffer(channel_adapt, 0);
-		if(recordingRequested) {
-			if(recordingRequested_use_jitterbuffer_channel_record &&
-			   checkDuplChannelRecordSeq(seq)) {
-				jitterbuffer(channel_record, recordingRequested_enable_jitterbuffer_savepayload);
+			jitterbuffer(channel_adapt, false, false, false);
+		if(use_channel_record) {
+			if(checkDuplChannelRecordSeq(seq)) {
+				jitterbuffer(channel_record, save_audio, energylevels, mos_lqo);
 			}
 		}
 	}
@@ -2532,7 +2517,8 @@ void RTP::rtp_stream_analysis_output() {
 		     << "mos_adapt" << ","
 		     << "mos_silence" << ","
 		     << "payload_len" <<  ","
-		     << "codec"
+		     << "codec" << ","
+		     << "energylevel"
 		     << endl;
 	}
 	++rsa.counter;
@@ -2560,14 +2546,16 @@ void RTP::rtp_stream_analysis_output() {
 	     << (int)last_interval_mosAD << ","
 	     << (int)last_interval_mosSilence << ","
 	     << get_payload_len() << ","
-	     << codec
-	     << endl;
+	     << codec;
 	     /*
 	     << (int)calculate_mos_fromrtp(this, 1, 1) << ","
 	     << (int)calculate_mos_fromrtp(this, 2, 1) << ","
 	     << (int)calculate_mos_fromrtp(this, 3, 1) << ","
 	     << (DSP ? calculate_mos_fromdsp(this, DSP) : null) << ","
 	     */
+	if(payload_len > 0 && (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA)) {
+		cout << "," << get_energylevel(payload_data, payload_len, codec);
+	}
 	cout << endl;
 	rsa.last_packet_time_us = getTimeUS(header_ts);
 	rsa.last_timestamp = getTimestamp();
@@ -2816,11 +2804,7 @@ void RTP::addEnergyLevel(void *data, int datalen, int codec) {
 		energylevels = new FILE_LINE(0) SimpleChunkBuffer();
 	}
 	if(data && datalen) {
-		u_int64_t accum = 0;
-		for(int i = 0; i < datalen; i++) {
-			accum += abs((int16_t)(codec == PAYLOAD_PCMU ? ULAW(((u_char*)data)[i]) : ALAW(((u_char*)data)[i])));
-		}
-		u_int16_t energylevel = accum / datalen;
+		u_int16_t energylevel = get_energylevel((u_char*)data, datalen, codec);
 		energylevels->add((u_char*)&energylevel, sizeof(energylevel));
 		if(sverb.energylevels) {
 			cout << " el(jb) " << "ssrc:" << hex << ssrc << dec 
@@ -3225,4 +3209,16 @@ void
 RTPstat::flush() {
 	flush_and_clean(maps[0]);
 	flush_and_clean(maps[1]);
+}
+
+
+u_int16_t get_energylevel(u_char *data, int datalen, int codec) {
+	if((codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA) && data && datalen > 0) {
+		u_int64_t accum = 0;
+		for(int i = 0; i < datalen; i++) {
+			accum += abs((int16_t)(codec == PAYLOAD_PCMU ? ULAW((data)[i]) : ALAW((data)[i])));
+		}
+		return((u_int16_t)(accum / datalen));
+	}
+	return(0);
 }

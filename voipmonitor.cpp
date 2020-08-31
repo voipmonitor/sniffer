@@ -3462,6 +3462,8 @@ int main(int argc, char *argv[]) {
 			cerr << "rtp-stream-analysis: bad arguments" << endl;
 			return(1);
 		}
+		alaw_init();
+		ulaw_init();
 		extern int rtp_stream_analysis(const char *pcap, bool onlyRtp);
 		useIPv6 = true;
 		opt_nocdr = true;
@@ -7912,6 +7914,7 @@ void get_command_line_arguments() {
 			case 333:
 				opt_saveaudio_from_first_invite = false;
 				opt_saveaudio_afterconnect = false;
+				opt_saveaudio_from_rtp = true;
 				break;
 			case 208:
 				updateSchema = true;

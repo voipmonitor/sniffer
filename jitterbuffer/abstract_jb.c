@@ -491,7 +491,7 @@ void save_empty_frame(struct ast_channel *chan) {
 		}
 	}
 	if(chan->enable_save_energylevels && chan->rtp_stream && (chan->codec == 0 || chan->codec == 8) &&
-	   chan->last_datalen_energylevels > 0) {
+	   (chan->last_datalen_energylevels > 0 || chan->last_datalen > 0)) {
 		save_rtp_energylevels(chan->rtp_stream, NULL, 0, chan->codec);
 	}
 }

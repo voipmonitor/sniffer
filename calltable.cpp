@@ -189,6 +189,7 @@ extern bool opt_saveaudio_filter_ext;
 extern bool opt_saveaudio_wav_mix;
 extern bool opt_saveaudio_from_first_invite;
 extern bool opt_saveaudio_afterconnect;
+extern bool opt_saveaudio_from_rtp;
 extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_call_id_alternative[256];
@@ -969,13 +970,16 @@ void
 Call::closeRawFiles() {
 	for(int i = 0; i < ssrc_n; i++) {
 		// close RAW files
-		if(rtp[i]->gfileRAW) {
-			FILE *tmp;
+		if(rtp[i]->gfileRAW || rtp[i]->initRAW) {
 			rtp[i]->jitterbuffer_fixed_flush(rtp[i]->channel_record);
-			/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
-			tmp = rtp[i]->gfileRAW;
-			rtp[i]->gfileRAW = NULL;
-			fclose(tmp);
+			if(rtp[i]->gfileRAW) {
+				/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
+				FILE *tmp;
+				tmp = rtp[i]->gfileRAW;
+				rtp[i]->gfileRAW = NULL;
+				fclose(tmp);
+			}
+			rtp[i]->initRAW = false;
 		}
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
@@ -1756,6 +1760,7 @@ read:
 			fclose(rtp[ssrc_n]->gfileRAW);
 			rtp[ssrc_n]->gfileRAW = NULL;
 		}
+		rtp[ssrc_n]->initRAW = false;
 		
 		char ird_extension[100];
 		snprintf(ird_extension, sizeof(ird_extension), "i%d", !iscaller);
@@ -2698,7 +2703,7 @@ Call::convertRawToWav() {
 	
 	u_int64_t minStartTime = 0;
 	if(useWavMix) {
-		if(opt_saveaudio_from_first_invite) {
+		if(opt_saveaudio_from_first_invite && !opt_saveaudio_from_rtp) {
 			minStartTime = this->first_packet_time_us;
 		}
 		for(int i = 0; i < ssrc_n; i++) {
@@ -2925,7 +2930,7 @@ Call::convertRawToWav() {
 		cWavMix *wavMix = NULL;
 		if(useWavMix) {
 			wavMix = new FILE_LINE(0) cWavMix(2, maxsamplerate);
-			if(opt_saveaudio_afterconnect && this->connect_time_us > minStartTime) {
+			if(opt_saveaudio_afterconnect && !opt_saveaudio_from_rtp && this->connect_time_us > minStartTime) {
 				minStartTime = this->connect_time_us;
 			}
 			wavMix->setStartTime(minStartTime);
