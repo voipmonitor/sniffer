@@ -19,7 +19,6 @@ extern void CR_SET_TERMINATE();
 extern sCloudRouterVerbose& CR_VERBOSE();
 extern bool opt_socket_use_poll;
 extern cResolver resolver;
-extern int verbosity;
 
 cRsa::cRsa() {
 	priv_rsa = NULL;
@@ -353,7 +352,8 @@ bool cSocket::connect(unsigned loopSleepS) {
 		if(passCounter > 1 && loopSleepS) {
 			sleep(loopSleepS);
 		}
-		std::vector<vmIP> ips = resolver.resolve_allips(host.c_str());
+		std::vector<vmIP> ips;
+		resolver.resolve(host.c_str(), &ips);
 		if(!ips.size()) {
 			setError("failed resolve host name %s", host.c_str());
 			rslt = false;
@@ -370,15 +370,20 @@ bool cSocket::connect(unsigned loopSleepS) {
 				++pass_call_socket;
 			} while(handle == 0 && pass_call_socket < 5);
 			if(handle == -1) {
-				if (verbosity > 1) {
-					syslog(LOG_ERR, "cannot create socket");
+				if(CR_VERBOSE().socket_connect) {
+					ostringstream verbstr;
+					verbstr << "cannot create socket (" << name << ")";
+					syslog(LOG_ERR, "%s", verbstr.str().c_str());
 				}
 				rslt = false;
 				continue;
 			}
 			if(socket_connect(handle, ip, port) == -1) {
-				if (verbosity > 1) {
-					syslog(LOG_ERR, "failed to connect to server [%s] resolved to ip %s error:[%s]", host.c_str(), ip.getString().c_str(), strerror(errno));
+				if(CR_VERBOSE().socket_connect) {
+					ostringstream verbstr;
+					verbstr << "failed to connect to server [" << host << "] resolved to ip "
+						<< ip.getString() << " error:[" << strerror(errno) << "] (" << name << ")";
+					syslog(LOG_ERR, "%s", verbstr.str().c_str());
 				}
 				close();
 				rslt = false;

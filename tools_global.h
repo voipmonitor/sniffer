@@ -783,9 +783,9 @@ private:
 	};
 public:
 	cResolver();
-	vmIP resolve(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
-	vmIP resolve(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
-		return(resolve(host.c_str(), timeout, typeResolve));
+	vmIP resolve(const char *host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
+	vmIP resolve(string &host, vector<vmIP> *ips = NULL, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
+		return(resolve(host.c_str(), ips, timeout, typeResolve));
 	}
 	static vmIP resolve_n(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
 	static vmIP resolve_n(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
@@ -795,11 +795,10 @@ public:
 	static string resolve_str(string &host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default) {
 		return(resolve_str(host.c_str(), timeout, typeResolve));
 	}
-	std::vector<vmIP> resolve_allips(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
 	std::vector<string> resolve_allips_str(const char *host, unsigned timeout = 0, eTypeResolve typeResolve = _typeResolve_default);
 private:
-	vmIP resolve_std(const char *host);
-	vmIP resolve_by_system_host(const char *host);
+	vmIP resolve_std(const char *host, vector<vmIP> *ips);
+	vmIP resolve_by_system_host(const char *host, vector<vmIP> *ips);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {

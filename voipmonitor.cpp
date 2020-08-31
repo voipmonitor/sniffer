@@ -5575,7 +5575,7 @@ void test() {
 		delete sqlDb0;
 	 
 		cResolver res;
-		vmIP ip = res.resolve("www.seznam.cz", 300/*, cResolver::_typeResolve_system_host*/);
+		vmIP ip = res.resolve("www.seznam.cz", NULL, 300/*, cResolver::_typeResolve_system_host*/);
 		cout << ip.getString() << endl;
 		break;
 	 
@@ -11574,11 +11574,12 @@ void dns_lookup_common_hostnames() {
 		"cloud3.voipmonitor.org",
 		"1.2.3.4"
 	};
+	vector<vmIP> ips;
 	for(unsigned int i = 0; i < sizeof(hostnames) / sizeof(hostnames[0]) && !terminating; i++) {
-		resolver.resolve(hostnames[i]);
+		resolver.resolve(hostnames[i], &ips);
 	}
 	if(!terminating && !snifferClientOptions.host.empty()) {
-		resolver.resolve(snifferClientOptions.host.c_str());
+		resolver.resolve(snifferClientOptions.host.c_str(), &ips);
 	}
 }
 
