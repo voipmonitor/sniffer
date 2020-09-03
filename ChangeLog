@@ -1,3 +1,9 @@
+26.21.2 03.09.2020
+==================
+- fix energy levels in jitter buffer (out of sync)
+- when DNS returns ipv4 and ipv6 try to connect to ipv6 too (fixes ipv6 sniffer connection by DNS hostname) [VS-1105]
+
+
 26.21.1 28.08.2020
 ==================
 - analyze energy levels after jitter buffer, fix basic energy levels calculation if jitter buffer will be disabled [VG-2169]
