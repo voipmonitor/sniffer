@@ -1640,15 +1640,22 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_CIPHER, this->conn_sslciphers.c_str());
 			}
 			if (enabledSSL) {
+				#if LIBMYSQL_VERSION_ID < 80000
 				my_bool forceSSL = true;
 				mysql_options(this->hMysql, MYSQL_OPT_SSL_ENFORCE, &forceSSL);
+				#else
+				unsigned int forceSSL = SSL_MODE_REQUIRED;
+				mysql_options(this->hMysql, MYSQL_OPT_SSL_MODE, &forceSSL);
+				#endif
 				syslog(LOG_INFO, "Enabling SSL/TLS for mysql connection.");
 			}
 #endif
+			#if LIBMYSQL_VERSION_ID < 80000
 			if(!enabledSSL && this->conn_disable_secure_auth) {
 				int arg = 0;
 				mysql_options(this->hMysql, MYSQL_SECURE_AUTH, &arg);
 			}
+			#endif
 			extern unsigned int opt_mysql_connect_timeout;
 			if(opt_mysql_connect_timeout) {
 				mysql_options(this->hMysql, MYSQL_OPT_CONNECT_TIMEOUT, &opt_mysql_connect_timeout);
