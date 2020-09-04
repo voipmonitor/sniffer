@@ -519,7 +519,7 @@ void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool fir
 
 string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval) {
 	unsigned int max = 0;
-	unsigned int min = UINT_MAX;
+	unsigned int min = series->def.chartType == _chartType_cps ? 0 : UINT_MAX;
 	unsigned int sum = 0;
 	unsigned int count = 0;
 	string pool_str = "[";
@@ -565,6 +565,9 @@ string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval
 		break;
 	case _chartType_count:
 	case _chartType_cps:
+		if(series->def.chartType == _chartType_cps) {
+			count = interval->timeTo - interval->timeFrom;
+		}
 		if(count > 0) {
 			JsonExport exp;
 			exp.add("_", "mia");
