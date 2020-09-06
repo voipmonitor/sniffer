@@ -4773,7 +4773,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		call = call_info[call_info_index].call;
 		iscaller = call_info[call_info_index].iscaller;
 		sdp_flags = call_info[call_info_index].sdp_flags;
-		is_rtcp = call_info[call_info_index].is_rtcp || (sdp_flags.rtcp_mux && packetS->datalen_() > 1 && (u_char)packetS->data_()[1] == 0xC8);
+		is_rtcp = call_info[call_info_index].is_rtcp || (packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
 		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
 		
 		if(!find_by_dest && iscaller_is_set(iscaller)) {
