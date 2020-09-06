@@ -1329,7 +1329,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		packetS->set_datalen_(datalen);
 	}
 
-	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), this);
+	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), this);
 	
 	if(enable_save_packet) {
 		save_packet(this, packetS, TYPE_RTCP, packetS->datalen_() != datalen_orig);

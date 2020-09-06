@@ -276,16 +276,19 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 			}
-		} 
-
-		if(sverb.debug_rtcp) {
-			printf("sSSRC [%x]", reportblock.ssrc);
-			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
-			printf("	Packets lost [%d]\n", loss);
-			printf("	Highest seqno received [%d]\n", reportblock.ext_seqno_recvd);
-			printf("	Jitter [%u]\n", reportblock.jitter);
-			printf("	Last SR [%u]\n", reportblock.lsr);
-			printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
+			if(sverb.debug_rtcp) {
+				printf("sSSRC [%x]\n", reportblock.ssrc);
+				printf("	Fraction lost [%u]\n", reportblock.frac_lost);
+				printf("	Packets lost [%d]\n", loss);
+				printf("	Highest seqno received [%d]\n", reportblock.ext_seqno_recvd);
+				printf("	Jitter [%u]\n", reportblock.jitter);
+				printf("	Last SR [%u]\n", reportblock.lsr);
+				printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
+			}
+		} else {
+			if(sverb.debug_rtcp) {
+				printf("sSSRC [%x] skipped (no rtp stream with this ssrc)\n", reportblock.ssrc);
+			}
 		}
 
 		reports_seen++;
@@ -369,16 +372,19 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 			}
-		} 
-
-		if(sverb.debug_rtcp) {
-			printf("rSSRC [%x]", reportblock.ssrc);
-			printf("	Fraction lost [%u]\n", reportblock.frac_lost);
-			printf("	Packets lost [%d]\n", loss);
-			printf("	Highest seqno received [%u]\n", reportblock.ext_seqno_recvd);
-			printf("	Jitter [%u]\n", reportblock.jitter);
-			printf("	Last SR [%u]\n", reportblock.lsr);
-			printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
+			if(sverb.debug_rtcp) {
+				printf("rSSRC [%x]\n", reportblock.ssrc);
+				printf("	Fraction lost [%u]\n", reportblock.frac_lost);
+				printf("	Packets lost [%d]\n", loss);
+				printf("	Highest seqno received [%u]\n", reportblock.ext_seqno_recvd);
+				printf("	Jitter [%u]\n", reportblock.jitter);
+				printf("	Last SR [%u]\n", reportblock.lsr);
+				printf("	Delay since last SR [%u]\n", reportblock.delay_since_lsr);
+			}
+		} else {
+			if(sverb.debug_rtcp) {
+				printf("rSSRC [%x] skipped (no rtp stream with this ssrc)\n", reportblock.ssrc);
+			}
 		}
 
 		reports_seen++;
@@ -416,7 +422,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 		}
 		ssrc = ntohl(ssrc);
 		if(sverb.debug_rtcp) {
-			printf("SSRC/CSRC [%u]\n", ssrc);
+			printf("SSRC/CSRC [%x]\n", ssrc);
 		}
 		/* Loop through items */
 		while (1) {
@@ -547,30 +553,33 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 				rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
 				rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter_mos - 1) + xr->mos_lq) / rtp->rtcp_xr.counter_mos;
 			}
-		} 
-
-		if(sverb.debug_rtcp) {
-			printf("identifier [%x]\n", ntohl(xr->ssrc));
-			printf("	Fraction lost [%u]\n", xr->loss_rate);
-			printf("	Fraction discarded [%d]\n", xr->discard_rate);
-			printf("	Burst density [%d]\n", xr->burst_density);
-			printf("	Gap density[%d]\n", xr->gap_density);
-			printf("	Burst duration[%d]\n", ntohs(xr->burst_duration));
-			printf("	Gap duration[%d]\n", ntohs(xr->gap_duration));
-			printf("	Round trip delay[%d]\n", ntohs(xr->round_trip_delay));
-			printf("	End system delay[%d]\n", ntohs(xr->end_system_delay));
-			printf("	Signal Level[%d]\n", xr->signal_level);
-			printf("	Noise level[%d]\n", xr->noise_level);
-			printf("	Residual echo return loss[%d]\n", xr->rerl);
-			printf("	Gmin[%d]\n", xr->gmin);
-			printf("	R Factor[%d]\n", xr->r_factor);
-			printf("	External R Factor[%d]\n", xr->ext_r_factor);
-			printf("	MOS Listening Quality[%d]\n", xr->mos_lq);
-			printf("	MOS Conversational Quality[%d]\n", xr->mos_cq);
-			printf("	rx_config[%d]\n", xr->rx_config);
-			printf("	Nominal jitter buffer size[%d]\n", ntohs(xr->jb_nominal));
-			printf("	Maximum jitter buffer size[%d]\n", ntohs(xr->jb_maximum));
-			printf("	Absolute maximum jitter buffer size[%d]\n", ntohs(xr->jb_abs_max));
+			if(sverb.debug_rtcp) {
+				printf("identifier [%x]\n", ntohl(xr->ssrc));
+				printf("	Fraction lost [%u]\n", xr->loss_rate);
+				printf("	Fraction discarded [%d]\n", xr->discard_rate);
+				printf("	Burst density [%d]\n", xr->burst_density);
+				printf("	Gap density[%d]\n", xr->gap_density);
+				printf("	Burst duration[%d]\n", ntohs(xr->burst_duration));
+				printf("	Gap duration[%d]\n", ntohs(xr->gap_duration));
+				printf("	Round trip delay[%d]\n", ntohs(xr->round_trip_delay));
+				printf("	End system delay[%d]\n", ntohs(xr->end_system_delay));
+				printf("	Signal Level[%d]\n", xr->signal_level);
+				printf("	Noise level[%d]\n", xr->noise_level);
+				printf("	Residual echo return loss[%d]\n", xr->rerl);
+				printf("	Gmin[%d]\n", xr->gmin);
+				printf("	R Factor[%d]\n", xr->r_factor);
+				printf("	External R Factor[%d]\n", xr->ext_r_factor);
+				printf("	MOS Listening Quality[%d]\n", xr->mos_lq);
+				printf("	MOS Conversational Quality[%d]\n", xr->mos_cq);
+				printf("	rx_config[%d]\n", xr->rx_config);
+				printf("	Nominal jitter buffer size[%d]\n", ntohs(xr->jb_nominal));
+				printf("	Maximum jitter buffer size[%d]\n", ntohs(xr->jb_maximum));
+				printf("	Absolute maximum jitter buffer size[%d]\n", ntohs(xr->jb_abs_max));
+			}
+		} else {
+			if(sverb.debug_rtcp) {
+				printf("identifier [%x] skipped (no rtp stream with this ssrc)\n", ntohl(xr->ssrc));
+			}
 		}
 
 		pkt += ntohs(block->length) * 4;
@@ -588,10 +597,14 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 **----------------------------------------------------------------------------
 */
 
-void parse_rtcp(char *data, int datalen, Call* call)
+void parse_rtcp(char *data, int datalen, timeval *ts, Call* call)
 {
 	char *pkt = data;
 	rtcp_header_t *rtcp;
+	
+	if(sverb.debug_rtcp) {
+		printf("\nRTCP PACKET - ts %lu.%06lu\n", ts->tv_sec, ts->tv_usec);
+	}
 
 	while(1){
 		/* Get the fixed RTCP header */
@@ -605,7 +618,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 
 		if(rtcp->version != 2) {
 			if(sverb.debug_rtcp) {
-				printf("[%s] Malformed RTCP packet\n", call->fbasename);
+				printf("\n[%s] Malformed RTCP header (version != 2)\n", call->fbasename);
 			}
 			pkt += rtcp_size;
 			break;
@@ -613,7 +626,7 @@ void parse_rtcp(char *data, int datalen, Call* call)
 	
 		if((pkt + rtcp_size) > (data + datalen)){
 			if(sverb.debug_rtcp) {
-				printf("[%s] Malformed RTCP packet\n", call->fbasename);
+				printf("\n[%s] Malformed RTCP header (overflow rtcp length)\n", call->fbasename);
 			}
 			//rtcp too big 
 			break;
