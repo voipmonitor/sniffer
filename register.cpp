@@ -251,6 +251,10 @@ Register::Register(Call *call) {
 	countStates = 0;
 	rrd_sum = 0;
 	rrd_count = 0;
+	reg_call_id = call->call_id;
+	if(call->reg_tcp_seq) {
+		reg_tcp_seq = *call->reg_tcp_seq;
+	}
 	_sync_states = 0;
 }
 
@@ -304,6 +308,12 @@ void Register::update(Call *call) {
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
 	vlan = call->vlan;
+	reg_call_id = call->call_id;
+	if(call->reg_tcp_seq) {
+		reg_tcp_seq = *call->reg_tcp_seq;
+	} else {
+		reg_tcp_seq.clear();
+	}
 }
 
 void Register::addState(Call *call) {
@@ -757,6 +767,29 @@ void Registers::add(Call *call) {
 	};
 	cout << getDataTableJson(states, 0, rf_calldate, false) << endl;
 	*/
+}
+
+bool Registers::existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq) {
+	if(!seq) {
+		return(false);
+	}
+	Register *reg = new FILE_LINE(20004) Register(call);
+	RegisterId rid(reg);
+	bool rslt = false;
+	lock_registers();
+	map<RegisterId, Register*>::iterator iter = registers.find(rid);
+	if(iter != registers.end()) {
+		Register *existsReg = iter->second;
+		if(existsReg->getState() == rs_OK &&
+		   existsReg->reg_call_id == call->call_id &&
+		   existsReg->reg_tcp_seq.size() &&
+		   std::find(existsReg->reg_tcp_seq.begin(), existsReg->reg_tcp_seq.end(), seq) != existsReg->reg_tcp_seq.end()) {
+			rslt = true;
+		}
+	}
+	unlock_registers();
+	delete reg;
+	return(rslt);
 }
 
 void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {

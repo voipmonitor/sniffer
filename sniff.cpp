@@ -2871,6 +2871,27 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 
 				call->digest_username, call->digest_realm, call->register_expires);
 */
+			if(packetS->istcp) {
+				u_int32_t seq = packetS->tcp_seq();
+				if(seq) {
+					extern Registers registers;
+					if(opt_sip_register == 1 && registers.existsDuplTcpSeqInRegOK(call, seq)) {
+						if(sverb.dump_sip) {
+							cout << " - skip duplicate tcp seq " << seq
+							     << " in register " << call->call_id << endl;
+						}
+						((Calltable*)calltable)->lock_registers_listMAP();
+						map<string, Call*>::iterator registerMAPIT = ((Calltable*)calltable)->registers_listMAP.find(call->call_id);
+						if(registerMAPIT != ((Calltable*)calltable)->registers_listMAP.end()) {
+							((Calltable*)calltable)->registers_listMAP.erase(registerMAPIT);
+						}
+						((Calltable*)calltable)->unlock_registers_listMAP();
+						delete call;
+						return(NULL);
+					}
+					call->addRegTcpSeq(seq);
+				}
+			}
 		}
 		if(opt_enable_fraud && isFraudReady()) {
 			if(needCustomHeadersForFraud()) {
@@ -4414,10 +4435,12 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 	}
 		
+	bool call_created = false;
 	call = calltable->find_by_register_id(packetS->get_callid(), 0);
 	if(!call) {
 		if(packetS->sip_method == REGISTER) {
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
+			call_created = true;
 		}
 		if(!call) {
 			goto endsip;
@@ -4484,7 +4507,12 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(packetS->cseq.is_set()) {
 			call->registercseq = packetS->cseq;
 		}
-
+		if(!call_created && packetS->istcp) {
+			u_int32_t seq = packetS->tcp_seq();
+			if(seq) {
+				call->addRegTcpSeq(packetS->tcp_seq());
+			}
+		}
 
 	} else if(packetS->sip_method == RES2XX) {
 		call->seenRES2XX = true;

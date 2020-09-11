@@ -162,6 +162,8 @@ public:
 	u_int16_t countStates;
 	u_int64_t rrd_sum;
 	u_int32_t rrd_count;
+	string reg_call_id;
+	list<u_int32_t> reg_tcp_seq;
 	volatile int _sync_states;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
@@ -173,6 +175,7 @@ public:
 	Registers();
 	~Registers();
 	void add(Call *call);
+	bool existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq);
 	void cleanup(struct timeval *act_time, bool force = false, int expires_add = 0);
 	void clean_all();
 	inline u_int64_t getNewRegisterFailedId(int sensorId);

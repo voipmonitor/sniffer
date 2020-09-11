@@ -171,6 +171,23 @@ struct packet_s {
 	inline iphdr2 *header_ip_() {
 		return((iphdr2*)(packet + header_ip_offset));
 	}
+	inline udphdr2 *header_udp_() {
+		iphdr2 *header_ip = header_ip_();
+		return((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()));
+	}
+	inline tcphdr2 *header_tcp_() {
+		iphdr2 *header_ip = header_ip_();
+		return((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()));
+	}
+	inline u_int32_t tcp_seq() {
+		if(istcp) {
+			tcphdr2 *header_tcp = header_tcp_();
+			if(header_tcp) {
+				return(header_tcp->seq);
+			}
+		}
+		return(0);
+	}
 	inline int sensor_id_() {
 		return(sensor_id_u == 0xFFFF ? -1 : sensor_id_u);
 	}

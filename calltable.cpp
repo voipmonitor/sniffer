@@ -547,6 +547,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	regresponse = false;
 	regrrddiff = -1;
 	//regsrcmac = 0;
+	reg_tcp_seq = NULL;
 	last_sip_method = 0;
 	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
 		rtp[i] = NULL;
@@ -955,6 +956,10 @@ Call::~Call(){
 			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
 		}
 		unlock_add_remove_rtp_threads();
+	}
+	
+	if(reg_tcp_seq) {
+		delete reg_tcp_seq;
 	}
 	
 	for(map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.begin(); iter != udptlDumpers.end(); iter++) {

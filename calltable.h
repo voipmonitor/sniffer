@@ -745,6 +745,7 @@ public:
 	int recordingpausedby182;
 	bool save_energylevels;
 	int msgcount;
+	
 	int regcount;
 	int regcount_after_4xx;
 	int reg401count;
@@ -757,7 +758,9 @@ public:
 	bool regresponse;
 	timeval regrrdstart;		// time of first REGISTER
 	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
-	uint64_t regsrcmac;		// mac if ether layer present in REGISTER
+	//uint64_t regsrcmac;		// mac if ether layer present in REGISTER
+	list<u_int32_t> *reg_tcp_seq;
+	
 	int last_sip_method;
 	volatile unsigned int rtppacketsinqueue;
 	volatile int end_call_rtp;
@@ -1622,6 +1625,15 @@ public:
 	
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());
+	}
+	
+	void addRegTcpSeq(u_int32_t seq) {
+		if(seq) {
+			if(!reg_tcp_seq) {
+				reg_tcp_seq = new list<u_int32_t>;
+			}
+			reg_tcp_seq->push_back(seq);
+		}
 	}
 
 private:
