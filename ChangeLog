@@ -1,3 +1,12 @@
+26.22 03.09.2020
+================
+- fas detection will now recognize Europe and UK ringing tones [VS-878]
+- fix compilation with LIBMYSQL_VERSION_ID >= 80000
+- modify condition checking if packet is RTCP (some RTCP packets were not recognised) [VS-1109]
+- suppress duplicate TCP SIP REGISTER packet via check tcp-seq which fixes failed REGISTER (after successfull register) [VS-1108]
+- change cps_avg and cps_min calculation for small traffic (now use complete interval with seconds without calls)
+
+
 26.21.2 03.09.2020
 ==================
 - fix energy levels in jitter buffer (out of sync)
