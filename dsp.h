@@ -75,13 +75,16 @@ enum prog_mode {
 enum freq_index {
 	/*! For US modes { */
 	HZ_350 = 0,
+	HZ_400,
+	HZ_425,
 	HZ_440,
+	HZ_450,
 	HZ_480,
 	HZ_620,
 	HZ_950,
 	HZ_1400,
 	HZ_1800, /*!< } */
-
+#if 0
 	/*! For CR/BR modes */
 	HZ_425 = 0,
 
@@ -89,6 +92,7 @@ enum freq_index {
 	HZ_350UK = 0,
 	HZ_400UK,
 	HZ_440UK
+#endif 
 };
 
 /*!\brief This value is the minimum threshold, calculated by averaging all
@@ -303,7 +307,7 @@ struct dsp {
 	struct dsp_busy_pattern busy_cadence;
 	int historicnoise[DSP_HISTORY];
 	int historicsilence[DSP_HISTORY];
-	goertzel_state_t freqs[7];
+	goertzel_state_t freqs[10];
 	int freqcount;
 	int gsamps;
 	enum gsamp_size gsamp_size;
