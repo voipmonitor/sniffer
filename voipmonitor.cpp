@@ -7705,6 +7705,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "http")				sverb.http = 1;
 	else if(verbParam == "webrtc")				sverb.webrtc = 1;
 	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "tls")				sverb.tls = 1;
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "sip")				sverb.sip = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")

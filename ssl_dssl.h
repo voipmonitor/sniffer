@@ -55,7 +55,7 @@ private:
 	static void dataCallback(NM_PacketDir dir, void* user_data, u_char* data, uint32_t len, DSSL_Pkt* pkt);
 	static void errorCallback(void* user_data, int error_code);
 	static int password_calback_direct(char *buf, int size, int rwflag, void *userdata);
-	static int gener_master_secret(u_char *client_random, u_char *master_secret, DSSL_Session *session);
+	static int get_keys(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
 	string get_session_data(struct timeval ts);
 	bool restore_session_data(const char *data);
 	void store_session(class cSslDsslSessions *sessions, struct timeval ts);
@@ -74,7 +74,7 @@ private:
 	bool process_error;
 	int process_error_code;
 	vector<string> *decrypted_data;
-	bool client_random_master_secret;
+	bool get_keys_ok;
 	u_long stored_at;
 	bool restored;
 	u_int64_t lastTimeSyslog;
@@ -82,35 +82,53 @@ friend class cSslDsslSessions;
 };
 
 
-class cSslDsslClientRandomItems {
+class cSslDsslSessionKeys {
 public:
-	class cSslDsslClientRandomIndex {
+	enum eSessionKeyType {
+		_skt_na,
+		_skt_client_random,
+		_skt_client_handshake_traffic_secret,
+		_skt_server_handshake_traffic_secret,
+		_skt_exporter_secret,
+		_skt_client_traffic_secret_0,
+		_skt_server_traffic_secret_0
+	};
+	struct sSessionKeyType {
+		const char *str;
+		eSessionKeyType type;
+		unsigned length;
+	};
+	class cSslDsslSessionKeyIndex {
 	public:
-		cSslDsslClientRandomIndex(u_char *client_random = NULL);
-		bool operator == (const cSslDsslClientRandomIndex& other) const { 
+		cSslDsslSessionKeyIndex(u_char *client_random = NULL);
+		bool operator == (const cSslDsslSessionKeyIndex& other) const { 
 			return(!memcmp(this->client_random, other.client_random, SSL3_RANDOM_SIZE)); 
 		}
-		bool operator < (const cSslDsslClientRandomIndex& other) const { 
+		bool operator < (const cSslDsslSessionKeyIndex& other) const { 
 			return(memcmp(this->client_random, other.client_random, SSL3_RANDOM_SIZE) < 0); 
 		}
 	public:
 		u_char client_random[SSL3_RANDOM_SIZE];
 	};
-	class cSslDsslClientRandomItem {
+	class cSslDsslSessionKeyItem {
 	public:
-		cSslDsslClientRandomItem(u_char *master_secret = NULL);
+		cSslDsslSessionKeyItem(u_char *key = NULL);
 	public:
-		u_char master_secret[SSL3_MASTER_SECRET_SIZE];
+		u_char key[SSL3_MASTER_SECRET_SIZE];
 		u_int32_t set_at;
 	};
 public:
-	cSslDsslClientRandomItems();
-	~cSslDsslClientRandomItems();
-	void set(u_char *client_random, u_char *master_secret);
-	bool get(u_char *client_random, u_char *master_secret, struct timeval ts);
+	cSslDsslSessionKeys();
+	~cSslDsslSessionKeys();
+	void set(const char *type, u_char *client_random, u_char *key);
+	void set(eSessionKeyType type, u_char *client_random, u_char *key);
+	bool get(u_char *client_random, eSessionKeyType type, u_char *key, struct timeval ts);
+	bool get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts);
 	void erase(u_char *client_random);
 	void cleanup();
 	void clear();
+	eSessionKeyType strToEnumType(const char *type);
+	const char *enumToStrType(eSessionKeyType type);
 private:
 	void lock_map() {
 		while(__sync_lock_test_and_set(&this->_sync_map, 1));
@@ -119,9 +137,11 @@ private:
 		__sync_lock_release(&this->_sync_map);
 	}
 private:
-	map<cSslDsslClientRandomIndex, cSslDsslClientRandomItem*> map_client_random;
+	map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> > keys;
 	volatile int _sync_map;
 	u_int32_t last_cleanup_at;
+public:
+	static sSessionKeyType session_key_types[];
 };
 
 class cSslDsslSessions {
@@ -135,10 +155,11 @@ public:
 public:
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
 	void destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
-	void clientRandomSet(u_char *client_random, u_char *master_secret);
-	bool clientRandomGet(u_char *client_random, u_char *master_secret, struct timeval ts);
-	void clientRandomErase(u_char *client_random);
-	void clientRandomCleanup();
+	void keySet(const char *type, u_char *client_random, u_char *key);
+	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, struct timeval ts);
+	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts);
+	void keyErase(u_char *client_random);
+	void keysCleanup();
 private:
 	cSslDsslSession *addSession(vmIP ip, vmPort port);
 	NM_PacketDir checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
@@ -164,7 +185,7 @@ private:
 	map<sStreamId, sSessionData> sessions_db;
 	volatile int _sync_sessions;
 	volatile int _sync_sessions_db;
-	cSslDsslClientRandomItems client_random;
+	cSslDsslSessionKeys session_keys;
 	SqlDb *sqlDb;
 	u_long last_delete_old_sessions_at;
 	bool exists_sessions_table;
@@ -179,6 +200,7 @@ void ssl_dssl_init();
 void ssl_dssl_clean();
 void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
 void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
+bool string_looks_like_client_random(u_char *data, unsigned datalen);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);
 void ssl_parse_client_random(const char *fileName);
 

@@ -28,6 +28,9 @@
 #include "compression.h"
 #include "ciphersuites.h"
 
+#include "tls-ext.h"
+
+
 int ssl3_change_cipher_spec_decoder( void* decoder_stack, NM_PacketDir dir,
 		u_char* data, uint32_t len, uint32_t* processed )
 {
@@ -96,7 +99,8 @@ int ssl3_alert_decoder( void* decoder_stack, NM_PacketDir dir,
 
 
 static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t len, 
-					  u_char** out, uint32_t* out_len, int *buffer_aquired )
+					  u_char** out, uint32_t* out_len, int *buffer_aquired,
+					  uint8_t record_type, uint16_t record_version, uint8_t is_from_server)
 {
 	u_char* buf = NULL;
 	uint32_t buf_len = len;
@@ -112,6 +116,23 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	rc = ssls_get_decrypt_buffer( stack->sess, &buf, buf_len );
 	if( rc != DSSL_RC_OK ) return rc;
 
+	if(stack->sess->version == TLS1_3_VERSION)
+	{
+		if(tls_decrypt_record(stack->sess, data, len, record_type, record_version, is_from_server, buf, buf_len, &buf_len)) {
+			*out = buf;
+			*out_len = buf_len;
+			return(DSSL_RC_OK);
+		} 
+		else 
+		{
+			// return(DSSL_E_TLS_DECRYPT_RECORD);
+			// need continue / next attempt for next packets
+			*out = NULL;
+			*out_len = 0;
+			return(DSSL_RC_OK);
+		}
+	}
+	
 	*buffer_aquired = 1;
 
 	c = EVP_CIPHER_CTX_cipher( stack->cipher );
@@ -217,6 +238,7 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	int rc = DSSL_E_UNSPECIFIED_ERROR;
 	uint32_t recLen = 0, totalRecLen = 0;
 	uint8_t record_type = 0;
+	uint16_t record_version = 0;
 	dssl_decoder_stack* stack = (dssl_decoder_stack*) decoder_stack;
 	dssl_decoder* next_decoder = NULL;
 	int decrypt_buffer_aquired = 0;
@@ -257,6 +279,7 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 
 	/* Decode record type */
 	record_type = data[0];
+	record_version = MAKE_UINT16( data[1], data[2] );
 	totalRecLen = recLen = MAKE_UINT16( data[3], data[4] );
 
 	data += SSL3_HEADER_LEN;
@@ -269,9 +292,10 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	rc = DSSL_RC_OK;
 	if( len < recLen ) { rc = DSSL_RC_WOULD_BLOCK; }
 
-	if( rc == DSSL_RC_OK && stack->cipher )
+	if( rc == DSSL_RC_OK && 
+	    (stack->cipher || (stack->sess->version == TLS1_3_VERSION && stack->sess->tls_session)))
 	{
-		rc = ssl_decrypt_record( stack, data, recLen, &data, &recLen, &decrypt_buffer_aquired );
+		rc = ssl_decrypt_record( stack, data, recLen, &data, &recLen, &decrypt_buffer_aquired, record_type, record_version, dir != ePacketDirFromClient );
 	}
 
 	/* check if the record length is still within bounds (failed decryption, etc) */

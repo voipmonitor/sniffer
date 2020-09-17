@@ -423,9 +423,21 @@ DSSL_CipherSuite* DSSL_GetSSL3CipherSuite( uint16_t id )
 {
 	DEBUG_TRACE1( "=> GetSSL3CipherSuite(0x%x)\n", id );
 
-	return (DSSL_CipherSuite*) bsearch( &id, ssl3suites, 
+	DSSL_CipherSuite* rslt = (DSSL_CipherSuite*) bsearch( &id, ssl3suites, 
 			sizeof(ssl3suites)/sizeof(ssl3suites[0]), sizeof(ssl3suites[0]),
 			compare_cipher_suites );
+	if(!rslt) 
+	{
+		for(unsigned i = 0; i < sizeof(ssl3suites)/sizeof(ssl3suites[0]); i++) 
+		{
+			if( ssl3suites[i].id == id ) 
+			{
+				rslt = &ssl3suites[i];
+				break;
+			}
+		}
+	}
+	return rslt;
 }
 
 static DSSL_CipherSuite ssl2suites[] = 

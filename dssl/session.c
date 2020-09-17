@@ -140,7 +140,7 @@ int SessionInit( CapEnv* env, TcpSession* sess, DSSL_Pkt* pkt, NM_SessionType s_
 		{
 #ifdef NM_TRACE_SSL_SESSIONS
 			char _trace_buff[1024];
-			DEBUG_TRACE1( "\n==>Can't reassemble the SSL session from the middle, dropping: ", SessionToString(sess, _trace_buff) );
+			DEBUG_TRACE1( "\n==>Can't reassemble the SSL session from the middle, dropping: %s", SessionToString(sess, _trace_buff) );
 #endif
 			sess->type = eSessionTypeNull;
 		}

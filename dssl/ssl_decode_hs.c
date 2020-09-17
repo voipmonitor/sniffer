@@ -29,6 +29,8 @@
 #include "packet.h"
 #include "ciphersuites.h"
 
+#include "tls-ext.h"
+
 #ifndef SSL3_MT_NEWSESSION_TICKET
 	#define	SSL3_MT_NEWSESSION_TICKET		4
 #endif
@@ -62,6 +64,7 @@ static const char* SSL3_ExtensionTypeToString( int ext_type )
 		case 0x000a: return "elliptic_curves";
 		case 0x000b: return "ec_point_format";
 		case 0x0023: return "Session Ticket TLS";
+		case 0x002b: return "supported_versions";
 		default:
 			sprintf(buff, "Unknown (%x)", ext_type);
 			return buff;
@@ -94,9 +97,13 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	data+= 32;
 	DEBUG_TRACE_BUF("client_random", sess->client_random, 32);
 	
-	if( !sess->ssl_si->pkey && sess->gener_master_secret )
+	if( !sess->ssl_si->pkey && sess->get_keys_fce )
 	{
-		sess->gener_master_secret(sess->client_random, sess->master_secret, sess);
+		sess->get_keys_fce(sess->client_random, &sess->get_keys_rslt_data, sess);
+		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && sess->get_keys_rslt_data.client_random[0]) 
+		{
+			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random, 48);
+		}
 	}
 
 	/* check session ID length */
@@ -269,6 +276,10 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 			if( ext_type == 0x0017)
 			{ 	sess->flags |= SSF_TLS_SERVER_EXTENDED_MASTER_SECRET;
 			}
+			if( ext_type == 0x002b)
+			{	if(ext_len == 2 && sess->version == TLS1_2_VERSION && MAKE_UINT16(data[4], data[5]) == TLS1_3_VERSION)
+					sess->version = TLS1_3_VERSION;
+			}
 
 			data += ext_len + 4;
 			if(data > org_data + len) return NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
@@ -288,15 +299,25 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 		{
 			/* lookup session from the cache for stateful SSL renegotiation */
 			int rc = ssls_lookup_session( sess );
-			if( NM_IS_FAILED( rc ) ) 
+			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) ) 
 				return rc;
 		}
 	}
 
-	if( sess->flags & SSF_CLIENT_SESSION_ID_SET )
+	if( sess->flags & SSF_CLIENT_SESSION_ID_SET || sess->get_keys_rslt_data.set )
 	{
-		int rc = ssls_generate_keys( sess );
-		if( NM_IS_FAILED( rc ) ) return rc;
+		if( sess->version == TLS1_3_VERSION )
+		{
+			if( !sess->get_keys_rslt_data.set || !tls_generate_keys(sess) )
+			{
+				return DSSL_E_TLS_GENERATE_KEYS;
+			}
+		}
+		else
+		{
+			int rc = ssls_generate_keys( sess );
+			if( NM_IS_FAILED( rc ) ) return rc;
+		}
 	}
 
 	return DSSL_RC_OK;
@@ -619,7 +640,7 @@ void ssl3_init_handshake_digests( DSSL_Session* sess )
 	}
 }
 
-void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t len )
+int ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t len )
 {
 	DSSL_handshake_buffer *q = NULL, *next;
 
@@ -639,8 +660,20 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 		 */
 		EVP_MD* digest = NULL;
 		DSSL_CipherSuite* suite = sess->dssl_cipher_suite;
-		if ( !suite )
+		if ( !suite ) {
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
+			if( !suite ) 
+			{
+				if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set)
+				{
+					return DSSL_RC_OK;
+				}
+				else 
+				{
+					return DSSL_E_UNKNOWN_CIPHER_SUITE;
+				}
+			}
+		}
 		digest = (EVP_MD*)EVP_get_digestbyname( suite->digest );
 		/* 'sha256' is the default for TLS 1.2, and can be replaced with a different (but stronger) hash */
 		if ( !digest ) 
@@ -693,6 +726,7 @@ void ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t l
 		if ( EVP_MD_CTX_md( sess->handshake_digest ) )
 			EVP_DigestUpdate( sess->handshake_digest, data, len );
 	}
+	return(DSSL_RC_OK);
 }
 
 
@@ -749,7 +783,11 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		break;
 
 	case SSL3_MT_CERTIFICATE:
-		if( dir == ePacketDirFromServer )
+		if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set )
+		{
+			rc = ssl3_decode_dummy( sess, data, recLen );
+		}
+		else if( dir == ePacketDirFromServer )
 		{
 			rc = ssl3_decode_server_certificate( sess, data, recLen );
 		}
@@ -764,7 +802,14 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		break;
 
 	case SSL3_MT_CLIENT_KEY_EXCHANGE:
-		rc = ssl3_decode_client_key_exchange( sess, data, recLen );
+		if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set )
+		{
+			rc = ssl3_decode_dummy( sess, data, recLen );
+		} 
+		else
+		{
+			rc = ssl3_decode_client_key_exchange( sess, data, recLen );
+		}
 		break;
 
 	case SSL3_MT_FINISHED:
@@ -781,7 +826,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	
 	case SSL3_MT_SERVER_KEY_EXCHANGE:
 		/*at this point it is clear that the session is not decryptable due to ephemeral keys usage.*/
-		if( sess->master_secret[0] ) 
+		if( sess->master_secret[0] || (sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set) ) 
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		}
@@ -853,7 +898,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 
 		if( hs_type != SSL3_MT_HELLO_REQUEST )
 		{
-			ssl3_update_handshake_digests( sess, org_data, *processed );
+			rc = ssl3_update_handshake_digests( sess, org_data, *processed );
 		}
 	}
 

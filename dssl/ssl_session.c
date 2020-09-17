@@ -34,6 +34,8 @@
 
 #include "../config.h"
 
+#include "tls-ext.h"
+
 void DSSL_SessionInit( DSSL_Env* env, DSSL_Session* s, DSSL_ServerInfo* si )
 {
 	_ASSERT( s );
@@ -77,6 +79,11 @@ void DSSL_SessionDeInit( DSSL_Session* s )
 	
 	ssls_handshake_data_free(s);
 	ssls_handshake_queue_free(s);
+	
+	if(s->tls_session)
+	{
+		tls_destroy_session(s);
+	}
 }
 
 

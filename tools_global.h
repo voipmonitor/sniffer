@@ -549,7 +549,7 @@ public:
 		if(!buffer) {
 			buffer = new FILE_LINE(39002) u_char[dataLength + capacityReserve + 1];
 			bufferCapacity = dataLength + capacityReserve + 1;
-		} else if(bufferLength + dataLength + 1 > capacityReserve) {
+		} else if(bufferLength + dataLength + 1 > bufferCapacity) {
 			u_char *bufferNew = new FILE_LINE(39003) u_char[bufferLength + dataLength + capacityReserve + 1];
 			memcpy(bufferNew, buffer, bufferLength);
 			delete [] buffer;
@@ -559,10 +559,46 @@ public:
 		memcpy(buffer + bufferLength, data, dataLength);
 		bufferLength += dataLength;
 	}
+	void set(const char *data) {
+		clear();
+		add(data);
+	}
+	void set(void *data, u_int32_t dataLength) {
+		clear();
+		add(data, dataLength);
+	}
+	void set_data_capacity(u_int32_t bufferCapacity) {
+		if(bufferCapacity > this->bufferCapacity) {
+			if(!buffer) {
+				buffer = new FILE_LINE(0) u_char[bufferCapacity];
+			} else {
+				u_char *bufferNew = new FILE_LINE(0) u_char[bufferCapacity];
+				memcpy(bufferNew, buffer, bufferLength);
+				delete [] buffer;
+				buffer = bufferNew;
+			}
+			this->bufferCapacity = bufferCapacity;
+		}
+	}
+	u_int32_t data_capacity() {
+		return(bufferCapacity);
+	}
 	u_char *data() {
 		return(buffer);
 	}
+	u_char *data() const {
+		return(buffer);
+	}
 	u_int32_t size() {
+		return(bufferLength);
+	}
+	u_int32_t size() const {
+		return(bufferLength);
+	}
+	u_int32_t data_len() {
+		return(bufferLength);
+	}
+	u_int32_t data_len() const {
 		return(bufferLength);
 	}
 	void clear() {

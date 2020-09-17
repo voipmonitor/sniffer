@@ -52,7 +52,7 @@ ss7: SS7= -L/usr/src/wireshark/epan/.libs/ -L/usr/src/wireshark/wsutil/.libs/ -L
 
 version = $(shell grep RTPSENSOR_VERSION voipmonitor_define.h | cut -d" " -f 3 | tr -d "\"")
 
-objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o
+objects = $(shell ls -1 *.cpp | sed 's/\.cpp/.o/' | tr "\n" " ") $(shell ls -1 jitterbuffer/*.c | sed 's/\.c/.o/' | tr "\n" " ") $(shell ls -1 dssl/*.c dssl/*.cpp | sed 's/\.cpp/.o/' | sed 's/\.c/.o/' | tr "\n" " ") cloud_router/cloud_router_base.o cloud_router/cloud_router_client.o
 
 #headers = $(shell ls -1 *.h | tr "\n" " ") $(shell ls -1 jitterbuffer/*.h | tr "\n" " ") $(shell ls -1 jitterbuffer/asterisk/*.h | tr "\n" " ")
 

@@ -91,6 +91,11 @@ DSSL_EnvSetServerInfo */
 /* Duplicate SSL server entry */
 #define DSSL_E_TCP_GLOBAL_REASSEMBLY_QUEUE_LIMIT (-39)
 
+#define DSSL_E_UNKNOWN_CIPHER_SUITE		(-40)
+
+#define DSSL_E_TLS_GENERATE_KEYS		(-41)
+#define DSSL_E_TLS_DECRYPT_RECORD		(-42)
+
 #ifdef _DEBUG
 	int NmDebugCatchError( int rc, int line, const char* file );
 	#define NM_ERROR( rc ) NmDebugCatchError( rc, __LINE__, __FILE__ )
