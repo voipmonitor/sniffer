@@ -428,7 +428,8 @@ DSSL_CipherSuite* DSSL_GetSSL3CipherSuite( uint16_t id )
 			compare_cipher_suites );
 	if(!rslt) 
 	{
-		for(unsigned i = 0; i < sizeof(ssl3suites)/sizeof(ssl3suites[0]); i++) 
+		unsigned i;
+		for(i = 0; i < sizeof(ssl3suites)/sizeof(ssl3suites[0]); i++) 
 		{
 			if( ssl3suites[i].id == id ) 
 			{
