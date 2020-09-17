@@ -100,4 +100,8 @@ void EVP_MD_CTX_reset(EVP_MD_CTX *ctx);
 struct rsa_st *EVP_PKEY_get0_RSA(EVP_PKEY *pkey);
 #endif
 
+#ifndef TLS1_3_VERSION
+#define TLS1_3_VERSION 0x0304
+#endif
+
 #endif
