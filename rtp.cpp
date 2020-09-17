@@ -2100,6 +2100,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 					owner->handle_dtmf(event_digit, ts2double(header->ts.tv_sec, header->ts.tv_usec), saddr, daddr, s_dtmf::inband);
 				}
 				if (do_fasdetect) {
+					//syslog(LOG_ERR, "fas detected");
 					owner->is_fas_detected = (res_call_progress == AST_CONTROL_RINGING) ? true : false;
 				}
 			}

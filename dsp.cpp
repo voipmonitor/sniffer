@@ -95,9 +95,9 @@ static struct progalias {
 
 static struct progress {
 	enum gsamp_size size;
-	int freqs[7];
+	int freqs[10];
 } modes[] = {
-	{ GSAMP_SIZE_NA, { 350, 440, 480, 620, 950, 1400, 1800 } },	/*!< North America */
+	{ GSAMP_SIZE_NA, { 350, 400, 425, 440, 450, 480, 620, 950, 1400, 1800 } },	/*!< North America */
 	{ GSAMP_SIZE_CR, { 425 } },					/*!< Costa Rica, Brazil */
 	{ GSAMP_SIZE_UK, { 350, 400, 440 } },				/*!< UK */
 };
@@ -835,8 +835,8 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 		dsp->gsamps += pass;
 		len -= pass;
 		if (dsp->gsamps == dsp->gsamp_size) {
-			float hz[7];
-			for (y = 0; y < 7; y++) {
+			float hz[10];
+			for (y = 0; y < 10; y++) {
 				hz[y] = goertzel_result(&dsp->freqs[y]);
 			}
 			switch (dsp->progmode) {
@@ -847,6 +847,12 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 					newstate = DSP_TONE_STATE_RINGING;
 				} else if (pair_there(hz[HZ_350], hz[HZ_440], hz[HZ_480], hz[HZ_620], dsp->genergy)) {
 					newstate = DSP_TONE_STATE_DIALTONE;
+				} else if (pair_there(hz[HZ_400], hz[HZ_450], hz[HZ_400], hz[HZ_400], dsp->genergy)) {
+					//UK RINGING
+					newstate = DSP_TONE_STATE_RINGING;
+				} else if (hz[HZ_425] > TONE_MIN_THRESH * TONE_THRESH) {
+					//CZECH / europe RINGING
+					newstate = DSP_TONE_STATE_RINGING;
 				} else if (hz[HZ_950] > TONE_MIN_THRESH * TONE_THRESH) {
 					newstate = DSP_TONE_STATE_SPECIAL1;
 				} else if (hz[HZ_1400] > TONE_MIN_THRESH * TONE_THRESH) {
@@ -865,6 +871,7 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 					newstate = DSP_TONE_STATE_SILENCE;
 				}
 				break;
+#if 0
 			case PROG_MODE_CR:
 				if (hz[HZ_425] > TONE_MIN_THRESH * TONE_THRESH) {
 					newstate = DSP_TONE_STATE_RINGING;
@@ -881,6 +888,7 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 					newstate = DSP_TONE_STATE_DIALTONE;
 				}
 				break;
+#endif
 			default:
 				syslog(LOG_WARNING, "Can't process in unknown prog mode '%u'\n", dsp->progmode);
 			}
@@ -939,7 +947,7 @@ static int __dsp_call_progress(struct dsp *dsp, short *s, int len)
 			}
 
 			/* Reset goertzel */
-			for (x = 0; x < 7; x++) {
+			for (x = 0; x < 10; x++) {
 				dsp->freqs[x].v2 = dsp->freqs[x].v3 = 0.0;
 			}
 			dsp->gsamps = 0;
@@ -1234,7 +1242,7 @@ int dsp_process(struct dsp *dsp, short *shortdata, int len, char *event_digit, i
 	/* Need to run the silence detection stuff for silence suppression and busy detection */
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) || (dsp->features & DSP_FEATURE_BUSY_DETECT) || (dsp->features & DSP_FEATURE_ENERGYLEVEL)) {
 		*silence = __dsp_silence_noise(dsp, shortdata, len, totalsilence, totalnoise, energylevel);
-		if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
+		//if(dspdebug) syslog(1, "silence [%u] noise [%u]\n", *totalsilence, *totalnoise);
 	}
 
 	if ((dsp->features & DSP_FEATURE_SILENCE_SUPPRESS) && silence) {

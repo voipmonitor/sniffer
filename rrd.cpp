@@ -727,7 +727,7 @@ void rrd_charts_init() {
 	ch->setStdDb();
 	ch->addValue(RRD_VALUE_SQLf_D, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLf_C, NULL, NULL, 0, 100000);
-	ch->addValue(RRD_VALUE_SQLq_C, NULL, NULL, 0, 100000);
+	ch->addValue(RRD_VALUE_SQLq_C, NULL, NULL, 0, 1000000);
 	ch->addValue(RRD_VALUE_SQLq_M, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_R, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_Cl, NULL, NULL, 0, 100000);
