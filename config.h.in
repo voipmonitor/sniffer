@@ -4,6 +4,9 @@
    you don't. */
 #undef HAVE_DECL_LN_AES_128_GCM
 
+/* Define if we have openssl >= 1.1.1 */
+#undef HAVE_DSSL_TLS13
+
 /* Define to 1 if you have the `c' library (-lc). */
 #undef HAVE_LIBC
 
@@ -22,8 +25,8 @@
 /* Define if using gnutls */
 #undef HAVE_LIBGNUTLS
 
-/* Define to 1 if you have the `libicuuc' library (-llibicuuc). */
-#undef HAVE_LIBLIBICUUC
+/* Define to 1 if you have the `icuuc' library (-licuuc). */
+#undef HAVE_LIBICUUC
 
 /* Define to 1 if you have the `ltdl' library (-lltdl). */
 #undef HAVE_LIBLTDL
@@ -63,9 +66,6 @@
 
 /* Define to 1 if you have the `snappy' library (-lsnappy). */
 #undef HAVE_LIBSNAPPY
-
-/* Define if using libss */
-#undef HAVE_LIBSSH
 
 /* Define if using libtcmalloc_minimal */
 #undef HAVE_LIBTCMALLOC
