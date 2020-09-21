@@ -15,8 +15,19 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
+
+AC_ARG_WITH(openssl-dir, [  --with-openssl-dir=PATH path to openssl lib directory ], [
+	TMPOPENSSLDIRLIB=-L$withval/lib
+	TMPOPENSSLDIRINC=-I$withval/include
+	AC_SUBST([OPENSSLDIRLIB], [$TMPOPENSSLDIRLIB])
+	AC_SUBST([OPENSSLDIRINC], [$TMPOPENSSLDIRINC])
+	LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$TMPOPENSSLDIRLIB"
+	LDFLAGS="$LDFLAGS $TMPOPENSSLDIRLIB"
+])
+
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
@@ -82,6 +93,8 @@ AC_ARG_WITH(libc-dir, [  --with-libc-dir=PATH path to explicit libc directory (f
 	AC_SUBST([LIBCDIRLIB], [$TMPLIBCDIRLIB])
 	AC_SUBST([LIBCDIRINC], [$TMPLIBCDIRINC])
 ])
+
+
 
 AC_ARG_WITH(dpdk-include, [  --with-dpdk-include=PATH path to explicit include files], [
 	TMPDPDK=-I$withval
