@@ -15,8 +15,19 @@ AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
+
+AC_ARG_WITH(openssl-dir, [  --with-openssl-dir=PATH path to openssl lib directory ], [
+	TMPOPENSSLDIRLIB=-L$withval/lib
+	TMPOPENSSLDIRINC=-I$withval/include
+	AC_SUBST([OPENSSLDIRLIB], [$TMPOPENSSLDIRLIB])
+	AC_SUBST([OPENSSLDIRINC], [$TMPOPENSSLDIRINC])
+	LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$TMPOPENSSLDIRLIB"
+	LDFLAGS="$LDFLAGS $TMPOPENSSLDIRLIB"
+])
+
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
@@ -82,6 +93,8 @@ AC_ARG_WITH(libc-dir, [  --with-libc-dir=PATH path to explicit libc directory (f
 	AC_SUBST([LIBCDIRLIB], [$TMPLIBCDIRLIB])
 	AC_SUBST([LIBCDIRINC], [$TMPLIBCDIRINC])
 ])
+
+
 
 AC_ARG_WITH(dpdk-include, [  --with-dpdk-include=PATH path to explicit include files], [
 	TMPDPDK=-I$withval
@@ -214,6 +227,12 @@ if test "x$HAVE_OPENSSL101" = "x1"; then
 	OPENSSL_T=yes
 fi
 
+OPENSSL111_T=no
+if pkg-config --atleast-version 1.1.1 openssl; then
+	AC_DEFINE([HAVE_DSSL_TLS13], [1], [Define if we have openssl >= 1.1.1])
+	OPENSSL111_T=yes
+fi
+
 # Checks for header files.
 #AC_FUNC_ALLOCA
 #AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
@@ -268,7 +287,8 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
-openssl >= 101 found		       : $OPENSSL_T
+openssl >= 1.0.1 found		       : $OPENSSL_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
 
 shared binary: run make 
 static binary: run make static

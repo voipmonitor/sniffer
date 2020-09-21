@@ -13,6 +13,8 @@ TODO:
 
 #include "../common.h"
 
+#define _U_
+
 
 static const gchar *ciphers[]={
     "DES",

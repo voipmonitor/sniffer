@@ -605,6 +605,8 @@ LIBCDIRINC
 LIBCDIRLIB
 LIBJSON_NAME
 LIBLD
+OPENSSLDIRINC
+OPENSSLDIRLIB
 SET_MAKE
 INSTALL_DATA
 INSTALL_SCRIPT
@@ -660,6 +662,7 @@ SHELL'
 ac_subst_files=''
 ac_user_opts='
 enable_option_checking
+with_openssl_dir
 with_libc_dir
 with_dpdk_include
 with_dpdk_lib
@@ -1285,6 +1288,7 @@ if test -n "$ac_init_help"; then
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-openssl-dir=PATH path to openssl lib directory
   --with-libc-dir=PATH path to explicit libc directory (for static building)
   --with-dpdk-include=PATH path to explicit include files
   --with-dpdk-lib=PATH path to explicit lib files
@@ -3109,8 +3113,26 @@ $as_echo "no" >&6; }
 fi
 
 
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
+
+
+# Check whether --with-openssl-dir was given.
+if test "${with_openssl_dir+set}" = set; then :
+  withval=$with_openssl_dir;
+	TMPOPENSSLDIRLIB=-L$withval/lib
+	TMPOPENSSLDIRINC=-I$withval/include
+	OPENSSLDIRLIB=$TMPOPENSSLDIRLIB
+
+	OPENSSLDIRINC=$TMPOPENSSLDIRINC
+
+	LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$TMPOPENSSLDIRLIB"
+	LDFLAGS="$LDFLAGS $TMPOPENSSLDIRLIB"
+
+fi
+
+
 
 # Checks for libraries.
 # FIXME: Replace `main' with a function in `-lc':
@@ -4048,6 +4070,8 @@ fi
 
 
 
+
+
 # Check whether --with-dpdk-include was given.
 if test "${with_dpdk_include+set}" = set; then :
   withval=$with_dpdk_include;
@@ -4568,6 +4592,14 @@ if test "x$HAVE_OPENSSL101" = "x1"; then
 $as_echo "#define HAVE_OPENSSL101 1" >>confdefs.h
 
 	OPENSSL_T=yes
+fi
+
+OPENSSL111_T=no
+if pkg-config --atleast-version 1.1.1 openssl; then
+
+$as_echo "#define HAVE_DSSL_TLS13 1" >>confdefs.h
+
+	OPENSSL111_T=yes
 fi
 
 # Checks for header files.
@@ -5903,6 +5935,7 @@ tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 101 found		       : $OPENSSL_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
 
 shared binary: run make
 static binary: run make static
@@ -5931,6 +5964,7 @@ tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 101 found		       : $OPENSSL_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
 
 shared binary: run make
 static binary: run make static
