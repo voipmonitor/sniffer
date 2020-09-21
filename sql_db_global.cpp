@@ -206,7 +206,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 					row.add(sqlEscapeString(iter->value), iter->field);
 				}
 				extern MySqlStore *sqlStore;
-				sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER);
+				sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER, 0);
 				delete sqlDb;
 				data[stringValue] = rslt;
 			} else if(enableInsert) {
@@ -770,7 +770,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				if(store_flags & Call::_sf_charts_cache) {
 					if(existsRemoteChartServer()) {
 						extern MySqlStore *sqlStore;
-						sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE1);
+						sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE, 0);
 						delete tablesContent;
 					} else if(opt_charts_cache) {
 						extern Calltable *calltable;

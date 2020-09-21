@@ -1632,14 +1632,54 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(!loadFromQFiles || !opt_save_query_to_files || sverb.force_log_sqlq) {
 				outStr << "SQLq[";
 				if(isCloud()) {
-					int sizeSQLq = sqlStore->getSize(1) +
-						       (loadFromQFiles ? loadFromQFiles->getSize(1) : 0);
+					int sizeSQLq = sqlStore->getSize(1, 0) +
+						       (loadFromQFiles ? loadFromQFiles->getSize(1, 0) : 0);
 					outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
 				} else {
+					map<int, int> size_map;
+					map<int, int> size_map_by_id_2;
+					sqlStore->fillSizeMap(&size_map, &size_map_by_id_2);
+					if(loadFromQFiles) {
+						loadFromQFiles->fillSizeMap(&size_map, &size_map_by_id_2);
+					}
+					bool first = true;
+					for(map<int, int>::iterator iter = size_map_by_id_2.begin(); iter != size_map_by_id_2.end(); iter++) {
+						int id_main = iter->first / 100;
+						int id_2 = iter->first % 100;
+						int size = iter->second;
+						string id_main_str =
+							id_main == STORE_PROC_ID_CDR ? "C" :
+							id_main == STORE_PROC_ID_CHARTS_CACHE  ? "ch" :
+							id_main == STORE_PROC_ID_MESSAGE ? "M" :
+							id_main == STORE_PROC_ID_REGISTER ? "R" :
+							id_main == STORE_PROC_ID_SS7 ? "7" :
+							id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
+							id_main == STORE_PROC_ID_CLEANSPOOL ? "Cl" :
+							id_main == STORE_PROC_ID_HTTP ? "H" :
+							("i" + intToString(id_main) + "_");
+						outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
+						first = false;
+					}
+					if(opt_rrd) {
+						for(map<int, int>::iterator iter = size_map.begin(); iter != size_map_by_id_2.end(); iter++) {
+							int id_main = iter->first;
+							int size = iter->second;
+							const char *id_main_rrd_str = 
+								id_main == STORE_PROC_ID_CDR ? RRD_VALUE_SQLq_C :
+								id_main == STORE_PROC_ID_MESSAGE ? RRD_VALUE_SQLq_M :
+								id_main == STORE_PROC_ID_REGISTER ? RRD_VALUE_SQLq_R :
+								id_main == STORE_PROC_ID_HTTP ? RRD_VALUE_SQLq_H :
+								NULL;
+							if(id_main_rrd_str) {
+								rrd_add_value(id_main_rrd_str, size);
+							}
+						}
+					}
+					#if 0
 					int sizeSQLq;
 					for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR_1 + i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CDR_1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CDR, i) : 0);
 						if(i == 0 || sizeSQLq >= 1) {
 							if(i) {
 								outStr << " C" << (i+1) << ":";
@@ -1656,8 +1696,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_1 + i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE_1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE, i) : 0);
 						if(sizeSQLq >= 0) {
 							if(i) {
 								outStr << " ch" << (i+1) << ":";
@@ -1671,8 +1711,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE1 + i) +
-						           (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) +
+						           (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) : 0);
 						if(sizeSQLq >= 0) {
 							if(i) {
 								outStr << " chr" << (i+1) << ":";
@@ -1686,8 +1726,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE_1 + i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_MESSAGE_1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_MESSAGE, i) : 0);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " M" << (i+1) << ":";
@@ -1704,8 +1744,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER_1 + i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_REGISTER_1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_REGISTER, i) : 0);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " R" << (i+1) << ":";
@@ -1722,19 +1762,19 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					if(opt_enable_ss7) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SS7) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SS7) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SS7, -1) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SS7, -1) : 0);
 						if(sizeSQLq >= 0) {
 							outStr << " 7:" << sizeSQLq;
 						}
 					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL) +
-						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SAVE_PACKET_SQL) : 0);
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL, -1) +
+						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SAVE_PACKET_SQL, -1) : 0);
 					if(sizeSQLq >= 0) {
 						outStr << " L:" << sizeSQLq;
 					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL) + 
-						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CLEANSPOOL) : 0);
+					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL, -1) + 
+						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CLEANSPOOL, -1) : 0);
 					if(sizeSQLq >= 0) {
 						outStr << " Cl:" << sizeSQLq;
 						if (opt_rrd) {
@@ -1742,8 +1782,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP_1 + i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_HTTP_1 + i) : 0);
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_HTTP, i) : 0);
 						if(sizeSQLq >= (i ? 1 : 0)) {
 							if(i) {
 								outStr << " H" << (i+1) << ":";
@@ -1758,24 +1798,24 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 					if(opt_ipaccount) {
 						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_1 + i) + 
-								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC_1 + i) : 0);
+							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC, i) + 
+								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC, i) : 0);
 							if(sizeSQLq >= 1) {
-								outStr << " I" << (STORE_PROC_ID_IPACC_1 + i) << ":" << sizeSQLq;
+								outStr << " I" << (STORE_PROC_ID_IPACC + i) << ":" << sizeSQLq;
 							}
 						}
 						for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-							sizeSQLq = sqlStore->getSize(i) +
-								   (loadFromQFiles ? loadFromQFiles->getSize(i) : 0);
+							sizeSQLq = sqlStore->getSize(i, -1) +
+								   (loadFromQFiles ? loadFromQFiles->getSize(i, -1) : 0);
 							if(sizeSQLq >= 1) {
 								outStr << " I" << i << ":" << sizeSQLq;
 							}
 						}
 						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) +
-								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) : 0);
+							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR, i) +
+								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR, i) : 0);
 							if(sizeSQLq >= 1) {
-								outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR_1 + i) << ":" << sizeSQLq;
+								outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR + i) << ":" << sizeSQLq;
 							}
 						}
 						/*
@@ -1797,6 +1837,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						}
 						*/
 					}
+					#endif
 				}
 				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(true);
 				SqlDb::resetDelayQuery(true);

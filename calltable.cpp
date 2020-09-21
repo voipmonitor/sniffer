@@ -5234,13 +5234,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					   sqlDbSaveCall->insertQuery(sql_cdr_next_table, cdr_next));
 			
 			static unsigned int counterSqlStore = 0;
-			int storeId = STORE_PROC_ID_CDR_1 + 
-				      (opt_mysqlstore_max_threads_cdr > 1 &&
-				       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
-					counterSqlStore % opt_mysqlstore_max_threads_cdr : 
-					0);
+			sqlStore->query_lock(query_str.c_str(), 
+					     STORE_PROC_ID_CDR,
+					     opt_mysqlstore_max_threads_cdr > 1 &&
+					     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ? 
+					      counterSqlStore % opt_mysqlstore_max_threads_cdr : 
+					      0);
 			++counterSqlStore;
-			sqlStore->query_lock(query_str.c_str(), storeId);
 		} else {
 			sqlDbSaveCall->insert(sql_cdr_next_table, cdr_next);
 		}
@@ -6670,36 +6670,35 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_CDR_1 + 
-			      (opt_mysqlstore_max_threads_cdr > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
+		int storeId2 = opt_mysqlstore_max_threads_cdr > 1 &&
+			       sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ? 
 				counterSqlStore % opt_mysqlstore_max_threads_cdr : 
-				0);
+				0;
 		++counterSqlStore;
 		if(useCsvStoreFormat()) {
 			if(existsChartsCacheServer()) {
 				SqlDb_row::SqlDb_rowField *f_store_flags = cdr.add(_sf_db, "store_flags");
 				string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
 						       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
-				sqlStore->query_lock((query_str_cdr + query_str).c_str(), storeId);
+				sqlStore->query_lock((query_str_cdr + query_str).c_str(), STORE_PROC_ID_CDR, storeId2);
 				f_store_flags->content = intToString(_sf_charts_cache);
 				f_store_flags->ifv.v._int = _sf_charts_cache;
 				query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
 						MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
 				sqlStore->query_lock((query_str_cdr + query_str).c_str(),
-						     STORE_PROC_ID_CHARTS_CACHE_1 + 
-						     (opt_mysqlstore_max_threads_charts_cache > 1 &&
-						      sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_1) > 1000 ? 
-						       counterSqlStore % opt_mysqlstore_max_threads_charts_cache : 
-						       0));
+						     STORE_PROC_ID_CHARTS_CACHE,
+						     opt_mysqlstore_max_threads_charts_cache > 1 &&
+						     sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE, 0) > 1000 ? 
+						      counterSqlStore % opt_mysqlstore_max_threads_charts_cache : 
+						      0);
 			} else {
 				cdr.add(_sf_db | (useChartsCacheInStore() ? _sf_charts_cache : 0), "store_flags");
 				string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
 						       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
-				sqlStore->query_lock((query_str_cdr + query_str).c_str(), storeId);
+				sqlStore->query_lock((query_str_cdr + query_str).c_str(), STORE_PROC_ID_CDR, storeId2);
 			}
 		} else {
-			sqlStore->query_lock(query_str.c_str(), storeId);
+			sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_CDR, storeId2);
 		}
 		
 		//cout << endl << endl << query_str << endl << endl << endl;
@@ -6998,13 +6997,13 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 			limit 1)";
 	if(enableBatchIfPossible) {
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_CDR_1 + 
-			      (opt_mysqlstore_max_threads_cdr > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ? 
-				counterSqlStore % opt_mysqlstore_max_threads_cdr : 
-				0);
+		sqlStore->query_lock(MYSQL_ADD_QUERY_END(updateFlagsQuery).c_str(),
+				     STORE_PROC_ID_CDR, 
+				     opt_mysqlstore_max_threads_cdr > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ? 
+				      counterSqlStore % opt_mysqlstore_max_threads_cdr : 
+				      0);
 		++counterSqlStore;
-		sqlStore->query_lock(MYSQL_ADD_QUERY_END(updateFlagsQuery).c_str(), storeId);
 	} else {
 		sqlDbSaveCall->query(updateFlagsQuery);
 	}
@@ -7021,9 +7020,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		this->regstate = 2;
 	}
 	
-	if(sqlStore->getSizeVect(STORE_PROC_ID_REGISTER_1, 
-				 STORE_PROC_ID_REGISTER_1 + 
-				 (opt_mysqlstore_max_threads_register > 1 ? opt_mysqlstore_max_threads_register - 1 : 0)) > opt_mysqlstore_limit_queue_register) {
+	if(sqlStore->getSize(STORE_PROC_ID_REGISTER, -1) > opt_mysqlstore_limit_queue_register) {
 		static u_int64_t lastTimeSyslog = 0;
 		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog) {
@@ -7049,18 +7046,17 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	string qp;
 	
 	static unsigned int counterSqlStore = 0;
-	int storeId = STORE_PROC_ID_REGISTER_1 + 
-		      (opt_mysqlstore_max_threads_register > 1 &&
-		       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
+	int storeId2 = opt_mysqlstore_max_threads_register > 1 &&
+		       sqlStore->getSize(STORE_PROC_ID_REGISTER, 0) > 1000 ? 
 			counterSqlStore % opt_mysqlstore_max_threads_register : 
-			0);
+			0;
 	++counterSqlStore;
 
 	if(last_register_clean == 0) {
 		// on first run the register table has to be deleted 
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp += "DELETE FROM register";
-			sqlStore->query_lock(qp.c_str(), storeId);
+			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER, storeId2);
 		} else {
 			sqlDbSaveCall->query("DELETE FROM register");
 		}
@@ -7097,7 +7093,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			qp = query + "; ";
 			qp += "DELETE FROM register WHERE expires_at <= '" + calldate_str + "'";
-			sqlStore->query_lock(qp.c_str(), storeId);
+			sqlStore->query_lock(qp.c_str(), STORE_PROC_ID_REGISTER, storeId2);
 		} else {
 			sqlDbSaveCall->query(query);
 			sqlDbSaveCall->query("DELETE FROM register WHERE expires_at <= '"+ calldate_str + "'");
@@ -7134,7 +7130,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			} else {
 				query = query + ")";
 			}
-			sqlStore->query_lock(query.c_str(), storeId);
+			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER, storeId2);
 		} else {
 			if (existsColumns.register_rrd_count) {
 				query = string(
@@ -7351,7 +7347,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			string query = "SET @mcounter = (" + q1 + ");";
 			query += "IF @mcounter IS NOT NULL THEN " + q2 + "; ELSE " + q3 + "; END IF";
 
-			sqlStore->query_lock(query.c_str(), storeId);
+			sqlStore->query_lock(query.c_str(), STORE_PROC_ID_REGISTER, storeId2);
 		} else {
 			string calldate_str = sqlDateTimeString(calltime_s());
 			query = string(
@@ -7672,13 +7668,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		}
 		
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_MESSAGE_1 + 
-			      (opt_mysqlstore_max_threads_message > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_MESSAGE_1) > 1000 ? 
-				counterSqlStore % opt_mysqlstore_max_threads_message : 
-				0);
+		sqlStore->query_lock(query_str.c_str(),
+				     STORE_PROC_ID_MESSAGE,
+				     opt_mysqlstore_max_threads_message > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_MESSAGE, 0) > 1000 ? 
+				      counterSqlStore % opt_mysqlstore_max_threads_message : 
+				      0);
 		++counterSqlStore;
-		sqlStore->query_lock(query_str.c_str(), storeId);
 		
 		//cout << endl << endl << query_str << endl << endl << endl;
 		return(0);
@@ -8411,7 +8407,7 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 				   sqlDbSaveSs7->insertQuery("ss7", ss7));
-		sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_SS7);
+		sqlStore->query_lock(query_str.c_str(), STORE_PROC_ID_SS7, 0);
 	} else {
 		sqlDbSaveSs7->insert("ss7", ss7);
 	}

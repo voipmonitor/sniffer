@@ -303,7 +303,7 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 		}
 		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 				     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true)),
-				     STORE_PROC_ID_OTHER);
+				     STORE_PROC_ID_OTHER, 0);
 		this->stored_at = ts.tv_sec;
 		sessions->deleteOldSessions(ts);
 	}
@@ -757,7 +757,7 @@ void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
 		cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(ts.tv_sec - opt_ssl_store_sessions_expiration_hours * 3600)).setOper("<"));
 		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 				     "delete from " + storeSessionsTableName() + " where " + sqlDb->getCondStr(&cond)),
-				     STORE_PROC_ID_OTHER);
+				     STORE_PROC_ID_OTHER, 0);
 		last_delete_old_sessions_at = ts.tv_sec;
 	}
 }

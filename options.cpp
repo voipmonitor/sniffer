@@ -1067,13 +1067,13 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 			query_str += "end if";
 		}
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_MESSAGE_1 + 
-			      (opt_mysqlstore_max_threads_message > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_MESSAGE_1) > 1000 ? 
-				counterSqlStore % opt_mysqlstore_max_threads_message : 
-				0);
+		sqlStore->query_lock(query_str.c_str(),
+				     STORE_PROC_ID_MESSAGE, 
+				     opt_mysqlstore_max_threads_message > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_MESSAGE, 0) > 1000 ? 
+				      counterSqlStore % opt_mysqlstore_max_threads_message : 
+				      0);
 		++counterSqlStore;
-		sqlStore->query_lock(query_str.c_str(), storeId);
 	} else {
 		for(int i = 0; i < 2; i++) {
 			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;

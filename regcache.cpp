@@ -100,14 +100,13 @@ regcache::prune(unsigned int timestamp) {
 				"created_at >= SUBTIME(FROM_UNIXTIME(" + ts.str() + "), '01:00:00')"; 
 
 			static unsigned int counterSqlStore = 0;
-			int storeId = STORE_PROC_ID_REGISTER_1 + 
-				      (opt_mysqlstore_max_threads_register > 1 &&
-				       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
-					counterSqlStore % opt_mysqlstore_max_threads_register : 
-					0);
+			sqlStore->query_lock(query.c_str(),
+					     STORE_PROC_ID_REGISTER,
+					     opt_mysqlstore_max_threads_register > 1 &&
+					     sqlStore->getSize(STORE_PROC_ID_REGISTER, 0) > 1000 ? 
+					      counterSqlStore % opt_mysqlstore_max_threads_register : 
+					      0);
 			++counterSqlStore;
-			sqlStore->query_lock(query.c_str(), storeId);
-
 			regcache_buffer.erase(iter++);
 		} else {
 			iter++;

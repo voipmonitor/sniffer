@@ -467,7 +467,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		_sqlEscapeString(mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff), NULL);
 		strcat(query_buff, "#'");
 	}
-	sqlStore->query_lock(MYSQL_ADD_QUERY_END(string(query_buff)), STORE_PROC_ID_SAVE_PACKET_SQL);
+	sqlStore->query_lock(MYSQL_ADD_QUERY_END(string(query_buff)), STORE_PROC_ID_SAVE_PACKET_SQL, 0);
 }
 
 

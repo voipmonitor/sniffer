@@ -558,13 +558,13 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
 			     sqlDbSaveRegister->insertQuery(register_table, reg, false, false, state->state == rs_Failed));
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_REGISTER_1 + 
-			      (opt_mysqlstore_max_threads_register > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
-				counterSqlStore % opt_mysqlstore_max_threads_register : 
-				0);
+		sqlStore->query_lock(query_str.c_str(),
+				     STORE_PROC_ID_REGISTER,
+				     opt_mysqlstore_max_threads_register > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_REGISTER, 0) > 1000 ? 
+				      counterSqlStore % opt_mysqlstore_max_threads_register : 
+				      0);
 		++counterSqlStore;
-		sqlStore->query_lock(query_str.c_str(), storeId);
 	} else {
 		if(!adj_ua.empty()) {
 			reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), "ua_id");
@@ -599,13 +599,13 @@ void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatch
 					string query_str = sqlDbSaveRegister->updateQuery("register_failed", row, 
 											  ("ID = " + intToString(state->db_id)).c_str());
 					static unsigned int counterSqlStore = 0;
-					int storeId = STORE_PROC_ID_REGISTER_1 + 
-						      (opt_mysqlstore_max_threads_register > 1 &&
-						       sqlStore->getSize(STORE_PROC_ID_REGISTER_1) > 1000 ? 
-							counterSqlStore % opt_mysqlstore_max_threads_register : 
-							0);
+					sqlStore->query_lock(MYSQL_ADD_QUERY_END(query_str),
+							     STORE_PROC_ID_REGISTER,
+							     opt_mysqlstore_max_threads_register > 1 &&
+							     sqlStore->getSize(STORE_PROC_ID_REGISTER, 0) > 1000 ? 
+							      counterSqlStore % opt_mysqlstore_max_threads_register : 
+							      0);
 					++counterSqlStore;
-					sqlStore->query_lock(MYSQL_ADD_QUERY_END(query_str), storeId);
 				} else {
 					sqlDbSaveRegister->update("register_failed", row, 
 								  ("ID = " + intToString(state->db_id)).c_str());

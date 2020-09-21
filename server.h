@@ -234,9 +234,9 @@ public:
 	cSnifferServer();
 	~cSnifferServer();
 	void setSqlStore(class MySqlStore *sqlStore);
-	void sql_query_lock(const char *query_str, int id);
-	void sql_query_lock(list<string> *query_str, int id);
-	int conv_store_id(int id);
+	void sql_query_lock(const char *query_str, int id_main, int id_2);
+	void sql_query_lock(list<string> *query_str, int id_main, int id_2);
+	int findMinStoreId2(int id_main);
 	unsigned int sql_queue_size();
 	bool isSetSqlStore() {
 		return(sqlStore != NULL);

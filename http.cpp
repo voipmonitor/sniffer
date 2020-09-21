@@ -535,12 +535,12 @@ void HttpDataCache_link::writeQueryInsertToDb() {
 	}
 	extern bool opt_save_query_to_files;
 	MySqlStore *sqlStore_http = use_mysql_2_http() && !opt_save_query_to_files ? sqlStore_2 : sqlStore;
-	int storeId = STORE_PROC_ID_HTTP_1 + 
-		      (opt_mysqlstore_max_threads_http > 1 &&
-		       sqlStore_http->getSize(STORE_PROC_ID_HTTP_1) > 1000 ? 
-			writeToDb_counter % opt_mysqlstore_max_threads_http : 
-			0);
-	sqlStore_http->query_lock(queryInsert.c_str(), storeId);
+	sqlStore_http->query_lock(queryInsert.c_str(),
+				  STORE_PROC_ID_HTTP,
+				  opt_mysqlstore_max_threads_http > 1 &&
+				  sqlStore_http->getSize(STORE_PROC_ID_HTTP, 0) > 1000 ? 
+				   writeToDb_counter % opt_mysqlstore_max_threads_http : 
+				   0);
 	++writeToDb_counter;
 }
 

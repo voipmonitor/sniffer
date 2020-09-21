@@ -3194,15 +3194,13 @@ RTPstat::flush_and_clean(map<vmIP, node_t> *cmap, bool needLock) {
 	//TODO enableBatchIfPossible
 	if(!opt_nocdr && isSqlDriver("mysql") && !query_str.empty()) {
 		static unsigned int counterSqlStore = 0;
-		int storeId = STORE_PROC_ID_CDR_1 +
-			      (opt_mysqlstore_max_threads_cdr > 1 &&
-			       sqlStore->getSize(STORE_PROC_ID_CDR_1) > 1000 ?
-				counterSqlStore % opt_mysqlstore_max_threads_cdr :
-				0);
-		//cout << query_str << "\n";
-		
+		sqlStore->query_lock(query_str.c_str(),
+				     STORE_PROC_ID_CDR,
+				     opt_mysqlstore_max_threads_cdr > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_CDR, 0) > 1000 ?
+				      counterSqlStore % opt_mysqlstore_max_threads_cdr :
+				      0);
 		++counterSqlStore;
-		sqlStore->query_lock(query_str.c_str(), storeId);
 	}
 }
 

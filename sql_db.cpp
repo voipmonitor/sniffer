@@ -122,9 +122,6 @@ SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
 cSqlDbData *dbData;
 
-#define CONV_ID(id) (id < STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS || id >= STORE_PROC_ID_IPACC_1 ?  (id / 10) * 10 : id)
-#define CONV_ID_FOR_QFILE(id) CONV_ID(id)
-#define CONV_ID_FOR_REMOTE_STORE(id) CONV_ID(id)
 
 #if DEBUG_STORE_COUNT
 map<int, u_int64_t> _store_cnt;
@@ -2924,10 +2921,11 @@ void *MySqlStore_process_storing(void *storeProcess_addr) {
 	return(NULL);
 }
 	
-MySqlStore_process::MySqlStore_process(int id, MySqlStore *parentStore,
+MySqlStore_process::MySqlStore_process(int id_main, int id_2, MySqlStore *parentStore,
 				       const char *host, const char *user, const char *password, const char *database, u_int16_t port, const char *socket,
 				       const char *cloud_host, const char *cloud_token, bool cloud_router, int concatLimit, mysqlSSLOptions *mySSLOpt) {
-	this->id = id;
+	this->id_main = id_main;
+	this->id_2 = id_2;
 	this->parentStore = parentStore;
 	this->terminated = false;
 	this->enableTerminatingDirectly = false;
@@ -2981,7 +2979,7 @@ bool MySqlStore_process::connected() {
 
 void MySqlStore_process::query(const char *query_str) {
 	if(sverb.store_process_query) {
-		cout << "store_process_query_" << this->id << endl
+		cout << "store_process_query_" << this->id_main << "_" << this->id_2 << endl
 		     << query_str << endl;
 	}
 	bool needCreateThread = false;
@@ -2993,7 +2991,7 @@ void MySqlStore_process::query(const char *query_str) {
 			this->lastThreadRunningTimeCheck = act_time;
 		} else if(act_time - this->lastThreadRunningTimeCheck > 60 && pthread_kill(this->thread, SIGCONT)) {
 			if(this->threadRunningCounter == this->lastThreadRunningCounterCheck) {
-				syslog(LOG_NOTICE, "resurrection sql store process %i thread", this->id);
+				syslog(LOG_NOTICE, "resurrection sql store process %i_%i thread", this->id_main, this->id_2);
 				needCreateThread = true;
 			} else {
 				this->lastThreadRunningCounterCheck = this->threadRunningCounter;
@@ -3004,7 +3002,7 @@ void MySqlStore_process::query(const char *query_str) {
 	if(needCreateThread) {
 		this->threadRunningCounter = 0;
 		this->lastThreadRunningCounterCheck = 0;
-		vm_pthread_create_autodestroy(("sql store " + intToString(id)).c_str(),
+		vm_pthread_create_autodestroy(("sql store " + intToString(id_main) + "_" + intToString(id_2)).c_str(),
 					      &this->thread, NULL, MySqlStore_process_storing, this, __FILE__, __LINE__);
 	}
 	this->query_buff.push_back(query_str);
@@ -3016,7 +3014,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 	unsigned nextUsleepAfterError = 0;
 	bool quietlyError = false;
 	bool keepConnectAfterError = false;
-	sSnifferClientOptions *_snifferClientOptions = id / 10 == STORE_PROC_ID_CHARTS_CACHE_1 / 10 && snifferClientOptions_charts_cache.isSetHostPort() ?
+	sSnifferClientOptions *_snifferClientOptions = id_main == STORE_PROC_ID_CHARTS_CACHE && snifferClientOptions_charts_cache.isSetHostPort() ?
 							&snifferClientOptions_charts_cache :
 							&snifferClientOptions;
 	for(unsigned int pass = 0; pass < maxPass; pass++) {
@@ -3089,7 +3087,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				}
 			}
 		}
-		string query_str_with_id = intToString(CONV_ID_FOR_REMOTE_STORE(id)) + '|' + query_str;
+		string query_str_with_id = intToString(id_main) + '|' + query_str;
 		bool okSendQuery = true;
 		if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {
 			if(_snifferClientOptions->type_compress == _cs_compress_gzip) {
@@ -3175,10 +3173,10 @@ void MySqlStore_process::store() {
 		unsigned queryqueue_length = 0;
 		while(1) {
 			++this->threadRunningCounter;
-			if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ||
+			if(id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE ||
 			   snifferClientOptions.isEnableRemoteStore()) {
 				extern int opt_charts_cache_remote_concat_limit;
-				unsigned concat_limit = id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10 ?
+				unsigned concat_limit = id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE ?
 							 opt_charts_cache_remote_concat_limit :
 							 snifferClientOptions.mysql_concat_limit;
 				this->lock();
@@ -3190,10 +3188,10 @@ void MySqlStore_process::store() {
 					string query = this->query_buff.front();
 					this->query_buff.pop_front();
 					#if DEBUG_STORE_COUNT
-					++_store_cnt[id];
+					++_store_cnt[id_main * 100 + id_2];
 					#endif
 					this->unlock();
-					if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) {
+					if(id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE) {
 						while(!add_rchs_query(query.c_str(), true)) {
 							USLEEP(1000);
 						}
@@ -3210,11 +3208,11 @@ void MySqlStore_process::store() {
 						queries += "L" + intToString(query.length()) + ":" + query + "\n";
 						this->query_buff.pop_front();
 						#if DEBUG_STORE_COUNT
-						++_store_cnt[id];
+						++_store_cnt[id_main * 100 + id_2];
 						#endif
 					}
 					this->unlock();
-					if(id / 10 == STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) {
+					if(id_main == STORE_PROC_ID_CHARTS_CACHE_REMOTE) {
 						while(!add_rchs_query(queries.c_str(), true)) {
 							USLEEP(1000);
 						}
@@ -3234,7 +3232,7 @@ void MySqlStore_process::store() {
 						queryqueue.clear();
 						queryqueue_length = 0;
 						if(verbosity > 1) {
-							syslog(LOG_INFO, "STORE id: %i", this->id);
+							syslog(LOG_INFO, "STORE id: %i_%i", this->id_main, this->id_2);
 						}
 					}
 					break;
@@ -3258,7 +3256,7 @@ void MySqlStore_process::store() {
 				} else {
 					this->query_buff.pop_front();
 					#if DEBUG_STORE_COUNT
-					++_store_cnt[id];
+					++_store_cnt[id_main * 100 + id_2];
 					#endif
 					this->unlock();
 					queryqueue.push_back(query);
@@ -3269,7 +3267,7 @@ void MySqlStore_process::store() {
 					queryqueue.clear();
 					queryqueue_length = 0;
 					if(verbosity > 1) {
-						syslog(LOG_INFO, "STORE id: %i", this->id);
+						syslog(LOG_INFO, "STORE id: %i_%i", this->id_main, this->id_2);
 					}
 				}
 				if(is_terminating() && this->sqlDb->getLastError() && this->enableTerminatingIfSqlError) {
@@ -3291,7 +3289,7 @@ void MySqlStore_process::store() {
 		sleep(1);
 	}
 	this->terminated = true;
-	syslog(LOG_NOTICE, "terminated - sql store %u", this->id);
+	syslog(LOG_NOTICE, "terminated - sql store %i_%i", this->id_main, this->id_2);
 }
 
 void MySqlStore_process::_store(string beginProcedure, string endProcedure, list<string> *queries) {
@@ -3313,7 +3311,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 				queries_str_old_store += *iter;
 				queries->erase(iter++);
 				#if DEBUG_STORE_COUNT
-				++_store_old_cnt[id];
+				++_store_old_cnt[id_main * 100 + id_2];
 				#endif
 			} else {
 				iter++;
@@ -3336,7 +3334,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	SqlDb::addDelayQuery(endTimeMS - startTimeMS, true);
 	if(sverb.store_process_query_compl_time) {
 		sumTimeMS += (endTimeMS -startTimeMS);
-		cout << "store_process_query_compl_" << this->id << endl
+		cout << "store_process_query_compl_" << this->id_main << "_" << this->id_2 << endl
 		     << " * time " << (++counter) << " / " << (endTimeMS-startTimeMS)/1000. << " / " << sumTimeMS/1000. << " size: " << queries_size << endl;
 	}
 }
@@ -3360,7 +3358,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 				this->sqlDb->maxAllowedPacket);
 	if(useNewStore() == 2) {
 		if(sverb.store_process_query_compl) {
-			cout << "store_process_query_compl_" << this->id << endl;
+			cout << "store_process_query_compl_" << this->id_main << "_" << this->id_2 << endl;
 		}
 		for(list<string>::iterator iter = queries_list.begin(); iter != queries_list.end(); iter++) {
 			if(sverb.store_process_query_compl) {
@@ -3370,7 +3368,7 @@ void MySqlStore_process::__store(list<string> *queries) {
 		}
 	} else {
 		if(sverb.store_process_query_compl) {
-			cout << "store_process_query_compl_" << this->id << endl
+			cout << "store_process_query_compl_" << this->id_main << "_" << this->id_2 << endl
 			     << queries_str << endl;
 		}
 		this->sqlDb->query(string("call store_001(\"") + 
@@ -3417,12 +3415,12 @@ void MySqlStore_process::__store(string beginProcedure, string endProcedure, str
 			break;
 		} else if(this->sqlDb->getLastError() == ER_LOCK_DEADLOCK) {
 			if(passComplete < maxPassComplete - 1) {
-				syslog(LOG_INFO, "DEADLOCK in store %u - next attempt %u", this->id, passComplete + 1);
+				syslog(LOG_INFO, "DEADLOCK in store %i_%i - next attempt %u", this->id_main, this->id_2, passComplete + 1);
 				USLEEP(500000);
 			}
 		} else {
 			if(sverb.store_process_query) {
-				cout << "store_process_query_" << this->id << ": " << "ERROR" << endl 
+				cout << "store_process_query_" << this->id_main << "_" << this->id_2 << ": " << "ERROR" << endl 
 				     << this->sqlDb->getLastErrorString() << endl;
 			}
 			break;
@@ -3456,7 +3454,7 @@ void MySqlStore_process::exportToFile(FILE *file, bool sqlFormat, bool cleanAfte
 		} else {
 			find_and_replace(query, "__ENDL__", "__endl__");
 			find_and_replace(query, "\n", "__ENDL__");
-			fprintf(file, "%i:%s\n", this->id, query.c_str());
+			fprintf(file, "%i:%s\n", this->id_main, query.c_str());
 		}
 	}
 	if(size) {
@@ -3526,7 +3524,7 @@ void MySqlStore_process::waitForTerminate() {
 		while(!this->terminated) {
 			if(is_terminating() > 1 &&
 			   getTimeS() > (this->last_store_iteration_time + 60)) {
-				syslog(LOG_NOTICE, "cancel store thread id (%i)", id);
+				syslog(LOG_NOTICE, "cancel store thread id (%i_%i)", id_main, id_2);
 				pthread_cancel(this->thread);
 				break;
 			}
@@ -3538,7 +3536,7 @@ void MySqlStore_process::waitForTerminate() {
 
 string MySqlStore_process::getInsertFuncName() {
 	char insert_funcname[20];
-	snprintf(insert_funcname, sizeof(insert_funcname), "__insert_%i", this->id);
+	snprintf(insert_funcname, sizeof(insert_funcname), "__insert_%i_%i", this->id_main, this->id_2);
 	if(opt_id_sensor > -1) {
 		snprintf(insert_funcname + strlen(insert_funcname), sizeof(insert_funcname) - strlen(insert_funcname), "S%i", opt_id_sensor);
 	}
@@ -3576,10 +3574,13 @@ MySqlStore::MySqlStore(const char *host, const char *user, const char *password,
 }
 
 MySqlStore::~MySqlStore() {
-	map<int, MySqlStore_process*>::iterator iter;
-	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-		iter->second->setEnableTerminatingIfEmpty(true);
-		iter->second->waitForTerminate();
+	map<int, map<int, MySqlStore_process*> >::iterator iter1;
+	map<int, MySqlStore_process*>::iterator iter2;
+	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			iter2->second->setEnableTerminatingIfEmpty(true);
+			iter2->second->waitForTerminate();
+		}
 	}
 	if(!qfileConfig.enableAny() && !loadFromQFileConfig.enable) {
 		extern bool opt_autoload_from_sqlvmexport;
@@ -3590,8 +3591,10 @@ MySqlStore::~MySqlStore() {
 			sqlStore->exportToFile(NULL, "auto", false, true);
 		}
 	}
-	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-		delete iter->second;
+	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			delete iter2->second;
+		}
 	}
 	if(qfileConfig.enableAny()) {
 		if(this->qfilesCheckperiodThread) {
@@ -3656,26 +3659,28 @@ void MySqlStore::loadFromQFiles_start() {
 		}
 		if(!isCloud()) {
 			extern MySqlStore *sqlStore_2;
-			this->addLoadFromQFile((STORE_PROC_ID_CDR_1 / 10) * 10, "cdr");
-			this->addLoadFromQFile((STORE_PROC_ID_MESSAGE_1 / 10) * 10, "message");
-			this->addLoadFromQFile((STORE_PROC_ID_CLEANSPOOL / 10) * 10, "cleanspool");
-			this->addLoadFromQFile((STORE_PROC_ID_REGISTER_1 / 10) * 10, "register");
-			this->addLoadFromQFile((STORE_PROC_ID_SAVE_PACKET_SQL / 10) * 10, "save_packet_sql");
-			this->addLoadFromQFile((STORE_PROC_ID_HTTP_1 / 10) * 10, "http", 0, 0,
+			this->addLoadFromQFile(STORE_PROC_ID_CDR, "cdr");
+			this->addLoadFromQFile(STORE_PROC_ID_MESSAGE, "message");
+			this->addLoadFromQFile(STORE_PROC_ID_CLEANSPOOL, "cleanspool");
+			this->addLoadFromQFile(STORE_PROC_ID_REGISTER, "register");
+			this->addLoadFromQFile(STORE_PROC_ID_SAVE_PACKET_SQL, "save_packet_sql");
+			this->addLoadFromQFile(STORE_PROC_ID_HTTP, "http", 0, 0,
 					       use_mysql_2_http() ? sqlStore_2 : NULL);
-			this->addLoadFromQFile((STORE_PROC_ID_WEBRTC_1 / 10) * 10, "webrtc");
+			this->addLoadFromQFile(STORE_PROC_ID_WEBRTC, "webrtc");
 			this->addLoadFromQFile(STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, "cache_numbers");
 			this->addLoadFromQFile(STORE_PROC_ID_FRAUD_ALERT_INFO, "fraud_alert_info");
 			this->addLoadFromQFile(STORE_PROC_ID_LOG_SENSOR, "log_sensor");
 			this->addLoadFromQFile(STORE_PROC_ID_SS7, "ss7");
 			this->addLoadFromQFile(STORE_PROC_ID_OTHER, "other");
 			if(opt_ipaccount) {
-				this->addLoadFromQFile((STORE_PROC_ID_IPACC_1 / 10) * 10, "ipacc");
-				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10, "ipacc_agreg");
-				this->addLoadFromQFile((STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10, "ipacc_agreg2");
+				this->addLoadFromQFile(STORE_PROC_ID_IPACC, "ipacc");
+				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR_INTERVAL, "ipacc_agreg");
+				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR_HOUR, "ipacc_agreg_hour");
+				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR_DAY, "ipacc_agreg_day");
+				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR2_HOUR, "ipacc_agreg2");
 			}
-			this->addLoadFromQFile((STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10, "charts_cache");
-			this->addLoadFromQFile((STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10, "charts_cache_remote");
+			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE, "charts_cache");
+			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE_REMOTE, "charts_cache_remote");
 		} else {
 			extern int opt_mysqlstore_concat_limit_cdr;
 			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
@@ -3686,62 +3691,62 @@ void MySqlStore::loadFromQFiles_start() {
 	}
 }
 
-void MySqlStore::connect(int id) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::connect(int id_main, int id_2) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->connect();
 }
 
-void MySqlStore::query(const char *query_str, int id) {
+void MySqlStore::query(const char *query_str, int id_main, int id_2) {
 	if(!query_str || !*query_str) {
 		return;
 	}
-	if(qfileConfigEnable(id)) {
-		query_to_file(query_str, id);
+	if(qfileConfigEnable(id_main)) {
+		query_to_file(query_str, id_main);
 	} else {
-		MySqlStore_process* process = this->find(id);
+		MySqlStore_process* process = this->find(id_main, id_2);
 		process->query(query_str);
 	}
 }
 
-void MySqlStore::query(string query_str, int id) {
-	query(query_str.c_str(), id);
+void MySqlStore::query(string query_str, int id_main, int id_2) {
+	query(query_str.c_str(), id_main, id_2);
 }
 
-void MySqlStore::query_lock(const char *query_str, int id) {
+void MySqlStore::query_lock(const char *query_str, int id_main, int id_2) {
 	if(!query_str || !*query_str) {
 		return;
 	}
-	if(qfileConfigEnable(id)) {
-		query_to_file(query_str, id);
+	if(qfileConfigEnable(id_main)) {
+		query_to_file(query_str, id_main);
 	} else {
-		MySqlStore_process* process = this->find(id);
+		MySqlStore_process* process = this->find(id_main, id_2);
 		process->lock();
 		#if DEBUG_STORE_COUNT
-		++_query_lock_cnt[id];
+		++_query_lock_cnt[id_main * 100 + id_2];
 		#endif
-		for(int i = 0; i < max(sverb.multiple_store && id != 99 ? sverb.multiple_store : 0, 1); i++) {
+		for(int i = 0; i < max(sverb.multiple_store && id_main != 99 ? sverb.multiple_store : 0, 1); i++) {
 			process->query(query_str);
 		}
 		process->unlock();
 	}
 }
 
-void MySqlStore::query_lock(list<string> *query_str, int id) {
+void MySqlStore::query_lock(list<string> *query_str, int id_main, int id_2) {
 	if(!query_str->size()) {
 		return;
 	}
-	if(qfileConfigEnable(id)) {
+	if(qfileConfigEnable(id_main)) {
 		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
-			query_to_file(iter->c_str(), id);
+			query_to_file(iter->c_str(), id_main);
 		}
 	} else {
-		MySqlStore_process* process = this->find(id);
+		MySqlStore_process* process = this->find(id_main, id_2);
 		process->lock();
 		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
-			for(int i = 0; i < max(sverb.multiple_store && id != 99 ? sverb.multiple_store : 0, 1); i++) {
+			for(int i = 0; i < max(sverb.multiple_store && id_main != 99 ? sverb.multiple_store : 0, 1); i++) {
 				process->query(iter->c_str());
 			}
 		}
@@ -3749,15 +3754,15 @@ void MySqlStore::query_lock(list<string> *query_str, int id) {
 	}
 }
 
-void MySqlStore::query_lock(string query_str, int id) {
-	query_lock(query_str.c_str(), id);
+void MySqlStore::query_lock(string query_str, int id_main, int id_2) {
+	query_lock(query_str.c_str(), id_main, id_2);
 }
 
-void MySqlStore::query_to_file(const char *query_str, int id) {
+void MySqlStore::query_to_file(const char *query_str, int id_main) {
 	if(qfileConfig.terminate) {
 		return;
 	}
-	int idc = !isCloud() ? convIdForQFile(id) : 1;
+	int idc = !isCloud() ? id_main : 1;
 	QFile *qfile;
 	lock_qfiles();
 	if(qfiles.find(idc) == qfiles.end()) {
@@ -3769,7 +3774,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 	unlock_qfiles();
 	qfile->lock();
 	#if DEBUG_STORE_COUNT
-	++_query_to_file_cnt[id];
+	++_query_to_file_cnt[id_main];
 	#endif
 	if(qfile->isOpen() &&
 	   qfile->isExceedPeriod(qfileConfig.period)) {
@@ -3801,7 +3806,7 @@ void MySqlStore::query_to_file(const char *query_str, int id) {
 		unsigned int query_length = query.length();
 		query.append("\n");
 		char buffIdLength[100];
-		snprintf(buffIdLength, sizeof(buffIdLength), "%i/%u:", id, query_length);
+		snprintf(buffIdLength, sizeof(buffIdLength), "%i/%u:", id_main, query_length);
 		qfile->fileZipHandler->write(buffIdLength, strlen(buffIdLength));
 		qfile->fileZipHandler->write((char*)query.c_str(), query.length());
 		u_int64_t actTimeMS = getTimeMS();
@@ -3820,10 +3825,6 @@ string MySqlStore::getQFilename(int idc, u_int64_t actTime) {
 	find_and_replace(dateTime, " ", "T");
 	snprintf(fileName, sizeof(fileName), "%s-%i-%" int_64_format_prefix "lu-%s", QFILE_PREFIX, idc, actTime, dateTime.c_str());
 	return(qfileConfig.getDirectory() + "/" + fileName);
-}
-
-int MySqlStore::convIdForQFile(int id) {
-	return(CONV_ID_FOR_QFILE(id));
 }
 
 bool MySqlStore::existFilenameInQFiles(const char *filename) {
@@ -3885,53 +3886,53 @@ void MySqlStore::setInotifyReadyForLoadFromQFile(bool iNotifyReady) {
 	}
 }
 
-void MySqlStore::addLoadFromQFile(int id, const char *name, 
+void MySqlStore::addLoadFromQFile(int id_main, const char *name, 
 				  int storeThreads, int storeConcatLimit,
 				  MySqlStore *store) {
 	LoadFromQFilesThreadData threadData;
-	threadData.id = id;
+	threadData.id_main = id_main;
 	threadData.name = name;
-	threadData.storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id);
-	threadData.storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id);
+	threadData.storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id_main);
+	threadData.storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id_main);
 	threadData.store = store;
-	loadFromQFilesThreadData[id] = threadData;
+	loadFromQFilesThreadData[id_main] = threadData;
 	LoadFromQFilesThreadInfo *threadInfo = new FILE_LINE(29005) LoadFromQFilesThreadInfo;
 	threadInfo->store = this;
-	threadInfo->id = id;
-	vm_pthread_create("query cache - load",
-			  &loadFromQFilesThreadData[id].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
+	threadInfo->id_main = id_main;
+	vm_pthread_create(("query cache - load " + intToString(id_main)).c_str(),
+			  &loadFromQFilesThreadData[id_main].thread, NULL, this->threadLoadFromQFiles, threadInfo, __FILE__, __LINE__);
 }
 
-bool MySqlStore::fillQFiles(int id) {
+bool MySqlStore::fillQFiles(int id_main) {
 	DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 	if(!dp) {
 		return(false);
 	}
 	char prefix[10];
-	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
+	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id_main);
 	dirent* de;
 	while((de = readdir(dp)) != NULL) {
 		if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
 		QFileData qfileData = parseQFilename(de->d_name);
-		if(qfileData.id) {
-			loadFromQFilesThreadData[qfileData.id].addFile(qfileData.time, de->d_name);
+		if(qfileData.id_main) {
+			loadFromQFilesThreadData[qfileData.id_main].addFile(qfileData.time, de->d_name);
 		}
 	}
 	closedir(dp);
 	return(true);
 }
 
-string MySqlStore::getMinQFile(int id) {
+string MySqlStore::getMinQFile(int id_main) {
 	if(loadFromQFileConfig.inotify) {
 		string qfilename;
-		loadFromQFilesThreadData[id].lock();
-		map<u_int64_t, string>::iterator iter = loadFromQFilesThreadData[id].qfiles_load.begin();
-		if(iter != loadFromQFilesThreadData[id].qfiles_load.end() &&
+		loadFromQFilesThreadData[id_main].lock();
+		map<u_int64_t, string>::iterator iter = loadFromQFilesThreadData[id_main].qfiles_load.begin();
+		if(iter != loadFromQFilesThreadData[id_main].qfiles_load.end() &&
 		   (getTimeMS() - iter->first) > (unsigned)loadFromQFileConfig.period * 2 * 1000) {
 			qfilename = iter->second;
-			loadFromQFilesThreadData[id].qfiles_load.erase(iter);
+			loadFromQFilesThreadData[id_main].qfiles_load.erase(iter);
 		}
-		loadFromQFilesThreadData[id].unlock();
+		loadFromQFilesThreadData[id_main].unlock();
 		if(!qfilename.empty()) {
 			return(loadFromQFileConfig.getDirectory() + "/" + qfilename);
 		}
@@ -3943,7 +3944,7 @@ string MySqlStore::getMinQFile(int id) {
 		u_int64_t minTime = 0;
 		string minTimeFileName;
 		char prefix[10];
-		snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
+		snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id_main);
 		dirent* de;
 		while((de = readdir(dp)) != NULL) {
 			if(strncmp(de->d_name, prefix, strlen(prefix))) continue;
@@ -3962,13 +3963,13 @@ string MySqlStore::getMinQFile(int id) {
 	return("");
 }
 
-int MySqlStore::getCountQFiles(int id) {
+int MySqlStore::getCountQFiles(int id_main) {
 	DIR* dp = opendir(loadFromQFileConfig.getDirectory().c_str());
 	if(!dp) {
 		return(-1);
 	}
 	char prefix[10];
-	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id);
+	snprintf(prefix, sizeof(prefix), "%s-%i-", QFILE_PREFIX, id_main);
 	dirent* de;
 	int counter = 0;
 	while((de = readdir(dp)) != NULL) {
@@ -3979,7 +3980,7 @@ int MySqlStore::getCountQFiles(int id) {
 	return(counter);
 }
 
-bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
+bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck) {
 	bool ok = true;
 	unsigned _lines = 0;
 	if(sverb.qfiles) {
@@ -4019,36 +4020,33 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 				continue;
 			}
 			#if DEBUG_STORE_COUNT
-			++_loadFromQFile_cnt[id];
+			++_loadFromQFile_cnt[id_main];
 			#endif
 			++_lines;
 			if(!onlyCheck) {
-				int minId = id % 10 ? id : id + 1;
-				int maxId = minId + loadFromQFilesThreadData[id].storeThreads - 1;
 				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
-				int queryThreadId = minId;
-				ssize_t queryThreadMinSize = -1;
-				for(int qtid = minId; qtid <= maxId; qtid++) {
-					int qtSize = this->getSize(qtid);
+				int id_2 = 0;
+				ssize_t id_2_minSize = -1;
+				for(int i = 0; i < loadFromQFilesThreadData[id_main].storeThreads; i++) {
+					int qtSize = this->getSize(id_main, i);
 					if(qtSize < 0) {
 						qtSize = 0;
 					}
-					if(queryThreadMinSize == -1 ||
-					   qtSize < queryThreadMinSize) {
-						queryThreadId = qtid;
-						queryThreadMinSize = qtSize;
+					if(id_2_minSize == -1 || qtSize < id_2_minSize) {
+						id_2 = i;
+						id_2_minSize = qtSize;
 					}
 				}
-				if(!check(queryThreadId)) {
-					find(queryThreadId, loadFromQFilesThreadData[id].store);
-					setEnableTerminatingIfEmpty(queryThreadId, true);
-					setEnableTerminatingIfSqlError(queryThreadId, true);
-					if(loadFromQFilesThreadData[id].storeConcatLimit) {
-						setConcatLimit(queryThreadId, loadFromQFilesThreadData[id].storeConcatLimit);
+				if(!check(id_main, id_2)) {
+					find(id_main, id_2, loadFromQFilesThreadData[id_main].store);
+					setEnableTerminatingIfEmpty(id_main, id_2, true);
+					setEnableTerminatingIfSqlError(id_main, id_2, true);
+					if(loadFromQFilesThreadData[id_main].storeConcatLimit) {
+						setConcatLimit(id_main, id_2, loadFromQFilesThreadData[id_main].storeConcatLimit);
 					}
 				}
 				/*if(sverb.qfiles) {
-					cout << " ** send query id: " << id << " to thread: " << queryThreadId << " / " << getSize(queryThreadId) << endl;
+					cout << " ** send query id: " << id_main << " to thread: " << id_main << "_" << id_2 << " / " << getSize(id_main, id_2) << endl;
 				}*/
 				extern int opt_query_cache_check_utf;
 				if(opt_query_cache_check_utf) {
@@ -4057,7 +4055,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id, bool onlyCheck) {
 						utfConverter._remove_no_ascii(query.c_str());
 					}
 				}
-				query_lock(query.c_str(), queryThreadId);
+				query_lock(query.c_str(), id_main, id_2);
 			}
 		}
 	}
@@ -4084,25 +4082,25 @@ void MySqlStore::addFileFromINotify(const char *filename) {
 		USLEEP(100000);
 	}
 	QFileData qfileData = parseQFilename(filename);
-	if(qfileData.id) {
+	if(qfileData.id_main) {
 		if(sverb.qfiles) {
 			cout << "*** INOTIFY QFILE " << filename 
 			     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 		}
-		loadFromQFilesThreadData[qfileData.id].addFile(qfileData.time, qfileData.filename.c_str());
+		loadFromQFilesThreadData[qfileData.id_main].addFile(qfileData.time, qfileData.filename.c_str());
 	}
 }
 
 MySqlStore::QFileData MySqlStore::parseQFilename(const char *filename) {
 	QFileData qfileData;
-	qfileData.id = 0;
+	qfileData.id_main = 0;
 	qfileData.time = 0;
 	if(!strncmp(filename, QFILE_PREFIX, strlen(QFILE_PREFIX))) {
-		int id;
+		int id_main;
 		u_int64_t time;
-		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%" int_64_format_prefix "lu", &id, &time) == 2) {
+		if(sscanf(filename + strlen(QFILE_PREFIX) , "-%i-%" int_64_format_prefix "lu", &id_main, &time) == 2) {
 			qfileData.filename = filename;
-			qfileData.id = id;
+			qfileData.id_main = id_main;
 			qfileData.time = time;
 		}
 	}
@@ -4115,7 +4113,7 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 	int counter = 0;
 	if(!processes) {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-			int countQFiles = getCountQFiles(iter->second.id);
+			int countQFiles = getCountQFiles(iter->second.id_main);
 			if(countQFiles > 0) {
 				if(counter) {
 					outStr << ", ";
@@ -4125,14 +4123,18 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 			}
 		}
 	} else {
-		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); iter++) {
-			size_t size = iter->second->getSize();
-			if(size > 0) {
-				if(counter) {
-					outStr << ",";
+		map<int, map<int, MySqlStore_process*> >::iterator iter1;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				size_t size = iter2->second->getSize();
+				if(size > 0) {
+					if(counter) {
+						outStr << ",";
+					}
+					outStr << iter1->first << "_" << iter2->first << ":" << size;
+					++counter;
 				}
-				outStr << iter->first << ":" << size;
-				++counter;
 			}
 		}
 	}
@@ -4142,109 +4144,124 @@ string MySqlStore::getLoadFromQFilesStat(bool processes) {
 unsigned MySqlStore::getLoadFromQFilesCount() {
 	unsigned count = 0;
 	for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
-		count += getCountQFiles(iter->second.id);
+		count += getCountQFiles(iter->second.id_main);
 	}
 	return(count);
 }
 
-void MySqlStore::lock(int id) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::lock(int id_main, int id_2) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->lock();
 }
 
-void MySqlStore::unlock(int id) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::unlock(int id_main, int id_2) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->unlock();
 }
 
-void MySqlStore::setEnableTerminatingDirectly(int id, bool enableTerminatingDirectly) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableTerminatingDirectly(int id_main, int id_2, bool enableTerminatingDirectly) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	if(id > 0) {
-		MySqlStore_process* process = this->find(id);
+	if(id_main > 0) {
+		MySqlStore_process* process = this->find(id_main, id_2);
 		process->setEnableTerminatingDirectly(enableTerminatingDirectly);
 	} else {
 		this->lock_processes();
-		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-			iter->second->setEnableTerminatingDirectly(enableTerminatingDirectly);
+		map<int, map<int, MySqlStore_process*> >::iterator iter1;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				iter2->second->setEnableTerminatingDirectly(enableTerminatingDirectly);
+			}
 		}
 		this->unlock_processes();
 	}
 }
 
-void MySqlStore::setEnableTerminatingIfEmpty(int id, bool enableTerminatingIfEmpty) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableTerminatingIfEmpty(int id_main, int id_2, bool enableTerminatingIfEmpty) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	if(id > 0) {
-		MySqlStore_process* process = this->find(id);
+	if(id_main > 0) {
+		MySqlStore_process* process = this->find(id_main, id_2);
 		process->setEnableTerminatingIfEmpty(enableTerminatingIfEmpty);
 	} else {
 		this->lock_processes();
-		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-			iter->second->setEnableTerminatingIfEmpty(enableTerminatingIfEmpty);
+		map<int, map<int, MySqlStore_process*> >::iterator iter1;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				iter2->second->setEnableTerminatingIfEmpty(enableTerminatingIfEmpty);
+			}
 		}
 		this->unlock_processes();
 	}
 }
 
-void MySqlStore::setEnableTerminatingIfSqlError(int id, bool enableTerminatingIfSqlError) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableTerminatingIfSqlError(int id_main, int id_2, bool enableTerminatingIfSqlError) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	if(id > 0) {
-		MySqlStore_process* process = this->find(id);
-		process->setEnableTerminatingIfEmpty(enableTerminatingIfSqlError);
+	if(id_main > 0) {
+		MySqlStore_process* process = this->find(id_main, id_2);
+		process->setEnableTerminatingIfSqlError(enableTerminatingIfSqlError);
 	} else {
 		this->lock_processes();
-		for(map<int, MySqlStore_process*>::iterator iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-			iter->second->setEnableTerminatingIfEmpty(enableTerminatingIfSqlError);
+		map<int, map<int, MySqlStore_process*> >::iterator iter1;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				iter2->second->setEnableTerminatingIfSqlError(enableTerminatingIfSqlError);
+			}
 		}
 		this->unlock_processes();
 	}
 }
 
-void MySqlStore::setEnableAutoDisconnect(int id, bool enableAutoDisconnect) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableAutoDisconnect(int id_main, int id_2, bool enableAutoDisconnect) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->setEnableAutoDisconnect(enableAutoDisconnect);
 }
 
-void MySqlStore::setConcatLimit(int id, int concatLimit) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setConcatLimit(int id_main, int id_2, int concatLimit) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->setConcatLimit(concatLimit);
 }
 
-int MySqlStore::getConcatLimit(int id) {
-	MySqlStore_process* process = this->find(id);
+int MySqlStore::getConcatLimit(int id_main, int id_2) {
+	MySqlStore_process* process = this->find(id_main, id_2);
+	if(id_2 == -1 && !process) {
+		return(0);
+	}
 	return(process->getConcatLimit());
 }
 
-void MySqlStore::setEnableTransaction(int id, bool enableTransaction) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableTransaction(int id_main, int id_2, bool enableTransaction) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->setEnableTransaction(enableTransaction);
 }
 
-void MySqlStore::setEnableFixDeadlock(int id, bool enableFixDeadlock) {
-	if(qfileConfigEnable(id)) {
+void MySqlStore::setEnableFixDeadlock(int id_main, int id_2, bool enableFixDeadlock) {
+	if(qfileConfigEnable(id_main)) {
 		return;
 	}
-	MySqlStore_process* process = this->find(id);
+	MySqlStore_process* process = this->find(id_main, id_2);
 	process->setEnableFixDeadlock(enableFixDeadlock);
 }
 
@@ -4252,18 +4269,32 @@ void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {
 	this->defaultConcatLimit = defaultConcatLimit;
 }
 
-MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
+MySqlStore_process *MySqlStore::find(int id_main, int id_2, MySqlStore *store) {
 	if(isCloud()) {
-		id = 1;
+		id_main = 1;
+		if(id_2 >= 0) {
+			id_2 = 0;
+		}
 	}
 	this->lock_processes();
-	MySqlStore_process* process = this->processes[id];
+	if(id_2 == -1) {
+		MySqlStore_process* process = NULL;
+		map<int, map<int, MySqlStore_process*> >::iterator iter = this->processes.find(id_main);
+		if(iter != this->processes.end()) {
+			if(iter->second.begin() != iter->second.end()) {
+				process = iter->second.begin()->second;
+			}
+		}
+		this->unlock_processes();
+		return(process);
+	}
+	MySqlStore_process* process = this->processes[id_main][id_2];
 	if(process) {
 		this->unlock_processes();
 		return(process);
 	}
 	process = new FILE_LINE(29007) MySqlStore_process(
-						id, store ? store : this,
+						id_main, id_2, store ? store : this,
 						store ? store->host.c_str() : this->host.c_str(), 
 						store ? store->user.c_str() : this->user.c_str(), 
 						store ? store->password.c_str() : this->password.c_str(), 
@@ -4276,101 +4307,142 @@ MySqlStore_process *MySqlStore::find(int id, MySqlStore *store) {
 	process->setEnableTerminatingDirectly(this->enableTerminatingDirectly);
 	process->setEnableTerminatingIfEmpty(this->enableTerminatingIfEmpty);
 	process->setEnableTerminatingIfSqlError(this->enableTerminatingIfSqlError);
-	this->processes[id] = process;
+	this->processes[id_main][id_2] = process;
 	this->unlock_processes();
 	return(process);
 }
 
-MySqlStore_process *MySqlStore::check(int id) {
+MySqlStore_process *MySqlStore::check(int id_main, int id_2) {
 	if(isCloud()) {
-		id = 1;
+		id_main = 1;
+		id_2 = 0;
 	}
 	this->lock_processes();
-	map<int, MySqlStore_process*>::iterator iter = this->processes.find(id);
-	if(iter == this->processes.end()) {
+	map<int, map<int, MySqlStore_process*> >::iterator iter1 = this->processes.find(id_main);
+	if(iter1 == this->processes.end()) {
 		this->unlock_processes();
 		return(NULL);
-	} else {
-		MySqlStore_process* process = iter->second;
-		this->unlock_processes();
-		return(process);
 	}
+	map<int, MySqlStore_process*>::iterator iter2 = iter1->second.find(id_2);
+	if(iter2 == iter1->second.end()) {
+		this->unlock_processes();
+		return(NULL);
+	}
+	MySqlStore_process* process = iter2->second;
+	this->unlock_processes();
+	return(process);
 }
 
 size_t MySqlStore::getAllSize(bool lock) {
 	size_t size = 0;
 	map<int, MySqlStore_process*>::iterator iter;
 	this->lock_processes();
-	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-		if(lock) {
-			iter->second->lock();
-		}
-		size += iter->second->getSize();
-		if(lock) {
-			iter->second->unlock();
+	map<int, map<int, MySqlStore_process*> >::iterator iter1;
+	map<int, MySqlStore_process*>::iterator iter2;
+	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			if(lock) {
+				iter2->second->lock();
+			}
+			size += iter2->second->getSize();
+			if(lock) {
+				iter2->second->unlock();
+			}
 		}
 	}
 	this->unlock_processes();
 	return(size);
 }
 
-int MySqlStore::getSize(int id, bool lock) {
-	MySqlStore_process *process = this->check(id);
-	if(process) {
+int MySqlStore::getSize(int id_main, int id_2, bool lock) {
+	if(id_2 == -1) {
+		int size = -1;
 		if(lock) {
-			process->lock();
+			this->lock_processes();
 		}
-		int size = process->getSize();
+		map<int, map<int, MySqlStore_process*> >::iterator iter1 = this->processes.find(id_main);
+		if(iter1 != this->processes.end()) {
+			size = 0;
+			map<int, MySqlStore_process*>::iterator iter2;
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				if(lock) {
+					iter2->second->lock();
+				}
+				size += iter2->second->getSize();
+				if(lock) {
+					iter2->second->unlock();
+				}
+			}
+		}
 		if(lock) {
-			process->unlock();
+			this->unlock_processes();
 		}
 		return(size);
 	} else {
-		return(-1);
-	}
-}
-
-int MySqlStore::getSizeMult(int n, ...) {
-	int size = -1;
-	va_list vl;
-	va_start(vl, n);
-	for(int i = 0; i < n; i++) {
-		int id = va_arg(vl, int);
-		int _size = this->getSize(id);
-		if(_size >= 0) {
-			if(size < 0) {
-				size = 0;
+		MySqlStore_process *process = this->check(id_main, id_2);
+		if(process) {
+			if(lock) {
+				process->lock();
 			}
-			size += _size;
-		}
-	}
-	va_end(vl);
-	return(size);
-}
-
-int MySqlStore::getSizeVect(int id1, int id2, bool /*lock*/) {
-	int size = -1;
-	for(int id = id1; id <= id2; id++) {
-		int _size = this->getSize(id);
-		if(_size >= 0) {
-			if(size < 0) {
-				size = 0;
+			int size = process->getSize();
+			if(lock) {
+				process->unlock();
 			}
-			size += _size;
+			return(size);
 		}
 	}
-	return(size);
+	return(-1);
 }
 
-int MySqlStore::getActiveIdsVect(int id1, int id2, bool /*lock*/) {
-	int activeIds  = 0;
-	for(int id = id1; id <= id2; id++) {
-		int _size = this->getSize(id);
-		if(_size > 0) {
-			++activeIds;
+int MySqlStore::getCountActive(int id_main, bool lock) {
+	int count_active = -1;
+	if(lock) {
+		this->lock_processes();
+	}
+	map<int, map<int, MySqlStore_process*> >::iterator iter1 = this->processes.find(id_main);
+	if(iter1 != this->processes.end()) {
+		count_active = 0;
+		map<int, MySqlStore_process*>::iterator iter2;
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			if(lock) {
+				iter2->second->lock();
+			}
+			if(iter2->second->getSize() > 0) {
+				++count_active;
+			}
+			if(lock) {
+				iter2->second->unlock();
+			}
 		}
 	}
-	return(activeIds);
+	if(lock) {
+		this->unlock_processes();
+	}
+	return(count_active);
+}
+
+void MySqlStore::fillSizeMap(map<int, int> *size_map, map<int, int> *size_map_by_id_2, bool lock) {
+	if(lock) {
+		this->lock_processes();
+	}
+	map<int, map<int, MySqlStore_process*> >::iterator iter1;
+	map<int, MySqlStore_process*>::iterator iter2;
+	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			size_t size = iter2->second->getSize();
+			if(size > 0) {
+				if(size_map) {
+					(*size_map)[iter1->first] += size;
+				}
+				if(size_map_by_id_2) {
+					(*size_map_by_id_2)[iter1->first * 100 + iter2->first] += size;
+				}
+			}
+		}
+	}
+	if(lock) {
+		this->unlock_processes();
+	}
 }
 
 string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, bool cleanAfterExport) {
@@ -4389,9 +4461,12 @@ string MySqlStore::exportToFile(FILE *file, string fileName, bool sqlFormat, boo
 	fputs("SET NAMES UTF8;\n", file);
 	fprintf(file, "USE %s;\n", mysql_database);
 	this->lock_processes();
-	map<int, MySqlStore_process*>::iterator iter;
-	for(iter = this->processes.begin(); iter != this->processes.end(); ++iter) {
-		iter->second->exportToFile(file, sqlFormat, cleanAfterExport);
+	map<int, map<int, MySqlStore_process*> >::iterator iter1;
+	map<int, MySqlStore_process*>::iterator iter2;
+	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
+		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+			iter2->second->exportToFile(file, sqlFormat, cleanAfterExport);
+		}
 	}
 	this->unlock_processes();
 	if(openFile) {
@@ -4431,7 +4506,7 @@ void MySqlStore::autoloadFromSqlVmExport() {
 					continue;
 				}
 				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
-				this->query(query.c_str(), idProcess);
+				this->query(query.c_str(), idProcess, 0);
 				++counter;
 			}
 			delete [] buffQuery;
@@ -4447,26 +4522,26 @@ string MySqlStore::getSqlVmExportDirectory() {
 	return(getSqlVmExportDir());
 }
 
-int MySqlStore::convStoreId(int id) {
-	int threadId = id + (id % 10 ? 0 : 1);
-	int maxThreads = getMaxThreadsForStoreId(id);
+int MySqlStore::findMinId2(int id_main) {
+	int id_2 = 0;
+	int maxThreads = getMaxThreadsForStoreId(id_main);
 	if(maxThreads > 1) {
-		ssize_t queryThreadMinSize = -1;
+		ssize_t id_2_minSize = -1;
 		for(int i = 0; i < maxThreads; i++) {
-			int qtSize = this->getSize(id + i + 1);
+			int qtSize = this->getSize(id_main, i);
 			if(qtSize < 0) {
 				qtSize = 0;
 			}
-			if(queryThreadMinSize == -1 || qtSize < queryThreadMinSize) {
-				threadId = id  + i + 1;
-				queryThreadMinSize = qtSize;
+			if(id_2_minSize == -1 || qtSize < id_2_minSize) {
+				id_2 = i;
+				id_2_minSize = qtSize;
 			}
 		}
 	}
-	return(threadId);
+	return(id_2);
 }
 
-int MySqlStore::getMaxThreadsForStoreId(int id) {
+int MySqlStore::getMaxThreadsForStoreId(int id_main) {
 	extern int opt_mysqlstore_max_threads_cdr;
 	extern int opt_mysqlstore_max_threads_message;
 	extern int opt_mysqlstore_max_threads_register;
@@ -4476,38 +4551,38 @@ int MySqlStore::getMaxThreadsForStoreId(int id) {
 	extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 	extern int opt_mysqlstore_max_threads_charts_cache;
 	int maxThreads = 1;
-	switch((id / 10) * 10) {
-	case (STORE_PROC_ID_CDR_1 / 10) * 10:
+	switch(id_main) {
+	case STORE_PROC_ID_CDR:
 		maxThreads = opt_mysqlstore_max_threads_cdr;
 		break;
-	case (STORE_PROC_ID_MESSAGE_1 / 10) * 10:
+	case STORE_PROC_ID_MESSAGE:
 		maxThreads = opt_mysqlstore_max_threads_message;
 		break;
-	case (STORE_PROC_ID_REGISTER_1 / 10) * 10:
+	case STORE_PROC_ID_REGISTER:
 		maxThreads = opt_mysqlstore_max_threads_register;
 		break;
-	case (STORE_PROC_ID_HTTP_1 / 10) * 10:
+	case STORE_PROC_ID_HTTP:
 		maxThreads = opt_mysqlstore_max_threads_http;
 		break;
-	case (STORE_PROC_ID_WEBRTC_1 / 10) * 10:
+	case STORE_PROC_ID_WEBRTC:
 		maxThreads = opt_mysqlstore_max_threads_webrtc;
 		break;
-	case (STORE_PROC_ID_IPACC_1 / 10) * 10:
+	case STORE_PROC_ID_IPACC:
 		maxThreads = opt_mysqlstore_max_threads_ipacc_base;
 		break;
-	case (STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10:
-	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
+	case STORE_PROC_ID_IPACC_AGR_INTERVAL:
+	case STORE_PROC_ID_IPACC_AGR2_HOUR:
 		maxThreads = opt_mysqlstore_max_threads_ipacc_agreg2;
 		break;
-	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
-	case (STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10:
+	case STORE_PROC_ID_CHARTS_CACHE:
+	case STORE_PROC_ID_CHARTS_CACHE_REMOTE:
 		maxThreads = opt_mysqlstore_max_threads_charts_cache;
 		break;
 	}
 	return(maxThreads);
 }
 
-int MySqlStore::getConcatLimitForStoreId(int id) {
+int MySqlStore::getConcatLimitForStoreId(int id_main) {
 	extern int opt_mysqlstore_concat_limit_cdr;;
 	extern int opt_mysqlstore_concat_limit_message;
 	extern int opt_mysqlstore_concat_limit_register;
@@ -4516,29 +4591,29 @@ int MySqlStore::getConcatLimitForStoreId(int id) {
 	extern int opt_mysqlstore_concat_limit_ipacc;
 	extern int opt_mysqlstore_concat_limit;
 	int concatLimit = 0;
-	switch((id / 10) * 10) {
-	case (STORE_PROC_ID_CDR_1 / 10) * 10:
+	switch(id_main) {
+	case STORE_PROC_ID_CDR:
 		concatLimit = opt_mysqlstore_concat_limit_cdr;
 		break;
-	case (STORE_PROC_ID_MESSAGE_1 / 10) * 10:
+	case STORE_PROC_ID_MESSAGE:
 		concatLimit = opt_mysqlstore_concat_limit_message;
 		break;
-	case (STORE_PROC_ID_REGISTER_1 / 10) * 10:
+	case STORE_PROC_ID_REGISTER:
 		concatLimit = opt_mysqlstore_concat_limit_register;
 		break;
-	case (STORE_PROC_ID_HTTP_1 / 10) * 10:
+	case STORE_PROC_ID_HTTP:
 		concatLimit = opt_mysqlstore_concat_limit_http;
 		break;
-	case (STORE_PROC_ID_WEBRTC_1 / 10) * 10:
+	case STORE_PROC_ID_WEBRTC:
 		concatLimit = opt_mysqlstore_concat_limit_webrtc;
 		break;
-	case (STORE_PROC_ID_IPACC_1 / 10) * 10:
-	case (STORE_PROC_ID_IPACC_AGR_INTERVAL / 10) * 10:
-	case (STORE_PROC_ID_IPACC_AGR2_HOUR_1 / 10) * 10:
+	case STORE_PROC_ID_IPACC:
+	case STORE_PROC_ID_IPACC_AGR_INTERVAL:
+	case STORE_PROC_ID_IPACC_AGR2_HOUR:
 		concatLimit = opt_mysqlstore_concat_limit_ipacc;
 		break;
-	case (STORE_PROC_ID_CHARTS_CACHE_1 / 10) * 10:
-	case (STORE_PROC_ID_CHARTS_CACHE_REMOTE1 / 10) * 10:
+	case STORE_PROC_ID_CHARTS_CACHE:
+	case STORE_PROC_ID_CHARTS_CACHE_REMOTE:
 		concatLimit = opt_mysqlstore_concat_limit;
 		break;
 	}
@@ -4569,11 +4644,11 @@ void *MySqlStore::threadQFilesCheckPeriod(void *arg) {
 
 void *MySqlStore::threadLoadFromQFiles(void *arg) {
 	LoadFromQFilesThreadInfo *threadInfo = (LoadFromQFilesThreadInfo*)arg;
-	int id = threadInfo->id;
+	int id_main = threadInfo->id_main;
 	MySqlStore *me = threadInfo->store;
 	delete threadInfo;
 	if(me->loadFromQFileConfig.inotify) {
-		me->fillQFiles(id);
+		me->fillQFiles(id_main);
 	}
 	while(!is_terminating()) {
 		extern int opt_blockqfile;
@@ -4581,24 +4656,22 @@ void *MySqlStore::threadLoadFromQFiles(void *arg) {
 			sleep(1);
 			continue;
 		}
-		string minFile = me->getMinQFile(id);
-		int minId = id % 10 ? id : id + 1;
-		int maxId = minId + me->loadFromQFilesThreadData[id].storeThreads - 1;
+		string minFile = me->getMinQFile(id_main);
 		if(minFile.empty()) {
 			USLEEP(250000);
 		} else {
 			extern int opt_query_cache_speed;
 			while((me->isCloud() ?
-				(me->getSize(id) > me->getConcatLimit(id)) :
+				(me->getSize(id_main, -1) > me->getConcatLimit(id_main, -1)) :
 			       opt_query_cache_speed ? 
-			        (me->getActiveIdsVect(minId, maxId) == me->loadFromQFilesThreadData[id].storeThreads) :
-			        (me->getSizeVect(minId, maxId) > 0)) && 
+			        (me->getCountActive(id_main) >= me->loadFromQFilesThreadData[id_main].storeThreads) :
+			        (me->getSize(id_main, -1) > 0)) && 
 			      !is_terminating()) {
 				USLEEP(100000);
 			}
 			if(!is_terminating()) {
 				if(me->existFilenameInQFiles(minFile.c_str()) ||
-				   !me->loadFromQFile(minFile.c_str(), id)) {
+				   !me->loadFromQFile(minFile.c_str(), id_main)) {
 					USLEEP(250000);
 				}
 			}
@@ -8067,9 +8140,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				if(rows.size() >= 100) {
 					string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
 					sqlStore->query(insertQuery.c_str(), 
-							insertThreads > 1 ?
-								((counterInsert++ % insertThreads) + 1) :
-								1);
+							insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 					rows.clear();
 				}
 				while(!is_terminating() && sqlStore->getAllSize() > 1000) {
@@ -8079,9 +8150,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			if(is_terminating() < 2 && rows.size()) {
 				string insertQuery = this->insertQuery(tableName, &rows, false, true, true);
 				sqlStore->query(insertQuery.c_str(), 
-						insertThreads > 1 ?
-							((counterInsert++ % insertThreads) + 1) :
-							1);
+						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();
 			}
 		}
@@ -8246,9 +8315,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			if(rows.size() >= 100) {
 				string insertQuery = this->insertQuery(slaveTableName, &rows, false, true, true);
 				sqlStore->query(insertQuery.c_str(), 
-						insertThreads > 1 ?
-							((counterInsert++ % insertThreads) + 1) :
-							1);
+						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();
 			}
 			while(!is_terminating() && sqlStore->getAllSize() > 1000) {
@@ -8264,9 +8331,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			if(rows.size()) {
 				string insertQuery = this->insertQuery(slaveTableName, &rows, false, true, true);
 				sqlStore->query(insertQuery.c_str(), 
-						insertThreads > 1 ?
-							((counterInsert++ % insertThreads) + 1) :
-							1);
+						insertThreads > 1 ? ((counterInsert++ % insertThreads) + 1) : 1, 0);
 				rows.clear();
 			}
 		}
@@ -9094,7 +9159,7 @@ void cLogSensor::_save() {
 		++counter;
 	}
 	if(sqlStore && !query_str.empty()) {
-		sqlStore->query_lock(query_str, STORE_PROC_ID_LOG_SENSOR);
+		sqlStore->query_lock(query_str, STORE_PROC_ID_LOG_SENSOR, 0);
 	}
 	delete sqlDb;
 }
@@ -9152,28 +9217,40 @@ bool dbDataIsSet() {
 #if DEBUG_STORE_COUNT
 void out_db_cnt() {
 	cout << "* _query_to_file_cnt" << endl;
+	int sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _query_to_file_cnt.begin(); iter != _query_to_file_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 	cout << "* _loadFromQFile_cnt" << endl;
+	sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _loadFromQFile_cnt.begin(); iter != _loadFromQFile_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 	cout << "* _query_lock_cnt" << endl;
+	sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _query_lock_cnt.begin(); iter != _query_lock_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 	cout << "* _store_cnt" << endl;
+	sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _store_cnt.begin(); iter != _store_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 	cout << "* _store_old_cnt" << endl;
+	sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _store_old_cnt.begin(); iter != _store_old_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 	cout << "* _charts_cache_cnt" << endl;
+	sum = 0;
 	for(map<int, u_int64_t>::iterator iter = _charts_cache_cnt.begin(); iter != _charts_cache_cnt.end(); iter++) {
-		cout << iter->first << " : " << iter->second << endl;
+		sum += iter->second;
+		cout << iter->first << " : " << iter->second << " s " << sum << endl;
 	}
 }
 #endif

@@ -783,7 +783,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 		insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT +
 			     sqlDb->insertQuery("chart_sniffer_series_cache", cache_row, false, false, true, &cache_row_update));
 	}
-	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE_1);
+	sqlStore->query_lock(insert_str.c_str(), STORE_PROC_ID_CHARTS_CACHE, 0);
 	++store_counter;
 }
 

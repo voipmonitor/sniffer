@@ -264,7 +264,7 @@ void CacheNumber_location::saveNumber(const char *number, vmIP number_ip, const 
 		}
 		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 				     sqlDb->updateQuery(getTable(domain), row, cond, false, true)),
-				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, 0);
 	} else {
 		row.add(string_size(number, 30), "number");
 		row.add(number_ip, "number_ip", false, sqlDb, getTable(domain).c_str());
@@ -273,7 +273,7 @@ void CacheNumber_location::saveNumber(const char *number, vmIP number_ip, const 
 		}
 		sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 				     sqlDb->insertQuery(getTable(domain), row, false, true, true)),
-				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS);
+				     STORE_PROC_ID_CACHE_NUMBERS_LOCATIONS, 0);
 	}
 }
 
@@ -818,7 +818,7 @@ void FraudAlert::evAlert(FraudAlertInfo *alertInfo) {
 	row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "id_sensor", opt_id_sensor <= 0);
 	sqlStore->query_lock(MYSQL_ADD_QUERY_END(
 			     sqlDbFraud->insertQuery("fraud_alert_info", row)), 
-			     STORE_PROC_ID_FRAUD_ALERT_INFO);
+			     STORE_PROC_ID_FRAUD_ALERT_INFO, 0);
 	delete alertInfo;
 }
 

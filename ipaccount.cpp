@@ -285,8 +285,8 @@ void Ipacc::save(unsigned int interval_time, t_ipacc_buffer *ipacc_buffer, s_cac
 							iter->first.voip,
 							opt_ipacc_sniffer_agregate ? 0 : 1);
 						sqlStore->query_lock(insertQueryBuff, 
-								     STORE_PROC_ID_IPACC_1 + 
-								     (opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0));
+								     STORE_PROC_ID_IPACC,
+								     opt_ipacc_sniffer_agregate ? _counter % opt_mysqlstore_max_threads_ipacc_base : 0);
 					} else {
 						SqlDb_row row;
 						string ipacc_table = "ipacc";
@@ -1016,7 +1016,8 @@ void IpaccAgreg::save(unsigned int time_interval) {
 			iter1->second->packets_voip_in + iter1->second->packets_voip_out);
 		sqlStore->query_lock(insertQueryBuff,
 				     i == 0 ? STORE_PROC_ID_IPACC_AGR_INTERVAL :
-				     (i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY));
+				     (i == 1 ? STORE_PROC_ID_IPACC_AGR_HOUR : STORE_PROC_ID_IPACC_AGR_DAY),
+				     0);
 	}
 	/*
 	sqlStore->unlock(
@@ -1128,7 +1129,7 @@ void IpaccAgreg::save(unsigned int time_interval) {
 				iter_data->data->packets_voip_out,
 				iter_data->data->packets_voip_in + iter_data->data->packets_voip_out);
 			sqlStore->query_lock(insertQueryBuff,
-					     STORE_PROC_ID_IPACC_AGR2_HOUR_1 +
+					     STORE_PROC_ID_IPACC_AGR2_HOUR,
 					     (_counter % opt_mysqlstore_max_threads_ipacc_agreg2));
 			++_counter;
 			++_counter2;
