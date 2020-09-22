@@ -1661,7 +1661,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						first = false;
 					}
 					if(opt_rrd) {
-						for(map<int, int>::iterator iter = size_map.begin(); iter != size_map_by_id_2.end(); iter++) {
+						for(map<int, int>::iterator iter = size_map.begin(); iter != size_map.end(); iter++) {
 							int id_main = iter->first;
 							int size = iter->second;
 							const char *id_main_rrd_str = 
