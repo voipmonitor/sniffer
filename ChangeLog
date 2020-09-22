@@ -4345,3 +4345,4 @@ version 1.2
 - support for graph compress via gzstream library (included)
 - new long options (--mysql-user, etc.)
 - add support for pid file to make start scripts happy (thanks Vladislav Krakhalev)
+
