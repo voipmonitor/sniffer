@@ -1268,6 +1268,34 @@ Call::is_multiple_to_branch() {
 	return(false);
 }
 
+bool
+Call::all_invite_is_multibranch(vmIP saddr) {
+	if(invite_sdaddr.size() < 2) {
+		return(false);
+	}
+	list<Call::sInviteSD_Addr>::iterator iter1;
+	list<Call::sInviteSD_Addr>::iterator iter2;
+	unsigned int counter1 = 0;
+	unsigned int counter2 = 0;
+	for(iter1 = invite_sdaddr.begin(); iter1 != invite_sdaddr.end(); iter1++) {
+		if(iter1->saddr == saddr) {
+			++counter1;
+			counter2 = 0;
+			for(iter2 = invite_sdaddr.begin(); iter2 != invite_sdaddr.end(); iter2++) {
+				if(iter2->saddr == saddr) {
+					++counter2;
+					if(counter2 > counter1) {
+						if(iter1->called == iter2->called || iter1->branch == iter2->branch) {
+							return(false);
+						}
+					}
+				}
+			}
+		}
+	}
+	return(counter1 >= 1);
+}
+
 bool 
 Call::to_is_canceled(char *to) {
 	for(int i = 0; i < ipport_n; i++) {

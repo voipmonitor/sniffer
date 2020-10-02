@@ -563,6 +563,7 @@ public:
 		string caller;
 		string called;
 		string called_invite;
+		string branch;
 	};
 	struct sSipResponse {
 		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
@@ -968,6 +969,7 @@ public:
 	int get_index_by_iscaller(int iscaller);
 	
 	bool is_multiple_to_branch();
+	bool all_invite_is_multibranch(vmIP saddr);
 	bool to_is_canceled(char *to);
 	string get_to_not_canceled();
 

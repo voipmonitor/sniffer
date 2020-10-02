@@ -3362,6 +3362,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &invite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &invite_sd.called_invite, ppntt_invite, ppndt_called);
+					detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+					invite_sd.branch = branch;
 				}
 				call->invite_sdaddr.push_back(invite_sd);
 				inviteSdaddrIndex = call->invite_sdaddr.size() - 1;
@@ -3385,6 +3387,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &rinvite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &rinvite_sd.called_invite, ppntt_invite, ppndt_called);
+					detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+					rinvite_sd.branch = branch;
 					call->rinvite_sdaddr.push_back(rinvite_sd);
 					list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.end();
 					--riter;
@@ -3944,8 +3948,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->proxy_add(packetS->saddr_());
 			}
 			if(packetS->daddr_() != call->getSipcallerip() && packetS->daddr_() != call->getSipcalledip() && !call->in_proxy(packetS->daddr_())) {
-				call->proxy_add(call->getSipcalledip());
-				call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+				if(!(opt_sdp_check_direction_ext &&
+				     packetS->saddr_() == call->getSipcallerip() && call->all_invite_is_multibranch(packetS->saddr_()))) {
+					call->proxy_add(call->getSipcalledip());
+					call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+				}
 			}
 		}
 		/* old version
