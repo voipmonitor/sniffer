@@ -539,6 +539,7 @@ int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
+bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
 int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
 int opt_pcap_dump_tar_sip_level = 6;
@@ -5264,7 +5265,7 @@ void test_alloc_speed_tc() {
 void test_untar() {
 	Tar tar;
 	tar.tar_open("/var/spool/voipmonitor_local/2015-01-30/19/26/SIP/sip_2015-01-30-19-26.tar", O_RDONLY);
-	tar.tar_read("1309960312.pcap.*", "1309960312.pcap", 659493, "cdr");
+	tar.tar_read("1309960312.pcap", 659493, "cdr");
 }
 
 void test_http_dumper() {
@@ -6700,6 +6701,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42187) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)));
 			addConfigItem(new FILE_LINE(42188) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("tar_use_hash_instead_of_long_callid", &opt_pcap_dump_tar_use_hash_instead_of_long_callid));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_file_permission", opt_spooldir_file_permission, sizeof(opt_spooldir_file_permission)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_dir_permission", opt_spooldir_dir_permission, sizeof(opt_spooldir_dir_permission)));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_owner", opt_spooldir_owner, sizeof(opt_spooldir_owner)));
@@ -10906,6 +10908,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tar", NULL))) {
 		opt_pcap_dump_tar = yesno(value);
+	}
+	if((value = ini.GetValue("general", "tar_use_hash_instead_of_long_callid", NULL))) {
+		opt_pcap_dump_tar_use_hash_instead_of_long_callid = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tar_maxthreads", NULL))) {
 		opt_pcap_dump_tar_threads = atoi(value);

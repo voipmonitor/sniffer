@@ -38,6 +38,12 @@
 
 #define TAR_CHUNK_KB	128
 
+#define TAR_FILENAME_LENGTH 100u
+#define TAR_FILENAME_LENGTH_RESERVE 8u
+#define TAR_FILENAME_RESERVE_LIMIT (TAR_FILENAME_LENGTH - TAR_FILENAME_LENGTH_RESERVE)
+#define TAR_FILENAME_HASH_PREFIX "_hash_"
+#define TAR_FILENAME_HASH_LENGTH (6 + 32)
+
 using namespace std;
 
 /* integer to NULL-terminated string-octal conversion */
@@ -57,7 +63,7 @@ public:
 	/* our version of the tar header structure */
 	struct tar_header
 	{       
-		char name[100];
+		char name[TAR_FILENAME_LENGTH];
 		char mode[8];
 		char uid[8];
 		char gid[8];    
@@ -140,7 +146,7 @@ public:
 	int th_write();
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
-	void tar_read(const char *filename, const char *endFilename = NULL, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
+	void tar_read(const char *filename, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
 	void tar_read_send_parameters(int client, void *c_client, bool zip);
 	void tar_read_save_parameters(FILE *output_file_handle);
 	virtual bool decompress_ev(char *data, u_int32_t len);
@@ -165,6 +171,8 @@ public:
 	};
 	int tar_block_write(const char *buf, u_int32_t len);
 	void tar_close();
+	
+	string get_hashcomb_long_filename(const char *filename);
 
 	void int_to_oct_nonull(int num, char *oct, size_t octlen);
 	int th_crc_calc();
@@ -224,7 +232,7 @@ private:
 			end = false;
 			error = false;
 			filename = "";
-			endFilename = "";
+			hash_filename = "";
 			position = 0;
 			buffer = NULL;
 			bufferBaseSize = T_BLOCKSIZE;
@@ -256,7 +264,7 @@ private:
 		bool end;
 		bool error;
 		string filename;
-		string endFilename;
+		string hash_filename;
 		size_t position;
 		char *buffer;
 		size_t bufferBaseSize;
