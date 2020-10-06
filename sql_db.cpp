@@ -5225,11 +5225,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`a_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`a_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_avgrtd_mult10` smallint unsigned DEFAULT NULL,\
+			`a_rtcp_maxrtd_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_loss` mediumint DEFAULT NULL,\
 			`b_rtcp_maxfr` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxjitter` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_avgrtd_mult10` smallint unsigned DEFAULT NULL,\
+			`b_rtcp_maxrtd_mult10` smallint unsigned DEFAULT NULL,\
 			`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
 			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
 			`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
@@ -5309,6 +5313,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `a_rtcp_loss` (`a_rtcp_loss`),\
 		KEY `a_rtcp_maxfr` (`a_rtcp_maxfr`),\
 		KEY `a_rtcp_maxjitter` (`a_rtcp_maxjitter`),\
+		KEY `a_rtcp_maxrtd_mult10` (`a_rtcp_maxrtd_mult10`),\
+		KEY `b_rtcp_maxrtd_mult10` (`b_rtcp_maxrtd_mult10`),\
 		KEY `b_rtcp_loss` (`b_rtcp_loss`),\
 		KEY `b_rtcp_maxfr` (`b_rtcp_maxfr`),\
 		KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),") +
@@ -7570,6 +7576,13 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay", true,
+				log, &tableSize, &existsColumns.cdr_rtcp_rtd,
+				"a_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"a_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"b_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	//23.7
 	this->checkNeedAlterAdd("cdr", "Columns MOS Silence", true,
