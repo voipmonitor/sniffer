@@ -251,11 +251,14 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
-
-		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == reportblock.ssrc) {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
+		#else
+		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
+		#endif
+			if(rtp_i->ssrc == reportblock.ssrc) {
 				// found 
-				rtp = call->rtp[i];
+				rtp = rtp_i;
 			}
 		}
 	
@@ -346,14 +349,16 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
-
-		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == reportblock.ssrc) {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
+		#else
+		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
+		#endif
+			if(rtp_i->ssrc == reportblock.ssrc) {
 				// found 
-				rtp = call->rtp[i];
+				rtp = rtp_i;
 			}
 		}
-	
 
 		int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
 		loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
@@ -535,14 +540,16 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 #endif
 
 		RTP *rtp = NULL;
-
-		for(int i = 0; i < call->ssrc_n; i++) {
-			if(call->rtp[i]->ssrc == ntohl(xr->ssrc)) {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
+		#else
+		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
+		#endif
+			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
 				// found 
-				rtp = call->rtp[i];
+				rtp = rtp_i;
 			}
 		}
-                
 
 		if(rtp) {
 			rtp->rtcp_xr.counter_fr++;

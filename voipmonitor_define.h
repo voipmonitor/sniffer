@@ -62,6 +62,8 @@
 
 #define USE_PACKET_NUMBER false
 
+#define CALL_RTP_DYNAMIC_ARRAY true
+
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
 
 

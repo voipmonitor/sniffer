@@ -45,7 +45,11 @@
 #include "record_array.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
+#if CALL_RTP_DYNAMIC_ARRAY
+typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
+#else
 #define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
+#endif
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 40          //!< max rtpmap records
 #define MAXNODE 150000
@@ -674,10 +678,15 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
+	#if CALL_RTP_DYNAMIC_ARRAY
+	vector<RTP*> rtp;
+	#else
 	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	int ssrc_n;				//!< last index of rtp array
+	#endif
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
-	volatile int rtplock;
+	volatile int rtplock_sync;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
 	map<string, bool> *call_id_alternative;
@@ -880,7 +889,6 @@ public:
 
 	void *listening_worker_args;
 	
-	int ssrc_n;				//!< last index of rtp array
 	int ipport_n;				//!< last index of addr and port array 
 
 	RTP *lastraw[2];
@@ -1258,8 +1266,12 @@ public:
 		       pcapRtp.isClose());
 	}
 	bool isGraphsClose() {
-		for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-			if(rtp[i] && !rtp[i]->graph.isClose()) {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
+		#else
+		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+		#endif
+			if(rtp_i && !rtp_i->graph.isClose()) {
 				return(false);
 			}
 		}
@@ -1637,6 +1649,24 @@ public:
 			reg_tcp_seq->push_back(seq);
 		}
 	}
+	
+	inline RTP *rtp_stream_by_index(unsigned index) {
+		return(rtp[index]);
+	}
+	inline int rtp_size() {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		return(rtp.size());
+		#else
+		return(ssrc_n);
+		#endif
+	}
+	
+	inline void rtp_lock() {
+		__SYNC_LOCK_USLEEP(rtplock_sync, 100);
+	}
+	inline void rtp_unlock() {
+		__SYNC_UNLOCK(rtplock_sync);
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1672,7 +1702,11 @@ private:
 	SqlDb_row cdr_next;
 	SqlDb_row cdr_next_ch[CDR_NEXT_MAX];
 	SqlDb_row cdr_country_code;
+	#if CALL_RTP_DYNAMIC_ARRAY
+	map<unsigned, unsigned> rtp_rows_indexes;
+	#else
 	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL];
+	#endif
 	unsigned rtp_rows_count;
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
 friend class RTPsecure;
