@@ -41,6 +41,8 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_rtcp_maxjitter,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_rtcp_avgfr,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_rtcp_maxfr,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_rtcp_avgrtd,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_rtcp_maxrtd,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_silence,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_silence_caller,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_silence_called,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
@@ -1687,6 +1689,8 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_rtcp_maxjitter" ? _chartType_rtcp_maxjitter :
 	       chartType == "TCH_rtcp_avgfr" ? _chartType_rtcp_avgfr :
 	       chartType == "TCH_rtcp_maxfr" ? _chartType_rtcp_maxfr :
+	       chartType == "TCH_rtcp_avgrtd" ? _chartType_rtcp_avgrtd :
+	       chartType == "TCH_rtcp_maxrtd" ? _chartType_rtcp_maxrtd :
 	       chartType == "TCH_silence" ? _chartType_silence :
 	       chartType == "TCH_silence_caller" ? _chartType_silence_caller :
 	       chartType == "TCH_silence_called" ? _chartType_silence_called :

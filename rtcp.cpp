@@ -222,7 +222,21 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 	senderinfo.timestamp_RTP = ntohl(senderinfo.timestamp_RTP);
 	senderinfo.sender_pkt_cnt = ntohl(senderinfo.sender_pkt_cnt);
 	senderinfo.sender_octet_cnt = ntohl(senderinfo.sender_octet_cnt);
-	
+
+	u_int32_t cur_lsr = ((senderinfo.timestamp_MSW & 0xffff) << 16) | ((senderinfo.timestamp_LSW & 0xffff0000) >> 16);
+	u_int32_t last_lsr = 0;
+	u_int32_t last_lsr_delay = 0;
+	RTP *rtp_sender = NULL;
+	for(int i = 0; i < call->ssrc_n; i++) {
+		if(call->rtp[i]->ssrc == senderinfo.sender_ssrc) {
+			rtp_sender = call->rtp[i];
+			rtp_sender->rtcp.lsr4compare = cur_lsr;
+			last_lsr = rtp_sender->rtcp.last_lsr;
+			last_lsr_delay = rtp_sender->rtcp.last_lsr_delay;
+			break;
+		}
+	}
+
 	if(sverb.debug_rtcp) {
 		printf("Sender SSRC [%x]\n", senderinfo.sender_ssrc);
 		printf("Timestamp MSW [%u]\n", senderinfo.timestamp_MSW);
@@ -279,6 +293,18 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 			}
+			// calculate rtcp round trip delay
+			if (rtp->rtcp.lsr4compare == reportblock.lsr && last_lsr && last_lsr_delay && reportblock.delay_since_lsr && rtp_sender) {
+				unsigned int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
+				rtp_sender->rtcp.rtd_sum += tmpdiff;
+				rtp_sender->rtcp.rtd_count++;
+				if (rtp_sender->rtcp.rtd_max < tmpdiff) {
+					rtp_sender->rtcp.rtd_max = tmpdiff;
+				}
+			}
+			rtp->rtcp.last_lsr = reportblock.lsr;
+			rtp->rtcp.last_lsr_delay = reportblock.delay_since_lsr;
+
 			if(sverb.debug_rtcp) {
 				printf("sSSRC [%x]\n", reportblock.ssrc);
 				printf("	Fraction lost [%u]\n", reportblock.frac_lost);

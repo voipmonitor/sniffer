@@ -336,6 +336,12 @@ public:
 		unsigned int counter;
 		unsigned int jitt_counter;
 		unsigned int fraclost_pkt_counter;
+		u_int32_t lsr4compare;
+		u_int32_t last_lsr;
+		u_int32_t last_lsr_delay;
+		unsigned int rtd_sum;	/* roundtrip delay */
+		unsigned int rtd_count;
+		unsigned int rtd_max;
 	} rtcp;
 
 	struct rtcp_xr_t {
