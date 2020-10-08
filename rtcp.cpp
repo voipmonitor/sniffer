@@ -227,9 +227,13 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 	u_int32_t last_lsr = 0;
 	u_int32_t last_lsr_delay = 0;
 	RTP *rtp_sender = NULL;
-	for(int i = 0; i < call->ssrc_n; i++) {
-		if(call->rtp[i]->ssrc == senderinfo.sender_ssrc) {
-			rtp_sender = call->rtp[i];
+	#if CALL_RTP_DYNAMIC_ARRAY
+	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
+	#else
+	for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
+	#endif
+		if(rtp_i->ssrc == senderinfo.sender_ssrc) {
+			rtp_sender = rtp_i;
 			rtp_sender->rtcp.lsr4compare = cur_lsr;
 			last_lsr = rtp_sender->rtcp.last_lsr;
 			last_lsr_delay = rtp_sender->rtcp.last_lsr_delay;
