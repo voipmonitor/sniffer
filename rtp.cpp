@@ -2176,11 +2176,7 @@ RTP::update_stats() {
 	   s->max_seq - this->last_seq >= lost) {
 		Call *owner = (Call*)call_owner;
 		u_int16_t maxSeqOtherSsrc = 0;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = owner->rtp.begin(); iter_i != owner->rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-		#else
 		for(int i = 0; i < owner->rtp_size(); i++) { RTP *rtp_i = owner->rtp_stream_by_index(i);
-		#endif
 			if(rtp_i != this && rtp_i->ssrc == this->ssrc) {
 				if(rtp_i->s->max_seq > maxSeqOtherSsrc) {
 					maxSeqOtherSsrc = rtp_i->s->max_seq;

@@ -227,11 +227,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 	u_int32_t last_lsr = 0;
 	u_int32_t last_lsr_delay = 0;
 	RTP *rtp_sender = NULL;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
-	#endif
 		if(rtp_i->ssrc == senderinfo.sender_ssrc) {
 			rtp_sender = rtp_i;
 			rtp_sender->rtcp.lsr4compare = cur_lsr;
@@ -269,11 +265,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->ssrc == reportblock.ssrc) {
 				// found 
 				rtp = rtp_i;
@@ -379,11 +371,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
 		RTP *rtp = NULL;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->ssrc == reportblock.ssrc) {
 				// found 
 				rtp = rtp_i;
@@ -570,11 +558,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 #endif
 
 		RTP *rtp = NULL;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = call->rtp.begin(); iter != call->rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
 				// found 
 				rtp = rtp_i;

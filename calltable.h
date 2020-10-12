@@ -45,10 +45,9 @@
 #include "record_array.h"
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
+#define MAX_SSRC_PER_CALL_FIX 40	//!< total maxumum of SDP sessions for one call-id
 #if CALL_RTP_DYNAMIC_ARRAY
 typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
-#else
-#define MAX_SSRC_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #endif
 #define MAX_FNAME 256		//!< max len of stored call-id
 #define MAX_RTPMAP 40          //!< max rtpmap records
@@ -678,11 +677,10 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
-	#if CALL_RTP_DYNAMIC_ARRAY
-	vector<RTP*> rtp;
-	#else
-	RTP *rtp[MAX_SSRC_PER_CALL];		//!< array of RTP streams
+	RTP *rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
 	int ssrc_n;				//!< last index of rtp array
+	#if CALL_RTP_DYNAMIC_ARRAY
+	vector<RTP*> *rtp_dynamic;
 	#endif
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
@@ -1266,11 +1264,7 @@ public:
 		       pcapRtp.isClose());
 	}
 	bool isGraphsClose() {
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if(rtp_i && !rtp_i->graph.isClose()) {
 				return(false);
 			}
@@ -1650,15 +1644,34 @@ public:
 		}
 	}
 	
+	inline void add_rtp_stream(RTP *rtp) {
+		#if CALL_RTP_DYNAMIC_ARRAY
+		if(ssrc_n < MAX_SSRC_PER_CALL_FIX) {
+			rtp_fix[ssrc_n] = rtp;
+		} else {
+			if(!rtp_dynamic) {
+				rtp_dynamic = new FILE_LINE(0) CALL_RTP_DYNAMIC_ARRAY_TYPE;
+			}
+			rtp_dynamic->push_back(rtp);
+		}
+		#else
+		rtp_fix[ssrc_n] = rtp;
+		#endif
+		++ssrc_n;
+	}
 	inline RTP *rtp_stream_by_index(unsigned index) {
-		return(rtp[index]);
+		#if CALL_RTP_DYNAMIC_ARRAY
+		if(index < MAX_SSRC_PER_CALL_FIX) {
+			return(rtp_fix[index]);
+		} else {
+			return((*rtp_dynamic)[index - MAX_SSRC_PER_CALL_FIX]);
+		}
+		#else
+		return(rtp_fix[index]);
+		#endif
 	}
 	inline int rtp_size() {
-		#if CALL_RTP_DYNAMIC_ARRAY
-		return(rtp.size());
-		#else
 		return(ssrc_n);
-		#endif
 	}
 	
 	inline void rtp_lock() {
@@ -1705,7 +1718,7 @@ private:
 	#if CALL_RTP_DYNAMIC_ARRAY
 	map<unsigned, unsigned> rtp_rows_indexes;
 	#else
-	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL];
+	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL_FIX];
 	#endif
 	unsigned rtp_rows_count;
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;

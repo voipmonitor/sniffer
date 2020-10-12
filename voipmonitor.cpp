@@ -335,6 +335,7 @@ char opt_energylevelheader[128] = "";
 int opt_vlan_siprtpsame = 0;
 int opt_rtpfromsdp_onlysip = 0;
 int opt_rtpfromsdp_onlysip_skinny = 1;
+int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 bool opt_charts_cache = false;
@@ -7031,6 +7032,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip", &opt_rtpfromsdp_onlysip));
 			addConfigItem(new FILE_LINE(42324) cConfigItem_yesno("rtpfromsdp_onlysip_skinny", &opt_rtpfromsdp_onlysip_skinny));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_streams_max_in_call", &opt_rtp_streams_max_in_call));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("rtp_check_both_sides_by_sdp", &opt_rtp_check_both_sides_by_sdp))
 					->addValues("keep_rtp_packets:2"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
@@ -10431,6 +10433,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpfromsdp_onlysip_skinny", NULL))) {
 		opt_rtpfromsdp_onlysip_skinny = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtp_streams_max_in_call", NULL))) {
+		opt_rtp_streams_max_in_call = atoi(value);
 	}
 	if((value = ini.GetValue("general", "rtp_check_both_sides_by_sdp", NULL))) {
 		opt_rtp_check_both_sides_by_sdp = strcmp(value, "keep_rtp_packets") ? yesno(value) : 2;

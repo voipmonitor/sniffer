@@ -163,6 +163,7 @@ extern bool opt_rtpmap_combination;
 extern int opt_register_timeout_disable_save_failed;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
+extern int opt_rtp_streams_max_in_call;
 extern int opt_rtp_check_both_sides_by_sdp;
 extern int opt_hash_modify_queue_length_ms;
 extern int opt_mysql_enable_multiple_rows_insert;
@@ -548,11 +549,12 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	//regsrcmac = 0;
 	reg_tcp_seq = NULL;
 	last_sip_method = 0;
-	#if not CALL_RTP_DYNAMIC_ARRAY
-	for(int i = 0; i < MAX_SSRC_PER_CALL; i++) {
-		rtp[i] = NULL;
+	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
+		rtp_fix[i] = NULL;
 	}
 	ssrc_n = 0;
+	#if CALL_RTP_DYNAMIC_ARRAY
+	rtp_dynamic = NULL;
 	#endif
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
@@ -889,22 +891,21 @@ Call::removeRTP() {
 	}
 	rtp_lock();
 	closeRawFiles();
+	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
+		if(rtp_fix[i]) {
+			delete rtp_fix[i];
+			rtp_fix[i] = NULL;
+		}
+	}
 	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) {
-		if(*iter) {
+	if(rtp_dynamic) {
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp_dynamic->begin(); iter != rtp_dynamic->end(); iter++) {
 			delete *iter;
 		}
+		rtp_dynamic->clear();
 	}
-	rtp.clear();
-	#else
-	for(int i = 0; i < rtp_size(); i++) {
-		if(rtp[i]) {
-			delete rtp[i];
-			rtp[i] = NULL;
-		}
-	}
-	ssrc_n = 0;
 	#endif
+	ssrc_n = 0;
 	for(int i = 0; i < 2; i++) {
 		rtp_cur[i] = NULL;
 		rtp_prev[i] = NULL;
@@ -931,17 +932,18 @@ Call::~Call(){
 	}
 
 	if(contenttype) delete [] contenttype;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) {
-		if(*iter) {
-			delete *iter;
+	
+	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
+		if(rtp_fix[i]) {
+			delete rtp_fix[i];
 		}
 	}
-	#else
-	for(int i = 0; i < rtp_size(); i++) {
-		if(rtp[i]) {
-			delete rtp[i];
+	#if CALL_RTP_DYNAMIC_ARRAY
+	if(rtp_dynamic) {
+		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp_dynamic->begin(); iter != rtp_dynamic->end(); iter++) {
+			delete *iter;
 		}
+		delete rtp_dynamic;
 	}
 	#endif
 	
@@ -988,11 +990,7 @@ Call::~Call(){
 
 void
 Call::closeRawFiles() {
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(!rtp_i) {
 			continue;
 		}
@@ -1345,7 +1343,6 @@ Call::get_to_not_canceled() {
 /* analyze rtcp packet */
 bool
 Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
-
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
 	   packetS->pid.vlan != this->vlan) {
@@ -1499,23 +1496,21 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 	}
 	*/
 	
+	bool rtp_locked = false;
 	#if CALL_RTP_DYNAMIC_ARRAY
-	rtp_lock();
+	if(rtp_size() > MAX_SSRC_PER_CALL_FIX / 2 || rtp_dynamic) {
+		rtp_lock();
+		rtp_locked = true;
+	}
 	#endif
 
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(rtp_i->ssrc2 == curSSRC) {
 /*
 			if(rtp_i->last_seq == tmprtp.getSeqNum()) {
 				//ignore duplicated RTP with the same sequence
 				//if(verbosity > 1) printf("ignoring lastseq[%u] seq[%u] saddr[%u] dport[%u]\n", rtp_stream_by_index(i)->last_seq, tmprtp.getSeqNum(), packetS->saddr_(), packetS->dest_());
-				#if CALL_RTP_DYNAMIC_ARRAY
-				rtp_unlock();
-				#endif
+				if(rtp_locked) rtp_unlock();
 				return(false);
 			}
 */
@@ -1545,9 +1540,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 
 				if(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) {
 					*disable_save = true;
-					#if CALL_RTP_DYNAMIC_ARRAY
-					rtp_unlock();
-					#endif
+					if(rtp_locked) rtp_unlock();
 					return(false);
 				}
 			 
@@ -1561,9 +1554,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 				if(udptl) {
 					++rtp_i->s->received;
 					++rtp_i->stats.received;
-					#if CALL_RTP_DYNAMIC_ARRAY
-					rtp_unlock();
-					#endif
+					if(rtp_locked) rtp_unlock();
 					return(true);
 				}
 				
@@ -1602,9 +1593,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 						}
 						if(!found) {
 							// dynamic type codec changed but was not negotiated - do not create new RTP stream
-							#if CALL_RTP_DYNAMIC_ARRAY
-							rtp_unlock();
-							#endif
+							if(rtp_locked) rtp_unlock();
 							return(rtp_read_rslt);
 						}
 					} else {
@@ -1640,9 +1629,7 @@ read:
 						} else {
 							lastcalledrtp = rtp_i;
 						}
-						#if CALL_RTP_DYNAMIC_ARRAY
-						rtp_unlock();
-						#endif
+						if(rtp_locked) rtp_unlock();
 						return(rtp_read_rslt);
 					} else if(oldcodec != rtp_i->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
@@ -1657,16 +1644,12 @@ read:
 	}
 	// adding new RTP source
 	#if CALL_RTP_DYNAMIC_ARRAY
-	{
+	if(rtp_size() < opt_rtp_streams_max_in_call) {
 	#else
-	if(rtp_size() < MAX_SSRC_PER_CALL) {
+	if(rtp_size() < MAX_SSRC_PER_CALL_FIX) {
 	#endif
 	
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->saddr == packetS->daddr_() &&
 			   rtp_i->daddr == packetS->saddr_() &&
 			   rtp_i->sport == packetS->dest_() &&
@@ -1683,9 +1666,10 @@ read:
 		}
 		
 		if(udptl) {
-			#if not CALL_RTP_DYNAMIC_ARRAY
-			rtp_lock();
-			#endif
+			if(!rtp_locked) {
+				rtp_lock();
+				rtp_locked = true;
+			}
 			RTP *rtp_new = new FILE_LINE(0) RTP(packetS->sensor_id_(), packetS->sensor_ip); 
 			rtp_new->ssrc_index = rtp_size();
 			rtp_new->call_owner = this;
@@ -1698,13 +1682,8 @@ read:
 			rtp_new->dport = packetS->dest_();
 			++rtp_new->s->received;
 			++rtp_new->stats.received;
-			#if CALL_RTP_DYNAMIC_ARRAY
-			rtp.push_back(rtp_new);
-			#else
-			rtp[ssrc_n] = rtp_new;
-			ssrc_n++;
-			#endif
-			rtp_unlock();
+			add_rtp_stream(rtp_new);
+			if(rtp_locked)  rtp_unlock();
 			return(true);
 		}
 		
@@ -1745,19 +1724,13 @@ read:
 				if(opt_rtp_check_both_sides_by_sdp == 1) {
 					*disable_save = true;
 				}
-				#if CALL_RTP_DYNAMIC_ARRAY
-				rtp_unlock();
-				#endif
+				if(rtp_locked) rtp_unlock();
 				return(false);
 			}
 			if(index_call_ip_port_other_side >= 0) {
 				callerd_confirm_rtp_by_both_sides_sdp[iscaller_index(iscaller)] = true;
 				confirm_both_sides_by_sdp = true;
-				#if CALL_RTP_DYNAMIC_ARRAY
-				for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-				#else
 				for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-				#endif
 					if(rtp_i->iscaller == iscaller && !rtp_i->confirm_both_sides_by_sdp) {
 						rtp_i->stopReadProcessing = true;
 					}
@@ -1778,9 +1751,10 @@ read:
 			}
 		}
 		
-		#if not CALL_RTP_DYNAMIC_ARRAY
-		rtp_lock();
-		#endif
+		if(!rtp_locked) {
+			rtp_lock();
+			rtp_locked = true;
+		}
 		
 		/*
 		if(index_call_ip_port_find_side >= 0) {
@@ -1943,21 +1917,11 @@ read:
 			lastcalledrtp = rtp_new;
 		}
 		
-		#if CALL_RTP_DYNAMIC_ARRAY
-		rtp.push_back(rtp_new);
-		#else
-		rtp[ssrc_n] = rtp_new;
-		ssrc_n++;
-		#endif
+		add_rtp_stream(rtp_new);
 		
-		#if not CALL_RTP_DYNAMIC_ARRAY
-		rtp_unlock();
-		#endif
 	}
 	
-	#if CALL_RTP_DYNAMIC_ARRAY
-	rtp_unlock();
-	#endif
+	if(rtp_locked) rtp_unlock();
 	
 	return(rtp_read_rslt);
 }
@@ -2813,11 +2777,7 @@ Call::convertRawToWav() {
 		if(opt_saveaudio_from_first_invite && !opt_saveaudio_from_rtp) {
 			minStartTime = this->first_packet_time_us;
 		}
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if(!minStartTime ||
 			   rtp_i->first_packet_time_us < minStartTime) {
 				minStartTime = rtp_i->first_packet_time_us;
@@ -3384,31 +3344,18 @@ Call::convertRawToWav() {
 }
 
 bool Call::selectRtpStreams() {
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		rtp_i->skip = false;
 	}
 	// decide which RTP streams should be skipped 
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		Call *owner = (Call*)rtp_i->call_owner;
 		if(!owner) continue;
 		//check for SSRC duplicity  - walk all RTP 
 		RTP *A = rtp_i;
 		RTP *B = NULL;
 		RTP *C = NULL;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		int k = 0;
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_k = rtp.begin(); iter_k != rtp.end(); iter_k++, k++) { RTP *rtp_k = *iter_k;
-		#else
 		for(int k = 0; k < rtp_size(); k++) { RTP *rtp_k = rtp_stream_by_index(k);
-		#endif
 			B = rtp_k;
 			if((!B->had_audio or B->stats.received == 0) and B->tailedframes < 2) {
 				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u] tailedframes[%u] had_audio[%u]\n", 
@@ -3441,11 +3388,7 @@ bool Call::selectRtpStreams() {
 					if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
 						//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
 						bool test = false;
-						#if CALL_RTP_DYNAMIC_ARRAY
-						for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_l = rtp.begin(); iter_l != rtp.end(); iter_l++) { RTP *rtp_l = *iter_l;
-						#else
 						for(int l = 0; l < rtp_size(); i++) { RTP *rtp_l = rtp_stream_by_index(l);
-						#endif
 							C = rtp_l;
 							if(C->skip or C == B or C->codec != B->codec) continue; 
 							if(B->daddr == C->daddr){
@@ -3468,11 +3411,7 @@ bool Call::selectRtpStreams() {
 						// B.daddr is not in SDP but A.dst is in SDP - but lets check if removing B will not remove all caller/called streams 
 						int caller_called = B->iscaller;
 						bool test = false;
-						#if CALL_RTP_DYNAMIC_ARRAY
-						for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_l = rtp.begin(); iter_l != rtp.end(); iter_l++) { RTP *rtp_l = *iter_l;
-						#else
 						for(int l = 0; l < rtp_size(); i++) { RTP *rtp_l = rtp_stream_by_index(l);
-						#endif
 							C = rtp_l;
 							if(C == B or C->skip) continue;
 							if(C->iscaller == caller_called) {
@@ -3504,19 +3443,11 @@ bool Call::selectRtpStreams() {
 }
 
 bool Call::selectRtpStreams_bySipcallerip() {
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		rtp_i->skip = false;
 	}
 	unsigned countSelectStreams = 0;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(rtp_i->saddr != this->sipcallerip[0] && rtp_i->daddr != this->sipcallerip[0]) {
 			rtp_i->skip = true;
 		} else {
@@ -3524,11 +3455,7 @@ bool Call::selectRtpStreams_bySipcallerip() {
 		}
 	}
 	if(!countSelectStreams) {
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			rtp_i->skip = false;
 		}
 	}
@@ -3546,20 +3473,11 @@ struct selectRtpStreams_byMaxLengthInLink_sLink {
 	bool bad;
 };
 bool Call::selectRtpStreams_byMaxLengthInLink() {
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		rtp_i->skip = false;
 	}
 	map<d_item<vmIP>, selectRtpStreams_byMaxLengthInLink_sLink> links;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	int i = 0;
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++, i++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		d_item<vmIP> linkIndex = d_item<vmIP>(MIN(rtp_i->saddr, rtp_i->daddr),
 						      MAX(rtp_i->saddr, rtp_i->daddr));
 		links[linkIndex].streams_i.push_back(i);
@@ -3588,11 +3506,7 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 		if(!max_length) {
 			break;
 		}
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			rtp_i->skip = true;
 		}
 		for(list<int>::iterator iter = links[max_length_linkIndex].streams_i.begin(); iter != links[max_length_linkIndex].streams_i.end(); iter++) {
@@ -3605,11 +3519,7 @@ bool Call::selectRtpStreams_byMaxLengthInLink() {
 			links[max_length_linkIndex].bad = true;
 		}
 	}
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		rtp_i->skip = false;
 	}
 	return(false);
@@ -3645,20 +3555,12 @@ void Call::setSkipConcurenceStreams(int caller) {
 		setSkipConcurenceStreams(1);
 		return;
 	}
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(rtp_i->iscaller == caller && !rtp_i->skip) {
 			u_int64_t a_start = rtp_i->first_packet_time_us;
 			u_int64_t a_stop = rtp_i->last_pcap_header_us;
 			u_int64_t a_length = a_stop - a_start;
-			#if CALL_RTP_DYNAMIC_ARRAY
-			for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_j = rtp.begin(); iter_j != rtp.end(); iter_j++) { RTP *rtp_j = *iter_j;
-			#else
 			for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
-			#endif
 				if(rtp_j != rtp_i && rtp_j->iscaller == caller && !rtp_j->skip &&
 				   !rtp_i->eqAddrPort(rtp_j)) {
 					u_int64_t b_start = rtp_j->first_packet_time_us;
@@ -3678,11 +3580,7 @@ void Call::setSkipConcurenceStreams(int caller) {
 
 u_int64_t Call::getFirstTimeInRtpStreams_us(int caller, bool selected) {
 	u_int64_t firstTime = 0;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if((caller == -1 || rtp_i->iscaller == caller) &&
 		   (!selected || !rtp_i->skip)) {
 			if(!firstTime || rtp_i->first_packet_time_us < firstTime) {
@@ -3696,11 +3594,7 @@ u_int64_t Call::getFirstTimeInRtpStreams_us(int caller, bool selected) {
 void Call::printSelectedRtpStreams(int caller, bool selected) {
 	u_int64_t firstTime = this->getFirstTimeInRtpStreams_us(caller, selected);
 	for(int pass_caller = 1; pass_caller >= 0; pass_caller--) {
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if((caller == -1 || pass_caller == caller) && 
 			   rtp_i->iscaller == pass_caller &&
 			   (!selected || !rtp_i->skip)) {
@@ -3724,19 +3618,11 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 		return(existsConcurenceInSelectedRtpStream(0, tolerance_ms) ||
 		       existsConcurenceInSelectedRtpStream(1, tolerance_ms));
 	}
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(rtp_i->iscaller == caller && !rtp_i->skip) {
 			u_int64_t a_start = rtp_i->first_packet_time_us;
 			u_int64_t a_stop = rtp_i->last_pcap_header_us;
-			#if CALL_RTP_DYNAMIC_ARRAY
-			for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_j = rtp.begin(); iter_j != rtp.end(); iter_j++) { RTP *rtp_j = *iter_j;
-			#else
 			for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
-			#endif
 				if(rtp_j != rtp_i && rtp_j->iscaller == caller && !rtp_j->skip &&
 				   !rtp_i->eqAddrPort(rtp_j)) {
 					u_int64_t b_start = rtp_j->first_packet_time_us;
@@ -3755,11 +3641,7 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 bool Call::existsBothDirectionsInSelectedRtpStream() {
 	bool existsCalllerDirection = false;
 	bool existsCallledDirection = false;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(!rtp_i->skip) {
 			if(rtp_i->iscaller) {
 				existsCalllerDirection = true;
@@ -5169,11 +5051,7 @@ void Call::selectRtpAB() {
 	
 	if(sverb.rtp_streams) {
 		cout << "call " << call_id << endl;
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp.begin(); iter != rtp.end(); iter++) { RTP *rtp_i = *iter;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			cout << "RTP stream: " 
 			     << hex << rtp_i->ssrc << dec << " : "
 			     << rtp_i->saddr.getString() << " -> "
@@ -5800,12 +5678,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	selectRtpAB();
 	
 	rtp_rows_count = 0;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	int i = 0;
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++, i++) { RTP *rtp_i = *iter_i;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		if(rtp_i &&
 		   !(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) &&
 		   (rtp_i->s->received or !existsColumns.cdr_rtp_index || (rtp_i->s->received == 0 && rtp_zeropackets_stored == false)) &&
@@ -6085,11 +5958,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				"lost");
 		}
 
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->change_src_port) {
 				cdr_flags |= rtp_i->iscaller ? CDR_CHANGE_SRC_PORT_CALLER : CDR_CHANGE_SRC_PORT_CALLED;
 			}
@@ -6338,11 +6207,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"   exists (select * from cdr_rtp where cdr_id = @exists_call_id),\n" +
 					"   0);\n";
 				bool existsRtp = false;
-				#if CALL_RTP_DYNAMIC_ARRAY
-				for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-				#else
 				for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-				#endif
 					if(rtp_i and rtp_i->s->received) {
 						existsRtp = true;
 						break;
@@ -7986,11 +7851,7 @@ Call::dump(){
 	if(rtp_size() > 0) {
 		printf("ssrc_n:%d\n", rtp_size());
 		printf("Call statistics:\n");
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			rtp_i->dump();
 		}
 	}
@@ -8029,11 +7890,7 @@ void Call::atFinish() {
 u_int32_t 
 Call::getAllReceivedRtpPackets() {
 	u_int32_t receivedPackets = 0;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-	#else
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-	#endif
 		receivedPackets += rtp_i->stats.received;
 	}
 	return(receivedPackets);
@@ -8043,11 +7900,7 @@ void
 Call::applyRtcpXrDataToRtp() {
 	map<u_int32_t, sRtcpXrDataSsrc>::iterator iter_ssrc;
 	for(iter_ssrc = this->rtcpXrData.begin(); iter_ssrc != this->rtcpXrData.end(); iter_ssrc++) {
-		#if CALL_RTP_DYNAMIC_ARRAY
-		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter_i = rtp.begin(); iter_i != rtp.end(); iter_i++) { RTP *rtp_i = *iter_i;
-		#else
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#endif
 			if(rtp_i->ssrc == iter_ssrc->first) {
 				list<sRtcpXrDataItem>::iterator iter;
 				for(iter = iter_ssrc->second.begin(); iter != iter_ssrc->second.end(); iter++) {
