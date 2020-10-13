@@ -112,17 +112,18 @@ public:
 	};
 	class cSslDsslSessionKeyItem {
 	public:
-		cSslDsslSessionKeyItem(u_char *key = NULL);
+		cSslDsslSessionKeyItem(u_char *key = NULL, unsigned key_length = 0);
 	public:
 		u_char key[SSL3_MASTER_SECRET_SIZE];
+		unsigned key_length;
 		u_int32_t set_at;
 	};
 public:
 	cSslDsslSessionKeys();
 	~cSslDsslSessionKeys();
-	void set(const char *type, u_char *client_random, u_char *key);
-	void set(eSessionKeyType type, u_char *client_random, u_char *key);
-	bool get(u_char *client_random, eSessionKeyType type, u_char *key, struct timeval ts);
+	void set(const char *type, u_char *client_random, u_char *key, unsigned key_length);
+	void set(eSessionKeyType type, u_char *client_random, u_char *key, unsigned key_length);
+	bool get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts);
 	bool get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts);
 	void erase(u_char *client_random);
 	void cleanup();
@@ -155,8 +156,8 @@ public:
 public:
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
 	void destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
-	void keySet(const char *type, u_char *client_random, u_char *key);
-	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, struct timeval ts);
+	void keySet(const char *type, u_char *client_random, u_char *key, unsigned key_length);
+	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts);
 	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts);
 	void keyErase(u_char *client_random);
 	void keysCleanup();

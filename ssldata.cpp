@@ -174,7 +174,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			if(i < rslt_decrypt.size() - 1 && rslt_decrypt[i].length() == 1) {
 				dataComb = rslt_decrypt[i] + rslt_decrypt[i + 1];
 				if(check_sip20((char*)dataComb.c_str(), dataComb.length(), NULL, true) ||
-				   check_websocket((char*)dataComb.c_str(), dataComb.length(), false)) {
+				   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na)) {
 					dataCombUse = true;
 				}
 			}
@@ -189,9 +189,15 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				data = (u_char*)rslt_decrypt[i].c_str();
 				dataLength = rslt_decrypt[i].size();
 			}
+			/* diagnosis of bad length websocket data
+			if(check_websocket(data, dataLength, cWebSocketHeader::_chdst_na) &&
+			   !check_websocket(data, dataLength, cWebSocketHeader::_chdst_strict)) {
+				print_websocket_check((char*)data, dataLength);
+			}
+			*/
 			if(check_websocket(data, dataLength)) {
 				dataType = ReassemblyBuffer::_websocket;
-			} else if(check_websocket(data, dataLength, false) || 
+			} else if(check_websocket(data, dataLength, cWebSocketHeader::_chdst_na) || 
 				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
 				dataType = ReassemblyBuffer::_websocket_incomplete;
 			} else if(check_sip20((char*)data, dataLength, NULL, false)) {

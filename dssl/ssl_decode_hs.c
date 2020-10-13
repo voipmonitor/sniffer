@@ -100,9 +100,9 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	if( !sess->ssl_si->pkey && sess->get_keys_fce )
 	{
 		sess->get_keys_fce(sess->client_random, &sess->get_keys_rslt_data, sess);
-		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && sess->get_keys_rslt_data.client_random[0]) 
+		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && sess->get_keys_rslt_data.client_random.key[0]) 
 		{
-			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random, 48);
+			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random.key, sess->get_keys_rslt_data.client_random.length);
 		}
 	}
 

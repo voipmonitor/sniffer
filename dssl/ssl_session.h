@@ -53,14 +53,19 @@ struct DSSL_handshake_buffer_
 #define SSF_TLS_SERVER_EXTENDED_MASTER_SECRET	0x0200
 
 
+struct DSSL_Session_get_keys_data_item
+{	u_char 				key[SSL3_MASTER_SECRET_SIZE];
+	unsigned 			length;
+};
+
 struct DSSL_Session_get_keys_data
 {
-	u_char				client_random[SSL3_MASTER_SECRET_SIZE];
-	u_char				client_handshake_traffic_secret[SSL3_MASTER_SECRET_SIZE];
-	u_char				server_handshake_traffic_secret[SSL3_MASTER_SECRET_SIZE];
-	u_char				exporter_secret[SSL3_MASTER_SECRET_SIZE];
-	u_char				client_traffic_secret_0[SSL3_MASTER_SECRET_SIZE];
-	u_char 				server_traffic_secret_0[SSL3_MASTER_SECRET_SIZE];
+	struct DSSL_Session_get_keys_data_item client_random;
+	struct DSSL_Session_get_keys_data_item client_handshake_traffic_secret;
+	struct DSSL_Session_get_keys_data_item server_handshake_traffic_secret;
+	struct DSSL_Session_get_keys_data_item exporter_secret;
+	struct DSSL_Session_get_keys_data_item client_traffic_secret_0;
+	struct DSSL_Session_get_keys_data_item server_traffic_secret_0;
 	int 				set;
 };
 

@@ -316,9 +316,10 @@ cSslDsslSessionKeys::cSslDsslSessionKeyIndex::cSslDsslSessionKeyIndex(u_char *cl
 	}
 }
 
-cSslDsslSessionKeys::cSslDsslSessionKeyItem::cSslDsslSessionKeyItem(u_char *key) {
+cSslDsslSessionKeys::cSslDsslSessionKeyItem::cSslDsslSessionKeyItem(u_char *key, unsigned key_length) {
 	if(key) {
-		memcpy(this->key, key, SSL3_MASTER_SECRET_SIZE);
+		memcpy(this->key, key, key_length);
+		this->key_length = key_length;
 		set_at = getTimeS();
 	}
 }
@@ -345,17 +346,17 @@ cSslDsslSessionKeys::~cSslDsslSessionKeys() {
 	clear();
 }
 
-void cSslDsslSessionKeys::set(const char *type, u_char *client_random, u_char *key) {
+void cSslDsslSessionKeys::set(const char *type, u_char *client_random, u_char *key, unsigned key_length) {
 	eSessionKeyType type_e = strToEnumType(type);
 	if(type_e == _skt_na) {
 		return;
 	}
-	set(type_e, client_random, key);
+	set(type_e, client_random, key, key_length);
 }
 
-void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_char *key) {
+void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_char *key, unsigned key_length) {
 	cSslDsslSessionKeyIndex index(client_random);
-	cSslDsslSessionKeyItem *item = new FILE_LINE(0) cSslDsslSessionKeyItem(key);
+	cSslDsslSessionKeyItem *item = new FILE_LINE(0) cSslDsslSessionKeyItem(key, key_length);
 	lock_map();
 	if(keys[index][type]) {
 		delete keys[index][type];
@@ -364,7 +365,7 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 	unlock_map();
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, struct timeval ts) {
+bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
 	if(sverb.ssl_sessionkey) {
 		cout << "find clientrandom with type " << enumToStrType(type) << endl;
 		hexdump(client_random, SSL3_RANDOM_SIZE);
@@ -385,7 +386,8 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 		if(iter1 != keys.end()) {
 			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2 = iter1->second.find(type);
 			if(iter2 != iter1->second.end()) {
-				memcpy(key, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+				memcpy(key, iter2->second->key, iter2->second->key_length);
+				*key_length = iter2->second->key_length;
 				rslt = true;
 			}
 		}
@@ -401,7 +403,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	} while(!rslt && waitUS >= 0);
 	if(sverb.ssl_sessionkey && rslt) {
 		cout << "* clientrandom found" << endl;
-		hexdump(key, SSL3_MASTER_SECRET_SIZE);
+		hexdump(key, *key_length);
 	}
 	return(rslt);
 }
@@ -427,31 +429,36 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 		if(iter1 != this->keys.end() && iter1->second.size()) {
 			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2;
 			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); iter2++) {
+				DSSL_Session_get_keys_data_item *key_dst = NULL;
 				switch(iter2->first) {
 				case _skt_client_random:
-					memcpy(keys->client_random, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->client_random;
 					break;
 				case _skt_client_handshake_traffic_secret:
-					memcpy(keys->client_handshake_traffic_secret, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->client_handshake_traffic_secret;
 					break;
 				case _skt_server_handshake_traffic_secret:
-					memcpy(keys->server_handshake_traffic_secret, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->server_handshake_traffic_secret;
 					break;
 				case _skt_exporter_secret:
-					memcpy(keys->exporter_secret, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->exporter_secret;
 					break;
 				case _skt_client_traffic_secret_0:
-					memcpy(keys->client_traffic_secret_0, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->client_traffic_secret_0;
 					break;
 				case _skt_server_traffic_secret_0:
-					memcpy(keys->server_traffic_secret_0, iter2->second->key, SSL3_MASTER_SECRET_SIZE);
+					key_dst = &keys->server_traffic_secret_0;
 					break;
 				case _skt_na:
 					break;
 				}
+				if(key_dst) {
+					memcpy(key_dst->key, iter2->second->key, iter2->second->key_length);
+					key_dst->length = iter2->second->key_length;
+				}
 			}
-			if(keys->client_random[0] ||
-			   (keys->client_traffic_secret_0[0] && keys->server_traffic_secret_0[0])) {
+			if(keys->client_random.key[0] ||
+			   (keys->client_traffic_secret_0.key[0] && keys->server_traffic_secret_0.key[0])) {
 				rslt =true;
 				keys->set = true;
 			}
@@ -665,12 +672,12 @@ void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPo
 	unlock_sessions();
 }
 
-void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *key) {
-	this->session_keys.set(type, client_random, key);
+void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *key, unsigned key_length) {
+	this->session_keys.set(type, client_random, key, key_length);
 }
 
-bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, struct timeval ts) {
-	return(this->session_keys.get(client_random, type, key, ts));
+bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
+	return(this->session_keys.get(client_random, type, key, key_length, ts));
 }
 
 bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts) {
@@ -844,7 +851,8 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		}
 	} else {
 		vector<string> parts = split(data_s.c_str(), " ", true);
-		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2) {
+		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && 
+		   (parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2 || parts[2].length() == 32 * 2)) {
 			type = parts[0];
 			client_random = parts[1];
 			key = parts[2];
@@ -853,14 +861,15 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	if(type.length()) {
 		u_char client_random_[SSL3_RANDOM_SIZE];
 		u_char key_[SSL3_MASTER_SECRET_SIZE];
+		unsigned key_length = key.length() / 2;
 		hexdecode(client_random_, client_random.c_str(), SSL3_RANDOM_SIZE);
-		hexdecode(key_, key.c_str(), SSL3_MASTER_SECRET_SIZE);
-		SslDsslSessions->keySet(type.c_str(), client_random_, key_);
+		hexdecode(key_, key.c_str(), key_length);
+		SslDsslSessions->keySet(type.c_str(), client_random_, key_, key_length);
 		if(sverb.ssl_sessionkey) {
 			cout << "set clientrandom with type " << type << endl;
 			hexdump(client_random_, SSL3_RANDOM_SIZE);
 			cout << "key" << endl;
-			hexdump(key_, SSL3_MASTER_SECRET_SIZE);
+			hexdump(key_, key_length);
 		}
 		return(true);
 	}
@@ -885,17 +894,19 @@ void ssl_parse_client_random(const char *fileName) {
 			--length;
 		}
 		vector<string> parts = split(buff, " ", true);
-		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2) {
+		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && 
+		   (parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2 || parts[2].length() == 32 * 2)) {
 			u_char client_random[SSL3_RANDOM_SIZE];
 			u_char key[SSL3_MASTER_SECRET_SIZE];
+			unsigned key_length = parts[2].length() / 2;
 			hexdecode(client_random, parts[1].c_str(), SSL3_RANDOM_SIZE);
-			hexdecode(key, parts[2].c_str(), SSL3_MASTER_SECRET_SIZE);
-			SslDsslSessions->keySet(parts[0].c_str(), client_random, key);
+			hexdecode(key, parts[2].c_str(), key_length);
+			SslDsslSessions->keySet(parts[0].c_str(), client_random, key, key_length);
 			if(sverb.ssl_sessionkey) {
 				cout << "set clientrandom with type " << parts[0] << endl;
 				hexdump(client_random, SSL3_RANDOM_SIZE);
 				cout << "key" << endl;
-				hexdump(key, SSL3_MASTER_SECRET_SIZE);
+				hexdump(key, key_length);
 			}
 		}
 	}

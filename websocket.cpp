@@ -28,10 +28,10 @@ u_char *cWebSocketHeader::decodeData(bool *allocData, unsigned dataLength) {
 }
 
 
-bool check_websocket_header(char *data, unsigned len, bool checkDataSize) {
+bool check_websocket_header(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType) {
 	cWebSocketHeader ws_header((u_char*)data, len);
 	return(ws_header.isHeaderSizeOk() &&
-	       (!checkDataSize || ws_header.isDataSizeOk()));
+	       (checkDataSizeType == cWebSocketHeader::_chdst_na || ws_header.isDataSizeOk(checkDataSizeType)));
 }
 
 unsigned websocket_header_length(char *data, unsigned len) {
@@ -39,4 +39,18 @@ unsigned websocket_header_length(char *data, unsigned len) {
 	return(len < sizeof(cWebSocketHeader::sFixHeader) ?
 		sizeof(cWebSocketHeader::sFixHeader) :
 		ws_header.getHeaderLength());
+}
+
+void print_websocket_check(char *data, unsigned len) {
+	cWebSocketHeader ws_header((u_char*)data, len);
+	cout << "ws header size is ok: " << ws_header.isHeaderSizeOk() << endl;
+	cout << "ws use mask: " << ws_header.isMask() << endl;
+	cout << "ws header size: " << ws_header.getHeaderLength() << endl;
+	cout << "ws data size: " << ws_header.getDataLength() << endl;
+	cout << " * data size: " << len << endl;
+	int diff = (int)(len - ws_header.getHeaderLength() - ws_header.getDataLength());
+	cout << " * diff size: " << diff << endl;
+	if(diff > 0) {
+		hexdump(data + len - diff, diff);
+	}
 }

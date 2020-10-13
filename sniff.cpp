@@ -894,7 +894,7 @@ ParsePacket _parse_packet_global_process_packet;
 
 int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
  
-	if(check_websocket(data, len, !isTcp)) {
+	if(check_websocket(data, len, isTcp ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
 		cWebSocketHeader ws((u_char*)data, len);
 		if(len > ws.getHeaderLength()) {
 			bool allocData;
@@ -8076,7 +8076,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 				}
 			} else {
 				bool possibleWebSocketSip = false;
-				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), false)) {
+				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {
 					cWebSocketHeader ws(packetS->data_(), packetS->datalen_());
 					if(packetS->datalen_() - ws.getHeaderLength() < 11) {
 						possibleWebSocketSip = true;

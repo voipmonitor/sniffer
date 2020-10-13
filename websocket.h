@@ -4,6 +4,12 @@
 
 class cWebSocketHeader {
 public:
+	enum eCheckDataSizeType {
+		_chdst_na,
+		_chdst_strict,
+		_chdst_ge_limit,
+		_chdst_ge_unlimited
+	};
 	struct sFixHeader {
 	#if __BYTE_ORDER == __LITTLE_ENDIAN
 	u_int8_t opcode : 4;
@@ -79,8 +85,20 @@ public:
 		return(size >= sizeof(sFixHeader) &&
 		       size >= getHeaderLength());
 	}
-	bool isDataSizeOk() {
-		return(size == (getHeaderLength() + getDataLength()));
+	bool isDataSizeOk(eCheckDataSizeType checkDataSizeType) {
+		u_int64_t headerWithDataLength = getHeaderLength() + getDataLength();
+		switch(checkDataSizeType) {
+		case _chdst_na:
+			return(true);
+		case _chdst_strict:
+			return(size == headerWithDataLength);
+		case _chdst_ge_limit:
+			return(size >= headerWithDataLength &&
+			       size <= headerWithDataLength + 1);
+		case _chdst_ge_unlimited:
+			return(size >= headerWithDataLength);
+		}
+		return(false);
 	}
 public:
 	u_char *header;
@@ -88,8 +106,9 @@ public:
 };
 
 
-bool check_websocket_header(char *data, unsigned len, bool checkDataSize = true);
+bool check_websocket_header(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit);
 unsigned websocket_header_length(char *data, unsigned len);
+void print_websocket_check(char *data, unsigned len);
 
 inline bool check_websocket_first_byte(char *data, unsigned len) {
 	return(len > 0 && (u_char)data[0] == 0x81);
@@ -97,12 +116,12 @@ inline bool check_websocket_first_byte(char *data, unsigned len) {
 inline bool check_websocket_first_byte(u_char *data, unsigned len) {
 	return(check_websocket_first_byte((char*)data, len));
 }
-inline bool check_websocket(char *data, unsigned len, bool checkDataSize = true) {
+inline bool check_websocket(char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit) {
 	return(check_websocket_first_byte(data, len) &&
-	       check_websocket_header(data, len, checkDataSize));
+	       check_websocket_header(data, len, checkDataSizeType));
 }
-inline bool check_websocket(u_char *data, unsigned len, bool checkDataSize = true) {
-	return(check_websocket((char*)data, len, checkDataSize));
+inline bool check_websocket(u_char *data, unsigned len, cWebSocketHeader::eCheckDataSizeType checkDataSizeType = cWebSocketHeader::_chdst_ge_limit) {
+	return(check_websocket((char*)data, len, checkDataSizeType));
 }
 
 

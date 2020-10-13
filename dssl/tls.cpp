@@ -1493,8 +1493,8 @@ SslDecoder::~SslDecoder() {
 extern "C" {
 
 u_int8_t tls_generate_keys(void* dssl_sess) {
-    if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0[0] ||
-       !((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0[0]) {
+    if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key[0] ||
+       !((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key[0]) {
 	return(0);
     }
     SslDecryptSession *ssl_ds;
@@ -1509,8 +1509,10 @@ u_int8_t tls_generate_keys(void* dssl_sess) {
         }
     }
     StringInfo secret_client, secret_server;
-    secret_client.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0, SSL3_MASTER_SECRET_SIZE);
-    secret_server.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0, SSL3_MASTER_SECRET_SIZE);
+    secret_client.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key,
+		      ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.length);
+    secret_server.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key,
+		      ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.length);
     return(tls13_generate_keys(ssl_ds, &secret_client, 0) &&
 	   tls13_generate_keys(ssl_ds, &secret_server, 1));
 }
