@@ -1,3 +1,13 @@
+27.1 14.10.2020
+===============
+implement roundtrip (end to end) delay calculation from RTCP packets (not all RTCP has information for it) [VS-920]
+TLS: implemnt 32bytes client-random secret 
+WEBRTC: fix webrtc parser which ignored half of packets in some cases [VS-1121]
+increase number of possible RTP streams in a call (was limited to 30) [VS-1115]
+fix IP proxy detection for multibranch calls [VS-1118]
+fix long Call-ID string in tar.gz [VS-1116]
+
+
 27.0.2 22.09.2020
 =================
 - ssl key logger is now compatible with >= 1.0.1 ssl versions (tested 1.0.1, 1.1.0 and 1.1.1) 
