@@ -148,6 +148,65 @@ private:
 };
 
 
+class cCounterIP {
+public:
+        cCounterIP() {
+                _sync_lock = 0;
+        }
+        u_int32_t inc(vmIP ip, int inc = 1) {
+                u_int32_t rslt = 0;
+                lock();
+                map<vmIP, u_int32_t>::iterator iter = ip_counter.find(ip);
+                if(iter != ip_counter.end()) {
+                        if(inc >= 0) {
+                                iter->second += inc;
+                        } else {
+                                if(iter->second <= (unsigned)-inc) {
+                                        iter->second = 0;
+                                } else {
+                                        iter->second += inc;
+                                }
+                        }
+                        rslt = iter->second;
+                } else {
+                        if(inc > 0) {
+                                ip_counter[ip] = inc;
+                                rslt = inc;
+                        }
+                }
+                unlock();
+                return(rslt);
+        }
+        u_int32_t dec(vmIP ip) {
+                return(inc(ip, -1));
+        }
+        u_int32_t get(vmIP ip) {
+                u_int32_t rslt = 0;
+                lock();
+                map<vmIP, u_int32_t>::iterator iter = ip_counter.find(ip);
+                if(iter != ip_counter.end()) {
+                        rslt = iter->second;
+                }
+                unlock();
+                return(rslt);
+        }
+private:
+        void lock() {
+                while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+                        if(SYNC_LOCK_USLEEP) {
+                                usleep(SYNC_LOCK_USLEEP);
+                        }
+                }
+        }
+        void unlock() {
+                __sync_lock_release(&_sync_lock);
+        }
+private:
+        map<vmIP, u_int32_t> ip_counter;
+        volatile int _sync_lock;
+};
+
+
 class cSocket {
 public:
 	enum eTypeEncode {
