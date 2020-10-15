@@ -359,26 +359,22 @@ bool cSocket::connect(unsigned loopSleepS) {
 			rslt = false;
 			continue;
 		}
-		for (uint i = 0; i < ips.size(); i++) {
-			rslt = true;
+		bool ok_connect = false;
+		for(uint i = 0; i < ips.size() && !ok_connect; i++) {
 			clearError();
-			ip.clear();
 			ip = ips[i];
-			int pass_call_socket = 0;
+			int pass_call_socket_create = 0;
 			do {
 				handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP);
-				++pass_call_socket;
-			} while(handle == 0 && pass_call_socket < 5);
+				++pass_call_socket_create;
+			} while(handle == 0 && pass_call_socket_create < 5);
 			if(handle == -1) {
 				if(CR_VERBOSE().socket_connect) {
 					ostringstream verbstr;
 					verbstr << "cannot create socket (" << name << ")";
 					syslog(LOG_ERR, "%s", verbstr.str().c_str());
 				}
-				rslt = false;
-				continue;
-			}
-			if(socket_connect(handle, ip, port) == -1) {
+			} else if(socket_connect(handle, ip, port) == -1) {
 				if(CR_VERBOSE().socket_connect) {
 					ostringstream verbstr;
 					verbstr << "failed to connect to server [" << host << "] resolved to ip "
@@ -386,21 +382,17 @@ bool cSocket::connect(unsigned loopSleepS) {
 					syslog(LOG_ERR, "%s", verbstr.str().c_str());
 				}
 				close();
-				rslt = false;
-				continue;
+			} else {
+				ok_connect = true;
 			}
 		}
-		if (!rslt) {
-			setError("failed connection to all possible ips (%u) of the server %s : last error:[%s]", ips.size(), host.c_str(), strerror(errno));
-			continue;
-		}
-		int on = 1;
-		setsockopt(handle, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(int));
-		int flags = fcntl(handle, F_GETFL, 0);
-		if(flags >= 0) {
-			fcntl(handle, F_SETFL, flags | O_NONBLOCK);
-		}
-		if(rslt) {
+		if(ok_connect) {
+			int on = 1;
+			setsockopt(handle, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(int));
+			int flags = fcntl(handle, F_GETFL, 0);
+			if(flags >= 0) {
+				fcntl(handle, F_SETFL, flags | O_NONBLOCK);
+			}
 			if(CR_VERBOSE().socket_connect) {
 				ostringstream verbstr;
 				verbstr << "OK connect (" << name << ")"
@@ -408,8 +400,21 @@ bool cSocket::connect(unsigned loopSleepS) {
 					<< " handle " << handle;
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
+			rslt = true;
+		} else {
+			string ips_str;
+			for(uint i = 0; i < ips.size(); i++) {
+				if(i > 0) {
+					ips_str += ",";
+				}
+				ips_str += ips[i].getString();
+			}
+			setError("failed connection to %s (%s) of the server %s : last error:[%s]", 
+				 ips.size() > 1 ? "all possible ips" : "ip",
+				 ips_str.c_str(), host.c_str(), 
+				 strerror(errno));
+			rslt = false;
 		}
-		
 	} while(!rslt && loopSleepS && !(terminate || CR_TERMINATE()));
 	return(true);
 }

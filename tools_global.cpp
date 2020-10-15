@@ -1175,14 +1175,14 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 	map<string, sIP_time>::iterator iter_find = res_table.find(host);
 	if(iter_find != res_table.end() &&
 	   (iter_find->second.timeout == UINT_MAX ||
-	    iter_find->second.at + iter_find->second.timeout > now)) {
+	    iter_find->second.at + iter_find->second.timeout > now) &&
+	   iter_find->second.ips.size()) {
+		ip = iter_find->second.ips[0];
 		if (ips) {
 			*ips = iter_find->second.ips;
-		} else {
-			ip = iter_find->second.ips[0];
 		}
 	}
-	if((!ip.isSet() && !ips) || (ips && !ips->size())) {
+	if(!ip.isSet()) {
 		if(ip_is_valid(host)) {
 			ip.setFromString(host);
 			res_table[host].ips.clear();
@@ -1210,7 +1210,6 @@ vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, e
 				res_table[host].ips = *ips;
 				res_table[host].at = now;
 				res_table[host].timeout = timeout ? timeout : 120;
-
 			} else if(ip.isSet()) {
 				res_table[host].ips.clear();
 				res_table[host].ips.push_back(ip);
@@ -1247,29 +1246,44 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	req.ai_socktype = SOCK_STREAM;
 	if(getaddrinfo(host, NULL, &req, &res) == 0) {
 		while(res) {
-			ip.clear();
 			if(res->ai_family == AF_INET) {
-				ip.setIPv4(((sockaddr_in*)res->ai_addr)->sin_addr.s_addr, true);
-				syslog(LOG_NOTICE, "getaddrinfo resolve host %s to IPV4 %s", host, ip.getString().c_str());
-				if (ips) {
-					ips->insert(ips->begin(), ip);
-				} else {
-					break;
+				vmIP _ip;
+				_ip.setIPv4(((sockaddr_in*)res->ai_addr)->sin_addr.s_addr, true);
+				if(_ip.isSet()) {
+					syslog(LOG_NOTICE, "getaddrinfo resolve host %s to IPV4 %s", host, _ip.getString().c_str());
+					if (!ip.isSet()) {
+						ip = _ip;
+					}
+					if (ips) {
+						ips->push_back(_ip);
+					} else {
+						break;
+					}
 				}
 			} 
 			#if VM_IPV6
 			else if(VM_IPV6_B && res->ai_family == AF_INET6) {
-				ip.setIPv6(((sockaddr_in6*)res->ai_addr)->sin6_addr, true);
-				syslog(LOG_NOTICE, "getaddrinfo resolve host %s to IPV6 %s", host, ip.getString().c_str());
-				if (ips) {
-					ips->insert(ips->begin(), ip);
-				} else {
-					break;
+				vmIP _ip;
+				_ip.setIPv6(((sockaddr_in6*)res->ai_addr)->sin6_addr, true);
+				if(_ip.isSet()) {
+					syslog(LOG_NOTICE, "getaddrinfo resolve host %s to IPV6 %s", host, _ip.getString().c_str());
+					if (!ip.isSet()) {
+						ip = _ip;
+					}
+					if (ips) {
+						ips->push_back(_ip);
+					} else {
+						break;
+					}
 				}
 			}
 			#endif
 			res = res->ai_next;
 		}
+	}
+	if (ips && ips->size() > 1) {
+		sort_ips_by_type(ips);
+		ip = (*ips)[0];
 	}
 	return(ip);
 }
@@ -1288,11 +1302,14 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 		while(!okIP && fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
 			vector<string> try_ip = split(bufRslt, split(",|;|\t| |\n", '|'), true);
 			for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
-				ip.clear();
-				if (ip.setFromString(try_ip[i].c_str())) {
-					syslog(LOG_NOTICE, "cmd host resolve host %s to %s", host, ip.getString().c_str());
+				vmIP _ip;
+				if (_ip.setFromString(try_ip[i].c_str())) {
+					syslog(LOG_NOTICE, "cmd host resolve host %s to %s", host, _ip.getString().c_str());
+					if (!ip.isSet()) {
+						ip = _ip;
+					}
 					if (ips) {
-						ips->push_back(ip);
+						ips->push_back(_ip);
 					} else {
 						okIP = true;
 					}
@@ -1301,7 +1318,23 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 		}
 		pclose(cmd_pipe);
 	}
+	if (ips && ips->size() > 1) {
+		sort_ips_by_type(ips);
+		ip = (*ips)[0];
+	}
 	return(ip);
+}
+
+void cResolver::sort_ips_by_type(vector<vmIP> *ips) {
+	vector<vmIP> ip_rslt;
+	for(unsigned v6 = 0; v6 < 2; v6++) {
+		for(unsigned i = 0; i < ips->size(); i++) {
+			if((*ips)[i].is_v6() ? v6 : !v6) {
+				ip_rslt.push_back((*ips)[i]);
+			}
+		}
+	}
+	*ips = ip_rslt;
 }
 
 std::vector<string> cResolver::resolve_allips_str(const char *host, unsigned timeout, eTypeResolve typeResolve) {

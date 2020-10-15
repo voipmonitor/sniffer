@@ -835,6 +835,7 @@ public:
 private:
 	vmIP resolve_std(const char *host, vector<vmIP> *ips);
 	vmIP resolve_by_system_host(const char *host, vector<vmIP> *ips);
+	void sort_ips_by_type(vector<vmIP> *ips);
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
