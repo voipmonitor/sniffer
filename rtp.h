@@ -339,9 +339,13 @@ public:
 		u_int32_t lsr4compare;
 		u_int32_t last_lsr;
 		u_int32_t last_lsr_delay;
+		struct timeval sniff_ts;
 		unsigned int rtd_sum;	/* roundtrip delay */
 		unsigned int rtd_count;
 		unsigned int rtd_max;
+		unsigned int rtd_w_sum;	/* roundtrip delay by wireshark*/
+		unsigned int rtd_w_count;
+		unsigned int rtd_w_max;
 	} rtcp;
 
 	struct rtcp_xr_t {

@@ -200,7 +200,7 @@ extern unsigned int opt_ignoreRTCPjitter;
 **----------------------------------------------------------------------------
 */
 
-char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
+char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, struct timeval *ts)
 {
 	char *pkt = data;
 	rtcp_sr_senderinfo_t senderinfo;
@@ -233,6 +233,8 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 			rtp_sender->rtcp.lsr4compare = cur_lsr;
 			last_lsr = rtp_sender->rtcp.last_lsr;
 			last_lsr_delay = rtp_sender->rtcp.last_lsr_delay;
+			rtp_sender->rtcp.sniff_ts.tv_sec = ts->tv_sec;
+			rtp_sender->rtcp.sniff_ts.tv_usec = ts->tv_usec;
 			break;
 		}
 	}
@@ -290,12 +292,28 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 			}
 			// calculate rtcp round trip delay
-			if (rtp->rtcp.lsr4compare == reportblock.lsr && last_lsr && last_lsr_delay && reportblock.delay_since_lsr && rtp_sender) {
-				unsigned int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
-				rtp_sender->rtcp.rtd_sum += tmpdiff;
-				rtp_sender->rtcp.rtd_count++;
-				if (rtp_sender->rtcp.rtd_max < tmpdiff) {
-					rtp_sender->rtcp.rtd_max = tmpdiff;
+			if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
+				if (last_lsr && last_lsr_delay && rtp_sender) {
+					int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
+					if (tmpdiff > 0) {
+						rtp_sender->rtcp.rtd_sum += tmpdiff;
+						rtp_sender->rtcp.rtd_count++;
+						if (rtp_sender->rtcp.rtd_max < (uint)tmpdiff) {
+							rtp_sender->rtcp.rtd_max = tmpdiff;
+						}
+					}
+				}
+				if (timerisset(&rtp->rtcp.sniff_ts)) {
+					struct timeval tmpts;
+					timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
+					unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr *1000 / 65536;
+					if (ms > 0) {
+						rtp->rtcp.rtd_w_count++;
+						rtp->rtcp.rtd_w_sum += ms;
+						if (rtp->rtcp.rtd_w_max < ms) {
+							rtp->rtcp.rtd_w_max = ms;
+						}
+					}
 				}
 			}
 			rtp->rtcp.last_lsr = reportblock.lsr;
@@ -330,7 +348,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call)
 **----------------------------------------------------------------------------
 */
 
-char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
+char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeval *ts)
 {
 	char *pkt = data;
 	rtcp_sr_reportblock_t reportblock;
@@ -394,6 +412,21 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call)
 				rtp->rtcp.jitt_counter++;
 				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
 				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
+			}
+			// calculate rtcp round trip delay
+			if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
+				if (timerisset(&rtp->rtcp.sniff_ts)) {
+					struct timeval tmpts;
+					timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
+					unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr * 1000 / 65536;
+					if (ms > 0) {
+						rtp->rtcp.rtd_w_count++;
+						rtp->rtcp.rtd_w_sum += ms;
+						if (rtp->rtcp.rtd_w_max < ms) {
+							rtp->rtcp.rtd_w_max = ms;
+						}
+					}
+				}
 			}
 			if(sverb.debug_rtcp) {
 				printf("rSSRC [%x]\n", reportblock.ssrc);
@@ -666,10 +699,10 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call)
 			
 		switch(rtcp->packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call);
+			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts);
 			break;
 		case RTCP_PACKETTYPE_RR:
-			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call);
+			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts);
 			break;
 		case RTCP_PACKETTYPE_SDES:
 			// we do not need to parse it
