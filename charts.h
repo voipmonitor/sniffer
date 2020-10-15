@@ -72,7 +72,9 @@ enum eChartType {
 	_chartType_domain_src,
 	_chartType_domain_dst,
 	_chartType_rtcp_avgrtd,
-	_chartType_rtcp_maxrtd
+	_chartType_rtcp_maxrtd,
+	_chartType_rtcp_avgrtd_w,
+	_chartType_rtcp_maxrtd_w
 };
 
 enum eChartSubType {

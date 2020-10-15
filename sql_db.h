@@ -1169,6 +1169,7 @@ struct sExistsColumns {
 	bool cdr_rtp_duration;
 	bool cdr_rtcp_fraclost_pktcount;
 	bool cdr_rtcp_rtd;
+	bool cdr_rtcp_rtd_w;
 	bool cdr_dtmf_calldate;
 	bool cdr_dtmf_type;
 	bool cdr_sipresp_calldate;
