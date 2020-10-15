@@ -1,11 +1,16 @@
+27.1.1 15.10.2020
+=================
+- use ipv4 for cloud connect and use ipv6 only if ipv4 is not resolved by DNS 
+
+
 27.1 14.10.2020
 ===============
-implement roundtrip (end to end) delay calculation from RTCP packets (not all RTCP has information for it) [VS-920]
-TLS: implemnt 32bytes client-random secret 
-WEBRTC: fix webrtc parser which ignored half of packets in some cases [VS-1121]
-increase number of possible RTP streams in a call (was limited to 30) [VS-1115]
-fix IP proxy detection for multibranch calls [VS-1118]
-fix long Call-ID string in tar.gz [VS-1116]
+- implement roundtrip (end to end) delay calculation from RTCP packets (not all RTCP has information for it) [VS-920]
+- TLS: implemnt 32bytes client-random secret 
+- WEBRTC: fix webrtc parser which ignored half of packets in some cases [VS-1121]
+- increase number of possible RTP streams in a call (was limited to 30) [VS-1115]
+- fix IP proxy detection for multibranch calls [VS-1118]
+- fix long Call-ID string in tar.gz [VS-1116]
 
 
 27.0.2 22.09.2020
