@@ -1060,7 +1060,12 @@ string Registers::getDataTableJson(char *params, bool *zip) {
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
-			table += "," + iter_rec->getJson();
+			string rec_json = iter_rec->getJson();
+			extern cUtfConverter utfConverter;
+			if(!utfConverter.check(rec_json.c_str())) {
+				rec_json = utfConverter.remove_no_ascii(rec_json.c_str());
+			}
+			table += "," + rec_json;
 			if(sortDesc) {
 				if(iter_rec != records.begin()) {
 					iter_rec--;
