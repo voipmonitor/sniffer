@@ -3245,6 +3245,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
 			<< endl;
+			Call *call = packetS->call ? packetS->call : packetS->call_created;
+			if(call) {
+				cout << call->caller << " -> " << call->called << endl;
+			}
 		}
 		cout << dump_data << endl;
 	}
@@ -3806,12 +3810,24 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if(opt_update_dstnum_onanswer &&
 					   !call->updateDstnumOnAnswer && !call->updateDstnumFromMessage &&
-					   call->called_invite_branch_map.size()) {
+					   call->called_invite_branch_map.size() > 1) {
 						detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 						if(branch[0] != '\0') {
-							map<string, string>::iterator iter = call->called_invite_branch_map.find(branch);
+							bool use_called_invite = false;
+							if(opt_destination_number_mode == 2) {
+								use_called_invite = 1;
+							} else {
+								map<string, bool> variants_called_invite;
+								map<string, bool> variants_to;
+								for(map<string, dstring>::iterator iter = call->called_invite_branch_map.begin(); iter != call->called_invite_branch_map.end(); iter++) {
+									variants_called_invite[iter->second[0]] = true;
+									variants_to[iter->second[1]] = true;
+								}
+								use_called_invite = variants_called_invite.size() > variants_to.size();
+							}
+							map<string, dstring>::iterator iter = call->called_invite_branch_map.find(branch);
 							if(iter != call->called_invite_branch_map.end()) {
-								strcpy_null_term(call->called, iter->second.c_str());
+								strcpy_null_term(call->called, iter->second[use_called_invite ? 0 : 1].c_str());
 								call->updateDstnumOnAnswer = true;
 							}
 						}
@@ -3932,8 +3948,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 		if(branch[0] != '\0') {
 			detect_called_invite(packetS, called_invite, sizeof(called_invite), &called_invite_detected);
-			if(called_invite[0] != '\0') {
-				call->called_invite_branch_map[branch] = called_invite;
+			detect_to(packetS, to, sizeof(to), &to_detected);
+			if(called_invite[0] != '\0' || to[0] != '\0') {
+				call->called_invite_branch_map[branch] = dstring(called_invite, to);
 			}
 		}
 		if(!packetS->_createCall && !existInviteSdaddr && !reverseInviteSdaddr) {

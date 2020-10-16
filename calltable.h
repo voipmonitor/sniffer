@@ -693,7 +693,7 @@ public:
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
 	char called[256];		//!< To: xxx
-	map<string, string> called_invite_branch_map;
+	map<string, dstring> called_invite_branch_map;
 	char called_domain[256];	//!< To: xxx
 	char contact_num[64];		//!< 
 	char contact_domain[128];	//!< 
