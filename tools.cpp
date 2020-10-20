@@ -7980,8 +7980,8 @@ bool getInterfaceOption(const char *param, const char *searchstr, const char *if
 			return(true);
 		}
 	}
-	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error.\n", param, iface);
-	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error.", param, iface);
+	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.\n", param, iface);
+	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.", param, iface);
 	return(false);
 }
 
@@ -7995,8 +7995,8 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
 		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
 	} else {
-		printf("Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.\n", param, iface, option, value, retval);
-		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error.", param, iface, option, value, retval);
+		printf("Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error. Some NICs don't support it.\n", param, iface, option, value, retval);
+		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error. Some NICs don't support it.", param, iface, option, value, retval);
 	}
 }
 
