@@ -3381,7 +3381,7 @@ int Mgmt_readaudio(Mgmt_params *params) {
 
 int Mgmt_reload(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("reload", "voipmonitor reload");
+		params->registerCommand("reload", "voipmonitor's reload. The reloaded items: the capture rules for now");
 		return(0);
 	}
 	reload_capture_rules();
