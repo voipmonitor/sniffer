@@ -913,7 +913,6 @@ void CountryDetect::prepareReload() {
 	if(opt_nocdr) {
 		return;
 	}
-	reload_do = false;
 	lock_reload();
 	if(countryCodes_reload) {
 		delete countryCodes_reload;
@@ -943,22 +942,24 @@ void CountryDetect::prepareReload() {
 void CountryDetect::applyReload() {
 	if(reload_do) {
 		lock_reload();
-		lock();
-		delete countryCodes;
-		delete countryPrefixes;
-		delete geoIP_country;
-		delete checkInternational;
-		countryCodes = countryCodes_reload;
-		countryPrefixes = countryPrefixes_reload;
-		geoIP_country = geoIP_country_reload;
-		checkInternational = checkInternational_reload;
-		unlock();
-		countryCodes_reload = NULL;
-		countryPrefixes_reload = NULL;
-		geoIP_country_reload = NULL;
-		checkInternational_reload = NULL;
-		reload_do = false;
-		syslog(LOG_NOTICE, "CountryDetect::applyReload");
+		if(reload_do) {
+			lock();
+			delete countryCodes;
+			delete countryPrefixes;
+			delete geoIP_country;
+			delete checkInternational;
+			countryCodes = countryCodes_reload;
+			countryPrefixes = countryPrefixes_reload;
+			geoIP_country = geoIP_country_reload;
+			checkInternational = checkInternational_reload;
+			unlock();
+			countryCodes_reload = NULL;
+			countryPrefixes_reload = NULL;
+			geoIP_country_reload = NULL;
+			checkInternational_reload = NULL;
+			reload_do = false;
+			syslog(LOG_NOTICE, "CountryDetect::applyReload");
+		}
 		unlock_reload();
 	}
 }

@@ -162,6 +162,7 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, 
 IPfilter::IPfilter() {
 	first_node = NULL;
 	count = 0;
+	reload_do = false;
 };
 
 // destructor
@@ -307,14 +308,13 @@ void IPfilter::freeActive() {
 }
 
 void IPfilter::prepareReload() {
-	reload_do = false;
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4003) IPfilter;
 	filter_reload->load();
-	reload_do = 1;
+	reload_do = true;
 	syslog(LOG_NOTICE, "IPfilter::prepareReload");
 	unlock_reload();
 }
@@ -322,13 +322,15 @@ void IPfilter::prepareReload() {
 void IPfilter::applyReload() {
 	if(reload_do) {
 		lock_reload();
-		lock();
-		delete filter_active;
-		filter_active = filter_reload;
-		unlock();
-		filter_reload = NULL;
-		reload_do = false;
-		syslog(LOG_NOTICE, "IPfilter::applyReload");
+		if(reload_do) {
+			lock();
+			delete filter_active;
+			filter_active = filter_reload;
+			unlock();
+			filter_reload = NULL;
+			reload_do = false;
+			syslog(LOG_NOTICE, "IPfilter::applyReload");
+		}
 		unlock_reload();
 	}
 }
@@ -349,6 +351,7 @@ TELNUMfilter::TELNUMfilter() {
                 first_node->nodes[i] = NULL;
 	}
 	count = 0;
+	reload_do = false;
 };
 
 // destructor
@@ -604,14 +607,13 @@ void TELNUMfilter::freeActive() {
 }
 
 void TELNUMfilter::prepareReload() {
-	reload_do = false;
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4005) TELNUMfilter;
 	filter_reload->load();
-	reload_do = 1;
+	reload_do = true;
 	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
 	unlock_reload();
 }
@@ -619,13 +621,15 @@ void TELNUMfilter::prepareReload() {
 void TELNUMfilter::applyReload() {
 	if(reload_do) {
 		lock_reload();
-		lock();
-		delete filter_active;
-		filter_active = filter_reload;
-		unlock();
-		filter_reload = NULL;
-		reload_do = false; 
-		syslog(LOG_NOTICE, "TELNUMfilter::applyReload");
+		if(reload_do) {
+			lock();
+			delete filter_active;
+			filter_active = filter_reload;
+			unlock();
+			filter_reload = NULL;
+			reload_do = false; 
+			syslog(LOG_NOTICE, "TELNUMfilter::applyReload");
+		}
 		unlock_reload();
 	}
 }
@@ -642,6 +646,7 @@ volatile int TELNUMfilter::_sync_reload = 0;
 DOMAINfilter::DOMAINfilter() {
 	first_node = NULL;
 	count = 0;
+	reload_do = false;
 };
 
 // destructor
@@ -770,14 +775,13 @@ void DOMAINfilter::freeActive() {
 }
 
 void DOMAINfilter::prepareReload() {
-	reload_do = false;
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4008) DOMAINfilter;
 	filter_reload->load();
-	reload_do = 1;
+	reload_do = true;
 	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
 	unlock_reload();
 }
@@ -785,13 +789,15 @@ void DOMAINfilter::prepareReload() {
 void DOMAINfilter::applyReload() {
 	if(reload_do) {
 		lock_reload();
-		lock();
-		delete filter_active;
-		filter_active = filter_reload;
-		unlock();
-		filter_reload = NULL;
-		reload_do = false; 
-		syslog(LOG_NOTICE, "DOMAINfilter::applyReload");
+		if(reload_do) {
+			lock();
+			delete filter_active;
+			filter_active = filter_reload;
+			unlock();
+			filter_reload = NULL;
+			reload_do = false; 
+			syslog(LOG_NOTICE, "DOMAINfilter::applyReload");
+		}
 		unlock_reload();
 	}
 }
@@ -808,6 +814,7 @@ volatile int DOMAINfilter::_sync_reload = 0;
 SIP_HEADERfilter::SIP_HEADERfilter() {
 	count = 0;
 	loadTime = 0;
+	reload_do = false;
 }
 
 // destructor
@@ -1035,14 +1042,13 @@ void SIP_HEADERfilter::freeActive() {
 }
 
 void SIP_HEADERfilter::prepareReload() {
-	reload_do = false;
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4011) SIP_HEADERfilter;
 	filter_reload->load();
-	reload_do = 1;
+	reload_do = true;
 	syslog(LOG_NOTICE, "SIP_HEADERfilter::prepareReload");
 	unlock_reload();
 }
@@ -1050,13 +1056,15 @@ void SIP_HEADERfilter::prepareReload() {
 void SIP_HEADERfilter::applyReload() {
 	if(reload_do) {
 		lock_reload();
-		lock();
-		delete filter_active;
-		filter_active = filter_reload;
-		unlock();
-		filter_reload = NULL;
-		reload_do = false; 
-		syslog(LOG_NOTICE, "SIP_HEADERfilter::applyReload");
+		if(reload_do) {
+			lock();
+			delete filter_active;
+			filter_active = filter_reload;
+			unlock();
+			filter_reload = NULL;
+			reload_do = false; 
+			syslog(LOG_NOTICE, "SIP_HEADERfilter::applyReload");
+		}
 		unlock_reload();
 	}
 }
