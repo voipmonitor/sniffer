@@ -4,8 +4,7 @@
 
 #include <sys/types.h>
 
-
-u_int8_t tls_generate_keys(void* dssl_sess);
+u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session);
 void tls_destroy_session(void* dssl_sess);
 u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len, 
 			    u_int8_t record_type, u_int16_t record_version, u_int8_t is_from_server, 

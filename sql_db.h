@@ -1210,6 +1210,7 @@ struct sExistsColumns {
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;
 	bool sip_msg_vlan;
+	bool ssl_sessions_id_sensor_is_unsigned;
 };
 
 struct sTableCalldateMsIndik {

@@ -24,6 +24,10 @@
 #include "dssl/ssl_session.h"
 #include "dssl/ssl_decode_hs.h"
 
+extern "C" {
+#include "dssl/tls-ext.h"
+}
+
 
 using namespace std;
 

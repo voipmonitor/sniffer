@@ -169,6 +169,7 @@ struct SslDecoder {
     SslFlow *flow;
     */
     StringInfo app_traffic_secret;  /**< TLS 1.3 application traffic secret (if applicable), wmem file scope. */
+    gboolean restore_session;
 };
 
 struct SslSession {

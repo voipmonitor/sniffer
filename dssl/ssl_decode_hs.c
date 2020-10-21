@@ -308,7 +308,7 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	{
 		if( sess->version == TLS1_3_VERSION )
 		{
-			if( !sess->get_keys_rslt_data.set || !tls_generate_keys(sess) )
+			if( !sess->get_keys_rslt_data.set || !tls_generate_keys(sess, 0) )
 			{
 				return DSSL_E_TLS_GENERATE_KEYS;
 			}

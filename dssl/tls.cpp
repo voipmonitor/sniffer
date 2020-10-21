@@ -746,7 +746,7 @@ tls13_hkdf_expand_label(int md, const StringInfo *secret,
 }
 
 gboolean
-tls13_generate_keys(SslDecryptSession *ssl_session, const StringInfo *secret, gboolean is_from_server)
+tls13_generate_keys(SslDecryptSession *ssl_session, const StringInfo *secret, gboolean is_from_server, gboolean restore_session)
 {
     gboolean    success = FALSE;
     guchar     *write_key = NULL, *write_iv = NULL;
@@ -808,6 +808,9 @@ tls13_generate_keys(SslDecryptSession *ssl_session, const StringInfo *secret, gb
 
     ssl_debug_printf("%s ssl_create_decoder(%s)\n", G_STRFUNC, is_from_server ? "server" : "client");
     decoder = ssl_create_decoder(cipher_suite, cipher_algo, 0, NULL, write_key, write_iv, iv_length);
+    if (restore_session) {
+	decoder->restore_session = restore_session;
+    }
     if (!decoder) {
         ssl_debug_printf("%s can't init %s decoder\n", G_STRFUNC, is_from_server ? "server" : "client");
         goto end;
@@ -848,7 +851,8 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
         _U_
 #endif
         ,
-        const guchar *in, guint16 inl, StringInfo *out_str, guint *outl)
+        const guchar *in, guint16 inl, StringInfo *out_str, guint *outl,
+	u_int8_t *auth_tag_used_seq, u_int8_t *auth_tag_failed)
 {
     /* RFC 5246 (TLS 1.2) 6.2.3.3 defines the TLSCipherText.fragment as:
      * GenericAEADCipher: { nonce_explicit, [content] }
@@ -950,6 +954,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
         /* Sequence number is left-padded with zeroes and XORed with write_iv */
         phton64(nonce + nonce_len - 8, pntoh64(nonce + nonce_len - 8) ^ decoder->seq);
         ssl_debug_printf("%s seq %" G_GUINT64_FORMAT "\n", G_STRFUNC, decoder->seq);
+	if(auth_tag_used_seq) *auth_tag_used_seq = TRUE;
     }
 
     /* Set nonce and additional authentication data */
@@ -1023,6 +1028,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
             ssl_debug_printf("%s auth tag mismatch\n", G_STRFUNC);
             ssl_print_data("auth_tag(expect)", auth_tag_calc, auth_tag_len);
             ssl_print_data("auth_tag(actual)", auth_tag_wire, auth_tag_len);
+	    if(auth_tag_failed) *auth_tag_failed = TRUE;
         }
         if (ignore_mac_failed) {
             ssl_debug_printf("%s: auth check failed, but ignored for troubleshooting ;-)\n", G_STRFUNC);
@@ -1254,6 +1260,9 @@ ssl_decompress_record(SslDecompress* decomp _U_, const guchar* in _U_, guint inl
 }
 #endif
 
+#define TRY_SEQ_BACKWARD 10
+#define TRY_SEQ_FORWARD 100
+
 int
 ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint16 record_version,
         gboolean ignore_mac_failed,
@@ -1261,6 +1270,8 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 {
     guint   pad, worklen, uncomplen, maclen, mac_fraglen = 0;
     guint8 *mac = NULL, *mac_frag = NULL;
+    gboolean restore_session = decoder->restore_session;
+    decoder->restore_session = FALSE;
 
     ssl_debug_printf("ssl_decrypt_record ciphertext len %d\n", inl);
     ssl_print_data("Ciphertext",in, inl);
@@ -1287,9 +1298,33 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
         decoder->cipher_suite->mode == MODE_POLY1305 ||
         ssl->session.version == TLSV1DOT3_VERSION) {
 
-        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen)) {
+	u_int8_t auth_tag_used_seq = FALSE;
+	u_int8_t auth_tag_failed = FALSE;
+        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
             /* decryption failed */
-            return -1;
+            // return -1;
+	    if(restore_session && auth_tag_used_seq && auth_tag_failed) {
+		gboolean seq_ok = FALSE;
+		guint64 seq_old = decoder->seq;
+		guint try_seq_backward = TRY_SEQ_BACKWARD;
+		guint try_seq_forward = TRY_SEQ_FORWARD;
+		guint64 try_seq_from = decoder->seq > try_seq_backward ? decoder->seq - try_seq_backward : 0;
+		guint64 try_seq_to = decoder->seq - try_seq_forward;
+		for(guint64 try_seq = try_seq_from; try_seq <= try_seq_to && !seq_ok; try_seq++) {
+		    if (try_seq != seq_old) {
+			decoder->seq = try_seq;
+			if (tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen, NULL, NULL)) {
+			    seq_ok = TRUE;
+			}
+		    }
+		}
+		if (!seq_ok) {
+		    decoder->seq = seq_old;
+		    return -1;
+		}
+	    } else {
+		return -1;
+	    }
         }
 
         goto skip_mac;
@@ -1492,7 +1527,7 @@ SslDecoder::~SslDecoder() {
 
 extern "C" {
 
-u_int8_t tls_generate_keys(void* dssl_sess) {
+u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session) {
     if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key[0] ||
        !((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key[0]) {
 	return(0);
@@ -1513,8 +1548,13 @@ u_int8_t tls_generate_keys(void* dssl_sess) {
 		      ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.length);
     secret_server.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key,
 		      ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.length);
-    return(tls13_generate_keys(ssl_ds, &secret_client, 0) &&
-	   tls13_generate_keys(ssl_ds, &secret_server, 1));
+    u_int8_t rslt_generate_keys = tls13_generate_keys(ssl_ds, &secret_client, 0, restore_session) &&
+				  tls13_generate_keys(ssl_ds, &secret_server, 1, restore_session);
+    if(rslt_generate_keys) {
+	ssl_ds->server->seq = ((DSSL_Session*)dssl_sess)->tls_session_server_seq;
+	ssl_ds->client->seq = ((DSSL_Session*)dssl_sess)->tls_session_client_seq;
+    }
+    return(rslt_generate_keys);
 }
 
 void tls_destroy_session(void* dssl_sess) {
@@ -1541,6 +1581,8 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
 	memcpy(rslt, out_str.data(), outl);
 	*rslt_len = outl;
     }
+    ((DSSL_Session*)dssl_sess)->tls_session_server_seq = ssl_ds->server->seq;
+    ((DSSL_Session*)dssl_sess)->tls_session_client_seq = ssl_ds->client->seq;
     return(rslt_decrypt);
 }
 
@@ -1554,7 +1596,7 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
 
 extern "C" {
 
-u_int8_t tls_generate_keys(void* dssl_sess) {
+u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session) {
 	return(0);
 }
 

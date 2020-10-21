@@ -146,6 +146,8 @@ struct DSSL_Session_
 	int ignore_error_invalid_mac;
 	
 	void *tls_session;
+	uint64_t tls_session_server_seq;
+	uint64_t tls_session_client_seq;
 	
 };
 

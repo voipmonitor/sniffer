@@ -7294,7 +7294,7 @@ void SqlDb_mysql::createTable(const char *tableName) {
 			   !strcmp(tableName, "ssl_sessions_mem");
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `ssl_sessions") + (mem ? "_mem" : "") + "` (\
-				`id_sensor` smallint unsigned,\
+				`id_sensor` int,\
 				`serverip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 				`serverport` smallint unsigned,\
 				`clientip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
@@ -7981,6 +7981,11 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 		this->query(
 			"ALTER TABLE `files`\
 			 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
+	}
+	if(opt_ssl_store_sessions) {
+		string ssl_sessions_table = opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" : "ssl_sessions";
+		string ssl_sessions_id_type = this->getTypeColumn(ssl_sessions_table.c_str(), "id_sensor", true);
+		existsColumns.ssl_sessions_id_sensor_is_unsigned = ssl_sessions_id_type.find("unsigned") != string::npos;
 	}
 }
 

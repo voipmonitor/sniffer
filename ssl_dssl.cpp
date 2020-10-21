@@ -11,12 +11,16 @@
 #if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 
 
+static void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key);
+static void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_item *key);
+
 extern map<vmIPport, string> ssl_ipport;
 extern int opt_ssl_store_sessions;
 extern int opt_ssl_store_sessions_expiration_hours;
 extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern int opt_nocdr;
+extern sExistsColumns existsColumns;
 
 static cSslDsslSessions *SslDsslSessions;
 
@@ -244,8 +248,19 @@ string cSslDsslSession::get_session_data(struct timeval ts) {
 	json.add("cipher_suite", session->cipher_suite);
 	json.add("compression_method", session->compression_method);
 	json.add("client_random", hexencode(session->client_random, sizeof(session->client_random)));
-	json.add("server_random", hexencode(session->server_random, sizeof(session->server_random)));
-	json.add("master_secret", hexencode(session->master_secret, sizeof(session->master_secret)));
+	if(session->version == TLS1_3_VERSION) {
+		jsonAddKey(&json, "key_client_random", &session->get_keys_rslt_data.client_random);
+		jsonAddKey(&json, "key_client_handshake_traffic_secret", &session->get_keys_rslt_data.client_handshake_traffic_secret);
+		jsonAddKey(&json, "key_server_handshake_traffic_secret", &session->get_keys_rslt_data.server_handshake_traffic_secret);
+		jsonAddKey(&json, "key_exporter_secret", &session->get_keys_rslt_data.exporter_secret);
+		jsonAddKey(&json, "key_client_traffic_secret_0", &session->get_keys_rslt_data.client_traffic_secret_0);
+		jsonAddKey(&json, "key_server_traffic_secret_0", &session->get_keys_rslt_data.server_traffic_secret_0);
+		json.add("seq_server", session->tls_session_server_seq);
+		json.add("seq_client", session->tls_session_client_seq);
+	} else {
+		json.add("server_random", hexencode(session->server_random, sizeof(session->server_random)));
+		json.add("master_secret", hexencode(session->master_secret, sizeof(session->master_secret)));
+	}
 	json.add("c_dec_version", session->c_dec.version);
 	json.add("s_dec_version", session->s_dec.version);
 	json.add("stored_at", ts.tv_sec);
@@ -262,11 +277,27 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 	session->cipher_suite = atoi(jsonData.getValue("cipher_suite").c_str());
 	session->compression_method = atoi(jsonData.getValue("compression_method").c_str());
 	hexdecode(session->client_random, jsonData.getValue("client_random").c_str(), sizeof(session->client_random));
-	hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
-	hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
-	if(ssls_generate_keys(session) != DSSL_RC_OK ||
-	   ssls_set_session_version(session, session->version) != DSSL_RC_OK ||
-	   dssl_decoder_stack_flip_cipher(&session->c_dec) != DSSL_RC_OK ||
+	if(session->version == TLS1_3_VERSION) {
+		jsonGetKey(&jsonData, "key_client_random", &session->get_keys_rslt_data.client_random);
+		jsonGetKey(&jsonData, "key_client_handshake_traffic_secret", &session->get_keys_rslt_data.client_handshake_traffic_secret);
+		jsonGetKey(&jsonData, "key_server_handshake_traffic_secret", &session->get_keys_rslt_data.server_handshake_traffic_secret);
+		jsonGetKey(&jsonData, "key_exporter_secret", &session->get_keys_rslt_data.exporter_secret);
+		jsonGetKey(&jsonData, "key_client_traffic_secret_0", &session->get_keys_rslt_data.client_traffic_secret_0);
+		jsonGetKey(&jsonData, "key_server_traffic_secret_0", &session->get_keys_rslt_data.server_traffic_secret_0);
+		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
+		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
+		if(!tls_generate_keys(session, true)) {
+			return(false);
+		}
+	} else {
+		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
+		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
+		if(ssls_generate_keys(session) != DSSL_RC_OK ||
+		   ssls_set_session_version(session, session->version) != DSSL_RC_OK) {
+			return(false);
+		}
+	}
+	if(dssl_decoder_stack_flip_cipher(&session->c_dec) != DSSL_RC_OK ||
 	   dssl_decoder_stack_flip_cipher(&session->s_dec) != DSSL_RC_OK) {
 		return(false);
 	}
@@ -285,10 +316,10 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 	if(opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table &&
 	   this->process_data_counter > 0 &&
 	   this->session->c_dec.version && this->session->s_dec.version &&
-	   (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - 3600))) {
+	    (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - (session->version == TLS1_3_VERSION ? 60 : 3600)))) {
 		string session_data = get_session_data(ts);
 		SqlDb_row session_row_insert;
-		session_row_insert.add(opt_id_sensor, "id_sensor");
+		session_row_insert.add(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor, "id_sensor");
 		session_row_insert.add(ip, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
 		session_row_insert.add(port.getPort(), "serverport");
 		session_row_insert.add(ipc, "clientip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
@@ -736,7 +767,7 @@ void cSslDsslSessions::loadSessions() {
 		return;
 	}
 	list<SqlDb_condField> cond;
-	cond.push_back(SqlDb_condField("id_sensor", intToString(opt_id_sensor)));
+	cond.push_back(SqlDb_condField("id_sensor", intToString(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor)));
 	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - opt_ssl_store_sessions_expiration_hours * 3600)).setOper(">"));
 	sqlDb->select(storeSessionsTableName(), NULL, &cond);
 	SqlDb_row row;
@@ -912,4 +943,16 @@ void ssl_parse_client_random(const char *fileName) {
 	}
 	fclose(file);
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+}
+
+void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key) {
+	json->add(name, hexencode(key->key, key->length));
+}
+
+void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_item *key) {
+	string key_str = json->getValue(name);
+	if(!key_str.empty()) {
+		hexdecode(key->key, key_str.c_str(), key_str.length());
+		key->length = key_str.length() / 2;
+	}
 }
