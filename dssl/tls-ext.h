@@ -2,6 +2,12 @@
 #define __DSSL_TLS_EXT_H__
 
 
+#include <openssl/ssl.h>
+
+#ifndef TLS1_3_VERSION
+#define TLS1_3_VERSION 0x0304
+#endif
+
 #include <sys/types.h>
 
 u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session);
