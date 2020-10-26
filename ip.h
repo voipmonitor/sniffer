@@ -1,7 +1,9 @@
 #ifndef IP_H
 #define IP_H
 
+#if defined(CLOUD_ROUTER_SERVER) or defined(CLOUD_ROUTER_CLIENT)
 #include "config.h"
+#endif
 
 #ifndef VM_IPV6
 #define VM_IPV6 true

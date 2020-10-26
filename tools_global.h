@@ -19,13 +19,17 @@
 #include "tools_local.h"
 #include "ip.h"
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 #include "common.h"
 #include "config.h"
 #endif
 
 #ifdef FREEBSD
 #include <sys/thr.h>
+#endif
+
+#ifndef FILE_LINE
+#define FILE_LINE(alloc_number)
 #endif
 
 
@@ -223,9 +227,10 @@ inline u_int64_t getTimeNS() {
 }
 
 
-#ifdef CLOUD_ROUTER_SERVER
+#if defined(CLOUD_ROUTER_SERVER) or defined(CLOUD_ROUTER_SSLKEYLOGGER)
 #define USLEEP(us) usleep(us);
-#else
+#endif
+#ifdef CLOUD_ROUTER_CLIENT
 #define USLEEP(us) usleep(us, __FILE__, __LINE__);
 #define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
 inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line) {

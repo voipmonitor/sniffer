@@ -429,6 +429,7 @@ int opt_mysql_max_multiple_rows_insert = 20;
 int opt_mysql_enable_new_store = 0;
 bool opt_mysql_enable_set_id = false;
 bool opt_csv_store_format = false;
+bool opt_mysql_mysql_redirect_cdr_queue = false;
 int opt_cdr_sip_response_number_max_length = 0;
 vector<string> opt_cdr_sip_response_reg_remove;
 int opt_cdr_ua_enable = 1;
@@ -881,6 +882,8 @@ char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
 vector<vmIP> ssl_client_random_ip;
 vector<vmIPmask> ssl_client_random_net;
+string ssl_client_random_tcp_host;
+int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
 
@@ -3718,6 +3721,10 @@ int main(int argc, char *argv[]) {
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStart();
 	}
+	
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
+	}
 
 	if(opt_generator) {
 		opt_generator_channels = 2;
@@ -4400,7 +4407,7 @@ int main_init_read() {
 			}
 		}
 	
-		if(ifname[0] || is_read_from_file_by_pb() || opt_scanpcapdir[0]) {
+		if((ifname[0] && strcmp(ifname, "--")) || is_read_from_file_by_pb() || opt_scanpcapdir[0]) {
 			pcapQueueI = new FILE_LINE(42035) PcapQueue_readFromInterface("interface");
 			pcapQueueI->setInterfaceName(ifname[0] ? 
 						      ifname :
@@ -4917,15 +4924,27 @@ void main_init_sqlstore() {
 			for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
 				if(opt_mysqlstore_concat_limit_cdr) {
 					sqlStore->setConcatLimit(STORE_PROC_ID_CDR, i, opt_mysqlstore_concat_limit_cdr);
+					if(opt_mysql_mysql_redirect_cdr_queue) {
+						sqlStore->setConcatLimit(STORE_PROC_ID_CDR_REDIRECT, i, opt_mysqlstore_concat_limit_cdr);
+					}
 				}
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR, i);
+					if(opt_mysql_mysql_redirect_cdr_queue) {
+						sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_REDIRECT, i);
+					}
 				}
 				if(opt_mysql_enable_transactions_cdr) {
 					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR, i);
+					if(opt_mysql_mysql_redirect_cdr_queue) {
+						sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_REDIRECT, i);
+					}
 				}
 				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR, i);
+					if(opt_mysql_mysql_redirect_cdr_queue) {
+						sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_REDIRECT, i);
+					}
 				}
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
@@ -6531,6 +6550,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_enable_set_id", &opt_mysql_enable_set_id));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("csv_store_format", &opt_csv_store_format));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_redirect_cdr_queue", &opt_mysql_mysql_redirect_cdr_queue));
 		subgroup("cleaning");
 			addConfigItem(new FILE_LINE(42116) cConfigItem_integer("cleandatabase"));
 			addConfigItem(new FILE_LINE(42117) cConfigItem_integer("cleandatabase_cdr", &opt_cleandatabase_cdr));
@@ -6839,7 +6859,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("ssl_sessionkey_udp_port", ssl_client_random_portmatrix));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hosts("ssl_sessionkey_udp_ip", &ssl_client_random_ip, &ssl_client_random_net));
-			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_udp_maxwait_ms", &ssl_client_random_maxwait_ms));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("ssl_sessionkey_bind", &ssl_client_random_tcp_host));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_port", &ssl_client_random_tcp_port));
+			addConfigItem((new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_maxwait_ms", &ssl_client_random_maxwait_ms))
+				->addAlias("ssl_sessionkey_udp_maxwait_ms"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
@@ -9177,7 +9200,14 @@ int eval_config(string inistr) {
 			std::sort(ssl_client_random_ip.begin(), ssl_client_random_ip.end());
 		}
 	}
-	if((value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
+	if((value = ini.GetValue("general", "ssl_sessionkey_bind", NULL))) {
+		ssl_client_random_tcp_host = value;
+	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_bind_port", NULL))) {
+		ssl_client_random_tcp_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_maxwait_ms", NULL)) ||
+	   (value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
 		ssl_client_random_maxwait_ms = atoi(value);
 	}
 	

@@ -1839,10 +1839,17 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 					#endif
 				}
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(true);
+				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(false);
 				SqlDb::resetDelayQuery(true);
 				if(avgDelayQuery) {
 					outStr << " / " << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
+				}
+				u_int64_t queryCount = SqlDb::getQueryCount();
+				if(queryCount) {
+					if(queryCount / statPeriod) {
+						outStr << " / " << (queryCount / statPeriod) << "i/s";
+					}
+					SqlDb::resetQueryCount();
 				}
 				outStr << "] ";
 			}

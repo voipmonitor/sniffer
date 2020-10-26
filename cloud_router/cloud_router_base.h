@@ -16,7 +16,8 @@
 #include <openssl/err.h>
 
 #include "cloud_router.h"
-#ifndef CLOUD_ROUTER_SERVER
+
+#ifdef CLOUD_ROUTER_CLIENT
 #include "../tools_global.h"
 #else
 #include "tools_global.h"
@@ -347,15 +348,19 @@ protected:
 class cSocketBlock : public cSocket {
 public:
 	struct sBlockHeader {
-		sBlockHeader() {
-			init();
+		sBlockHeader(const char *header_string) {
+			init(header_string);
 		}
-		void init() {
+		void init(const char *header_string) {
 			memset(this, 0, sizeof(sBlockHeader));
-			strcpy(header, "vm_cloud_router_block_header");
+			strncpy(header, get_header_string(header_string), sizeof(header));
 		}
-		bool okHeader() {
-			return(!strncmp(header, "vm_cloud_router_block_header", 28));
+		bool okHeader(const char *header_string) {
+			const char *_header_string = get_header_string(header_string);
+			return(!strncmp(header, _header_string, min(sizeof(header), strlen(_header_string))));
+		}
+		const char *get_header_string(const char *header_string) {
+			return(header_string ? header_string : "vm_cloud_router_block_header");
 		}
 		char header[30];
 		u_int32_t length;
@@ -423,9 +428,9 @@ public:
 			length = 0;
 			capacity = 0;
 		}
-		bool okBlockHeader() {
+		bool okBlockHeader(const char *header_string) {
 			return(length >= sizeof(sBlockHeader) &&
-			       ((sBlockHeader*)buffer)->okHeader());
+			       ((sBlockHeader*)buffer)->okHeader(header_string));
 		}
 		u_int32_t lengthBlockHeader(bool addHeaderSize = false) {
 			return(length >= sizeof(sBlockHeader) ?
@@ -443,6 +448,8 @@ public:
 	};
 public:
 	cSocketBlock(const char *name, bool autoClose = false);
+	~cSocketBlock();
+	void setBlockHeaderString(const char *block_header_string);
 	bool writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode = _te_na, string xor_key = "");
 	bool writeBlock(string str, eTypeEncode typeCode = _te_na, string xor_key = "");
 	u_char *readBlock(size_t *dataLen, eTypeEncode typeCode = _te_na, string xor_key = "", bool quietEwouldblock = false, u_int16_t timeout = 0, size_t bufferIncLength = 0);
@@ -470,6 +477,8 @@ protected:
 protected:
 	sReadBuffer readBuffer;
 	cRsa rsa;
+private:
+	char *block_header_string;
 };
 
 
@@ -487,9 +496,11 @@ public:
 	 static void *listen_process(void *arg);
 	 void listen_process(int index);
 	 virtual void createConnection(cSocket *socket);
+	 void setStartVerbString(const char *startVerbString);
 protected:
 	 cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
 	 pthread_t listen_thread[MAX_LISTEN_SOCKETS];
+	 string startVerbString;
 };
 
 

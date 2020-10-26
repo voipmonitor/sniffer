@@ -109,6 +109,7 @@ extern sSnifferServerClientOptions snifferServerClientOptions;
 extern int opt_load_query_from_files;
 
 extern bool opt_disable_cdr_indexes_rtp;
+extern bool opt_mysql_mysql_redirect_cdr_queue;
 
 
 int sql_noerror = 0;
@@ -1567,6 +1568,7 @@ volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
 volatile u_int32_t SqlDb::delayQuery_count = 0;
 volatile u_int64_t SqlDb::delayQueryStore_sum_ms = 0;
 volatile u_int32_t SqlDb::delayQueryStore_count = 0;
+volatile u_int64_t SqlDb::query_count = 0;
 
 
 SqlDb_mysql::SqlDb_mysql() {
@@ -3220,6 +3222,21 @@ void MySqlStore_process::store() {
 						this->queryByRemoteSocket(queries.c_str());
 					}
 				}
+			} else if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
+				string query;
+				this->lock();
+				if(this->query_buff.size()) {
+					query = this->query_buff.front();
+					this->query_buff.pop_front();
+				}
+				this->unlock();
+				if(!query.empty()) {
+					#if TEST_SERVER_STORE_SPEED
+					SqlDb::addDelayQuery(10);
+					#else
+					this->sqlDb->query(query);
+					#endif
+				}
 			} else {
 				string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
 				string endProcedure = (opt_mysql_enable_transactions || this->enableTransaction ? endTransaction : "") + "\nEND";
@@ -3340,6 +3357,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 }
 
 void MySqlStore_process::__store(list<string> *queries) {
+	SqlDb::addQueryCount(queries->size());
 	if(this->parentStore->isCloud() && useNewStore()) {
 		string queries_str;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); iter++) {
@@ -3364,7 +3382,21 @@ void MySqlStore_process::__store(list<string> *queries) {
 			if(sverb.store_process_query_compl) {
 				cout << *iter << endl;
 			}
-			this->sqlDb->query(*iter);
+			if(id_main == STORE_PROC_ID_CDR && opt_mysql_mysql_redirect_cdr_queue) {
+				static volatile unsigned _redirect_counter;
+				//extern int opt_mysqlstore_max_threads_cdr;
+				parentStore->query_lock(*iter, STORE_PROC_ID_CDR_REDIRECT, 
+							parentStore->findMinId2(STORE_PROC_ID_CDR_REDIRECT)
+							//_redirect_counter % opt_mysqlstore_max_threads_cdr
+							);
+				++_redirect_counter;
+			} else {
+				#if TEST_SERVER_STORE_SPEED
+				SqlDb::addDelayQuery(10);
+				#else
+				this->sqlDb->query(*iter);
+				#endif
+			}
 		}
 	} else {
 		if(sverb.store_process_query_compl) {
@@ -3660,6 +3692,7 @@ void MySqlStore::loadFromQFiles_start() {
 		if(!isCloud()) {
 			extern MySqlStore *sqlStore_2;
 			this->addLoadFromQFile(STORE_PROC_ID_CDR, "cdr");
+			this->addLoadFromQFile(STORE_PROC_ID_CDR_REDIRECT, "cdr");
 			this->addLoadFromQFile(STORE_PROC_ID_MESSAGE, "message");
 			this->addLoadFromQFile(STORE_PROC_ID_CLEANSPOOL, "cleanspool");
 			this->addLoadFromQFile(STORE_PROC_ID_REGISTER, "register");
@@ -3987,6 +4020,9 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 		cout << "*** START " << (onlyCheck ? "CHECK" : "PROCESS") << " FILE " << filename
 		     << " - time: " << sqlDateTimeString(time(NULL)) << endl;
 	}
+	#if TEST_SERVER_STORE_SPEED
+	do {
+	#endif
 	FileZipHandler *fileZipHandler = new FILE_LINE(29006) FileZipHandler(8 * 1024, 0, isGunzip(filename) ? FileZipHandler::gzip : FileZipHandler::compress_na);
 	fileZipHandler->open(tsf_na, filename);
 	bool copyBadFileToTemp = false;
@@ -4064,6 +4100,9 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 	}
 	fileZipHandler->close();
 	delete fileZipHandler;
+	#if TEST_SERVER_STORE_SPEED
+	} while(true);
+	#endif
 	if(!onlyCheck) {
 		unlink(filename);
 		//rename(filename, find_and_replace(filename, "qoq", "_qoq").c_str());
@@ -4555,6 +4594,9 @@ int MySqlStore::getMaxThreadsForStoreId(int id_main) {
 	case STORE_PROC_ID_CDR:
 		maxThreads = opt_mysqlstore_max_threads_cdr;
 		break;
+	case STORE_PROC_ID_CDR_REDIRECT:
+		maxThreads = opt_mysqlstore_max_threads_cdr;
+		break;
 	case STORE_PROC_ID_MESSAGE:
 		maxThreads = opt_mysqlstore_max_threads_message;
 		break;
@@ -4593,6 +4635,9 @@ int MySqlStore::getConcatLimitForStoreId(int id_main) {
 	int concatLimit = 0;
 	switch(id_main) {
 	case STORE_PROC_ID_CDR:
+		concatLimit = opt_mysqlstore_concat_limit_cdr;
+		break;
+	case STORE_PROC_ID_CDR_REDIRECT:
 		concatLimit = opt_mysqlstore_concat_limit_cdr;
 		break;
 	case STORE_PROC_ID_MESSAGE:

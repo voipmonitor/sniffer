@@ -197,6 +197,21 @@ private:
 friend class cSslDsslSession;
 };
 
+class cClientRandomServer : public cServer {
+public:
+	cClientRandomServer();
+	~cClientRandomServer();
+	virtual void createConnection(cSocket *socket);
+};
+
+class cClientRandomConnection : public cServerConnection {
+public:
+	cClientRandomConnection(cSocket *socket);
+	~cClientRandomConnection();
+	virtual void connection_process();
+	virtual void evData(u_char *data, size_t dataLen);
+};
+
 
 #endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
@@ -208,6 +223,9 @@ void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 bool string_looks_like_client_random(u_char *data, unsigned datalen);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);
 void ssl_parse_client_random(const char *fileName);
+
+void clientRandomServerStart(const char *host, int port);
+void clientRandomServerStop();
 
 
 #endif //SSL_DSSL_H

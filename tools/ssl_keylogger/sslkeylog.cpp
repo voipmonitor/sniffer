@@ -12,6 +12,12 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
+#ifdef SSLKEYLOG_TCP
+#include "cloud_router_base.h"
+#else
+
+#endif
+
 
 #ifndef OPENSSL_SONAME
 #define OPENSSL_SONAME "libssl.so"
@@ -25,6 +31,10 @@
 #define DEBUG_PREFIX "\n * SSL KEYLOG : "
 
 #define min(a, b) (a < b ? a : b)
+
+#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
+#define __SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { usleep(us_sleep); } }
+#define __SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 
 
 extern "C" {
@@ -40,12 +50,40 @@ typedef size_t (*SSL_get_client_random_type)(const SSL *ssl, unsigned char *out,
 typedef size_t (*SSL_SESSION_get_master_key_type)(const SSL_SESSION *session, unsigned char *out, size_t outlen);
 }
 
-static char keylog_filename[200];
-static int keylog_file_fd = -1;
+#ifdef SSLKEYLOG_TCP
+static void keylog_tcp_socket_close();
+#endif
+static void write_keylog_to_dest(const char *key);
+
+#ifdef SSLKEYLOG_TCP
+static char keylog_tcp_dest_host[100];
+static int keylog_tcp_dest_port = 0;
+static cSocketBlock *keylog_tcp_socket = NULL;
+#endif
+
 static char keylog_ip_port[100];
 static u_int32_t keylog_socket_ipn;
 static int keylog_socket_port = 0;
 static int keylog_socket_handle = -1;
+
+static char keylog_filename[200];
+static int keylog_file_fd = -1;
+
+struct sKeyQueueItem {
+	sKeyQueueItem(const char *key) {
+		this->key = new char[strlen(key) + 1];
+		strcpy(this->key, key);
+		next = NULL;
+	}
+	~sKeyQueueItem() {
+		delete [] key;
+	}
+	char *key;
+	sKeyQueueItem *next;
+};
+static sKeyQueueItem *key_queue_first;
+static sKeyQueueItem *key_queue_last;
+volatile int key_queue_sync;
 
 extern "C" {
 static SSL_new_type SSL_new_orig;
@@ -123,6 +161,74 @@ struct sMasterKey {
 };
 
 
+#ifdef SSLKEYLOG_TCP
+static int keylog_tcp_socket_open() {
+	if(keylog_tcp_socket)
+		return 2;
+	if(keylog_tcp_dest_host[0] && keylog_tcp_dest_port) {
+		keylog_tcp_socket = new cSocketBlock("ssl key logger", true);
+		keylog_tcp_socket->setBlockHeaderString("ssl_key_socket_block");
+		keylog_tcp_socket->setHostPort(keylog_tcp_dest_host, keylog_tcp_dest_port);
+		if(!keylog_tcp_socket->connect()) {
+			debug_printf("FAILED connect to : %s:%i / %s", keylog_tcp_dest_host, keylog_tcp_dest_port, keylog_tcp_socket->getError().c_str());
+			keylog_tcp_socket_close();
+			return(0);
+		}
+		debug_printf("OK connect to : %s:%i / %s", keylog_tcp_dest_host, keylog_tcp_dest_port, keylog_tcp_socket->getError().c_str());
+		keylog_tcp_socket->generate_rsa_keys(1024);
+		JsonExport json_rsa_key;
+		json_rsa_key.add("rsa_key", keylog_tcp_socket->get_rsa_pub_key());
+		if(!keylog_tcp_socket->writeBlock(json_rsa_key.getJson())) {
+			debug_printf("FAILED send rsa key");
+			keylog_tcp_socket_close();
+			return(0);
+		}
+		string rsltAesKeys;
+		if(!keylog_tcp_socket->readBlock(&rsltAesKeys, cSocket::_te_rsa) || rsltAesKeys.find("aes_ckey") == string::npos) {
+			debug_printf("FAILED read aes keys");
+			keylog_tcp_socket_close();
+			return(0);
+		}
+		JsonItem jsonAesKeys;
+		jsonAesKeys.parse(rsltAesKeys);
+		string aes_ckey = jsonAesKeys.getValue("aes_ckey");
+		string aes_ivec = jsonAesKeys.getValue("aes_ivec");
+		keylog_tcp_socket->set_aes_keys(aes_ckey, aes_ivec);
+		if(!keylog_tcp_socket->writeBlock("OK", cSocket::_te_aes)) {
+			debug_printf("FAILED send OK");
+			keylog_tcp_socket_close();
+			return(0);
+		}
+		return(1);
+	}
+	return(0);
+}
+
+static void keylog_tcp_socket_close() {
+	if(keylog_tcp_socket) {
+		delete keylog_tcp_socket;
+		keylog_tcp_socket = NULL;
+	}
+}
+
+static void keylog_tcp_socket_write(u_char *data, size_t datalen) {
+	if(!keylog_tcp_socket)
+		return;
+	unsigned pass = 0;
+	while(pass < 3) {
+		if(keylog_tcp_socket->writeBlock(data, datalen, cSocket::_te_aes)) {
+			return;
+		} else {
+			keylog_tcp_socket_close();
+			if(!keylog_tcp_socket_open()) {
+				break;
+			}
+		}
+		++pass;
+	}
+}
+#endif
+
 static int keylog_udp_socket_open() {
 	if(keylog_socket_handle >= 0)
 		return 2;
@@ -155,10 +261,10 @@ static int keylog_udp_socket_open() {
 }
 
 static void keylog_udp_socket_close() {
-    if(keylog_socket_handle >= 0) {
-        close(keylog_socket_handle);
-        keylog_socket_handle = -1;
-    }
+	if(keylog_socket_handle >= 0) {
+		close(keylog_socket_handle);
+		keylog_socket_handle = -1;
+	}
 }
 
 static void keylog_udp_socket_write(u_char *data, size_t datalen) {
@@ -212,10 +318,26 @@ static void keylog_file_close()	{
 }
 
 static int init_keylog(void) {
-	if((keylog_socket_ipn && keylog_socket_port) ||
+	if(
+	   #ifdef SSLKEYLOG_TCP
+	   (keylog_tcp_dest_host[0] && keylog_tcp_dest_port) ||
+	   #endif
+	   (keylog_socket_ipn && keylog_socket_port) ||
 	   keylog_filename[0]) {
 		return(2);
 	}
+	#ifdef SSLKEYLOG_TCP
+	const char *host_port = getenv("SSLKEYLOG_TCP");
+	if(host_port) {
+		char *port_separator = (char*)strchr(host_port, ':');
+		if(port_separator) {
+			*port_separator = 0;
+			strcpy(keylog_tcp_dest_host, host_port);
+			keylog_tcp_dest_port = atoi(port_separator + 1);
+			*port_separator = ':';
+		}
+	}
+	#endif
 	const char *ip_port = getenv("SSLKEYLOG_UDP");
 	if(ip_port) {
 		strcpy(keylog_ip_port, ip_port);
@@ -237,21 +359,82 @@ static int init_keylog(void) {
 			debug_printf("log to : %s", keylog_filename);
 		}
 	}
-	return((keylog_socket_ipn && keylog_socket_port) ||
+	return(
+	       #ifdef SSLKEYLOG_TCP
+	       (keylog_tcp_dest_host[0] && keylog_tcp_dest_port) ||
+	       #endif
+	       (keylog_socket_ipn && keylog_socket_port) ||
 	       keylog_filename[0]);
 }
 
-static void write_keylog(const SSL *ssl, const char *line) {
-	if(keylog_socket_handle < 0 && keylog_file_fd < 0) {
+static void *write_thread(void *arg) {
+	while(true) {
+		if(key_queue_first) {
+			sKeyQueueItem *kqi = NULL;
+			__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+			if(key_queue_first) {
+				kqi = key_queue_first;
+				if(kqi->next) {
+					key_queue_first = kqi->next;
+				} else {
+					key_queue_first = NULL;
+					key_queue_last = NULL;
+				}
+			}
+			__SYNC_UNLOCK(key_queue_sync);
+			if(kqi) {
+				write_keylog_to_dest(kqi->key);
+				delete kqi;
+			}
+		} else {
+			usleep(1000);
+		}
+	}
+}
+
+static int create_write_thread_counter;
+static void create_write_thread() {
+	++create_write_thread_counter;
+	pthread_t thread;
+	pthread_create(&thread, NULL, write_thread, NULL);
+}
+
+static void write_keylog_to_queue(const SSL *ssl, const char *key) {
+	__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+	sKeyQueueItem *kqi = new sKeyQueueItem(key);
+	if(key_queue_last) {
+		key_queue_last->next = kqi;
+		key_queue_last = kqi;
+	} else {
+		key_queue_first = kqi;
+		key_queue_last = kqi;
+	}
+	__SYNC_UNLOCK(key_queue_sync);
+}
+
+static void write_keylog_to_dest(const char *key) {
+	if(
+	   #ifdef SSLKEYLOG_TCP
+	   !keylog_tcp_socket && 
+	   #endif
+	   keylog_socket_handle < 0 && keylog_file_fd < 0) {
+		#ifdef SSLKEYLOG_TCP
+		keylog_tcp_socket_open();
+		#endif
 		keylog_udp_socket_open();
 		keylog_file_open();
 	}
-	debug_printf("send key : %s (size: %i)", line, strlen(line));
+	debug_printf("send key : %s (size: %i)", key, strlen(key));
+	#ifdef SSLKEYLOG_TCP
+	if(keylog_tcp_socket) {
+		keylog_tcp_socket_write((u_char*)key, strlen(key));
+	}
+	#endif
 	if(keylog_socket_handle >= 0) {
-		keylog_udp_socket_write((u_char*)line, strlen(line));
+		keylog_udp_socket_write((u_char*)key, strlen(key));
 	}
 	if(keylog_file_fd >= 0) {
-		write(keylog_file_fd, line, strlen(line));
+		write(keylog_file_fd, key, strlen(key));
 		write(keylog_file_fd, "\n", 1);
 	}
 }
@@ -270,7 +453,7 @@ static void *lookup_symbol(const char *sym, const char *lib_soname) {
 
 SSL *SSL_new(SSL_CTX *ctx) {
 	if(SSL_CTX_set_keylog_callback_orig) {
-		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog);
+		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog_to_queue);
 	}
 	return SSL_new_orig(ctx);
 }
@@ -287,7 +470,7 @@ int SSL_connect(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_connect changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_connect 2");
 	return(rslt);
@@ -304,7 +487,7 @@ int SSL_do_handshake(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_do_handshake changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_do_handshake_orig 2");
 	return(rslt);
@@ -321,7 +504,7 @@ int SSL_accept(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_accept changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_accept 2");
 	return(rslt);
@@ -338,7 +521,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_read changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_read 2");
 	return(rslt);
@@ -355,7 +538,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_write changekey");
 		char complete_key[1000];
-		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_write 2");
 	return(rslt);
@@ -421,4 +604,26 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("FAILED init_keylog - abort!");
 		abort();
 	}
+	create_write_thread();
 }
+
+
+#ifdef SSLKEYLOG_TCP
+cResolver resolver;
+bool opt_socket_use_poll = true;
+bool useIPv6 = true;
+
+sCloudRouterVerbose& CR_VERBOSE() {
+	static sCloudRouterVerbose cr_verbose;
+	static bool cr_verbose_init = false;
+	if(!cr_verbose_init) {
+		memset(&cr_verbose, 0, sizeof(cr_verbose));
+		cr_verbose_init = false;
+	}
+	return(cr_verbose);
+}
+
+bool CR_TERMINATE() {
+	return(false);
+}
+#endif

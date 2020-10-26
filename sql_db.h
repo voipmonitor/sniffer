@@ -493,6 +493,15 @@ public:
 	static void addDelayQuery(u_int32_t delay_ms, bool store = false);
 	static u_int32_t getAvgDelayQuery(bool store = false);
 	static void resetDelayQuery(bool store = false);
+	inline static void addQueryCount(u_int64_t qc) {
+		query_count += qc;
+	}
+	inline static u_int64_t getQueryCount() {
+		return(query_count);
+	}
+	inline static void resetQueryCount() {
+		query_count = 0;
+	}
 	bool logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
 	int checkNeedAlterAdd(string table, string reason, bool tryAlter,
@@ -550,6 +559,7 @@ private:
 	static volatile u_int32_t delayQuery_count;
 	static volatile u_int64_t delayQueryStore_sum_ms;
 	static volatile u_int32_t delayQueryStore_count;
+	static volatile u_int64_t query_count;
 	cSocketBlock *remote_socket;
 friend class MySqlStore_process;
 };

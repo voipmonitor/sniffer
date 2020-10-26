@@ -4,10 +4,13 @@
 #include "tools_global.h"
 
 #include "ip.h"
+
+#if defined(CLOUD_ROUTER_CLIENT) or defined(CLOUD_ROUTER_SERVER)
 #include "sql_db.h"
+#endif
 
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 void vmIP::setIP(void *db_row, const char *field) {
 	SqlDb_row *_db_row = (SqlDb_row*)db_row;
 	setIP((u_char*)((*_db_row)[field].c_str()), _db_row->getLengthField(field), _db_row->getTypeField(field) == (int)MYSQL_TYPE_VAR_STRING);
@@ -133,7 +136,7 @@ std::string vmIP::getString(bool ipv6_in_brackets) const {
 	return(ip_str);
 }
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 std::string vmIP::getStringForMysqlIpColumn(const char *table, const char *column) const {
 	return(_getStringForMysqlIpColumn(VM_IPV6_B && SqlDb::_isIPv6Column(table, column) ? 6 : 4));
 }
@@ -234,7 +237,7 @@ std::string vmPort::getString() {
 }
 
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 vmIP mysql_ip_2_vmIP(void *row, const char *column) {
 	vmIP ip;
 	ip.setIP(row, column);

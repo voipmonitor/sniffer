@@ -416,7 +416,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 			rslt = false;
 		}
 	} while(!rslt && loopSleepS && !(terminate || CR_TERMINATE()));
-	return(true);
+	return(rslt);
 }
 
 bool cSocket::listen() {
@@ -843,7 +843,24 @@ void cSocket::sleep(int s) {
 
 cSocketBlock::cSocketBlock(const char *name, bool autoClose)
  : cSocket(name, autoClose) {
-       
+	block_header_string = NULL;
+}
+
+cSocketBlock::~cSocketBlock() {
+	if(block_header_string) {
+		delete [] block_header_string;
+	}
+}
+
+void cSocketBlock::setBlockHeaderString(const char *block_header_string) {
+	if(this->block_header_string) {
+		delete [] this->block_header_string;
+		this->block_header_string = NULL;
+	}
+	if(block_header_string) {
+		this->block_header_string = new FILE_LINE(0) char[strlen(block_header_string) + 1];
+		strcpy(this->block_header_string, block_header_string);
+	}
 }
 
 bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEncode, string xor_key) {
@@ -875,7 +892,7 @@ bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEnco
 		}
 	}
 	u_char *block = new FILE_LINE(0) u_char[sizeof(sBlockHeader) + dataLen];
-	((sBlockHeader*)block)->init();
+	((sBlockHeader*)block)->init(block_header_string);
 	((sBlockHeader*)block)->length = dataLen;
 	((sBlockHeader*)block)->sum = data_sum;
 	memcpy(block + sizeof(sBlockHeader), data, dataLen);
@@ -915,7 +932,7 @@ u_char *cSocketBlock::readBlock(size_t *dataLen, eTypeEncode typeEncode, string 
 				readBuffer.incLength(readLength);
 				if(!blockHeaderOK) {
 					if(readBuffer.length >= sizeof(sBlockHeader)) {
-						if(readBuffer.okBlockHeader()) {
+						if(readBuffer.okBlockHeader(block_header_string)) {
 							blockHeaderOK = true;
 						} else {
 							rsltRead = false;
@@ -1167,7 +1184,9 @@ void cServer::listen_stop(unsigned index) {
 void *cServer::listen_process(void *arg) {
 	if(CR_VERBOSE().start_server) {
 		ostringstream verbstr;
-		verbstr << "START SERVER LISTEN";
+		verbstr << (((sListenParams*)arg)->server->startVerbString.empty() ? 
+			     "START SERVER LISTEN" : 
+			     ((sListenParams*)arg)->server->startVerbString);
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	((sListenParams*)arg)->server->listen_process(((sListenParams*)arg)->index);
@@ -1204,6 +1223,10 @@ void cServer::listen_process(int index) {
 void cServer::createConnection(cSocket *socket) {
 	cServerConnection *connection = new FILE_LINE(0) cServerConnection(socket);
 	connection->connection_start();
+}
+
+void cServer::setStartVerbString(const char *startVerbString) {
+	this->startVerbString = startVerbString ? startVerbString : "";
 }
 
 

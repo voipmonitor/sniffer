@@ -7,7 +7,7 @@
 
 #include "tools_global.h"
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 #include "tools.h"
 #include "common.h"
 cThreadMonitor threadMonitor;
@@ -22,11 +22,11 @@ struct vm_pthread_struct {
 void *vm_pthread_create_start_routine(void *arg) {
 	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
 	delete (vm_pthread_struct*)arg;
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	threadMonitor.registerThread(thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	termTimeCacheForThread();
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "end thread '%s'", 
@@ -39,7 +39,7 @@ int vm_pthread_create(const char *thread_description,
 		      pthread_t *thread, pthread_attr_t *attr,
 		      void *(*start_routine) (void *), void *arg,
 		      const char *src_file, int src_file_line, bool autodestroy) {
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	if(sverb.thread_create && src_file && src_file_line) {
 		syslog(LOG_NOTICE, "create thread '%s' %sfrom %s : %i", 
 		       thread_description, autodestroy ? "(autodestroy) " : "", src_file, src_file_line);
@@ -406,7 +406,7 @@ void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, si
 }
 
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 struct sUsleepStatsId {
 	string file;
 	int line;

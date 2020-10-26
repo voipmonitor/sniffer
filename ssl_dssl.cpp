@@ -806,6 +806,74 @@ string cSslDsslSessions::storeSessionsTableName() {
 }
 
 
+cClientRandomServer::cClientRandomServer() {
+}
+
+cClientRandomServer::~cClientRandomServer() {
+}
+
+void cClientRandomServer::createConnection(cSocket *socket) {
+	if(is_terminating()) {
+		return;
+	}
+	cClientRandomConnection *connection = new FILE_LINE(0) cClientRandomConnection(socket);
+	connection->connection_start();
+}
+
+cClientRandomConnection::cClientRandomConnection(cSocket *socket)
+: cServerConnection(socket) {
+}
+
+cClientRandomConnection::~cClientRandomConnection() {
+}
+
+void cClientRandomConnection::connection_process() {
+	socket->setBlockHeaderString("ssl_key_socket_block");
+	string rsltRsaKey;
+	if(!socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+		socket->setError("failed read rsa key");
+		delete this;
+		return;
+	}
+	JsonItem jsonRsaKey;
+	jsonRsaKey.parse(rsltRsaKey);
+	string rsa_key = jsonRsaKey.getValue("rsa_key");
+	socket->set_rsa_pub_key(rsa_key);
+	socket->generate_aes_keys();
+	JsonExport json_keys;
+	string aes_ckey, aes_ivec;
+	socket->get_aes_keys(&aes_ckey, &aes_ivec);
+	json_keys.add("aes_ckey", aes_ckey);
+	json_keys.add("aes_ivec", aes_ivec);
+	if(!socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+		socket->setError("failed send aes keys");
+		delete this;
+		return;
+	}
+	string rsltOk;
+	if(!socket->readBlock(&rsltOk, cSocket::_te_aes) || rsltOk != "OK") {
+		socket->setError("failed read ok");
+		delete this;
+		return;
+	}
+	while(!is_terminating() && !socket->isError()) {
+		u_char *data;
+		size_t dataLen;
+		data = socket->readBlock(&dataLen, cSocket::_te_aes);
+		if(data) {
+			evData(data, dataLen);
+		} else {
+			USLEEP(1000);
+		}
+	}
+	delete this;
+}
+
+void cClientRandomConnection::evData(u_char *data, size_t dataLen) {
+	ssl_parse_client_random(data, dataLen);
+}
+
+
 #endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
 
@@ -955,4 +1023,29 @@ void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_ite
 		hexdecode(key->key, key_str.c_str(), key_str.length());
 		key->length = key_str.length() / 2;
 	}
+}
+
+
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+static cClientRandomServer *clientRandomServer;
+#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+
+void clientRandomServerStart(const char *host, int port) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(clientRandomServer) {
+		delete clientRandomServer;
+	}
+	clientRandomServer =  new FILE_LINE(0) cClientRandomServer;
+	clientRandomServer->setStartVerbString("START SSL_SESSIONKEY LISTEN");
+	clientRandomServer->listen_start("client_random_server", host, port);
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+}
+
+void clientRandomServerStop() {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(clientRandomServer) {
+		delete clientRandomServer;
+		clientRandomServer = NULL;
+	}
+	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }

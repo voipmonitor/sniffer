@@ -5,7 +5,7 @@
 #include "sql_db_global.h"
 #include "sql_db.h"
 
-#ifndef CLOUD_ROUTER_SERVER
+#ifdef CLOUD_ROUTER_CLIENT
 #include "server.h"
 #include "calltable.h"
 #endif
@@ -86,9 +86,10 @@ u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColu
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1");
-	#else
+	#endif
+	#ifdef CLOUD_ROUTER_SERVER
 	unsigned tryCounter = 0;
 	while(true) {
 		if(tryCounter) {
@@ -147,13 +148,14 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 			       cSqlDbAutoIncrement *autoincrement, string *insertQuery, SqlDb *sqlDb) {
 	string stringValueInputSafe;
 	extern cUtfConverter utfConverter;
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	if(useSetId() && !utfConverter.is_ascii(stringValueInput)) {
 		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
 	} else {
 		stringValueInputSafe = stringValueInput;
 	}
-	#else
+	#endif
+	#ifdef CLOUD_ROUTER_SERVER
 	if(!utfConverter.is_ascii(stringValueInput)) {
 		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
 	} else {
@@ -167,7 +169,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 	if(data_overflow) {
 		return(0);
 	}
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	if(sverb.disable_cb_cache) {
 		return(0);
 	}
@@ -195,7 +197,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 		#endif
 	}
 	if(!rslt) {
-		#ifndef CLOUD_ROUTER_SERVER
+		#ifdef CLOUD_ROUTER_CLIENT
 			if(useSetId()) {
 				rslt = autoincrement->getId(this->table.c_str());
 				SqlDb *sqlDb = createSqlObject();
@@ -232,7 +234,8 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				}
 				delete sqlDb;
 			}
-		#else
+		#endif
+		#ifdef CLOUD_ROUTER_SERVER
 			rslt = autoincrement->getId(this->table.c_str());
 			string columns = columnId + "," + columnStringValue;
 			string values = intToString(rslt) + "," + sqlEscapeStringBorder(stringValueInputSafe);
@@ -245,7 +248,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 		#endif
 	}
 	unlock_data();
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 	if(!rslt && enableAutoLoad && this->autoLoadPeriod && !_sync_load) {
 		u_long actTime = getTimeS();
 		if(lastBeginLoadTime + this->autoLoadPeriod < actTime &&
@@ -293,7 +296,7 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	#ifndef CLOUD_ROUTER_SERVER
+	#ifdef CLOUD_ROUTER_CLIENT
 		if(this->limitTableRows && sqlDb->rowsInTable(table, true) > this->limitTableRows) {
 			*overflow = true;
 		} else {
@@ -312,7 +315,8 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 			}
 			*overflow = false;
 		}
-	#else
+	#endif
+	#ifdef CLOUD_ROUTER_SERVER
 		string condStr;
 		if(cond.size()) {
 			condStr = SqlDb_condField::getCondStr(&cond, NULL, "'");
@@ -541,7 +545,7 @@ void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sql
 	codebooks->registerCodebook(cb_reason_q850);
 	codebooks->registerCodebook(cb_contenttype);
 	if(loadAll) {
-		#ifndef CLOUD_ROUTER_SERVER
+		#ifdef CLOUD_ROUTER_CLIENT
 		codebooks->setAutoLoadPeriodForAll(6 * 3600);
 		#endif
 		codebooks->loadAll(sqlDb);
@@ -744,7 +748,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 	list<string> ig;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		#ifndef CLOUD_ROUTER_SERVER
+		#ifdef CLOUD_ROUTER_CLIENT
 		if(!strncmp(iter->c_str(), "csv", 3)) {
 			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
 			vector<string> query_vect = split(iter->c_str(), "\n", false, false);
@@ -947,7 +951,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				}
 			}
 			iter++;
-		#ifndef CLOUD_ROUTER_SERVER
+		#ifdef CLOUD_ROUTER_CLIENT
 		}
 		#endif
 	}
