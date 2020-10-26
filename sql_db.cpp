@@ -3236,6 +3236,8 @@ void MySqlStore_process::store() {
 					#else
 					this->sqlDb->query(query);
 					#endif
+				} else {
+					break;
 				}
 			} else {
 				string beginProcedure = "\nBEGIN\n" + (opt_mysql_enable_transactions || this->enableTransaction ? beginTransaction : "");
@@ -3303,7 +3305,11 @@ void MySqlStore_process::store() {
 		   getTimeS() - lastQueryTime > 600) {
 			this->disconnect();
 		}
-		sleep(1);
+		if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
+			usleep(1000);
+		} else {
+			sleep(1);
+		}
 	}
 	this->terminated = true;
 	syslog(LOG_NOTICE, "terminated - sql store %i_%i", this->id_main, this->id_2);
