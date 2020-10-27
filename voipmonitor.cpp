@@ -3865,6 +3865,7 @@ int main(int argc, char *argv[]) {
 		stop_cloud_receiver();
 	} else if(is_client()) {
 		snifferClientStop(snifferClientService);
+		snifferClientService = NULL;
 		if(opt_next_server_connections > 0) {
 			for(int i = 0; i < opt_next_server_connections; i++) {
 				snifferClientStop(snifferClientNextServices[i]);
@@ -3874,6 +3875,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(snifferClientService_charts_cache) {
 			snifferClientStop(snifferClientService_charts_cache);
+			snifferClientService_charts_cache = NULL;
 		}
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStop();
@@ -8281,6 +8283,10 @@ void get_command_line_arguments() {
 					config.setFromJson(optarg);
 				}
 				useCmdLineConfig = true;
+				if(!snifferServerOptions.host.empty() ||
+				   !snifferClientOptions.host.empty()) {
+					useNewCONFIG = true;
+				}
 				break;
 			case 339:
 				opt_sip_options = true;

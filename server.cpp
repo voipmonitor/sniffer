@@ -1626,7 +1626,6 @@ void snifferClientStop(cSnifferClientService *snifferClientService) {
 	snifferClientService->stopResponseSender();
 	if(snifferClientService) {
 		delete snifferClientService;
-		snifferClientService = NULL;
 	}
 }
 
