@@ -5291,6 +5291,9 @@ void Call::selectRtpAB() {
 	}
 }
 
+u_int64_t counter_calls_save_1;
+u_int64_t counter_calls_save_2;
+
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
@@ -5298,6 +5301,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(sverb.disable_save_call) {
 		return(0);
 	}
+	
+	++counter_calls_save_1;
 	
 	if((flags & FLAG_SKIPCDR) ||
 	   (lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this))) {
@@ -5320,6 +5325,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		// skip this CDR 
 		return 1;
 	}
+	
+	++counter_calls_save_2;
 	
 	adjustUA();
 	
