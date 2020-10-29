@@ -3235,6 +3235,7 @@ void MySqlStore_process::store() {
 					SqlDb::addDelayQuery(10);
 					#else
 					this->sqlDb->query(query);
+					lastQueryTime = getTimeMS_rdtsc() / 1000;
 					#endif
 				} else {
 					break;
