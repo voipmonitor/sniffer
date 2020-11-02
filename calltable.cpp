@@ -2389,6 +2389,7 @@ bool cWavMix::cWav::load(const char *wavFileName, unsigned samplerate_dst) {
 		return(false);
 	}
 	u_int32_t wav_buffer_pos = 0;
+	unsigned samplerate_orig = samplerate;
 	if(samplerate_dst > samplerate) {
 		u_int32_t wav_buffer_length = (u_int64_t)fileSize * samplerate_dst / samplerate;
 		wav_buffer = new FILE_LINE(0) u_char[wav_buffer_length + 100];
@@ -2468,7 +2469,7 @@ bool cWavMix::cWav::load(const char *wavFileName, unsigned samplerate_dst) {
 		cout << "load wav"
 		     << " " << wavFileName
 		     << " start " << start
-		     << " samplerate " << samplerate
+		     << " samplerate " << samplerate_orig
 		     << " samplerate_dst " << samplerate_dst
 		     << " length_samples " << length_samples << " " << ((float)length_samples/samplerate)
 		     << " end_silence_samples " << end_silence_samples << " " << ((float)end_silence_samples/samplerate)
@@ -3015,12 +3016,12 @@ Call::convertRawToWav() {
 			case PAYLOAD_PCMA:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV ssrc[%x] wav[%s] index[%u]\n", rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index);
 				convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
-				samplerate = 8000;
+				samplerate = max(8000, maxsamplerate);
 				break;
 			case PAYLOAD_PCMU:
 				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV ssrc[%x] wav[%s] index[%u]\n", rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index);
 				convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
-				samplerate = 8000;
+				samplerate = max(8000, maxsamplerate);
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
@@ -5291,8 +5292,8 @@ void Call::selectRtpAB() {
 	}
 }
 
-u_int64_t counter_calls_save_1;
-u_int64_t counter_calls_save_2;
+volatile u_int64_t counter_calls_save_1;
+volatile u_int64_t counter_calls_save_2;
 
 /* TODO: implement failover -> write INSERT into file */
 int
@@ -5302,7 +5303,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
-	++counter_calls_save_1;
+	__SYNC_INC(counter_calls_save_1);
 	
 	if((flags & FLAG_SKIPCDR) ||
 	   (lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this))) {
@@ -5326,7 +5327,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return 1;
 	}
 	
-	++counter_calls_save_2;
+	__SYNC_INC(counter_calls_save_2);
 	
 	adjustUA();
 	
@@ -5712,6 +5713,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		   !(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) &&
 		   (rtp_i->s->received or !existsColumns.cdr_rtp_index || (rtp_i->s->received == 0 && rtp_zeropackets_stored == false)) &&
 		   (sverb.process_rtp_header || rtp_i->first_codec != -1)) {
+			if(rtp_i->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 			rtp_rows_indexes[rtp_rows_count++] = i;
 		}
 	}
@@ -6375,48 +6377,52 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		vector<SqlDb_row> rtp_rows;
 		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
 			int i = rtp_rows_indexes[ir];
-			if(rtp_stream_by_index(i)->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
+			RTP *rtp_i = rtp_stream_by_index(i);
 			double stime = TIME_US_TO_SF(this->first_packet_time_us);
-			double rtime = TIME_US_TO_SF(rtp_stream_by_index(i)->first_packet_time_us);
+			double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
 			double diff = rtime - stime;
 
 			SqlDb_row rtps;
 			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			if(rtp_stream_by_index(i)->first_codec >= 0) {
-				rtps.add(rtp_stream_by_index(i)->first_codec, "payload");
+			if(rtp_i->first_codec >= 0) {
+				rtps.add(rtp_i->first_codec, "payload");
 			} else if(sverb.process_rtp_header) {
 				rtps.add(0, "payload");
 			}
-			rtps.add(rtp_stream_by_index(i)->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
-			rtps.add(rtp_stream_by_index(i)->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+			rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+			rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			if(existsColumns.cdr_rtp_sport) {
-				rtps.add(rtp_stream_by_index(i)->sport.getPort(), "sport");
+				rtps.add(rtp_i->sport.getPort(), "sport");
 			}
 			if(existsColumns.cdr_rtp_dport) {
-				rtps.add(rtp_stream_by_index(i)->dport.getPort(), "dport");
+				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
-			rtps.add(rtp_stream_by_index(i)->ssrc, "ssrc");
-			rtps.add(rtp_stream_by_index(i)->s->received + 2, "received");
-			rtps.add(rtp_stream_by_index(i)->stats.lost, "loss");
-			rtps.add((unsigned int)(rtp_stream_by_index(i)->stats.maxjitter * 10), "maxjitter_mult10");
+			rtps.add(rtp_i->ssrc, "ssrc");
+			if(rtp_i->s->received > 0) {
+				rtps.add(rtp_i->s->received + 2, "received");
+			} else {
+				rtps.add(0, "received", true);
+			}
+			rtps.add(rtp_i->stats.lost, "loss");
+			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
-				if(rtp_stream_by_index(i)->stream_in_multiple_calls) {
+				if(rtp_i->stream_in_multiple_calls) {
 					flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 				}
 				// mark used rtp stream in a/b
 				if (rtp_stream_by_index(i) == rtpab[0] or rtp_stream_by_index(i) == rtpab[1]) {
 					flags |= CDR_RTP_STREAM_IS_AB;
 				}
-				flags |= rtp_stream_by_index(i)->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 				rtps.add(flags, "flags", !flags);
 			}
 			if(existsColumns.cdr_rtp_duration) {
-				double ltime = TIME_US_TO_SF(rtp_stream_by_index(i)->last_packet_time_us);
+				double ltime = TIME_US_TO_SF(rtp_i->last_packet_time_us);
 				double duration = ltime - rtime;
 				rtps.add(duration, "duration");
 			}
@@ -6443,53 +6449,56 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		vector<SqlDb_row> rtp_el_rows;
-		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
-			int i = rtp_rows_indexes[ir];
-			if(rtp_stream_by_index(i)->energylevels && rtp_stream_by_index(i)->energylevels->size()) {
-				u_int32_t data_el_length = rtp_stream_by_index(i)->energylevels->size();
-				u_char *data_el = rtp_stream_by_index(i)->energylevels->data();
-				cGzip *zip = new FILE_LINE(0) cGzip;
-				size_t data_el_zip_length;
-				u_char *data_el_zip;
-				if(zip->compress(data_el, data_el_length, &data_el_zip, &data_el_zip_length) && data_el_zip_length > 0) {
-					SqlDb_row rtp_el;
-					rtp_el.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-					rtp_el.add(i + 1, "index");
-					rtp_el.add(MYSQL_VAR_PREFIX +
-						   "from_base64('" + 
-						   base64_encode((u_char*)data_el_zip, data_el_zip_length) +
-						   "')",
-						   "energylevels");
-					/*
-					string data_el_zip_e = _sqlEscapeString((char*)data_el_zip, data_el_zip_length, NULL);
-					rtp_el.add(data_el_zip_e, "energylevels");
-					*/
-					if(existsColumns.cdr_rtp_energylevels_calldate) {
-						rtp_el.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_energylevels_calldate_ms);
+		if(opt_save_energylevels) {
+			vector<SqlDb_row> rtp_el_rows;
+			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
+				int i = rtp_rows_indexes[ir];
+				RTP *rtp_i = rtp_stream_by_index(i);
+				if(rtp_i->energylevels && rtp_i->energylevels->size()) {
+					u_int32_t data_el_length = rtp_i->energylevels->size();
+					u_char *data_el = rtp_i->energylevels->data();
+					cGzip *zip = new FILE_LINE(0) cGzip;
+					size_t data_el_zip_length;
+					u_char *data_el_zip;
+					if(zip->compress(data_el, data_el_length, &data_el_zip, &data_el_zip_length) && data_el_zip_length > 0) {
+						SqlDb_row rtp_el;
+						rtp_el.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+						rtp_el.add(i + 1, "index");
+						rtp_el.add(MYSQL_VAR_PREFIX +
+							   "from_base64('" + 
+							   base64_encode((u_char*)data_el_zip, data_el_zip_length) +
+							   "')",
+							   "energylevels");
+						/*
+						string data_el_zip_e = _sqlEscapeString((char*)data_el_zip, data_el_zip_length, NULL);
+						rtp_el.add(data_el_zip_e, "energylevels");
+						*/
+						if(existsColumns.cdr_rtp_energylevels_calldate) {
+							rtp_el.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_rtp_energylevels_calldate_ms);
+						}
+						if(opt_mysql_enable_multiple_rows_insert) {
+							rtp_el_rows.push_back(rtp_el);
+						} else {
+							query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+								     sqlDbSaveCall->insertQuery(sql_cdr_rtp_energylevels_table, rtp_el));
+						}
+						delete [] data_el_zip;
 					}
-					if(opt_mysql_enable_multiple_rows_insert) {
-						rtp_el_rows.push_back(rtp_el);
-					} else {
-						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
-							     sqlDbSaveCall->insertQuery(sql_cdr_rtp_energylevels_table, rtp_el));
-					}
-					delete [] data_el_zip;
+					delete zip;
+					delete [] data_el;
 				}
-				delete zip;
-				delete [] data_el;
 			}
-		}
-		if(opt_mysql_enable_multiple_rows_insert && rtp_el_rows.size()) {
-			if(useCsvStoreFormat()) {
-				query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_rtp_energylevels") + rtp_el_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
-				for(unsigned i = 0; i < rtp_el_rows.size(); i++) {
-					query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_rtp_energylevels") + rtp_el_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+			if(opt_mysql_enable_multiple_rows_insert && rtp_el_rows.size()) {
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_rtp_energylevels") + rtp_el_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < rtp_el_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_rtp_energylevels") + rtp_el_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_energylevels_table, &rtp_el_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 				}
-			} else {
-				query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-					     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_rtp_energylevels_table, &rtp_el_rows, opt_mysql_max_multiple_rows_insert, 
-											    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 			}
 		}
 		
@@ -6885,45 +6894,49 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
 			int i = rtp_rows_indexes[ir];
-			if(rtp_stream_by_index(i)->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
+			RTP *rtp_i = rtp_stream_by_index(i);
 			double stime = TIME_US_TO_SF(this->first_packet_time_us);
-			double rtime = TIME_US_TO_SF(rtp_stream_by_index(i)->first_packet_time_us);
+			double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
 			double diff = rtime - stime;
 			SqlDb_row rtps;
 			rtps.add(cdrID, "cdr_ID");
-			rtps.add(rtp_stream_by_index(i)->first_codec, "payload");
-			rtps.add(rtp_stream_by_index(i)->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
-			rtps.add(rtp_stream_by_index(i)->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+			rtps.add(rtp_i->first_codec, "payload");
+			rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
+			rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			if(existsColumns.cdr_rtp_sport) {
-				rtps.add(rtp_stream_by_index(i)->sport.getPort(), "sport");
+				rtps.add(rtp_i->sport.getPort(), "sport");
 			}
 			if(existsColumns.cdr_rtp_dport) {
-				rtps.add(rtp_stream_by_index(i)->dport.getPort(), "dport");
+				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
-			rtps.add(rtp_stream_by_index(i)->ssrc, "ssrc");
-			rtps.add(rtp_stream_by_index(i)->s->received + 2, "received");
-			rtps.add(rtp_stream_by_index(i)->stats.lost, "loss");
-			rtps.add((unsigned int)(rtp_stream_by_index(i)->stats.maxjitter * 10), "maxjitter_mult10");
+			rtps.add(rtp_i->ssrc, "ssrc");
+			if(rtp_i->s->received > 0) {
+				rtps.add(rtp_i->s->received + 2, "received");
+			} else {
+				rtps.add(0, "received", true);
+			}
+			rtps.add(rtp_i->stats.lost, "loss");
+			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
-				if(rtp_stream_by_index(i)->stream_in_multiple_calls) {
+				if(rtp_i->stream_in_multiple_calls) {
 					flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 				}
 				// mark used rtp stream in a/b
-				if (rtp_stream_by_index(i) == rtpab[0] or rtp_stream_by_index(i) == rtpab[1]) {
+				if (rtp_i == rtpab[0] or rtp_i == rtpab[1]) {
 					flags |= CDR_RTP_STREAM_IS_AB;
 				}
-				flags |= rtp_stream_by_index(i)->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
+				flags |= rtp_i->iscaller ? CDR_RTP_STREAM_IS_CALLER : CDR_RTP_STREAM_IS_CALLED;
 				if(flags) {
 					rtps.add(flags, "flags");
 				}
 			}
 			if(existsColumns.cdr_rtp_duration) {
-				double ltime = TIME_US_TO_SF(rtp_stream_by_index(i)->last_packet_time_us);
+				double ltime = TIME_US_TO_SF(rtp_i->last_packet_time_us);
 				double duration = ltime - rtime;
 				rtps.add(duration, "duration");
 			}
@@ -6936,9 +6949,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(opt_save_energylevels) {
 			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
 				int i = rtp_rows_indexes[ir];
-				if(rtp_stream_by_index(i)->energylevels && rtp_stream_by_index(i)->energylevels->size()) {
-					u_int32_t data_el_length = rtp_stream_by_index(i)->energylevels->size();
-					u_char *data_el = rtp_stream_by_index(i)->energylevels->data();
+				RTP *rtp_i = rtp_stream_by_index(i);
+				if(rtp_i->energylevels && rtp_i->energylevels->size()) {
+					u_int32_t data_el_length = rtp_i->energylevels->size();
+					u_char *data_el = rtp_i->energylevels->data();
 					cGzip *zip = new FILE_LINE(0) cGzip;
 					size_t data_el_zip_length;
 					u_char *data_el_zip;

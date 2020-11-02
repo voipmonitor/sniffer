@@ -6,6 +6,7 @@
 #include <queue>
 #include <map>
 
+#include "config.h"
 #include "sql_db.h"
 #include "calltable.h"
 #include "tools_global.h"

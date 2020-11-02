@@ -1456,8 +1456,8 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			extern u_int64_t counter_calls;
 			extern u_int64_t counter_calls_clean;
-			extern u_int64_t counter_calls_save_1;
-			extern u_int64_t counter_calls_save_2;
+			extern volatile u_int64_t counter_calls_save_1;
+			extern volatile u_int64_t counter_calls_save_2;
 			extern u_int64_t counter_registers;
 			extern u_int64_t counter_registers_clean;
 			extern u_int64_t counter_sip_packets[2];
