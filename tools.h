@@ -4047,7 +4047,8 @@ public:
 		sql_child_table = NULL;
 		sql_child_index = 0;
 	}
-	sValue e(const char *formula, unsigned pos = 0, unsigned length = 0, unsigned level = 0, sSplitOperands *splitOperands = NULL);
+	sValue e(const char *formula, unsigned pos = 0, unsigned length = 0, unsigned level = 0, sSplitOperands *splitOperands = NULL,
+		 int operator_level_lt = -1, int *pos_return = NULL);
 	bool e_opt(sSplitOperands *splitOperands);
 	sValue e(sSplitOperands *splitOperands);
 	inline sValue e_u_operator(sValue &operand, eOperator oper);

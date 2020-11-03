@@ -7686,6 +7686,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"dedup-pcap", 1, 0, 341},
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
+	    {"eval-formula", 1, 0, 345},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8144,7 +8145,11 @@ void get_command_line_arguments() {
 				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);
 				break;
 			case 343:
-				opt_pb_read_from_file_time_adjustment = atoll(optarg);
+				{
+				cEvalFormula f(cEvalFormula::_est_na);
+				cEvalFormula::sValue v = f.e(optarg);
+				opt_pb_read_from_file_time_adjustment = v.getInteger();
+				}
 				break;
 			case 304:
 			case 305:
@@ -8329,6 +8334,18 @@ void get_command_line_arguments() {
 				if(!opt_revaluation_params) {
 					opt_revaluation_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_revaluation_params, optarg);
+				}
+				break;
+			case 345:
+				{
+				cEvalFormula f(cEvalFormula::_est_na, true);
+				cEvalFormula::sSplitOperands *filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
+				cEvalFormula::sValue v = f.e(optarg, 0, 0, 0, filter_s);
+				while(f.e_opt(filter_s)) {
+					cout << "-- opt" << endl;
+				}
+				cout << "== " << f.e(filter_s).getFloat() << endl;
+				exit(0);
 				}
 				break;
 		}
