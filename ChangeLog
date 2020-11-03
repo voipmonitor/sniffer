@@ -1,3 +1,14 @@
+27.2 03.11.2020
+===============
+- add wireshark version fo the RTCP calculation [VS-920]
+- add utf check to listcalls and listregister [VG-2193]
+- fix destination_number_mode=1 and update_dstnum_onanswer=yes dst number was from URI instead of To header [VS-1119]
+- add support for store/restore tls sessions for DH/TLS 1.3
+- add support for encrypted key transfer in ssl key logger
+- fix crash when new configuration was applied from gui (in client/server mode) [VS-1126]
+- fix audio resample - suppress resampling in cWavMix for PCMA/PCMU (resampling PCMA/U is done in function convertALAW2WAV/convertULAW2WAV) [VS-1129]
+
+
 27.1.1 15.10.2020
 =================
 - use ipv4 for cloud connect and use ipv6 only if ipv4 is not resolved by DNS 
