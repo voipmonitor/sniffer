@@ -1380,32 +1380,6 @@ void SqlDb::cleanFields() {
 	this->fields_type.clear();
 }
 
-void SqlDb::addDelayQuery(u_int32_t delay_ms, bool store) {
-	if(store) {
-		delayQueryStore_sum_ms += delay_ms;
-		++delayQueryStore_count;
-	} else {
-		delayQuery_sum_ms += delay_ms;
-		++delayQuery_count;
-	}
-}
-
-u_int32_t SqlDb::getAvgDelayQuery(bool store) {
-	u_int64_t _delayQuery_sum_ms = store ? delayQueryStore_sum_ms : delayQuery_sum_ms;
-	u_int32_t _delayQuery_count = store ? delayQueryStore_count : delayQuery_count;
-	return(_delayQuery_count ? _delayQuery_sum_ms / _delayQuery_count : 0);
-}
-
-void SqlDb::resetDelayQuery(bool store) {
-	if(store) {
-		delayQueryStore_sum_ms = 0;
-		delayQueryStore_count = 0;
-	} else {
-		delayQuery_sum_ms = 0;
-		delayQuery_count = 0;
-	}
-}
-
 bool SqlDb::logNeedAlter(string table, string reason, string alter,
 			 bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag) {
 	vector<string> alters;
@@ -1564,11 +1538,9 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 	return(okAlter);
 }
 
-volatile u_int64_t SqlDb::delayQuery_sum_ms = 0;
-volatile u_int32_t SqlDb::delayQuery_count = 0;
-volatile u_int64_t SqlDb::delayQueryStore_sum_ms = 0;
-volatile u_int32_t SqlDb::delayQueryStore_count = 0;
-volatile u_int64_t SqlDb::query_count = 0;
+volatile u_int64_t SqlDb::delayQuery_sum_ms[3] = { 0, 0, 0 };
+volatile u_int32_t SqlDb::delayQuery_count[3] = { 0, 0, 0 };
+volatile u_int32_t SqlDb::insert_count = 0;
 
 
 SqlDb_mysql::SqlDb_mysql() {
@@ -3234,7 +3206,9 @@ void MySqlStore_process::store() {
 					#if TEST_SERVER_STORE_SPEED
 					SqlDb::addDelayQuery(10);
 					#else
+					u_int32_t startTimeMS = getTimeMS();
 					this->sqlDb->query(query);
+					SqlDb::addDelayQuery(getTimeMS() - startTimeMS, SqlDb::_tq_redirect);
 					lastQueryTime = getTimeMS_rdtsc() / 1000;
 					#endif
 				} else {
@@ -3355,7 +3329,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 		__store(beginProcedure, endProcedure, queries_str);
 	}
 	unsigned long endTimeMS = getTimeMS();
-	SqlDb::addDelayQuery(endTimeMS - startTimeMS, true);
+	SqlDb::addDelayQuery(endTimeMS - startTimeMS, SqlDb::_tq_store);
 	if(sverb.store_process_query_compl_time) {
 		sumTimeMS += (endTimeMS -startTimeMS);
 		cout << "store_process_query_compl_" << this->id_main << "_" << this->id_2 << endl
@@ -3364,7 +3338,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 }
 
 void MySqlStore_process::__store(list<string> *queries) {
-	SqlDb::addQueryCount(queries->size());
+	SqlDb::addCountInsert(queries->size());
 	if(this->parentStore->isCloud() && useNewStore()) {
 		string queries_str;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); iter++) {
@@ -4379,25 +4353,31 @@ MySqlStore_process *MySqlStore::check(int id_main, int id_2) {
 	return(process);
 }
 
-size_t MySqlStore::getAllSize(bool lock) {
+size_t MySqlStore::getAllSize(bool lock, bool redirect) {
 	size_t size = 0;
 	map<int, MySqlStore_process*>::iterator iter;
 	this->lock_processes();
 	map<int, map<int, MySqlStore_process*> >::iterator iter1;
 	map<int, MySqlStore_process*>::iterator iter2;
 	for(iter1 = this->processes.begin(); iter1 != this->processes.end(); ++iter1) {
-		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
-			if(lock) {
-				iter2->second->lock();
-			}
-			size += iter2->second->getSize();
-			if(lock) {
-				iter2->second->unlock();
+		if(!redirect || this->isRedirectStoreId(iter1->first)) {
+			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); ++iter2) {
+				if(lock) {
+					iter2->second->lock();
+				}
+				size += iter2->second->getSize();
+				if(lock) {
+					iter2->second->unlock();
+				}
 			}
 		}
 	}
 	this->unlock_processes();
 	return(size);
+}
+
+size_t MySqlStore::getAllRedirectSize(bool lock) {
+	return(getAllSize(lock, true));
 }
 
 int MySqlStore::getSize(int id_main, int id_2, bool lock) {
@@ -4670,6 +4650,10 @@ int MySqlStore::getConcatLimitForStoreId(int id_main) {
 		break;
 	}
 	return(concatLimit);
+}
+
+bool MySqlStore::isRedirectStoreId(int id_main) {
+	return(id_main == STORE_PROC_ID_CDR_REDIRECT);
 }
 
 void *MySqlStore::threadQFilesCheckPeriod(void *arg) {

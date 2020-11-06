@@ -298,6 +298,11 @@ public:
 		_supportPartitions_ok,
 		_supportPartitions_oldver
 	};
+	enum eTypeQuery {
+		_tq_std,
+		_tq_store,
+		_tq_redirect
+	};
 public:
 	SqlDb();
 	virtual ~SqlDb();
@@ -490,17 +495,28 @@ public:
 	bool isCloud() {
 		return(cloud_host[0] && cloud_token[0] && cloud_router);
 	}
-	static void addDelayQuery(u_int32_t delay_ms, bool store = false);
-	static u_int32_t getAvgDelayQuery(bool store = false);
-	static void resetDelayQuery(bool store = false);
-	inline static void addQueryCount(u_int64_t qc) {
-		query_count += qc;
+	inline static void addDelayQuery(u_int32_t delay_ms, eTypeQuery typeQuery = _tq_std) {
+		__SYNC_ADD(delayQuery_sum_ms[typeQuery], delay_ms);
+		__SYNC_INC(delayQuery_count[typeQuery]);
 	}
-	inline static u_int64_t getQueryCount() {
-		return(query_count);
+	inline static u_int32_t getAvgDelayQuery(eTypeQuery typeQuery = _tq_std) {
+		return(delayQuery_count[typeQuery] ? delayQuery_sum_ms[typeQuery] / delayQuery_count[typeQuery] : 0);
 	}
-	inline static void resetQueryCount() {
-		query_count = 0;
+	inline static u_int32_t getCountQuery(eTypeQuery typeQuery = _tq_std) {
+		return(delayQuery_count[typeQuery]);
+	}
+	inline static void resetDelayQuery(eTypeQuery typeQuery = _tq_std) {
+		delayQuery_sum_ms[typeQuery] = 0;
+		delayQuery_count[typeQuery] = 0;
+	}
+	inline static void addCountInsert(u_int32_t qc) {
+		__SYNC_ADD(insert_count, qc);
+	}
+	inline static u_int32_t getCountInsert() {
+		return(insert_count);
+	}
+	inline static void resetCountInsert() {
+		insert_count = 0;
 	}
 	bool logNeedAlter(string table, string reason, string alter,
 			  bool log, map<string, u_int64_t> *tableSize, bool *existsColumnFlag);
@@ -555,11 +571,9 @@ protected:
 private:
 	unsigned int lastError;
 	string lastErrorString;
-	static volatile u_int64_t delayQuery_sum_ms;
-	static volatile u_int32_t delayQuery_count;
-	static volatile u_int64_t delayQueryStore_sum_ms;
-	static volatile u_int32_t delayQueryStore_count;
-	static volatile u_int64_t query_count;
+	static volatile u_int64_t delayQuery_sum_ms[3];
+	static volatile u_int32_t delayQuery_count[3];
+	static volatile u_int32_t insert_count;
 	cSocketBlock *remote_socket;
 friend class MySqlStore_process;
 };
@@ -1025,7 +1039,8 @@ public:
 	void setEnableFixDeadlock(int id_main, int id_2, bool enableFixDeadlock = true);
 	MySqlStore_process *find(int id_main, int id_2, MySqlStore *store = NULL);
 	MySqlStore_process *check(int id_main, int id_2);
-	size_t getAllSize(bool lock = true);
+	size_t getAllSize(bool lock = true, bool redirect = false);
+	size_t getAllRedirectSize(bool lock = true);
 	int getSize(int id_main, int id_2, bool lock = true);
 	int getCountActive(int id_main, bool lock = true);
 	void fillSizeMap(map<int, int> *size_map, map<int, int> *size_map_by_id_2, bool lock = true);
@@ -1038,6 +1053,7 @@ public:
 	int findMinId2(int id_main);
 	int getMaxThreadsForStoreId(int id_main);
 	int getConcatLimitForStoreId(int id_main);
+	bool isRedirectStoreId(int id_main);
 private:
 	static void *threadQFilesCheckPeriod(void *arg);
 	static void *threadLoadFromQFiles(void *arg);

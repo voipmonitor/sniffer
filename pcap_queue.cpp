@@ -1619,9 +1619,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				bool fill = false;
 				string stat = loadFromQFiles->getLoadFromQFilesStat();
 				string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(true);
+				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(SqlDb::_tq_store);
 				u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
-				SqlDb::resetDelayQuery(true);
+				SqlDb::resetDelayQuery(SqlDb::_tq_store);
 				if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
 					outStr << "SQLf[";
 				}
@@ -1861,17 +1861,25 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 					#endif
 				}
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(false);
-				SqlDb::resetDelayQuery(false);
-				if(avgDelayQuery) {
-					outStr << " / " << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
-				}
-				u_int64_t queryCount = SqlDb::getQueryCount();
-				if(queryCount) {
-					if(queryCount / statPeriod) {
-						outStr << " / " << (queryCount / statPeriod) << "i/s";
+				for(int i = 0; i < 2; i++) {
+					SqlDb::eTypeQuery typeQuery = i == 0 ? SqlDb::_tq_std : SqlDb::_tq_redirect;
+					const char *prefix = i == 0 ? "" : "R";
+					u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(typeQuery);
+					if(avgDelayQuery) {
+						outStr << " / " << setprecision(3) << prefix << (double)avgDelayQuery / 1000 << "s";
 					}
-					SqlDb::resetQueryCount();
+					u_int32_t countQuery = SqlDb::getCountQuery(typeQuery);
+					if(countQuery) {
+						outStr << " / " << prefix << (countQuery / statPeriod) << "q/s";
+					}
+					SqlDb::resetDelayQuery(typeQuery);
+				}
+				u_int64_t insertCount = SqlDb::getCountInsert();
+				if(insertCount) {
+					if(insertCount / statPeriod) {
+						outStr << " / " << (insertCount / statPeriod) << "i/s";
+					}
+					SqlDb::resetCountInsert();
 				}
 				outStr << "] ";
 			}

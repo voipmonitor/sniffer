@@ -13,6 +13,7 @@
 
 #define __SYNC_INC(vint) __sync_add_and_fetch(&vint, 1);
 #define __SYNC_DEC(vint) __sync_sub_and_fetch(&vint, 1);
+#define __SYNC_ADD(vint, add) __sync_add_and_fetch(&vint, add);
 #define __SYNC_INCR(vint, length) if((vint + 1) == length) { __SYNC_NULL(vint); } else { __SYNC_INC(vint); }
 
 

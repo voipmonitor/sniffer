@@ -7292,6 +7292,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_chart_server", &snifferClientOptions.remote_chart_server));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_redirect_queue_limit", &snifferServerOptions.mysql_redirect_queue_limit));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_concat_limit", &snifferServerOptions.mysql_concat_limit));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_type_compress", (int*)&snifferServerOptions.type_compress))
 					->addValues("gzip:1|zip:1|lzo:2")

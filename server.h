@@ -39,6 +39,7 @@ struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
 		mysql_queue_limit = 0;
+		mysql_redirect_queue_limit = 0;
 		mysql_concat_limit = 1000;
 		type_compress = _cs_compress_gzip;
 	}
@@ -48,6 +49,7 @@ struct sSnifferServerOptions {
 	string host;
 	unsigned port;
 	unsigned mysql_queue_limit;
+	unsigned mysql_redirect_queue_limit;
 	unsigned mysql_concat_limit;
 	eServerClientTypeCompress type_compress;
 };
@@ -237,7 +239,7 @@ public:
 	void sql_query_lock(const char *query_str, int id_main, int id_2);
 	void sql_query_lock(list<string> *query_str, int id_main, int id_2);
 	int findMinStoreId2(int id_main);
-	unsigned int sql_queue_size();
+	unsigned int sql_queue_size(bool redirect);
 	bool isSetSqlStore() {
 		return(sqlStore != NULL);
 	}
@@ -261,8 +263,8 @@ private:
 	volatile bool terminate;
 	map<class cSnifferServerConnection*, bool> connection_threads;
 	volatile int connection_threads_sync;
-	size_t sql_queue_size_size;
-	u_int64_t sql_queue_size_time_ms;
+	size_t sql_queue_size_size[2];
+	u_int64_t sql_queue_size_time_ms[2];
 };
 
 

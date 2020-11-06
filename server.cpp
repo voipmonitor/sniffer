@@ -228,8 +228,10 @@ cSnifferServer::cSnifferServer() {
 	sqlStore = NULL;
 	terminate = false;
 	connection_threads_sync = 0;
-	sql_queue_size_size = 0;
-	sql_queue_size_time_ms = 0;
+	for(int i = 0; i < 2; i++) {
+		sql_queue_size_size[i] = 0;
+		sql_queue_size_time_ms[i] = 0;
+	}
 }
 
 cSnifferServer::~cSnifferServer() {
@@ -259,7 +261,7 @@ int cSnifferServer::findMinStoreId2(int id_main) {
 	return(sqlStore->findMinId2(id_main));
 }
 
-unsigned int cSnifferServer::sql_queue_size() {
+unsigned int cSnifferServer::sql_queue_size(bool redirect) {
 	while(!sqlStore) {
 		if(is_terminating()) {
 			return(0);
@@ -267,12 +269,15 @@ unsigned int cSnifferServer::sql_queue_size() {
 		USLEEP(1000);
 	}
 	u_int64_t act_time_ms = getTimeMS_rdtsc();
-	if(act_time_ms > sql_queue_size_time_ms + 200) {
-		sql_queue_size_size = sqlStore->getAllSize(true) + 
-				      (calltable ? calltable->calls_charts_cache_queue.size() : 0);
-		sql_queue_size_time_ms = act_time_ms;
+	int size_index = redirect ? 1 : 0;
+	if(act_time_ms > sql_queue_size_time_ms[size_index] + 200) {
+		sql_queue_size_size[size_index] = redirect ?
+						   sqlStore->getAllRedirectSize(true) :
+						   sqlStore->getAllSize(true) + 
+						   (calltable ? calltable->calls_charts_cache_queue.size() : 0);
+		sql_queue_size_time_ms[size_index] = act_time_ms;
 	}
-	return(sql_queue_size_size);
+	return(sql_queue_size_size[size_index]);
 }
  
 void cSnifferServer::createConnection(cSocket *socket) {
@@ -862,8 +867,10 @@ void cSnifferServerConnection::cp_store() {
 			queryStr = string((char*)query, queryLength);
 		}
 		if(!queryStr.empty()) {
-			if(snifferServerOptions.mysql_queue_limit &&
-			   server->sql_queue_size() > snifferServerOptions.mysql_queue_limit) {
+			if((snifferServerOptions.mysql_queue_limit &&
+			    server->sql_queue_size(false) > snifferServerOptions.mysql_queue_limit) ||
+			   (snifferServerOptions.mysql_redirect_queue_limit &&
+			    server->sql_queue_size(true) > snifferServerOptions.mysql_redirect_queue_limit)) {
 				extern int opt_client_server_sleep_ms_if_queue_is_full;
 				JsonExport exp;
 				exp.add("error", "sql queue is full");
