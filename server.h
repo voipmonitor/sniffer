@@ -263,8 +263,8 @@ private:
 	volatile bool terminate;
 	map<class cSnifferServerConnection*, bool> connection_threads;
 	volatile int connection_threads_sync;
-	size_t sql_queue_size_size[2];
-	u_int64_t sql_queue_size_time_ms[2];
+	volatile size_t sql_queue_size_size[2];
+	volatile u_int64_t sql_queue_size_time_ms[2];
 };
 
 
@@ -302,10 +302,11 @@ protected:
 	void cp_responses();
 	void cp_query();
 	void cp_store();
+	bool cp_store_check();
 	void cp_packetbuffer_block();
 	void cp_manager_command(string command);
 private:
-	bool rsaAesInit();
+	bool rsaAesInit(bool writeRsltOK = true);
 	eTypeConnection convTypeConnection(string typeConnection);
 	void updateSensorState(int32_t sensor_id);
 	void lock_tasks() {

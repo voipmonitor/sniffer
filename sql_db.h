@@ -823,8 +823,12 @@ public:
 	void __store(string beginProcedure, string endProcedure, string &queries);
 	void exportToFile(FILE *file, bool sqlFormat, bool cleanAfterExport);
 	void _exportToFileSqlFormat(FILE *file, string queries);
-	void lock();
-	void unlock();
+	void lock() {
+		__SYNC_LOCK_USLEEP(lock_sync, 10);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(lock_sync);
+	}
 	void setEnableTerminatingDirectly(bool enableTerminatingDirectly);
 	void setEnableTerminatingIfEmpty(bool enableTerminatingIfEmpty);
 	void setEnableTerminatingIfSqlError(bool enableTerminatingIfSqlError);
@@ -856,7 +860,7 @@ private:
 	volatile u_int64_t threadRunningCounter;
 	u_int64_t lastThreadRunningCounterCheck;
 	u_long lastThreadRunningTimeCheck;
-	pthread_mutex_t lock_mutex;
+	volatile int lock_sync;
 	SqlDb *sqlDb;
 	deque<string> query_buff;
 	bool terminated;
@@ -867,6 +871,7 @@ private:
 	u_long lastQueryTime;
 	u_long queryCounter;
 	cSocketBlock *remote_socket;
+	bool check_store_supported;
 	u_long last_store_iteration_time;
 };
 
@@ -916,10 +921,10 @@ private:
 			return(time - createAt > (unsigned)period * 1000);
 		}
 		void lock() {
-			while(__sync_lock_test_and_set(&_sync, 1));
+			__SYNC_LOCK_USLEEP(_sync, 10);
 		}
 		void unlock() {
-			__sync_lock_release(&_sync);
+			__SYNC_UNLOCK(_sync);
 		}
 		string filename;
 		FileZipHandler *fileZipHandler;
@@ -967,10 +972,10 @@ private:
 			unlock();
 		}
 		void lock() {
-			while(__sync_lock_test_and_set(&_sync, 1));
+			__SYNC_LOCK_USLEEP(_sync, 10);
 		}
 		void unlock() {
-			__sync_lock_release(&_sync);
+			__SYNC_UNLOCK(_sync);
 		}
 		int id_main;
 		string name;
@@ -1004,7 +1009,7 @@ public:
 	void query(const char *query_str, int id_main, int id_2);
 	void query(string query_str, int id_main, int id_2);
 	void query_lock(const char *query_str, int id_main, int id_2);
-	void query_lock(list<string> *query_str, int id_main, int id_2);
+	void query_lock(list<string> *query_str, int id_main, int id_2, int change_id_2_after = 0);
 	void query_lock(string query_str, int id_main, int id_2);
 	// qfiles
 	void query_to_file(const char *query_str, int id_main);
@@ -1050,7 +1055,7 @@ public:
 	bool isCloud() {
 		return(cloud_host[0] && cloud_token[0] && cloud_router);
 	}
-	int findMinId2(int id_main);
+	int findMinId2(int id_main, bool lock = true);
 	int getMaxThreadsForStoreId(int id_main);
 	int getConcatLimitForStoreId(int id_main);
 	bool isRedirectStoreId(int id_main);
@@ -1059,16 +1064,16 @@ private:
 	static void *threadLoadFromQFiles(void *arg);
 	static void *threadINotifyQFiles(void *arg);
 	void lock_processes() {
-		while(__sync_lock_test_and_set(&this->_sync_processes, 1));
+		__SYNC_LOCK_USLEEP(this->_sync_processes, 10);
 	}
 	void unlock_processes() {
-		__sync_lock_release(&this->_sync_processes);
+		__SYNC_UNLOCK(this->_sync_processes);
 	}
 	void lock_qfiles() {
-		while(__sync_lock_test_and_set(&this->_sync_qfiles, 1));
+		__SYNC_LOCK_USLEEP(this->_sync_qfiles, 10);
 	}
 	void unlock_qfiles() {
-		__sync_lock_release(&this->_sync_qfiles);
+		__SYNC_UNLOCK(this->_sync_qfiles);
 	}
 	bool idIsNotCharts(int id) {
 		return(!idIsCharts(id) && !idIsChartsRemote(id));
