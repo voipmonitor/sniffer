@@ -6029,6 +6029,14 @@ void test() {
 		dropMysqlPartitionsCdr();
 		dropMysqlPartitionsRtpStat();
 		break;
+	case 346:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
+		} else {
+			return;
+		}
+		dropMysqlPartitionsRtpStat();
+		break;
 	case 310:
 		{
 		Call *call = new FILE_LINE(0) Call(0, (char*)"conv-raw-info", 0, NULL, 0);
@@ -7664,6 +7672,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"run-cleanspool-maxdays", 1, 0, 312},
 	    {"test-cleanspool-load", 1, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
+	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, 346},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
@@ -8167,6 +8176,7 @@ void get_command_line_arguments() {
 				}
 				break;
 			case 313:
+			case 346:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
