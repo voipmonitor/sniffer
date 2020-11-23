@@ -1,3 +1,8 @@
+27.2.1 23.11.2020
+=================
+- Added support for G726-16,24,32,40 and AAL2-G726-16,24,32,40 audio decoding 
+
+
 27.2 03.11.2020
 ===============
 - add wireshark version fo the RTCP calculation [VS-920]
