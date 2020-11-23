@@ -6021,11 +6021,13 @@ void test() {
 			opt_cleandatabase_webrtc =
 			opt_cleandatabase_register_state =
 			opt_cleandatabase_sip_msg =
-			opt_cleandatabase_register_failed = atoi(opt_test_arg);
+			opt_cleandatabase_register_failed = 
+			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
 		} else {
 			return;
 		}
 		dropMysqlPartitionsCdr();
+		dropMysqlPartitionsRtpStat();
 		break;
 	case 310:
 		{
