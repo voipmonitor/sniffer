@@ -3273,6 +3273,102 @@ Call::convertRawToWav() {
 				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRWB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
 				system(cmd);
 				break;
+			case PAYLOAD_G72616:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-16[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_G72624:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-24[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_G72632:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-32[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_G72640:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 40000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 40000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_AAL2_G72616:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-16[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_AAL2_G72624:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-24[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_AAL2_G72632:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-32[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_AAL2_G72640:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 40000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 40000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 8000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
 			default:
 				if (++unknown_codec_counter > 2) {
 					syslog(LOG_ERR, "Call [%s] has more than 2 parts with the unsupported codec [%s][%d].\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
