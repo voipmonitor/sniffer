@@ -1697,6 +1697,22 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_TELEVENT;
        else if(strcasecmp(mimeSubtype,"MP4A-LATM") == 0)
 	       return PAYLOAD_MP4ALATM128;
+       else if(strcasecmp(mimeSubtype,"G726-16") == 0)
+	       return PAYLOAD_G72616;
+       else if(strcasecmp(mimeSubtype,"G726-24") == 0)
+	       return PAYLOAD_G72624;
+       else if(strcasecmp(mimeSubtype,"G726-32") == 0)
+	       return PAYLOAD_G72632;
+       else if(strcasecmp(mimeSubtype,"G726-40") == 0)
+	       return PAYLOAD_G72640;
+       else if(strcasecmp(mimeSubtype,"AAL2-G726-16") == 0)
+	       return PAYLOAD_AAL2_G72616;
+       else if(strcasecmp(mimeSubtype,"AAL2-G726-24") == 0)
+	       return PAYLOAD_AAL2_G72624;
+       else if(strcasecmp(mimeSubtype,"AAL2-G726-32") == 0)
+	       return PAYLOAD_AAL2_G72632;
+       else if(strcasecmp(mimeSubtype,"AAL2-G726-40") == 0)
+	       return PAYLOAD_AAL2_G72640;
        else
 	       return 0;
 }
