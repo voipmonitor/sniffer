@@ -2106,6 +2106,16 @@ protected:
 	void timerEv(unsigned long long timerCounter);
 private:
 	void shiftPush();
+	void incSize() {
+		lock_size();
+		__sync_add_and_fetch(&size, 1);
+		unlock_size();
+	}
+	void decSize() {
+		lock_size();
+		__sync_sub_and_fetch(&size, 1);
+		unlock_size();
+	}
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&_sync_queue, 1));
 	}
@@ -2124,6 +2134,12 @@ private:
 	void unlock_pop_queue() {
 		__sync_lock_release(&_sync_pop_queue);
 	}
+	void lock_size() {
+		while(__sync_lock_test_and_set(&_sync_size, 1));
+	}
+	void unlock_size() {
+		__sync_lock_release(&_sync_size);
+	}
 private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
@@ -2134,6 +2150,7 @@ private:
 	volatile int _sync_queue;
 	volatile int _sync_push_queue;
 	volatile int _sync_pop_queue;
+	volatile int _sync_size;
 };
 
 template<class type_queue_item>
@@ -2146,6 +2163,7 @@ SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(int shiftIntervalMult10S) {
 	_sync_queue = 0;
 	_sync_push_queue = 0;
 	_sync_pop_queue = 0;
+	_sync_size = 0;
 }
 
 template<class type_queue_item>
@@ -2172,7 +2190,7 @@ void SafeAsyncQueue<type_queue_item>::push(type_queue_item &item) {
 		push_queue = new FILE_LINE(39013) deque<type_queue_item>;
 	}
 	push_queue->push_back(item);
-	__sync_add_and_fetch(&size, 1);
+	incSize();
 	unlock_push_queue();
 }
 
@@ -2201,7 +2219,7 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 				delete pop_queue;
 				pop_queue = NULL;
 			}
-			__sync_sub_and_fetch(&size, 1);
+			decSize();
 		}
 	}
 	unlock_pop_queue();

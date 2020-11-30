@@ -2348,114 +2348,136 @@ void FraudAlerts::clear(bool lock) {
 }
 
 void FraudAlerts::beginCall(Call *call, u_int64_t at) {
-	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
-	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
-	pushToCallQueue(callInfo);
+	if(!checkIfCallQueueIsFull()) {
+		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+		this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_beginCall, at);
+		pushToCallQueue(callInfo);
+	}
 }
 
 void FraudAlerts::connectCall(Call *call, u_int64_t at) {
-	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
-	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
-	pushToCallQueue(callInfo);
+	if(!checkIfCallQueueIsFull()) {
+		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+		this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_connectCall, at);
+		pushToCallQueue(callInfo);
+	}
 }
 
 void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
-	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
-	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
-	pushToCallQueue(callInfo);
+	if(!checkIfCallQueueIsFull()) {
+		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+		this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_seenByeCall, at);
+		pushToCallQueue(callInfo);
+	}
 }
 
 void FraudAlerts::endCall(Call *call, u_int64_t at) {
-	sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
-	this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
-	pushToCallQueue(callInfo);
+	if(!checkIfCallQueueIsFull()) {
+		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+		this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_endCall, at);
+		pushToCallQueue(callInfo);
+	}
 }
 
 void FraudAlerts::beginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 				 Call *call, u_int64_t at) {
-	sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
-	rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream;
-	rtpStreamInfo->rtp_src_ip = src_ip;
-	rtpStreamInfo->rtp_src_port = src_port;
-	rtpStreamInfo->rtp_dst_ip = dst_ip;
-	rtpStreamInfo->rtp_dst_port = dst_port;
-	rtpStreamInfo->at = at;
-	this->completeRtpStreamInfo(rtpStreamInfo, call);
-	pushToRtpStreamQueue(rtpStreamInfo);
+	if(!checkIfRtpStreamQueueIsFull()) {
+		sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
+		rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream;
+		rtpStreamInfo->rtp_src_ip = src_ip;
+		rtpStreamInfo->rtp_src_port = src_port;
+		rtpStreamInfo->rtp_dst_ip = dst_ip;
+		rtpStreamInfo->rtp_dst_port = dst_port;
+		rtpStreamInfo->at = at;
+		this->completeRtpStreamInfo(rtpStreamInfo, call);
+		pushToRtpStreamQueue(rtpStreamInfo);
+	}
 }
 
 void FraudAlerts::endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			       Call *call, u_int64_t at) {
-	sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
-	rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_endStream;
-	rtpStreamInfo->rtp_src_ip = src_ip;
-	rtpStreamInfo->rtp_src_port = src_port;
-	rtpStreamInfo->rtp_dst_ip = dst_ip;
-	rtpStreamInfo->rtp_dst_port = dst_port;
-	rtpStreamInfo->at = at;
-	this->completeRtpStreamInfo(rtpStreamInfo, call);
-	pushToRtpStreamQueue(rtpStreamInfo);
+	if(!checkIfRtpStreamQueueIsFull()) {
+		sFraudRtpStreamInfo *rtpStreamInfo = new FILE_LINE(0) sFraudRtpStreamInfo;
+		rtpStreamInfo->typeRtpStreamInfo = sFraudRtpStreamInfo::typeRtpStreamInfo_endStream;
+		rtpStreamInfo->rtp_src_ip = src_ip;
+		rtpStreamInfo->rtp_src_port = src_port;
+		rtpStreamInfo->rtp_dst_ip = dst_ip;
+		rtpStreamInfo->rtp_dst_port = dst_port;
+		rtpStreamInfo->at = at;
+		this->completeRtpStreamInfo(rtpStreamInfo, call);
+		pushToRtpStreamQueue(rtpStreamInfo);
+	}
 }
 
 void FraudAlerts::evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
-	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
-	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
-	eventInfo->src_ip = ip;
-	eventInfo->sip_method = sip_method;
-	eventInfo->at = at;
-	if(ua && ua_len) {
-		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
+	if(!checkIfEventQueueIsFull()) {
+		sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+		eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
+		eventInfo->src_ip = ip;
+		eventInfo->sip_method = sip_method;
+		eventInfo->at = at;
+		if(ua && ua_len) {
+			eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
+		}
+		pushToEventQueue(eventInfo);
 	}
-	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
 			     pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt) {
-	if(opt_enable_fraud_store_pcaps && block_store) {
-		block_store->lock_packet(block_store_index, 0);
+	if(!checkIfEventQueueIsFull()) {
+		if(opt_enable_fraud_store_pcaps && block_store) {
+			block_store->lock_packet(block_store_index, 0);
+		}
+		sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+		eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_register;
+		eventInfo->src_ip = src_ip;
+		eventInfo->src_ip = dst_ip;
+		eventInfo->at = at;
+		eventInfo->block_store = block_store;
+		eventInfo->block_store_index = block_store_index;
+		eventInfo->dlt = dlt;
+		if(ua && ua_len) {
+			eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
+		}
+		pushToEventQueue(eventInfo);
 	}
-	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
-	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_register;
-	eventInfo->src_ip = src_ip;
-	eventInfo->src_ip = dst_ip;
-	eventInfo->at = at;
-	eventInfo->block_store = block_store;
-	eventInfo->block_store_index = block_store_index;
-	eventInfo->dlt = dlt;
-	if(ua && ua_len) {
-		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
-	}
-	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len) {
-	sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
-	eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
-	eventInfo->src_ip = src_ip;
-	eventInfo->dst_ip = dst_ip;
-	eventInfo->at = at;
-	if(ua && ua_len) {
-		eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
+	if(!checkIfEventQueueIsFull()) {
+		sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
+		eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_registerResponse;
+		eventInfo->src_ip = src_ip;
+		eventInfo->dst_ip = dst_ip;
+		eventInfo->at = at;
+		if(ua && ua_len) {
+			eventInfo->ua = ua_len == -1 ? ua : string(ua, ua_len);
+		}
+		pushToEventQueue(eventInfo);
 	}
-	pushToEventQueue(eventInfo);
 }
 
 void FraudAlerts::evRegister(Call *call, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
-	sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
-	this->completeRegisterInfo(registerInfo, call);
-	registerInfo->state = state;
-	registerInfo->prev_state = prev_state;
-	registerInfo->prev_state_at = prev_state_at;
-	pushToRegisterQueue(registerInfo);
+	if(!checkIfRegisterQueueIsFull()) {
+		sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
+		this->completeRegisterInfo(registerInfo, call);
+		registerInfo->state = state;
+		registerInfo->prev_state = prev_state;
+		registerInfo->prev_state_at = prev_state_at;
+		pushToRegisterQueue(registerInfo);
+	}
 }
 
 void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterState state, eRegisterState prev_state, u_int64_t prev_state_at) {
-	sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
-	this->completeRegisterInfo(registerInfo, reg, regState);
-	registerInfo->state = state;
-	registerInfo->prev_state = prev_state;
-	registerInfo->prev_state_at = prev_state_at;
-	pushToRegisterQueue(registerInfo);
+	if(!checkIfRegisterQueueIsFull()) {
+		sFraudRegisterInfo *registerInfo = new FILE_LINE(0) sFraudRegisterInfo;
+		this->completeRegisterInfo(registerInfo, reg, regState);
+		registerInfo->state = state;
+		registerInfo->prev_state = prev_state;
+		registerInfo->prev_state_at = prev_state_at;
+		pushToRegisterQueue(registerInfo);
+	}
 }
 
 void FraudAlerts::stopPopCallInfoThread(bool wait) {
@@ -2466,51 +2488,75 @@ void FraudAlerts::stopPopCallInfoThread(bool wait) {
 }
 
 void FraudAlerts::pushToCallQueue(sFraudCallInfo *callInfo) {
-	if(callQueue.getSize() < maxLengthAsyncQueue) {
-		callQueue.push(callInfo);
-	} else {
-		u_int64_t actTime = getTimeMS_rdtsc();
-		if(actTime > lastTimeCallsIsFull + 5000) {
-			syslog(LOG_NOTICE, "Fraud queue for CallInfo is full");
-			lastTimeCallsIsFull = actTime;
-		}
-	}
+	callQueue.push(callInfo);
 }
 
 void FraudAlerts::pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo) {
-	if(rtpStreamQueue.getSize() < maxLengthAsyncQueue) {
-		rtpStreamQueue.push(streamInfo);
-	} else {
-		u_int64_t actTime = getTimeMS_rdtsc();
-		if(actTime > lastTimeRtpStreamsIsFull + 5000) {
-			syslog(LOG_NOTICE, "Fraud queue for RtpStreamInfo is full");
-			lastTimeRtpStreamsIsFull = actTime;
-		}
-	}
+	rtpStreamQueue.push(streamInfo);
 }
 
 void FraudAlerts::pushToEventQueue(sFraudEventInfo *eventInfo) {
-	if(eventQueue.getSize() < maxLengthAsyncQueue) {
-		eventQueue.push(eventInfo);
-	} else {
-		u_int64_t actTime = getTimeMS_rdtsc();
-		if(actTime > lastTimeEventsIsFull + 5000) {
-			syslog(LOG_NOTICE, "Fraud queue for EventInfo is full");
-			lastTimeEventsIsFull = actTime;
-		}
-	}
+	eventQueue.push(eventInfo);
 }
 
 void FraudAlerts::pushToRegisterQueue(sFraudRegisterInfo *registerInfo) {
-	if(registerQueue.getSize() < maxLengthAsyncQueue) {
-		registerQueue.push(registerInfo);
-	} else {
-		u_int64_t actTime = getTimeMS_rdtsc();
-		if(actTime > lastTimeRegistersIsFull + 5000) {
-			syslog(LOG_NOTICE, "Fraud queue for RegisterInfo is full");
-			lastTimeRegistersIsFull = actTime;
+	registerQueue.push(registerInfo);
+}
+
+bool FraudAlerts::checkIfCallQueueIsFull(bool log) {
+	if(callQueue.getSize() >= maxLengthAsyncQueue) {
+		if(log) {
+			u_int64_t actTime = getTimeMS_rdtsc();
+			if(actTime > lastTimeCallsIsFull + 5000) {
+				syslog(LOG_NOTICE, "Fraud queue for CallInfo is full");
+				lastTimeCallsIsFull = actTime;
+			}
 		}
+		return(true);
 	}
+	return(false);
+}
+
+bool FraudAlerts::checkIfRtpStreamQueueIsFull(bool log) {
+	if(rtpStreamQueue.getSize() >= maxLengthAsyncQueue) {
+		if(log) {
+			u_int64_t actTime = getTimeMS_rdtsc();
+			if(actTime > lastTimeRtpStreamsIsFull + 5000) {
+				syslog(LOG_NOTICE, "Fraud queue for RtpStreamInfo is full");
+				lastTimeRtpStreamsIsFull = actTime;
+			}
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool FraudAlerts::checkIfEventQueueIsFull(bool log) {
+	if(eventQueue.getSize() >= maxLengthAsyncQueue) {
+		if(log) {
+			u_int64_t actTime = getTimeMS_rdtsc();
+			if(actTime > lastTimeEventsIsFull + 5000) {
+				syslog(LOG_NOTICE, "Fraud queue for EventInfo is full");
+				lastTimeEventsIsFull = actTime;
+			}
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool FraudAlerts::checkIfRegisterQueueIsFull(bool log) {
+	if(registerQueue.getSize() >= maxLengthAsyncQueue) {
+		if(log) {
+			u_int64_t actTime = getTimeMS_rdtsc();
+			if(actTime > lastTimeRegistersIsFull + 5000) {
+				syslog(LOG_NOTICE, "Fraud queue for RegisterInfo is full");
+				lastTimeRegistersIsFull = actTime;
+			}
+		}
+		return(true);
+	}
+	return(false);
 }
 
 void *_FraudAlerts_popCallInfoThread(void *arg) {

@@ -1131,6 +1131,10 @@ private:
 	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);
 	void pushToEventQueue(sFraudEventInfo *eventInfo);
 	void pushToRegisterQueue(sFraudRegisterInfo *registerInfo);
+	bool checkIfCallQueueIsFull(bool log = true);
+	bool checkIfRtpStreamQueueIsFull(bool log = true);
+	bool checkIfEventQueueIsFull(bool log = true);
+	bool checkIfRegisterQueueIsFull(bool log = true);
 	void initPopCallInfoThread();
 	void popCallInfoThread();
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
