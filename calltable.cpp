@@ -676,8 +676,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 
 	rtp_zeropackets_stored = 0;
 	
-	last_udptl_seq = 0;
-
 	lastraw[0] = NULL;
 	lastraw[1] = NULL;
 
@@ -2038,10 +2036,11 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
-				if(seq <= this->last_udptl_seq) {
+				d_item<vmIPport> last_udptl_seq_index = d_item<vmIPport>(vmIPport(packetS->saddr_(), packetS->source_()), vmIPport(packetS->daddr_(), packetS->dest_()));
+				if(seq <= this->last_udptl_seq[last_udptl_seq_index]) {
 					enable_save_packet = false;
 				}
-				this->last_udptl_seq = seq;
+				this->last_udptl_seq[last_udptl_seq_index] = seq;
 			}
 		}
 	} else {

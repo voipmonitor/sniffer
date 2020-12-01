@@ -933,7 +933,7 @@ public:
 	
 	sRtcpXrData rtcpXrData;
 	
-	unsigned last_udptl_seq;
+	map<d_item<vmIPport>, unsigned> last_udptl_seq;
 
 	u_int32_t iscaller_consecutive[2];
 	
