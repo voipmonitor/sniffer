@@ -257,6 +257,9 @@ struct pcap_block_store {
 		return(-1);
 	}
 	size_t getUseSize() {
+		return(this->size_compress ? this->size_compress : this->size);
+	}
+	size_t getUseAllSize() {
 		return((this->size_compress ? this->size_compress : this->size) + 
 		       sizeof(uint32_t) * offsets_size + 
 		       sizeof(*this));

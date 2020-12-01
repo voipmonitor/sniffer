@@ -1112,7 +1112,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			packetbuffer_memory_is_full = true;
 			return(false);
 		} else {
-			this->add_sizeOfBlocksInMemory(blockStore->getUseSize());
+			this->add_sizeOfBlocksInMemory(blockStore->getUseAllSize());
 			packetbuffer_memory_is_full = false;
 		}
 	}
@@ -1146,7 +1146,7 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 				return(false);
 			}
 		} else {
-			this->sub_sizeOfBlocksInMemory((*blockStore)->getUseSize());
+			this->sub_sizeOfBlocksInMemory((*blockStore)->getUseAllSize());
 		}
 		++this->cleanupFileStoreCounter;
 		if(!(this->cleanupFileStoreCounter % 100)) {
@@ -6346,7 +6346,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrashPush(blockStore);
-				buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseSize());
+				buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseAllSize());
 			}
 		} else {
 			if(blockStore) {
@@ -6354,7 +6354,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					delete blockStore;
 					blockStore = NULL;
 				} else {
-					buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseSize());
+					buffersControl.add__PcapQueue_readFromFifo__blockStoreTrash_size(blockStore->getUseAllSize());
 					if(opt_ipaccount) {
 						blockStore->is_voip = new FILE_LINE(15056) u_int8_t[blockStore->count];
 						memset(blockStore->is_voip, 0, blockStore->count);
@@ -6652,7 +6652,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 						  block->is_voip[i]);
 				}
 			}
-			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(block->getUseSize());
+			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(block->getUseAllSize());
 			delete block;
 		} else {
 			USLEEP(1000);
@@ -7576,7 +7576,7 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 			del = true;
 		}
 		if(del) {
-			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseSize());
+			buffersControl.sub__PcapQueue_readFromFifo__blockStoreTrash_size(this->blockStoreTrash[i]->getUseAllSize());
 			delete this->blockStoreTrash[i];
 			this->blockStoreTrash.erase(this->blockStoreTrash.begin() + i);
 			--i;
