@@ -2113,7 +2113,9 @@ private:
 	}
 	void decSize() {
 		lock_size();
-		__sync_sub_and_fetch(&size, 1);
+		if(size > 0) {
+			__sync_sub_and_fetch(&size, 1);
+		}
 		unlock_size();
 	}
 	void lock_queue() {
