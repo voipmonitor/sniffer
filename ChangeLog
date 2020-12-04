@@ -1,3 +1,9 @@
+27.2.2 01.12.2020
+=================
+- fix memory leak when fraud queue is fulll [VS-1141]
+- fix FAX T.38 decode for some cases [VG-2226]
+
+
 27.2.1 23.11.2020
 =================
 - Added support for G726-16,24,32,40 and AAL2-G726-16,24,32,40 audio decoding 
