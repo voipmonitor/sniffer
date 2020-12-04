@@ -5250,20 +5250,20 @@ void Call::selectRtpAB() {
 	if(!rtpab_ok) {
 		int rtp_size_reduct = rtp_size();
 		if(opt_rtpip_find_endpoints) {
-			map<unsigned, bool> skip_stream;
-			bool set_skip_stream = false;
 			for(int i = 0; i < 2; i++) {
 				bool _iscaller = i == 0 ? 1 : 0;
+				map<unsigned, bool> skip_stream;
+				unsigned count_streams = 0;
 				for(int j = 0; j < rtp_size_reduct; j++) {
-					if(rtp_stream_by_index(indexes[j])->iscaller == _iscaller &&
+					if(rtp_stream_by_index(indexes[j])->iscaller == _iscaller && 
 					   rtp_stream_by_index(indexes[j])->saddr != rtp_stream_by_index(indexes[j])->daddr) {
+						++count_streams;
 						for(int k = 0; k < rtp_size_reduct; k++) {
 							if(k != j &&
 							   rtp_stream_by_index(indexes[k])->iscaller == _iscaller &&
 							   rtp_stream_by_index(indexes[k])->saddr != rtp_stream_by_index(indexes[k])->daddr &&
 							   rtp_stream_by_index(indexes[k])->daddr == rtp_stream_by_index(indexes[j])->saddr) {
 								skip_stream[indexes[j]] = true;
-								set_skip_stream = true;
 								if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
 									cout << "RTP - stream over proxy: " 
 									     << hex << rtp_stream_by_index(indexes[j])->ssrc << dec << " : "
@@ -5282,15 +5282,25 @@ void Call::selectRtpAB() {
 						}
 					}
 				}
-			}
-			if(set_skip_stream) {
-				int _rtp_size_reduct = 0;
-				for(int i = 0; i < rtp_size_reduct; i++) {
-					if(!skip_stream[indexes[i]]) {
-						indexes[_rtp_size_reduct++] = indexes[i];
+				if(skip_stream.size()) {
+					if(skip_stream.size() < count_streams) {
+						int _rtp_size_reduct = 0;
+						for(int i = 0; i < rtp_size_reduct; i++) {
+							if(!skip_stream[indexes[i]]) {
+								indexes[_rtp_size_reduct++] = indexes[i];
+							}
+						}
+						rtp_size_reduct = _rtp_size_reduct;
+					} else {
+						if(sverb.process_rtp || sverb.read_rtp || sverb.rtp_streams) {
+							cout << "RTP - suppress skip streams over proxy (LOOP)" 
+							     << " iscaller: " << _iscaller
+							     << " skip streams: " << skip_stream.size()
+							     << " count streams: " << count_streams
+							     << endl;
+						}
 					}
 				}
-				rtp_size_reduct = _rtp_size_reduct;
 			}
 		}
 	 
