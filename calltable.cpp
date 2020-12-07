@@ -10128,6 +10128,7 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
 	cpuStr << fixed;
 	double cpu_sum = 0;
 	unsigned cpu_count = 0;
+	while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
 	for(int i = 0; i < chc_threads_count; i++) {
 		double cpu = get_cpu_usage_perc(chc_threads[i].tid, chc_threads[i].pstat);
 		if(cpu > 0) {
@@ -10139,6 +10140,7 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
 			++cpu_count;
 		}
 	}
+	__sync_lock_release(&chc_threads_count_sync);
 	if(avg) {
 		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}
