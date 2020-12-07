@@ -210,6 +210,7 @@ extern int opt_pcap_dump_tar_graph_use_pos;
 
 extern unsigned int glob_ssl_calls;
 extern bool opt_cdr_partition;
+extern bool opt_cdr_partition_by_hours;
 extern int opt_t2_boost;
 extern bool opt_time_precision_in_ms;
 
@@ -11423,6 +11424,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 		}
 	}
 	if(enableCreatePartitions) {
+		this->createTablesIfNotExists(sqlDb, true);
 		this->createMysqlPartitions(sqlDb);
 	}
 	if(_createSqlObject) {
@@ -11704,33 +11706,24 @@ string CustomHeaders::getDeleteQuery(const char *id, const char *prefix, const c
 void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 	extern bool cloud_db;
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	for(int day = 0; day < 3; day++) {
-		if(!day ||
+	char type = opt_cdr_partition_by_hours ? 'h' : 'd';
+	for(int next_part = 0; next_part < (type == 'd' ? LIMIT_DAY_PARTITIONS : LIMIT_HOUR_PARTITIONS); next_part++) {
+		if(!next_part ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		this->createMysqlPartitions(sqlDb, day);
+		this->createMysqlPartitions(sqlDb, type, next_part);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 }
 
-void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, int day) {
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_part) {
 	extern bool cloud_db;
 	extern char mysql_database[256];
 	extern bool opt_cdr_partition_oldver;
 	list<string>::iterator iter;
 	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-		if((isCloud() || cloud_db) &&
-		   sqlDb->existsDayPartition(*iter, day)) {
-			continue;
-		}
-		sqlDb->query(
-			string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
-			(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
-			"'" + *iter + "', " +
-			"'day', " +
-			intToString(day) + ", " +
-			(opt_cdr_partition_oldver ? "true" : "false") + ");");
+		_createMysqlPartition(*iter, type == 'd' ? "day" : "hour", next_part, opt_cdr_partition_oldver, NULL, sqlDb);
 	}
 }
 
@@ -11807,9 +11800,16 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	
 	string limitDay;
 	string partDayName;
-	
+	string limitHour;
+	string partHourName;
+	string limitHourNext;
+	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay, enableOldPartition);
+		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay);
+		if(opt_cdr_partition_by_hours) {
+			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHour);
+			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHourNext, 1);
+		}
 	}
 	
 	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
@@ -11839,7 +11839,11 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 			(string(",CONSTRAINT `") + tableName + "_ibfk_1` FOREIGN KEY (`" + this->relIdColumn + "`) REFERENCES `" + this->mainTable + "` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE").c_str()) +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(") + this->relTimeColumn + ")(\
+				 PARTITION " + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(" + this->relTimeColumn + "))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(" + this->relTimeColumn + ")(\
@@ -11848,9 +11852,11 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	
 	if(enableOldPartition && opt_cdr_partition && opt_create_old_partitions > 0) {
 		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-			this->createMysqlPartitions(sqlDb, -i);
+			this->createMysqlPartitions(sqlDb, 'd', -i);
 		}
-		this->createMysqlPartitions(sqlDb, 0);
+		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS_INIT : LIMIT_DAY_PARTITIONS_INIT); next_part++) {
+			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_part);
+		}
 	}
 	
 	if(_createSqlObject) {

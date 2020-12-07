@@ -640,6 +640,7 @@ char opt_capture_rules_sip_header_file[1024];
 bool opt_detect_alone_bye = false;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
+bool opt_cdr_partition_by_hours = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
@@ -7202,6 +7203,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42403) cConfigItem_string("odbcpass", odbc_password, sizeof(odbc_password)));
 					addConfigItem(new FILE_LINE(42404) cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
 					addConfigItem(new FILE_LINE(42405) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_partition_by_hours", &opt_cdr_partition_by_hours));
 					addConfigItem(new FILE_LINE(42406) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
 					addConfigItem(new FILE_LINE(42407) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
 					addConfigItem(new FILE_LINE(42408) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
@@ -9660,6 +9662,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "cdr_partition", NULL))) {
 		opt_cdr_partition = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_partition_by_hours", NULL))) {
+		opt_cdr_partition_by_hours = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_sipport", NULL))) {
 		opt_cdr_sipport = yesno(value);

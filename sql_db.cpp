@@ -37,6 +37,7 @@ extern char opt_match_header[128];
 extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
+extern bool opt_cdr_partition_by_hours;
 extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
@@ -1303,6 +1304,33 @@ bool SqlDb::existsDayPartition(string table, unsigned addDaysToNow, bool useCach
 		cout << "exists partition " << table << '.' << partitionName << endl;
 	}
 	*/
+	return(rslt);
+}
+
+bool SqlDb::existsHourPartition(string table, unsigned addHoursToNow, bool checkDayPartition, bool useCache) {
+	time_t now = time(NULL);
+	tm tm = time_r(&now);
+	while(addHoursToNow > 0) {
+		tm = getNextBeginHour(tm);
+		--addHoursToNow;
+	}
+	char partitionName[40];
+	snprintf(partitionName, sizeof(partitionName), "p%02i%02i%02i%02i", tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour);
+	bool rslt = existsPartition(table, partitionName, useCache);
+	/*
+	if(rslt) {
+		cout << "exists partition " << table << '.' << partitionName << endl;
+	}
+	*/
+	if(!rslt && checkDayPartition) {
+		snprintf(partitionName, sizeof(partitionName), "p%02i%02i%02i", tm.tm_year - 100, tm.tm_mon + 1, tm.tm_mday);
+		rslt = existsPartition(table, partitionName, useCache);
+		/*
+		if(rslt) {
+			cout << "exists partition " << table << '.' << partitionName << endl;
+		}
+		*/
+	}
 	return(rslt);
 }
 
@@ -4998,7 +5026,18 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
-	string partDayName = this->getPartDayName(limitDay);
+	string partDayName;
+	string limitHour;
+	string partHourName;
+	string limitHourNext;
+	string partHourNextName;
+	if(opt_cdr_partition) {
+		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		if(opt_cdr_partition_by_hours) {
+			partHourName = this->getPartHourName(limitHour);
+			partHourNextName = this->getPartHourName(limitHourNext, 1);
+		}
+	}
 	
 	bool okTableSensorConfig = false;
 	if(this->existsTable("filter_ip")) {
@@ -5422,7 +5461,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		) +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5492,7 +5535,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5519,7 +5566,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_proxy_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress  + 
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5552,7 +5603,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_rtp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5577,7 +5632,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_rtp_energylevels_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5605,7 +5664,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_dtmf_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5629,7 +5692,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_sipresp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5656,7 +5723,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				",CONSTRAINT `cdr_siphistory_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 		") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 		(opt_cdr_partition ?
-			(opt_cdr_partition_oldver ? 
+			(opt_cdr_partition_by_hours ?
+				string(" PARTITION BY RANGE COLUMNS(calldate)(\
+					 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+					 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+			 opt_cdr_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(calldate))(\
 					 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 				string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5681,7 +5752,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_tar_part_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5716,7 +5791,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_country_code_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5744,7 +5823,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_sdp_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5769,7 +5852,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_txt_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5792,7 +5879,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `cdr_flags_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5819,7 +5910,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			KEY `time` (`time`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(supportPartitions != _supportPartitions_na ?
-		(opt_rtp_stat_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(time)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_rtp_stat_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(`time`))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(`time`)(\
@@ -5886,7 +5981,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"KEY `time_iam` (`time_iam`)"\
 		") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
 		(supportPartitions != _supportPartitions_na ?
-			(opt_ss7_partition_oldver ? 
+			(opt_cdr_partition_by_hours ?
+				string(" PARTITION BY RANGE COLUMNS(time_iam)(\
+					 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+					 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+			 opt_ss7_partition_oldver ? 
 				string(" PARTITION BY RANGE (to_days(time_iam))(\
 					 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 				string(" PARTITION BY RANGE COLUMNS(time_iam)(\
@@ -5951,7 +6050,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			CONSTRAINT `messages_ibfk_4` FOREIGN KEY (`id_contenttype`) REFERENCES `contenttype` (`id`) ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -5991,7 +6094,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `message_proxy_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress  + 
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -6026,7 +6133,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `message_country_code_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -6049,7 +6160,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			",CONSTRAINT `message_flags_ibfk_1` FOREIGN KEY (`message_ID`) REFERENCES `message` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(calldate))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
@@ -6119,7 +6234,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `sipcalledip` (`sipcalledip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
@@ -6153,7 +6272,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `sipcalledip` (`sipcalledip`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(created_at))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
@@ -6229,7 +6352,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			CONSTRAINT `sip_msg_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(time)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(time))(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(time)(\
@@ -6444,7 +6571,18 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	
 	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
-	string partDayName = this->getPartDayName(limitDay);
+	string partDayName;
+	string limitHour;
+	string partHourName;
+	string limitHourNext;
+	string partHourNextName;
+	if(opt_cdr_partition) {
+		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		if(opt_cdr_partition_by_hours) {
+			partHourName = this->getPartHourName(limitHour);
+			partHourNextName = this->getPartHourName(limitHourNext, 1);
+		}
+	}
 
 	bool okTableHttpJj = false;
 	if(this->existsTable("http_jj")) {
@@ -6490,7 +6628,11 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 			ON DELETE CASCADE ON UPDATE CASCADE") +
 	") ENGINE=InnoDB " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(timestamp))(\
 				PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
@@ -6525,7 +6667,11 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	KEY `responsename` (`responsename`)\
 	) ENGINE=InnoDB " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(timestamp))(\
 				PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
@@ -6545,7 +6691,18 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	
 	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
-	string partDayName = this->getPartDayName(limitDay);
+	string partDayName;
+	string limitHour;
+	string partHourName;
+	string limitHourNext;
+	string partHourNextName;
+	if(opt_cdr_partition) {
+		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		if(opt_cdr_partition_by_hours) {
+			partHourName = this->getPartHourName(limitHour);
+			partHourNextName = this->getPartHourName(limitHourNext, 1);
+		}
+	}
 
 	bool okTableWebrtc = false;
 	if(this->existsTable("webrtc")) {
@@ -6580,7 +6737,11 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	KEY `external_transaction_id` (`external_transaction_id`)\
 	) ENGINE=InnoDB " + compress +
 	(opt_cdr_partition ?
-		(opt_cdr_partition_oldver ? 
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
 			string(" PARTITION BY RANGE (to_days(timestamp))(\
 				PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(timestamp)(\
@@ -7098,7 +7259,9 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 	"begin\
 	    declare part_start_time datetime;\
 	    declare part_start_date date;\
+	    declare part_start_hour datetime;\
 	    declare part_limit date;\
+	    declare part_limit_time datetime;\
 	    declare part_limit_int int unsigned;\
 	    declare part_name char(100);\
 	    declare _week_start int;\
@@ -7119,7 +7282,9 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 	       deallocate prepare stmt;\
 	    end if;\
 	    if(database_name is null or @_exists_any_part) then\
-	       set part_start_time = date_add(now(), interval next_days day);\
+	       set part_start_time = date_add(now(), interval next_part day);\
+	       set part_limit = NULL;\
+	       set part_limit_time = NULL;\
 	       set part_limit_int = NULL;\
 	       if(type_part = 'year_int') then\
 		  set part_start_date = date_format(part_start_time, '%Y-01-01');\
@@ -7150,6 +7315,11 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 		     set part_limit_int = to_days(part_limit);\
 		  end if;\
 		  set part_name = concat('p', date_format(part_start_date, '%y%m'));\
+	       elseif(type_part = 'hour') then\
+		  set part_start_time = date_add(now(), interval next_part hour);\
+		  set part_start_hour = date_format(part_start_time, '%Y-%m-%d %H');\
+		  set part_limit_time = date_add(part_start_hour, interval 1 hour);\
+		  set part_name = concat('p', date_format(part_start_hour, '%y%m%d%H'));\
 	       else\
 		  set part_start_date =  date(part_start_time);\
 		  set part_limit = date_add(part_start_date, interval 1 day);\
@@ -7185,7 +7355,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 			' VALUES LESS THAN (\\''),\
 		     if(part_limit_int is not null,\
 			part_limit_int,\
-			part_limit),\
+			coalesce(part_limit,  part_limit_time)),\
 		     if(part_limit_int is not null,\
 			'',\
 			'\\''),\
@@ -7198,42 +7368,67 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 	       end if;\
 	    end if;\
 	 end",
-	"create_partition_v3", "(database_name char(100), table_name char(100), type_part char(10), next_days int, old_ver_partition bool)", abortIfFailed);
+	"create_partition_v3", "(database_name char(100), table_name char(100), type_part char(10), next_part int, old_ver_partition bool)", abortIfFailed);
 
 	return(true);
 }
 
 bool SqlDb_mysql::createSchema_init_cdr_partitions(int connectId) {
 	this->clearLastError();
-	
 	if(opt_cdr_partition && !opt_disable_partition_operations) {
 		if(opt_create_old_partitions > 0) {
 			for(int i = opt_create_old_partitions - 1; i > 0; i--) {
-				_createMysqlPartitionsCdr(-i, connectId, this);
+				_createMysqlPartitionsCdr('d', -i, connectId, this);
 			}
 		}
-		_createMysqlPartitionsCdr(0, connectId, this);
-		_createMysqlPartitionsCdr(1, connectId, this);
+		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS_INIT : LIMIT_DAY_PARTITIONS_INIT); next_part++) {
+			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_part, connectId, this);
+		}
 	}
 	return(true);
 }
 
-string SqlDb_mysql::getPartDayName(string &limitDay_str, bool enableOldPartition) {
+string SqlDb_mysql::getPartDayName(string &limitDay_str, int next) {
 	char partDayName[20] = "";
 	char limitDay[20] = "";
 	if(supportPartitions != _supportPartitions_na) {
 		time_t act_time = time(NULL);
-		if(enableOldPartition && opt_create_old_partitions > 0) {
-			act_time -= opt_create_old_partitions * 24 * 60 * 60;
+		struct tm partTime = time_r(&act_time);
+		if(next < 0) {
+			for(int i = 0; i < -next; i++) {
+				partTime = getPrevBeginDate(partTime);
+			}
 		}
-		struct tm actTime = time_r(&act_time);
-		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &actTime);
-		time_t next_day_time = act_time + 24 * 60 * 60;
-		struct tm nextDayTime = time_r(&next_day_time);
-		strftime(limitDay, sizeof(partDayName), "%Y-%m-%d", &nextDayTime);
+		if(next > 0) {
+			for(int i = 0; i < next; i++) {
+				partTime = getNextBeginDate(partTime);
+			}
+		}
+		strftime(partDayName, sizeof(partDayName), "p%y%m%d", &partTime);
+		struct tm nextDayTime = getNextBeginDate(partTime);
+		strftime(limitDay, sizeof(limitDay), "%Y-%m-%d", &nextDayTime);
 	}
 	limitDay_str = limitDay;
 	return(partDayName);
+}
+
+string SqlDb_mysql::getPartHourName(string &limitHour_str, int next) {
+	char partHourName[20] = "";
+	char limitHour[20] = "";
+	if(supportPartitions != _supportPartitions_na) {
+		time_t act_time = time(NULL);
+		struct tm partTime = time_r(&act_time);
+		if(next > 0) {
+			for(int i = 0; i < next; i++) {
+				partTime = getNextBeginHour(partTime);
+			}
+		}
+		strftime(partHourName, sizeof(partHourName), "p%y%m%d%H", &partTime);
+		struct tm nextHourTime = getNextBeginHour(partTime);
+		strftime(limitHour, sizeof(limitHour), "%Y-%m-%d-%H:00:00", &nextHourTime);
+	}
+	limitHour_str = limitHour;
+	return(partHourName);
 }
 
 void SqlDb_mysql::saveTimezoneInformation() {
@@ -7312,6 +7507,10 @@ void SqlDb_mysql::checkDbMode() {
 				if(opt_cdr_partition) {
 					opt_cdr_partition_oldver = true;
 					syslog(LOG_NOTICE, "mysql <= 5.1 - use old mode partitions");
+					if(opt_cdr_partition_by_hours) {
+						opt_cdr_partition_by_hours = false;
+						syslog(LOG_NOTICE, "mysql <= 5.1 - hour partitions not supported with old mode");
+					}
 				}
 				opt_ss7_partition_oldver = true;
 				opt_rtp_stat_partition_oldver = true;
@@ -7321,6 +7520,10 @@ void SqlDb_mysql::checkDbMode() {
 					if(this->isOldVerPartition("cdr%")) {
 						opt_cdr_partition_oldver = true;
 						syslog(LOG_NOTICE, "database contain old mode partitions");
+						if(opt_cdr_partition_by_hours) {
+							opt_cdr_partition_by_hours = false;
+							syslog(LOG_NOTICE, "mysql <= 5.1 - hour partitions not supported with old mode");
+						}
 					}
 				}
 				if(this->isOldVerPartition("ss7")) {
@@ -8586,8 +8789,8 @@ void createMysqlPartitionsCdr() {
 				sqlDb->setDisableLogError(disableLogErrorOld);
 			}
 		}
-		for(int day = 0; day < 3; day++) {
-			_createMysqlPartitionsCdr(day, connectId, sqlDb);
+		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS : LIMIT_DAY_PARTITIONS); next_part++) {
+			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_part, connectId, sqlDb);
 		}
 		if(connectId == 0) {
 			if(custom_headers_cdr) {
@@ -8605,33 +8808,22 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - end");
 }
 
-void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb) {
+void _createMysqlPartitionsCdr(char type, int next_part, int connectId, SqlDb *sqlDb) {
 	SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	if(!sqlDbMysql) {
 		return;
 	}
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(day <= 0 ||
+	if(next_part <= 0 ||
 	   isCloud() || cloud_db) {
 		sqlDb->setMaxQueryPass(1);
 	}
 	for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
-		if((isCloud() || cloud_db) &&
-		   sqlDb->existsDayPartition(tablesForCreatePartitions[i], day)) {
-			continue;
-		}
 		if((connectId == 0 && (!use_mysql_2_http() || tablesForCreatePartitions[i] != "http_jj")) ||
 		   (connectId == 1 && use_mysql_2_http() && tablesForCreatePartitions[i] == "http_jj")) {
-			string _mysql_database = connectId == 0 ? 
-						  mysql_database : 
-						  mysql_2_database;
-			sqlDb->query(string("call ") + (isCloud() ? "" : "`" +_mysql_database + "`.") + "create_partition_v3(" + 
-				     (isCloud() || cloud_db ? "NULL" : "'" + _mysql_database + "'") + ", "
-				     "'" + tablesForCreatePartitions[i] + "', " + 
-				     "'day', " + 
-				     intToString(day) + ", " + 
-				     (opt_cdr_partition_oldver ? "true" : "false") + ");");
+			_createMysqlPartition(tablesForCreatePartitions[i], type == 'd' ? "day" : "hour", next_part, opt_cdr_partition_oldver, 
+					      connectId == 0 ? mysql_database : mysql_2_database, sqlDb);
 		}
 	}
 	sqlDb->setMaxQueryPass(maxQueryPassOld);
@@ -8646,7 +8838,7 @@ void createMysqlPartitionsRtpStat() {
 }
 
 void createMysqlPartitionsLogSensor() {
-	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver);
+	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver, true);
 }
 
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
@@ -8723,26 +8915,17 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	syslog(LOG_NOTICE, "%s", "create billing partitions - end");
 }
 
-void createMysqlPartitionsTable(const char* table, bool partition_oldver) {
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	for(int day = 0; day < 3; day++) {
-		if(!day ||
+	char type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
+	for(int next_part = 0; next_part < (type == 'd' ? LIMIT_DAY_PARTITIONS : LIMIT_HOUR_PARTITIONS); next_part++) {
+		if(!next_part ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		if((isCloud() || cloud_db) &&
-		   sqlDb->existsDayPartition(table, day)) {
-			continue;
-		}
-		sqlDb->query(
-			string("call ") + (isCloud() ? "" : "`" + string(mysql_database) + "`.") + "create_partition_v3(" + 
-			(isCloud() || cloud_db ? "NULL" : "'" + string(mysql_database) + "'") + ", " +
-			"'" + table + "', " + 
-			"'day', " + 
-			intToString(day) + ", " + 
-			(partition_oldver ? "true" : "false") + ");");
+		_createMysqlPartition(table, type == 'd' ? "day" : "hour", next_part, partition_oldver, NULL, sqlDb);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 	delete sqlDb;
@@ -8766,6 +8949,51 @@ void createMysqlPartitionsIpacc() {
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - end");
+}
+
+void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	bool exists = false;
+	if(type == "day" || type == "hour") {
+		if(type == "day" ?
+		    sqlDb->existsDayPartition(table, next_part) :
+		    sqlDb->existsHourPartition(table, next_part)) {
+			exists = true;
+		}
+	}
+	if(!exists) {
+		extern bool cloud_db;
+		extern char mysql_database[256];
+		if(!(isCloud() || cloud_db) && (type == "day" || type == "hour") && 
+		   !(database && strcmp(database, mysql_database)) && !old_ver) {
+			string limitTime;
+			string partName;
+			if(type == "day") {
+				partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(limitTime, next_part);
+			} else {
+				partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartHourName(limitTime, next_part);
+			}
+			syslog(LOG_NOTICE, "CREATE PARTITION %s : %s", table.c_str(), partName.c_str());
+			sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " ADD PARTITION " + 
+				     "(partition `" + partName + "` VALUES LESS THAN ('" + limitTime + "'))");
+		} else {
+			const char *_database = database ? database : mysql_database;
+			sqlDb->query(
+				string("call ") + (isCloud() ? "" : "`" + string(_database) + "`.") + "create_partition_v3(" + 
+				(isCloud() || cloud_db ? "NULL" : "'" + string(_database) + "'") + ", " +
+				"'" + table + "', " +
+				"'" + type + "', " + 
+				intToString(next_part) + ", " +
+				(old_ver ? "true" : "false") + ");");
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
 }
 
 void dropMysqlPartitionsCdr() {
@@ -8902,10 +9130,12 @@ void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximu
 }
 
 void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb) {
+	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		sqlDb->setDisableLogError();
 		sqlDb->setDisableNextAttemptIfError();
+		_createSqlObject = true;
 	}
 	string limitPartName;
 	if(cleanParam > 0) {
@@ -8937,7 +9167,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 			}
 		}
 		if(cleanParam > 0) {
-			for(size_t i = 0; i < exists_partitions.size() && exists_partitions[i] <= limitPartName; i++) {
+			for(size_t i = 0; i < exists_partitions.size() && exists_partitions[i].substr(0, limitPartName.length()) <= limitPartName; i++) {
 				partitions[exists_partitions[i]] = 1;
 			}
 		}
@@ -8945,6 +9175,9 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 	for(map<string, int>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
 		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, iter->first.c_str());
 		sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + iter->first);
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
 	}
 }
 

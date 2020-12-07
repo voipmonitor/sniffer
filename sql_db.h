@@ -23,6 +23,11 @@
 
 #define NULL_CHAR_PTR (const char*)NULL
 
+#define LIMIT_DAY_PARTITIONS 3
+#define LIMIT_DAY_PARTITIONS_INIT 2
+#define LIMIT_HOUR_PARTITIONS 3*24
+#define LIMIT_HOUR_PARTITIONS_INIT 2*24
+
 
 using namespace std;
 
@@ -388,6 +393,7 @@ public:
 	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
 	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
+	bool existsHourPartition(string table, unsigned addHoursToNow, bool checkDayPartition = true, bool useCache = true);
 	virtual bool emptyTable(const char *table, bool viaTableStatus = false) = 0;
 	bool emptyTable(string table, bool viaTableStatus = false) { return(emptyTable(table.c_str(), viaTableStatus)); }
 	virtual int64_t rowsInTable(const char *table, bool viaTableStatus = false) = 0;
@@ -657,7 +663,8 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
-	string getPartDayName(string &limitDay_str, bool enableOldPartition = true);
+	string getPartDayName(string &limitDay_str, int next = 0);
+	string getPartHourName(string &limitHour_str, int next = 0);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
@@ -1127,13 +1134,14 @@ string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
-void _createMysqlPartitionsCdr(int day, int connectId, SqlDb *sqlDb);
+void _createMysqlPartitionsCdr(char type, int next, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
-void createMysqlPartitionsTable(const char* table, bool partition_oldver);
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false);
 void createMysqlPartitionsIpacc();
+void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsRtpStat();

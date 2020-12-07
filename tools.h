@@ -382,6 +382,7 @@ tm getEasterMondayDate(unsigned year, int decDays = 0, const char *timezone = NU
 bool isEasterMondayDate(tm &date, int decDays = 0, const char *timezone = NULL);
 tm getNextBeginDate(tm dateTime, const char *timezone = NULL);
 tm getPrevBeginDate(tm dateTime, const char *timezone = NULL);
+tm getNextBeginHour(tm dateTime, const char *timezone = NULL);
 tm dateTimeAdd(tm dateTime, unsigned add_s, const char *timezone = NULL);
 double diffTime(tm time1, tm time0, const char *timezone = NULL);
 unsigned long getUptime();

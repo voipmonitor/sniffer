@@ -1207,6 +1207,18 @@ tm getPrevBeginDate(tm dateTime, const char *timezone) {
 	return(rslt);
 }
 
+tm getNextBeginHour(tm dateTime, const char *timezone) {
+	tm rslt = dateTime;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt, timezone);
+	time_s += 60 * 60;
+	rslt = time_r(&time_s, timezone ? timezone : "local");
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm dateTimeAdd(tm dateTime, unsigned add_s, const char *timezone) {
 	time_t time_s = mktime(&dateTime, timezone);
 	time_s += add_s;

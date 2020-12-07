@@ -2570,7 +2570,7 @@ public:
 		return(&allNextTables);
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
-	void createMysqlPartitions(class SqlDb *sqlDb, int day);
+	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_part);
 	unsigned long getLoadTime() {
 		return(loadTime);
 	}
