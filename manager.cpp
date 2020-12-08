@@ -2297,7 +2297,7 @@ int Mgmt_listcalls(Mgmt_params *params) {
 
 typedef struct {
 	const char *cmd;
-	int *setVar;
+	volatile int *setVar;
 	int setValue;
 	const char *helpText;
 } cmdData;
@@ -2305,6 +2305,7 @@ typedef struct {
 int Mgmt_offon(Mgmt_params *params) {
 	static std::map<string, cmdData> cmdsDataTable;
 	if (params->task == params->mgmt_task_DoInit) {
+		extern volatile int partitionsServiceIsInProgress;
 		cmdData cmdData_src[] = {
 			{ "unblocktar", &opt_blocktarwrite, 0, "unblock tar files"},
 			{ "blocktar", &opt_blocktarwrite, 1, "block tar files"},
@@ -2321,7 +2322,9 @@ int Mgmt_offon(Mgmt_params *params) {
 			{ "unblock_alloc_stack", &opt_block_alloc_stack, 0, "unblock stack allocation"},
 			{ "block_alloc_stack", &opt_block_alloc_stack, 1, "block stack allocation"},
 			{ "disablecdr", &opt_nocdr, 1, "disable cdr creation"},
-			{ "enablecdr", &opt_nocdr, 0, "enable cdr creation"}
+			{ "enablecdr", &opt_nocdr, 0, "enable cdr creation"},
+			{ "unset_partitions_service", &partitionsServiceIsInProgress, 0, "unset flag partitions service is in progress"},
+			{ "set_partitions_service", &partitionsServiceIsInProgress, 1, "set flag partitions service is in progress"}
 		};
 		for(unsigned i = 0; i < sizeof(cmdData_src) / sizeof(cmdData_src[0]); i++) {
 			cmdsDataTable[cmdData_src[i].cmd] = cmdData_src[i];
@@ -2333,10 +2336,7 @@ int Mgmt_offon(Mgmt_params *params) {
 		return(0);
 	}
 	char *endOfCmd = strpbrk(params->buf, " \r\n\t");
-	if (!endOfCmd) {
-		return(-1);
-	}
-	string cmdStr (params->buf, endOfCmd);
+	string cmdStr = endOfCmd ? string(params->buf, endOfCmd) : params->buf;
 	std::map<string, cmdData>::iterator cmdItem = cmdsDataTable.find(cmdStr);
 	if (cmdItem != cmdsDataTable.end()) {
 		* cmdItem->second.setVar = cmdItem->second.setValue;

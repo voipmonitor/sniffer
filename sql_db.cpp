@@ -124,6 +124,8 @@ SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
 cSqlDbData *dbData;
 
+volatile int partitionsServiceIsInProgress = 0;
+
 
 #if DEBUG_STORE_COUNT
 map<int, u_int64_t> _store_cnt;
@@ -3264,6 +3266,9 @@ void MySqlStore_process::store() {
 					}
 				}
 			} else if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
+				while(partitionsServiceIsInProgress) {
+					usleep(100000);
+				}
 				string query;
 				this->lock();
 				if(this->query_buff.size()) {
@@ -8774,6 +8779,7 @@ void SqlDb_odbc::updateSensorState() {
 
 
 void createMysqlPartitionsCdr() {
+	partitionsServiceIsInProgress = 1;
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
@@ -8806,6 +8812,7 @@ void createMysqlPartitionsCdr() {
 		delete sqlDb;
 	}
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - end");
+	partitionsServiceIsInProgress = 0;
 }
 
 void _createMysqlPartitionsCdr(char type, int next_part, int connectId, SqlDb *sqlDb) {
@@ -8830,15 +8837,21 @@ void _createMysqlPartitionsCdr(char type, int next_part, int connectId, SqlDb *s
 }
 
 void createMysqlPartitionsSs7() {
+	partitionsServiceIsInProgress = 1;
 	createMysqlPartitionsTable("ss7", opt_ss7_partition_oldver);
+	partitionsServiceIsInProgress = 0;
 }
 
 void createMysqlPartitionsRtpStat() {
+	partitionsServiceIsInProgress = 1;
 	createMysqlPartitionsTable("rtp_stat", opt_rtp_stat_partition_oldver);
+	partitionsServiceIsInProgress = 0;
 }
 
 void createMysqlPartitionsLogSensor() {
+	partitionsServiceIsInProgress = 1;
 	createMysqlPartitionsTable("log_sensor", opt_log_sensor_partition_oldver, true);
+	partitionsServiceIsInProgress = 0;
 }
 
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
@@ -8850,6 +8863,7 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	   !agregSettings.enable_by_domain) {
 		return;
 	}
+	partitionsServiceIsInProgress = 1;
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -8913,6 +8927,7 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	syslog(LOG_NOTICE, "%s", "create billing partitions - end");
+	partitionsServiceIsInProgress = 0;
 }
 
 void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions) {
@@ -8933,6 +8948,7 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool d
 }
 
 void createMysqlPartitionsIpacc() {
+	partitionsServiceIsInProgress = 1;
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - begin");
 	if(isCloud()) {
@@ -8949,6 +8965,7 @@ void createMysqlPartitionsIpacc() {
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", "create ipacc partitions - end");
+	partitionsServiceIsInProgress = 0;
 }
 
 void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb) {
@@ -8997,6 +9014,7 @@ void _createMysqlPartition(string table, string type, int next_part, bool old_ve
 }
 
 void dropMysqlPartitionsCdr() {
+	partitionsServiceIsInProgress = 1;
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_cdr_rtp_energylevels;
 	extern int opt_cleandatabase_http_enum;
@@ -9070,6 +9088,7 @@ void dropMysqlPartitionsCdr() {
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "drop cdr old partitions - end");
+	partitionsServiceIsInProgress = 0;
 }
 
 void dropMysqlPartitionsSs7() {
@@ -9096,6 +9115,7 @@ void dropMysqlPartitionsBillingAgregation() {
 	   !agregSettings.enable_by_domain) {
 		return;
 	}
+	partitionsServiceIsInProgress = 1;
 	SqlDb *sqlDb = createSqlObject();
 	syslog(LOG_NOTICE, "%s", "drop billing old partitions - begin");
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
@@ -9117,6 +9137,7 @@ void dropMysqlPartitionsBillingAgregation() {
 		}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", "drop billing old partitions - end");
+	partitionsServiceIsInProgress = 0;
 }
 
 void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions) {

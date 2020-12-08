@@ -1656,6 +1656,7 @@ public:
 	}
 	void createPartitions(bool inThread = false) {
 		if(isSet()) {
+			sCreatePartitions::in_progress = 1;
 			bool successStartThread = false;
 			if(inThread) {
 				sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
@@ -1685,9 +1686,11 @@ public:
 	bool createBilling;
 	bool dropBilling;
 	bool _runInThread;
+	static volatile int in_progress;
 } createPartitions;
 
 void *sCreatePartitions::_createPartitions(void *arg) {
+	extern volatile int partitionsServiceIsInProgress;
 	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
 	if(createPartitionsData->createCdr) {
 		createMysqlPartitionsCdr();
@@ -1725,8 +1728,12 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	if(createPartitionsData->_runInThread) {
 		delete createPartitionsData;
 	}
+	partitionsServiceIsInProgress = 0;
+	sCreatePartitions::in_progress = 0;
 	return(NULL);
 }
+
+volatile int sCreatePartitions::in_progress = 0;
 
 class sCheckIdCdrChildTables {
 public:
@@ -1789,9 +1796,11 @@ void *storing_cdr( void */*dummy*/ ) {
 	bool firstIter = true;
 	storing_cdr_tid = get_unix_tid();
 	while(1) {
+		extern volatile int partitionsServiceIsInProgress;
 		if(!opt_nocdr && !opt_disable_partition_operations && 
 		   !is_client() && 
-		   isSqlDriver("mysql")) {
+		   isSqlDriver("mysql") &&
+		   !sCreatePartitions::in_progress && !partitionsServiceIsInProgress) {
 			bool setEnableFromTo = false;
 			bool timeOk = false;
 			if(opt_partition_operations_enable_run_hour_from >= 0 &&
