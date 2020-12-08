@@ -7360,7 +7360,7 @@ bool SqlDb_mysql::createSchema_procedure_partition(int connectId, bool abortIfFa
 			' VALUES LESS THAN (\\''),\
 		     if(part_limit_int is not null,\
 			part_limit_int,\
-			coalesce(part_limit,  part_limit_time)),\
+			if(part_limit_time is not null, cast(part_limit_time as char),  cast(part_limit as char))),\
 		     if(part_limit_int is not null,\
 			'',\
 			'\\''),\
