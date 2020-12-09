@@ -1315,6 +1315,69 @@ private:
 };
 
 
+class sCreatePartitions {
+public:
+	sCreatePartitions() {
+		init();
+	}
+	void init() {
+		createCdr = false;
+		dropCdr = false;
+		createSs7 = false;
+		dropSs7 = false;
+		createRtpStat = false;
+		dropRtpStat = false;
+		createLogSensor = false;
+		dropLogSensor = false;
+		createIpacc = false;
+		createBilling = false;
+		dropBilling = false;
+		_runInThread = false;
+	}
+	bool isSet() {
+		return(createCdr || dropCdr || 
+		       createSs7 || dropSs7 ||
+		       createRtpStat || dropRtpStat ||
+		       createLogSensor || dropLogSensor ||
+		       createIpacc || 
+		       createBilling || dropBilling);
+	}
+	void createPartitions(bool inThread = false) {
+		if(isSet()) {
+			sCreatePartitions::in_progress = 1;
+			bool successStartThread = false;
+			if(inThread) {
+				sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
+				*createPartitionsData = *this;
+				createPartitionsData->_runInThread = true;
+				pthread_t thread;
+				successStartThread = vm_pthread_create_autodestroy("create partitions",
+										   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
+			}
+			if(!inThread || !successStartThread) {
+				this->_runInThread = false;
+				_createPartitions(this);
+			}
+		}
+	}
+	static void *_createPartitions(void *arg);
+public:
+	bool createCdr;
+	bool dropCdr;
+	bool createSs7;
+	bool dropSs7;
+	bool createRtpStat;
+	bool dropRtpStat;
+	bool createLogSensor;
+	bool dropLogSensor;
+	bool createIpacc;
+	bool createBilling;
+	bool dropBilling;
+	bool _runInThread;
+	static volatile int in_progress;
+};
+
+
 void dbDataInit(SqlDb *sqlDb);
 void dbDataTerm();
 bool dbDataIsSet();

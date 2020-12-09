@@ -3266,7 +3266,7 @@ void MySqlStore_process::store() {
 					}
 				}
 			} else if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
-				while(partitionsServiceIsInProgress) {
+				while(partitionsServiceIsInProgress || sCreatePartitions::in_progress) {
 					usleep(100000);
 				}
 				string query;
@@ -9544,6 +9544,54 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 	query += MYSQL_QUERY_END;
 	return(query);
 }
+
+
+void *sCreatePartitions::_createPartitions(void *arg) {
+	sleep(10);
+	extern volatile int partitionsServiceIsInProgress;
+	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
+	if(createPartitionsData->createCdr) {
+		createMysqlPartitionsCdr();
+	}
+	if(createPartitionsData->dropCdr) {
+		dropMysqlPartitionsCdr();
+	}
+	if(createPartitionsData->createSs7) {
+		createMysqlPartitionsSs7();
+	}
+	if(createPartitionsData->dropSs7) {
+		dropMysqlPartitionsSs7();
+	}
+	if(createPartitionsData->createRtpStat) {
+		createMysqlPartitionsRtpStat();
+	}
+	if(createPartitionsData->dropRtpStat) {
+		dropMysqlPartitionsRtpStat();
+	}
+	if(createPartitionsData->createLogSensor) {
+		createMysqlPartitionsLogSensor();
+	}
+	if(createPartitionsData->dropLogSensor) {
+		dropMysqlPartitionsLogSensor();
+	}
+	if(createPartitionsData->createIpacc) {
+		createMysqlPartitionsIpacc();
+	}
+	if(createPartitionsData->createBilling) {
+		createMysqlPartitionsBillingAgregation();
+	}
+	if(createPartitionsData->dropBilling) {
+		dropMysqlPartitionsBillingAgregation();
+	}
+	if(createPartitionsData->_runInThread) {
+		delete createPartitionsData;
+	}
+	partitionsServiceIsInProgress = 0;
+	sCreatePartitions::in_progress = 0;
+	return(NULL);
+}
+
+volatile int sCreatePartitions::in_progress = 0;
 
 
 void dbDataInit(SqlDb *sqlDb) {

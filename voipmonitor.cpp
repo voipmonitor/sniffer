@@ -1627,114 +1627,6 @@ void *moving_cache( void */*dummy*/ ) {
 	return NULL;
 }
 
-class sCreatePartitions {
-public:
-	sCreatePartitions() {
-		init();
-	}
-	void init() {
-		createCdr = false;
-		dropCdr = false;
-		createSs7 = false;
-		dropSs7 = false;
-		createRtpStat = false;
-		dropRtpStat = false;
-		createLogSensor = false;
-		dropLogSensor = false;
-		createIpacc = false;
-		createBilling = false;
-		dropBilling = false;
-		_runInThread = false;
-	}
-	bool isSet() {
-		return(createCdr || dropCdr || 
-		       createSs7 || dropSs7 ||
-		       createRtpStat || dropRtpStat ||
-		       createLogSensor || dropLogSensor ||
-		       createIpacc || 
-		       createBilling || dropBilling);
-	}
-	void createPartitions(bool inThread = false) {
-		if(isSet()) {
-			sCreatePartitions::in_progress = 1;
-			bool successStartThread = false;
-			if(inThread) {
-				sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
-				*createPartitionsData = *this;
-				createPartitionsData->_runInThread = true;
-				pthread_t thread;
-				successStartThread = vm_pthread_create_autodestroy("create partitions",
-										   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
-			}
-			if(!inThread || !successStartThread) {
-				this->_runInThread = false;
-				_createPartitions(this);
-			}
-		}
-	}
-	static void *_createPartitions(void *arg);
-public:
-	bool createCdr;
-	bool dropCdr;
-	bool createSs7;
-	bool dropSs7;
-	bool createRtpStat;
-	bool dropRtpStat;
-	bool createLogSensor;
-	bool dropLogSensor;
-	bool createIpacc;
-	bool createBilling;
-	bool dropBilling;
-	bool _runInThread;
-	static volatile int in_progress;
-} createPartitions;
-
-void *sCreatePartitions::_createPartitions(void *arg) {
-	extern volatile int partitionsServiceIsInProgress;
-	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
-	if(createPartitionsData->createCdr) {
-		createMysqlPartitionsCdr();
-	}
-	if(createPartitionsData->dropCdr) {
-		dropMysqlPartitionsCdr();
-	}
-	if(createPartitionsData->createSs7) {
-		createMysqlPartitionsSs7();
-	}
-	if(createPartitionsData->dropSs7) {
-		dropMysqlPartitionsSs7();
-	}
-	if(createPartitionsData->createRtpStat) {
-		createMysqlPartitionsRtpStat();
-	}
-	if(createPartitionsData->dropRtpStat) {
-		dropMysqlPartitionsRtpStat();
-	}
-	if(createPartitionsData->createLogSensor) {
-		createMysqlPartitionsLogSensor();
-	}
-	if(createPartitionsData->dropLogSensor) {
-		dropMysqlPartitionsLogSensor();
-	}
-	if(createPartitionsData->createIpacc) {
-		createMysqlPartitionsIpacc();
-	}
-	if(createPartitionsData->createBilling) {
-		createMysqlPartitionsBillingAgregation();
-	}
-	if(createPartitionsData->dropBilling) {
-		dropMysqlPartitionsBillingAgregation();
-	}
-	if(createPartitionsData->_runInThread) {
-		delete createPartitionsData;
-	}
-	partitionsServiceIsInProgress = 0;
-	sCreatePartitions::in_progress = 0;
-	return(NULL);
-}
-
-volatile int sCreatePartitions::in_progress = 0;
-
 class sCheckIdCdrChildTables {
 public:
 	sCheckIdCdrChildTables() {
@@ -1778,6 +1670,8 @@ void *defered_service_fork(void *) {
 #define check_time_partition_operation(at) (firstIter || \
 					    ((!setEnableFromTo || timeOk) && ((actTime - at) > (setEnableFromTo ? 1 : 12) * 3600)) || \
 					    (actTime - at) > 24 * 3600)
+
+sCreatePartitions  createPartitions;
 
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
