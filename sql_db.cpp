@@ -7458,8 +7458,13 @@ string SqlDb_mysql::getPartHourName(string *limitHour_str, int next_day, int hou
 				partTime = getNextBeginHour(partTime);
 			}
 			strftime(partHourName, sizeof(partHourName), "p%y%m%d%H", &partTime);
+			char startHour[20] = "";
+			strftime(startHour, sizeof(limitHour), "%Y-%m-%d-%H:00:00", &partTime);
 			struct tm nextHourTime = getNextBeginHour(partTime);
 			strftime(limitHour, sizeof(limitHour), "%Y-%m-%d-%H:00:00", &nextHourTime);
+			if(string(startHour) >= string(limitHour)) {
+				return("");
+			}
 		}
 	}
 	if(limitHour_str) {
