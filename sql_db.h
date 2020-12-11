@@ -25,8 +25,6 @@
 
 #define LIMIT_DAY_PARTITIONS 3
 #define LIMIT_DAY_PARTITIONS_INIT 2
-#define LIMIT_HOUR_PARTITIONS 3*24
-#define LIMIT_HOUR_PARTITIONS_INIT 2*24
 
 
 using namespace std;
@@ -663,8 +661,9 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
-	string getPartDayName(string &limitDay_str, int next = 0);
-	string getPartHourName(string &limitHour_str, int next = 0);
+	string getPartDayName(string *limitDay_str, int next = 0);
+	string getPartHourName(string *limitHour_str, int next = 0);
+	string getPartHourName(string *limitHour_str, int next_day, int hour);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
@@ -1134,14 +1133,14 @@ string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
-void _createMysqlPartitionsCdr(char type, int next, int connectId, SqlDb *sqlDb);
+void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
 void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false);
 void createMysqlPartitionsIpacc();
-void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb);
+void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsRtpStat();
@@ -1342,25 +1341,10 @@ public:
 		       createIpacc || 
 		       createBilling || dropBilling);
 	}
-	void createPartitions(bool inThread = false) {
-		if(isSet()) {
-			sCreatePartitions::in_progress = 1;
-			bool successStartThread = false;
-			if(inThread) {
-				sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
-				*createPartitionsData = *this;
-				createPartitionsData->_runInThread = true;
-				pthread_t thread;
-				successStartThread = vm_pthread_create_autodestroy("create partitions",
-										   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
-			}
-			if(!inThread || !successStartThread) {
-				this->_runInThread = false;
-				_createPartitions(this);
-			}
-		}
-	}
+	void createPartitions(bool inThread = false);
 	static void *_createPartitions(void *arg);
+	void doCreatePartitions();
+	void doDropPartitions();
 public:
 	bool createCdr;
 	bool dropCdr;

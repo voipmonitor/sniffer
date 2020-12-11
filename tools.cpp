@@ -1179,6 +1179,19 @@ bool isEasterMondayDate(tm &date, int decDays, const char *timezone) {
 	       ed.tm_mday == date.tm_mday);
 }
 
+tm getBeginDate(tm dateTime, const char *timezone) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt, timezone);
+	rslt = time_r(&time_s, timezone ? timezone : "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm getNextBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;

@@ -11709,23 +11709,23 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 	extern bool cloud_db;
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	char type = opt_cdr_partition_by_hours ? 'h' : 'd';
-	for(int next_part = 0; next_part < (type == 'd' ? LIMIT_DAY_PARTITIONS : LIMIT_HOUR_PARTITIONS); next_part++) {
-		if(!next_part ||
+	for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
+		if((!next_day && type == 'd') ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		this->createMysqlPartitions(sqlDb, type, next_part);
+		this->createMysqlPartitions(sqlDb, type, next_day);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 }
 
-void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_part) {
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day) {
 	extern bool cloud_db;
 	extern char mysql_database[256];
 	extern bool opt_cdr_partition_oldver;
 	list<string>::iterator iter;
 	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-		_createMysqlPartition(*iter, type == 'd' ? "day" : "hour", next_part, opt_cdr_partition_oldver, NULL, sqlDb);
+		_createMysqlPartition(*iter, type, next_day, opt_cdr_partition_oldver, NULL, sqlDb);
 	}
 }
 
@@ -11807,10 +11807,10 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay);
+		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(&limitDay);
 		if(opt_cdr_partition_by_hours) {
-			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHour);
-			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHourNext, 1);
+			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHour);
+			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHourNext, 1);
 		}
 	}
 	
@@ -11856,8 +11856,8 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 			this->createMysqlPartitions(sqlDb, 'd', -i);
 		}
-		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS_INIT : LIMIT_DAY_PARTITIONS_INIT); next_part++) {
-			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_part);
+		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS_INIT; next_day++) {
+			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_day);
 		}
 	}
 	

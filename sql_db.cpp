@@ -5037,10 +5037,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
 		if(opt_cdr_partition_by_hours) {
-			partHourName = this->getPartHourName(limitHour);
-			partHourNextName = this->getPartHourName(limitHourNext, 1);
+			partHourName = this->getPartHourName(&limitHour);
+			partHourNextName = this->getPartHourName(&limitHourNext, 1);
 		}
 	}
 	
@@ -6582,10 +6582,10 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
 		if(opt_cdr_partition_by_hours) {
-			partHourName = this->getPartHourName(limitHour);
-			partHourNextName = this->getPartHourName(limitHourNext, 1);
+			partHourName = this->getPartHourName(&limitHour);
+			partHourNextName = this->getPartHourName(&limitHourNext, 1);
 		}
 	}
 
@@ -6702,10 +6702,10 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = this->getPartDayName(limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
 		if(opt_cdr_partition_by_hours) {
-			partHourName = this->getPartHourName(limitHour);
-			partHourNextName = this->getPartHourName(limitHourNext, 1);
+			partHourName = this->getPartHourName(&limitHour);
+			partHourNextName = this->getPartHourName(&limitHourNext, 1);
 		}
 	}
 
@@ -7386,14 +7386,14 @@ bool SqlDb_mysql::createSchema_init_cdr_partitions(int connectId) {
 				_createMysqlPartitionsCdr('d', -i, connectId, this);
 			}
 		}
-		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS_INIT : LIMIT_DAY_PARTITIONS_INIT); next_part++) {
-			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_part, connectId, this);
+		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS_INIT; next_day++) {
+			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_day, connectId, this);
 		}
 	}
 	return(true);
 }
 
-string SqlDb_mysql::getPartDayName(string &limitDay_str, int next) {
+string SqlDb_mysql::getPartDayName(string *limitDay_str, int next) {
 	char partDayName[20] = "";
 	char limitDay[20] = "";
 	if(supportPartitions != _supportPartitions_na) {
@@ -7413,11 +7413,13 @@ string SqlDb_mysql::getPartDayName(string &limitDay_str, int next) {
 		struct tm nextDayTime = getNextBeginDate(partTime);
 		strftime(limitDay, sizeof(limitDay), "%Y-%m-%d", &nextDayTime);
 	}
-	limitDay_str = limitDay;
+	if(limitDay_str) {
+		*limitDay_str = limitDay;
+	}
 	return(partDayName);
 }
 
-string SqlDb_mysql::getPartHourName(string &limitHour_str, int next) {
+string SqlDb_mysql::getPartHourName(string *limitHour_str, int next) {
 	char partHourName[20] = "";
 	char limitHour[20] = "";
 	if(supportPartitions != _supportPartitions_na) {
@@ -7432,7 +7434,37 @@ string SqlDb_mysql::getPartHourName(string &limitHour_str, int next) {
 		struct tm nextHourTime = getNextBeginHour(partTime);
 		strftime(limitHour, sizeof(limitHour), "%Y-%m-%d-%H:00:00", &nextHourTime);
 	}
-	limitHour_str = limitHour;
+	if(limitHour_str) {
+		*limitHour_str = limitHour;
+	}
+	return(partHourName);
+}
+
+string SqlDb_mysql::getPartHourName(string *limitHour_str, int next_day, int hour) {
+	char partHourName[20] = "";
+	char limitHour[20] = "";
+	if(supportPartitions != _supportPartitions_na) {
+		time_t act_time = time(NULL);
+		struct tm partTime = time_r(&act_time);
+		if(!(next_day == 0 && hour < partTime.tm_hour)) {
+			if(next_day > 0) {
+				for(int i = 0; i < next_day; i++) {
+					partTime = getNextBeginDate(partTime);
+				}
+			} else {
+				partTime = getBeginDate(partTime);
+			}
+			for(int i = 0; i < hour; i++) {
+				partTime = getNextBeginHour(partTime);
+			}
+			strftime(partHourName, sizeof(partHourName), "p%y%m%d%H", &partTime);
+			struct tm nextHourTime = getNextBeginHour(partTime);
+			strftime(limitHour, sizeof(limitHour), "%Y-%m-%d-%H:00:00", &nextHourTime);
+		}
+	}
+	if(limitHour_str) {
+		*limitHour_str = limitHour;
+	}
 	return(partHourName);
 }
 
@@ -8795,8 +8827,8 @@ void createMysqlPartitionsCdr() {
 				sqlDb->setDisableLogError(disableLogErrorOld);
 			}
 		}
-		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS : LIMIT_DAY_PARTITIONS); next_part++) {
-			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_part, connectId, sqlDb);
+		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
+			_createMysqlPartitionsCdr(opt_cdr_partition_by_hours ? 'h' : 'd', next_day, connectId, sqlDb);
 		}
 		if(connectId == 0) {
 			if(custom_headers_cdr) {
@@ -8815,21 +8847,21 @@ void createMysqlPartitionsCdr() {
 	partitionsServiceIsInProgress = 0;
 }
 
-void _createMysqlPartitionsCdr(char type, int next_part, int connectId, SqlDb *sqlDb) {
+void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb) {
 	SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 	if(!sqlDbMysql) {
 		return;
 	}
 	vector<string> tablesForCreatePartitions = sqlDbMysql->getSourceTables(SqlDb_mysql::tt_main | SqlDb_mysql::tt_child, SqlDb_mysql::tt2_static);
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	if(next_part <= 0 ||
+	if((next_day <= 0 && type == 'd') ||
 	   isCloud() || cloud_db) {
 		sqlDb->setMaxQueryPass(1);
 	}
 	for(size_t i = 0; i < tablesForCreatePartitions.size(); i++) {
 		if((connectId == 0 && (!use_mysql_2_http() || tablesForCreatePartitions[i] != "http_jj")) ||
 		   (connectId == 1 && use_mysql_2_http() && tablesForCreatePartitions[i] == "http_jj")) {
-			_createMysqlPartition(tablesForCreatePartitions[i], type == 'd' ? "day" : "hour", next_part, opt_cdr_partition_oldver, 
+			_createMysqlPartition(tablesForCreatePartitions[i], type, next_day, opt_cdr_partition_oldver, 
 					      connectId == 0 ? mysql_database : mysql_2_database, sqlDb);
 		}
 	}
@@ -8935,12 +8967,12 @@ void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool d
 	SqlDb *sqlDb = createSqlObject();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	char type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
-	for(int next_part = 0; next_part < (type == 'd' ? LIMIT_DAY_PARTITIONS : LIMIT_HOUR_PARTITIONS); next_part++) {
-		if(!next_part ||
+	for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
+		if((!next_day && type == 'd') ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		_createMysqlPartition(table, type == 'd' ? "day" : "hour", next_part, partition_oldver, NULL, sqlDb);
+		_createMysqlPartition(table, type, next_day, partition_oldver, NULL, sqlDb);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 	delete sqlDb;
@@ -8968,44 +9000,78 @@ void createMysqlPartitionsIpacc() {
 	partitionsServiceIsInProgress = 0;
 }
 
-void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb) {
+struct sPartitionInfo {
+	sPartitionInfo(string name, string limit, int day, int hour_in_day) {
+		this->name = name;
+		this->limit = limit;
+		this->day = day;
+		this->hour_in_day = hour_in_day;
+		this->hour = day * 24 + hour_in_day;
+	}
+	string name;
+	string limit;
+	int day;
+	int hour_in_day;
+	int hour;
+};
+
+void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	bool exists = false;
-	if(type == "day" || type == "hour") {
-		if(type == "day" ?
-		    sqlDb->existsDayPartition(table, next_part) :
-		    sqlDb->existsHourPartition(table, next_part)) {
-			exists = true;
+	string partDayName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(NULL, next_day);
+	if(dynamic_cast<SqlDb_mysql*>(sqlDb)->existsPartition(table.c_str(), partDayName.c_str())) {
+		if(_createSqlObject) {
+			delete sqlDb;
+		}
+		return;
+	}
+	vector<sPartitionInfo> partitions;
+	if(type == 'd') {
+		string partLimit;
+		string partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(&partLimit, next_day);
+		partitions.push_back(sPartitionInfo(partName, partLimit, next_day, 0));
+	} else {
+		for(int h = 0; h < 24; h++) {
+			string partLimit;
+			string partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartHourName(&partLimit, next_day, h);
+			if(!partName.empty() &&
+			   !dynamic_cast<SqlDb_mysql*>(sqlDb)->existsPartition(table.c_str(), partName.c_str())) {
+				partitions.push_back(sPartitionInfo(partName, partLimit, next_day, h));
+			}
 		}
 	}
-	if(!exists) {
+	if(partitions.size()) {
 		extern bool cloud_db;
 		extern char mysql_database[256];
-		if(!(isCloud() || cloud_db) && (type == "day" || type == "hour") && 
+		if(!(isCloud() || cloud_db) && 
 		   !(database && strcmp(database, mysql_database)) && !old_ver) {
-			string limitTime;
-			string partName;
-			if(type == "day") {
-				partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(limitTime, next_part);
-			} else {
-				partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartHourName(limitTime, next_part);
+			string partitions_create_str;
+			string partitions_list_str;
+			for(unsigned i = 0; i < partitions.size(); i++) {
+				if(i > 0) {
+					partitions_create_str += ", ";
+					partitions_list_str += ",";
+				}
+				partitions_create_str += "partition `" + partitions[i].name + "` VALUES LESS THAN ('" + partitions[i].limit + "')";
+				partitions_list_str += partitions[i].name;
 			}
-			syslog(LOG_NOTICE, "CREATE PARTITION %s : %s", table.c_str(), partName.c_str());
+			syslog(LOG_NOTICE, "CREATE PARTITION %s : %s", table.c_str(), partitions_list_str.c_str());
 			sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " ADD PARTITION " + 
-				     "(partition `" + partName + "` VALUES LESS THAN ('" + limitTime + "'))");
+				     "(" + partitions_create_str + ")");
 		} else {
-			const char *_database = database ? database : mysql_database;
-			sqlDb->query(
-				string("call ") + (isCloud() ? "" : "`" + string(_database) + "`.") + "create_partition_v3(" + 
-				(isCloud() || cloud_db ? "NULL" : "'" + string(_database) + "'") + ", " +
-				"'" + table + "', " +
-				"'" + type + "', " + 
-				intToString(next_part) + ", " +
-				(old_ver ? "true" : "false") + ");");
+			for(unsigned i = 0; i < partitions.size(); i++) {
+				const char *_database = database ? database : mysql_database;
+				sqlDb->query(
+					string("call ") + (isCloud() ? "" : "`" + string(_database) + "`.") + "create_partition_v3(" + 
+					(isCloud() || cloud_db ? "NULL" : "'" + string(_database) + "'") + ", " +
+					"'" + table + "', " +
+					"'" + (type == 'd' ? "day" : "hour") + "', " + 
+					intToString(type == 'd' ? next_day : partitions[i].hour) + ", " +
+					(old_ver ? "true" : "false") + ");");
+			}
 		}
 	}
 	if(_createSqlObject) {
@@ -9193,9 +9259,16 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 			}
 		}
 	}
-	for(map<string, int>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
-		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, iter->first.c_str());
-		sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + iter->first);
+	if(partitions.size()) {
+		string partitions_list_str;
+		for(map<string, int>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
+			if(!partitions_list_str.empty()) {
+				partitions_list_str += ",";
+			}
+			partitions_list_str += iter->first;
+		}
+		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, partitions_list_str.c_str());
+		sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + partitions_list_str);
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -9546,42 +9619,36 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 }
 
 
+void sCreatePartitions::createPartitions(bool inThread) {
+	if(isSet()) {
+		sCreatePartitions::in_progress = 1;
+		bool successStartThread = false;
+		if(inThread) {
+			sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
+			*createPartitionsData = *this;
+			createPartitionsData->_runInThread = true;
+			pthread_t thread;
+			successStartThread = vm_pthread_create_autodestroy("create partitions",
+									   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
+		}
+		if(!inThread || !successStartThread) {
+			this->_runInThread = false;
+			_createPartitions(this);
+		}
+	}
+}
+
 void *sCreatePartitions::_createPartitions(void *arg) {
 	sleep(10);
 	extern volatile int partitionsServiceIsInProgress;
 	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
-	if(createPartitionsData->createCdr) {
-		createMysqlPartitionsCdr();
+	extern bool opt_partition_operations_drop_first;
+	if(opt_partition_operations_drop_first) {
+		createPartitionsData->doDropPartitions();
 	}
-	if(createPartitionsData->dropCdr) {
-		dropMysqlPartitionsCdr();
-	}
-	if(createPartitionsData->createSs7) {
-		createMysqlPartitionsSs7();
-	}
-	if(createPartitionsData->dropSs7) {
-		dropMysqlPartitionsSs7();
-	}
-	if(createPartitionsData->createRtpStat) {
-		createMysqlPartitionsRtpStat();
-	}
-	if(createPartitionsData->dropRtpStat) {
-		dropMysqlPartitionsRtpStat();
-	}
-	if(createPartitionsData->createLogSensor) {
-		createMysqlPartitionsLogSensor();
-	}
-	if(createPartitionsData->dropLogSensor) {
-		dropMysqlPartitionsLogSensor();
-	}
-	if(createPartitionsData->createIpacc) {
-		createMysqlPartitionsIpacc();
-	}
-	if(createPartitionsData->createBilling) {
-		createMysqlPartitionsBillingAgregation();
-	}
-	if(createPartitionsData->dropBilling) {
-		dropMysqlPartitionsBillingAgregation();
+	createPartitionsData->doCreatePartitions();
+	if(!opt_partition_operations_drop_first) {
+		createPartitionsData->doDropPartitions();
 	}
 	if(createPartitionsData->_runInThread) {
 		delete createPartitionsData;
@@ -9590,6 +9657,46 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	sCreatePartitions::in_progress = 0;
 	return(NULL);
 }
+
+void sCreatePartitions::doCreatePartitions() {
+	if(this->createCdr) {
+		createMysqlPartitionsCdr();
+	}
+	if(this->createSs7) {
+		createMysqlPartitionsSs7();
+	}
+	if(this->createRtpStat) {
+		createMysqlPartitionsRtpStat();
+	}
+	if(this->createLogSensor) {
+		createMysqlPartitionsLogSensor();
+	}
+	if(this->createIpacc) {
+		createMysqlPartitionsIpacc();
+	}
+	if(this->createBilling) {
+		createMysqlPartitionsBillingAgregation();
+	}
+}
+
+void sCreatePartitions::doDropPartitions() {
+	if(this->dropCdr) {
+		dropMysqlPartitionsCdr();
+	}
+	if(this->dropSs7) {
+		dropMysqlPartitionsSs7();
+	}
+	if(this->dropRtpStat) {
+		dropMysqlPartitionsRtpStat();
+	}
+	if(this->dropLogSensor) {
+		dropMysqlPartitionsLogSensor();
+	}
+	if(this->dropBilling) {
+		dropMysqlPartitionsBillingAgregation();
+	}
+}
+
 
 volatile int sCreatePartitions::in_progress = 0;
 

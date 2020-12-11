@@ -380,6 +380,7 @@ int getNumberOfHourToNow(const char *date, int hour);
 string getActDateTimeF(bool useT_symbol = false);
 tm getEasterMondayDate(unsigned year, int decDays = 0, const char *timezone = NULL);
 bool isEasterMondayDate(tm &date, int decDays = 0, const char *timezone = NULL);
+tm getBeginDate(tm dateTime, const char *timezone = NULL);
 tm getNextBeginDate(tm dateTime, const char *timezone = NULL);
 tm getPrevBeginDate(tm dateTime, const char *timezone = NULL);
 tm getNextBeginHour(tm dateTime, const char *timezone = NULL);

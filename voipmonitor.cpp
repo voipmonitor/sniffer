@@ -655,6 +655,7 @@ bool opt_disable_partition_operations = 0;
 int opt_partition_operations_enable_run_hour_from = 1;
 int opt_partition_operations_enable_run_hour_to = 5;
 bool opt_partition_operations_in_thread = 1;
+bool opt_partition_operations_drop_first = 0;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
@@ -6424,6 +6425,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
 				advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("partition_operations_drop_first", &opt_partition_operations_drop_first));
 					expert();
 					addConfigItem(new FILE_LINE(42093) cConfigItem_integer("create_old_partitions"));
 					addConfigItem(new FILE_LINE(42094) cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
@@ -9628,6 +9630,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "partition_operations_in_thread", NULL))) {
 		opt_partition_operations_in_thread = yesno(value);
+	}
+	if((value = ini.GetValue("general", "partition_operations_drop_first", NULL))) {
+		opt_partition_operations_drop_first = yesno(value);
 	}
 	if((value = ini.GetValue("general", "autoload_from_sqlvmexport", NULL))) {
 		opt_autoload_from_sqlvmexport = yesno(value);
