@@ -1345,6 +1345,10 @@ public:
 	static void *_createPartitions(void *arg);
 	void doCreatePartitions();
 	void doDropPartitions();
+	void setIndicPartitionOperations(bool set = true);
+	void unsetIndicPartitionOperations() {
+		setIndicPartitionOperations(false);
+	}
 public:
 	bool createCdr;
 	bool dropCdr;

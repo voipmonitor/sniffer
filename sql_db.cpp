@@ -9644,9 +9644,9 @@ void sCreatePartitions::createPartitions(bool inThread) {
 }
 
 void *sCreatePartitions::_createPartitions(void *arg) {
-	sleep(10);
-	extern volatile int partitionsServiceIsInProgress;
 	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
+	createPartitionsData->setIndicPartitionOperations();
+	sleep(10);
 	extern bool opt_partition_operations_drop_first;
 	if(opt_partition_operations_drop_first) {
 		createPartitionsData->doDropPartitions();
@@ -9658,8 +9658,10 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	if(createPartitionsData->_runInThread) {
 		delete createPartitionsData;
 	}
+	extern volatile int partitionsServiceIsInProgress;
 	partitionsServiceIsInProgress = 0;
 	sCreatePartitions::in_progress = 0;
+	createPartitionsData->unsetIndicPartitionOperations();
 	return(NULL);
 }
 
@@ -9700,6 +9702,25 @@ void sCreatePartitions::doDropPartitions() {
 	if(this->dropBilling) {
 		dropMysqlPartitionsBillingAgregation();
 	}
+}
+
+void sCreatePartitions::setIndicPartitionOperations(bool set) {
+	SqlDb *sqlDb = createSqlObject();
+	if(sqlDb->existsTable("system") && sqlDb->existsColumn("system", "cdatetime")) {
+		sqlDb->select("system", "cdatetime", "type", "partitions_operations");
+		SqlDb_row row = sqlDb->fetchRow();
+		if(row) {
+			SqlDb_row rowU;
+			rowU.add(set ? sqlDateTimeString(time(NULL)) : "", "cdatetime", !set);
+			sqlDb->update("system", rowU, "type='partitions_operations'");
+		} else if(set) {
+			SqlDb_row rowI;
+			rowI.add(sqlDateTimeString(time(NULL)), "cdatetime");
+			rowI.add(sqlEscapeString("partitions_operations"), "type");
+			sqlDb->insert("system", rowI);
+		}
+	}
+	delete sqlDb;
 }
 
 
