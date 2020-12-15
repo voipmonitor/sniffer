@@ -3269,22 +3269,30 @@ void MySqlStore_process::store() {
 				while(partitionsServiceIsInProgress || sCreatePartitions::in_progress) {
 					usleep(100000);
 				}
-				string query;
+				unsigned queries_max = 10;
+				string queries[queries_max];
+				unsigned queries_count = 0;
 				this->lock();
-				if(this->query_buff.size()) {
-					query = this->query_buff.front();
-					this->query_buff.pop_front();
+				while(queries_count < queries_max) {
+					if(this->query_buff.size()) {
+						queries[queries_count++] = this->query_buff.front();
+						this->query_buff.pop_front();
+					} else {
+						break;
+					}
 				}
 				this->unlock();
-				if(!query.empty()) {
-					#if TEST_SERVER_STORE_SPEED
-					SqlDb::addDelayQuery(10);
-					#else
-					u_int32_t startTimeMS = getTimeMS();
-					this->sqlDb->query(query);
-					SqlDb::addDelayQuery(getTimeMS() - startTimeMS, SqlDb::_tq_redirect);
-					lastQueryTime = getTimeMS_rdtsc() / 1000;
-					#endif
+				if(queries_count) {
+					for(unsigned i = 0; i < queries_count; i++) {
+						#if TEST_SERVER_STORE_SPEED
+						SqlDb::addDelayQuery(10);
+						#else
+						u_int32_t startTimeMS = getTimeMS();
+						this->sqlDb->query(queries[i]);
+						SqlDb::addDelayQuery(getTimeMS() - startTimeMS, SqlDb::_tq_redirect);
+						lastQueryTime = getTimeMS_rdtsc() / 1000;
+						#endif
+					}
 				} else {
 					break;
 				}

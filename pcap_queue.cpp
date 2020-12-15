@@ -2664,7 +2664,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		if(packetbuffer_memory_is_full || (heapPerc + heapTrashPerc) > 98) {
 			if(++heapFullCounter > 10) {
 				syslog(LOG_ERR, "HEAP FULL - ABORT!");
-				abort();
+				exit(2);
 			}
 		} else {
 			heapFullCounter = 0;
@@ -2675,7 +2675,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	if(opt_abort_if_rss_gt_gb > 0 && (int)(rss/1024/1024/1024) > opt_abort_if_rss_gt_gb) {
 		syslog(LOG_ERR, "RSS %i > %i - ABORT!",
 		       (int)(rss/1024/1024/1024), opt_abort_if_rss_gt_gb);
-		abort();
+		exit(2);
 	}
 }
 
