@@ -228,6 +228,8 @@ FileZipHandler::eTypeCompress opt_gzipGRAPH =
 		FileZipHandler::gzip;
 	#endif //HAVE_LIBLZO
 int opt_save_sdp_ipport = 1;
+int opt_save_ip_from_encaps_ipheader = 0;
+int opt_save_ip_from_encaps_ipheader_only_gre = 0;
 int opt_saverfc2833 = 0;
 int opt_silencedetect = 0;
 int opt_clippingdetect = 0;
@@ -484,6 +486,8 @@ int opt_register_ignore_res_401 = 0;
 int opt_register_ignore_res_401_nonce_has_changed = 0;
 bool opt_sip_register_compare_sipcallerip = false;
 bool opt_sip_register_compare_sipcalledip = false;
+bool opt_sip_register_compare_sipcallerip_encaps = false;
+bool opt_sip_register_compare_sipcalledip_encaps = false;
 bool opt_sip_register_compare_sipcallerport = false;
 bool opt_sip_register_compare_sipcalledport = false;
 bool opt_sip_register_compare_to_domain = true;
@@ -655,6 +659,7 @@ bool opt_disable_partition_operations = 0;
 int opt_partition_operations_enable_run_hour_from = 1;
 int opt_partition_operations_enable_run_hour_to = 5;
 bool opt_partition_operations_in_thread = 1;
+bool opt_partition_operations_drop_first = 0;
 bool opt_autoload_from_sqlvmexport = 0;
 vector<dstring> opt_custom_headers_cdr;
 vector<dstring> opt_custom_headers_message;
@@ -6424,6 +6429,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
 				advanced();
 				addConfigItem(new FILE_LINE(42092) cConfigItem_yesno("partition_operations_in_thread", &opt_partition_operations_in_thread));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("partition_operations_drop_first", &opt_partition_operations_drop_first));
 					expert();
 					addConfigItem(new FILE_LINE(42093) cConfigItem_integer("create_old_partitions"));
 					addConfigItem(new FILE_LINE(42094) cConfigItem_string("create_old_partitions_from", opt_create_old_partitions_from, sizeof(opt_create_old_partitions_from)));
@@ -6663,6 +6669,8 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("save_sdp_ipport", &opt_save_sdp_ipport))
 					->addValues("last:1|all:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_ip_from_encaps_ipheader", &opt_save_ip_from_encaps_ipheader));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_ip_from_encaps_ipheader_only_gre", &opt_save_ip_from_encaps_ipheader_only_gre));
 					expert();
 					addConfigItem(new FILE_LINE(42203) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
 					addConfigItem(new FILE_LINE(42204) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
@@ -6896,6 +6904,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42294) cConfigItem_yesno("sip-register-ignore-res401-nonce-has-changed", &opt_register_ignore_res_401_nonce_has_changed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip", &opt_sip_register_compare_sipcallerip));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip", &opt_sip_register_compare_sipcalledip));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerip-encaps", &opt_sip_register_compare_sipcallerip_encaps));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledip-encaps", &opt_sip_register_compare_sipcalledip_encaps));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcallerport", &opt_sip_register_compare_sipcallerport));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-sipcalledport", &opt_sip_register_compare_sipcalledport));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-compare-to_domain", &opt_sip_register_compare_to_domain));
@@ -9418,6 +9428,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip", NULL))) {
 		opt_sip_register_compare_sipcalledip = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-register-compare-sipcallerip-encaps", NULL))) {
+		opt_sip_register_compare_sipcallerip_encaps = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-compare-sipcalledip-encaps", NULL))) {
+		opt_sip_register_compare_sipcalledip_encaps = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-register-compare-sipcallerport", NULL))) {
 		opt_sip_register_compare_sipcallerport = yesno(value);
 	}
@@ -9629,6 +9645,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "partition_operations_in_thread", NULL))) {
 		opt_partition_operations_in_thread = yesno(value);
 	}
+	if((value = ini.GetValue("general", "partition_operations_drop_first", NULL))) {
+		opt_partition_operations_drop_first = yesno(value);
+	}
 	if((value = ini.GetValue("general", "autoload_from_sqlvmexport", NULL))) {
 		opt_autoload_from_sqlvmexport = yesno(value);
 	}
@@ -9719,6 +9738,12 @@ int eval_config(string inistr) {
 			opt_save_sdp_ipport = 0;
 			break;
 		}
+	}
+	if((value = ini.GetValue("general", "save_ip_from_encaps_ipheader", NULL))) {
+		opt_save_ip_from_encaps_ipheader = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save_ip_from_encaps_ipheader_only_gre", NULL))) {
+		opt_save_ip_from_encaps_ipheader_only_gre = yesno(value);
 	}
 	if((value = ini.GetValue("general", "savertp", NULL))) {
 		switch(value[0]) {

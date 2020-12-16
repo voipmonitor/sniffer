@@ -15,7 +15,7 @@
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
-#define PCAP_BLOCK_STORE_HEADER_VERSION		6
+#define PCAP_BLOCK_STORE_HEADER_VERSION		7
 
 #define FLAG_AUDIOCODES 1
 #define FLAG_FRAGMENTED 2
@@ -113,6 +113,7 @@ struct pcap_pkthdr_plus {
 		pcap_pkthdr_fix_size header_fix_size;
 		pcap_pkthdr header_std;
 	}  __attribute__((packed));
+	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
 	int16_t std;
 	u_int16_t dlink;
@@ -130,7 +131,6 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 		pid.clear();
 	}
 	u_int8_t detect_headers;
-	u_int16_t header_ip_first_offset;
 	u_int16_t eth_protocol;
 	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
 	u_int8_t ignore;

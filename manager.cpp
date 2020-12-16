@@ -1953,14 +1953,15 @@ void ManagerClientThreads::onCall(const char *call_id,
 				  vmIP sipSaddr, vmIP sipDaddr,
 				  const char *screenPopupFieldsString) {
 	if(sverb.screen_popup_syslog) {
-		syslog(LOG_INFO, "SCREEN_POPUP - call: call_id: %s response: %i caller: %s called: %s callername: %s from: %s to: %s", 
+		syslog(LOG_INFO, "SCREEN_POPUP - call: call_id: %s response: %i caller: %s called: %s callername: %s from: %s to: %s fields: %s", 
 		       call_id,
 		       sipResponseNum,
 		       callerNum,
 		       calledNum,
 		       callerName,
 		       sipSaddr.getString().c_str(),
-		       sipDaddr.getString().c_str());
+		       sipDaddr.getString().c_str(),
+		       screenPopupFieldsString);
 	}
 	this->lock_client_threads();
 	vector<ManagerClientThread*>::iterator iter;

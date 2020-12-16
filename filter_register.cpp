@@ -52,6 +52,29 @@ void cRegisterFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["sipcallerip_encaps"].empty() &&
+	   filterData["sipcallerdip_encaps_type"] == "0") {
+		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, rf_sipcallerip_encaps);
+		filter1->addWhite(filterData["sipcallerip_encaps"].c_str());
+		cRecordFilterItem_IP *filter2 = new FILE_LINE(0) cRecordFilterItem_IP(this, rf_sipcalledip_encaps);
+		filter2->addWhite(filterData["sipcallerip_encaps"].c_str());
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["sipcallerip_encaps"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, rf_sipcallerip_encaps);
+			filter->addWhite(filterData["sipcallerip_encaps"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(!filterData["sipcalledip_encaps"].empty()) {
+			cRecordFilterItem_IP *filter = new FILE_LINE(0) cRecordFilterItem_IP(this, rf_sipcalledip_encaps);
+			filter->addWhite(filterData["sipcalledip_encaps"].c_str());
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
 	if(!filterData["from_num"].empty() &&
 	   filterData["numFTC_type"] == "0") {
 		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_num);

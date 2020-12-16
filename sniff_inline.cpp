@@ -53,6 +53,7 @@ extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
 extern unsigned int duplicate_counter;
 extern bool opt_dedup_input_file;
+extern int opt_save_ip_from_encaps_ipheader_only_gre;
 
 
 #if SNIFFER_INLINE_FUNCTIONS
@@ -152,7 +153,7 @@ inline
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
-		      u_int &header_ip_offset, int &protocol, u_int16_t &vlan) {
+		      u_int16_t &header_ip_offset, u_int16_t &protocol, u_int16_t &vlan) {
 	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
 	int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
@@ -256,7 +257,7 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			break;
 		case DLT_MTP2_WITH_PHDR:
 		case DLT_MTP2:
-			header_ip_offset = 0xFFFFFFFF;
+			header_ip_offset = 0xFFFF;
 			protocol = 0;
 			break;
 		case DLT_NULL:
@@ -427,21 +428,24 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	u_char *packet = NULL;
 	if(header_packet) {
 		if((*header_packet)->detect_headers & 0x01) {
-			ppd->header_ip_offset = (*header_packet)->header_ip_first_offset;
+			ppd->header_ip_encaps_offset = (*header_packet)->header_ip_encaps_offset;
+			ppd->header_ip_offset = (*header_packet)->header_ip_offset;
 			ppd->protocol = (*header_packet)->eth_protocol;
 			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 			ppd->pid = (*header_packet)->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
 					   ppd->header_sll, ppd->header_eth, NULL,
 					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+			ppd->header_ip_encaps_offset = 0xFFFF;
 			(*header_packet)->detect_headers |= 0x01;
-			(*header_packet)->header_ip_first_offset = ppd->header_ip_offset;
+			(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+			(*header_packet)->header_ip_offset = ppd->header_ip_offset;
 			(*header_packet)->eth_protocol = ppd->protocol;
 			(*header_packet)->pid = ppd->pid;
 			(*header_packet)->pid.flags = 0;
 			if(!(ppd->protocol == ETHERTYPE_IP ||
 			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFFFFFF)) {
+			     ppd->header_ip_offset == 0xFFFF)) {
 				if(sverb.tcpreplay) {
 					if(ppd->protocol == 0) {
 						ppd->header_ip_offset += 2;
@@ -455,7 +459,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 			}
-			if(ppd->header_ip_offset == 0xFFFFFFFF) {
+			if(ppd->header_ip_offset == 0xFFFF) {
 				ppd->header_ip = NULL;
 			} else {
 				ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
@@ -480,21 +484,24 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		pcap_header_plus2 = (pcap_pkthdr_plus2*)block_store->get_header(block_store_index);
 		packet = block_store->get_packet(block_store_index);
 		if(pcap_header_plus2->detect_headers & 0x01) {
-			ppd->header_ip_offset = pcap_header_plus2->header_ip_first_offset;
+			ppd->header_ip_encaps_offset = pcap_header_plus2->header_ip_encaps_offset;
+			ppd->header_ip_offset = pcap_header_plus2->header_ip_offset;
 			ppd->protocol = pcap_header_plus2->eth_protocol;
 			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
 			ppd->pid = pcap_header_plus2->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
 					   ppd->header_sll, ppd->header_eth, NULL,
 					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+			ppd->header_ip_encaps_offset = 0xFFFF;
 			pcap_header_plus2->detect_headers |= 0x01;
-			pcap_header_plus2->header_ip_first_offset = ppd->header_ip_offset;
+			pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+			pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
 			pcap_header_plus2->eth_protocol = ppd->protocol;
 			pcap_header_plus2->pid = ppd->pid;
 			pcap_header_plus2->pid.flags = 0;
 			if(!(ppd->protocol == ETHERTYPE_IP ||
 			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFFFFFF)) {
+			     ppd->header_ip_offset == 0xFFFF)) {
 				if(sverb.tcpreplay) {
 					if(ppd->protocol == 0) {
 						ppd->header_ip_offset += 2;
@@ -510,7 +517,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 			}
-			if(ppd->header_ip_offset == 0xFFFFFFFF) {
+			if(ppd->header_ip_offset == 0xFFFF) {
 				ppd->header_ip = NULL;
 			} else {
 				ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
@@ -579,6 +586,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
 			headers_ip_offset[headers_ip_counter] = ppd->header_ip_offset;
 			++headers_ip_counter;
+			if(ppd->header_ip_encaps_offset == 0xFFFF &&
+			   (!opt_save_ip_from_encaps_ipheader_only_gre || ppd->header_ip->get_protocol() == IPPROTO_GRE)) {
+				ppd->header_ip_encaps_offset = ppd->header_ip_offset;
+			}
 			int next_header_ip_offset = findNextHeaderIp(ppd->header_ip, ppd->header_ip_offset,
 								     header_packet ? HPP(*header_packet) : packet,
 								     header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen(),
@@ -640,12 +651,14 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 		}
 	}
-	
+
 	if(header_packet) {
 		(*header_packet)->header_ip_offset = ppd->header_ip_offset;
+		(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
 		(*header_packet)->pid.flags = ppd->pid.flags;
 	} else {
 		pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
+		pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
 		pcap_header_plus2->pid.flags = ppd->pid.flags;
 	}
 	

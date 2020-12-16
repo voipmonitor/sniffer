@@ -1179,6 +1179,19 @@ bool isEasterMondayDate(tm &date, int decDays, const char *timezone) {
 	       ed.tm_mday == date.tm_mday);
 }
 
+tm getBeginDate(tm dateTime, const char *timezone) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	time_t time_s = mktime(&rslt, timezone);
+	rslt = time_r(&time_s, timezone ? timezone : "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm getNextBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;
@@ -1344,8 +1357,8 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				if((opt_virtualudppacket || forceVirtualUdp) && data && datalen) {
 					sll_header *header_sll = NULL;
 					ether_header *header_eth = NULL;
-					u_int header_ip_offset = 0;
-					int protocol = 0;
+					u_int16_t header_ip_offset = 0;
+					u_int16_t protocol = 0;
 					u_int16_t vlan = VLAN_UNSET;
 					if(parseEtherHeader(dlt, (u_char*)packet, 
 							    header_sll, header_eth, NULL,
@@ -4106,8 +4119,8 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		sll_header *header_sll;
 		ether_header *header_eth;
 		u_char *header_ppp_o_e = NULL;
-		u_int header_ip_offset = 0;
-		int protocol = 0;
+		u_int16_t header_ip_offset = 0;
+		u_int16_t protocol = 0;
 		u_int16_t vlan = VLAN_UNSET;
 		if(parseEtherHeader(dlt, (u_char*)*packet, 
 				    header_sll, header_eth, &header_ppp_o_e,

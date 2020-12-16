@@ -96,6 +96,7 @@ struct packet_s {
 	vmPort _source; 
 	vmPort _dest;
 	u_int16_t _dataoffset;
+	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
 	unsigned int istcp : 2;
 	sPacketInfoData pid;
@@ -108,7 +109,13 @@ struct packet_s {
 	bool _packet_alloc : 1;
 	sAudiocodes *audiocodes;
 	packet_s_kamailio_subst *kamailio_subst;
-	inline vmIP saddr_() {
+	inline vmIP saddr_(bool encaps = false) {
+		if(encaps) {
+			iphdr2 *header_ip = header_ip_(true);
+			return(header_ip ?
+				header_ip->get_saddr() :
+				vmIP(0));
+		}
 		if(audiocodes) {
 			return(audiocodes->packet_source_ip);
 		}
@@ -117,7 +124,13 @@ struct packet_s {
 		}
 		return(_saddr);
 	}
-	inline vmIP daddr_() {
+	inline vmIP daddr_(bool encaps = false) {
+		if(encaps) {
+			iphdr2 *header_ip = header_ip_(true);
+			return(header_ip ?
+				header_ip->get_daddr() :
+				vmIP(0));
+		}
 		if(audiocodes) {
 			return(audiocodes->packet_dest_ip);
 		}
@@ -168,8 +181,21 @@ struct packet_s {
 		}
 		return(_dataoffset);
 	}
-	inline iphdr2 *header_ip_() {
+	inline iphdr2 *header_ip_(bool encaps = false) {
+		if(encaps) {
+			return(header_ip_encaps_offset != 0xFFFF && header_ip_encaps_offset < header_ip_offset ?
+				(iphdr2*)(packet + header_ip_encaps_offset) :
+				NULL);
+		}
 		return((iphdr2*)(packet + header_ip_offset));
+	}
+	inline u_int8_t header_ip_protocol(bool encaps = false) {
+		if(encaps) {
+			return(header_ip_encaps_offset != 0xFFFF && header_ip_encaps_offset < header_ip_offset ?
+				((iphdr2*)(packet + header_ip_encaps_offset))->get_protocol() :
+				0xFF);
+		}
+		return(((iphdr2*)(packet + header_ip_offset))->get_protocol());
 	}
 	inline udphdr2 *header_udp_() {
 		iphdr2 *header_ip = header_ip_();
@@ -961,7 +987,7 @@ void _process_packet__cleanup_registers();
 
 
 void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
-		unsigned header_ip_offset, u_int64_t packet_time, 
+		u_int16_t header_ip_offset, u_int64_t packet_time, 
 		u_char *data, unsigned datalen,
 		const char *file, unsigned line, const char *function, const char *descr = NULL);
 

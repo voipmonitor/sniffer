@@ -365,6 +365,10 @@ enum eCallField {
 	cf_calledip,
 	cf_callerip_country,
 	cf_calledip_country,
+	cf_callerip_encaps,
+	cf_calledip_encaps,
+	cf_callerip_encaps_prot,
+	cf_calledip_encaps_prot,
 	cf_sipproxies,
 	cf_lastSIPresponseNum,
 	cf_rtp_src,
@@ -558,6 +562,10 @@ public:
 		}
 		vmIP saddr;
 		vmIP daddr;
+		vmIP saddr_first;
+		vmIP daddr_first;
+		u_int8_t saddr_first_protocol;
+		u_int8_t daddr_first_protocol;
 		vmPort sport;
 		vmPort dport;
 		bool confirmed;
@@ -820,7 +828,13 @@ public:
 	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
 	vmIP sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
 	vmIP sipcalledip_mod;
+	vmIP sipcallerip_encaps;
+	vmIP sipcalledip_encaps;
+	u_int8_t sipcallerip_encaps_prot;
+	u_int8_t sipcalledip_encaps_prot;
 	vmIP sipcalledip_rslt;
+	vmIP sipcalledip_encaps_rslt;
+	u_int8_t sipcalledip_encaps_prot_rslt;
 	vmPort sipcallerport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport_mod;
@@ -1215,7 +1229,9 @@ public:
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
 	bool check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
-				    vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,  
+				    vmIP saddr, vmIP daddr, 
+				    vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
+				    vmPort sport, vmPort dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
 	bool is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
 	bool is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport);
@@ -1366,7 +1382,7 @@ public:
 		return(false);
 	}
 	
-	vmIP getSipcalledipConfirmed(vmPort *dport);
+	vmIP getSipcalledipConfirmed(vmPort *dport = NULL, vmIP *daddr_first = NULL, u_int8_t *daddr_first_protocol = NULL);
 	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
@@ -1407,8 +1423,10 @@ public:
 		__sync_lock_release(&this->_mergecalls_lock);
 	}
 	
-	void setSipcallerip(vmIP ip, vmPort port, const char *call_id = NULL) {
+	inline void setSipcallerip(vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
 		sipcallerip[0] = ip;
+		sipcallerip_encaps = ip_encaps;
+		sipcallerip_encaps_prot = ip_encaps_prot;
 		sipcallerport[0] = port;
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
@@ -1416,7 +1434,7 @@ public:
 			map_sipcallerdip[call_id].sipcallerport[0] = port;
 		}
 	}
-	void setSipcalledip(vmIP ip, vmPort port, const char *call_id = NULL) {
+	inline void setSipcalledip(vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
 		if(sipcalledip[0].isSet()) {
 			sipcalledip_mod = ip;
 			sipcalledport_mod = port;
@@ -1424,6 +1442,8 @@ public:
 			sipcalledip[0] = ip;
 			sipcalledport[0] = port;
 		}
+		sipcalledip_encaps = ip_encaps;
+		sipcalledip_encaps_prot = ip_encaps_prot;
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			if(map_sipcallerdip[call_id].sipcalledip[0].isSet()) {
@@ -1438,8 +1458,20 @@ public:
 	vmIP getSipcallerip() {
 		return(sipcallerip[0]);
 	}
+	vmIP getSipcallerip_encaps() {
+		return(sipcallerip_encaps);
+	}
+	u_int8_t getSipcallerip_encaps_prot() {
+		return(sipcallerip_encaps_prot);
+	}
 	vmIP getSipcalledip() {
 		return(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0]);
+	}
+	vmIP getSipcalledip_encaps() {
+		return(sipcalledip_encaps);
+	}
+	u_int8_t getSipcalledip_encaps_prot() {
+		return(sipcalledip_encaps_prot);
 	}
 	vmPort getSipcallerport() {
 		return(sipcallerport[0]);
@@ -2570,7 +2602,7 @@ public:
 		return(&allNextTables);
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
-	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_part);
+	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day);
 	unsigned long getLoadTime() {
 		return(loadTime);
 	}

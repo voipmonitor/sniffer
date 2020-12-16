@@ -86,6 +86,10 @@ public:
 			return(((Call*)rec)->getSipcallerip());
 		case cf_calledip:
 			return(((Call*)rec)->getSipcalledip());
+		case cf_callerip_encaps:
+			return(((Call*)rec)->getSipcallerip_encaps());
+		case cf_calledip_encaps:
+			return(((Call*)rec)->getSipcalledip_encaps());
 		}
 		return(0);
 	}

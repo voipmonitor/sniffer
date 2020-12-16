@@ -1353,8 +1353,8 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 				    getTimeUS(header), saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time_us(getTimeUS(header));
-	call->setSipcallerip(saddr, source);
-	call->setSipcalledip(daddr, dest);
+	call->setSipcallerip(saddr, vmIP(0), 0xFF, source);
+	call->setSipcalledip(daddr, vmIP(0), 0xFF, dest);
 	call->flags = flags;
 	strcpy_null_term(call->fbasename, callidstr);
 	
@@ -1480,12 +1480,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 				call->oneway = 0;       // do not treat skinny as one-way 
 	
 				if(state == SKINNY_OFFHOOK) {
-					call->setSipcallerip(daddr, dest);
-					call->setSipcalledip(saddr, source);
+					call->setSipcallerip(daddr, vmIP(0), 0xFF, dest);
+					call->setSipcalledip(saddr, vmIP(0), 0xFF, source);
 					call->sipcallerdip_reverse = true;
 				} else {
-					call->setSipcallerip(saddr, source);
-					call->setSipcalledip(daddr, dest);
+					call->setSipcallerip(saddr, vmIP(0), 0xFF, source);
+					call->setSipcalledip(daddr, vmIP(0), 0xFF, dest);
 				}
 			} else {
 				return NULL;

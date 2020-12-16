@@ -2060,8 +2060,8 @@ void TcpReassemblyLink::switchDirection() {
 void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 	sll_header *header_sll;
 	ether_header *header_eth;
-	u_int header_ip_offset;
-	int protocol;
+	u_int16_t header_ip_offset;
+	u_int16_t protocol;
 	u_int16_t vlan;
 	if(parseEtherHeader(dlt, packet,
 			    header_sll, header_eth, NULL,

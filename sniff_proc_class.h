@@ -320,7 +320,7 @@ public:
 				vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
 				int datalen, int dataoffset,
 				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
-				int istcp, int isother, struct iphdr2 *header_ip,
+				int istcp, int isother, struct iphdr2 *header_ip_encaps, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 				int blockstore_lock = 1) {
 		if(opt_enable_ssl) {
@@ -343,6 +343,7 @@ public:
 		packetS._packet_alloc = packetDelete; 
 		packetS.istcp = istcp; 
 		packetS.isother = isother; 
+		packetS.header_ip_encaps_offset = header_ip_encaps ? ((u_char*)header_ip_encaps - packet) : 0xFFFF; 
 		packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0; 
 		packetS.block_store = block_store; 
 		packetS.block_store_index =  block_store_index; 

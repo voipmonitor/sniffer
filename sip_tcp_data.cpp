@@ -152,7 +152,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 							_ip_src, _port_src, _ip_dst, _port_dst, 
 							_datalen, dataOffset,
 							handle_index, tcpHeader, tcpPacket, true, 
-							2, false, (iphdr2*)(tcpPacket + ethHeaderLength),
+							2, false, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
 							NULL, 0, dlt, sensor_id, sensor_ip, pid,
 							false);
 				}

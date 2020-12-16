@@ -25,8 +25,6 @@
 
 #define LIMIT_DAY_PARTITIONS 3
 #define LIMIT_DAY_PARTITIONS_INIT 2
-#define LIMIT_HOUR_PARTITIONS 3*24
-#define LIMIT_HOUR_PARTITIONS_INIT 2*24
 
 
 using namespace std;
@@ -663,8 +661,9 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
-	string getPartDayName(string &limitDay_str, int next = 0);
-	string getPartHourName(string &limitHour_str, int next = 0);
+	string getPartDayName(string *limitDay_str, int next = 0);
+	string getPartHourName(string *limitHour_str, int next = 0);
+	string getPartHourName(string *limitHour_str, int next_day, int hour);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
@@ -1134,14 +1133,14 @@ string prepareQueryForPrintf(const char *query);
 string prepareQueryForPrintf(string &query);
 
 void createMysqlPartitionsCdr();
-void _createMysqlPartitionsCdr(char type, int next, int connectId, SqlDb *sqlDb);
+void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
 void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false);
 void createMysqlPartitionsIpacc();
-void _createMysqlPartition(string table, string type, int next_part, bool old_ver, const char *database, SqlDb *sqlDb);
+void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
 void dropMysqlPartitionsRtpStat();
@@ -1196,6 +1195,7 @@ struct sExistsColumns {
 	bool cdr_price_customer_mult100;
 	bool cdr_price_customer_mult1000000;
 	bool cdr_price_customer_currency_id;
+	bool cdr_sipcallerdip_encaps;
 	bool cdr_next_calldate;
 	bool cdr_next_spool_index;
 	bool cdr_next_hold;
@@ -1245,6 +1245,8 @@ struct sExistsColumns {
 	bool register_state_flags;
 	bool register_state_vlan;
 	bool register_failed_vlan;
+	bool register_state_sipcallerdip_encaps;
+	bool register_failed_sipcallerdip_encaps;
 	bool sip_msg_time_ms;
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;
@@ -1342,25 +1344,14 @@ public:
 		       createIpacc || 
 		       createBilling || dropBilling);
 	}
-	void createPartitions(bool inThread = false) {
-		if(isSet()) {
-			sCreatePartitions::in_progress = 1;
-			bool successStartThread = false;
-			if(inThread) {
-				sCreatePartitions *createPartitionsData = new FILE_LINE(42004) sCreatePartitions;
-				*createPartitionsData = *this;
-				createPartitionsData->_runInThread = true;
-				pthread_t thread;
-				successStartThread = vm_pthread_create_autodestroy("create partitions",
-										   &thread, NULL, _createPartitions, createPartitionsData, __FILE__, __LINE__) == 0;
-			}
-			if(!inThread || !successStartThread) {
-				this->_runInThread = false;
-				_createPartitions(this);
-			}
-		}
-	}
+	void createPartitions(bool inThread = false);
 	static void *_createPartitions(void *arg);
+	void doCreatePartitions();
+	void doDropPartitions();
+	void setIndicPartitionOperations(bool set = true);
+	void unsetIndicPartitionOperations() {
+		setIndicPartitionOperations(false);
+	}
 public:
 	bool createCdr;
 	bool dropCdr;

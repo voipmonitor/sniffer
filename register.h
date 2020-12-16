@@ -35,6 +35,10 @@ enum eRegisterField {
 	rf_calldate,
 	rf_sipcallerip,
 	rf_sipcalledip,
+	rf_sipcallerip_encaps,
+	rf_sipcalledip_encaps,
+	rf_sipcallerip_encaps_prot,
+	rf_sipcalledip_encaps_prot,
 	rf_sipcallerport,
 	rf_sipcalledport,
 	rf_from_num,
@@ -145,6 +149,10 @@ public:
 	u_int64_t id;
 	vmIP sipcallerip;
 	vmIP sipcalledip;
+	vmIP sipcallerip_encaps;
+	vmIP sipcalledip_encaps;
+	u_int8_t sipcallerip_encaps_prot;
+	u_int8_t sipcalledip_encaps_prot;
 	vmPort sipcallerport;
 	vmPort sipcalledport;
 	char *to_num;

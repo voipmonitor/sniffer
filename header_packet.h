@@ -24,7 +24,7 @@ struct sHeaderPacket {
 	void *stack;
 	u_int32_t packet_alloc_size;
 	u_int8_t detect_headers;
-	u_int16_t header_ip_first_offset;
+	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
 	u_int16_t eth_protocol;
 	sPacketInfoData pid;

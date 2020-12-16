@@ -85,6 +85,7 @@ extern bool opt_srtp_rtp_audio_decrypt;
 extern bool opt_srtp_rtcp_decrypt;
 extern int opt_savewav_force;
 extern int opt_save_sdp_ipport;
+extern int opt_save_ip_from_first_header;
 extern int opt_mos_g729;
 extern int opt_nocdr;
 extern NoStoreCdrRules nocdr_rules;
@@ -251,6 +252,10 @@ sCallField callFields[] = {
 	{ cf_calledip, "calledip" },
 	{ cf_callerip_country, "callerip_country" },
 	{ cf_calledip_country, "calledip_country" },
+	{ cf_callerip_encaps, "callerip_encaps" },
+	{ cf_calledip_encaps, "calledip_encaps" },
+	{ cf_callerip_encaps_prot, "callerip_encaps_prot" },
+	{ cf_calledip_encaps_prot, "calledip_encaps_prot" },
 	{ cf_sipproxies, "sipproxies" },
 	{ cf_lastSIPresponseNum, "lastSIPresponseNum" },
 	{ cf_rtp_src, "rtp_src" },
@@ -604,6 +609,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	}
 	sipcalledip_mod.clear();
 	sipcalledport_mod.clear();
+	sipcallerip_encaps.clear();
+	sipcalledip_encaps.clear();
+	sipcallerip_encaps_prot = 0xFF;
+	sipcalledip_encaps_prot = 0xFF;
 	lastsipcallerip.clear();
 	sipcallerdip_reverse = false;
 	skinny_partyid = 0;
@@ -1998,8 +2007,8 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			if(enableDump) {
 				sll_header *header_sll = NULL;
 				ether_header *header_eth = NULL;
-				u_int header_ip_offset = 0;
-				int protocol = 0;
+				u_int16_t header_ip_offset = 0;
+				u_int16_t protocol = 0;
 				u_int16_t vlan = VLAN_UNSET;
 				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, 
 						    header_sll, header_eth, NULL,
@@ -3852,6 +3861,18 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	case cf_calledip_country:
 		rfield->set(getCountryByIP(getSipcalledip(), true).c_str());
 		break;
+	case cf_callerip_encaps:
+		rfield->set(getSipcallerip_encaps(), RecordArrayField::tf_ip_n4);
+		break;
+	case cf_calledip_encaps:
+		rfield->set(getSipcalledip_encaps(), RecordArrayField::tf_ip_n4);
+		break;
+	case cf_callerip_encaps_prot:
+		rfield->set(getSipcallerip_encaps_prot());
+		break;
+	case cf_calledip_encaps_prot:
+		rfield->set(getSipcalledip_encaps_prot());
+		break;
 	case cf_sipproxies:
 		rfield->set(get_proxies_str().c_str());
 		break;
@@ -5529,9 +5550,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 
 	vmIP sipcalledip_confirmed;
+	vmIP sipcalledip_encaps_confirmed;
+	u_int8_t sipcalledip_encaps_prot_confirmed;
 	vmPort sipcalledport_confirmed;
-	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed);
+	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
 	sipcalledip_rslt = sipcalledip_confirmed.isSet() ? sipcalledip_confirmed : getSipcalledip();
+	sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps();
+	sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot();
 	sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport();
 	
 	string query_str_cdrproxy;
@@ -5656,6 +5681,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(existsColumns.cdr_sipport) {
 		cdr.add(getSipcallerport().getPort(), "sipcallerport");
 		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
+	}
+	if(existsColumns.cdr_sipcallerdip_encaps) {
+		cdr.add(getSipcallerip_encaps(), "sipcallerip_encaps", !getSipcallerip_encaps().isSet(), sqlDbSaveCall, sql_cdr_table);
+		cdr.add(sipcalledip_encaps_rslt, "sipcalledip_encaps", !sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
+		cdr.add(getSipcallerip_encaps().isSet() && getSipcallerip_encaps_prot() != 0xFF ? getSipcallerip_encaps_prot() : 0, 
+			"sipcallerip_encaps_prot", 
+			!getSipcallerip_encaps().isSet() || getSipcallerip_encaps_prot() == 0xFF);
+		cdr.add(sipcalledip_encaps_rslt.isSet() && sipcalledip_encaps_prot_rslt != 0xFF ? sipcalledip_encaps_prot_rslt : 0, 
+			"sipcalledip_encaps_prot", 
+			!sipcalledip_encaps_rslt.isSet() || sipcalledip_encaps_prot_rslt == 0xFF);
 	}
 	cdr.add_duration(duration_us(), "duration", existsColumns.cdr_duration_ms);
 	if(progress_time_us) {
@@ -8171,9 +8206,15 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
-vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
+vmIP Call::getSipcalledipConfirmed(vmPort *dport, vmIP *daddr_first, u_int8_t *daddr_first_protocol) {
 	if(dport) {
 		dport->clear();
+	}
+	if(daddr_first) {
+		daddr_first->clear();
+	}
+	if(daddr_first_protocol) {
+		*daddr_first_protocol = 0xFF;
 	}
 	vmIP saddr, daddr;
 	list<vmIP> proxies;
@@ -8189,6 +8230,12 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 				if(dport) {
 					*dport = iter->dport;
 				}
+				if(daddr_first) {
+					*daddr_first = iter->daddr_first;
+					if(daddr_first_protocol) {
+						*daddr_first_protocol = iter->daddr_first_protocol;
+					}
+				}
 			}
 			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
 				proxies.push_back(iter->saddr);
@@ -8198,6 +8245,12 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport) {
 				daddr = iter->daddr;
 				if(dport) {
 					*dport = iter->dport;
+				}
+				if(daddr_first) {
+					*daddr_first = iter->daddr_first;
+					if(daddr_first_protocol) {
+						*daddr_first_protocol = iter->daddr_first_protocol;
+					}
 				}
 			}
 		}
@@ -11045,7 +11098,9 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 
 bool 
 Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
-			     vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+			     vmIP saddr, vmIP daddr, 
+			     vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
+			     vmPort sport, vmPort dport,
 			     int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
@@ -11087,6 +11142,10 @@ Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_metho
 			if(!sipcallerip[0].isSet() && !sipcalledip[0].isSet()) {
 				sipcallerip[0] = saddr;
 				sipcalledip[0] = daddr;
+				sipcallerip_encaps = saddr_first;
+				sipcalledip_encaps = daddr_first;
+				sipcallerip_encaps_prot = first_protocol;
+				sipcalledip_encaps_prot = first_protocol;
 				sipcallerport[0] = sport;
 				sipcalledport[0] = dport;
 			}
@@ -11709,23 +11768,21 @@ void CustomHeaders::createMysqlPartitions(SqlDb *sqlDb) {
 	extern bool cloud_db;
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	char type = opt_cdr_partition_by_hours ? 'h' : 'd';
-	for(int next_part = 0; next_part < (type == 'd' ? LIMIT_DAY_PARTITIONS : LIMIT_HOUR_PARTITIONS); next_part++) {
-		if(!next_part ||
+	for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
+		if((!next_day && type == 'd') ||
 		   isCloud() || cloud_db) {
 			sqlDb->setMaxQueryPass(1);
 		}
-		this->createMysqlPartitions(sqlDb, type, next_part);
+		this->createMysqlPartitions(sqlDb, type, next_day);
 		sqlDb->setMaxQueryPass(maxQueryPassOld);
 	}
 }
 
-void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_part) {
-	extern bool cloud_db;
-	extern char mysql_database[256];
+void CustomHeaders::createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day) {
 	extern bool opt_cdr_partition_oldver;
 	list<string>::iterator iter;
 	for(iter = allNextTables.begin(); iter != allNextTables.end(); iter++) {
-		_createMysqlPartition(*iter, type == 'd' ? "day" : "hour", next_part, opt_cdr_partition_oldver, NULL, sqlDb);
+		_createMysqlPartition(*iter, type, next_day, opt_cdr_partition_oldver, NULL, sqlDb);
 	}
 }
 
@@ -11807,10 +11864,10 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(limitDay);
+		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(&limitDay);
 		if(opt_cdr_partition_by_hours) {
-			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHour);
-			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(limitHourNext, 1);
+			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHour);
+			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHourNext, 1);
 		}
 	}
 	
@@ -11856,8 +11913,8 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		for(int i = opt_create_old_partitions - 1; i > 0; i--) {
 			this->createMysqlPartitions(sqlDb, 'd', -i);
 		}
-		for(int next_part = 0; next_part < (opt_cdr_partition_by_hours ? LIMIT_HOUR_PARTITIONS_INIT : LIMIT_DAY_PARTITIONS_INIT); next_part++) {
-			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_part);
+		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS_INIT; next_day++) {
+			this->createMysqlPartitions(sqlDb, opt_cdr_partition_by_hours ? 'h' : 'd', next_day);
 		}
 	}
 	
@@ -12246,10 +12303,9 @@ NoStoreCdrRule::~NoStoreCdrRule() {
 bool NoStoreCdrRule::check(Call *call) {
 	bool ok = matchResponseCode(lastResponseNum, lastResponseNumLength, call->lastSIPresponseNum);
  	if(ok && ip.isSet()) {
-		vmPort sipcalledport_confirmed;
 		if(!check_ip(call->getSipcallerip(), ip, ip_mask_length) &&
 		   !check_ip(call->getSipcalledip(), ip, ip_mask_length) &&
-		   !check_ip(call->getSipcalledipConfirmed(&sipcalledport_confirmed), ip, ip_mask_length)) {
+		   !check_ip(call->getSipcalledipConfirmed(), ip, ip_mask_length)) {
 			ok = false;
 		}
 	}

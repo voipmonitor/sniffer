@@ -201,8 +201,8 @@ void *handle_mgcp(packet_s_process *packetS) {
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
 				strcpy_null_term(call->called, request.endpoint.c_str());
-				call->setSipcallerip(packetS->saddr_(), packetS->source_());
-				call->setSipcalledip(packetS->daddr_(), packetS->dest_());
+				call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
+				call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_());
 				call->flags = flags;
 				strcpy_null_term(call->fbasename, request.call_id().c_str());
 				if(enable_save_sip_rtp_audio(call)) {
@@ -285,7 +285,11 @@ void *handle_mgcp(packet_s_process *packetS) {
 				cout << "SDP: " << endl << string((char*)sdp + sdp_separator_length, packetS->datalen_() - mgcp_header_len - sdp_separator_length) << endl;
 			}
 			int iscaller;
-			call->check_is_caller_called(NULL, MGCP, 0, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), &iscaller, NULL);
+			call->check_is_caller_called(NULL, MGCP, 0, 
+						     packetS->saddr_(), packetS->daddr_(), 
+						     packetS->saddr_(true), packetS->daddr_(true), packetS->header_ip_protocol(true),
+						     packetS->source_(), packetS->dest_(), 
+						     &iscaller, NULL);
 			char to[1024];
 			char branch[100];
 			detect_to_extern(packetS, to, sizeof(to), NULL);

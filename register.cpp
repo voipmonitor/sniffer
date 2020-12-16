@@ -18,9 +18,12 @@ extern int opt_mysqlstore_max_threads_register;
 extern MySqlStore *sqlStore;
 extern int opt_nocdr;
 extern int opt_enable_fraud;
+extern int opt_save_ip_from_encaps_ipheader;
 
 extern bool opt_sip_register_compare_sipcallerip;
 extern bool opt_sip_register_compare_sipcalledip;
+extern bool opt_sip_register_compare_sipcallerip_encaps;
+extern bool opt_sip_register_compare_sipcalledip_encaps;
 extern bool opt_sip_register_compare_sipcallerport;
 extern bool opt_sip_register_compare_sipcalledport;
 extern bool opt_sip_register_compare_to_domain;
@@ -58,6 +61,10 @@ struct RegisterFields {
 	{ rf_calldate, "calldate" },
 	{ rf_sipcallerip, "sipcallerip" },
 	{ rf_sipcalledip, "sipcalledip" },
+	{ rf_sipcallerip_encaps, "sipcallerip_encaps" },
+	{ rf_sipcalledip_encaps, "sipcalledip_encaps" },
+	{ rf_sipcallerip_encaps_prot, "sipcallerip_encaps_prot" },
+	{ rf_sipcalledip_encaps_prot, "sipcalledip_encaps_prot" },
 	{ rf_sipcallerport, "sipcallerport" },
 	{ rf_sipcalledport, "sipcalledport" },
 	{ rf_from_num, "from_num" },
@@ -89,6 +96,8 @@ RegisterId::RegisterId(Register *reg) {
 bool RegisterId:: operator == (const RegisterId& other) const {
 	return((!opt_sip_register_compare_sipcallerip || this->reg->sipcallerip == other.reg->sipcallerip) &&
 	       (!opt_sip_register_compare_sipcalledip || this->reg->sipcalledip == other.reg->sipcalledip) &&
+	       (!opt_sip_register_compare_sipcallerip_encaps || this->reg->sipcallerip_encaps == other.reg->sipcallerip_encaps) &&
+	       (!opt_sip_register_compare_sipcalledip_encaps || this->reg->sipcalledip_encaps == other.reg->sipcalledip_encaps) &&
 	       (!opt_sip_register_compare_sipcallerport || this->reg->sipcallerport == other.reg->sipcallerport) &&
 	       (!opt_sip_register_compare_sipcalledport || this->reg->sipcalledport == other.reg->sipcalledport) &&
 	       (!opt_sip_register_compare_vlan || this->reg->vlan == other.reg->vlan) &&
@@ -107,6 +116,8 @@ bool RegisterId:: operator < (const RegisterId& other) const {
 	int rslt_cmp_digest_username;
 	return((opt_sip_register_compare_sipcallerip && this->reg->sipcallerip < other.reg->sipcallerip) ? 1 : (opt_sip_register_compare_sipcallerip && this->reg->sipcallerip > other.reg->sipcallerip) ? 0 :
 	       (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip < other.reg->sipcalledip) ? 1 : (opt_sip_register_compare_sipcalledip && this->reg->sipcalledip > other.reg->sipcalledip) ? 0 :
+	       (opt_sip_register_compare_sipcallerip_encaps && this->reg->sipcallerip_encaps < other.reg->sipcallerip_encaps) ? 1 : (opt_sip_register_compare_sipcallerip_encaps && this->reg->sipcallerip_encaps > other.reg->sipcallerip_encaps) ? 0 :
+	       (opt_sip_register_compare_sipcalledip_encaps && this->reg->sipcalledip_encaps < other.reg->sipcalledip_encaps) ? 1 : (opt_sip_register_compare_sipcalledip_encaps && this->reg->sipcalledip_encaps > other.reg->sipcalledip_encaps) ? 0 :
 	       (opt_sip_register_compare_sipcallerport && this->reg->sipcallerport < other.reg->sipcallerport) ? 1 : (opt_sip_register_compare_sipcallerport && this->reg->sipcallerport > other.reg->sipcallerport) ? 0 :
 	       (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport < other.reg->sipcalledport) ? 1 : (opt_sip_register_compare_sipcalledport && this->reg->sipcalledport > other.reg->sipcalledport) ? 0 :
 	       (opt_sip_register_compare_vlan && this->reg->vlan < other.reg->vlan) ? 1 : (opt_sip_register_compare_vlan && this->reg->vlan > other.reg->vlan) ? 0 :
@@ -231,6 +242,10 @@ Register::Register(Call *call) {
 	unlock_id();
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
+	sipcallerip_encaps = call->sipcallerip_encaps;
+	sipcalledip_encaps = call->sipcalledip_encaps;
+	sipcallerip_encaps_prot = call->sipcallerip_encaps_prot;
+	sipcalledip_encaps_prot = call->sipcalledip_encaps_prot;
 	sipcallerport = call->sipcallerport[0];
 	sipcalledport = call->sipcalledport[0];
 	char *tmp_str;
@@ -307,6 +322,10 @@ void Register::update(Call *call) {
 	}
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
+	sipcallerip_encaps = call->sipcallerip_encaps;
+	sipcalledip_encaps = call->sipcalledip_encaps;
+	sipcallerip_encaps_prot = call->sipcallerip_encaps_prot;
+	sipcalledip_encaps_prot = call->sipcalledip_encaps_prot;
 	vlan = call->vlan;
 	reg_call_id = call->call_id;
 	if(call->reg_tcp_seq) {
@@ -504,6 +523,12 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	reg.add_calldate(state->state_from_us, "created_at", state->state == rs_Failed ? existsColumns.register_failed_created_at_ms : existsColumns.register_state_created_at_ms);
 	reg.add(sipcallerip, "sipcallerip", false, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sipcalledip, "sipcalledip", false, sqlDbSaveRegister, register_table.c_str());
+	if(existsColumns.register_state_sipcallerdip_encaps) {
+		reg.add(sipcallerip_encaps, "sipcallerip_encaps", !sipcallerip_encaps.isSet(), sqlDbSaveRegister, register_table.c_str());
+		reg.add(sipcalledip_encaps, "sipcalledip_encaps", !sipcalledip_encaps.isSet(), sqlDbSaveRegister, register_table.c_str());
+		reg.add(sipcallerip_encaps_prot, "sipcallerip_encaps_prot", sipcallerip_encaps_prot == 0xFF);
+		reg.add(sipcalledip_encaps_prot, "sipcalledip_encaps_prot", sipcalledip_encaps_prot == 0xFF);
+	}
 	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_num)), "to_num");
 	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num)), "contact_num");
@@ -646,6 +671,12 @@ bool Register::getDataRow(RecordArray *rec) {
 	rec->fields[rf_id].set(id);
 	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4);
 	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4);
+	if(opt_save_ip_from_encaps_ipheader) {
+		rec->fields[rf_sipcallerip_encaps].set(sipcallerip_encaps, RecordArrayField::tf_ip_n4);
+		rec->fields[rf_sipcalledip_encaps].set(sipcalledip_encaps, RecordArrayField::tf_ip_n4);
+		rec->fields[rf_sipcallerip_encaps_prot].set(sipcallerip_encaps_prot);
+		rec->fields[rf_sipcalledip_encaps_prot].set(sipcalledip_encaps_prot);
+	}
 	rec->fields[rf_sipcallerport].set(sipcallerport, RecordArrayField::tf_port);
 	rec->fields[rf_sipcalledport].set(sipcalledport, RecordArrayField::tf_port);
 	rec->fields[rf_to_num].set(to_num);

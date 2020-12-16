@@ -2759,8 +2759,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 	call->is_ssl = packetS->is_ssl;
 	call->set_first_packet_time_us(packetS->getTimeUS());
-	call->setSipcallerip(packetS->saddr_(), packetS->source_(), packetS->get_callid());
-	call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+	call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_(), packetS->get_callid());
+	call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 	call->lastsipcallerip = packetS->saddr_();
 	call->flags = flags;
 	call->lastsrcip = packetS->saddr_();
@@ -3375,6 +3375,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				Call::sInviteSD_Addr invite_sd;
 				invite_sd.saddr = packetS->saddr_();
 				invite_sd.daddr = packetS->daddr_();
+				invite_sd.saddr_first = packetS->saddr_(true);
+				invite_sd.daddr_first = packetS->daddr_(true);
+				invite_sd.saddr_first_protocol =
+				invite_sd.daddr_first_protocol = packetS->header_ip_protocol(true);
 				invite_sd.sport = packetS->source_();
 				invite_sd.dport = packetS->dest_();
 				invite_sd.counter = 1;
@@ -3401,6 +3405,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					Call::sInviteSD_Addr rinvite_sd;
 					rinvite_sd.saddr = packetS->saddr_();
 					rinvite_sd.daddr = packetS->daddr_();
+					rinvite_sd.saddr_first = packetS->saddr_(true);
+					rinvite_sd.daddr_first = packetS->daddr_(true);
+					rinvite_sd.saddr_first_protocol =
+					rinvite_sd.daddr_first_protocol = packetS->header_ip_protocol(true);
 					rinvite_sd.sport = packetS->source_();
 					rinvite_sd.dport = packetS->dest_();
 					rinvite_sd.counter = 1;
@@ -3424,13 +3432,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	call->check_reset_oneway(packetS->saddr_(), packetS->source_());
 
 	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, packetS->cseq.method,
-						     packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
+						     packetS->saddr_(), packetS->daddr_(), 
+						     packetS->saddr_(true), packetS->daddr_(true), packetS->header_ip_protocol(true),
+						     packetS->source_(), packetS->dest_(),
 						     &iscaller, &iscalled, 
 						     (packetS->sip_method == INVITE && !existInviteSdaddr && !reverseInviteSdaddr) || 
 						     IS_SIP_RES18X(packetS->sip_method));
 	if(!detectCallerd && packetS->sip_method == RES2XX && packetS->cseq.method == INVITE) {
 		detectCallerd = call->check_is_caller_called(packetS->get_callid(), RES2XX_INVITE, 0,
-							     packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
+							     packetS->saddr_(), packetS->daddr_(), 
+							     packetS->saddr_(true), packetS->daddr_(true), packetS->header_ip_protocol(true),
+							     packetS->source_(), packetS->dest_(),
 							     &iscaller, &iscalled, 
 							     true);
 	}
@@ -3984,7 +3996,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(!(opt_sdp_check_direction_ext &&
 				     packetS->saddr_() == call->getSipcallerip() && call->all_invite_is_multibranch(packetS->saddr_()))) {
 					call->proxy_add(call->getSipcalledip());
-					call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+					call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				}
 			}
 		}
@@ -4004,7 +4016,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				updateDest = true;
 			}
 			if(updateDest) {
-				call->setSipcalledip(packetS->daddr_(), packetS->dest_(), packetS->get_callid());
+				call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				call->lastsipcallerip = packetS->saddr_();
 			}
 		}
@@ -4987,8 +4999,8 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 				    getTimeUS(header), saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time_us(getTimeUS(header));
-	call->setSipcallerip(saddr, source);
-	call->setSipcalledip(daddr, dest);
+	call->setSipcallerip(saddr, vmIP(0), 0xFF, source);
+	call->setSipcalledip(daddr, vmIP(0), 0xFF, dest);
 	call->flags = flags;
 	strcpy_null_term(call->fbasename, s);
 	call->seeninvite = true;
@@ -6864,7 +6876,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
-						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
+						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 						NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
 				} else {
 					delete header;
@@ -6967,7 +6979,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 				ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 				ppd.datalen, dataoffset, 
 				0, header, packet, true,
-				ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_offset),
+				ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 				NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
 		}
 	}
@@ -9256,7 +9268,7 @@ size_t rtp_read_thread::qring_size() {
 
 
 void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
-		unsigned header_ip_offset, u_int64_t packet_time, 
+		u_int16_t header_ip_offset, u_int64_t packet_time, 
 		u_char *data, unsigned datalen,
 		const char *file, unsigned line, const char *function, const char *descr) {
 	if(!sverb.trace_call) {
@@ -9266,7 +9278,7 @@ void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
 		if(!header_ip_offset) {
 			sll_header *header_sll;
 			ether_header *header_eth;
-			int protocol;
+			u_int16_t protocol;
 			u_int16_t vlan;
 			if(!parseEtherHeader(pcapLinkHeaderType, packet,
 					     header_sll, header_eth, NULL,
