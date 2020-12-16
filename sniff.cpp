@@ -3178,6 +3178,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	char content_boundary[1024] = "";
 	int content_boundary_length = 0;
 	bool contenttype_is_rtcpxr = false;
+	bool contenttype_is_app_csta_xml = false;
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
 	bool existInviteSdaddr = false;
@@ -3228,6 +3229,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		contenttype_is_rtcpxr = strcasestr(contenttypestr, "application/vq-rtcpxr") != NULL;
+		contenttype_is_app_csta_xml = strcasestr(contenttypestr, "application/csta+xml") != NULL;
 	}
 	
 	if(opt_enable_fraud && isFraudReady()) {
@@ -3309,6 +3311,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			logPacketSipMethodCallDescr = "SIP packet does not belong to any call and it is not INVITE";
 		}
 		goto endsip;
+	}
+	
+	if(contenttype_is_app_csta_xml) {
+		call->exclude_from_active_calls = true;
 	}
 	
 	if(packetS->pid.flags & FLAG_FRAGMENTED) {

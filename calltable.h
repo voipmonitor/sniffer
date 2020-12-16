@@ -968,6 +968,8 @@ public:
 	bool televent_exists_request;
 	bool televent_exists_response;
 	
+	bool exclude_from_active_calls;
+	
 	/**
 	 * constructor
 	 *

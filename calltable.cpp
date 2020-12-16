@@ -705,6 +705,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	televent_exists_request = false;
 	televent_exists_response = false;
 	
+	exclude_from_active_calls = false;
+	
 }
 
 u_int64_t Call::counter_s = 0;
@@ -10360,7 +10362,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				call = (*callMAPIT2).second;
 			}
 			extern int opt_blockcleanupcalls;
-			if(!(call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
+			if(!(call->exclude_from_active_calls or
+			     call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
 			     (call->seenbye and call->seenbyeandok) or
 			     (!opt_blockcleanupcalls &&
 			      ((call->destroy_call_at and call->destroy_call_at < now) or 
