@@ -2729,6 +2729,17 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		}
 		return NULL;
 	}
+	
+	extern bool opt_enable_content_type_application_csta_xml;
+	if(!opt_enable_content_type_application_csta_xml) {
+		unsigned long content_type_length;
+		char *content_type = gettag_sip(packetS, "\nContent-Type:", "\nc:", &content_type_length);
+		if(content_type && content_type_length <= 1023) {
+			if(strncasestr(content_type, "application/csta+xml", content_type_length)) {
+				return(NULL);
+			}
+		}
+	}
 
 	s_detect_callerd data_callerd;
 	detect_callerd(packetS, sip_method, &data_callerd);

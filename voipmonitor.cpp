@@ -577,6 +577,7 @@ bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
 bool opt_disable_sdp_multiplication_warning = false;
+bool opt_enable_content_type_application_csta_xml = false;
 bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
@@ -6889,6 +6890,7 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE(42289) cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_sdp_multiplication_warning", &opt_disable_sdp_multiplication_warning));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_content_type_application_csta_xml", &opt_enable_content_type_application_csta_xml));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_process_sdp", &opt_disable_process_sdp));
@@ -11075,6 +11077,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_sdp_multiplication_warning", NULL))) {
 		opt_disable_sdp_multiplication_warning = yesno(value);
+	}
+	if((value = ini.GetValue("general", "enable_content_type_application_csta_xml", NULL))) {
+		opt_enable_content_type_application_csta_xml = yesno(value);
 	}
 	if((value = ini.GetValue("general", "hash_queue_length_ms", NULL))) {
 		opt_hash_modify_queue_length_ms = atoi(value);
