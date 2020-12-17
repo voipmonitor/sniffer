@@ -546,7 +546,7 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 **----------------------------------------------------------------------------
 */
 
-void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
+void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *call)
 {
 	char *pkt = data;
 	int reports_seen;
@@ -558,79 +558,67 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int count, Call *call)
 	}
 
 	pkt += sizeof(rtcp_xr_header_t);
+	all_block_size -= sizeof(rtcp_xr_header_t);
 	
 	/* Loop over report blocks */
-	count = 1;//workaround
 	reports_seen = 0;
-	while(reports_seen < count) {
+	while(all_block_size > sizeof(rtcp_xr_gen_t)) {
 
 		if(pkt + sizeof(rtcp_xr_gen_t) > (data + datalen)) {
 			break;
 		}
 
 		rtcp_xr_gen_t *block = (rtcp_xr_gen_t*)pkt;
+		unsigned block_size = sizeof(rtcp_xr_gen_t) + ntohs(block->length) * 4;
+		all_block_size -= block_size;
 
 		if((rtcp_xr_report_type_t_)block->bt != RTCP_XR_VOIP_METRICS) {
-			pkt += sizeof(rtcp_xr_gen_t) + ntohs(block->length) * 4;
+			pkt += block_size;
 			continue;
 		}
 
 		pkt += sizeof(rtcp_xr_gen_t);
 		rtcp_xr_voip_metrics_report_block_t *xr = (rtcp_xr_voip_metrics_report_block_t*)pkt;
-
 	
-#if 0
-		if(rtp) {
-			rtp->rtcp.counter++;
-			rtp->rtcp.loss = loss;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
-			rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
-			rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.counter - 1) + reportblock.jitter) / rtp->rtcp.counter;
-		} 
-#endif
-
-		RTP *rtp = NULL;
+		unsigned count_use_rtp = 0;
 		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
 			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
-				// found 
-				rtp = rtp_i;
+				RTP *rtp = rtp_i;
+				rtp->rtcp_xr.counter_fr++;
+				rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < xr->loss_rate) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
+				rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter_fr - 1) + xr->loss_rate) / rtp->rtcp_xr.counter_fr;
+				if(xr->mos_lq != 0x7F) {
+					rtp->rtcp_xr.counter_mos++;
+					rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
+					rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter_mos - 1) + xr->mos_lq) / rtp->rtcp_xr.counter_mos;
+				}
+				if(sverb.debug_rtcp) {
+					printf("identifier [%x]\n", ntohl(xr->ssrc));
+					printf("	Fraction lost [%u]\n", xr->loss_rate);
+					printf("	Fraction discarded [%d]\n", xr->discard_rate);
+					printf("	Burst density [%d]\n", xr->burst_density);
+					printf("	Gap density[%d]\n", xr->gap_density);
+					printf("	Burst duration[%d]\n", ntohs(xr->burst_duration));
+					printf("	Gap duration[%d]\n", ntohs(xr->gap_duration));
+					printf("	Round trip delay[%d]\n", ntohs(xr->round_trip_delay));
+					printf("	End system delay[%d]\n", ntohs(xr->end_system_delay));
+					printf("	Signal Level[%d]\n", xr->signal_level);
+					printf("	Noise level[%d]\n", xr->noise_level);
+					printf("	Residual echo return loss[%d]\n", xr->rerl);
+					printf("	Gmin[%d]\n", xr->gmin);
+					printf("	R Factor[%d]\n", xr->r_factor);
+					printf("	External R Factor[%d]\n", xr->ext_r_factor);
+					printf("	MOS Listening Quality[%d]\n", xr->mos_lq);
+					printf("	MOS Conversational Quality[%d]\n", xr->mos_cq);
+					printf("	rx_config[%d]\n", xr->rx_config);
+					printf("	Nominal jitter buffer size[%d]\n", ntohs(xr->jb_nominal));
+					printf("	Maximum jitter buffer size[%d]\n", ntohs(xr->jb_maximum));
+					printf("	Absolute maximum jitter buffer size[%d]\n", ntohs(xr->jb_abs_max));
+				}
+				++count_use_rtp;
 			}
 		}
-
-		if(rtp) {
-			rtp->rtcp_xr.counter_fr++;
-			rtp->rtcp_xr.maxfr = (rtp->rtcp_xr.maxfr < xr->loss_rate) ? xr->loss_rate : rtp->rtcp_xr.maxfr;
-			rtp->rtcp_xr.avgfr = (rtp->rtcp_xr.avgfr * (rtp->rtcp_xr.counter_fr - 1) + xr->loss_rate) / rtp->rtcp_xr.counter_fr;
-			if(xr->mos_lq != 0x7F) {
-				rtp->rtcp_xr.counter_mos++;
-				rtp->rtcp_xr.minmos = (rtp->rtcp_xr.minmos > xr->mos_lq) ? xr->mos_lq : rtp->rtcp_xr.minmos;
-				rtp->rtcp_xr.avgmos = (rtp->rtcp_xr.avgmos * (rtp->rtcp_xr.counter_mos - 1) + xr->mos_lq) / rtp->rtcp_xr.counter_mos;
-			}
-			if(sverb.debug_rtcp) {
-				printf("identifier [%x]\n", ntohl(xr->ssrc));
-				printf("	Fraction lost [%u]\n", xr->loss_rate);
-				printf("	Fraction discarded [%d]\n", xr->discard_rate);
-				printf("	Burst density [%d]\n", xr->burst_density);
-				printf("	Gap density[%d]\n", xr->gap_density);
-				printf("	Burst duration[%d]\n", ntohs(xr->burst_duration));
-				printf("	Gap duration[%d]\n", ntohs(xr->gap_duration));
-				printf("	Round trip delay[%d]\n", ntohs(xr->round_trip_delay));
-				printf("	End system delay[%d]\n", ntohs(xr->end_system_delay));
-				printf("	Signal Level[%d]\n", xr->signal_level);
-				printf("	Noise level[%d]\n", xr->noise_level);
-				printf("	Residual echo return loss[%d]\n", xr->rerl);
-				printf("	Gmin[%d]\n", xr->gmin);
-				printf("	R Factor[%d]\n", xr->r_factor);
-				printf("	External R Factor[%d]\n", xr->ext_r_factor);
-				printf("	MOS Listening Quality[%d]\n", xr->mos_lq);
-				printf("	MOS Conversational Quality[%d]\n", xr->mos_cq);
-				printf("	rx_config[%d]\n", xr->rx_config);
-				printf("	Nominal jitter buffer size[%d]\n", ntohs(xr->jb_nominal));
-				printf("	Maximum jitter buffer size[%d]\n", ntohs(xr->jb_maximum));
-				printf("	Absolute maximum jitter buffer size[%d]\n", ntohs(xr->jb_abs_max));
-			}
-		} else {
+		if(!count_use_rtp) {
 			if(sverb.debug_rtcp) {
 				printf("identifier [%x] skipped (no rtp stream with this ssrc)\n", ntohl(xr->ssrc));
 			}
@@ -709,7 +697,7 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call)
 			//dump_rtcp_sdes(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc);
 			break;
 		case RTCP_PACKETTYPE_XR:
-			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp->rc_sc, call);
+			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp_size, call);
 			break;
 		default:
 			break;

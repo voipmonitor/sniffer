@@ -5204,6 +5204,7 @@ void Call::selectRtpAB() {
 			     << " ssrc index: " << rtp_i->ssrc_index << " "
 			     << " ok_other_ip_side_by_sip: " << rtp_i->ok_other_ip_side_by_sip << " " 
 			     << " payload: " << rtp_i->first_codec << " "
+			     << " rtcp.counter_mos: " << rtp_i->rtcp_xr.counter_mos << " "
 			     << endl;
 		}
 	}
@@ -5299,6 +5300,7 @@ void Call::selectRtpAB() {
 									     << " ssrc index: " << rtp_stream_by_index(indexes[j])->ssrc_index << " "
 									     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[j])->ok_other_ip_side_by_sip << " " 
 									     << " payload: " << rtp_stream_by_index(indexes[j])->first_codec << " "
+									     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[j])->rtcp_xr.counter_mos << " "
 									     << endl;
 								}
 								break;
@@ -5369,6 +5371,7 @@ void Call::selectRtpAB() {
 						     << " ssrc index: " << rtp_stream_by_index(indexes[k])->ssrc_index << " "
 						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip << " " 
 						     << " payload: " << rtp_stream_by_index(indexes[k])->first_codec << " "
+						     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[k])->rtcp_xr.counter_mos << " "
 						     << endl;
 					}
 				}
@@ -5415,6 +5418,7 @@ void Call::selectRtpAB() {
 				     << " ssrc index: " << rtpab[k]->ssrc_index << " "
 				     << " ok_other_ip_side_by_sip: " << rtpab[k]->ok_other_ip_side_by_sip << " " 
 				     << " payload: " << rtpab[k]->first_codec << " "
+				     << " rtcp.counter_mos: " << rtpab[k]->rtcp_xr.counter_mos << " "
 				     << endl;
 			}
 		}
