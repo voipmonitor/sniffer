@@ -245,7 +245,6 @@ private:
 
 
 //#define PREPROCESS_DETACH2
-#define preProcessPacketCallX_count 3
 
 class PreProcessPacket {
 public:
@@ -262,7 +261,8 @@ public:
 		ppt_pp_rtp,
 		ppt_pp_other,
 		ppt_end_base,
-		ppt_pp_callx
+		ppt_pp_callx,
+		ppt_pp_callfindx
 	};
 	struct batch_packet_s {
 		batch_packet_s(unsigned max_count) {
@@ -524,6 +524,9 @@ public:
 					case ppt_pp_callx:
 						this->process_CALLX(_packetS);
 						break;
+					case ppt_pp_callfindx:
+						this->process_CallFindX(_packetS);
+						break;
 					case ppt_pp_register:
 						this->process_REGISTER(_packetS);
 						break;
@@ -560,6 +563,9 @@ public:
 				break;
 			case ppt_pp_callx:
 				this->process_CALLX(packetS);
+				break;
+			case ppt_pp_callfindx:
+				this->process_CallFindX(packetS);
 				break;
 			case ppt_pp_register:
 				this->process_REGISTER(packetS);
@@ -837,6 +843,8 @@ public:
 			return("call");
 		case ppt_pp_callx:
 			return("callx");
+		case ppt_pp_callfindx:
+			return("callfindx");
 		case ppt_pp_register:
 			return("register");
 		case ppt_pp_sip_other:
@@ -866,6 +874,8 @@ public:
 			return("c");
 		case ppt_pp_callx:
 			return("cx");
+		case ppt_pp_callfindx:
+			return("cfx");
 		case ppt_pp_register:
 			return("g");
 		case ppt_pp_sip_other:
@@ -887,6 +897,7 @@ private:
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_CALL(packet_s_process *packetS);
 	void process_CALLX(packet_s_process *packetS);
+	void process_CallFindX(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);

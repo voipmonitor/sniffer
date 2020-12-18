@@ -927,7 +927,8 @@ PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-PreProcessPacket *preProcessPacketCallX[preProcessPacketCallX_count];
+PreProcessPacket *preProcessPacketCallX[preProcessPacketCallX_count + 1];
+PreProcessPacket *preProcessPacketCallFindX[preProcessPacketCallX_count];
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 
@@ -4188,8 +4189,19 @@ int main_init_read() {
 		}
 		
 		if(opt_t2_boost) {
-			for(int i = 0; i < preProcessPacketCallX_count; i++) {
+			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+			}
+			if(opt_t2_boost == 2) {
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callfindx, i);
+				}
+				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
+					preProcessPacketCallX[i]->startOutThread();
+				}
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+					preProcessPacketCallFindX[i]->startOutThread();
+				}
 			}
 		}
 		
@@ -4511,13 +4523,23 @@ void terminate_processpacket() {
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
-		for(int i = 0; i < preProcessPacketCallX_count; i++) {
+		for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 			if(preProcessPacketCallX[i]) {
 				if(termPass == 0) {
 					preProcessPacketCallX[i]->terminate();
 				} else {
 					delete preProcessPacketCallX[i];
 					preProcessPacketCallX[i] = NULL;
+				}
+			}
+		}
+		for(int i = 0; i < preProcessPacketCallX_count; i++) {
+			if(preProcessPacketCallFindX[i]) {
+				if(termPass == 0) {
+					preProcessPacketCallFindX[i]->terminate();
+				} else {
+					delete preProcessPacketCallFindX[i];
+					preProcessPacketCallFindX[i] = NULL;
 				}
 			}
 		}
@@ -6424,7 +6446,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
-					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
+						->addValues("extend:2"));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -10349,7 +10372,8 @@ int eval_config(string inistr) {
 		opt_disable_cdr_indexes_rtp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = yesno(value);
+		opt_t2_boost = !strcmp(value, "extend") ? 2 :
+			       yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

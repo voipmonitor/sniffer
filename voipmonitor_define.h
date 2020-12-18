@@ -67,5 +67,7 @@
 
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
 
+#define preProcessPacketCallX_count 3
+
 
 #endif //VOIPMONITOR_DEFINE_H

@@ -122,6 +122,7 @@ extern volatile int calls_counter;
 extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 extern PreProcessPacket *preProcessPacketCallX[];
+extern PreProcessPacket *preProcessPacketCallFindX[];
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -2179,7 +2180,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			if(preProcessPacketCallX[0]) {
-				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 					double percFullQring;
 					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
 					if(t2cpu_preprocess_packet_out_thread >= 0) {
@@ -2188,6 +2189,28 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 						if(sverb.qring_stat) {
 							double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
+							if(qringFillingPerc > 0) {
+								outStrStat << "r" << qringFillingPerc;
+							}
+						}
+						if(sverb.qring_full && percFullQring > sverb.qring_full) {
+							outStrStat << "#" << percFullQring;
+						}
+						++count_t2cpu;
+						sum_t2cpu += t2cpu_preprocess_packet_out_thread;
+					}
+				}
+			}
+			if(preProcessPacketCallFindX[0]) {
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+					double percFullQring;
+					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, &percFullQring);
+					if(t2cpu_preprocess_packet_out_thread >= 0) {
+						outStrStat << "/" 
+							   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
+							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+						if(sverb.qring_stat) {
+							double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
 							if(qringFillingPerc > 0) {
 								outStrStat << "r" << qringFillingPerc;
 							}
