@@ -1,3 +1,13 @@
+27.3 18.12.2020
+===============
+- implemented hourly partition options instead of per day (for extreme CDR rate >= 15000) 
+- fix RTP restore for some corner cases [VS-1147]
+- implemented hour partitions 
+- implemented storing ip for IPinIP and GRE encapsulation (save_ip_from_encaps_ipheader: yes/NO, save_ip_from_encaps_ipheader_only_gre: yes/NO) [VS-1120]
+- exclude call from active calls and CDR if content type is application/csta+xml (can be reenabled by enable_content_type_application_csta_xml option) [VS-1148]
+- add support for multiple block in dump_rtcp_xr (fixes empty MOS-LQ) [VS-1153]
+
+
 27.2.2 01.12.2020
 =================
 - fix memory leak when fraud queue is fulll [VS-1141]
