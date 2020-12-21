@@ -553,9 +553,18 @@ struct packet_s_process : public packet_s_process_0 {
 		return(callid_long ? callid_long : callid);
 	}
 	inline u_int8_t get_callid_sipextx_index() {
-		return((callid_long ? 
-			 callid_long[0] : 
-			 callid[0]) % preProcessPacketCallX_count);
+		char *_callid = callid_long ? callid_long : callid;
+		unsigned length = 0;
+		while(length < 6 && _callid[length]) {
+			++length;
+		}
+		if(length == 6) {
+			return((((int)_callid[0] * (int)_callid[1]) ^
+				((int)_callid[2] * (int)_callid[3]) ^
+				((int)_callid[4] * (int)_callid[5])) % preProcessPacketCallX_count);
+		} else {
+			return(_callid[0] % preProcessPacketCallX_count);
+		}
 	}
 	inline bool is_message() {
 		return(sip_method == MESSAGE || cseq.method == MESSAGE);
