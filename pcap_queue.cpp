@@ -336,6 +336,14 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(15005) uint32_t[this->offsets_size];
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		#endif
+		#endif
 	}
 	if(this->count == this->offsets_size) {
 		uint32_t *offsets_old = this->offsets;
@@ -345,6 +353,22 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
 				__FILE__, __LINE__);
 		delete [] offsets_old;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		volatile int8_t *_sync_packets_lock_old = _sync_packets_lock;
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		memcpy((void*)this->_sync_packets_lock, (void*)_sync_packets_lock_old, 
+		       sizeof(int8_t) * offsets_size_old);
+		memset((void*)(this->_sync_packets_lock + offsets_size_old), 0, 
+		       sizeof(int8_t) * (this->offsets_size - offsets_size_old));
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		volatile int8_t *_sync_packets_flag_old = _sync_packets_flag;
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memcpy((void*)this->_sync_packets_flag, (void*)_sync_packets_flag_old, 
+		       sizeof(int8_t) * offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		memset((void*)(this->_sync_packets_flag + offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH), 0, 
+		       sizeof(int8_t) * (this->offsets_size - offsets_size_old) * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		#endif
+		#endif
 	}
 	this->offsets[this->count] = this->size;
 	memcpy_heapsafe(this->block + this->size, this->block,
@@ -393,11 +417,6 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 			sleep(1);
 		}
 	}
-	#if DEBUG_SYNC_PCAP_BLOCK_STORE
-	if(this->count >= DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH) {
-		return(false);
-	}
-	#endif
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(15009) uint32_t[this->offsets_size];
@@ -449,6 +468,16 @@ void pcap_block_store::destroy() {
 	this->sensor_id = opt_id_sensor;
 	this->sensor_ip = 0;
 	memset(this->ifname, 0, sizeof(this->ifname));
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	if(this->_sync_packets_lock) {
+		delete this->_sync_packets_lock;
+	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+	if(this->_sync_packets_flag) {
+		delete this->_sync_packets_flag;
+	}
+	#endif
+	#endif
 }
 
 void pcap_block_store::destroyRestoreBuffer() {
@@ -5908,6 +5937,86 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 		delete blockStore;
 		return(false);
 	}
+}
+
+string PcapQueue_readFromFifo::debugBlockStoreTrash() {
+	ostringstream outStr;
+	lock_blockStoreTrash();
+	for(unsigned i = 0; i < this->blockStoreTrash.size(); i++) {
+		pcap_block_store *bs = this->blockStoreTrash[i];
+		outStr << "* " << hex << bs << dec << endl;
+		outStr << "* " << sqlDateTimeString_us2ms(bs->timestampMS * 1000) << endl;
+		outStr << "lock packets: " << (int)bs->_sync_packet_lock << endl;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		unsigned counter = 0;
+		for(unsigned j = 0; j < bs->count; j++) {
+			if(bs->_sync_packets_lock[j]) {
+				outStr << (++counter) << " "
+				       << j
+				       << endl;
+				#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+				if(bs->_sync_packets_flag[j * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH]) {
+					outStr << "   ";
+					for(int k = 0; k < bs->_sync_packets_flag[j * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH]; k++) {
+						if(k) {
+							outStr << "/";
+						}
+						outStr << (int)bs->_sync_packets_flag[j * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + k];
+					}
+					outStr << endl;
+				}
+				#endif
+			}
+		}
+		#endif
+		outStr << "---------" << endl;
+	}
+	unlock_blockStoreTrash();
+	return(outStr.str());
+}
+
+string PcapQueue_readFromFifo::saveBlockStoreTrash(const char *filter, const char *destFile) {
+	string rslt;
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE && DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+	lock_blockStoreTrash();
+	for(unsigned i = 0; i < this->blockStoreTrash.size(); i++) {
+		pcap_block_store *bs = this->blockStoreTrash[i];
+		ostringstream outStrMemPointer;
+		outStrMemPointer << hex << bs;
+		ostringstream outStrTime;
+		outStrTime << sqlDateTimeString_us2ms(bs->timestampMS * 1000);
+		if(outStrMemPointer.str() == filter ||
+		   outStrTime.str() == filter) {
+			PcapDumper *dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+			dumper->setEnableAsyncWrite(false);
+			dumper->setTypeCompress(FileZipHandler::compress_na);
+			if(dumper->open(tsf_na, destFile, bs->dlink)) {
+				unsigned counter = 0;
+				for(unsigned j = 0; j < bs->count; j++) {
+					if(bs->_sync_packets_lock[j]) {
+						pcap_pkthdr_plus *header_plus = bs->get_header(j);
+						pcap_pkthdr header = header_plus->getStdHeader();
+						u_char *packet = bs->get_packet(j);
+						dumper->dump(&header, packet, header_plus->dlink, true);
+						++counter;
+					}
+				}
+				rslt = "save " + intToString(counter) + " packets to file " + destFile;
+			} else {
+				rslt = string("failed open file ") + destFile;
+			}
+			delete dumper;
+			break;
+		}
+	}
+	if(rslt.empty()) {
+		rslt = string("failed find block via filter ") + filter;
+	}
+	#else
+	rslt = "unsupported: need compilation with define DEBUG_SYNC_PCAP_BLOCK_STORE";
+	#endif
+	unlock_blockStoreTrash();
+	return(rslt);
 }
 
 inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore) {

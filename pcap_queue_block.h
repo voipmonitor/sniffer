@@ -73,12 +73,16 @@ struct pcap_pkthdr_plus {
 		#endif
 	}
 	inline pcap_pkthdr getStdHeader() {
-		pcap_pkthdr header;
-		header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
-		header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
-		header.caplen = this->header_fix_size.caplen;
-		header.len = this->header_fix_size.len;
-		return(header);
+		if(this->std) {
+			return(this->header_std);
+		} else {
+			pcap_pkthdr header;
+			header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
+			header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
+			header.caplen = this->header_fix_size.caplen;
+			header.len = this->header_fix_size.len;
+			return(header);
+		}
 	}
 	inline uint32_t get_caplen() {
 		return(std ? this->header_std.caplen : this->header_fix_size.caplen);
@@ -197,6 +201,12 @@ struct pcap_block_store {
 		this->offsets = NULL;
 		this->block = NULL;
 		this->is_voip = NULL;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		this->_sync_packets_lock = NULL;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		this->_sync_packets_flag = NULL;
+		#endif
+		#endif
 		this->destroy();
 		this->restoreBuffer = NULL;
 		this->destroyRestoreBuffer();
@@ -204,20 +214,10 @@ struct pcap_block_store {
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS_rdtsc();
 		this->_sync_packet_lock = 0;
-		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		this->_sync_packets_lock = new FILE_LINE(17001) volatile int8_t[DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH];
-		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH);
-		this->_sync_packets_flag = new FILE_LINE(17002) volatile int8_t[DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
-		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * DEBUG_SYNC_PCAP_BLOCK_STORE_LOCK_LENGTH * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
-		#endif
 	}
 	~pcap_block_store() {
 		this->destroy();
 		this->destroyRestoreBuffer();
-		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		delete [] this->_sync_packets_lock;
-		delete [] this->_sync_packets_flag;
-		#endif
 	}
 	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
 	inline void inc_h(pcap_pkthdr_plus2 *header);
@@ -308,10 +308,12 @@ struct pcap_block_store {
 		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
-			this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1] = flag;
-			++this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
+			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH], 1);
 		}
+		#endif
 		#endif
 	}
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
@@ -336,10 +338,12 @@ struct pcap_block_store {
 	void add_flag(int /*index*/, int /*flag*/) {
 	#endif
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
-			this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1] = flag;
-			++this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
+			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH], 1);
 		}
+		#endif
 		#endif
 	}
 	bool enableDestroy() {
@@ -394,7 +398,9 @@ struct pcap_block_store {
 	volatile int _sync_packet_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int8_t *_sync_packets_lock;
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 	volatile int8_t *_sync_packets_flag;
+	#endif
 	#endif
 	u_int8_t *is_voip;
 };

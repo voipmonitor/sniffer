@@ -311,11 +311,17 @@ struct packet_s {
 		block_store_index = 0; 
 		_blockstore_lock = false;
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	inline void blockstore_addflag(int flag) {
+	#else
 	inline void blockstore_addflag(int /*flag*/) {
+	#endif
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(_blockstore_lock && block_store) {
 			block_store->add_flag(block_store_index, flag);
 		}
+		#endif
 		#endif
 	}
 	inline void packetdelete() {
