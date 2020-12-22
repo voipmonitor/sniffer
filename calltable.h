@@ -2509,6 +2509,8 @@ public:
 	
 	void addSystemCommand(const char *command);
 	
+	unsigned getApproxCountCalls();
+	
 private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue

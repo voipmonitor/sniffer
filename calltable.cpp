@@ -10331,7 +10331,12 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 	}
 	unsigned int now = time(NULL);
-	list<Call*> active_calls;
+	
+	unsigned activeCallsMax = getApproxCountCalls();
+	activeCallsMax += activeCallsMax / 4;
+	Call **activeCalls = new FILE_LINE(0) Call*[activeCallsMax];
+	unsigned activeCallsCount = 0;
+	
 	for(int passListMap = -1; passListMap < (opt_t2_boost == 2 ? preProcessPacketCallX_count : 0); passListMap++) {
 		map<string, Call*> *_calls_listMAP;
 		if(passListMap == -1) {
@@ -10344,7 +10349,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		list<Call*>::iterator callIT1;
 		map<string, Call*>::iterator callMAPIT1;
 		map<sStreamIds2, Call*>::iterator callMAPIT2;
-		for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+		for(int passTypeCall = 0; passTypeCall < (passListMap == -1 ? 2 : 1); passTypeCall++) {
 			int typeCall = passTypeCall == 0 ? INVITE : MGCP;
 			if(typeCall == INVITE) {
 				if(opt_call_id_alternative[0]) {
@@ -10375,7 +10380,9 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				      ((call->destroy_call_at and call->destroy_call_at < now) or 
 				       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
 				       (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now))))) {
-					active_calls.push_back(call);
+					if(activeCallsCount < activeCallsMax) {
+						activeCalls[activeCallsCount++] =call;
+					}
 				}
 				if(typeCall == INVITE) {
 					if(opt_call_id_alternative[0]) {
@@ -10405,8 +10412,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	map<int32_t, u_int32_t> sensor_map;
 	map<vmIP, u_int32_t> ip_src_map;
 	map<vmIP, u_int32_t> ip_dst_map;
-	for(list<Call*>::iterator iter = active_calls.begin(); iter != active_calls.end(); iter++) {	
-		Call *call = *iter;
+	for(unsigned i = 0; i < activeCallsCount; i++) {	
+		Call *call = activeCalls[i];
 		bool okCallFilters = true;
 		if(callFilters.size()) {
 			for(unsigned i = 0; i < callFilters.size(); i++) {
@@ -10462,6 +10469,9 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			}
 		}
 	}
+	
+	delete [] activeCalls;
+	
 	string table;
 	JsonExport jsonExport;
 	jsonExport.add("total", limit != 0 ? records.size() : counter);
@@ -10668,7 +10678,15 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_calls");
 	}
-	list<Call*> closeCalls;
+	
+	unsigned closeCallsMax = getApproxCountCalls();
+	if(!closeCallsMax) {
+		return 0;
+	}
+	closeCallsMax += closeCallsMax / 4;
+	Call **closeCalls = new FILE_LINE(0) Call*[closeCallsMax];
+	unsigned closeCallsCount = 0;
+	
 	int rejectedCalls_count = 0;
 	for(int passListMap = -1; passListMap < (opt_t2_boost == 2 ? preProcessPacketCallX_count : 0); passListMap++) {
 		map<string, Call*> *_calls_listMAP;
@@ -10682,7 +10700,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 		list<Call*>::iterator callIT1;
 		map<string, Call*>::iterator callMAPIT1;
 		map<sStreamIds2, Call*>::iterator callMAPIT2;
-		for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+		for(int passTypeCall = 0; passTypeCall < (passListMap == -1 ? 2 : 1); passTypeCall++) {
 			int typeCall = passTypeCall == 0 ? INVITE : MGCP;
 			if(typeCall == INVITE) {
 				if(opt_call_id_alternative[0]) {
@@ -10765,7 +10783,9 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 					if(call->listening_worker_run) {
 						*call->listening_worker_run = 0;
 					}
-					closeCalls.push_back(call);
+					if(closeCallsCount < closeCallsMax) {
+						closeCalls[closeCallsCount++] = call;
+					}
 					if(typeCall == INVITE) {
 						if(opt_call_id_alternative[0]) {
 							calls_list.erase(callIT1++);
@@ -10798,8 +10818,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 			unlock_calls_listMAP_X(passListMap);
 		}
 	}
-	for(list<Call*>::iterator iter = closeCalls.begin(); iter != closeCalls.end(); iter++) {
-		Call *call = *iter;
+	for(unsigned i = 0; i < closeCallsCount; i++) {
+		Call *call = closeCalls[i];
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
@@ -10830,8 +10850,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	}
 	/* move call to queue for mysql processing */
 	lock_calls_queue();
-	for(list<Call*>::iterator iter = closeCalls.begin(); iter != closeCalls.end(); iter++) {
-		Call *call = *iter;
+	for(unsigned i = 0; i < closeCallsCount; i++) {
+		Call *call = closeCalls[i];
 		if(call->push_call_to_calls_queue) {
 			syslog(LOG_WARNING,"try to duplicity push call %s / %i to calls_queue", call->call_id.c_str(), call->getTypeBase());
 		} else {
@@ -10840,6 +10860,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 		}
 	}
 	unlock_calls_queue();
+	
+	delete [] closeCalls;
 	
 	if(!currtime && is_terminating()) {
 		extern int terminated_call_cleanup;
@@ -10999,6 +11021,31 @@ void Calltable::addSystemCommand(const char *command) {
 	if(asyncSystemCommand) {
 		asyncSystemCommand->addSystemCommand(command);
 	}
+}
+
+unsigned Calltable::getApproxCountCalls() {
+	unsigned count = 0;
+	for(int passListMap = -1; passListMap < (opt_t2_boost == 2 ? preProcessPacketCallX_count : 0); passListMap++) {
+		map<string, Call*> *_calls_listMAP;
+		if(passListMap == -1) {
+			_calls_listMAP = &calls_listMAP;
+		} else {
+			_calls_listMAP = &calls_listMAP_X[passListMap];
+		}
+		for(int passTypeCall = 0; passTypeCall < (passListMap == -1 ? 2 : 1); passTypeCall++) {
+			int typeCall = passTypeCall == 0 ? INVITE : MGCP;
+			if(typeCall == INVITE) {
+				if(opt_call_id_alternative[0]) {
+					count += calls_list.size();
+				} else {
+					count += _calls_listMAP->size();
+				}
+			} else {
+				count += calls_by_stream_callid_listMAP.size();
+			}
+		}
+	}
+	return(count);
 }
 
 
