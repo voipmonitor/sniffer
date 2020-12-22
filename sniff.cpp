@@ -7892,18 +7892,19 @@ void *PreProcessPacket::outThreadFunction() {
 					if(!opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
-					if(opt_t2_boost == 2 && preProcessPacketCallX[0]->isActiveOutThread()) {
+					if(opt_t2_boost == 2 && preProcessPacketCallFindX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
 							preProcessPacketCallFindX[i]->push_batch();
 						}
 					}
 					break;
 				case ppt_pp_call:
-					if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread()) {
+					if(opt_t2_boost == 1 && preProcessPacketCallX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
 							preProcessPacketCallX[i]->push_batch();
 						}
-					} else {
+					}
+					if(!opt_t2_boost) {
 						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
 					break;
@@ -8008,14 +8009,16 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_call:
-		if(opt_t2_boost) {
+		if(opt_t2_boost == 1) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				if(!preProcessPacketCallX[i]->outThreadState) {
 					preProcessPacketCallX[i]->push_batch();
 				}
 			}
 		}
-		_process_packet__cleanup_calls(__FILE__, __LINE__);
+		if(!opt_t2_boost) {
+			_process_packet__cleanup_calls(__FILE__, __LINE__);
+		}
 		break;
 	case ppt_pp_callx:
 		if(opt_t2_boost && 

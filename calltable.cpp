@@ -674,6 +674,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtp_ip_port_counter = 0;
 	hash_queue_counter = 0;
 	attemptsClose = 0;
+	useInListCalls = 0;
 	use_rtcp_mux = false;
 	use_sdp_sendonly = false;
 	rtp_from_multiple_sensors = false;
@@ -10381,7 +10382,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
 				       (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now))))) {
 					if(activeCallsCount < activeCallsMax) {
-						activeCalls[activeCallsCount++] =call;
+						activeCalls[activeCallsCount++] = call;
+						call->useInListCalls = true;
 					}
 				}
 				if(typeCall == INVITE) {
@@ -10468,6 +10470,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 		}
+		call->useInListCalls = false;
 	}
 	
 	delete [] activeCalls;
@@ -10774,7 +10777,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 					call->removeFindTables(currtime, true);
 					if((currtime || !forceClose) &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-					    call->rtppacketsinqueue != 0)) {
+					    call->rtppacketsinqueue != 0 ||
+					    call->useInListCalls)) {
 						closeCall = false;
 						++rejectedCalls_count;
 					}

@@ -1735,7 +1735,8 @@ public:
 	list<vmIPport> rtp_ip_port_list;
 	#endif
 	volatile int hash_queue_counter;
-	int attemptsClose;
+	volatile int attemptsClose;
+	volatile int useInListCalls;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;

@@ -400,6 +400,22 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		memcpy_heapsafe(this->offsets, offsets_old, sizeof(uint32_t) * offsets_size_old,
 				__FILE__, __LINE__);
 		delete [] offsets_old;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		volatile int8_t *_sync_packets_lock_old = _sync_packets_lock;
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		memcpy((void*)this->_sync_packets_lock, (void*)_sync_packets_lock_old, 
+		       sizeof(int8_t) * offsets_size_old);
+		memset((void*)(this->_sync_packets_lock + offsets_size_old), 0, 
+		       sizeof(int8_t) * (this->offsets_size - offsets_size_old));
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		volatile int8_t *_sync_packets_flag_old = _sync_packets_flag;
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memcpy((void*)this->_sync_packets_flag, (void*)_sync_packets_flag_old, 
+		       sizeof(int8_t) * offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		memset((void*)(this->_sync_packets_flag + offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH), 0, 
+		       sizeof(int8_t) * (this->offsets_size - offsets_size_old) * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		#endif
+		#endif
 	}
 	this->offsets[this->count] = this->size;
 	this->size += sizeof(pcap_pkthdr_plus2) + header->get_caplen();
@@ -421,6 +437,14 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 	if(!this->offsets_size) {
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(15009) uint32_t[this->offsets_size];
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		#endif
+		#endif
 	}
 	if(this->size + sizeof(pcap_pkthdr_plus2) + min_size_for_packet > opt_pcap_queue_block_max_size) {
 		this->full = true;
@@ -562,6 +586,14 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 			sizeBlock,
 			__FILE__, __LINE__);
 	this->full = true;
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+	memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+	this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+	memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+	#endif
+	#endif
 }
 
 int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool restoreFromStore, string *error) {
@@ -5984,7 +6016,7 @@ string PcapQueue_readFromFifo::debugBlockStoreTrash() {
 						if(k) {
 							outStr << "/";
 						}
-						outStr << (int)bs->_sync_packets_flag[j * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + k];
+						outStr << (int)((u_int8_t)bs->_sync_packets_flag[j * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + k + 1]);
 					}
 					outStr << endl;
 				}
