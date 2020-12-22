@@ -431,6 +431,7 @@ int Mgmt_tcmalloc_stats(Mgmt_params *params);
 int Mgmt_hashtable_stats(Mgmt_params *params);
 int Mgmt_usleep_stats(Mgmt_params *params);
 int Mgmt_charts_cache(Mgmt_params *params);
+int Mgmt_packetbuffer_log(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -541,6 +542,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_hashtable_stats,
 	Mgmt_usleep_stats,
 	Mgmt_charts_cache,
+	Mgmt_packetbuffer_log,
 	NULL
 };
 
@@ -4608,6 +4610,37 @@ int Mgmt_charts_cache(Mgmt_params *params) {
 		chartsCacheStore(true);
 	} else if(strstr(params->buf, "cleanup_all") != NULL) {
 		chartsCacheCleanup(true);
+	}
+	return(0);
+}
+
+int Mgmt_packetbuffer_log(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"packetbuffer_log", "packetbuffer_log"},
+			{"packetbuffer_save", "packetbuffer_save"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "packetbuffer_log") != NULL) {
+		extern PcapQueue_readFromFifo *pcapQueueQ;
+		string log = pcapQueueQ->debugBlockStoreTrash();
+		return(params->sendString(log));
+	} else if(strstr(params->buf, "packetbuffer_save") != NULL) {
+		char *nextParams = params->buf + strlen("packetbuffer_save");
+		while(*nextParams == ' ') {
+			++nextParams;
+		}
+		vector<string> nextParamsV = explode(nextParams, ' ');
+		if(nextParamsV.size() >= 2) {
+			extern PcapQueue_readFromFifo *pcapQueueQ;
+			string rslt = pcapQueueQ->saveBlockStoreTrash(nextParamsV[0].c_str(), nextParamsV[1].c_str());
+			return(params->sendString(rslt + "\n"));
+		} else {
+			return(params->sendString("missing parameters: filter dest_file\n"));
+		}
 	}
 	return(0);
 }

@@ -221,11 +221,17 @@ struct sHeaderPacketPQout {
 			block_store_index = 0;
 		}
 	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	inline void blockstore_addflag(int flag) {
+	#else
 	inline void blockstore_addflag(int /*flag*/) {
+	#endif
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(block_store) {
 			block_store->add_flag(block_store_index, flag);
 		}
+		#endif
 		#endif
 	}
 };
@@ -853,6 +859,8 @@ public:
 	inline unsigned long long getLastUS() {
 		return(getTimeUS(_last_ts));
 	}
+	string debugBlockStoreTrash();
+	string saveBlockStoreTrash(const char *filter, const char *destFile);
 protected:
 	bool createThread();
 	bool createDestroyBlocksThread();
@@ -904,7 +912,6 @@ protected:
 		}
 		return(global_pcap_handle);
 	}
-	
 	string pcapStatString_memory_buffer(int statPeriod);
 	double pcapStat_get_memory_buffer_perc();
 	double pcapStat_get_memory_buffer_perc_trash();

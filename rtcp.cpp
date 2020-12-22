@@ -562,7 +562,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 	
 	/* Loop over report blocks */
 	reports_seen = 0;
-	while(all_block_size > sizeof(rtcp_xr_gen_t)) {
+	while(all_block_size > (int)sizeof(rtcp_xr_gen_t)) {
 
 		if(pkt + sizeof(rtcp_xr_gen_t) > (data + datalen)) {
 			break;
