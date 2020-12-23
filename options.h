@@ -80,6 +80,7 @@ public:
 	string number_dst;
 	string domain_src;
 	string domain_dst;
+	unsigned long int flags;
 };
 
 

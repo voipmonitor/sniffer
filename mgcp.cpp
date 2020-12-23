@@ -189,7 +189,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 					}
 					calltable->unlock_calls_listMAP();
 				}
-				unsigned int flags = 0;
+				unsigned long int flags = 0;
 				set_global_flags(flags);
 				IPfilter::add_call_flags(&flags, packetS->saddr_(), packetS->daddr_());
 				if(flags & FLAG_SKIPCDR) {

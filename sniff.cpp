@@ -2676,12 +2676,12 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 	detect_branch(packetS, branch, branch_length, detected);
 }
 
-inline unsigned int setCallFlags(unsigned int flags,
+inline unsigned int setCallFlags(unsigned long int flags,
 				 vmIP ip_src, vmIP ip_dst,
 				 char *caller, char *called,
 				 char *caller_domain, char *called_domain,
 				 ParsePacket::ppContentsX *parseContents) {
-	unsigned int flags_old = flags;
+	unsigned long int flags_old = flags;
 	IPfilter::add_call_flags(&flags, ip_src, ip_dst, true);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
@@ -2745,7 +2745,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	detect_callerd(packetS, sip_method, &data_callerd);
 	
 	//flags
-	unsigned int flags = 0;
+	unsigned long int flags = 0;
 	set_global_flags(flags);
 	if(sverb.dump_call_flags) {
 		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
@@ -3346,7 +3346,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	call->max_length_sip_packet = max(call->max_length_sip_packet, packetS->header_pt->len);
 	
 	if(!packetS->_createCall) {
-		unsigned int flags = call->flags;
+		unsigned long int flags = call->flags;
 		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags)) {
 			if((call->flags & FLAG_SAVERTP) && !(flags & FLAG_SAVERTP)) {
 				call->flags &= ~FLAG_SAVERTP;
@@ -4804,6 +4804,18 @@ void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 	sipMsg->domain_src = data_callerd.caller_domain;
 	sipMsg->domain_dst = data_callerd.called_domain;
 	sipMsg->callername = data_callerd.callername;
+
+	unsigned long int flags = 0;
+	set_global_flags(flags);
+	if(sverb.dump_call_flags) {
+		cout << "flags init sipMsg" <<  sipMsgType << " : " << printCallFlags(flags) << endl;
+	}
+	sipMsg->flags = setCallFlags(flags,
+			     sipMsg->ip_src, sipMsg->ip_dst,
+			     data_callerd.caller, data_callerd.called,
+			     data_callerd.caller_domain, data_callerd.called_domain,
+			     &packetS->parseContents);
+
 	long unsigned int ua_len;
 	char *ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
 	if(ua) {
@@ -4989,7 +5001,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 *header_ip,
 				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, vmIP sensor_ip,
 				pcap_t *handle) {
-	unsigned int flags = 0;
+	unsigned long int flags = 0;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {

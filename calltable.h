@@ -111,6 +111,12 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define FLAG_USE_SPOOL_2	(1 << 14)
 #define FLAG_SAVEDTMFDB		(1 << 15)
 #define FLAG_SAVEDTMFPCAP	(1 << 16)
+#define FLAG_SAVEOPTIONSDB	(1 << 17)
+#define FLAG_SAVEOPTIONSPCAP	(1 << 18)
+#define FLAG_SAVENOTIFYDB	(1 << 19)
+#define FLAG_SAVENOTIFYPCAP	(1 << 20)
+#define FLAG_SAVESUBSCRIBEDB	(1 << 21)
+#define FLAG_SAVESUBSCRIBEPCAP	(1 << 22)
 
 #define CDR_NEXT_MAX 10
 
@@ -481,7 +487,7 @@ public:
 	int useDlt;
 	pcap_t *useHandle;
 	string force_spool_path;
-	volatile unsigned int flags;
+	volatile unsigned long int flags;
 	void *user_data;
 	int user_data_type;
 protected:
@@ -2746,7 +2752,7 @@ private:
 int sip_request_name_to_int(const char *requestName, bool withResponse = false);
 const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 
-string printCallFlags(unsigned int flags);
+string printCallFlags(unsigned long int flags);
 eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
 
