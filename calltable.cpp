@@ -10183,6 +10183,9 @@ void Calltable::processCallsInChartsCache_thread_remove() {
 }
 
 string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
+	if(!useChartsCacheProcessThreads()) {
+		return("");
+	}
 	ostringstream cpuStr;
 	cpuStr << fixed;
 	double cpu_sum = 0;
