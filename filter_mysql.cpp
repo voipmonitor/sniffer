@@ -44,6 +44,9 @@ void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow
 	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
 	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
 	baseRow->spool_2 = sqlRow->isNull("spool_2") ? -1 : atoi((*sqlRow)["spool_2"].c_str());
+	baseRow->options = sqlRow->isNull("options") ? -1 : atoi((*sqlRow)["options"].c_str());
+	baseRow->notify = sqlRow->isNull("notify") ? -1 : atoi((*sqlRow)["notify"].c_str());
+	baseRow->subscribe = sqlRow->isNull("subscribe") ? -1 : atoi((*sqlRow)["subscribe"].c_str());
 }
 
 void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow) {
@@ -60,10 +63,13 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 	baseRow->mos_lqo = isStringNull((*row)["mos_lqo"]) ? -1 : atoi((*row)["mos_lqo"].c_str());
 	baseRow->hide_message = isStringNull((*row)["hide_message"]) ? -1 : atoi((*row)["hide_message"].c_str());
 	baseRow->spool_2 = isStringNull((*row)["spool_2"]) ? -1 : atoi((*row)["spool_2"].c_str());
+	baseRow->subscribe = isStringNull((*row)["subscribe"]) ? -1 : atoi((*row)["subscribe"].c_str());
+	baseRow->notify = isStringNull((*row)["notify"]) ? -1 : atoi((*row)["notify"].c_str());
+	baseRow->options = isStringNull((*row)["options"]) ? -1 : atoi((*row)["options"].c_str());
 }
 
-unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
-	unsigned int flags = 0;
+unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
+	unsigned long int flags = 0;
 	
 	if(baseRow->rtp == 1)			flags |= FLAG_RTP_ALL;
 	else if(baseRow->rtp == 2)		flags |= FLAG_RTP_HEAD;
@@ -107,11 +113,26 @@ unsigned int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	
 	if(baseRow->spool_2 == 1)		flags |= FLAG_SPOOL_2_SET;
 	else if(baseRow->spool_2 == 0)		flags |= FLAG_SPOOL_2_UNSET;
-	
+
+	if (baseRow->options == 0)		flags |= FLAG_NOOPTIONS_DB | FLAG_NOOPTIONS_PCAP;
+	else if (baseRow->options == 1)		flags |= FLAG_OPTIONS_DB | FLAG_OPTIONS_PCAP;
+	else if (baseRow->options == 2)		flags |= FLAG_OPTIONS_DB | FLAG_NOOPTIONS_PCAP;
+	else if (baseRow->options == 3)		flags |= FLAG_NOOPTIONS_DB | FLAG_OPTIONS_PCAP;
+
+	if (baseRow->notify == 0)		flags |= FLAG_NONOTIFY_DB | FLAG_NONOTIFY_PCAP;
+	else if (baseRow->notify == 1)		flags |= FLAG_NOTIFY_DB | FLAG_NOTIFY_PCAP;
+	else if (baseRow->notify == 2)		flags |= FLAG_NOTIFY_DB | FLAG_NONOTIFY_PCAP;
+	else if (baseRow->notify == 3)		flags |= FLAG_NONOTIFY_DB | FLAG_NOTIFY_PCAP;
+
+	if (baseRow->subscribe == 0)		flags |= FLAG_NOSUBSCRIBE_DB | FLAG_NOSUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 1)	flags |= FLAG_SUBSCRIBE_DB | FLAG_SUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 2)	flags |= FLAG_SUBSCRIBE_DB | FLAG_NOSUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 3)	flags |= FLAG_NOSUBSCRIBE_DB | FLAG_SUBSCRIBE_PCAP;
+
 	return(flags);
 }
 
-void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, unsigned int filterFlags) {
+void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags) {
 	if(filterFlags & FLAG_RTP_ALL)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	if(filterFlags & FLAG_RTP_HEAD)					{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
 	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
@@ -154,6 +175,21 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned int *callFlags, 
 	
 	if(filterFlags & FLAG_SPOOL_2_SET)				*callFlags |= FLAG_USE_SPOOL_2;
 	if(filterFlags & FLAG_SPOOL_2_UNSET)				*callFlags &= ~FLAG_USE_SPOOL_2;
+
+	if(filterFlags & FLAG_OPTIONS_DB)				*callFlags |= FLAG_SAVEOPTIONSDB;
+	if(filterFlags & FLAG_NOOPTIONS_DB)				*callFlags &= ~FLAG_SAVEOPTIONSDB;
+	if(filterFlags & FLAG_OPTIONS_PCAP)				*callFlags |= FLAG_SAVEOPTIONSPCAP;
+	if(filterFlags & FLAG_NOOPTIONS_PCAP)				*callFlags &= ~FLAG_SAVEOPTIONSPCAP;
+
+	if(filterFlags & FLAG_NOTIFY_DB)				*callFlags |= FLAG_SAVENOTIFYDB;
+	if(filterFlags & FLAG_NONOTIFY_DB)				*callFlags &= ~FLAG_SAVENOTIFYDB;
+	if(filterFlags & FLAG_NOTIFY_PCAP)				*callFlags |= FLAG_SAVENOTIFYPCAP;
+	if(filterFlags & FLAG_NONOTIFY_PCAP)				*callFlags &= ~FLAG_SAVENOTIFYPCAP;
+
+	if(filterFlags & FLAG_SUBSCRIBE_DB)				*callFlags |= FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & FLAG_NOSUBSCRIBE_DB)				*callFlags &= ~FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & FLAG_SUBSCRIBE_PCAP)				*callFlags |= FLAG_SAVESUBSCRIBEPCAP;
+	if(filterFlags & FLAG_NOSUBSCRIBE_PCAP)				*callFlags &= ~FLAG_SAVESUBSCRIBEPCAP;
 }
 
 /* IPfilter class */
@@ -226,7 +262,7 @@ void IPfilter::load(SqlDb *sqlDb) {
 	}
 };
 
-int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr) {
+int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -239,7 +275,7 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 
-		unsigned int origflags = *flags;
+		unsigned long int origflags = *flags;
 
 		if((!node->network.isSet() && !node->mask) ||
 		   ((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
@@ -262,13 +298,6 @@ int IPfilter::_add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP dad
 	return found;
 }
 
-void IPfilter::dump() {
-	t_node *node;
-	for(node = first_node; node != NULL; node = node->next) {
-		printf("ip[%s] mask[%d] flags[%u]\n", node->network.getString().c_str(), node->mask, node->flags);
-	}
-}
-
 void IPfilter::dump2man(ostringstream &oss) {
 	t_node *node;
 	lock();
@@ -278,7 +307,7 @@ void IPfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned int *flags, vmIP saddr, vmIP daddr, bool enableReload) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
 		applyReload();
@@ -482,7 +511,7 @@ void TELNUMfilter::loadFile() {
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst) {
 
 	int lastdirection = 0;
 	
@@ -546,20 +575,6 @@ int TELNUMfilter::_add_call_flags(volatile unsigned int *flags, char *telnum_src
 	return 0;
 }
 
-void TELNUMfilter::dump(t_node_tel *node) {
-	if(!node) {
-		node = first_node;
-	}
-	if(node->payload) {
-		printf("prefix[%s] flags[%u]\n", node->payload->prefix, node->payload->flags);
-	}
-	for(int i = 0; i < 256; i++) {
-		if(node->nodes[i]) {
-			this->dump(node->nodes[i]);
-		}
-	}
-}
-
 void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 	if(!node) {
 		lock();
@@ -577,7 +592,7 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned int *flags, char *telnum_src, char *telnum_dst, bool enableReload) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
 		applyReload();
@@ -709,7 +724,7 @@ void DOMAINfilter::load(SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -729,13 +744,6 @@ DOMAINfilter::_add_call_flags(volatile unsigned int *flags, char *domain_src, ch
 	return 0;
 }
 
-void DOMAINfilter::dump() {
-	t_node *node;
-	for(node = first_node; node != NULL; node = node->next) {
-		printf("domain[%s] flags[%u]\n", node->domain.c_str(), node->flags);
-	}
-}
-
 void DOMAINfilter::dump2man(ostringstream &oss) {
 	t_node *node;
 	lock();
@@ -745,7 +753,7 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned int *flags, char *domain_src, char *domain_dst, bool enableReload) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
 		applyReload();
@@ -917,7 +925,7 @@ void SIP_HEADERfilter::loadFile() {
 	}
 }
 
-int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -969,18 +977,6 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 	return 0;
 }
 
-void SIP_HEADERfilter::dump() {
-	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
-		header_data *data = &it_header->second;
-		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
-			printf("header[%s] content[%s] regexp[0] prefix[%u] flags[%u]\n", it_header->first.c_str(), it_content->first.c_str(), it_content->second.prefix, it_content->second.flags);
-		}
-		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
-			printf("header[%s] content[%s] regexp[1] prefix[0] flags[%u]\n", it_header->first.c_str(), it_content->first.c_str(), it_content->second.flags);
-		}
-	}
-}
-
 void SIP_HEADERfilter::dump2man(ostringstream &oss) {
 	lock();
 	for(map<std::string, header_data>::iterator it_header = filter_active->data.begin(); it_header != filter_active->data.end(); it_header++) {
@@ -1001,7 +997,7 @@ void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned int *flags, bool enableReload) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool enableReload) {
 	int rslt = 0;
 	if(enableReload && reload_do) {
 		applyReload();

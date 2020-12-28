@@ -880,6 +880,8 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
  
 	/*
 	cout << "save to db " 
+	     << requestResponse->request->flags << ' '
+	     << requestResponse->response->flags << ' '
 	     << requestResponse->request->type << ' '
 	     << requestResponse->request->callid << ' '
 	     << requestResponse->time_us 
@@ -1105,18 +1107,18 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 
 bool cSipMsgRelations::needSavePcap(cSipMsgRequestResponse *requestResponse) {
 	if(requestResponse->request) {
-		return((requestResponse->request->type == smt_options && opt_save_sip_options) ||
-		       (requestResponse->request->type == smt_subscribe && opt_save_sip_subscribe) ||
-		       (requestResponse->request->type == smt_notify && opt_save_sip_notify));
+		return((requestResponse->request->type == smt_options && (requestResponse->request->flags & FLAG_SAVEOPTIONSPCAP)) ||
+		       (requestResponse->request->type == smt_subscribe && (requestResponse->request->flags & FLAG_SAVESUBSCRIBEPCAP)) ||
+		       (requestResponse->request->type == smt_notify && (requestResponse->request->flags & FLAG_SAVENOTIFYPCAP)));
 	}
 	return(false);
 }
 
 bool cSipMsgRelations::needSaveToDb(cSipMsgRequestResponse *requestResponse) {
 	if(!requestResponse->saved_to_db && requestResponse->request) {
-		return((requestResponse->request->type == smt_options && opt_sip_options != 2 && (opt_sip_options || opt_save_sip_options)) ||
-		       (requestResponse->request->type == smt_subscribe && opt_sip_subscribe != 2 && (opt_sip_subscribe || opt_save_sip_subscribe)) ||
-		       (requestResponse->request->type == smt_notify && opt_sip_notify != 2 && (opt_sip_notify || opt_save_sip_notify)));
+		return((requestResponse->request->type == smt_options && (requestResponse->request->flags & FLAG_SAVEOPTIONSDB)) ||
+		       (requestResponse->request->type == smt_subscribe && (requestResponse->request->flags & FLAG_SAVESUBSCRIBEDB)) ||
+		       (requestResponse->request->type == smt_notify && (requestResponse->request->flags & FLAG_SAVENOTIFYDB)));
 	}
 	return(false);
 }
