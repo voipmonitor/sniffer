@@ -8,6 +8,8 @@
 #include "tools.h"
 #include "sql_db.h"
 #include "pcap_queue.h"
+#include "sniff.h"
+#include "filter_mysql.h"
 
 
 extern char * gettag_sip_ext(packet_s_process *packetS,
@@ -249,12 +251,12 @@ void cSipMsgRequestResponse::saveToDb(cSipMsgRelations *relations) {
 	relations->saveToDb(this);
 }
 
-bool cSipMsgRequestResponse::needSavePcap(cSipMsgRelations *relations) {
-	return(relations->needSavePcap(this));
+bool cSipMsgRequestResponse::needSavePcap(cSipMsgRelations *relations, cSipMsgRelation *relation) {
+	return(relations->needSavePcap(this, relation));
 }
 
-bool cSipMsgRequestResponse::needSaveToDb(cSipMsgRelations *relations) {
-	return(relations->needSaveToDb(this));
+bool cSipMsgRequestResponse::needSaveToDb(cSipMsgRelations *relations, cSipMsgRelation *relation) {
+	return(relations->needSaveToDb(this, relation));
 }
 
 u_int64_t cSipMsgRequestResponse::getFirstRequestTime() {
@@ -284,8 +286,8 @@ string cSipMsgRequestResponse::getPcapFileName() {
 	return(filename);
 }
 
-void cSipMsgRequestResponse::destroy(cSipMsgRelations *relations) {
-	if(needSaveToDb(relations)) {
+void cSipMsgRequestResponse::destroy(cSipMsgRelations *relations, cSipMsgRelation *relation) {
+	if(needSaveToDb(relations, relation)) {
 		saveToDb(relations);
 	}
 	if(isSetCdp()) {
@@ -397,7 +399,7 @@ void cSipMsgRelation::addSipMsg(cSipMsgItem *item, packet_s_process *packetS, cS
 			requestResponse->request = item;
 			requestResponse->request->parseContent(packetS);
 			requestResponse->parseCustomHeaders(packetS, CustomHeaders::dir_request);
-			if(requestResponse->needSavePcap(relations)) {
+			if(requestResponse->needSavePcap(relations, this)) {
 				requestResponse->openPcap(packetS, item->type);
 			}
 			queue_req_resp.push_back(requestResponse);
@@ -716,7 +718,7 @@ void cSipMsgRelation::cleanup_item_response_by_limit_time(u_int64_t limit_time_u
 		convRequestResponseToHistoryData(requestResponse, &historyItem, true, relations, false);
 		history.push_back(historyItem);
 		queue_req_resp.pop_front();
-		requestResponse->destroy(relations);
+		requestResponse->destroy(relations, this);
 	}
 	unlock();
 }
@@ -729,7 +731,7 @@ void cSipMsgRelation::cleanup_item_response_by_max_items(unsigned max_items, cSi
 		convRequestResponseToHistoryData(requestResponse, &historyItem, true, relations, false);
 		history.push_back(historyItem);
 		queue_req_resp.pop_front();
-		requestResponse->destroy(relations);
+		requestResponse->destroy(relations, this);
 	}
 	unlock();
 }
@@ -757,7 +759,7 @@ void cSipMsgRelation::close_pcaps_by_limit_time(u_int64_t limit_time_us, cSipMsg
 	for(iter = queue_req_resp.begin(); iter != queue_req_resp.end(); iter++) {
 		if((*iter)->getLastTime() < limit_time_us && 
 		   (!is_read_from_file_by_pb_acttime() || (*iter)->response)) {
-			if((*iter)->needSaveToDb(relations)) {
+			if((*iter)->needSaveToDb(relations, this)) {
 				(*iter)->saveToDb(relations);
 			}
 			if((*iter)->isOpenPcap()) {
@@ -819,6 +821,18 @@ void cSipMsgRelations::addSipMsg(cSipMsgItem *item, packet_s_process *packetS) {
 		}
 		relation = new FILE_LINE(0) cSipMsgRelation(item);
 		relations[relation] = relation;
+
+		unsigned long int flags = 0;
+		set_global_flags(flags);
+		if(sverb.dump_call_flags) {
+			cout << "flags init cSipMsgRelation" <<  item->type << " : " << printCallFlags(flags) << endl;
+		}
+		relation->flags = setCallFlags(flags,
+				item->ip_src, item->ip_dst,
+				const_cast<char*>(item->number_src.c_str()), const_cast<char*>(item->number_dst.c_str()),
+				const_cast<char*>(item->domain_src.c_str()), const_cast<char*>(item->domain_dst.c_str()),
+				&packetS->parseContents);
+
 	}
 	relation->addSipMsg(item, packetS, this);
 	unlock_relations();
@@ -1105,20 +1119,20 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	}
 }
 
-bool cSipMsgRelations::needSavePcap(cSipMsgRequestResponse *requestResponse) {
+bool cSipMsgRelations::needSavePcap(cSipMsgRequestResponse *requestResponse, cSipMsgRelation *relation) {
 	if(requestResponse->request) {
-		return((requestResponse->request->type == smt_options && (requestResponse->request->flags & FLAG_SAVEOPTIONSPCAP)) ||
-		       (requestResponse->request->type == smt_subscribe && (requestResponse->request->flags & FLAG_SAVESUBSCRIBEPCAP)) ||
-		       (requestResponse->request->type == smt_notify && (requestResponse->request->flags & FLAG_SAVENOTIFYPCAP)));
+		return((requestResponse->request->type == smt_options && (relation->flags & FLAG_SAVEOPTIONSPCAP)) ||
+		       (requestResponse->request->type == smt_subscribe && (relation->flags & FLAG_SAVESUBSCRIBEPCAP)) ||
+		       (requestResponse->request->type == smt_notify && (relation->flags & FLAG_SAVENOTIFYPCAP)));
 	}
 	return(false);
 }
 
-bool cSipMsgRelations::needSaveToDb(cSipMsgRequestResponse *requestResponse) {
+bool cSipMsgRelations::needSaveToDb(cSipMsgRequestResponse *requestResponse, cSipMsgRelation *relation) {
 	if(!requestResponse->saved_to_db && requestResponse->request) {
-		return((requestResponse->request->type == smt_options && (requestResponse->request->flags & FLAG_SAVEOPTIONSDB)) ||
-		       (requestResponse->request->type == smt_subscribe && (requestResponse->request->flags & FLAG_SAVESUBSCRIBEDB)) ||
-		       (requestResponse->request->type == smt_notify && (requestResponse->request->flags & FLAG_SAVENOTIFYDB)));
+		return((requestResponse->request->type == smt_options && (relation->flags & FLAG_SAVEOPTIONSDB)) ||
+		       (requestResponse->request->type == smt_subscribe && (relation->flags & FLAG_SAVESUBSCRIBEDB)) ||
+		       (requestResponse->request->type == smt_notify && (relation->flags & FLAG_SAVENOTIFYDB)));
 	}
 	return(false);
 }

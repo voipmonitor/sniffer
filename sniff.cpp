@@ -4805,17 +4805,6 @@ void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 	sipMsg->domain_dst = data_callerd.called_domain;
 	sipMsg->callername = data_callerd.callername;
 
-	unsigned long int flags = 0;
-	set_global_flags(flags);
-	if(sverb.dump_call_flags) {
-		cout << "flags init sipMsg" <<  sipMsgType << " : " << printCallFlags(flags) << endl;
-	}
-	sipMsg->flags = setCallFlags(flags,
-			     sipMsg->ip_src, sipMsg->ip_dst,
-			     data_callerd.caller, data_callerd.called,
-			     data_callerd.caller_domain, data_callerd.called_domain,
-			     &packetS->parseContents);
-
 	long unsigned int ua_len;
 	char *ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
 	if(ua) {
