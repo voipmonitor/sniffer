@@ -266,7 +266,6 @@ public:
 			    cSipMsgRelations *relations,
 			    bool useLock = true);
 	void debug_out(cSipMsgRelations *relations);
-	unsigned long int flags;
 private:
 	void convRequestResponseToHistoryData(cSipMsgRequestResponse *itemResponse, sHistoryData *historyData, bool useResponse,
 					      cSipMsgRelations *relations,
@@ -295,6 +294,7 @@ private:
 	deque<cSipMsgRequestResponse*> queue_req_resp;
 	deque<sHistoryData> history;
 	int id_sensor;
+	unsigned long int flags;
 	volatile int _sync;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;

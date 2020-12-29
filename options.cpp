@@ -351,6 +351,7 @@ cSipMsgRelation::cSipMsgRelation(cSipMsgItem *item) {
 	id = ++_id;
 	unlock_id();
 	id_sensor = 0;
+	flags = 0;
 	*(cSipMsgItem_base*)this = *item;
 }
 
