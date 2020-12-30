@@ -256,9 +256,12 @@ string SqlDb_row::_getNameField(int indexField) {
 
 string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
+	rslt.reserve(this->row.size() * 20);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
-		rslt += border + /*'`' +*/ this->row[i].fieldName + /*'`' +*/ border;
+		rslt += border;
+		rslt += this->row[i].fieldName;
+		rslt += border;
 	}
 	return(rslt);
 }
@@ -269,6 +272,7 @@ string SqlDb_row::implodeFieldsToCsv() {
 
 string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll) {
 	string rslt;
+	rslt.reserve(this->row.size() * 100);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
@@ -282,9 +286,9 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
 			rslt += fieldContent;
 		} else {
-			rslt += border + 
-				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
-				border;
+			rslt += border;
+			rslt += escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
+			rslt += border;
 		}
 	}
 	return(rslt);
