@@ -126,8 +126,9 @@ public:
 			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int);
 			f->ifv.v._int = content;
 		} else {
-			string str_content = std::to_string(content);
-			f = this->add(str_content.c_str(), fieldName, 0, 0, _ift_int);
+			char str_content[100];
+			intToString(content, str_content);
+			f = this->add(str_content, fieldName, 0, 0, _ift_int);
 			f->ifv.v._int = content;
 		}
 		return(f);
@@ -138,8 +139,9 @@ public:
 			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u);
 			f->ifv.v._int_u = content;
 		} else {
-			string str_content = std::to_string(content);
-			f = this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u);
+			char str_content[100];
+			intToString(content, str_content);
+			f = this->add(str_content, fieldName, 0, 0, _ift_int_u);
 			f->ifv.v._int_u = content;
 		}
 		return(f);
@@ -149,8 +151,9 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		} else {
-			string str_content = std::to_string(content);
-			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int)
+			char str_content[100];
+			intToString(content, str_content);
+			this->add(str_content, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
 	}
@@ -159,8 +162,9 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		} else {
-			string str_content = std::to_string(content);
-			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u)
+			char str_content[100];
+			intToString(content, str_content);
+			this->add(str_content, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
 	}
@@ -169,8 +173,9 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		} else {
-			string str_content = std::to_string(content);
-			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int)
+			char str_content[100];
+			intToString(content, str_content);
+			this->add(str_content, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
 	}
@@ -179,8 +184,9 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		} else {
-			string str_content = std::to_string(content);
-			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u)
+			char str_content[100];
+			intToString(content, str_content);
+			this->add(str_content, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
 	}
@@ -189,8 +195,9 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_double)
 			     ->ifv.v._double = content;
 		} else {
-			string str_content = std::to_string(content);
-			this->add(str_content.c_str(), fieldName, 0, 0, _ift_double)
+			char str_content[100];
+			floatToString(content, str_content);
+			this->add(str_content, fieldName, 0, 0, _ift_double)
 			    ->ifv.v._double = content;
 		}
 	}
