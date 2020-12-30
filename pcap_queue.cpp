@@ -3282,6 +3282,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			} else if(opt_nonstop_read) {
 				_file = _files[0];
 				read_from_file_index = 0;
+				opt_pb_read_from_file_acttime_diff = 0;
 			}
 			if(!_file.empty()) {
 				pcap_close(this->pcapHandle);
@@ -3636,6 +3637,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 				if(sleepCounter > 30 && opt_nonstop_read) {
 					rss_purge();
 					syslog(LOG_NOTICE, "purge");
+					extern void reset_cleanup_variables();
+					reset_cleanup_variables();
+					syslog(LOG_NOTICE, "reset cleanup variables");
 					break;
 				}
 			}

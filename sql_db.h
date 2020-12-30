@@ -126,9 +126,8 @@ public:
 			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int);
 			f->ifv.v._int = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%i", content);
-			f = this->add(str_content, fieldName, 0, 0, _ift_int);
+			string str_content = std::to_string(content);
+			f = this->add(str_content.c_str(), fieldName, 0, 0, _ift_int);
 			f->ifv.v._int = content;
 		}
 		return(f);
@@ -139,9 +138,8 @@ public:
 			f = this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u);
 			f->ifv.v._int_u = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%u", content);
-			f = this->add(str_content, fieldName, 0, 0, _ift_int_u);
+			string str_content = std::to_string(content);
+			f = this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u);
 			f->ifv.v._int_u = content;
 		}
 		return(f);
@@ -151,9 +149,8 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%li", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int)
+			string str_content = std::to_string(content);
+			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
 	}
@@ -162,9 +159,8 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lu", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int_u)
+			string str_content = std::to_string(content);
+			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
 	}
@@ -173,9 +169,8 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lli", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int)
+			string str_content = std::to_string(content);
+			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
 	}
@@ -184,9 +179,8 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%llu", content);
-			this->add(str_content, fieldName, 0, 0, _ift_int_u)
+			string str_content = std::to_string(content);
+			this->add(str_content.c_str(), fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
 	}
@@ -195,9 +189,8 @@ public:
 			this->add((const char*)NULL, fieldName, 0, 0, _ift_double)
 			     ->ifv.v._double = content;
 		} else {
-			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lf", content);
-			this->add(str_content, fieldName, 0, 0, _ift_double)
+			string str_content = std::to_string(content);
+			this->add(str_content.c_str(), fieldName, 0, 0, _ift_double)
 			    ->ifv.v._double = content;
 		}
 	}

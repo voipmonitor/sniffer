@@ -5444,6 +5444,18 @@ inline void process_packet__cleanup_ss7(timeval *ts_input) {
 	process_packet__last_cleanup_ss7 = ts.tv_sec;
 }
 
+void reset_cleanup_variables() {
+	process_packet__last_cleanup_calls = 0;
+	process_packet__last_cleanup_calls_diff = 0;
+	process_packet__last_destroy_calls = 0;
+	process_packet__last_cleanup_registers = 0;
+	process_packet__last_cleanup_registers_diff = 0;
+	process_packet__last_destroy_registers = 0;
+	process_packet__last_cleanup_ss7 = 0;
+	process_packet__last_cleanup_ss7_diff = 0;
+	__last_memory_purge = 0;
+}
+
 inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
 	int sip_method = 0;
 	if(sip_response) {
