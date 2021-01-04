@@ -1339,7 +1339,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 		}
 	}
 
-	unsigned int flags = 0;
+	unsigned long int flags = 0;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {

@@ -192,14 +192,14 @@ public:
 	}
 	void savePacket(packet_s_process *packetS);
 	void saveToDb(cSipMsgRelations *relations);
-	bool needSavePcap(cSipMsgRelations *relations);
-	bool needSaveToDb(cSipMsgRelations *relations);
+	bool needSavePcap(cSipMsgRelations *relations, class cSipMsgRelation *relation);
+	bool needSaveToDb(cSipMsgRelations *relations, class cSipMsgRelation *relation);
 	u_int64_t getFirstRequestTime();
 	u_int64_t getLastRequestTime();
 	u_int64_t getLastResponseTime();
 	u_int64_t getLastTime();
 	string getPcapFileName();
-	void destroy(cSipMsgRelations *relations);
+	void destroy(cSipMsgRelations *relations, class cSipMsgRelation *relation);
 	void parseCustomHeaders(packet_s_process *packetS, CustomHeaders::eReqRespDirection reqRespDirection);
 public:
 	u_int64_t time_us;
@@ -294,6 +294,7 @@ private:
 	deque<cSipMsgRequestResponse*> queue_req_resp;
 	deque<sHistoryData> history;
 	int id_sensor;
+	unsigned long int flags;
 	volatile int _sync;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
@@ -420,8 +421,8 @@ public:
 	void closePcap(sCallDataPcap *cdp);
 	void saveToDb(cSipMsgRequestResponse *itemResponse);
 	void _saveToDb(cSipMsgRequestResponse *itemResponse, bool enableBatchIfPossible = true);
-	bool needSavePcap(cSipMsgRequestResponse *itemResponse);
-	bool needSaveToDb(cSipMsgRequestResponse *itemResponse);
+	bool needSavePcap(cSipMsgRequestResponse *itemResponse, cSipMsgRelation *relation);
+	bool needSaveToDb(cSipMsgRequestResponse *itemResponse, cSipMsgRelation *relation);
 	void pushToCdpQueue(sCallDataPcap *cdp);
 	void runInternalThread();
 private:

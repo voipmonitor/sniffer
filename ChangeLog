@@ -1,3 +1,8 @@
+27.4 30.12.2020
+===============
+- added capture rules for sip options/subscribe/notify [VS-919]
+
+
 27.3 18.12.2020
 ===============
 - implemented hourly partition options instead of per day (for extreme CDR rate >= 15000) 

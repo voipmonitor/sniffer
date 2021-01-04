@@ -10208,6 +10208,9 @@ void Calltable::processCallsInChartsCache_thread_remove() {
 }
 
 string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
+	if(!useChartsCacheProcessThreads()) {
+		return("");
+	}
 	ostringstream cpuStr;
 	cpuStr << fixed;
 	double cpu_sum = 0;
@@ -12718,7 +12721,7 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse) {
 }
 
 
-string printCallFlags(unsigned int flags) {
+string printCallFlags(unsigned long int flags) {
 	ostringstream outStr;
 	if(flags & FLAG_SAVERTP)		outStr << "savertp ";
 	if(flags & FLAG_SAVERTCP)		outStr << "savertcp ";
@@ -12737,6 +12740,12 @@ string printCallFlags(unsigned int flags) {
 	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
 	if(flags & FLAG_SAVEDTMFDB)		outStr << "savedtmfdb ";
 	if(flags & FLAG_SAVEDTMFPCAP)		outStr << "savedtmfpcap ";
+	if(flags & FLAG_SAVEOPTIONSDB)		outStr << "saveoptionsdb ";
+	if(flags & FLAG_SAVEOPTIONSPCAP)	outStr << "saveoptionspcap ";
+	if(flags & FLAG_SAVENOTIFYDB)		outStr << "savenotifydb ";
+	if(flags & FLAG_SAVENOTIFYPCAP)		outStr << "savenotifypcap ";
+	if(flags & FLAG_SAVESUBSCRIBEDB)	outStr << "savesubscribedb ";
+	if(flags & FLAG_SAVESUBSCRIBEPCAP)	outStr << "savesubscribepcap ";
 	return(outStr.str());
 }
 
