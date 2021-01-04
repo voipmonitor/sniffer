@@ -236,10 +236,12 @@ extern int opt_182queuedpauserecording;
 extern SocketSimpleBufferWrite *sipSendSocket;
 extern int opt_sip_send_before_packetbuffer;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-extern PreProcessPacket *preProcessPacketCallX[];
-extern PreProcessPacket *preProcessPacketCallFindX[];
+extern PreProcessPacket **preProcessPacketCallX;
+extern PreProcessPacket **preProcessPacketCallFindX;
+extern int preProcessPacketCallX_count;
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
+extern volatile PreProcessPacket::eCallX_state preProcessPacketCallX_state;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern CustomHeaders *custom_headers_sip_msg;
@@ -5360,10 +5362,10 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check) {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
-				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size(), duplicate_counter);
+				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size(), duplicate_counter);
 		} else {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", 
-				(int)calltable->calls_list_count(), (int)calltable->calls_queue.size());
+				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size());
 		}
 	}
 	process_packet__last_cleanup_calls = ts.tv_sec;
@@ -6841,7 +6843,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 					_process_packet__cleanup_calls(&HPH(header_packet)->ts, __FILE__, __LINE__);
 					ostringstream outStr;
 					outStr << fixed;
-					outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
+					outStr << "calls[" << calltable->getCountCalls() << ",r:" << calltable->registers_listMAP.size() << "]"
 					       << "[" << calls_counter << ",r:" << registers_counter << "]";
 					syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 					lastStatTimeMS = timeMS;
@@ -7904,14 +7906,16 @@ void *PreProcessPacket::outThreadFunction() {
 					if(!opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
-					if(opt_t2_boost == 2 && preProcessPacketCallFindX[0]->isActiveOutThread()) {
+					if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find && 
+					   preProcessPacketCallFindX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
 							preProcessPacketCallFindX[i]->push_batch();
 						}
 					}
 					break;
 				case ppt_pp_call:
-					if(opt_t2_boost == 1 && preProcessPacketCallX[0]->isActiveOutThread()) {
+					if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process && 
+					   preProcessPacketCallX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
 							preProcessPacketCallX[i]->push_batch();
 						}
@@ -7921,7 +7925,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					break;
 				case ppt_pp_callx:
-					if(opt_t2_boost && preProcessPacketCallX[0]->isActiveOutThread() &&
+					if(opt_t2_boost && preProcessPacketCallX_state != PreProcessPacket::callx_na &&
+					   preProcessPacketCallX[0]->isActiveOutThread() &&
 					   idPreProcessThread == preProcessPacketCallX_count) {
 						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
@@ -8012,7 +8017,7 @@ void PreProcessPacket::push_batch_nothread() {
 				preProcessPacket[ppt_pp_rtp]->push_batch();
 			}
 		}
-		if(opt_t2_boost == 2) {
+		if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				if(!preProcessPacketCallFindX[i]->outThreadState) {
 					preProcessPacketCallFindX[i]->push_batch();
@@ -8021,7 +8026,7 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_pp_call:
-		if(opt_t2_boost == 1) {
+		if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				if(!preProcessPacketCallX[i]->outThreadState) {
 					preProcessPacketCallX[i]->push_batch();
@@ -8234,7 +8239,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		bool pushed = false;
 		if(!packetS->is_register()) {
-			if(opt_t2_boost == 2 && preProcessPacketCallFindX[0]->isActiveOutThread()) {
+			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find &&
+			   preProcessPacketCallFindX[0]->isActiveOutThread()) {
 				preProcessPacketCallFindX[packetS->get_callid_sipextx_index()]->push_packet(packetS);
 				pushed = true;
 			} else {
@@ -8281,7 +8287,8 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		    (packetS->_createCall && packetS->call_created && packetS->call_created->typeIs(BYE)))) {
 			process_packet_sip_alone_bye(packetS);
 		} else {
-			if(opt_t2_boost == 1 && preProcessPacketCallX[0]->isActiveOutThread()) {
+			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process &&
+			   preProcessPacketCallX[0]->isActiveOutThread()) {
 				Call *call = packetS->call ? packetS->call : packetS->call_created;
 				preProcessPacketCallX[call ? call->counter % preProcessPacketCallX_count : 0]->push_packet(packetS);
 				return;
@@ -8695,12 +8702,15 @@ void PreProcessPacket::autoStartCallX_PreProcessPacket() {
 				preProcessPacketCallX[i]->startOutThread();
 			}
 		}
-		if(opt_t2_boost == 2) {
+		if(calltable->enableCallFindX()) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				if(!preProcessPacketCallFindX[i]->outThreadState) {
 					preProcessPacketCallFindX[i]->startOutThread();
 				}
 			}
+			preProcessPacketCallX_state = PreProcessPacket::callx_find;
+		} else {
+			preProcessPacketCallX_state = PreProcessPacket::callx_process;
 		}
 	}
 }

@@ -2002,7 +2002,7 @@ public:
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
-	map<string, Call*> calls_listMAP_X[preProcessPacketCallX_count];
+	map<string, Call*> *calls_listMAP_X;
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
@@ -2090,21 +2090,11 @@ public:
 	Call *add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		       pcap_t *handle, int dlt, int sensorId);
 	
-	size_t calls_list_count() {
-		extern char opt_call_id_alternative[256];
-		extern int opt_t2_boost;
-		if(opt_call_id_alternative[0]) {
-			return(calls_list.size());
-		} else if(opt_t2_boost == 2) {
-			size_t count = 0;
-			for(int i = 0; i < preProcessPacketCallX_count; i++) {
-				count += calls_listMAP_X[i].size();
-			}
-			return(count);
-		} else {
-			return(calls_listMAP.size());
-		}
-	}
+	size_t getCountCalls();
+	bool enableCallX();
+	bool useCallX();
+	bool enableCallFindX();
+	bool useCallFindX();
 
 	/**
 	 * @brief find Call by call_id
@@ -2510,8 +2500,6 @@ public:
 	
 	void addSystemCommand(const char *command);
 	
-	unsigned getApproxCountCalls();
-	
 private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue
@@ -2537,7 +2525,7 @@ private:
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
-	volatile int _sync_lock_calls_listMAP_X[preProcessPacketCallX_count];
+	volatile int *_sync_lock_calls_listMAP_X;
 	volatile int _sync_lock_calls_mergeMAP;
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;

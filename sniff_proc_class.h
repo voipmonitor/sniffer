@@ -264,6 +264,11 @@ public:
 		ppt_pp_callx,
 		ppt_pp_callfindx
 	};
+	enum eCallX_state {
+		callx_na,
+		callx_process,
+		callx_find
+	};
 	struct batch_packet_s {
 		batch_packet_s(unsigned max_count) {
 			count = 0;

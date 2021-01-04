@@ -121,8 +121,9 @@ extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-extern PreProcessPacket *preProcessPacketCallX[];
-extern PreProcessPacket *preProcessPacketCallFindX[];
+extern PreProcessPacket **preProcessPacketCallX;
+extern PreProcessPacket **preProcessPacketCallFindX;
+extern int preProcessPacketCallX_count;
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1428,7 +1429,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
-			outStr << "CALLS: " << calltable->calls_list_count() << ", " << calls_counter;
+			outStr << "CALLS: " << calltable->getCountCalls() << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
 			}
@@ -1476,7 +1477,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("check heap");
 		}
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
+			outStr << "calls[" << calltable->getCountCalls() << ",r:" << calltable->registers_listMAP.size() << "]"
 			       << "[" << calls_counter << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();
@@ -1509,7 +1510,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
 			}
 			if (opt_rrd) {
-				rrd_set_value(RRD_VALUE_inv, calltable->calls_list_count());
+				rrd_set_value(RRD_VALUE_inv, calltable->getCountCalls());
 				rrd_set_value(RRD_VALUE_reg, calltable->registers_listMAP.size());
 			}
 			if(sverb.log_profiler) {
@@ -2240,47 +2241,49 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-			if(preProcessPacketCallX[0]) {
-				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-					double percFullQring;
-					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
-					if(t2cpu_preprocess_packet_out_thread >= 0) {
-						outStrStat << "/" 
-							   << preProcessPacketCallX[i]->getShortcatTypeThread()
-							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-						if(sverb.qring_stat) {
-							double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
-							if(qringFillingPerc > 0) {
-								outStrStat << "r" << qringFillingPerc;
+			if(opt_t2_boost) {
+				if(preProcessPacketCallX && calltable->useCallX()) {
+					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
+						double percFullQring;
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
+						if(t2cpu_preprocess_packet_out_thread >= 0) {
+							outStrStat << "/" 
+								   << preProcessPacketCallX[i]->getShortcatTypeThread()
+								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
 							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 						}
-						if(sverb.qring_full && percFullQring > sverb.qring_full) {
-							outStrStat << "#" << percFullQring;
-						}
-						++count_t2cpu;
-						sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 					}
 				}
-			}
-			if(preProcessPacketCallFindX[0]) {
-				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					double percFullQring;
-					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, &percFullQring);
-					if(t2cpu_preprocess_packet_out_thread >= 0) {
-						outStrStat << "/" 
-							   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
-							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-						if(sverb.qring_stat) {
-							double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
-							if(qringFillingPerc > 0) {
-								outStrStat << "r" << qringFillingPerc;
+				if(preProcessPacketCallFindX && calltable->useCallFindX()) {
+					for(int i = 0; i < preProcessPacketCallX_count; i++) {
+						double percFullQring;
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, &percFullQring);
+						if(t2cpu_preprocess_packet_out_thread >= 0) {
+							outStrStat << "/" 
+								   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
+								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
 							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 						}
-						if(sverb.qring_full && percFullQring > sverb.qring_full) {
-							outStrStat << "#" << percFullQring;
-						}
-						++count_t2cpu;
-						sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 					}
 				}
 			}
@@ -2354,7 +2357,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
 			   heapPerc > 10 &&
-			   opt_t2_boost && !preProcessPacketCallX[0]->isActiveOutThread()) {
+			   calltable->enableCallX() && !calltable->useCallX()) {
 				PreProcessPacket::autoStartCallX_PreProcessPacket();
 			}
 			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
@@ -2491,11 +2494,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
-		   calls_counter > (int)calltable->calls_list_count() * 2) {
+		   calls_counter > (int)calltable->getCountCalls() * 2) {
 			extern void storing_cdr_next_thread_add();
 			storing_cdr_next_thread_add();
 		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
-			  calls_counter < calltable->calls_list_count() * 1.5) {
+			  calls_counter < (int)calltable->getCountCalls() * 1.5) {
 			extern void storing_cdr_next_thread_remove();
 			storing_cdr_next_thread_remove();
 		}

@@ -559,6 +559,7 @@ struct packet_s_process : public packet_s_process_0 {
 		return(callid_long ? callid_long : callid);
 	}
 	inline u_int8_t get_callid_sipextx_index() {
+		extern int preProcessPacketCallX_count;
 		char *_callid = callid_long ? callid_long : callid;
 		unsigned length = 0;
 		while(length < 6 && _callid[length]) {
