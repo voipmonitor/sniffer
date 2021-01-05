@@ -2246,6 +2246,19 @@ public:
 					break;
 				}
 			}
+			if(!rslt_call && useCallFindX()) {
+				extern int preProcessPacketCallX_count;
+				for(int i = 0; i < preProcessPacketCallX_count && !rslt_call; i++) {
+					if(lock) lock_calls_listMAP_X(i);
+					for(map<string, Call*>::iterator iter = calls_listMAP_X[i].begin(); iter != calls_listMAP_X[i].end(); iter++) {
+						if((long long)(iter->second) == callreference) {
+							rslt_call = iter->second;
+							break;
+						}
+					}
+					if(lock) unlock_calls_listMAP_X(i);
+				}
+			}
 		}
 		if(lock) unlock_calls_listMAP();
 		return(rslt_call);

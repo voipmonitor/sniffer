@@ -7921,14 +7921,14 @@ void *PreProcessPacket::outThreadFunction() {
 							preProcessPacketCallX[i]->push_batch();
 						}
 					}
-					if(!opt_t2_boost) {
+					if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
 					break;
 				case ppt_pp_callx:
 					if(opt_t2_boost && preProcessPacketCallX_state != PreProcessPacket::callx_na &&
 					   preProcessPacketCallX[0]->isActiveOutThread() &&
-					   idPreProcessThread == preProcessPacketCallX_count) {
+					   (int)idPreProcessThread == preProcessPacketCallX_count) {
 						_process_packet__cleanup_calls(__FILE__, __LINE__);
 					}
 					break;
@@ -8034,13 +8034,13 @@ void PreProcessPacket::push_batch_nothread() {
 				}
 			}
 		}
-		if(!opt_t2_boost) {
+		if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 		break;
 	case ppt_pp_callx:
 		if(opt_t2_boost && 
-		   idPreProcessThread == preProcessPacketCallX_count) {
+		   (int)idPreProcessThread == preProcessPacketCallX_count) {
 			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 		break;
