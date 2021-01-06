@@ -91,13 +91,17 @@ public:
 	};
 	SqlDb_row(SqlDb *sqlDb = NULL) {
 		this->sqlDb = sqlDb;
+		ignoreCheckExistsField = false;
+	}
+	void setIgnoreCheckExistsField(bool ignoreCheckExistsField = true) {
+		this->ignoreCheckExistsField = ignoreCheckExistsField;
 	}
 	string operator [] (const char *fieldName);
 	string operator [] (string fieldName);
 	string operator [] (int indexField);
 	operator int();
 	SqlDb_rowField *add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_string) {
-		if(fieldName != "") {
+		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
 				if(row[i].fieldName == fieldName) {
 					row[i] = SqlDb_rowField(content, fieldName, type, length, ift);
@@ -109,7 +113,7 @@ public:
 		return(&row[row.size() - 1]);
 	}
 	SqlDb_rowField *add(string content, string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
-		if(fieldName != "") {
+		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
 				if(row[i].fieldName == fieldName) {
 					row[i] = SqlDb_rowField(content, fieldName, null, 0, 0, ift);
@@ -273,9 +277,13 @@ public:
 	size_t getCountFields();
 	void removeFieldsIfNotContainIn(map<string, int> *fields);
 	void clearSqlDb();
+	void clear() {
+		row.clear();
+	}
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;
+	bool ignoreCheckExistsField;
 };
 
 class SqlDb_rows {
@@ -1123,7 +1131,9 @@ private:
 
 SqlDb *createSqlObject(int connectId = 0);
 string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache = false);
+inline void sqlDateTimeString(char *rslt, time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache = false);
+inline void sqlDateTimeString_us2ms(char *rslt, u_int64_t unixTime_us, bool useGlobalTimeCache = false);
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString(tm &time);
 string sqlDateString(tm &time);

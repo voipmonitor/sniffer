@@ -712,6 +712,12 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	exclude_from_active_calls = false;
 	
+	cdr.setIgnoreCheckExistsField();
+	cdr_next.setIgnoreCheckExistsField();
+	for(int i = 0; i < CDR_NEXT_MAX; i++) {
+		cdr_next_ch[i].setIgnoreCheckExistsField();
+	}
+	cdr_country_code.setIgnoreCheckExistsField();
 }
 
 u_int64_t Call::counter_s = 0;
@@ -5467,6 +5473,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	__SYNC_INC(counter_calls_save_2);
 	
+	/* only needed to tune storage speed
+	cdr.clear();
+	cdr_next.clear();
+	for(int i = 0; i < CDR_NEXT_MAX; i++) {
+		cdr_next_ch[i].clear();
+	}
+	cdr_country_code.clear();
+	*/
+	
 	adjustUA();
 	
 	if(opt_only_cdr_next) {
@@ -5579,6 +5594,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		while(iter_undup != proxies_undup.end()) {
 			if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
 			SqlDb_row cdrproxy;
+			cdrproxy.setIgnoreCheckExistsField();
 			cdrproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 			cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
 			cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str() );
@@ -6535,6 +6551,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			double diff = rtime - stime;
 
 			SqlDb_row rtps;
+			rtps.setIgnoreCheckExistsField();
 			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 			if(rtp_i->first_codec >= 0) {
 				rtps.add(rtp_i->first_codec, "payload");
@@ -6614,6 +6631,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					u_char *data_el_zip;
 					if(zip->compress(data_el, data_el_length, &data_el_zip, &data_el_zip_length) && data_el_zip_length > 0) {
 						SqlDb_row rtp_el;
+						rtp_el.setIgnoreCheckExistsField();
 						rtp_el.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 						rtp_el.add(i + 1, "index");
 						rtp_el.add(MYSQL_VAR_PREFIX +
@@ -6659,6 +6677,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(sdp_rows_list.size()) {
 				for(vector<d_item2<vmIPport, bool> >::iterator iter = sdp_rows_list.begin(); iter != sdp_rows_list.end(); iter++) {
 					SqlDb_row sdp;
+					sdp.setIgnoreCheckExistsField();
 					sdp.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 					sdp.add(iter->item1.ip, "ip", false, sqlDbSaveCall, sql_cdr_sdp_table.c_str());
 					sdp.add(iter->item1.port.getPort(), "port");
@@ -6692,6 +6711,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			vector<SqlDb_row> txt_rows;
 			for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
 				SqlDb_row txt;
+				txt.setIgnoreCheckExistsField();
 				txt.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 				txt.add(iter->time - this->first_packet_time_us, "time");
 				txt.add(iter->type, "type");
@@ -6727,6 +6747,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				q = dtmf_history.front();
 				dtmf_history.pop();
 				SqlDb_row dtmf;
+				dtmf.setIgnoreCheckExistsField();
 				string tmp;
 				tmp = q.dtmf;
 				dtmf.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
@@ -6767,6 +6788,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 				bool enableMultiInsert = true;
 				SqlDb_row sipresp;
+				sipresp.setIgnoreCheckExistsField();
 				sipresp.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 				if(useSetId()) {
 					sipresp.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse), "SIPresponse_id");
@@ -6812,6 +6834,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
 				bool enableMultiInsert = true;
 				SqlDb_row siphist;
+				siphist.setIgnoreCheckExistsField();
 				siphist.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
@@ -6887,6 +6910,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 								   &this->tarPosGraph;
 				for(list<u_int64_t>::iterator it = tarPos->begin(); it != tarPos->end(); it++) {
 					SqlDb_row tar_part;
+					tar_part.setIgnoreCheckExistsField();
 					tar_part.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 					tar_part.add(i, "type");
 					tar_part.add(*it, "pos");
