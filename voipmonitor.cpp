@@ -8754,6 +8754,11 @@ void set_context_config() {
 		}
 	}
 	
+	if(opt_t2_boost && opt_t2_boost_call_find_threads && opt_call_id_alternative[0]) {
+		opt_t2_boost_call_find_threads = false;
+		syslog(LOG_ERR, "option t2_boost_enable_call_find_threads is not suported with option call_id_alternative");
+	}
+	
 }
 
 void check_context_config() {
