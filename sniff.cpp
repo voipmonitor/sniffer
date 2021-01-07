@@ -2390,7 +2390,7 @@ int get_index_rtp_read_thread_min_calls() {
 		}
 	}
 	if(minCallsIndex >= 0) {
-		++rtp_threads[minCallsIndex].calls;
+		__sync_add_and_fetch(&rtp_threads[minCallsIndex].calls, 1);
 	}
 	unlock_add_remove_rtp_threads();
 	return(minCallsIndex);

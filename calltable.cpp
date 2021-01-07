@@ -304,7 +304,9 @@ Call_abstract::addNextType(int type) {
 	   ((type_base == INVITE && type == MESSAGE) ||
 	    (type_base == MESSAGE && type == INVITE))) {
 		type_next = type;
-		((Call*)this)->setRtpThreadNum();
+		if(type == INVITE) {
+			((Call*)this)->setRtpThreadNum();
+		}
 		return(true);
 	}
 	return(false);
