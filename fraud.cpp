@@ -621,6 +621,7 @@ string FraudAlert::getTypeString() {
 	case _reg_ua: return("reg_ua");
 	case _reg_short: return("reg_short");
 	case _reg_expire: return("reg_expire");
+	case _ccd: return("ccd");
 	}
 	return("");
 }
@@ -2231,6 +2232,107 @@ bool FraudAlert_reg_expire::okFilter(sFraudRegisterInfo *registerInfo) {
 	return(registerInfo->state == rs_Expired);
 }
 
+FraudAlertInfo_ccd::FraudAlertInfo_ccd(FraudAlert *alert) 
+ : FraudAlertInfo(alert) {
+}
+
+string FraudAlertInfo_ccd::getJson() {
+	JsonExport json;
+	json.add("time", sqlDateTimeString(time));
+	json.add("count", count);
+	json.add("avgFrom", sqlDateTimeString(avgFrom));
+	json.add("avgTo", sqlDateTimeString(avgTo));
+	json.add("avg", avg);
+	return(json.getJson());
+}
+
+FraudAlert_ccd::FraudAlert_ccd(unsigned int dbId)
+: FraudAlert(_seq, dbId) {
+	count_max = 0;
+	_sync_calls = 0;
+}
+
+void FraudAlert_ccd::evCall(sFraudCallInfo *callInfo) {
+	if(callInfo->call_type != INVITE ||
+	   !this->okFilter(callInfo) ||
+	   !this->okDayHour(callInfo)) {
+		return;
+	}
+	lock_calls();
+	switch(callInfo->typeCallInfo) {
+	case sFraudCallInfo::typeCallInfo_connectCall:
+		calls[callInfo->callid] = callInfo->at_connect;
+		break;
+	case sFraudCallInfo::typeCallInfo_seenByeCall:
+	case sFraudCallInfo::typeCallInfo_endCall:
+		calls.erase(callInfo->callid);
+		break;
+	default:
+		break;
+	}
+	int count = calls.size();
+	if(count > count_max) {
+		count_max = count;
+	}
+	unlock_calls();
+}
+
+void FraudAlert_ccd::evTimer(u_int32_t time_s) {
+	lock_calls();
+	int count = count_max;
+	count_max = calls.size();
+	unlock_calls();
+	int sum = 0;
+	if((int)queue.size() >= check_interval_minutes) {
+		for(unsigned i = 0; i < queue.size(); i++) {
+			sum += queue[i].count;
+		}
+		int avg = sum / queue.size();
+		if(count < avg &&
+		   (!ignore_if_cc_lt || avg >= ignore_if_cc_lt)) {
+			int diff = avg - count;
+			unsigned count_cond = 0;
+			unsigned count_cond_ok = 0;
+			if(perc_drop_limit > 0) {
+				++count_cond;
+				if(diff >= round(avg * perc_drop_limit / 100.)) {
+					++count_cond_ok;
+				}
+			}
+			if(abs_drop_limit > 0) {
+				++count_cond;
+				if(diff >= abs_drop_limit) {
+					++count_cond_ok;
+				}
+			}
+			if(count_cond_ok > 0 && (drop_limit_cond != _cond12_and || count_cond_ok == count_cond)) {
+				FraudAlertInfo_ccd *alertInfo = new FILE_LINE(0) FraudAlertInfo_ccd(this);
+				alertInfo->time = time_s;
+				alertInfo->count = count;
+				alertInfo->avgFrom = queue[0].time_s;
+				alertInfo->avgTo = queue[queue.size() - 1].time_s;
+				alertInfo->avg = avg;
+				evAlert(alertInfo);
+			}
+		}
+	}
+	sTimeCount timeCount;
+	timeCount.time_s = time_s;
+	timeCount.count = count;
+	queue.push_back(timeCount);
+	while((int)queue.size() > check_interval_minutes) {
+		queue.pop_front();
+	}
+}
+
+void FraudAlert_ccd::loadAlertVirt(SqlDb *sqlDb) {
+	check_interval_minutes = atoi(dbRow["ccd_check_interval_minutes"].c_str());
+	perc_drop_limit = atoi(dbRow["ccd_perc_drop_limit"].c_str());
+	abs_drop_limit = atoi(dbRow["ccd_abs_drop_limit"].c_str());
+	drop_limit_cond = dbRow["ccd_drop_limit_cond"] == "and" ? _cond12_and : _cond12_or;
+	ignore_if_cc_lt = atoi(dbRow["ccd_ignore_if_cc_lt"].c_str());
+}
+
 
 FraudAlerts::FraudAlerts() {
 	threadPopCallInfo = 0;
@@ -2245,9 +2347,15 @@ FraudAlerts::FraudAlerts() {
 	lastTimeEventsIsFull = 0;
 	lastTimeRegistersIsFull = 0;
 	maxLengthAsyncQueue = 100000;
+	timer_thread = 0;
+	timer_thread_terminating = false;
+	timer_thread_last_time_us = 0;
+	timer_thread_last_time_s = 0;
+	timer_thread_last_time_m = 0;
 }
 
 FraudAlerts::~FraudAlerts() {
+	stopTimerThread();
 	clear();
 }
 
@@ -2310,6 +2418,9 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 		case FraudAlert::_reg_expire:
 			alert = new FILE_LINE(7027) FraudAlert_reg_expire(dbId);
 			break;
+		case FraudAlert::_ccd:
+			alert = new FILE_LINE(0) FraudAlert_ccd(dbId);
+			break;
 		}
 		bool _useUserRestriction = false;
 		bool _useUserRestriction_custom_headers = false;
@@ -2330,6 +2441,7 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	if(lock) unlock_alerts();
+	craeteTimerThread(true);
 }
 
 void FraudAlerts::loadData(bool lock, SqlDb *sqlDb) {
@@ -2755,6 +2867,78 @@ void FraudAlerts::refresh() {
 	unlock_alerts();
 }
 
+int FraudAlerts::craeteTimerThread(bool ifNeed) {
+	if(timer_thread) {
+		return(-1);
+	}
+	if(ifNeed) {
+		bool need = false;;
+		lock_alerts();
+		for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
+			if((*iter)->needTimer()) {
+				need = true;
+			}
+		}
+		unlock_alerts();
+		if(!need) {
+			return(0);
+		}
+	}
+	timer_thread_terminating = false;
+	vm_pthread_create("fraud timer", &timer_thread, NULL, FraudAlerts::_timerFce, this, __FILE__, __LINE__);
+	return(1);
+}
+
+void FraudAlerts::stopTimerThread() {
+	if(timer_thread) {
+		timer_thread_terminating = true;
+		pthread_join(timer_thread, NULL);
+		timer_thread = 0;
+		timer_thread_terminating = false;
+	}
+}
+
+void *FraudAlerts::_timerFce(void *arg) {
+	((FraudAlerts*)arg)->timerFce();
+	return(NULL);
+}
+
+void FraudAlerts::timerFce() {
+	timer_thread_last_time_us = 0;
+	timer_thread_last_time_s = 0;
+	timer_thread_last_time_m = 0;
+	while(!timer_thread_terminating) {
+		u_int64_t time_us = getTimeUS();
+		u_int32_t time_s = time_us / 1000000;
+		u_int32_t time_m = time_s / 60;
+		if(timer_thread_last_time_us) {
+			int typeChangeTime = 0;
+			if(time_s > timer_thread_last_time_s) {
+				typeChangeTime |= FraudAlert::_tt_sec;
+				timer_thread_last_time_s = time_s;
+				if(time_m > timer_thread_last_time_m) {
+					typeChangeTime |= FraudAlert::_tt_min;
+					timer_thread_last_time_m = time_m;
+				}
+			}
+			if(typeChangeTime) {
+				lock_alerts();
+				for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
+					if((*iter)->needTimer() & typeChangeTime) {
+						(*iter)->evTimer(time_s);
+					}
+				}
+				unlock_alerts();
+			}
+		} else {
+			timer_thread_last_time_s = time_s;
+			timer_thread_last_time_m = time_m;
+		}
+		timer_thread_last_time_us = time_us;
+		usleep(min((int)(1000000 - time_us % 1000000), 10000));
+	}
+}
+
 
 void initFraud(SqlDb *sqlDb) {
 	if(!opt_enable_fraud) {
@@ -2988,7 +3172,7 @@ void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state,
 
 string whereCondFraudAlerts() {
 	return("((alert_type > 20 and alert_type < 30) or\
-		 alert_type in (43, 44, 46)) and\
+		 alert_type in (43, 44, 46, 51)) and\
 		(disable is null or not disable)");
 }
 

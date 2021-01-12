@@ -26,6 +26,7 @@
 #define fraud_alert_reg_ua 43
 #define fraud_alert_reg_short 44
 #define fraud_alert_reg_expire 46
+#define fraud_alert_ccd 51
 
 
 extern timeval t;
@@ -369,7 +370,8 @@ public:
 		_seq =		fraud_alert_seq,
 		_reg_ua =	fraud_alert_reg_ua,
 		_reg_short =	fraud_alert_reg_short,
-		_reg_expire =	fraud_alert_reg_expire
+		_reg_expire =	fraud_alert_reg_expire,
+		_ccd = 		fraud_alert_ccd
 	};
 	enum eTypeLocation {
 		_typeLocation_NA,
@@ -401,6 +403,11 @@ public:
 		_cond12_or,
 		_cond12_both_directions
 	};
+	enum eTypeTimer {
+		_tt_na,
+		_tt_sec = 1,
+		_tt_min = 2
+	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	bool isReg();
@@ -421,6 +428,7 @@ public:
 	virtual void evRtpStream(sFraudRtpStreamInfo */*rtpStreamInfo*/) {}
 	virtual void evEvent(sFraudEventInfo */*eventInfo*/) {}
 	virtual void evRegister(sFraudRegisterInfo */*registerInfo*/) {}
+	virtual void evTimer(u_int32_t /*time_s*/) {}
 	virtual bool okFilterIp(vmIP ip, vmIP ip2);
 	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
 	virtual bool okFilterDomain(const char *domain);
@@ -474,6 +482,7 @@ protected:
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 	virtual bool defStorePcaps() { return(false); }
 	virtual bool supportVerbLog() { return(false); }
+	virtual int8_t needTimer() { return(0); }
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -1090,6 +1099,56 @@ protected:
 	bool okFilter(sFraudRegisterInfo *registerInfo);
 };
 
+class FraudAlertInfo_ccd: public FraudAlertInfo {
+public:
+	FraudAlertInfo_ccd(FraudAlert *alert);
+	string getJson();
+public:
+	u_int32_t time;
+	u_int32_t count;
+	u_int32_t avgFrom;
+	u_int32_t avgTo;
+	u_int32_t avg;
+};
+
+class FraudAlert_ccd : public FraudAlert {
+public:
+	struct sTimeCount {
+		u_int32_t time_s;
+		u_int32_t count;
+	};
+public:
+	FraudAlert_ccd(unsigned int dbId);
+	void evCall(sFraudCallInfo *callInfo);
+	void evTimer(u_int32_t time_s);
+protected:
+	void loadAlertVirt(SqlDb *sqlDb);
+	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
+	bool defFilterIpCondition12() { return(true); }
+	bool defFilterNumber() { return(true); }
+	bool defFilterNumber2() { return(true); }
+	bool defFilterNumberCondition12() { return(true); }
+	int8_t needTimer() { return(_tt_min); }
+private:
+	void lock_calls() {
+		while(__sync_lock_test_and_set(&this->_sync_calls, 1));
+	}
+	void unlock_calls() {
+		__sync_lock_release(&this->_sync_calls);
+	}
+private:
+	int check_interval_minutes;
+	int perc_drop_limit;
+	int abs_drop_limit;
+	eCondition12 drop_limit_cond;
+	int ignore_if_cc_lt;
+	map<string, u_int64_t> calls;
+	volatile int count_max;
+	volatile int _sync_calls;
+	deque<sTimeCount> queue;
+};
+
 
 class FraudAlerts {
 public:
@@ -1151,6 +1210,10 @@ private:
 	void unlock_alerts() {
 		__sync_lock_release(&this->_sync_alerts);
 	}
+	int craeteTimerThread(bool ifNeed = false);
+	void stopTimerThread();
+	static void *_timerFce(void *arg);
+	void timerFce();
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo*> callQueue;
@@ -1170,6 +1233,11 @@ private:
 	bool useUserRestriction_custom_headers;
 	string gui_timezone;
 	volatile int _sync_alerts;
+	pthread_t timer_thread;
+	bool timer_thread_terminating;
+	u_int64_t timer_thread_last_time_us;
+	u_int32_t timer_thread_last_time_s;
+	u_int32_t timer_thread_last_time_m;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
 

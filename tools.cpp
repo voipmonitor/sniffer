@@ -2702,6 +2702,9 @@ GroupsIP::~GroupsIP() {
 }
 
 void GroupsIP::load(SqlDb *sqlDb) {
+	for(map<unsigned, GroupIP*>::iterator it = groups.begin(); it != groups.end(); it++) {
+		delete it->second;
+	}
 	groups.clear();
 	listIP.clear();
 	listNet.clear();
