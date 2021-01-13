@@ -2291,17 +2291,18 @@ void FraudAlert_ccd::evTimer(u_int32_t time_s) {
 		if(count < avg &&
 		   (!ignore_if_cc_lt || avg >= ignore_if_cc_lt)) {
 			int diff = avg - count;
+			double diff_perc = ((double)diff / avg * 100 * 10) / 10;
 			unsigned count_cond = 0;
 			unsigned count_cond_ok = 0;
 			if(perc_drop_limit > 0) {
 				++count_cond;
-				if(diff > round(avg * perc_drop_limit / 100.)) {
+				if(diff_perc >= perc_drop_limit) {
 					++count_cond_ok;
 				}
 			}
 			if(abs_drop_limit > 0) {
 				++count_cond;
-				if(diff > abs_drop_limit) {
+				if(diff >= abs_drop_limit) {
 					++count_cond_ok;
 				}
 			}
