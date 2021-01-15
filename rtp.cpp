@@ -973,7 +973,7 @@ RTP::process_dtmf_rfc2833() {
 
 /* read rtp packet */
 bool
-RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header,  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
 	  int sensor_id, vmIP sensor_ip, char *ifname) {
  
 	if(this->stopReadProcessing) {
@@ -991,7 +991,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	this->ignore = 0;
 	resetgraph = 0;
 
-	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT) {
+	if(codec != -1 and codec != 13 and codec != 19 and codec != PAYLOAD_TELEVENT and !is_video()) {
 		had_audio = true;
 	}
 
@@ -1179,7 +1179,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 	this->_last_ts = header->ts;
 	
-	int curpayload = getPayload();
+	int curpayload = is_video() ? PAYLOAD_VIDEO : getPayload();
 
 	if((codec == -1 || (curpayload != prev_payload))) {
 		if(curpayload >= 96 && curpayload <= 127) {
@@ -1289,6 +1289,20 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
 		diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
 				       lastrtp and this->eqAddrPort(lastrtp);
+	}
+	
+	if(is_video()) {
+		last_seq = seq;
+		if(update_seq(seq)) {
+			update_stats();
+		}
+		prev_payload = curpayload;
+		prev_codec = codec;
+		lastframetype = AST_FRAME_VIDEO;
+		if(first_codec < 0) {
+			first_codec = codec;
+		}
+		return(true);
 	}
 	
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
@@ -2194,128 +2208,131 @@ RTP::update_stats() {
 		s->cycles += lost * -1;
 		lost = 0;
 	}
+	
 	int adelay = 0;
-	struct timeval tsdiff;	
-	double tsdiff2;
-
-	//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
-
 	Call *owner = (Call*)call_owner;
+	
+	if(!is_video()) {
+		struct timeval tsdiff;	
+		double tsdiff2;
 
-	/* differences between last timestamp and current timestamp (timestamp from ip header)
-	 * frame1.time - frame0.time */
-	tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+		//printf("seq[%d] lseq[%d] lost[%d], ((s->cycles[%d] + s->max_seq[%d] - (s->base_seq[%d] + 1)) - s->received[%d]);\n", seq, last_seq, lost, s->cycles, s->max_seq, s->base_seq, s->received);
 
-	long double transit = tsdiff2 - ((double)getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
+		/* differences between last timestamp and current timestamp (timestamp from ip header)
+		 * frame1.time - frame0.time */
+		tsdiff2 = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
 
-//	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
+		long double transit = tsdiff2 - ((double)getTimestamp() - last_voice_frame_timestamp)/((double)samplerate/1000.0);
 
-	/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
-	if(codec == PAYLOAD_TELEVENT or lastframetype == AST_FRAME_DTMF) {
-		if(codec != PAYLOAD_TELEVENT) {
-			if(last_voice_frame_ts.tv_sec == 0) {
-				// it is not EVENT frame and it is first voice packet 
-				last_voice_frame_ts = header_ts;
-				last_voice_frame_timestamp = getTimestamp();
+	//	if(verbosity > 1) printf("transit rtp[%p] ssrc[%x] seq[%u] transit[%f]\n", this, getSSRC(), seq, (float)transit);
+
+		/* if payload == PAYLOAD_TELEVENT dont make delayes on this because it confuses stats */
+		if(codec == PAYLOAD_TELEVENT or lastframetype == AST_FRAME_DTMF) {
+			if(codec != PAYLOAD_TELEVENT) {
+				if(last_voice_frame_ts.tv_sec == 0) {
+					// it is not EVENT frame and it is first voice packet 
+					last_voice_frame_ts = header_ts;
+					last_voice_frame_timestamp = getTimestamp();
+					return;
+				}
+
+				uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+				this->graph.write((char*)&graph_event, 4);
+				this->graph.write((char*)&diff, 4);
+				if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
+
+
+				//s->fdelay = s->avgdelay;
+	/*
+				s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
+				struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
+				memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
+	*/
+				forcemark2 = 0;
+
+				return;
+			} else {
+				forcemark2 = 0;
 				return;
 			}
-
-			uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
-			this->graph.write((char*)&graph_event, 4);
-			this->graph.write((char*)&diff, 4);
-			if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
-
-
-			//s->fdelay = s->avgdelay;
-/*
-			s->lastTimeStamp = getTimestamp() - samplerate / 1000 * packetization;
-			struct timeval tmp = ast_tvadd(header->ts, ast_samp2tv(packetization, 1000));
-			memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
-*/
-			forcemark2 = 0;
-
-			return;
 		} else {
+			
+			if(abs((int)transit) > 5000) {
+				/* timestamp skew, discard delay, it is possible that timestamp changed  */
+				s->fdelay = s->avgdelay;
+				//s->fdelay = 0;
+				transit = 0;
+			} else {
+				adelay = abs(int(transit));
+				s->fdelay += transit;
+			}
+		}
+
+		if(last_voice_frame_ts.tv_sec == 0) {
+			// it is not EVENT frame and it is first voice packet - ignore stats for first voice packet
+			last_voice_frame_ts = header_ts;
+			last_voice_frame_timestamp = getTimestamp();
 			forcemark2 = 0;
 			return;
 		}
-	} else {
-		
-		if(abs((int)transit) > 5000) {
-			/* timestamp skew, discard delay, it is possible that timestamp changed  */
-			s->fdelay = s->avgdelay;
-			//s->fdelay = 0;
-			transit = 0;
-		} else {
-			adelay = abs(int(transit));
-			s->fdelay += transit;
-		}
-	}
 
-	if(last_voice_frame_ts.tv_sec == 0) {
-		// it is not EVENT frame and it is first voice packet - ignore stats for first voice packet
 		last_voice_frame_ts = header_ts;
 		last_voice_frame_timestamp = getTimestamp();
-		forcemark2 = 0;
-		return;
+	//	printf("rtp[%p] transit[%f]\t[%f]\tseq[%u]\tavgdelay[%f]\n", this, (float)transit, (float)s->fdelay, seq, float(s->avgdelay));
+
+		//printf("seq[%u] adelay[%u]\n", seq, adelay);
+
+
+		// store mark bit in graph file
+		if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and (payload_len <= 7))) 
+		    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+
+			uint32_t diff = (uint32_t)tsdiff2;
+			this->graph.write((char*)&graph_mark, 4);
+			this->graph.write((char*)&diff, 4);
+			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
+
+			//s->fdelay = 0;
+			//s->fdelay -= transit;
+			s->fdelay = s->avgdelay;
+			adelay = 0;
+		} else if(resetgraph and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+			uint32_t diff = (uint32_t)tsdiff2;
+			this->graph.write((char*)&graph_silence, 4);
+			this->graph.write((char*)&diff, 4);
+			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
+
+			//s->fdelay = 0;
+			s->fdelay = s->avgdelay;
+			//s->fdelay -= transit;
+			adelay = 0;
+		}
+
+		// keep average only for last 30 packets
+		uint32_t lastpackets = 30;
+		if(counter > lastpackets) {
+			s->avgdelay = (lastpackets * s->avgdelay - avgdelays[counter % lastpackets] + s->fdelay) / lastpackets;
+		} else {
+			s->avgdelay = ((s->avgdelay * (double)(counter)) + s->fdelay ) / (double)(counter + 1);
+		}
+		avgdelays[counter % lastpackets] = s->fdelay;
+		//s->avgdelay = ((s->avgdelay * (long double)(counter)) + s->fdelay ) / (double)(counter + 1);
+
+		
+		/* Jitterbuffer calculation
+		 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
+		jitter = s->prevjitter + (double)(((transit < 0) ? -transit : transit) - s->prevjitter)/16. ;
+		s->prevjitter = jitter;
+
+		counter++;
+		stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
+		//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
+		if(stats.maxjitter < jitter) stats.maxjitter = jitter;
+		s->lastTimeRec = header_ts;
+		s->lastTimeRecJ = header_ts;
+		s->lastTimeStamp = getTimestamp();
+		s->lastTimeStampJ = getTimestamp();
 	}
-
-	last_voice_frame_ts = header_ts;
-	last_voice_frame_timestamp = getTimestamp();
-//	printf("rtp[%p] transit[%f]\t[%f]\tseq[%u]\tavgdelay[%f]\n", this, (float)transit, (float)s->fdelay, seq, float(s->avgdelay));
-
-	//printf("seq[%u] adelay[%u]\n", seq, adelay);
-
-
-	// store mark bit in graph file
-	if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and (payload_len <= 7))) 
-	    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-
-		uint32_t diff = (uint32_t)tsdiff2;
-		this->graph.write((char*)&graph_mark, 4);
-		this->graph.write((char*)&diff, 4);
-		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
-
-		//s->fdelay = 0;
-		//s->fdelay -= transit;
-		s->fdelay = s->avgdelay;
-		adelay = 0;
-	} else if(resetgraph and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-		uint32_t diff = (uint32_t)tsdiff2;
-		this->graph.write((char*)&graph_silence, 4);
-		this->graph.write((char*)&diff, 4);
-		if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
-
-		//s->fdelay = 0;
-		s->fdelay = s->avgdelay;
-		//s->fdelay -= transit;
-		adelay = 0;
-	}
-
-	// keep average only for last 30 packets
-	uint32_t lastpackets = 30;
-	if(counter > lastpackets) {
-		s->avgdelay = (lastpackets * s->avgdelay - avgdelays[counter % lastpackets] + s->fdelay) / lastpackets;
-	} else {
-		s->avgdelay = ((s->avgdelay * (double)(counter)) + s->fdelay ) / (double)(counter + 1);
-	}
-	avgdelays[counter % lastpackets] = s->fdelay;
-	//s->avgdelay = ((s->avgdelay * (long double)(counter)) + s->fdelay ) / (double)(counter + 1);
-
-	
-	/* Jitterbuffer calculation
-	 * J(1) = J(0) + (|D(0,1)| - J(0))/16 */
-	jitter = s->prevjitter + (double)(((transit < 0) ? -transit : transit) - s->prevjitter)/16. ;
-	s->prevjitter = jitter;
-
-	counter++;
-	stats.avgjitter = ((stats.avgjitter * ( stats.received - 1 )  + jitter )) / (double)stats.received;
-	//printf("jitter[%f] avg[%llf] [%u] [%u]\n", jitter, stats.avgjitter, stats.received, s->received);
-	if(stats.maxjitter < jitter) stats.maxjitter = jitter;
-	s->lastTimeRec = header_ts;
-	s->lastTimeRecJ = header_ts;
-	s->lastTimeStamp = getTimestamp();
-	s->lastTimeStampJ = getTimestamp();
 
 	if(forcemark2) {
 		// do not store loss / delay in case this is first packet after reinvite 
@@ -2341,7 +2358,7 @@ RTP::update_stats() {
 			else 
 				stats.slost[10]++;
 
-			if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
+			if(owner && (owner->flags & FLAG_SAVEGRAPH) && !is_video()) {
 				nintervals += lost - stats.last_lost;
 				while(nintervals > 20) {
 					if(this->graph.isOpenOrEnableAutoOpen()) {
@@ -2351,7 +2368,7 @@ RTP::update_stats() {
 				}
 			}
 		}
-		if(owner && (owner->flags & FLAG_SAVEGRAPH)) {
+		if(owner && (owner->flags & FLAG_SAVEGRAPH) && !is_video()) {
 			if(this->graph.isOpenOrEnableAutoOpen()) {
 				if(nintervals > 20) {
 					/* after 20 packets, send new line */

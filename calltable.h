@@ -43,6 +43,8 @@
 #include "voipmonitor.h"
 #include "tools_fifo_buffer.h"
 #include "record_array.h"
+#include "calltable_base.h"
+
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
 #define MAX_SSRC_PER_CALL_FIX 40	//!< total maxumum of SDP sessions for one call-id
@@ -92,31 +94,34 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define IS_SIP_RES4XX(sip_method) (sip_method == RES401 || sip_method == RES403 || sip_method == RES404 || sip_method == RES4XX)
 #define IS_SIP_RESXXX(sip_method) (sip_method == RES10X || sip_method == RES18X || sip_method == RES182 || sip_method == RES2XX || IS_SIP_RES3XX(sip_method) || IS_SIP_RES4XX(sip_method) || sip_method == RES5XX || sip_method == RES6XX)
 
-#define FLAG_SAVERTP		(1 << 0)
-#define FLAG_SAVERTCP		(1 << 1)
-#define FLAG_SAVESIP		(1 << 2)
-#define FLAG_SAVEREGISTER	(1 << 3)
-#define FLAG_SAVEAUDIO		(1 << 4)
-#define FLAG_FORMATAUDIO_WAV	(1 << 5)
-#define FLAG_FORMATAUDIO_OGG	(1 << 6)
-#define FLAG_SAVEAUDIO_WAV	(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_WAV)
-#define FLAG_SAVEAUDIO_OGG	(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_OGG)
-#define FLAG_SAVEGRAPH		(1 << 7)
-#define FLAG_SAVERTPHEADER	(1 << 8)
-#define FLAG_SKIPCDR		(1 << 9)
-#define FLAG_RUNSCRIPT		(1 << 10)
-#define FLAG_RUNAMOSLQO		(1 << 11)
-#define FLAG_RUNBMOSLQO		(1 << 12)
-#define FLAG_HIDEMESSAGE	(1 << 13)
-#define FLAG_USE_SPOOL_2	(1 << 14)
-#define FLAG_SAVEDTMFDB		(1 << 15)
-#define FLAG_SAVEDTMFPCAP	(1 << 16)
-#define FLAG_SAVEOPTIONSDB	(1 << 17)
-#define FLAG_SAVEOPTIONSPCAP	(1 << 18)
-#define FLAG_SAVENOTIFYDB	(1 << 19)
-#define FLAG_SAVENOTIFYPCAP	(1 << 20)
-#define FLAG_SAVESUBSCRIBEDB	(1 << 21)
-#define FLAG_SAVESUBSCRIBEPCAP	(1 << 22)
+#define FLAG_SAVESIP			(1 << 1)
+#define FLAG_SAVERTP			(1 << 2)
+#define FLAG_SAVERTPHEADER		(1 << 3)
+#define FLAG_SAVERTP_VIDEO		(1 << 4)
+#define FLAG_SAVERTP_VIDEO_HEADER	(1 << 5)
+#define FLAG_PROCESSING_RTP_VIDEO	(1 << 6)
+#define FLAG_SAVERTCP			(1 << 7)
+#define FLAG_SAVEREGISTER		(1 << 8)
+#define FLAG_SAVEAUDIO			(1 << 9)
+#define FLAG_FORMATAUDIO_WAV		(1 << 10)
+#define FLAG_FORMATAUDIO_OGG		(1 << 11)
+#define FLAG_SAVEAUDIO_WAV		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_WAV)
+#define FLAG_SAVEAUDIO_OGG		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_OGG)
+#define FLAG_SAVEGRAPH			(1 << 12)
+#define FLAG_SKIPCDR			(1 << 13)
+#define FLAG_RUNSCRIPT			(1 << 14)
+#define FLAG_RUNAMOSLQO			(1 << 15)
+#define FLAG_RUNBMOSLQO			(1 << 16)
+#define FLAG_HIDEMESSAGE		(1 << 17)
+#define FLAG_USE_SPOOL_2		(1 << 18)
+#define FLAG_SAVEDTMFDB			(1 << 19)
+#define FLAG_SAVEDTMFPCAP		(1 << 20)
+#define FLAG_SAVEOPTIONSDB		(1 << 21)
+#define FLAG_SAVEOPTIONSPCAP		(1 << 22)
+#define FLAG_SAVENOTIFYDB		(1 << 23)
+#define FLAG_SAVENOTIFYPCAP		(1 << 24)
+#define FLAG_SAVESUBSCRIBEDB		(1 << 25)
+#define FLAG_SAVESUBSCRIBEPCAP		(1 << 26)
 
 #define CDR_NEXT_MAX 10
 
@@ -184,18 +189,13 @@ enum e_sdp_protocol {
 	sdp_proto_sprt
 };
 
-struct s_sdp_flags {
+struct s_sdp_flags : public s_sdp_flags_base {
 	s_sdp_flags() {
-		is_fax = 0;
-		rtcp_mux = 0;
 		protocol = sdp_proto_na;
 	}
-	int operator != (const s_sdp_flags &other) {
-		return(is_fax != other.is_fax ||
-		       rtcp_mux != other.rtcp_mux);
+	inline int operator != (const s_sdp_flags &other) {
+		return(*(s_sdp_flags_base*)this != other);
 	}
-	int8_t is_fax;
-	int8_t rtcp_mux;
 	int8_t protocol;
 };
 
@@ -1015,9 +1015,9 @@ public:
 	 * Used for reading RTP packet 
 	 * 
 	*/
-	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname = NULL);
-	inline bool _read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
-	inline void _save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
+	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname = NULL);
+	inline bool _read_rtp(struct packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
+	inline void _save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
 
 	/**
 	 * @brief read RTCP packet 

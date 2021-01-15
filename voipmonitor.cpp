@@ -204,6 +204,9 @@ int opt_fork = 1;		// fork or run foreground
 int opt_saveSIP = 0;		// save SIP packets to pcap file?
 int opt_saveRTP = 0;		// save RTP packets to pcap file?
 int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
+int opt_saveRTPvideo = 0;
+int opt_saveRTPvideo_only_header = 0;
+int opt_processingRTPvideo = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
@@ -6684,6 +6687,9 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42209) cConfigItem_yesno("savertp"))
 				->addValues("header:-1|h:-1")
 				->setDefaultValueStr("no"));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("savertp_video"))
+				->addValues("header:-1|h:-1|processing:-2|p:-2")
+				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
@@ -7348,6 +7354,32 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
+	
+	if(configItem->config_name == "savertp_video") {
+		switch(configItem->getValueInt()) {
+		case 0:
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 0;
+			break;
+		case 1:
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 1;
+			opt_processingRTPvideo = 1;
+			break;
+		case -1:
+			opt_saveRTPvideo_only_header = 1;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 1;
+			break;
+		case -2:
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 1;
+			break;
+		}
+	}
+	
 	if(configItem->config_name == "saveaudio") {
 		switch(configItem->getValueInt()) {
 		case 0:
@@ -9765,6 +9797,36 @@ int eval_config(string inistr) {
 		case '0':
 			opt_onlyRTPheader = 0;
 			opt_saveRTP = 0;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "savertp_video", NULL))) {
+		switch(value[0]) {
+		case 'y':
+		case 'Y':
+		case '1':
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 1;
+			opt_processingRTPvideo = 1;
+			break;
+		case 'h':
+		case 'H':
+			opt_saveRTPvideo_only_header = 1;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 1;
+			break;
+		case 'p':
+		case 'P':
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 1;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_saveRTPvideo_only_header = 0;
+			opt_saveRTPvideo = 0;
+			opt_processingRTPvideo = 0;
 			break;
 		}
 	}

@@ -1717,7 +1717,7 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return 0;
 }
 
-int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap, bool *existsPayloadTelevent){
+int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, bool is_video, RTPMAP *rtpmap, bool *existsPayloadTelevent){
 	unsigned long l = 0;
 	char *s, *z;
 	int payload;
@@ -1744,117 +1744,121 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, RTPMAP *rtpmap, bool 
 		codec = 0;
 		if (sscanf(s, "%30u %254[^/]/%d", &payload, mimeSubtype, &rate) == 3) {
 			// store payload type and its codec into one integer with 1000 offset
-			codec = mimeSubtypeToInt(mimeSubtype);
-			if(codec == PAYLOAD_G7221) {
-				switch(rate) {
-					case 8000:
-						codec = PAYLOAD_G72218;
-						break;
-					case 12000:
-						codec = PAYLOAD_G722112;
-						break;
-					case 16000:
-						codec = PAYLOAD_G722116;
-						break;
-					case 24000:
-						codec = PAYLOAD_G722124;
-						break;
-					case 32000:
-						codec = PAYLOAD_G722132;
-						break;
-					case 48000:
-						codec = PAYLOAD_G722148;
-						break;
+			if(is_video) {
+				codec = PAYLOAD_VIDEO;
+			} else {
+				codec = mimeSubtypeToInt(mimeSubtype);
+				if(codec == PAYLOAD_G7221) {
+					switch(rate) {
+						case 8000:
+							codec = PAYLOAD_G72218;
+							break;
+						case 12000:
+							codec = PAYLOAD_G722112;
+							break;
+						case 16000:
+							codec = PAYLOAD_G722116;
+							break;
+						case 24000:
+							codec = PAYLOAD_G722124;
+							break;
+						case 32000:
+							codec = PAYLOAD_G722132;
+							break;
+						case 48000:
+							codec = PAYLOAD_G722148;
+							break;
+					}
+				} else if(codec == PAYLOAD_SILK) {
+					switch(rate) {
+						case 8000:
+							codec = PAYLOAD_SILK8;
+							break;
+						case 12000:
+							codec = PAYLOAD_SILK12;
+							break;
+						case 16000:
+							codec = PAYLOAD_SILK16;
+							break;
+						case 24000:
+							codec = PAYLOAD_SILK24;
+							break;
+					}
+				} else if(codec == PAYLOAD_ISAC) {
+					switch(rate) {
+						case 16000:
+							codec = PAYLOAD_ISAC16;
+							break;
+						case 32000:
+							codec = PAYLOAD_ISAC32;
+							break;
+					}
+				} else if(codec == PAYLOAD_OPUS) {
+					switch(rate) {
+						case 8000:
+							codec = PAYLOAD_OPUS8;
+							break;
+						case 12000:
+							codec = PAYLOAD_OPUS12;
+							break;
+						case 16000:
+							codec = PAYLOAD_OPUS16;
+							break;
+						case 24000:
+							codec = PAYLOAD_OPUS24;
+							break;
+						case 48000:
+							codec = PAYLOAD_OPUS48;
+							break;
+					}
+				} else if(codec == PAYLOAD_XOPUS) {
+					switch(rate) {
+						case 8000:
+							codec = PAYLOAD_XOPUS8;
+							break;
+						case 12000:
+							codec = PAYLOAD_XOPUS12;
+							break;
+						case 16000:
+							codec = PAYLOAD_XOPUS16;
+							break;
+						case 24000:
+							codec = PAYLOAD_XOPUS24;
+							break;
+						case 48000:
+							codec = PAYLOAD_XOPUS48;
+							break;
+					}
+				} else if(codec == PAYLOAD_VXOPUS) {
+					switch(rate) {
+						case 8000:
+							codec = PAYLOAD_VXOPUS8;
+							break;
+						case 12000:
+							codec = PAYLOAD_VXOPUS12;
+							break;
+						case 16000:
+							codec = PAYLOAD_VXOPUS16;
+							break;
+						case 24000:
+							codec = PAYLOAD_VXOPUS24;
+							break;
+						case 48000:
+							codec = PAYLOAD_VXOPUS48;
+							break;
+					}
+				} else if(codec == PAYLOAD_MP4ALATM128) {
+					switch(rate) {
+						case 128000:
+							codec = PAYLOAD_MP4ALATM128;
+							break;
+						case 64000:
+							codec = PAYLOAD_MP4ALATM64;
+							break;
+					}
+				} else if(codec == PAYLOAD_TELEVENT && existsPayloadTelevent) {
+					*existsPayloadTelevent = true;
 				}
-			} else if(codec == PAYLOAD_SILK) {
-				switch(rate) {
-					case 8000:
-						codec = PAYLOAD_SILK8;
-						break;
-					case 12000:
-						codec = PAYLOAD_SILK12;
-						break;
-					case 16000:
-						codec = PAYLOAD_SILK16;
-						break;
-					case 24000:
-						codec = PAYLOAD_SILK24;
-						break;
-				}
-			} else if(codec == PAYLOAD_ISAC) {
-				switch(rate) {
-					case 16000:
-						codec = PAYLOAD_ISAC16;
-						break;
-					case 32000:
-						codec = PAYLOAD_ISAC32;
-						break;
-				}
-			} else if(codec == PAYLOAD_OPUS) {
-				switch(rate) {
-					case 8000:
-						codec = PAYLOAD_OPUS8;
-						break;
-					case 12000:
-						codec = PAYLOAD_OPUS12;
-						break;
-					case 16000:
-						codec = PAYLOAD_OPUS16;
-						break;
-					case 24000:
-						codec = PAYLOAD_OPUS24;
-						break;
-					case 48000:
-						codec = PAYLOAD_OPUS48;
-						break;
-				}
-			} else if(codec == PAYLOAD_XOPUS) {
-				switch(rate) {
-					case 8000:
-						codec = PAYLOAD_XOPUS8;
-						break;
-					case 12000:
-						codec = PAYLOAD_XOPUS12;
-						break;
-					case 16000:
-						codec = PAYLOAD_XOPUS16;
-						break;
-					case 24000:
-						codec = PAYLOAD_XOPUS24;
-						break;
-					case 48000:
-						codec = PAYLOAD_XOPUS48;
-						break;
-				}
-			} else if(codec == PAYLOAD_VXOPUS) {
-				switch(rate) {
-					case 8000:
-						codec = PAYLOAD_VXOPUS8;
-						break;
-					case 12000:
-						codec = PAYLOAD_VXOPUS12;
-						break;
-					case 16000:
-						codec = PAYLOAD_VXOPUS16;
-						break;
-					case 24000:
-						codec = PAYLOAD_VXOPUS24;
-						break;
-					case 48000:
-						codec = PAYLOAD_VXOPUS48;
-						break;
-				}
-			} else if(codec == PAYLOAD_MP4ALATM128) {
-				switch(rate) {
-					case 128000:
-						codec = PAYLOAD_MP4ALATM128;
-						break;
-					case 64000:
-						codec = PAYLOAD_MP4ALATM64;
-						break;
-				}
-			} else if(codec == PAYLOAD_TELEVENT && existsPayloadTelevent) {
-				*existsPayloadTelevent = true;
 			}
 		}
 		// return '\r' into sdp_text
@@ -1970,7 +1974,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	}
 	
 	for(unsigned sdp_media_i = 0; sdp_media_i < sdp_media_start_count; sdp_media_i++) {
-		if(sdp_media_video[sdp_media_i]) {
+		if(sdp_media_video[sdp_media_i] && !processing_rtp_video(call)) {
 			continue;
 		}
 		char *sdp_media_text = sdp_media_start[sdp_media_i];
@@ -1987,6 +1991,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		sdp_media_data_item->ip = ip;
 		sdp_media_data_item->port = sdp_media_port[sdp_media_i];
 		sdp_media_data_item->sdp_flags.is_fax = sdp_media_image[sdp_media_i];
+		sdp_media_data_item->sdp_flags.is_video = sdp_media_video[sdp_media_i];
 		
 		if(sdp_media_i > 0) {
 			s = _gettag(sdp_media_text, sdp_media_text_len,
@@ -2112,7 +2117,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->inactive_ip0 = true;
 		}
 		
-		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
+		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_video[sdp_media_i], sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
 
 		if(sdp_media_i > 0) {
 			(*next_sdp_media_data)->push_back(sdp_media_data_item);
@@ -2189,7 +2194,7 @@ fail_exit:
 
 inline
 void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
-			     int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, char is_fax, int enable_save_packet, 
+			     int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, 
 			     int preSyncRtp = 0, int threadIndex = 0) {
 	if(is_terminating()) {
 		return;
@@ -2214,7 +2219,7 @@ void add_to_rtp_thread_queue(Call *call, packet_s_process_0 *packetS,
 		__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 	}
 	rtp_read_thread *read_thread = &(rtp_threads[call->thread_num]);
-	read_thread->push(call, packetS, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, is_fax, enable_save_packet, threadIndex);
+	read_thread->push(call, packetS, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_packet, threadIndex);
 }
 
 
@@ -2248,7 +2253,7 @@ void *rtp_read_thread_func(void *arg) {
 					if(rtpp_pq->is_rtcp) {
 						rslt_read_rtp = rtpp_pq->call->read_rtcp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->save_packet);
 					} else {
-						rslt_read_rtp = rtpp_pq->call->read_rtp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->stream_in_multiple_calls, rtpp_pq->is_fax, rtpp_pq->save_packet,
+						rslt_read_rtp = rtpp_pq->call->read_rtp(rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->stream_in_multiple_calls, rtpp_pq->sdp_flags, rtpp_pq->save_packet,
 											rtpp_pq->packet->block_store && rtpp_pq->packet->block_store->ifname[0] ? rtpp_pq->packet->block_store->ifname : NULL);
 					}
 				}
@@ -4922,7 +4927,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 				if(is_rtcp) {
 					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				} else {
-					rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, sdp_flags.is_fax, enable_save_rtp(call), 
+					rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				}
 			}
@@ -4972,12 +4977,12 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(is_rtcp) {
 				packetS->blockstore_addflag(56 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS,
-							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags.is_fax, enable_save_rtcp(call), 
+							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtcp(call), 
 							preSyncRtp, threadIndex);
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags.is_fax, enable_save_rtp(call), 
+							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -6982,7 +6987,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 			packetS->packet = packet; 
 			packetS->header_ip_offset = (u_char*)ppd.header_ip - packet; 
 			packetS->dlt = dlink; 
-			call->read_rtp(packetS, 1, true, false, false, false, (char*)"file");
+			call->read_rtp(packetS, 1, true, false, s_sdp_flags_base(false, false, false), false, (char*)"file");
 			delete header;
 			delete [] packet;
 		} else {

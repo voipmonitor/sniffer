@@ -11,6 +11,8 @@
 
 #include "tools.h"
 #include "dsp.h"
+#include "codecs.h"
+#include "calltable_base.h"
 
 //#include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/abstract_jb.h"
@@ -266,6 +268,7 @@ public:
 	int payload2;
 	int first_codec;
 	int codec;
+	s_sdp_flags_base sdp_flags;
 	int frame_size;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
@@ -652,6 +655,13 @@ public:
 	
 	void addEnergyLevel(u_int16_t energyLevel, u_int16_t seq);
 	void addEnergyLevel(void *data, int datalen, int codec);
+	
+	bool is_video() {
+		return(sdp_flags.is_video);
+	}
+	bool allowed_for_ab() {
+		return(!is_video());
+	}
 
 private: 
 	/*

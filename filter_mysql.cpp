@@ -30,166 +30,182 @@ bool isStringNull(string &str) {
 	return(str == "" || str == "\\N");
 }
 
+bool filter_base::_value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column) {
+	return(sqlRow ?
+		sqlRow->isNull(column) :
+		isStringNull((*row)[column]));
+}
+
+int filter_base::_value(SqlDb_row *sqlRow, map<string, string> *row, const char *column) {
+	return(atoi(sqlRow ?
+		     (*sqlRow)[column].c_str() :
+		     (*row)[column].c_str()));
+}
+
+void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow) {
+	baseRow->direction = _value_is_null(sqlRow, row, "direction") ? 0 : _value(sqlRow, row, "direction");
+	baseRow->rtp = _value_is_null(sqlRow, row, "rtp") ? -1 : _value(sqlRow, row, "rtp");
+	baseRow->rtp_video = _value_is_null(sqlRow, row, "rtp_video") ? -1 : _value(sqlRow, row, "rtp_video");
+	baseRow->rtcp = _value_is_null(sqlRow, row, "rtcp") ? -1 : _value(sqlRow, row, "rtcp");
+	baseRow->sip = _value_is_null(sqlRow, row, "sip") ? -1 : _value(sqlRow, row, "sip");
+	baseRow->reg = _value_is_null(sqlRow, row, "register") ? -1 : _value(sqlRow, row, "register");
+	baseRow->dtmf = _value_is_null(sqlRow, row, "dtmf") ? -1 : _value(sqlRow, row, "dtmf");
+	baseRow->graph = _value_is_null(sqlRow, row, "graph") ? -1 : _value(sqlRow, row, "graph");
+	baseRow->wav = _value_is_null(sqlRow, row, "wav") ? -1 : _value(sqlRow, row, "wav");
+	baseRow->skip = _value_is_null(sqlRow, row, "skip") ? -1 : _value(sqlRow, row, "skip");
+	baseRow->script = _value_is_null(sqlRow, row, "script") ? -1 : _value(sqlRow, row, "script");
+	baseRow->mos_lqo = _value_is_null(sqlRow, row, "mos_lqo") ? -1 : _value(sqlRow, row, "mos_lqo");
+	baseRow->hide_message = _value_is_null(sqlRow, row, "hide_message") ? -1 : _value(sqlRow, row, "hide_message");
+	baseRow->spool_2 = _value_is_null(sqlRow, row, "spool_2") ? -1 : _value(sqlRow, row, "spool_2");
+	baseRow->options = _value_is_null(sqlRow, row, "options") ? -1 : _value(sqlRow, row, "options");
+	baseRow->notify = _value_is_null(sqlRow, row, "notify") ? -1 : _value(sqlRow, row, "notify");
+	baseRow->subscribe = _value_is_null(sqlRow, row, "subscribe") ? -1 : _value(sqlRow, row, "subscribe");
+}
+
 void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow) {
-	baseRow->direction = sqlRow->isNull("direction") ? 0 : atoi((*sqlRow)["direction"].c_str());
-	baseRow->rtp = sqlRow->isNull("rtp") ? -1 : atoi((*sqlRow)["rtp"].c_str());
-	baseRow->rtcp = sqlRow->isNull("rtcp") ? -1 : atoi((*sqlRow)["rtcp"].c_str());
-	baseRow->sip = sqlRow->isNull("sip") ? -1 : atoi((*sqlRow)["sip"].c_str());
-	baseRow->reg = sqlRow->isNull("register") ? -1 : atoi((*sqlRow)["register"].c_str());
-	baseRow->dtmf = sqlRow->isNull("dtmf") ? -1 : atoi((*sqlRow)["dtmf"].c_str());
-	baseRow->graph = sqlRow->isNull("graph") ? -1 : atoi((*sqlRow)["graph"].c_str());
-	baseRow->wav = sqlRow->isNull("wav") ? -1 : atoi((*sqlRow)["wav"].c_str());
-	baseRow->skip = sqlRow->isNull("skip") ? -1 : atoi((*sqlRow)["skip"].c_str());
-	baseRow->script = sqlRow->isNull("script") ? -1 : atoi((*sqlRow)["script"].c_str());
-	baseRow->mos_lqo = sqlRow->isNull("mos_lqo") ? -1 : atoi((*sqlRow)["mos_lqo"].c_str());
-	baseRow->hide_message = sqlRow->isNull("hide_message") ? -1 : atoi((*sqlRow)["hide_message"].c_str());
-	baseRow->spool_2 = sqlRow->isNull("spool_2") ? -1 : atoi((*sqlRow)["spool_2"].c_str());
-	baseRow->options = sqlRow->isNull("options") ? -1 : atoi((*sqlRow)["options"].c_str());
-	baseRow->notify = sqlRow->isNull("notify") ? -1 : atoi((*sqlRow)["notify"].c_str());
-	baseRow->subscribe = sqlRow->isNull("subscribe") ? -1 : atoi((*sqlRow)["subscribe"].c_str());
+	_loadBaseDataRow(sqlRow, NULL, baseRow);
 }
 
 void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow) {
-	baseRow->direction = isStringNull((*row)["direction"]) ? 0 : atoi((*row)["direction"].c_str());
-	baseRow->rtp = isStringNull((*row)["rtp"]) ? -1 : atoi((*row)["rtp"].c_str());
-	baseRow->rtcp = isStringNull((*row)["rtcp"]) ? -1 : atoi((*row)["rtcp"].c_str());
-	baseRow->sip = isStringNull((*row)["sip"]) ? -1 : atoi((*row)["sip"].c_str());
-	baseRow->reg = isStringNull((*row)["register"]) ? -1 : atoi((*row)["register"].c_str());
-	baseRow->dtmf = isStringNull((*row)["dtmf"]) ? -1 : atoi((*row)["dtmf"].c_str());
-	baseRow->graph = isStringNull((*row)["graph"]) ? -1 : atoi((*row)["graph"].c_str());
-	baseRow->wav = isStringNull((*row)["wav"]) ? -1 : atoi((*row)["wav"].c_str());
-	baseRow->skip = isStringNull((*row)["skip"]) ? -1 : atoi((*row)["skip"].c_str());
-	baseRow->script = isStringNull((*row)["script"]) ? -1 : atoi((*row)["script"].c_str());
-	baseRow->mos_lqo = isStringNull((*row)["mos_lqo"]) ? -1 : atoi((*row)["mos_lqo"].c_str());
-	baseRow->hide_message = isStringNull((*row)["hide_message"]) ? -1 : atoi((*row)["hide_message"].c_str());
-	baseRow->spool_2 = isStringNull((*row)["spool_2"]) ? -1 : atoi((*row)["spool_2"].c_str());
-	baseRow->subscribe = isStringNull((*row)["subscribe"]) ? -1 : atoi((*row)["subscribe"].c_str());
-	baseRow->notify = isStringNull((*row)["notify"]) ? -1 : atoi((*row)["notify"].c_str());
-	baseRow->options = isStringNull((*row)["options"]) ? -1 : atoi((*row)["options"].c_str());
+	_loadBaseDataRow(NULL, row, baseRow);
 }
 
 unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
 	unsigned long int flags = 0;
 	
-	if(baseRow->rtp == 1)			flags |= FLAG_RTP_ALL;
-	else if(baseRow->rtp == 2)		flags |= FLAG_RTP_HEAD;
-	else if(baseRow->rtp == 0)		flags |= FLAG_NORTP;
+	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
+	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
+	else if(baseRow->rtp == 0)		flags |= _FLAG_NORTP;
 	
-	if(baseRow->rtcp == 1)			flags |= FLAG_RTCP;
-	else if(baseRow->rtcp == 0)		flags |= FLAG_NORTCP;
+	if(baseRow->rtp_video == 1)		flags |= _FLAG_RTP_VIDEO_ALL;
+	else if(baseRow->rtp_video == 2)	flags |= _FLAG_RTP_VIDEO_HEADER;
+	else if(baseRow->rtp_video == 3)	flags |= _FLAG_RTP_VIDEO_PROCESSING;
+	else if(baseRow->rtp_video == 0)	flags |= _FLAG_NORTP_VIDEO;
 	
-	if(baseRow->sip == 1)			flags |= FLAG_SIP;
-	else if(baseRow->sip == 0)		flags |= FLAG_NOSIP;
+	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
+	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
+	else if(baseRow->rtp == 0)		flags |= _FLAG_NORTP;
 	
-	if(baseRow->reg == 1)			flags |= FLAG_REGISTER;
-	else if(baseRow->reg == 0)		flags |= FLAG_NOREGISTER;
+	if(baseRow->rtcp == 1)			flags |= _FLAG_RTCP;
+	else if(baseRow->rtcp == 0)		flags |= _FLAG_NORTCP;
+	
+	if(baseRow->sip == 1)			flags |= _FLAG_SIP;
+	else if(baseRow->sip == 0)		flags |= _FLAG_NOSIP;
+	
+	if(baseRow->reg == 1)			flags |= _FLAG_REGISTER;
+	else if(baseRow->reg == 0)		flags |= _FLAG_NOREGISTER;
 
-	if(baseRow->dtmf == 1)			flags |= FLAG_DTMF_DB | FLAG_DTMF_PCAP;
-	else if(baseRow->dtmf == 0)		flags |= FLAG_NODTMF_DB | FLAG_NODTMF_PCAP;
-	else if(baseRow->dtmf == 2)		flags |= FLAG_DTMF_DB | FLAG_NODTMF_PCAP;
-	else if(baseRow->dtmf == 3)		flags |= FLAG_DTMF_PCAP | FLAG_NODTMF_DB;
+	if(baseRow->dtmf == 1)			flags |= _FLAG_DTMF_DB | _FLAG_DTMF_PCAP;
+	else if(baseRow->dtmf == 0)		flags |= _FLAG_NODTMF_DB | _FLAG_NODTMF_PCAP;
+	else if(baseRow->dtmf == 2)		flags |= _FLAG_DTMF_DB | _FLAG_NODTMF_PCAP;
+	else if(baseRow->dtmf == 3)		flags |= _FLAG_DTMF_PCAP | _FLAG_NODTMF_DB;
 	
-	if(baseRow->graph == 1)			flags |= FLAG_GRAPH;
-	else if(baseRow->graph == 0)		flags |= FLAG_NOGRAPH;
+	if(baseRow->graph == 1)			flags |= _FLAG_GRAPH;
+	else if(baseRow->graph == 0)		flags |= _FLAG_NOGRAPH;
 	
-	if(baseRow->wav == 1)			flags |= FLAG_AUDIO;
-	else if(baseRow->wav == 2)		flags |= FLAG_AUDIO_WAV;
-	else if(baseRow->wav == 3)		flags |= FLAG_AUDIO_OGG;
-	else if(baseRow->wav == 0)		flags |= FLAG_NOWAV;
+	if(baseRow->wav == 1)			flags |= _FLAG_AUDIO;
+	else if(baseRow->wav == 2)		flags |= _FLAG_AUDIO_WAV;
+	else if(baseRow->wav == 3)		flags |= _FLAG_AUDIO_OGG;
+	else if(baseRow->wav == 0)		flags |= _FLAG_NOWAV;
 	
-	if(baseRow->skip == 1)			flags |= FLAG_SKIP;
-	else if(baseRow->skip == 0)		flags |= FLAG_NOSKIP;
+	if(baseRow->skip == 1)			flags |= _FLAG_SKIP;
+	else if(baseRow->skip == 0)		flags |= _FLAG_NOSKIP;
 	
-	if(baseRow->script == 1)		flags |= FLAG_SCRIPT;
-	else if(baseRow->script == 0)		flags |= FLAG_NOSCRIPT;
+	if(baseRow->script == 1)		flags |= _FLAG_SCRIPT;
+	else if(baseRow->script == 0)		flags |= _FLAG_NOSCRIPT;
 	
-	if(baseRow->mos_lqo == 1)		flags |= FLAG_AMOSLQO;
-	else if(baseRow->mos_lqo == 2)		flags |= FLAG_BMOSLQO;
-	else if(baseRow->mos_lqo == 3)		flags |= FLAG_ABMOSLQO;
-	else if(baseRow->mos_lqo == 0)		flags |= FLAG_NOMOSLQO;
+	if(baseRow->mos_lqo == 1)		flags |= _FLAG_AMOSLQO;
+	else if(baseRow->mos_lqo == 2)		flags |= _FLAG_BMOSLQO;
+	else if(baseRow->mos_lqo == 3)		flags |= _FLAG_ABMOSLQO;
+	else if(baseRow->mos_lqo == 0)		flags |= _FLAG_NOMOSLQO;
 	
-	if(baseRow->hide_message == 1)		flags |= FLAG_HIDEMSG;
-	else if(baseRow->hide_message == 0)	flags |= FLAG_SHOWMSG;
+	if(baseRow->hide_message == 1)		flags |= _FLAG_HIDEMSG;
+	else if(baseRow->hide_message == 0)	flags |= _FLAG_SHOWMSG;
 	
-	if(baseRow->spool_2 == 1)		flags |= FLAG_SPOOL_2_SET;
-	else if(baseRow->spool_2 == 0)		flags |= FLAG_SPOOL_2_UNSET;
+	if(baseRow->spool_2 == 1)		flags |= _FLAG_SPOOL_2_SET;
+	else if(baseRow->spool_2 == 0)		flags |= _FLAG_SPOOL_2_UNSET;
 
-	if (baseRow->options == 0)		flags |= FLAG_NOOPTIONS_DB | FLAG_NOOPTIONS_PCAP;
-	else if (baseRow->options == 1)		flags |= FLAG_OPTIONS_DB | FLAG_OPTIONS_PCAP;
-	else if (baseRow->options == 2)		flags |= FLAG_OPTIONS_DB | FLAG_NOOPTIONS_PCAP;
-	else if (baseRow->options == 3)		flags |= FLAG_NOOPTIONS_DB | FLAG_OPTIONS_PCAP;
+	if (baseRow->options == 0)		flags |= _FLAG_NOOPTIONS_DB | _FLAG_NOOPTIONS_PCAP;
+	else if (baseRow->options == 1)		flags |= _FLAG_OPTIONS_DB | _FLAG_OPTIONS_PCAP;
+	else if (baseRow->options == 2)		flags |= _FLAG_OPTIONS_DB | _FLAG_NOOPTIONS_PCAP;
+	else if (baseRow->options == 3)		flags |= _FLAG_NOOPTIONS_DB | _FLAG_OPTIONS_PCAP;
 
-	if (baseRow->notify == 0)		flags |= FLAG_NONOTIFY_DB | FLAG_NONOTIFY_PCAP;
-	else if (baseRow->notify == 1)		flags |= FLAG_NOTIFY_DB | FLAG_NOTIFY_PCAP;
-	else if (baseRow->notify == 2)		flags |= FLAG_NOTIFY_DB | FLAG_NONOTIFY_PCAP;
-	else if (baseRow->notify == 3)		flags |= FLAG_NONOTIFY_DB | FLAG_NOTIFY_PCAP;
+	if (baseRow->notify == 0)		flags |= _FLAG_NONOTIFY_DB | _FLAG_NONOTIFY_PCAP;
+	else if (baseRow->notify == 1)		flags |= _FLAG_NOTIFY_DB | _FLAG_NOTIFY_PCAP;
+	else if (baseRow->notify == 2)		flags |= _FLAG_NOTIFY_DB | _FLAG_NONOTIFY_PCAP;
+	else if (baseRow->notify == 3)		flags |= _FLAG_NONOTIFY_DB | _FLAG_NOTIFY_PCAP;
 
-	if (baseRow->subscribe == 0)		flags |= FLAG_NOSUBSCRIBE_DB | FLAG_NOSUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 1)	flags |= FLAG_SUBSCRIBE_DB | FLAG_SUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 2)	flags |= FLAG_SUBSCRIBE_DB | FLAG_NOSUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 3)	flags |= FLAG_NOSUBSCRIBE_DB | FLAG_SUBSCRIBE_PCAP;
+	if (baseRow->subscribe == 0)		flags |= _FLAG_NOSUBSCRIBE_DB | _FLAG_NOSUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 1)	flags |= _FLAG_SUBSCRIBE_DB | _FLAG_SUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 2)	flags |= _FLAG_SUBSCRIBE_DB | _FLAG_NOSUBSCRIBE_PCAP;
+	else if (baseRow->subscribe == 3)	flags |= _FLAG_NOSUBSCRIBE_DB | _FLAG_SUBSCRIBE_PCAP;
 
 	return(flags);
 }
 
 void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags) {
-	if(filterFlags & FLAG_RTP_ALL)					{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
-	if(filterFlags & FLAG_RTP_HEAD)					{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
-	if(filterFlags & FLAG_NORTP) 					{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
+	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
 	
-	if(filterFlags & FLAG_RTCP)					*callFlags |= FLAG_SAVERTCP;
-	if(filterFlags & FLAG_NORTCP)					*callFlags &= ~FLAG_SAVERTCP;
+	if(filterFlags & _FLAG_RTP_ALL)			{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & _FLAG_RTP_HEADER)		{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
+	if(filterFlags & _FLAG_NORTP) 			{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	
-	if(filterFlags & FLAG_SIP)					*callFlags |= FLAG_SAVESIP;
-	if(filterFlags & FLAG_NOSIP)					*callFlags &= ~FLAG_SAVESIP;
+	if(filterFlags & _FLAG_RTP_VIDEO_ALL)		{*callFlags |= (FLAG_SAVERTP_VIDEO | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO_HEADER;}
+	if(filterFlags & _FLAG_RTP_VIDEO_HEADER)	{*callFlags |= (FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO;}
+	if(filterFlags & _FLAG_RTP_VIDEO_PROCESSING)	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
+	if(filterFlags & _FLAG_NORTP_VIDEO) 		{*callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO);}
 	
-	if(filterFlags & FLAG_REGISTER)					*callFlags |= FLAG_SAVEREGISTER;
-	if(filterFlags & FLAG_NOREGISTER)				*callFlags &= ~FLAG_SAVEREGISTER;
+	if(filterFlags & _FLAG_RTCP)			*callFlags |= FLAG_SAVERTCP;
+	if(filterFlags & _FLAG_NORTCP)			*callFlags &= ~FLAG_SAVERTCP;
+	
+	if(filterFlags & _FLAG_REGISTER)		*callFlags |= FLAG_SAVEREGISTER;
+	if(filterFlags & _FLAG_NOREGISTER)		*callFlags &= ~FLAG_SAVEREGISTER;
 
-	if(filterFlags & FLAG_DTMF_DB)					*callFlags |= FLAG_SAVEDTMFDB;
-	if(filterFlags & FLAG_NODTMF_DB)				*callFlags &= ~FLAG_SAVEDTMFDB;
-	if(filterFlags & FLAG_DTMF_PCAP)				*callFlags |= FLAG_SAVEDTMFPCAP;
-	if(filterFlags & FLAG_NODTMF_PCAP)				*callFlags &= ~FLAG_SAVEDTMFPCAP;
+	if(filterFlags & _FLAG_DTMF_DB)			*callFlags |= FLAG_SAVEDTMFDB;
+	if(filterFlags & _FLAG_NODTMF_DB)		*callFlags &= ~FLAG_SAVEDTMFDB;
+	if(filterFlags & _FLAG_DTMF_PCAP)		*callFlags |= FLAG_SAVEDTMFPCAP;
+	if(filterFlags & _FLAG_NODTMF_PCAP)		*callFlags &= ~FLAG_SAVEDTMFPCAP;
 	
-	if(filterFlags & FLAG_AUDIO)					*callFlags |= FLAG_SAVEAUDIO;
-	if(filterFlags & FLAG_AUDIO_WAV)				{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
-	if(filterFlags & FLAG_AUDIO_OGG)				{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
-	if(filterFlags & FLAG_NOWAV)					*callFlags &= ~FLAG_SAVEAUDIO;
+	if(filterFlags & _FLAG_AUDIO)			*callFlags |= FLAG_SAVEAUDIO;
+	if(filterFlags & _FLAG_AUDIO_WAV)		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
+	if(filterFlags & _FLAG_AUDIO_OGG)		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
+	if(filterFlags & _FLAG_NOWAV)			*callFlags &= ~FLAG_SAVEAUDIO;
 	
-	if(filterFlags & FLAG_GRAPH)					*callFlags |= FLAG_SAVEGRAPH;
-	if(filterFlags & FLAG_NOGRAPH)					*callFlags &= ~FLAG_SAVEGRAPH;
+	if(filterFlags & _FLAG_GRAPH)			*callFlags |= FLAG_SAVEGRAPH;
+	if(filterFlags & _FLAG_NOGRAPH)			*callFlags &= ~FLAG_SAVEGRAPH;
 	
-	if(filterFlags & FLAG_SKIP)					*callFlags |= FLAG_SKIPCDR;
-	if(filterFlags & FLAG_NOSKIP)					*callFlags &= ~FLAG_SKIPCDR;
+	if(filterFlags & _FLAG_SKIP)			*callFlags |= FLAG_SKIPCDR;
+	if(filterFlags & _FLAG_NOSKIP)			*callFlags &= ~FLAG_SKIPCDR;
 	
-	if(filterFlags & FLAG_SCRIPT)					*callFlags |= FLAG_RUNSCRIPT;
-	if(filterFlags & FLAG_NOSCRIPT)					*callFlags &= ~FLAG_RUNSCRIPT;
+	if(filterFlags & _FLAG_SCRIPT)			*callFlags |= FLAG_RUNSCRIPT;
+	if(filterFlags & _FLAG_NOSCRIPT)		*callFlags &= ~FLAG_RUNSCRIPT;
 
-	if(filterFlags & FLAG_AMOSLQO)					{*callFlags |= FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
-	if(filterFlags & FLAG_BMOSLQO)					{*callFlags |= FLAG_RUNBMOSLQO; *callFlags &= ~FLAG_RUNAMOSLQO;}
-	if(filterFlags & FLAG_ABMOSLQO)					{*callFlags |= FLAG_RUNAMOSLQO|FLAG_RUNBMOSLQO;}
-	if(filterFlags & FLAG_NOMOSLQO) 				{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	if(filterFlags & _FLAG_AMOSLQO)			{*callFlags |= FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	if(filterFlags & _FLAG_BMOSLQO)			{*callFlags |= FLAG_RUNBMOSLQO; *callFlags &= ~FLAG_RUNAMOSLQO;}
+	if(filterFlags & _FLAG_ABMOSLQO)		{*callFlags |= FLAG_RUNAMOSLQO|FLAG_RUNBMOSLQO;}
+	if(filterFlags & _FLAG_NOMOSLQO) 		{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
 	
-	if(filterFlags & FLAG_HIDEMSG)					*callFlags |= FLAG_HIDEMESSAGE;
-	if(filterFlags & FLAG_SHOWMSG)					*callFlags &= ~FLAG_HIDEMESSAGE;
+	if(filterFlags & _FLAG_HIDEMSG)			*callFlags |= FLAG_HIDEMESSAGE;
+	if(filterFlags & _FLAG_SHOWMSG)			*callFlags &= ~FLAG_HIDEMESSAGE;
 	
-	if(filterFlags & FLAG_SPOOL_2_SET)				*callFlags |= FLAG_USE_SPOOL_2;
-	if(filterFlags & FLAG_SPOOL_2_UNSET)				*callFlags &= ~FLAG_USE_SPOOL_2;
+	if(filterFlags & _FLAG_SPOOL_2_SET)		*callFlags |= FLAG_USE_SPOOL_2;
+	if(filterFlags & _FLAG_SPOOL_2_UNSET)		*callFlags &= ~FLAG_USE_SPOOL_2;
 
-	if(filterFlags & FLAG_OPTIONS_DB)				*callFlags |= FLAG_SAVEOPTIONSDB;
-	if(filterFlags & FLAG_NOOPTIONS_DB)				*callFlags &= ~FLAG_SAVEOPTIONSDB;
-	if(filterFlags & FLAG_OPTIONS_PCAP)				*callFlags |= FLAG_SAVEOPTIONSPCAP;
-	if(filterFlags & FLAG_NOOPTIONS_PCAP)				*callFlags &= ~FLAG_SAVEOPTIONSPCAP;
+	if(filterFlags & _FLAG_OPTIONS_DB)		*callFlags |= FLAG_SAVEOPTIONSDB;
+	if(filterFlags & _FLAG_NOOPTIONS_DB)		*callFlags &= ~FLAG_SAVEOPTIONSDB;
+	if(filterFlags & _FLAG_OPTIONS_PCAP)		*callFlags |= FLAG_SAVEOPTIONSPCAP;
+	if(filterFlags & _FLAG_NOOPTIONS_PCAP)		*callFlags &= ~FLAG_SAVEOPTIONSPCAP;
 
-	if(filterFlags & FLAG_NOTIFY_DB)				*callFlags |= FLAG_SAVENOTIFYDB;
-	if(filterFlags & FLAG_NONOTIFY_DB)				*callFlags &= ~FLAG_SAVENOTIFYDB;
-	if(filterFlags & FLAG_NOTIFY_PCAP)				*callFlags |= FLAG_SAVENOTIFYPCAP;
-	if(filterFlags & FLAG_NONOTIFY_PCAP)				*callFlags &= ~FLAG_SAVENOTIFYPCAP;
+	if(filterFlags & _FLAG_NOTIFY_DB)		*callFlags |= FLAG_SAVENOTIFYDB;
+	if(filterFlags & _FLAG_NONOTIFY_DB)		*callFlags &= ~FLAG_SAVENOTIFYDB;
+	if(filterFlags & _FLAG_NOTIFY_PCAP)		*callFlags |= FLAG_SAVENOTIFYPCAP;
+	if(filterFlags & _FLAG_NONOTIFY_PCAP)		*callFlags &= ~FLAG_SAVENOTIFYPCAP;
 
-	if(filterFlags & FLAG_SUBSCRIBE_DB)				*callFlags |= FLAG_SAVESUBSCRIBEDB;
-	if(filterFlags & FLAG_NOSUBSCRIBE_DB)				*callFlags &= ~FLAG_SAVESUBSCRIBEDB;
-	if(filterFlags & FLAG_SUBSCRIBE_PCAP)				*callFlags |= FLAG_SAVESUBSCRIBEPCAP;
-	if(filterFlags & FLAG_NOSUBSCRIBE_PCAP)				*callFlags &= ~FLAG_SAVESUBSCRIBEPCAP;
+	if(filterFlags & _FLAG_SUBSCRIBE_DB)		*callFlags |= FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & _FLAG_NOSUBSCRIBE_DB)		*callFlags &= ~FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & _FLAG_SUBSCRIBE_PCAP)		*callFlags |= FLAG_SAVESUBSCRIBEPCAP;
+	if(filterFlags & _FLAG_NOSUBSCRIBE_PCAP)	*callFlags &= ~FLAG_SAVESUBSCRIBEPCAP;
 }
 
 /* IPfilter class */

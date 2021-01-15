@@ -591,7 +591,7 @@ typedef struct {
 	char find_by_dest;
 	char is_rtcp;
 	char stream_in_multiple_calls;
-	char is_fax;
+	s_sdp_flags_base sdp_flags;
 	char save_packet;
 } rtp_packet_pcap_queue;
 
@@ -646,7 +646,7 @@ public:
 	void term_qring();
 	void term_thread_buffer();
 	size_t qring_size();
-	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, char is_fax, int enable_save_packet, int threadIndex = 0) {
+	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, int threadIndex = 0) {
 		
 		/* destroy and quit - debug
 		void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
@@ -720,7 +720,7 @@ public:
 			rtpp_pq->find_by_dest = find_by_dest;
 			rtpp_pq->is_rtcp = is_rtcp;
 			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
-			rtpp_pq->is_fax = is_fax;
+			rtpp_pq->sdp_flags = sdp_flags;
 			rtpp_pq->save_packet = enable_save_packet;
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
@@ -756,7 +756,7 @@ public:
 			rtpp_pq->find_by_dest = find_by_dest;
 			rtpp_pq->is_rtcp = is_rtcp;
 			rtpp_pq->stream_in_multiple_calls = stream_in_multiple_calls;
-			rtpp_pq->is_fax = is_fax;
+			rtpp_pq->sdp_flags = sdp_flags;
 			rtpp_pq->save_packet = enable_save_packet;
 			++qring_push_index_count;
 			packet->blockstore_addflag(63 /*pb lock flag*/);
@@ -989,8 +989,13 @@ void _process_packet__cleanup_registers();
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (call->isfax && opt_saveudptl))
-#define enable_save_rtp(call)		((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
+#define enable_save_rtp_audio(call)	((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
+#define enable_save_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER))
+#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
+#define enable_save_rtp_av(call, is_video) \
+					(is_video ? enable_save_rtp_video(call) : enable_save_rtp_audio(call))
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
+#define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))
 #define enable_save_audio(call)		((call->flags & FLAG_SAVEAUDIO) || opt_savewav_force)
 #define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call))

@@ -1403,7 +1403,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 /* analyze rtp packet */
 bool
-Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char is_fax, char enable_save_packet, char *ifname) {
+Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
 	/*
 	if(sverb.dtls &&
 	   packetS->datalen_() &&
@@ -1424,9 +1424,9 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	bool record_dtmf = false;
 	bool disable_save = false;
 	unsigned datalen_orig = packetS->datalen_();
-	bool rtp_read_rslt = _read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
+	bool rtp_read_rslt = _read_rtp(packetS, iscaller, sdp_flags, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
 	if(!disable_save) {
-		_save_rtp(packetS, is_fax, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
+		_save_rtp(packetS, sdp_flags, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
 	}
 	if(packetS->pid.flags & FLAG_FRAGMENTED) {
 		this->rtp_fragmented = true;
@@ -1435,7 +1435,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 }
  
 bool
-Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
+Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	if(iscaller < 0) {
 		if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
@@ -1477,7 +1477,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 					return(false);
 				}
 			}
-			curpayload = RTP::getPayload(data);
+			curpayload = sdp_flags.is_video ? PAYLOAD_VIDEO : RTP::getPayload(data);
 		} else {
 			return(false);
 		}
@@ -1515,7 +1515,7 @@ Call::_read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_
 		rtp_locked = true;
 	}
 	#endif
-
+	
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i->ssrc2 == curSSRC) {
 /*
@@ -1624,7 +1624,7 @@ read:
 						}
 						u_int32_t datalen = packetS->datalen_();
 						if(rtp_i->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-								packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
+							       packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
 								rtp_i->stream_in_multiple_calls = true;
@@ -1822,6 +1822,7 @@ read:
 						   (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
 						    this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
 		rtp_new->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
+		rtp_new->sdp_flags = sdp_flags;
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
@@ -1972,11 +1973,11 @@ Call::read_dtls(struct packet_s *packetS) {
 }
 
 void
-Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp) {
+Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp) {
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
-		if(is_fax && packetS->okDataLenForUdptl()) {
+		if(sdp_flags.is_fax && packetS->okDataLenForUdptl()) {
 			sUdptlDumper *udptlDumper;
 			sStreamId streamId(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 			map<sStreamId, sUdptlDumper*>::iterator iter = udptlDumpers.find(streamId);
@@ -2046,7 +2047,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			}
 		}
 	} else if(opt_fax_dup_seq_check) {
-		if(is_fax && packetS->isUdptlOkDataLen()) {
+		if(sdp_flags.is_fax && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				unsigned seq = htons(udptl->sequence);
@@ -2058,7 +2059,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 			}
 		}
 	} else {
-		if(is_fax && packetS->isUdptlOkDataLen()) {
+		if(sdp_flags.is_fax && packetS->isUdptlOkDataLen()) {
 			UDPTLFixedHeader *udptl = (UDPTLFixedHeader*)packetS->data_();
 			if(udptl->data_field) {
 				this->exists_udptl_data = true;
@@ -2066,7 +2067,8 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 		}
 	}
 	if(enable_save_packet) {
-		if((this->silencerecording || (this->flags & FLAG_SAVERTPHEADER)) && !this->isfax && !record_dtmf) {
+		if((this->silencerecording || (this->flags & (sdp_flags.is_video ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
+		   !this->isfax && !record_dtmf) {
 			if(packetS->isStun() || packetS->isDtls()) {
 				save_packet(this, packetS, TYPE_RTP, forceVirtualUdp);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
@@ -2077,7 +2079,7 @@ Call::_save_rtp(packet_s *packetS, char is_fax, char enable_save_packet, bool re
 				save_packet(this, packetS, TYPE_RTP);
 				packetS->header_pt->caplen = tmp_u32;
 			}
-		} else if((this->flags & FLAG_SAVERTP) || this->isfax || record_dtmf) {
+		} else if((this->flags & (sdp_flags.is_video ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
 			save_packet(this, packetS, TYPE_RTP, forceVirtualUdp);
 		}
 	}
@@ -5215,35 +5217,45 @@ void Call::selectRtpAB() {
 	bool rtpab_ok = false;
 	
 	if(rtp_size() == 1) {
-		rtpab[rtp_stream_by_index(0)->iscaller ? 0 : 1] = rtp_stream_by_index(0);
-		rtpab_ok = true;
+		if(rtp_stream_by_index(0)->allowed_for_ab()) {
+			rtpab[rtp_stream_by_index(0)->iscaller ? 0 : 1] = rtp_stream_by_index(0);
+			rtpab_ok = true;
+		}
 	} else if(rtp_size() == 2) {
-		if(rtp_stream_by_index(0)->iscaller != rtp_stream_by_index(1)->iscaller) {
-			if(rtp_stream_by_index(0)->iscaller) {
+		if(rtp_stream_by_index(0)->allowed_for_ab() &&
+		   rtp_stream_by_index(1)->allowed_for_ab()) {
+			if(rtp_stream_by_index(0)->iscaller != rtp_stream_by_index(1)->iscaller) {
+				if(rtp_stream_by_index(0)->iscaller) {
+					rtpab[0] = rtp_stream_by_index(0);
+					rtpab[1] = rtp_stream_by_index(1);
+				} else {
+					rtpab[0] = rtp_stream_by_index(1);
+					rtpab[1] = rtp_stream_by_index(0);
+				}
+				rtpab_ok = true;
+			} else if(rtp_stream_by_index(0)->saddr == rtp_stream_by_index(1)->daddr &&
+				  rtp_stream_by_index(1)->saddr == rtp_stream_by_index(0)->daddr) {
 				rtpab[0] = rtp_stream_by_index(0);
 				rtpab[1] = rtp_stream_by_index(1);
-			} else {
-				rtpab[0] = rtp_stream_by_index(1);
-				rtpab[1] = rtp_stream_by_index(0);
+				rtpab[1]->iscaller = !rtpab[0]->iscaller;
+				rtpab_ok = true;
 			}
-			rtpab_ok = true;
-		} else if(rtp_stream_by_index(0)->saddr == rtp_stream_by_index(1)->daddr &&
-			  rtp_stream_by_index(1)->saddr == rtp_stream_by_index(0)->daddr) {
-			rtpab[0] = rtp_stream_by_index(0);
-			rtpab[1] = rtp_stream_by_index(1);
-			rtpab[1]->iscaller = !rtpab[0]->iscaller;
-			rtpab_ok = true;
 		}
 	}
 	
+	int rtp_size_reduct = rtp_size();
 	if(!rtpab_ok) {
 		// init indexex
+		int j = 0;
 		for(int i = 0; i < rtp_size(); i++) {
-			indexes[i] = i;
+			if(rtp_stream_by_index(i)->allowed_for_ab()) {
+				indexes[j++] = i;
+			}
 		}
+		rtp_size_reduct = j;
 		// bubble sort
-		for(int k = 0; k < rtp_size(); k++) {
-			for(int j = 0; j < rtp_size(); j++) {
+		for(int k = 0; k < rtp_size_reduct; k++) {
+			for(int j = 0; j < rtp_size_reduct; j++) {
 				if((rtp_stream_by_index(indexes[k])->stats.received + rtp_stream_by_index(indexes[k])->stats.lost) > (rtp_stream_by_index(indexes[j])->stats.received + rtp_stream_by_index(indexes[j])->stats.lost)) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
@@ -5251,7 +5263,7 @@ void Call::selectRtpAB() {
 				}
 			}
 		}
-		if(rtp_size() > 2 &&
+		if(rtp_size_reduct > 2 &&
 		   ((rtp_stream_by_index(indexes[2])->stats.received + rtp_stream_by_index(indexes[2])->stats.lost) == 0 ||
 		    (rtp_stream_by_index(indexes[1])->stats.received + rtp_stream_by_index(indexes[1])->stats.lost) / (rtp_stream_by_index(indexes[2])->stats.received + rtp_stream_by_index(indexes[2])->stats.lost) > 10) &&
 		   rtp_stream_by_index(indexes[0])->first_codec >= 0 && rtp_stream_by_index(indexes[1])->first_codec >= 0) {
@@ -5275,7 +5287,6 @@ void Call::selectRtpAB() {
 	}
 	
 	if(!rtpab_ok) {
-		int rtp_size_reduct = rtp_size();
 		if(opt_rtpip_find_endpoints) {
 			for(int i = 0; i < 2; i++) {
 				bool _iscaller = i == 0 ? 1 : 0;
@@ -12575,6 +12586,7 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse) {
 string printCallFlags(unsigned long int flags) {
 	ostringstream outStr;
 	if(flags & FLAG_SAVERTP)		outStr << "savertp ";
+	if(flags & FLAG_SAVERTP_VIDEO)		outStr << "savertp_video ";
 	if(flags & FLAG_SAVERTCP)		outStr << "savertcp ";
 	if(flags & FLAG_SAVESIP)		outStr << "savesip ";
 	if(flags & FLAG_SAVEREGISTER)		outStr << "saveregister ";
@@ -12583,6 +12595,8 @@ string printCallFlags(unsigned long int flags) {
 	if(flags & FLAG_FORMATAUDIO_OGG)	outStr << "format_ogg ";
 	if(flags & FLAG_SAVEGRAPH)		outStr << "savegraph ";
 	if(flags & FLAG_SAVERTPHEADER)		outStr << "savertpheader ";
+	if(flags & FLAG_SAVERTP_VIDEO_HEADER)	outStr << "savertp_video_header ";
+	if(flags & FLAG_PROCESSING_RTP_VIDEO)	outStr << "processing_rtp_video ";
 	if(flags & FLAG_SKIPCDR)		outStr << "skipcdr ";
 	if(flags & FLAG_RUNSCRIPT)		outStr << "runscript ";
 	if(flags & FLAG_RUNAMOSLQO)		outStr << "runamoslqo ";

@@ -58,6 +58,8 @@
 #define PAYLOAD_AAL2_G72640 358
 #define PAYLOAD_TELEVENT 400
 
+#define PAYLOAD_VIDEO 10000
+
 inline const char *codec2text(int codec) {
 	switch(codec) {
 	case PAYLOAD_PCMU:

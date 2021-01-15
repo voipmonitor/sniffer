@@ -13,49 +13,53 @@
 
 #include "calltable.h"
 
-#define FLAG_RTP_ALL		(1UL << 0)
-#define FLAG_RTP_HEAD		(1UL << 1)
-#define FLAG_NORTP      	(1UL << 2)
-#define FLAG_RTCP		(1UL << 3)
-#define FLAG_NORTCP     	(1UL << 4)
-#define FLAG_SIP		(1UL << 5)
-#define FLAG_NOSIP      	(1UL << 6)
-#define FLAG_REGISTER		(1UL << 7)
-#define FLAG_NOREGISTER		(1UL << 8)
-#define FLAG_GRAPH		(1UL << 9)
-#define FLAG_NOGRAPH    	(1UL << 10)
-#define FLAG_AUDIO		(1UL << 11)
-#define FLAG_AUDIO_WAV		(1UL << 12)
-#define FLAG_AUDIO_OGG		(1UL << 13)
-#define FLAG_NOWAV      	(1UL << 14)
-#define FLAG_SKIP       	(1UL << 15)
-#define FLAG_NOSKIP     	(1UL << 16)
-#define FLAG_SCRIPT     	(1UL << 17)
-#define FLAG_NOSCRIPT   	(1UL << 18)
-#define FLAG_AMOSLQO    	(1UL << 19)
-#define FLAG_BMOSLQO    	(1UL << 20)
-#define FLAG_ABMOSLQO   	(1UL << 21)
-#define FLAG_NOMOSLQO   	(1UL << 22)
-#define FLAG_HIDEMSG		(1UL << 23)
-#define FLAG_SHOWMSG		(1UL << 24)
-#define FLAG_SPOOL_2_SET	(1UL << 25)
-#define FLAG_SPOOL_2_UNSET	(1UL << 26)
-#define FLAG_DTMF_DB		(1UL << 27)
-#define FLAG_NODTMF_DB		(1UL << 28)
-#define FLAG_DTMF_PCAP		(1UL << 29)
-#define FLAG_NODTMF_PCAP	(1UL << 30)
-#define FLAG_OPTIONS_DB		(1UL << 31)
-#define FLAG_NOOPTIONS_DB	(1UL << 32)
-#define FLAG_OPTIONS_PCAP	(1UL << 33)
-#define FLAG_NOOPTIONS_PCAP	(1UL << 34)
-#define FLAG_NOTIFY_DB		(1UL << 35)
-#define FLAG_NONOTIFY_DB	(1UL << 36)
-#define FLAG_NOTIFY_PCAP	(1UL << 37)
-#define FLAG_NONOTIFY_PCAP	(1UL << 38)
-#define FLAG_SUBSCRIBE_DB	(1UL << 39)
-#define FLAG_NOSUBSCRIBE_DB	(1UL << 40)
-#define FLAG_SUBSCRIBE_PCAP	(1UL << 41)
-#define FLAG_NOSUBSCRIBE_PCAP	(1UL << 42)
+#define _FLAG_RTP_ALL			(1UL << 0)
+#define _FLAG_RTP_HEADER		(1UL << 1)
+#define _FLAG_NORTP      		(1UL << 2)
+#define _FLAG_RTP_VIDEO_ALL		(1UL << 3)
+#define _FLAG_RTP_VIDEO_HEADER		(1UL << 4)
+#define _FLAG_RTP_VIDEO_PROCESSING	(1UL << 5)
+#define _FLAG_NORTP_VIDEO      		(1UL << 6)
+#define _FLAG_RTCP			(1UL << 7)
+#define _FLAG_NORTCP     		(1UL << 8)
+#define _FLAG_SIP			(1UL << 9)
+#define _FLAG_NOSIP      		(1UL << 10)
+#define _FLAG_REGISTER			(1UL << 11)
+#define _FLAG_NOREGISTER		(1UL << 12)
+#define _FLAG_GRAPH			(1UL << 13)
+#define _FLAG_NOGRAPH    		(1UL << 14)
+#define _FLAG_AUDIO			(1UL << 15)
+#define _FLAG_AUDIO_WAV			(1UL << 16)
+#define _FLAG_AUDIO_OGG			(1UL << 17)
+#define _FLAG_NOWAV      		(1UL << 18)
+#define _FLAG_SKIP       		(1UL << 19)
+#define _FLAG_NOSKIP     		(1UL << 20)
+#define _FLAG_SCRIPT     		(1UL << 21)
+#define _FLAG_NOSCRIPT   		(1UL << 22)
+#define _FLAG_AMOSLQO    		(1UL << 23)
+#define _FLAG_BMOSLQO    		(1UL << 24)
+#define _FLAG_ABMOSLQO   		(1UL << 25)
+#define _FLAG_NOMOSLQO   		(1UL << 26)
+#define _FLAG_HIDEMSG			(1UL << 27)
+#define _FLAG_SHOWMSG			(1UL << 28)
+#define _FLAG_SPOOL_2_SET		(1UL << 29)
+#define _FLAG_SPOOL_2_UNSET		(1UL << 30)
+#define _FLAG_DTMF_DB			(1UL << 31)
+#define _FLAG_NODTMF_DB			(1UL << 32)
+#define _FLAG_DTMF_PCAP			(1UL << 33)
+#define _FLAG_NODTMF_PCAP		(1UL << 34)
+#define _FLAG_OPTIONS_DB		(1UL << 35)
+#define _FLAG_NOOPTIONS_DB		(1UL << 36)
+#define _FLAG_OPTIONS_PCAP		(1UL << 37)
+#define _FLAG_NOOPTIONS_PCAP		(1UL << 38)
+#define _FLAG_NOTIFY_DB			(1UL << 39)
+#define _FLAG_NONOTIFY_DB		(1UL << 40)
+#define _FLAG_NOTIFY_PCAP		(1UL << 41)
+#define _FLAG_NONOTIFY_PCAP		(1UL << 42)
+#define _FLAG_SUBSCRIBE_DB		(1UL << 43)
+#define _FLAG_NOSUBSCRIBE_DB		(1UL << 44)
+#define _FLAG_SUBSCRIBE_PCAP		(1UL << 45)
+#define _FLAG_NOSUBSCRIBE_PCAP		(1UL << 46)
 
 #define MAX_PREFIX 64
 
@@ -63,6 +67,7 @@ struct filter_db_row_base {
 	filter_db_row_base() {
 		direction = 0;
 		rtp = 0;
+		rtp_video = 0;
 		rtcp = 0;
 		sip = 0;
 		reg = 0;
@@ -80,6 +85,7 @@ struct filter_db_row_base {
 	}
 	int direction;
 	int rtp;
+	int rtp_video;
 	int rtcp;
 	int sip;
 	int reg;
@@ -98,7 +104,10 @@ struct filter_db_row_base {
 
 class filter_base {
 protected:
-	void loadBaseDataRow(class SqlDb_row *sqlRow, filter_db_row_base *baseRow);
+	bool _value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
+	int _value(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
+	void _loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow);
+	void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
 	unsigned long int getFlagsFromBaseData(filter_db_row_base *baseRow);
 	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags);
@@ -318,6 +327,9 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_saveSIP;
 	extern int opt_saveRTP;
 	extern int opt_onlyRTPheader;
+	extern int opt_saveRTPvideo;
+	extern int opt_saveRTPvideo_only_header;
+	extern int opt_processingRTPvideo;
 	extern int opt_saveRTCP;
 	extern int opt_saveWAV;
 	extern int opt_audio_format;
@@ -342,6 +354,15 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	}
 	if(opt_onlyRTPheader) {
 		flags |= FLAG_SAVERTPHEADER;
+	}
+	if(opt_saveRTPvideo) {
+		flags |= FLAG_SAVERTP_VIDEO | FLAG_PROCESSING_RTP_VIDEO;
+	}
+	if(opt_saveRTPvideo_only_header) {
+		flags |= FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO;
+	}
+	if(opt_processingRTPvideo) {
+		flags |= FLAG_PROCESSING_RTP_VIDEO;
 	}
 	if(opt_saveRTCP) {
 		flags |= FLAG_SAVERTCP;
