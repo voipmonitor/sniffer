@@ -79,7 +79,7 @@ unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow)
 	
 	if(baseRow->rtp_video == 1)		flags |= _FLAG_RTP_VIDEO_ALL;
 	else if(baseRow->rtp_video == 2)	flags |= _FLAG_RTP_VIDEO_HEADER;
-	else if(baseRow->rtp_video == 3)	flags |= _FLAG_RTP_VIDEO_PROCESSING;
+	else if(baseRow->rtp_video == 3)	flags |= _FLAG_RTP_VIDEO_CDR_ONLY;
 	else if(baseRow->rtp_video == 0)	flags |= _FLAG_NORTP_VIDEO;
 	
 	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
@@ -153,7 +153,7 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	
 	if(filterFlags & _FLAG_RTP_VIDEO_ALL)		{*callFlags |= (FLAG_SAVERTP_VIDEO | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO_HEADER;}
 	if(filterFlags & _FLAG_RTP_VIDEO_HEADER)	{*callFlags |= (FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO;}
-	if(filterFlags & _FLAG_RTP_VIDEO_PROCESSING)	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
+	if(filterFlags & _FLAG_RTP_VIDEO_CDR_ONLY)	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
 	if(filterFlags & _FLAG_NORTP_VIDEO) 		{*callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO);}
 	
 	if(filterFlags & _FLAG_RTCP)			*callFlags |= FLAG_SAVERTCP;

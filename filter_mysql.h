@@ -18,7 +18,7 @@
 #define _FLAG_NORTP      		(1UL << 2)
 #define _FLAG_RTP_VIDEO_ALL		(1UL << 3)
 #define _FLAG_RTP_VIDEO_HEADER		(1UL << 4)
-#define _FLAG_RTP_VIDEO_PROCESSING	(1UL << 5)
+#define _FLAG_RTP_VIDEO_CDR_ONLY	(1UL << 5)
 #define _FLAG_NORTP_VIDEO      		(1UL << 6)
 #define _FLAG_RTCP			(1UL << 7)
 #define _FLAG_NORTCP     		(1UL << 8)

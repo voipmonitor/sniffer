@@ -6688,7 +6688,7 @@ void cConfig::addConfigItems() {
 				->addValues("header:-1|h:-1")
 				->setDefaultValueStr("no"));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("savertp_video"))
-				->addValues("header:-1|h:-1|processing:-2|p:-2")
+				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
@@ -9815,8 +9815,8 @@ int eval_config(string inistr) {
 			opt_saveRTPvideo = 0;
 			opt_processingRTPvideo = 1;
 			break;
-		case 'p':
-		case 'P':
+		case 'c':
+		case 'C':
 			opt_saveRTPvideo_only_header = 0;
 			opt_saveRTPvideo = 0;
 			opt_processingRTPvideo = 1;
