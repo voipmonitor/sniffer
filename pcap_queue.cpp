@@ -2142,15 +2142,18 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		} else {
 			outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
 			if(opt_pcap_queue_dequeu_method &&
+			   !opt_pcap_queue_dequeu_need_blocks &&
 			   opt_pcap_queue_dequeu_window_length > 0) {
 				if(heapPerc > 30 && t2cpu > opt_cpu_limit_new_thread_high) {
-					if(!opt_pcap_queue_dequeu_window_length_div) {
-						opt_pcap_queue_dequeu_window_length_div = 2;
-					} else {
-						opt_pcap_queue_dequeu_window_length_div *= 2;
+					if(opt_pcap_queue_dequeu_window_length_div < 100) {
+						if(!opt_pcap_queue_dequeu_window_length_div) {
+							opt_pcap_queue_dequeu_window_length_div = 2;
+						} else {
+							opt_pcap_queue_dequeu_window_length_div *= 2;
+						}
+						syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
+						       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
 					}
-					syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
-					       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
 				} else if(heapPerc < 5 && t2cpu < 30 &&
 					  opt_pcap_queue_dequeu_window_length_div > 0) {
 					if(opt_pcap_queue_dequeu_window_length_div > 2) {
