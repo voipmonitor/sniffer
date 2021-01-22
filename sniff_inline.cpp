@@ -48,6 +48,7 @@ extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern char *skinnyportmatrix;
+extern char *ss7portmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
@@ -693,18 +694,22 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				// prepare packet pointers 
 				ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
-				if (!(sipportmatrix[ppd->header_tcp->get_source()] || sipportmatrix[ppd->header_tcp->get_dest()]) &&
-				    !(opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()]) &&
-				      (tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(ppd->header_ip->get_daddr()))) &&
-				    !(opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()]) &&
-				      (tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_daddr()))) &&
-				    !(opt_enable_ssl && 
-				      (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) ||
-				       isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) &&
-				    !(opt_skinny && (skinnyportmatrix[ppd->header_tcp->get_source()] || skinnyportmatrix[ppd->header_tcp->get_dest()])) &&
-				    !(opt_mgcp && 
-				      ((unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_gateway || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_gateway ||
-				       (unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_callagent || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_callagent))) {
+				if ((sipportmatrix[ppd->header_tcp->get_source()] || sipportmatrix[ppd->header_tcp->get_dest()]) ||
+				    (opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()]) &&
+				     (tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(ppd->header_ip->get_daddr()))) ||
+				    (opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()]) &&
+				     (tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_daddr()))) ||
+				    (opt_enable_ssl && 
+				     (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) ||
+				      isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) ||
+				    (opt_skinny && (skinnyportmatrix[ppd->header_tcp->get_source()] || skinnyportmatrix[ppd->header_tcp->get_dest()])) ||
+				    (opt_mgcp && 
+				     ((unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_gateway || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_gateway ||
+				      (unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_callagent || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_callagent))) {
+					// OK
+				} else if(opt_enable_ss7 && (ss7portmatrix[ppd->header_tcp->get_source()] || ss7portmatrix[ppd->header_tcp->get_dest()])) {
+					ppd->isother = 1;
+				} else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
 						//cout << "pcapProcess exit 005" << endl;

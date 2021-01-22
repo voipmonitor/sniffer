@@ -2161,6 +2161,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 }
 
 void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
+	map<string, vector<string>* > params;
 	JsonItem jsonData;
 	jsonData.parse(jsonStr);
 	for(size_t i = 0; i < jsonData.getLocalCount(); i++) {
@@ -2177,10 +2178,25 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 				set = 1;
 			}
 		}
+		if(!config_name.empty()) {
+			if(set) {
+				if(!params[config_name]) {
+					params[config_name] = new FILE_LINE(0) vector<string>;
+				}
+				params[config_name]->push_back(value);
+			} else if(params.find(config_name) == params.end()) {
+				params[config_name] = NULL;
+			}
+		}
+	}
+	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
+		string config_name = iter->first;
+		bool set = iter->second != NULL && iter->second->size() > 0;
 		if(!onlyIfSet || set) {
 			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
 			if(iter_map != config_map.end()) {
 				if(set) {
+					string value = iter->second->size() == 1 ? (*iter->second)[0] : implode(*iter->second, ";");
 					if(iter_map->second->setParamFromValueStr(value, true)) {
 						iter_map->second->set = true;
 						iter_map->second->set_in_json = true;
@@ -2192,6 +2208,11 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 					evSetConfigItem(iter_map->second);
 				}
 			}
+		}
+	}
+	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
+		if(iter->second) {
+			delete iter->second;
 		}
 	}
 }

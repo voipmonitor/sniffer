@@ -4394,23 +4394,43 @@ char * gettag_json(const char *data, const char *tag, unsigned *contentlen, char
 	const char *ptrToBegin = data;
 	while((ptrToBegin = strcasestr(ptrToBegin, _tag.c_str()))) {
 		ptrToBegin += _tag.length();
-		if(*ptrToBegin == ' ') {
+		while(*ptrToBegin == ' ') {
 			++ptrToBegin;
 		}
+		const char *ptrToEnd = NULL;
 		if(*ptrToBegin == '"') {
 			++ptrToBegin;
-			const char *ptrToEnd = ptrToBegin;
+			ptrToEnd = ptrToBegin;
 			while(*ptrToEnd && *ptrToEnd != '"' && *(ptrToEnd - 1) != '\\') {
 				++ptrToEnd;
 			}
-			if(ptrToEnd > ptrToBegin) {
-				*contentlen = ptrToEnd - ptrToBegin;
-				if(dest) {
-					strncpy(dest, ptrToBegin, min(*contentlen, destlen - 1));
-					dest[min(*contentlen, destlen - 1)] = 0;
+		} else if(*ptrToBegin == '{') {
+			ptrToEnd = ptrToBegin + 1;
+			int countBrackets = 1;
+			bool quotation = false;
+			while(*ptrToEnd) {
+				if(*ptrToEnd == '"' && *(ptrToEnd - 1) != '\\') {
+					quotation = !quotation;
+				} else if(!quotation) {
+					if(*ptrToEnd == '{') {
+						++countBrackets;
+					} else if(*ptrToEnd == '}' && countBrackets > 0) {
+						--countBrackets;
+					}
 				}
-				return((char*)ptrToBegin);
+				++ptrToEnd;
+				if(!countBrackets) {
+					break;
+				}
 			}
+		}
+		if(ptrToEnd && ptrToEnd > ptrToBegin) {
+			*contentlen = ptrToEnd - ptrToBegin;
+			if(dest) {
+				strncpy(dest, ptrToBegin, min(*contentlen, destlen - 1));
+				dest[min(*contentlen, destlen - 1)] = 0;
+			}
+			return((char*)ptrToBegin);
 		}
 	}
 	*contentlen = 0;

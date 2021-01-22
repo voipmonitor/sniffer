@@ -106,6 +106,9 @@ extern int opt_id_sensor_cleanspool;
 extern int rtptimeout;
 extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
+extern int opt_ss7timeout_rlc;
+extern int opt_ss7timeout_rel;
+extern int opt_ss7timeout;
 extern unsigned int gthread_num;
 extern volatile int num_threads_active;
 extern int opt_printinsertid;
@@ -8543,7 +8546,9 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		iam_data = *data;
 		iam_src_ip = packetS->saddr_();
 		iam_dst_ip = packetS->daddr_();
-		iam_time_us = getTimeUS(packetS->header_pt);
+		if(!iam_time_us) {
+			iam_time_us = getTimeUS(packetS->header_pt);
+		}
 		strcpy_null_term(fbasename, filename().c_str());
 		break;
 	case SS7_ACM:
@@ -8566,18 +8571,27 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		break;
 	case SS7_REL:
 		last_message_type = rel;
-		if(!rel_time_us) {
-			rel_time_us = getTimeUS(packetS->header_pt);
-		}
+		rel_time_us = getTimeUS(packetS->header_pt);
+		rlc_time_us = 0;
+		destroy_at_s = getTimeS(packetS->header_pt) + opt_ss7timeout_rel;
 		if(isset_unsigned(data->isup_cause_indicator)) {
 			rel_cause_indicator = data->isup_cause_indicator;
 		}
 		break;
 	case SS7_RLC:
 		last_message_type = rlc;
-		if(!rlc_time_us) {
-			rlc_time_us = getTimeUS(packetS->header_pt);
-		}
+		rlc_time_us = getTimeUS(packetS->header_pt);
+		destroy_at_s = getTimeS(packetS->header_pt) + opt_ss7timeout_rlc;
+		break;
+	}
+	switch(data->isup_message_type) {
+	case SS7_IAM:
+	case SS7_ACM:
+	case SS7_CPG:
+	case SS7_ANM:
+		destroy_at_s = 0;
+		rel_time_us = 0;
+		rlc_time_us = 0;
 		break;
 	}
 	last_time_us = getTimeUS(packetS->header_pt);
@@ -8628,10 +8642,10 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(rlc_time_us) {
 		ss7.add_calldate(rlc_time_us, "time_rlc", existsColumns.ss7_time_rlc_ms);
 	}
-	if(rlc_time_us) {
-		ss7.add_duration(rlc_time_us - iam_time_us, "duration", existsColumns.ss7_duration_ms, true);
+	if(rel_time_us || rlc_time_us) {
+		ss7.add_duration(max(rel_time_us, rlc_time_us) - iam_time_us, "duration", existsColumns.ss7_duration_ms, true);
 		if(anm_time_us) {
-			ss7.add_duration(rlc_time_us - anm_time_us, "connect_duration", existsColumns.ss7_connect_duration_ms, true);
+			ss7.add_duration(max(rel_time_us, rlc_time_us) - anm_time_us, "connect_duration", existsColumns.ss7_connect_duration_ms, true);
 		}
 	}
 	if(anm_time_us) {
@@ -8718,6 +8732,15 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 	if(useSensorId > -1) {
 		ss7.add(useSensorId, "id_sensor");
 	}
+	if(existsColumns.ss7_flags) {
+		u_int64_t flags = 0;
+		if(sonus) {
+			flags |= SS7_FLAG_SONUS;
+		}
+		if(flags) {
+			ss7.add(flags, "flags");
+		}
+	}
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 				   sqlDbSaveSs7->insertQuery("ss7", ss7));
@@ -8740,6 +8763,8 @@ void Ss7::init() {
 	rlc_time_us = 0;
 	last_time_us = 0;
 	rel_cause_indicator = UINT_MAX;
+	destroy_at_s = 0;
+	sonus = false;
 	last_dump_ts.tv_sec = 0;
 	last_dump_ts.tv_usec = 0;
 }
@@ -10942,9 +10967,11 @@ int Calltable::cleanup_ss7( struct timeval *currtime ) {
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
-		if(iter->second->last_message_type == Ss7::rlc || 
+		if((currtime && iter->second->destroy_at_s &&
+		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
+		     iter->second->destroy_at_s <= currtime->tv_sec)) || 
 		   !currtime ||
-		   (currtime->tv_sec - TIME_US_TO_S(iter->second->last_time_us)) > absolute_timeout) {
+		   (currtime->tv_sec - TIME_US_TO_S(iter->second->last_time_us)) > (opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;

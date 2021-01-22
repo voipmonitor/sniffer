@@ -1219,6 +1219,7 @@ struct sExistsColumns {
 	bool cdr_txt_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
 	bool cdr_vlan;
+	bool ss7_flags;
 	bool ss7_time_iam_ms;
 	bool ss7_time_acm_ms;
 	bool ss7_time_cpg_ms;

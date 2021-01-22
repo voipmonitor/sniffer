@@ -153,6 +153,8 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define SS7_REL 12
 #define SS7_RLC 16
 
+#define SS7_FLAG_SONUS (1 << 0)
+
 #define NOFAX	0
 #define T38FAX	1
 #define T30FAX	2
@@ -1831,7 +1833,10 @@ public:
 			unsigned dpc = isset_unsigned(m3ua_protocol_data_dpc) ? m3ua_protocol_data_dpc : mtp3_dpc;
 			unsigned low_point = min(opc, dpc);
 			unsigned high_point = max(opc, dpc);
-			return(intToString(isup_cic) + "-" + intToString(low_point) + "-" + intToString(high_point));
+			extern int opt_ss7_type_callid;
+			return(opt_ss7_type_callid == 2 ?
+				intToString(isup_cic) :
+				intToString(isup_cic) + "-" + intToString(low_point) + "-" + intToString(high_point));
 		}
 		string filename() {
 			if(!isOk()) {
@@ -1933,6 +1938,8 @@ public:
 	u_int64_t rlc_time_us;
 	u_int64_t last_time_us;
 	unsigned rel_cause_indicator;
+	u_int32_t destroy_at_s;
+	bool sonus;
 	PcapDumper pcap;
 private:
 	struct timeval last_dump_ts;

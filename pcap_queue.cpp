@@ -7571,6 +7571,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			istcp = 1;
 			sport = header_tcp->get_source();
 			dport = header_tcp->get_dest();
+			isother = opt_enable_ss7 && (ss7portmatrix[sport] || ss7portmatrix[dport]);
 		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
 			isother = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);

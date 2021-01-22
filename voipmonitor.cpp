@@ -401,6 +401,11 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
+int opt_ss7_type_callid = 1;
+int opt_ss7timeout_rlc = 10;
+int opt_ss7timeout_rel = 60;
+int opt_ss7timeout = 3600;
+vector<string> opt_ws_params;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -882,6 +887,7 @@ char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
+char *ss7portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -3052,6 +3058,8 @@ int main(int argc, char *argv[]) {
 	memset(skinnyportmatrix, 0, 65537);
 	ipaccountportmatrix = new FILE_LINE(42017) char[65537];
 	memset(ipaccountportmatrix, 0, 65537);
+	ss7portmatrix = new FILE_LINE(0) char[65537];
+	memset(ss7portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -3862,6 +3870,7 @@ int main(int argc, char *argv[]) {
 	delete [] webrtcportmatrix;
 	delete [] skinnyportmatrix;
 	delete [] ipaccountportmatrix;
+	delete [] ss7portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -7055,6 +7064,16 @@ void cConfig::addConfigItems() {
 	group("ss7");
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
+				expert();
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
+					->disableNo()
+					->addValues("cic_dpc_opc:1|cic:2")
+					->setDefaultValueStr("cic_dpc_opc"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7port", ss7portmatrix));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rlc_timeout", &opt_ss7timeout_rlc));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -10696,6 +10715,27 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "ss7", NULL))) {
 		opt_enable_ss7 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ss7callid", NULL))) {
+		opt_ss7_type_callid = !strcasecmp(value, "cic") ? 2 : 1;
+	}
+	if(ini.GetAllValues("general", "ss7port", values)) {
+		parse_config_item_ports(&values, ss7portmatrix);
+	}
+	if((value = ini.GetValue("general", "ss7_rlc_timeout", NULL))) {
+		opt_ss7timeout_rlc = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ss7_rel_timeout", NULL))) {
+		opt_ss7timeout_rel = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ss7_timeout", NULL))) {
+		opt_ss7timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ws_param", NULL))) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			opt_ws_params.push_back(i->pItem);
+		}
 	}
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {

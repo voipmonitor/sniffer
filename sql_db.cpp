@@ -6001,7 +6001,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`dst_ip_country_code` varchar(5),\
 				`ss7_id` varchar(255),\
 				`pcap_filename` varchar(255),\
-				`id_sensor` smallint unsigned," +
+				`id_sensor` smallint unsigned,\
+				`flags` bigint unsigned DEFAULT NULL," +
 			(supportPartitions != _supportPartitions_na ?
 				"PRIMARY KEY (`ID`, `time_iam`)," :
 				"PRIMARY KEY (`ID`),") + 
@@ -8092,6 +8093,10 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 		return;
 	}
 	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("ss7", "flags", true,
+				log, &tableSize, &existsColumns.ss7_flags,
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
 		if(!(existsColumns.ss7_time_iam_ms = this->getTypeColumn("ss7", "time_iam").find("(3)") != string::npos)) {

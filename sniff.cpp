@@ -263,6 +263,7 @@ extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
 extern bool opt_dedup_input_file;
+extern int opt_ss7timeout_rlc;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -5178,41 +5179,59 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 	return(false);
 }
 
+struct sDissectPart {
+	enum eTypePart {
+		_sctp,
+		_sonus,
+		_other
+	};
+	size_t pos;
+	int type;
+};
+
 void process_packet_other(packet_s_stack *packetS) {
 	process_packet__cleanup_ss7(packetS->getTimeval_pt());
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 	string dissect_rslt;
 	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
 	if(!dissect_rslt.empty()) {
-		vector<size_t> sctp_pos;
-		size_t pos = 0;
-		do {
-			size_t _pos = pos;
-			for(int i = 0; i < 2; i++) {
-				pos = dissect_rslt.find(i == 0 ? "\"sctp\": {" : "\"sctp\":{", _pos + 1);
-				if(pos != string::npos) {
-					break;
+		vector<sDissectPart> dissect_parts;
+		for(int i = 0; i < 2; i++) {
+			const char *tag = i == 0 ? "sctp" : "sonuscm";
+			size_t pos = 0;
+			size_t _pos;
+			do {
+				_pos = string::npos;
+				for(int j = 0; j < 2; j++) {
+					string find_tag = string("\"") + tag + (j == 0 ? "\": {" : "\":{");
+					size_t __pos = dissect_rslt.find(find_tag, pos);
+					if(__pos != string::npos && (_pos == string::npos || __pos < _pos)) {
+						_pos = __pos;
+					}
 				}
-			}
-			if(pos != string::npos) {
-				sctp_pos.push_back(pos);
-			}
-		} while(pos != string::npos);
-		vector<string> dissect_rslts;
-		vector<string*> dissect_rslts_pt;
-		if(sctp_pos.size() <= 1) {
-			dissect_rslts_pt.push_back(&dissect_rslt);
-		} else {
-			for(size_t i = 0; i < sctp_pos.size(); i++) {
-				dissect_rslts.push_back(dissect_rslt.substr(sctp_pos[i], i < sctp_pos.size() - 1 ? sctp_pos[i + 1] - sctp_pos[i] : string::npos));
-			}
-			for(size_t i = 0; i < dissect_rslts.size(); i++) {
-				dissect_rslts_pt.push_back(&dissect_rslts[i]);
+				if(_pos != string::npos) {
+					sDissectPart part;
+					part.pos = _pos;
+					part.type = i == 0 ? sDissectPart::_sctp : sDissectPart::_sonus;
+					dissect_parts.push_back(part);
+					pos = _pos + 1;
+				}
+			} while(_pos != string::npos);
+			if(dissect_parts.size()) {
+				break;
 			}
 		}
-		for(size_t i = 0; i < dissect_rslts_pt.size(); i++) {
+		if(!dissect_parts.size()) {
+			sDissectPart part;
+			part.pos = 0;
+			part.type = sDissectPart::_other;
+			dissect_parts.push_back(part);
+		}
+		for(size_t i = 0; i < dissect_parts.size(); i++) {
 			Ss7::sParseData parseData;
-			if(parseData.parse(packetS, dissect_rslts_pt[i]->c_str()) && parseData.isOk()) {
+			string dissect_part = dissect_rslt.substr(dissect_parts[i].pos,
+								  i < dissect_parts.size() - 1 ? dissect_parts[i + 1].pos - dissect_parts[i].pos : string::npos);
+			if(parseData.parse(packetS, dissect_part.c_str()) && parseData.isOk()) {
 				Ss7 *ss7 = NULL;
 				string ss7_id = parseData.ss7_id();
 				calltable->lock_process_ss7_listmap();
@@ -5223,11 +5242,14 @@ void process_packet_other(packet_s_stack *packetS) {
 				}
 				if(ss7) {
 					ss7->processData(packetS, &parseData);
-					if(parseData.isup_message_type == SS7_RLC) {
+					if(parseData.isup_message_type == SS7_RLC && !opt_ss7timeout_rlc) {
 						ss7->pushToQueue(&ss7_id);
 					}
 				} else if(parseData.isup_message_type == SS7_IAM) {
 					ss7 = calltable->add_ss7(packetS, &parseData);
+					if(dissect_parts[i].type == sDissectPart::_sonus) {
+						ss7->sonus = true;
+					}
 				}
 				calltable->unlock_process_ss7_listmap();
 			}
