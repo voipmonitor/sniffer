@@ -24,7 +24,10 @@
 #include <wireshark/wiretap/wtap.h>
 
 #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
+#define _U_
 #include <wireshark/file.h>
+#include <wireshark/epan/prefs.h>
+#include <wireshark/epan/prefs-int.h>
 #endif
 
 #if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
