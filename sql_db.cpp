@@ -3138,7 +3138,9 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			}
 		}
 		if(!(this->check_store_supported && needCheckStore) || checkStoreOK) {
-			string query_str_with_id = intToString(id_main) + '|' + query_str;
+			string query_str_with_id = intToString(id_main) + '|' +
+						   'T' + sqlDateTimeString(time(NULL)) + '|' +
+						   query_str;
 			bool okSendQuery = true;
 			if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {
 				if(_snifferClientOptions->type_compress == _cs_compress_gzip) {

@@ -892,10 +892,34 @@ void cSnifferServerConnection::cp_store() {
 						}
 						USLEEP(1000);
 					}
+					size_t posBeginQuery = posStoreIdSeparator + 1;
+					if(queryStr[posBeginQuery] == 'T' && isdigit(queryStr[posBeginQuery + 1])) {
+						size_t posTimeSeparator = queryStr.find('|', posBeginQuery);
+						if(posTimeSeparator != string::npos && posTimeSeparator - posBeginQuery <= 20) {
+							string query_time_str = queryStr.substr(posBeginQuery + 1, posTimeSeparator - posBeginQuery - 1);
+							time_t query_time = stringToTime(query_time_str.c_str());
+							time_t act_time = time(NULL);
+							if(query_time > act_time && query_time - act_time > 24 * 60 * 60) {
+								static uint64_t lastTimeSyslog =0;
+								u_int64_t actTime = getTimeMS();
+								if(actTime - 30000 > lastTimeSyslog) {
+									cLogSensor::log(cLogSensor::error, "client/server problem", "client time of %s is too greater than server time", socket->getHost().c_str());
+									lastTimeSyslog = actTime;
+								}
+								JsonExport exp;
+								exp.add("error", "client time is too greater than server time");
+								exp.add("next_attempt", false);
+								socket->writeBlock(exp.getJson(), cSocket::_te_aes);
+								delete this;
+								return;
+							}
+							posBeginQuery = posTimeSeparator + 1;
+						}
+					}
 					int storeId2 = server->findMinStoreId2(storeIdMain);
-					if(queryStr[posStoreIdSeparator + 1] == 'L' && isdigit(queryStr[posStoreIdSeparator + 2])) {
+					if(queryStr[posBeginQuery] == 'L' && isdigit(queryStr[posBeginQuery + 1])) {
 						list<string> queriesStr;
-						size_t pos = posStoreIdSeparator + 1;
+						size_t pos = posBeginQuery;
 						do {
 							if(queryStr[pos] != 'L') {
 								syslog(LOG_ERR, "cSnifferServerConnection::cp_store: missing 'L' separator");
@@ -916,7 +940,7 @@ void cSnifferServerConnection::cp_store() {
 						}
 					} else {
 						if(!sverb.suppress_server_store) {
-							server->sql_query_lock(queryStr.substr(posStoreIdSeparator + 1).c_str(), storeIdMain, storeId2);
+							server->sql_query_lock(queryStr.substr(posBeginQuery).c_str(), storeIdMain, storeId2);
 						}
 					}
 					socket->writeBlock("OK", cSocket::_te_aes);

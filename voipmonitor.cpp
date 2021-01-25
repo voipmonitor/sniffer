@@ -8649,6 +8649,13 @@ void set_context_config() {
 	}
 	
 	ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+	for(unsigned i = 0; i < ifnamev.size(); ) {
+		if(ifnamev[i] == "--") {
+			ifnamev.erase(ifnamev.begin() + i);
+		} else {
+			i++;
+		}
+	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
 		if(is_receiver() || is_server()) {
