@@ -589,17 +589,6 @@ bool isTypeDb(const char *typeDb, const char *checkSqlDriver, const char *checkO
 }
 
 
-string sqlEscapeString(string inputStr, const char *typeDb) {
-	return sqlEscapeString(inputStr.c_str(), 0, typeDb);
-}
-
-string sqlEscapeString(const char *inputStr, int length, const char *typeDb) {
-	if(!length) {
-		length = strlen(inputStr);
-	}
-	return _sqlEscapeString(inputStr, length, typeDb, true);
-}
-
 struct escChar {
 	char ch;
 	char escCh;

@@ -223,8 +223,15 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	samplerate = 8000;
 	first = true;
 	first_packet_time_us = 0;
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wclass-memaccess"
+	#endif
 	memset(rtpmap, 0, sizeof(rtpmap));
 	memset(rtpmap_other_side, 0, sizeof(rtpmap_other_side));
+	#if __GNUC__ >= 8
+	#pragma GCC diagnostic pop
+	#endif
 	s = new FILE_LINE(24001) source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));

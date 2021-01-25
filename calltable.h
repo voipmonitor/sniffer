@@ -478,7 +478,7 @@ public:
 		return(alloc_flag);
 	}
 public:
-	uint16_t alloc_flag;
+	uint8_t alloc_flag;
 	int type_base;
 	int type_next;
 	u_int64_t first_packet_time_us;
@@ -1743,7 +1743,8 @@ public:
 	list<vmIPport> rtp_ip_port_list;
 	#endif
 	volatile int hash_queue_counter;
-	int attemptsClose;
+	volatile int attemptsClose;
+	volatile int useInListCalls;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
 	bool rtp_from_multiple_sensors;
@@ -2014,6 +2015,7 @@ public:
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
+	map<string, Call*> *calls_listMAP_X;
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
@@ -2055,6 +2057,7 @@ public:
 	void lock_registers_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) USLEEP(10); };
 	void lock_files_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_files_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&flock);*/ };
 	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
+	void lock_calls_listMAP_X(u_int8_t ci) { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(10); };
 	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
 	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_skinny_maps() { while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
@@ -2075,6 +2078,7 @@ public:
 	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); };
 	void unlock_files_queue() { __sync_lock_release(&this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ };
 	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
+	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); };
 	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
 	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
 	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); };
@@ -2094,15 +2098,16 @@ public:
 	*/
 	Call *add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
 		  u_int64_t time_us, vmIP saddr, vmPort port, 
-		  pcap_t *handle, int dlt, int sensorId);
+		  pcap_t *handle, int dlt, int sensorId, int8_t ci = -1);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
 	Call *add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		       pcap_t *handle, int dlt, int sensorId);
 	
-	size_t calls_list_count() {
-		extern char opt_call_id_alternative[256];
-		return(opt_call_id_alternative[0] ? calls_list.size() : calls_listMAP.size());
-	}
+	size_t getCountCalls();
+	bool enableCallX();
+	bool useCallX();
+	bool enableCallFindX();
+	bool useCallFindX();
 
 	/**
 	 * @brief find Call by call_id
@@ -2153,6 +2158,22 @@ public:
 			}
 		}
 		unlock_calls_listMAP();
+		return(rslt_call);
+	}
+	Call *find_by_call_id_x(u_int8_t ci, char *call_id, unsigned long call_id_len, time_t time) {
+		Call *rslt_call = NULL;
+		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
+		lock_calls_listMAP_X(ci);
+		map<string, Call*>::iterator callMAPIT = calls_listMAP_X[ci].find(call_idS);
+		if(callMAPIT != calls_listMAP_X[ci].end()) {
+			rslt_call = callMAPIT->second;
+			if(time) {
+				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+			}
+		}
+		unlock_calls_listMAP_X(ci);
 		return(rslt_call);
 	}
 	Call *find_by_stream_callid(vmIP sip, vmPort sport, vmIP dip, vmPort dport, const char *callid) {
@@ -2230,6 +2251,19 @@ public:
 				if((long long)(iter->second) == callreference) {
 					rslt_call = iter->second;
 					break;
+				}
+			}
+			if(!rslt_call && useCallFindX()) {
+				extern int preProcessPacketCallX_count;
+				for(int i = 0; i < preProcessPacketCallX_count && !rslt_call; i++) {
+					if(lock) lock_calls_listMAP_X(i);
+					for(map<string, Call*>::iterator iter = calls_listMAP_X[i].begin(); iter != calls_listMAP_X[i].end(); iter++) {
+						if((long long)(iter->second) == callreference) {
+							rslt_call = iter->second;
+							break;
+						}
+					}
+					if(lock) unlock_calls_listMAP_X(i);
 				}
 			}
 		}
@@ -2517,6 +2551,7 @@ private:
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
+	volatile int *_sync_lock_calls_listMAP_X;
 	volatile int _sync_lock_calls_mergeMAP;
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;

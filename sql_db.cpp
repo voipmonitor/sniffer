@@ -190,11 +190,14 @@ void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, con
 }
 
 void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
+	char dateTimeBuffer[50];
 	if(use_ms) {
-		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate)
+		sqlDateTimeString_us2ms(dateTimeBuffer, calldate_us);
+		add(dateTimeBuffer, fieldName, 0, 0, _ift_calldate)
 		    ->ifv.v._int_u = (u_int64_t)round(calldate_us / 1000.) * 1000ull;
 	} else {
-		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate)
+		sqlDateTimeString(dateTimeBuffer, TIME_US_TO_S(calldate_us));
+		add(dateTimeBuffer, fieldName, 0, 0, _ift_calldate)
 		    ->ifv.v._int_u = TIME_US_TO_S(calldate_us) * 1000000ull;
 	}
 }
@@ -256,9 +259,12 @@ string SqlDb_row::_getNameField(int indexField) {
 
 string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
+	rslt.reserve(this->row.size() * 20);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
-		rslt += border + /*'`' +*/ this->row[i].fieldName + /*'`' +*/ border;
+		rslt += border;
+		rslt += this->row[i].fieldName;
+		rslt += border;
 	}
 	return(rslt);
 }
@@ -269,6 +275,7 @@ string SqlDb_row::implodeFieldsToCsv() {
 
 string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll) {
 	string rslt;
+	rslt.reserve(this->row.size() * 100);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
@@ -282,9 +289,9 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
 			rslt += fieldContent;
 		} else {
-			rslt += border + 
-				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
-				border;
+			rslt += border;
+			rslt += escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
+			rslt += border;
 		}
 	}
 	return(rslt);
@@ -4862,13 +4869,98 @@ SqlDb *createSqlObject(int connectId) {
 }
 
 string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache) {
-	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
-	return string(dateTimeBuffer);
+	sqlDateTimeString(dateTimeBuffer, unixTime, useGlobalTimeCache);
+	return dateTimeBuffer;
+}
+
+#define sqlDateTimeString_cache_length 5
+
+void sqlDateTimeString(char *rslt, time_t unixTime, bool useGlobalTimeCache) {
+ 
+	#if not defined(__arm__)
+	static __thread time_t _cache_time[sqlDateTimeString_cache_length];
+	static __thread char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static __thread int _cache_pos = 0;
+	#else
+	static time_t _cache_time[sqlDateTimeString_cache_length];
+	static char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static volatile int _cache_pos = 0;
+	static volatile int _cache_sync = 0;
+	#endif
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		for(unsigned i = 0; i < sqlDateTimeString_cache_length; i++) {
+			if(_cache_time[i] == unixTime) {
+				strcpy(rslt, _cache_rslt[i]);
+				#if defined(__arm__)
+				__SYNC_UNLOCK(_cache_sync);
+				#endif
+				return;
+			}
+		}
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+ 
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
+	strftime(rslt, 50, "%Y-%m-%d %H:%M:%S", &localTime);
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		strcpy(_cache_rslt[_cache_pos], rslt);
+		_cache_time[_cache_pos] = unixTime;
+		_cache_pos = (_cache_pos + 1) % sqlDateTimeString_cache_length;
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+	
 }
 
 string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache) {
+	char dateTimeBuffer[50];
+	sqlDateTimeString_us2ms(dateTimeBuffer, unixTime_us, useGlobalTimeCache);
+	return dateTimeBuffer;
+}
+
+void sqlDateTimeString_us2ms(char *rslt, u_int64_t unixTime_us, bool useGlobalTimeCache) {
+ 
+	#if not defined(__arm__)
+	static __thread u_int64_t _cache_time[sqlDateTimeString_cache_length];
+	static __thread char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static __thread int _cache_pos = 0;
+	#else
+	static u_int64_t _cache_time[sqlDateTimeString_cache_length];
+	static char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static volatile int _cache_pos = 0;
+	static volatile int _cache_sync = 0;
+	#endif
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		for(unsigned i = 0; i < sqlDateTimeString_cache_length; i++) {
+			if(_cache_time[i] == unixTime_us) {
+				strcpy(rslt, _cache_rslt[i]);
+				#if defined(__arm__)
+				__SYNC_UNLOCK(_cache_sync);
+				#endif
+				return;
+			}
+		}
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+
 	time_t unixTime_s = TIME_US_TO_S(unixTime_us);
 	unsigned unixTime_dec_ms = round(TIME_US_TO_DEC_US(unixTime_us) / 1000.);
 	if(unixTime_dec_ms > 999) {
@@ -4876,10 +4968,21 @@ string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache) {
 		unixTime_dec_ms = 0;
 	}
 	struct tm localTime = time_r(&unixTime_s, NULL, useGlobalTimeCache);
-	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
-	snprintf(dateTimeBuffer + strlen(dateTimeBuffer), sizeof(dateTimeBuffer) - strlen(dateTimeBuffer), ".%03i", unixTime_dec_ms);
-	return string(dateTimeBuffer);
+	strftime(rslt, 50, "%Y-%m-%d %H:%M:%S", &localTime);
+	sprintf(rslt + strlen(rslt), ".%03i", unixTime_dec_ms);
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		strcpy(_cache_rslt[_cache_pos], rslt);
+		_cache_time[_cache_pos] = unixTime_us;
+		_cache_pos = (_cache_pos + 1) % sqlDateTimeString_cache_length;
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+	
 }
 
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache) {
