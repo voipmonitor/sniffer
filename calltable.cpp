@@ -5952,7 +5952,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			string c = i == 0 ? "a" : "b";
 			
 			cdr.add(rtpab[i]->ssrc_index, c+"_index");
-			cdr.add(rtpab[i]->stats.received + (rtpab[i]->first_codec ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			cdr.add(rtpab[i]->stats.received + (rtpab[i]->first_codec >= 0 ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
 			lost[i] = rtpab[i]->stats.lost;
 			cdr.add(lost[i], c+"_lost");
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->stats.lost / 
