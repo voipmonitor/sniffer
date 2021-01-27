@@ -6583,8 +6583,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
-			if(rtp_i->s->received > 0) {
-				rtps.add(rtp_i->s->received + 2, "received");
+			if(rtp_i->s->received > 0 || rtp_i->first_codec < 0) {
+				rtps.add(rtp_i->s->received + (rtp_i->first_codec >= 0 ? 2 : 0), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
@@ -7104,8 +7104,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
-			if(rtp_i->s->received > 0) {
-				rtps.add(rtp_i->s->received + 2, "received");
+			if(rtp_i->s->received > 0 || rtp_i->first_codec < 0) {
+				rtps.add(rtp_i->s->received + (rtp_i->first_codec >= 0 ? 2 : 0), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
