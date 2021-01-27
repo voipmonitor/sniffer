@@ -253,6 +253,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	gfilename[0] = '\0';
 	gfileRAW = NULL;
 	initRAW = false;
+	needInitRawForChannelRecord = false;
 	last_interval_mosf1 = 45;
 	last_interval_mosf2 = 45;
 	last_interval_mosAD = 45;
@@ -1481,7 +1482,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	// codec changed 
 	RTP *laststream = iscaller ? owner->lastcallerrtp : owner->lastcalledrtp;
 
-
+	bool doInitRaw = false;
 	if(defer_codec_change or 
 	    (owner->iscaller_consecutive[iscaller] >= 5 and owner->lastraw[iscaller] != this and (lastssrc and *lastssrc != ssrc and (laststream and laststream->daddr == daddr))) or
 	   (curpayload != prev_payload and 
@@ -1541,87 +1542,90 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				owner->last_calledcodec = codec;
 			}
 
-			if(use_channel_record) {
-				//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
-				/* open file for raw codec */
-				if(gfileRAW || initRAW) {
-					jitterbuffer_fixed_flush(channel_record);
-					ast_jb_empty_and_reset(channel_record);
-					ast_jb_destroy(channel_record);
-					if(gfileRAW) {
-						fclose(gfileRAW);
-					}
-				} else {
-					/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
-					 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
-					 * the other direction of call 
-					 */
-					RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
-					if(prevrtp && prevrtp != this) {
-						prevrtp->ignore = 1; 
-						prevrtp->data = data; 
-						prevrtp->header_ip = header_ip; 
-						prevrtp->len = *len;
-						prevrtp->header_ts = header_ts;
-						prevrtp->codec = prevrtp->prev_codec;
-						prevrtp->jitterbuffer(prevrtp->channel_record, save_audio, energylevels, mos_lqo);
-					}
-				}
-				unsigned long raw_unique = getTimestamp();
-				if(save_audio || mos_lqo) {
-					char raw_filename[1024 + 100];
-					snprintf(raw_filename, sizeof(raw_filename), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, raw_unique, codec, header->ts.tv_sec, header->ts.tv_usec);
-					for(int passOpen = 0; passOpen < 2; passOpen++) {
-						if(passOpen == 1) {
-							char *pointToLastDirSeparator = strrchr(raw_filename, '/');
-							if(pointToLastDirSeparator) {
-								*pointToLastDirSeparator = 0;
-								spooldir_mkdir(raw_filename);
-								*pointToLastDirSeparator = '/';
-							} else {
-								break;
-							}
-						}
-						gfileRAW = fopen(raw_filename, "w");
-						if(gfileRAW) {
-							spooldir_file_chmod_own(raw_filename);
-							break;
-						}
-					}
-					if(!gfileRAW_buffer) {
-						gfileRAW_buffer = new FILE_LINE(24007) char[32768];
-						if(gfileRAW_buffer == NULL) {
-							syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
-							exit(2);
-						}
-					}
-					if(!gfileRAW) {
-						syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", raw_filename, strerror (errno));
-					} else if(gfileRAW_buffer) {
-						setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
-					}
-					
-					/* write file info to "playlist" */
-					char rawinfo_filename[1024 + 100];
-					snprintf(rawinfo_filename, sizeof(rawinfo_filename), "%s.rawInfo", basefilename);
-					owner->iscaller_consecutive[iscaller] = 0;
-					bool gfileRAWInfo_exists = file_exists(rawinfo_filename);
-					FILE *gfileRAWInfo = fopen(rawinfo_filename, "a");
-					if(gfileRAWInfo) {
-						if(!gfileRAWInfo_exists) {
-							spooldir_file_chmod_own(rawinfo_filename);
-						}
-						fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, raw_unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
-						fclose(gfileRAWInfo);
-					} else {
-						syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
-					}
-				}
-				initRAW = true;
-			}
+			doInitRaw = true;
+			needInitRawForChannelRecord = true;
 		}
 	}
 
+	if(use_channel_record &&
+	   (doInitRaw || (needInitRawForChannelRecord && !initRAW))) {
+		//if(verbosity > 0) syslog(LOG_ERR, "converting WAV! [%u]\n", owner->flags);
+		/* open file for raw codec */
+		if(gfileRAW || initRAW) {
+			jitterbuffer_fixed_flush(channel_record);
+			ast_jb_empty_and_reset(channel_record);
+			ast_jb_destroy(channel_record);
+			if(gfileRAW) {
+				fclose(gfileRAW);
+			}
+		} else {
+			/* look for the last RTP stream belonging to this direction and let jitterbuffer put silence 
+			 * which fills potentionally gap between this and previouse RTP so it will stay in sync with
+			 * the other direction of call 
+			 */
+			RTP *prevrtp = (RTP*)(owner->rtp_prev[iscaller]);
+			if(prevrtp && prevrtp != this) {
+				prevrtp->ignore = 1; 
+				prevrtp->data = data; 
+				prevrtp->header_ip = header_ip; 
+				prevrtp->len = *len;
+				prevrtp->header_ts = header_ts;
+				prevrtp->codec = prevrtp->prev_codec;
+				prevrtp->jitterbuffer(prevrtp->channel_record, save_audio, energylevels, mos_lqo);
+			}
+		}
+		unsigned long raw_unique = getTimestamp();
+		if(save_audio || mos_lqo) {
+			char raw_filename[1024 + 100];
+			snprintf(raw_filename, sizeof(raw_filename), "%s.%d.%lu.%d.%ld.%ld.raw", basefilename, ssrc_index, raw_unique, codec, header->ts.tv_sec, header->ts.tv_usec);
+			for(int passOpen = 0; passOpen < 2; passOpen++) {
+				if(passOpen == 1) {
+					char *pointToLastDirSeparator = strrchr(raw_filename, '/');
+					if(pointToLastDirSeparator) {
+						*pointToLastDirSeparator = 0;
+						spooldir_mkdir(raw_filename);
+						*pointToLastDirSeparator = '/';
+					} else {
+						break;
+					}
+				}
+				gfileRAW = fopen(raw_filename, "w");
+				if(gfileRAW) {
+					spooldir_file_chmod_own(raw_filename);
+					break;
+				}
+			}
+			if(!gfileRAW_buffer) {
+				gfileRAW_buffer = new FILE_LINE(24007) char[32768];
+				if(gfileRAW_buffer == NULL) {
+					syslog(LOG_ERR, "Cannot allocate memory for gfileRAW_buffer - low memory this is FATAL");
+					exit(2);
+				}
+			}
+			if(!gfileRAW) {
+				syslog(LOG_ERR, "Cannot open file %s for writing: %s\n", raw_filename, strerror (errno));
+			} else if(gfileRAW_buffer) {
+				setvbuf(gfileRAW, gfileRAW_buffer, _IOFBF, 32768);
+			}
+			
+			/* write file info to "playlist" */
+			char rawinfo_filename[1024 + 100];
+			snprintf(rawinfo_filename, sizeof(rawinfo_filename), "%s.rawInfo", basefilename);
+			owner->iscaller_consecutive[iscaller] = 0;
+			bool gfileRAWInfo_exists = file_exists(rawinfo_filename);
+			FILE *gfileRAWInfo = fopen(rawinfo_filename, "a");
+			if(gfileRAWInfo) {
+				if(!gfileRAWInfo_exists) {
+					spooldir_file_chmod_own(rawinfo_filename);
+				}
+				fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, raw_unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
+				fclose(gfileRAWInfo);
+			} else {
+				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);
+			}
+		}
+		initRAW = true;
+	}
 
 	if(owner->lastraw[iscaller] != this) {
 		owner->iscaller_consecutive[iscaller] = 0;

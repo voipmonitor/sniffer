@@ -242,6 +242,7 @@ public:
 	RtpGraphSaver graph;
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	bool initRAW;
+	bool needInitRawForChannelRecord;
 	char *gfileRAW_buffer;
 	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
