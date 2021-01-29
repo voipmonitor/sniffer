@@ -404,6 +404,8 @@ public:
 	bool emptyTable(string table, bool viaTableStatus = false) { return(emptyTable(table.c_str(), viaTableStatus)); }
 	virtual int64_t rowsInTable(const char *table, bool viaTableStatus = false) = 0;
 	int64_t rowsInTable(string table, bool viaTableStatus = false) { return(rowsInTable(table.c_str(), viaTableStatus)); }
+	virtual int64_t sizeOfTable(const char *table) = 0;
+	int64_t sizeOfTable(string table) { return(sizeOfTable(table.c_str())); }
 	virtual bool isOldVerPartition(const char *table) { return(false); }
 	bool isOldVerPartition(string table) { return(isOldVerPartition(table.c_str())); }
 	virtual int getIndexField(string fieldName);
@@ -649,6 +651,7 @@ public:
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
+	int64_t sizeOfTable(const char *table);
 	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
@@ -789,6 +792,7 @@ public:
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
+	int64_t sizeOfTable(const char *table);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);

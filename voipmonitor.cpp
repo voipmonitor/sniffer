@@ -1135,6 +1135,9 @@ int opt_client_server_connect_maximum_time_diff_s = 2;
 int opt_receive_packetbuffer_maximum_time_diff_s = 30;
 int opt_client_server_sleep_ms_if_queue_is_full = 1000;
 
+int opt_livesniffer_timeout_s = 0;
+int opt_livesniffer_tablesize_max_mb = 0;
+
 int opt_abort_if_rss_gt_gb = 0;
 int opt_next_server_connections = 0;
 
@@ -6638,6 +6641,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("time_precision_in_ms", &opt_time_precision_in_ms));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mirror_connect_maximum_time_diff_s", &opt_mirror_connect_maximum_time_diff_s));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_timeout_s", &opt_livesniffer_timeout_s));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_tablesize_max_mb", &opt_livesniffer_tablesize_max_mb));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -10778,6 +10783,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mirror_connect_maximum_time_diff_s", NULL))) {
 		opt_mirror_connect_maximum_time_diff_s = atoi(value);
+	}
+	if((value = ini.GetValue("general", "livesniffer_timeout_s", NULL))) {
+		opt_livesniffer_timeout_s = atoi(value);
+	}
+	if((value = ini.GetValue("general", "livesniffer_tablesize_max_mb", NULL))) {
+		opt_livesniffer_tablesize_max_mb = atoi(value);
 	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :

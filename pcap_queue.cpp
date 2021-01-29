@@ -2723,22 +2723,71 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	
-	if(heapPerc + heapTrashPerc >= 60) {
-		extern int global_livesniffer;
-		extern map<unsigned int, livesnifferfilter_t*> usersniffer;
-		extern volatile int usersniffer_sync;
-		while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
-		if(usersniffer.size()) {
-			cLogSensor *log = cLogSensor::begin(cLogSensor::warning, "live sniffer", "too high load - terminate");
-			for(map<unsigned int, livesnifferfilter_t*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
-				log->log(NULL, "uid: %u, state: %s", iter->first, iter->second->getStringState().c_str());
-				delete iter->second;
-				usersniffer.erase(iter++);
+	extern int global_livesniffer;
+	extern map<unsigned int, livesnifferfilter_s*> usersniffer;
+	extern map<unsigned int, string> usersniffer_kill_reason;
+	extern volatile int usersniffer_sync;
+	extern volatile int usersniffer_checksize_sync;
+	extern pthread_t usersniffer_checksize_thread;
+	extern int opt_livesniffer_timeout_s;
+	extern int opt_livesniffer_tablesize_max_mb;
+	if(global_livesniffer) {
+		if(heapPerc + heapTrashPerc >= 60) {
+			if(usersniffer.size()) {
+				cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "too high load - terminate");
+				while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+				for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+					string kill_reason = "too high load";
+					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+					delete iter->second;
+					usersniffer_kill_reason[iter->first] = kill_reason;
+					usersniffer.erase(iter++);
+				}
+				global_livesniffer = 0;
+				__sync_lock_release(&usersniffer_sync);
+				if(log) {
+					log->end();
+				}
 			}
-			global_livesniffer = 0;
-			log->end();
+		} else {
+			time_t now = time(NULL);
+			cLogSensor *log = NULL;
+			while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+			for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+				if(now > iter->second->created_at && 
+				   ((opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) ||
+				    (iter->second->timeout_s > 0 && (now - iter->second->created_at) >= iter->second->timeout_s))) {
+					string kill_reason;
+					if(opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) {
+						kill_reason = "timeout (in sniffer configuration - " + intToString(opt_livesniffer_timeout_s) + "s)";
+					} else {
+						kill_reason = "timeout (define in gui)";
+					}
+					if(!log) {
+						log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+					}
+					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+					delete iter->second;
+					usersniffer_kill_reason[iter->first] = kill_reason;
+					usersniffer.erase(iter++);
+				} else {
+					iter++;
+				}
+			}
+			if(!usersniffer.size()) {
+				global_livesniffer = 0;
+			}
+			__sync_lock_release(&usersniffer_sync);
+			if(log) {
+				log->end();
+			}
 		}
-		__sync_lock_release(&usersniffer_sync);
+		if(opt_livesniffer_tablesize_max_mb > 0 && usersniffer.size() && !usersniffer_checksize_sync) {
+			usersniffer_checksize_sync = 1;
+			extern void *checkSizeOfLivepacketTables(void *arg);
+			vm_pthread_create_autodestroy("check size of livepacket tables",
+						      &usersniffer_checksize_thread, NULL, checkSizeOfLivepacketTables, this, __FILE__, __LINE__);
+		}
 	}
 
 	if (opt_rrd) {

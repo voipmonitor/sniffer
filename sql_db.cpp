@@ -2503,6 +2503,12 @@ int64_t SqlDb_mysql::rowsInTable(const char *table, bool viaTableStatus) {
 	}
 }
 
+int64_t SqlDb_mysql::sizeOfTable(const char *table) {
+	this->query(string("show table status like '") + table + "'");
+	SqlDb_row row = this->fetchRow();
+	return(row ? atoll(row["Data_length"].c_str()) + atoll(row["Index_length"].c_str()) : -1);
+}
+
 bool SqlDb_mysql::isOldVerPartition(const char *table) {
 	this->query(string("select partition_description from information_schema.partitions where table_schema='")  + mysql_database + 
 			   "' and table_name like '" + table + "' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
@@ -2873,6 +2879,11 @@ bool SqlDb_odbc::emptyTable(const char *table, bool viaTableStatus) {
 }
 
 int64_t SqlDb_odbc::rowsInTable(const char */*table*/, bool /*viaTableStatus*/) {
+	// TODO
+	return(-1);
+}
+
+int64_t SqlDb_odbc::sizeOfTable(const char */*table*/) {
 	// TODO
 	return(-1);
 }

@@ -318,8 +318,11 @@ u_int64_t read_rtp_counter;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
-map<unsigned int, livesnifferfilter_t*> usersniffer;
+map<unsigned int, livesnifferfilter_s*> usersniffer;
+map<unsigned int, string> usersniffer_kill_reason;
 volatile int usersniffer_sync;
+volatile int usersniffer_checksize_sync;
+pthread_t usersniffer_checksize_thread;
 
 #define ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)	(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB)
 
@@ -525,7 +528,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT;
 	
 	char caller[1024] = "", called[1024] = "";
 	char fromhstr[1024] = "", tohstr[1024] = "";
@@ -588,7 +591,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	}
 	
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
-		livesnifferfilter_t *filter = usersnifferIT->second;
+		livesnifferfilter_s *filter = usersnifferIT->second;
 		if(is_server() &&
 		   filter->sensor_id_set && filter->sensor_id &&
 		   (filter->sensor_id < 0 ?
@@ -9448,4 +9451,54 @@ void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
 			__SYNC_UNLOCK(_sync);
 		}
 	}
+}
+
+void *checkSizeOfLivepacketTables(void */*arg*/) {
+	extern int opt_livesniffer_tablesize_max_mb;
+	if(!opt_livesniffer_tablesize_max_mb) {
+		usersniffer_checksize_sync = 0;
+		return(NULL);
+	}
+	vector<unsigned int> uids;
+	while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+	for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); iter++) {
+		uids.push_back(iter->first);
+	}
+	__sync_lock_release(&usersniffer_sync);
+	if(uids.size()) {
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setDisableLogError(true);
+		sqlDb->setMaxQueryPass(1);
+		cLogSensor *log = NULL;
+		for(unsigned i = 0; i < uids.size(); i++) {
+			string livepacketTableName = "livepacket_" + intToString(uids[i]);
+			int64_t size = sqlDb->sizeOfTable(livepacketTableName);
+			if(size > 0) {
+				size /= (1024 * 1024);
+				if(size > opt_livesniffer_tablesize_max_mb) {
+					while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+					if(usersniffer.find(uids[i]) != usersniffer.end()) {
+						string kill_reason = "table size limit (in sniffer configuration - " + intToString(opt_livesniffer_tablesize_max_mb) + "MB)";
+						if(!log) {
+							log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "table size limit - terminate");
+						}
+						log->log(NULL, "uid: %u, state: %s, reason: %s", uids[i], usersniffer[uids[i]]->getStringState().c_str(), kill_reason.c_str());
+						delete usersniffer[uids[i]];
+						usersniffer.erase(uids[i]);
+						if(!usersniffer.size()) {
+							global_livesniffer = 0;
+						}
+						usersniffer_kill_reason[uids[i]] = kill_reason;
+					}
+					__sync_lock_release(&usersniffer_sync);
+				}
+			}
+		}
+		if(log) {
+			log->end();
+		}
+		delete sqlDb;
+	}
+	usersniffer_checksize_sync = 0;
+	return(NULL);
 }

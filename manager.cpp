@@ -80,7 +80,8 @@ extern int global_livesniffer;
 extern map<unsigned int, octects_live_t*> ipacc_live;
 extern int opt_t2_boost;
 
-extern map<unsigned int, livesnifferfilter_t*> usersniffer;
+extern map<unsigned int, livesnifferfilter_s*> usersniffer;
+extern map<unsigned int, string> usersniffer_kill_reason;
 extern volatile int usersniffer_sync;
 
 extern char ssh_host[1024];
@@ -1600,7 +1601,11 @@ string livesnifferfilter_s::getStringState() {
 			}
 		}
 	}
-	return(outStr.str());
+	string result = outStr.str();
+	while(result.length() && (result[result.length() - 1] == ' ' || result[result.length() - 1] == ';')) {
+		result = result.substr(0, result.length() - 1);
+	}
+	return(result);
 }
 
 void updateLivesnifferfilters() {
@@ -1608,7 +1613,7 @@ void updateLivesnifferfilters() {
 	memset(&new_livesnifferfilterUseSipTypes, 0, sizeof(new_livesnifferfilterUseSipTypes));
 	if(usersniffer.size()) {
 		global_livesniffer = 1;
-		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+		map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT;
 		for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); ++usersnifferIT) {
 			usersnifferIT->second->updateState();
 			if(usersnifferIT->second->state.all_siptypes) {
@@ -2789,7 +2794,7 @@ int Mgmt_getactivesniffers(Mgmt_params *params) {
 	}
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	string jsonResult = "[";
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT;
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT;
 	int counter = 0;
 	for(usersnifferIT = usersniffer.begin(); usersnifferIT != usersniffer.end(); usersnifferIT++) {
 		if(counter) {
@@ -2814,7 +2819,7 @@ int Mgmt_stoplivesniffer(Mgmt_params *params) {
 	u_int32_t uid = 0;
 	sscanf(params->buf, "stoplivesniffer %u", &uid);
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
 	if(usersnifferIT != usersniffer.end()) {
 		delete usersnifferIT->second;
 		usersniffer.erase(usersnifferIT);
@@ -2839,11 +2844,26 @@ int Mgmt_getlivesniffer(Mgmt_params *params) {
 	u_int32_t uid = 0;
 	sscanf(params->buf, "getlivesniffer %u", &uid);
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
 	if(usersnifferIT != usersniffer.end()) {
-		snprintf(sendbuf, BUFSIZE, "%d %s", 1, (char*)usersnifferIT->second->parameters);
+		string parameters = trim_str((char*)usersnifferIT->second->parameters);
+		if(usersnifferIT->second->timeout_s > 0 &&
+		   parameters.length() && parameters[parameters.length() - 1] == '}') {
+			parameters = parameters.substr(0, parameters.length() - 1) + 
+				     ",\"timeout\":" + intToString(usersnifferIT->second->timeout_s) + 
+				     ",\"time\":" + intToString(time(NULL) - usersnifferIT->second->created_at) +
+				     "}";
+		}
+		snprintf(sendbuf, BUFSIZE, "%d %s", 1, parameters.c_str());
 	} else {
-		snprintf(sendbuf, BUFSIZE, "%d", 0);
+		if(usersniffer_kill_reason[uid].empty()) {
+			snprintf(sendbuf, BUFSIZE, "%d", 0);
+		} else {
+			JsonExport parameters;
+			parameters.add("kill_reason", usersniffer_kill_reason[uid]);
+			snprintf(sendbuf, BUFSIZE, "%d %s", 0, parameters.getJson().c_str());
+			usersniffer_kill_reason.erase(uid);
+		}
 	}
 	__sync_lock_release(&usersniffer_sync);
 	return(params->sendString(sendbuf));
@@ -2864,15 +2884,15 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	jsonParameters.parse(parameters);
 	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
 	unsigned int uid = atol(jsonParameters.getValue("uid").c_str());
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
-	livesnifferfilter_t* filter;
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
+	livesnifferfilter_s* filter;
 	if(usersnifferIT != usersniffer.end()) {
 		filter = usersnifferIT->second;
 	} else {
-		filter = new FILE_LINE(0) livesnifferfilter_t;
-		memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
+		filter = new FILE_LINE(0) livesnifferfilter_s;
 		filter->parameters.add(parameters);
 		usersniffer[uid] = filter;
+		filter->uid = uid;
 	}
 	string filter_sensor_id = jsonParameters.getValue("filter_sensor_id");
 	if(filter_sensor_id.length()) {
@@ -2954,6 +2974,10 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 			}
 		}
 	}
+	int timeout = atoi(jsonParameters.getValue("timeout").c_str());
+	if(timeout > 0) {
+		filter->timeout_s = timeout;
+	}
 	updateLivesnifferfilters();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
@@ -2981,13 +3005,12 @@ int Mgmt_livefilter(Mgmt_params *params) {
 
 	if(memmem(search, sizeof(search), "all", 3)) {
 		global_livesniffer = 1;
-		map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
-		livesnifferfilter_t* filter;
+		map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
+		livesnifferfilter_s* filter;
 		if(usersnifferIT != usersniffer.end()) {
 			filter = usersnifferIT->second;
 		} else {
-			filter = new FILE_LINE(13009) livesnifferfilter_t;
-			memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
+			filter = new FILE_LINE(13009) livesnifferfilter_s;
 			usersniffer[uid] = filter;
 		}
 		updateLivesnifferfilters();
@@ -2995,13 +3018,12 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		return 0;
 	}
 
-	map<unsigned int, livesnifferfilter_t*>::iterator usersnifferIT = usersniffer.find(uid);
-	livesnifferfilter_t* filter;
+	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
+	livesnifferfilter_s* filter;
 	if(usersnifferIT != usersniffer.end()) {
 		filter = usersnifferIT->second;
 	} else {
-		filter = new FILE_LINE(13010) livesnifferfilter_t;
-		memset(CAST_OBJ_TO_VOID(filter), 0, sizeof(livesnifferfilter_t));
+		filter = new FILE_LINE(13010) livesnifferfilter_s;
 		usersniffer[uid] = filter;
 	}
 

@@ -904,7 +904,7 @@ public:
 #define MAXLIVEFILTERS 10
 #define MAXLIVEFILTERSCHARS 64
 
-typedef struct livesnifferfilter_s {
+struct livesnifferfilter_s {
 	struct state_s {
 		bool all_saddr;
 		bool all_daddr;
@@ -923,6 +923,17 @@ typedef struct livesnifferfilter_s {
 		bool all_siptypes;
 		bool all_all;
 	};
+	livesnifferfilter_s() {
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wclass-memaccess"
+		#endif
+		memset(this, 0, sizeof(livesnifferfilter_s));
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
+		created_at = time(NULL);
+	}
 	int sensor_id;
 	bool sensor_id_set;
         vmIP lv_saddr[MAXLIVEFILTERS];
@@ -942,12 +953,13 @@ typedef struct livesnifferfilter_s {
 	bool lv_vlan_set[MAXLIVEFILTERS];
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
+	int timeout_s;
         time_t created_at;
 	state_s state;
 	SimpleBuffer parameters;
 	void updateState();
 	string getStringState();
-} livesnifferfilter_t;
+};
 
 struct livesnifferfilter_use_siptypes_s {
 	bool u_invite;
