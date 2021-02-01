@@ -102,7 +102,6 @@ struct sChartTypeDef {
 	eChartSubType subType;
 };
 
-
 class cChartDataItem {
 public:
 	cChartDataItem();
@@ -123,7 +122,6 @@ private:
 	volatile unsigned int countShort;
 };
 
-
 class cChartDataMultiseriesItem {
 public:
 	cChartDataMultiseriesItem();
@@ -133,7 +131,6 @@ private:
 	map<int, cChartDataItem*> data;
 friend class cChartIntervalSeriesData;
 };
-
 
 class cChartDataPool {
 public:
@@ -152,7 +149,6 @@ private:
 	volatile unsigned int all_li;
 	volatile u_int32_t *pool;
 };
-
 
 class cChartIntervalSeriesData {
 public:
@@ -181,6 +177,25 @@ friend class cChartDataMultiseriesItem;
 friend class cChartInterval;
 };
 
+class cChartSeriesId {
+public:
+	cChartSeriesId(unsigned int id, const char *config_id) {
+		this->id = id;
+		this->config_id = config_id;
+	};
+	friend inline const bool operator == (const cChartSeriesId &id1, const cChartSeriesId &id2) {
+		return(id1.id == id2.id &&
+		       id1.config_id == id2.config_id);
+	}
+	friend inline const bool operator < (const cChartSeriesId &id1, const cChartSeriesId &id2) {
+		return(id1.id < id2.id ? 1 : id1.id > id2.id ? 0 :
+		       id1.config_id < id2.config_id);
+	}
+private:
+	unsigned int id;
+	string config_id;
+friend class cChartIntervalSeriesData;
+};
 
 class cChartInterval {
 public:
@@ -196,7 +211,7 @@ public:
 private:
 	u_int32_t timeFrom;
 	u_int32_t timeTo;
-	map<string, cChartIntervalSeriesData*> seriesData;
+	map<cChartSeriesId, cChartIntervalSeriesData*> seriesData;
 	u_int32_t created_at_real;
 	u_int32_t last_use_at_real;
 	u_int32_t last_store_at;
@@ -206,7 +221,6 @@ friend class cChartDataPool;
 friend class cChartIntervalSeriesData;
 friend class cCharts;
 };
-
 
 class cChartFilter {
 public:
@@ -278,8 +292,7 @@ public:
 	}
 	bool checkFilters(map<class cChartFilter*, bool> *filters_map);
 private:
-	unsigned int id;
-	string config_id;
+	cChartSeriesId series_id;
 	string type_source;
 	string chartType;
 	vector<double> intervals;
@@ -289,6 +302,7 @@ private:
 	cChartNerLsrFilter *ner_lsr_filter;
 	sChartTypeDef def;
 	volatile int used_counter;
+	volatile int terminating;
 friend class cChartDataItem;
 friend class cChartDataPool;
 friend class cChartIntervalSeriesData;
@@ -311,11 +325,11 @@ public:
 	void checkFilters(sChartsCallData *call, void *callData, map<cChartFilter*, bool> *filters, class cFiltersCache *filtersCache, int threadIndex);
 	void store(bool forceAll = false);
 	void cleanup(bool forceAll = false);
-	bool seriesIsUsed(const char *config_id);
+	bool seriesIsUsed(cChartSeriesId series_id);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
 private:
-	map<string, cChartSeries*> series;
+	map<cChartSeriesId, cChartSeries*> series;
 	map<u_int32_t, cChartInterval*> intervals;
 	map<string, cChartFilter*> filters;
 	volatile u_int32_t first_interval;
