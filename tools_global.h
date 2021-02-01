@@ -418,7 +418,13 @@ public:
 	}
 	void add(const char *name, string content, eTypeItem typeItem = _string);
 	void add(const char *name, const char *content, eTypeItem typeItem = _string);
-	void add(const char *name, int64_t content);
+	void add(const char *name, int content) { add_int(name, content); } 
+	void add(const char *name, unsigned int content) { add_int(name, content); } 
+	void add(const char *name, long int content) { add_int(name, content); } 
+	void add(const char *name, long unsigned int content) { add_int(name, content); } 
+	void add(const char *name, long long int content) { add_int(name, content); } 
+	void add(const char *name, long long unsigned int content) { add_int(name, content); } 
+	void add_int(const char *name, int64_t content);
 	void add(const char *name);
 	JsonExport *addArray(const char *name);
 	JsonExport *addObject(const char *name);
