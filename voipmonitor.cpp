@@ -7021,6 +7021,14 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-src", &opt_sip_msg_compare_ip_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-dst", &opt_sip_msg_compare_ip_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-port-src", &opt_sip_msg_compare_port_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-port-dst", &opt_sip_msg_compare_port_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-number-src", &opt_sip_msg_compare_number_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-number-dst", &opt_sip_msg_compare_number_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-src", &opt_sip_msg_compare_domain_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-dst", &opt_sip_msg_compare_domain_dst));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-vlan", &opt_sip_msg_compare_vlan));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
@@ -9634,6 +9642,30 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "save-sip-notify", NULL))) {
 		opt_save_sip_notify = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-ip-src", NULL))) {
+		opt_sip_msg_compare_ip_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-ip-dst", NULL))) {
+		opt_sip_msg_compare_ip_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-port-src", NULL))) {
+		opt_sip_msg_compare_port_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-port-dst", NULL))) {
+		opt_sip_msg_compare_port_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-number-src", NULL))) {
+		opt_sip_msg_compare_number_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-number-dst", NULL))) {
+		opt_sip_msg_compare_number_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-domain-src", NULL))) {
+		opt_sip_msg_compare_domain_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-domain-dst", NULL))) {
+		opt_sip_msg_compare_domain_dst = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-msg-compare-vlan", NULL))) {
 		opt_sip_msg_compare_vlan = yesno(value);
