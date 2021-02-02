@@ -2972,6 +2972,7 @@ MySqlStore_process::MySqlStore_process(int id_main, int id_2, MySqlStore *parent
 	this->lastThreadRunningTimeCheck = 0;
 	this->remote_socket = NULL;
 	this->check_store_supported = false;
+	this->check_time_supported = false;
 	this->last_store_iteration_time = 0;
 }
 
@@ -3106,12 +3107,14 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				if(connectResponse == "OK") {
 					connectOK = true;
 					this->check_store_supported = false;
+					this->check_time_supported = false;
 				} else if(isJsonObject(connectResponse)) {
 					JsonItem connectResponseData;
 					connectResponseData.parse(connectResponse);
 					if(connectResponseData.getValue("rslt") == "OK") {
 						connectOK = true;
 						this->check_store_supported = atoi(connectResponseData.getValue("check_store").c_str());
+						this->check_time_supported = atoi(connectResponseData.getValue("check_time").c_str());
 					} else {
 						connectError = connectResponseData.getValue("error");
 					}
@@ -3150,7 +3153,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 		}
 		if(!(this->check_store_supported && needCheckStore) || checkStoreOK) {
 			string query_str_with_id = intToString(id_main) + '|' +
-						   'T' + sqlDateTimeString(time(NULL)) + '|' +
+						   (this->check_time_supported ? 'T' + sqlDateTimeString(time(NULL)) + '|' : "") +
 						   query_str;
 			bool okSendQuery = true;
 			if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {

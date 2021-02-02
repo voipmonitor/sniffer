@@ -854,6 +854,7 @@ void cSnifferServerConnection::cp_store() {
 	JsonExport json_ok;
 	json_ok.add("rslt", "OK");
 	json_ok.add("check_store", 1);
+	json_ok.add("check_time", 1);
 	if(!socket->writeBlock(json_ok.getJson())) {
 		socket->setError("failed send ok");
 		delete this;

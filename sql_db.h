@@ -890,6 +890,7 @@ private:
 	u_long queryCounter;
 	cSocketBlock *remote_socket;
 	bool check_store_supported;
+	bool check_time_supported;
 	u_long last_store_iteration_time;
 };
 

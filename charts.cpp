@@ -1256,8 +1256,10 @@ void cCharts::load(SqlDb *sqlDb) {
 		}
 		#endif
 		cChartSeriesId series_id(atol(row["id"].c_str()), row["config_id"].c_str());
-		if(series.find(series_id) != series.end()) {
+		map<cChartSeriesId, cChartSeries*>::iterator iter = series.find(series_id);
+		if(iter != series.end()) {
 			series_orphans.erase(series_id);
+			iter->second->terminating = false;
 		} else {
 			cChartSeries *series_i = new FILE_LINE(0) cChartSeries(atol(row["id"].c_str()),
 									       row["config_id"].c_str(), 
