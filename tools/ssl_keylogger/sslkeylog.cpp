@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <syslog.h>
+#include <pthread.h>
 
 #ifdef SSLKEYLOG_TCP
 #include "cloud_router_base.h"
