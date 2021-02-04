@@ -8574,10 +8574,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit, bool descDir) {
 	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
+	extern char opt_database_backup_to_date[20];
 	if(opt_database_backup_from_date[0]) {
 		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
 				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
 				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
 				    "";
 		if(!timeColumn.empty()) {
 			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
@@ -8593,14 +8595,31 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		}
 	}
 	u_int64_t maxIdSrc = 0;
-	sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
-	SqlDb_row row = sqlDbSrc->fetchRow();
-	if(row) {
-		maxIdSrc = atoll(row["max_id"].c_str());
+	bool forceMaxId = false;
+	if(opt_database_backup_to_date[0]) {
+		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" :
+				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" :
+				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
+				    "";
+		if(!timeColumn.empty()) {
+			sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
+					" where " + timeColumn + " = " +
+					"(select max(" + timeColumn + ") from " + tableName + " where " + timeColumn + " < '" + opt_database_backup_to_date + "')");
+			maxIdSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
+			forceMaxId = true;
+		}
+	} else {
+		sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			maxIdSrc = atoll(row["max_id"].c_str());
+		}
 	}
 	if(!maxIdSrc) {
 		return;
 	}
+	SqlDb_row row;
 	u_int64_t maxIdDst = 0;
 	u_int64_t minIdDst = 0;
 	u_int64_t useMaxIdInSrc = 0;
@@ -8635,6 +8654,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		if(!descDir) {
 			if(startIdSrc) {
 				condSrc.push_back(string("id >= ") + intToString(startIdSrc));
+			}
+			if (maxIdSrc) {
+				condSrc.push_back(string("id <= ") + intToString(maxIdSrc));
 			}
 			if(string(tableName) == "register_failed") {
 				condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
@@ -8711,7 +8733,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
+							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : (forceMaxId ? maxIdSrc : 0),
 							       limit * 10);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,

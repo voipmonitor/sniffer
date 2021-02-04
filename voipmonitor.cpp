@@ -450,6 +450,7 @@ unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
 bool opt_database_backup = false;
 char opt_database_backup_from_date[20];
+char opt_database_backup_to_date[20];
 char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
@@ -6571,6 +6572,7 @@ void cConfig::addConfigItems() {
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
+				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_to_date", opt_database_backup_to_date, sizeof(opt_database_backup_to_date)));
 				addConfigItem(new FILE_LINE(42124) cConfigItem_string("database_backup_from_mysqlhost", opt_database_backup_from_mysql_host, sizeof(opt_database_backup_from_mysql_host)));
 				addConfigItem(new FILE_LINE(42125) cConfigItem_string("database_backup_from_mysqldb", opt_database_backup_from_mysql_database, sizeof(opt_database_backup_from_mysql_database)));
 				addConfigItem(new FILE_LINE(42126) cConfigItem_string("database_backup_from_mysqlusername", opt_database_backup_from_mysql_user, sizeof(opt_database_backup_from_mysql_user)));
@@ -9789,6 +9791,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
 		strcpy_null_term(opt_database_backup_from_date, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_to_date", NULL))) {
+		strcpy_null_term(opt_database_backup_to_date, value);
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
