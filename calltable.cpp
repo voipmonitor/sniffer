@@ -12704,7 +12704,7 @@ void AsyncSystemCommand::popSystemCommandThread() {
 		string command;
 		if(systemCommandQueue.pop(&command)) {
 			if(sverb.system_command) {
-				syslog(LOG_NOTICE, "call system command: %s", command.c_str());
+				syslog(LOG_NOTICE, "call system command: %s (queue size: %i)", command.c_str(), systemCommandQueue.getSize());
 			}
 			system(command.c_str());
 			okPop = true;
