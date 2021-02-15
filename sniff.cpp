@@ -416,8 +416,9 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	if(packetS->sipDataLen) {
 		void *memptr = memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, "\r\n", 2);
 		if(memptr) {
-			memcpy(description, packetS->data_()+ packetS->sipDataOffset, (char *)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset));
-			description[(char*)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset)] = '\0';
+			unsigned description_src_length = MIN((char*)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset), sizeof(description) - 1);
+			memcpy(description, packetS->data_() + packetS->sipDataOffset, description_src_length);
+			description[description_src_length] = '\0';
 		} else {
 			strcpy(description, "error in description\n");
 		}
