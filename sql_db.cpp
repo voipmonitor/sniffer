@@ -542,7 +542,7 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
 		if(pass > 0) {
-			sleep(1);
+			sleep(min(1 + pass * 2,  60u));
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
 		}
 		vector<dstring> postData;
@@ -611,11 +611,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				delete this->remote_socket;
 				this->remote_socket = NULL;
 			}
-			if(is_terminating()) {
-				USLEEP(100000);
-			} else {
-				sleep(1);
-			}
+			sleep(min(1 + pass * 2,  60u));
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery.c_str()).substr(0, 100).c_str());
 		} else if(this->remote_socket && this->remote_socket->getLastTimeOkRead() && getTimeUS() > this->remote_socket->getLastTimeOkRead() + 10 * 1000000ull) {
 			if(!this->remote_socket->checkHandleRead()) {
@@ -2038,7 +2034,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
+			if(!is_terminating() || !(attempt % 10)) {
+				syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
+			}
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -3052,14 +3050,10 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				delete this->remote_socket;
 				this->remote_socket = NULL;
 			}
-			if(is_terminating()) {
-				USLEEP(100000);
+			if(nextUsleepAfterError) {
+				usleep(nextUsleepAfterError);
 			} else {
-				if(nextUsleepAfterError) {
-					usleep(nextUsleepAfterError);
-				} else {
-					sleep(min(1 + pass * 2,  60u));
-				}
+				sleep(min(1 + pass * 2,  60u));
 			}
 			if(!quietlyError) {
 				syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
