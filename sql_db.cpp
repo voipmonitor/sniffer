@@ -190,11 +190,14 @@ void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, con
 }
 
 void SqlDb_row::add_calldate(u_int64_t calldate_us, string fieldName, bool use_ms) {
+	char dateTimeBuffer[50];
 	if(use_ms) {
-		add(sqlEscapeString(sqlDateTimeString_us2ms(calldate_us).c_str()), fieldName, false, _ift_calldate)
+		sqlDateTimeString_us2ms(dateTimeBuffer, calldate_us);
+		add(dateTimeBuffer, fieldName, 0, 0, _ift_calldate)
 		    ->ifv.v._int_u = (u_int64_t)round(calldate_us / 1000.) * 1000ull;
 	} else {
-		add(sqlEscapeString(sqlDateTimeString(TIME_US_TO_S(calldate_us)).c_str()), fieldName, false, _ift_calldate)
+		sqlDateTimeString(dateTimeBuffer, TIME_US_TO_S(calldate_us));
+		add(dateTimeBuffer, fieldName, 0, 0, _ift_calldate)
 		    ->ifv.v._int_u = TIME_US_TO_S(calldate_us) * 1000000ull;
 	}
 }
@@ -256,9 +259,12 @@ string SqlDb_row::_getNameField(int indexField) {
 
 string SqlDb_row::implodeFields(string separator, string border) {
 	string rslt;
+	rslt.reserve(this->row.size() * 20);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
-		rslt += border + /*'`' +*/ this->row[i].fieldName + /*'`' +*/ border;
+		rslt += border;
+		rslt += this->row[i].fieldName;
+		rslt += border;
 	}
 	return(rslt);
 }
@@ -269,6 +275,7 @@ string SqlDb_row::implodeFieldsToCsv() {
 
 string SqlDb_row::implodeContent(string separator, string border, bool enableSqlString, bool escapeAll) {
 	string rslt;
+	rslt.reserve(this->row.size() * 100);
 	for(size_t i = 0; i < this->row.size(); i++) {
 		if(i) { rslt += separator; }
 		if(this->row[i].null) {
@@ -282,9 +289,9 @@ string SqlDb_row::implodeContent(string separator, string border, bool enableSql
 			string fieldContent = MYSQL_CODEBOOK_ID_PREFIX + intToString(nameValue.length()) + ":" + nameValue;
 			rslt += fieldContent;
 		} else {
-			rslt += border + 
-				(escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content) + 
-				border;
+			rslt += border;
+			rslt += escapeAll ? sqlEscapeString(this->row[i].content) : this->row[i].content;
+			rslt += border;
 		}
 	}
 	return(rslt);
@@ -2496,6 +2503,12 @@ int64_t SqlDb_mysql::rowsInTable(const char *table, bool viaTableStatus) {
 	}
 }
 
+int64_t SqlDb_mysql::sizeOfTable(const char *table) {
+	this->query(string("show table status like '") + table + "'");
+	SqlDb_row row = this->fetchRow();
+	return(row ? atoll(row["Data_length"].c_str()) + atoll(row["Index_length"].c_str()) : -1);
+}
+
 bool SqlDb_mysql::isOldVerPartition(const char *table) {
 	this->query(string("select partition_description from information_schema.partitions where table_schema='")  + mysql_database + 
 			   "' and table_name like '" + table + "' and partition_description is not null and  partition_description regexp '^[0-9]+$' limit 1");
@@ -2870,6 +2883,11 @@ int64_t SqlDb_odbc::rowsInTable(const char */*table*/, bool /*viaTableStatus*/) 
 	return(-1);
 }
 
+int64_t SqlDb_odbc::sizeOfTable(const char */*table*/) {
+	// TODO
+	return(-1);
+}
+
 int SqlDb_odbc::getIndexField(string fieldName) {
 	for(size_t i = 0; i < this->bindBuffer.size(); i++) {
 		if(!strcasecmp(this->bindBuffer[i]->fieldName.c_str(), fieldName.c_str())) {
@@ -2954,6 +2972,7 @@ MySqlStore_process::MySqlStore_process(int id_main, int id_2, MySqlStore *parent
 	this->lastThreadRunningTimeCheck = 0;
 	this->remote_socket = NULL;
 	this->check_store_supported = false;
+	this->check_time_supported = false;
 	this->last_store_iteration_time = 0;
 }
 
@@ -3088,12 +3107,14 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				if(connectResponse == "OK") {
 					connectOK = true;
 					this->check_store_supported = false;
+					this->check_time_supported = false;
 				} else if(isJsonObject(connectResponse)) {
 					JsonItem connectResponseData;
 					connectResponseData.parse(connectResponse);
 					if(connectResponseData.getValue("rslt") == "OK") {
 						connectOK = true;
 						this->check_store_supported = atoi(connectResponseData.getValue("check_store").c_str());
+						this->check_time_supported = atoi(connectResponseData.getValue("check_time").c_str());
 					} else {
 						connectError = connectResponseData.getValue("error");
 					}
@@ -3131,7 +3152,9 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			}
 		}
 		if(!(this->check_store_supported && needCheckStore) || checkStoreOK) {
-			string query_str_with_id = intToString(id_main) + '|' + query_str;
+			string query_str_with_id = intToString(id_main) + '|' +
+						   (this->check_time_supported ? 'T' + sqlDateTimeString(time(NULL)) + '|' : "") +
+						   query_str;
 			bool okSendQuery = true;
 			if(query_str_with_id.length() > 100 && _snifferClientOptions->type_compress != _cs_compress_na) {
 				if(_snifferClientOptions->type_compress == _cs_compress_gzip) {
@@ -4862,13 +4885,98 @@ SqlDb *createSqlObject(int connectId) {
 }
 
 string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache) {
-	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
 	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
-	return string(dateTimeBuffer);
+	sqlDateTimeString(dateTimeBuffer, unixTime, useGlobalTimeCache);
+	return dateTimeBuffer;
+}
+
+#define sqlDateTimeString_cache_length 5
+
+void sqlDateTimeString(char *rslt, time_t unixTime, bool useGlobalTimeCache) {
+ 
+	#if not defined(__arm__)
+	static __thread time_t _cache_time[sqlDateTimeString_cache_length];
+	static __thread char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static __thread int _cache_pos = 0;
+	#else
+	static time_t _cache_time[sqlDateTimeString_cache_length];
+	static char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static volatile int _cache_pos = 0;
+	static volatile int _cache_sync = 0;
+	#endif
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		for(unsigned i = 0; i < sqlDateTimeString_cache_length; i++) {
+			if(_cache_time[i] == unixTime) {
+				strcpy(rslt, _cache_rslt[i]);
+				#if defined(__arm__)
+				__SYNC_UNLOCK(_cache_sync);
+				#endif
+				return;
+			}
+		}
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+ 
+	struct tm localTime = time_r(&unixTime, NULL, useGlobalTimeCache);
+	strftime(rslt, 50, "%Y-%m-%d %H:%M:%S", &localTime);
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		strcpy(_cache_rslt[_cache_pos], rslt);
+		_cache_time[_cache_pos] = unixTime;
+		_cache_pos = (_cache_pos + 1) % sqlDateTimeString_cache_length;
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+	
 }
 
 string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache) {
+	char dateTimeBuffer[50];
+	sqlDateTimeString_us2ms(dateTimeBuffer, unixTime_us, useGlobalTimeCache);
+	return dateTimeBuffer;
+}
+
+void sqlDateTimeString_us2ms(char *rslt, u_int64_t unixTime_us, bool useGlobalTimeCache) {
+ 
+	#if not defined(__arm__)
+	static __thread u_int64_t _cache_time[sqlDateTimeString_cache_length];
+	static __thread char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static __thread int _cache_pos = 0;
+	#else
+	static u_int64_t _cache_time[sqlDateTimeString_cache_length];
+	static char _cache_rslt[sqlDateTimeString_cache_length][50];
+	static volatile int _cache_pos = 0;
+	static volatile int _cache_sync = 0;
+	#endif
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		for(unsigned i = 0; i < sqlDateTimeString_cache_length; i++) {
+			if(_cache_time[i] == unixTime_us) {
+				strcpy(rslt, _cache_rslt[i]);
+				#if defined(__arm__)
+				__SYNC_UNLOCK(_cache_sync);
+				#endif
+				return;
+			}
+		}
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+
 	time_t unixTime_s = TIME_US_TO_S(unixTime_us);
 	unsigned unixTime_dec_ms = round(TIME_US_TO_DEC_US(unixTime_us) / 1000.);
 	if(unixTime_dec_ms > 999) {
@@ -4876,10 +4984,21 @@ string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache) {
 		unixTime_dec_ms = 0;
 	}
 	struct tm localTime = time_r(&unixTime_s, NULL, useGlobalTimeCache);
-	char dateTimeBuffer[50];
-	strftime(dateTimeBuffer, sizeof(dateTimeBuffer), "%Y-%m-%d %H:%M:%S", &localTime);
-	snprintf(dateTimeBuffer + strlen(dateTimeBuffer), sizeof(dateTimeBuffer) - strlen(dateTimeBuffer), ".%03i", unixTime_dec_ms);
-	return string(dateTimeBuffer);
+	strftime(rslt, 50, "%Y-%m-%d %H:%M:%S", &localTime);
+	sprintf(rslt + strlen(rslt), ".%03i", unixTime_dec_ms);
+	
+	if(!useGlobalTimeCache) {
+		#if defined(__arm__)
+		__SYNC_LOCK(_cache_sync);
+		#endif
+		strcpy(_cache_rslt[_cache_pos], rslt);
+		_cache_time[_cache_pos] = unixTime_us;
+		_cache_pos = (_cache_pos + 1) % sqlDateTimeString_cache_length;
+		#if defined(__arm__)
+		__SYNC_UNLOCK(_cache_sync);
+		#endif
+	}
+	
 }
 
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache) {
@@ -6001,7 +6120,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`dst_ip_country_code` varchar(5),\
 				`ss7_id` varchar(255),\
 				`pcap_filename` varchar(255),\
-				`id_sensor` smallint unsigned," +
+				`id_sensor` smallint unsigned,\
+				`flags` bigint unsigned DEFAULT NULL," +
 			(supportPartitions != _supportPartitions_na ?
 				"PRIMARY KEY (`ID`, `time_iam`)," :
 				"PRIMARY KEY (`ID`),") + 
@@ -8092,6 +8212,10 @@ void SqlDb_mysql::checkColumns_ss7(bool log) {
 		return;
 	}
 	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("ss7", "flags", true,
+				log, &tableSize, &existsColumns.ss7_flags,
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	for(int pass = 0; pass < 2; pass++) {
 		vector<string> alters_ms;
 		if(!(existsColumns.ss7_time_iam_ms = this->getTypeColumn("ss7", "time_iam").find("(3)") != string::npos)) {
@@ -8450,10 +8574,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit, bool descDir) {
 	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
+	extern char opt_database_backup_to_date[20];
 	if(opt_database_backup_from_date[0]) {
 		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
 				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
 				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
 				    "";
 		if(!timeColumn.empty()) {
 			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
@@ -8469,14 +8595,31 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		}
 	}
 	u_int64_t maxIdSrc = 0;
-	sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
-	SqlDb_row row = sqlDbSrc->fetchRow();
-	if(row) {
-		maxIdSrc = atoll(row["max_id"].c_str());
+	bool forceMaxId = false;
+	if(opt_database_backup_to_date[0]) {
+		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" :
+				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" :
+				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
+				    "";
+		if(!timeColumn.empty()) {
+			sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
+					" where " + timeColumn + " = " +
+					"(select max(" + timeColumn + ") from " + tableName + " where " + timeColumn + " < '" + opt_database_backup_to_date + "')");
+			maxIdSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
+			forceMaxId = true;
+		}
+	} else {
+		sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			maxIdSrc = atoll(row["max_id"].c_str());
+		}
 	}
 	if(!maxIdSrc) {
 		return;
 	}
+	SqlDb_row row;
 	u_int64_t maxIdDst = 0;
 	u_int64_t minIdDst = 0;
 	u_int64_t useMaxIdInSrc = 0;
@@ -8511,6 +8654,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		if(!descDir) {
 			if(startIdSrc) {
 				condSrc.push_back(string("id >= ") + intToString(startIdSrc));
+			}
+			if (maxIdSrc) {
+				condSrc.push_back(string("id <= ") + intToString(maxIdSrc));
 			}
 			if(string(tableName) == "register_failed") {
 				condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
@@ -8587,7 +8733,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
+							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : (forceMaxId ? maxIdSrc : 0),
 							       limit * 10);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,

@@ -226,7 +226,7 @@ void JsonExport::add(const char *name, const char *content, eTypeItem typeItem) 
 	items.push_back(item);
 }
 
-void JsonExport::add(const char *name, int64_t content) {
+void JsonExport::add_int(const char *name, int64_t content) {
 	JsonExport_template<int64_t> *item = new FILE_LINE(0) JsonExport_template<int64_t>;
 	item->setTypeItem(_number);
 	item->setName(name);

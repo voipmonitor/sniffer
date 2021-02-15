@@ -27,7 +27,7 @@ public:
 	}
 	cLogBuffer_var(char *var) {
 		type = _str;
-		strncpy(var_str, var, sizeof(var_str));
+		strncpy(var_str, var, sizeof(var_str) - 1);
 		var_str[sizeof(var_str) - 1] = 0;
 	}
 	std::string getStr();

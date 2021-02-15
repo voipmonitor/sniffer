@@ -767,7 +767,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, SqlDb *sqlDb) {
 	}
 	last_chart_data = chart_data;
 	SqlDb_row cache_row;
-	cache_row.add(this->series->id, "series_id");
+	cache_row.add(this->series->series_id.id, "series_id");
 	cache_row.add(sqlDateTimeString(interval->timeFrom), "from_time");
 	cache_row.add("TA_MINUTES", "type");
 	if(opt_id_sensor > 0) {
@@ -815,7 +815,7 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 			 u_int32_t calldate_from, u_int32_t calldate_to,
 			 map<cChartFilter*, bool> *filters_map) {
 	bool update = false;
-	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
+	for(map<cChartSeriesId, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
 		if(iter->second->series->checkFilters(filters_map)) {
 			iter->second->add(call, call_interval, firstInterval, lastInterval, beginInInterval, 
 					  calldate_from, calldate_to);
@@ -830,7 +830,7 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 
 void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb) {
 	if(counter_add) {
-		for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
+		for(map<cChartSeriesId, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
 			iter->second->store(this, sqlDb);
 		}
 		counter_add = 0;
@@ -840,15 +840,16 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 }
 
 void cChartInterval::init() {
-	for(map<string, cChartSeries*>::iterator iter = chartsCache->series.begin(); iter != chartsCache->series.end(); iter++) {
-		this->seriesData[iter->second->config_id] = new FILE_LINE(0) cChartIntervalSeriesData(iter->second, this);
-		this->seriesData[iter->second->config_id]->prepareData();
-		
+	for(map<cChartSeriesId, cChartSeries*>::iterator iter = chartsCache->series.begin(); iter != chartsCache->series.end(); iter++) {
+		if(!iter->second->terminating) {
+			this->seriesData[iter->second->series_id] = new FILE_LINE(0) cChartIntervalSeriesData(iter->second, this);
+			this->seriesData[iter->second->series_id]->prepareData();
+		}
 	}
 }
 
 void cChartInterval::clear() {
-	for(map<string, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
+	for(map<cChartSeriesId, cChartIntervalSeriesData*>::iterator iter = this->seriesData.begin(); iter != this->seriesData.end(); iter++) {
 		delete iter->second;
 	}
 	seriesData.clear();
@@ -1116,9 +1117,8 @@ void cChartNerLsrFilter::parseData(JsonItem *jsonData) {
 }
 
 
-cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *config, cCharts *charts) {
-	this->id = id;
-	this->config_id = config_id;
+cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *config, cCharts *charts) :
+ series_id(id, config_id) {
 	JsonItem jsonConfig;
 	jsonConfig.parse(config);
 	type_source = jsonConfig.getValue("type_source");
@@ -1167,6 +1167,7 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 	}
 	def = getChartTypeDef(chartTypeFromString(chartType));
 	used_counter = 0;
+	terminating = 0;
 }
 
 cChartSeries::~cChartSeries() {
@@ -1241,7 +1242,7 @@ void cCharts::load(SqlDb *sqlDb) {
 		}
 		return;
 	}
-	map<string, cChartSeries*> series_orphans = series;
+	map<cChartSeriesId, cChartSeries*> series_orphans = series;
 	sqlDb->query("SELECT * from " + chart_sniffer_series_table);
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
@@ -1254,14 +1255,17 @@ void cCharts::load(SqlDb *sqlDb) {
 			continue;
 		}
 		#endif
-		if(series.find(row["config_id"]) != series.end()) {
-			series_orphans.erase(row["config_id"]);
+		cChartSeriesId series_id(atol(row["id"].c_str()), row["config_id"].c_str());
+		map<cChartSeriesId, cChartSeries*>::iterator iter = series.find(series_id);
+		if(iter != series.end()) {
+			series_orphans.erase(series_id);
+			iter->second->terminating = false;
 		} else {
 			cChartSeries *series_i = new FILE_LINE(0) cChartSeries(atol(row["id"].c_str()),
 									       row["config_id"].c_str(), 
 									       row["config"].c_str(),
 									       this);
-			series[series_i->config_id] = series_i;
+			series[cChartSeriesId(series_i->series_id)] = series_i;
 		}
 		#ifdef LOAD_TO
 		if(counter_rows > LOAD_TO) {
@@ -1269,10 +1273,12 @@ void cCharts::load(SqlDb *sqlDb) {
 		}
 		#endif
 	}
-	for(map<string, cChartSeries*>::iterator iter = series_orphans.begin(); iter != series_orphans.end(); iter++) {
-		if(!iter->second->used_counter && !seriesIsUsed(iter->first.c_str())) {
+	for(map<cChartSeriesId, cChartSeries*>::iterator iter = series_orphans.begin(); iter != series_orphans.end(); iter++) {
+		if(!iter->second->used_counter && !seriesIsUsed(iter->first)) {
 			delete iter->second;
 			series.erase(iter->first);
+		} else {
+			iter->second->terminating = true;
 		}
 	}
 	if(_createSqlObject) {
@@ -1324,7 +1330,7 @@ void cCharts::clear() {
 		delete iter->second;
 	}
 	intervals.clear();
-	for(map<string, cChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
+	for(map<cChartSeriesId, cChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
 		delete iter->second;
 	}
 	series.clear();
@@ -1487,9 +1493,9 @@ void cCharts::cleanup(bool forceAll) {
 	last_cleanup_at_real = real_time;
 }
 
-bool cCharts::seriesIsUsed(const char *config_id) {
+bool cCharts::seriesIsUsed(cChartSeriesId series_id) {
 	for(map<u_int32_t, cChartInterval*>::iterator iter = intervals.begin(); iter != intervals.end(); iter++) {
-		if(iter->second->seriesData.find(config_id) != iter->second->seriesData.end()) {
+		if(iter->second->seriesData.find(series_id) != iter->second->seriesData.end()) {
 			return(true);
 		}
 	}

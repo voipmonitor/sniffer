@@ -121,7 +121,9 @@ extern Calltable *calltable;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-extern PreProcessPacket *preProcessPacketCallX[];
+extern PreProcessPacket **preProcessPacketCallX;
+extern PreProcessPacket **preProcessPacketCallFindX;
+extern int preProcessPacketCallX_count;
 extern ProcessRtpPacket *processRtpPacketHash;
 extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
 extern TcpReassembly *tcpReassemblyHttp;
@@ -1427,7 +1429,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
-			outStr << "CALLS: " << calltable->calls_list_count() << ", " << calls_counter;
+			outStr << "CALLS: " << calltable->getCountCalls() << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
 			}
@@ -1475,7 +1477,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("check heap");
 		}
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << (calltable->calls_list_count() + calltable->calls_by_stream_callid_listMAP.size()) << ",r:" << calltable->registers_listMAP.size() << "]"
+			outStr << "calls[" << calltable->getCountCalls() << ",r:" << calltable->registers_listMAP.size() << "]"
 			       << "[" << calls_counter << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();
@@ -1508,7 +1510,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
 			}
 			if (opt_rrd) {
-				rrd_set_value(RRD_VALUE_inv, calltable->calls_list_count());
+				rrd_set_value(RRD_VALUE_inv, calltable->getCountCalls());
 				rrd_set_value(RRD_VALUE_reg, calltable->registers_listMAP.size());
 			}
 			if(sverb.log_profiler) {
@@ -2242,25 +2244,49 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-			if(preProcessPacketCallX[0]) {
-				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					double percFullQring;
-					double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
-					if(t2cpu_preprocess_packet_out_thread >= 0) {
-						outStrStat << "/" 
-							   << preProcessPacketCallX[i]->getShortcatTypeThread()
-							   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-						if(sverb.qring_stat) {
-							double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
-							if(qringFillingPerc > 0) {
-								outStrStat << "r" << qringFillingPerc;
+			if(opt_t2_boost) {
+				if(preProcessPacketCallX && calltable->useCallX()) {
+					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
+						double percFullQring;
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
+						if(t2cpu_preprocess_packet_out_thread >= 0) {
+							outStrStat << "/" 
+								   << preProcessPacketCallX[i]->getShortcatTypeThread()
+								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
 							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 						}
-						if(sverb.qring_full && percFullQring > sverb.qring_full) {
-							outStrStat << "#" << percFullQring;
+					}
+				}
+				if(preProcessPacketCallFindX && calltable->useCallFindX()) {
+					for(int i = 0; i < preProcessPacketCallX_count; i++) {
+						double percFullQring;
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, &percFullQring);
+						if(t2cpu_preprocess_packet_out_thread >= 0) {
+							outStrStat << "/" 
+								   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
+								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
+							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 						}
-						++count_t2cpu;
-						sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 					}
 				}
 			}
@@ -2334,7 +2360,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
 			   heapPerc > 10 &&
-			   opt_t2_boost && !preProcessPacketCallX[0]->isActiveOutThread()) {
+			   calltable->enableCallX() && !calltable->useCallX()) {
 				PreProcessPacket::autoStartCallX_PreProcessPacket();
 			}
 			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
@@ -2471,11 +2497,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
-		   calls_counter > (int)calltable->calls_list_count() * 2) {
+		   calls_counter > (int)calltable->getCountCalls() * 2) {
 			extern void storing_cdr_next_thread_add();
 			storing_cdr_next_thread_add();
 		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
-			  calls_counter < calltable->calls_list_count() * 1.5) {
+			  calls_counter < (int)calltable->getCountCalls() * 1.5) {
 			extern void storing_cdr_next_thread_remove();
 			storing_cdr_next_thread_remove();
 		}
@@ -2697,22 +2723,71 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 	
-	if(heapPerc + heapTrashPerc >= 60) {
-		extern int global_livesniffer;
-		extern map<unsigned int, livesnifferfilter_t*> usersniffer;
-		extern volatile int usersniffer_sync;
-		while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
-		if(usersniffer.size()) {
-			cLogSensor *log = cLogSensor::begin(cLogSensor::warning, "live sniffer", "too high load - terminate");
-			for(map<unsigned int, livesnifferfilter_t*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
-				log->log(NULL, "uid: %u, state: %s", iter->first, iter->second->getStringState().c_str());
-				delete iter->second;
-				usersniffer.erase(iter++);
+	extern int global_livesniffer;
+	extern map<unsigned int, livesnifferfilter_s*> usersniffer;
+	extern map<unsigned int, string> usersniffer_kill_reason;
+	extern volatile int usersniffer_sync;
+	extern volatile int usersniffer_checksize_sync;
+	extern pthread_t usersniffer_checksize_thread;
+	extern int opt_livesniffer_timeout_s;
+	extern int opt_livesniffer_tablesize_max_mb;
+	if(global_livesniffer) {
+		if(heapPerc + heapTrashPerc >= 60) {
+			if(usersniffer.size()) {
+				cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "too high load - terminate");
+				while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+				for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+					string kill_reason = "too high load";
+					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+					delete iter->second;
+					usersniffer_kill_reason[iter->first] = kill_reason;
+					usersniffer.erase(iter++);
+				}
+				global_livesniffer = 0;
+				__sync_lock_release(&usersniffer_sync);
+				if(log) {
+					log->end();
+				}
 			}
-			global_livesniffer = 0;
-			log->end();
+		} else {
+			time_t now = time(NULL);
+			cLogSensor *log = NULL;
+			while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+			for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+				if(now > iter->second->created_at && 
+				   ((opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) ||
+				    (iter->second->timeout_s > 0 && (now - iter->second->created_at) >= iter->second->timeout_s))) {
+					string kill_reason;
+					if(opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) {
+						kill_reason = "timeout (in sniffer configuration - " + intToString(opt_livesniffer_timeout_s) + "s)";
+					} else {
+						kill_reason = "timeout (define in gui)";
+					}
+					if(!log) {
+						log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+					}
+					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+					delete iter->second;
+					usersniffer_kill_reason[iter->first] = kill_reason;
+					usersniffer.erase(iter++);
+				} else {
+					iter++;
+				}
+			}
+			if(!usersniffer.size()) {
+				global_livesniffer = 0;
+			}
+			__sync_lock_release(&usersniffer_sync);
+			if(log) {
+				log->end();
+			}
 		}
-		__sync_lock_release(&usersniffer_sync);
+		if(opt_livesniffer_tablesize_max_mb > 0 && usersniffer.size() && !usersniffer_checksize_sync) {
+			usersniffer_checksize_sync = 1;
+			extern void *checkSizeOfLivepacketTables(void *arg);
+			vm_pthread_create_autodestroy("check size of livepacket tables",
+						      &usersniffer_checksize_thread, NULL, checkSizeOfLivepacketTables, this, __FILE__, __LINE__);
+		}
 	}
 
 	if (opt_rrd) {
@@ -3262,6 +3337,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			} else if(opt_nonstop_read) {
 				_file = _files[0];
 				read_from_file_index = 0;
+				opt_pb_read_from_file_acttime_diff = 0;
 			}
 			if(!_file.empty()) {
 				pcap_close(this->pcapHandle);
@@ -3616,6 +3692,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 				if(sleepCounter > 30 && opt_nonstop_read) {
 					rss_purge();
 					syslog(LOG_NOTICE, "purge");
+					extern void reset_cleanup_variables();
+					reset_cleanup_variables();
+					syslog(LOG_NOTICE, "reset cleanup variables");
 					break;
 				}
 			}
@@ -7571,6 +7650,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			istcp = 1;
 			sport = header_tcp->get_source();
 			dport = header_tcp->get_dest();
+			isother = opt_enable_ss7 && (ss7portmatrix[sport] || ss7portmatrix[dport]);
 		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
 			isother = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);

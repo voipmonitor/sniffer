@@ -418,7 +418,13 @@ public:
 	}
 	void add(const char *name, string content, eTypeItem typeItem = _string);
 	void add(const char *name, const char *content, eTypeItem typeItem = _string);
-	void add(const char *name, int64_t content);
+	void add(const char *name, int content) { add_int(name, content); } 
+	void add(const char *name, unsigned int content) { add_int(name, content); } 
+	void add(const char *name, long int content) { add_int(name, content); } 
+	void add(const char *name, long unsigned int content) { add_int(name, content); } 
+	void add(const char *name, long long int content) { add_int(name, content); } 
+	void add(const char *name, long long unsigned int content) { add_int(name, content); } 
+	void add_int(const char *name, int64_t content);
 	void add(const char *name);
 	JsonExport *addArray(const char *name);
 	JsonExport *addObject(const char *name);
@@ -458,6 +464,59 @@ string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
 string boolToString(bool b);
 
+inline char *intToString(long long int i, char *str) {
+	if(i) {
+		int str_length = 0;
+		bool neg = i < 0;
+		if(neg) {
+			i = -i;
+			str[str_length++] = '-';
+		}
+		u_int8_t buff[100];
+		int buff_length = 0;
+		while(i != 0) {
+			buff[buff_length++] = i % 10;
+			i /= 10;
+		}
+		for(int i = 0; i < buff_length; i++) {
+			str[str_length++] = buff[buff_length - i - 1] + '0';
+		}
+		str[str_length] = 0;
+	} else {
+		str[0] = '0';
+		str[1] = 0;
+	}
+	return(str);
+}
+inline char *intToString(unsigned long long int i, char *str) {
+	if(i) {
+		int str_length = 0;
+		u_int8_t buff[100];
+		int buff_length = 0;
+		while(i != 0) {
+			buff[buff_length++] = i % 10;
+			i /= 10;
+		}
+		for(int i = 0; i < buff_length; i++) {
+			str[str_length++] = buff[buff_length - i - 1] + '0';
+		}
+		str[str_length] = 0;
+	} else {
+		str[0] = '0';
+		str[1] = 0;
+	}
+	return(str);
+}
+inline char *intToString(short int i, char *str) { return(intToString((long long int)i, str)); }
+inline char *intToString(int i, char *str) { return(intToString((long long int)i, str)); }
+inline char *intToString(long int i, char *str) { return(intToString((long long int)i, str)); }
+inline char *intToString(unsigned short int i, char *str) { return(intToString((unsigned long long int)i, str)); }
+inline char *intToString(unsigned int i, char *str) { return(intToString((unsigned long long int)i, str)); }
+inline char *intToString(unsigned long int i, char *str) { return(intToString((unsigned long long int)i, str)); }
+inline char *floatToString(double d, char *str) {
+	sprintf(str, "%lf", d);
+	return(str);
+}
 
 void xorData(u_char *data, size_t dataLen, const char *key, size_t keyLength, size_t initPos);
 

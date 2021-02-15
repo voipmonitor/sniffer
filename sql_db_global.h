@@ -203,11 +203,33 @@ bool cmpStringIgnoreCase(const char* str1, const char* str2);
 bool isSqlDriver(const char *sqlDriver, const char *checkSqlDriver = NULL);
 bool isTypeDb(const char *typeDb, const char *checkSqlDriver = NULL, const char *checkOdbcDriver = NULL);
 
-string sqlEscapeString(string inputStr, const char *typeDb = NULL);
-string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL);
 void fillEscTables();
 string _sqlEscapeString(const char *inputString, int length, const char *typeDb, bool checkUtf = false);
 void _sqlEscapeString(const char *inputStr, int length, char *outputStr, const char *typeDb, bool checkUtf = false);
+
+inline bool checkNeedEscape(const char *inputStr, int length) {
+	for(int i = 0; i < length; i++) {
+		if(!(isdigit(inputStr[i]) ||
+		     isalpha(inputStr[i]) ||
+		     strchr(" +-_.:@#", inputStr[i]))) {
+			return(true);
+		}
+	}
+	return(false);
+}
+inline string sqlEscapeString(const char *inputStr, int length = 0, const char *typeDb = NULL) {
+	if(!length) {
+		length = strlen(inputStr);
+		if(!checkNeedEscape(inputStr, length)) {
+			return(inputStr);
+		}
+	}
+	return _sqlEscapeString(inputStr, length, typeDb, true);
+}
+inline string sqlEscapeString(string inputStr, const char *typeDb = NULL) {
+	return sqlEscapeString(inputStr.c_str(), 0, typeDb);
+}
+
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL);
 

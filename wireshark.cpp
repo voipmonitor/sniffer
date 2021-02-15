@@ -2,6 +2,7 @@
 
 #include <pcap.h>
 #include <string>
+#include <vector>
 
 #if HAVE_LIBWIRESHARK
 
@@ -23,7 +24,10 @@
 #include <wireshark/wiretap/wtap.h>
 
 #if not defined(LIBWIRESHARK_VERSION) or LIBWIRESHARK_VERSION < 20403
+#define _U_
 #include <wireshark/file.h>
+#include <wireshark/epan/prefs.h>
+#include <wireshark/epan/prefs-int.h>
 #endif
 
 #if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
@@ -37,8 +41,12 @@
 using namespace std;
  
 
+extern std::string trim_str(std::string s, const char *trimChars = NULL);
+
 static epan_t *ws_epan_new(capture_file *cf);
 static tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf);
+static void ws_set_params();
+static bool ws_set_param(string param, string value);
 
 static bool ws_init_ok;
 static epan_t *ws_epan;
@@ -65,6 +73,7 @@ void ws_init() {
 void ws_epan_init() {
 	if(!ws_epan) {
 		ws_epan = ws_epan_new(NULL);
+		ws_set_params();
 	}
 }
 
@@ -73,6 +82,67 @@ void ws_epan_term() {
 		epan_free(ws_epan);
 		ws_epan = NULL;
 	}
+}
+
+void ws_set_params() {
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
+	ws_set_param("ip.use_geoip", "FALSE");
+	#endif
+	extern vector<string> opt_ws_params;
+	for(unsigned i = 0; i < opt_ws_params.size(); i++) {
+		size_t pv_separator = opt_ws_params[i].find(":");
+		if(pv_separator != string::npos) {
+			string param = trim_str(opt_ws_params[i].substr(0, pv_separator));
+			string value = trim_str(opt_ws_params[i].substr(pv_separator + 1));
+			ws_set_param(param, value);
+		}
+	}
+}
+
+bool ws_set_param(string param, string value) {
+	size_t mp_separator = param.find(".");
+	if(mp_separator == string::npos) {
+		return(false);
+	}
+	string module = trim_str(param.substr(0, mp_separator));
+	string pref = trim_str(param.substr(mp_separator + 1));
+	module_t *ws_module = prefs_find_module(module.c_str());
+	if(!ws_module) {
+		syslog(LOG_NOTICE, "unknown ws prefs module %s", module.c_str());
+		return(false);
+	}
+	pref_t *ws_pref = prefs_find_preference(ws_module, pref.c_str());
+	if(!ws_pref) {
+		syslog(LOG_NOTICE, "unknown ws prefs %s.%s", module.c_str(), pref.c_str());
+		return(false);
+	}
+	int ws_pref_type = prefs_get_type(ws_pref);
+	if(ws_pref_type == PREF_UINT) {
+		prefs_set_uint_value(ws_pref, atoi(value.c_str()), pref_current);
+	} else if(ws_pref_type == PREF_BOOL) {
+		prefs_set_bool_value(ws_pref, !strcasecmp(value.c_str(), "true") || !strcasecmp(value.c_str(), "yes"), pref_current);
+	} else if(ws_pref_type == PREF_STRING) {
+		prefs_set_string_value(ws_pref, value.c_str(), pref_current);
+	} else if(ws_pref_type == PREF_ENUM) {
+		int ev = -1;
+		const enum_val_t* ev_list = prefs_get_enumvals(ws_pref);
+		for(unsigned i = 0; ev_list[i].name; i++) {
+			if(!strcasecmp(ev_list[i].name, value.c_str())) {
+				ev = ev_list[i].value;
+				break;
+			}
+		}
+		if(ev != -1) {
+			prefs_set_enum_value(ws_pref, ev, pref_current);
+		} else {
+			syslog(LOG_NOTICE, "unknown ws value %s for prefs %s.%s", value.c_str(), module.c_str(), pref.c_str());
+			return(false);
+		}
+	} else {
+		syslog(LOG_NOTICE, "unsupported ws type %i for prefs %s.%s", ws_pref_type, module.c_str(), pref.c_str());
+		return(false);
+	}
+	return(true);
 }
 
 void ws_gener_json(epan_dissect_t *edt, string *rslt) {
@@ -113,16 +183,6 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
  
 	ws_init();
 	ws_epan_init();
-	
-	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605
-	module_t *pref_module_ip = prefs_find_module("ip");
-	if(pref_module_ip) {
-		pref_t *pref_use_geoip = prefs_find_preference(pref_module_ip, "use_geoip");
-		if(pref_use_geoip) {
-			prefs_set_bool_value(pref_use_geoip, false, pref_current);
-		}
-	}
-	#endif
 	
 	frame_data fdlocal;
 	guint32 cum_bytes = 0;

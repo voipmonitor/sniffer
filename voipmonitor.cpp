@@ -401,6 +401,11 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
+int opt_ss7_type_callid = 1;
+int opt_ss7timeout_rlc = 10;
+int opt_ss7timeout_rel = 60;
+int opt_ss7timeout = 3600;
+vector<string> opt_ws_params;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -445,6 +450,7 @@ unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
 bool opt_database_backup = false;
 char opt_database_backup_from_date[20];
+char opt_database_backup_to_date[20];
 char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
@@ -821,6 +827,9 @@ int opt_pcapdump = 0;
 int opt_callend = 1; //if true, cdr.called is saved
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
+int opt_t2_boost_call_find_threads = false;
+int opt_t2_boost_call_threads = 3;
+int opt_storing_cdr_max_next_threads = 3;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -841,16 +850,20 @@ char opt_cachedir[1024];
 
 int opt_upgrade_try_http_if_https_fail = 0;
 
-#define MAXIMUM_STORING_CDR_THREADS 3
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
 pstat_data storing_cdr_thread_pstat_data[2];
-pthread_t storing_cdr_next_threads[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
-int storing_cdr_next_tid[MAXIMUM_STORING_CDR_THREADS];	// ID of worker storing CDR next threads
-pstat_data storing_cdr_next_threads_pstat_data[MAXIMUM_STORING_CDR_THREADS][2];
-sem_t storing_cdr_next_threads_sem[MAXIMUM_STORING_CDR_THREADS][2];
-bool storing_cdr_next_threads_init[MAXIMUM_STORING_CDR_THREADS];
-list<Call*> *storing_cdr_next_threads_calls[MAXIMUM_STORING_CDR_THREADS];
+struct sStoringCdrNextThreads {
+	sStoringCdrNextThreads() {
+		memset(this, 0, sizeof(*this));
+	}
+	pthread_t thread;
+	int tid;
+	pstat_data pstat[2];
+	sem_t sem[2];
+	bool init;
+	list<Call*> *calls;
+} *storing_cdr_next_threads;
 volatile int storing_cdr_next_threads_count;
 volatile int storing_cdr_next_threads_count_mod;
 volatile int storing_cdr_next_threads_count_mod_request;
@@ -882,6 +895,7 @@ char *httpportmatrix;		// matrix of http ports to monitor
 char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
+char *ss7portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -930,9 +944,12 @@ PcapQueue_readFromInterface *pcapQueueInterface;
 PcapQueue *pcapQueueStatInterface;
 
 PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-PreProcessPacket *preProcessPacketCallX[preProcessPacketCallX_count];
+PreProcessPacket **preProcessPacketCallX;
+PreProcessPacket **preProcessPacketCallFindX;
+int preProcessPacketCallX_count;
 ProcessRtpPacket *processRtpPacketHash;
 ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
+volatile PreProcessPacket::eCallX_state preProcessPacketCallX_state = PreProcessPacket::callx_na;
 
 TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
@@ -1118,6 +1135,9 @@ int opt_mirror_connect_maximum_time_diff_s = 2;
 int opt_client_server_connect_maximum_time_diff_s = 2;
 int opt_receive_packetbuffer_maximum_time_diff_s = 30;
 int opt_client_server_sleep_ms_if_queue_is_full = 1000;
+
+int opt_livesniffer_timeout_s = 0;
+int opt_livesniffer_tablesize_max_mb = 0;
 
 int opt_abort_if_rss_gt_gb = 0;
 int opt_next_server_connections = 0;
@@ -1816,23 +1836,23 @@ void *storing_cdr( void */*dummy*/ ) {
 			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
-			if((storing_cdr_next_threads_count_mod > 0 && storing_cdr_next_threads_count == MAXIMUM_STORING_CDR_THREADS) ||
+			if((storing_cdr_next_threads_count_mod > 0 && storing_cdr_next_threads_count == opt_storing_cdr_max_next_threads) ||
 			   (storing_cdr_next_threads_count_mod < 0 && storing_cdr_next_threads_count == 0)) {
 				storing_cdr_next_threads_count_mod = 0;
 			}
 			if(storing_cdr_next_threads_count_mod > 0) {
 				syslog(LOG_NOTICE, "storing cdr - creating next thread %i", storing_cdr_next_threads_count + 1);
-				if(!storing_cdr_next_threads_init[storing_cdr_next_threads_count]) {
-					storing_cdr_next_threads_calls[storing_cdr_next_threads_count] = new FILE_LINE(0) list<Call*>;
+				if(!storing_cdr_next_threads[storing_cdr_next_threads_count].init) {
+					storing_cdr_next_threads[storing_cdr_next_threads_count].calls = new FILE_LINE(0) list<Call*>;
 					for(int i = 0; i < 2; i++) {
-						sem_init(&storing_cdr_next_threads_sem[storing_cdr_next_threads_count][i], 0, 0);
+						sem_init(&storing_cdr_next_threads[storing_cdr_next_threads_count].sem[i], 0, 0);
 					}
-					storing_cdr_next_threads_init[storing_cdr_next_threads_count] = true;
+					storing_cdr_next_threads[storing_cdr_next_threads_count].init = true;
 				}
-				memset(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count], 0, sizeof(storing_cdr_next_threads_pstat_data[storing_cdr_next_threads_count]));
+				memset(storing_cdr_next_threads[storing_cdr_next_threads_count].pstat, 0, sizeof(storing_cdr_next_threads[storing_cdr_next_threads_count].pstat));
 				void *storing_cdr_next_thread( void *_indexNextThread );
 				vm_pthread_create(("storing cdr - next thread " + intToString(storing_cdr_next_threads_count + 1)).c_str(),
-						  &storing_cdr_next_threads[storing_cdr_next_threads_count], NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count), __FILE__, __LINE__);
+						  &storing_cdr_next_threads[storing_cdr_next_threads_count].thread, NULL, storing_cdr_next_thread, (void*)(long)(storing_cdr_next_threads_count), __FILE__, __LINE__);
 				while(storing_cdr_next_threads_count_mod > 0) {
 					USLEEP(100000);
 				}
@@ -1857,7 +1877,7 @@ void *storing_cdr( void */*dummy*/ ) {
 						if(!mod) {
 							calls_for_store.push_back(call);
 						} else {
-							storing_cdr_next_threads_calls[mod - 1]->push_back(call);
+							storing_cdr_next_threads[mod - 1].calls->push_back(call);
 						}
 					} else {
 						calls_for_store.push_back(call);
@@ -1876,7 +1896,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(calls_for_store_count || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-						sem_post(&storing_cdr_next_threads_sem[i][0]);
+						sem_post(&storing_cdr_next_threads[i].sem[0]);
 					}
 				}
 				bool useConvertToWav = false;
@@ -1961,7 +1981,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				delete [] indikConvertToWav;
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-						sem_wait(&storing_cdr_next_threads_sem[i][1]);
+						sem_wait(&storing_cdr_next_threads[i].sem[1]);
 					}
 				}
 				if(storing_cdr_next_threads_count_mod < 0) {
@@ -2023,22 +2043,22 @@ void *storing_cdr( void */*dummy*/ ) {
 
 void *storing_cdr_next_thread( void *_indexNextThread ) {
 	int indexNextThread = (int)(long)_indexNextThread;
-	storing_cdr_next_tid[indexNextThread] = get_unix_tid();
+	storing_cdr_next_threads[indexNextThread].tid = get_unix_tid();
 	if(storing_cdr_next_threads_count_mod > 0 &&
 	   indexNextThread == storing_cdr_next_threads_count) {
 		 storing_cdr_next_threads_count_mod = 0;
 	}
 	while(terminating_storing_cdr < 2) {
-		sem_wait(&storing_cdr_next_threads_sem[indexNextThread][0]);
+		sem_wait(&storing_cdr_next_threads[indexNextThread].sem[0]);
 		if(terminating_storing_cdr == 2) {
 			break;
 		}
 		bool useConvertToWav = false;
-		unsigned indikConvertToWavSize = storing_cdr_next_threads_calls[indexNextThread]->size();
+		unsigned indikConvertToWavSize = storing_cdr_next_threads[indexNextThread].calls->size();
 		char *indikConvertToWav = new FILE_LINE(0) char[indikConvertToWavSize];
 		memset(indikConvertToWav, 0, indikConvertToWavSize);
 		unsigned counter = 0;
-		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
+		for(list<Call*>::iterator iter_call = storing_cdr_next_threads[indexNextThread].calls->begin(); iter_call != storing_cdr_next_threads[indexNextThread].calls->end(); iter_call++) {
 			Call *call = *iter_call;
 			bool needConvertToWavInThread = false;
 			call->closeRawFiles();
@@ -2076,7 +2096,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		}
 		list<Call*> calls_for_delete;
 		counter = 0;
-		for(list<Call*>::iterator iter_call = storing_cdr_next_threads_calls[indexNextThread]->begin(); iter_call != storing_cdr_next_threads_calls[indexNextThread]->end(); iter_call++) {
+		for(list<Call*>::iterator iter_call = storing_cdr_next_threads[indexNextThread].calls->begin(); iter_call != storing_cdr_next_threads[indexNextThread].calls->end(); iter_call++) {
 			if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
 				calltable->audio_queue.push_back(*iter_call);
 				calltable->processCallsInAudioQueue(false);
@@ -2108,13 +2128,13 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			calltable->unlock_calls_deletequeue();
 		}
 		delete [] indikConvertToWav;
-		storing_cdr_next_threads_calls[indexNextThread]->clear();
+		storing_cdr_next_threads[indexNextThread].calls->clear();
 		bool stop = false;
 		if(storing_cdr_next_threads_count_mod < 0 &&
 		   (indexNextThread + 1) == storing_cdr_next_threads_count) {
 			stop = true;
 		}
-		sem_post(&storing_cdr_next_threads_sem[indexNextThread][1]);
+		sem_post(&storing_cdr_next_threads[indexNextThread].sem[1]);
 		if(stop) {
 			syslog(LOG_NOTICE, "storing cdr - stop next thread %i", indexNextThread + 1);
 			break;
@@ -2125,7 +2145,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 
 void storing_cdr_next_thread_add() {
 	if(getTimeS() > storing_cdr_next_threads_count_last_change + 120) {
-		if(storing_cdr_next_threads_count < MAXIMUM_STORING_CDR_THREADS &&
+		if(storing_cdr_next_threads_count < opt_storing_cdr_max_next_threads &&
 		   storing_cdr_next_threads_count_mod == 0 &&
 		   storing_cdr_next_threads_count_mod_request == 0) {
 			storing_cdr_next_threads_count_mod_request = 1;
@@ -2157,7 +2177,7 @@ string storing_cdr_getCpuUsagePerc(double *avg) {
 		++cpu_count;
 	}
 	for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-		double cpu = get_cpu_usage_perc(storing_cdr_next_tid[i], storing_cdr_next_threads_pstat_data[i]);
+		double cpu = get_cpu_usage_perc(storing_cdr_next_threads[i].tid, storing_cdr_next_threads[i].pstat);
 		if(cpu > 0) {
 			cpuStr << '/' << setprecision(1) << cpu;
 			cpu_sum += cpu;
@@ -3052,6 +3072,8 @@ int main(int argc, char *argv[]) {
 	memset(skinnyportmatrix, 0, 65537);
 	ipaccountportmatrix = new FILE_LINE(42017) char[65537];
 	memset(ipaccountportmatrix, 0, 65537);
+	ss7portmatrix = new FILE_LINE(0) char[65537];
+	memset(ss7portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -3862,6 +3884,7 @@ int main(int argc, char *argv[]) {
 	delete [] webrtcportmatrix;
 	delete [] skinnyportmatrix;
 	delete [] ipaccountportmatrix;
+	delete [] ss7portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -3909,6 +3932,9 @@ int main_init_read() {
 		chartsCacheInit(sqlDbInit);
 	}
 
+	if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
+		preProcessPacketCallX_count = opt_t2_boost_call_threads;
+	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
 	
 	// if the system has more than one CPU enable threading
@@ -4132,6 +4158,9 @@ int main_init_read() {
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
+		if(opt_storing_cdr_max_next_threads) {
+			storing_cdr_next_threads = new FILE_LINE(0) sStoringCdrNextThreads[opt_storing_cdr_max_next_threads];
+		}
 		vm_pthread_create("storing cdr",
 				  &storing_cdr_thread, NULL, storing_cdr, NULL, __FILE__, __LINE__);
 		vm_pthread_create("storing register",
@@ -4190,9 +4219,23 @@ int main_init_read() {
 			}
 		}
 		
-		if(opt_t2_boost) {
-			for(int i = 0; i < preProcessPacketCallX_count; i++) {
+		if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
+			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
+			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+			}
+			if(calltable->enableCallFindX()) {
+				preProcessPacketCallFindX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count];
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callfindx, i);
+				}
+				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
+					preProcessPacketCallX[i]->startOutThread();
+				}
+				for(int i = 0; i < preProcessPacketCallX_count; i++) {
+					preProcessPacketCallFindX[i]->startOutThread();
+				}
+				preProcessPacketCallX_state = PreProcessPacket::callx_find;
 			}
 		}
 		
@@ -4514,13 +4557,27 @@ void terminate_processpacket() {
 	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
-		for(int i = 0; i < preProcessPacketCallX_count; i++) {
-			if(preProcessPacketCallX[i]) {
-				if(termPass == 0) {
-					preProcessPacketCallX[i]->terminate();
-				} else {
-					delete preProcessPacketCallX[i];
-					preProcessPacketCallX[i] = NULL;
+		if(preProcessPacketCallX) {
+			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
+				if(preProcessPacketCallX[i]) {
+					if(termPass == 0) {
+						preProcessPacketCallX[i]->terminate();
+					} else {
+						delete preProcessPacketCallX[i];
+						preProcessPacketCallX[i] = NULL;
+					}
+				}
+			}
+		}
+		if(preProcessPacketCallFindX) {
+			for(int i = 0; i < preProcessPacketCallX_count; i++) {
+				if(preProcessPacketCallFindX[i]) {
+					if(termPass == 0) {
+						preProcessPacketCallFindX[i]->terminate();
+					} else {
+						delete preProcessPacketCallFindX[i];
+						preProcessPacketCallFindX[i] = NULL;
+					}
 				}
 			}
 		}
@@ -4536,6 +4593,17 @@ void terminate_processpacket() {
 		}
 		if(termPass == 0) {
 			USLEEP(100000);
+		} else {
+			if(preProcessPacketCallX) {
+				delete [] preProcessPacketCallX;
+				preProcessPacketCallX = NULL;
+			}
+			if(preProcessPacketCallFindX) {
+				delete [] preProcessPacketCallFindX;
+				preProcessPacketCallFindX = NULL;
+			}
+			preProcessPacketCallX_count = 0;
+			preProcessPacketCallX_state = PreProcessPacket::callx_na;
 		}
 	}
 	
@@ -4653,16 +4721,25 @@ void main_term_read() {
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
-		while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
-		for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-			sem_post(&storing_cdr_next_threads_sem[i][0]);
-			pthread_join(storing_cdr_next_threads[i], NULL);
-			for(int j = 0; j < 2; j++) {
-				sem_destroy(&storing_cdr_next_threads_sem[i][j]);
+		if(storing_cdr_next_threads) {
+			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+			for(int i = 0; i < opt_storing_cdr_max_next_threads; i++) {
+				if(storing_cdr_next_threads[i].init) {
+					if(i < storing_cdr_next_threads_count) {
+						sem_post(&storing_cdr_next_threads[i].sem[0]);
+						pthread_join(storing_cdr_next_threads[i].thread, NULL);
+					}
+					for(int j = 0; j < 2; j++) {
+						sem_destroy(&storing_cdr_next_threads[i].sem[j]);
+					}
+					delete storing_cdr_next_threads[i].calls;
+				}
 			}
-			delete storing_cdr_next_threads_calls[i];
+			__sync_lock_release(&storing_cdr_next_threads_count_sync);
+			delete [] storing_cdr_next_threads;
+			storing_cdr_next_threads = NULL;
 		}
-		__sync_lock_release(&storing_cdr_next_threads_count_sync);
+		storing_cdr_thread = 0;
 	}
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
@@ -6428,6 +6505,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -6492,6 +6572,7 @@ void cConfig::addConfigItems() {
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
+				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_to_date", opt_database_backup_to_date, sizeof(opt_database_backup_to_date)));
 				addConfigItem(new FILE_LINE(42124) cConfigItem_string("database_backup_from_mysqlhost", opt_database_backup_from_mysql_host, sizeof(opt_database_backup_from_mysql_host)));
 				addConfigItem(new FILE_LINE(42125) cConfigItem_string("database_backup_from_mysqldb", opt_database_backup_from_mysql_database, sizeof(opt_database_backup_from_mysql_database)));
 				addConfigItem(new FILE_LINE(42126) cConfigItem_string("database_backup_from_mysqlusername", opt_database_backup_from_mysql_user, sizeof(opt_database_backup_from_mysql_user)));
@@ -6562,6 +6643,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("detect_alone_bye", &opt_detect_alone_bye));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("time_precision_in_ms", &opt_time_precision_in_ms));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mirror_connect_maximum_time_diff_s", &opt_mirror_connect_maximum_time_diff_s));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_timeout_s", &opt_livesniffer_timeout_s));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_tablesize_max_mb", &opt_livesniffer_tablesize_max_mb));
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -6940,6 +7023,14 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-subscribe", &opt_save_sip_subscribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-notify", &opt_save_sip_notify));
 				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-src", &opt_sip_msg_compare_ip_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-ip-dst", &opt_sip_msg_compare_ip_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-port-src", &opt_sip_msg_compare_port_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-port-dst", &opt_sip_msg_compare_port_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-number-src", &opt_sip_msg_compare_number_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-number-dst", &opt_sip_msg_compare_number_dst));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-src", &opt_sip_msg_compare_domain_src));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-dst", &opt_sip_msg_compare_domain_dst));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-vlan", &opt_sip_msg_compare_vlan));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
@@ -7055,6 +7146,16 @@ void cConfig::addConfigItems() {
 	group("ss7");
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
+				expert();
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
+					->disableNo()
+					->addValues("cic_dpc_opc:1|cic:2")
+					->setDefaultValueStr("cic_dpc_opc"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7port", ss7portmatrix));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rlc_timeout", &opt_ss7timeout_rlc));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -7812,6 +7913,7 @@ void parse_verb_param(string verbParam) {
 								strcpy_null_term(sverb.sipcallerip_filter, verbParam.c_str() + 19);
 	else if(verbParam.substr(0, 19) == "sipcalledip_filter=")
 								strcpy_null_term(sverb.sipcalledip_filter, verbParam.c_str() + 19);
+	else if(verbParam == "suppress_cdr_insert")		sverb.suppress_cdr_insert = 1;
 	else if(verbParam == "suppress_server_store")		sverb.suppress_server_store = 1;
 	else if(verbParam == "suppress_fork")			sverb.suppress_fork = 1;
 	else if(verbParam.substr(0, 11) == "trace_call=")
@@ -8562,6 +8664,13 @@ void set_context_config() {
 	}
 	
 	ifnamev = split(ifname, split(",|;| |\t|\r|\n", "|"), true);
+	for(unsigned i = 0; i < ifnamev.size(); ) {
+		if(ifnamev[i] == "--") {
+			ifnamev.erase(ifnamev.begin() + i);
+		} else {
+			i++;
+		}
+	}
 	
 	if(opt_pcap_queue_dequeu_window_length < 0) {
 		if(is_receiver() || is_server()) {
@@ -8716,6 +8825,11 @@ void set_context_config() {
 		} else {
 			syslog(LOG_ERR, "%s", error.c_str());
 		}
+	}
+	
+	if(opt_t2_boost && opt_t2_boost_call_find_threads && opt_call_id_alternative[0]) {
+		opt_t2_boost_call_find_threads = false;
+		syslog(LOG_ERR, "option t2_boost_enable_call_find_threads is not suported with option call_id_alternative");
 	}
 	
 }
@@ -9531,6 +9645,30 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "save-sip-notify", NULL))) {
 		opt_save_sip_notify = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-msg-compare-ip-src", NULL))) {
+		opt_sip_msg_compare_ip_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-ip-dst", NULL))) {
+		opt_sip_msg_compare_ip_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-port-src", NULL))) {
+		opt_sip_msg_compare_port_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-port-dst", NULL))) {
+		opt_sip_msg_compare_port_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-number-src", NULL))) {
+		opt_sip_msg_compare_number_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-number-dst", NULL))) {
+		opt_sip_msg_compare_number_dst = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-domain-src", NULL))) {
+		opt_sip_msg_compare_domain_src = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-msg-compare-domain-dst", NULL))) {
+		opt_sip_msg_compare_domain_dst = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-msg-compare-vlan", NULL))) {
 		opt_sip_msg_compare_vlan = yesno(value);
 	}
@@ -9653,6 +9791,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "database_backup_from_date", NULL))) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
 		strcpy_null_term(opt_database_backup_from_date, value);
+	}
+	if((value = ini.GetValue("general", "database_backup_to_date", NULL))) {
+		strcpy_null_term(opt_database_backup_to_date, value);
 	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
@@ -10413,6 +10554,15 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
 		opt_t2_boost = yesno(value);
 	}
+	if((value = ini.GetValue("general", "t2_boost_enable_call_find_threads", NULL))) {
+		opt_t2_boost_call_find_threads = yesno(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_max_next_call_threads", NULL))) {
+		opt_t2_boost_call_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
+		opt_storing_cdr_max_next_threads = atoi(value);
+	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
 	}
@@ -10671,6 +10821,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mirror_connect_maximum_time_diff_s", NULL))) {
 		opt_mirror_connect_maximum_time_diff_s = atoi(value);
 	}
+	if((value = ini.GetValue("general", "livesniffer_timeout_s", NULL))) {
+		opt_livesniffer_timeout_s = atoi(value);
+	}
+	if((value = ini.GetValue("general", "livesniffer_tablesize_max_mb", NULL))) {
+		opt_livesniffer_tablesize_max_mb = atoi(value);
+	}
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
 					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end_base :
@@ -10696,6 +10852,27 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "ss7", NULL))) {
 		opt_enable_ss7 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ss7callid", NULL))) {
+		opt_ss7_type_callid = !strcasecmp(value, "cic") ? 2 : 1;
+	}
+	if(ini.GetAllValues("general", "ss7port", values)) {
+		parse_config_item_ports(&values, ss7portmatrix);
+	}
+	if((value = ini.GetValue("general", "ss7_rlc_timeout", NULL))) {
+		opt_ss7timeout_rlc = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ss7_rel_timeout", NULL))) {
+		opt_ss7timeout_rel = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ss7_timeout", NULL))) {
+		opt_ss7timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ws_param", NULL))) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			opt_ws_params.push_back(i->pItem);
+		}
 	}
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {

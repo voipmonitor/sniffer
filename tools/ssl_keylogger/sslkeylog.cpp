@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <syslog.h>
+#include <pthread.h>
 
 #ifdef SSLKEYLOG_TCP
 #include "cloud_router_base.h"
@@ -29,6 +31,7 @@
 
 #define DEBUG 1
 #define DEBUG_PREFIX "\n * SSL KEYLOG : "
+#define DEBUG_TO_SYSLOG 0
 
 #define min(a, b) (a < b ? a : b)
 
@@ -69,6 +72,8 @@ static int keylog_socket_handle = -1;
 static char keylog_filename[200];
 static int keylog_file_fd = -1;
 
+static bool syslog_open = false;
+
 struct sKeyQueueItem {
 	sKeyQueueItem(const char *key) {
 		this->key = new char[strlen(key) + 1];
@@ -103,8 +108,18 @@ static void debug_printf(const char* fmt, ...) {
 	#if DEBUG
 	va_list ap;
 	va_start(ap, fmt);
-	fprintf(stdout, DEBUG_PREFIX);
-	vfprintf(stdout, fmt, ap);
+	#if DEBUG_TO_SYSLOG
+		if(!syslog_open) {
+			openlog("SSL KEYLOG", LOG_PID, LOG_DAEMON);
+			syslog_open = true;
+		}
+		char log_buffer[1000];
+		vsnprintf(log_buffer, sizeof(log_buffer), fmt, ap);
+		syslog(LOG_NOTICE, "%s", log_buffer);
+	#else
+		fprintf(stdout, DEBUG_PREFIX);
+		vfprintf(stdout, fmt, ap);
+	#endif
 	va_end(ap);
 	#endif
 }

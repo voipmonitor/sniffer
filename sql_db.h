@@ -91,13 +91,17 @@ public:
 	};
 	SqlDb_row(SqlDb *sqlDb = NULL) {
 		this->sqlDb = sqlDb;
+		ignoreCheckExistsField = false;
+	}
+	void setIgnoreCheckExistsField(bool ignoreCheckExistsField = true) {
+		this->ignoreCheckExistsField = ignoreCheckExistsField;
 	}
 	string operator [] (const char *fieldName);
 	string operator [] (string fieldName);
 	string operator [] (int indexField);
 	operator int();
 	SqlDb_rowField *add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_string) {
-		if(fieldName != "") {
+		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
 				if(row[i].fieldName == fieldName) {
 					row[i] = SqlDb_rowField(content, fieldName, type, length, ift);
@@ -109,7 +113,7 @@ public:
 		return(&row[row.size() - 1]);
 	}
 	SqlDb_rowField *add(string content, string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
-		if(fieldName != "") {
+		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
 				if(row[i].fieldName == fieldName) {
 					row[i] = SqlDb_rowField(content, fieldName, null, 0, 0, ift);
@@ -127,7 +131,7 @@ public:
 			f->ifv.v._int = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%i", content);
+			intToString(content, str_content);
 			f = this->add(str_content, fieldName, 0, 0, _ift_int);
 			f->ifv.v._int = content;
 		}
@@ -140,7 +144,7 @@ public:
 			f->ifv.v._int_u = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%u", content);
+			intToString(content, str_content);
 			f = this->add(str_content, fieldName, 0, 0, _ift_int_u);
 			f->ifv.v._int_u = content;
 		}
@@ -152,7 +156,7 @@ public:
 			    ->ifv.v._int = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%li", content);
+			intToString(content, str_content);
 			this->add(str_content, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
@@ -163,7 +167,7 @@ public:
 			    ->ifv.v._int_u = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lu", content);
+			intToString(content, str_content);
 			this->add(str_content, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
@@ -174,7 +178,7 @@ public:
 			    ->ifv.v._int = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lli", content);
+			intToString(content, str_content);
 			this->add(str_content, fieldName, 0, 0, _ift_int)
 			    ->ifv.v._int = content;
 		}
@@ -185,7 +189,7 @@ public:
 			    ->ifv.v._int_u = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%llu", content);
+			intToString(content, str_content);
 			this->add(str_content, fieldName, 0, 0, _ift_int_u)
 			    ->ifv.v._int_u = content;
 		}
@@ -196,7 +200,7 @@ public:
 			     ->ifv.v._double = content;
 		} else {
 			char str_content[100];
-			snprintf(str_content, sizeof(str_content), "%lf", content);
+			floatToString(content, str_content);
 			this->add(str_content, fieldName, 0, 0, _ift_double)
 			    ->ifv.v._double = content;
 		}
@@ -273,9 +277,13 @@ public:
 	size_t getCountFields();
 	void removeFieldsIfNotContainIn(map<string, int> *fields);
 	void clearSqlDb();
+	void clear() {
+		row.clear();
+	}
 private:
 	SqlDb *sqlDb;
 	vector<SqlDb_rowField> row;
+	bool ignoreCheckExistsField;
 };
 
 class SqlDb_rows {
@@ -396,6 +404,8 @@ public:
 	bool emptyTable(string table, bool viaTableStatus = false) { return(emptyTable(table.c_str(), viaTableStatus)); }
 	virtual int64_t rowsInTable(const char *table, bool viaTableStatus = false) = 0;
 	int64_t rowsInTable(string table, bool viaTableStatus = false) { return(rowsInTable(table.c_str(), viaTableStatus)); }
+	virtual int64_t sizeOfTable(const char *table) = 0;
+	int64_t sizeOfTable(string table) { return(sizeOfTable(table.c_str())); }
 	virtual bool isOldVerPartition(const char *table) { return(false); }
 	bool isOldVerPartition(string table) { return(isOldVerPartition(table.c_str())); }
 	virtual int getIndexField(string fieldName);
@@ -641,6 +651,7 @@ public:
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
+	int64_t sizeOfTable(const char *table);
 	bool isOldVerPartition(const char *table);
 	string escape(const char *inputString, int length = 0);
 	string getFieldBorder() {
@@ -781,6 +792,7 @@ public:
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
+	int64_t sizeOfTable(const char *table);
 	int getIndexField(string fieldName);
 	string escape(const char *inputString, int length = 0);
 	bool checkLastError(string prefixError, bool sysLog = false,bool clearLastError = false);
@@ -878,6 +890,7 @@ private:
 	u_long queryCounter;
 	cSocketBlock *remote_socket;
 	bool check_store_supported;
+	bool check_time_supported;
 	u_long last_store_iteration_time;
 };
 
@@ -1123,7 +1136,9 @@ private:
 
 SqlDb *createSqlObject(int connectId = 0);
 string sqlDateTimeString(time_t unixTime, bool useGlobalTimeCache = false);
+inline void sqlDateTimeString(char *rslt, time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString_us2ms(u_int64_t unixTime_us, bool useGlobalTimeCache = false);
+inline void sqlDateTimeString_us2ms(char *rslt, u_int64_t unixTime_us, bool useGlobalTimeCache = false);
 string sqlDateString(time_t unixTime, bool useGlobalTimeCache = false);
 string sqlDateTimeString(tm &time);
 string sqlDateString(tm &time);
@@ -1219,6 +1234,7 @@ struct sExistsColumns {
 	bool cdr_txt_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
 	bool cdr_vlan;
+	bool ss7_flags;
 	bool ss7_time_iam_ms;
 	bool ss7_time_acm_ms;
 	bool ss7_time_cpg_ms;
