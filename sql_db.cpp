@@ -113,6 +113,7 @@ extern int opt_load_query_from_files;
 extern bool opt_disable_cdr_indexes_rtp;
 extern bool opt_mysql_mysql_redirect_cdr_queue;
 
+extern bool opt_sip_register_save_eq_states_time;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -6357,7 +6358,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned NOT NULL,\
 			`fname` BIGINT NULL default NULL,\
-			`created_at` ") + column_type_datetime_ms() + " NOT NULL,\
+			") + (opt_sip_register_save_eq_states_time ? "`counter` int DEFAULT 0," : "") + 
+			"`created_at` " + column_type_datetime_ms() + " NOT NULL,\
 			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			" + (opt_save_ip_from_encaps_ipheader ?
@@ -6385,12 +6387,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
 		" + (opt_save_ip_from_encaps_ipheader ?
 		      "KEY `sipcallerip_encaps` (`sipcallerip_encaps`),\
+		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
 		      " :
 		      "") +
-		"KEY `vlan` (`vlan`),\
-		KEY `sipcalledip` (`sipcalledip`)\
+		"KEY `vlan` (`vlan`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
@@ -6403,6 +6406,38 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+
+	if(opt_sip_register_save_eq_states_time) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `register_state_eq_next` (\
+			`register_state_ID` bigint unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`created_at` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") + 
+			"`order` int DEFAULT NULL,\
+			`next_at` " + column_type_datetime_child_ms() + " DEFAULT NULL,\
+			`fname` BIGINT NULL default NULL,\
+			`id_sensor` int unsigned NOT NULL,\
+		KEY (`register_state_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`created_at`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `register_state_eq_next_ibfk_1` FOREIGN KEY (`register_state_ID`) REFERENCES `register_state` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(created_at))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_failed` (\
@@ -6428,6 +6463,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
+			`flags` bigint unsigned DEFAULT NULL,\
 			`vlan` smallint DEFAULT NULL,\
 			`spool_index` tinyint unsigned DEFAULT NULL," +
 		(opt_cdr_partition ? 
@@ -6435,12 +6471,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"PRIMARY KEY (`ID`),") +
 		"KEY `created_at` (`created_at`),\
 		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
 		" + (opt_save_ip_from_encaps_ipheader ?
 		      "KEY `sipcallerip_encaps` (`sipcallerip_encaps`),\
+		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
 		      " :
 		      "") +
-		"KEY `vlan` (`vlan`),\
-		KEY `sipcalledip` (`sipcalledip`)\
+		"KEY `vlan` (`vlan`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
@@ -6453,6 +6490,69 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(created_at)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+	
+	if(opt_sip_register_save_eq_states_time) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `register_failed_eq_next` (\
+			`register_failed_ID` bigint unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`created_at` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") + 
+			"`order` int DEFAULT NULL,\
+			`next_at` " + column_type_datetime_child_ms() + " DEFAULT NULL,\
+			`fname` BIGINT NULL default NULL,\
+			`id_sensor` int unsigned NOT NULL,\
+		KEY (`register_failed_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`created_at`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `register_failed_eq_next_ibfk_1` FOREIGN KEY (`register_failed_ID`) REFERENCES `register_failed` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(created_at))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	}
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `register_time_info` (\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+			`created_at` datetime NOT NULL,\
+			`type_info` enum('failed','active'),\
+			`id_sensor` int unsigned NOT NULL,\
+			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`counter_1` int DEFAULT NULL,\
+			`counter_2` int DEFAULT NULL," + 
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `created_at`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY `created_at` (`created_at`),\
+		KEY `type_info` (`type_info`),\
+		KEY `id_sensor` (`id_sensor`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(created_at))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(created_at)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `sip_msg` (\
@@ -8373,6 +8473,23 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
+		bool registerStateIdIsBig = true;
+		this->query("show columns from register_state like 'id'");
+		SqlDb_row register_state_struct_row = this->fetchRow();
+		if(register_state_struct_row) {
+			string idType = register_state_struct_row["type"];
+			std::transform(idType.begin(), idType.end(), idType.begin(), ::toupper);
+			if(idType.find("BIG") == string::npos) {
+				registerStateIdIsBig = false;
+			}
+		}
+		if(!registerStateIdIsBig) {
+			this->logNeedAlter("register_state",
+					   "register state",
+					   "ALTER TABLE register_state "
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   log, &tableSize, NULL);
+		}
 		bool registerFailedIdIsBig = true;
 		this->query("show columns from register_failed like 'id'");
 		SqlDb_row register_failed_struct_row = this->fetchRow();
@@ -8391,6 +8508,26 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 					   log, &tableSize, NULL);
 		}
 	}
+	if(this->existsTable("register_state_eq_next")) {
+		existsColumns.register_state_eq_next_created_at = this->existsColumn("register_state_eq_next", "created_at");
+		if(existsColumns.register_state_eq_next_created_at) {
+			existsColumns.register_state_eq_next_created_at_ms = this->getTypeColumn("register_state_eq_next", "created_at").find("(3)") != string::npos;
+		}
+		existsColumns.register_state_eq_next_next_at_ms = this->getTypeColumn("register_state_eq_next", "next_at").find("(3)") != string::npos;
+	}
+	if(this->existsTable("register_failed_eq_next")) {
+		existsColumns.register_failed_eq_next_created_at = this->existsColumn("register_failed_eq_next", "created_at");
+		if(existsColumns.register_failed_eq_next_created_at) {
+			existsColumns.register_failed_eq_next_created_at_ms = this->getTypeColumn("register_failed_eq_next", "created_at").find("(3)") != string::npos;
+		}
+		existsColumns.register_failed_eq_next_next_at_ms = this->getTypeColumn("register_failed_eq_next", "next_at").find("(3)") != string::npos;
+	}
+	if(opt_sip_register_save_eq_states_time) {
+		this->checkNeedAlterAdd("register_state", "register_state counter", true,
+					log, &tableSize, &existsColumns.register_state_counter,
+					"counter", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	this->checkNeedAlterAdd("register_state", "register_state spool index", true,
 				log, &tableSize, &existsColumns.register_state_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -8406,6 +8543,10 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed flags", true,
+				log, &tableSize, &existsColumns.register_failed_flags,
+				"flags", "bigint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed vlan", true,
 				log, &tableSize, &existsColumns.register_failed_vlan,
@@ -8970,6 +9111,19 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 			if(typeTables & tt_main) {
 				tables.push_back("register_failed");
 				tables.push_back("register_state");
+				tables.push_back("register_time_info");
+			}
+		}
+		if(opt_sip_register_save_eq_states_time) {
+			if(typeTables2 == tt2_na || typeTables2 & tt2_register) {
+				if(typeTables & tt_child) {
+					if(existsTable("register_failed_eq_next")) {
+						tables.push_back("register_failed_eq_next");
+					}
+					if(existsTable("register_state_eq_next")) {
+						tables.push_back("register_state_eq_next");
+					}
+				}
 			}
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_sip_msg_static) {
@@ -9344,6 +9498,14 @@ void dropMysqlPartitionsCdr() {
 	}
 	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, 0, sqlDb);
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, 0, sqlDb);
+	if(opt_sip_register_save_eq_states_time) {
+		if(sqlDb->existsTable("register_state_eq_next")) {
+			_dropMysqlPartitions("register_state_eq_next", opt_cleandatabase_register_state, 0, sqlDb);
+		}
+		if(sqlDb->existsTable("register_failed_eq_next")) {
+			_dropMysqlPartitions("register_failed_eq_next", opt_cleandatabase_register_failed, 0, sqlDb);
+		}
+	}
 	_dropMysqlPartitions("sip_msg", opt_cleandatabase_sip_msg, 0, sqlDb);
 	if(custom_headers_sip_msg) {
 		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();

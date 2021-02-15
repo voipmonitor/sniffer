@@ -8170,3 +8170,65 @@ void checkSwapUsage(void) {
 		swapDelayCount = ONE_HOUR;
 	}
 }
+
+
+cTimer::cTimer(void *data) {
+	this->data = data;
+	timer_thread = 0;
+}
+
+cTimer::~cTimer() {
+	stop();
+}
+
+void cTimer::start() {
+	if(timer_thread) {
+		return;
+	}
+	terminating = false;
+	vm_pthread_create("timer", &timer_thread, NULL, cTimer::_timerFce, this, __FILE__, __LINE__);
+}
+
+void cTimer::stop() {
+	if(timer_thread) {
+		terminating = true;
+		pthread_join(timer_thread, NULL);
+		timer_thread = 0;
+		terminating = false;
+	}
+}
+
+void *cTimer::_timerFce(void *arg) {
+	((cTimer*)arg)->timerFce();
+	return(NULL);
+}
+
+void cTimer::timerFce() {
+	last_time_us = 0;
+	last_time_s = 0;
+	last_time_m = 0;
+	while(!terminating) {
+		u_int64_t time_us = getTimeUS();
+		u_int32_t time_s = time_us / 1000000;
+		u_int32_t time_m = time_s / 60;
+		if(last_time_us) {
+			int typeChangeTime = 0;
+			if(time_s > last_time_s) {
+				typeChangeTime |= _tt_sec;
+				last_time_s = time_s;
+				if(time_m > last_time_m) {
+					typeChangeTime |= _tt_min;
+					last_time_m = time_m;
+				}
+			}
+			if(typeChangeTime) {
+				evTimer(time_s, typeChangeTime, data);
+			}
+		} else {
+			last_time_s = time_s;
+			last_time_m = time_m;
+		}
+		last_time_us = time_us;
+		usleep(min((int)(1000000 - time_us % 1000000), 10000));
+	}
+}

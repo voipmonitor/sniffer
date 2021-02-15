@@ -403,11 +403,6 @@ public:
 		_cond12_or,
 		_cond12_both_directions
 	};
-	enum eTypeTimer {
-		_tt_na,
-		_tt_sec = 1,
-		_tt_min = 2
-	};
 	FraudAlert(eFraudAlertType type, unsigned int dbId);
 	virtual ~FraudAlert();
 	bool isReg();
@@ -1129,7 +1124,7 @@ protected:
 	bool defFilterNumber() { return(true); }
 	bool defFilterNumber2() { return(true); }
 	bool defFilterNumberCondition12() { return(true); }
-	int8_t needTimer() { return(_tt_min); }
+	int8_t needTimer() { return(cTimer::_tt_min); }
 private:
 	void lock_calls() {
 		while(__sync_lock_test_and_set(&this->_sync_calls, 1));
@@ -1147,6 +1142,14 @@ private:
 	volatile int count_max;
 	volatile int _sync_calls;
 	deque<sTimeCount> queue;
+};
+
+
+class FraudTimer : public cTimer {
+public:
+	FraudTimer(class FraudAlerts *fraudAlerts);
+protected:
+	void evTimer(u_int32_t time_s, int typeTimer, void *data);
 };
 
 
@@ -1210,10 +1213,9 @@ private:
 	void unlock_alerts() {
 		__sync_lock_release(&this->_sync_alerts);
 	}
-	int craeteTimerThread(bool ifNeed = false);
-	void stopTimerThread();
-	static void *_timerFce(void *arg);
-	void timerFce();
+	void startTimer(bool ifNeed);
+	void stopTimer();
+	void evTimer(u_int32_t time_s, int typeTimer);
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo*> callQueue;
@@ -1233,12 +1235,9 @@ private:
 	bool useUserRestriction_custom_headers;
 	string gui_timezone;
 	volatile int _sync_alerts;
-	pthread_t timer_thread;
-	bool timer_thread_terminating;
-	u_int64_t timer_thread_last_time_us;
-	u_int32_t timer_thread_last_time_s;
-	u_int32_t timer_thread_last_time_m;
+	FraudTimer timer;
 friend void *_FraudAlerts_popCallInfoThread(void *arg);
+friend class FraudTimer;
 };
 
 

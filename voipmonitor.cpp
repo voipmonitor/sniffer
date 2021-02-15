@@ -510,6 +510,11 @@ bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_state_compare_sipalg = false;
 bool opt_sip_register_state_compare_vlan = false;
 bool opt_sip_register_save_all = false;
+int opt_sip_register_state_timeout = 5 * 60;
+bool opt_sip_register_save_eq_states_time = false;
+int opt_sip_register_failed_max_details_per_minute = 1000;
+bool opt_sip_register_defered_save = false;
+bool opt_sip_register_advanced = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -4125,6 +4130,10 @@ int main_init_read() {
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		CountryDetectInit(sqlDbInit);
 		
+		if(opt_sip_register == 1) {
+			initRegisters();
+		}
+		
 		if(opt_enable_fraud) {
 			initFraud(sqlDbInit);
 		}
@@ -4671,6 +4680,10 @@ void main_term_read() {
 	TELNUMfilter::freeActive();
 	DOMAINfilter::freeActive();
 	SIP_HEADERfilter::freeActive();
+	
+	if(opt_sip_register == 1) {
+		termRegisters();
+	}
 	
 	if(opt_enable_fraud) {
 		termFraud();
@@ -7010,6 +7023,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-vlan", &opt_sip_register_state_compare_vlan));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-state-timeout", &opt_sip_register_state_timeout));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-save-eq-states-time", &opt_sip_register_save_eq_states_time));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-failed-max-details-per-minute", &opt_sip_register_failed_max_details_per_minute));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-advanced", &opt_sip_register_advanced));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
 				->addValues("nodb:2"));
@@ -8830,6 +8847,16 @@ void set_context_config() {
 		syslog(LOG_ERR, "option t2_boost_enable_call_find_threads is not suported with option call_id_alternative");
 	}
 	
+	if(opt_sip_register_advanced) {
+		if(!opt_sip_register_state_timeout) {
+			opt_sip_register_state_timeout = 120;
+		}
+		opt_sip_register_save_eq_states_time = true;
+		if(!opt_sip_register_failed_max_details_per_minute) {
+			opt_sip_register_failed_max_details_per_minute = 5000;
+		}
+	}
+	
 }
 
 void check_context_config() {
@@ -9621,6 +9648,18 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-timeout", NULL))) {
+		opt_sip_register_state_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-save-eq-states-time"))) {
+		opt_sip_register_save_eq_states_time = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-failed-max-details-per-minute"))) {
+		opt_sip_register_failed_max_details_per_minute = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-advanced"))) {
+		opt_sip_register_advanced = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
 		opt_sip_options = !strcasecmp(value, "nodb") ? 2 :

@@ -14,6 +14,8 @@
 #define NEW_REGISTER_MAX_STATES 3
 
 #define REG_SIPALG_DETECTED	(1 << 0)
+#define REG_ID_SIMPLE		(1 << 1)
+#define REG_ID_COMB		(1 << 2)
 
 using namespace std;
 
@@ -72,16 +74,92 @@ public:
 };
 
 
+class RegisterFailedId {
+public:
+	inline bool operator == (const RegisterFailedId& other) const;
+	inline bool operator < (const RegisterFailedId& other) const;
+public:
+	int id_sensor;
+	vmIP sipcallerip;
+	vmIP sipcalledip;
+	vmIP sipcallerip_encaps;
+	vmIP sipcalledip_encaps;
+};
+
+
+class RegisterFailedCount {
+public:
+	RegisterFailedCount(Call *call);
+	void saveToDb(u_int32_t time_interval);
+public:
+	int id_sensor;
+	vmIP sipcallerip;
+	vmIP sipcalledip;
+	vmIP sipcallerip_encaps;
+	vmIP sipcalledip_encaps;
+	u_int8_t sipcallerip_encaps_prot;
+	u_int8_t sipcalledip_encaps_prot;
+	u_int32_t count;
+	u_int32_t count_saved[2];
+};
+
+
+class RegisterFailedInterval {
+public:
+	RegisterFailedInterval(u_int32_t time_interval);
+	~RegisterFailedInterval();
+	bool add(Call *call);
+	void saveToDb();
+public:
+	u_int32_t time_interval;
+	map<RegisterFailedId, RegisterFailedCount*> failed_count;
+};
+
+
+class RegisterFailed {
+public:
+	RegisterFailed();
+	~RegisterFailed();
+	bool add(Call *call);
+	void cleanup(struct timeval *act_time, bool force);
+	void lock() {
+		while(__sync_lock_test_and_set(&_sync_failed_intervals, 1));
+	}
+	void unlock() {
+		__sync_lock_release(&_sync_failed_intervals);
+	}
+public:
+	map<u_int32_t, RegisterFailedInterval*> failed_intervals;
+	volatile int _sync_failed_intervals;
+};
+
+
+class RegisterActive {
+public:
+	void saveToDb(u_int32_t time_s);
+};
+
+
 class RegisterState {
+public:
+	struct NextState {
+		NextState(u_int64_t at, u_int64_t fname, int id_sensor) {
+			this->at = at;
+			this->fname = fname;
+			this->id_sensor = id_sensor;
+		}
+		u_int64_t at;
+		u_int64_t fname;
+		int id_sensor;
+	};
 public:
 	inline RegisterState(Call *call, Register *reg);
 	inline ~RegisterState();
 	inline void copyFrom(const RegisterState *src);
-	inline bool isEq(Call *call, Register *reg);
+	inline bool isEq(Call *call, Register *reg, bool *expired);
 public:
 	u_int64_t state_from_us;
 	u_int64_t state_to_us;
-	u_int32_t counter;
 	eRegisterState state;
 	char *contact_num;
 	char *contact_domain;
@@ -92,17 +170,28 @@ public:
 	char *ua;
 	int8_t spool_index;
 	u_int64_t fname;
+	u_int64_t fname_last;
 	u_int32_t expires;
 	int id_sensor;
 	u_int16_t vlan;
 	u_int64_t db_id;
 	u_int64_t save_at;
-	u_int32_t save_at_counter;
+	u_int32_t save_at_count_next_state;
 	bool is_sipalg_detected;
+	vector<NextState> next_states;
 };
 
 
 class Register {
+public:
+	enum eTypeSaveState {
+		_ss_init,
+		_ss_reset,
+		_ss_update,
+		_ss_update_force,
+		_ss_expire,
+		_ss_end
+	};
 public:
 	inline Register(Call *call);
 	inline ~Register();
@@ -111,12 +200,16 @@ public:
 	inline void shiftStates();
 	inline void expire(bool need_lock_states = true, bool use_state_prev_last = false);
 	inline void updateLastState(Call *call);
+	inline void resetLastState(Call *call);
 	inline void updateLastStateItem(char *callItem, char *registerItem, char **stateItem);
-	inline bool eqLastState(Call *call);
+	inline bool eqLastState(Call *call, bool *expired);
 	inline void clean_all();
-	inline void saveStateToDb(RegisterState *state, bool enableBatchIfPossible = true);
-	inline void saveFailedToDb(RegisterState *state, bool force = false, bool enableBatchIfPossible = true);
+	inline void saveNewStateToDb(RegisterState *state);
+	inline void saveUpdateStateToDb(RegisterState *state);
+	string getQueryStringForSaveEqNext(RegisterState *state);
+	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState);
 	inline eRegisterState getState();
+	inline int getIdSensor();
 	inline u_int32_t getStateFrom_s();
 	inline RegisterState *states_last() {
 		return(countStates ? states[0] : NULL);
@@ -178,6 +271,14 @@ public:
 };
 
 
+class RegistersTimer : public cTimer {
+public:
+	RegistersTimer(class Registers *registers);
+protected:
+	void evTimer(u_int32_t time_s, int typeTimer, void *data);
+};
+
+
 class Registers {
 public: 
 	Registers();
@@ -186,9 +287,12 @@ public:
 	bool existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq);
 	void cleanup(struct timeval *act_time, bool force = false, int expires_add = 0);
 	void clean_all();
+	inline u_int64_t getNewRegisterId(int sensorId, bool failed);
+	inline u_int64_t getNewRegisterStateId(int sensorId);
 	inline u_int64_t getNewRegisterFailedId(int sensorId);
 	string getDataTableJson(char *params, bool *zip = NULL);
 	int getCount();
+	void getCountActiveBySensors(map<int, u_int32_t> *count);
 	void cleanupByJson(char *params);
 	void lock_registers() {
 		while(__sync_lock_test_and_set(&_sync_registers, 1));
@@ -202,24 +306,76 @@ public:
 	void unlock_registers_erase() {
 		__sync_lock_release(&_sync_registers_erase);
 	}
+	void lock_register_state_id() {
+		while(__sync_lock_test_and_set(&_sync_register_state_id, 1));
+	}
+	void unlock_register_state_id() {
+		__sync_lock_release(&_sync_register_state_id);
+	}
 	void lock_register_failed_id() {
 		while(__sync_lock_test_and_set(&_sync_register_failed_id, 1));
 	}
 	void unlock_register_failed_id() {
 		__sync_lock_release(&_sync_register_failed_id);
 	}
+	bool isEnabledDeferredSaveForState() {
+		extern bool opt_sip_register_defered_save;
+		extern int opt_sip_register_state_timeout;
+		extern bool opt_sip_register_save_eq_states_time;
+		extern sExistsColumns existsColumns;
+		return((opt_sip_register_defered_save || opt_sip_register_state_timeout <= 120) &&
+		       existsColumns.register_state_flags &&
+		       (existsColumns.register_state_counter || opt_sip_register_save_eq_states_time));
+	}
+	bool isEnabledDeferredSaveForFailed() {
+		extern bool opt_sip_register_defered_save;
+		extern int opt_sip_register_state_timeout;
+		extern sExistsColumns existsColumns;
+		return((opt_sip_register_defered_save || opt_sip_register_state_timeout <= 120) &&
+		       existsColumns.register_failed_flags);
+	}
+	bool isEnabledDeferredSave(RegisterState *state) {
+		return(state->state == rs_Failed ?
+			isEnabledDeferredSaveForFailed() :
+			isEnabledDeferredSaveForState());
+	}
+	bool isEnabledIdAssignmentForState() {
+		extern bool opt_sip_register_save_eq_states_time;
+		extern sExistsColumns existsColumns;
+		return(!isEnabledDeferredSaveForState() &&
+		       (existsColumns.register_state_counter || opt_sip_register_save_eq_states_time));
+	}
+	bool isEnabledIdAssignmentForFailed() {
+		return(!isEnabledDeferredSaveForFailed());
+	}
+	bool isEnabledIdAssignment(RegisterState *state) {
+		return(state->state == rs_Failed ?
+			isEnabledIdAssignmentForFailed() :
+			isEnabledIdAssignmentForState());
+	}
+	void startTimer();
+	void stopTimer();
+	void evTimer(u_int32_t time_s, int typeTimer);
 public:
 	map<RegisterId, Register*> registers;
+	RegisterFailed registers_failed;
+	RegisterActive register_active;
 	volatile int _sync_registers;
 	volatile int _sync_registers_erase;
+	volatile u_int64_t register_state_id;
 	volatile u_int64_t register_failed_id;
+	volatile int _sync_register_state_id;
 	volatile int _sync_register_failed_id;
 	u_int32_t last_cleanup_time;
+	RegistersTimer timer;
 };
 
 
 eRegisterState convRegisterState(Call *call);
 eRegisterField convRegisterFieldToFieldId(const char *field);
+
+void initRegisters();
+void termRegisters();
 
 
 #define EQ_REG				((char*)-1)
