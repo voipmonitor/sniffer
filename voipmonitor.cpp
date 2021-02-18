@@ -896,6 +896,7 @@ char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
 char *ss7portmatrix;
+char *ss7_rudp_portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -3074,6 +3075,8 @@ int main(int argc, char *argv[]) {
 	memset(ipaccountportmatrix, 0, 65537);
 	ss7portmatrix = new FILE_LINE(0) char[65537];
 	memset(ss7portmatrix, 0, 65537);
+	ss7_rudp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(ss7_rudp_portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -3885,6 +3888,7 @@ int main(int argc, char *argv[]) {
 	delete [] skinnyportmatrix;
 	delete [] ipaccountportmatrix;
 	delete [] ss7portmatrix;
+	delete [] ss7_rudp_portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -7152,6 +7156,7 @@ void cConfig::addConfigItems() {
 					->addValues("cic_dpc_opc:1|cic:2")
 					->setDefaultValueStr("cic_dpc_opc"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7port", ss7portmatrix));
+				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7_rudp_port", ss7_rudp_portmatrix));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rlc_timeout", &opt_ss7timeout_rlc));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
@@ -10858,6 +10863,9 @@ int eval_config(string inistr) {
 	}
 	if(ini.GetAllValues("general", "ss7port", values)) {
 		parse_config_item_ports(&values, ss7portmatrix);
+	}
+	if(ini.GetAllValues("general", "ss7_rudp_port", values)) {
+		parse_config_item_ports(&values, ss7_rudp_portmatrix);
 	}
 	if((value = ini.GetValue("general", "ss7_rlc_timeout", NULL))) {
 		opt_ss7timeout_rlc = atoi(value);

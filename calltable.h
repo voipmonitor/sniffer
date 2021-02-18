@@ -154,6 +154,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define SS7_RLC 16
 
 #define SS7_FLAG_SONUS (1 << 0)
+#define SS7_FLAG_RUDP (1 << 1)
 
 #define NOFAX	0
 #define T38FAX	1
@@ -1940,7 +1941,8 @@ public:
 	u_int64_t last_time_us;
 	unsigned rel_cause_indicator;
 	u_int32_t destroy_at_s;
-	bool sonus;
+	bool sonus : 1;
+	bool rudp : 1;
 	PcapDumper pcap;
 private:
 	struct timeval last_dump_ts;

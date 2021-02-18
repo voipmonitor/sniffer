@@ -5190,6 +5190,7 @@ struct sDissectPart {
 	enum eTypePart {
 		_sctp,
 		_sonus,
+		_rudp,
 		_other
 	};
 	size_t pos;
@@ -5197,14 +5198,20 @@ struct sDissectPart {
 };
 
 void process_packet_other(packet_s_stack *packetS) {
+	if(!packetS->istcp && (ss7_rudp_portmatrix[packetS->source_()] || ss7_rudp_portmatrix[packetS->dest_()]) &&
+	   packetS->datalen_() <= 5) {
+		return;
+	}
 	process_packet__cleanup_ss7(packetS->getTimeval_pt());
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 	string dissect_rslt;
 	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
 	if(!dissect_rslt.empty()) {
 		vector<sDissectPart> dissect_parts;
-		for(int i = 0; i < 2; i++) {
-			const char *tag = i == 0 ? "sctp" : "sonuscm";
+		for(int i = 0; i < 3; i++) {
+			const char *tag = i == 0 ? "sctp" : 
+					  i == 1 ? "sonuscm" :
+						   "rudp";
 			size_t pos = 0;
 			size_t _pos;
 			do {
@@ -5219,7 +5226,9 @@ void process_packet_other(packet_s_stack *packetS) {
 				if(_pos != string::npos) {
 					sDissectPart part;
 					part.pos = _pos;
-					part.type = i == 0 ? sDissectPart::_sctp : sDissectPart::_sonus;
+					part.type = i == 0 ? sDissectPart::_sctp : 
+						    i == 1 ? sDissectPart::_sonus :
+							     sDissectPart::_rudp;
 					dissect_parts.push_back(part);
 					pos = _pos + 1;
 				}
@@ -5256,6 +5265,8 @@ void process_packet_other(packet_s_stack *packetS) {
 					ss7 = calltable->add_ss7(packetS, &parseData);
 					if(dissect_parts[i].type == sDissectPart::_sonus) {
 						ss7->sonus = true;
+					} else if(dissect_parts[i].type == sDissectPart::_rudp) {
+						ss7->rudp = true;
 					}
 				}
 				calltable->unlock_process_ss7_listmap();

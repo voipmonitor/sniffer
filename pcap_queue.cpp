@@ -7644,6 +7644,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
+			isother = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
 		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);

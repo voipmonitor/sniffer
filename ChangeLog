@@ -1,3 +1,8 @@
+27.7 18.02.2021
+===============
+- add support for ss7/rudp (ss7_rudp_port = 7000)
+
+
 27.6.1 16.02.2021
 =================
 - fix syslog spam in cloud version [VS-1171]
