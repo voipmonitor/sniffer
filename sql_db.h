@@ -708,7 +708,7 @@ public:
 				      const char *slaveIdToMasterColumn, 
 				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
 				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-				      unsigned long limit, bool descDir = false);
+				      unsigned long limit, bool descDir = false, u_int64_t limitMaxId = 0);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
 	string getTypeDb() {
 		return("mysql");
