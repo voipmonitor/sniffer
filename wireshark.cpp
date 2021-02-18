@@ -164,7 +164,7 @@ bool ws_set_disector(const char *table, unsigned port, const char *new_dissector
 		syslog(LOG_ERR, "ws set dissector : unknown table '%s'", table);
 		return(false);
 	}
-	dissector_handle_t dis_handle_new = dissector_table_get_dissector_handle(dis_table, new_dissector);
+	dissector_handle_t dis_handle_new = dissector_table_get_dissector_handle(dis_table, (gchar*)new_dissector);
 	if(!dis_handle_new) {
 		syslog(LOG_ERR, "ws set dissector : unknown new dissector '%s'", new_dissector);
 		return(false);
