@@ -8768,6 +8768,9 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		if(sonus) {
 			flags |= SS7_FLAG_SONUS;
 		}
+		if(rudp) {
+			flags |= SS7_FLAG_RUDP;
+		}
 		if(flags) {
 			ss7.add(flags, "flags");
 		}
@@ -8796,6 +8799,7 @@ void Ss7::init() {
 	rel_cause_indicator = UINT_MAX;
 	destroy_at_s = 0;
 	sonus = false;
+	rudp = false;
 	last_dump_ts.tv_sec = 0;
 	last_dump_ts.tv_usec = 0;
 }

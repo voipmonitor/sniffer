@@ -49,6 +49,7 @@ extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern char *skinnyportmatrix;
 extern char *ss7portmatrix;
+extern char *ss7_rudp_portmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
@@ -687,7 +688,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->istcp = 0;
-				ppd->isother = 0;
+				ppd->isother = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
 			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
 				ppd->istcp = 1;
 				ppd->isother = 0;
