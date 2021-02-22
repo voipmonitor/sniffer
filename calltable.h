@@ -1408,6 +1408,14 @@ public:
 			__sync_sub_and_fetch(&calls_counter, 1);
 		}
 	}
+	void registers_counter_inc() {
+		extern volatile int registers_counter;
+		__sync_add_and_fetch(&registers_counter, 1);
+	}
+	void registers_counter_dec() {
+		extern volatile int registers_counter;
+		__sync_sub_and_fetch(&registers_counter, 1);
+	}
 	
 	bool selectRtpStreams();
 	bool selectRtpStreams_bySipcallerip();
