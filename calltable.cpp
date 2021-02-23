@@ -6868,11 +6868,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
-					siphist.add((const char*)NULL, "SIPresponseNum");
-					siphist.add((const char*)NULL, "SIPresponse_id");
+				} else {
+					siphist.add((const char*)NULL, "SIPrequest_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
-					siphist.add((const char*)NULL, "SIPrequest_id");
 					siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					if(useSetId()) {
 						siphist.add_cb_string(iterSiphistory->SIPresponse, "SIPresponse_id", cSqlDbCodebook::_cb_sip_response);
@@ -6888,6 +6887,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
+				} else {
+					siphist.add((const char*)NULL, "SIPresponseNum");
+					siphist.add((const char*)NULL, "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
