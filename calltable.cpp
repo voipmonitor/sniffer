@@ -6868,11 +6868,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
-					siphist.add((const char*)NULL, "SIPresponseNum");
-					siphist.add((const char*)NULL, "SIPresponse_id");
+				} else {
+					siphist.add((const char*)NULL, "SIPrequest_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
-					siphist.add((const char*)NULL, "SIPrequest_id");
 					siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					if(useSetId()) {
 						siphist.add_cb_string(iterSiphistory->SIPresponse, "SIPresponse_id", cSqlDbCodebook::_cb_sip_response);
@@ -6888,6 +6887,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
+				} else {
+					siphist.add((const char*)NULL, "SIPresponseNum");
+					siphist.add((const char*)NULL, "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
@@ -10329,8 +10331,8 @@ Calltable::destroyRegistersIfPcapsClosed() {
 			Call *reg = this->registers_deletequeue[i];
 			if(reg->isPcapsClose() && reg->isEmptyChunkBuffersCount()) {
 				reg->atFinish();
+				reg->registers_counter_dec();
 				delete reg;
-				registers_counter--;
 				this->registers_deletequeue.erase(this->registers_deletequeue.begin() + i);
 				--size;
 			} else {
@@ -10677,7 +10679,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	if(call_type == REGISTER) {
 		lock_registers_listMAP();
 		registers_listMAP[call_idS] = newcall;
-		registers_counter++;
+		newcall->registers_counter_inc();
 		unlock_registers_listMAP();
 	} else {
 		if(ci >= 0) {

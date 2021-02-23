@@ -4774,15 +4774,15 @@ void main_term_read() {
 	while(calltable->registers_queue.size() != 0) {
 			call = calltable->registers_queue.front();
 			calltable->registers_queue.pop_front();
+			call->registers_counter_dec();
 			delete call;
-			registers_counter--;
 	}
 	while(calltable->registers_deletequeue.size() != 0) {
 			call = calltable->registers_deletequeue.front();
 			calltable->registers_deletequeue.pop_front();
 			call->atFinish();
+			call->registers_counter_dec();
 			delete call;
-			registers_counter--;
 	}
 	while(calltable->ss7_queue.size() != 0) {
 			ss7 = calltable->ss7_queue.front();
