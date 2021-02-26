@@ -3335,8 +3335,11 @@ bool SafeAsyncQueue_base::isRunTimerThread() {
 
 void SafeAsyncQueue_base::stopTimerThread(bool wait) {
 	terminateTimerThread = true;
-	while(wait && runTimerThread) {
-		USLEEP(100000);
+	if(wait) {
+		while(runTimerThread) {
+			USLEEP(100000);
+		}
+		terminateTimerThread = false;
 	}
 }
 
@@ -3353,6 +3356,8 @@ void SafeAsyncQueue_base::timerThread() {
 		++timer_counter;
 	}
 	runTimerThread = false;
+	timer_thread = 0;
+	timer_counter = 0;
 }
 
 list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
