@@ -82,6 +82,9 @@ struct sVerbose {
 	int disable_save_packet;
 	int disable_save_graph;
 	int disable_save_call;
+	int disable_save_message;
+	int disable_save_register;
+	int disable_save_sip_msg;
 	int disable_read_rtp;
 	int thread_create;
 	int timezones;

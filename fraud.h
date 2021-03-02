@@ -1210,7 +1210,7 @@ private:
 	void unlock_alerts() {
 		__sync_lock_release(&this->_sync_alerts);
 	}
-	int craeteTimerThread(bool ifNeed = false);
+	int craeteTimerThread(bool lock = true, bool ifNeed = false);
 	void stopTimerThread();
 	static void *_timerFce(void *arg);
 	void timerFce();

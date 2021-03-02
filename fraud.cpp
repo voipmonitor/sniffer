@@ -2442,7 +2442,7 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	if(lock) unlock_alerts();
-	craeteTimerThread(true);
+	craeteTimerThread(lock, true);
 }
 
 void FraudAlerts::loadData(bool lock, SqlDb *sqlDb) {
@@ -2868,19 +2868,19 @@ void FraudAlerts::refresh() {
 	unlock_alerts();
 }
 
-int FraudAlerts::craeteTimerThread(bool ifNeed) {
+int FraudAlerts::craeteTimerThread(bool lock, bool ifNeed) {
 	if(timer_thread) {
 		return(-1);
 	}
 	if(ifNeed) {
 		bool need = false;;
-		lock_alerts();
+		if(lock) lock_alerts();
 		for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
 			if((*iter)->needTimer()) {
 				need = true;
 			}
 		}
-		unlock_alerts();
+		if(lock) unlock_alerts();
 		if(!need) {
 			return(0);
 		}

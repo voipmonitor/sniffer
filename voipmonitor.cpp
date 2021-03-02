@@ -3926,6 +3926,8 @@ void set_global_vars() {
 
 int main_init_read() {
  
+	reset_counters();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
@@ -7877,6 +7879,11 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_save_packet")		sverb.disable_save_packet = 1;
 	else if(verbParam == "disable_save_graph")		sverb.disable_save_graph = 1;
 	else if(verbParam == "disable_save_call")		sverb.disable_save_call = 1;
+	else if(verbParam == "disable_save_message")		sverb.disable_save_message = 1;
+	else if(verbParam == "disable_save_register")		sverb.disable_save_register = 1;
+	else if(verbParam == "disable_save_sip_msg")		sverb.disable_save_sip_msg = 1;
+	else if(verbParam == "disable_save_db_rec")		{ sverb.disable_save_call = 1; sverb.disable_save_message = 1; sverb.disable_save_register = 1; sverb.disable_save_sip_msg = 1; }
+	else if(verbParam == "disable_save_all")		{ sverb.disable_save_call = 1; sverb.disable_save_message = 1; sverb.disable_save_register = 1; sverb.disable_save_sip_msg = 1; sverb.disable_save_packet = 1; sverb.disable_save_graph = 1; }
 	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 	else if(verbParam == "thread_create")			sverb.thread_create = 1;
 	else if(verbParam == "timezones")			sverb.timezones = 1;

@@ -192,11 +192,11 @@ bool cSipMsgRelationId:: operator < (const cSipMsgRelationId& other) const {
 	       (opt_sip_msg_compare_ip_dst && this->sipMsg->ip_dst < other.sipMsg->ip_dst) ? 1 : (opt_sip_msg_compare_ip_dst && this->sipMsg->ip_dst > other.sipMsg->ip_dst) ? 0 :
 	       (opt_sip_msg_compare_port_src && this->sipMsg->port_src < other.sipMsg->port_src) ? 1 : (opt_sip_msg_compare_port_src && this->sipMsg->port_src > other.sipMsg->port_src) ? 0 :
 	       (opt_sip_msg_compare_port_dst && this->sipMsg->port_dst < other.sipMsg->port_dst) ? 1 : (opt_sip_msg_compare_port_dst && this->sipMsg->port_dst > other.sipMsg->port_dst) ? 0 :
-	       (opt_sip_msg_compare_vlan && this->sipMsg->vlan < other.sipMsg->vlan) ? 1 : (opt_sip_msg_compare_vlan && this->sipMsg->vlan > other.sipMsg->vlan) ? 0 :
 	       (opt_sip_msg_compare_number_src && this->sipMsg->number_src < other.sipMsg->number_src) ? 1 : (opt_sip_msg_compare_number_src && this->sipMsg->number_src > other.sipMsg->number_src) ? 0 :
 	       (opt_sip_msg_compare_number_dst && this->sipMsg->number_dst < other.sipMsg->number_dst) ? 1 : (opt_sip_msg_compare_number_dst && this->sipMsg->number_dst > other.sipMsg->number_dst) ? 0 :
-	       (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src < other.sipMsg->domain_src) ? 1 : (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src < other.sipMsg->domain_src) ? 0 :
-	       (opt_sip_msg_compare_domain_dst && this->sipMsg->domain_dst < other.sipMsg->domain_dst) ? 1 : (opt_sip_msg_compare_domain_dst && this->sipMsg->domain_dst < other.sipMsg->domain_dst) ? 0 : 0);
+	       (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src < other.sipMsg->domain_src) ? 1 : (opt_sip_msg_compare_domain_src && this->sipMsg->domain_src > other.sipMsg->domain_src) ? 0 :
+	       (opt_sip_msg_compare_domain_dst && this->sipMsg->domain_dst < other.sipMsg->domain_dst) ? 1 : (opt_sip_msg_compare_domain_dst && this->sipMsg->domain_dst > other.sipMsg->domain_dst) ? 0 :
+	       (opt_sip_msg_compare_vlan && this->sipMsg->vlan < other.sipMsg->vlan) ? 1 : (opt_sip_msg_compare_vlan && this->sipMsg->vlan > other.sipMsg->vlan) ? 0 : 0);
 }
 
 
@@ -217,6 +217,9 @@ cSipMsgRequestResponse::~cSipMsgRequestResponse() {
 }
 
 void cSipMsgRequestResponse::openPcap(packet_s_process *packetS, int type) {
+	if(sverb.disable_save_packet) {
+		return;
+	}
 	cdp.call_data = new FILE_LINE(0) Call_abstract(type, time_us);
 	cdp.call_data->useHandle = get_pcap_handle(packetS->handle_index);
 	cdp.call_data->useDlt = packetS->dlt;
@@ -826,7 +829,11 @@ void cSipMsgRelations::addSipMsg(cSipMsgItem *item, packet_s_process *packetS) {
 		unsigned long int flags = 0;
 		set_global_flags(flags);
 		if(sverb.dump_call_flags) {
-			cout << "flags init cSipMsgRelation" <<  item->type << " : " << printCallFlags(flags) << endl;
+			cout << "flags init cSipMsgRelation " 
+			     << (item->type == smt_options ? "options" :
+				 item->type == smt_subscribe ? "subscribe" :
+				 item->type == smt_notify ? "notify" : "unknown type") 
+			     << " : " << printCallFlags(flags) << endl;
 		}
 		relation->flags = setCallFlags(flags,
 				item->ip_src, item->ip_dst,
@@ -903,7 +910,7 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	     << endl;
 	*/
 	     
-	if(opt_nocdr) {
+	if(opt_nocdr || sverb.disable_save_sip_msg) {
 		return;
 	}
 	if(!sqlDbSaveSipMsg) {
