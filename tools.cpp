@@ -2658,7 +2658,7 @@ void ListIP::addComb(string &ip, ListIP *negList) {
 }
 
 void ListIP::addComb(const char *ip, ListIP *negList) {
-	vector<string>ip_elems = split(ip, split(",|;|\t|\r|\n", "|"), true);
+	vector<string>ip_elems = split(ip, split(" |,|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < ip_elems.size(); i++) {
 		if(ip_elems[i][0] == '!') {
 			if(negList) {
@@ -2774,7 +2774,7 @@ void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
 }
 
 void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
-	vector<string>number_elems = split(number, split(",|;|\t|\r|\n", "|"), true);
+	vector<string>number_elems = split(number, split(" |,|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < number_elems.size(); i++) {
 		if(number_elems[i][0] == '!') {
 			if(negList) {
@@ -2791,7 +2791,7 @@ void ListUA::addComb(string &ua, ListUA *negList) {
 }
 
 void ListUA::addComb(const char *ua, ListUA *negList) {
-	vector<string>ua_elems = split(ua, split(",|;|\t|\r|\n", "|"), true);
+	vector<string>ua_elems = split(ua, split(" |,|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < ua_elems.size(); i++) {
 		if(ua_elems[i][0] == '!') {
 			if(negList) {
@@ -2808,7 +2808,7 @@ void ListCheckString::addComb(string &checkString, ListCheckString *negList) {
 }
 
 void ListCheckString::addComb(const char *checkString, ListCheckString *negList) {
-	vector<string>checkString_elems = split(checkString, split(",|;|\t|\r|\n", "|"), true);
+	vector<string>checkString_elems = split(checkString, split(" |,|;|\t|\r|\n", "|"), true);
 	for(size_t i = 0; i < checkString_elems.size(); i++) {
 		if(checkString_elems[i][0] == '!') {
 			if(negList) {

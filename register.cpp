@@ -506,7 +506,7 @@ void Register::clean_all() {
 }
 
 void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
-	if(opt_nocdr) {
+	if(opt_nocdr || sverb.disable_save_register) {
 		return;
 	}
 	if(state->state == rs_ManyRegMessages) {
@@ -599,7 +599,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 }
 
 void Register::saveFailedToDb(RegisterState *state, bool force, bool enableBatchIfPossible) {
-	if(opt_nocdr) {
+	if(opt_nocdr || sverb.disable_save_register) {
 		return;
 	}
 	bool save = false;

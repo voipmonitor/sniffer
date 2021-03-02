@@ -723,6 +723,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 		cdr_next_ch[i].setIgnoreCheckExistsField();
 	}
 	cdr_country_code.setIgnoreCheckExistsField();
+	
+	set_call_counter = false;
+	set_register_counter = false;
 }
 
 u_int64_t Call::counter_s = 0;
@@ -1012,6 +1015,14 @@ Call::~Call(){
 	for(map<int, class RTPsecure*>::iterator iter = rtp_secure_map.begin(); iter != rtp_secure_map.end(); iter++) {
 		delete iter->second;
 	}
+	
+	if(set_call_counter) {
+		calls_counter_dec();
+	}
+	if(set_register_counter) {
+		registers_counter_dec();
+	}
+	
 }
 
 void
@@ -7347,6 +7358,10 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
  
+	if(sverb.disable_save_register) {
+		return(0);
+	}
+	
 	if(this->msgcount <= 1 or 
 	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404) {
 		this->regstate = 2;
@@ -7727,6 +7742,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
  
+	if(sverb.disable_save_message) {
+		return(0);
+	}
+	
 	/*
 	strcpy(this->caller, "ěščřžý");
 	this->proxies.push_back(1);
@@ -11000,6 +11019,7 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
 	}
 	Call* reg;
+
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		reg = (*registerMAPIT).second;

@@ -1400,21 +1400,25 @@ public:
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			__sync_add_and_fetch(&calls_counter, 1);
+			set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			__sync_sub_and_fetch(&calls_counter, 1);
+			set_call_counter = false;
 		}
 	}
 	void registers_counter_inc() {
 		extern volatile int registers_counter;
 		__sync_add_and_fetch(&registers_counter, 1);
+		set_register_counter = true;
 	}
 	void registers_counter_dec() {
 		extern volatile int registers_counter;
 		__sync_sub_and_fetch(&registers_counter, 1);
+		set_register_counter = false;
 	}
 	
 	bool selectRtpStreams();
@@ -1774,6 +1778,8 @@ private:
 	#endif
 	unsigned rtp_rows_count;
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
+	bool set_call_counter;
+	bool set_register_counter;
 friend class RTPsecure;
 };
 
