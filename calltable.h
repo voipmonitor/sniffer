@@ -2814,5 +2814,7 @@ string printCallFlags(unsigned long int flags);
 eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
 
+void reset_counters();
+
 
 #endif

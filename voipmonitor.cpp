@@ -3926,6 +3926,8 @@ void set_global_vars() {
 
 int main_init_read() {
  
+	reset_counters();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();

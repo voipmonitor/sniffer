@@ -12859,3 +12859,9 @@ int convCallFieldToFieldIndex(eCallField field) {
 	}
 	return(-1);
 }
+
+
+void reset_counters() {
+	calls_counter = 0;
+	registers_counter = 0;
+}
