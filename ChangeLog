@@ -1,3 +1,11 @@
+27.7.2 02.03.2021
+=================
+- fix memory increase for hot_restart manager command [VS-1175]
+- fix memory leak in options/subscribe/notify [VS-1175]
+- add support for space separator in load ip and number groups
+- fix lock issue for fraud_refresh manager command 
+
+
 27.7.1 23.02.2021
 =================
 - fix race condition in SIP REGISTER which can lead to exhaust all memory [VS-1173]
