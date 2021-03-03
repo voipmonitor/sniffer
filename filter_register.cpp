@@ -171,9 +171,9 @@ void cRegisterFilter::setFilter(const char *filter) {
 		filter->addWhite(filterData["digestusername"].c_str());
 		addFilter(filter);
 	}
-	if(!filterData["digest_realm"].empty()) {
+	if(!filterData["digestrealm"].empty()) {
 		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_digestrealm);
-		filter->addWhite(filterData["digest_realm"].c_str());
+		filter->addWhite(filterData["digestrealm"].c_str());
 		addFilter(filter);
 	}
 	if(!filterData["rrd_avg_ge"].empty()) {
