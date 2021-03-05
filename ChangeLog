@@ -1,3 +1,9 @@
+27.7.3 05.03.2021
+=================
+- fix name 'realm' json variable when filtering SIP REGISTER in active registration table [VG-2286]
+- add support for multi-sensor select in filters: registers, options/subscribe/notify [VG-2277]
+
+
 27.7.2 02.03.2021
 =================
 - fix memory increase for hot_restart manager command [VS-1175]
