@@ -1290,14 +1290,13 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	}
 	*/
 	extern pcap_t *global_pcap_handle_dead_EN10MB;
-	extern int opt_convert_dlt_sll_to_en10;
-	pcap_t *_handle = useDlt == (DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB) || !useHandle ?
+	pcap_t *_handle = enable_convert_dlt_sll_to_en10(useDlt) || !useHandle ?
 			   global_pcap_handle_dead_EN10MB : 
 			   useHandle;
 	this->capsize = 0;
 	this->size = 0;
 	string errorString;
-	this->dlt = useDlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : useDlt;
+	this->dlt = convert_dlt_sll_to_en10(useDlt);
 	this->handle = __pcap_dump_open(_handle, typeSpoolFile, fileName, this->dlt, &errorString,
 					_bufflength, _asyncwrite, _typeCompress,
 					call, this->type);
@@ -1331,7 +1330,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
 	extern int opt_convert_dlt_sll_to_en10;
-	if((dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 ? DLT_EN10MB : dlt) != this->dlt) {
+	if(convert_dlt_sll_to_en10(dlt) != this->dlt) {
 		static u_int64_t lastTimeDltSyslog = 0;
 		u_int64_t actTime = getTimeMS();
 		if(actTime - 1000 > lastTimeSyslog &&
@@ -1353,7 +1352,20 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			if(!opt_maxpcapsize_mb || this->capsize < opt_maxpcapsize_mb * 1024 * 1024) {
 				this->existsContent = true;
 				extern bool opt_virtualudppacket;
-				bool use_virtualudppacket = false;
+				u_char *packets_alloc[2] = { NULL, NULL };
+				pcap_pkthdr *headers_alloc[2] = { NULL, NULL };
+				int packets_alloc_counter = 0;
+				if(enable_convert_dlt_sll_to_en10(dlt) && header->caplen > 16) {
+					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen];
+					pcap_pkthdr *header_mod = new FILE_LINE(0) pcap_pkthdr;
+					packet_convert_dlt_sll_to_en10(packet, packet_mod, header, header_mod);
+					packet = packet_mod;
+					header = header_mod;
+					dlt = DLT_EN10MB;
+					packets_alloc[packets_alloc_counter] = (u_char*)packet;
+					headers_alloc[packets_alloc_counter] = header;
+					++packets_alloc_counter;
+				}
 				if((opt_virtualudppacket || forceVirtualUdp) && data && datalen) {
 					sll_header *header_sll = NULL;
 					ether_header *header_eth = NULL;
@@ -1371,16 +1383,18 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 						      sizeof(udphdr2)) + 
 						    datalen) != header->caplen ||
 						   forceVirtualUdp == 2) {
-							pcap_pkthdr *_header;
-							u_char *_packet;
-							createSimpleUdpDataPacket(header_ip_offset,  &_header, &_packet,
+							u_char *packet_mod;
+							pcap_pkthdr *header_mod;
+							createSimpleUdpDataPacket(header_ip_offset,  &header_mod, &packet_mod,
 										  (u_char*)packet, data, datalen,
 										  saddr, daddr, source, dest,
 										  ts && isSetTimeval(ts) ? ts->tv_sec : header->ts.tv_sec, 
 										  ts && isSetTimeval(ts) ? ts->tv_usec : header->ts.tv_usec);
-							header = _header;
-							packet = _packet;
-							use_virtualudppacket = true;
+							packet = packet_mod;
+							header = header_mod;
+							packets_alloc[packets_alloc_counter] = (u_char*)packet;
+							headers_alloc[packets_alloc_counter] = header;
+							++packets_alloc_counter;
 						}
 					}
 				}
@@ -1391,9 +1405,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				}
 				this->capsize += header->caplen + PCAP_DUMPER_PACKET_HEADER_SIZE;
 				this->size += header->len + PCAP_DUMPER_PACKET_HEADER_SIZE;
-				if(use_virtualudppacket) {
-					delete [] packet;
-					delete header;
+				if(packets_alloc_counter) {
+					for(int i = 0; i < packets_alloc_counter; i++) {
+						delete [] packets_alloc[i];
+						delete headers_alloc[i];
+					}
 				}
 			}
 		} else {

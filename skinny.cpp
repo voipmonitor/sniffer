@@ -1298,9 +1298,6 @@ struct skinny_container {
 	void *data;
 };
 
-#define ENABLE_CONVERT_DLT_SLL_TO_EN10	(pcap_dlink ==DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && handle_dead_EN10MB)
-#define HANDLE_FOR_PCAP_SAVE 		(ENABLE_CONVERT_DLT_SLL_TO_EN10 ? handle_dead_EN10MB : handle)
-
 
 static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_char *packet,
 			       vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
