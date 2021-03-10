@@ -1,3 +1,8 @@
+27.7.4 10.03.2021
+=================
+- fix interface = any and convert_dlt_sll2en10 option for SS7 pcap files 
+
+
 27.7.3 05.03.2021
 =================
 - fix name 'realm' json variable when filtering SIP REGISTER in active registration table [VG-2286]
