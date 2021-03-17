@@ -5150,15 +5150,16 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	pcap_pkthdr_plus pcap_header_plus;
 	u_char existsThreadTimeFlags[1000];
 	unsigned int usleepCounter = 0;
+	u_int64_t checkAllReadThreads_lastTime = 0;
 	while(!TERMINATING) {
 		bool fetchPacketOk = false;
 		int minThreadTimeIndex = -1;
 		int blockStoreIndex = 0;
 		if(this->readThreadsCount) {
+			u_int64_t minThreadTime = 0;
 			if(this->readThreadsCount == 1) {
 				minThreadTimeIndex = 0;
 			} else {
-				u_int64_t minThreadTime = 0;
 				u_int64_t threadTime = 0;
 				for(int i = 0; i < this->readThreadsCount; i++) {
 					threadTime = this->readThreads[i]->getTIME_usec();
@@ -5198,20 +5199,28 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			} else {
 				pop_usleep_sum += USLEEP_C(100, usleepCounter++);
 			}
+			bool checkAllReadThreads = false;
 			if(pop_usleep_sum > pop_usleep_sum_last_push + 100000) {
 				if(this->readThreadsCount == 1) {
 					if(!fetchPacketOk) {
 						this->readThreads[0]->setForcePUSH();
 					}
 				} else {
-					int checkReadThreadsCount = min(this->readThreadsCount, (int)sizeof(existsThreadTimeFlags));
-					for(int i = 0; i < checkReadThreadsCount; i++) {
-						if(!existsThreadTimeFlags[i]) {
-							this->readThreads[i]->setForcePUSH();
-						}
-					}
+					checkAllReadThreads = true;
 				}
 				pop_usleep_sum_last_push = pop_usleep_sum;
+			} else if(fetchPacketOk && this->readThreadsCount > 1 &&
+				  minThreadTime > checkAllReadThreads_lastTime + 250000) {
+				checkAllReadThreads = true;
+			}
+			if(checkAllReadThreads) {
+				int checkReadThreadsCount = min(this->readThreadsCount, (int)sizeof(existsThreadTimeFlags));
+				for(int i = 0; i < checkReadThreadsCount; i++) {
+					if(!existsThreadTimeFlags[i]) {
+						this->readThreads[i]->setForcePUSH();
+					}
+				}
+				checkAllReadThreads_lastTime = minThreadTime;
 			}
 		} else if(opt_scanpcapdir[0] && this->pcapEnd) {
 			USLEEP(10000);
