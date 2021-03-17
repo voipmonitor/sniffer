@@ -154,6 +154,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define SS7_RLC 16
 
 #define SS7_FLAG_SONUS (1 << 0)
+#define SS7_FLAG_RUDP (1 << 1)
 
 #define NOFAX	0
 #define T38FAX	1
@@ -1399,13 +1400,25 @@ public:
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			__sync_add_and_fetch(&calls_counter, 1);
+			set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
 			__sync_sub_and_fetch(&calls_counter, 1);
+			set_call_counter = false;
 		}
+	}
+	void registers_counter_inc() {
+		extern volatile int registers_counter;
+		__sync_add_and_fetch(&registers_counter, 1);
+		set_register_counter = true;
+	}
+	void registers_counter_dec() {
+		extern volatile int registers_counter;
+		__sync_sub_and_fetch(&registers_counter, 1);
+		set_register_counter = false;
 	}
 	
 	bool selectRtpStreams();
@@ -1765,6 +1778,8 @@ private:
 	#endif
 	unsigned rtp_rows_count;
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
+	bool set_call_counter;
+	bool set_register_counter;
 friend class RTPsecure;
 };
 
@@ -1940,7 +1955,8 @@ public:
 	u_int64_t last_time_us;
 	unsigned rel_cause_indicator;
 	u_int32_t destroy_at_s;
-	bool sonus;
+	bool sonus : 1;
+	bool rudp : 1;
 	PcapDumper pcap;
 private:
 	struct timeval last_dump_ts;
@@ -2797,6 +2813,8 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 string printCallFlags(unsigned long int flags);
 eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
+
+void reset_counters();
 
 
 #endif

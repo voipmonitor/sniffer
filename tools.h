@@ -661,6 +661,30 @@ public:
 	string getFileName() {
 		return(fileName);
 	}
+	static inline bool enable_convert_dlt_sll_to_en10(int dlt) {
+		extern int opt_convert_dlt_sll_to_en10;
+		extern pcap_t *global_pcap_handle_dead_EN10MB;
+		return(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB);
+	}
+	static inline int convert_dlt_sll_to_en10(int dlt) {
+		return(enable_convert_dlt_sll_to_en10(dlt) ? DLT_EN10MB : dlt);
+	}
+	static inline void packet_convert_dlt_sll_to_en10(const u_char *packet_src, u_char *packet_dest, 
+							  const pcap_pkthdr *header_src, pcap_pkthdr *header_dest,
+							  u_int32_t packet_dst_maxlen = 0) {
+		memset(packet_dest, 0, 6); // clear destination mac
+		memcpy(packet_dest + 6, packet_src + 6, 6); // copy source mac
+		memcpy(packet_dest + 12, packet_src + 14, 2); // copy type
+		memcpy(packet_dest + 14, packet_src + 16, 
+		       packet_dst_maxlen ? 
+			(header_src ? min(packet_dst_maxlen - 14, header_src->caplen - 16) :  packet_dst_maxlen - 14) :
+			(header_src ? header_src->caplen - 16 : 0));
+		if(header_src && header_dest) {
+			memcpy(header_dest, header_src, sizeof(pcap_pkthdr));
+			header_dest->caplen -= 2;
+			header_dest->len -= 2;
+		}
+	}
 private:
 	eTypeSpoolFile typeSpoolFile;
 	string fileName;

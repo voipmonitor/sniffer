@@ -41,7 +41,7 @@ extern bool opt_sipalg_detect;
 
 extern int opt_sip_register_state_timeout;
 extern int opt_sip_register_failed_max_details_per_minute;
-extern bool opt_sip_register_defered_save;
+extern bool opt_sip_register_deferred_save;
 
 extern int opt_save_ip_from_encaps_ipheader;
 extern bool opt_time_precision_in_ms;
@@ -783,6 +783,9 @@ void Register::clean_all() {
 }
 
 void Register::saveNewStateToDb(RegisterState *state) {
+	if(opt_nocdr || sverb.disable_save_register) {
+		return;
+	}
 	if(state->save_at &&
 	   state->next_states.size() <= state->save_at_count_next_state) {
 		return;
@@ -922,10 +925,11 @@ void Register::saveNewStateToDb(RegisterState *state) {
 }
 
 void Register::saveUpdateStateToDb(RegisterState *state) {
-	if(!state->db_id) {
+	if(opt_nocdr || sverb.disable_save_register) {
 		return;
 	}
-	if(state->next_states.size() <= state->save_at_count_next_state) {
+	if(!state->db_id ||
+	   state->next_states.size() <= state->save_at_count_next_state) {
 		return;
 	}
 	string query_str;

@@ -1213,7 +1213,7 @@ private:
 	void unlock_alerts() {
 		__sync_lock_release(&this->_sync_alerts);
 	}
-	void startTimer(bool ifNeed);
+	void startTimer(bool lock = true, bool ifNeed = false);
 	void stopTimer();
 	void evTimer(u_int32_t time_s, int typeTimer);
 private:

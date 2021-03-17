@@ -3,6 +3,7 @@
 #include <pcap.h>
 #include <string>
 #include <vector>
+#include <syslog.h>
 
 #if HAVE_LIBWIRESHARK
 
@@ -47,6 +48,8 @@ static epan_t *ws_epan_new(capture_file *cf);
 static tvbuff_t *frame_tvbuff_new(const frame_data *fd, const guint8 *buf);
 static void ws_set_params();
 static bool ws_set_param(string param, string value);
+static void ws_set_dissectors();
+static bool ws_set_disector(const char *table, unsigned port, const char *new_dissector);
 
 static bool ws_init_ok;
 static epan_t *ws_epan;
@@ -74,6 +77,7 @@ void ws_epan_init() {
 	if(!ws_epan) {
 		ws_epan = ws_epan_new(NULL);
 		ws_set_params();
+		ws_set_dissectors();
 	}
 }
 
@@ -140,6 +144,36 @@ bool ws_set_param(string param, string value) {
 		}
 	} else {
 		syslog(LOG_NOTICE, "unsupported ws type %i for prefs %s.%s", ws_pref_type, module.c_str(), pref.c_str());
+		return(false);
+	}
+	return(true);
+}
+
+void ws_set_dissectors() {
+	extern char *ss7_rudp_portmatrix;
+	for(unsigned i = 0; i <= 0xFFFF; i++) {
+		if(ss7_rudp_portmatrix[i]) {
+			ws_set_disector("udp.port", i, "RUDP");
+		}
+	}
+}
+
+bool ws_set_disector(const char *table, unsigned port, const char *new_dissector) {
+	dissector_table_t dis_table = find_dissector_table(table);
+	if(!dis_table) {
+		syslog(LOG_ERR, "ws set dissector : unknown table '%s'", table);
+		return(false);
+	}
+	dissector_handle_t dis_handle_new = dissector_table_get_dissector_handle(dis_table, (gchar*)new_dissector);
+	if(!dis_handle_new) {
+		syslog(LOG_ERR, "ws set dissector : unknown new dissector '%s'", new_dissector);
+		return(false);
+	}
+	ftenum_t selector_type = dissector_table_get_type(dis_table);
+	if(selector_type == FT_UINT16) {
+		dissector_change_uint(table, port, dis_handle_new);
+	} else {
+		syslog(LOG_ERR, "ws set dissector : bad selector-type for table '%s' (need FT_UINT16)", table);
 		return(false);
 	}
 	return(true);

@@ -2446,7 +2446,7 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	if(lock) unlock_alerts();
-	startTimer(true);
+	startTimer(lock, true);
 }
 
 void FraudAlerts::loadData(bool lock, SqlDb *sqlDb) {
@@ -2872,16 +2872,16 @@ void FraudAlerts::refresh() {
 	unlock_alerts();
 }
 
-void FraudAlerts::startTimer(bool ifNeed) {
+void FraudAlerts::startTimer(bool lock, bool ifNeed) {
 	if(ifNeed) {
 		bool need = false;;
-		lock_alerts();
+		if(lock) lock_alerts();
 		for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
 			if((*iter)->needTimer()) {
 				need = true;
 			}
 		}
-		unlock_alerts();
+		if(lock) unlock_alerts();
 		if(!need) {
 			return;
 		}

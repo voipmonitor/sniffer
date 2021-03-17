@@ -324,8 +324,6 @@ volatile int usersniffer_sync;
 volatile int usersniffer_checksize_sync;
 pthread_t usersniffer_checksize_thread;
 
-#define ENABLE_CONVERT_DLT_SLL_TO_EN10(dlt)	(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB)
-
 
 #include "sniff_inline.h"
 
@@ -365,10 +363,14 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 			    pcap_pkthdr *header, u_char *packet) {
 	//save packet
 	stringstream query;
+	
+	bool convert_dlt_sll_to_en10 = PcapDumper::enable_convert_dlt_sll_to_en10(packetS->dlt) &&
+				       (header ? header->caplen > 16 : packetS->dataoffset_() > 16);
+	int convert_dlt_sll_to_en10_reduct_size = convert_dlt_sll_to_en10 ? 2 : 0;
 
 	unsigned int savePacketLen = header ?
-				      MIN(10000, header->caplen) :
-				      packetS->dataoffset_() + MIN(10000, packetS->sipDataLen);
+				      MIN(10000, header->caplen - convert_dlt_sll_to_en10_reduct_size) :
+				      MIN(10000, packetS->dataoffset_() - convert_dlt_sll_to_en10_reduct_size + packetS->sipDataLen);
 	unsigned int savePacketLenWithHeaders = savePacketLen + sizeof(pcap_hdr_t) + sizeof(pcaprec_hdr_t);
 
 	// pcap file header
@@ -379,7 +381,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	pcaphdr.thiszone = 0;
 	pcaphdr.sigfigs = 0;
 	pcaphdr.snaplen = 3200;
-	pcaphdr.network = ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt) ? DLT_EN10MB : packetS->dlt;
+	pcaphdr.network = PcapDumper::convert_dlt_sll_to_en10(packetS->dlt);
 	
 	// packet header
 	pcaprec_hdr_t pcaph;
@@ -387,12 +389,14 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		pcaph.ts_sec = header->ts.tv_sec;            /* timestamp seconds */
 		pcaph.ts_usec = header->ts.tv_usec;          /* timestamp microseconds */
 		pcaph.incl_len = savePacketLen;              /* number of octets of packet saved in file */
-		pcaph.orig_len = header->caplen;             /* actual length of packet */
+		pcaph.orig_len = header->caplen - convert_dlt_sll_to_en10_reduct_size;             
+							     /* actual length of packet */
 	} else {
 		pcaph.ts_sec = packetS->header_pt->ts.tv_sec;    /* timestamp seconds */
 		pcaph.ts_usec = packetS->header_pt->ts.tv_usec;  /* timestamp microseconds */
 		pcaph.incl_len = savePacketLen;                  /* number of octets of packet saved in file */
-		pcaph.orig_len = packetS->header_pt->caplen;     /* actual length of packet */
+		pcaph.orig_len = packetS->header_pt->caplen - convert_dlt_sll_to_en10_reduct_size;     
+								 /* actual length of packet */
 	}
 
 	// copy data to mpacket buffer	
@@ -403,11 +407,21 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	memcpy(ptr, &pcaph, sizeof(pcaph)); // packet pcaph header
 	ptr += sizeof(pcaph);
 	if(header) {
-		memcpy(ptr, packet, MIN(10000, header->caplen));
+		if(convert_dlt_sll_to_en10) {
+			PcapDumper::packet_convert_dlt_sll_to_en10(packet, (u_char*)ptr, NULL, NULL, savePacketLen);
+		} else {
+			memcpy(ptr, packet, savePacketLen);
+		}
 	} else {
-		memcpy(ptr, packetS->packet, packetS->dataoffset_()); // packet pcaph header
-		ptr += packetS->dataoffset_();
-		memcpy(ptr, packetS->data_()+ packetS->sipDataOffset, MIN(10000, packetS->sipDataLen));
+		if(convert_dlt_sll_to_en10) {
+			PcapDumper::packet_convert_dlt_sll_to_en10(packetS->packet, (u_char*)ptr, NULL, NULL, packetS->dataoffset_() - convert_dlt_sll_to_en10_reduct_size);
+			ptr += packetS->dataoffset_() - convert_dlt_sll_to_en10_reduct_size;
+			memcpy(ptr, packetS->data_() + packetS->sipDataOffset, savePacketLen - (packetS->dataoffset_() - convert_dlt_sll_to_en10_reduct_size));
+		} else {
+			memcpy(ptr, packetS->packet, packetS->dataoffset_()); // packet pcaph header
+			ptr += packetS->dataoffset_();
+			memcpy(ptr, packetS->data_() + packetS->sipDataOffset, savePacketLen - packetS->dataoffset_());
+		}
 	}
 	
 	//construct description and call-id
@@ -416,8 +430,9 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	if(packetS->sipDataLen) {
 		void *memptr = memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, "\r\n", 2);
 		if(memptr) {
-			memcpy(description, packetS->data_()+ packetS->sipDataOffset, (char *)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset));
-			description[(char*)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset)] = '\0';
+			unsigned description_src_length = MIN((char*)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset), sizeof(description) - 1);
+			memcpy(description, packetS->data_() + packetS->sipDataOffset, description_src_length);
+			description[description_src_length] = '\0';
 		} else {
 			strcpy(description, "error in description\n");
 		}
@@ -751,8 +766,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	if(packetLen > limitCapLen) {
 		packetLen = limitCapLen;
 	}
-	if(packetLen != packetS->header_pt->caplen ||
-	   ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
+	if(packetLen != packetS->header_pt->caplen) {
 		header = new FILE_LINE(26001) pcap_pkthdr;
 		memcpy(header, packetS->header_pt, sizeof(pcap_pkthdr));
 		allocHeader = true;
@@ -806,16 +820,6 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			header->len -= diffLen;
 		} else {
 			memcpy(packet, packetS->packet, header->caplen);
-		}
-		if(ENABLE_CONVERT_DLT_SLL_TO_EN10(packetS->dlt)) {
-			memset(packet, 0, 6);
-			((ether_header*)packet)->ether_type = ((sll_header*)packetS->packet)->sll_protocol;
-			u_char *tmp = new FILE_LINE(0) u_char[max(packetLen, header->caplen)];
-			memcpy(tmp, packet + 16, header->caplen - 16);
-			memcpy(packet + 14, tmp, header->caplen - 16);
-			delete [] tmp;
-			header->caplen -= 2;
-			header->len -= 2;
 		}
 	}
  
@@ -5189,6 +5193,7 @@ struct sDissectPart {
 	enum eTypePart {
 		_sctp,
 		_sonus,
+		_rudp,
 		_other
 	};
 	size_t pos;
@@ -5196,14 +5201,20 @@ struct sDissectPart {
 };
 
 void process_packet_other(packet_s_stack *packetS) {
+	if(!packetS->istcp && (ss7_rudp_portmatrix[packetS->source_()] || ss7_rudp_portmatrix[packetS->dest_()]) &&
+	   packetS->datalen_() <= 5) {
+		return;
+	}
 	process_packet__cleanup_ss7(packetS->getTimeval_pt());
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 	string dissect_rslt;
 	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
 	if(!dissect_rslt.empty()) {
 		vector<sDissectPart> dissect_parts;
-		for(int i = 0; i < 2; i++) {
-			const char *tag = i == 0 ? "sctp" : "sonuscm";
+		for(int i = 0; i < 3; i++) {
+			const char *tag = i == 0 ? "sctp" : 
+					  i == 1 ? "sonuscm" :
+						   "rudp";
 			size_t pos = 0;
 			size_t _pos;
 			do {
@@ -5218,7 +5229,9 @@ void process_packet_other(packet_s_stack *packetS) {
 				if(_pos != string::npos) {
 					sDissectPart part;
 					part.pos = _pos;
-					part.type = i == 0 ? sDissectPart::_sctp : sDissectPart::_sonus;
+					part.type = i == 0 ? sDissectPart::_sctp : 
+						    i == 1 ? sDissectPart::_sonus :
+							     sDissectPart::_rudp;
 					dissect_parts.push_back(part);
 					pos = _pos + 1;
 				}
@@ -5255,6 +5268,8 @@ void process_packet_other(packet_s_stack *packetS) {
 					ss7 = calltable->add_ss7(packetS, &parseData);
 					if(dissect_parts[i].type == sDissectPart::_sonus) {
 						ss7->sonus = true;
+					} else if(dissect_parts[i].type == sDissectPart::_rudp) {
+						ss7->rudp = true;
 					}
 				}
 				calltable->unlock_process_ss7_listmap();

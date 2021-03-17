@@ -723,6 +723,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 		cdr_next_ch[i].setIgnoreCheckExistsField();
 	}
 	cdr_country_code.setIgnoreCheckExistsField();
+	
+	set_call_counter = false;
+	set_register_counter = false;
 }
 
 u_int64_t Call::counter_s = 0;
@@ -1012,6 +1015,14 @@ Call::~Call(){
 	for(map<int, class RTPsecure*>::iterator iter = rtp_secure_map.begin(); iter != rtp_secure_map.end(); iter++) {
 		delete iter->second;
 	}
+	
+	if(set_call_counter) {
+		calls_counter_dec();
+	}
+	if(set_register_counter) {
+		registers_counter_dec();
+	}
+	
 }
 
 void
@@ -6868,11 +6879,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
-					siphist.add((const char*)NULL, "SIPresponseNum");
-					siphist.add((const char*)NULL, "SIPresponse_id");
+				} else {
+					siphist.add((const char*)NULL, "SIPrequest_id");
 				}
 				if(iterSiphistory->SIPresponseNum && iterSiphistory->SIPresponse.length()) {
-					siphist.add((const char*)NULL, "SIPrequest_id");
 					siphist.add(iterSiphistory->SIPresponseNum, "SIPresponseNum");
 					if(useSetId()) {
 						siphist.add_cb_string(iterSiphistory->SIPresponse, "SIPresponse_id", cSqlDbCodebook::_cb_sip_response);
@@ -6888,6 +6898,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							enableMultiInsert = false;
 						}
 					}
+				} else {
+					siphist.add((const char*)NULL, "SIPresponseNum");
+					siphist.add((const char*)NULL, "SIPresponse_id");
 				}
 				if(existsColumns.cdr_siphistory_calldate) {
 					siphist.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_siphistory_calldate_ms);
@@ -7345,6 +7358,10 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 int
 Call::saveRegisterToDb(bool enableBatchIfPossible) {
  
+	if(sverb.disable_save_register) {
+		return(0);
+	}
+	
 	if(this->msgcount <= 1 or 
 	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404) {
 		this->regstate = 2;
@@ -7725,6 +7742,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
  
+	if(sverb.disable_save_message) {
+		return(0);
+	}
+	
 	/*
 	strcpy(this->caller, "ěščřžý");
 	this->proxies.push_back(1);
@@ -8768,6 +8789,9 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		if(sonus) {
 			flags |= SS7_FLAG_SONUS;
 		}
+		if(rudp) {
+			flags |= SS7_FLAG_RUDP;
+		}
 		if(flags) {
 			ss7.add(flags, "flags");
 		}
@@ -8796,6 +8820,7 @@ void Ss7::init() {
 	rel_cause_indicator = UINT_MAX;
 	destroy_at_s = 0;
 	sonus = false;
+	rudp = false;
 	last_dump_ts.tv_sec = 0;
 	last_dump_ts.tv_usec = 0;
 }
@@ -10325,8 +10350,8 @@ Calltable::destroyRegistersIfPcapsClosed() {
 			Call *reg = this->registers_deletequeue[i];
 			if(reg->isPcapsClose() && reg->isEmptyChunkBuffersCount()) {
 				reg->atFinish();
+				reg->registers_counter_dec();
 				delete reg;
-				registers_counter--;
 				this->registers_deletequeue.erase(this->registers_deletequeue.begin() + i);
 				--size;
 			} else {
@@ -10673,7 +10698,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	if(call_type == REGISTER) {
 		lock_registers_listMAP();
 		registers_listMAP[call_idS] = newcall;
-		registers_counter++;
+		newcall->registers_counter_inc();
 		unlock_registers_listMAP();
 	} else {
 		if(ci >= 0) {
@@ -10994,6 +11019,7 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
 	}
 	Call* reg;
+
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		reg = (*registerMAPIT).second;
@@ -12704,7 +12730,7 @@ void AsyncSystemCommand::popSystemCommandThread() {
 		string command;
 		if(systemCommandQueue.pop(&command)) {
 			if(sverb.system_command) {
-				syslog(LOG_NOTICE, "call system command: %s", command.c_str());
+				syslog(LOG_NOTICE, "call system command: %s (queue size: %i)", command.c_str(), systemCommandQueue.getSize());
 			}
 			system(command.c_str());
 			okPop = true;
@@ -12832,4 +12858,10 @@ int convCallFieldToFieldIndex(eCallField field) {
 		}
 	}
 	return(-1);
+}
+
+
+void reset_counters() {
+	calls_counter = 0;
+	registers_counter = 0;
 }

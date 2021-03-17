@@ -450,6 +450,7 @@ unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
 bool opt_database_backup = false;
 char opt_database_backup_from_date[20];
+char opt_database_backup_to_date[20];
 char opt_database_backup_from_mysql_host[256] = "";
 char opt_database_backup_from_mysql_database[256] = "";
 char opt_database_backup_from_mysql_user[256] = "";
@@ -900,6 +901,7 @@ char *webrtcportmatrix;		// matrix of webrtc ports to monitor
 char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
 char *ss7portmatrix;
+char *ss7_rudp_portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -3078,6 +3080,8 @@ int main(int argc, char *argv[]) {
 	memset(ipaccountportmatrix, 0, 65537);
 	ss7portmatrix = new FILE_LINE(0) char[65537];
 	memset(ss7portmatrix, 0, 65537);
+	ss7_rudp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(ss7_rudp_portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -3889,6 +3893,7 @@ int main(int argc, char *argv[]) {
 	delete [] skinnyportmatrix;
 	delete [] ipaccountportmatrix;
 	delete [] ss7portmatrix;
+	delete [] ss7_rudp_portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -3926,6 +3931,8 @@ void set_global_vars() {
 
 int main_init_read() {
  
+	reset_counters();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
@@ -4782,15 +4789,15 @@ void main_term_read() {
 	while(calltable->registers_queue.size() != 0) {
 			call = calltable->registers_queue.front();
 			calltable->registers_queue.pop_front();
+			call->registers_counter_dec();
 			delete call;
-			registers_counter--;
 	}
 	while(calltable->registers_deletequeue.size() != 0) {
 			call = calltable->registers_deletequeue.front();
 			calltable->registers_deletequeue.pop_front();
 			call->atFinish();
+			call->registers_counter_dec();
 			delete call;
-			registers_counter--;
 	}
 	while(calltable->ss7_queue.size() != 0) {
 			ss7 = calltable->ss7_queue.front();
@@ -6584,6 +6591,7 @@ void cConfig::addConfigItems() {
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
+				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_to_date", opt_database_backup_to_date, sizeof(opt_database_backup_to_date)));
 				addConfigItem(new FILE_LINE(42124) cConfigItem_string("database_backup_from_mysqlhost", opt_database_backup_from_mysql_host, sizeof(opt_database_backup_from_mysql_host)));
 				addConfigItem(new FILE_LINE(42125) cConfigItem_string("database_backup_from_mysqldb", opt_database_backup_from_mysql_database, sizeof(opt_database_backup_from_mysql_database)));
 				addConfigItem(new FILE_LINE(42126) cConfigItem_string("database_backup_from_mysqlusername", opt_database_backup_from_mysql_user, sizeof(opt_database_backup_from_mysql_user)));
@@ -7167,6 +7175,7 @@ void cConfig::addConfigItems() {
 					->addValues("cic_dpc_opc:1|cic:2")
 					->setDefaultValueStr("cic_dpc_opc"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7port", ss7portmatrix));
+				addConfigItem(new FILE_LINE(0) cConfigItem_ports("ss7_rudp_port", ss7_rudp_portmatrix));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rlc_timeout", &opt_ss7timeout_rlc));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
@@ -7887,6 +7896,11 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_save_packet")		sverb.disable_save_packet = 1;
 	else if(verbParam == "disable_save_graph")		sverb.disable_save_graph = 1;
 	else if(verbParam == "disable_save_call")		sverb.disable_save_call = 1;
+	else if(verbParam == "disable_save_message")		sverb.disable_save_message = 1;
+	else if(verbParam == "disable_save_register")		sverb.disable_save_register = 1;
+	else if(verbParam == "disable_save_sip_msg")		sverb.disable_save_sip_msg = 1;
+	else if(verbParam == "disable_save_db_rec")		{ sverb.disable_save_call = 1; sverb.disable_save_message = 1; sverb.disable_save_register = 1; sverb.disable_save_sip_msg = 1; }
+	else if(verbParam == "disable_save_all")		{ sverb.disable_save_call = 1; sverb.disable_save_message = 1; sverb.disable_save_register = 1; sverb.disable_save_sip_msg = 1; sverb.disable_save_packet = 1; sverb.disable_save_graph = 1; }
 	else if(verbParam == "disable_read_rtp")		sverb.disable_read_rtp = 1;
 	else if(verbParam == "thread_create")			sverb.thread_create = 1;
 	else if(verbParam == "timezones")			sverb.timezones = 1;
@@ -9829,6 +9843,9 @@ int eval_config(string inistr) {
 		opt_create_old_partitions = max(opt_create_old_partitions, getNumberOfDayToNow(value));
 		strcpy_null_term(opt_database_backup_from_date, value);
 	}
+	if((value = ini.GetValue("general", "database_backup_to_date", NULL))) {
+		strcpy_null_term(opt_database_backup_to_date, value);
+	}
 	if((value = ini.GetValue("general", "disable_partition_operations", NULL))) {
 		opt_disable_partition_operations = yesno(value);
 	}
@@ -10892,6 +10909,9 @@ int eval_config(string inistr) {
 	}
 	if(ini.GetAllValues("general", "ss7port", values)) {
 		parse_config_item_ports(&values, ss7portmatrix);
+	}
+	if(ini.GetAllValues("general", "ss7_rudp_port", values)) {
+		parse_config_item_ports(&values, ss7_rudp_portmatrix);
 	}
 	if((value = ini.GetValue("general", "ss7_rlc_timeout", NULL))) {
 		opt_ss7timeout_rlc = atoi(value);

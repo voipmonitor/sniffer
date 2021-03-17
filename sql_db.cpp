@@ -543,7 +543,7 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 	for(unsigned int pass = 0; pass < this->maxQueryPass; pass++, attempt++) {
 		string preparedQuery = this->prepareQuery(query, !callFromStoreProcessWithFixDeadlock && send_query_counter > 1);
 		if(pass > 0) {
-			sleep(1);
+			sleep(min(1 + pass * 2,  60u));
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
 		}
 		vector<dstring> postData;
@@ -612,11 +612,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				delete this->remote_socket;
 				this->remote_socket = NULL;
 			}
-			if(is_terminating()) {
-				USLEEP(100000);
-			} else {
-				sleep(1);
-			}
+			sleep(min(1 + pass * 2,  60u));
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery.c_str()).substr(0, 100).c_str());
 		} else if(this->remote_socket && this->remote_socket->getLastTimeOkRead() && getTimeUS() > this->remote_socket->getLastTimeOkRead() + 10 * 1000000ull) {
 			if(!this->remote_socket->checkHandleRead()) {
@@ -2039,7 +2035,9 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 			} else {
 				sleep(1);
 			}
-			syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
+			if(!is_terminating() || !(attempt % 10)) {
+				syslog(LOG_INFO, "next attempt %u - query: %s", attempt - 1, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
+			}
 		}
 		if(!this->connected()) {
 			this->connect();
@@ -3053,14 +3051,10 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 				delete this->remote_socket;
 				this->remote_socket = NULL;
 			}
-			if(is_terminating()) {
-				USLEEP(100000);
+			if(nextUsleepAfterError) {
+				usleep(nextUsleepAfterError);
 			} else {
-				if(nextUsleepAfterError) {
-					usleep(nextUsleepAfterError);
-				} else {
-					sleep(min(1 + pass * 2,  60u));
-				}
+				sleep(min(1 + pass * 2,  60u));
 			}
 			if(!quietlyError) {
 				syslog(LOG_INFO, "next attempt %u - query: %s", pass, prepareQueryForPrintf(query_str).substr(0, 100).c_str());
@@ -8715,10 +8709,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit, bool descDir) {
 	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
+	extern char opt_database_backup_to_date[20];
 	if(opt_database_backup_from_date[0]) {
 		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
 				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
 				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
 				    "";
 		if(!timeColumn.empty()) {
 			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
@@ -8734,14 +8730,31 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 		}
 	}
 	u_int64_t maxIdSrc = 0;
-	sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
-	SqlDb_row row = sqlDbSrc->fetchRow();
-	if(row) {
-		maxIdSrc = atoll(row["max_id"].c_str());
+	u_int64_t limitMaxId = 0;
+	if(opt_database_backup_to_date[0]) {
+		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" :
+				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" :
+				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
+				    (string(tableName) == "sip_msg") ? "time" :
+				    "";
+		if(!timeColumn.empty()) {
+			sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
+					" where " + timeColumn + " = " +
+					"(select max(" + timeColumn + ") from " + tableName + " where " + timeColumn + " < '" + opt_database_backup_to_date + "')");
+			maxIdSrc = atoll(sqlDbSrc->fetchRow()["max_id"].c_str());
+			limitMaxId = maxIdSrc;
+		}
+	} else {
+		sqlDbSrc->query(string("select max(id) as max_id from ") + tableName);
+		SqlDb_row row = sqlDbSrc->fetchRow();
+		if(row) {
+			maxIdSrc = atoll(row["max_id"].c_str());
+		}
 	}
 	if(!maxIdSrc) {
 		return;
 	}
+	SqlDb_row row;
 	u_int64_t maxIdDst = 0;
 	u_int64_t minIdDst = 0;
 	u_int64_t useMaxIdInSrc = 0;
@@ -8777,11 +8790,17 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			if(startIdSrc) {
 				condSrc.push_back(string("id >= ") + intToString(startIdSrc));
 			}
+			if (limitMaxId) {
+				condSrc.push_back(string("id <= ") + intToString(limitMaxId));
+			}
 			if(string(tableName) == "register_failed") {
 				condSrc.push_back(string("created_at < '") + sqlDateTimeString(time(NULL) - 3600) + "'");
 			}
 		} else {
 			condSrc.push_back(string("id <= ") + intToString(startIdSrc));
+			if (minIdSrc) {
+				condSrc.push_back(string("id >= ") + intToString(minIdSrc));
+			}
 		}
 		string orderSrc = "id";
 		stringstream queryStr;
@@ -8853,14 +8872,14 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
 							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
-							       limit * 10);
+							       limit * 10, false, limitMaxId);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       useMinIdInSrc, 0,
-							       limit * 10, true);
+							       (minIdSrc < useMinIdInSrc ? useMinIdInSrc : minIdSrc) , 0,
+							       limit * 10, true, limitMaxId);
 			}
 		}
 	}
@@ -8871,7 +8890,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 					   const char *slaveIdToMasterColumn, 
 					   const char *masterCalldateColumn, const char *slaveCalldateColumn,
 					   u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-					   unsigned long limit, bool descDir) {
+					   unsigned long limit, bool descDir, u_int64_t limitMaxId) {
 	u_int64_t maxIdToMasterInSlaveSrc = 0;
 	sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
 	SqlDb_row row = sqlDbSrc->fetchRow();
@@ -8897,7 +8916,8 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 			maxIdToMasterInSlaveDst = atoll(row["max_id"].c_str());
 		}
 		startIdToMasterSrc = max(useMinIdMaster, maxIdToMasterInSlaveDst + 1);
-		if(startIdToMasterSrc >= maxIdToMasterInSlaveSrc) {
+
+		if(startIdToMasterSrc >= maxIdToMasterInSlaveSrc || (limitMaxId && startIdToMasterSrc >= limitMaxId)) {
 			return;
 		}
 	} else {
@@ -8933,11 +8953,17 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		if(useMinIdMaster || maxIdToMasterInSlaveDst) {
 			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(startIdToMasterSrc));
 		}
-		if(useMaxIdMaster) {
+		if(useMaxIdMaster && startIdToMasterSrc < useMaxIdMaster) {
 			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(useMaxIdMaster));
+		}
+		if(limitMaxId) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(limitMaxId));
 		}
 	} else {
 		condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(startIdToMasterSrc));
+		if (limitMaxId) {
+			condSrc.push_back(string(slaveIdToMasterColumn) + " <= " + intToString(limitMaxId));
+		}
 		if(useMinIdMaster) {
 			condSrc.push_back(string(slaveIdToMasterColumn) + " >= " + intToString(useMinIdMaster));
 		}

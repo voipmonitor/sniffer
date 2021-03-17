@@ -222,8 +222,13 @@ void cSipMsgFilter::setFilter(const char *filter) {
 		}
 	}
 	if(!filterData["sensor_id"].empty()) {
-		cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, smf_id_sensor);
-		filter->addNum(atoi(filterData["sensor_id"].c_str()) >= 0 ? atoi(filterData["sensor_id"].c_str()) : -1);
-		addFilter(filter);
+		vector<string> filter_sensor_ids = split(filterData["sensor_id"].c_str(), ",", true);
+		if(filter_sensor_ids.size()) {
+			cRecordFilterItem_numList *filter = new FILE_LINE(0) cRecordFilterItem_numList(this, smf_id_sensor);
+			for(unsigned i = 0; i < filter_sensor_ids.size(); i++) {
+				filter->addNum(atoi(filter_sensor_ids[i].c_str()) >= 0 ? atoi(filter_sensor_ids[i].c_str()) : -1);
+			}
+			addFilter(filter);
+		}
 	}
 }

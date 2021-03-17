@@ -1,3 +1,52 @@
+27.7.4 10.03.2021
+=================
+- fix interface = any and convert_dlt_sll2en10 option for SS7 pcap files 
+
+
+27.7.3 05.03.2021
+=================
+- fix name 'realm' json variable when filtering SIP REGISTER in active registration table [VG-2286]
+- add support for multi-sensor select in filters: registers, options/subscribe/notify [VG-2277]
+
+
+27.7.2 02.03.2021
+=================
+- fix memory increase for hot_restart manager command [VS-1175]
+- fix memory leak in options/subscribe/notify [VS-1175]
+- add support for space separator in load ip and number groups
+- fix lock issue for fraud_refresh manager command 
+
+
+27.7.1 23.02.2021
+=================
+- fix race condition in SIP REGISTER which can lead to exhaust all memory [VS-1173]
+- fix sip history sql store for request/response SIP messages 
+
+
+27.7 18.02.2021
+===============
+- add support for ss7/rudp (ss7_rudp_port = 7000)
+
+
+27.6.1 16.02.2021
+=================
+- fix syslog spam in cloud version [VS-1171]
+
+
+27.6 15.02.2021
+===============
+- fix buffer overflow in memcpy which can lead to remote code execution when live sniffer is enabled through GUI (credit to Sandro Gauci)
+- add support for Sonus STP SS7 stream [VS-1160]
+- client/server - fix situation when server/client has different time which leads to use all memory in buffers [VS-1161]
+- fix saveaudio_answeronly = yes for some cases [VS-1139]
+- fix counting RTPC as RTP at the beginning of a call [VS-1117]
+- ssl key logger - new define option 'DEBUG_TO_SYSLOG' 
+- new options livesniffer_timeout_s (default 0 [s]) and livesniffer_tablesize_max_mb (default 0 [MB]) [VS-2243]
+- new options for OPTION, NOTIFY, SUBSCRIBE which controls how those messages are paired -- sip-msg-compare-ip-src (YES/no)- sip-msg-compare-ip-dst (YES/no)  - sip-msg-compare-port-src (YES/no)  - sip-msg-compare-port-dst (yes/NO)  - sip-msg-compare-number-src (YES/no)  - sip-msg-compare-number-dst (YES/no)- sip-msg-compare-domain-src (YES/no)- sip-msg-compare-domain-dst (YES/no) [VG-2271]
+- fix ssl keyloger (missing pthread.h on some systems) [VS-1131]
+- add option database_backup_to_date (see voipmonitor.conf) [VS-1162]
+
+
 27.5 21.01.2021
 ===============
 - video support - saving video RTP to pcap, new savertp_video = NO/yes/hdear/cdr_only [VS-312]
