@@ -511,10 +511,12 @@ bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_state_compare_sipalg = false;
 bool opt_sip_register_state_compare_vlan = false;
 bool opt_sip_register_save_all = false;
-int opt_sip_register_state_timeout = 5 * 60;
+int opt_sip_register_state_timeout = 10 * 60;
+bool opt_sip_register_state_timeout_set = false;
 bool opt_sip_register_save_eq_states_time = false;
 int opt_sip_register_failed_max_details_per_minute = 1000;
-bool opt_sip_register_defered_save = false;
+bool opt_sip_register_failed_max_details_per_minute_set = false;
+bool opt_sip_register_deferred_save = false;
 bool opt_sip_register_advanced = false;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
@@ -644,6 +646,7 @@ int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
+int opt_cleandatabase_register_time_info = 0;
 int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
@@ -6029,8 +6032,9 @@ void test() {
 			opt_cleandatabase_http_enum =
 			opt_cleandatabase_webrtc =
 			opt_cleandatabase_register_state =
-			opt_cleandatabase_sip_msg =
 			opt_cleandatabase_register_failed = 
+			opt_cleandatabase_register_time_info = 
+			opt_cleandatabase_sip_msg =
 			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
 		} else {
 			return;
@@ -6585,6 +6589,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info", &opt_cleandatabase_register_time_info));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
@@ -7034,6 +7039,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-state-timeout", &opt_sip_register_state_timeout));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-save-eq-states-time", &opt_sip_register_save_eq_states_time));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-failed-max-details-per-minute", &opt_sip_register_failed_max_details_per_minute));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-deferred-save", &opt_sip_register_deferred_save));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-advanced", &opt_sip_register_advanced));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
@@ -7428,8 +7434,9 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
-		opt_cleandatabase_sip_msg =
-		opt_cleandatabase_register_failed = configItem->getValueInt();
+		opt_cleandatabase_register_failed = 
+		opt_cleandatabase_register_time_info = 
+		opt_cleandatabase_sip_msg = configItem->getValueInt();
 	}
 	if(configItem->config_name == "cleandatabase_cdr") {
 		opt_cleandatabase_http_enum =
@@ -8862,13 +8869,14 @@ void set_context_config() {
 	}
 	
 	if(opt_sip_register_advanced) {
-		if(!opt_sip_register_state_timeout) {
+		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-state-timeout") : opt_sip_register_state_timeout_set)) {
 			opt_sip_register_state_timeout = 120;
 		}
 		opt_sip_register_save_eq_states_time = true;
-		if(!opt_sip_register_failed_max_details_per_minute) {
+		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-failed-max-details-per-minute") : opt_sip_register_failed_max_details_per_minute_set)) {
 			opt_sip_register_failed_max_details_per_minute = 5000;
 		}
+		opt_sip_register_deferred_save = true;
 	}
 	
 }
@@ -9404,8 +9412,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
-		opt_cleandatabase_sip_msg =
-		opt_cleandatabase_register_failed = atoi(value);
+		opt_cleandatabase_register_failed =
+		opt_cleandatabase_register_time_info =
+		opt_cleandatabase_sip_msg = atoi(value);
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
@@ -9453,6 +9462,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
 		opt_cleandatabase_register_failed = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_register_time_info", NULL))) {
+		opt_cleandatabase_register_time_info = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
 		opt_cleandatabase_sip_msg = atoi(value);
@@ -9665,12 +9677,17 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-state-timeout", NULL))) {
 		opt_sip_register_state_timeout = atoi(value);
+		opt_sip_register_state_timeout_set = true;
 	}
 	if((value = ini.GetValue("general", "sip-register-save-eq-states-time"))) {
 		opt_sip_register_save_eq_states_time = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-failed-max-details-per-minute"))) {
 		opt_sip_register_failed_max_details_per_minute = atoi(value);
+		opt_sip_register_failed_max_details_per_minute_set = true;
+	}
+	if((value = ini.GetValue("general", "sip-register-deferred-save"))) {
+		opt_sip_register_deferred_save = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-advanced"))) {
 		opt_sip_register_advanced = yesno(value);

@@ -3289,6 +3289,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 			Call *call = packetS->call ? packetS->call : packetS->call_created;
 			if(call) {
@@ -4449,6 +4451,8 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -4505,6 +4509,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -4852,6 +4858,8 @@ void process_packet_sip_other(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;

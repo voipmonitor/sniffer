@@ -156,7 +156,10 @@ public:
 	inline RegisterState(Call *call, Register *reg);
 	inline ~RegisterState();
 	inline void copyFrom(const RegisterState *src);
-	inline bool isEq(Call *call, Register *reg, bool *expired);
+	inline bool isEq(Call *call, Register *reg, bool *exp_state);
+	inline bool isOK() {
+		return(state == rs_OK || state == rs_UnknownMessageOK);
+	}
 public:
 	u_int64_t state_from_us;
 	u_int64_t state_to_us;
@@ -182,14 +185,43 @@ public:
 };
 
 
+class RegisterStates {
+public:
+	RegisterStates();
+	~RegisterStates();
+	inline void add(RegisterState *state);
+	inline void shift();
+	inline void clean();
+	inline RegisterState *last() {
+		return(count ? states[0] : NULL);
+	}
+	inline RegisterState *prev() {
+		return(count > 1 ? states[1] : NULL);
+	}
+	inline bool eqLast(Call *call, class Register *reg, bool *exp_state);
+	inline bool isSipAlg () {
+		for(int i = 0; i < count; i++) {
+			if(states[i]->is_sipalg_detected) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+public:
+	RegisterState *states[NEW_REGISTER_MAX_STATES];
+	u_int16_t count;
+};
+
+
 class Register {
 public:
 	enum eTypeSaveState {
 		_ss_init,
 		_ss_reset,
 		_ss_update,
+		_ss_save,
 		_ss_update_force,
-		_ss_expire,
+		_ss_exp_state,
 		_ss_end
 	};
 public:
@@ -197,26 +229,22 @@ public:
 	inline ~Register();
 	inline void update(Call *call);
 	inline void addState(Call *call);
-	inline void shiftStates();
-	inline void expire(bool need_lock_states = true, bool use_state_prev_last = false);
-	inline void updateLastState(Call *call);
-	inline void resetLastState(Call *call);
+	inline void expire(bool need_lock_states = true);
+	inline void updateLastState(Call *call, RegisterStates *states);
+	inline void resetLastState(Call *call, RegisterStates *states);
 	inline void updateLastStateItem(char *callItem, char *registerItem, char **stateItem);
-	inline bool eqLastState(Call *call, bool *expired);
+	inline bool eqLastState(Call *call, bool *exp_state);
 	inline void clean_all();
 	inline void saveNewStateToDb(RegisterState *state);
+	inline void saveDeferredStateToDb(RegisterState *state);
 	inline void saveUpdateStateToDb(RegisterState *state);
 	string getQueryStringForSaveEqNext(RegisterState *state);
-	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState);
+	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0);
+	inline RegisterState* getLastState();
 	inline eRegisterState getState();
+	inline bool stateIsOK();
 	inline int getIdSensor();
 	inline u_int32_t getStateFrom_s();
-	inline RegisterState *states_last() {
-		return(countStates ? states[0] : NULL);
-	}
-	inline RegisterState *states_prev_last() {
-		return(countStates > 1 ? states[1] : NULL);
-	}
 	inline bool getDataRow(RecordArray *rec);
 	void lock_states() {
 		while(__sync_lock_test_and_set(&_sync_states, 1));
@@ -229,14 +257,6 @@ public:
 	}
 	void unlock_id() {
 		__sync_lock_release(&_sync_id);
-	}
-	inline bool getSipAlgState () {
-		for (int i = 0; i < countStates; i++) {
-			if (states[i]->is_sipalg_detected) {
-				return(true);
-			}
-		}
-		return(false);
 	}
 public:
 	u_int64_t id;
@@ -259,8 +279,8 @@ public:
 	char *digest_realm;
 	char *ua;
 	u_int16_t vlan;
-	RegisterState *states[NEW_REGISTER_MAX_STATES];
-	u_int16_t countStates;
+	RegisterStates states_state;
+	RegisterStates states_failed;
 	u_int64_t rrd_sum;
 	u_int32_t rrd_count;
 	string reg_call_id;
@@ -286,6 +306,7 @@ public:
 	void add(Call *call);
 	bool existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq);
 	void cleanup(struct timeval *act_time, bool force = false, int expires_add = 0);
+	void cleanup_from_timer(u_int32_t time_s);
 	void clean_all();
 	inline u_int64_t getNewRegisterId(int sensorId, bool failed);
 	inline u_int64_t getNewRegisterStateId(int sensorId);
@@ -319,19 +340,17 @@ public:
 		__sync_lock_release(&_sync_register_failed_id);
 	}
 	bool isEnabledDeferredSaveForState() {
-		extern bool opt_sip_register_defered_save;
-		extern int opt_sip_register_state_timeout;
+		extern bool opt_sip_register_deferred_save;
 		extern bool opt_sip_register_save_eq_states_time;
 		extern sExistsColumns existsColumns;
-		return((opt_sip_register_defered_save || opt_sip_register_state_timeout <= 120) &&
+		return(opt_sip_register_deferred_save &&
 		       existsColumns.register_state_flags &&
 		       (existsColumns.register_state_counter || opt_sip_register_save_eq_states_time));
 	}
 	bool isEnabledDeferredSaveForFailed() {
-		extern bool opt_sip_register_defered_save;
-		extern int opt_sip_register_state_timeout;
+		extern bool opt_sip_register_deferred_save;
 		extern sExistsColumns existsColumns;
-		return((opt_sip_register_defered_save || opt_sip_register_state_timeout <= 120) &&
+		return(opt_sip_register_deferred_save &&
 		       existsColumns.register_failed_flags);
 	}
 	bool isEnabledDeferredSave(RegisterState *state) {

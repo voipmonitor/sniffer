@@ -9466,6 +9466,7 @@ void dropMysqlPartitionsCdr() {
 	extern int opt_cleandatabase_webrtc;
 	extern int opt_cleandatabase_register_state;
 	extern int opt_cleandatabase_register_failed;
+	extern int opt_cleandatabase_register_time_info;
 	extern int opt_cleandatabase_sip_msg;
 	syslog(LOG_NOTICE, "drop cdr old partitions - begin");
 	SqlDb *sqlDb = createSqlObject();
@@ -9524,6 +9525,7 @@ void dropMysqlPartitionsCdr() {
 	}
 	_dropMysqlPartitions("register_state", opt_cleandatabase_register_state, 0, sqlDb);
 	_dropMysqlPartitions("register_failed", opt_cleandatabase_register_failed, 0, sqlDb);
+	_dropMysqlPartitions("register_time_info", opt_cleandatabase_register_time_info, 0, sqlDb);
 	if(opt_sip_register_save_eq_states_time) {
 		if(sqlDb->existsTable("register_state_eq_next")) {
 			_dropMysqlPartitions("register_state_eq_next", opt_cleandatabase_register_state, 0, sqlDb);

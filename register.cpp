@@ -6,7 +6,7 @@
 #include "sniff.h"
 
 
-#define NEW_REGISTER_CLEAN_PERIOD 30
+#define NEW_REGISTER_CLEANUP_PERIOD 30
 #define NEW_REGISTER_UPDATE_PERIOD 30
 #define NEW_REGISTER_ERASE_TIMEOUT_FAILED 60
 #define NEW_REGISTER_ERASE_TIMEOUT 2*3600
@@ -41,7 +41,6 @@ extern bool opt_sipalg_detect;
 
 extern int opt_sip_register_state_timeout;
 extern int opt_sip_register_failed_max_details_per_minute;
-extern bool opt_sip_register_deferred_save;
 
 extern int opt_save_ip_from_encaps_ipheader;
 extern bool opt_time_precision_in_ms;
@@ -236,12 +235,15 @@ bool RegisterFailedInterval::add(Call *call) {
 		id.sipcalledip_encaps = call->sipcalledip_encaps;
 	}
 	map<RegisterFailedId, RegisterFailedCount*>::iterator iter = failed_count.find(id);
+	u_int32_t count = 0;
 	if(iter == failed_count.end()) {
 		RegisterFailedCount *failedCound = new FILE_LINE(0) RegisterFailedCount(call);
+		count = failedCound->count = 1;
 		failed_count[id] = failedCound;
+	} else {
+		count = ++iter->second->count;
 	}
-	++failed_count[id]->count;
-	return(failed_count[id]->count <= (unsigned)opt_sip_register_failed_max_details_per_minute);
+	return(count <= (unsigned)opt_sip_register_failed_max_details_per_minute);
 }
 
 void RegisterFailedInterval::saveToDb() {
@@ -413,7 +415,7 @@ void RegisterState::copyFrom(const RegisterState *src) {
 	vlan = src->vlan;
 }
 
-bool RegisterState::isEq(Call *call, Register *reg, bool *expired) {
+bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 	/*
 	if(state == convRegisterState(call)) cout << "ok state" << endl;
 	//if(REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) cout << "ok contact_num" << endl;
@@ -440,16 +442,59 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *expired) {
 		  (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == call->is_sipalg_detected)) &&
 		  (!opt_sip_register_state_compare_vlan || (vlan == call->vlan)) &&
 		  id_sensor == call->useSensorId;
-	if(expired) {
+	if(exp_state) {
 		if(eq) {
-			*expired = opt_sip_register_state_timeout && 
-				   call->calltime_us() > state_from_us && 
-				   (call->calltime_us() - state_from_us) / 1000000 > (unsigned)opt_sip_register_state_timeout;
+			*exp_state = opt_sip_register_state_timeout && 
+				      call->calltime_us() > state_from_us && 
+				      (call->calltime_us() - state_from_us) / 1000000 > (unsigned)opt_sip_register_state_timeout;
 		} else {
-			*expired = false;
+			*exp_state = false;
 		}
 	}
 	return(eq);
+}
+
+
+RegisterStates::RegisterStates() {
+	for(unsigned i = 0; i < NEW_REGISTER_MAX_STATES; i++) {
+		states[i] = NULL;
+	}
+	count = 0;
+}
+
+RegisterStates::~RegisterStates() {
+	clean();
+}
+
+void RegisterStates::add(RegisterState *state) {
+	shift();
+	states[0] = state;
+	++count;
+}
+
+void RegisterStates::shift() {
+	if(count == NEW_REGISTER_MAX_STATES) {
+		delete states[NEW_REGISTER_MAX_STATES - 1];
+		-- count;
+	}
+	for(unsigned i = count; i > 0; i--) {
+		states[i] = states[i - 1];
+	}
+}
+
+void RegisterStates::clean() {
+	for(unsigned i = 0; i < count; i++) {
+		delete states[i];
+	}
+	count = 0;
+}
+
+bool RegisterStates::eqLast(Call *call, Register *reg, bool *exp_state) { 
+	RegisterState *state = last();
+	if(state && state->isEq(call, reg, exp_state)) {
+		return(true);
+	}
+	return(false);
 }
 
 
@@ -482,10 +527,6 @@ Register::Register(Call *call) {
 	digest_realm = REG_NEW_STR(call->digest_realm);
 	ua = REG_NEW_STR(call->a_ua);
 	vlan = call->vlan;
-	for(unsigned i = 0; i < NEW_REGISTER_MAX_STATES; i++) {
-		states[i] = 0;
-	}
-	countStates = 0;
 	rrd_sum = 0;
 	rrd_count = 0;
 	reg_call_id = call->call_id;
@@ -564,119 +605,46 @@ void Register::update(Call *call) {
 
 void Register::addState(Call *call) {
 	lock_states();
-	int updateRsOk = 0; // 0 - no, 1 - update, 2 - reset
-	int updateRsFailedOk = 0; // 0 - no, 1 - update, 2 - reset
-	bool expired = false;
-	if(convRegisterState(call) != rs_Failed) {
-		if(eqLastState(call, &expired)) {
-			if(!expired) {
-				updateLastState(call);
-				updateRsOk = 1;
-			} else {
-				saveStateToDb(states_last(), _ss_expire);
-				resetLastState(call);
-				saveStateToDb(states_last(), _ss_reset);
-				updateRsOk = 2;
-			}
-		} else if(countStates > 1 &&
-			  states[0]->state == rs_Failed &&
-			  states[1]->isEq(call, this, &expired)) {
-				RegisterState *state = states[1];
-				states[1] = states[0];
-				states[0] = state;
-				if(!expired) {
-					updateLastState(call);
-					updateRsOk = 1;
-				} else {
-					saveStateToDb(states_last(), _ss_expire);
-					resetLastState(call);
-					saveStateToDb(states_last(), _ss_reset);
-					updateRsOk = 2;
-				}
+	bool isFailed = convRegisterState(call) != rs_Failed;
+	RegisterStates *states = isFailed ? &states_state : &states_failed;
+	bool exp_state = false;
+	if(states->eqLast(call, this, &exp_state)) {
+		if(!exp_state) {
+			updateLastState(call, states);
+		} else {
+			saveStateToDb(states->last(), _ss_exp_state);
+			resetLastState(call, states);
+			saveStateToDb(states->last(), _ss_reset);
 		}
 	} else {
-		if(eqLastState(call, &expired)) {
-			if(!expired) {
-				updateLastState(call);
-				updateRsFailedOk = 1;
-			} else {
-				saveStateToDb(states_last(), _ss_expire);
-				resetLastState(call);
-				saveStateToDb(states_last(), _ss_reset);
-				updateRsFailedOk = 2;
-			}
-		} else if(countStates > 1) {
-			for(unsigned i = 1; i < countStates; i++) {
-				if(states[i]->state == rs_Failed) {
-					if(states[i]->isEq(call, this, &expired)) {
-						RegisterState *failedState = states[i];
-						for(unsigned j = i; j > 0; j--) {
-							states[j] = states[j - 1];
-						}
-						states[0] = failedState;
-						if(!expired) {
-							updateLastState(call);
-							updateRsFailedOk = 1;
-						} else {
-							saveStateToDb(states_last(), _ss_expire);
-							resetLastState(call);
-							saveStateToDb(states_last(), _ss_reset);
-							updateRsFailedOk = 2;
-						}
-					}
-					break;
-				}
-			}
+		states->add(new FILE_LINE(20002) RegisterState(call, this));
+		RegisterState *prevState = states->prev();
+		if(prevState) {
+			saveStateToDb(prevState, _ss_end);
 		}
+		saveStateToDb(states->last(), _ss_init);
 	}
-	if(!updateRsOk && !updateRsFailedOk) {
-		shiftStates();
-		states[0] = new FILE_LINE(20002) RegisterState(call, this);
-		++countStates;
-	}
-	RegisterState *state = states_last();
-	if((state->state == rs_OK || state->state == rs_UnknownMessageOK) &&
-	   call->regrrddiff > 0) {
-		rrd_sum += call->regrrddiff;
-		++rrd_count;
-	}
-	if(state->state == rs_Failed) {
-		if(!updateRsFailedOk) {
-			saveStateToDb(state, _ss_init);
+	if(!isFailed) {
+		RegisterState *state = states->last();
+		if(state->isOK() && call->regrrddiff > 0) {
+			rrd_sum += call->regrrddiff;
+			++rrd_count;
 		}
-	} else {
-		if(!updateRsOk) {
-			saveStateToDb(state, _ss_init);
-			RegisterState *prevState = states_prev_last();
-			if(prevState && prevState->state == rs_Failed) {
-				saveStateToDb(prevState, _ss_end);
-			}
+		if(opt_enable_fraud && isFraudReady()) {
+			RegisterState *prevState = states->prev();
+			fraudRegister(call, state->state, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
 		}
-	}
-	if(opt_enable_fraud && isFraudReady()) {
-		RegisterState *prevState = states_prev_last();
-		fraudRegister(call, state->state, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
 	}
 	unlock_states();
 }
 
-void Register::shiftStates() {
-	if(countStates == NEW_REGISTER_MAX_STATES) {
-		delete states[NEW_REGISTER_MAX_STATES - 1];
-		-- countStates;
-	}
-	for(unsigned i = countStates; i > 0; i--) {
-		states[i] = states[i - 1];
-	}
-}
-
-void Register::expire(bool need_lock_states, bool use_state_prev_last) {
+void Register::expire(bool need_lock_states) {
 	if(need_lock_states) {
 		lock_states();
 	}
-	RegisterState *lastState = use_state_prev_last ? states_prev_last() : states_last();
-	if(lastState && (lastState->state == rs_OK || lastState->state == rs_UnknownMessageOK)) {
-		shiftStates();
+	RegisterState *lastState = states_state.last();
+	if(lastState && lastState->isOK()) {
+		saveStateToDb(lastState, _ss_update_force);
 		RegisterState *newState = new FILE_LINE(20003) RegisterState(NULL, NULL);
 		newState->copyFrom(lastState);
 		newState->state = rs_Expired;
@@ -685,11 +653,10 @@ void Register::expire(bool need_lock_states, bool use_state_prev_last) {
 		newState->save_at = 0;
 		newState->save_at_count_next_state = 0;
 		newState->next_states.clear();
-		states[0] = newState;
-		++countStates;
-		saveStateToDb(newState, _ss_init);
+		states_state.add(newState);
+		saveStateToDb(newState, _ss_save);
 		if(opt_enable_fraud && isFraudReady()) {
-			RegisterState *prevState = states_prev_last();
+			RegisterState *prevState = states_state.prev();
 			fraudRegister(this, prevState, rs_Expired, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
 		}
 	}
@@ -698,8 +665,8 @@ void Register::expire(bool need_lock_states, bool use_state_prev_last) {
 	}
 }
 
-void Register::updateLastState(Call *call) {
-	RegisterState *state = states_last();
+void Register::updateLastState(Call *call, RegisterStates *states) {
+	RegisterState *state = states->last();
 	if(state) {
 		state->state_to_us = call->calltime_us();
 		state->fname_last = call->fname_register;
@@ -736,10 +703,10 @@ void Register::updateLastState(Call *call) {
 	}
 }
 
-void Register::resetLastState(Call *call) {
-	RegisterState *state = states_last();
+void Register::resetLastState(Call *call, RegisterStates *states) {
+	RegisterState *state = states->last();
 	if(state) {
-		updateLastState(call);
+		updateLastState(call, states);
 		state->state_from_us = state->state_to_us = call->calltime_us();
 		state->fname = call->fname_register;
 		state->fname_last = 0;
@@ -765,20 +732,10 @@ void Register::updateLastStateItem(char *callItem, char *registerItem, char **st
 	}
 }
 
-bool Register::eqLastState(Call *call, bool *expired) { 
-	RegisterState *state = states_last();
-	if(state && state->isEq(call, this, expired)) {
-		return(true);
-	}
-	return(false);
-}
-
 void Register::clean_all() {
 	lock_states();
-	for(unsigned i = 0; i < countStates; i++) {
-		delete states[i];
-	}
-	countStates = 0;
+	states_state.clean();
+	states_failed.clean();
 	unlock_states();
 }
 
@@ -924,6 +881,10 @@ void Register::saveNewStateToDb(RegisterState *state) {
 	state->save_at_count_next_state = state->next_states.size();
 }
 
+void Register::saveDeferredStateToDb(RegisterState *state) {
+	saveNewStateToDb(state);
+}
+
 void Register::saveUpdateStateToDb(RegisterState *state) {
 	if(opt_nocdr || sverb.disable_save_register) {
 		return;
@@ -1001,7 +962,7 @@ string Register::getQueryStringForSaveEqNext(RegisterState *state) {
 	return(query_str);
 }
 
-void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState) {
+void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS) {
 	if(!sqlDbSaveRegister) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
@@ -1011,6 +972,8 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState)
 	case _ss_reset:
 		if(!registers.isEnabledDeferredSave(state)) {
 			saveNewStateToDb(state);
+		} else if(state->state == rs_Unregister) {
+			saveDeferredStateToDb(state);
 		}
 		break;
 	case _ss_update:
@@ -1020,37 +983,60 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState)
 			}
 		} else {
 			if(opt_sip_register_state_timeout) {
-				u_int64_t actTime = getTimeUS();
+				u_int64_t actTime = actTimeS ? actTimeS * 1000000ull : getTimeUS();
 				if(actTime > state->state_to_us &&
 				   TIME_US_TO_S(actTime - state->state_to_us) > (unsigned)opt_sip_register_state_timeout) {
-					saveNewStateToDb(state);
+					saveDeferredStateToDb(state);
 				}
 			}
 		}
 		break;
-	case _ss_update_force:
-	case _ss_expire:
-	case _ss_end:
-		if(registers.isEnabledDeferredSave(state)) {
+	case _ss_save:
+		if(!registers.isEnabledDeferredSave(state)) {
 			saveNewStateToDb(state);
 		} else {
+			saveDeferredStateToDb(state);
+		}
+		break;
+	case _ss_update_force:
+	case _ss_exp_state:
+	case _ss_end:
+		if(!registers.isEnabledDeferredSave(state)) {
 			saveUpdateStateToDb(state);
+		} else {
+			saveDeferredStateToDb(state);
 		}
 		break;
 	}
 }
 
+RegisterState* Register::getLastState() {
+	RegisterState *last_state = states_state.last();
+	RegisterState *last_failed = states_failed.last();
+	return(!last_failed ? last_state :
+	       !last_state ? last_failed :
+	       (last_state->isOK() || last_state->state_to_us >= last_failed->state_to_us ? last_state : last_failed));
+}
+
 eRegisterState Register::getState() {
 	lock_states();
-	RegisterState *state = states_last();
+	RegisterState *state = getLastState();
 	eRegisterState rslt_state = state ? state->state : rs_na;
+	unlock_states();
+	return(rslt_state);
+}
+
+bool Register::stateIsOK() {
+	lock_states();
+	RegisterState *state = getLastState();
+	bool rslt_state = state ? state->isOK() : false;
 	unlock_states();
 	return(rslt_state);
 }
 
 u_int32_t Register::getStateFrom_s() {
 	lock_states();
-	RegisterState *state = states_last();
+	RegisterState *state = getLastState();
 	u_int32_t state_from = state->state_from_us ? TIME_US_TO_S(state->state_from_us) : 0;
 	unlock_states();
 	return(state_from);
@@ -1058,7 +1044,7 @@ u_int32_t Register::getStateFrom_s() {
 
 bool Register::getDataRow(RecordArray *rec) {
 	lock_states();
-	RegisterState *state = states_last();
+	RegisterState *state = getLastState();
 	if(!state) {
 		unlock_states();
 		return(false);
@@ -1101,7 +1087,7 @@ bool Register::getDataRow(RecordArray *rec) {
 	if(VLAN_IS_SET(state->vlan)) {
 		rec->fields[rf_vlan].set(state->vlan);
 	}
-	rec->fields[rf_is_sipalg_detected].set(getSipAlgState());
+	rec->fields[rf_is_sipalg_detected].set(states_state.isSipAlg());
 	unlock_states();
 	return(true);
 }
@@ -1115,6 +1101,7 @@ RegistersTimer::RegistersTimer(Registers *registers) : cTimer(registers) {
 
 void RegistersTimer::evTimer(u_int32_t time_s, int typeTimer, void *data) {
 	((Registers*)data)->evTimer(time_s, typeTimer);
+	((Registers*)data)->cleanup_from_timer(time_s);
 }
 
 
@@ -1142,8 +1129,8 @@ void Registers::getCountActiveBySensors(map<int, u_int32_t> *count) {
 	lock_registers();
 	for(map<RegisterId, Register*>::iterator iter_reg = registers.begin(); iter_reg != registers.end(); iter_reg++) {
 		iter_reg->second->lock_states();
-		RegisterState *state = iter_reg->second->states_last();
-		if(state && (state->state == rs_OK || state->state == rs_UnknownMessageOK)) {
+		RegisterState *state = iter_reg->second->getLastState();
+		if(state && state->isOK()) {
 			++(*count)[state->id_sensor];
 		}
 		iter_reg->second->unlock_states();
@@ -1194,10 +1181,8 @@ void Registers::add(Call *call) {
 	} else {
 		Register *existsReg = iter->second;
 		existsReg->lock_states();
-		RegisterState *regstate = existsReg->states_last();
-		if(regstate &&
-		   (regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) &&
-		   regstate->expires &&
+		RegisterState *regstate = existsReg->getLastState();
+		if(regstate && regstate->isOK() && regstate->expires &&
 		   TIME_US_TO_S(regstate->state_to_us) + regstate->expires < call->calltime_s()) {
 			existsReg->expire(false);
 		}
@@ -1237,7 +1222,7 @@ bool Registers::existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq) {
 	map<RegisterId, Register*>::iterator iter = registers.find(rid);
 	if(iter != registers.end()) {
 		Register *existsReg = iter->second;
-		if(existsReg->getState() == rs_OK &&
+		if(existsReg->stateIsOK() &&
 		   existsReg->reg_call_id == call->call_id &&
 		   existsReg->reg_tcp_seq.size() &&
 		   std::find(existsReg->reg_tcp_seq.begin(), existsReg->reg_tcp_seq.end(), seq) != existsReg->reg_tcp_seq.end()) {
@@ -1254,54 +1239,41 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 		last_cleanup_time = act_time->tv_sec;
 		return;
 	}
-	if((act_time && act_time->tv_sec > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD) || force) {
+	if((act_time && act_time->tv_sec > last_cleanup_time + NEW_REGISTER_CLEANUP_PERIOD) || force) {
 		lock_registers();
 		map<RegisterId, Register*>::iterator iter;
 		for(iter = registers.begin(); iter != registers.end(); ) {
 			Register *reg = iter->second;
 			reg->lock_states();
-			RegisterState *regstate = reg->states_last();
-			bool eraseRegister = false;
-			bool eraseRegisterFailed = false;
-			if(regstate) {
-				if(regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) {
-					if(act_time &&
-					   regstate->expires &&
-					   TIME_US_TO_S(regstate->state_to_us) + regstate->expires + expires_add < act_time->tv_sec) {
-						reg->expire(false);
-						// cout << "expire" << endl;
-					} else {
-						iter->second->saveStateToDb(regstate, force ? Register::_ss_update_force : Register::_ss_update);
-					}
+			RegisterState *state_state = reg->states_state.last();
+			if(state_state) {
+				if(act_time && state_state->isOK() && state_state->expires &&
+				   TIME_US_TO_S(state_state->state_to_us) + state_state->expires + expires_add < act_time->tv_sec) {
+					reg->expire(false);
 				} else {
-					iter->second->saveStateToDb(regstate, force ? Register::_ss_update_force : Register::_ss_update);
-					if(regstate->state == rs_Failed) {
-						RegisterState *regstate_prev = reg->states_prev_last();
-						if(act_time &&
-						   regstate_prev &&
-						   (regstate_prev->state == rs_OK || regstate_prev->state == rs_UnknownMessageOK) &&
-						   regstate_prev->expires &&
-						   TIME_US_TO_S(regstate_prev->state_to_us) + regstate_prev->expires + expires_add < act_time->tv_sec) {
-							reg->expire(false, true);
-							// cout << "expire prev state" << endl;
-						}
-					}
-					if(!_sync_registers_erase) {
-						if(act_time &&
-						   regstate->state == rs_Failed && reg->countStates == 1 &&
-						   TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT_FAILED < act_time->tv_sec) {
-							eraseRegisterFailed = true;
-							// cout << "erase failed" << endl;
-						} else if(act_time &&
-							  TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
-							eraseRegister = true;
-							// cout << "erase" << endl;
-						}
-					}
+					reg->saveStateToDb(state_state, force ? Register::_ss_update_force : Register::_ss_update, 
+							   act_time ? act_time->tv_sec : 0);
+				}
+			}
+			RegisterState *state_failed = reg->states_failed.last();
+			if(state_failed) {
+				reg->saveStateToDb(state_failed, force ? Register::_ss_update_force : Register::_ss_update, 
+						   act_time ? act_time->tv_sec : 0);
+			}
+			bool eraseRegister = false;
+			if(act_time && !_sync_registers_erase) {
+				RegisterState *state_last = reg->getLastState();
+				if(state_last->state == rs_Failed && reg->states_state.count == 0 &&
+				   TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT_FAILED < act_time->tv_sec) {
+					eraseRegister = true;
+					// cout << "erase failed" << endl;
+				} else if(TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
+					eraseRegister = true;
+					// cout << "erase" << endl;
 				}
 			}
 			reg->unlock_states();
-			if(force || eraseRegister || eraseRegisterFailed) {
+			if(force || eraseRegister) {
 				lock_registers_erase();
 				delete iter->second;
 				registers.erase(iter++);
@@ -1315,6 +1287,15 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 		if(act_time) {
 			last_cleanup_time = act_time->tv_sec;
 		}
+	}
+}
+
+void Registers::cleanup_from_timer(u_int32_t time_s) {
+	if(time_s > last_cleanup_time + NEW_REGISTER_CLEANUP_PERIOD * 2) {
+		struct timeval time;
+		time.tv_sec = time_s;
+		time.tv_usec = 0;
+		cleanup(&time, false, 30);
 	}
 }
 

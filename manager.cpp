@@ -2037,7 +2037,7 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 		struct timeval act_ts;
 		act_ts.tv_sec = time(NULL);
 		act_ts.tv_usec = 0;
-		registers.cleanup(&act_ts, true);
+		registers.cleanup(&act_ts, false, 30);
 	}
 	return(params->sendString("ok"));
 }
