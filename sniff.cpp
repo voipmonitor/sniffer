@@ -1215,7 +1215,7 @@ static struct {
 	{ "sip:", 4, 4, 0 },
 	{ "sips:", 5, 5, 0 },
 	{ "urn:", 4, 0, 1 },
-	{ "tel:", 4, 4, 1 }
+	{ "tel:", 4, 4, 2 }
 };
 
 inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned int peername_tag_len, int *peer_sip_tags_index) {
@@ -1251,8 +1251,10 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
 			extern bool opt_callernum_numberonly;
-			if(*end == '@' || (destType == ppndt_caller && opt_callernum_numberonly && *end == ';')) {
-				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
+			if(*end == '@' ||
+			  (destType == ppndt_caller && opt_callernum_numberonly  && *end == ';') ||
+			  (peername_sip_tags[peer_sip_tags_index].type == 2) && *end == ';' ) {
+				if((peername_sip_tags[peer_sip_tags_index].type == 0) || (peername_sip_tags[peer_sip_tags_index].type == 2)) {
 					--end;
 					ok = true;
 					break;
@@ -1432,6 +1434,7 @@ void testPN() {
 		"<sip:ravsgc01.ims.opt.nc>",
 		"<tel:011444444;phone-context=ims.mnc010.mcc283.3gppnetwork.org>",
 		"<tel:+33970660010>;tag=SDoduqd01-d87d01d6-0000-0bff-0000-0000",
+		"tel:+971543274144;tag=p65545t1614290087m188413c29442s3_859345611-1187759289",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh"
 	};
