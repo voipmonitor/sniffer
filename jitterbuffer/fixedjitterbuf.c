@@ -215,7 +215,8 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 				now, ts, now - ts, jb->rxcore, jb->delay,
 				jb->rxcore + ts, jb->next_delivery, jb->rxcore + ts - jb->next_delivery);
 		if (!jb->force_resynch) {
-			if(offset < 0 || now - ts < jb->rxcore - jb->delay) {
+			if(offset < 0 || 
+			   jb->rxcore + ts > jb->next_delivery + jb->delay + jb->conf.resync_threshold) {
 				return FIXED_JB_DROP;
 			} else {
 				jb_fixed_flush_deliver(jb->chan);
