@@ -23,6 +23,7 @@ extern int opt_nocdr;
 extern sExistsColumns existsColumns;
 
 static cSslDsslSessions *SslDsslSessions;
+static DSSL_Env *SslDsslEnv;
 
 
 cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
@@ -102,13 +103,15 @@ bool cSslDsslSession::initServer() {
 bool cSslDsslSession::initSession() {
 	session = new FILE_LINE(0) DSSL_Session;
 	DSSL_SessionInit(NULL, session, server_info);
-	session->env = DSSL_EnvCreate(100 /*sessionTableSize*/, 3600 /*key_timeout_interval*/);
+	session->env = SslDsslEnv;
 	session->last_packet = new FILE_LINE(0) DSSL_Pkt;
 	session->get_keys_fce = this->get_keys;
 	session->get_keys_fce_call_data[0] = this;
 	session->get_keys_fce_call_data[1] = SslDsslSessions;
 	extern bool opt_ssl_ignore_error_invalid_mac;
 	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
+	extern bool opt_ssl_ignore_error_bad_finished_digest;
+	session->ignore_error_bad_finished_digest = opt_ssl_ignore_error_bad_finished_digest;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);
@@ -126,8 +129,6 @@ void cSslDsslSession::termServer() {
 
 void cSslDsslSession::termSession() {
 	if(session) {
-		DSSL_EnvDestroy(session->env);
-		session->env = NULL;
 		delete session->last_packet;
 		session->last_packet = NULL;
 		DSSL_SessionDeInit(session);
@@ -880,6 +881,7 @@ void cClientRandomConnection::evData(u_char *data, size_t dataLen) {
 void ssl_dssl_init() {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
+	SslDsslEnv = DSSL_EnvCreate(10000 /*sessionTableSize*/, 4 * 60 * 60 /*key_timeout_interval*/);
 	extern bool init_lib_gcrypt();
 	init_lib_gcrypt();
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
@@ -890,6 +892,10 @@ void ssl_dssl_clean() {
 	if(SslDsslSessions) {
 		delete SslDsslSessions;
 		SslDsslSessions = NULL;
+	}
+	if(SslDsslEnv) {
+		DSSL_EnvDestroy(SslDsslEnv);
+		SslDsslEnv = NULL;
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
@@ -1013,6 +1019,8 @@ void ssl_parse_client_random(const char *fileName) {
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
+
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key) {
 	json->add(name, hexencode(key->key, key->length));
 }
@@ -1024,6 +1032,7 @@ void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_ite
 		key->length = key_str.length() / 2;
 	}
 }
+#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
 
 #if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)

@@ -280,7 +280,6 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 			{	if(ext_len == 2 && sess->version == TLS1_2_VERSION && MAKE_UINT16(data[4], data[5]) == TLS1_3_VERSION)
 					sess->version = TLS1_3_VERSION;
 			}
-
 			data += ext_len + 4;
 			if(data > org_data + len) return NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
 			t_len -= ext_len + 4;
@@ -301,6 +300,17 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 			int rc = ssls_lookup_session( sess );
 			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) ) 
 				return rc;
+		}
+	}
+	else
+	{
+		if( sess->flags & SSF_TLS_SESSION_TICKET_SET )
+		{
+			if( ssls_init_from_tls_ticket( sess ) == DSSL_RC_OK &&
+			    ssls_generate_keys( sess ) == DSSL_RC_OK )
+			{
+				return DSSL_RC_OK;
+			}
 		}
 	}
 
@@ -752,6 +762,11 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	DEBUG_TRACE_BUF("handshake", data, len);
 	recLen = (((int32_t)data[1]) << 16) | (((int32_t)data[2]) << 8) | data[3];
 	hs_type = data[0];
+	
+	if(!recLen && !hs_type) {
+		*processed = len;
+		return DSSL_RC_OK;
+	}
 
 	data += SSL3_HANDSHAKE_HEADER_LEN;
 	len -= SSL3_HANDSHAKE_HEADER_LEN;
@@ -762,9 +777,11 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	DEBUG_TRACE2( "===>Decoding SSL v3 handshake: %s len: %d...", SSL3_HandshakeTypeToString( hs_type ), (int) recLen );
 #endif
 
-	if(stack->sess->handshake_data && stack->state == SS_Initial && hs_type == SSL3_MT_CLIENT_KEY_EXCHANGE)
+	if(stack->sess->handshake_data && 
+	   (stack->sess->flags & (SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET|SSF_TLS_SERVER_EXTENDED_MASTER_SECRET)) &&
+	   hs_type != SSL3_MT_CERTIFICATE_VERIFY)
 	{
-		ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
+		ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, recLen + SSL3_HANDSHAKE_HEADER_LEN);
 	}
 
 	switch( hs_type )
@@ -855,38 +872,6 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		break;
 	}
 
-	if(stack->sess->handshake_data)
-	{
-		if(stack->state == SS_SeenServerHello)
-		{
-			switch( hs_type )
-			{
-			case SSL3_MT_SERVER_HELLO:
-				if(rc == DSSL_RC_OK &&
-				   (stack->sess->flags & SSF_TLS_SERVER_EXTENDED_MASTER_SECRET))
-				{
-					 ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
-				} else {
-					 ssls_handshake_data_free(sess);
-				}
-				break;
-			case SSL3_MT_CERTIFICATE:
-			case SSL3_MT_SERVER_DONE:
-				if(rc == DSSL_RC_OK)
-				{
-					 ssls_handshake_data_append(sess, data - SSL3_HANDSHAKE_HEADER_LEN, len + SSL3_HANDSHAKE_HEADER_LEN);
-				} else {
-					 ssls_handshake_data_free(sess);
-				}
-				break;
-			}
-		}
-		if(stack->state == SS_Initial && hs_type == SSL3_MT_CLIENT_KEY_EXCHANGE)
-		{
-			ssls_handshake_data_free(sess);
-		}
-	}
-
 	if( rc == DSSL_RC_OK )
 	{
 		*processed = recLen + SSL3_HANDSHAKE_HEADER_LEN;
@@ -947,5 +932,10 @@ void ssls_handshake_done( DSSL_Session* sess )
 			t.tv_usec -= sess->handshake_start.tv_usec;
 		}
 		(*sess->event_callback)( sess->user_data, eSslHandshakeComplete, &t );
+	}
+	
+	if(sess->handshake_data)
+	{
+		ssls_handshake_data_free(sess);
 	}
 }

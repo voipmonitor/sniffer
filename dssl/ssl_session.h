@@ -144,6 +144,7 @@ struct DSSL_Session_
 	struct DSSL_Session_get_keys_data get_keys_rslt_data;
 	
 	int ignore_error_invalid_mac;
+	int ignore_error_bad_finished_digest;
 	
 	void *tls_session;
 	uint64_t tls_session_server_seq;

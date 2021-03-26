@@ -274,7 +274,7 @@ int tls1_decode_finished( DSSL_Session* sess, NM_PacketDir dir, u_char* data, ui
 
 	if( rc != DSSL_RC_OK ) return rc;
 
-	if( memcmp( data, prf_out, 12 ) != 0 ) return NM_ERROR( DSSL_E_SSL_BAD_FINISHED_DIGEST );
+	if( memcmp( data, prf_out, 12 ) != 0 && !sess->ignore_error_bad_finished_digest ) return NM_ERROR( DSSL_E_SSL_BAD_FINISHED_DIGEST );
 
 	return DSSL_RC_OK;
 }
