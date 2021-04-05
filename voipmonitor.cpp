@@ -103,7 +103,7 @@
 #endif
 
 #ifndef FREEBSD
-#define BACKTRACE 1
+/*#define BACKTRACE 1*/
 #endif
 
 #ifdef BACKTRACE
