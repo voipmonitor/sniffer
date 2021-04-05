@@ -1,4 +1,5 @@
 {
   "project_id": "voipmonitor",
-  "conduit_uri": "https://phabricator.fspot.us"
+  "conduit_uri": "https://phabricator.fspot.us",
+  "phabricator.uri": "https://phabricator.fspot.us"
 }
