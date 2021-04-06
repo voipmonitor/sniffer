@@ -1,3 +1,11 @@
+27.8 06.04.2021
+===============
+- fix issue with synchronizing very slow and fast traffic across multiple interfaces [VS-1177]
+- fix cases where MOS 50ms jitterbuffer was low when it should not be [VS-1178]
+- fix peername parse from header with tel: prefix [VS-1181]
+- tls/ssl: fix decrypting multiple handshake messages, added support for session ticket (restore master key from previous session)), new option ssl_ignore_error_bad_finished_digest (default yes) [VS-1179]
+
+
 27.7.4 10.03.2021
 =================
 - fix interface = any and convert_dlt_sll2en10 option for SS7 pcap files 
