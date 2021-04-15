@@ -84,6 +84,9 @@
 #include "filter_mysql.h"
 #include "sniff_inline.h"
 #include "sql_db.h"
+#include "config_param.h"
+#include "websocket.h"
+#include "mgcp.h"
 
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
@@ -1274,7 +1277,7 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt) {
+bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt, string *error) {
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -1303,10 +1306,14 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, 
-			       opt_pcap_dump_bufflength ?
-				errorString.c_str() : 
-				__pcap_geterr(_handle));
+			const char *openError = opt_pcap_dump_bufflength ?
+						 errorString.c_str() : 
+						 __pcap_geterr(_handle);
+			if(error) {
+				*error = openError;
+			} else {
+				syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, openError);
+			}
 		}
 		this->openError = true;
 	}
@@ -4153,6 +4160,299 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
 		}
 	}
+}
+
+void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
+			pcap_pkthdr **header_new, u_char **packet_new,
+			void *_net_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	unsigned headers_ip_counter = 0;
+	unsigned headers_ip_offset[20];
+	unsigned header_ip_offset = header_packet->header_ip_encaps_offset;
+	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+		headers_ip_offset[headers_ip_counter] = header_ip_offset;
+		++headers_ip_counter;
+		int next_header_ip_offset = findNextHeaderIp((iphdr2*)(HPP(header_packet) + header_ip_offset), header_ip_offset,
+							     HPP(header_packet), HPH(header_packet)->caplen, NULL);
+		if(next_header_ip_offset > 0) {
+			header_ip_offset += next_header_ip_offset;
+		} else {
+			break;
+		}
+	}
+	unsigned caplen = HPH(header_packet)->caplen;
+	iphdr2 *header_ip = ppd->header_ip;
+	header_ip_offset = ppd->header_ip_offset;
+	tcphdr2 *header_tcp = ppd->header_tcp;
+	udphdr2 *header_udp = ppd->header_udp;
+	u_char *payload_tcp_udp = NULL;
+	u_char *payload_ip = NULL;
+	unsigned payload_ip_length = MIN(header_ip->get_tot_len() - header_ip->get_hdr_size(),
+					 caplen - header_ip_offset - header_ip->get_hdr_size());
+	bool mod = false;
+	if(header_tcp || header_udp) {
+		unsigned header_tcp_udp_length = (header_tcp ? get_tcp_header_len(header_tcp) : get_udp_header_len(header_udp));
+		unsigned payload_tcp_udp_length = payload_ip_length - header_tcp_udp_length;
+		payload_tcp_udp = new FILE_LINE(0) u_char[payload_tcp_udp_length + 1];
+		memcpy(payload_tcp_udp, (u_char*)header_ip + header_ip->get_hdr_size() + header_tcp_udp_length, payload_tcp_udp_length);
+		payload_tcp_udp[payload_tcp_udp_length] = 0;
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
+		bool do_convert_sip = false;
+		if(check_sip20((char*)payload_tcp_udp, payload_tcp_udp_length, NULL, header_tcp != NULL)) {
+			if(check_websocket(payload_tcp_udp, payload_tcp_udp_length, header_tcp != NULL ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
+				cWebSocketHeader ws(payload_tcp_udp, payload_tcp_udp_length);
+				if(payload_tcp_udp_length > ws.getHeaderLength()) {
+					bool allocData;
+					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
+					if(!ws_data) {
+						delete [] payload_tcp_udp;
+						payload_tcp_udp = NULL;
+					}
+					delete [] payload_tcp_udp;
+					payload_tcp_udp_length =  header_tcp != NULL ?
+								   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
+								       ws.getDataLength()) :
+								   ws.getDataLength();
+					payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
+					memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
+					payload_tcp_udp[payload_tcp_udp_length] = 0;
+					if(allocData) {
+						delete [] ws_data;
+					}
+				}
+			}
+			if(payload_tcp_udp) {
+				do_convert_sip = true;
+			}
+		} else if((header_tcp ?
+			    ((unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_gateway || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_gateway ||
+			     (unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_callagent || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_callagent) :
+			    ((unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_gateway || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_gateway ||
+			     (unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_callagent || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_callagent)) &&
+			  check_mgcp((char*)payload_tcp_udp, payload_tcp_udp_length) &&
+			  (strstr((char*)payload_tcp_udp, "\r\n\r\n") ||
+			   strstr((char*)payload_tcp_udp, "\n\n"))) {
+			do_convert_sip = true;
+		}
+		if(do_convert_sip) {
+			u_char *payload_tcp_udp_mod;
+			unsigned payload_tcp_udp_mod_length;
+			if(convertIPs_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map)) {
+				delete payload_tcp_udp;
+				payload_tcp_udp = payload_tcp_udp_mod;
+				payload_tcp_udp_length = payload_tcp_udp_mod_length;
+				mod = true;
+			}
+			payload_ip_length = header_tcp_udp_length + payload_tcp_udp_length;
+			payload_ip = new FILE_LINE(0) u_char[payload_ip_length];
+			memcpy(payload_ip, header_tcp ? (void*)header_tcp : (void*)header_udp, header_tcp_udp_length);
+			memcpy(payload_ip + header_tcp_udp_length, payload_tcp_udp, payload_tcp_udp_length);
+			if(header_udp) {
+				((udphdr2*)payload_ip)->len = htons(payload_ip_length);
+			}
+		}
+		delete [] payload_tcp_udp;
+	} 
+	if(!payload_ip) {
+		payload_ip = new FILE_LINE(0) u_char[payload_ip_length];
+		memcpy(payload_ip, (u_char*)header_ip + header_ip->get_hdr_size(), payload_ip_length);
+	}
+	iphdr2 *header_ip_dst = NULL;
+	int header_ip_dst_mod = false;
+	iphdr2 *header_ip_src = NULL;
+	for(int header_ip_i = headers_ip_counter - 1; header_ip_i >= 0; header_ip_i--) {
+		if(header_ip_dst) {
+			iphdr2 *header_ip_src_next = (iphdr2*)(HPP(header_packet) + headers_ip_offset[header_ip_i]);
+			unsigned between_ip_payload_length = (u_char*)header_ip_src - (u_char*)header_ip_src_next - header_ip_src_next->get_hdr_size();
+			unsigned payload_ip_next_length = payload_ip_length + header_ip_dst->get_hdr_size() + between_ip_payload_length;
+			u_char *payload_ip_next = new u_char[payload_ip_next_length];
+			unsigned payload_ip_next_pos = 0;
+			if(between_ip_payload_length > 0) {
+				memcpy(payload_ip_next, (u_char*)header_ip_src_next + header_ip_src_next->get_hdr_size(), between_ip_payload_length);
+				payload_ip_next_pos += between_ip_payload_length;
+				if(header_ip_dst_mod == 2 && payload_ip_next_pos >= 2) {
+					if(*(u_int16_t*)(payload_ip_next + payload_ip_next_pos - 2) == htons((header_ip_dst->version == 4 ? ETHERTYPE_IPV6 : ETHERTYPE_IP))) {
+						*(u_int16_t*)(payload_ip_next + payload_ip_next_pos - 2) = htons(header_ip_dst->version == 4 ? ETHERTYPE_IP : ETHERTYPE_IPV6);
+					}
+				}
+			}
+			memcpy(payload_ip_next + payload_ip_next_pos, header_ip_dst, header_ip_dst->get_hdr_size());
+			payload_ip_next_pos += header_ip_dst->get_hdr_size();
+			memcpy(payload_ip_next + payload_ip_next_pos, payload_ip, payload_ip_length);
+			delete [] payload_ip;
+			payload_ip = payload_ip_next;
+			payload_ip_length = payload_ip_next_length;
+			delete header_ip_dst;
+			if(header_ip_src_next->get_protocol() == IPPROTO_UDP) {
+				((udphdr2*)payload_ip)->len = htons(payload_ip_length);
+			}
+		}
+		header_ip_src = (iphdr2*)(HPP(header_packet) + headers_ip_offset[header_ip_i]);
+		if((header_ip_dst_mod = convertIPs_header_ip(header_ip_src, &header_ip_dst, net_map, true))) {
+			mod = true;
+		}
+		header_ip_dst->set_tot_len(payload_ip_length + header_ip_dst->get_hdr_size());
+	}
+	if(mod && payload_ip) {
+		unsigned packet_new_length = header_packet->header_ip_encaps_offset + header_ip_dst->get_hdr_size() + payload_ip_length;
+		*packet_new = new FILE_LINE(0) u_char[packet_new_length];
+		unsigned packet_new_pos = 0;
+		memcpy(*packet_new, HPP(header_packet), header_packet->header_ip_encaps_offset);
+		packet_new_pos += header_packet->header_ip_encaps_offset;
+		if(header_ip_dst_mod == 2 && packet_new_pos >= 2) {
+			if(*(u_int16_t*)((*packet_new) + packet_new_pos - 2) == htons((header_ip_dst->version == 4 ? ETHERTYPE_IPV6 : ETHERTYPE_IP))) {
+				*(u_int16_t*)((*packet_new) + packet_new_pos - 2) = htons(header_ip_dst->version == 4 ? ETHERTYPE_IP : ETHERTYPE_IPV6);
+			}
+		}
+		memcpy(*packet_new + packet_new_pos, header_ip_dst, header_ip_dst->get_hdr_size());
+		packet_new_pos += header_ip_dst->get_hdr_size();
+		memcpy(*packet_new + packet_new_pos, payload_ip, payload_ip_length);
+		*header_new = new FILE_LINE(0) pcap_pkthdr;
+		memcpy(*header_new, HPH(header_packet), sizeof(pcap_pkthdr));
+		(*header_new)->caplen = packet_new_length;
+		(*header_new)->len = packet_new_length;
+	} else {
+		*header_new = NULL;
+		*packet_new = NULL;
+	}
+	if(payload_ip) {
+		delete [] payload_ip;
+	}
+	if(header_ip_dst) {
+		delete header_ip_dst;
+	}
+}
+
+bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	bool mod = false;
+	vector<string> payload_lines = split((char*)sip_src, '\n');
+	int i_line_content_length = -1;
+	int i_line_content = -1;
+	for(unsigned i_line = 0; i_line < payload_lines.size(); i_line++) {
+		if(i_line_content == -1 &&
+		   i_line < payload_lines.size() - 1 &&
+		   (payload_lines[i_line] == "" || payload_lines[i_line] == "\r")) {
+			i_line_content = i_line + 1;
+		}
+		if(i_line_content == -1 && i_line_content_length == -1 &&
+		   (!strncasecmp(payload_lines[i_line].c_str(), "Content-Length:", 15) ||
+		    !strncasecmp(payload_lines[i_line].c_str(), "l:", 2))) {
+			i_line_content_length = i_line;
+		}
+		string payload_line_mod;
+		if(convertIPs_string(payload_lines[i_line], &payload_line_mod, net_map)) {
+			payload_lines[i_line] = payload_line_mod;
+			mod = true;
+		}
+	}
+	if(mod) {
+		if(i_line_content_length != -1 && i_line_content != -1) {
+			string content;
+			for(unsigned i_line = i_line_content; i_line < payload_lines.size(); i_line++) {
+				content += payload_lines[i_line];
+				content += '\n';
+			}
+			string header;
+			for(unsigned i_line = 0; (int)i_line < i_line_content; i_line++) {
+				if((int)i_line == i_line_content_length) { 
+					if(tolower(payload_lines[i_line][0]) == 'l' && payload_lines[i_line][1] == ':') {
+						header += "l:" + intToString(content.length());
+					} else {
+						header += "Content-Length:" + intToString(content.length());
+					}
+					if(payload_lines[i_line][payload_lines[i_line].length() - 1] == '\r') {
+						header += '\r';
+					}
+				} else {
+					header += payload_lines[i_line];
+				}
+				header += '\n';
+			}
+			*sip_dst_length = header.length() + content.length();
+			*sip_dst = new FILE_LINE(0) u_char[*sip_dst_length + 1];
+			memcpy((*sip_dst), header.c_str(), header.length());
+			memcpy((*sip_dst) + header.length(), content.c_str(), content.length());
+			(*sip_dst)[*sip_dst_length] = 0;
+		} else {
+			string content;
+			for(unsigned i_line = 0; i_line < payload_lines.size(); i_line++) {
+				content += payload_lines[i_line];
+				content += '\n';
+			}
+			*sip_dst_length = content.length();
+			*sip_dst = new FILE_LINE(0) u_char[*sip_dst_length + 1];
+			memcpy(*sip_dst, content.c_str(), content.length());
+			(*sip_dst)[*sip_dst_length] = 0;
+		}
+	}
+	return(mod);
+}
+
+bool convertIPs_string(string &src, string *dst, void *_net_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	bool mod = false;
+	const char *src_p = src.c_str();
+	unsigned src_length = src.length();
+	unsigned src_i = 0;
+	while(src_i < src_length && *src_p) {
+		if(string_is_look_like_ip(src_p)) {
+			vmIP ip;
+			const char *ip_end;
+			if(ip.setFromString(src_p, &ip_end)) {
+				unsigned ip_length = ip_end - src_p;
+				vmIP ip_mod = cConfigItem_net_map::convIP(ip, net_map);
+				if(ip_mod != ip) {
+					if(!mod) {
+						*dst = src.substr(0, src_i);
+						mod = true;
+					}
+					*dst += ip_mod.getString(*src_p == '[');
+				} else if(mod) {
+					*dst += src.substr(src_i, ip_length);
+				}
+				src_i += ip_length;
+				src_p += ip_length;
+				continue;
+			}
+		}
+		if(mod) {
+			*dst += *src_p;
+		}
+		++src_i;
+		++src_p;
+	}
+	return(mod);
+}
+
+int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_create) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	int mod = false;
+	unsigned src_version = src->version;
+	vmIP ip_src_src = src->get_saddr();
+	vmIP ip_src_dst = src->get_daddr();
+	vmIP ip_dst_src = cConfigItem_net_map::convIP(ip_src_src, net_map);
+	vmIP ip_dst_dst = cConfigItem_net_map::convIP(ip_src_dst, net_map);
+	unsigned dst_version = ip_dst_src.is_v6() || ip_dst_dst.is_v6() ? 6 : 4;
+	if(ip_dst_src == ip_src_src && ip_dst_dst == ip_src_dst) {
+		if(force_create) {
+			*dst = iphdr2::create(dst_version);
+			memcpy(*dst, src, src->get_hdr_size());
+		}
+	} else {
+		mod = true;
+		*dst = iphdr2::create(dst_version);
+		if(dst_version == src_version) {
+			mod = true;
+			memcpy(*dst, src, src->get_hdr_size());
+		} else {
+			mod = 2;
+			(*dst)->set_protocol(src->get_protocol());
+		}
+		(*dst)->set_saddr(ip_dst_src);
+		(*dst)->set_daddr(ip_dst_dst);
+	}
+	return(mod);
 }
 
 int hexdecode(unsigned char *dst, const char *src, int max)

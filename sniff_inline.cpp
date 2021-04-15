@@ -54,16 +54,22 @@ extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
 extern unsigned int duplicate_counter;
-extern bool opt_dedup_input_file;
 extern int opt_save_ip_from_encaps_ipheader_only_gre;
 
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
+unsigned get_udp_header_len(udphdr2 */*header_udp*/) {
+	return(sizeof(udphdr2));
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
 unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen) {
-	*data = (char*)header_udp + sizeof(udphdr2);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2)), 
+	*data = (char*)header_udp + get_udp_header_len(header_udp);
+	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_udp_header_len(header_udp)), 
 	       MIN((unsigned)(htons(header_udp->len) - sizeof(udphdr2)),
 		   (unsigned)(caplen - ((u_char*)*data - packet)))));
 }
@@ -71,9 +77,16 @@ unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
+unsigned get_tcp_header_len(tcphdr2 *header_tcp) {
+	return(header_tcp->doff * 4);
+}
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
 unsigned get_tcp_data_len(iphdr2 *header_ip, tcphdr2 *header_tcp, char** data, u_char *packet, unsigned caplen) {
-	*data = (char*)header_tcp + (header_tcp->doff * 4);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - header_tcp->doff * 4), 
+	*data = (char*)header_tcp + get_tcp_header_len(header_tcp);
+	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_tcp_header_len(header_tcp)), 
 		   (unsigned)(caplen - ((u_char*)*data - packet))));
 }
 
@@ -826,7 +839,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	cout << endl;
 	#endif
 	
-	if(((ppf & ppf_dump) && ppd->header_ip) || (opt_dedup_input_file && (ppf & ppf_dedup))) {
+	if((ppf & ppf_dump) && ppd->header_ip) {
 		if(pcapDumpHandle) {
 			if(header_packet) {
 				pcap_dump((u_char*)pcapDumpHandle, HPH(*header_packet), HPP(*header_packet));

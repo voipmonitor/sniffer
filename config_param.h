@@ -509,6 +509,32 @@ protected:
 	nat_aliases_t *param_nat_aliases;
 };
 
+class cConfigItem_net_map : public cConfigItem {
+public:
+	typedef map<vmIPmask_order2, vmIPmask_order2> t_net_map;
+public:
+	cConfigItem_net_map(const char* name, t_net_map *net_map);
+	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues() { return(true); }
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	void initBeforeSet();
+	void initParamPointers() {
+		param_net_map = NULL;
+	}
+	string getTypeName() {
+		return("net_map_list");
+	}
+protected:
+	t_net_map *param_net_map;
+public:
+	static vmIP convIP(vmIP ip, t_net_map *net_map);
+};
+
 class cConfigItem_custom_headers : public cConfigItem {
 public:
 	cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers);

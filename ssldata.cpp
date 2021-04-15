@@ -290,7 +290,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, tcpHeader, tcpPacket, true, 
-			2, false, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+			2, false, (iphdr2*)(tcpPacket + ethHeaderLength), (iphdr2*)(tcpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	} else {
@@ -312,7 +312,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, udpHeader, udpPacket, true, 
-			false, false, (iphdr2*)(udpPacket + ethHeaderLength), NULL,
+			false, false, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	}

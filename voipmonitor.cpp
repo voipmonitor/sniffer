@@ -355,10 +355,9 @@ int opt_skinny = 0;
 int opt_mgcp = 0;
 vmIP opt_skinny_ignore_rtpip;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
-bool opt_dedup_input_file = false;
 bool opt_read_from_file = false;
 char opt_read_from_file_fname[1024] = "";
-char opt_dedup_fname[1024] = "";
+char opt_process_pcap_fname[1024] = "";
 bool opt_read_from_file_no_sip_reassembly = false;
 char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
@@ -1145,6 +1144,10 @@ int opt_abort_if_rss_gt_gb = 0;
 int opt_next_server_connections = 0;
 
 bool heap_profiler_is_running = false;
+
+int opt_process_pcap_type = 0;
+char opt_pcap_destination[1024];
+cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 
 
 #include <stdio.h>
@@ -3482,6 +3485,10 @@ int main(int argc, char *argv[]) {
 		revaluationBilling(opt_revaluation_params);
 		return(0);
 	}
+	if(opt_process_pcap_fname[0]) {
+		process_pcap(opt_process_pcap_fname, opt_pcap_destination, opt_process_pcap_type);
+		return(0);
+	}
 	
 	if(printConfigStruct) {
 		cout << "configuration: ";
@@ -3977,20 +3984,13 @@ int main_init_read() {
 		opt_maxpoolgraphdays = 0;
 		opt_maxpoolaudiosize = 0;
 		opt_maxpoolaudiodays = 0;
-		
 		opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 		printf("Reading file: %s\n", opt_read_from_file_fname);
-		char errbuf[PCAP_ERRBUF_SIZE];
-		if(opt_read_from_file_fname == string("/dev/stdin")) {
-			global_pcap_handle = pcap_open_offline("-", errbuf);
-		} else {
-			global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
-		}
-		if(global_pcap_handle == NULL) {
-			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
+		string pcap_error;
+		if(!open_global_pcap_handle(opt_read_from_file_fname, &pcap_error)) {
+			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, pcap_error.c_str());
 			return(2);
 		}
-		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	} else if(opt_pcap_queue_disable) {
 		char errbuf[PCAP_ERRBUF_SIZE];
 		bpf_u_int32 interfaceNet;
@@ -4493,7 +4493,8 @@ int main_init_read() {
 		
 		PcapQueue_term();
 	} else {
-		readdump_libpcap(global_pcap_handle, global_pcap_handle_index);
+		readdump_libpcap(global_pcap_handle, global_pcap_handle_index, pcap_datalink(global_pcap_handle), NULL,
+				 (is_read_from_file() ? _pp_read_file : 0) | _pp_process_calls);
 	}
 	
 	return(0);
@@ -5545,6 +5546,21 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		{
+		char ip_str[1000];
+		while(fgets(ip_str, sizeof(ip_str), stdin)) {
+			if(ip_str[0] == '\n') {
+				break;
+			}
+			cout << " v: " << string_is_look_like_ip(ip_str) << endl;
+			vmIP ip;
+			ip.setFromString(ip_str, NULL);
+			vmIP ipc = cConfigItem_net_map::convIP(ip, &opt_anonymize_ip_map);
+			cout << " c: " << ipc.getString() << endl;
+		}
+		}
+		break;
 	 
 		{
 		 
@@ -7390,6 +7406,9 @@ void cConfig::addConfigItems() {
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
+		subgroup("process pcap");
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
 	minorEnd();
 	
 	setDefaultValues();
@@ -7755,6 +7774,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
+	    {"process-pcap", 1, 0, 347},
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
@@ -8380,23 +8400,20 @@ void get_command_line_arguments() {
 				opt_save_sip_notify = true;
 				break;
 			case 341:
-				if(sscanf(optarg, "%s %s", opt_read_from_file_fname, opt_dedup_fname) != 2) {
+				if(sscanf(optarg, "%s %s", opt_process_pcap_fname, opt_pcap_destination) != 2) {
 					cerr << "dedup pcap: bad arguments" << endl;
 					exit(1);
 				}
-				opt_read_from_file = true;
-				opt_scanpcapdir[0] = '\0';
-				opt_cachedir[0] = '\0';
-				opt_enable_preprocess_packet = 0;
-				opt_enable_process_rtp_packet = 0;
-				opt_dedup_input_file = true;
-				opt_nocdr = 1;
-				opt_pcap_dump_tar = 0;
-				opt_pcap_split = 0;
-				opt_saveGRAPH = 0;
+				opt_process_pcap_type = _pp_dedup;
 				opt_dup_check = 1;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
+				is_gui_param = true;
+				break;
+			case 347:
+				strcpy_null_term(opt_process_pcap_fname, optarg);
+				opt_process_pcap_type = _pp_anonymize_ip;
+				is_gui_param = true;
 				break;
 			case 342:
 				#if HAVE_LIBTCMALLOC_HEAPPROF

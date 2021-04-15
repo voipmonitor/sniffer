@@ -1542,6 +1542,123 @@ void cConfigItem_nat_aliases::initBeforeSet() {
 	}
 }
 
+cConfigItem_net_map::cConfigItem_net_map(const char* name, t_net_map *net_map)
+ : cConfigItem(name) {
+	init();
+	param_net_map = net_map;
+}
+
+string cConfigItem_net_map::getValueStr(bool configFile) {
+	if(!param_net_map || !param_net_map->size()) {
+		return("");
+	}
+	ostringstream outStr;
+	int counter = 0;
+	for(t_net_map::iterator iter = param_net_map->begin(); iter != param_net_map->end(); iter++) {
+		if(counter) {
+			if(configFile) {
+				outStr << endl << config_name << " = ";
+			} else {
+				outStr << ';';
+			}
+		}
+		outStr << iter->first.getString(true) << ':' << iter->second.getString(true);
+		++counter;
+	}
+	return(outStr.str());
+}
+
+list<string> cConfigItem_net_map::getValueListStr() {
+	list<string> l;
+	for(t_net_map::iterator iter = param_net_map->begin(); iter != param_net_map->end(); iter++) {
+		l.push_back(iter->first.getString() + ":" + iter->second.getString());
+	}
+	return(l);
+}
+
+string cConfigItem_net_map::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, " /", "/");
+	find_and_replace(value, "/ ", "/");
+	find_and_replace(value, "=", " ");
+	find_and_replace(value, ":", " ");
+	find_and_replace(value, "[", "");
+	find_and_replace(value, "]", "");
+	find_and_replace_all(value, "  ", " ");
+	return(value);
+}
+
+bool cConfigItem_net_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_net_map::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_net_map::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+	if(!param_net_map) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
+		return(false);
+	}
+	int ok = 0;
+	initBeforeSet();
+	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		vmIPmask_order2 net[2];
+		const char *net_2_str;
+		if(net[0].setFromString(iter->c_str(), &net_2_str)) {
+			while(*net_2_str == ' ' || *net_2_str == '\t' || *net_2_str == ':' || *net_2_str == '=') {
+				++net_2_str;
+			}
+			if(net[1].setFromString(net_2_str, NULL)) {
+				if(!ok && enableClearBeforeFirstSet) {
+					doClearBeforeFirstSet();
+				}
+				(*param_net_map)[net[0]] = net[1];
+				// cout << net[0].getString() << " : " << net[1].getString() << endl;
+				++ok;
+				if(verbosity > 3) {
+					printf("adding net[%s] => net[%s]\n", net[0].getString().c_str(), net[1].getString().c_str());
+				}
+			}
+		}
+	}
+	return(ok > 0);
+}
+
+void cConfigItem_net_map::initBeforeSet() {
+	if(param_net_map) {
+		param_net_map->clear();
+	}
+}
+
+vmIP cConfigItem_net_map::convIP(vmIP ip, t_net_map *net_map) {
+	if(!net_map->size()) {
+		return(ip);
+	}
+	vmIPmask_order2 ip_mask = vmIPmask_order2(ip, ip.bits());
+	t_net_map::iterator iter = net_map->find(ip_mask);
+	if(iter != net_map->end()) {
+		return(iter->second.ip);
+	}
+	for(t_net_map::reverse_iterator iter = net_map->rbegin(); iter != net_map->rend(); iter++) {
+		if(ip.network(iter->first.mask, true) == ((vmIP)iter->first.ip).network(iter->first.mask, true)) {
+			if(iter->second.ip.is_v6() != ip.is_v6()) {
+				if(iter->second.ip.is_v6()) {
+					ip.set_to_v6();
+				} else {
+					ip.set_to_v4();
+				}
+			}
+			return(((vmIP)iter->second.ip).network(iter->second.mask)
+						      ._or(ip._and(ip.wildcard_mask(iter->second.mask))));
+		}
+	}
+	return(ip);
+}
+
 cConfigItem_custom_headers::cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers)
  : cConfigItem(name) {
 	init();

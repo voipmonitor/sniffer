@@ -7,7 +7,17 @@
 #if SNIFFER_INLINE_FUNCTIONS
 inline 
 #endif
+unsigned get_udp_header_len(udphdr2 *header_udp);
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
 unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen);
+
+#if SNIFFER_INLINE_FUNCTIONS
+inline 
+#endif
+unsigned get_tcp_header_len(tcphdr2 *header_tcp);
 
 #if SNIFFER_INLINE_FUNCTIONS
 inline 

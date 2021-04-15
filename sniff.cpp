@@ -76,6 +76,7 @@ and insert them into Call class.
 #include "websocket.h"
 #include "options.h"
 #include "sniff_inline.h"
+#include "config_param.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -140,6 +141,7 @@ extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
 extern pcap_t *global_pcap_handle;
+extern u_int16_t global_pcap_handle_index;
 extern pcap_t *global_pcap_handle_dead_EN10MB;
 extern rtp_read_thread *rtp_threads;
 extern int opt_norecord_dtmf;
@@ -265,7 +267,6 @@ extern int opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
-extern bool opt_dedup_input_file;
 extern int opt_ss7timeout_rlc;
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
@@ -6791,63 +6792,118 @@ void ipfrag_prune(unsigned int tv_sec, bool all, ipfrag_data_s *ipfrag_data,
 	}
 }
 
-void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
-	pcapProcessData ppd;
-	u_int64_t packet_counter = 0;
+bool open_global_pcap_handle(const char *pcap, string *error) {
+	char errbuf[PCAP_ERRBUF_SIZE];
+	if(pcap == string("/dev/stdin")) {
+		global_pcap_handle = pcap_open_offline("-", errbuf);
+	} else {
+		global_pcap_handle = pcap_open_offline_zip(pcap, errbuf);
+	}
+	if(global_pcap_handle == NULL) {
+		if(error) {
+			*error = errbuf;
+		}
+		return(false);
+	}
+	global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
+	global_pcap_dlink = pcap_datalink(global_pcap_handle);
+	if(error) {
+		*error = "";
+	}
+	return(true);
+}
 
-	global_pcap_dlink = pcap_datalink(handle);
+bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error) {
+	if(!pcap_destination || !*pcap_destination) {
+		string _error = "missing destination filename";
+		if(error) {
+			*error = _error;
+		}
+		fprintf(stderr, "Parameters are not complete: %s\n", _error.c_str());
+		return(false);
+	}
+	if(error) {
+		*error = "";
+	}
+	string pcap_error;
+	if(!open_global_pcap_handle(pcap_source, &pcap_error)) {
+		if(error) {
+			*error = pcap_error;
+		}
+		fprintf(stderr, "Couldn't open source pcap file '%s': %s\n", pcap_source, pcap_error.c_str());
+		return(false);
+	}
+	PcapDumper *destination = new PcapDumper;
+	if(!destination->open(tsf_na, pcap_destination, global_pcap_handle, global_pcap_dlink, &pcap_error)) {
+		if(error) {
+			*error = pcap_error;
+		}
+		fprintf(stderr, "Couldn't open destination pcap file '%s': %s\n", pcap_source, pcap_error.c_str());
+		delete destination;
+		return(false);
+	}
+	readdump_libpcap(global_pcap_handle, global_pcap_handle_index, global_pcap_dlink, destination, process_pcap_type);
+	destination->close();
+	delete destination;
+	return(true);
+}
+
+void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type) {
 	if(verbosity > 2) {
-		syslog(LOG_NOTICE, "DLT: %i", global_pcap_dlink);
+		syslog(LOG_NOTICE, "DLT: %i", handle_dlt);
 	}
 
-	init_hash();
+	if(process_pcap_type & _pp_process_calls) {
+		init_hash();
+	}
 
 	pcap_dumper_t *tmppcap = NULL;
 	if(opt_pcapdump) {
 		char pname[2048];
 		snprintf(pname, sizeof(pname), "%s/dump-%u.pcap", getPcapdumpDir(), (unsigned int)time(NULL));
 		tmppcap = pcap_dump_open(handle, pname);
-	} else if (opt_dedup_input_file) {
-		extern char opt_dedup_fname[1024];
-		tmppcap = pcap_dump_open(handle, opt_dedup_fname);
 	}
 
-	unsigned long lastStatTimeMS = 0;
-	sHeaderPacket *header_packet = NULL;
-	if(!is_read_from_file()) {
+	if(!(process_pcap_type & _pp_read_file) && (process_pcap_type & _pp_process_calls)) {
 		manager_parse_command_enable();
 		if(!sverb.pcap_stat_period) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
 	}
-	int tmp_ppf_param = opt_dedup_input_file ? (ppf_dedup | ppf_calcMD5) : ppf_all;
-	while (!is_terminating()) {
+	
+	pcapProcessData ppd;
+	u_int64_t packet_counter = 0;
+	unsigned long lastStatTimeMS = 0;
+	sHeaderPacket *header_packet = NULL;
+	int ppf_params = (process_pcap_type & _pp_process_calls) ? ppf_all :
+			 (process_pcap_type & _pp_dedup) ? (ppf_dedup | ppf_calcMD5) :
+			 (process_pcap_type & _pp_anonymize_ip) ? ppf_na :
+			 ppf_na;
+			 
+	while(!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
 		const u_char *pcap_next_ex_packet;
 		int res = pcap_next_ex(handle, &pcap_next_ex_header, &pcap_next_ex_packet);
-		
-		if(!pcap_next_ex_packet and res != -2) {
-			if(verbosity > 2) {
-				syslog(LOG_NOTICE, "NULL PACKET, pcap response is %d",res);
-			}
-			continue;
-		}
-
-		if(res == -1) {
-			// error returned, sometimes it returs error 
-			if(verbosity > 2) {
-				syslog(LOG_NOTICE, "Error reading packets\n");
-			}
-			continue;
-		} else if(res == -2) {
+		if(res == -2) {
 			//packets are being read from a ``savefile'', and there are no more packets to read from the savefile.
 			if(opt_fork) printf("End of pcap file, exiting\n");
 			break;
-		} else if(res == 0) {
-			//continue on timeout when reading live packets
+		} else if(!pcap_next_ex_packet || res <= 0) {
+			if(!pcap_next_ex_packet) {
+				if(verbosity > 2) {
+					syslog(LOG_NOTICE, "NULL PACKET, pcap response is %d",res);
+				}
+			} else if(res == -1) {
+				// error returned, sometimes it returs error 
+				if(verbosity > 2) {
+					syslog(LOG_NOTICE, "Error reading packets\n");
+				}
+			} else if(res == 0) {
+				//continue on timeout when reading live packets
+			}
 			continue;
 		}
-		
+		 
 		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
 			DESTROY_HP(&header_packet);
 		}
@@ -6860,7 +6916,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		if(sverb.dump_packets_via_wireshark) {
 			extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 			string dissect_rslt;
-			ws_dissect_packet(pcap_next_ex_header, pcap_next_ex_packet, global_pcap_dlink, &dissect_rslt);
+			ws_dissect_packet(pcap_next_ex_header, pcap_next_ex_packet, handle_dlt, &dissect_rslt);
 			if(!dissect_rslt.empty()) {
 				cout << dissect_rslt << endl;
 			}
@@ -6875,7 +6931,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 		
 		++packet_counter;
 		
-		if(!is_read_from_file()) {
+		if(!(process_pcap_type & _pp_read_file) && (process_pcap_type & _pp_process_calls)) {
 			unsigned long timeMS = getTimeMS(HPH(header_packet));
 			if(lastStatTimeMS) {
 				if(timeMS > lastStatTimeMS &&
@@ -6904,13 +6960,29 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,
-				tmp_ppf_param,
-				&ppd, global_pcap_dlink, tmppcap, ifname)) {
+				ppf_params,
+				&ppd, handle_dlt, tmppcap, ifname)) {
 			continue;
 		}
-		if (opt_dedup_input_file) {
+		
+		if(process_pcap_type & _pp_dedup) {
+			destination->dump(HPH(header_packet), HPP(header_packet), handle_dlt);
+			continue;
+		} else if(process_pcap_type & _pp_anonymize_ip) {
+			pcap_pkthdr *header_new = NULL;
+			u_char *packet_new = NULL;
+			extern cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
+			convertIPsInPacket(header_packet, &ppd, &header_new, &packet_new, &opt_anonymize_ip_map);
+			if(header_new && packet_new) {
+				destination->dump(header_new, packet_new, handle_dlt);
+				delete header_new;
+				delete [] packet_new;
+			} else {
+				destination->dump(HPH(header_packet), HPP(header_packet), handle_dlt);
+			}
 			continue;
 		}
+		
 		if(opt_mirrorall || (opt_mirrorip && (sipportmatrix[ppd.header_udp->get_source()] || sipportmatrix[ppd.header_udp->get_dest()]))) {
 			mirrorip->send((char *)ppd.header_ip, (int)(HPH(header_packet)->caplen - ((u_char*)ppd.header_ip - HPP(header_packet))));
 		}
@@ -6926,7 +6998,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			    isSslIpPort(ppd.header_ip->get_daddr(), ppd.header_udp->get_dest()))) {
 				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
 							   NULL, 0, false,
-							   0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
+							   0, handle_dlt, opt_id_sensor, 0, ppd.pid);
 			} else {
 				bool ssl_client_random = false;
 				extern bool ssl_client_random_enable;
@@ -6958,7 +7030,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
 						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
-						NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
+						NULL, 0, handle_dlt, opt_id_sensor, 0, ppd.pid);
 				} else {
 					delete header;
 					delete [] packet;
@@ -6966,14 +7038,16 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index) {
 			}
 		}
 	}
+	
 	if(header_packet) {
 		DESTROY_HP(&header_packet);
 	}
-	if(!is_read_from_file()) {
+	
+	if(!(process_pcap_type & _pp_read_file) && (process_pcap_type & _pp_process_calls)) {
 		manager_parse_command_disable();
 	}
 
-	if(opt_pcapdump || opt_dedup_input_file) {
+	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
 	}
 }

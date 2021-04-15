@@ -635,7 +635,7 @@ public:
 	void setTypeCompress(FileZipHandler::eTypeCompress typeCompress) {
 		_typeCompress = typeCompress;
 	}
-	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt);
+	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt, string *error = NULL);
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, int dlt) {
 		return(this->open(typeSpoolFile, fileName, NULL, dlt));
 	}
@@ -720,6 +720,12 @@ void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_c
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
+void convertIPsInPacket(struct sHeaderPacket *header_packet, struct pcapProcessData *ppd, 
+			pcap_pkthdr **header, u_char **packet,
+			void *net_map);
+bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map);
+bool convertIPs_string(string &src, string *dst, void *_net_map);
+int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_create = false);
 
 class RtpGraphSaver {
 public:

@@ -40,7 +40,17 @@ string get_rtp_threads_cpu_usage(bool callPstat);
 #ifdef HAS_NIDS
 void readdump_libnids(pcap_t *handle);
 #endif
-void readdump_libpcap(pcap_t *handle, u_int16_t handle_index);
+
+enum eProcessPcapType {
+	_pp_read_file = 1,
+	_pp_process_calls = 2,
+	_pp_dedup = 4,
+	_pp_anonymize_ip = 8
+};
+
+bool open_global_pcap_handle(const char *pcap, string *error = NULL);
+bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error = NULL);
+void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type);
 
 unsigned int setCallFlags(unsigned long int flags,
 				 vmIP ip_src, vmIP ip_dst,
