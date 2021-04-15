@@ -144,7 +144,8 @@ void cSslDsslSession::termSession() {
 
 void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
 				  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
-				  struct timeval ts, bool init, class cSslDsslSessions *sessions) {
+				  struct timeval ts, bool init, class cSslDsslSessions *sessions,
+				  bool forceTryIfExistsError) {
 	rslt_decrypt->clear();
 	if(!session) {
 		return;
@@ -152,12 +153,12 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 	NM_PacketDir dir = this->getDirection(saddr, sport, daddr, dport);
 	if(dir != ePacketDirInvalid) {
 		bool reinit = false;
-		if(!init && (process_error || restored)) {
+		if(!init && ((process_error && !forceTryIfExistsError) || restored)) {
 			if(this->isClientHello(data, datalen, dir)) {
 				this->term();
 				this->init();
 				reinit = true;
-			} else if(process_error) {
+			} else if(process_error && !forceTryIfExistsError) {
 				return;
 			}
 		}
@@ -175,6 +176,10 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 			this->decrypted_data = rslt_decrypt;
 			int rc = DSSL_SessionProcessData(session, dir, (u_char*)data, datalen);
 			if(rc == DSSL_RC_OK) {
+				if(process_error && forceTryIfExistsError) {
+					process_error = false;
+					process_error_code = 0;
+				}
 				if(opt_ssl_store_sessions && !opt_nocdr && !init) {
 					this->store_session(sessions, ts);
 				}
@@ -598,7 +603,8 @@ cSslDsslSessions::~cSslDsslSessions() {
 	term();
 }
 
-void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
+void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+				   bool forceTryIfExistsError) {
 	/*
 	if(!(sport == 50404 || dport == 50404)) {
 		return;
@@ -676,7 +682,8 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 	if(session) {
 		session->processData(rslt_decrypt, data, datalen, 
 				     saddr, daddr, sport, dport, 
-				     ts, init_client_hello || init_store_session, this);
+				     ts, init_client_hello || init_store_session, this,
+				     forceTryIfExistsError);
 	}
 	unlock_sessions();
 }
@@ -901,9 +908,11 @@ void ssl_dssl_clean() {
 }
 
 
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+		      bool forceTryIfExistsError) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
-	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
+	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts,
+				     forceTryIfExistsError);
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 

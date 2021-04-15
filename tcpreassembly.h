@@ -431,7 +431,8 @@ public:
 	}
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
-	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
+	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, int unlimitedReassemblyAttempts = -1,
+	       TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       u_int32_t forceFirstSeq = 0, int ignorePsh = -1);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, u_int32_t *seq, bool check = false,
@@ -817,6 +818,9 @@ public:
 	void setEnableValidateDataViaCheckData(bool enableValidateDataViaCheckData = true) {
 		this->enableValidateDataViaCheckData = enableValidateDataViaCheckData;
 	}
+	void setUnlimitedReassemblyAttempts(bool unlimitedReassemblyAttempts = true) {
+		this->unlimitedReassemblyAttempts = unlimitedReassemblyAttempts;
+	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
 		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
 	}
@@ -957,6 +961,7 @@ private:
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
+	bool unlimitedReassemblyAttempts;
 	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;

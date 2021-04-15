@@ -113,7 +113,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
 					} else {
-						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime());
+						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime(),
+								 pass == 1);
 					}
 					if(rslt_decrypt_part.size()) {
 						for(size_t i = 0; i < rslt_decrypt_part.size(); i++) {
@@ -129,7 +130,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				bool ok = false;
 				if(reassemblyLink->existsRemainData(dataItem->getDirection()) &&
 				   !ssl_data_offset &&
-				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
+				   (!checkOkSslHeader(dataItem->getData(), dataItem->getDatalen()) || 
+				    _checkOkSslData(dataItem->getData(), dataItem->getDatalen()))) {
 					// next pass with ignore remainData
 					reassemblyLink->clearRemainData(dataItem->getDirection());
 					if(debugStream) {

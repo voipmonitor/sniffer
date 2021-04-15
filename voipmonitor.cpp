@@ -414,6 +414,7 @@ bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
+bool opt_ssl_unlimited_reassembly_attempts = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
@@ -4313,6 +4314,9 @@ int main_init_read() {
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		tcpReassemblySsl->setIgnorePshInCheckOkData();
 		tcpReassemblySsl->setEnableValidateLastQueueDataViaCheckData();
+		if(opt_ssl_unlimited_reassembly_attempts) {
+			tcpReassemblySsl->setUnlimitedReassemblyAttempts();
+		}
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
@@ -6904,6 +6908,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_bad_finished_digest", &opt_ssl_ignore_error_bad_finished_digest));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_unlimited_reassembly_attempts", &opt_ssl_unlimited_reassembly_attempts));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
@@ -10936,6 +10941,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_error_bad_finished_digest", NULL))) {
 		opt_ssl_ignore_error_bad_finished_digest = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_unlimited_reassembly_attempts", NULL))) {
+		opt_ssl_unlimited_reassembly_attempts = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_destroy_tcp_link_on_rst", NULL))) {
 		opt_ssl_destroy_tcp_link_on_rst = yesno(value);

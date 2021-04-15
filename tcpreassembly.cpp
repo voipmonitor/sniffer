@@ -81,7 +81,8 @@ void TcpReassemblyStream::push(TcpReassemblyStream_packet packet) {
 }
 
 int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, u_int32_t maxNextSeq,
-			    int enableValidateDataViaCheckData, int needValidateDataViaCheckData, TcpReassemblyStream *prevHttpStream, bool enableDebug,
+			    int enableValidateDataViaCheckData, int needValidateDataViaCheckData, int unlimitedReassemblyAttempts,
+			    TcpReassemblyStream *prevHttpStream, bool enableDebug,
 			    u_int32_t forceFirstSeq, int ignorePsh) {
 	if(enableValidateDataViaCheckData == -1) {
 		enableValidateDataViaCheckData = link->reassembly->enableValidateDataViaCheckData || link->reassembly->enableStrictValidateDataViaCheckData;
@@ -89,11 +90,14 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 	if(needValidateDataViaCheckData == -1) {
 		needValidateDataViaCheckData = link->reassembly->needValidateDataViaCheckData;
 	}
+	if(unlimitedReassemblyAttempts == -1) {
+		unlimitedReassemblyAttempts = link->reassembly->unlimitedReassemblyAttempts;
+	}
 	if(ignorePsh == -1) {
 		ignorePsh = link->reassembly->ignorePshInCheckOkData;
 	}
 	if(this->is_ok || 
-	   (link->reassembly->getType() != TcpReassembly::http && counterTryOk > 10)) {
+	   (link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > 10)) {
 		return(1);
 	}
 	++counterTryOk;
@@ -286,12 +290,14 @@ bool TcpReassemblyStream::ok2_ec(u_int32_t nextAck, bool enableDebug) {
  
 	nextStream->_only_check_psh = true;
 	if(!nextStream->ok(true, false, 0,
-			   0, 0, NULL, enableDebug)) {
+			   0, 0, 0,
+			   NULL, enableDebug)) {
 		return(false);
 	}
 	this->_force_wait_for_next_psh = true;
 	if(!this->ok(true, false, this->detect_ok_max_next_seq,
-		     0, 0, NULL, enableDebug)) {
+		     0, 0, 0,
+		     NULL, enableDebug)) {
 		nextStream->is_ok = false;
 		nextStream->clearCompleteData();
 		return(false);
@@ -1318,6 +1324,7 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 						     i == size - 1 && (finOrRst || final == 2), 
 						     i == size - 1 ? 0 : this->queueStreams[i]->max_next_seq,
 						     reassembly->enableValidateLastQueueDataViaCheckData && i == size - 1 ? 1 : -1, 
+						     -1, 
 						     -1,
 						     NULL,
 						     enableDebug,
@@ -1349,8 +1356,9 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 				//  - 1 - check ack stream; if !checkOkData, then use prev streams
 				//  - 2 - suppress use prev streams and end loop
 				if(!stream->ok(false, true, stream->max_next_seq,
-					      0, 0, NULL, enableDebug,
-					      stream->min_seq)) {
+					       0, 0, 0,
+					       NULL, enableDebug,
+					       stream->min_seq)) {
 					break;
 				}
 				vector<TcpReassemblyStream*> streams;
@@ -1361,7 +1369,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 						if((reassembly->enableSmartCompleteData &&
 						    prevStream->isSetCompleteData() && prevStream->is_ok) ||
 						   prevStream->ok(false, true, prevStream->max_next_seq,
-								  0, 0, NULL, enableDebug,
+								  0, 0, 0,
+								  NULL, enableDebug,
 								  prevStream->min_seq)) {
 							streams.push_back(prevStream);
 						} else {
@@ -1400,7 +1409,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 							if((reassembly->enableSmartCompleteData &&
 							    prevStream->isSetCompleteData() && prevStream->is_ok) ||
 							   prevStream->ok(false, true, prevStream->max_next_seq,
-									  0, 0, NULL, enableDebug,
+									  0, 0, 0,
+									  NULL, enableDebug,
 									  prevStream->min_seq)) {
 								streams.push_back(prevStream);
 							} else {
@@ -1476,7 +1486,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 						(*_debug_stream) << "|";
 					}
 					if(iter.stream->ok(true, maxNextSeq == 0, maxNextSeq,
-							   -1, -1, lastHttpStream, enableDebug)) {
+							   -1, -1, -1,
+							   lastHttpStream, enableDebug)) {
 						bool existsAckInStream = false;
 						for(size_t i  = 0; i < this->ok_streams.size(); i++) {
 							if(this->ok_streams[i]->ack == iter.stream->ack) {
@@ -1524,7 +1535,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 					this->ok_streams[this->ok_streams.size() - 2]->is_ok = false;
 					this->ok_streams[this->ok_streams.size() - 2]->_ignore_expect_continue = true;
 					if(this->ok_streams[this->ok_streams.size() - 2]->ok(true, false, 0,
-											     -1, -1, NULL, false)) {
+											     -1, -1, -1,
+											     NULL, false)) {
 						completeExpectContinue = true;
 						iter.stream = this->ok_streams[this->ok_streams.size() - 2];
 						if(!iter.nextAckInDirection()) {
@@ -1554,7 +1566,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 					this->ok_streams[this->ok_streams.size() - 1]->is_ok = false;
 					this->ok_streams[this->ok_streams.size() - 1]->_ignore_expect_continue = true;
 					if(!this->ok_streams[this->ok_streams.size() - 1]->ok(true, false, 0,
-											      -1, -1, NULL, false)) {
+											      -1, -1, -1,
+											      NULL, false)) {
 						this->ok_streams[this->ok_streams.size() - 1]->is_ok = true;
 						this->ok_streams[this->ok_streams.size() - 1]->_ignore_expect_continue = false;
 						this->ok_streams[this->ok_streams.size() - 1]->complete_data = dataItem;
@@ -1577,7 +1590,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 								this->ok_streams[this->ok_streams.size() - 1]->complete_data.clearData();
 								this->ok_streams[this->ok_streams.size() - 1]->is_ok = false;
 								if(!iter.stream->ok(true, false, 0,
-										    -1, -1, NULL, false,
+										    -1, -1, -1,
+										    NULL, false,
 										    iter.stream->ok_packets[0][1]) ||
 								   (iter.stream->complete_data.getData() &&
 								    memcmp(iter.stream->complete_data.getData(), "HTTP/1.1 200 OK", 15))) {
@@ -1617,7 +1631,8 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 					this->ok_streams[this->ok_streams.size() - 1]->is_ok = false;
 					this->ok_streams[this->ok_streams.size() - 1]->_ignore_expect_continue = true;
 					if(!this->ok_streams[this->ok_streams.size() - 1]->ok(true, false, 0,
-											      -1, -1, NULL, false)) {
+											      -1, -1, -1, 
+											      NULL, false)) {
 						this->ok_streams[this->ok_streams.size() - 1]->is_ok = true;
 						this->ok_streams[this->ok_streams.size() - 1]->_ignore_expect_continue = false;
 						this->ok_streams[this->ok_streams.size() - 1]->complete_data = dataItem;
@@ -2276,6 +2291,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableDestroyStreamsInComplete = false;
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableValidateDataViaCheckData = false;
+	this->unlimitedReassemblyAttempts = false;
 	this->enableValidateLastQueueDataViaCheckData = false;
 	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
