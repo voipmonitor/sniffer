@@ -164,12 +164,13 @@ enum {
 	JB_IMPL_OK,
 	JB_IMPL_DROP,
 	JB_IMPL_INTERP,
-	JB_IMPL_NOFRAME
+	JB_IMPL_NOFRAME,
+	JB_IMPL_ERROR
 };
 
 /* Translations between impl and abstract return codes */
 static int fixed_to_abstract_code[] =
-	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME};
+	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME, JB_IMPL_ERROR};
 static int adaptive_to_abstract_code[] =
 	{JB_IMPL_OK, JB_IMPL_NOFRAME, JB_IMPL_NOFRAME, JB_IMPL_INTERP, JB_IMPL_DROP, JB_IMPL_OK};
 
@@ -617,6 +618,8 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if(sverb.jitter) fprintf(stdout, "JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n", jbimpl->name, now, jb->next, jbimpl->next(jbobj));
 			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: No frame for now!?\n", jb, now);
 			chan->last_loss_burst++;
+			return;
+		case JB_IMPL_ERROR:
 			return;
 		default:
 			if(sverb.jitter) fprintf(stdout, "This should never happen!\n");

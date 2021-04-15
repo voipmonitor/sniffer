@@ -644,12 +644,12 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 	}
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
-	if(packetization <= 0) {
+	if(packetization <= 1) {
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
+			syslog(LOG_ERR, "call-id[%s]: packetization is %i in jitterbuffer function.", owner->get_fbasename_safe(), packetization);
 		} else {
-			syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
+			syslog(LOG_ERR, "call-id[N/A]: packetization is %i in jitterbuffer function.", packetization);
 		}
 		return;
 	}
@@ -737,13 +737,13 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	memcpy(&frame->delivery, &header_ts, sizeof(struct timeval));
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
-	if(packetization <= 0) {
+	if(packetization <= 1) {
 		if(pinformed == 0) {
 			if(owner) {
-				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC());
+				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is %i in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC(), packetization);
 				
 			} else {
-				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is 0 in jitterbuffer function.", getSSRC());
+				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is %i in jitterbuffer function.", getSSRC(), packetization);
 			}
 		}
 		pinformed = 1;
