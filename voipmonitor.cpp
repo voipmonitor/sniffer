@@ -10907,7 +10907,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ss7_timeout", NULL))) {
 		opt_ss7timeout = atoi(value);
 	}
-	if((value = ini.GetValue("general", "ws_param", NULL))) {
+	if(GetAllValues("general", "ws_param", &values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
 			opt_ws_params.push_back(i->pItem);
