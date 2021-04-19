@@ -20,7 +20,7 @@ public:
 		err_unsupported_suite,
 		err_bad_sdes_length,
 		err_bad_sdes_content,
-		err_bad_tag_len,
+		err_bad_tag_size,
 		err_gcrypt_init,
 		err_cipher_open,
 		err_md_open,
@@ -46,15 +46,24 @@ public:
 		}
 		bool init();
 		bool keyDecode();
+		inline unsigned sdes_ok_length() {
+			return(key_size == 128 ? 40 : 64);
+		}
+		inline unsigned key_len() {
+			return(key_size == 128 ? 16 : 32);
+		}
+		inline unsigned salt_len() {
+			return(14);
+		}
 		unsigned tag;
 		std::string suite;
 		std::string sdes;
 		u_int64_t from_time_us;
-		u_char key_salt[30];
-		u_char key[16]; 
+		u_char key_salt[46];
+		u_char key[32];
 		u_char salt[14];
-		unsigned tag_len;
-		unsigned key_len;
+		unsigned tag_size;
+		unsigned key_size;
 		int cipher;
 		int md;
 		eError error;
@@ -88,7 +97,7 @@ public:
 			#endif
 			#if HAVE_LIBSRTP
 			if(srtp_ctx) {
-				free(srtp_ctx);
+				srtp_dealloc(srtp_ctx);
 			}
 			#endif
 		}
@@ -146,11 +155,11 @@ private:
 	uint32_t get_ssrc_rtcp(u_char *data) {
 		return(htonl(*(uint32_t*)(data + 4)));
 	}
-	unsigned tag_len() {
-	       return(cryptoConfigVector[cryptoConfigActiveIndex].tag_len);
+	unsigned tag_size() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].tag_size);
 	}
-	unsigned key_len() {
-	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_len);
+	unsigned key_size() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_size);
 	}
 	int cipher() {
 	       return(cryptoConfigVector[cryptoConfigActiveIndex].cipher);
@@ -167,11 +176,11 @@ private:
 	u_char *salt() {
 	       return(cryptoConfigVector[cryptoConfigActiveIndex].salt);
 	}
-	unsigned sizeof_key() {
-	       return(sizeof(cryptoConfigVector[cryptoConfigActiveIndex].key));
+	unsigned key_len() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_len());
 	}
-	unsigned sizeof_salt() {
-	       return(sizeof(cryptoConfigVector[cryptoConfigActiveIndex].salt));
+	unsigned salt_len() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].salt_len());
 	}
 private:
 	eMode mode;

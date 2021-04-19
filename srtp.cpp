@@ -12,19 +12,25 @@ bool RTPsecure::sCryptoConfig::init() {
 	#if HAVE_LIBGNUTLS
 	static struct {
 		string crypro_suite;
-		int key_len;
-		int tag_len;
+		int key_size;
+		int tag_size;
 		int cipher;
 		int md;
 	} srtp_crypto_suites[]= {
 		{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-		{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 }
+		{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+		{ "AES_128_CM_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+		{ "AES_128_CM_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+		{ "AES_CM_256_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+		{ "AES_CM_256_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+		{ "AES_256_CM_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+		{ "AES_256_CM_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 }
 	};
 	if(suite.length()) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
 			if(suite == srtp_crypto_suites[i].crypro_suite) {
-				tag_len = srtp_crypto_suites[i].tag_len;
-				key_len = srtp_crypto_suites[i].key_len;
+				tag_size = srtp_crypto_suites[i].tag_size;
+				key_size = srtp_crypto_suites[i].key_size;
 				cipher = srtp_crypto_suites[i].cipher;
 				md = srtp_crypto_suites[i].md;
 				return(true);
@@ -37,22 +43,22 @@ bool RTPsecure::sCryptoConfig::init() {
 }
 
 bool RTPsecure::sCryptoConfig::keyDecode() {
-	if(sdes.length() != 40) {
+	if(sdes.length() != sdes_ok_length()) {
 		error = err_bad_sdes_length;
 		return(false);
 	}
-	u_char sdes_raw[30];
-	if(base64decode(sdes_raw, sdes.c_str(), sizeof(sdes_raw)) != 30) {
+	u_char sdes_raw[100];
+	if(base64decode(sdes_raw, sdes.c_str(), key_len() + salt_len()) != (int)(key_len() + salt_len())) {
 		error = err_bad_sdes_content;
 		return(false);
 	}
-	memcpy(key_salt, sdes_raw, 30);
-	memcpy(key, sdes_raw, 16);
-	memcpy(salt, sdes_raw + 16, 14);
+	memcpy(key_salt, sdes_raw, key_len() + salt_len());
+	memcpy(key, sdes_raw, key_len());
+	memcpy(salt, sdes_raw + key_len(), salt_len());
 	/*
 	cout << "key / salt" << endl;
-	hexdump(key, 16);
-	hexdump(salt, 14);
+	hexdump(key, key_len());
+	hexdump(salt, salt_len());
 	*/
 	return(true);
 }
@@ -137,7 +143,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 		return(false);
 	}
 	if(rtp) {
-		if(*payload_len > tag_len()) {
+		if(*payload_len > tag_size()) {
 			++rtp->counter_packets;
 			if(mode == mode_native ?
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
@@ -155,7 +161,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				continue;
 			}
 			++cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtp;
-			if(*payload_len > tag_len()) {
+			if(*payload_len > tag_size()) {
 				if(!init()) {
 					term();
 					continue;
@@ -186,21 +192,22 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 		rtp_seq_init = true;
 	}
 	uint32_t roc = compute_rtp_roc(seq);
-	u_char *tag = rtp_digest(data, *data_len - tag_len(), roc);
-        if(memcmp(data + *data_len - tag_len(), tag, tag_len())) {
+	u_char *tag = rtp_digest(data, *data_len - tag_size(), roc);
+	if(memcmp(data + *data_len - tag_size(), tag, tag_size())) {
 		//cout << rtp->counter_packets << " err (tag)" << endl;
-		//hexdump(data + *data_len - tag_len(), tag_len());
-		//hexdump(tag, tag_len());
+		//hexdump(data + *data_len - tag_size(), tag_size());
+		//hexdump(tag, tag_size());
 		return(false);
 	}
-	if(!rtpDecrypt(payload, *payload_len - tag_len(), seq, ssrc)) {
+	//hexdump(data, *data_len - tag_size());
+	if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
 		//cout << rtp->counter_packets << " err (decrypt)" << endl;
 		return(false);
 	}
-	*data_len -= tag_len();
-	*payload_len -= tag_len();
+	*data_len -= tag_size();
+	*payload_len -= tag_size();
 	//cout << rtp->counter_packets << " ok" << endl;
-	//hexdump(data, *data_len - tag_len());
+	//hexdump(data, *data_len - tag_size());
 	return(true);
 	#else
 	return(false);
@@ -215,7 +222,7 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*
 	for(unsigned pass = 0; pass < 2 && !rslt && !init_ctx; pass ++) {
 		if(!rtp->srtp_ctx || pass == 1) {
 			if(rtp->srtp_ctx) {
-				free(rtp->srtp_ctx);
+				srtp_dealloc(rtp->srtp_ctx);
 				rtp->srtp_ctx = NULL;
 			}
 			rtp->policy.ssrc.value = get_ssrc_rtp(data);
@@ -247,7 +254,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 		return(false);
 	}
 	if(rtcp) {
-		if(*data_len > (tag_len() + rtcp_unencrypt_header_len + rtcp_unencrypt_footer_len)) {
+		if(*data_len > (tag_size() + rtcp_unencrypt_header_len + rtcp_unencrypt_footer_len)) {
 			++rtcp->counter_packets;
 			if(mode == mode_native ?
 			    decrypt_rtcp_native(data, data_len) :
@@ -265,7 +272,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 				continue;
 			}
 			++cryptoConfigVector[cryptoConfigActiveIndex].attempts_rtcp;
-			if(*data_len > (tag_len() + rtcp_unencrypt_header_len + rtcp_unencrypt_footer_len)) {
+			if(*data_len > (tag_size() + rtcp_unencrypt_header_len + rtcp_unencrypt_footer_len)) {
 				if(!init()) {
 					term();
 					continue;
@@ -289,14 +296,14 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 
 bool RTPsecure::decrypt_rtcp_native(u_char *data, unsigned *data_len) {
 	#if HAVE_LIBGNUTLS
-	u_char *tag = rtcp_digest(data, *data_len - tag_len());
-	if(memcmp(data + *data_len - tag_len(), tag, tag_len())) {
+	u_char *tag = rtcp_digest(data, *data_len - tag_size());
+	if(memcmp(data + *data_len - tag_size(), tag, tag_size())) {
 		return(false);
 	}
-	if(!rtcpDecrypt(data, *data_len - tag_len())) {
+	if(!rtcpDecrypt(data, *data_len - tag_size())) {
 		return(false);
 	}
-	*data_len -= tag_len();
+	*data_len -= tag_size();
 	return(true);
 	#else
 	return(false);
@@ -311,7 +318,7 @@ bool RTPsecure::decrypt_rtcp_libsrtp(u_char *data, unsigned *data_len) {
 	for(unsigned pass = 0; pass < 2 && !rslt && !init_ctx; pass ++) {
 		if(!rtcp->srtp_ctx || pass == 1) {
 			if(rtcp->srtp_ctx) {
-				free(rtcp->srtp_ctx);
+				srtp_dealloc(rtcp->srtp_ctx);
 				rtcp->srtp_ctx = NULL;
 			}
 			rtcp->policy.ssrc.value = get_ssrc_rtcp(data);
@@ -374,15 +381,15 @@ bool RTPsecure::init_native() {
 		return(false);
 	}
 	if(cryptoConfigVector.size() && cryptoConfigActiveIndex < cryptoConfigVector.size() &&
-	   cryptoConfigVector[cryptoConfigActiveIndex].tag_len > gcry_md_get_algo_dlen(cryptoConfigVector[cryptoConfigActiveIndex].md)) {
-		setError(err_bad_tag_len);
+	   cryptoConfigVector[cryptoConfigActiveIndex].tag_size > gcry_md_get_algo_dlen(cryptoConfigVector[cryptoConfigActiveIndex].md)) {
+		setError(err_bad_tag_size);
 		return(false);
 	}
 	if(gcry_cipher_open(&rtp->cipher, cipher(), GCRY_CIPHER_MODE_CTR, 0)) {
 		setError(err_cipher_open);
 		return(false);
 	}
-	if(gcry_md_open (&rtp->md, md(), GCRY_MD_FLAG_HMAC)) {
+	if(gcry_md_open(&rtp->md, md(), GCRY_MD_FLAG_HMAC)) {
 		setError(err_md_open);
 		return(false);
 	}
@@ -390,38 +397,37 @@ bool RTPsecure::init_native() {
 		setError(err_cipher_open);
 		return(false);
 	}
-	if(gcry_md_open (&rtcp->md, md(), GCRY_MD_FLAG_HMAC)) {
+	if(gcry_md_open(&rtcp->md, md(), GCRY_MD_FLAG_HMAC)) {
 		setError(err_md_open);
 		return(false);
 	}
 	gcry_cipher_hd_t _cipher;
-	if(gcry_cipher_open(&_cipher, GCRY_CIPHER_AES, GCRY_CIPHER_MODE_CTR, 0) ||
-	   gcry_cipher_setkey(_cipher, key(), sizeof_key())) {
+	if(gcry_cipher_open(&_cipher, key_size() == 256 ? GCRY_CIPHER_AES256 : GCRY_CIPHER_AES, GCRY_CIPHER_MODE_CTR, 0) ||
+	   gcry_cipher_setkey(_cipher, key(), key_len())) {
 		setError(err_set_key);
 		return(false);
 	}
 	// SRTP key derivation
 	u_char r[6];
-	u_char keybuf[20];
-        memset(r, 0, sizeof(r));
+	u_char keybuf[100];
+	memset(r, 0, sizeof(r));
 	memset(keybuf, 0, sizeof (keybuf));
-	if(do_derive(_cipher, r, 6, SRTP_CRYPT, keybuf, 16) ||
-	   gcry_cipher_setkey(rtp->cipher, keybuf, 16) ||
+	if(do_derive(_cipher, r, 6, SRTP_CRYPT, keybuf, key_len()) ||
+	   gcry_cipher_setkey(rtp->cipher, keybuf, key_len()) ||
 	   do_derive(_cipher, r, 6, SRTP_AUTH, keybuf, 20) ||
 	   gcry_md_setkey(rtp->md, keybuf, 20) ||
-	   do_derive (_cipher, r, 6, SRTP_SALT, (u_char*)rtp->salt, 14)) {
+	   do_derive (_cipher, r, 6, SRTP_SALT, (u_char*)rtp->salt, salt_len())) {
 		setError(err_set_key);
 		return(false);
 	}
-	
-	// SRTP key derivation
+	// SRTCP key derivation
 	uint32_t _rtcp_index = htonl(this->rtcp_index);
 	memcpy(r, &_rtcp_index, 4);
-	if(do_derive(_cipher, r, 6, SRTCP_CRYPT, keybuf, 16) ||
-	   gcry_cipher_setkey(rtcp->cipher, keybuf, 16) ||
+	if(do_derive(_cipher, r, 6, SRTCP_CRYPT, keybuf, key_len()) ||
+	   gcry_cipher_setkey(rtcp->cipher, keybuf, key_len()) ||
 	   do_derive(_cipher, r, 6, SRTCP_AUTH, keybuf, 20) ||
 	   gcry_md_setkey (rtcp->md, keybuf, 20) ||
-	   do_derive (_cipher, r, 6, SRTCP_SALT, (u_char*)rtcp->salt, 14)) {
+	   do_derive (_cipher, r, 6, SRTCP_SALT, (u_char*)rtcp->salt, salt_len())) {
 		setError(err_set_key);
 		return(false);
 	}
@@ -438,23 +444,37 @@ bool RTPsecure::init_libsrtp() {
 	init_lib_srtp();
 	for(int i = 0; i < 2; i++) {
 		srtp_policy_t *policy = i == 0 ? &rtp->policy : &rtcp->policy;
-		switch(key_len()) {
+		switch(key_size()) {
 		case 128:
-			crypto_policy_set_rtp_default(&policy->rtp);
-			crypto_policy_set_rtcp_default(&policy->rtcp);
-			break;
+			switch(tag_size()) {
+			case 10:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtp);
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy->rtcp);
+				break;
+			case 4:
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtp);
+				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtcp);
+				break;
+			}
 		case 256:
-			crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtp);
-			crypto_policy_set_rtcp_default(&policy->rtcp);
-			break;
+			switch(tag_size()) {
+			case 10:
+				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtp);
+				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_80(&policy->rtcp);
+				break;
+			case 4:
+				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtp);
+				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtcp);
+				break;
+			}
 		}
 		policy->key = key_salt();
 		policy->ssrc.type = ssrc_specific;
 		policy->window_size = 128;
 		policy->rtp.sec_serv = sec_serv_conf_and_auth;
-		policy->rtp.auth_tag_len = tag_len();
+		policy->rtp.auth_tag_len = tag_size();
 		policy->rtcp.sec_serv = sec_serv_conf_and_auth;
-		policy->rtcp.auth_tag_len = tag_len();
+		policy->rtcp.auth_tag_len = tag_size();
 	}
 	#endif
 	return(true);
@@ -576,8 +596,8 @@ int RTPsecure::rtcp_decrypt(u_char *data, unsigned data_len, uint32_t ssrc, uint
 int RTPsecure::do_derive(gcry_cipher_hd_t cipher, u_char *r, unsigned rlen, uint8_t label, u_char *out, unsigned outlen) {
 	u_char iv[16];
 	memset(iv, 0, sizeof(iv));
-	memcpy(iv, salt(), sizeof_salt());
-	iv[sizeof_salt() - 1 - rlen] ^= label;
+	memcpy(iv, salt(), salt_len());
+	iv[salt_len() - 1 - rlen] ^= label;
 	for(unsigned i = 0; i < rlen; i++) {
 		iv[sizeof(iv) - rlen + i] ^= r[i];
 	}
