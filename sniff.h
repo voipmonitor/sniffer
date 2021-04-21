@@ -114,8 +114,8 @@ struct packet_s {
 	u_int16_t _dataoffset;
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
-	sPacketInfoData pid;
 	unsigned int istcp : 2;
+	sPacketInfoData pid;
 	bool isother: 1;
 	bool is_ssl : 1;
 	bool is_skinny : 1;

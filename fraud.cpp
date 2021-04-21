@@ -2945,10 +2945,6 @@ void initFraud(SqlDb *sqlDb) {
 	if(!opt_enable_fraud) {
 		return;
 	}
-	if(is_read_from_file_simple()) {
-		opt_enable_fraud = false;
-		return;
-	}
 	if(opt_nocdr) {
 		opt_enable_fraud = false;
 		return;
