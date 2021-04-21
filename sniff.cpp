@@ -7776,20 +7776,10 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 			      opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
-	if(typePreProcessThread == ppt_detach) {
-		this->qring_detach = new FILE_LINE(26022) batch_packet_s*[this->qring_length];
-		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring_detach[i] = new FILE_LINE(26023) batch_packet_s(this->qring_batch_item_length);
-			this->qring_detach[i]->used = 0;
-		}
-		this->qring = NULL;
-	} else {
-		this->qring = new FILE_LINE(26024) batch_packet_s_process*[this->qring_length];
-		for(unsigned int i = 0; i < this->qring_length; i++) {
-			this->qring[i] = new FILE_LINE(26025) batch_packet_s_process(this->qring_batch_item_length);
-			this->qring[i]->used = 0;
-		}
-		this->qring_detach = NULL;
+	this->qring = new FILE_LINE(26024) batch_packet_s_process*[this->qring_length];
+	for(unsigned int i = 0; i < this->qring_length; i++) {
+		this->qring[i] = new FILE_LINE(26025) batch_packet_s_process(this->qring_batch_item_length);
+		this->qring[i]->used = 0;
 	}
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
@@ -7827,12 +7817,6 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 
 PreProcessPacket::~PreProcessPacket() {
 	terminate();
-	if(this->qring_detach) {
-		for(unsigned int i = 0; i < this->qring_length; i++) {
-			delete this->qring_detach[i];
-		}
-		delete [] this->qring_detach;
-	}
 	if(this->qring) {
 		for(unsigned int i = 0; i < this->qring_length; i++) {
 			delete this->qring[i];
@@ -7886,109 +7870,84 @@ void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	packet_s_process *packetS;
-	batch_packet_s *batch_detach;
 	batch_packet_s_process *batch;
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
-		if(this->typePreProcessThread == ppt_detach ?
-		    (this->qring_detach[this->readit]->used == 1) :
-		    (this->qring[this->readit]->used == 1)) {
-			if(this->typePreProcessThread == ppt_detach) {
-				batch_detach = this->qring_detach[this->readit];
-				for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
-					this->process_DETACH_plus(batch_detach->batch[batch_index]);
-					batch_detach->batch[batch_index]->_packet_alloc = false;
-				}
-				#if RQUEUE_SAFE
-					__SYNC_NULL(batch_detach->count);
-					__SYNC_NULL(batch_detach->used);
-				#else
-					batch_detach->count = 0;
-					batch_detach->used = 0;
-				#endif
-			} else {
-				batch = this->qring[this->readit];
-				__SYNC_LOCK(this->_sync_count);
-				unsigned count = batch->count;
-				__SYNC_UNLOCK(this->_sync_count);
-				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-					packetS = batch->batch[batch_index];
-					batch->batch[batch_index] = NULL;
-					if(is_terminating()) {
-						PACKET_S_PROCESS_DESTROY(&packetS);
-					} else {
-						switch(this->typePreProcessThread) {
-						case ppt_detach:
-							break;
-						#ifdef PREPROCESS_DETACH2
-						case ppt_detach2:
-							preProcessPacket[ppt_sip]->push_packet(packetS);
-							if(opt_preprocess_packets_qring_force_push &&
-							   batch_index == count - 1) {
-								preProcessPacket[ppt_sip]->push_batch();
-							}
-							break;
-						#endif
-						case ppt_sip:
-							this->process_SIP(packetS);
-							if(opt_preprocess_packets_qring_force_push &&
-							   batch_index == count - 1) {
-								preProcessPacket[ppt_extend]->push_batch();
-								if(opt_t2_boost) {
-									preProcessPacket[ppt_pp_rtp]->push_batch();
-								}
-							}
-							break;
-						case ppt_extend:
-							this->process_SIP_EXTEND(packetS);
-							if(opt_preprocess_packets_qring_force_push &&
-							   batch_index == count - 1) {
-								preProcessPacket[ppt_pp_call]->push_batch();
-								preProcessPacket[ppt_pp_register]->push_batch();
-								preProcessPacket[ppt_pp_sip_other]->push_batch();
-								if(!opt_t2_boost) {
-									preProcessPacket[ppt_pp_rtp]->push_batch();
-								}
-							}
-							break;
-						case ppt_pp_call:
-							this->process_CALL(packetS);
-							break;
-						case ppt_pp_callx:
-							this->process_CALLX(packetS);
-							break;
-						case ppt_pp_callfindx:
-							this->process_CallFindX(packetS);
-							break;
-						case ppt_pp_register:
-							this->process_REGISTER(packetS);
-							break;
-						case ppt_pp_sip_other:
-							this->process_SIP_OTHER(packetS);
-							break;
-						case ppt_pp_rtp:
-							this->process_RTP(packetS);
-							break;
-						case ppt_pp_other:
-							this->process_OTHER(packetS);
-							break;
-						case ppt_end_base:
-							break;
+		if(this->qring[this->readit]->used == 1) {
+			batch = this->qring[this->readit];
+			__SYNC_LOCK(this->_sync_count);
+			unsigned count = batch->count;
+			__SYNC_UNLOCK(this->_sync_count);
+			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+				packetS = batch->batch[batch_index];
+				batch->batch[batch_index] = NULL;
+				if(is_terminating()) {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				} else {
+					switch(this->typePreProcessThread) {
+					case ppt_detach:
+						this->process_DETACH(packetS);
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == count - 1) {
+							preProcessPacket[ppt_sip]->push_batch();
 						}
+						break;
+					case ppt_sip:
+						this->process_SIP(packetS);
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == count - 1) {
+							preProcessPacket[ppt_extend]->push_batch();
+							if(opt_t2_boost) {
+								preProcessPacket[ppt_pp_rtp]->push_batch();
+							}
+						}
+						break;
+					case ppt_extend:
+						this->process_SIP_EXTEND(packetS);
+						if(opt_preprocess_packets_qring_force_push &&
+						   batch_index == count - 1) {
+							preProcessPacket[ppt_pp_call]->push_batch();
+							preProcessPacket[ppt_pp_register]->push_batch();
+							preProcessPacket[ppt_pp_sip_other]->push_batch();
+							if(!opt_t2_boost) {
+								preProcessPacket[ppt_pp_rtp]->push_batch();
+							}
+						}
+						break;
+					case ppt_pp_call:
+						this->process_CALL(packetS);
+						break;
+					case ppt_pp_callx:
+						this->process_CALLX(packetS);
+						break;
+					case ppt_pp_callfindx:
+						this->process_CallFindX(packetS);
+						break;
+					case ppt_pp_register:
+						this->process_REGISTER(packetS);
+						break;
+					case ppt_pp_sip_other:
+						this->process_SIP_OTHER(packetS);
+						break;
+					case ppt_pp_rtp:
+						this->process_RTP(packetS);
+						break;
+					case ppt_pp_other:
+						this->process_OTHER(packetS);
+						break;
+					case ppt_end_base:
+						break;
 					}
 				}
-				#if RQUEUE_SAFE
-					__SYNC_NULL(batch->count);
-					__SYNC_NULL(batch->used);
-				#else
-					batch->count = 0;
-					batch->used = 0;
-				#endif
 			}
 			#if RQUEUE_SAFE
+				__SYNC_NULL(batch->count);
+				__SYNC_NULL(batch->used);
 				__SYNC_INCR(this->readit, this->qring_length);
 			#else
+				batch->count = 0;
+				batch->used = 0;
 				if((this->readit + 1) == this->qring_length) {
 					this->readit = 0;
 				} else {
@@ -8003,18 +7962,9 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
-				#ifdef PREPROCESS_DETACH2
-				case ppt_detach:
-					preProcessPacket[ppt_detach2]->push_batch();
-					break;
-				case ppt_detach2:
-					preProcessPacket[ppt_sip]->push_batch();
-					break;
-				#else
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
 					break;
-				#endif
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
 					if(opt_t2_boost) {
@@ -8094,24 +8044,11 @@ void *PreProcessPacket::outThreadFunction() {
 
 void PreProcessPacket::push_batch_nothread() {
 	switch(this->typePreProcessThread) {
-	#ifdef PREPROCESS_DETACH2
-	case ppt_detach:
-		if(!preProcessPacket[ppt_detach2]->outThreadState) {
-			preProcessPacket[ppt_detach2]->push_batch();
-		}
-		break;
-	case ppt_detach2:
-		if(!preProcessPacket[ppt_sip]->outThreadState) {
-			preProcessPacket[ppt_sip]->push_batch();
-		}
-		break;
-	#else
 	case ppt_detach:
 		if(!preProcessPacket[ppt_sip]->outThreadState) {
 			preProcessPacket[ppt_sip]->push_batch();
 		}
 		break;
-	#endif
 	case ppt_sip:
 		if(!preProcessPacket[ppt_extend]->outThreadState) {
 			preProcessPacket[ppt_extend]->push_batch();
@@ -8243,37 +8180,9 @@ void PreProcessPacket::terminate() {
 	}
 }
 
-void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
-	packet_s_process *packetS = packetS_detach->is_need_sip_process ?
-				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
-				    !packetS_detach->isother ?
-				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK() :
-				     (packet_s_process*)PACKET_S_PROCESS_OTHER_POP_FROM_STACK();
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
+void PreProcessPacket::process_DETACH(packet_s_process *packetS) {
 	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
 }
-
-void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach) {
-	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
-	//packetS->init();
-	*(u_int8_t*)(&packetS->header_ip_offset + 1) = 0;
-	packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
-	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
-}
-
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	++counter_all_packets;
 	bool isSip = false;
