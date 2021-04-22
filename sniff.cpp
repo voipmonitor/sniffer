@@ -173,6 +173,7 @@ extern nat_aliases_t nat_aliases;
 extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
 extern int process_rtp_packets_distribute_threads_use;
+extern int opt_pre_process_packets_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
@@ -7765,6 +7766,13 @@ inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
 
+inline void *_PreProcessPacket_nextThreadFunction(void *arg) {
+	PreProcessPacket::arg_next_thread *_arg = (PreProcessPacket::arg_next_thread*)arg;
+	void *rsltThread = _arg->preProcessPacket->nextThreadFunction(_arg->next_thread_id);
+	delete _arg;
+	return(rsltThread);
+}
+
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread) {
 	this->typePreProcessThread = typePreProcessThread;
 	this->idPreProcessThread = idPreProcessThread;
@@ -7800,6 +7808,11 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->_sync_push = 0;
 	this->_sync_count = 0;
 	this->term_preProcess = false;
+	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+		this->nextThreadId[i] = 0;
+		this->next_thread_handle[i] = 0;
+		this->next_thread_data[i].null();
+	}
 	if(typePreProcessThread == ppt_detach) {
 		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
@@ -7823,6 +7836,18 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	getCpuUsagePerc_counter = 0;
 	getCpuUsagePerc_counter_at_start_out_thread = 0;
+	int next_threads = typePreProcessThread == ppt_detach ? opt_pre_process_packets_next_thread : 0;
+	this->next_threads = next_threads;
+	for(int i = 0; i < this->next_threads; i++) {
+		for(int j = 0; j < 2; j++) {
+			sem_init(&sem_sync_next_thread[i][j], 0, 0);
+		}
+		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+		arg->preProcessPacket = this;
+		arg->next_thread_id = i + 1;
+		vm_pthread_create("pre process next",
+				  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+	}
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -7866,6 +7891,37 @@ void PreProcessPacket::endOutThread(bool force) {
 	}
 }
 
+void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
+	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
+	syslog(LOG_NOTICE, "start PreProcessPacket %s next thread %i", this->getNameTypeThread().c_str(), this->nextThreadId[next_thread_index_plus - 1]);
+	int usleepUseconds = 20;
+	unsigned int usleepCounter = 0;
+	while(!this->term_preProcess) {
+		sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
+		if(this->term_preProcess) {
+			break;
+		}
+		s_next_thread_data *next_thread_data = &this->next_thread_data[next_thread_index_plus - 1];
+		if(next_thread_data->batch) {
+			unsigned batch_index_start = next_thread_data->start;
+			unsigned batch_index_end = next_thread_data->end;
+			unsigned batch_index_skip = next_thread_data->skip;
+			packet_s_plus_pointer **batch = (packet_s_plus_pointer**)next_thread_data->batch;
+			for(unsigned batch_index = batch_index_start; 
+			    batch_index < batch_index_end; 
+			    batch_index += batch_index_skip) {
+				this->process_DETACH_plus(batch[batch_index], false);
+			}
+			next_thread_data->processing = 0;
+			usleepCounter = 0;
+			sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
+		} else {
+			USLEEP_C(usleepUseconds, usleepCounter++);
+		}
+	}
+	return(NULL);
+}
+
 void *PreProcessPacket::outThreadFunction() {
 	if(this->typePreProcessThread == ppt_detach ||
 	   this->typePreProcessThread == ppt_extend) {
@@ -7896,9 +7952,32 @@ void *PreProcessPacket::outThreadFunction() {
 		    (this->qring[this->readit]->used == 1)) {
 			if(this->typePreProcessThread == ppt_detach) {
 				batch_detach = this->qring_detach[this->readit];
-				for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
-					this->process_DETACH_plus(batch_detach->batch[batch_index]);
-					batch_detach->batch[batch_index]->_packet_alloc = false;
+				if(this->next_thread_handle[0]) {
+					int _next_threads = this->next_threads;
+					for(int i = 0; i < _next_threads; i++) {
+						this->next_thread_data[i].start = batch_detach->count / (_next_threads + 1) * (i + 1);
+						this->next_thread_data[i].end = i == (_next_threads - 1) ? batch_detach->count : batch_detach->count / (_next_threads + 1) * (i + 2);
+						this->next_thread_data[i].skip = 1;
+						this->next_thread_data[i].batch = batch_detach->batch;
+						this->next_thread_data[i].processing = 1;
+						sem_post(&sem_sync_next_thread[i][0]);
+					}
+					for(unsigned batch_index = 0; 
+					    batch_index < batch_detach->count / (_next_threads + 1); 
+					    batch_index++) {
+						this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+					}
+					for(int i = 0; i < _next_threads; i++) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					}
+					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+						preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]));
+					}
+				} else {
+					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+						this->process_DETACH_plus(batch_detach->batch[batch_index]);
+						batch_detach->batch[batch_index]->_packet_alloc = false;
+					}
 				}
 				#if RQUEUE_SAFE
 					__SYNC_NULL(batch_detach->count);
@@ -7921,15 +8000,6 @@ void *PreProcessPacket::outThreadFunction() {
 						switch(this->typePreProcessThread) {
 						case ppt_detach:
 							break;
-						#ifdef PREPROCESS_DETACH2
-						case ppt_detach2:
-							preProcessPacket[ppt_sip]->push_packet(packetS);
-							if(opt_preprocess_packets_qring_force_push &&
-							   batch_index == count - 1) {
-								preProcessPacket[ppt_sip]->push_batch();
-							}
-							break;
-						#endif
 						case ppt_sip:
 							this->process_SIP(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
@@ -8003,18 +8073,9 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
-				#ifdef PREPROCESS_DETACH2
-				case ppt_detach:
-					preProcessPacket[ppt_detach2]->push_batch();
-					break;
-				case ppt_detach2:
-					preProcessPacket[ppt_sip]->push_batch();
-					break;
-				#else
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
 					break;
-				#endif
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
 					if(opt_t2_boost) {
@@ -8094,24 +8155,11 @@ void *PreProcessPacket::outThreadFunction() {
 
 void PreProcessPacket::push_batch_nothread() {
 	switch(this->typePreProcessThread) {
-	#ifdef PREPROCESS_DETACH2
-	case ppt_detach:
-		if(!preProcessPacket[ppt_detach2]->outThreadState) {
-			preProcessPacket[ppt_detach2]->push_batch();
-		}
-		break;
-	case ppt_detach2:
-		if(!preProcessPacket[ppt_sip]->outThreadState) {
-			preProcessPacket[ppt_sip]->push_batch();
-		}
-		break;
-	#else
 	case ppt_detach:
 		if(!preProcessPacket[ppt_sip]->outThreadState) {
 			preProcessPacket[ppt_sip]->push_batch();
 		}
 		break;
-	#endif
 	case ppt_sip:
 		if(!preProcessPacket[ppt_extend]->outThreadState) {
 			preProcessPacket[ppt_extend]->push_batch();
@@ -8197,33 +8245,35 @@ void PreProcessPacket::push_batch_nothread() {
 	}
 }
 
-void PreProcessPacket::preparePstatData() {
-	if(this->outThreadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+void PreProcessPacket::preparePstatData(int nextThreadIndexPlus) {
+	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
+		if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time) {
+			this->threadPstatData[nextThreadIndexPlus][1] = this->threadPstatData[nextThreadIndexPlus][0];
 		}
-		pstat_get_data(this->outThreadId, this->threadPstatData);
+		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus]);
 	}
 }
 
-double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, double *percFullQring) {
+double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus, double *percFullQring) {
 	++getCpuUsagePerc_counter;
 	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
-			this->preparePstatData();
+			this->preparePstatData(nextThreadIndexPlus);
 		}
 		if(this->outThreadId) {
-			double ucpu_usage, scpu_usage;
-			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&this->threadPstatData[0], &this->threadPstatData[1],
-					&ucpu_usage, &scpu_usage);
-				if(percFullQring) {
-					*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
-					qringPushCounter = 0;
-					qringPushCounter_full = 0;
+			if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
+				double ucpu_usage, scpu_usage;
+				if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][1].cpu_total_time) {
+					pstat_calc_cpu_usage_pct(
+						&this->threadPstatData[nextThreadIndexPlus][0], &this->threadPstatData[nextThreadIndexPlus][1],
+						&ucpu_usage, &scpu_usage);
+					if(percFullQring) {
+						*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+						qringPushCounter = 0;
+						qringPushCounter_full = 0;
+					}
+					return(ucpu_usage + scpu_usage);
 				}
-				return(ucpu_usage + scpu_usage);
 			}
 		}
 	}
@@ -8241,37 +8291,17 @@ void PreProcessPacket::terminate() {
 	while(this->outThreadState) {
 		USLEEP_C(10, usleepCounter++);
 	}
-}
-
-void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
-	packet_s_process *packetS = packetS_detach->is_need_sip_process ?
-				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
-				    !packetS_detach->isother ?
-				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK() :
-				     (packet_s_process*)PACKET_S_PROCESS_OTHER_POP_FROM_STACK();
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
-	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
-}
-
-void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach) {
-	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
-	//packetS->init();
-	*(u_int8_t*)(&packetS->header_ip_offset + 1) = 0;
-	packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
-	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
+	this->out_thread_handle = 0;
+	for(int i = 0; i < this->next_threads; i++) {
+		if(this->next_thread_handle[i]) {
+			sem_post(&this->sem_sync_next_thread[i][0]);
+			pthread_join(this->next_thread_handle[i], NULL);
+			this->next_thread_handle[i] = 0;
+			for(int j = 0; j < 2; j++) {
+				sem_destroy(&sem_sync_next_thread[i][j]);
+			}
+		}
+	}
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS) {
