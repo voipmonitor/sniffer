@@ -800,7 +800,7 @@ public:
 		return(packetS);
 	}
 	inline packet_s_process_0 *packetS_rtp_create() {
-		packet_s_process_0 *packetS = new FILE_LINE(28005) packet_s_process_0;
+		packet_s_process_0 *packetS = packet_s_process_0::create();
 		return(packetS);
 	}
 	inline packet_s_stack *packetS_other_create() {
@@ -822,7 +822,7 @@ public:
 		if(this->stackRtp->popq((void**)&packetS)) {
 			++allocStackCounter[0];
 		} else {
-			packetS = new FILE_LINE(28007) packet_s_process_0;
+			packetS = packet_s_process_0::create();
 			++allocCounter[0];
 		}
 		return(packetS);
@@ -878,7 +878,7 @@ public:
 		(*packetS)->blockstore_unlock();
 		(*packetS)->packetdelete();
 		(*packetS)->term();
-		delete *packetS;
+		packet_s_process_0::free(*packetS);
 		*packetS = NULL;
 	}
 	inline void packetS_destroy(packet_s_stack **packetS) {
@@ -932,7 +932,7 @@ public:
 		if(opt_block_alloc_stack ||
 		   !(*packetS)->stack ||
 		   !(*packetS)->stack->push((void*)*packetS, queue_index)) {
-			delete *packetS;
+			packet_s_process_0::free(*packetS);
 		}
 		*packetS = NULL;
 	}

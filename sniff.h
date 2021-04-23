@@ -26,8 +26,6 @@
 
 #define RTP_FIXED_HEADERLEN 12
 
-#define MAX_LENGTH_CALL_INFO 20
-
 
 void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
@@ -407,6 +405,33 @@ struct packet_s_process_rtp_call_info {
 	bool multiple_calls;
 };
 
+struct packet_s_process_calls_info {
+	unsigned length;
+	bool find_by_dest;
+	packet_s_process_rtp_call_info calls[1];
+	static unsigned __size_of;
+	static inline packet_s_process_calls_info* create() {
+		return((packet_s_process_calls_info*) new FILE_LINE(0) u_char[size_of()]);
+	}
+	static inline void free(packet_s_process_calls_info* call_info) {
+		delete [] (u_char*)call_info;
+	}
+	static inline unsigned size_of() {
+		return(__size_of);
+	}
+	static inline unsigned _size_of() {
+		return(sizeof(packet_s_process_calls_info) + 
+		       (max_calls() - 1) * sizeof(packet_s_process_rtp_call_info));
+	}
+	static inline void set_size_of() {
+		__size_of = _size_of();
+	}
+	static inline unsigned max_calls() {
+		extern int opt_sdp_multiplication;
+		return(opt_sdp_multiplication);
+	}
+};
+
 struct packet_s_process_0 : public packet_s_stack {
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
@@ -414,10 +439,30 @@ struct packet_s_process_0 : public packet_s_stack {
 	int isSip;
 	bool isSkinny;
 	bool isMgcp;
-	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
-	int call_info_length;
-	bool call_info_find_by_dest;
+	packet_s_process_calls_info call_info;
+	static unsigned __size_of;
+	static inline packet_s_process_0* create() {
+		packet_s_process_0 *p = (packet_s_process_0*) new FILE_LINE(0) u_char[size_of()];
+		p->create_init();
+		return(p);
+	}
+	static inline void free(packet_s_process_0* call_info) {
+		delete [] (u_char*)call_info;
+	}
+	static inline unsigned size_of() {
+		return(__size_of);
+	}
+	static inline unsigned _size_of() {
+		return(sizeof(packet_s_process_0) + 
+		       (packet_s_process_calls_info::max_calls() - 1) * sizeof(packet_s_process_rtp_call_info));
+	}
+	static inline void set_size_of() {
+		__size_of = _size_of();
+	}
 	inline packet_s_process_0() {
+		create_init();
+	}
+	inline void create_init() {
 		__type = _t_packet_s_process_0; 
 		init();
 		init2();
@@ -435,11 +480,11 @@ struct packet_s_process_0 : public packet_s_stack {
 		isSip = -1;
 		isSkinny = false;
 		isMgcp = false;
-		call_info_length = -1;
+		call_info.length = -1;
 		init_reuse();
 	}
 	inline void init2_rtp() {
-		call_info_length = -1;
+		call_info.length = -1;
 		init_reuse();
 	}
 	inline void term() {

@@ -8918,6 +8918,8 @@ void set_default_values() {
 		}
 		p++;
         }
+	packet_s_process_calls_info::set_size_of();
+	packet_s_process_0::set_size_of();
 }
 
 void create_spool_dirs() {
