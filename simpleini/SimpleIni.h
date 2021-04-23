@@ -1165,6 +1165,9 @@ private:
         return (ch == ';' || ch == '#');
     }
 
+    inline bool IsCommentAfterVal(SI_CHAR ch) const {
+        return (ch == '#');
+    }
 
     /** Skip over a newline character (or characters) for either DOS or UNIX */
     inline void SkipNewLine(SI_CHAR *& a_pData) const {
@@ -1617,6 +1620,24 @@ CSimpleIniTempl<SI_CHAR,SI_STRLESS,SI_CONVERTER>::FindEntry(
         }
         ++pTrail;
         *pTrail = 0;
+
+	if (*a_pVal) {
+		bool existsComment = false;
+		char *pComment = (char*)a_pVal + 1;
+		while (*pComment) {
+			if (IsSpace(*pComment) && IsCommentAfterVal(*(pComment + 1))) {
+				existsComment = true;
+				break;
+			}
+			++pComment;
+		}
+		if (existsComment) {
+			while (pComment > a_pVal && IsSpace(*(pComment - 1))) {
+				--pComment;
+			}
+			*pComment = 0;
+		}
+	}
 
         // check for multi-line entries
         if (m_bAllowMultiLine && IsMultiLineTag(a_pVal)) {
