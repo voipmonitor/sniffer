@@ -432,13 +432,28 @@ struct packet_s_process_calls_info {
 	}
 };
 
+enum packet_s_process_type_content {
+	_pptc_na = 0,
+	_pptc_sip = 1,
+	_pptc_skinny = 2,
+	_pptc_mgcp = 3
+};
+
+enum packet_s_process_next_action {
+	_ppna_na = 0,
+	_ppna_set = 1,
+	_ppna_push_to_extend = 2,
+	_ppna_push_to_rtp = 3,
+	_ppna_push_to_other = 4,
+	_ppna_destroy = 5
+};
+
 struct packet_s_process_0 : public packet_s_stack {
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
 	volatile u_int8_t reuse_counter_sync;
-	int isSip;
-	bool isSkinny;
-	bool isMgcp;
+	u_int8_t type_content;
+	u_int8_t next_action;
 	packet_s_process_calls_info call_info;
 	static unsigned __size_of;
 	static inline packet_s_process_0* create() {
@@ -477,9 +492,8 @@ struct packet_s_process_0 : public packet_s_stack {
 		reuse_counter_sync = 0;
 	}
 	inline void init2() {
-		isSip = -1;
-		isSkinny = false;
-		isMgcp = false;
+		type_content = _pptc_na;
+		next_action = _ppna_na;
 		call_info.length = -1;
 		init_reuse();
 	}
@@ -516,6 +530,15 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void reuse_counter_unlock() {
 		__sync_lock_release(&reuse_counter_sync);
 	}
+	inline bool typeContentIsSip() {
+		return(type_content == _pptc_sip);
+	}
+	inline bool typeContentIsSkinny() {
+		return(type_content == _pptc_skinny);
+	}
+	inline bool typeContentIsMgcp() {
+		return(type_content == _pptc_mgcp);
+	}
 };
 
 struct packet_s_process : public packet_s_process_0 {
@@ -540,10 +563,25 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _findCall : 1;
 	bool _createCall : 1;
 	bool _customHeadersDone : 1;
+	list<packet_s_process*> *child_packets;
 	inline packet_s_process() {
 		__type = _t_packet_s_process; 
 		init();
 		init2();
+	}
+	inline packet_s_process& operator = (const packet_s_process& other) {
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wclass-memaccess"
+		#endif
+		memcpy(this, &other, sizeof(*this));
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
+		this->callid_long = NULL;
+		this->callid_alternative = NULL;
+		this->child_packets = NULL;
+		return(*this);
 	}
 	inline void init() {
 		packet_s_process_0::init();
@@ -570,6 +608,7 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 		_customHeadersDone = false;
+		child_packets = NULL;
 	}
 	inline void term() {
 		packet_s_process_0::term();
@@ -580,6 +619,9 @@ struct packet_s_process : public packet_s_process_0 {
 		if(callid_alternative) {
 			delete callid_alternative;
 			callid_alternative = NULL;
+		}
+		if(child_packets) {
+			delete child_packets;
 		}
 	}
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
@@ -632,6 +674,12 @@ struct packet_s_process : public packet_s_process_0 {
 		} else {
 			return(_callid[0] % preProcessPacketCallX_count);
 		}
+	}
+	inline void register_child_packet(packet_s_process *child) {
+		if(!child_packets) {
+			child_packets = new FILE_LINE(0) list<packet_s_process*>;
+		}
+		child_packets->push_back(child);
 	}
 	inline bool is_message() {
 		return(sip_method == MESSAGE || cseq.method == MESSAGE);

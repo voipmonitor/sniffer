@@ -28,7 +28,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			     TcpReassemblyData *data,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
 			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			     void *uData, TcpReassemblyLink *reassemblyLink,
+			     void *uData, void *uData2, TcpReassemblyLink *reassemblyLink,
 			     std::ostream *debugStream) {
 	++this->counterProcessData;
 	if(debugStream) {
@@ -142,7 +142,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 									packetS->is_skinny ||
 									packetS->is_mgcp);
 					packetS->init2();
-					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
+					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS, (packet_s_process*)uData2);
 				} else {
 					preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
 							true, 

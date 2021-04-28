@@ -276,8 +276,6 @@ public:
 		}
 		~batch_packet_s() {
 			for(unsigned i = 0; i < max_count; i++) {
-				batch[i]->blockstore_clear();
-				batch[i]->packetdelete();
 				delete batch[i];
 			}
 			delete [] batch;
@@ -1064,7 +1062,7 @@ private:
 			preProcessPacket[ppt_sip]->push_packet(packetS);
 		}
 	}
-	void process_SIP(packet_s_process *packetS);
+	void process_SIP(packet_s_process *packetS, bool parallel_threads = false);
 	void process_SIP_EXTEND(packet_s_process *packetS);
 	void process_CALL(packet_s_process *packetS);
 	void process_CALLX(packet_s_process *packetS);
@@ -1073,12 +1071,12 @@ private:
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
 	void process_OTHER(packet_s_stack *packetS);
-	void process_parseSipDataExt(packet_s_process **packetS_ref);
-	inline void process_parseSipData(packet_s_process **packetS_ref);
+	void process_parseSipDataExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
+	inline void process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
 	inline void process_mgcp(packet_s_process **packetS_ref);
-	inline void process_websocket(packet_s_process **packetS_ref);
+	inline void process_websocket(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
@@ -1089,6 +1087,7 @@ private:
 	void endOutThread(bool force = false);
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
+	inline void processNextAction(packet_s_process *packetS);
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
 			USLEEP(10);
