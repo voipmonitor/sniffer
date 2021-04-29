@@ -783,6 +783,7 @@ public:
 	void preparePstatData(int nextThreadId = 0);
 	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0, double *percFullQring = NULL);
 	void terminate();
+	void addNextThread();
 	static void autoStartNextLevelPreProcessPacket();
 	static void autoStartCallX_PreProcessPacket();
 	static void autoStopLastLevelPreProcessPacket(bool force = false);

@@ -2244,6 +2244,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 								last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 							}
+							if(j == 0 && opt_t2_boost &&
+							   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
+							   heapPerc > 10 &&
+							   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
+							    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+								preProcessPacket[i]->addNextThread();
+							}
 						}
 					}
 				}

@@ -174,6 +174,7 @@ extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
 extern int process_rtp_packets_distribute_threads_use;
 extern int opt_pre_process_packets_next_thread;
+extern int opt_pre_process_packets_next_thread_max;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
@@ -7842,17 +7843,23 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	getCpuUsagePerc_counter = 0;
 	getCpuUsagePerc_counter_at_start_out_thread = 0;
-	int next_threads = typePreProcessThread == ppt_detach || typePreProcessThread == ppt_sip ? opt_pre_process_packets_next_thread : 0;
-	this->next_threads = next_threads;
-	for(int i = 0; i < this->next_threads; i++) {
-		for(int j = 0; j < 2; j++) {
-			sem_init(&sem_sync_next_thread[i][j], 0, 0);
+	this->next_threads = opt_t2_boost && (typePreProcessThread == ppt_detach || typePreProcessThread == ppt_sip) ? 
+			      opt_pre_process_packets_next_thread : 
+			      0;
+	for(int i = 0; i < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS); i++) {
+		this->nextThreadId[i] = 0;
+		this->next_thread_handle[i] = 0;
+		this->next_thread_data[i].null();
+		if(i < this->next_threads) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&sem_sync_next_thread[i][j], 0, 0);
+			}
+			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+			arg->preProcessPacket = this;
+			arg->next_thread_id = i + 1;
+			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+					  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
-		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-		arg->preProcessPacket = this;
-		arg->next_thread_id = i + 1;
-		vm_pthread_create("pre process next",
-				  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 	}
 }
 
@@ -7899,7 +7906,7 @@ void PreProcessPacket::endOutThread(bool force) {
 
 void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
-	syslog(LOG_NOTICE, "start PreProcessPacket %s next thread %i", this->getNameTypeThread().c_str(), this->nextThreadId[next_thread_index_plus - 1]);
+	syslog(LOG_NOTICE, "start PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), this->nextThreadId[next_thread_index_plus - 1]);
 	int usleepUseconds = 20;
 	unsigned int usleepCounter = 0;
 	while(!this->term_preProcess) {
@@ -8382,6 +8389,22 @@ void PreProcessPacket::terminate() {
 				sem_destroy(&sem_sync_next_thread[i][j]);
 			}
 		}
+	}
+}
+
+void PreProcessPacket::addNextThread() {
+	if(opt_t2_boost &&
+	   (this->typePreProcessThread == ppt_detach || this->typePreProcessThread == ppt_sip) &&
+	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
+		for(int j = 0; j < 2; j++) {
+			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+		}
+		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+		arg->preProcessPacket = this;
+		arg->next_thread_id = this->next_threads + 1;
+		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+				  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+		++this->next_threads;
 	}
 }
 
@@ -9147,7 +9170,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 		 pthread_attr_destroy(&thAttr);
 	}
 	this->outThreadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %s/%i", this->type == hash ? "hash" : "distribute", this->outThreadId);
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
@@ -9217,7 +9240,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 
 void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
 	int usleepUseconds = 20;
 	unsigned int usleepCounter = 0;
 	while(!this->term_processRtp) {
