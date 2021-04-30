@@ -209,7 +209,7 @@ public:
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
 				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-				 void *uData, void *uData2,
+				 void *uData, void *uData2, void *uData2_last,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
 	virtual void writeToDb(bool /*all*/ = false) {}
@@ -569,6 +569,7 @@ public:
 		this->pid = pid;
 		this->uData = uData;
 		this->uData2 = uData2;
+		this->uData2_last = uData2;
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
 	}
@@ -756,6 +757,7 @@ private:
 	sPacketInfoData pid;
 	void *uData;
 	void *uData2;
+	void *uData2_last;
 	vector<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;

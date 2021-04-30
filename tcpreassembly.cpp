@@ -1728,7 +1728,7 @@ void TcpReassemblyLink::complete_normal(bool final) {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this->uData2, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
 			}
@@ -1787,7 +1787,7 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this->uData2, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 	while(this->ok_streams.size()) {
 		TcpReassemblyStream *stream = this->ok_streams[0];
@@ -2020,7 +2020,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this->uData2, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
 			}
@@ -2833,6 +2833,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		    (datalen > 4 && !memcmp(data, "GET ", 4)))) {
 			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
 		}
+		link->uData2_last = uData2;
 	} else {
 		if(!this->enableCrazySequence &&
 		   header_tcp.syn && !header_tcp.ack) {
