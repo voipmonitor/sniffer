@@ -542,6 +542,11 @@ struct packet_s_process_0 : public packet_s_stack {
 };
 
 struct packet_s_process : public packet_s_process_0 {
+	enum eTypeChildPackets {
+		_tchp_none,
+		_tchp_packet,
+		_tchp_list
+	};
 	ParsePacket::ppContentsX parseContents;
 	u_int32_t sipDataOffset;
 	u_int32_t sipDataLen;
@@ -563,7 +568,8 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _findCall : 1;
 	bool _createCall : 1;
 	bool _customHeadersDone : 1;
-	list<packet_s_process*> *child_packets;
+	void *child_packets;
+	int8_t child_packets_type;
 	inline packet_s_process() {
 		__type = _t_packet_s_process; 
 		init();
@@ -581,6 +587,7 @@ struct packet_s_process : public packet_s_process_0 {
 		this->callid_long = NULL;
 		this->callid_alternative = NULL;
 		this->child_packets = NULL;
+		this->child_packets_type = _tchp_none;
 		return(*this);
 	}
 	inline void init() {
@@ -609,6 +616,7 @@ struct packet_s_process : public packet_s_process_0 {
 		_createCall = false;
 		_customHeadersDone = false;
 		child_packets = NULL;
+		child_packets_type = _tchp_none;
 	}
 	inline void term() {
 		packet_s_process_0::term();
@@ -620,8 +628,8 @@ struct packet_s_process : public packet_s_process_0 {
 			delete callid_alternative;
 			callid_alternative = NULL;
 		}
-		if(child_packets) {
-			delete child_packets;
+		if(child_packets && child_packets_type == _tchp_list) {
+			delete (list<packet_s_process*>*)child_packets;
 		}
 	}
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
@@ -677,9 +685,17 @@ struct packet_s_process : public packet_s_process_0 {
 	}
 	inline void register_child_packet(packet_s_process *child) {
 		if(!child_packets) {
-			child_packets = new FILE_LINE(0) list<packet_s_process*>;
+			child_packets = child;
+			child_packets_type = _tchp_packet;
+		} else {
+			if(child_packets_type == _tchp_packet) {
+				packet_s_process *temp_child = (packet_s_process*)child_packets;
+				child_packets = new FILE_LINE(0) list<packet_s_process*>;
+				((list<packet_s_process*>*)child_packets)->push_back(temp_child);
+				child_packets_type = _tchp_list;
+			}
+			((list<packet_s_process*>*)child_packets)->push_back(child);
 		}
-		child_packets->push_back(child);
 	}
 	inline bool is_message() {
 		return(sip_method == MESSAGE || cseq.method == MESSAGE);

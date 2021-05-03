@@ -8232,8 +8232,14 @@ void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 		break;
 	}
 	if(packetS->__type == _t_packet_s_process && packetS->child_packets) {
-		for(list<packet_s_process*>::iterator iter = packetS->child_packets->begin(); iter != packetS->child_packets->end(); iter++) {
-			processNextAction(*iter);
+		if(packetS->child_packets_type == packet_s_process::_tchp_packet) {
+			processNextAction((packet_s_process*)packetS->child_packets);
+		} else {
+			for(list<packet_s_process*>::iterator iter = ((list<packet_s_process*>*)packetS->child_packets)->begin(); 
+			    iter != ((list<packet_s_process*>*)packetS->child_packets)->end(); 
+			    iter++) {
+				processNextAction(*iter);
+			}
 		}
 	}
 	if(packetS->next_action == _ppna_destroy) {
