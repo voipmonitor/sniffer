@@ -2195,52 +2195,63 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
-				double percFullQring;
-				double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, &percFullQring);
-				if(t2cpu_preprocess_packet_out_thread >= 0) {
-					outStrStat << "/" 
-						   << preProcessPacket[i]->getShortcatTypeThread()
-						   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-					if(sverb.qring_stat) {
-						double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-						if(qringFillingPerc > 0) {
-							outStrStat << "r" << qringFillingPerc;
-						}
-					}
-					if(sverb.qring_full && percFullQring > sverb.qring_full) {
-						outStrStat << "#" << percFullQring;
-					}
-					if(i == 0 && sverb.alloc_stat) {
-						if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
-							unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
-							unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
-							outStrStat << "a" << stack << ':' << alloc << ':';
-							if(alloc + stack) {
-								outStrStat << (stack * 100 / (alloc + stack)) << '%';
-							} else {
-								outStrStat << '-';
+				for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
+					if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
+						double percFullQring;
+						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, j, j == 0 ? &percFullQring : NULL);
+						if(t2cpu_preprocess_packet_out_thread >= 0) {
+							outStrStat << "/" 
+								   << preProcessPacket[i]->getShortcatTypeThread()
+								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+							if(sverb.qring_stat) {
+								double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+								if(qringFillingPerc > 0) {
+									outStrStat << "r" << qringFillingPerc;
+								}
+							}
+							if(sverb.qring_full && percFullQring > sverb.qring_full) {
+								outStrStat << "#" << percFullQring;
+							}
+							if(i == 0 && sverb.alloc_stat) {
+								if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
+									unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
+									unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
+									outStrStat << "a" << stack << ':' << alloc << ':';
+									if(alloc + stack) {
+										outStrStat << (stack * 100 / (alloc + stack)) << '%';
+									} else {
+										outStrStat << '-';
+									}
+								}
+								preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
+								preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+							}
+							++count_t2cpu;
+							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
+							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
+								last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
+							}
+							if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
+								call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
+							}
+							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
+								last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
+							}
+							if(j == 0 && opt_t2_boost &&
+							   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
+							   heapPerc > 10 &&
+							   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
+							    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+								preProcessPacket[i]->addNextThread();
 							}
 						}
-						preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
-						preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
-					}
-					++count_t2cpu;
-					sum_t2cpu += t2cpu_preprocess_packet_out_thread;
-					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
-						last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
-					}
-					if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
-						call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
-					}
-					if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
-					   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
-						last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 					}
 				}
 			}
@@ -2248,7 +2259,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 						double percFullQring;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, &percFullQring);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, 0, &percFullQring);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
 								   << preProcessPacketCallX[i]->getShortcatTypeThread()
@@ -2270,7 +2281,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(preProcessPacketCallFindX && calltable->useCallFindX()) {
 					for(int i = 0; i < preProcessPacketCallX_count; i++) {
 						double percFullQring;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, &percFullQring);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, 0, &percFullQring);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
 								   << preProcessPacketCallFindX[i]->getShortcatTypeThread()

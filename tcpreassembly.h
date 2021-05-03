@@ -209,7 +209,7 @@ public:
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
 				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-				 void *uData,
+				 void *uData, void *uData2, void *uData2_last,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
 	virtual void writeToDb(bool /*all*/ = false) {}
@@ -532,7 +532,7 @@ public:
 			  vmPort port_src, vmPort port_dst,
 			  u_char *packet, iphdr2 *header_ip,
 			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			  void *uData) {
+			  void *uData, void *uData2) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -568,6 +568,8 @@ public:
 		this->sensor_ip = sensor_ip;
 		this->pid = pid;
 		this->uData = uData;
+		this->uData2 = uData2;
+		this->uData2_last = uData2;
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
 	}
@@ -754,6 +756,8 @@ private:
 	vmIP sensor_ip;
 	sPacketInfoData pid;
 	void *uData;
+	void *uData2;
+	void *uData2_last;
 	vector<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
@@ -783,6 +787,7 @@ public:
 		vmIP sensor_ip;
 		sPacketInfoData pid;
 		void *uData;
+		void *uData2;
 		bool isSip;
 	};
 public:
@@ -791,7 +796,7 @@ public:
 	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 		      u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-		      void *uData = NULL, bool isSip = false);
+		      void *uData = NULL, void *uData2 = NULL, bool isSip = false);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
@@ -931,7 +936,7 @@ private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
 		   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-		   void *uData, bool isSip);
+		   void *uData, void *uData2, bool isSip);
 	void createCleanupThread();
 	void createPacketThread();
 	void *cleanupThreadFunction(void *);

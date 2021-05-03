@@ -385,6 +385,8 @@ int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 int process_rtp_packets_distribute_threads_use = 0;
+int opt_pre_process_packets_next_thread = 0;
+int opt_pre_process_packets_next_thread_max = 1;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -6692,6 +6694,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(42155) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_max", &opt_pre_process_packets_next_thread_max))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS));
 					addConfigItem((new FILE_LINE(42156) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
@@ -8914,6 +8921,8 @@ void set_default_values() {
 		}
 		p++;
         }
+	packet_s_process_calls_info::set_size_of();
+	packet_s_process_0::set_size_of();
 }
 
 void create_spool_dirs() {
@@ -10875,6 +10884,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "preprocess_rtp_threads_max", NULL))) {
 		opt_enable_process_rtp_packet_max = min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS);
+	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread", NULL))) {
+		opt_pre_process_packets_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS) : yesno(value);
+	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread_max", NULL))) {
+		opt_pre_process_packets_next_thread_max = min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread", NULL))) {
 		opt_process_rtp_packets_hash_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) : yesno(value);

@@ -238,6 +238,9 @@ struct pcap_block_store {
 	inline u_char* get_packet(size_t indexItem) {
 		return((u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus))));
 	}
+	inline u_char* get_space_after_packet(size_t indexItem) {
+		return(get_packet(indexItem) + get_header(indexItem)->get_caplen());
+	}
 	inline bool is_ignore(size_t indexItem) {
 		return(((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
 	}

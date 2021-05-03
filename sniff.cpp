@@ -173,6 +173,8 @@ extern nat_aliases_t nat_aliases;
 extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
 extern int process_rtp_packets_distribute_threads_use;
+extern int opt_pre_process_packets_next_thread;
+extern int opt_pre_process_packets_next_thread_max;
 extern int opt_process_rtp_packets_hash_next_thread;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
@@ -308,7 +310,7 @@ u_int64_t counter_calls;
 u_int64_t counter_calls_clean;
 u_int64_t counter_registers;
 u_int64_t counter_registers_clean;
-u_int64_t counter_sip_packets[2];
+volatile u_int64_t counter_sip_packets[2];
 u_int64_t counter_sip_register_packets;
 u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets[2];
@@ -761,7 +763,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	bool allocPacket = false;
 	unsigned int limitCapLen = 65535;
 	unsigned int packetLen = packetS->header_pt->caplen;
-	if(type == TYPE_SIP && packetS->isSip) {
+	if(type == TYPE_SIP && packetS->typeContentIsSip()) {
 		packetLen = packetS->dataoffset_() + packetS->sipDataLen;
 	}
 	if(packetLen > limitCapLen) {
@@ -775,7 +777,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 		memset(packet, 0, max(packetLen, header->caplen));
 		allocPacket = true;
 		if(packetLen != packetS->header_pt->caplen) {
-			if(type == TYPE_SIP && packetS->isSip) {
+			if(type == TYPE_SIP && packetS->typeContentIsSip()) {
 				memcpy(packet, packetS->packet, packetS->dataoffset_());
 				memcpy(packet + packetS->dataoffset_(), packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 				if(packetS->dataoffset_() + packetS->sipDataLen != packetLen) {
@@ -4868,33 +4870,33 @@ void process_packet_sip_other(packet_s_process *packetS) {
 	save_live_packet(packetS);
 }
 
-inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_info,size_t call_info_length, packet_s_process_0 *packetS,
-					 bool find_by_dest, int preSyncRtp = false, int threadIndex = 0, int threadIndex2 = 0) {
+inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info, packet_s_process_0 *packetS,
+					 int preSyncRtp = false, int threadIndex = 0, int threadIndex2 = 0) {
 	packetS->blockstore_addflag(51 /*pb lock flag*/);
 	Call *call;
 	int iscaller;
 	bool is_rtcp;
 	bool stream_in_multiple_calls;
 	s_sdp_flags sdp_flags;
-	size_t call_info_index;
+	unsigned call_info_index;
 	int count_use = 0;
-	packet_s_process_rtp_call_info call_info_temp[MAX_LENGTH_CALL_INFO];
+	packet_s_process_rtp_call_info call_info_temp[packet_s_process_calls_info::max_calls()];
 	size_t call_info_temp_length = 0;
-	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+	for(call_info_index = 0; call_info_index < call_info->length; call_info_index++) {
 		if(threadIndex &&
-		   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+		   call_info->calls[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
 			continue;
 		}
 		
 		packetS->blockstore_addflag(52 /*pb lock flag*/);
 		
-		call = call_info[call_info_index].call;
-		iscaller = call_info[call_info_index].iscaller;
-		sdp_flags = call_info[call_info_index].sdp_flags;
-		is_rtcp = call_info[call_info_index].is_rtcp || (!sdp_flags.is_fax && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
-		stream_in_multiple_calls = call_info[call_info_index].multiple_calls;
+		call = call_info->calls[call_info_index].call;
+		iscaller = call_info->calls[call_info_index].iscaller;
+		sdp_flags = call_info->calls[call_info_index].sdp_flags;
+		is_rtcp = call_info->calls[call_info_index].is_rtcp || (!sdp_flags.is_fax && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
+		stream_in_multiple_calls = call_info->calls[call_info_index].multiple_calls;
 		
-		if(!find_by_dest && iscaller_is_set(iscaller)) {
+		if(!call_info->find_by_dest && iscaller_is_set(iscaller)) {
 			iscaller = iscaller_inv_index(iscaller);
 		}
 		
@@ -4902,10 +4904,10 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			++process_rtp_counter;
 			cout << "RTP - process_packet -"
 			     << " callid: " << call->call_id
-			     << (find_by_dest ? " src: " : " SRC: ") << packetS->saddr_().getString() << " : " << packetS->source_()
-			     << (find_by_dest ? " DST: " : " dst: ") << packetS->daddr_().getString() << " : " << packetS->dest_()
+			     << (call_info->find_by_dest ? " src: " : " SRC: ") << packetS->saddr_().getString() << " : " << packetS->source_()
+			     << (call_info->find_by_dest ? " DST: " : " dst: ") << packetS->daddr_().getString() << " : " << packetS->dest_()
 			     << " direction: " << iscaller_description(iscaller) 
-			     << " find_by_dest: " << find_by_dest
+			     << " find_by_dest: " << call_info->find_by_dest
 			     << " counter: " << process_rtp_counter
 			     << endl;
 		}
@@ -4934,7 +4936,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			call_info_temp[call_info_temp_length].sdp_flags = sdp_flags;
 			call_info_temp[call_info_temp_length].is_rtcp = is_rtcp;
 			call_info_temp[call_info_temp_length].multiple_calls = stream_in_multiple_calls;
-			call_info[call_info_index].use_sync = true;
+			call_info->calls[call_info_index].use_sync = true;
 			++call_info_temp_length;
 		} else {
 			bool rslt_read_rtp = false;
@@ -4942,7 +4944,7 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 				if(is_rtcp) {
 					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				} else {
-					rslt_read_rtp = call->read_rtp(packetS, iscaller, find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
+					rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				}
 			}
@@ -4960,14 +4962,14 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 		}
 		++count_use;
 	}
-	for(call_info_index = 0; call_info_index < call_info_length; call_info_index++) {
+	for(call_info_index = 0; call_info_index < call_info->length; call_info_index++) {
 		if(threadIndex &&
-		   call_info[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+		   call_info->calls[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
 			continue;
 		}
-		if(!call_info[call_info_index].use_sync) {
+		if(!call_info->calls[call_info_index].use_sync) {
 			if(preSyncRtp) {
-				__sync_sub_and_fetch(&call_info[call_info_index].call->rtppacketsinqueue, 1);
+				__sync_sub_and_fetch(&call_info->calls[call_info_index].call->rtppacketsinqueue, 1);
 			}
 			if(packetS) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
@@ -4992,12 +4994,12 @@ inline int process_packet__rtp_call_info(packet_s_process_rtp_call_info *call_in
 			if(is_rtcp) {
 				packetS->blockstore_addflag(56 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS,
-							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtcp(call), 
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtcp(call), 
 							preSyncRtp, threadIndex);
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -5096,13 +5098,13 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 	} else {
 		packetS->blockstore_addflag(24 /*pb lock flag*/);
 		packetS->init2_rtp();
-		packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
-		int call_info_length = 0;
-		bool call_info_find_by_dest = false;
+		packet_s_process_calls_info *call_info = packet_s_process_calls_info::create();
+		call_info->length = 0;
+		call_info->find_by_dest = false;
 		calltable->lock_calls_hash();
 		node_call_rtp *n_call = NULL;
 		if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
-			call_info_find_by_dest = true;
+			call_info->find_by_dest = true;
 			packetS->blockstore_addflag(25 /*pb lock flag*/);
 		} else {
 			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
@@ -5123,10 +5125,10 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			#endif
 				Call *call = call_rtp->call;
 				if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-				    (call_info_find_by_dest ?
+				    (call_info->find_by_dest ?
 				      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
 				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
-				    (call_info_find_by_dest ?
+				    (call_info->find_by_dest ?
 				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
 				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
 				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
@@ -5147,39 +5149,40 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					*/
 					++counter_rtp_packets[1];
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
-					call_info[call_info_length].call = call;
-					call_info[call_info_length].iscaller = call_rtp->iscaller;
-					call_info[call_info_length].is_rtcp = call_rtp->is_rtcp;
-					call_info[call_info_length].sdp_flags = call_rtp->sdp_flags;
-					if(call->use_rtcp_mux && !call_info[call_info_length].sdp_flags.rtcp_mux) {
-						s_sdp_flags *sdp_flags_other_side = call_info_find_by_dest ?
+					call_info->calls[call_info->length].call = call;
+					call_info->calls[call_info->length].iscaller = call_rtp->iscaller;
+					call_info->calls[call_info->length].is_rtcp = call_rtp->is_rtcp;
+					call_info->calls[call_info->length].sdp_flags = call_rtp->sdp_flags;
+					if(call->use_rtcp_mux && !call_info->calls[call_info->length].sdp_flags.rtcp_mux) {
+						s_sdp_flags *sdp_flags_other_side = call_info->find_by_dest ?
 										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
 										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
 						if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
-							call_info[call_info_length].sdp_flags.rtcp_mux = true;
+							call_info->calls[call_info->length].sdp_flags.rtcp_mux = true;
 						}
 					}
-					call_info[call_info_length].use_sync = false;
-					call_info[call_info_length].multiple_calls = false;
-					++call_info_length;
-					if(call_info_length == MAX_LENGTH_CALL_INFO) {
+					call_info->calls[call_info->length].use_sync = false;
+					call_info->calls[call_info->length].multiple_calls = false;
+					++call_info->length;
+					if(call_info->length >= packet_s_process_calls_info::max_calls()) {
 						break;
 					}
 				}
 			}
-			if(call_info_length > 1 && !packetS->audiocodes) {
-				for(int i = 0; i < call_info_length; i++) {
-					call_info[i].multiple_calls = true;
+			if(call_info->length > 1 && !packetS->audiocodes) {
+				for(unsigned i = 0; i < call_info->length; i++) {
+					call_info->calls[i].multiple_calls = true;
 				}
 			}
 		}
 		calltable->unlock_calls_hash();
-		if(call_info_length) {
-			if(call_info_length > 1) {
+		if(call_info->length) {
+			if(call_info->length > 1) {
 				packetS->set_use_reuse_counter();
-				packetS->reuse_counter_inc_sync(call_info_length);
+				packetS->reuse_counter_inc_sync(call_info->length);
 			}
-			process_packet__rtp_call_info(call_info, call_info_length, packetS, call_info_find_by_dest);
+			process_packet__rtp_call_info(call_info, packetS);
+			packet_s_process_calls_info::free(call_info);
 			return(true);
 		} else if(opt_rtpnosip) {
 			process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
@@ -5187,7 +5190,8 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 						  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip_(),
 						  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 						  get_pcap_handle(packetS->handle_index));
-		} 
+		}
+		packet_s_process_calls_info::free(call_info);
 	}
 	
 	return(false);
@@ -7520,7 +7524,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 		     << string((char*)completePacketS->data_(), MIN(string((char*)completePacketS->data_(), completePacketS->datalen_()).find("\r"), MIN(completePacketS->datalen_(), 100))) << endl;
 	}
 	if(processPacket) {
-		processPacket->process_parseSipData(&completePacketS);
+		processPacket->process_parseSipData(&completePacketS, NULL);
 	} else {
 		preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(completePacketS);
 	}
@@ -7761,8 +7765,19 @@ ReassemblyBuffer::sDataRslt ReassemblyBuffer::complete(sStreamId *streamId, sDat
 }
 
 
+unsigned packet_s_process_calls_info::__size_of;
+unsigned packet_s_process_0::__size_of;
+
+
 inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
+}
+
+inline void *_PreProcessPacket_nextThreadFunction(void *arg) {
+	PreProcessPacket::arg_next_thread *_arg = (PreProcessPacket::arg_next_thread*)arg;
+	void *rsltThread = _arg->preProcessPacket->nextThreadFunction(_arg->next_thread_id);
+	delete _arg;
+	return(rsltThread);
 }
 
 PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread) {
@@ -7800,6 +7815,11 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->_sync_push = 0;
 	this->_sync_count = 0;
 	this->term_preProcess = false;
+	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+		this->nextThreadId[i] = 0;
+		this->next_thread_handle[i] = 0;
+		this->next_thread_data[i].null();
+	}
 	if(typePreProcessThread == ppt_detach) {
 		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
@@ -7823,6 +7843,24 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	getCpuUsagePerc_counter = 0;
 	getCpuUsagePerc_counter_at_start_out_thread = 0;
+	this->next_threads = opt_t2_boost && (typePreProcessThread == ppt_detach || typePreProcessThread == ppt_sip) ? 
+			      opt_pre_process_packets_next_thread : 
+			      0;
+	for(int i = 0; i < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS); i++) {
+		this->nextThreadId[i] = 0;
+		this->next_thread_handle[i] = 0;
+		this->next_thread_data[i].null();
+		if(i < this->next_threads) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&sem_sync_next_thread[i][j], 0, 0);
+			}
+			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+			arg->preProcessPacket = this;
+			arg->next_thread_id = i + 1;
+			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+					  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+		}
+	}
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -7866,6 +7904,51 @@ void PreProcessPacket::endOutThread(bool force) {
 	}
 }
 
+void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
+	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
+	syslog(LOG_NOTICE, "start PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), this->nextThreadId[next_thread_index_plus - 1]);
+	int usleepUseconds = 20;
+	unsigned int usleepCounter = 0;
+	while(!this->term_preProcess) {
+		sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
+		if(this->term_preProcess) {
+			break;
+		}
+		s_next_thread_data *next_thread_data = &this->next_thread_data[next_thread_index_plus - 1];
+		if(next_thread_data->batch) {
+			unsigned batch_index_start = next_thread_data->start;
+			unsigned batch_index_end = next_thread_data->end;
+			unsigned batch_index_skip = next_thread_data->skip;
+			switch(this->typePreProcessThread) {
+			case ppt_detach: {
+				packet_s_plus_pointer **batch = (packet_s_plus_pointer**)next_thread_data->batch;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					this->process_DETACH_plus(batch[batch_index], false);
+				} }
+				break;
+			case ppt_sip: {
+				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					this->process_SIP(batch[batch_index], true);
+				} }
+				break;
+			default:
+				break;
+			}
+			next_thread_data->processing = 0;
+			usleepCounter = 0;
+			sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
+		} else {
+			USLEEP_C(usleepUseconds, usleepCounter++);
+		}
+	}
+	return(NULL);
+}
+
 void *PreProcessPacket::outThreadFunction() {
 	if(this->typePreProcessThread == ppt_detach ||
 	   this->typePreProcessThread == ppt_extend) {
@@ -7896,9 +7979,32 @@ void *PreProcessPacket::outThreadFunction() {
 		    (this->qring[this->readit]->used == 1)) {
 			if(this->typePreProcessThread == ppt_detach) {
 				batch_detach = this->qring_detach[this->readit];
-				for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
-					this->process_DETACH_plus(batch_detach->batch[batch_index]);
-					batch_detach->batch[batch_index]->_packet_alloc = false;
+				if(this->next_thread_handle[0]) {
+					int _next_threads = this->next_threads;
+					for(int i = 0; i < _next_threads; i++) {
+						this->next_thread_data[i].start = batch_detach->count / (_next_threads + 1) * (i + 1);
+						this->next_thread_data[i].end = i == (_next_threads - 1) ? batch_detach->count : batch_detach->count / (_next_threads + 1) * (i + 2);
+						this->next_thread_data[i].skip = 1;
+						this->next_thread_data[i].batch = batch_detach->batch;
+						this->next_thread_data[i].processing = 1;
+						sem_post(&sem_sync_next_thread[i][0]);
+					}
+					for(unsigned batch_index = 0; 
+					    batch_index < batch_detach->count / (_next_threads + 1); 
+					    batch_index++) {
+						this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+					}
+					for(int i = 0; i < _next_threads; i++) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					}
+					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+						preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]));
+					}
+				} else {
+					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+						this->process_DETACH_plus(batch_detach->batch[batch_index]);
+						batch_detach->batch[batch_index]->_packet_alloc = false;
+					}
 				}
 				#if RQUEUE_SAFE
 					__SYNC_NULL(batch_detach->count);
@@ -7906,6 +8012,45 @@ void *PreProcessPacket::outThreadFunction() {
 				#else
 					batch_detach->count = 0;
 					batch_detach->used = 0;
+				#endif
+			} else if(this->typePreProcessThread == ppt_sip && this->next_thread_handle[0]) {
+				batch = this->qring[this->readit];
+				__SYNC_LOCK(this->_sync_count);
+				unsigned count = batch->count;
+				__SYNC_UNLOCK(this->_sync_count);
+				int _next_threads = this->next_threads;
+				for(int i = 0; i < _next_threads; i++) {
+					this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
+					this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
+					this->next_thread_data[i].skip = 1;
+					this->next_thread_data[i].batch = batch->batch;
+					this->next_thread_data[i].processing = 1;
+					sem_post(&sem_sync_next_thread[i][0]);
+				}
+				for(unsigned batch_index = 0; 
+				    batch_index < count / (_next_threads + 1); 
+				    batch_index++) {
+					this->process_SIP(batch->batch[batch_index], true);
+				}
+				for(int i = 0; i < _next_threads; i++) {
+					sem_wait(&sem_sync_next_thread[i][1]);
+				}
+				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+					processNextAction(batch->batch[batch_index]);
+					batch->batch[batch_index] = NULL;
+				}
+				if(opt_preprocess_packets_qring_force_push) {
+					preProcessPacket[ppt_extend]->push_batch();
+					if(opt_t2_boost) {
+						preProcessPacket[ppt_pp_rtp]->push_batch();
+					}
+				}
+				#if RQUEUE_SAFE
+					__SYNC_NULL(batch->count);
+					__SYNC_NULL(batch->used);
+				#else
+					batch->count = 0;
+					batch->used = 0;
 				#endif
 			} else {
 				batch = this->qring[this->readit];
@@ -7921,15 +8066,6 @@ void *PreProcessPacket::outThreadFunction() {
 						switch(this->typePreProcessThread) {
 						case ppt_detach:
 							break;
-						#ifdef PREPROCESS_DETACH2
-						case ppt_detach2:
-							preProcessPacket[ppt_sip]->push_packet(packetS);
-							if(opt_preprocess_packets_qring_force_push &&
-							   batch_index == count - 1) {
-								preProcessPacket[ppt_sip]->push_batch();
-							}
-							break;
-						#endif
 						case ppt_sip:
 							this->process_SIP(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
@@ -8003,18 +8139,9 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
-				#ifdef PREPROCESS_DETACH2
-				case ppt_detach:
-					preProcessPacket[ppt_detach2]->push_batch();
-					break;
-				case ppt_detach2:
-					preProcessPacket[ppt_sip]->push_batch();
-					break;
-				#else
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
 					break;
-				#endif
 				case ppt_sip:
 					preProcessPacket[ppt_extend]->push_batch();
 					if(opt_t2_boost) {
@@ -8092,26 +8219,41 @@ void *PreProcessPacket::outThreadFunction() {
 	return(NULL);
 }
 
+void PreProcessPacket::processNextAction(packet_s_process *packetS) {
+	switch(packetS->next_action) {
+	case _ppna_push_to_extend:
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+		break;
+	case _ppna_push_to_rtp:
+		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+		break;
+	case _ppna_push_to_other:
+		preProcessPacket[ppt_pp_other]->push_packet(packetS);
+		break;
+	}
+	if(packetS->__type == _t_packet_s_process && packetS->child_packets) {
+		if(packetS->child_packets_type == packet_s_process::_tchp_packet) {
+			processNextAction((packet_s_process*)packetS->child_packets);
+		} else {
+			for(list<packet_s_process*>::iterator iter = ((list<packet_s_process*>*)packetS->child_packets)->begin(); 
+			    iter != ((list<packet_s_process*>*)packetS->child_packets)->end(); 
+			    iter++) {
+				processNextAction(*iter);
+			}
+		}
+	}
+	if(packetS->next_action == _ppna_destroy) {
+		PACKET_S_PROCESS_DESTROY(&packetS);
+	}
+}
+
 void PreProcessPacket::push_batch_nothread() {
 	switch(this->typePreProcessThread) {
-	#ifdef PREPROCESS_DETACH2
-	case ppt_detach:
-		if(!preProcessPacket[ppt_detach2]->outThreadState) {
-			preProcessPacket[ppt_detach2]->push_batch();
-		}
-		break;
-	case ppt_detach2:
-		if(!preProcessPacket[ppt_sip]->outThreadState) {
-			preProcessPacket[ppt_sip]->push_batch();
-		}
-		break;
-	#else
 	case ppt_detach:
 		if(!preProcessPacket[ppt_sip]->outThreadState) {
 			preProcessPacket[ppt_sip]->push_batch();
 		}
 		break;
-	#endif
 	case ppt_sip:
 		if(!preProcessPacket[ppt_extend]->outThreadState) {
 			preProcessPacket[ppt_extend]->push_batch();
@@ -8197,33 +8339,35 @@ void PreProcessPacket::push_batch_nothread() {
 	}
 }
 
-void PreProcessPacket::preparePstatData() {
-	if(this->outThreadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+void PreProcessPacket::preparePstatData(int nextThreadIndexPlus) {
+	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
+		if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time) {
+			this->threadPstatData[nextThreadIndexPlus][1] = this->threadPstatData[nextThreadIndexPlus][0];
 		}
-		pstat_get_data(this->outThreadId, this->threadPstatData);
+		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus]);
 	}
 }
 
-double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, double *percFullQring) {
+double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus, double *percFullQring) {
 	++getCpuUsagePerc_counter;
 	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
-			this->preparePstatData();
+			this->preparePstatData(nextThreadIndexPlus);
 		}
 		if(this->outThreadId) {
-			double ucpu_usage, scpu_usage;
-			if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&this->threadPstatData[0], &this->threadPstatData[1],
-					&ucpu_usage, &scpu_usage);
-				if(percFullQring) {
-					*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
-					qringPushCounter = 0;
-					qringPushCounter_full = 0;
+			if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
+				double ucpu_usage, scpu_usage;
+				if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][1].cpu_total_time) {
+					pstat_calc_cpu_usage_pct(
+						&this->threadPstatData[nextThreadIndexPlus][0], &this->threadPstatData[nextThreadIndexPlus][1],
+						&ucpu_usage, &scpu_usage);
+					if(percFullQring) {
+						*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+						qringPushCounter = 0;
+						qringPushCounter_full = 0;
+					}
+					return(ucpu_usage + scpu_usage);
 				}
-				return(ucpu_usage + scpu_usage);
 			}
 		}
 	}
@@ -8241,40 +8385,36 @@ void PreProcessPacket::terminate() {
 	while(this->outThreadState) {
 		USLEEP_C(10, usleepCounter++);
 	}
+	this->out_thread_handle = 0;
+	for(int i = 0; i < this->next_threads; i++) {
+		if(this->next_thread_handle[i]) {
+			sem_post(&this->sem_sync_next_thread[i][0]);
+			pthread_join(this->next_thread_handle[i], NULL);
+			this->next_thread_handle[i] = 0;
+			for(int j = 0; j < 2; j++) {
+				sem_destroy(&sem_sync_next_thread[i][j]);
+			}
+		}
+	}
 }
 
-void PreProcessPacket::process_DETACH(packet_s *packetS_detach) {
-	packet_s_process *packetS = packetS_detach->is_need_sip_process ?
-				     PACKET_S_PROCESS_SIP_POP_FROM_STACK() : 
-				    !packetS_detach->isother ?
-				     (packet_s_process*)PACKET_S_PROCESS_RTP_POP_FROM_STACK() :
-				     (packet_s_process*)PACKET_S_PROCESS_OTHER_POP_FROM_STACK();
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
-	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
+void PreProcessPacket::addNextThread() {
+	if(opt_t2_boost &&
+	   (this->typePreProcessThread == ppt_detach || this->typePreProcessThread == ppt_sip) &&
+	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
+		for(int j = 0; j < 2; j++) {
+			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+		}
+		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+		arg->preProcessPacket = this;
+		arg->next_thread_id = this->next_threads + 1;
+		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+				  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+		++this->next_threads;
+	}
 }
 
-void PreProcessPacket::process_DETACH_plus(packet_s_plus_pointer *packetS_detach) {
-	packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
-	//packetS->init();
-	*(u_int8_t*)(&packetS->header_ip_offset + 1) = 0;
-	packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
-	u_int8_t __type = packetS->__type;
-	*(packet_s*)packetS = *(packet_s*)packetS_detach;
-	packetS->__type = __type;
-	#ifdef PREPROCESS_DETACH2
-	preProcessPacket[ppt_detach2]->push_packet(packetS);
-	#else
-	preProcessPacket[ppt_sip]->push_packet(packetS);
-	#endif
-}
-
-void PreProcessPacket::process_SIP(packet_s_process *packetS) {
+void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_threads) {
 	++counter_all_packets;
 	bool isSip = false;
 	bool isMgcp = false;
@@ -8283,6 +8423,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
 	if(packetS->is_need_sip_process) {
 		packetS->init2();
+		packetS->next_action = parallel_threads ? _ppna_set : _ppna_na;
 		if(check_sip20(packetS->data_(), packetS->datalen_(), NULL, packetS->istcp)) {
 			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
@@ -8300,9 +8441,13 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 				this->process_mgcp(&packetS);
 			} else if(no_sip_reassembly() || packetS->is_ssl) {
 				if(isSip) {
-					this->process_parseSipData(&packetS);
+					this->process_parseSipData(&packetS, NULL);
 				} else {
-					PACKET_S_PROCESS_DESTROY(&packetS);
+					if(packetS->next_action == _ppna_set) {
+						packetS->next_action = _ppna_destroy;
+					} else {
+						PACKET_S_PROCESS_DESTROY(&packetS);
+					}
 				}
 			} else {
 				bool possibleWebSocketSip = false;
@@ -8318,17 +8463,21 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
 								      packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip, packetS->pid,
-								      this, isSip || possibleWebSocketSip);
+								      this, packetS, isSip || possibleWebSocketSip);
 					packetS->_packet_alloc = false;
 					packetS->_blockstore_lock = false;
-					PACKET_S_PROCESS_DESTROY(&packetS);
+					if(packetS->next_action == _ppna_set) {
+						packetS->next_action = _ppna_destroy;
+					} else {
+						PACKET_S_PROCESS_DESTROY(&packetS);
+					}
 				} else {
 					tcpReassemblySip.processPacket(&packetS, isSip || possibleWebSocketSip, this);
 				}
 			}
 		} else if(isSip) {
 			packetS->blockstore_addflag(14 /*pb lock flag*/);
-			this->process_parseSipData(&packetS);
+			this->process_parseSipData(&packetS, NULL);
 		} else if(isMgcp) {
 			//packetS->blockstore_addflag(14 /*pb lock flag*/);
 			this->process_mgcp(&packetS);
@@ -8345,20 +8494,32 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS) {
 	if(rtp) {
 		packetS->blockstore_addflag(17 /*pb lock flag*/);
 		if(opt_t2_boost) {
-			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+			if(parallel_threads) {
+				packetS->next_action = _ppna_push_to_rtp;
+			} else {
+				preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+			}
 		} else {
-			packetS->isSip = false;
-			preProcessPacket[ppt_extend]->push_packet(packetS);
+			packetS->type_content = _pptc_na;
+			if(parallel_threads) {
+				packetS->next_action = _ppna_push_to_extend;
+			} else {
+				preProcessPacket[ppt_extend]->push_packet(packetS);
+			}
 		}
 	}
 	if(other) {
-		preProcessPacket[ppt_pp_other]->push_packet(packetS);
+		if(parallel_threads) {
+			packetS->next_action = _ppna_push_to_other;
+		} else {
+			preProcessPacket[ppt_pp_other]->push_packet(packetS);
+		}
 	}
 }
 
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	glob_last_packet_time = packetS->getTime_s();
-	if(packetS->isSip) {
+	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		bool pushed = false;
 		if(!packetS->is_register()) {
@@ -8388,10 +8549,10 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 				preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
 			}
 		}
-	} else if(packetS->isSkinny) {
+	} else if(packetS->typeContentIsSkinny()) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
-	} else if(packetS->isMgcp) {
+	} else if(packetS->typeContentIsMgcp()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
@@ -8401,7 +8562,7 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_CALL(packet_s_process *packetS) {
-	if(packetS->isSip && !packetS->is_register()) {
+	if(packetS->typeContentIsSip() && !packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -8431,14 +8592,14 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		if(opt_quick_save_cdr == 2) {
 			_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
 		}
-	} else if(packetS->isSkinny) {
+	} else if(packetS->typeContentIsSkinny()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 		_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
-	} else if(packetS->isMgcp) {
+	} else if(packetS->typeContentIsMgcp()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -8479,7 +8640,7 @@ void PreProcessPacket::process_CallFindX(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
-	if(packetS->isSip && packetS->is_register()) {
+	if(packetS->typeContentIsSip() && packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -8489,7 +8650,7 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
-	if(packetS->isSip) {
+	if(packetS->typeContentIsSip()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
@@ -8511,14 +8672,21 @@ void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 }
 
-void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref) {
-	this->process_parseSipData(packetS_ref);
+void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
+	if(packetS_orig && packetS_orig->next_action) {
+		packetS_orig->register_child_packet(*packetS_ref);
+		(*packetS_ref)->next_action = _ppna_set;
+	}
+	this->process_parseSipData(packetS_ref, packetS_orig);
 }
 
-void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
+void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
 	packet_s_process *packetS = *packetS_ref;
+	if(!packetS_orig) {
+		packetS_orig = packetS;
+	}
 	if(check_websocket(packetS->data_(), packetS->datalen_())) {
-		this->process_websocket(&packetS);
+		this->process_websocket(&packetS, packetS_orig);
 		return;
 	}
 	if(packetS->is_skinny) {
@@ -8534,8 +8702,8 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	do {
 		packetS->sipDataLen = packetS->parseContents.parse(packetS->data_()+ packetS->sipDataOffset, 
 								   packetS->datalen_() - packetS->sipDataOffset, true);
-		packetS->isSip = packetS->parseContents.isSip();
-		if(packetS->isSip) {
+		if(packetS->parseContents.isSip()) {
+			packetS->type_content = _pptc_sip;
 			isSip = true;
 			bool nextSip = false;
 			u_int32_t nextSipDataOffset = 0;
@@ -8571,6 +8739,10 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 				if(partPacketS->_packet_alloc) {
 					partPacketS->new_alloc_packet_header();
 				}
+				if(packetS_orig && packetS_orig->next_action) {
+					packetS_orig->register_child_packet(partPacketS);
+					partPacketS->next_action = _ppna_set;
+				}
 				this->process_sip(&partPacketS);
 			} else {
 				this->process_sip(&packetS);
@@ -8592,10 +8764,18 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref) {
 	if(isSip) {
 		++counter_sip_packets[0];
 		if(multipleSip) {
-			PACKET_S_PROCESS_DESTROY(&packetS);
+			if(packetS->next_action == _ppna_set) {
+				packetS->next_action = _ppna_destroy;
+			} else {
+				PACKET_S_PROCESS_DESTROY(&packetS);
+			}
 		}
 	} else if(packetS) {
-		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_push_to_rtp;
+		} else {
+			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+		}
 	}
 }
 
@@ -8677,43 +8857,68 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	}
 	packetS->_getCallID = true;
 	if(!this->process_getCallID(&packetS)) {
-		PACKET_S_PROCESS_DESTROY(&packetS);
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	this->process_getSipMethod(&packetS);
 	if(packetS->is_register() && !opt_sip_register && !livesnifferfilterUseSipTypes.u_register) {
-		PACKET_S_PROCESS_DESTROY(&packetS);
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	if(!this->process_getCallID_publish(&packetS)) {
-		PACKET_S_PROCESS_DESTROY(&packetS);
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	this->process_getLastSipResponse(&packetS);
 	++counter_sip_packets[1];
 	if(packetS) {
-		preProcessPacket[ppt_extend]->push_packet(packetS);
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_push_to_extend;
+		} else {
+			preProcessPacket[ppt_extend]->push_packet(packetS);
+		}
 	}
 }
 
 void PreProcessPacket::process_skinny(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	packetS->isSip = false;
-	packetS->isSkinny = true;
+	packetS->type_content = _pptc_skinny;
 	++counter_sip_packets[1];
-	preProcessPacket[ppt_extend]->push_packet(packetS);
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_push_to_extend;
+	} else {
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+	}
 }
 
 void PreProcessPacket::process_mgcp(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	packetS->isSip = false;
-	packetS->isMgcp = true;
+	packetS->type_content = _pptc_mgcp;
 	++counter_sip_packets[1];
-	preProcessPacket[ppt_extend]->push_packet(packetS);
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_push_to_extend;
+	} else {
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+	}
 }
 
-void PreProcessPacket::process_websocket(packet_s_process **packetS_ref) {
+void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
 	packet_s_process *packetS = *packetS_ref;
+	if(!packetS_orig) {
+		packetS_orig = packetS;
+	}
 	cWebSocketHeader ws(packetS->data_(), packetS->datalen_());
 	bool allocWsData;
 	u_char *ws_data = ws.decodeData(&allocWsData);
@@ -8721,8 +8926,16 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref) {
 	if(allocWsData) {
 		delete [] ws_data;
 	}
-	PACKET_S_PROCESS_DESTROY(&packetS);
-	this->process_parseSipData(&newPacketS);
+	if(packetS_orig && packetS_orig->next_action) {
+		packetS_orig->register_child_packet(newPacketS);
+		newPacketS->next_action = _ppna_set;
+	}
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_destroy;
+	} else {
+		PACKET_S_PROCESS_DESTROY(&packetS);
+	}
+	this->process_parseSipData(&newPacketS, packetS);
 }
 
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
@@ -8963,7 +9176,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 		 pthread_attr_destroy(&thAttr);
 	}
 	this->outThreadId = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket %s out thread %i", this->type == hash ? "hash" : "distribute", this->outThreadId);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %s/%i", this->type == hash ? "hash" : "distribute", this->outThreadId);
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
@@ -9033,7 +9246,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 
 void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket %s next thread %i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
+	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
 	int usleepUseconds = 20;
 	unsigned int usleepCounter = 0;
 	while(!this->term_processRtp) {
@@ -9054,7 +9267,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				packet_s_process_0 *packetS = hash_thread_data->batch->batch[batch_index];
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
-				if(packetS->call_info_length > 0) {
+				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);
@@ -9127,7 +9340,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					packet_s_process_0 *packetS = batch->batch[batch_index];
 					packetS->init2_rtp();
 					this->find_hash(packetS, false);
-					if(packetS->call_info_length > 0) {
+					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
 					} else {
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
@@ -9149,7 +9362,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				packet_s_process_0 *packetS = batch->batch[batch_index];
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
-				if(packetS->call_info_length > 0) {
+				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
@@ -9169,12 +9382,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index];
 			batch->batch[batch_index] = NULL;
-			if(packetS->call_info_length < 0) {
+			if(packetS->call_info.length < 0) {
 				this->find_hash(packetS);
 			}
-			if(packetS->call_info_length) {
-				process_packet__rtp_call_info(packetS->call_info, packetS->call_info_length, packetS, 
-							      packetS->call_info_find_by_dest, true,
+			if(packetS->call_info.length) {
+				process_packet__rtp_call_info(&packetS->call_info, packetS, 
+							      true,
 							      opt_t2_boost ? indexThread + 1 : 0,
 							      indexThread + 1);
 			} else {
@@ -9194,15 +9407,15 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use) {
 	packetS->blockstore_addflag(41 /*pb lock flag*/);
 	if(opt_t2_boost) {
-		if(packetS->call_info_length == 1) {
+		if(packetS->call_info.length == 1) {
 			packetS->blockstore_addflag(42 /*pb lock flag*/);
-			processRtpPacketDistribute[packetS->call_info[0].call->thread_num_rd]->push_packet(packetS);
+			processRtpPacketDistribute[packetS->call_info.calls[0].call->thread_num_rd]->push_packet(packetS);
 		} else {
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
-			threads_rd[0] = packetS->call_info[0].call->thread_num_rd;
+			threads_rd[0] = packetS->call_info.calls[0].call->thread_num_rd;
 			int threads_rd_count = 1;
-			for(int i = 1; i < packetS->call_info_length; i++) {
-				int thread_rd = packetS->call_info[i].call->thread_num_rd;
+			for(unsigned i = 1; i < packetS->call_info.length; i++) {
+				int thread_rd = packetS->call_info.calls[i].call->thread_num_rd;
 				if(thread_rd != threads_rd[0]) {
 					bool exists = false;
 					for(int j = 1; j < threads_rd_count; j++) {
@@ -9217,16 +9430,16 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 				}
 			}
 			packetS->set_use_reuse_counter();
-			packetS->reuse_counter_inc_sync(packetS->call_info_length);
+			packetS->reuse_counter_inc_sync(packetS->call_info.length);
 			for(int i = 0; i < threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
 		}
 	} else {
-		if(packetS->call_info_length > 1) {
+		if(packetS->call_info.length > 1) {
 			packetS->set_use_reuse_counter();
-			packetS->reuse_counter_inc_sync(packetS->call_info_length);
+			packetS->reuse_counter_inc_sync(packetS->call_info.length);
 		}
 		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 						       processRtpPacketDistribute[min(packetS->source_().getPort(), packetS->dest_().getPort()) / 2 % _process_rtp_packets_distribute_threads_use] :
@@ -9237,20 +9450,20 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 
 void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	packetS->blockstore_addflag(31 /*pb lock flag*/);
-	packetS->call_info_length = 0;
-	packetS->call_info_find_by_dest = false;
+	packetS->call_info.length = 0;
+	packetS->call_info.find_by_dest = false;
 	if(lock) {
 		calltable->lock_calls_hash();
 	}
 	node_call_rtp *n_call = NULL;
 	if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
-		packetS->call_info_find_by_dest = true;
+		packetS->call_info.find_by_dest = true;
 		packetS->blockstore_addflag(32 /*pb lock flag*/);
 	} else {
 		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
 		packetS->blockstore_addflag(33 /*pb lock flag*/);
 	}
-	packetS->call_info_length = 0;
+	packetS->call_info.length = 0;
 	#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 	if(n_call && !n_call->empty()) {
 	#else
@@ -9266,10 +9479,10 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 		#endif
 			Call *call = call_rtp->call;
 			if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-			    (packetS->call_info_find_by_dest ?
+			    (packetS->call_info.find_by_dest ?
 			      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
 			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
-			    (packetS->call_info_find_by_dest ?
+			    (packetS->call_info.find_by_dest ?
 			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
 			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
 			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
@@ -9287,30 +9500,30 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			   !(call->flags & FLAG_SKIPCDR)) {
 				++counter_rtp_packets[1];
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
-				packetS->call_info[packetS->call_info_length].call = call;
-				packetS->call_info[packetS->call_info_length].iscaller = call_rtp->iscaller;
-				packetS->call_info[packetS->call_info_length].is_rtcp = call_rtp->is_rtcp;
-				packetS->call_info[packetS->call_info_length].sdp_flags = call_rtp->sdp_flags;
-				if(call->use_rtcp_mux && !packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux) {
-					s_sdp_flags *sdp_flags_other_side = packetS->call_info_find_by_dest ?
+				packetS->call_info.calls[packetS->call_info.length].call = call;
+				packetS->call_info.calls[packetS->call_info.length].iscaller = call_rtp->iscaller;
+				packetS->call_info.calls[packetS->call_info.length].is_rtcp = call_rtp->is_rtcp;
+				packetS->call_info.calls[packetS->call_info.length].sdp_flags = call_rtp->sdp_flags;
+				if(call->use_rtcp_mux && !packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux) {
+					s_sdp_flags *sdp_flags_other_side = packetS->call_info.find_by_dest ?
 									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
 									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
 					if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
-						packetS->call_info[packetS->call_info_length].sdp_flags.rtcp_mux = true;
+						packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux = true;
 					}
 				}
-				packetS->call_info[packetS->call_info_length].use_sync = false;
-				packetS->call_info[packetS->call_info_length].multiple_calls = false;
+				packetS->call_info.calls[packetS->call_info.length].use_sync = false;
+				packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
 				__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
-				++packetS->call_info_length;
-				if(packetS->call_info_length == (sizeof(packetS->call_info) / sizeof(packetS->call_info[0]))) {
+				++packetS->call_info.length;
+				if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
 					break;
 				}
 			}
 		}
-		if(packetS->call_info_length > 1 && !packetS->audiocodes) {
-			for(int i = 0; i < packetS->call_info_length; i++) {
-				packetS->call_info[i].multiple_calls = true;
+		if(packetS->call_info.length > 1 && !packetS->audiocodes) {
+			for(unsigned i = 0; i < packetS->call_info.length; i++) {
+				packetS->call_info.calls[i].multiple_calls = true;
 			}
 		}
 	}
