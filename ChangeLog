@@ -1,3 +1,17 @@
+28.0 04.05.2021
+===============
+- automatically split "d" thread in t2cpu threads which is responsible for packet classifications - now it is possible to process >5Gbit traffic on slower GHZ CPUs. 
+- automatically split "s" thread in t2cpu threads which parses SIP packets - now extreme SIP packet rate is possible on slower GHZ CPUs
+- speed optimisations in t2cpu threads (less memory copying) 
+- add support for anonymization ip in pcap [VG-2281]
+- fix crash in jitterbuffer if packetization == 1 [VS-1186]
+- ignore process error for attempt to decrypt data without data-remaing from previous pass
+- add new option ssl_unlimited_reassembly_attempts (yes/NO) for enable unlimited attempts for reassembly if next packet with the same tcp.ack arrived
+- add support for crypto suites AES_CM_256_HMAC_SHA1_80, AES_CM_256_HMAC_SHA1_32 in srtp decode
+- allow comment # in voipmonitor.conf at the end of value [VS-1195]
+- fix crash when refreshing fraud in case option for storing pcap is enabled [VS-1189]
+
+
 27.8 06.04.2021
 ===============
 - fix issue with synchronizing very slow and fast traffic across multiple interfaces [VS-1177]
