@@ -11752,7 +11752,8 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 			string findHeader = iter2->second.header;
 			if(findHeader.length()) {
 				if(findHeader[findHeader.length() - 1] != ':' &&
-				   findHeader[findHeader.length() - 1] != '=') {
+				   findHeader[findHeader.length() - 1] != '=' &&
+				   strcasecmp(findHeader.c_str(), "invite")) {
 					findHeader.append(":");
 				}
 				parsePacket->addNode(findHeader.c_str(), ParsePacket::typeNode_custom);
