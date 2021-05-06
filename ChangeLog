@@ -1,3 +1,9 @@
+28.1 06.05.2021
+===============
+- First line in SIP message (INVITE etc.) can be used in custom headers [VS-550] [VS-615] - use header field invite
+- fix race condition leading to crash for 3XX SIP calls
+
+
 28.0 04.05.2021
 ===============
 - automatically split "d" thread in t2cpu threads which is responsible for packet classifications - now it is possible to process >5Gbit traffic on slower GHZ CPUs. 
