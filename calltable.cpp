@@ -571,6 +571,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#if CALL_RTP_DYNAMIC_ARRAY
 	rtp_dynamic = NULL;
 	#endif
+	rtp_remove_flag = false;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
 	rtplock_sync = 0;
@@ -679,7 +680,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	log_srtp_callid = false;
 	
 	error_negative_payload_length = false;
-	use_removeRtp = false;
 	rtp_ip_port_counter = 0;
 	hash_queue_counter = 0;
 	attemptsClose = 0;
@@ -906,8 +906,8 @@ Call::_addtocachequeue(string file) {
 }
 
 void
-Call::removeRTP() {
-	while(this->rtppacketsinqueue > 0) {
+Call::setFlagForRemoveRTP() {
+	while(rtppacketsinqueue > 0) {
 		if(!opt_t2_boost && rtp_threads) {
 			extern int num_threads_max;
 			for(int i = 0; i < num_threads_max; i++) {
@@ -918,7 +918,11 @@ Call::removeRTP() {
 		}
 		USLEEP(100);
 	}
-	rtp_lock();
+	rtp_remove_flag = true;
+}
+
+void
+Call::_removeRTP() {
 	closeRawFiles();
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
 		if(rtp_fix[i]) {
@@ -941,8 +945,7 @@ Call::removeRTP() {
 	}
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
-	rtp_unlock();
-	use_removeRtp = true;
+	rtp_remove_flag = false;
 }
 
 /* destructor */
@@ -1462,6 +1465,8 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 bool
 Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
+	removeRTP_ifSetFlag();
+ 
 	if(iscaller < 0) {
 		if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
 		   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
@@ -1533,14 +1538,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 	}
 	*/
 	
-	bool rtp_locked = false;
-	#if CALL_RTP_DYNAMIC_ARRAY
-	if(rtp_size() > MAX_SSRC_PER_CALL_FIX / 2 || rtp_dynamic) {
-		rtp_lock();
-		rtp_locked = true;
-	}
-	#endif
-	
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i->ssrc2 == curSSRC) {
 /*
@@ -1577,7 +1574,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 
 				if(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) {
 					*disable_save = true;
-					if(rtp_locked) rtp_unlock();
 					return(false);
 				}
 			 
@@ -1591,7 +1587,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 				if(udptl) {
 					++rtp_i->s->received;
 					++rtp_i->stats.received;
-					if(rtp_locked) rtp_unlock();
 					return(true);
 				}
 				
@@ -1630,7 +1625,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 						}
 						if(!found) {
 							// dynamic type codec changed but was not negotiated - do not create new RTP stream
-							if(rtp_locked) rtp_unlock();
 							return(rtp_read_rslt);
 						}
 					} else {
@@ -1666,7 +1660,6 @@ read:
 						} else {
 							lastcalledrtp = rtp_i;
 						}
-						if(rtp_locked) rtp_unlock();
 						return(rtp_read_rslt);
 					} else if(oldcodec != rtp_i->codec){
 						//codec changed and it is not DTMF, reset ssrc so the stream will not match and new one is used
@@ -1703,10 +1696,6 @@ read:
 		}
 		
 		if(udptl) {
-			if(!rtp_locked) {
-				rtp_lock();
-				rtp_locked = true;
-			}
 			RTP *rtp_new = new FILE_LINE(0) RTP(packetS->sensor_id_(), packetS->sensor_ip); 
 			rtp_new->ssrc_index = rtp_size();
 			rtp_new->call_owner = this;
@@ -1720,7 +1709,6 @@ read:
 			++rtp_new->s->received;
 			++rtp_new->stats.received;
 			add_rtp_stream(rtp_new);
-			if(rtp_locked)  rtp_unlock();
 			return(true);
 		}
 		
@@ -1761,7 +1749,6 @@ read:
 				if(opt_rtp_check_both_sides_by_sdp == 1) {
 					*disable_save = true;
 				}
-				if(rtp_locked) rtp_unlock();
 				return(false);
 			}
 			if(index_call_ip_port_other_side >= 0) {
@@ -1786,11 +1773,6 @@ read:
 			if(lastcalledrtp) {
 				lastcalledrtp->jt_tail(packetS->header_pt);
 			}
-		}
-		
-		if(!rtp_locked) {
-			rtp_lock();
-			rtp_locked = true;
 		}
 		
 		/*
@@ -1958,8 +1940,6 @@ read:
 		add_rtp_stream(rtp_new);
 		
 	}
-	
-	if(rtp_locked) rtp_unlock();
 	
 	return(rtp_read_rslt);
 }
@@ -5491,6 +5471,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
+	
+	removeRTP_ifSetFlag();
 
 	if((opt_cdronlyanswered and !connect_time_us) or 
 	   (opt_cdronlyrtp and !rtp_size())) {

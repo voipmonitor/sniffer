@@ -699,6 +699,7 @@ public:
 	#if CALL_RTP_DYNAMIC_ARRAY
 	vector<RTP*> *rtp_dynamic;
 	#endif
+	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
 	volatile int rtplock_sync;
@@ -1167,7 +1168,13 @@ public:
 	 * @brief remove all RTP 
 	 *
 	*/
-	void removeRTP();
+	void setFlagForRemoveRTP();
+	inline void removeRTP_ifSetFlag() {
+		if(rtp_remove_flag) {
+			_removeRTP();
+		}
+	}
+	void _removeRTP();
 
 	/**
 	 * @brief stop recording packets to pcap file
@@ -1728,13 +1735,6 @@ public:
 	inline int rtp_size() {
 		return(ssrc_n);
 	}
-	
-	inline void rtp_lock() {
-		__SYNC_LOCK_USLEEP(rtplock_sync, 100);
-	}
-	inline void rtp_unlock() {
-		__SYNC_UNLOCK(rtplock_sync);
-	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -1750,7 +1750,6 @@ private:
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
-	bool use_removeRtp;
 	volatile int rtp_ip_port_counter;
 	#if NEW_RTP_FIND__NODES
 	list<vmIPport> rtp_ip_port_list;

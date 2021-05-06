@@ -3992,8 +3992,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
 					call->removeFindTables(packetS->getTimeval_pt());
-					call->removeRTP();
 					call->ipport_n = 0;
+					call->setFlagForRemoveRTP();
 				}
 				process_packet__parse_custom_headers(call, packetS);
 				goto endsip_save_packet;
