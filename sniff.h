@@ -428,7 +428,7 @@ struct packet_s_process_calls_info {
 	}
 	static inline unsigned max_calls() {
 		extern int opt_sdp_multiplication;
-		return(opt_sdp_multiplication);
+		return(max(opt_sdp_multiplication, 1));
 	}
 };
 
