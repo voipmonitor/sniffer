@@ -71,9 +71,6 @@
 
 #define FILE_BUFFER_SIZE 1000000
 
-#define SNAPLEN (opt_snaplen > 0 ? (unsigned)opt_snaplen : \
-		(opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200))
-
 #define TRACE_INVITE_BYE 0
 #define TRACE_MASTER_SECRET 0
 
@@ -3098,7 +3095,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	// CONFIG
 	extern int opt_promisc;
 	extern int opt_ringbuffer;
-	this->pcap_snaplen = SNAPLEN;
+	this->pcap_snaplen = get_pcap_snaplen();
 	this->pcap_promisc = opt_promisc;
 	this->pcap_timeout = 1000;
 	this->pcap_buffer_size = opt_ringbuffer * 1024 * 1024;
@@ -3798,8 +3795,8 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 		this->detachBufferLength = 500000;
 		for(int i = 0; i < 2; i++) {
 			if(typeThread == read) {
-				this->detachBuffer[i] = new FILE_LINE(15029) u_char[this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + SNAPLEN];
-				memset((u_char*)this->detachBuffer[i], 0, this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + SNAPLEN);
+				this->detachBuffer[i] = new FILE_LINE(15029) u_char[this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + get_pcap_snaplen()];
+				memset((u_char*)this->detachBuffer[i], 0, this->detachBufferLength + sizeof(pcap_pkthdr) * 2 + get_pcap_snaplen());
 			} else {
 				this->detachBuffer[i] = readThread->detachBuffer[i];
 			}
@@ -3828,7 +3825,7 @@ PcapQueue_readFromInterfaceThread::PcapQueue_readFromInterfaceThread(const char 
 	this->headerPacketStackShort = NULL;
 	this->headerPacketStackShortPacketLen = 0;
 	if(typeThread == read) {
-		this->headerPacketStackSnaplen = new FILE_LINE(15030) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+		this->headerPacketStackSnaplen = new FILE_LINE(15030) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, get_pcap_snaplen());
 		if(opt_pcap_queue_iface_dedup_separate_threads_extend == 2) {
 			this->headerPacketStackShortPacketLen = 256;
 			this->headerPacketStackShort = new FILE_LINE(15031) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, this->headerPacketStackShortPacketLen);
@@ -5237,7 +5234,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 			USLEEP(10000);
 		} else {
 			if(!headerPacketStack) {
-				headerPacketStack = new FILE_LINE(15049) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, SNAPLEN);
+				headerPacketStack = new FILE_LINE(15049) cHeaderPacketStack(opt_pcap_queue_iface_qring_size, get_pcap_snaplen());
 				headerPacketStackAlloc = true;
 			}
 			if(!header_packet_read) {
@@ -5276,8 +5273,8 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 				USLEEP(100);
 			} else if(res > 0) {
 				this->ppd.pid.clear();
-				if(pcap_next_ex_header->caplen > SNAPLEN) {
-					pcap_next_ex_header->caplen = SNAPLEN;
+				if(pcap_next_ex_header->caplen > get_pcap_snaplen()) {
+					pcap_next_ex_header->caplen = get_pcap_snaplen();
 				}
 				memcpy_heapsafe(HPH(header_packet_read), header_packet_read,
 						pcap_next_ex_header, NULL,

@@ -1154,5 +1154,14 @@ void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
 		u_char *data, unsigned datalen,
 		const char *file, unsigned line, const char *function, const char *descr = NULL);
 
+inline u_int32_t get_pcap_snaplen() {
+	extern int opt_snaplen;
+	extern int opt_enable_http;
+	extern int opt_enable_webrtc;
+	extern int opt_enable_ssl;
+	return((opt_snaplen > 0 ? (unsigned)opt_snaplen :
+	       (opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200)));
+}
+
 
 #endif

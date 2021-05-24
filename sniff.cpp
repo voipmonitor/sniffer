@@ -6914,7 +6914,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 		if(header_packet) {
 			header_packet->clearPcapProcessData();
 		} else {
-			header_packet = CREATE_HP(0xFFFF);
+			header_packet = CREATE_HP(MAX(0xFFFF, get_pcap_snaplen()));
 		}
 		
 		if(sverb.dump_packets_via_wireshark) {
@@ -6924,6 +6924,13 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			if(!dissect_rslt.empty()) {
 				cout << dissect_rslt << endl;
 			}
+		}
+		
+		if(pcap_next_ex_header->caplen > get_pcap_snaplen()) {
+			pcap_next_ex_header->caplen = get_pcap_snaplen();
+		}
+		if(pcap_next_ex_header->caplen > pcap_next_ex_header->len) {
+			pcap_next_ex_header->caplen = pcap_next_ex_header->len;
 		}
 		
 		memcpy_heapsafe(HPH(header_packet), header_packet,
