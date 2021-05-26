@@ -7813,6 +7813,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		}
 		this->qring_detach = NULL;
 	}
+	this->items_flag = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -7884,6 +7885,7 @@ PreProcessPacket::~PreProcessPacket() {
 		}
 		delete [] this->qring;
 	}
+	delete [] this->items_flag;
 	if(this->stackSip) {
 		delete this->stackSip;
 	}
@@ -7933,6 +7935,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
 					this->process_DETACH_plus(batch[batch_index], false);
+					this->items_flag[batch_index] = 1;
 				} }
 				break;
 			case ppt_sip: {
@@ -7941,6 +7944,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
 					this->process_SIP(batch[batch_index], true);
+					this->items_flag[batch_index] = 1;
 				} }
 				break;
 			default:
@@ -7958,6 +7962,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 
 void *PreProcessPacket::outThreadFunction() {
 	if(this->typePreProcessThread == ppt_detach ||
+	   this->typePreProcessThread == ppt_sip ||
 	   this->typePreProcessThread == ppt_extend) {
 		 pthread_t thId = pthread_self();
 		 pthread_attr_t thAttr;
@@ -7987,24 +7992,51 @@ void *PreProcessPacket::outThreadFunction() {
 			if(this->typePreProcessThread == ppt_detach) {
 				batch_detach = this->qring_detach[this->readit];
 				if(this->next_thread_handle[0]) {
+					__SYNC_LOCK(this->_sync_count);
+					unsigned count = batch_detach->count;
+					__SYNC_UNLOCK(this->_sync_count);
+					unsigned completed = 0;
 					int _next_threads = this->next_threads;
+					bool _process_only_in_next_threads = _next_threads > 1;
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->items_flag[batch_index] = 0;
+					}
 					for(int i = 0; i < _next_threads; i++) {
-						this->next_thread_data[i].start = batch_detach->count / (_next_threads + 1) * (i + 1);
-						this->next_thread_data[i].end = i == (_next_threads - 1) ? batch_detach->count : batch_detach->count / (_next_threads + 1) * (i + 2);
-						this->next_thread_data[i].skip = 1;
+						if(_process_only_in_next_threads) {
+							this->next_thread_data[i].start = i;
+							this->next_thread_data[i].end = count;
+							this->next_thread_data[i].skip = _next_threads;
+						} else {
+							this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
+							this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
+							this->next_thread_data[i].skip = 1;
+						}
 						this->next_thread_data[i].batch = batch_detach->batch;
 						this->next_thread_data[i].processing = 1;
 						sem_post(&sem_sync_next_thread[i][0]);
 					}
-					for(unsigned batch_index = 0; 
-					    batch_index < batch_detach->count / (_next_threads + 1); 
-					    batch_index++) {
-						this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+					if(_process_only_in_next_threads) {
+						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
+						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+							if(completed < count &&
+							   this->items_flag[completed] != 0) {
+								preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[completed]->pointer[0]));
+								++completed;
+							} else {
+								USLEEP(20);
+							}
+						}
+					} else {
+						for(unsigned batch_index = 0; 
+						    batch_index < count / (_next_threads + 1); 
+						    batch_index++) {
+							this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+						}
 					}
 					for(int i = 0; i < _next_threads; i++) {
 						sem_wait(&sem_sync_next_thread[i][1]);
 					}
-					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+					for(unsigned batch_index = completed; batch_index < batch_detach->count; batch_index++) {
 						preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]));
 					}
 				} else {
@@ -8025,24 +8057,48 @@ void *PreProcessPacket::outThreadFunction() {
 				__SYNC_LOCK(this->_sync_count);
 				unsigned count = batch->count;
 				__SYNC_UNLOCK(this->_sync_count);
+				unsigned completed = 0;
 				int _next_threads = this->next_threads;
+				bool _process_only_in_next_threads = _next_threads > 1;
+				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+					this->items_flag[batch_index] = 0;
+				}
 				for(int i = 0; i < _next_threads; i++) {
-					this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
-					this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
-					this->next_thread_data[i].skip = 1;
+					if(_process_only_in_next_threads) {
+						this->next_thread_data[i].start = i;
+						this->next_thread_data[i].end = count;
+						this->next_thread_data[i].skip = _next_threads;
+					} else {
+						this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
+						this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
+						this->next_thread_data[i].skip = 1;
+					}
 					this->next_thread_data[i].batch = batch->batch;
 					this->next_thread_data[i].processing = 1;
 					sem_post(&sem_sync_next_thread[i][0]);
 				}
-				for(unsigned batch_index = 0; 
-				    batch_index < count / (_next_threads + 1); 
-				    batch_index++) {
-					this->process_SIP(batch->batch[batch_index], true);
+				if(_process_only_in_next_threads) {
+					while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
+					      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+						if(completed < count &&
+						   this->items_flag[completed] != 0) {
+							processNextAction(batch->batch[completed]);
+							++completed;
+						} else {
+							USLEEP(20);
+						}
+					}
+				} else {
+					for(unsigned batch_index = 0; 
+					    batch_index < count / (_next_threads + 1); 
+					    batch_index++) {
+						this->process_SIP(batch->batch[batch_index], true);
+					}
 				}
 				for(int i = 0; i < _next_threads; i++) {
 					sem_wait(&sem_sync_next_thread[i][1]);
 				}
-				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+				for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 					processNextAction(batch->batch[batch_index]);
 					batch->batch[batch_index] = NULL;
 				}
@@ -9297,7 +9353,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 	if(type == hash) {
 		int _process_rtp_packets_hash_next_threads = this->process_rtp_packets_hash_next_threads;
 		int _process_rtp_packets_distribute_threads_use = process_rtp_packets_distribute_threads_use;
-		int _find_hash_only_in_next_threads = opt_process_rtp_packets_hash_next_thread_sem_sync == 1 && _process_rtp_packets_hash_next_threads >= 1;
+		int _find_hash_only_in_next_threads = opt_process_rtp_packets_hash_next_thread_sem_sync == 1 && _process_rtp_packets_hash_next_threads > 1;
 		unsigned batch_index_distribute = 0;
 		for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 			this->hash_find_flag[batch_index] = 0;
@@ -9358,7 +9414,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
 						sem_wait(&sem_sync_next_thread[i][1]);
 					} else {
-						while(this->hash_thread_data[i].batch) { 
+						while(this->hash_thread_data[i].processing) { 
 							USLEEP(20); 
 						}
 					}

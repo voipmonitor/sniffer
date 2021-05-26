@@ -387,6 +387,7 @@ public:
 				delete header;
 				delete [] packet;
 			}
+			return;
 		}
 		if(opt_enable_ssl) {
 			this->lock_push();
@@ -1089,6 +1090,14 @@ private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
 	inline void processNextAction(packet_s_process *packetS);
+	bool isNextThreadsGt2Processing(int next_threads) {
+		for(int i = 2; i < next_threads; i++) {
+			if(this->next_thread_data[i].processing) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 	void lock_push() {
 		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
 			USLEEP(10);
@@ -1120,6 +1129,7 @@ private:
 	u_int64_t qringPushCounter_full;
 	int outThreadId;
 	int nextThreadId[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	volatile int *items_flag;
 	volatile int _sync_push;
 	volatile int _sync_count;
 	bool term_preProcess;
