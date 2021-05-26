@@ -1,3 +1,11 @@
+28.2 26.05.2021
+===============
+- fix rare random crashes in TCP reassembler introduced in 28.0
+- fix crash if sdp_multiplication=0
+- fix issue with caplen and snaplen when loading pcap with -r [VS-1199]
+- increase SIP processing threads to 4 and optimise first thread 
+
+
 28.1 06.05.2021
 ===============
 - First line in SIP message (INVITE etc.) can be used in custom headers [VS-550] [VS-615] - use header field invite
