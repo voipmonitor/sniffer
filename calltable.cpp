@@ -106,6 +106,7 @@ extern int opt_id_sensor_cleanspool;
 extern int rtptimeout;
 extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
+extern bool opt_ss7_use_sam_subsequent_number;
 extern int opt_ss7timeout_rlc;
 extern int opt_ss7timeout_rel;
 extern int opt_ss7timeout;
@@ -8539,6 +8540,7 @@ bool Ss7::sParseData::parse(packet_s_stack *packetS, const char *dissect_rslt) {
 		gettag_json(dissect_rslt, "mtp3.dpc", &mtp3_dpc, UINT_MAX);
 		gettag_json(dissect_rslt, "e164.called_party_number.digits", &e164_called_party_number_digits);
 		gettag_json(dissect_rslt, "e164.calling_party_number.digits", &e164_calling_party_number_digits);
+		gettag_json(dissect_rslt, "isup.subsequent_number", &isup_subsequent_number);
 		gettag_json(dissect_rslt, "isup.cause_indicator", &isup_cause_indicator, UINT_MAX);
 		return(true);
 	}
@@ -8564,6 +8566,7 @@ void Ss7::sParseData::debugOutput() {
 	     << "mtp3.dpc: " << mtp3_dpc << endl
 	     << "e164.called_party_number.digits: " << e164_called_party_number_digits << endl
 	     << "e164.calling_party_number.digits: " << e164_calling_party_number_digits << endl
+	     << "isup.subsequent_number: " << isup_subsequent_number << endl
 	     << "---" << endl;
 }
 
@@ -8584,6 +8587,10 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 			iam_time_us = getTimeUS(packetS->header_pt);
 		}
 		strcpy_null_term(fbasename, filename().c_str());
+		break;
+	case SS7_SAM:
+		last_message_type = iam;
+		sam_data = *data;
 		break;
 	case SS7_ACM:
 		last_message_type = acm;
@@ -8739,9 +8746,13 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		ss7.add(isset_unsigned(iam_data.m3ua_protocol_data_dpc) ? iam_data.m3ua_protocol_data_dpc : iam_data.mtp3_dpc, "dpc");
 	}
 	if(!iam_data.e164_called_party_number_digits.empty()) {
-		ss7.add(sqlEscapeString(iam_data.e164_called_party_number_digits), "called_number");
-		ss7.add(sqlEscapeString(reverseString(iam_data.e164_called_party_number_digits.c_str())), "called_number_reverse");
-		ss7.add(getCountryByPhoneNumber(iam_data.e164_called_party_number_digits.c_str(), true), "called_number_country_code");
+		string called_number = iam_data.e164_called_party_number_digits;
+		if(opt_ss7_use_sam_subsequent_number && !sam_data.isup_subsequent_number.empty()) {
+			called_number += sam_data.isup_subsequent_number;
+		}
+		ss7.add(sqlEscapeString(called_number), "called_number");
+		ss7.add(sqlEscapeString(reverseString(called_number.c_str())), "called_number_reverse");
+		ss7.add(getCountryByPhoneNumber(called_number.c_str(), true), "called_number_country_code");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
 		ss7.add(sqlEscapeString(iam_data.e164_calling_party_number_digits), "caller_number");

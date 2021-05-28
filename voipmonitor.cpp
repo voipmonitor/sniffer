@@ -402,6 +402,7 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
+bool opt_ss7_use_sam_subsequent_number = false;
 int opt_ss7_type_callid = 1;
 int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
@@ -7183,6 +7184,7 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7_use_sam_subsequent_number", &opt_ss7_use_sam_subsequent_number));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
 					->disableNo()
 					->addValues("cic_dpc_opc:1|cic:2")
@@ -10903,6 +10905,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "ss7", NULL))) {
 		opt_enable_ss7 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ss7_use_sam_subsequent_number", NULL))) {
+		opt_ss7_use_sam_subsequent_number = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ss7callid", NULL))) {
 		opt_ss7_type_callid = !strcasecmp(value, "cic") ? 2 : 1;

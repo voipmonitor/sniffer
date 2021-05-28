@@ -147,6 +147,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_RTP_STREAM_IS_CALLED		(1 << 3)
 
 #define SS7_IAM 1
+#define SS7_SAM 2
 #define SS7_ACM 6
 #define SS7_CPG 44
 #define SS7_ANM 9
@@ -1889,6 +1890,7 @@ public:
 		unsigned mtp3_dpc;
 		string e164_called_party_number_digits;
 		string e164_calling_party_number_digits;
+		string isup_subsequent_number;
 		unsigned isup_cause_indicator;
 	};
 public:
@@ -1938,6 +1940,7 @@ public:
 	eMessageType last_message_type;
 	// IAM (Initial Address)
 	sParseData iam_data;
+	sParseData sam_data;
 	vmIP iam_src_ip;
 	vmIP iam_dst_ip;
 	u_int64_t iam_time_us;
