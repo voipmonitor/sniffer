@@ -115,6 +115,7 @@ volatile unsigned int glob_last_packet_time;
 u_int64_t glob_packet_number;
 
 Calltable *calltable = NULL;
+cDestroyCallsInfo *destroy_calls_info = NULL;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 extern int opt_saveSIP;		// save SIP packets to pcap file?

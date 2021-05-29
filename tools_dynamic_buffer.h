@@ -297,6 +297,7 @@ private:
 	int time;
 	data_tar_time tar_time;
 	Call_abstract *call;
+	string fbasename;
 	int typeContent;
 	list<sChunk> chunkBuffer;
 	volatile unsigned int chunkBuffer_countItems;

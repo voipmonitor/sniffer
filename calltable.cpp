@@ -154,6 +154,7 @@ extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
+extern cDestroyCallsInfo *destroy_calls_info;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern CustomHeaders *custom_headers_cdr;
@@ -304,6 +305,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	user_data = NULL;
 	user_data_type = 0;
 	chunkBuffersCount = 0;
+	chunkBuffersCount_sync = 0;
 }
 
 bool 
@@ -951,6 +953,10 @@ Call::_removeRTP() {
 
 /* destructor */
 Call::~Call(){
+ 
+	if(destroy_calls_info) {
+		destroy_calls_info->add(this);
+	}
  
 	alloc_flag = 0;
 	
@@ -12858,4 +12864,45 @@ int convCallFieldToFieldIndex(eCallField field) {
 void reset_counters() {
 	calls_counter = 0;
 	registers_counter = 0;
+}
+
+
+void cDestroyCallsInfo::add(Call *call) {
+	lock();
+	sCallInfo *ci = new FILE_LINE(0) sCallInfo(call);
+	queue.push_back(ci);
+	while(queue.size() > limit) {
+		delete queue.front();
+		queue.pop_front();
+	}
+	unlock();
+}
+
+unsigned cDestroyCallsInfo::find(string fbasename, list<sCallInfo> *cil) {
+	unsigned rslt = 0;
+	lock();
+	unsigned size = queue.size();
+	for(unsigned i = 0; i < size; i++) {
+		if(queue[i]->fbasename == fbasename) {
+			cil->push_back(*queue[i]);
+			++rslt;
+		}
+	}
+	unlock();
+	return(rslt);
+}
+
+string cDestroyCallsInfo::find(string fbasename) {
+	list<sCallInfo> cil;
+	if(find(fbasename, &cil)) {
+		ostringstream outStr;
+		for(list<sCallInfo>::iterator iter = cil.begin(); iter != cil.end(); iter++) {
+			outStr << "pt: " << hex << iter->pointer_to_call << dec << ", "
+			       << "dt: " << iter->destroy_time << ", "
+			       << "tid: " << iter->tid << ", "
+			       << "cnt: " << iter->chunk_buffers_count << " / ";
+		}
+		return(outStr.str());
+	}
+	return("");
 }

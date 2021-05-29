@@ -467,20 +467,36 @@ public:
 			0);
 	}
 	bool isEmptyChunkBuffersCount() {
-		return(!chunkBuffersCount);
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		bool rslt = chunkBuffersCount == 0;
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	int getChunkBuffersCount() {
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		int rslt = chunkBuffersCount;
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
 	}
 	void incChunkBuffers() {
+		__SYNC_LOCK(chunkBuffersCount_sync);
 		__sync_add_and_fetch(&chunkBuffersCount, 1);
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
 	}
 	void decChunkBuffers() {
+		__SYNC_LOCK(chunkBuffersCount_sync);
 		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
 	}
 	void addTarPos(u_int64_t pos, int type);
 	bool isAllocFlagOK() {
-		return(alloc_flag);
+		return(alloc_flag == 1);
+	}
+	bool isAllocFlagSetAsFree() {
+		return(alloc_flag == 0);
 	}
 public:
-	uint8_t alloc_flag;
+	volatile uint8_t alloc_flag;
 	int type_base;
 	int type_next;
 	u_int64_t first_packet_time_us;
@@ -500,6 +516,7 @@ protected:
 	list<u_int64_t> tarPosGraph;
 private:
 	volatile u_int16_t chunkBuffersCount;
+	volatile int chunkBuffersCount_sync;
 };
 
 struct sChartsCacheCallData {
@@ -2817,6 +2834,44 @@ eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
 
 void reset_counters();
+
+
+class cDestroyCallsInfo {
+public:
+	struct sCallInfo {
+		sCallInfo(Call *call) {
+			pointer_to_call = call;
+			fbasename = call->fbasename;
+			destroy_time = getTimeUS();
+			tid = get_unix_tid();
+			chunk_buffers_count = call->getChunkBuffersCount();
+		}
+		void *pointer_to_call;
+		string fbasename;
+		u_int64_t destroy_time;
+		u_int32_t tid;
+		u_int16_t chunk_buffers_count;
+	};
+public:
+	cDestroyCallsInfo(unsigned limit) {
+		this->limit = limit;
+		_sync = 0;
+	}
+	void add(Call *call);
+	unsigned find(string fbasename, list<sCallInfo> *cil);
+	string find(string fbasename);
+private:
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+private:
+	unsigned limit;
+	deque<sCallInfo*> queue;
+	volatile int _sync;
+};
 
 
 #endif

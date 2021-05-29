@@ -964,6 +964,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->time = time;
 	this->tar_time = tar_time;
 	this->call = call;
+	this->fbasename = call->fbasename;
 	this->typeContent = typeContent;
 	this->chunkBuffer_countItems = 0;
 	this->len = 0;
@@ -1002,7 +1003,17 @@ ChunkBuffer::~ChunkBuffer() {
 		if(call->isAllocFlagOK()) {
 			call->decChunkBuffers();
 		} else {
-			syslog(LOG_NOTICE, "access to deallocated call in ChunkBuffer::~ChunkBuffer (%s)", this->getName().c_str());
+			extern cDestroyCallsInfo *destroy_calls_info;
+			string dci;
+			if(destroy_calls_info) {
+				dci = destroy_calls_info->find(this->fbasename);
+			}
+			syslog(LOG_NOTICE, "access to %s call in ChunkBuffer::~ChunkBuffer (%s/%s) t: %li %s", 
+			       call->isAllocFlagSetAsFree() ? "deallocated" : "bad",
+			       this->fbasename.c_str(),
+			       this->getName().c_str(),
+			       getTimeUS(),
+			       dci.c_str());
 		}
 	}
 	if(this->name) {
@@ -1470,7 +1481,17 @@ void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 		if(call->isAllocFlagOK()) {
 			call->addTarPos(pos, typeContent);
 		} else {
-			syslog(LOG_NOTICE, "access to deallocated call in ChunkBuffer::addTarPosInCall (%s)", this->getName().c_str());
+			extern cDestroyCallsInfo *destroy_calls_info;
+			string dci;
+			if(destroy_calls_info) {
+				dci = destroy_calls_info->find(this->fbasename);
+			}
+			syslog(LOG_NOTICE, "access to %s call in ChunkBuffer::addTarPosInCall (%s/%s) t: %li %s", 
+			       call->isAllocFlagSetAsFree() ? "deallocated" : "bad",
+			       this->fbasename.c_str(),
+			       this->getName().c_str(),
+			       getTimeUS(),
+			       dci.c_str());
 		}
 	}
 }
