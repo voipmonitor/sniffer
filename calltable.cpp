@@ -12900,7 +12900,8 @@ string cDestroyCallsInfo::find(string fbasename) {
 			outStr << "pt: " << hex << iter->pointer_to_call << dec << ", "
 			       << "dt: " << iter->destroy_time << ", "
 			       << "tid: " << iter->tid << ", "
-			       << "cnt: " << iter->chunk_buffers_count << " / ";
+			       << "cnt: " << iter->chunk_buffers_count << ", "
+			       << "ss: " << iter->dump_sip_state << " / ";
 		}
 		return(outStr.str());
 	}

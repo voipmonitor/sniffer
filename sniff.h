@@ -676,11 +676,11 @@ struct packet_s_process : public packet_s_process_0 {
 			++length;
 		}
 		if(length == 6) {
-			return((((int)_callid[0] * (int)_callid[1]) ^
-				((int)_callid[2] * (int)_callid[3]) ^
-				((int)_callid[4] * (int)_callid[5])) % preProcessPacketCallX_count);
+			return((((unsigned int)_callid[0] * (unsigned int)_callid[1]) ^
+				((unsigned int)_callid[2] * (unsigned int)_callid[3]) ^
+				((unsigned int)_callid[4] * (unsigned int)_callid[5])) % preProcessPacketCallX_count);
 		} else {
-			return(_callid[0] % preProcessPacketCallX_count);
+			return((unsigned int)_callid[0] % preProcessPacketCallX_count);
 		}
 	}
 	inline void register_child_packet(packet_s_process *child) {

@@ -1005,7 +1005,7 @@ ChunkBuffer::~ChunkBuffer() {
 		} else {
 			extern cDestroyCallsInfo *destroy_calls_info;
 			string dci;
-			if(destroy_calls_info) {
+			if(destroy_calls_info && this->getName().find("/GRAPH/") == string::npos) {
 				dci = destroy_calls_info->find(this->fbasename);
 			}
 			syslog(LOG_NOTICE, "access to %s call in ChunkBuffer::~ChunkBuffer (%s/%s) t: %li %s", 
@@ -1483,7 +1483,7 @@ void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 		} else {
 			extern cDestroyCallsInfo *destroy_calls_info;
 			string dci;
-			if(destroy_calls_info) {
+			if(destroy_calls_info && this->getName().find("/GRAPH/") == string::npos) {
 				dci = destroy_calls_info->find(this->fbasename);
 			}
 			syslog(LOG_NOTICE, "access to %s call in ChunkBuffer::addTarPosInCall (%s/%s) t: %li %s", 

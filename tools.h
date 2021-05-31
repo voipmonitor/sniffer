@@ -658,6 +658,9 @@ public:
 	void setStateClose() {
 		this->state = state_close;
 	}
+	eState getState() {
+		return(this->state);
+	}
 	string getFileName() {
 		return(fileName);
 	}

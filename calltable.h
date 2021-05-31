@@ -2845,12 +2845,14 @@ public:
 			destroy_time = getTimeUS();
 			tid = get_unix_tid();
 			chunk_buffers_count = call->getChunkBuffersCount();
+			dump_sip_state = call->getPcapSip()->getState();
 		}
 		void *pointer_to_call;
 		string fbasename;
 		u_int64_t destroy_time;
 		u_int32_t tid;
 		u_int16_t chunk_buffers_count;
+		u_int16_t dump_sip_state;
 	};
 public:
 	cDestroyCallsInfo(unsigned limit) {
