@@ -1001,6 +1001,12 @@ ChunkBuffer::~ChunkBuffer() {
 	}
 	if(call) {
 		if(call->isAllocFlagOK()) {
+			if(call->fbasename != this->fbasename) {
+				syslog(LOG_NOTICE, "mismatch fbasename in destroy ChunkBuffer : %s %s , type content : %i",
+				       call->fbasename,
+				       this->fbasename.c_str(),
+				       typeContent);
+			}
 			if(typeContent == FileZipHandler::pcap_sip) {
 				call->addPFlag(Call_abstract::_p_flag_destroy_tar_buffer);
 			}

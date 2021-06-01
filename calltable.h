@@ -461,7 +461,7 @@ public:
 		_p_flag_fzh_write_2,			// 23
 		_p_flag_fzh_compress_ev_1,		// 24
 		_p_flag_fzh_compress_ev_2,		// 25
-		_p_flag_chb_add_tar_pos,		// 26,
+		_p_flag_chb_add_tar_pos,		// 26
 		_p_flag_destroy_tar_buffer,		// 27
 		_p_flag_inc_chunk_buffer,		// 28
 		_p_flag_dec_chunk_buffer		// 29
