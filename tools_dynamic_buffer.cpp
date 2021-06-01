@@ -960,12 +960,14 @@ bool RecompressStream::decompress_ev(char *data, u_int32_t len) {
 }
 
 ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
-			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent) {
+			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent,
+			 const char *name) {
 	this->time = time;
 	this->tar_time = tar_time;
 	this->call = call;
-	this->fbasename = call->fbasename;
 	this->typeContent = typeContent;
+	if(name) this->name = name;
+	this->fbasename = call->fbasename;
 	this->chunkBuffer_countItems = 0;
 	this->len = 0;
 	this->chunk_fix_len = chunk_fix_len;
@@ -975,7 +977,6 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->chunkIterateProceedLen = 0;
 	this->closed = false;
 	this->decompressError = false;
-	this->name = NULL;
 	this->_sync_chunkBuffer = 0;
 	this->_sync_compress = 0;
 	this->last_add_time = 0;
@@ -983,7 +984,11 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->last_tar_time = 0;
 	this->chunk_buffer_size = 0;
 	if(call) {
-		call->incChunkBuffers();
+		if(!call->incChunkBuffers(this, this->name.c_str())) {
+			syslog(LOG_NOTICE, "error inc chunk in create ChunkBuffer : %s , type content : %i",
+			       call->fbasename,
+			       typeContent);
+		}
 	}
 }
 
@@ -1002,15 +1007,20 @@ ChunkBuffer::~ChunkBuffer() {
 	if(call) {
 		if(call->isAllocFlagOK()) {
 			if(call->fbasename != this->fbasename) {
-				syslog(LOG_NOTICE, "mismatch fbasename in destroy ChunkBuffer : %s %s , type content : %i",
+				syslog(LOG_NOTICE, "mismatch fbasename in destroy ChunkBuffer : %s / %s , type content : %i",
+				       call->fbasename,
+				       this->fbasename.c_str(),
+				       typeContent);
+			} else if(call->decChunkBuffers(this, this->name.c_str())) {
+				if(typeContent == FileZipHandler::pcap_sip) {
+					call->addPFlag(Call_abstract::_p_flag_destroy_tar_buffer);
+				}
+			} else {
+				syslog(LOG_NOTICE, "error dec chunk in destroy ChunkBuffer : %s / %s , type content : %i",
 				       call->fbasename,
 				       this->fbasename.c_str(),
 				       typeContent);
 			}
-			if(typeContent == FileZipHandler::pcap_sip) {
-				call->addPFlag(Call_abstract::_p_flag_destroy_tar_buffer);
-			}
-			call->decChunkBuffers();
 		} else {
 			extern cDestroyCallsInfo *destroy_calls_info;
 			string dci;
@@ -1025,9 +1035,6 @@ ChunkBuffer::~ChunkBuffer() {
 			       dci.c_str());
 		}
 	}
-	if(this->name) {
-		delete this->name;
-	}
 }
 
 void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength) {
@@ -1040,18 +1047,6 @@ void ChunkBuffer::setZipLevel(int zipLevel) {
 	if(this->compressStream) {
 		this->compressStream->setZipLevel(zipLevel);
 	}
-}
-
-void ChunkBuffer::setName(const char *name) {
-	if(this->name) {
-		delete this->name;
-		this->name = NULL;
-	}
-	if(!name || !*name) {
-		return;
-	}
-	this->name = new FILE_LINE(40014) char[strlen(name) + 1];
-	strcpy(this->name, name);
 }
 
 #include <stdio.h>

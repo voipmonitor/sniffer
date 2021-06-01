@@ -304,7 +304,6 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	flags = 0;
 	user_data = NULL;
 	user_data_type = 0;
-	chunkBuffersCount = 0;
 	chunkBuffersCount_sync = 0;
 	p_flags_count = 0;
 }
@@ -12867,6 +12866,17 @@ void reset_counters() {
 	registers_counter = 0;
 }
 
+
+cDestroyCallsInfo::~cDestroyCallsInfo() {
+	lock();
+	while(queue.size() > 0) {
+		sCallInfo *ci = queue.front();
+		q_map.erase(ci->fbasename);
+		queue.pop_front();
+		delete ci;
+	}
+	unlock();
+}
 
 void cDestroyCallsInfo::add(Call *call) {
 	lock();

@@ -3766,7 +3766,8 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 							   typeFile == pcap_sip ? 8 * 1024 : 
 							   typeFile == pcap_rtp ? 32 * 1024 : 
 							   typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
-							   call, typeFile);
+							   call, typeFile,
+							   this->fileName.c_str());
 	if(sverb.tar > 2) {
 		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %s",
 		       this->fileName.c_str(), (long)this->tarBuffer,
@@ -3802,7 +3803,6 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 			break;
 		}
 	}
-	this->tarBuffer->setName(this->fileName.c_str());
 	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
 	if(typeFile == pcap_sip && call) {
 		call->addPFlag(Call_abstract::_p_flag_init_tar_buffer_end);

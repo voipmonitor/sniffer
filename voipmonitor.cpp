@@ -1873,15 +1873,13 @@ void *storing_cdr( void */*dummy*/ ) {
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
 				calltable->unlock_calls_queue();
-				bool isPcapClose = call->isPcapsClose();
-				if(!isPcapClose) {
-					// Close SIP and SIP+RTP dump files ASAP to save file handles
-					call->getPcap()->close();
-					call->getPcapSip()->close();
+				if(call->closePcaps() || call->closeGraphs() ||
+				   !call->isEmptyChunkBuffersCount()) {
+					++calls_queue_position;
+					calltable->lock_calls_queue();
+					continue;
 				}
-				if(isPcapClose ?
-				    call->isEmptyChunkBuffersCount() :
-				    call->isReadyForWriteCdr()) {
+				if(call->isReadyForWriteCdr()) {
 					if(storing_cdr_next_threads_count) {
 						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
 						if(!mod) {

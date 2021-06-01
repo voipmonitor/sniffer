@@ -466,6 +466,18 @@ public:
 		_p_flag_inc_chunk_buffer,		// 28
 		_p_flag_dec_chunk_buffer		// 29
 	};
+	struct sChbIndex {
+		inline sChbIndex(void *chb, const char *name) {
+			this->chb = chb;
+			this->name = name;
+		}
+		void *chb;
+		string name;
+		friend inline const bool operator < (const sChbIndex &i1, const sChbIndex &i2) {
+			return(i1.chb < i2.chb ? 1 : i1.chb > i2.chb ? 0 :
+			       i1.name < i2.name);
+		}
+	};
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
 	virtual ~Call_abstract() {
@@ -503,27 +515,39 @@ public:
 	}
 	bool isEmptyChunkBuffersCount() {
 		__SYNC_LOCK(chunkBuffersCount_sync);
-		bool rslt = chunkBuffersCount == 0;
+		bool rslt = chunkBuffersMap.size() == 0;
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 		return(rslt);
 	}
 	int getChunkBuffersCount() {
 		__SYNC_LOCK(chunkBuffersCount_sync);
-		int rslt = chunkBuffersCount;
+		int rslt = chunkBuffersMap.size();
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 		return(rslt);
 	}
-	void incChunkBuffers() {
+	bool incChunkBuffers(void *chb, const char *name) {
+		bool rslt = false;
 		__SYNC_LOCK(chunkBuffersCount_sync);
 		this->addPFlag(_p_flag_inc_chunk_buffer);
-		__sync_add_and_fetch(&chunkBuffersCount, 1);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter == chunkBuffersMap.end()) {
+			chunkBuffersMap[sChbIndex(chb, name)] = true;
+			rslt = true;
+		}
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
 	}
-	void decChunkBuffers() {
+	bool decChunkBuffers(void *chb, const char *name) {
+		bool rslt = false;
 		__SYNC_LOCK(chunkBuffersCount_sync);
 		this->addPFlag(_p_flag_dec_chunk_buffer);
-		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter != chunkBuffersMap.end()) {
+			chunkBuffersMap.erase(iter);
+			rslt = true;
+		}
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
 	}
 	void addTarPos(u_int64_t pos, int type);
 	bool isAllocFlagOK() {
@@ -557,7 +581,7 @@ protected:
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
 private:
-	volatile u_int16_t chunkBuffersCount;
+	map<sChbIndex, bool> chunkBuffersMap;
 	volatile int chunkBuffersCount_sync;
 	u_char p_flags[P_FLAGS_MAX];
 	u_char p_flags_count;
@@ -1367,6 +1391,32 @@ public:
 			}
 		}
 		return(true);
+	}
+	bool closePcaps() {
+		bool callClose = false;
+		if(!pcap.isClose()) {
+			pcap.close();
+			callClose = true;
+		}
+		if(!pcapSip.isClose()) {
+			pcapSip.close();
+			callClose = true;
+		}
+		if(!pcapRtp.isClose()) {
+			pcapRtp.close();
+			callClose = true;
+		}
+		return(callClose);
+	}
+	bool closeGraphs() {
+		bool callClose = false;
+		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+			if(rtp_i && !rtp_i->graph.isClose()) {
+				rtp_i->graph.close();
+				callClose = true;
+			}
+		}
+		return(callClose);
 	}
 	bool isReadyForWriteCdr() {
 		return(isPcapsClose() && isGraphsClose() &&
@@ -2908,6 +2958,7 @@ public:
 		this->limit = limit;
 		_sync = 0;
 	}
+	~cDestroyCallsInfo();
 	void add(Call *call);
 	string find(string fbasename);
 private:
