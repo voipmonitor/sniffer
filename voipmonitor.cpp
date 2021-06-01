@@ -3955,7 +3955,7 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
-	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(1e7);
+	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
 	
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {

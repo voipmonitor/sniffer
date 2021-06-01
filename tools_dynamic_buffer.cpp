@@ -1001,6 +1001,9 @@ ChunkBuffer::~ChunkBuffer() {
 	}
 	if(call) {
 		if(call->isAllocFlagOK()) {
+			if(typeContent == FileZipHandler::pcap_sip) {
+				call->addPFlag(Call_abstract::_p_flag_destroy_tar_buffer);
+			}
 			call->decChunkBuffers();
 		} else {
 			extern cDestroyCallsInfo *destroy_calls_info;
@@ -1479,6 +1482,9 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 	if(call) {
 		if(call->isAllocFlagOK()) {
+			if(typeContent == FileZipHandler::pcap_sip) {
+				call->addPFlag(Call_abstract::_p_flag_chb_add_tar_pos);
+			}
 			call->addTarPos(pos, typeContent);
 		} else {
 			extern cDestroyCallsInfo *destroy_calls_info;

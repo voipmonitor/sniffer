@@ -306,6 +306,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	user_data_type = 0;
 	chunkBuffersCount = 0;
 	chunkBuffersCount_sync = 0;
+	p_flags_count = 0;
 }
 
 bool 
@@ -12869,41 +12870,40 @@ void reset_counters() {
 
 void cDestroyCallsInfo::add(Call *call) {
 	lock();
-	sCallInfo *ci = new FILE_LINE(0) sCallInfo(call);
-	queue.push_back(ci);
-	while(queue.size() > limit) {
-		delete queue.front();
-		queue.pop_front();
-	}
-	unlock();
-}
-
-unsigned cDestroyCallsInfo::find(string fbasename, list<sCallInfo> *cil) {
-	unsigned rslt = 0;
-	lock();
-	unsigned size = queue.size();
-	for(unsigned i = 0; i < size; i++) {
-		if(queue[i]->fbasename == fbasename) {
-			cil->push_back(*queue[i]);
-			++rslt;
+	if(q_map.find(call->fbasename) == q_map.end()) {
+		sCallInfo *ci = new FILE_LINE(0) sCallInfo(call);
+		queue.push_back(ci);
+		q_map[call->fbasename] = ci;
+		while(queue.size() > limit) {
+			sCallInfo *ci = queue.front();
+			q_map.erase(ci->fbasename);
+			queue.pop_front();
+			delete ci;
 		}
 	}
 	unlock();
-	return(rslt);
 }
 
 string cDestroyCallsInfo::find(string fbasename) {
-	list<sCallInfo> cil;
-	if(find(fbasename, &cil)) {
-		ostringstream outStr;
-		for(list<sCallInfo>::iterator iter = cil.begin(); iter != cil.end(); iter++) {
-			outStr << "pt: " << hex << iter->pointer_to_call << dec << ", "
-			       << "dt: " << iter->destroy_time << ", "
-			       << "tid: " << iter->tid << ", "
-			       << "cnt: " << iter->chunk_buffers_count << ", "
-			       << "ss: " << iter->dump_sip_state << " / ";
-		}
-		return(outStr.str());
+	lock();
+	map<string, sCallInfo*>::iterator iter = q_map.find(fbasename);
+	if(iter == q_map.end()) {
+		unlock();
+		return("");
 	}
-	return("");
+	sCallInfo ci = *iter->second;
+	unlock();
+	ostringstream outStr;
+	outStr << "pt: " << hex << ci.pointer_to_call << dec << ", "
+	       << "dt: " << ci.destroy_time << ", "
+	       << "tid: " << ci.tid << ", "
+	       << "cnt: " << ci.chunk_buffers_count << ", "
+	       << "ss: " << ci.dump_sip_state << ", "
+	       << "pf: ";
+	for(unsigned i = 0; i < ci.p_flags_count; i++) {
+		if(i) outStr << ',';
+		outStr << (int)(ci.p_flags[i]);
+	}
+	outStr  << " / ";
+	return(outStr.str());
 }

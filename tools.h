@@ -655,9 +655,7 @@ public:
 	bool isExistsContent() {
 		return(this->existsContent);
 	}
-	void setStateClose() {
-		this->state = state_close;
-	}
+	void setStateClose();
 	eState getState() {
 		return(this->state);
 	}

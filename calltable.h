@@ -430,7 +430,39 @@ struct sCseq {
 	u_int32_t number;
 };
 
+#define P_FLAGS_MAX 200
+
 class Call_abstract {
+public:
+	enum ePFlags {
+		_p_flag_na,
+		_p_flag_dumper_open,		//  1
+		_p_flag_dumper_open_ok,		//  2
+		_p_flag_dumper_dump,		//  3
+		_p_flag_dumper_dump_end,	//  4
+		_p_flag_dumper_dump_close,	//  5
+		_p_flag_dumper_dump_close_2,	//  6
+		_p_flag_dumper_dump_close_3,	//  7
+		_p_flag_dumper_dump_close_4,	//  8
+		_p_flag_dumper_dump_close_5,	//  9
+		_p_flag_dumper_dump_close_end,	// 10
+		_p_flag_dumper_set_state_close,	// 11
+		_p_flag_init_tar_buffer,	// 12
+		_p_flag_init_tar_buffer_end,	// 13
+		_p_flag_fzh_close,		// 14
+		_p_flag_fzh_flushbuffer_1,	// 15
+		_p_flag_fzh_flushbuffer_2,	// 16
+		_p_flag_fzh_flushbuffer_3,	// 17
+		_p_flag_fzh_flushtar_1,		// 18
+		_p_flag_fzh_flushtar_2,		// 19
+		_p_flag_fzh_flushtar_3,		// 20
+		_p_flag_fzh_write_1,		// 21
+		_p_flag_fzh_write_2,		// 22
+		_p_flag_fzh_compress_ev_1,	// 23
+		_p_flag_fzh_compress_ev_2,	// 24
+		_p_flag_chb_add_tar_pos,	// 25,
+		_p_flag_destroy_tar_buffer	// 26
+	};
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
 	virtual ~Call_abstract() {
@@ -495,6 +527,11 @@ public:
 	bool isAllocFlagSetAsFree() {
 		return(alloc_flag == 0);
 	}
+	void addPFlag(u_char pflag) {
+		if(isAllocFlagOK() && p_flags_count < P_FLAGS_MAX - 1) {
+			p_flags[p_flags_count++] = pflag;
+		}
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
@@ -517,6 +554,9 @@ protected:
 private:
 	volatile u_int16_t chunkBuffersCount;
 	volatile int chunkBuffersCount_sync;
+	u_char p_flags[P_FLAGS_MAX];
+	u_char p_flags_count;
+friend class cDestroyCallsInfo;
 };
 
 struct sChartsCacheCallData {
@@ -2846,6 +2886,8 @@ public:
 			tid = get_unix_tid();
 			chunk_buffers_count = call->getChunkBuffersCount();
 			dump_sip_state = call->getPcapSip()->getState();
+			p_flags_count = call->p_flags_count;
+			memcpy(p_flags, call->p_flags, sizeof(p_flags));
 		}
 		void *pointer_to_call;
 		string fbasename;
@@ -2853,6 +2895,8 @@ public:
 		u_int32_t tid;
 		u_int16_t chunk_buffers_count;
 		u_int16_t dump_sip_state;
+		u_char p_flags[P_FLAGS_MAX];
+		u_char p_flags_count;
 	};
 public:
 	cDestroyCallsInfo(unsigned limit) {
@@ -2860,7 +2904,6 @@ public:
 		_sync = 0;
 	}
 	void add(Call *call);
-	unsigned find(string fbasename, list<sCallInfo> *cil);
 	string find(string fbasename);
 private:
 	void lock() {
@@ -2872,6 +2915,7 @@ private:
 private:
 	unsigned limit;
 	deque<sCallInfo*> queue;
+	map<string, sCallInfo*> q_map;
 	volatile int _sync;
 };
 

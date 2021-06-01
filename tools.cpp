@@ -1278,6 +1278,9 @@ PcapDumper::~PcapDumper() {
 }
 
 bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt, string *error) {
+	if(this->type == sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_dumper_open);
+	}
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -1321,6 +1324,9 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	this->fileName = fileName;
 	if(this->handle != NULL) {
 		this->state = state_open;
+		if(this->type == sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_dumper_open_ok);
+		}
 		return(true);
 	} else {
 		return(false);
@@ -1351,6 +1357,9 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			lastTimeDltSyslog = actTime;
 		}
 		return;
+	}
+	if(this->type == sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_dumper_dump);
 	}
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
@@ -1424,27 +1433,48 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			incorrectCaplenDetected = true;
 		}
 		this->state = state_dump;
+		if(this->type == sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_dumper_dump_end);
+		}
 	}
 }
 
 void PcapDumper::close(bool updateFilesQueue) {
+	if(this->type == sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_dumper_dump_close);
+	}
 	if(this->handle) {
+		if(this->type == sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_2);
+		}
 		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;
 		} else {
+			if(this->type == sip && call) {
+				call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_3);
+			}
 			if(asyncClose) {
+				if(this->type == sip && call) {
+					call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_4);
+				}
 				if(this->call) {
 					asyncClose->add(this->handle, updateFilesQueue,
 							this->call, this,
 							this->typeSpoolFile, this->fileName.c_str());
+					if(this->type == sip && call) {
+						call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_5);
+					}
 				} else {
 					asyncClose->add(this->handle);
 				}
 			}
 			this->handle = NULL;
 			this->state = state_do_close;
+			if(this->type == sip && call) {
+				call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_end);
+			}
 		}
 	}
 }
@@ -1458,6 +1488,13 @@ void PcapDumper::remove() {
 		this->close(false);
 		unlink(this->fileName.c_str());
 	}
+}
+
+void PcapDumper::setStateClose() {
+	if(this->type == sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_dumper_set_state_close);
+	}
+	this->state = state_close;
 }
 
 
@@ -3504,6 +3541,9 @@ void FileZipHandler::close() {
 		}
 	} else {
 		if(this->tar) {
+			if(typeFile == pcap_sip && call) {
+				call->addPFlag(Call_abstract::_p_flag_fzh_close);
+			}
 			this->flushBuffer(true);
 			this->flushTarBuffer();
 		} else  {
@@ -3555,11 +3595,20 @@ bool FileZipHandler::is_eof() {
 
 bool FileZipHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
+		if(typeFile == pcap_sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_fzh_flushbuffer_1);
+		}
 		if(force && this->existsData && !this->tar && this->okHandle() &&
 		   this->compressStream && this->compressStream->getTypeCompress() != CompressStream::compress_na) {
+			if(typeFile == pcap_sip && call) {
+				call->addPFlag(Call_abstract::_p_flag_fzh_flushbuffer_2);
+			}
 			this->compressStream->compress(NULL, 0, true, this);
 		}
 		return(true);
+	}
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_fzh_flushbuffer_3);
 	}
 	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
@@ -3567,9 +3616,18 @@ bool FileZipHandler::flushBuffer(bool force) {
 }
 
 void FileZipHandler::flushTarBuffer() {
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_fzh_flushtar_1);
+	}
 	if(!this->tarBuffer)
 		return;
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_fzh_flushtar_2);
+	}
 	this->tarBuffer->close();
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_fzh_flushtar_3);
+	}
 	this->tarBuffer = NULL;
 }
 
@@ -3643,7 +3701,13 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		if(!this->compressStream) {
 			this->initCompress();
 		}
+		if(typeFile == pcap_sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_fzh_write_1);
+		}
 		this->compressStream->compress(data, length, flush, this);
+		if(typeFile == pcap_sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_fzh_write_2);
+		}
 		break;
 	}
 	return(false);
@@ -3691,6 +3755,9 @@ void FileZipHandler::initDecompress() {
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_init_tar_buffer);
+	}
 	this->tarBufferCreated = true;
 	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data,
 							   typeFile == pcap_sip ? 8 * 1024 : 
@@ -3734,6 +3801,9 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 	}
 	this->tarBuffer->setName(this->fileName.c_str());
 	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
+	if(typeFile == pcap_sip && call) {
+		call->addPFlag(Call_abstract::_p_flag_init_tar_buffer_end);
+	}
 }
 
 bool FileZipHandler::_open_write() {
@@ -3848,10 +3918,16 @@ void FileZipHandler::setTypeCompressDefault() {
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->tar) {
+		if(typeFile == pcap_sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_fzh_compress_ev_1);
+		}
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);
 		}
 		this->tarBuffer->add(data, len, false);
+		if(typeFile == pcap_sip && call) {
+			call->addPFlag(Call_abstract::_p_flag_fzh_compress_ev_2);
+		}
 		return(true);
 	}
 	if(this->__writeToFile(data, len) <= 0) {
