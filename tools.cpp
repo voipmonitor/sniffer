@@ -1448,6 +1448,9 @@ void PcapDumper::close(bool updateFilesQueue) {
 			call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_2);
 		}
 		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
+			if(this->type == sip && call) {
+				call->addPFlag(Call_abstract::_p_flag_dumper_dump_close_not_async);
+			}
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;

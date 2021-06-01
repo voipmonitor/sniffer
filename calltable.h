@@ -436,32 +436,35 @@ class Call_abstract {
 public:
 	enum ePFlags {
 		_p_flag_na,
-		_p_flag_dumper_open,		//  1
-		_p_flag_dumper_open_ok,		//  2
-		_p_flag_dumper_dump,		//  3
-		_p_flag_dumper_dump_end,	//  4
-		_p_flag_dumper_dump_close,	//  5
-		_p_flag_dumper_dump_close_2,	//  6
-		_p_flag_dumper_dump_close_3,	//  7
-		_p_flag_dumper_dump_close_4,	//  8
-		_p_flag_dumper_dump_close_5,	//  9
-		_p_flag_dumper_dump_close_end,	// 10
-		_p_flag_dumper_set_state_close,	// 11
-		_p_flag_init_tar_buffer,	// 12
-		_p_flag_init_tar_buffer_end,	// 13
-		_p_flag_fzh_close,		// 14
-		_p_flag_fzh_flushbuffer_1,	// 15
-		_p_flag_fzh_flushbuffer_2,	// 16
-		_p_flag_fzh_flushbuffer_3,	// 17
-		_p_flag_fzh_flushtar_1,		// 18
-		_p_flag_fzh_flushtar_2,		// 19
-		_p_flag_fzh_flushtar_3,		// 20
-		_p_flag_fzh_write_1,		// 21
-		_p_flag_fzh_write_2,		// 22
-		_p_flag_fzh_compress_ev_1,	// 23
-		_p_flag_fzh_compress_ev_2,	// 24
-		_p_flag_chb_add_tar_pos,	// 25,
-		_p_flag_destroy_tar_buffer	// 26
+		_p_flag_dumper_open,			//  1
+		_p_flag_dumper_open_ok,			//  2
+		_p_flag_dumper_dump,			//  3
+		_p_flag_dumper_dump_end,		//  4
+		_p_flag_dumper_dump_close,		//  5
+		_p_flag_dumper_dump_close_2,		//  6
+		_p_flag_dumper_dump_close_3,		//  7
+		_p_flag_dumper_dump_close_4,		//  8
+		_p_flag_dumper_dump_close_5,		//  9
+		_p_flag_dumper_dump_close_end,		// 10
+		_p_flag_dumper_dump_close_not_async,	// 11
+		_p_flag_dumper_set_state_close,		// 12
+		_p_flag_init_tar_buffer,		// 13
+		_p_flag_init_tar_buffer_end,		// 14
+		_p_flag_fzh_close,			// 15
+		_p_flag_fzh_flushbuffer_1,		// 16
+		_p_flag_fzh_flushbuffer_2,		// 17
+		_p_flag_fzh_flushbuffer_3,		// 18
+		_p_flag_fzh_flushtar_1,			// 19
+		_p_flag_fzh_flushtar_2,			// 20
+		_p_flag_fzh_flushtar_3,			// 21
+		_p_flag_fzh_write_1,			// 22
+		_p_flag_fzh_write_2,			// 23
+		_p_flag_fzh_compress_ev_1,		// 24
+		_p_flag_fzh_compress_ev_2,		// 25
+		_p_flag_chb_add_tar_pos,		// 26,
+		_p_flag_destroy_tar_buffer,		// 27
+		_p_flag_inc_chunk_buffer,		// 28
+		_p_flag_dec_chunk_buffer		// 29
 	};
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
@@ -512,11 +515,13 @@ public:
 	}
 	void incChunkBuffers() {
 		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(_p_flag_inc_chunk_buffer);
 		__sync_add_and_fetch(&chunkBuffersCount, 1);
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 	}
 	void decChunkBuffers() {
 		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(_p_flag_dec_chunk_buffer);
 		__sync_sub_and_fetch(&chunkBuffersCount, 1);
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 	}
