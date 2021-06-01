@@ -1005,7 +1005,7 @@ ChunkBuffer::~ChunkBuffer() {
 		delete this->compressStream;
 	}
 	if(call) {
-		if(call->isAllocFlagOK()) {
+		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK()) {
 			if(call->fbasename != this->fbasename) {
 				syslog(LOG_NOTICE, "mismatch fbasename in destroy ChunkBuffer : %s / %s , type content : %i",
 				       call->fbasename,

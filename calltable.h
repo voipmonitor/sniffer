@@ -561,6 +561,9 @@ public:
 			p_flags[p_flags_count++] = pflag;
 		}
 	}
+	bool isChunkBuffersCountSyncOK() {
+		return(chunkBuffersCount_sync == 0 || chunkBuffersCount_sync == 1);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
