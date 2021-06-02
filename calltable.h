@@ -564,6 +564,18 @@ public:
 	bool isChunkBuffersCountSyncOK() {
 		return(chunkBuffersCount_sync == 0 || chunkBuffersCount_sync == 1);
 	}
+	bool isChunkBuffersCountSyncOK_wait() {
+		if(isChunkBuffersCountSyncOK()) {
+			return(true);
+		}
+		for(unsigned i = 0; i < 3; i++) {
+			usleep(10);
+			if(isChunkBuffersCountSyncOK()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
@@ -589,6 +601,7 @@ private:
 	u_char p_flags[P_FLAGS_MAX];
 	u_char p_flags_count;
 friend class cDestroyCallsInfo;
+friend class ChunkBuffer;
 };
 
 struct sChartsCacheCallData {

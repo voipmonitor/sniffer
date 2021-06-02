@@ -294,6 +294,8 @@ public:
 		return(chunk_buffers_sumsize);
 	}
 private:
+	void strange_log(const char *error);
+private:
 	int time;
 	data_tar_time tar_time;
 	Call_abstract *call;
