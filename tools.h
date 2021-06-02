@@ -697,7 +697,7 @@ private:
 	pcap_dumper_t *handle;
 	bool openError;
 	int openAttempts;
-	eState state;
+	volatile eState state;
 	bool existsContent;
 	int dlt;
 	u_int64_t lastTimeSyslog;
@@ -731,6 +731,12 @@ int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_c
 
 class RtpGraphSaver {
 public:
+	enum eStateAsyncClose {
+		_sac_na,
+		_sac_sent,
+		_sac_completed
+	};
+public:
 	RtpGraphSaver(class RTP *rtp);
 	~RtpGraphSaver();
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName);
@@ -741,11 +747,14 @@ public:
 	bool isOpen() {
 		return(this->handle != NULL);
 	}
+	bool isClose() {
+		return(!this->enableAutoOpen && this->handle == NULL && state_async_close != _sac_sent);
+	}
+	void setCompleteAsyncClose() {
+		state_async_close = _sac_completed;
+	}
 	bool isOpenOrEnableAutoOpen() {
 		return(isOpen() || this->enableAutoOpen);
-	}
-	bool isClose() {
-		return(!this->enableAutoOpen && this->handle == NULL);
 	}
 	bool isExistsContent() {
 		return(this->existsContent);
@@ -758,6 +767,7 @@ private:
 	bool existsContent;
 	bool enableAutoOpen;
 	int _asyncwrite;
+	volatile eStateAsyncClose state_async_close;
 };
 
 #define AsyncClose_maxPcapThreads 32
@@ -766,7 +776,7 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
-		AsyncCloseItem(Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
+		AsyncCloseItem(Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, RtpGraphSaver *graphSaver = NULL,
 			       eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 			       long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
@@ -782,6 +792,7 @@ public:
 		int call_spoolindex;
 		string call_spooldir;
 		PcapDumper *pcapDumper;
+		RtpGraphSaver *graphSaver;
 		eTypeSpoolFile typeSpoolFile;
 		string file;
 		long long writeBytes;
@@ -794,7 +805,7 @@ public:
 				    Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 				    eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 				    long long writeBytes = 0)
-		 : AsyncCloseItem(call, pcapDumper, 
+		 : AsyncCloseItem(call, pcapDumper, NULL,
 				  typeSpoolFile, file, 
 				  writeBytes) {
 			this->handle = handle;
@@ -854,10 +865,10 @@ public:
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
 		AsyncCloseItem_fileZipHandler(FileZipHandler *handle, bool updateFilesQueue = false,
-					      Call_abstract *call = NULL, 
+					      Call_abstract *call = NULL, RtpGraphSaver *graphSaver = NULL,
 					      eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 					      long long writeBytes = 0)
-		 : AsyncCloseItem(call, NULL, 
+		 : AsyncCloseItem(call, NULL, graphSaver,
 				  typeSpoolFile, file, 
 				  writeBytes) {
 			this->handle = handle;
@@ -869,6 +880,9 @@ public:
 			delete handle;
 			if(this->updateFilesQueue) {
 				this->addtofilesqueue();
+			}
+			if(graphSaver) {
+				graphSaver->setCompleteAsyncClose();
 			}
 		}
 		bool process_ready() {
@@ -992,7 +1006,7 @@ public:
 		}
 	}
 	void add(FileZipHandler *handle, bool updateFilesQueue = false,
-		 Call_abstract *call = NULL, 
+		 Call_abstract *call = NULL, RtpGraphSaver *graphSaver = NULL,
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
@@ -1015,7 +1029,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, 
+			if(add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, graphSaver,
 										  typeSpoolFile, file, 
 										  writeBytes),
 			       handle->userData - 1,

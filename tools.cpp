@@ -1510,6 +1510,7 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->existsContent = false;
 	this->enableAutoOpen = false;
 	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
+	this->state_async_close = _sac_na;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -1582,12 +1583,13 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			Call *call = (Call*)this->rtp->call_owner;
 			if(call) {
 				asyncClose->add(this->handle, updateFilesQueue,
-						call,
+						call, this,
 						this->typeSpoolFile, this->fileName.c_str(),
 						this->handle->size);
 			} else {
 				asyncClose->add(this->handle);
 			}
+			state_async_close = _sac_sent;
 			this->handle = NULL;
 			if(updateFilesQueue && !call) {
 				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileName.c_str());
@@ -1600,7 +1602,7 @@ void RtpGraphSaver::clearAutoOpen() {
 	this->enableAutoOpen = false;
 }
 
-AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcapDumper, 
+AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcapDumper, RtpGraphSaver *graphSaver,
 					   eTypeSpoolFile typeSpoolFile, const char *file, 
 					   long long writeBytes) {
 	this->call = call;
@@ -1612,6 +1614,7 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcap
 		this->call_spoolindex = 0;
 	}
 	this->pcapDumper = pcapDumper;
+	this->graphSaver = graphSaver;
 	this->typeSpoolFile = typeSpoolFile;
 	if(file) {
 		this->file = file;
