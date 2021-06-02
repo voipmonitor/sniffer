@@ -984,6 +984,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->last_add_time_tar = 0;
 	this->last_tar_time = 0;
 	this->chunk_buffer_size = 0;
+	this->created_at = getTimeUS();
 	if(call) {
 		if(!call->incChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
 			strange_log("error inc chunk in create ChunkBuffer");
@@ -1005,7 +1006,9 @@ ChunkBuffer::~ChunkBuffer() {
 	}
 	if(call) {
 		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK_wait()) {
-			if(call->fbasename != this->fbasename) {
+			if(call->created_at > this->created_at) {
+				strange_log("overtaking in time in ~ChunkBuffer");
+			} else if(call->fbasename != this->fbasename) {
 				strange_log("mismatch fbasename in ~ChunkBuffer");
 			} else if(call->decChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
 				call->addPFlag(typeContent - 1 + indexContent, Call_abstract::_p_flag_destroy_tar_buffer);
@@ -1484,10 +1487,12 @@ void ChunkBuffer::strange_log(const char *error) {
 	       "chunk->fbasename: %s, "
 	       "chunk->name: %s, "
 	       "chunk->type: %i/%i, "
+	       "chunk->created_at: %" int_64_format_prefix "lu, "
 	       "call: %p, "
 	       "call->fbasename: %s, "
 	       "call->isAllocFlagOK(): %i/%i, "
 	       "call->isChunkBuffersCountSyncOK(): %i/%i, "
+	       "call->created_at: %" int_64_format_prefix "lu, "
 	       "time: %" int_64_format_prefix "lu, "
 	       "dci: %s",
 	       error,
@@ -1496,10 +1501,12 @@ void ChunkBuffer::strange_log(const char *error) {
 	       this->name.c_str(),
 	       this->typeContent,
 	       this->indexContent,
+	       this->created_at,
 	       call,
 	       call->fbasename,
 	       call->isAllocFlagOK(), call->alloc_flag,
 	       call->isChunkBuffersCountSyncOK_wait(), call->chunkBuffersCount_sync,
+	       call->created_at,
 	       getTimeUS(),
 	       dci.c_str());
 }

@@ -601,6 +601,7 @@ private:
 	volatile int chunkBuffersCount_sync;
 	u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
 	u_char p_flags_count[P_FLAGS_IMAX];
+	u_int64_t created_at;
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
 };

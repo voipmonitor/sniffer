@@ -322,6 +322,7 @@ private:
 	unsigned int last_add_time_tar;
 	unsigned int last_tar_time;
 	volatile u_int64_t chunk_buffer_size;
+	u_int64_t created_at;
 static volatile u_int64_t chunk_buffers_sumsize;
 };      
 

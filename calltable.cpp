@@ -308,6 +308,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
 		p_flags_count[i] = 0;
 	}
+	this->created_at = getTimeUS();
 }
 
 bool 
