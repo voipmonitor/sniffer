@@ -305,7 +305,9 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	user_data = NULL;
 	user_data_type = 0;
 	chunkBuffersCount_sync = 0;
-	p_flags_count = 0;
+	for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
+		p_flags_count[i] = 0;
+	}
 }
 
 bool 
@@ -12894,7 +12896,7 @@ void cDestroyCallsInfo::add(Call *call) {
 	unlock();
 }
 
-string cDestroyCallsInfo::find(string fbasename) {
+string cDestroyCallsInfo::find(string fbasename, int index) {
 	lock();
 	map<string, sCallInfo*>::iterator iter = q_map.find(fbasename);
 	if(iter == q_map.end()) {
@@ -12908,11 +12910,13 @@ string cDestroyCallsInfo::find(string fbasename) {
 	       << "dt: " << ci.destroy_time << ", "
 	       << "tid: " << ci.tid << ", "
 	       << "cnt: " << ci.chunk_buffers_count << ", "
-	       << "ss: " << ci.dump_sip_state << ", "
-	       << "pf: ";
-	for(unsigned i = 0; i < ci.p_flags_count; i++) {
-		if(i) outStr << ',';
-		outStr << (int)(ci.p_flags[i]);
+	       << "ss: " << ci.dump_sip_state;
+	if(index >= 0 && index < P_FLAGS_IMAX) {
+	       outStr << ", pf: ";
+	       for(unsigned i = 0; i < ci.p_flags_count[index]; i++) {
+		       if(i) outStr << ',';
+		       outStr << (int)(ci.p_flags[index][i]);
+	       }
 	}
 	outStr  << " / ";
 	return(outStr.str());

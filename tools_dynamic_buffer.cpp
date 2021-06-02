@@ -960,12 +960,13 @@ bool RecompressStream::decompress_ev(char *data, u_int32_t len) {
 }
 
 ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
-			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent,
+			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent, int indexContent,
 			 const char *name) {
 	this->time = time;
 	this->tar_time = tar_time;
 	this->call = call;
 	this->typeContent = typeContent;
+	this->indexContent =indexContent;
 	if(name) this->name = name;
 	this->fbasename = call->fbasename;
 	this->chunkBuffer_countItems = 0;
@@ -984,7 +985,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->last_tar_time = 0;
 	this->chunk_buffer_size = 0;
 	if(call) {
-		if(!call->incChunkBuffers(this, this->name.c_str())) {
+		if(!call->incChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
 			strange_log("error inc chunk in create ChunkBuffer");
 		}
 	}
@@ -1006,10 +1007,8 @@ ChunkBuffer::~ChunkBuffer() {
 		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK_wait()) {
 			if(call->fbasename != this->fbasename) {
 				strange_log("mismatch fbasename in ~ChunkBuffer");
-			} else if(call->decChunkBuffers(this, this->name.c_str())) {
-				if(typeContent == FileZipHandler::pcap_sip) {
-					call->addPFlag(Call_abstract::_p_flag_destroy_tar_buffer);
-				}
+			} else if(call->decChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
+				call->addPFlag(typeContent - 1 + indexContent, Call_abstract::_p_flag_destroy_tar_buffer);
 			} else {
 				strange_log("error dec chunk in ~ChunkBuffer");
 			}
@@ -1465,9 +1464,7 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 	if(call) {
 		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK_wait()) {
-			if(typeContent == FileZipHandler::pcap_sip) {
-				call->addPFlag(Call_abstract::_p_flag_chb_add_tar_pos);
-			}
+			call->addPFlag(typeContent - 1 + indexContent, Call_abstract::_p_flag_chb_add_tar_pos);
 			call->addTarPos(pos, typeContent);
 		} else {
 			strange_log("access to strange call in ChunkBuffer::addTarPosInCall");
@@ -1478,15 +1475,15 @@ void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
 void ChunkBuffer::strange_log(const char *error) {
 	extern cDestroyCallsInfo *destroy_calls_info;
 	string dci;
-	if(destroy_calls_info && this->name.find("/GRAPH/") == string::npos) {
-		dci = destroy_calls_info->find(this->fbasename);
+	if(destroy_calls_info) {
+		dci = destroy_calls_info->find(this->fbasename, typeContent - 1 + indexContent);
 	}
 	syslog(LOG_NOTICE, 
 	       "%s : "
 	       "chunk: %p, "
 	       "chunk->fbasename: %s, "
 	       "chunk->name: %s, "
-	       "chunk->type: %i, "
+	       "chunk->type: %i/%i, "
 	       "call: %p, "
 	       "call->fbasename: %s, "
 	       "call->isAllocFlagOK(): %i/%i, "
@@ -1498,6 +1495,7 @@ void ChunkBuffer::strange_log(const char *error) {
 	       this->fbasename.c_str(),
 	       this->name.c_str(),
 	       this->typeContent,
+	       this->indexContent,
 	       call,
 	       call->fbasename,
 	       call->isAllocFlagOK(), call->alloc_flag,

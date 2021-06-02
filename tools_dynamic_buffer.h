@@ -224,7 +224,7 @@ public:
 	};
 public:
 	ChunkBuffer(int time, data_tar_time tar_time,
-		    u_int32_t chunk_fix_len = 0, class Call_abstract *call = NULL, int typeContent = 0,
+		    u_int32_t chunk_fix_len = 0, class Call_abstract *call = NULL, int typeContent = 0, int indexContent = 0,
 		    const char *name = NULL);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
@@ -300,6 +300,7 @@ private:
 	data_tar_time tar_time;
 	Call_abstract *call;
 	int typeContent;
+	int indexContent;
 	string name;
 	string fbasename;
 	list<sChunk> chunkBuffer;

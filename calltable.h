@@ -430,6 +430,7 @@ struct sCseq {
 	u_int32_t number;
 };
 
+#define P_FLAGS_IMAX 10
 #define P_FLAGS_MAX 200
 
 class Call_abstract {
@@ -525,10 +526,10 @@ public:
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 		return(rslt);
 	}
-	bool incChunkBuffers(void *chb, const char *name) {
+	bool incChunkBuffers(u_char index, void *chb, const char *name) {
 		bool rslt = false;
 		__SYNC_LOCK(chunkBuffersCount_sync);
-		this->addPFlag(_p_flag_inc_chunk_buffer);
+		this->addPFlag(index, _p_flag_inc_chunk_buffer);
 		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
 		if(iter == chunkBuffersMap.end()) {
 			chunkBuffersMap[sChbIndex(chb, name)] = true;
@@ -537,10 +538,10 @@ public:
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 		return(rslt);
 	}
-	bool decChunkBuffers(void *chb, const char *name) {
+	bool decChunkBuffers(u_char index, void *chb, const char *name) {
 		bool rslt = false;
 		__SYNC_LOCK(chunkBuffersCount_sync);
-		this->addPFlag(_p_flag_dec_chunk_buffer);
+		this->addPFlag(index, _p_flag_dec_chunk_buffer);
 		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
 		if(iter != chunkBuffersMap.end()) {
 			chunkBuffersMap.erase(iter);
@@ -556,9 +557,9 @@ public:
 	bool isAllocFlagSetAsFree() {
 		return(alloc_flag == 0);
 	}
-	void addPFlag(u_char pflag) {
-		if(isAllocFlagOK() && p_flags_count < P_FLAGS_MAX - 1) {
-			p_flags[p_flags_count++] = pflag;
+	void addPFlag(u_char index, u_char pflag) {
+		if(index >= 0 && index < P_FLAGS_IMAX && isAllocFlagOK() && p_flags_count[index] < P_FLAGS_MAX - 1) {
+			p_flags[index][p_flags_count[index]++] = pflag;
 		}
 	}
 	bool isChunkBuffersCountSyncOK() {
@@ -598,8 +599,8 @@ protected:
 private:
 	map<sChbIndex, bool> chunkBuffersMap;
 	volatile int chunkBuffersCount_sync;
-	u_char p_flags[P_FLAGS_MAX];
-	u_char p_flags_count;
+	u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+	u_char p_flags_count[P_FLAGS_IMAX];
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
 };
@@ -2957,8 +2958,10 @@ public:
 			tid = get_unix_tid();
 			chunk_buffers_count = call->getChunkBuffersCount();
 			dump_sip_state = call->getPcapSip()->getState();
-			p_flags_count = call->p_flags_count;
-			memcpy(p_flags, call->p_flags, sizeof(p_flags));
+			for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
+				p_flags_count[i] = call->p_flags_count[i];
+				memcpy(p_flags[i], call->p_flags[i], P_FLAGS_MAX);
+			}
 		}
 		void *pointer_to_call;
 		string fbasename;
@@ -2966,8 +2969,8 @@ public:
 		u_int32_t tid;
 		u_int16_t chunk_buffers_count;
 		u_int16_t dump_sip_state;
-		u_char p_flags[P_FLAGS_MAX];
-		u_char p_flags_count;
+		u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+		u_char p_flags_count[P_FLAGS_IMAX];
 	};
 public:
 	cDestroyCallsInfo(unsigned limit) {
@@ -2976,7 +2979,7 @@ public:
 	}
 	~cDestroyCallsInfo();
 	void add(Call *call);
-	string find(string fbasename);
+	string find(string fbasename, int index = 0);
 private:
 	void lock() {
 		__SYNC_LOCK(_sync);

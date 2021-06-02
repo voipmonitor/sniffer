@@ -528,7 +528,7 @@ public:
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
 		       bool dumpHandler = false, class Call_abstract *call = NULL,
-		       eTypeFile typeFile = na);
+		       eTypeFile typeFile = na, unsigned indexFile = 0);
 	virtual ~FileZipHandler();
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, 
 		  int permission_file = 0, int permission_dir = 0, unsigned uid = 0, unsigned gid = 0);
@@ -605,6 +605,7 @@ public:
 	static u_int64_t scounter;
 	u_int32_t userData;
 	eTypeFile typeFile;
+	unsigned indexFile;
 	deque<sReadBufferItem> readBuffer;
 	uint32_t readBufferBeginPos;
 	bool eof;
