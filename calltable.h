@@ -430,7 +430,55 @@ struct sCseq {
 	u_int32_t number;
 };
 
+#define P_FLAGS_IMAX 10
+#define P_FLAGS_MAX 200
+
 class Call_abstract {
+public:
+	enum ePFlags {
+		_p_flag_na,
+		_p_flag_dumper_open,			//  1
+		_p_flag_dumper_open_ok,			//  2
+		_p_flag_dumper_dump,			//  3
+		_p_flag_dumper_dump_end,		//  4
+		_p_flag_dumper_dump_close,		//  5
+		_p_flag_dumper_dump_close_2,		//  6
+		_p_flag_dumper_dump_close_3,		//  7
+		_p_flag_dumper_dump_close_4,		//  8
+		_p_flag_dumper_dump_close_5,		//  9
+		_p_flag_dumper_dump_close_end,		// 10
+		_p_flag_dumper_dump_close_not_async,	// 11
+		_p_flag_dumper_set_state_close,		// 12
+		_p_flag_init_tar_buffer,		// 13
+		_p_flag_init_tar_buffer_end,		// 14
+		_p_flag_fzh_close,			// 15
+		_p_flag_fzh_flushbuffer_1,		// 16
+		_p_flag_fzh_flushbuffer_2,		// 17
+		_p_flag_fzh_flushbuffer_3,		// 18
+		_p_flag_fzh_flushtar_1,			// 19
+		_p_flag_fzh_flushtar_2,			// 20
+		_p_flag_fzh_flushtar_3,			// 21
+		_p_flag_fzh_write_1,			// 22
+		_p_flag_fzh_write_2,			// 23
+		_p_flag_fzh_compress_ev_1,		// 24
+		_p_flag_fzh_compress_ev_2,		// 25
+		_p_flag_chb_add_tar_pos,		// 26
+		_p_flag_destroy_tar_buffer,		// 27
+		_p_flag_inc_chunk_buffer,		// 28
+		_p_flag_dec_chunk_buffer		// 29
+	};
+	struct sChbIndex {
+		inline sChbIndex(void *chb, const char *name) {
+			this->chb = chb;
+			this->name = name;
+		}
+		void *chb;
+		string name;
+		friend inline const bool operator < (const sChbIndex &i1, const sChbIndex &i2) {
+			return(i1.chb < i2.chb ? 1 : i1.chb > i2.chb ? 0 :
+			       i1.name < i2.name);
+		}
+	};
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
 	virtual ~Call_abstract() {
@@ -466,21 +514,89 @@ public:
 			1 : 
 			0);
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
 	bool isEmptyChunkBuffersCount() {
-		return(!chunkBuffersCount);
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		bool rslt = chunkBuffersMap.size() == 0;
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	int getChunkBuffersCount() {
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		int rslt = chunkBuffersMap.size();
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	bool incChunkBuffers(u_char index, void *chb, const char *name) {
+		bool rslt = false;
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(index, _p_flag_inc_chunk_buffer);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter == chunkBuffersMap.end()) {
+			chunkBuffersMap[sChbIndex(chb, name)] = true;
+			rslt = true;
+		}
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	bool decChunkBuffers(u_char index, void *chb, const char *name) {
+		bool rslt = false;
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(index, _p_flag_dec_chunk_buffer);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter != chunkBuffersMap.end()) {
+			chunkBuffersMap.erase(iter);
+			rslt = true;
+		}
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	void addPFlag(u_char index, u_char pflag) {
+		if(index >= 0 && index < P_FLAGS_IMAX && isAllocFlagOK() && p_flags_count[index] < P_FLAGS_MAX - 1) {
+			p_flags[index][p_flags_count[index]++] = pflag;
+		}
+	}
+	bool isChunkBuffersCountSyncOK() {
+		return(chunkBuffersCount_sync == 0 || chunkBuffersCount_sync == 1);
+	}
+	bool isChunkBuffersCountSyncOK_wait() {
+		if(isChunkBuffersCountSyncOK()) {
+			return(true);
+		}
+		for(unsigned i = 0; i < 3; i++) {
+			usleep(10);
+			if(isChunkBuffersCountSyncOK()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+	#else
+	bool isEmptyChunkBuffersCount() {
+		return(chunkBuffersCount == 0);
+	}
+	int getChunkBuffersCount() {
+		return(chunkBuffersCount);
 	}
 	void incChunkBuffers() {
-		__sync_add_and_fetch(&chunkBuffersCount, 1);
+		__SYNC_INC(chunkBuffersCount);
 	}
 	void decChunkBuffers() {
-		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+		if(chunkBuffersCount == 0) {
+			syslog(LOG_NOTICE, "invalid zero sync in decChunkBuffers in call %s", fbasename);
+		}
+		__SYNC_DEC(chunkBuffersCount);
 	}
+	#endif
 	void addTarPos(u_int64_t pos, int type);
 	bool isAllocFlagOK() {
-		return(alloc_flag);
+		return(alloc_flag == 1);
+	}
+	bool isAllocFlagSetAsFree() {
+		return(alloc_flag == 0);
 	}
 public:
-	uint8_t alloc_flag;
+	volatile uint8_t alloc_flag;
 	int type_base;
 	int type_next;
 	u_int64_t first_packet_time_us;
@@ -499,7 +615,17 @@ protected:
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
 private:
-	volatile u_int16_t chunkBuffersCount;
+	#if DEBUG_ASYNC_TAR_WRITE
+	map<sChbIndex, bool> chunkBuffersMap;
+	volatile int chunkBuffersCount_sync;
+	u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+	u_char p_flags_count[P_FLAGS_IMAX];
+	#else
+	volatile int chunkBuffersCount;
+	#endif
+	u_int64_t created_at;
+friend class cDestroyCallsInfo;
+friend class ChunkBuffer;
 };
 
 struct sChartsCacheCallData {
@@ -1305,6 +1431,32 @@ public:
 			}
 		}
 		return(true);
+	}
+	bool closePcaps() {
+		bool callClose = false;
+		if(!pcap.isClose()) {
+			pcap.close();
+			callClose = true;
+		}
+		if(!pcapSip.isClose()) {
+			pcapSip.close();
+			callClose = true;
+		}
+		if(!pcapRtp.isClose()) {
+			pcapRtp.close();
+			callClose = true;
+		}
+		return(callClose);
+	}
+	bool closeGraphs() {
+		bool callClose = false;
+		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+			if(rtp_i && !rtp_i->graph.isClose()) {
+				rtp_i->graph.close();
+				callClose = true;
+			}
+		}
+		return(callClose);
 	}
 	bool isReadyForWriteCdr() {
 		return(isPcapsClose() && isGraphsClose() &&
@@ -2818,6 +2970,55 @@ eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
 
 void reset_counters();
+
+
+#if DEBUG_ASYNC_TAR_WRITE
+class cDestroyCallsInfo {
+public:
+	struct sCallInfo {
+		sCallInfo(Call *call) {
+			pointer_to_call = call;
+			fbasename = call->fbasename;
+			destroy_time = getTimeUS();
+			tid = get_unix_tid();
+			chunk_buffers_count = call->getChunkBuffersCount();
+			dump_sip_state = call->getPcapSip()->getState();
+			for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
+				p_flags_count[i] = call->p_flags_count[i];
+				memcpy(p_flags[i], call->p_flags[i], P_FLAGS_MAX);
+			}
+		}
+		void *pointer_to_call;
+		string fbasename;
+		u_int64_t destroy_time;
+		u_int32_t tid;
+		u_int16_t chunk_buffers_count;
+		u_int16_t dump_sip_state;
+		u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+		u_char p_flags_count[P_FLAGS_IMAX];
+	};
+public:
+	cDestroyCallsInfo(unsigned limit) {
+		this->limit = limit;
+		_sync = 0;
+	}
+	~cDestroyCallsInfo();
+	void add(Call *call);
+	string find(string fbasename, int index = 0);
+private:
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+private:
+	unsigned limit;
+	deque<sCallInfo*> queue;
+	map<string, sCallInfo*> q_map;
+	volatile int _sync;
+};
+#endif
 
 
 #endif

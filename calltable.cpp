@@ -303,7 +303,15 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	flags = 0;
 	user_data = NULL;
 	user_data_type = 0;
+	#if DEBUG_ASYNC_TAR_WRITE
+	chunkBuffersCount_sync = 0;
+	for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
+		p_flags_count[i] = 0;
+	}
+	#else
 	chunkBuffersCount = 0;
+	#endif
+	this->created_at = getTimeUS();
 }
 
 bool 
@@ -951,6 +959,13 @@ Call::_removeRTP() {
 
 /* destructor */
 Call::~Call(){
+ 
+	#if DEBUG_ASYNC_TAR_WRITE
+ 	extern cDestroyCallsInfo *destroy_calls_info;
+	if(destroy_calls_info) {
+		destroy_calls_info->add(this);
+	}
+	#endif
  
 	alloc_flag = 0;
 	
@@ -12861,3 +12876,59 @@ void reset_counters() {
 	calls_counter = 0;
 	registers_counter = 0;
 }
+
+
+#if DEBUG_ASYNC_TAR_WRITE
+cDestroyCallsInfo::~cDestroyCallsInfo() {
+	lock();
+	while(queue.size() > 0) {
+		sCallInfo *ci = queue.front();
+		q_map.erase(ci->fbasename);
+		queue.pop_front();
+		delete ci;
+	}
+	unlock();
+}
+
+void cDestroyCallsInfo::add(Call *call) {
+	lock();
+	if(q_map.find(call->fbasename) == q_map.end()) {
+		sCallInfo *ci = new FILE_LINE(0) sCallInfo(call);
+		queue.push_back(ci);
+		q_map[call->fbasename] = ci;
+		while(queue.size() > limit) {
+			sCallInfo *ci = queue.front();
+			q_map.erase(ci->fbasename);
+			queue.pop_front();
+			delete ci;
+		}
+	}
+	unlock();
+}
+
+string cDestroyCallsInfo::find(string fbasename, int index) {
+	lock();
+	map<string, sCallInfo*>::iterator iter = q_map.find(fbasename);
+	if(iter == q_map.end()) {
+		unlock();
+		return("");
+	}
+	sCallInfo ci = *iter->second;
+	unlock();
+	ostringstream outStr;
+	outStr << "pt: " << hex << ci.pointer_to_call << dec << ", "
+	       << "dt: " << ci.destroy_time << ", "
+	       << "tid: " << ci.tid << ", "
+	       << "cnt: " << ci.chunk_buffers_count << ", "
+	       << "ss: " << ci.dump_sip_state;
+	if(index >= 0 && index < P_FLAGS_IMAX) {
+	       outStr << ", pf: ";
+	       for(unsigned i = 0; i < ci.p_flags_count[index]; i++) {
+		       if(i) outStr << ',';
+		       outStr << (int)(ci.p_flags[index][i]);
+	       }
+	}
+	outStr  << " / ";
+	return(outStr.str());
+}
+#endif

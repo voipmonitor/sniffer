@@ -2492,8 +2492,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 			if(last_tac_cpu > opt_cpu_limit_new_thread) {
 				asyncClose->addThread();
-			}
-			if(last_tac_cpu < opt_cpu_limit_delete_thread) {
+			} else if(last_tac_cpu < opt_cpu_limit_delete_thread) {
 				asyncClose->removeThread();
 			}
 		}

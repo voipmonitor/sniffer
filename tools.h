@@ -528,7 +528,7 @@ public:
 public:
 	FileZipHandler(int bufferLength = 0, int enableAsyncWrite = 0, eTypeCompress typeCompress = compress_na,
 		       bool dumpHandler = false, class Call_abstract *call = NULL,
-		       eTypeFile typeFile = na);
+		       eTypeFile typeFile = na, unsigned indexFile = 0);
 	virtual ~FileZipHandler();
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName, 
 		  int permission_file = 0, int permission_dir = 0, unsigned uid = 0, unsigned gid = 0);
@@ -571,10 +571,12 @@ public:
 	static const char *convTypeCompress(eTypeCompress typeCompress);
 	static string getConfigMenuString();
 	bool getLineFromReadBuffer(string *line);
+	bool needTarPos();
 private:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
+	eTypeCompress getTypeCompressDefault();
 	void addReadBuffer(char *data, u_int32_t len);
 public:
 	eMode mode;
@@ -605,6 +607,7 @@ public:
 	static u_int64_t scounter;
 	u_int32_t userData;
 	eTypeFile typeFile;
+	unsigned indexFile;
 	deque<sReadBufferItem> readBuffer;
 	uint32_t readBufferBeginPos;
 	bool eof;
@@ -655,8 +658,9 @@ public:
 	bool isExistsContent() {
 		return(this->existsContent);
 	}
-	void setStateClose() {
-		this->state = state_close;
+	void setStateClose();
+	eState getState() {
+		return(this->state);
 	}
 	string getFileName() {
 		return(fileName);
@@ -695,7 +699,7 @@ private:
 	pcap_dumper_t *handle;
 	bool openError;
 	int openAttempts;
-	eState state;
+	volatile eState state;
 	bool existsContent;
 	int dlt;
 	u_int64_t lastTimeSyslog;
@@ -729,6 +733,12 @@ int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_c
 
 class RtpGraphSaver {
 public:
+	enum eStateAsyncClose {
+		_sac_na,
+		_sac_sent,
+		_sac_completed
+	};
+public:
 	RtpGraphSaver(class RTP *rtp);
 	~RtpGraphSaver();
 	bool open(eTypeSpoolFile typeSpoolFile, const char *fileName);
@@ -739,11 +749,14 @@ public:
 	bool isOpen() {
 		return(this->handle != NULL);
 	}
+	bool isClose() {
+		return(!this->enableAutoOpen && this->handle == NULL && state_async_close != _sac_sent);
+	}
+	void setCompleteAsyncClose() {
+		state_async_close = _sac_completed;
+	}
 	bool isOpenOrEnableAutoOpen() {
 		return(isOpen() || this->enableAutoOpen);
-	}
-	bool isClose() {
-		return(!this->enableAutoOpen && this->handle == NULL);
 	}
 	bool isExistsContent() {
 		return(this->existsContent);
@@ -756,6 +769,7 @@ private:
 	bool existsContent;
 	bool enableAutoOpen;
 	int _asyncwrite;
+	volatile eStateAsyncClose state_async_close;
 };
 
 #define AsyncClose_maxPcapThreads 32
@@ -764,7 +778,7 @@ class AsyncClose {
 public:
 	class AsyncCloseItem {
 	public:
-		AsyncCloseItem(Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
+		AsyncCloseItem(Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, RtpGraphSaver *graphSaver = NULL,
 			       eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 			       long long writeBytes = 0);
 		virtual ~AsyncCloseItem() {}
@@ -780,6 +794,7 @@ public:
 		int call_spoolindex;
 		string call_spooldir;
 		PcapDumper *pcapDumper;
+		RtpGraphSaver *graphSaver;
 		eTypeSpoolFile typeSpoolFile;
 		string file;
 		long long writeBytes;
@@ -792,7 +807,7 @@ public:
 				    Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 				    eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 				    long long writeBytes = 0)
-		 : AsyncCloseItem(call, pcapDumper, 
+		 : AsyncCloseItem(call, pcapDumper, NULL,
 				  typeSpoolFile, file, 
 				  writeBytes) {
 			this->handle = handle;
@@ -852,10 +867,10 @@ public:
 	class AsyncCloseItem_fileZipHandler  : public AsyncCloseItem{
 	public:
 		AsyncCloseItem_fileZipHandler(FileZipHandler *handle, bool updateFilesQueue = false,
-					      Call_abstract *call = NULL, 
+					      Call_abstract *call = NULL, RtpGraphSaver *graphSaver = NULL,
 					      eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 					      long long writeBytes = 0)
-		 : AsyncCloseItem(call, NULL, 
+		 : AsyncCloseItem(call, NULL, graphSaver,
 				  typeSpoolFile, file, 
 				  writeBytes) {
 			this->handle = handle;
@@ -867,6 +882,9 @@ public:
 			delete handle;
 			if(this->updateFilesQueue) {
 				this->addtofilesqueue();
+			}
+			if(graphSaver) {
+				graphSaver->setCompleteAsyncClose();
 			}
 		}
 		bool process_ready() {
@@ -990,7 +1008,7 @@ public:
 		}
 	}
 	void add(FileZipHandler *handle, bool updateFilesQueue = false,
-		 Call_abstract *call = NULL, 
+		 Call_abstract *call = NULL, RtpGraphSaver *graphSaver = NULL,
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
@@ -1013,7 +1031,7 @@ public:
 				}
 				handle->userData = minSizeIndex + 1;
 			}
-			if(add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, 
+			if(add(new FILE_LINE(39011) AsyncCloseItem_fileZipHandler(handle, updateFilesQueue, call, graphSaver,
 										  typeSpoolFile, file, 
 										  writeBytes),
 			       handle->userData - 1,
