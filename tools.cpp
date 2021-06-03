@@ -1278,9 +1278,11 @@ PcapDumper::~PcapDumper() {
 }
 
 bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt, string *error) {
+	#if DEBUG_ASYNC_TAR_WRITE
 	if((this->type == sip || this->type == rtp) && call) {
 		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_open);
 	}
+	#endif
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -1324,9 +1326,11 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	this->fileName = fileName;
 	if(this->handle != NULL) {
 		this->state = state_open;
+		#if DEBUG_ASYNC_TAR_WRITE
 		if((this->type == sip || this->type == rtp) && call) {
 			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_open_ok);
 		}
+		#endif
 		return(true);
 	} else {
 		return(false);
@@ -1358,9 +1362,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		}
 		return;
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
 	if((this->type == sip || this->type == rtp) && call) {
 		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump);
 	}
+	#endif
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
 		if(allPackets ||
@@ -1433,51 +1439,67 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			incorrectCaplenDetected = true;
 		}
 		this->state = state_dump;
+		#if DEBUG_ASYNC_TAR_WRITE
 		if((this->type == sip || this->type == rtp) && call) {
 			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_end);
 		}
+		#endif
 	}
 }
 
 void PcapDumper::close(bool updateFilesQueue) {
+	#if DEBUG_ASYNC_TAR_WRITE
 	if((this->type == sip || this->type == rtp) && call) {
 		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close);
 	}
+	#endif
 	if(this->handle) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if((this->type == sip || this->type == rtp) && call) {
 			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_2);
 		}
+		#endif
 		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
+			#if DEBUG_ASYNC_TAR_WRITE
 			if((this->type == sip || this->type == rtp) && call) {
 				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_not_async);
 			}
+			#endif
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;
 		} else {
+			#if DEBUG_ASYNC_TAR_WRITE
 			if((this->type == sip || this->type == rtp) && call) {
 				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_3);
 			}
+			#endif
 			if(asyncClose) {
+				#if DEBUG_ASYNC_TAR_WRITE
 				if((this->type == sip || this->type == rtp) && call) {
 					call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_4);
 				}
+				#endif
 				if(this->call) {
 					asyncClose->add(this->handle, updateFilesQueue,
 							this->call, this,
 							this->typeSpoolFile, this->fileName.c_str());
+					#if DEBUG_ASYNC_TAR_WRITE
 					if((this->type == sip || this->type == rtp) && call) {
 						call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
 					}
+					#endif
 				} else {
 					asyncClose->add(this->handle);
 				}
 			}
 			this->handle = NULL;
 			this->state = state_do_close;
+			#if DEBUG_ASYNC_TAR_WRITE
 			if((this->type == sip || this->type == rtp) && call) {
 				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_end);
 			}
+			#endif
 		}
 	}
 }
@@ -1494,9 +1516,11 @@ void PcapDumper::remove() {
 }
 
 void PcapDumper::setStateClose() {
+	#if DEBUG_ASYNC_TAR_WRITE
 	if((this->type == sip || this->type == rtp) && call) {
 		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_set_state_close);
 	}
+	#endif
 	this->state = state_close;
 }
 
@@ -3548,9 +3572,11 @@ void FileZipHandler::close() {
 		}
 	} else {
 		if(this->tar) {
+			#if DEBUG_ASYNC_TAR_WRITE
 			if(call) {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_close);
 			}
+			#endif
 			this->flushBuffer(true);
 			this->flushTarBuffer();
 		} else  {
@@ -3602,39 +3628,51 @@ bool FileZipHandler::is_eof() {
 
 bool FileZipHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
 			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_1);
 		}
+		#endif
 		if(force && this->existsData && !this->tar && this->okHandle() &&
 		   this->compressStream && this->compressStream->getTypeCompress() != CompressStream::compress_na) {
+			#if DEBUG_ASYNC_TAR_WRITE
 			if(call) {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_2);
 			}
+			#endif
 			this->compressStream->compress(NULL, 0, true, this);
 		}
 		return(true);
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_3);
 	}
+	#endif
 	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
 }
 
 void FileZipHandler::flushTarBuffer() {
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_1);
 	}
+	#endif
 	if(!this->tarBuffer)
 		return;
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_2);
 	}
+	#endif
 	this->tarBuffer->close();
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_3);
 	}
+	#endif
 	this->tarBuffer = NULL;
 }
 
@@ -3686,13 +3724,17 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			if(!this->tarBuffer) {
 				this->initTarbuffer();
 			}
+			#if DEBUG_ASYNC_TAR_WRITE
 			if(call) {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_1);
 			}
+			#endif
 			this->tarBuffer->add(data, length, flush);
+			#if DEBUG_ASYNC_TAR_WRITE
 			if(call) {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_2);
 			}
+			#endif
 			return(true);
 		}
 		{
@@ -3714,13 +3756,17 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		if(!this->compressStream) {
 			this->initCompress();
 		}
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
 			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_1);
 		}
+		#endif
 		this->compressStream->compress(data, length, flush, this);
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
 			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_2);
 		}
+		#endif
 		break;
 	}
 	return(false);
@@ -3768,11 +3814,13 @@ void FileZipHandler::initDecompress() {
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_init_tar_buffer);
 	}
+	#endif
 	this->tarBufferCreated = true;
-	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data,
+	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data, this->needTarPos(),
 							   typeFile == pcap_sip ? 8 * 1024 : 
 							   typeFile == pcap_rtp ? 32 * 1024 : 
 							   typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
@@ -3814,9 +3862,11 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 		}
 	}
 	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
+	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_init_tar_buffer_end);
 	}
+	#endif
 }
 
 bool FileZipHandler::_open_write() {
@@ -3915,32 +3965,44 @@ string FileZipHandler::getConfigMenuString() {
 
 void FileZipHandler::setTypeCompressDefault() {
 	if(typeCompress == compress_default) {
-		switch(typeFile) {
-		case pcap_sip:
-			typeCompress = gzip;
-			break;
-		case pcap_rtp:
-		case graph_rtp:
-			typeCompress = lzo;
-			break;
-		default:
-			typeCompress = gzip;
-		}
+		typeCompress = getTypeCompressDefault();
 	}
+}
+
+FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
+	switch(typeFile) {
+	case pcap_sip:
+		return(gzip);
+	case pcap_rtp:
+	case graph_rtp:
+		return(lzo);
+	default:
+		return(gzip);
+	}
+}
+
+bool FileZipHandler::needTarPos() {
+	return(tar &&
+	       (typeCompress == lzo ||
+		(typeCompress == compress_default && getTypeCompressDefault() == lzo)));
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->tar) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
 			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_compress_ev_1);
 		}
+		#endif
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);
 		}
 		this->tarBuffer->add(data, len, false);
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
 			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_compress_ev_2);
 		}
+		#endif
 		return(true);
 	}
 	if(this->__writeToFile(data, len) <= 0) {

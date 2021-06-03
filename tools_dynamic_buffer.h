@@ -223,7 +223,7 @@ public:
 		u_int32_t chunkIndex;
 	};
 public:
-	ChunkBuffer(int time, data_tar_time tar_time,
+	ChunkBuffer(int time, data_tar_time tar_time, bool need_tar_pos,
 		    u_int32_t chunk_fix_len = 0, class Call_abstract *call = NULL, int typeContent = 0, int indexContent = 0,
 		    const char *name = NULL);
 	virtual ~ChunkBuffer();
@@ -298,6 +298,7 @@ private:
 private:
 	int time;
 	data_tar_time tar_time;
+	bool need_tar_pos;
 	Call_abstract *call;
 	int typeContent;
 	int indexContent;

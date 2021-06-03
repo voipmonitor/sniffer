@@ -514,6 +514,7 @@ public:
 			1 : 
 			0);
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
 	bool isEmptyChunkBuffersCount() {
 		__SYNC_LOCK(chunkBuffersCount_sync);
 		bool rslt = chunkBuffersMap.size() == 0;
@@ -550,13 +551,6 @@ public:
 		__SYNC_UNLOCK(chunkBuffersCount_sync);
 		return(rslt);
 	}
-	void addTarPos(u_int64_t pos, int type);
-	bool isAllocFlagOK() {
-		return(alloc_flag == 1);
-	}
-	bool isAllocFlagSetAsFree() {
-		return(alloc_flag == 0);
-	}
 	void addPFlag(u_char index, u_char pflag) {
 		if(index >= 0 && index < P_FLAGS_IMAX && isAllocFlagOK() && p_flags_count[index] < P_FLAGS_MAX - 1) {
 			p_flags[index][p_flags_count[index]++] = pflag;
@@ -576,6 +570,30 @@ public:
 			}
 		}
 		return(false);
+	}
+	#else
+	bool isEmptyChunkBuffersCount() {
+		return(chunkBuffersCount == 0);
+	}
+	int getChunkBuffersCount() {
+		return(chunkBuffersCount);
+	}
+	void incChunkBuffers() {
+		__SYNC_INC(chunkBuffersCount);
+	}
+	void decChunkBuffers() {
+		if(chunkBuffersCount == 0) {
+			syslog(LOG_NOTICE, "invalid zero sync in decChunkBuffers in call %s", fbasename);
+		}
+		__SYNC_DEC(chunkBuffersCount);
+	}
+	#endif
+	void addTarPos(u_int64_t pos, int type);
+	bool isAllocFlagOK() {
+		return(alloc_flag == 1);
+	}
+	bool isAllocFlagSetAsFree() {
+		return(alloc_flag == 0);
 	}
 public:
 	volatile uint8_t alloc_flag;
@@ -597,10 +615,14 @@ protected:
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
 private:
+	#if DEBUG_ASYNC_TAR_WRITE
 	map<sChbIndex, bool> chunkBuffersMap;
 	volatile int chunkBuffersCount_sync;
 	u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
 	u_char p_flags_count[P_FLAGS_IMAX];
+	#else
+	volatile int chunkBuffersCount;
+	#endif
 	u_int64_t created_at;
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
@@ -2949,6 +2971,7 @@ int convCallFieldToFieldIndex(eCallField field);
 void reset_counters();
 
 
+#if DEBUG_ASYNC_TAR_WRITE
 class cDestroyCallsInfo {
 public:
 	struct sCallInfo {
@@ -2994,6 +3017,7 @@ private:
 	map<string, sCallInfo*> q_map;
 	volatile int _sync;
 };
+#endif
 
 
 #endif

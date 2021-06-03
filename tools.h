@@ -571,10 +571,12 @@ public:
 	static const char *convTypeCompress(eTypeCompress typeCompress);
 	static string getConfigMenuString();
 	bool getLineFromReadBuffer(string *line);
+	bool needTarPos();
 private:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
+	eTypeCompress getTypeCompressDefault();
 	void addReadBuffer(char *data, u_int32_t len);
 public:
 	eMode mode;

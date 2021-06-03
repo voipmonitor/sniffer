@@ -180,7 +180,9 @@ using namespace std;
 /* global variables */
 
 extern Calltable *calltable;
+#if DEBUG_ASYNC_TAR_WRITE
 extern cDestroyCallsInfo *destroy_calls_info;
+#endif
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 unsigned int opt_openfile_max = 65535;
@@ -3953,7 +3955,9 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
+	#if DEBUG_ASYNC_TAR_WRITE
 	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
+	#endif
 	
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {
@@ -4802,8 +4806,10 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	#if DEBUG_ASYNC_TAR_WRITE
 	delete destroy_calls_info;
 	destroy_calls_info = NULL;
+	#endif
 	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();

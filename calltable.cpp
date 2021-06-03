@@ -154,7 +154,6 @@ extern int opt_mysqlstore_max_threads_http;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_mysqlstore_limit_queue_register;
 extern Calltable *calltable;
-extern cDestroyCallsInfo *destroy_calls_info;
 extern int opt_silencedetect;
 extern int opt_clippingdetect;
 extern CustomHeaders *custom_headers_cdr;
@@ -304,10 +303,14 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	flags = 0;
 	user_data = NULL;
 	user_data_type = 0;
+	#if DEBUG_ASYNC_TAR_WRITE
 	chunkBuffersCount_sync = 0;
 	for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
 		p_flags_count[i] = 0;
 	}
+	#else
+	chunkBuffersCount = 0;
+	#endif
 	this->created_at = getTimeUS();
 }
 
@@ -957,9 +960,12 @@ Call::_removeRTP() {
 /* destructor */
 Call::~Call(){
  
+	#if DEBUG_ASYNC_TAR_WRITE
+ 	extern cDestroyCallsInfo *destroy_calls_info;
 	if(destroy_calls_info) {
 		destroy_calls_info->add(this);
 	}
+	#endif
  
 	alloc_flag = 0;
 	
@@ -12870,6 +12876,7 @@ void reset_counters() {
 }
 
 
+#if DEBUG_ASYNC_TAR_WRITE
 cDestroyCallsInfo::~cDestroyCallsInfo() {
 	lock();
 	while(queue.size() > 0) {
@@ -12922,3 +12929,4 @@ string cDestroyCallsInfo::find(string fbasename, int index) {
 	outStr  << " / ";
 	return(outStr.str());
 }
+#endif

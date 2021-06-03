@@ -959,11 +959,12 @@ bool RecompressStream::decompress_ev(char *data, u_int32_t len) {
 	return(this->compressStream->compress(data, len, false, this->compressStream));
 }
 
-ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
+ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time, bool need_tar_pos,
 			 u_int32_t chunk_fix_len, Call_abstract *call, int typeContent, int indexContent,
 			 const char *name) {
 	this->time = time;
 	this->tar_time = tar_time;
+	this->need_tar_pos = need_tar_pos;
 	this->call = call;
 	this->typeContent = typeContent;
 	this->indexContent =indexContent;
@@ -986,9 +987,13 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time,
 	this->chunk_buffer_size = 0;
 	this->created_at = getTimeUS();
 	if(call) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(!call->incChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
 			strange_log("error inc chunk in create ChunkBuffer");
 		}
+		#else
+		call->incChunkBuffers();
+		#endif
 	}
 }
 
@@ -1005,6 +1010,7 @@ ChunkBuffer::~ChunkBuffer() {
 		delete this->compressStream;
 	}
 	if(call) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK_wait()) {
 			if(call->created_at > this->created_at) {
 				strange_log("overtaking in time in ~ChunkBuffer");
@@ -1018,6 +1024,18 @@ ChunkBuffer::~ChunkBuffer() {
 		} else {
 			strange_log("access to strange call in ~ChunkBuffer");
 		}
+		#else
+		if(call->isAllocFlagOK()) {
+			if(call->created_at > this->created_at) {
+				strange_log("overtaking in time in ~ChunkBuffer");
+			} else if(call->fbasename != this->fbasename) {
+				strange_log("mismatch fbasename in ~ChunkBuffer");
+			}
+		} else {
+			strange_log("access to strange call in ~ChunkBuffer");
+		}
+		call->decChunkBuffers();
+		#endif
 	}
 }
 
@@ -1465,22 +1483,29 @@ u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {
 }
 
 void ChunkBuffer::addTarPosInCall(u_int64_t pos) {
-	if(call) {
+	if(call &&
+	   (need_tar_pos || DEBUG_ASYNC_TAR_WRITE)) {
+		#if DEBUG_ASYNC_TAR_WRITE
 		if(call->isAllocFlagOK() && call->isChunkBuffersCountSyncOK_wait()) {
 			call->addPFlag(typeContent - 1 + indexContent, Call_abstract::_p_flag_chb_add_tar_pos);
 			call->addTarPos(pos, typeContent);
 		} else {
 			strange_log("access to strange call in ChunkBuffer::addTarPosInCall");
 		}
+		#else
+		call->addTarPos(pos, typeContent);
+		#endif
 	}
 }
 
 void ChunkBuffer::strange_log(const char *error) {
-	extern cDestroyCallsInfo *destroy_calls_info;
+	#if DEBUG_ASYNC_TAR_WRITE
 	string dci;
+	extern cDestroyCallsInfo *destroy_calls_info;
 	if(destroy_calls_info) {
 		dci = destroy_calls_info->find(this->fbasename, typeContent - 1 + indexContent);
 	}
+	#endif
 	syslog(LOG_NOTICE, 
 	       "%s : "
 	       "chunk: %p, "
@@ -1491,10 +1516,15 @@ void ChunkBuffer::strange_log(const char *error) {
 	       "call: %p, "
 	       "call->fbasename: %s, "
 	       "call->isAllocFlagOK(): %i/%i, "
+	       #if DEBUG_ASYNC_TAR_WRITE
 	       "call->isChunkBuffersCountSyncOK(): %i/%i, "
+	       #endif
 	       "call->created_at: %" int_64_format_prefix "lu, "
-	       "time: %" int_64_format_prefix "lu, "
-	       "dci: %s",
+	       "time: %" int_64_format_prefix "lu"
+	       #if DEBUG_ASYNC_TAR_WRITE
+	       ", dci: %s"
+	       #endif
+	       ,
 	       error,
 	       this,
 	       this->fbasename.c_str(),
@@ -1505,10 +1535,15 @@ void ChunkBuffer::strange_log(const char *error) {
 	       call,
 	       call->fbasename,
 	       call->isAllocFlagOK(), call->alloc_flag,
+	       #if DEBUG_ASYNC_TAR_WRITE
 	       call->isChunkBuffersCountSyncOK_wait(), call->chunkBuffersCount_sync,
+	       #endif
 	       call->created_at,
-	       getTimeUS(),
-	       dci.c_str());
+	       getTimeUS()
+	       #if DEBUG_ASYNC_TAR_WRITE
+	       ,dci.c_str()
+	       #endif
+	       );
 }
 
 volatile u_int64_t ChunkBuffer::chunk_buffers_sumsize = 0;
