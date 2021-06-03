@@ -11646,6 +11646,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
+				ch_data.doNotAddColon = atoi(row["do_not_add_colon"].c_str());
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
@@ -11762,7 +11763,8 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			string findHeader = iter2->second.header;
 			if(findHeader.length()) {
-				if(findHeader[findHeader.length() - 1] != ':' &&
+				if(!iter2->second.doNotAddColon &&
+				   findHeader[findHeader.length() - 1] != ':' &&
 				   findHeader[findHeader.length() - 1] != '=' &&
 				   strcasecmp(findHeader.c_str(), "invite")) {
 					findHeader.append(":");

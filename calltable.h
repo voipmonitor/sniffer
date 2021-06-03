@@ -2636,6 +2636,7 @@ public:
 	struct sCustomHeaderData {
 		eSpecialType specialType;
 		string header;
+		bool doNotAddColon;
 		unsigned db_id;
 		string leftBorder;
 		string rightBorder;
