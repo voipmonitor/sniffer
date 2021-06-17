@@ -1,3 +1,11 @@
+28.3 09.06.2021
+===============
+- fix race condition leading to crash (when SIP compression was changed to LZO the race occured more often silently corrupting heap) 
+- ss7: use isup.subsequent_number for extend called number (if new configuration value "ss7_use_sam_subsequent_number" set to "yes") [VS-1188]
+- fix crash for some callerid when t2_boost_enable_call_find_threads is enabled 
+- adding support for custom headers without automatically added trailing colon [VS-1204]
+
+
 28.2 26.05.2021
 ===============
 - fix rare random crashes in TCP reassembler introduced in 28.0

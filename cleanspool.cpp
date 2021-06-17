@@ -1235,6 +1235,7 @@ void CleanSpool::cleanThreadProcess() {
 				cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
 				maxpoolsize = 0;
 			}
+			criticalLowSpace = true;
 		}
 	}
 	if((timeOk && !suspended) || criticalLowSpace) {
