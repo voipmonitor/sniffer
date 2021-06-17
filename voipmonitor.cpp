@@ -213,6 +213,7 @@ int opt_processingRTPvideo = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
+bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
@@ -1159,7 +1160,9 @@ cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 
 #include <stdio.h>
 #include <pthread.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/err.h>
+#endif
  
 #define MUTEX_TYPE       pthread_mutex_t
 #define MUTEX_SETUP(x)   pthread_mutex_init(&(x), NULL)
@@ -1188,7 +1191,9 @@ void init_management_functions(void);
  
 void handle_error(const char *file, int lineno, const char *msg){
      fprintf(stderr, "** %s:%d %s\n", file, lineno, msg);
+#ifdef HAVE_OPENSSL
      ERR_print_errors_fp(stderr);
+#endif
      /* exit(-1); */ 
  }
  
@@ -1201,10 +1206,12 @@ static MUTEX_TYPE *mutex_buf= NULL;
 #endif
 static void locking_function(int mode, int n, const char * /*file*/, int /*line*/)
 {
+#ifdef HAVE_OPENSSL
   if (mode & CRYPTO_LOCK)
     MUTEX_LOCK(mutex_buf[n]);
   else
     MUTEX_UNLOCK(mutex_buf[n]);
+#endif
 }
  
 static unsigned long id_function(void)
@@ -1217,8 +1224,8 @@ static unsigned long id_function(void)
  
 int thread_setup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   mutex_buf = new FILE_LINE(42001) MUTEX_TYPE[CRYPTO_num_locks()];
   if (!mutex_buf)
     return 0;
@@ -1227,12 +1234,15 @@ int thread_setup(void)
   CRYPTO_set_id_callback(id_function);
   CRYPTO_set_locking_callback(locking_function);
   return 1;
+#else
+  return 0;
+#endif
 }
  
 int thread_cleanup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   if (!mutex_buf)
     return 0;
   CRYPTO_set_id_callback(NULL);
@@ -1242,6 +1252,9 @@ int thread_cleanup(void)
   delete [] mutex_buf;
   mutex_buf = NULL;
   return 1;
+#else
+  return 0;
+#endif
 }
 
 char *semaphoreLockName(int index) {
@@ -6826,6 +6839,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
@@ -10077,6 +10091,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
 		opt_srtp_rtp_decrypt= yesno(value);
+	}
+	if((value = ini.GetValue("general", "srtp_rtp_dtls", NULL))) {
+		opt_srtp_rtp_dtls_decrypt= yesno(value);
 	}
 	if((value = ini.GetValue("general", "srtp_rtp_audio", NULL))) {
 		opt_srtp_rtp_audio_decrypt= yesno(value);

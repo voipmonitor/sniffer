@@ -26,7 +26,9 @@
 #include <curl/curl.h>
 #include <cerrno>
 #include <iomanip>
+#ifdef HAVE_OPENSSL
 #include <openssl/sha.h>
+#endif
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
@@ -1015,6 +1017,7 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 }
 
 string GetStringSHA256(std::string str) {
+	#ifdef HAVE_OPENSSL
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256_CTX sha256;
 	SHA256_Init(&sha256);
@@ -1026,6 +1029,9 @@ string GetStringSHA256(std::string str) {
 	}
 	outputBuffer[64] = 0;
 	return(outputBuffer);
+	#else
+	return("");
+	#endif
 }
 
 #pragma GCC push_options

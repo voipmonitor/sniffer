@@ -18,7 +18,9 @@
 #include <pcap.h>
 #include <math.h>
 #include <time.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/crypto.h>  
+#endif
 #include <sstream>
 
 #include "ipaccount.h"

@@ -81,6 +81,7 @@ extern int opt_saveWAV;                // save RTP payload RAW data?
 extern int opt_saveGRAPH;	// save GRAPH data to graph file? 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to graph file? 
 extern bool opt_srtp_rtp_decrypt;
+extern bool opt_srtp_rtp_dtls_decrypt;
 extern bool opt_srtp_rtp_audio_decrypt;
 extern bool opt_srtp_rtcp_decrypt;
 extern int opt_savewav_force;
@@ -583,6 +584,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtp_remove_flag = false;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
+	dtls = NULL;
 	rtplock_sync = 0;
 	listening_worker_run = NULL;
 	lastcallerrtp = NULL;
@@ -682,7 +684,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	_mergecalls_lock = 0;
 	
-	exists_crypto_suite_key = false;
+	exists_srtp_crypto_config = false;
+	exists_srtp_fingerprint = false;
 	for(int i = 0; i < 2; i++) {
 		callerd_confirm_rtp_by_both_sides_sdp[i] = 0;
 	}
@@ -995,6 +998,10 @@ Call::~Call(){
 	}
 	#endif
 	
+	if(dtls) {
+		delete dtls;
+	}
+	
 	// tell listening_worker to stop listening
 	if(listening_worker_run) {
 		*listening_worker_run = 0;
@@ -1079,7 +1086,9 @@ Call::closeRawFiles() {
 /* add ip adress and port to this call */
 int
 Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-		  char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		  char *sessid, char *sdp_label, 
+		  list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+		  char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -1090,7 +1099,8 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 
 	if(ipport_n > 0) {
 		if(this->refresh_data_ip_port(addr, port, ts, 
-					      rtp_crypto_config_list, iscaller, rtpmap, sdp_flags)) {
+					      srtp_crypto_config_list, srtp_fingerprint,
+					      iscaller, rtpmap, sdp_flags)) {
 			return 1;
 		}
 	}
@@ -1119,9 +1129,13 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	if(sdp_label) {
 		this->ip_port[ipport_n].sdp_label = sdp_label;
 	}
-	if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-		this->ip_port[ipport_n].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(ts));
-		this->exists_crypto_suite_key = true;
+	if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
+		this->ip_port[ipport_n].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
+		this->exists_srtp_crypto_config = true;
+	}
+	if(srtp_fingerprint) {
+		this->ip_port[ipport_n].setSrtpFingerprint(srtp_fingerprint);
+		this->exists_srtp_fingerprint = true;
 	}
 	if(to) {
 		this->ip_port[ipport_n].to = to;
@@ -1141,7 +1155,8 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 
 bool 
 Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
-			   list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+			   list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+			   int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
 			// reinit rtpmap
@@ -1212,9 +1227,13 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts,
 				}
 				calltable->unlock_calls_hash();
 			}
-			if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-				this->ip_port[i].setSdpCryptoList(rtp_crypto_config_list, getTimeUS(ts));
-				this->exists_crypto_suite_key = true;
+			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
+				this->ip_port[i].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
+				this->exists_srtp_crypto_config = true;
+			}
+			if(srtp_fingerprint) {
+				this->ip_port[i].setSrtpFingerprint(srtp_fingerprint);
+				this->exists_srtp_fingerprint = true;
 			}
 			return true;
 		}
@@ -1224,7 +1243,8 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts,
 
 void
 Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-		       char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
+		       char *sessid, char *sdp_label, bool multipleSdpMedia, 
+		       list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 		       char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
@@ -1255,12 +1275,15 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 				this->ip_port[sessidIndex].iscaller = iscaller;
 			}
 			this->refresh_data_ip_port(addr, port, ts, 
-						   rtp_crypto_config_list, iscaller, rtpmap, sdp_flags);
+						   srtp_crypto_config_list, srtp_fingerprint,
+						   iscaller, rtpmap, sdp_flags);
 			return;
 		}
 	}
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
-			     sessid, sdp_label, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags) != -1) {
+			     sessid, sdp_label, 
+			     srtp_crypto_config_list, srtp_fingerprint,
+			     to, branch, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
@@ -1405,8 +1428,9 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		return(false);
 	}
 
-	RTPsecure *rtp_decrypt = NULL;
-	if(exists_crypto_suite_key && opt_srtp_rtcp_decrypt) {
+	RTPsecure *srtp_decrypt = NULL;
+	if((exists_srtp_crypto_config || exists_srtp_fingerprint) && 
+	   opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec());
 		if(index_call_ip_port_by_src < 0) {
 			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec(), true);
@@ -1415,8 +1439,9 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 		}
 		if(index_call_ip_port_by_src >= 0 && 
-		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
-		   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
+		   ((this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list &&
+		     this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list->size()) ||
+		    this->ip_port[index_call_ip_port_by_src].srtp_fingerprint)) {
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
 				rtp_secure_map[index_call_ip_port_by_src] = 
 					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
@@ -1426,14 +1451,17 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 					log_srtp_callid = true;
 				}
 			}
-			rtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
+			srtp_decrypt = rtp_secure_map[index_call_ip_port_by_src];
 		}
 	}
 	
 	unsigned datalen_orig = packetS->datalen_();
-	if(rtp_decrypt && opt_srtp_rtcp_decrypt) {
+	if(srtp_decrypt && opt_srtp_rtcp_decrypt) {
 		u_int32_t datalen = packetS->datalen_();
-		rtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
+		if(srtp_decrypt->need_prepare_decrypt()) {
+			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_());
+		}
+		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
 		packetS->set_datalen_(datalen);
 	}
 
@@ -1448,14 +1476,11 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
-	/*
-	if(sverb.dtls &&
-	   packetS->datalen_() &&
-	   (packetS->data_()[0] == 0x16 || packetS->data_()[0] == 0x14)) {
+	if(packetS->isDtls()) {
 		read_dtls(packetS);
+		_save_rtp(packetS, sdp_flags, enable_save_packet, false);
 		return(true);
 	}
-	*/
 	extern bool opt_null_rtppayload;
 	if(opt_null_rtppayload) {
 		RTP tmprtp(0, 0);
@@ -1810,8 +1835,9 @@ read:
 		
 		RTP *rtp_new = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp_new->ssrc_index = rtp_size();
-		if(exists_crypto_suite_key && 
+		if((exists_srtp_crypto_config || exists_srtp_fingerprint) && 
 		   (opt_srtp_rtp_decrypt || 
+		    (opt_srtp_rtp_dtls_decrypt && exists_srtp_fingerprint) ||
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
@@ -1822,8 +1848,10 @@ read:
 				index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 			}
 			if(index_call_ip_port_by_src >= 0 && 
-			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list &&
-			   this->ip_port[index_call_ip_port_by_src].rtp_crypto_config_list->size()) {
+			   this->ip_port[index_call_ip_port_by_src].sdp_flags.protocol == sdp_proto_srtp &&
+			   ((this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list &&
+			     this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list->size()) ||
+			    this->ip_port[index_call_ip_port_by_src].srtp_fingerprint)) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
 					rtp_secure_map[index_call_ip_port_by_src] = 
 						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
@@ -1962,35 +1990,12 @@ read:
 
 void 
 Call::read_dtls(struct packet_s *packetS) {
-	if(!sverb.dtls) {
-		return;
+	if(!dtls) {
+		dtls = new FILE_LINE(0) cDtls;
 	}
-	u_char *data = (u_char*)packetS->data_();
-	unsigned limitSize = packetS->datalen_();
-	unsigned pos = 0;
-	unsigned counter = 0;
-	while(pos < limitSize) {
-		cDtlsHeader dtlsHeader(data + pos, limitSize);
-		if(dtlsHeader.isOk()) {
-			cDtlsHeader::sFixHeader fixHeader = dtlsHeader.getFixHeader();
-			if(!counter) {
-				cout << "DTLS " 
-				     << packetS->saddr_().getString() << ':' << packetS->source_() << " -> "
-				     << packetS->daddr_().getString() << ':' << packetS->dest_()
-				     << endl;
-			}
-			cout << "content_type: " << (int)fixHeader.content_type << ", "
-			     << "version: " << hex << fixHeader.version << dec << ", "
-			     << "sequence_number: " << fixHeader.sequence_number << ", "
-			     << "length: " << fixHeader.length
-			     << endl;
-		 
-			pos += dtlsHeader.getHeaderSize() + dtlsHeader.getLength();
-			++counter;
-		} else {
-			break;
-		}
-	}
+	dtls->processHandshake(packetS->saddr_(), packetS->source_(),
+			       packetS->daddr_(), packetS->dest_(),
+			       (u_char*)packetS->data_(), packetS->datalen_());
 }
 
 void
@@ -5573,9 +5578,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
-		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp &&
-		   !ip_port[i].rtp_crypto_config_list) {
-			cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp) {
+			if(!(rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp())) {
+				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+			}
 		}
 	}
 	if (televent_exists_request) {

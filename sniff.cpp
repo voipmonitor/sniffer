@@ -2074,7 +2074,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			do {
 				char *pointToParam = s;
 				unsigned countParams = 0;
-				rtp_crypto_config crypto;
+				srtp_crypto_config crypto;
 				do {
 					++countParams;
 					char *pointToSeparator = strnchr(pointToParam, ' ', cryptoContentLength - (pointToParam - cryptoContent));
@@ -2098,10 +2098,10 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
 				} while(pointToParam && countParams < 3);
 				if(crypto.suite.length() && crypto.key.length()) {
-					if(!sdp_media_data_item->rtp_crypto_config_list) {
-						sdp_media_data_item->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
+					if(!sdp_media_data_item->srtp_crypto_config_list) {
+						sdp_media_data_item->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
 					}
-					sdp_media_data_item->rtp_crypto_config_list->push_back(crypto);
+					sdp_media_data_item->srtp_crypto_config_list->push_back(crypto);
 				}
 				s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=crypto:", &l);
 				if(l > 0) {
@@ -2112,6 +2112,14 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				}
 			}
 			while(cryptoContent);
+		}
+		
+		s = _gettag(sdp_media_text, sdp_media_text_len, "a=fingerprint:", &l);
+		if(l > 0) {
+			if(!sdp_media_data_item->srtp_fingerprint) {
+				sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
+			}
+			*sdp_media_data_item->srtp_fingerprint =  string(s, l);
 		}
 		
 		if(memmem(sdp_media_text, sdp_media_text_len, "a=rtcp-mux", 10)) {
@@ -3125,18 +3133,21 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					     (call->saddr == packetS->daddr_() && call->sport == packetS->dest_())))) {
 						//printf("sdp [%u] port[%u]\n", tmp_addr, tmp_port);
 						call->add_ip_port_hash(packetS->saddr_(), sdp_media_data_item->ip, ip_port_call_info::_ta_base, sdp_media_data_item->port, packetS->getTimeval_pt(), 
-								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
+								       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 								       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						// check if the IP address is listed in nat_aliases
 						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
 						if(alias.isSet()) {
 							call->add_ip_port_hash(packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->getTimeval_pt(), 
-									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
+									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 						if(opt_sdp_reverse_ipport) {
 							call->add_ip_port_hash(packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(), 
-									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, sdp_media_data_item->rtp_crypto_config_list, 
+									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
+									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 					}
@@ -3166,8 +3177,11 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					call->televent_exists_response = true;
 				}
 			}
-			if(sdp_media_data_item->rtp_crypto_config_list) {
-				delete sdp_media_data_item->rtp_crypto_config_list;
+			if(sdp_media_data_item->srtp_crypto_config_list) {
+				delete sdp_media_data_item->srtp_crypto_config_list;
+			}
+			if(sdp_media_data_item->srtp_fingerprint) {
+				delete sdp_media_data_item->srtp_fingerprint;
 			}
 			if(sdp_media_data_i > 0) {
 				delete sdp_media_data_item;
@@ -5069,10 +5083,12 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	}
 
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, &header->ts, 
-			       NULL, NULL, false, NULL, 
+			       NULL, NULL, false, 
+			       NULL, NULL,
 			       NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, &header->ts, 
-			       NULL, NULL, false, NULL, 
+			       NULL, NULL, false, 
+			       NULL, NULL,
 			       NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);

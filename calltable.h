@@ -44,6 +44,7 @@
 #include "tools_fifo_buffer.h"
 #include "record_array.h"
 #include "calltable_base.h"
+#include "dtls.h"
 
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -261,7 +262,7 @@ struct ip_port_call_info_rtp {
 	time_t last_packet_time;
 };
 
-struct rtp_crypto_config {
+struct srtp_crypto_config {
 	unsigned tag;
 	string suite;
 	string key;
@@ -274,7 +275,8 @@ struct s_sdp_media_data {
 		port.clear();
 		label[0] = 0;
 		inactive_ip0 = 0;
-		rtp_crypto_config_list = NULL;
+		srtp_crypto_config_list = NULL;
+		srtp_fingerprint = NULL;
 		exists_payload_televent = false;
 	}
 	vmIP ip;
@@ -282,33 +284,38 @@ struct s_sdp_media_data {
 	char label[MAXLEN_SDP_LABEL];
 	s_sdp_flags sdp_flags;
 	int8_t inactive_ip0;
-	list<rtp_crypto_config> *rtp_crypto_config_list;
+	list<srtp_crypto_config> *srtp_crypto_config_list;
+	string *srtp_fingerprint;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	bool exists_payload_televent;
 };
 
 struct ip_port_call_info {
 	ip_port_call_info() {
-		rtp_crypto_config_list = NULL;
+		srtp_crypto_config_list = NULL;
+		srtp_fingerprint = NULL;
 		canceled = false;
 	}
 	~ip_port_call_info() {
-		if(rtp_crypto_config_list) {
-			delete rtp_crypto_config_list;
+		if(srtp_crypto_config_list) {
+			delete srtp_crypto_config_list;
+		}
+		if(srtp_fingerprint) {
+			delete srtp_fingerprint;
 		}
 	}
-	void setSdpCryptoList(list<rtp_crypto_config> *rtp_crypto_config_list, u_int64_t from_time_us) {
-		if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-			if(!this->rtp_crypto_config_list) {
-				this->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
-				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+	void setSrtpCryptoConfig(list<srtp_crypto_config> *srtp_crypto_config_list, u_int64_t from_time_us) {
+		if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
+			if(!this->srtp_crypto_config_list) {
+				this->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
+				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					iter->from_time_us = from_time_us;
-					this->rtp_crypto_config_list->push_back(*iter);
+					this->srtp_crypto_config_list->push_back(*iter);
 				}
 			} else {
-				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					bool exists = false;
-					for(list<rtp_crypto_config>::iterator iter2 = this->rtp_crypto_config_list->begin(); iter2 != this->rtp_crypto_config_list->end(); iter2++) {
+					for(list<srtp_crypto_config>::iterator iter2 = this->srtp_crypto_config_list->begin(); iter2 != this->srtp_crypto_config_list->end(); iter2++) {
 						if(iter->suite == iter2->suite && iter->key == iter2->key) {
 							exists = true;
 							break;
@@ -316,10 +323,18 @@ struct ip_port_call_info {
 					}
 					if(!exists) {
 						iter->from_time_us = from_time_us;
-						this->rtp_crypto_config_list->push_back(*iter);
+						this->srtp_crypto_config_list->push_back(*iter);
 					}
 				}
 			}
+		}
+	}
+	void setSrtpFingerprint(string *srtp_fingerprint) {
+		if(srtp_fingerprint) {
+			if(!this->srtp_fingerprint) {
+				this->srtp_fingerprint = new FILE_LINE(0) string;
+			}
+			*this->srtp_fingerprint = *srtp_fingerprint;
 		}
 	}
 	enum eTypeAddr {
@@ -333,7 +348,8 @@ struct ip_port_call_info {
 	int8_t iscaller;
 	string sessid;
 	string sdp_label;
-	list<rtp_crypto_config> *rtp_crypto_config_list;
+	list<srtp_crypto_config> *srtp_crypto_config_list;
+	string *srtp_fingerprint;
 	string to;
 	string branch;
 	vmIP sip_src_addr;
@@ -829,6 +845,7 @@ public:
 	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
+	cDtls *dtls;
 	volatile int rtplock_sync;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
@@ -1171,13 +1188,17 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-			char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, char *sdp_label, 
+			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+			char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
-				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
+				  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-			      char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
+			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
+			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 			      char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
 	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
@@ -1892,7 +1913,8 @@ public:
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	bool callerd_confirm_rtp_by_both_sides_sdp[2];
-	bool exists_crypto_suite_key;
+	bool exists_srtp_crypto_config;
+	bool exists_srtp_fingerprint;
 	bool log_srtp_callid;
 	PcapDumper pcap;
 	PcapDumper pcapSip;
@@ -1932,6 +1954,7 @@ private:
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
 	bool set_call_counter;
 	bool set_register_counter;
+friend class RTP;
 friend class RTPsecure;
 };
 

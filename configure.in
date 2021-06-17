@@ -51,7 +51,7 @@ AC_CHECK_LIB([pthread], [main])
 # FIXME: Replace `main' with a function in `-lrt':
 AC_CHECK_LIB([rt], [main])
 # FIXME: Replace `main' with a function in `-lssl':
-#AC_CHECK_LIB([ssl], [main])
+AC_CHECK_LIB([ssl], [main], HAVE_OPENSSL=1 , AC_MSG_ERROR([Unable to find ssl library. apt-get install libssl-dev | yum install openssl-devel]))
 # FIXME: Replace `main' with a function in `-lvorbis':
 AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lvorbisenc':
@@ -221,12 +221,18 @@ if test "x$HAVE_LIBTCMALLOC_HEAPPROF" = "x1"; then
 	AC_SUBST([HEAPPROF_CXXFLAG],["-fno-omit-frame-pointer"])
 	TCMALLOC_T="yes (with heap profiler)"
 fi
-OPENSSL_T=no
-if test "x$HAVE_OPENSSL101" = "x1"; then 
-	AC_DEFINE([HAVE_OPENSSL101], [1], [Define if using libtcmalloc])
-	OPENSSL_T=yes
+
+HAVE_OPENSSL_T=no
+if test "x$HAVE_OPENSSL" = "x1"; then 
+	AC_DEFINE([HAVE_OPENSSL], [1], [Define if using openssl])
+	HAVE_OPENSSL_T=yes
 fi
 
+OPENSSL101_T=no
+if test "x$HAVE_OPENSSL101" = "x1"; then 
+	AC_DEFINE([HAVE_OPENSSL101], [1], [Define if using openssl >= 1.0.1])
+	OPENSSL101_T=yes
+fi
 OPENSSL111_T=no
 if pkg-config --atleast-version 1.1.1 openssl; then
 	AC_DEFINE([HAVE_DSSL_TLS13], [1], [Define if we have openssl >= 1.1.1])
@@ -287,8 +293,8 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
-openssl >= 1.0.1 found		       : $OPENSSL_T
-openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
+openssl >= 1.0.1 found		       : $OPENSSL101_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
 
 shared binary: run make 
 static binary: run make static

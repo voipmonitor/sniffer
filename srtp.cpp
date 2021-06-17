@@ -83,6 +83,10 @@ RTPsecure::RTPsecure(eMode mode, Call *call, unsigned index_ip_port) {
 	error = err_na;
 	rtcp_unencrypt_header_len = 8;
 	rtcp_unencrypt_footer_len = 4;
+	decrypt_rtp_ok = 0;
+	decrypt_rtp_failed = 0;
+	decrypt_rtcp_ok = 0;
+	decrypt_rtcp_failed = 0;
 }
 
 RTPsecure::~RTPsecure() {
@@ -90,14 +94,17 @@ RTPsecure::~RTPsecure() {
 }
 
 bool RTPsecure::setCryptoConfig() {
-	if(cryptoConfigCallSize != call->ip_port[index_ip_port].rtp_crypto_config_list->size()) {
-		for(list<rtp_crypto_config>::iterator iter = call->ip_port[index_ip_port].rtp_crypto_config_list->begin();
-		    iter != call->ip_port[index_ip_port].rtp_crypto_config_list->end();
+	if(call->ip_port[index_ip_port].srtp_crypto_config_list &&
+	   cryptoConfigCallSize != call->ip_port[index_ip_port].srtp_crypto_config_list->size()) {
+		for(list<srtp_crypto_config>::iterator iter = call->ip_port[index_ip_port].srtp_crypto_config_list->begin();
+		    iter != call->ip_port[index_ip_port].srtp_crypto_config_list->end();
 		    iter++) {
 			this->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str(), iter->from_time_us);
 		}
-		cryptoConfigCallSize = call->ip_port[index_ip_port].rtp_crypto_config_list->size();
+		cryptoConfigCallSize = call->ip_port[index_ip_port].srtp_crypto_config_list->size();
 		return(true);
+	}
+	if(call->ip_port[index_ip_port].srtp_fingerprint) {
 	}
 	return(false);
 }
@@ -130,9 +137,30 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 	return(false);
 }
 
+void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
+	if(call->ip_port[index_ip_port].srtp_fingerprint && call->dtls &&
+	   !cryptoConfigVector.size()) {
+		cDtlsLink::sSrtpKeys keys;
+		if(call->dtls->findSrtpKeys(saddr, sport, daddr, dport, &keys)) {
+			if(keys.server.ip == daddr && keys.server.port == dport &&
+			   keys.client.ip == saddr && keys.client.port == sport) {
+				addCryptoConfig(0, keys.cipher.c_str(), keys.server_key.c_str(), 0);
+			} else if(keys.server.ip == saddr && keys.server.port == sport &&
+				  keys.client.ip == daddr && keys.client.port == dport) {
+				addCryptoConfig(0, keys.cipher.c_str(), keys.client_key.c_str(), 0);
+			}
+		}
+	}
+}
+
+bool RTPsecure::is_dtls() {
+	return(call->ip_port[index_ip_port].srtp_fingerprint && call->dtls);
+}
+
 bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us) {
 	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
+		++decrypt_rtp_failed;
 		return(false);
 	}
 	if(!rtp && cryptoConfigVector.size() == 1) {
@@ -140,6 +168,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 		init();
 	}
 	if(!isOK()) {
+		++decrypt_rtp_failed;
 		return(false);
 	}
 	if(rtp) {
@@ -148,6 +177,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			if(mode == mode_native ?
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
+				++decrypt_rtp_ok;
 				return(true);
 			} else if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
 				term();
@@ -176,10 +206,12 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					term();
 					continue;
 				}
+				++decrypt_rtp_ok;
 				return(true);
 			}
 		}
 	}
+	++decrypt_rtp_failed;
 	return(false);
 }
  
@@ -244,6 +276,7 @@ bool RTPsecure::decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char */*
 bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us) {
 	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
+		++decrypt_rtcp_failed;
 		return(false);
 	}
 	if(!rtcp && cryptoConfigVector.size() == 1) {
@@ -251,6 +284,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 		init();
 	}
 	if(!isOK()) {
+		++decrypt_rtcp_failed;
 		return(false);
 	}
 	if(rtcp) {
@@ -259,6 +293,7 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 			if(mode == mode_native ?
 			    decrypt_rtcp_native(data, data_len) :
 			    decrypt_rtcp_libsrtp(data, data_len)) {
+				++decrypt_rtcp_ok;
 				return(true);
 			} else if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
 				term();
@@ -287,10 +322,12 @@ bool RTPsecure::decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us
 					term();
 					continue;
 				}
+				++decrypt_rtcp_ok;
 				return(true);
 			}
 		}
 	}
+	++decrypt_rtcp_failed;
 	return(false);
 }
 

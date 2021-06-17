@@ -20,7 +20,9 @@
 #include <cerrno>
 #include <json.h>
 #include <iomanip>
+#ifdef HAVE_OPENSSL
 #include <openssl/sha.h>
+#endif
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>

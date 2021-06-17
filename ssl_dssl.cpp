@@ -402,7 +402,7 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 	unlock_map();
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
+bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
 	if(sverb.ssl_sessionkey) {
 		cout << "find clientrandom with type " << enumToStrType(type) << endl;
 		hexdump(client_random, SSL3_RANDOM_SIZE);
@@ -411,7 +411,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
 	extern int ssl_client_random_maxwait_ms;
-	if(ssl_client_random_maxwait_ms > 0) {
+	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
 			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
@@ -445,7 +445,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	return(rslt);
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts) {
+bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
 	if(sverb.ssl_sessionkey) {
 		cout << "find clientrandom for all type" << endl;
 		hexdump(client_random, SSL3_RANDOM_SIZE);
@@ -454,7 +454,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
 	extern int ssl_client_random_maxwait_ms;
-	if(ssl_client_random_maxwait_ms > 0) {
+	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
 			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
@@ -715,12 +715,12 @@ void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *k
 	this->session_keys.set(type, client_random, key, key_length);
 }
 
-bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
-	return(this->session_keys.get(client_random, type, key, key_length, ts));
+bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+	return(this->session_keys.get(client_random, type, key, key_length, ts, use_wait));
 }
 
-bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts) {
-	return(this->session_keys.get(client_random, get_keys_data, ts));
+bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait) {
+	return(this->session_keys.get(client_random, get_keys_data, ts, use_wait));
 }
 
 void cSslDsslSessions::keyErase(u_char *client_random) {
@@ -1066,4 +1066,31 @@ void clientRandomServerStop() {
 		clientRandomServer = NULL;
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+}
+
+bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(!SslDsslSessions) {
+		return(false);
+	}
+	timeval ts;
+	ts.tv_sec = 0;
+	ts.tv_usec = 0;
+	unsigned _key_length;
+	bool rslt = SslDsslSessions->keyGet(client_random, cSslDsslSessionKeys::_skt_client_random, key, &_key_length, ts, false);
+	if(rslt) {
+		*key_length = _key_length;
+	}
+	return(rslt);
+	#else
+	return(false);
+	#endif
+}
+
+void erase_client_random(u_char *client_random) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(SslDsslSessions) {
+		SslDsslSessions->keyErase(client_random);
+	}
+	#endif
 }

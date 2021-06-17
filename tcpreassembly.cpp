@@ -2090,11 +2090,13 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 }
 
 void TcpReassemblyLink::extCleanup(int id, bool all) {
+	/*
 	syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP %i: link %s:%u -> %s:%u size: %zd",
 	       id,
 	       this->ip_src.getString().c_str(), this->port_src.getPort(),
 	       this->ip_dst.getString().c_str(), this->port_dst.getPort(),
 	       this->queueStreams.size());
+	*/
 	if(reassembly->log) {
 		ostringstream outStr;
 		outStr << fixed 

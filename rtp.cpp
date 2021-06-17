@@ -45,6 +45,7 @@ extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
 extern bool opt_srtp_rtp_decrypt;
+extern bool opt_srtp_rtp_dtls_decrypt;
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
@@ -1144,7 +1145,13 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		  (owner && owner->connect_time_us && getTimeUS(header) > owner->connect_time_us))) ||
 		mos_lqo;
 	
-	if(srtp_decrypt && (opt_srtp_rtp_decrypt || use_channel_record)) {
+	if(srtp_decrypt && 
+	   (opt_srtp_rtp_decrypt || 
+	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) ||
+	    use_channel_record)) {
+		if(srtp_decrypt->need_prepare_decrypt()) {
+			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport);
+		}
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
 		this->len = *len;
 	}
