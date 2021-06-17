@@ -5579,7 +5579,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp) {
-			if(!(rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp())) {
+			if(!(ip_port[i].srtp_crypto_config_list ||
+			     (ip_port[i].srtp_fingerprint && rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp()))) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 			}
 		}
