@@ -1310,8 +1310,8 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packetS._source = source;
 	packetS._daddr = daddr;
 	packetS._dest = dest;
-	packetS.istcp = istcp;
-	packetS.isother = 0;
+	packetS.pflags.init();
+	packetS.pflags.tcp = istcp;
 	packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0;
 	packetS._datalen = datalen;
 	packetS._datalen_set = 0;
@@ -2028,7 +2028,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 	}
 	
 	if(call) {
-		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, TYPE_SKINNY, 
+		save_packet(call, header, packet, saddr, source, daddr, dest, 1, NULL, data, datalen, dataoffset, _t_packet_skinny, 
 			    dlt, sensor_id, sensor_ip);
 		call->set_last_signal_packet_time_us(getTimeUS(header));
 	}

@@ -9,12 +9,6 @@
 #define FORMAT_OGG	2
 #define REGISTER_CLEAN_PERIOD 60	// clean register table for expired items every 60 seconds
 
-#define TYPE_SIP 1
-#define TYPE_RTP 2
-#define TYPE_RTCP 3
-#define TYPE_SKINNY 4
-#define TYPE_MGCP 5
-
 #define STORE_PROC_ID_CDR 10
 #define STORE_PROC_ID_CDR_REDIRECT 11
 #define STORE_PROC_ID_MESSAGE 20

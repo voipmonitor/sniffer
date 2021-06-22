@@ -15,6 +15,7 @@
 #include "sniff.h"
 #include "sniff_inline.h"
 #include "audiocodes.h"
+#include "filter_mysql.h"
 
 
 #ifndef DEBUG_ALL_PACKETS
@@ -700,11 +701,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
-				ppd->istcp = 0;
-				ppd->isother = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
+				ppd->flags.init();
+				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
 			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
-				ppd->istcp = 1;
-				ppd->isother = 0;
+				ppd->flags.init();
+				ppd->flags.tcp = 1;
 				// prepare packet pointers 
 				ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
@@ -722,7 +723,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				      (unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_callagent || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_callagent))) {
 					// OK
 				} else if(opt_enable_ss7 && (ss7portmatrix[ppd->header_tcp->get_source()] || ss7portmatrix[ppd->header_tcp->get_dest()])) {
-					ppd->isother = 1;
+					ppd->flags.ss7 = 1;
+				} else if(cFilters::saveMrcp() && IS_MRCP(ppd->data, ppd->datalen)) {
+					ppd->flags.mrcp = 1;
 				} else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
@@ -736,8 +739,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_udp->_source = ppd->header_tcp->_source;
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
 			} else if (opt_enable_ss7 && ppd->header_ip->get_protocol() == IPPROTO_SCTP) {
-				ppd->istcp = 0;
-				ppd->isother = 1;
+				ppd->flags.init();
+				ppd->flags.ss7 = 1;
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);
 			} else {
 				//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
@@ -759,8 +762,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 			ppd->traillen = (int)(caplen - ((u_char*)ppd->header_ip - packet)) - ppd->header_ip->get_tot_len();
 		} else if(opt_enable_ss7) {
-			ppd->istcp = 0;
-			ppd->isother = 1;
+			ppd->flags.init();
+			ppd->flags.ss7 = 1;
 			ppd->data = (char*)packet;
 			ppd->datalen = caplen;
 		}
@@ -779,9 +782,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		   ppd->prevmd5s != NULL && 
 		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
-		   !(ppd->istcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
+		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.tcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;

@@ -210,6 +210,7 @@ int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTPvideo = 0;
 int opt_saveRTPvideo_only_header = 0;
 int opt_processingRTPvideo = 0;
+int opt_saveMRCP = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
@@ -2537,10 +2538,7 @@ void hot_restart_with_json_config(const char *jsonConfig) {
 }
 
 void reload_capture_rules() {
-	IPfilter::prepareReload();
-	TELNUMfilter::prepareReload();
-	DOMAINfilter::prepareReload();
-	SIP_HEADERfilter::prepareReload();
+	cFilters::prepareReload();
 }
 
 #ifdef BACKTRACE
@@ -3747,10 +3745,7 @@ int main(int argc, char *argv[]) {
 	if(!is_terminating()) {
 	
 		if(opt_test) {
-			IPfilter::loadActive();
-			TELNUMfilter::loadActive();
-			DOMAINfilter::loadActive();
-			SIP_HEADERfilter::loadActive();
+			cFilters::loadActive();
 			_parse_packet_global_process_packet.setStdParse();
 			test();
 			if(sqlStore) {
@@ -4097,10 +4092,7 @@ int main_init_read() {
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
-	IPfilter::loadActive(sqlDbInit);
-	TELNUMfilter::loadActive(sqlDbInit);
-	DOMAINfilter::loadActive(sqlDbInit);
-	SIP_HEADERfilter::loadActive(sqlDbInit);
+	cFilters::loadActive(sqlDbInit);
 
 	_parse_packet_global_process_packet.setStdParse();
 
@@ -4700,10 +4692,7 @@ void main_term_read() {
 		pthread_join(cachedir_thread, NULL);
 	}
 	
-	IPfilter::freeActive();
-	TELNUMfilter::freeActive();
-	DOMAINfilter::freeActive();
-	SIP_HEADERfilter::freeActive();
+	cFilters::freeActive();
 	
 	if(opt_enable_fraud) {
 		termFraud();
@@ -6829,6 +6818,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("savertp_video"))
 				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savemrcp", &opt_saveMRCP));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
@@ -10143,6 +10133,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "savemrcp", NULL))) {
+		opt_saveMRCP = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignorertcpjitter", NULL))) {
 		opt_ignoreRTCPjitter = atoi(value);

@@ -7650,8 +7650,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 
 	char *data = NULL;
 	int datalen = 0;
-	int istcp = 0;
-	int isother = 0;
+	packet_flags pflags;
+	pflags.init();
 	vmPort sport;
 	vmPort dport;
 	if(header_ip) {
@@ -7660,16 +7660,20 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
-			isother = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
+			pflags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
 		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
-			istcp = 1;
+			pflags.tcp = 1;
 			sport = header_tcp->get_source();
 			dport = header_tcp->get_dest();
-			isother = opt_enable_ss7 && (ss7portmatrix[sport] || ss7portmatrix[dport]);
+			if(opt_enable_ss7 && (ss7portmatrix[sport] || ss7portmatrix[dport])) {
+				pflags.ss7 = 1;
+			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
+				pflags.mrcp = 1;
+			}
 		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
-			isother = 1;
+			pflags.ss7 = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
@@ -7678,7 +7682,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	} else if(opt_enable_ss7) {
 		data = (char*)hp->packet;
 		datalen = header->caplen;
-		isother = 1;
+		pflags.ss7 = 1;
 	}
 	
 	if((data - (char*)hp->packet) > header->caplen) {
@@ -7766,14 +7770,13 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			}
 		}
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			false /*is_ssl*/, 
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
 			#endif
 			header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
 			datalen, data - (char*)hp->packet,
 			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
-			istcp, isother, header_ip_encaps, header_ip,
+			pflags, header_ip_encaps, header_ip,
 			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
 		return(1);

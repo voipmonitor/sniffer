@@ -474,7 +474,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 		packetS->sensor_id_() > 0 ? packetS->sensor_id_() : 0,
 		packetS->source_().getPort(),
 		packetS->dest_().getPort(),
-		packetS->istcp,
+		packetS->pflags.tcp,
 		sqlEscapeStringBorder(sqlDateTimeString(packetS->header_pt->ts.tv_sec).c_str()).c_str(),
 		packetS->header_pt->ts.tv_usec,
 		sqlEscapeStringBorder(call ? call->call_id : callidstr).c_str(),
@@ -766,7 +766,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	bool allocPacket = false;
 	unsigned int limitCapLen = 65535;
 	unsigned int packetLen = packetS->header_pt->caplen;
-	if(type == TYPE_SIP && packetS->typeContentIsSip()) {
+	if(type == _t_packet_sip && packetS->typeContentIsSip()) {
 		packetLen = packetS->dataoffset_() + packetS->sipDataLen;
 	}
 	if(packetLen > limitCapLen) {
@@ -780,7 +780,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 		memset(packet, 0, max(packetLen, header->caplen));
 		allocPacket = true;
 		if(packetLen != packetS->header_pt->caplen) {
-			if(type == TYPE_SIP && packetS->typeContentIsSip()) {
+			if(type == _t_packet_sip && packetS->typeContentIsSip()) {
 				memcpy(packet, packetS->packet, packetS->dataoffset_());
 				memcpy(packet + packetS->dataoffset_(), packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 				if(packetS->dataoffset_() + packetS->sipDataLen != packetLen) {
@@ -830,7 +830,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	}
  
 	// check if it should be stored to mysql 
-	if(type == TYPE_SIP && global_livesniffer) {
+	if(type == _t_packet_sip && global_livesniffer) {
 		if(call->typeIs(INVITE) && livesnifferfilterUseSipTypes.u_invite) {
 			save_live_packet(call, packetS, INVITE,
 					 header, packet);
@@ -842,34 +842,36 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	if(!sverb.disable_save_packet) {
 		if(enable_pcap_split) {
 			switch(type) {
-			case TYPE_SIP:
-			case TYPE_SKINNY:
-			case TYPE_MGCP:
+			case _t_packet_sip:
+			case _t_packet_skinny:
+			case _t_packet_mgcp:
 				if(call->getPcapSip()->isOpen()){
-					if(type == TYPE_SIP) {
+					if(type == _t_packet_sip) {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
 									 (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen,
-									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp, 
+									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp, 
 									 forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL);
 					} else {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false,
 									 (u_char*)packetS->data_(), packetS->datalen_(),
-									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp);
+									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 					}
 				}
 				break;
-			case TYPE_RTP:
-			case TYPE_RTCP:
+			case _t_packet_rtp:
+			case _t_packet_dtls:
+			case _t_packet_mrcp:
+			case _t_packet_rtcp:
 				if(call->getPcapRtp()->isOpen()){
 					call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
 								 (u_char*)packetS->data_(), packetS->datalen_(),
-								 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp);
-				} else if(type == TYPE_RTP ? enable_save_rtp(call) : enable_save_rtcp(call)) {
+								 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
+				} else if(type == _t_packet_rtcp ? enable_save_rtcp(call) : enable_save_rtp_packet(call, type)) {
 					string pathfilename = call->get_pathfilename(tsf_rtp);
 					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
 						call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
 									 (u_char*)packetS->data_(), packetS->datalen_(),
-									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp);
+									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 						if(verbosity > 3) { 
 							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
 						}
@@ -879,15 +881,15 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			}
 		} else {
 			if (call->getPcap()->isOpen()){
-				if(type == TYPE_SIP) {
+				if(type == _t_packet_sip) {
 					call->getPcap()->dump(header, packet, packetS->dlt, false, 
 							      (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen,
-							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp, 
+							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp, 
 							      forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL);
 				} else {
 					call->getPcap()->dump(header, packet, packetS->dlt, false,
 							      (u_char*)packetS->data_(), packetS->datalen_(),
-							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->istcp, forceVirtualUdp);
+							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 				}
 			}
 		}
@@ -902,7 +904,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 }
 
 void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp) {
-	if(type != TYPE_SIP) {
+	if(type != _t_packet_sip) {
 		save_packet(call, (packet_s_process*)packetS, type, forceVirtualUdp);
 	}
 }
@@ -1912,12 +1914,12 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	}
 	
 	s = _gettag(sdp_text,sdp_text_len, "o=", &l);
-	if(l == 0) return 1;
+	if(l == 0) return 0;
 	while(l > 0 && *s != ' ') {
 		++s;
 		--l;
 	}
-	if(l <= 1) return 1;
+	if(l <= 1) return 0;
 	++s;
 	--l;
 	unsigned long ispace = 0;
@@ -1945,90 +1947,52 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	unsigned sdp_media_start_max = 10;
 	unsigned sdp_media_start_count = 0;
 	char *sdp_media_start[sdp_media_start_max];
-	bool sdp_media_image[sdp_media_start_max];
-	bool sdp_media_video[sdp_media_start_max];
+	e_sdp_media_type sdp_media_type[sdp_media_start_max];
 	vmPort sdp_media_port[sdp_media_start_max];
 	while(sdp_media_start_count < sdp_media_start_max) {
-		bool image = false;
-		bool video = false;
-		vmPort port;
-		for(unsigned pass = 0; pass < 3; pass++) {
-			s = _gettag(sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 : sdp_text,
-				    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
-				    pass == 0 ? "m=audio " : 
-				    pass == 1 ? "m=image " : 
-						"m=video ",
-				    &l);
-			if(l > 0) {
-				if(port.setFromString(s).isSet()) {
-					switch(pass) {
-					case 0:
-						call->sdp_exists_media_type_audio = true;
-						break;
-					case 1:
-						call->sdp_exists_media_type_image = true;
-						image = true;
-						break;
-					case 2:
-						call->sdp_exists_media_type_video = true;
-						video = true;
-						break;
-					}
-					break;
-				}
-			}
-		}
+		s = _gettag(sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 : sdp_text,
+			    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
+			    "\nm=", &l);
 		if(l > 0) {
-			sdp_media_start[sdp_media_start_count] = s;
-			sdp_media_image[sdp_media_start_count] = image;
-			sdp_media_video[sdp_media_start_count] = video;
-			sdp_media_port[sdp_media_start_count] = port;
-			++sdp_media_start_count;
+			e_sdp_media_type media_type = l > 5 ? 
+						       (!strncasecmp(s, "audio", 5) ? sdp_media_type_audio :
+							!strncasecmp(s, "image", 5) ? sdp_media_type_image :
+							!strncasecmp(s, "video", 5) ? sdp_media_type_video :
+							l > 11 && !strncasecmp(s, "application", 11) ? sdp_media_type_application : sdp_media_type_na) :
+						       sdp_media_type_na;
+			while(isalpha(*s)) {
+				++s;
+			}
+			if(*s == ' ') {
+				++s;
+			}
+			vmPort port;
+			if(port.setFromString(s).isSet()) {
+				sdp_media_start[sdp_media_start_count] = s;
+				sdp_media_type[sdp_media_start_count] = media_type;
+				sdp_media_port[sdp_media_start_count] = port;
+				++sdp_media_start_count;
+			} else {
+				break;
+			}
 		} else {
 			break;
 		}
 	}
 	
-	if(sdp_media_start_count > 1) {
-		*next_sdp_media_data = new FILE_LINE(0) list<s_sdp_media_data*>;
-	}
-	
+	unsigned sdp_media_counter = 0;
 	for(unsigned sdp_media_i = 0; sdp_media_i < sdp_media_start_count; sdp_media_i++) {
-		if(sdp_media_video[sdp_media_i] && !processing_rtp_video(call)) {
+	 
+		if(sdp_media_type[sdp_media_i] == sdp_media_type_video && !processing_rtp_video(call)) {
 			continue;
 		}
+		
 		char *sdp_media_text = sdp_media_start[sdp_media_i];
 		unsigned sdp_media_text_len = sdp_media_i < sdp_media_start_count - 1 ?
 					       sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i] :
 					       sdp_text_len - (sdp_media_start[sdp_media_i] - sdp_text);
 					       
-		s_sdp_media_data *sdp_media_data_item; 
-		if(sdp_media_i == 0) {
-			sdp_media_data_item = sdp_media_data;
-		} else {
-			sdp_media_data_item = new FILE_LINE(0) s_sdp_media_data;
-		}
-		sdp_media_data_item->ip = ip;
-		sdp_media_data_item->port = sdp_media_port[sdp_media_i];
-		sdp_media_data_item->sdp_flags.is_fax = sdp_media_image[sdp_media_i];
-		sdp_media_data_item->sdp_flags.is_video = sdp_media_video[sdp_media_i];
-		
-		if(sdp_media_i > 0) {
-			s = _gettag(sdp_media_text, sdp_media_text_len,
-				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
-				    &l);
-			if(l > 0) {
-				char ip_str[IP_STR_MAX_LENGTH];
-				unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
-				memcpy(ip_str, s, ip_length);
-				ip_str[ip_length] = 0;
-				vmIP ip;
-				if(ip.setFromString(ip_str)) {
-					sdp_media_data_item->ip = ip;
-				}
-			}
-		}
-		
+		e_sdp_protocol sdp_protocol = sdp_proto_na;
 		char *pointToBeginProtocol = strnchr(sdp_media_text, ' ', sdp_media_text_len);
 		if(pointToBeginProtocol) {
 			++pointToBeginProtocol;
@@ -2050,12 +2014,50 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					 { "UDP/TLS/RTP/SAVPF", sdp_proto_srtp }, // RFC 5764
 					 { "msrp/tcp", sdp_proto_msrp }, // Not in IANA, where is this from?
 					 { "UDPSPRT", sdp_proto_sprt }, // Not in IANA, but draft-rajeshkumar-avt-v150-registration-00
+					 { "TCP/MRCPv2", sdp_proto_tcp_mrcpv2 }
 				};
 				for(unsigned i = 0; i < sizeof(sdp_protocols) / sizeof(sdp_protocols[0]); i++) {
 					if(!strncasecmp(pointToBeginProtocol, sdp_protocols[i].protocol_str, lengthProtocol) &&
 					   lengthProtocol == strlen(sdp_protocols[i].protocol_str)) {
-						sdp_media_data_item->sdp_flags.protocol = sdp_protocols[i].protocol;
+						sdp_protocol = sdp_protocols[i].protocol;
 					}
+				}
+			}
+		}
+		
+		if(sdp_media_type[sdp_media_i] == sdp_media_type_application && 
+		   !(sdp_protocol == sdp_proto_tcp_mrcpv2 && cFilters::saveMrcp())) {
+			continue;
+		}
+					       
+		s_sdp_media_data *sdp_media_data_item; 
+		if(sdp_media_counter == 0) {
+			sdp_media_data_item = sdp_media_data;
+		} else {
+			if(sdp_media_counter == 1) {
+				*next_sdp_media_data = new FILE_LINE(0) list<s_sdp_media_data*>;
+			}
+			sdp_media_data_item = new FILE_LINE(0) s_sdp_media_data;
+		}
+		
+		sdp_media_data_item->ip = ip;
+		sdp_media_data_item->port = sdp_media_port[sdp_media_i];
+		sdp_media_data_item->sdp_flags.media_type = sdp_media_type[sdp_media_i];
+		
+		sdp_media_data_item->sdp_flags.protocol = sdp_protocol;
+		
+		if(sdp_media_i > 0) {
+			s = _gettag(sdp_media_text, sdp_media_text_len,
+				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
+				    &l);
+			if(l > 0) {
+				char ip_str[IP_STR_MAX_LENGTH];
+				unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
+				memcpy(ip_str, s, ip_length);
+				ip_str[ip_length] = 0;
+				vmIP ip;
+				if(ip.setFromString(ip_str)) {
+					sdp_media_data_item->ip = ip;
 				}
 			}
 		}
@@ -2145,15 +2147,19 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->inactive_ip0 = true;
 		}
 		
-		get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_video[sdp_media_i], sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
+		if(sdp_media_type[sdp_media_i] != sdp_media_type_application) {
+			get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_type[sdp_media_i] == sdp_media_type_video, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
+		}
 
-		if(sdp_media_i > 0) {
+		if(sdp_media_counter > 0) {
 			(*next_sdp_media_data)->push_back(sdp_media_data_item);
 		}
 		
+		++sdp_media_counter;
+		
 	}
 	
-	return 0;
+	return sdp_media_counter;
 }
 
 int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int unsigned len) {
@@ -2715,22 +2721,23 @@ inline unsigned int setCallFlags(unsigned long int flags,
 				 char *caller_domain, char *called_domain,
 				 ParsePacket::ppContentsX *parseContents) {
 	unsigned long int flags_old = flags;
-	IPfilter::add_call_flags(&flags, ip_src, ip_dst, true);
+	cFilters::applyReload();
+	IPfilter::add_call_flags(&flags, ip_src, ip_dst);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	TELNUMfilter::add_call_flags(&flags, caller, called, true);
+	TELNUMfilter::add_call_flags(&flags, caller, called);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	DOMAINfilter::add_call_flags(&flags, caller_domain, called_domain, true);
+	DOMAINfilter::add_call_flags(&flags, caller_domain, called_domain);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	SIP_HEADERfilter::add_call_flags(parseContents, &flags, true);
+	SIP_HEADERfilter::add_call_flags(parseContents, &flags);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for headers : " << printCallFlags(flags) << endl;
 		flags_old = flags;
@@ -2794,14 +2801,14 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		return NULL;
 	}
 
-	if(packetS->is_ssl) {
+	if(packetS->pflags.ssl) {
 		glob_ssl_calls++;
 	}
 	// store this call only if it starts with invite
 	Call *call = calltable->add(sip_method, callidstr, min(strlen(callidstr), (size_t)MAX_FNAME), packetS->callid_alternative,
 				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci);
-	call->is_ssl = packetS->is_ssl;
+	call->is_ssl = packetS->pflags.ssl;
 	call->set_first_packet_time_us(packetS->getTimeUS());
 	call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_(), packetS->get_callid());
 	call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
@@ -2931,7 +2938,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 
 				call->digest_username, call->digest_realm, call->register_expires);
 */
-			if(packetS->istcp) {
+			if(packetS->pflags.tcp) {
 				u_int32_t seq = packetS->tcp_seq();
 				if(seq) {
 					extern Registers registers;
@@ -3085,10 +3092,10 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	char sessid[MAXLEN_SDP_SESSID];
 	s_sdp_media_data sdp_media_data;
 	list<s_sdp_media_data*> *next_sdp_media_data = NULL;
-	if (!get_ip_port_from_sdp(call, packetS, sdp, sdplen,
-				  packetS->sip_method, sessid,
-				  &sdp_media_data,
-				  &next_sdp_media_data)) {
+	if(get_ip_port_from_sdp(call, packetS, sdp, sdplen,
+				packetS->sip_method, sessid,
+				&sdp_media_data,
+				&next_sdp_media_data)) {
 		unsigned sdp_media_data_count = 1 + (next_sdp_media_data ? next_sdp_media_data->size() : 0);
 		for(unsigned sdp_media_data_i = 0; sdp_media_data_i < sdp_media_data_count; sdp_media_data_i++) {
 			s_sdp_media_data *sdp_media_data_item;
@@ -3116,7 +3123,7 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 					ok_ip_port = false;
 				}
 				if(ok_ip_port) {
-					if(sdp_media_data_item->sdp_flags.is_fax) { 
+					if(sdp_media_data_item->sdp_flags.is_image()) { 
 						if(verbosity >= 2){
 							syslog(LOG_ERR, "[%s] T38 detected", call->fbasename);
 						}
@@ -4377,7 +4384,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 
 endsip_save_packet:
 	if (!dont_save) {
-		save_packet(call, packetS, TYPE_SIP);
+		save_packet(call, packetS, _t_packet_sip);
 	}
 
 endsip:
@@ -4615,7 +4622,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(packetS->cseq.is_set()) {
 			call->registercseq = packetS->cseq;
 		}
-		if(!call_created && packetS->istcp) {
+		if(!call_created && packetS->pflags.tcp) {
 			u_int32_t seq = packetS->tcp_seq();
 			if(seq) {
 				call->addRegTcpSeq(packetS->tcp_seq());
@@ -4655,7 +4662,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			// OK to unknown msg close the call
 			call->regstate = 3;
 		}
-		save_packet(call, packetS, TYPE_SIP);
+		save_packet(call, packetS, _t_packet_sip);
 		if(call->regstate == 1 &&
 		   call->reg200count + call->reg401count_all < call->regcount) {
 			call->destroy_call_at = packetS->getTime_s() + opt_register_timeout;
@@ -4719,7 +4726,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   packetS->sip_method == RES404) {
 			// registration failed
 			call->regstate = 2;
-			save_packet(call, packetS, TYPE_SIP);
+			save_packet(call, packetS, _t_packet_sip);
 			if(packetS->sip_method == RES401 ||
 			   (packetS->sip_method == RES403 && call->reg403count >= call->regcount_after_4xx) ||
 			   (packetS->sip_method == RES404 && call->reg404count >= call->regcount_after_4xx)) {
@@ -4749,7 +4756,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	if(call->msgcount > opt_register_max_messages) {
 		// too many REGISTER messages within the same callid
 		call->regstate = 4;
-		save_packet(call, packetS, TYPE_SIP);
+		save_packet(call, packetS, _t_packet_sip);
 		call->saveregister(packetS->getTimeval_pt());
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "too many REGISTER messages within the same callid";
@@ -4770,7 +4777,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	call->shift_destroy_call_at(packetS->getTime_s(), packetS->lastSIPresponseNum);
 
 endsip_save_packet:
-	save_packet(call, packetS, TYPE_SIP);
+	save_packet(call, packetS, _t_packet_sip);
 
 endsip:
 	if(call && sipSendSocket && !opt_sip_send_before_packetbuffer) {
@@ -4910,7 +4917,8 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		call = call_info->calls[call_info_index].call;
 		iscaller = call_info->calls[call_info_index].iscaller;
 		sdp_flags = call_info->calls[call_info_index].sdp_flags;
-		is_rtcp = call_info->calls[call_info_index].is_rtcp || (!sdp_flags.is_fax && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
+		is_rtcp = call_info->calls[call_info_index].is_rtcp || 
+			  ((sdp_flags.is_audio() || sdp_flags.is_video()) && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
 		stream_in_multiple_calls = call_info->calls[call_info_index].multiple_calls;
 		
 		if(!call_info->find_by_dest && iscaller_is_set(iscaller)) {
@@ -4933,7 +4941,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			call->pcap_drop = pcap_drop_flag;
 		}
 
-		if(!is_rtcp && !sdp_flags.is_fax &&
+		if(!is_rtcp && (sdp_flags.is_audio() || sdp_flags.is_video()) &&
 		   (packetS->datalen_() < RTP_FIXED_HEADERLEN ||
 		    packetS->header_pt->caplen <= (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN))) {
 			break;
@@ -4943,7 +4951,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 
-		if(sdp_flags.is_fax) {
+		if(sdp_flags.is_image()) {
 			call->seenudptl = 1;
 		}
 		
@@ -4961,7 +4969,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 				if(is_rtcp) {
 					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				} else {
-					rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
+					rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				}
 			}
@@ -5016,7 +5024,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_av(call, sdp_flags.is_video), 
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -5206,7 +5214,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		} else if(opt_rtpnosip) {
 			process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
 						  packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
-						  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip_(),
+						  packetS->header_pt, packetS->packet, packetS->pflags.tcp, packetS->header_ip_(),
 						  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 						  get_pcap_handle(packetS->handle_index));
 		}
@@ -5228,7 +5236,7 @@ struct sDissectPart {
 };
 
 void process_packet_other(packet_s_stack *packetS) {
-	if(!packetS->istcp && (ss7_rudp_portmatrix[packetS->source_()] || ss7_rudp_portmatrix[packetS->dest_()]) &&
+	if(!packetS->pflags.tcp && (ss7_rudp_portmatrix[packetS->source_()] || ss7_rudp_portmatrix[packetS->dest_()]) &&
 	   packetS->datalen_() <= 5) {
 		return;
 	}
@@ -7049,7 +7057,6 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				} 
 				if(!ssl_client_random) {
 					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-						false, 
 						#if USE_PACKET_NUMBER
 						packet_counter,
 						#endif
@@ -7059,7 +7066,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 						ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 						ppd.datalen, dataoffset, 
 						handle_index, header, packet, true,
-						ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
+						ppd.flags, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 						NULL, 0, handle_dlt, opt_id_sensor, 0, ppd.pid);
 				} else {
 					delete header;
@@ -7149,12 +7156,11 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 			packetS->packet = packet; 
 			packetS->header_ip_offset = (u_char*)ppd.header_ip - packet; 
 			packetS->dlt = dlink; 
-			call->read_rtp(packetS, 1, true, false, s_sdp_flags_base(false, false, false), false, (char*)"file");
+			call->read_rtp(packetS, 1, true, false, s_sdp_flags_base(), false, (char*)"file");
 			delete header;
 			delete [] packet;
 		} else {
 			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-				false, 
 				#if USE_PACKET_NUMBER
 				packet_counter,
 				#endif
@@ -7164,7 +7170,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 				ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 				ppd.datalen, dataoffset, 
 				0, header, packet, true,
-				ppd.istcp, ppd.isother, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
+				ppd.flags, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 				NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
 		}
 	}
@@ -7535,7 +7541,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 	} else {
 		completePacketS = PreProcessPacket::clonePacketS(stream->complete_data->data(), stream->complete_data->size(), stream->packets->packetS);
 	}
-	completePacketS->istcp = 2;
+	completePacketS->pflags.tcp = 2;
 	if(sverb.reassembly_sip || sverb.reassembly_sip_output) {
 		if(sverb.reassembly_sip) {
 			cout << " * COMPLETE ";
@@ -8503,25 +8509,25 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	bool rtp = false;
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
-	if(packetS->is_need_sip_process) {
+	if(packetS->need_sip_process) {
 		packetS->init2();
 		packetS->next_action = parallel_threads ? _ppna_set : _ppna_na;
-		if(check_sip20(packetS->data_(), packetS->datalen_(), NULL, packetS->istcp)) {
+		if(check_sip20(packetS->data_(), packetS->datalen_(), NULL, packetS->pflags.tcp)) {
 			packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isSip = true;
-		} else if(packetS->is_mgcp && check_mgcp(packetS->data_(), packetS->datalen_())) {
+		} else if(packetS->pflags.mgcp && check_mgcp(packetS->data_(), packetS->datalen_())) {
 			//packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isMgcp = true;
 		}
-		if(packetS->istcp) {
+		if(packetS->pflags.tcp) {
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
-			if(packetS->is_skinny) {
+			if(packetS->pflags.skinny) {
 				// call process_skinny before tcp reassembly - TODO !
 				this->process_skinny(&packetS);
-			} else if(packetS->is_mgcp && isMgcp) {
+			} else if(packetS->pflags.mgcp && isMgcp) {
 				// call process_mgcp before tcp reassembly - TODO !
 				this->process_mgcp(&packetS);
-			} else if(no_sip_reassembly() || packetS->is_ssl) {
+			} else if(no_sip_reassembly() || packetS->pflags.ssl) {
 				if(isSip) {
 					this->process_parseSipData(&packetS, NULL);
 				} else {
@@ -8567,7 +8573,9 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
 		}
-	} else if(!packetS->isother) {
+	} else if(packetS->pflags.mrcp) {
+		rtp = true;
+	} else if(!packetS->pflags.other_processing()) {
 		packetS->blockstore_addflag(16 /*pb lock flag*/);
 		rtp = true;
 	} else {
@@ -8748,7 +8756,7 @@ void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 }
 
 void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
-	if(packetS->isother) {
+	if(packetS->pflags.other_processing()) {
 		process_packet_other(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
@@ -8771,11 +8779,11 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 		this->process_websocket(&packetS, packetS_orig);
 		return;
 	}
-	if(packetS->is_skinny) {
+	if(packetS->pflags.skinny) {
 		this->process_skinny(&packetS);
 		return;
 	}
-	if(packetS->is_mgcp) {
+	if(packetS->pflags.mgcp) {
 		this->process_mgcp(&packetS);
 		return;
 	}
@@ -8792,7 +8800,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			if((packetS->sipDataOffset + packetS->sipDataLen + 11) < packetS->datalen_()) {
 				if(check_sip20(packetS->data_()+ packetS->sipDataOffset + packetS->sipDataLen,
 					       packetS->datalen_() - packetS->sipDataOffset - packetS->sipDataLen,
-					       NULL, packetS->istcp)) {
+					       NULL, packetS->pflags.tcp)) {
 					nextSip = true;
 					multipleSip = true;
 				} else {
@@ -8804,7 +8812,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 						if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen_() - 11) {
 							if(check_sip20(packetS->data_()+ offsetAfterDoubleEndLine, 
 								       packetS->datalen_() - offsetAfterDoubleEndLine, 
-								       NULL, packetS->istcp)) {
+								       NULL, packetS->pflags.tcp)) {
 								nextSip = true;
 								multipleSip = true;
 								nextSipDataOffset = offsetAfterDoubleEndLine;
@@ -9476,7 +9484,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				if(opt_rtpnosip) {
 					process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
 								  packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
-								  packetS->header_pt, packetS->packet, packetS->istcp, packetS->header_ip_(),
+								  packetS->header_pt, packetS->packet, packetS->pflags.tcp, packetS->header_ip_(),
 								  packetS->block_store, packetS->block_store_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip,
 								  get_pcap_handle(packetS->handle_index));
 				}

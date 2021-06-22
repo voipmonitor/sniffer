@@ -71,7 +71,18 @@ struct sll_header {
 
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0)
-#define IS_DTLS(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xFF00) < 0x4000)
+#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
+#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
+
+enum e_packet_type {
+	_t_packet_sip = 1,
+	_t_packet_rtp,
+	_t_packet_rtcp,
+	_t_packet_dtls,
+	_t_packet_mrcp,
+	_t_packet_skinny,
+	_t_packet_mgcp
+};
 
 enum e_packet_s_type {
 	_t_packet_s = 1,
@@ -79,6 +90,26 @@ enum e_packet_s_type {
 	_t_packet_s_plus_pointer,
 	_t_packet_s_process_0,
 	_t_packet_s_process
+};
+
+struct packet_flags {
+	u_int8_t tcp : 2;
+	u_int8_t ss7 : 1;
+	u_int8_t mrcp : 1;
+	u_int8_t ssl : 1;
+	u_int8_t skinny : 1;
+	u_int8_t mgcp: 1;
+	inline void init() {
+		for(unsigned i = 0; i < sizeof(*this); i++) {
+			((u_char*)this)[i] = 0;
+		}
+	}
+	inline bool other_processing() {
+		return(ss7);
+	}
+	inline bool rtp_processing() {
+		return(mrcp);
+	}
 };
 
 struct packet_s_kamailio_subst {
@@ -113,12 +144,8 @@ struct packet_s {
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
 	sPacketInfoData pid;
-	unsigned int istcp : 2;
-	bool isother: 1;
-	bool is_ssl : 1;
-	bool is_skinny : 1;
-	bool is_mgcp: 1;
-	bool is_need_sip_process : 1;
+	packet_flags pflags;
+	bool need_sip_process : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
 	sAudiocodes *audiocodes;
@@ -220,7 +247,7 @@ struct packet_s {
 		return((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()));
 	}
 	inline u_int32_t tcp_seq() {
-		if(istcp) {
+		if(pflags.tcp) {
 			tcphdr2 *header_tcp = header_tcp_();
 			if(header_tcp) {
 				return(header_tcp->seq);
@@ -353,6 +380,9 @@ struct packet_s {
 	}
 	inline bool isDtls() {
 		return(IS_DTLS(data_(), datalen_()));
+	}
+	inline bool isMrcp() {
+		return(IS_MRCP(data_(), datalen_()));
 	}
 	inline bool isUdptl() {
 		return(!IS_RTP(data_(), datalen_()));
@@ -1136,11 +1166,18 @@ void _process_packet__cleanup_registers();
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (call->isfax && opt_saveudptl))
+#define enable_save_mrcp(call)		((call->flags & FLAG_SAVEMRCP) || (call->isfax && opt_saveudptl))
+#define enable_save_application(call)	(enable_save_mrcp(call))
 #define enable_save_rtp_audio(call)	((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
 #define enable_save_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER))
-#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
-#define enable_save_rtp_av(call, is_video) \
-					(is_video ? enable_save_rtp_video(call) : enable_save_rtp_audio(call))
+#define enable_save_rtp_av(call)	(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
+#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call) || enable_save_application(call))
+#define enable_save_rtp_media(call, flags) \
+					(flags.is_audio() ? enable_save_rtp_audio(call) : \
+					(flags.is_video() ? enable_save_rtp_video(call) : \
+					(flags.is_application() ? enable_save_application(call) : enable_save_rtp_audio(call))))
+#define enable_save_rtp_packet(call, type) \
+					(type == _t_packet_mrcp ? enable_save_mrcp(call) : enable_save_rtp_av(call))
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
 #define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))

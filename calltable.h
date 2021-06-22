@@ -101,28 +101,29 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define FLAG_SAVERTP_VIDEO		(1 << 4)
 #define FLAG_SAVERTP_VIDEO_HEADER	(1 << 5)
 #define FLAG_PROCESSING_RTP_VIDEO	(1 << 6)
-#define FLAG_SAVERTCP			(1 << 7)
-#define FLAG_SAVEREGISTER		(1 << 8)
-#define FLAG_SAVEAUDIO			(1 << 9)
-#define FLAG_FORMATAUDIO_WAV		(1 << 10)
-#define FLAG_FORMATAUDIO_OGG		(1 << 11)
+#define FLAG_SAVEMRCP			(1 << 7)
+#define FLAG_SAVERTCP			(1 << 8)
+#define FLAG_SAVEREGISTER		(1 << 9)
+#define FLAG_SAVEAUDIO			(1 << 10)
+#define FLAG_FORMATAUDIO_WAV		(1 << 11)
+#define FLAG_FORMATAUDIO_OGG		(1 << 12)
 #define FLAG_SAVEAUDIO_WAV		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_WAV)
 #define FLAG_SAVEAUDIO_OGG		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_OGG)
-#define FLAG_SAVEGRAPH			(1 << 12)
-#define FLAG_SKIPCDR			(1 << 13)
-#define FLAG_RUNSCRIPT			(1 << 14)
-#define FLAG_RUNAMOSLQO			(1 << 15)
-#define FLAG_RUNBMOSLQO			(1 << 16)
-#define FLAG_HIDEMESSAGE		(1 << 17)
-#define FLAG_USE_SPOOL_2		(1 << 18)
-#define FLAG_SAVEDTMFDB			(1 << 19)
-#define FLAG_SAVEDTMFPCAP		(1 << 20)
-#define FLAG_SAVEOPTIONSDB		(1 << 21)
-#define FLAG_SAVEOPTIONSPCAP		(1 << 22)
-#define FLAG_SAVENOTIFYDB		(1 << 23)
-#define FLAG_SAVENOTIFYPCAP		(1 << 24)
-#define FLAG_SAVESUBSCRIBEDB		(1 << 25)
-#define FLAG_SAVESUBSCRIBEPCAP		(1 << 26)
+#define FLAG_SAVEGRAPH			(1 << 13)
+#define FLAG_SKIPCDR			(1 << 14)
+#define FLAG_RUNSCRIPT			(1 << 15)
+#define FLAG_RUNAMOSLQO			(1 << 16)
+#define FLAG_RUNBMOSLQO			(1 << 17)
+#define FLAG_HIDEMESSAGE		(1 << 18)
+#define FLAG_USE_SPOOL_2		(1 << 19)
+#define FLAG_SAVEDTMFDB			(1 << 20)
+#define FLAG_SAVEDTMFPCAP		(1 << 21)
+#define FLAG_SAVEOPTIONSDB		(1 << 22)
+#define FLAG_SAVEOPTIONSPCAP		(1 << 23)
+#define FLAG_SAVENOTIFYDB		(1 << 24)
+#define FLAG_SAVENOTIFYPCAP		(1 << 25)
+#define FLAG_SAVESUBSCRIBEDB		(1 << 26)
+#define FLAG_SAVESUBSCRIBEPCAP		(1 << 27)
 
 #define CDR_NEXT_MAX 10
 
@@ -185,13 +186,15 @@ struct s_dtmf {
 	vmIP daddr;
 };
 
+
 enum e_sdp_protocol {
 	sdp_proto_na,
 	sdp_proto_rtp,
 	sdp_proto_srtp,
 	sdp_proto_t38,
 	sdp_proto_msrp,
-	sdp_proto_sprt
+	sdp_proto_sprt,
+	sdp_proto_tcp_mrcpv2
 };
 
 struct s_sdp_flags : public s_sdp_flags_base {
@@ -1938,6 +1941,7 @@ public:
 	bool sdp_exists_media_type_audio;
 	bool sdp_exists_media_type_image;
 	bool sdp_exists_media_type_video;
+	bool sdp_exists_media_type_application;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
 private:
