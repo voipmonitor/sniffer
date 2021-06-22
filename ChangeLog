@@ -1,3 +1,10 @@
+28.4 22.06.2021
+===============
+- DTLS RTP decryption support (needs keylogger) [VS-1202]
+- allow to run autocleanmingb / autocleanspoolminpercent outside cleanspool_enable_fromto option [VS-1183]
+- implement mrcp saving to pcap [VS-1167]
+
+
 28.3 09.06.2021
 ===============
 - fix race condition leading to crash (when SIP compression was changed to LZO the race occured more often silently corrupting heap) 
