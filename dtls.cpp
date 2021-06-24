@@ -169,13 +169,16 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 	if(data[0] != DTLS_CONTENT_TYPE_HANDSHAKE) {
 		return(false);
 	}
+	if(data_len < sizeof(cDtlsLink::sHeader)) {
+		return(false);
+	}
 	unsigned offset = 0;
 	while(offset < data_len - sizeof(cDtlsLink::sHeader)) {
 		cDtlsLink::sHeader *header = (cDtlsLink::sHeader*)(data + offset);
-		if(header->length_() > data_len - offset) {
+		if(!header->length_() || header->length_() > data_len - offset) {
 			return(false);
 		}
-		if(header->content_type == DTLS_CONTENT_TYPE_HANDSHAKE) {
+		if(header->content_type == DTLS_CONTENT_TYPE_HANDSHAKE && header->length_() >= sizeof(cDtlsLink::sHeaderHandshake)) {
 			u_char *hs_begin = data + offset + sizeof(cDtlsLink::sHeader);
 			unsigned hs_len = header->length_();
 			unsigned hs_offset = 0;

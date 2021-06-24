@@ -1478,7 +1478,8 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
 	extern int opt_enable_ssl;
-	if(opt_enable_ssl && packetS->isDtls()) {
+	extern bool opt_srtp_rtp_dtls_decrypt;
+	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtls()) {
 		read_dtls(packetS);
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_dtls);
