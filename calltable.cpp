@@ -663,6 +663,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	onInvite = false;
 	onCall_2XX = false;
 	onCall_18X = false;
+	onHangup = false;
 	updateDstnumOnAnswer = false;
 	updateDstnumFromMessage = false;
 	

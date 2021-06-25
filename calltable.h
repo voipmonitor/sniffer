@@ -1077,6 +1077,7 @@ public:
 	bool onInvite;
 	bool onCall_2XX;
 	bool onCall_18X;
+	bool onHangup;
 	bool updateDstnumOnAnswer;
 	bool updateDstnumFromMessage;
 	

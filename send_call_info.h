@@ -6,22 +6,27 @@
 #include "sql_db.h"
 
 
+enum eTypeSci {
+	sci_18X = (1 << 0),
+	sci_200 = (1 << 1),
+	sci_invite = (1 << 2),
+	sci_hangup = (1 << 3)
+};
+
 struct sSciInfo {
-	enum eTypeSci {
-		sci_18X,
-		sci_200,
-		sci_invite
-	};
 	sSciInfo() {
-		typeSci = (eTypeSci)0;
+		typeSci = 0;
 		caller_ip.clear();
 		called_ip.clear();
 		at = 0;
 	}
-	eTypeSci typeSci;
+	u_int8_t typeSci;
 	string callid;
 	string caller_number;
 	string called_number;
+	string callername;
+	string caller_domain;
+	string called_domain;
 	vmIP caller_ip;
 	vmIP called_ip;
 	u_int64_t at;
@@ -29,12 +34,6 @@ struct sSciInfo {
 
 class SendCallInfoItem {
 public:
-	enum eInfoOn {
-		infoOn_183_180,
-		infoOn_200, 
-		infoOn_183_180_200,
-		infoOn_invite
-	};
 	enum eRequestType {
 		rt_get,
 		rt_post
@@ -47,13 +46,20 @@ private:
 	unsigned int dbId;
 	SqlDb_row dbRow;
 	string name;
-	eInfoOn infoOn;
+	u_int8_t infoOn;
 	string requestUrl;
 	eRequestType requestType;
+	bool jsonOutput;
+	string authUser;
+	string authPassword;
+	vector<dstring> headers;
+	vector<dstring> fields;
 	ListIP_wb ipCallerFilter;
 	ListIP_wb ipCalledFilter;
 	ListPhoneNumber_wb phoneNumberCallerFilter;
 	ListPhoneNumber_wb phoneNumberCalledFilter;
+	ListCheckString_wb domainCallerFilter;
+	ListCheckString_wb domainCalledFilter;
 };
 
 class SendCallInfo {
@@ -64,12 +70,12 @@ public:
 	void clear(bool lock = true);
 	void refresh();
 	void stopPopCallInfoThread(bool wait = false);
-	void evCall(class Call *call, sSciInfo::eTypeSci typeSci, u_int64_t at);
+	void evCall(class Call *call, eTypeSci typeSci, u_int64_t at);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
 	void getSciFromCall(sSciInfo *sciInfo, Call *call, 
-			    sSciInfo::eTypeSci typeSci, u_int64_t at);
+			    eTypeSci typeSci, u_int64_t at);
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
@@ -90,7 +96,7 @@ friend void *_SendCallInfo_popCallInfoThread(void *arg);
 void initSendCallInfo(SqlDb *sqlDb = NULL);
 void termSendCallInfo();
 void refreshSendCallInfo();
-void sendCallInfoEvCall(Call *call, sSciInfo::eTypeSci typeSci, struct timeval tv);
+void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv);
 bool isExistsSendCallInfo(SqlDb *sqlDb = NULL);
 
 

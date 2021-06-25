@@ -3696,7 +3696,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
 		if(!call->onInvite) {
-			sendCallInfoEvCall(call, sSciInfo::sci_invite, packetS->getTimeval());
+			sendCallInfoEvCall(call, sci_invite, packetS->getTimeval());
 			call->onInvite = true;
 		}
 	} else if(packetS->sip_method == MESSAGE) {
@@ -3791,6 +3791,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(call->sipcalledip[0] == packetS->saddr_() || call->getSipcalledip() == packetS->saddr_()) {
 				call->whohanged = 1;
 			}
+		}
+		if(!call->onHangup) {
+			sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval());
+			call->onHangup = true;
 		}
 	} else if(packetS->sip_method == CANCEL) {
 		++count_sip_cancel;
@@ -3933,7 +3937,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 						}
-						sendCallInfoEvCall(call, sSciInfo::sci_200, packetS->getTimeval());
+						sendCallInfoEvCall(call, sci_200, packetS->getTimeval());
 						call->onCall_2XX = true;
 					}
 					if(opt_sdp_check_direction_ext) {
@@ -3984,7 +3988,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 				}
-				sendCallInfoEvCall(call, sSciInfo::sci_18X, packetS->getTimeval());
+				sendCallInfoEvCall(call, sci_18X, packetS->getTimeval());
 				call->onCall_18X = true;
 			}
 			call->destroy_call_at = 0;

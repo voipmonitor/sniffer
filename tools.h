@@ -348,8 +348,20 @@ bool cloud_now_timeout();
 //void cloud_activecheck_start();
 */
 
-bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
-bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL);
+struct s_get_url_response_params {
+	unsigned timeout_sec;
+	string *auth_user;
+	string *auth_password;
+	vector<dstring> *headers;
+	s_get_url_response_params() {
+		timeout_sec = 0;
+		auth_user = NULL;
+		auth_password = NULL;
+		headers = NULL;
+	}
+};
+bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL,
+		      s_get_url_response_params *params = NULL);
 long long GetFileSize(std::string filename);
 time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
