@@ -70,7 +70,10 @@ inline
 #endif
 unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen) {
 	*data = (char*)header_udp + get_udp_header_len(header_udp);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_udp_header_len(header_udp)), 
+	u_int8_t proto;
+	return(MIN((unsigned)(header_ip->get_tot_len() - 
+			      header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+			      get_udp_header_len(header_udp)), 
 	       MIN((unsigned)(htons(header_udp->len) - sizeof(udphdr2)),
 		   (unsigned)(caplen - ((u_char*)*data - packet)))));
 }
@@ -87,7 +90,10 @@ inline
 #endif
 unsigned get_tcp_data_len(iphdr2 *header_ip, tcphdr2 *header_tcp, char** data, u_char *packet, unsigned caplen) {
 	*data = (char*)header_tcp + get_tcp_header_len(header_tcp);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_tcp_header_len(header_tcp)), 
+	u_int8_t proto;
+	return(MIN((unsigned)(header_ip->get_tot_len() - 
+			      header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+			      get_tcp_header_len(header_tcp)), 
 		   (unsigned)(caplen - ((u_char*)*data - packet))));
 }
 

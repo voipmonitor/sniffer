@@ -742,7 +742,8 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	if(packetS->pid.flags & FLAG_AUDIOCODES) {
 		forceVirtualUdp = true;
 	}
-	if(packetS->kamailio_subst) {
+	if(packetS->kamailio_subst ||
+	   packetS->header_ip_()->_get_protocol() == IPPROTO_ESP) {
 		forceVirtualUdp = 2;
 	}
 	if(packetS->header_pt->caplen > 1000000) {

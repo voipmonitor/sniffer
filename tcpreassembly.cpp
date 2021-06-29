@@ -2700,7 +2700,10 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	if(header->len > header->caplen) {
 		datalen += (header->len - header->caplen);
 	}
-	u_int32_t tcp_data_length = header_ip->get_tot_len() - header_ip->get_hdr_size() - header_tcp_pointer->doff * 4;
+	u_int8_t proto;
+	u_int32_t tcp_data_length = header_ip->get_tot_len() - 
+				    header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+				    header_tcp_pointer->doff * 4;
 	if(datalen > tcp_data_length) {
 		datalen = tcp_data_length;
 	}
