@@ -685,6 +685,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	_mergecalls_lock = 0;
 	
+	exists_srtp = false;
 	exists_srtp_crypto_config = false;
 	exists_srtp_fingerprint = false;
 	for(int i = 0; i < 2; i++) {
@@ -1131,6 +1132,10 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	if(sdp_label) {
 		this->ip_port[ipport_n].sdp_label = sdp_label;
 	}
+	if(sdp_flags.protocol == sdp_proto_srtp) {
+		this->ip_port[ipport_n].setSrtp();
+		this->exists_srtp = true;
+	}
 	if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
 		this->ip_port[ipport_n].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
 		this->exists_srtp_crypto_config = true;
@@ -1228,6 +1233,10 @@ Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts,
 					#endif
 				}
 				calltable->unlock_calls_hash();
+			}
+			if(sdp_flags.protocol == sdp_proto_srtp) {
+				this->ip_port[i].setSrtp();
+				this->exists_srtp = true;
 			}
 			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
 				this->ip_port[i].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
@@ -1431,8 +1440,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	}
 
 	RTPsecure *srtp_decrypt = NULL;
-	if((exists_srtp_crypto_config || exists_srtp_fingerprint) && 
-	   opt_srtp_rtcp_decrypt) {
+	if(exists_srtp && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec());
 		if(index_call_ip_port_by_src < 0) {
 			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec(), true);
@@ -1441,9 +1449,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 		}
 		if(index_call_ip_port_by_src >= 0 && 
-		   ((this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list &&
-		     this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list->size()) ||
-		    this->ip_port[index_call_ip_port_by_src].srtp_fingerprint)) {
+		   this->ip_port[index_call_ip_port_by_src].srtp) {
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
 				rtp_secure_map[index_call_ip_port_by_src] = 
 					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
@@ -1846,9 +1852,9 @@ read:
 		
 		RTP *rtp_new = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp_new->ssrc_index = rtp_size();
-		if((exists_srtp_crypto_config || exists_srtp_fingerprint) && 
+		if(exists_srtp && 
 		   (opt_srtp_rtp_decrypt || 
-		    (opt_srtp_rtp_dtls_decrypt && exists_srtp_fingerprint) ||
+		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
@@ -1859,10 +1865,7 @@ read:
 				index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
 			}
 			if(index_call_ip_port_by_src >= 0 && 
-			   this->ip_port[index_call_ip_port_by_src].sdp_flags.protocol == sdp_proto_srtp &&
-			   ((this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list &&
-			     this->ip_port[index_call_ip_port_by_src].srtp_crypto_config_list->size()) ||
-			    this->ip_port[index_call_ip_port_by_src].srtp_fingerprint)) {
+			   this->ip_port[index_call_ip_port_by_src].srtp) {
 				if(!rtp_secure_map[index_call_ip_port_by_src]) {
 					rtp_secure_map[index_call_ip_port_by_src] = 
 						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
@@ -5589,9 +5592,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
-		if(ip_port[i].sdp_flags.protocol == sdp_proto_srtp) {
+		if(ip_port[i].srtp) {
 			if(!(ip_port[i].srtp_crypto_config_list ||
-			     (ip_port[i].srtp_fingerprint && rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp()))) {
+			     (rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp()))) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 			}
 		}

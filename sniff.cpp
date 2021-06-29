@@ -2069,59 +2069,69 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->label[label_length] = 0;
 		}
 		
-		s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
-		if(l > 0) {
-			char *cryptoContent = s;
-			unsigned cryptoContentLength = l;
-			do {
-				char *pointToParam = s;
-				unsigned countParams = 0;
-				srtp_crypto_config crypto;
+		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
+			s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
+			if(l > 0) {
+				char *cryptoContent = s;
+				unsigned cryptoContentLength = l;
 				do {
-					++countParams;
-					char *pointToSeparator = strnchr(pointToParam, ' ', cryptoContentLength - (pointToParam - cryptoContent));
-					unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : cryptoContentLength - (pointToParam - cryptoContent);
-					switch(countParams) {
-					case 1:
-						crypto.tag = atoi(pointToParam);
-						break;
-					case 2:
-						crypto.suite = string(pointToParam, lengthParam);
-						break;
-					case 3:
-						if(!strncasecmp(pointToParam, "inline:", 7)) {
-							pointToParam += 7;
-							lengthParam -= 7;
+					char *pointToParam = s;
+					unsigned countParams = 0;
+					srtp_crypto_config crypto;
+					do {
+						++countParams;
+						char *pointToSeparator = strnchr(pointToParam, ' ', cryptoContentLength - (pointToParam - cryptoContent));
+						unsigned lengthParam = pointToSeparator ? pointToSeparator - pointToParam : cryptoContentLength - (pointToParam - cryptoContent);
+						switch(countParams) {
+						case 1:
+							crypto.tag = atoi(pointToParam);
+							break;
+						case 2:
+							crypto.suite = string(pointToParam, lengthParam);
+							break;
+						case 3:
+							if(!strncasecmp(pointToParam, "inline:", 7)) {
+								pointToParam += 7;
+								lengthParam -= 7;
+							}
+							char *lifeTimeSeparator = strnchr(pointToParam, '|', lengthParam);
+							crypto.key = string(pointToParam, lifeTimeSeparator ? (lifeTimeSeparator - pointToParam) : lengthParam);
+							break;
 						}
-						char *lifeTimeSeparator = strnchr(pointToParam, '|', lengthParam);
-						crypto.key = string(pointToParam, lifeTimeSeparator ? (lifeTimeSeparator - pointToParam) : lengthParam);
-						break;
+						pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
+					} while(pointToParam && countParams < 3);
+					if(crypto.suite.length() && crypto.key.length()) {
+						if(!sdp_media_data_item->srtp_crypto_config_list) {
+							sdp_media_data_item->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
+						}
+						sdp_media_data_item->srtp_crypto_config_list->push_back(crypto);
 					}
-					pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
-				} while(pointToParam && countParams < 3);
-				if(crypto.suite.length() && crypto.key.length()) {
-					if(!sdp_media_data_item->srtp_crypto_config_list) {
-						sdp_media_data_item->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
+					s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=crypto:", &l);
+					if(l > 0) {
+						cryptoContent = s;
+						cryptoContentLength = l;
+					} else {
+						cryptoContent = NULL;
 					}
-					sdp_media_data_item->srtp_crypto_config_list->push_back(crypto);
 				}
-				s = _gettag(s, sdp_media_text_len - (s - sdp_media_text), "a=crypto:", &l);
+				while(cryptoContent);
+			} else {
+				s = _gettag(sdp_media_text, sdp_media_text_len, "a=fingerprint:", &l);
 				if(l > 0) {
-					cryptoContent = s;
-					cryptoContentLength = l;
+					if(!sdp_media_data_item->srtp_fingerprint) {
+						sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
+					}
+					*sdp_media_data_item->srtp_fingerprint =  string(s, l);
 				} else {
-					cryptoContent = NULL;
+					s = _gettag(sdp_text, sdp_media_start[0] - sdp_text, "a=fingerprint:", &l);
+					if(l > 0) {
+						if(!sdp_media_data_item->srtp_fingerprint) {
+							sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
+						}
+						*sdp_media_data_item->srtp_fingerprint =  string(s, l);
+					}
 				}
 			}
-			while(cryptoContent);
-		}
-		
-		s = _gettag(sdp_media_text, sdp_media_text_len, "a=fingerprint:", &l);
-		if(l > 0) {
-			if(!sdp_media_data_item->srtp_fingerprint) {
-				sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
-			}
-			*sdp_media_data_item->srtp_fingerprint =  string(s, l);
 		}
 		
 		if(memmem(sdp_media_text, sdp_media_text_len, "a=rtcp-mux", 10)) {

@@ -295,6 +295,7 @@ struct s_sdp_media_data {
 
 struct ip_port_call_info {
 	ip_port_call_info() {
+		srtp = false;
 		srtp_crypto_config_list = NULL;
 		srtp_fingerprint = NULL;
 		canceled = false;
@@ -306,6 +307,9 @@ struct ip_port_call_info {
 		if(srtp_fingerprint) {
 			delete srtp_fingerprint;
 		}
+	}
+	void setSrtp() {
+		srtp = true;
 	}
 	void setSrtpCryptoConfig(list<srtp_crypto_config> *srtp_crypto_config_list, u_int64_t from_time_us) {
 		if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
@@ -351,6 +355,7 @@ struct ip_port_call_info {
 	int8_t iscaller;
 	string sessid;
 	string sdp_label;
+	bool srtp;
 	list<srtp_crypto_config> *srtp_crypto_config_list;
 	string *srtp_fingerprint;
 	string to;
@@ -1917,6 +1922,7 @@ public:
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	bool callerd_confirm_rtp_by_both_sides_sdp[2];
+	bool exists_srtp;
 	bool exists_srtp_crypto_config;
 	bool exists_srtp_fingerprint;
 	bool log_srtp_callid;

@@ -104,8 +104,6 @@ bool RTPsecure::setCryptoConfig() {
 		cryptoConfigCallSize = call->ip_port[index_ip_port].srtp_crypto_config_list->size();
 		return(true);
 	}
-	if(call->ip_port[index_ip_port].srtp_fingerprint) {
-	}
 	return(false);
 }
 
@@ -138,8 +136,7 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 }
 
 void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-	if(call->ip_port[index_ip_port].srtp_fingerprint && call->dtls &&
-	   !cryptoConfigVector.size()) {
+	if(is_dtls() && !cryptoConfigVector.size()) {
 		cDtlsLink::sSrtpKeys keys;
 		if(call->dtls->findSrtpKeys(saddr, sport, daddr, dport, &keys)) {
 			if(keys.server.ip == daddr && keys.server.port == dport &&
@@ -154,7 +151,8 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 }
 
 bool RTPsecure::is_dtls() {
-	return(call->ip_port[index_ip_port].srtp_fingerprint && call->dtls);
+	return(call->dtls && call->ip_port[index_ip_port].srtp && 
+	       (call->ip_port[index_ip_port].srtp_fingerprint || !call->ip_port[index_ip_port].srtp_crypto_config_list));
 }
 
 bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us) {
