@@ -6367,6 +6367,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
+			`digestrealm` varchar(255) NULL DEFAULT NULL,\
 			`expires` mediumint NULL DEFAULT NULL,\
 			`state` tinyint unsigned NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
@@ -6420,6 +6421,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
 			`digestusername` varchar(255) NULL DEFAULT NULL,\
+			`digestrealm` varchar(255) NULL DEFAULT NULL,\
 			`ua_id` int unsigned DEFAULT NULL,\
 			`to_domain` varchar(255) NULL DEFAULT NULL,\
 			`vlan` smallint DEFAULT NULL,\
@@ -7260,6 +7262,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 					    `contact_num` = contact_num_param, \
 					    `contact_domain` = contact_domain_param, \
 					    `digestusername` = digest_username, \
+					    `digestrealm` = digest_realm, \
 					    `expires` = register_expires, \
 					    state = 5, \
 					    ua_id = getIdOrInsertUA(cdr_ua); \
@@ -7277,6 +7280,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 					    `contact_num` = contact_num_param, \
 					    `contact_domain` = contact_domain_param, \
 					    `digestusername` = digest_username, \
+					    `digestrealm` = digest_realm, \
 					    `expires` = register_expires, \
 					    state = regstate, \
 					    ua_id = getIdOrInsertUA(cdr_ua); \
@@ -7294,6 +7298,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 				    `contact_num` = contact_num_param, \
 				    `contact_domain` = contact_domain_param, \
 				    `digestusername` = digest_username, \
+				    `digestrealm` = digest_realm, \
 				    `expires` = register_expires, \
 				    state = regstate, \
 				    ua_id = getIdOrInsertUA(cdr_ua);\
@@ -8397,6 +8402,10 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				log, &tableSize, &existsColumns.register_state_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
 				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state digestrealm", true,
+				log, &tableSize, &existsColumns.register_state_digestrealm,
+				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -8404,6 +8413,10 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	this->checkNeedAlterAdd("register_failed", "register_failed vlan", true,
 				log, &tableSize, &existsColumns.register_failed_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)",
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed digestrealm", true,
+				log, &tableSize, &existsColumns.register_failed_digestrealm,
+				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	//27.3
 	this->checkNeedAlterAdd("register_state", "SIP IP from first IP header", opt_save_ip_from_encaps_ipheader,
