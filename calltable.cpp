@@ -1318,12 +1318,10 @@ Call::cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct time
 }
 
 int
-Call::get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr){
+Call::get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr, bool rtcp) {
 	for(int i = 0; i < ipport_n; i++) {
-		if((use_sip_src_addr ?
-		     this->ip_port[i].sip_src_addr == addr :
-		     this->ip_port[i].addr == addr) && 
-		   this->ip_port[i].port == port) {
+		if((use_sip_src_addr ? this->ip_port[i].sip_src_addr : this->ip_port[i].addr) == addr &&
+		   this->ip_port[i].port == (rtcp && !this->ip_port[i].sdp_flags.rtcp_mux ? port.dec() : port)) {
 			// we have found it
 			return i;
 		}
@@ -1441,9 +1439,9 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	RTPsecure *srtp_decrypt = NULL;
 	if(exists_srtp && opt_srtp_rtcp_decrypt) {
-		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec());
+		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), false, true);
 		if(index_call_ip_port_by_src < 0) {
-			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_().dec(), true);
+			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true, true);
 		}
 		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
 			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));

@@ -1149,7 +1149,7 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false);
+	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
 	int get_index_by_sessid_to(char *sessid, char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
 	int get_index_by_iscaller(int iscaller);
 	
