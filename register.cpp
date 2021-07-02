@@ -535,6 +535,7 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain)), "contact_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_domain)), "to_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(digest_username)), "digestusername");
+	reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 	reg.add(state->fname, "fname");
 	if(state->state == rs_Failed) {
 		reg.add(state->counter, "counter");
