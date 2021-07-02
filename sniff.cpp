@@ -434,7 +434,12 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 	char description[1024] = "";
 	char callidstr[1024] = "";
 	if(packetS->sipDataLen) {
-		void *memptr = memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, "\r\n", 2);
+		void *memptr = NULL;
+		for(int pass_line_separator = 0; pass_line_separator < 2 && !memptr; pass_line_separator++) {
+			memptr = memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 
+					SIP_LINE_SEPARATOR(pass_line_separator == 1), 
+					SIP_LINE_SEPARATOR_SIZE(pass_line_separator == 1));
+		}
 		if(memptr) {
 			unsigned description_src_length = MIN((char*)memptr - (char*)(packetS->data_()+ packetS->sipDataOffset), sizeof(description) - 1);
 			memcpy(description, packetS->data_() + packetS->sipDataOffset, description_src_length);
@@ -786,13 +791,28 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 				memcpy(packet + packetS->dataoffset_(), packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 				if(packetS->dataoffset_() + packetS->sipDataLen != packetLen) {
 					unsigned long l;
-					char *s = gettag_sip(packetS, "\nContent-Length:", &l);
-					if(s) {
-						char *pointToModifyContLength = (char*)packet + packetS->dataoffset_() + (s - (packetS->data_()+ packetS->sipDataOffset));
-						char *pointToBeginContLength = (char*)memmem(packet + packetS->dataoffset_(), packetS->sipDataLen, "\r\n\r\n", 4);
-						if(pointToBeginContLength) {
+					char *contLengthPos = NULL;
+					for(int pass = 0; pass < 2 && !contLengthPos; ++pass) {
+						contLengthPos = gettag_sip(packetS,
+									   pass ? 
+									    LF_LINE_SEPARATOR "l:" : 
+									    LF_LINE_SEPARATOR "Content-Length:",
+									   &l);
+					}
+					if(contLengthPos) {
+						char *pointToModifyContLength = (char*)packet + packetS->dataoffset_() + (contLengthPos - (packetS->data_()+ packetS->sipDataOffset));
+						char *pointToBeginContent = NULL;
+						for(int pass_line_separator = 0; pass_line_separator < 2 && !pointToBeginContent; pass_line_separator++) {
+							pointToBeginContent = (char*)memmem(packet + packetS->dataoffset_(), packetS->sipDataLen, 
+											       SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
+											       SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
+							if(pointToBeginContent) {
+								pointToBeginContent += SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+							}
+						}
+						if(pointToBeginContent) {
 							int contentLengthOrig = atoi(pointToModifyContLength);
-							int contentLengthNew = packetLen - (pointToBeginContLength - (char*)packet) - 4;
+							int contentLengthNew = packetLen - (pointToBeginContent - (char*)packet);
 							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
 								char contLengthStr[20];
 								snprintf(contLengthStr, sizeof(contLengthStr), "%i", contentLengthNew);
@@ -806,7 +826,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 								#pragma GCC diagnostic pop
 								#endif
 								char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
-								while(*pointToEndModifyContLength != '\r') {
+								while(*pointToEndModifyContLength != CR_CHAR && *pointToEndModifyContLength != LF_CHAR) {
 									*pointToEndModifyContLength = ' ';
 									++pointToEndModifyContLength;
 								}
@@ -937,9 +957,16 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 		}
 	}
  
-	while(isTcp && len >= 13 && data[0] == '\r' && data[1] == '\n') {
-		data += 2;
-		len -= 2;
+	while(isTcp && len >= 13) {
+		if(data[0] == CR_CHAR && data[1] == LF_CHAR) {
+			data += 2;
+			len -= 2;
+		} else if(data[0] == LF_CHAR) {
+			data += 1;
+			len -= 1;
+		} else {
+			break;
+		}
 	}
  
 	if(len < 11) {
@@ -1004,8 +1031,8 @@ inline char * _gettag(const void *ptr, unsigned long len,
 		if(contentIndex < len) {
 			unsigned contentIndexEnd = len - 1;
 			char *ptrEndLine;
-			if((ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, "\r", 1)) == NULL) {
-				ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, "\n", 1);
+			if((ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, CR_STR, 1)) == NULL) {
+				ptrEndLine = (char*)memmem((char*)ptr + contentIndex, len - contentIndex, LF_STR, 1);
 			}
 			if(ptrEndLine) {
 				contentIndexEnd = ptrEndLine - (char*)ptr - 1;
@@ -1080,19 +1107,33 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 		if(limitLen && *limitLen > 0) {
 			_limitLen = *limitLen;
 		} else {
-			const char *contentLengthString = "Content-Length: ";
-			char *contentLengthPos = strcasestr(tmp, contentLengthString);
-			if(contentLengthPos) {
-				int contentLength = atoi(contentLengthPos + strlen(contentLengthString));
-				if(contentLength >= 0 && (unsigned)contentLength < len) {
-					const char *endHeaderSepString = "\r\n\r\n";
-					char *endHeaderSepPos = (char*)memmem(tmp, len, endHeaderSepString, strlen(endHeaderSepString));
-					if(endHeaderSepPos) {
-						_limitLen = (endHeaderSepPos - tmp) + strlen(endHeaderSepString) + contentLength;
-						if(limitLen) {
-							*limitLen = _limitLen;
+			for(int pass = 0; pass < 2; ++pass) {
+				char *contentLengthPos = strcasestr(tmp, 
+								    pass ? 
+								     LF_LINE_SEPARATOR "l:" : 
+								     LF_LINE_SEPARATOR "Content-Length:");
+				if(contentLengthPos) {
+					contentLengthPos += (pass ? 2 : 15) + 1;
+					while(*contentLengthPos == ' ') {
+						++contentLengthPos;
+					}
+					int contentLength = atol(contentLengthPos);
+					if(contentLength >= 0 && (unsigned)contentLength < len) {
+						char *endHeaderSepPos = NULL;
+						for(int pass_line_separator = 0; pass_line_separator < 2 && !endHeaderSepPos; pass_line_separator++) {
+							endHeaderSepPos = (char*)memmem(tmp, len,
+											SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
+											SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
+							if(endHeaderSepPos) {
+								_limitLen = (endHeaderSepPos - tmp) + SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1) + contentLength;
+								if(limitLen) {
+									*limitLen = _limitLen;
+								}
+								break;
+							}
 						}
 					}
+					break;
 				}
 			}
 		}
@@ -1104,18 +1145,18 @@ inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContents
 			//tag matches move r pointer behind the tag name
 			r += tl;
 			tmp[len - 1] = tmp2;
-			l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\r", 1);
+			l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), CR_STR, 1);
 			if (l > 0){
-				// remove trailing \r\n and set l to length of the tag
+				// remove trailing CR LF and set l to length of the tag
 				l -= r;
 			} else {
-				// trailing \r not found try to find \n
-				l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), "\n", 1);
+				// trailing CR not found try to find \n
+				l = (unsigned long)memmem((void *)r, len - (r - (unsigned long)ptr), LF_STR, 1);
 				if (l > 0){
-					// remove trailing \r\n and set l to length of the tag
+					// remove trailing LF and set l to length of the tag
 					l -= r;
 				} else {
-					// trailing \r not found try to find \n
+					// trailing not found
 					l = 0;
 				}
 			}
@@ -1589,7 +1630,7 @@ int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
 	}
 	r += 1;
 	if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len, ">", 1)) == 0){
-		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len + 1, "\r", 1)) == 0){
+		if ((r2 = (unsigned long)memmem(peername_tag, peername_tag_len + 1, CR_STR, 1)) == 0){
 			goto fail_exit;
 		}
 	}
@@ -1756,8 +1797,8 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, bool is_video, RTPMAP
 		
 		char zchr;
 		if(l && 
-		   ((z = strnchr(s, '\r', len - (s - sdp_text))) ||
-		    (z = strnchr(s, '\n', len - (s - sdp_text))))) {
+		   ((z = strnchr(s, CR_CHAR, len - (s - sdp_text))) ||
+		    (z = strnchr(s, LF_CHAR, len - (s - sdp_text))))) {
 			zchr = *z;
 			*z = '\0';
 		} else {
@@ -1884,7 +1925,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, bool is_video, RTPMAP
 				}
 			}
 		}
-		// return '\r' into sdp_text
+		// return CR/LF into sdp_text
 		*z = zchr;
 		if(codec || payload) {
 			rtpmap[i].codec = codec;
@@ -2177,17 +2218,17 @@ int get_value_stringkeyval2(const char *data, unsigned int data_len, const char 
 	unsigned long r, tag_len;
 	char *tmp = gettag(data, data_len, NULL,
 			   key, &tag_len);
-	//gettag removes \r\n but we need it
+	//gettag removes CR LF but we need it
 	if(!tag_len) {
 		goto fail_exit;
 	} else {
-		//gettag remove trailing \r but we need it 
+		//gettag remove trailing CR but we need it 
 		tag_len++;
 	}
-	if ((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0){
-		if ((r = (unsigned long)memmem(tmp, tag_len, "\r", 1)) == 0){
-			goto fail_exit;
-		}
+	if((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0 &&
+	   (r = (unsigned long)memmem(tmp, tag_len, CR_STR, 1)) == 0 &&
+	   (r = (unsigned long)memmem(tmp, tag_len, LF_STR, 1)) == 0) {
+		goto fail_exit;
 	}
 	memcpy(value, (void*)tmp, MIN((r - (unsigned long)tmp), len));
 	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
@@ -3093,9 +3134,14 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			sdplen = datalen;
 		} else {
 			unsigned datalen = packetS->sipDataLen - (from_data - (packetS->data_() + packetS->sipDataOffset));
-			sdp = strnstr(from_data, "\r\n\r\n", datalen);
+			sdp = NULL;
+			for(int pass_line_separator = 0; pass_line_separator < 2 && !sdp; pass_line_separator++) {
+				sdp = strnstr(from_data, SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), datalen);
+				if(sdp) {
+					sdp += SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+				}
+			}
 			if(!sdp) return;
-			sdp += 4;
 			sdplen = datalen - (sdp - from_data);
 		}
 	}
@@ -3317,8 +3363,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(sverb.dump_sip) {
 		string dump_data(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 		if(sverb.dump_sip_line) {
-			find_and_replace(dump_data, "\r", "\\r");
-			find_and_replace(dump_data, "\n", "\\n");
+			find_and_replace(dump_data, CR_STR, CR_STR_ESC);
+			find_and_replace(dump_data, LF_STR, LF_STR_ESC);
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
@@ -4322,8 +4368,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							--content_data_item_length;
 						}
 						while(content_data_item_length > 0 && 
-						      (content_data_item[content_data_item_length - 1] == '\r' ||
-						       content_data_item[content_data_item_length - 1] == '\n')) {
+						      (content_data_item[content_data_item_length - 1] == CR_CHAR ||
+						       content_data_item[content_data_item_length - 1] == LF_CHAR)) {
 							--content_data_item_length;
 						}
 						char content_type[1024] = "";
@@ -4350,9 +4396,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								content_length = atoi(_content_length);
 							}
 							*/
-							char *content_data_begin = strnstr(content_data_item, "\r\n\r\n", content_data_item_length);
+							char *content_data_begin = NULL;
+							for(int pass_line_separator = 0; pass_line_separator < 2 && !content_data_begin; pass_line_separator++) {
+								content_data_begin = strnstr(content_data_item, SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), content_data_item_length);
+								if(content_data_begin) {
+									content_data_begin += SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+								}
+							}
 							if(content_data_begin) {
-								content_data_begin += 4;
 								unsigned content_data_offset = content_data_begin - content_data_item;
 								unsigned content_data_length = content_data_item_length - content_data_offset;
 								if(strcasestr(content_type, "application/sdp")) {
@@ -4481,8 +4532,8 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 	if(sverb.dump_sip) {
 		string dump_data(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 		if(sverb.dump_sip_line) {
-			find_and_replace(dump_data, "\r", "\\r");
-			find_and_replace(dump_data, "\n", "\\n");
+			find_and_replace(dump_data, CR_STR, CR_STR_ESC);
+			find_and_replace(dump_data, LF_STR, LF_STR_ESC);
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
@@ -4537,8 +4588,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	if(sverb.dump_sip) {
 		string dump_data(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 		if(sverb.dump_sip_line) {
-			find_and_replace(dump_data, "\r", "\\r");
-			find_and_replace(dump_data, "\n", "\\n");
+			find_and_replace(dump_data, CR_STR, CR_STR_ESC);
+			find_and_replace(dump_data, LF_STR, LF_STR_ESC);
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
@@ -4696,13 +4747,13 @@ void process_packet_sip_register(packet_s_process *packetS) {
 				break;
 			} else if(opt_register_ignore_res_401_nonce_has_changed) {
 				okres401 = true;
-				char *pointToEndLine = (char*)memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, "\r\n", 2);
+				char *pointToEndLine = (char*)memmem(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, "\n", 1);
 				if(pointToEndLine) {
 					*pointToEndLine = 0;
 					if(strcasestr(packetS->data_()+ packetS->sipDataOffset, "nonce has changed")) {
 						okres401 = false;
 					}
-					*pointToEndLine = '\r';
+					*pointToEndLine = '\n';
 				}
 			} else {
 				okres401 = true;
@@ -4884,8 +4935,8 @@ void process_packet_sip_other(packet_s_process *packetS) {
 	if(sverb.dump_sip) {
 		string dump_data(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen);
 		if(sverb.dump_sip_line) {
-			find_and_replace(dump_data, "\r", "\\r");
-			find_and_replace(dump_data, "\n", "\\n");
+			find_and_replace(dump_data, CR_STR, CR_STR_ESC);
+			find_and_replace(dump_data, LF_STR, LF_STR_ESC);
 		}
 		if(!sverb.dump_sip_without_counter) {
 			#if USE_PACKET_NUMBER
@@ -5354,7 +5405,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 		if(ssrcPtr) {
 			ssrcPtr += 5;
 			int ssrcLen = 0;
-			while(ssrcPtr[ssrcLen] && ssrcPtr[ssrcLen] != ' ' && ssrcPtr[ssrcLen] != '\r') {
+			while(ssrcPtr[ssrcLen] && ssrcPtr[ssrcLen] != ' ' && ssrcPtr[ssrcLen] != CR_CHAR && ssrcPtr[ssrcLen] != LF_CHAR) {
 				++ssrcLen;
 			}
 			if(ssrcLen) {
@@ -5365,7 +5416,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 		if(ipPtr) {
 			ipPtr += 3;
 			int ipLen = 0;
-			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != '\r') {
+			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != CR_CHAR && ipPtr[ipLen] != LF_CHAR) {
 				++ipLen;
 			}
 			if(ipLen) {
@@ -5386,7 +5437,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 		if(ipPtr) {
 			ipPtr += 3;
 			int ipLen = 0;
-			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != '\r') {
+			while(ipPtr[ipLen] && ipPtr[ipLen] != ' ' && ipPtr[ipLen] != CR_CHAR && ipPtr[ipLen] != LF_CHAR) {
 				++ipLen;
 			}
 			if(ipLen) {
@@ -5736,8 +5787,10 @@ inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int
 	if(IS_SIP_RESXXX(sip_method) || sip_response) {
 		char a = data[datalen - 1];
 		data[datalen - 1] = 0;
-		char *tmp = strstr(data, "\r");
-		if(tmp && tmp > data + 8) {
+		char *tmp = NULL;
+		if(((tmp = strstr(data, CR_STR)) != NULL ||
+		    (tmp = strstr(data, LF_STR)) != NULL) &&
+		   tmp > data + 8) {
 			// 8 is len of [SIP/2.0 ], 128 is max buffer size
 			int lastSIPresponseLength = min((int)(tmp - (data + 8)), 127);
 			strncpy(lastSIPresponse, data + 8, lastSIPresponseLength);
@@ -5791,28 +5844,40 @@ inline int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
 	int setMessage = 0;
 	char endCharData = data[datalen - 1];
 	data[datalen - 1] = 0;
-	char *endHeader = strstr(data, "\r\n\r\n");;
-	if(!endHeader) {
+	char *contentBegin = NULL;
+	for(int pass_line_separator = 0; pass_line_separator < 2 && !contentBegin; pass_line_separator++) {
+		char *endHeader = strstr(data, SIP_DBLLINE_SEPARATOR(pass_line_separator == 1));
+		if(endHeader) {
+			contentBegin = endHeader + SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+		}
+	}
+	if(!contentBegin) {
 		data[datalen - 1] = endCharData;
 		return(-1);
 	}
-	char *contentBegin = endHeader + 4;
 	int contentLength = 0;
 	unsigned long l;
-	char *s = gettag_sip(packetS, "\nContent-Length:", &l);
-	if(s) {
-		char endCharContentLength = s[l];
-		s[l] = '\0';
-		contentLength = atoi(s);
+	char *contLengthPos = NULL;
+	for(int pass = 0; pass < 2 && !contLengthPos; ++pass) {
+		contLengthPos = gettag_sip(packetS,
+					   pass ? 
+					    LF_LINE_SEPARATOR "l:" : 
+					    LF_LINE_SEPARATOR "Content-Length:",
+					   &l);
+	}
+	if(contLengthPos) {
+		char endCharContentLength = contLengthPos[l];
+		contLengthPos[l] = '\0';
+		contentLength = atoi(contLengthPos);
 		if(rsltContentLength) {
 			*rsltContentLength = contentLength;
 		}
-		s[l] = endCharContentLength;
+		contLengthPos[l] = endCharContentLength;
 	}
 	if(contentLength > 0 && (unsigned)contentLength < packetS->sipDataLen) {
 		char *contentEnd = strcasestr(contentBegin, "\n\nContent-Length:");
 		if(!contentEnd) {
-			contentEnd = strstr(contentBegin, "\r\n");
+			contentEnd = strstr(contentBegin, CR_LF_LINE_SEPARATOR);
 		}
 		if(!contentEnd) {
 			contentEnd = data + datalen;
@@ -7483,7 +7548,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	if(sverb.reassembly_sip) {
 		cout << sqlDateTimeString(packetS->getTime_s()) << " "
 		     << setw(6) << setfill('0') << packetS->getTime_us() << setfill(' ') << " / "
-		     << string(packetS->data_(), MIN(string(packetS->data_(), packetS->datalen_()).find("\r"), MIN(packetS->datalen_(), 100))) << endl;
+		     << string(packetS->data_(), MIN(string(packetS->data_(), packetS->datalen_()).find(CR_STR), MIN(packetS->datalen_(), 100))) << endl;
 	}
 	tcphdr2 *header_tcp = (tcphdr2*)((char*)packetS->header_ip_() + packetS->header_ip_()->get_hdr_size());
 	u_int32_t seq = htonl(header_tcp->seq);
@@ -7568,7 +7633,7 @@ void TcpReassemblySip::complete(tcp_stream *stream, tcp_stream_id /*id*/, PrePro
 		     << setw(15) << completePacketS->daddr_().getString() << " : "
 		     << setw(5) << completePacketS->dest_() << " / "
 		     << setw(9) << stream->last_ack_seq << " / "
-		     << string((char*)completePacketS->data_(), MIN(string((char*)completePacketS->data_(), completePacketS->datalen_()).find("\r"), MIN(completePacketS->datalen_(), 100))) << endl;
+		     << string((char*)completePacketS->data_(), MIN(string((char*)completePacketS->data_(), completePacketS->datalen_()).find(CR_STR), MIN(completePacketS->datalen_(), 100))) << endl;
 	}
 	if(processPacket) {
 		processPacket->process_parseSipData(&completePacketS, NULL);
@@ -8819,11 +8884,19 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 					nextSip = true;
 					multipleSip = true;
 				} else {
-					char *pointToDoubleEndLine = (char*)memmem(packetS->data_()+ packetS->sipDataOffset + packetS->sipDataLen, 
-										   packetS->datalen_() - (packetS->sipDataOffset + packetS->sipDataLen), 
-										   "\r\n\r\n", 4);
+					char *pointToDoubleEndLine = NULL;
+					unsigned doubleEndLineSize = 0;
+					for(int pass_line_separator = 0; pass_line_separator < 2 && !pointToDoubleEndLine; pass_line_separator++) {
+						pointToDoubleEndLine = (char*)memmem(packetS->data_()+ packetS->sipDataOffset + packetS->sipDataLen, 
+										     packetS->datalen_() - (packetS->sipDataOffset + packetS->sipDataLen), 
+										     SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
+										     SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
+						if(doubleEndLineSize) {
+							doubleEndLineSize = SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+						}
+					}
 					if(pointToDoubleEndLine) {
-						u_int32_t offsetAfterDoubleEndLine = pointToDoubleEndLine - packetS->data_()+ 4;
+						u_int32_t offsetAfterDoubleEndLine = pointToDoubleEndLine - packetS->data_() + doubleEndLineSize;
 						if(offsetAfterDoubleEndLine < (unsigned)packetS->datalen_() - 11) {
 							if(check_sip20(packetS->data_()+ offsetAfterDoubleEndLine, 
 								       packetS->datalen_() - offsetAfterDoubleEndLine, 

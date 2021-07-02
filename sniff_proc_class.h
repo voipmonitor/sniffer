@@ -9,6 +9,21 @@
 #include "websocket.h"
 
 
+#define LF_CHAR '\n'
+#define CR_CHAR '\r'
+#define LF_STR "\n"
+#define CR_STR "\r"
+#define LF_STR_ESC "\\n"
+#define CR_STR_ESC "\\r"
+#define LF_LINE_SEPARATOR "\n"
+#define CR_LF_LINE_SEPARATOR "\r\n"
+#define SIP_LINE_SEPARATOR(lf) (lf ? LF_LINE_SEPARATOR : CR_LF_LINE_SEPARATOR)
+#define SIP_DBLLINE_SEPARATOR(lf) (lf ? LF_LINE_SEPARATOR LF_LINE_SEPARATOR :CR_LF_LINE_SEPARATOR CR_LF_LINE_SEPARATOR)
+#define SIP_LINE_SEPARATOR_SIZE(lf) (lf ? 1 : 2)
+#define SIP_DBLLINE_SEPARATOR_SIZE(lf) (lf ? 2 : 4)
+#define SIP_LINE_SEPARATOR_STR(lf, str) (lf ? LF_LINE_SEPARATOR str: CR_LF_LINE_SEPARATOR str)
+
+
 class TcpReassemblySip {
 public:
 	struct tcp_stream_packet {
@@ -120,13 +135,26 @@ public:
 		u_int32_t offset = 0;
 		while(data_len > 0) {
 			unsigned int contentLength = 0;
-			u_char *endHeaderSepPos = (u_char*)memmem(data, min(data_len, 5000), "\r\n\r\n", 4);
+			bool use_lf_line_separator = false;
+			u_char *endHeaderSepPos = NULL;
+			for(int pass_line_separator = 0; pass_line_separator < 2 && !endHeaderSepPos; pass_line_separator++) {
+				endHeaderSepPos = (u_char*)memmem(data, min(data_len, 5000), 
+								  SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
+								  SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
+				if(endHeaderSepPos && pass_line_separator == 1) {
+					use_lf_line_separator = true;
+				}
+			}
 			if(endHeaderSepPos) {
+				u_char endHeaderSepPos_char = *endHeaderSepPos;
 				*endHeaderSepPos = 0;
 				for(int pass = 0; pass < 2; ++pass) {
-					char *contentLengthPos = strcasestr((char*)data, pass ? "\r\nl:" : "\r\nContent-Length:");
+					char *contentLengthPos = strcasestr((char*)data, 
+									    pass ? 
+									     LF_LINE_SEPARATOR "l:" : 
+									     LF_LINE_SEPARATOR "Content-Length:");
 					if(contentLengthPos) {
-						contentLengthPos += pass ? 4 : 17;
+						contentLengthPos += (pass ? 2 : 15) + 1;
 						while(*contentLengthPos == ' ') {
 							++contentLengthPos;
 						}
@@ -134,11 +162,11 @@ public:
 						break;
 					}
 				}
-				*endHeaderSepPos = '\r';
+				*endHeaderSepPos = endHeaderSepPos_char;
 			} else {
 				break;
 			}
-			int sipDataLen = (endHeaderSepPos - data) + 4 + contentLength;
+			int sipDataLen = (endHeaderSepPos - data) + SIP_DBLLINE_SEPARATOR_SIZE(use_lf_line_separator) + contentLength;
 			if(offsets) {
 				offsets->push_back(d_u_int32_t(offset, sipDataLen));
 			}
