@@ -7,8 +7,8 @@
 
 ```
 cd /usr/src
-git clone git://git.code.sf.net/p/voipmonitor/git voipmonitor-git
-cd voipmonitor-git
+git clone https://github.com/voipmonitor/sniffer.git
+cd sniffer
 ./configure
 make
 ```
