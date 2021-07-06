@@ -67,10 +67,10 @@ CURL_VER_MINOR=`$CURL_CFG --version | cut -d" " -f2 | cut -d"." -f2`
 if test -z $CURL_VER_MAJOR || test -z $CURL_VER_MINOR; then
         AC_MSG_ERROR([Can't get about curl's version. $CURL_CFG binary is needed.])
 fi
-if test $CURL_VER_MAJOR -eq 7 && test $CURL_VER_MINOR -ge 34; then
+if test $CURL_VER_MAJOR -eq 7 && test $CURL_VER_MINOR -ge 29; then
 	AC_MSG_NOTICE([Curl version is ok ($CURL_VER_MAJOR.$CURL_VER_MINOR).])
 else
-	AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.34 or higher is required.])
+	AC_MSG_ERROR([Bad curl version ($CURL_VER_MAJOR.$CURL_VER_MINOR). Version 7.29 or higher is required.])
 fi
 
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
