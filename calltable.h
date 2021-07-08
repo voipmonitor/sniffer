@@ -862,9 +862,21 @@ public:
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
-	char called[256];		//!< To: xxx
+	char called_to[256];		//!< To: xxx
+	char called_uri[256];
+	char called_final[256];
+	inline char *called() {
+		extern int opt_destination_number_mode;
+		return(called_final[0] ? called_final :
+		       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
+	}
 	map<string, dstring> called_invite_branch_map;
-	char called_domain[256];	//!< To: xxx
+	char called_domain_to[256];	//!< To: xxx
+	char called_domain_uri[256];
+	inline char *called_domain() {
+		extern int opt_destination_number_mode;
+		return(called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
+	}
 	char contact_num[64];		//!< 
 	char contact_domain[128];	//!< 
 	char digest_username[64];	//!< 

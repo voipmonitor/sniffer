@@ -704,7 +704,7 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 				}
 				postFields.append((*postData)[i][0]);
 				postFields.append("=");
-				postFields.append(url_encode((*postData)[i][1]));
+				postFields.append(params && params->suppress_parameters_encoding ? (*postData)[i][1] : url_encode((*postData)[i][1]));
 			}
 			if(!postFields.empty()) {
 				curl_easy_setopt(curl, CURLOPT_POST, 1);

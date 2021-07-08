@@ -23,10 +23,14 @@ struct sSciInfo {
 	u_int8_t typeSci;
 	string callid;
 	string caller_number;
-	string called_number;
+	string called_number_to;
+	string called_number_uri;
+	string called_number_final;
 	string callername;
 	string caller_domain;
-	string called_domain;
+	string called_domain_to;
+	string called_domain_uri;
+	string called_domain_final;
 	vmIP caller_ip;
 	vmIP called_ip;
 	u_int64_t at;
@@ -38,10 +42,23 @@ public:
 		rt_get,
 		rt_post
 	};
+	enum eCalledSrc {
+		cs_default,
+		cs_to,
+		cs_uri
+	};
 public:
 	SendCallInfoItem(unsigned int dbId);
 	bool load(SqlDb *sqlDb = NULL);
 	void evSci(sSciInfo *sci);
+	string called_number(sSciInfo *sci) {
+		return(calledNumberSrc == cs_to && !sci->called_number_to.empty() ? sci->called_number_to :
+		       calledNumberSrc == cs_uri && !sci->called_number_uri.empty() ? sci->called_number_uri : sci->called_number_final);
+	}
+	string called_domain(sSciInfo *sci) {
+		return(calledDomainSrc == cs_to && !sci->called_domain_to.empty() ? sci->called_domain_to :
+		       calledDomainSrc == cs_uri && !sci->called_domain_uri.empty() ? sci->called_domain_uri : sci->called_domain_final);
+	}
 private:
 	unsigned int dbId;
 	SqlDb_row dbRow;
@@ -49,6 +66,9 @@ private:
 	u_int8_t infoOn;
 	string requestUrl;
 	eRequestType requestType;
+	bool suppressParametersEncoding;
+	eCalledSrc calledNumberSrc;
+	eCalledSrc calledDomainSrc;
 	bool jsonOutput;
 	string authUser;
 	string authPassword;
@@ -95,6 +115,10 @@ friend void *_SendCallInfo_popCallInfoThread(void *arg);
 
 void initSendCallInfo(SqlDb *sqlDb = NULL);
 void termSendCallInfo();
+inline bool isSendCallInfoReady() {
+	extern volatile int _sendCallInfo_ready;
+	return(_sendCallInfo_ready);
+}
 void refreshSendCallInfo();
 void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv);
 bool isExistsSendCallInfo(SqlDb *sqlDb = NULL);

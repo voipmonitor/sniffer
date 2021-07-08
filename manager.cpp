@@ -2512,7 +2512,7 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 				outStr.width(15);
 				outStr << call->caller << " -> ";
 				outStr.width(15);
-				outStr << call->called << "  "
+				outStr << call->called() << "  "
 					<< sqlDateTimeString(call->calltime_s()) << "  ";
 				outStr.width(6);
 				outStr << call->duration_s() << "s  "
@@ -2562,7 +2562,7 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 			outStr.width(15);
 			outStr << call->caller << " -> ";
 			outStr.width(15);
-			outStr << call->called << "  "
+			outStr << call->called() << "  "
 				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
 			outStr << call->duration_s() << "s  "
@@ -2606,7 +2606,7 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			outStr.width(15);
 			outStr << call->caller << " -> ";
 			outStr.width(15);
-			outStr << call->called << "  "
+			outStr << call->called() << "  "
 				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
 			outStr << call->duration_s() << "s  "

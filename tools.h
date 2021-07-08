@@ -353,11 +353,13 @@ struct s_get_url_response_params {
 	string *auth_user;
 	string *auth_password;
 	vector<dstring> *headers;
+	bool suppress_parameters_encoding;
 	s_get_url_response_params() {
 		timeout_sec = 0;
 		auth_user = NULL;
 		auth_password = NULL;
 		headers = NULL;
+		suppress_parameters_encoding = false;
 	}
 };
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL,

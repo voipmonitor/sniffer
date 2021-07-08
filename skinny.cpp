@@ -1575,7 +1575,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		if ((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
 			memcpy(call->callername, req.data.callinfo.callingPartyName, sizeof(req.data.callinfo.callingPartyName));
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
-			memcpy(call->called, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
+			memcpy(call->called_final, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
 
 			u_int64_t _forcemark_time = getTimeUS(header);
 			call->forcemark_lock();
@@ -1683,8 +1683,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 				call->caller[sizeof(call->caller) - 1] = 0;
 			}
 			if(calledParty) {
-				memcpy(call->called, calledParty, MIN(sizeof(call->called), strlen(calledParty) + 1));
-				call->called[sizeof(call->called) - 1] = 0;
+				memcpy(call->called_final, calledParty, MIN(sizeof(call->called_final), strlen(calledParty) + 1));
+				call->called_final[sizeof(call->called_final) - 1] = 0;
 			}
 			if(callingPartyName) {
 				memcpy(call->callername, callingPartyName, MIN(sizeof(call->callername), strlen(callingPartyName) + 1));
@@ -1727,7 +1727,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received DIALED_NUMBER_MESSAGE ref %d num:[%s]\n", ref, req.data.dialednumber.dialedNumber);
 		snprintf(callid, sizeof(callid), "%u", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
-			strcpy_null_term(call->called, req.data.dialednumber.dialedNumber);
+			strcpy_null_term(call->called_final, req.data.dialednumber.dialedNumber);
 		}
 		}
 		break;

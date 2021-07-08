@@ -21,6 +21,9 @@ SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
 	this->dbId = dbId;
 	infoOn = sci_18X | sci_200;
 	requestType = rt_get;
+	suppressParametersEncoding = false;
+	calledNumberSrc = cs_default;
+	calledDomainSrc = cs_default;
 }
 
 bool SendCallInfoItem::load(SqlDb *sqlDb) {
@@ -112,6 +115,11 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 	}
 	requestUrl = dbRow["request_url"];
 	requestType = dbRow["request_type"] == "get" ? rt_get : rt_post;
+	suppressParametersEncoding = atoi(dbRow["suppress_parameters_encoding"].c_str());
+	calledNumberSrc = dbRow["called_number_src"] == "to" ? cs_to :
+			  dbRow["called_number_src"] == "uri" ? cs_uri : cs_default;
+	calledDomainSrc = dbRow["called_domain_src"] == "to" ? cs_to :
+			  dbRow["called_domain_src"] == "uri" ? cs_uri : cs_default;
 	jsonOutput = atoi(dbRow["json_output"].c_str());
 	authUser = dbRow["auth_user"];
 	authPassword = dbRow["auth_password"];
@@ -172,11 +180,11 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 void SendCallInfoItem::evSci(sSciInfo *sci) {
 	if((sci->typeSci & infoOn) &&
 	   phoneNumberCallerFilter.checkNumber(sci->caller_number.c_str()) &&
-	   phoneNumberCalledFilter.checkNumber(sci->called_number.c_str()) &&
+	   phoneNumberCalledFilter.checkNumber(called_number(sci).c_str()) &&
 	   ipCallerFilter.checkIP(sci->caller_ip) &&
 	   ipCalledFilter.checkIP(sci->called_ip) &&
 	   domainCallerFilter.check(sci->caller_domain.c_str()) &&
-	   domainCalledFilter.check(sci->called_domain.c_str())) {
+	   domainCalledFilter.check(called_domain(sci).c_str())) {
 		vector<dstring> postData;
 		postData.push_back(dstring("rule", name));
 		postData.push_back(dstring("type", sci->typeSci == sci_18X ? "18X" : 
@@ -185,10 +193,10 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 						   sci->typeSci == sci_hangup ? "HANGUP" : 
 						   ""));
 		postData.push_back(dstring("caller", sci->caller_number));
-		postData.push_back(dstring("called", sci->called_number));
+		postData.push_back(dstring("called", called_number(sci)));
 		postData.push_back(dstring("callername", sci->callername));
 		postData.push_back(dstring("caller_domain", sci->caller_domain));
-		postData.push_back(dstring("called_domain", sci->called_domain));
+		postData.push_back(dstring("called_domain", called_domain(sci)));
 		postData.push_back(dstring("ip_src", sci->caller_ip.getString()));
 		postData.push_back(dstring("ip_dst", sci->called_ip.getString()));
 		postData.push_back(dstring("callid", sci->callid));
@@ -211,7 +219,7 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 				getParams.append(getParams.empty() ? "?" : "&");
 				getParams.append((*it)[0]);
 				getParams.append("=");
-				getParams.append(url_encode((*it)[1]));
+				getParams.append(suppressParametersEncoding ? (*it)[1] : url_encode((*it)[1]));
 			}
 		}
 		SimpleBuffer responseBuffer;
@@ -223,6 +231,9 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 		}
 		if(headers.size()) {
 			curl_params.headers = &headers;
+		}
+		if(suppressParametersEncoding) {
+			curl_params.suppress_parameters_encoding = true;
 		}
 		get_url_response((requestUrl + getParams).c_str(), &responseBuffer, requestType == rt_get ? NULL : &postData, &error, &curl_params);
 		if(error.empty()) {
@@ -328,10 +339,14 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 				  eTypeSci typeSci, u_int64_t at) {
 	sci->callid = call->call_id;
 	sci->caller_number = call->caller;
-	sci->called_number = call->called;
+	sci->called_number_to = call->called_to;
+	sci->called_number_uri = call->called_uri;
+	sci->called_number_final = call->called();
 	sci->callername = call->callername;
 	sci->caller_domain = call->caller_domain;
-	sci->called_domain = call->called_domain;
+	sci->called_domain_to = call->called_domain_to;
+	sci->called_domain_uri = call->called_domain_uri;
+	sci->called_domain_final = call->called_domain();
 	sci->caller_ip = call->getSipcallerip();
 	sci->called_ip = call->getSipcalledip();
 	sci->typeSci = typeSci;

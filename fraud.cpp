@@ -2773,11 +2773,11 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->call_type = call->typeIs(INVITE) ? INVITE : call->getTypeBase();
 	callInfo->callid = call->call_id;
 	callInfo->caller_number = call->caller;
-	callInfo->called_number = call->called;
+	callInfo->called_number = call->called();
 	callInfo->caller_ip = call->sipcallerip[0];
 	callInfo->called_ip = call->sipcalledip[0];
 	callInfo->caller_domain = call->caller_domain;
-	callInfo->called_domain = call->called_domain;
+	callInfo->called_domain = call->called_domain();
 	callInfo->vlan = call->vlan;
 	if(useUserRestriction_custom_headers) {
 		extern CustomHeaders *custom_headers_cdr;
@@ -2803,7 +2803,7 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 
 void FraudAlerts::completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call) {
 	rtpStreamInfo->caller_number = call->caller;
-	rtpStreamInfo->called_number = call->called;
+	rtpStreamInfo->called_number = call->called();
 	rtpStreamInfo->callid = call->call_id;
 }
 
@@ -2857,8 +2857,8 @@ void FraudAlerts::completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamIn
 void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call) {
 	registerInfo->sipcallerip = call->sipcallerip[0];
 	registerInfo->sipcalledip = call->sipcalledip[0];
-	registerInfo->to_num = call->called;
-	registerInfo->to_domain = call->called_domain;
+	registerInfo->to_num = call->called();
+	registerInfo->to_domain = call->called_domain();
 	registerInfo->contact_num = call->contact_num;
 	registerInfo->contact_domain = call->contact_domain;
 	registerInfo->digest_username = call->digest_username;

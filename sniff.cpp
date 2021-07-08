@@ -588,7 +588,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
 	if(call) {
 		strcpy_null_term(caller, call->caller);
-		strcpy_null_term(called, call->called);
+		strcpy_null_term(called, call->called());
 	} else {
 		bool needcaller = false;
 		bool needcalled = false;
@@ -2560,17 +2560,27 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 }
 
 struct s_detect_callerd {
-	s_detect_callerd() {
+	inline s_detect_callerd() {
 		caller[0] = 0;
-		called[0] = 0;
+		called_to[0] = 0;
+		called_uri[0] = 0;
 		caller_domain[0] = 0;
-		called_domain[0] = 0;
+		called_domain_to[0] = 0;
+		called_domain_uri[0] = 0;
 		callername[0] = 0;
 	}
+	inline char *called() {
+		return(called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
+	}
+	inline char *called_domain() {
+		return(called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
+	}
 	char caller[1024];
-	char called[1024];
+	char called_to[1024];
+	char called_uri[1024];
 	char caller_domain[1024];
-	char called_domain[1024];
+	char called_domain_to[1024];
+	char called_domain_uri[1024];
 	char callername[256];
 };
 
@@ -2665,13 +2675,9 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 
 	// called number
 	
-	get_sip_peername(packetS, "\nTo:", "\nt:", data->called, sizeof(data->called), ppntt_to, ppndt_called);
-	if(sip_method == INVITE && opt_destination_number_mode == 2) {
-		char _called[1024] = "";
-		if(!get_sip_peername(packetS, "INVITE ", NULL, _called, sizeof(_called), ppntt_invite, ppndt_called) &&
-		   _called[0] != '\0') {
-			strcpy_null_term(data->called, _called);
-		}
+	get_sip_peername(packetS, "\nTo:", "\nt:", data->called_to, sizeof(data->called_to), ppntt_to, ppndt_called);
+	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady())) {
+		get_sip_peername(packetS, "INVITE ", NULL, data->called_uri, sizeof(data->called_uri), ppntt_invite, ppndt_called);
 	}
 	
 	// caller domain 
@@ -2694,13 +2700,9 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 
 	// called domain 
 	
-	get_sip_domain(packetS, "\nTo:", "\nt:", data->called_domain, sizeof(data->called_domain), ppntt_to, ppndt_called_domain);
-	if(sip_method == INVITE && opt_destination_number_mode == 2) {
-		char _called_domain[256] = "";
-		get_sip_domain(packetS, "INVITE ", NULL, _called_domain, sizeof(_called_domain), ppntt_invite, ppndt_called_domain);
-		if(_called_domain[0] != '\0') {
-			strcpy_null_term(data->called_domain, _called_domain);
-		}
+	get_sip_domain(packetS, "\nTo:", "\nt:", data->called_domain_to, sizeof(data->called_domain_to), ppntt_to, ppndt_called_domain);
+	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady())) {
+		get_sip_domain(packetS, "INVITE ", NULL, data->called_domain_uri, sizeof(data->called_domain_uri), ppntt_invite, ppndt_called_domain);
 	}
 	
 	// callername
@@ -2844,8 +2846,8 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 	flags = setCallFlags(flags,
 			     packetS->saddr_(), packetS->daddr_(),
-			     data_callerd.caller, data_callerd.called,
-			     data_callerd.caller_domain, data_callerd.called_domain,
+			     data_callerd.caller, data_callerd.called(),
+			     data_callerd.caller_domain, data_callerd.called_domain(),
 			     &packetS->parseContents);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
@@ -2906,13 +2908,15 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		strcpy_null_term(call->caller, data_callerd.caller);
 
 		// called number
-		strcpy_null_term(call->called, data_callerd.called);
+		strcpy_null_term(call->called_to, data_callerd.called_to);
+		strcpy_null_term(call->called_uri, data_callerd.called_uri);
 
 		// caller domain 
 		strcpy_null_term(call->caller_domain, data_callerd.caller_domain);
 
 		// called domain 
-		strcpy_null_term(call->called_domain, data_callerd.called_domain);
+		strcpy_null_term(call->called_domain_to, data_callerd.called_domain_to);
+		strcpy_null_term(call->called_domain_uri, data_callerd.called_domain_uri);
 		
 		// callername
 		strcpy_null_term(call->callername, data_callerd.callername);
@@ -3091,7 +3095,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				       << call->caller << "  ";
 				outStr << "called: "
 				       << setw(15)
-				       << call->called << "  ";
+				       << call->called() << "  ";
 				if(is_read_from_file()) {
 					cout << outStr.str() << endl;
 				} else {
@@ -3379,7 +3383,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			<< endl;
 			Call *call = packetS->call ? packetS->call : packetS->call_created;
 			if(call) {
-				cout << call->caller << " -> " << call->called << endl;
+				cout << call->caller << " -> " << call->called() << endl;
 			}
 		}
 		cout << dump_data << endl;
@@ -3695,7 +3699,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(opt_remoteparty_called[0]) {
 					for(unsigned i = 0; i < opt_remoteparty_called_v.size(); i++) {
 						if(partyNumber.find(opt_remoteparty_called_v[i]) != partyNumber.end()) {
-							strcpy_null_term(call->called, partyNumber[opt_remoteparty_called_v[i]].c_str());
+							strcpy_null_term(call->called_final, partyNumber[opt_remoteparty_called_v[i]].c_str());
 						}
 					}
 				}
@@ -3719,17 +3723,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		//update called number for each invite due to overlap-dialling
 		if(((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip()) || opt_last_dest_number) && !reverseInviteSdaddr) {
-			char called[1024] = "";
+			char called_to[1024] = "";
 			get_sip_peername(packetS, "\nTo:", "\nt:",
-					 called, sizeof(called), ppntt_to, ppndt_called);
-			if(strcmp(call->caller, called)) {
-				strcpy_null_term(call->called, called);
+					 called_to, sizeof(called_to), ppntt_to, ppndt_called);
+			if(strcmp(call->caller, called_to)) {
+				strcpy_null_term(call->called_to, called_to);
 			}
-			if(opt_destination_number_mode == 2) {
-				char called[1024] = "";
-				if(!get_sip_peername(packetS, "INVITE ", NULL, called, sizeof(called), ppntt_invite, ppndt_called) &&
-				   called[0] != '\0' && strcmp(call->caller, called)) {
-					strcpy_null_term(call->called, called);
+			if(opt_destination_number_mode == 2 || isSendCallInfoReady()) {
+				char called_uri[1024] = "";
+				if(!get_sip_peername(packetS, "INVITE ", NULL, called_uri, sizeof(called_uri), ppntt_invite, ppndt_called) &&
+				   called_uri[0] != '\0' && strcmp(call->caller, called_uri)) {
+					strcpy_null_term(call->called_uri, called_uri);
 				}
 			}
 		}
@@ -3809,7 +3813,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		if(rslt_parse_packet__message != -1) {
 			if(rsltDestNumber.length()) {
-				strcpy_null_term(call->called, rsltDestNumber.c_str());
+				strcpy_null_term(call->called_final, rsltDestNumber.c_str());
 				call->updateDstnumFromMessage = true;
 			}
 			if(rsltSrcNumber.length()) {
@@ -3979,7 +3983,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							}
 							map<string, dstring>::iterator iter = call->called_invite_branch_map.find(branch);
 							if(iter != call->called_invite_branch_map.end()) {
-								strcpy_null_term(call->called, iter->second[use_called_invite ? 0 : 1].c_str());
+								strcpy_null_term(call->called_to, iter->second[1].c_str());
+								strcpy_null_term(call->called_uri, iter->second[0].c_str());
+								strcpy_null_term(call->called_final, iter->second[use_called_invite ? 0 : 1].c_str());
 								call->updateDstnumOnAnswer = true;
 							}
 						}
@@ -3990,7 +3996,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						if(call->typeIs(INVITE)) {
 							process_packet__parse_custom_headers(call, packetS);
 							ClientThreads.onCall(call->call_id.c_str(),
-									     lastSIPresponseNum, call->callername, call->caller, call->called,
+									     lastSIPresponseNum, call->callername, call->caller, call->called(),
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 						}
@@ -4041,7 +4047,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(call->typeIs(INVITE)) {
 					process_packet__parse_custom_headers(call, packetS);
 					ClientThreads.onCall(call->call_id.c_str(),
-							     lastSIPresponseNum, call->callername, call->caller, call->called,
+							     lastSIPresponseNum, call->callername, call->caller, call->called(),
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 				}
@@ -4108,8 +4114,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(!packetS->_createCall && !existInviteSdaddr && !reverseInviteSdaddr) {
 			call->flags = setCallFlags(call->flags,
 						   packetS->saddr_(), packetS->daddr_(),
-						   call->caller, call->called,
-						   call->caller_domain, call->called_domain,
+						   call->caller, call->called(),
+						   call->caller_domain, call->called_domain(),
 						   &packetS->parseContents);
 		}
 		if(!reverseInviteSdaddr) {
@@ -4323,7 +4329,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					bool eqCallerMinLength;
 					bool eqCalledMinLength;
 					size_t eqCallerLength = strCaseEqLengthR(_caller, call->caller, &eqCallerMinLength);
-					size_t eqCalledLength = strCaseEqLengthR(_called, call->called, &eqCalledMinLength);
+					size_t eqCalledLength = strCaseEqLengthR(_called, call->called_to, &eqCalledMinLength);
 					if((eqCallerMinLength || eqCalledMinLength ||
 					    eqCallerLength >= 3 || eqCalledLength >= 3) &&
 					   (eqCallerLength != eqCalledLength ||
@@ -4912,9 +4918,9 @@ void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 	}
 	sipMsg->vlan = packetS->pid.vlan;
 	sipMsg->number_src = data_callerd.caller;
-	sipMsg->number_dst = data_callerd.called;
+	sipMsg->number_dst = data_callerd.called();
 	sipMsg->domain_src = data_callerd.caller_domain;
-	sipMsg->domain_dst = data_callerd.called_domain;
+	sipMsg->domain_dst = data_callerd.called_domain();
 	sipMsg->callername = data_callerd.callername;
 
 	long unsigned int ua_len;
@@ -5137,7 +5143,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	call->seeninvite = true;
 	strcpy(call->callername, "RTP");
 	strcpy(call->caller, "RTP");
-	strcpy(call->called, "RTP");
+	strcpy(call->called_to, "RTP");
 
 #ifdef DEBUG_INVITE
 	syslog(LOG_NOTICE, "New RTP call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s]\n", call->sipcallerip, call->sipcalledip, call->caller, call->called);
@@ -7336,7 +7342,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	// called
 	outStr << "called: "
 	       << setw(15)
-	       << (call ? call->called : "") << "  ";
+	       << (call ? call->called() : "") << "  ";
 	// lastSIPresponseNum
 	outStr << "last response num: "
 	       << setw(3)
