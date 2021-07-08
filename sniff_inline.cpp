@@ -303,10 +303,11 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
-	if(header_ip->get_protocol() == IPPROTO_IPIP) {
+	u_int8_t ip_protocol = header_ip->get_protocol();
+	if(ip_protocol == IPPROTO_IPIP) {
 		// ip in ip protocol
 		return(header_ip->get_hdr_size());
-	} else if(header_ip->get_protocol() == IPPROTO_GRE) {
+	} else if(ip_protocol == IPPROTO_GRE) {
 		// gre protocol
 		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip, caplen - header_ip_offset);
 		if(header_ip_next) {
@@ -314,13 +315,13 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		} else {
 			return(-1);
 		}
-	} else if(header_ip->get_protocol() == IPPROTO_UDP &&
+	} else if(ip_protocol == IPPROTO_UDP &&
 		  header_ip->get_tot_len() + header_ip_offset == caplen &&
 		  header_ip->get_tot_len() > header_ip->get_hdr_size() + sizeof(udphdr2) &&
 		  IS_RTP((char*)header_ip + header_ip->get_hdr_size() + sizeof(udphdr2), header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2))) {
 		return(0);
 	} else if(opt_udp_port_l2tp &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// Layer 2 Tunelling protocol / UDP
+		  ip_protocol == IPPROTO_UDP &&									// Layer 2 Tunelling protocol / UDP
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_l2tp &&	// check destination port (default 1701)
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_l2tp &&	// check source port (default 1701)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > (sizeof(udphdr2) + 10)) {		// check minimal length
@@ -339,7 +340,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		}
 		return(next_header_ip_offset);
 	} else if(opt_udp_port_tzsp &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// TZSP
+		  ip_protocol == IPPROTO_UDP &&									// TZSP
 		  ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_tzsp ||	// check destination port (default 0x9090)
 		   (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_tzsp) &&	// check source port (default 0x9090)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > 
@@ -363,7 +364,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		}
 		return(next_header_ip_offset);
 	} else if(opt_udp_port_vxlan &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// VXLAN
+		  ip_protocol == IPPROTO_UDP &&									// VXLAN
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_vxlan &&	// check source port (default 0x9090)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > 
 							 (sizeof(udphdr2) + 8 + sizeof(ether_header) + sizeof(iphdr2))) {	// check minimal length
@@ -381,17 +382,17 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		return(next_header_ip_offset);
 	} else if(opt_audiocodes &&
 		  ((opt_udp_port_audiocodes &&
-		    header_ip->get_protocol() == IPPROTO_UDP &&
+		    ip_protocol == IPPROTO_UDP &&
 		    ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_audiocodes ||
 		     (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_audiocodes)) ||
 		   (opt_tcp_port_audiocodes &&
-		    header_ip->get_protocol() == IPPROTO_TCP &&
+		    ip_protocol == IPPROTO_TCP &&
 		    ((unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_tcp_port_audiocodes ||
 		     (unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_tcp_port_audiocodes)))) {
 		u_char *data;
 		unsigned datalen;
 		unsigned udp_tcp_header_length;
-		if(header_ip->get_protocol() == IPPROTO_UDP) {
+		if(ip_protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen =  get_udp_data_len(header_ip, header_udp,
 						    (char**)&data, packet, caplen);
@@ -412,7 +413,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 			return(header_ip->get_hdr_size() + udp_tcp_header_length + audiocodes.header_length_total);
 		}
 	} else if(opt_icmp_process_data &&
-		  header_ip->get_protocol() == IPPROTO_ICMP) {
+		  ip_protocol == IPPROTO_ICMP) {
 		// icmp protocol
 		unsigned int icmp_length = 8;
 		if(header_ip->get_tot_len() > header_ip->get_hdr_size() + icmp_length + sizeof(iphdr2) &&
