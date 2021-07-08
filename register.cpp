@@ -535,7 +535,6 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain)), "contact_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(to_domain)), "to_domain");
 	reg.add(sqlEscapeString(REG_CONV_STR(digest_username)), "digestusername");
-	reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 	reg.add(state->fname, "fname");
 	if(state->state == rs_Failed) {
 		reg.add(state->counter, "counter");
@@ -543,6 +542,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		reg.add(state->db_id, "ID");
 		if(existsColumns.register_failed_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
+		}
+		if (existsColumns.register_failed_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 	} else {
 		reg.add(state->expires, "expires");
@@ -556,6 +558,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		}
 		if(existsColumns.register_state_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
+		}
+		if (existsColumns.register_state_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 	}
 	if(state->id_sensor > -1) {
