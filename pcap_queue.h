@@ -402,10 +402,9 @@ struct pcapProcessData {
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
 	char *data;
-	int datalen;
-	int traillen;
-	int istcp;
-	int isother;
+	int16_t datalen;
+	int16_t traillen;
+	packet_flags flags;
 	sPacketInfoData pid;
 	unsigned char *prevmd5s;
 	MD5_CTX ctx;

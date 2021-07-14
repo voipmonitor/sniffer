@@ -15,6 +15,7 @@
 #include "sniff.h"
 #include "sniff_inline.h"
 #include "audiocodes.h"
+#include "filter_mysql.h"
 
 
 #ifndef DEBUG_ALL_PACKETS
@@ -69,7 +70,10 @@ inline
 #endif
 unsigned get_udp_data_len(iphdr2 *header_ip, udphdr2 *header_udp, char** data, u_char *packet, unsigned caplen) {
 	*data = (char*)header_udp + get_udp_header_len(header_udp);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_udp_header_len(header_udp)), 
+	u_int8_t proto;
+	return(MIN((unsigned)(header_ip->get_tot_len() - 
+			      header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+			      get_udp_header_len(header_udp)), 
 	       MIN((unsigned)(htons(header_udp->len) - sizeof(udphdr2)),
 		   (unsigned)(caplen - ((u_char*)*data - packet)))));
 }
@@ -86,7 +90,10 @@ inline
 #endif
 unsigned get_tcp_data_len(iphdr2 *header_ip, tcphdr2 *header_tcp, char** data, u_char *packet, unsigned caplen) {
 	*data = (char*)header_tcp + get_tcp_header_len(header_tcp);
-	return(MIN((unsigned)(header_ip->get_tot_len() - header_ip->get_hdr_size() - get_tcp_header_len(header_tcp)), 
+	u_int8_t proto;
+	return(MIN((unsigned)(header_ip->get_tot_len() - 
+			      header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+			      get_tcp_header_len(header_tcp)), 
 		   (unsigned)(caplen - ((u_char*)*data - packet))));
 }
 
@@ -296,10 +303,11 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
-	if(header_ip->get_protocol() == IPPROTO_IPIP) {
+	u_int8_t ip_protocol = header_ip->get_protocol();
+	if(ip_protocol == IPPROTO_IPIP) {
 		// ip in ip protocol
 		return(header_ip->get_hdr_size());
-	} else if(header_ip->get_protocol() == IPPROTO_GRE) {
+	} else if(ip_protocol == IPPROTO_GRE) {
 		// gre protocol
 		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip, caplen - header_ip_offset);
 		if(header_ip_next) {
@@ -307,13 +315,13 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		} else {
 			return(-1);
 		}
-	} else if(header_ip->get_protocol() == IPPROTO_UDP &&
+	} else if(ip_protocol == IPPROTO_UDP &&
 		  header_ip->get_tot_len() + header_ip_offset == caplen &&
 		  header_ip->get_tot_len() > header_ip->get_hdr_size() + sizeof(udphdr2) &&
 		  IS_RTP((char*)header_ip + header_ip->get_hdr_size() + sizeof(udphdr2), header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2))) {
 		return(0);
 	} else if(opt_udp_port_l2tp &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// Layer 2 Tunelling protocol / UDP
+		  ip_protocol == IPPROTO_UDP &&									// Layer 2 Tunelling protocol / UDP
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_l2tp &&	// check destination port (default 1701)
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_l2tp &&	// check source port (default 1701)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > (sizeof(udphdr2) + 10)) {		// check minimal length
@@ -332,7 +340,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		}
 		return(next_header_ip_offset);
 	} else if(opt_udp_port_tzsp &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// TZSP
+		  ip_protocol == IPPROTO_UDP &&									// TZSP
 		  ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_tzsp ||	// check destination port (default 0x9090)
 		   (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_tzsp) &&	// check source port (default 0x9090)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > 
@@ -356,7 +364,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		}
 		return(next_header_ip_offset);
 	} else if(opt_udp_port_vxlan &&
-		  header_ip->get_protocol() == IPPROTO_UDP &&									// VXLAN
+		  ip_protocol == IPPROTO_UDP &&									// VXLAN
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_vxlan &&	// check source port (default 0x9090)
 		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) > 
 							 (sizeof(udphdr2) + 8 + sizeof(ether_header) + sizeof(iphdr2))) {	// check minimal length
@@ -374,17 +382,17 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		return(next_header_ip_offset);
 	} else if(opt_audiocodes &&
 		  ((opt_udp_port_audiocodes &&
-		    header_ip->get_protocol() == IPPROTO_UDP &&
+		    ip_protocol == IPPROTO_UDP &&
 		    ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_udp_port_audiocodes ||
 		     (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_audiocodes)) ||
 		   (opt_tcp_port_audiocodes &&
-		    header_ip->get_protocol() == IPPROTO_TCP &&
+		    ip_protocol == IPPROTO_TCP &&
 		    ((unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_source() == opt_tcp_port_audiocodes ||
 		     (unsigned)((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_tcp_port_audiocodes)))) {
 		u_char *data;
 		unsigned datalen;
 		unsigned udp_tcp_header_length;
-		if(header_ip->get_protocol() == IPPROTO_UDP) {
+		if(ip_protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen =  get_udp_data_len(header_ip, header_udp,
 						    (char**)&data, packet, caplen);
@@ -405,7 +413,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 			return(header_ip->get_hdr_size() + udp_tcp_header_length + audiocodes.header_length_total);
 		}
 	} else if(opt_icmp_process_data &&
-		  header_ip->get_protocol() == IPPROTO_ICMP) {
+		  ip_protocol == IPPROTO_ICMP) {
 		// icmp protocol
 		unsigned int icmp_length = 8;
 		if(header_ip->get_tot_len() > header_ip->get_hdr_size() + icmp_length + sizeof(iphdr2) &&
@@ -700,11 +708,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
-				ppd->istcp = 0;
-				ppd->isother = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
+				ppd->flags.init();
+				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
 			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
-				ppd->istcp = 1;
-				ppd->isother = 0;
+				ppd->flags.init();
+				ppd->flags.tcp = 1;
 				// prepare packet pointers 
 				ppd->header_tcp = (tcphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
@@ -722,7 +730,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				      (unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_callagent || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_callagent))) {
 					// OK
 				} else if(opt_enable_ss7 && (ss7portmatrix[ppd->header_tcp->get_source()] || ss7portmatrix[ppd->header_tcp->get_dest()])) {
-					ppd->isother = 1;
+					ppd->flags.ss7 = 1;
+				} else if(cFilters::saveMrcp() && IS_MRCP(ppd->data, ppd->datalen)) {
+					ppd->flags.mrcp = 1;
 				} else {
 					// not interested in TCP packet other than SIP port
 					if(!opt_ipaccount && !DEBUG_ALL_PACKETS && (ppf & ppf_returnZeroInCheckData)) {
@@ -736,8 +746,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->header_udp->_source = ppd->header_tcp->_source;
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
 			} else if (opt_enable_ss7 && ppd->header_ip->get_protocol() == IPPROTO_SCTP) {
-				ppd->istcp = 0;
-				ppd->isother = 1;
+				ppd->flags.init();
+				ppd->flags.ss7 = 1;
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);
 			} else {
 				//packet is not UDP and is not TCP, we are not interested, go to the next packet (but if ipaccount is enabled, do not skip IP
@@ -759,8 +769,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			}
 			ppd->traillen = (int)(caplen - ((u_char*)ppd->header_ip - packet)) - ppd->header_ip->get_tot_len();
 		} else if(opt_enable_ss7) {
-			ppd->istcp = 0;
-			ppd->isother = 1;
+			ppd->flags.init();
+			ppd->flags.ss7 = 1;
 			ppd->data = (char*)packet;
 			ppd->datalen = caplen;
 		}
@@ -779,9 +789,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		   ppd->prevmd5s != NULL && 
 		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
-		   !(ppd->istcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->istcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->istcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
+		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
+		   !(ppd->flags.tcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;

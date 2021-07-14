@@ -28,7 +28,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			     TcpReassemblyData *data,
 			     u_char *ethHeader, u_int32_t ethHeaderLength,
 			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			     void *uData, TcpReassemblyLink *reassemblyLink,
+			     void *uData, void *uData2, void *uData2_last, TcpReassemblyLink *reassemblyLink,
 			     std::ostream *debugStream) {
 	++this->counterProcessData;
 	if(debugStream) {
@@ -118,8 +118,8 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->header_pt = tcpHeader;
 					packetS->packet = tcpPacket; 
 					packetS->_packet_alloc = true; 
-					packetS->istcp = 2;
-					packetS->isother = 0;
+					packetS->pflags.init();
+					packetS->pflags.tcp = 2;
 					packetS->header_ip_offset = ethHeaderLength; 
 					packetS->block_store = NULL; 
 					packetS->block_store_index =  0; 
@@ -127,32 +127,33 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->sensor_id_u = (u_int16_t)sensor_id;
 					packetS->sensor_ip = sensor_ip;
 					packetS->pid = pid;
-					packetS->is_ssl = false;
 					extern int opt_skinny;
 					extern char *sipportmatrix;
 					extern char *skinnyportmatrix;
-					packetS->is_skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
+					packetS->pflags.skinny = opt_skinny && (skinnyportmatrix[_port_src] || skinnyportmatrix[_port_dst]);
 					extern int opt_mgcp;
 					extern unsigned opt_tcp_port_mgcp_gateway;
 					extern unsigned opt_tcp_port_mgcp_callagent;
-					packetS->is_mgcp = opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
-									(unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent);
-					packetS->is_need_sip_process = !packetS->isother &&
-								       (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
-									packetS->is_skinny ||
-									packetS->is_mgcp);
+					packetS->pflags.mgcp = opt_mgcp && ((unsigned)_port_src == opt_tcp_port_mgcp_gateway || (unsigned)_port_dst == opt_tcp_port_mgcp_gateway ||
+									    (unsigned)_port_src == opt_tcp_port_mgcp_callagent || (unsigned)_port_dst == opt_tcp_port_mgcp_callagent);
+					packetS->need_sip_process = !packetS->pflags.other_processing() &&
+								    (sipportmatrix[_port_src] || sipportmatrix[_port_dst] ||
+								     packetS->pflags.skinny ||
+								     packetS->pflags.mgcp);
 					packetS->init2();
-					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS);
+					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS, (packet_s_process*)uData2_last);
 				} else {
+					packet_flags pflags;
+					pflags.init();
+					pflags.tcp = 2;
 					preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
-							true, 
 							#if USE_PACKET_NUMBER
 							0, 
 							#endif
 							_ip_src, _port_src, _ip_dst, _port_dst, 
 							_datalen, dataOffset,
 							handle_index, tcpHeader, tcpPacket, true, 
-							2, false, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+							pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
 							NULL, 0, dlt, sensor_id, sensor_ip, pid,
 							false);
 				}

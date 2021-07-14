@@ -39,6 +39,9 @@
 #define	__in6_u	__u6_addr
 #endif
 #define IP_STR_MAX_LENGTH 50
+    
+#define IPPROTO_ESP_HEADER_SIZE 8
+#define IPPROTO_ESP_FOOTER_SIZE 14
 
 
 struct vmIP {
@@ -477,25 +480,43 @@ struct ip6hdr2 {
 			frag->ip6f_offlg = 0;
 		}
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t _get_protocol() {
 		return(get_ext_headers(NULL, 0, NULL));
+	}
+	inline u_int8_t get_protocol() {
+		u_int8_t proto = _get_protocol();
+		if(proto == IPPROTO_ESP) {
+			proto = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1);
+		}
+		return(proto);
 	}
 	inline void set_protocol(u_int8_t protocol) {
 		nxt = protocol;
 	}
-	inline u_int16_t get_hdr_size() {
+	inline u_int16_t _get_hdr_size() {
 		return(get_total_headers_len());
+	}
+	inline u_int16_t get_hdr_size(u_int8_t *proto_rslt = NULL) {
+		u_int8_t proto;
+		u_int16_t hdr_size = get_total_headers_len(&proto);
+		if(proto_rslt) {
+			*proto_rslt = proto;
+		}
+		if(hdr_size == (u_int16_t)-1) {
+			return(-1);
+		}
+		if(proto == IPPROTO_ESP) {
+			hdr_size += IPPROTO_ESP_HEADER_SIZE;
+		}
+		return(hdr_size);
 	}
 	inline bool is_ext_headers() {
 		return(is_ext_header(nxt));
 	}
-	static inline bool is_ext_headers(u_char *packet, u_int16_t iph_offset) {
-		return(((ip6hdr2*)(packet + iph_offset))->is_ext_headers());
-	}
 	u_int8_t get_ext_headers(u_int8_t *ext_headers_type, u_int8_t ext_headers_max, u_int8_t *ext_headers_count);
-	u_int16_t get_ext_headers_len();
-	inline u_int16_t get_total_headers_len() {
-		u_int16_t ext_headers_len = get_ext_headers_len();
+	u_int16_t get_ext_headers_len(u_int8_t *proto = NULL);
+	inline u_int16_t get_total_headers_len(u_int8_t *proto = NULL) {
+		u_int16_t ext_headers_len = get_ext_headers_len(proto);
 		if(ext_headers_len == (u_int16_t)-1) {
 			return(-1);
 		}
@@ -702,11 +723,26 @@ struct iphdr2 {
 		}
 		#endif
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t _get_protocol() {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
 			return(_protocol);
+		#if VM_IPV6
+		} else {
+			return(((ip6hdr2*)this)->_get_protocol());
+		}
+		#endif
+	}
+	inline u_int8_t get_protocol() {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			if(_protocol == IPPROTO_ESP) {
+				return(*(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1));
+			} else {
+				return(_protocol);
+			}
 		#if VM_IPV6
 		} else {
 			return(((ip6hdr2*)this)->get_protocol());
@@ -724,16 +760,33 @@ struct iphdr2 {
 		}
 		#endif
 	}
-	inline u_int16_t get_hdr_size() {
+	inline u_int16_t get_hdr_size(u_int8_t *proto_rslt = NULL) {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
-			return(sizeof(iphdr2));
+			u_int16_t hdr_size = sizeof(iphdr2);
+			if(_protocol == IPPROTO_ESP) {
+				hdr_size += IPPROTO_ESP_HEADER_SIZE;
+			}
+			if(proto_rslt) {
+				*proto_rslt = _protocol;
+			}
+			return(hdr_size);
 		#if VM_IPV6
 		} else {
-			return(((ip6hdr2*)this)->get_hdr_size());
+			return(((ip6hdr2*)this)->get_hdr_size(proto_rslt));
 		}
 		#endif
+	}
+	inline u_int16_t get_footer_size(u_int8_t proto = (u_int8_t)-1) {
+		if(proto == (u_int8_t)-1) {
+			proto = _get_protocol();
+		}
+		if(proto == IPPROTO_ESP) {
+			u_int8_t padding = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE);
+			return(IPPROTO_ESP_FOOTER_SIZE + padding);
+		}
+		return(0);
 	}
 	inline u_int16_t get_check() {
 		#if VM_IPV6

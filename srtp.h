@@ -12,6 +12,8 @@
 #include <srtp/srtp.h>
 #endif
 
+#include "dtls.h"
+
 
 class RTPsecure {
 public:
@@ -119,6 +121,11 @@ public:
 	bool setCryptoConfig();
 	void addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
 	bool existsNewerCryptoConfig(u_int64_t time_us);
+	inline bool need_prepare_decrypt() {
+		return(!cryptoConfigVector.size());
+	}
+	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
+	bool is_dtls();
 	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
@@ -128,7 +135,13 @@ public:
 	void setError(eError error);
 	void clearError();
 	bool isOK() {
-	     return(error == err_na);
+		return(error == err_na);
+	}
+	bool isOK_decrypt_rtp() {
+		return(decrypt_rtp_ok > 0);
+	}
+	bool isOK_decrypt_rtcp() {
+		return(decrypt_rtcp_ok > 0);
 	}
 private:
 	bool init();
@@ -199,6 +212,10 @@ private:
 	eError error;
 	int rtcp_unencrypt_header_len;
 	int rtcp_unencrypt_footer_len;
+	unsigned decrypt_rtp_ok;
+	unsigned decrypt_rtp_failed;
+	unsigned decrypt_rtcp_ok;
+	unsigned decrypt_rtcp_failed;
 };
 
 

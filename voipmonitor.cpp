@@ -180,6 +180,9 @@ using namespace std;
 /* global variables */
 
 extern Calltable *calltable;
+#if DEBUG_ASYNC_TAR_WRITE
+extern cDestroyCallsInfo *destroy_calls_info;
+#endif
 extern volatile int calls_counter;
 extern volatile int registers_counter;
 unsigned int opt_openfile_max = 65535;
@@ -207,9 +210,11 @@ int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTPvideo = 0;
 int opt_saveRTPvideo_only_header = 0;
 int opt_processingRTPvideo = 0;
+int opt_saveMRCP = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
+bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
@@ -387,6 +392,8 @@ int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 int process_rtp_packets_distribute_threads_use = 0;
+int opt_pre_process_packets_next_thread = 0;
+int opt_pre_process_packets_next_thread_max = 1;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -402,6 +409,7 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
+bool opt_ss7_use_sam_subsequent_number = false;
 int opt_ss7_type_callid = 1;
 int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
@@ -1156,7 +1164,9 @@ cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 
 #include <stdio.h>
 #include <pthread.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/err.h>
+#endif
  
 #define MUTEX_TYPE       pthread_mutex_t
 #define MUTEX_SETUP(x)   pthread_mutex_init(&(x), NULL)
@@ -1185,7 +1195,9 @@ void init_management_functions(void);
  
 void handle_error(const char *file, int lineno, const char *msg){
      fprintf(stderr, "** %s:%d %s\n", file, lineno, msg);
+#ifdef HAVE_OPENSSL
      ERR_print_errors_fp(stderr);
+#endif
      /* exit(-1); */ 
  }
  
@@ -1198,10 +1210,12 @@ static MUTEX_TYPE *mutex_buf= NULL;
 #endif
 static void locking_function(int mode, int n, const char * /*file*/, int /*line*/)
 {
+#ifdef HAVE_OPENSSL
   if (mode & CRYPTO_LOCK)
     MUTEX_LOCK(mutex_buf[n]);
   else
     MUTEX_UNLOCK(mutex_buf[n]);
+#endif
 }
  
 static unsigned long id_function(void)
@@ -1214,8 +1228,8 @@ static unsigned long id_function(void)
  
 int thread_setup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   mutex_buf = new FILE_LINE(42001) MUTEX_TYPE[CRYPTO_num_locks()];
   if (!mutex_buf)
     return 0;
@@ -1224,12 +1238,15 @@ int thread_setup(void)
   CRYPTO_set_id_callback(id_function);
   CRYPTO_set_locking_callback(locking_function);
   return 1;
+#else
+  return 0;
+#endif
 }
  
 int thread_cleanup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   if (!mutex_buf)
     return 0;
   CRYPTO_set_id_callback(NULL);
@@ -1239,6 +1256,9 @@ int thread_cleanup(void)
   delete [] mutex_buf;
   mutex_buf = NULL;
   return 1;
+#else
+  return 0;
+#endif
 }
 
 char *semaphoreLockName(int index) {
@@ -1884,15 +1904,13 @@ void *storing_cdr( void */*dummy*/ ) {
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
 				calltable->unlock_calls_queue();
-				bool isPcapClose = call->isPcapsClose();
-				if(!isPcapClose) {
-					// Close SIP and SIP+RTP dump files ASAP to save file handles
-					call->getPcap()->close();
-					call->getPcapSip()->close();
+				if(call->closePcaps() || call->closeGraphs() ||
+				   !call->isEmptyChunkBuffersCount()) {
+					++calls_queue_position;
+					calltable->lock_calls_queue();
+					continue;
 				}
-				if(isPcapClose ?
-				    call->isEmptyChunkBuffersCount() :
-				    call->isReadyForWriteCdr()) {
+				if(call->isReadyForWriteCdr()) {
 					if(storing_cdr_next_threads_count) {
 						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
 						if(!mod) {
@@ -2535,10 +2553,7 @@ void hot_restart_with_json_config(const char *jsonConfig) {
 }
 
 void reload_capture_rules() {
-	IPfilter::prepareReload();
-	TELNUMfilter::prepareReload();
-	DOMAINfilter::prepareReload();
-	SIP_HEADERfilter::prepareReload();
+	cFilters::prepareReload();
 }
 
 #ifdef BACKTRACE
@@ -3745,10 +3760,7 @@ int main(int argc, char *argv[]) {
 	if(!is_terminating()) {
 	
 		if(opt_test) {
-			IPfilter::loadActive();
-			TELNUMfilter::loadActive();
-			DOMAINfilter::loadActive();
-			SIP_HEADERfilter::loadActive();
+			cFilters::loadActive();
 			_parse_packet_global_process_packet.setStdParse();
 			test();
 			if(sqlStore) {
@@ -3969,6 +3981,9 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
+	#if DEBUG_ASYNC_TAR_WRITE
+	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
+	#endif
 	
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {
@@ -4095,10 +4110,7 @@ int main_init_read() {
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
-	IPfilter::loadActive(sqlDbInit);
-	TELNUMfilter::loadActive(sqlDbInit);
-	DOMAINfilter::loadActive(sqlDbInit);
-	SIP_HEADERfilter::loadActive(sqlDbInit);
+	cFilters::loadActive(sqlDbInit);
 
 	_parse_packet_global_process_packet.setStdParse();
 
@@ -4701,10 +4713,7 @@ void main_term_read() {
 		pthread_join(cachedir_thread, NULL);
 	}
 	
-	IPfilter::freeActive();
-	TELNUMfilter::freeActive();
-	DOMAINfilter::freeActive();
-	SIP_HEADERfilter::freeActive();
+	cFilters::freeActive();
 	
 	if(opt_enable_fraud) {
 		termFraud();
@@ -4820,6 +4829,10 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	#if DEBUG_ASYNC_TAR_WRITE
+	delete destroy_calls_info;
+	destroy_calls_info = NULL;
+	#endif
 	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
@@ -6726,6 +6739,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(42155) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_max", &opt_pre_process_packets_next_thread_max))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS));
 					addConfigItem((new FILE_LINE(42156) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
@@ -6834,6 +6852,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("savertp_video"))
 				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savemrcp", &opt_saveMRCP));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
@@ -6844,6 +6863,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
@@ -7210,6 +7230,7 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7_use_sam_subsequent_number", &opt_ss7_use_sam_subsequent_number));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
 					->disableNo()
 					->addValues("cic_dpc_opc:1|cic:2")
@@ -8954,6 +8975,8 @@ void set_default_values() {
 		}
 		p++;
         }
+	packet_s_process_calls_info::set_size_of();
+	packet_s_process_0::set_size_of();
 }
 
 void create_spool_dirs() {
@@ -10102,6 +10125,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
 		opt_srtp_rtp_decrypt= yesno(value);
 	}
+	if((value = ini.GetValue("general", "srtp_rtp_dtls", NULL))) {
+		opt_srtp_rtp_dtls_decrypt= yesno(value);
+	}
 	if((value = ini.GetValue("general", "srtp_rtp_audio", NULL))) {
 		opt_srtp_rtp_audio_decrypt= yesno(value);
 	}
@@ -10150,6 +10176,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "savemrcp", NULL))) {
+		opt_saveMRCP = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignorertcpjitter", NULL))) {
 		opt_ignoreRTCPjitter = atoi(value);
@@ -10925,6 +10954,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_rtp_threads_max", NULL))) {
 		opt_enable_process_rtp_packet_max = min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS);
 	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread", NULL))) {
+		opt_pre_process_packets_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS) : yesno(value);
+	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread_max", NULL))) {
+		opt_pre_process_packets_next_thread_max = min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread", NULL))) {
 		opt_process_rtp_packets_hash_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) : yesno(value);
 	}
@@ -10937,6 +10972,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "ss7", NULL))) {
 		opt_enable_ss7 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ss7_use_sam_subsequent_number", NULL))) {
+		opt_ss7_use_sam_subsequent_number = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ss7callid", NULL))) {
 		opt_ss7_type_callid = !strcasecmp(value, "cic") ? 2 : 1;

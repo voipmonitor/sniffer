@@ -249,8 +249,8 @@ Register::Register(Call *call) {
 	sipcallerport = call->sipcallerport[0];
 	sipcalledport = call->sipcalledport[0];
 	char *tmp_str;
-	to_num = REG_NEW_STR(call->called);
-	to_domain = REG_NEW_STR(call->called_domain);
+	to_num = REG_NEW_STR(call->called());
+	to_domain = REG_NEW_STR(call->called_domain());
 	contact_num = REG_NEW_STR(call->contact_num);
 	contact_domain = REG_NEW_STR(call->contact_domain);
 	digest_username = REG_NEW_STR(call->digest_username);
@@ -543,6 +543,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		if(existsColumns.register_failed_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
 		}
+		if (existsColumns.register_failed_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
+		}
 	} else {
 		reg.add(state->expires, "expires");
 		reg.add(state->state <= rs_Expired ? state->state : rs_OK, "state");
@@ -555,6 +558,9 @@ void Register::saveStateToDb(RegisterState *state, bool enableBatchIfPossible) {
 		}
 		if(existsColumns.register_state_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
+		}
+		if (existsColumns.register_state_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 	}
 	if(state->id_sensor > -1) {

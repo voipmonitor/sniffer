@@ -20,46 +20,48 @@
 #define _FLAG_RTP_VIDEO_HEADER		(1UL << 4)
 #define _FLAG_RTP_VIDEO_CDR_ONLY	(1UL << 5)
 #define _FLAG_NORTP_VIDEO      		(1UL << 6)
-#define _FLAG_RTCP			(1UL << 7)
-#define _FLAG_NORTCP     		(1UL << 8)
-#define _FLAG_SIP			(1UL << 9)
-#define _FLAG_NOSIP      		(1UL << 10)
-#define _FLAG_REGISTER			(1UL << 11)
-#define _FLAG_NOREGISTER		(1UL << 12)
-#define _FLAG_GRAPH			(1UL << 13)
-#define _FLAG_NOGRAPH    		(1UL << 14)
-#define _FLAG_AUDIO			(1UL << 15)
-#define _FLAG_AUDIO_WAV			(1UL << 16)
-#define _FLAG_AUDIO_OGG			(1UL << 17)
-#define _FLAG_NOWAV      		(1UL << 18)
-#define _FLAG_SKIP       		(1UL << 19)
-#define _FLAG_NOSKIP     		(1UL << 20)
-#define _FLAG_SCRIPT     		(1UL << 21)
-#define _FLAG_NOSCRIPT   		(1UL << 22)
-#define _FLAG_AMOSLQO    		(1UL << 23)
-#define _FLAG_BMOSLQO    		(1UL << 24)
-#define _FLAG_ABMOSLQO   		(1UL << 25)
-#define _FLAG_NOMOSLQO   		(1UL << 26)
-#define _FLAG_HIDEMSG			(1UL << 27)
-#define _FLAG_SHOWMSG			(1UL << 28)
-#define _FLAG_SPOOL_2_SET		(1UL << 29)
-#define _FLAG_SPOOL_2_UNSET		(1UL << 30)
-#define _FLAG_DTMF_DB			(1UL << 31)
-#define _FLAG_NODTMF_DB			(1UL << 32)
-#define _FLAG_DTMF_PCAP			(1UL << 33)
-#define _FLAG_NODTMF_PCAP		(1UL << 34)
-#define _FLAG_OPTIONS_DB		(1UL << 35)
-#define _FLAG_NOOPTIONS_DB		(1UL << 36)
-#define _FLAG_OPTIONS_PCAP		(1UL << 37)
-#define _FLAG_NOOPTIONS_PCAP		(1UL << 38)
-#define _FLAG_NOTIFY_DB			(1UL << 39)
-#define _FLAG_NONOTIFY_DB		(1UL << 40)
-#define _FLAG_NOTIFY_PCAP		(1UL << 41)
-#define _FLAG_NONOTIFY_PCAP		(1UL << 42)
-#define _FLAG_SUBSCRIBE_DB		(1UL << 43)
-#define _FLAG_NOSUBSCRIBE_DB		(1UL << 44)
-#define _FLAG_SUBSCRIBE_PCAP		(1UL << 45)
-#define _FLAG_NOSUBSCRIBE_PCAP		(1UL << 46)
+#define _FLAG_MRCP			(1UL << 7)
+#define _FLAG_NOMRCP     		(1UL << 8)
+#define _FLAG_RTCP			(1UL << 9)
+#define _FLAG_NORTCP     		(1UL << 10)
+#define _FLAG_SIP			(1UL << 11)
+#define _FLAG_NOSIP      		(1UL << 12)
+#define _FLAG_REGISTER			(1UL << 13)
+#define _FLAG_NOREGISTER		(1UL << 14)
+#define _FLAG_GRAPH			(1UL << 15)
+#define _FLAG_NOGRAPH    		(1UL << 16)
+#define _FLAG_AUDIO			(1UL << 17)
+#define _FLAG_AUDIO_WAV			(1UL << 18)
+#define _FLAG_AUDIO_OGG			(1UL << 19)
+#define _FLAG_NOWAV      		(1UL << 20)
+#define _FLAG_SKIP       		(1UL << 21)
+#define _FLAG_NOSKIP     		(1UL << 22)
+#define _FLAG_SCRIPT     		(1UL << 23)
+#define _FLAG_NOSCRIPT   		(1UL << 24)
+#define _FLAG_AMOSLQO    		(1UL << 25)
+#define _FLAG_BMOSLQO    		(1UL << 26)
+#define _FLAG_ABMOSLQO   		(1UL << 27)
+#define _FLAG_NOMOSLQO   		(1UL << 28)
+#define _FLAG_HIDEMSG			(1UL << 29)
+#define _FLAG_SHOWMSG			(1UL << 30)
+#define _FLAG_SPOOL_2_SET		(1UL << 31)
+#define _FLAG_SPOOL_2_UNSET		(1UL << 32)
+#define _FLAG_DTMF_DB			(1UL << 33)
+#define _FLAG_NODTMF_DB			(1UL << 34)
+#define _FLAG_DTMF_PCAP			(1UL << 35)
+#define _FLAG_NODTMF_PCAP		(1UL << 36)
+#define _FLAG_OPTIONS_DB		(1UL << 37)
+#define _FLAG_NOOPTIONS_DB		(1UL << 38)
+#define _FLAG_OPTIONS_PCAP		(1UL << 39)
+#define _FLAG_NOOPTIONS_PCAP		(1UL << 40)
+#define _FLAG_NOTIFY_DB			(1UL << 41)
+#define _FLAG_NONOTIFY_DB		(1UL << 42)
+#define _FLAG_NOTIFY_PCAP		(1UL << 43)
+#define _FLAG_NONOTIFY_PCAP		(1UL << 44)
+#define _FLAG_SUBSCRIBE_DB		(1UL << 45)
+#define _FLAG_NOSUBSCRIBE_DB		(1UL << 46)
+#define _FLAG_SUBSCRIBE_PCAP		(1UL << 47)
+#define _FLAG_NOSUBSCRIBE_PCAP		(1UL << 48)
 
 #define MAX_PREFIX 64
 
@@ -68,6 +70,7 @@ struct filter_db_row_base {
 		direction = 0;
 		rtp = 0;
 		rtp_video = 0;
+		mrcp = 0;
 		rtcp = 0;
 		sip = 0;
 		reg = 0;
@@ -86,6 +89,7 @@ struct filter_db_row_base {
 	int direction;
 	int rtp;
 	int rtp_video;
+	int mrcp;
 	int rtcp;
 	int sip;
 	int reg;
@@ -109,7 +113,7 @@ protected:
 	void _loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow);
 	void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
-	unsigned long int getFlagsFromBaseData(filter_db_row_base *baseRow);
+	unsigned long int getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags);
 	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags);
 };
 
@@ -134,13 +138,13 @@ private:
 public: 
         IPfilter();
         ~IPfilter();
-        void load(SqlDb *sqlDb = NULL);
+        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	int _add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool enableReload = false);
-	static void loadActive(SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr);
+	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload();
+	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -186,15 +190,15 @@ private:
 public: 
         TELNUMfilter();
         ~TELNUMfilter();
-        void load(SqlDb *sqlDb = NULL);
-	void loadFile();
+        void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
 	int _add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst);
         static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
-	static int add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst, bool enableReload = false);
-	static void loadActive(SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst);
+	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload();
+	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -234,13 +238,13 @@ private:
 public: 
 	DOMAINfilter();
 	~DOMAINfilter();
-	void load(SqlDb *sqlDb = NULL);
+	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	int _add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst, bool enableReload = false);
-	static void loadActive(SqlDb *sqlDb = NULL);
+	static int add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst);
+	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload();
+	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -287,16 +291,16 @@ private:
 public: 
 	SIP_HEADERfilter();
 	~SIP_HEADERfilter();
-	void load(SqlDb *sqlDb = NULL);
-	void loadFile();
+	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
+	void loadFile(u_int32_t *global_flags);
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags);
         static void dump2man(ostringstream &oss);
 	void _addNodes(ParsePacket *parsePacket);
-	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool enableReload = false);
+	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags);
 	static void addNodes(ParsePacket *parsePacket);
-	static void loadActive(SqlDb *sqlDb = NULL);
+	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
-	static void prepareReload();
+	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static unsigned long getLoadTime() {
 		return(loadTime);
@@ -323,6 +327,37 @@ private:
 	static volatile int _sync_reload;
 };
 
+class cFilters {
+public:
+	enum eGlobalFlags {
+		_gf_mrcp = 1 << 0
+	};
+public:
+	static void loadActive(SqlDb *sqlDb = NULL);
+	static void prepareReload(SqlDb *sqlDb = NULL);
+	static void applyReload();
+	static void freeActive();
+	static void lock_reload() {
+		while(__sync_lock_test_and_set(&_sync_reload, 1));
+	}
+	static void unlock_reload() {
+		__sync_lock_release(&_sync_reload);
+	}
+	static inline u_int32_t getGlobalFlags() {
+		return(global_flags);
+	}
+	static inline bool saveMrcp() {
+		extern int opt_saveMRCP;
+		return(opt_saveMRCP ||
+		       (getGlobalFlags() & _gf_mrcp));
+	}
+public:
+	static u_int32_t global_flags;
+	static u_int32_t reload_global_flags;
+	static volatile bool reload_do;
+	static volatile int _sync_reload;
+};
+
 inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_saveSIP;
 	extern int opt_saveRTP;
@@ -330,6 +365,7 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_saveRTPvideo;
 	extern int opt_saveRTPvideo_only_header;
 	extern int opt_processingRTPvideo;
+	extern int opt_saveMRCP;
 	extern int opt_saveRTCP;
 	extern int opt_saveWAV;
 	extern int opt_audio_format;
@@ -363,6 +399,9 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	}
 	if(opt_processingRTPvideo) {
 		flags |= FLAG_PROCESSING_RTP_VIDEO;
+	}
+	if(opt_saveMRCP) {
+		flags |= FLAG_SAVEMRCP;
 	}
 	if(opt_saveRTCP) {
 		flags |= FLAG_SAVERTCP;

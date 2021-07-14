@@ -119,6 +119,8 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	if(stack->sess->version == TLS1_3_VERSION)
 	{
 		if(tls_decrypt_record(stack->sess, data, len, record_type, record_version, is_from_server, buf, buf_len, &buf_len)) {
+			while(buf_len > 0 && buf[buf_len - 1] == 0) --buf_len;
+			if(buf_len > 0) --buf_len;
 			*out = buf;
 			*out_len = buf_len;
 			return(DSSL_RC_OK);

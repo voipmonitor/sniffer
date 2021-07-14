@@ -289,6 +289,7 @@ struct sFraudEventInfo {
 		block_store = NULL;
 		block_store_index = 0; 
 		dlt = 0;
+		lock_packet = 0;
 	}
 	eTypeEventInfo typeEventInfo;
 	vmIP src_ip;
@@ -299,6 +300,7 @@ struct sFraudEventInfo {
 	struct pcap_block_store *block_store;
 	u_int32_t block_store_index; 
 	u_int16_t dlt;
+	bool lock_packet;
 };
 
 struct sFraudRegisterInfo_id {
@@ -1185,6 +1187,7 @@ public:
 	bool needCustomHeaders() {
 		return(useUserRestriction_custom_headers);
 	}
+	void waitForEmptyQueues(int timeout = 60);
 private:
 	void pushToCallQueue(sFraudCallInfo *callInfo);
 	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);

@@ -1266,6 +1266,8 @@ struct sExistsColumns {
 	bool register_failed_vlan;
 	bool register_state_sipcallerdip_encaps;
 	bool register_failed_sipcallerdip_encaps;
+	bool register_state_digestrealm;
+	bool register_failed_digestrealm;
 	bool sip_msg_time_ms;
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;

@@ -2,18 +2,12 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "27.8"
+#define RTPSENSOR_VERSION "28.5"
 #define NAT
 
 #define FORMAT_WAV	1
 #define FORMAT_OGG	2
 #define REGISTER_CLEAN_PERIOD 60	// clean register table for expired items every 60 seconds
-
-#define TYPE_SIP 1
-#define TYPE_RTP 2
-#define TYPE_RTCP 3
-#define TYPE_SKINNY 4
-#define TYPE_MGCP 5
 
 #define STORE_PROC_ID_CDR 10
 #define STORE_PROC_ID_CDR_REDIRECT 11
@@ -51,12 +45,15 @@
 
 #define DEBUG_QUEUE_RTP_THREAD false
 
+#define DEBUG_ASYNC_TAR_WRITE false
+
 #define HEAPSAFE true
 
 #define RQUEUE_SAFE true
 
 #define TAR_PROF false
 
+#define MAX_PRE_PROCESS_PACKET_NEXT_THREADS 4
 #define MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS 4
 #define MAX_PROCESS_RTP_PACKET_THREADS 4
 

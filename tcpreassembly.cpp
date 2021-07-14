@@ -1728,7 +1728,7 @@ void TcpReassemblyLink::complete_normal(bool final) {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
 			}
@@ -1787,7 +1787,7 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 	while(this->ok_streams.size()) {
 		TcpReassemblyStream *stream = this->ok_streams[0];
@@ -2020,7 +2020,7 @@ void TcpReassemblyLink::complete_crazy(bool final, bool eraseCompletedStreams) {
 					reassemblyData,
 					this->ethHeader, this->ethHeaderLength,
 					this->handle_index, this->dlt, this->sensor_id, this->sensor_ip, this->pid,
-					this->uData, this,
+					this->uData, this->uData2, this->uData2_last, this,
 					ENABLE_DEBUG(reassembly->getType(), _debug_save) ? _debug_stream : NULL);
 				reassemblyData = NULL;
 			}
@@ -2090,11 +2090,13 @@ void TcpReassemblyLink::createEthHeader(u_char *packet, int dlt) {
 }
 
 void TcpReassemblyLink::extCleanup(int id, bool all) {
+	/*
 	syslog(LOG_INFO, "TCPREASSEMBLY EXT CLEANUP %i: link %s:%u -> %s:%u size: %zd",
 	       id,
 	       this->ip_src.getString().c_str(), this->port_src.getPort(),
 	       this->ip_dst.getString().c_str(), this->port_dst.getPort(),
 	       this->queueStreams.size());
+	*/
 	if(reassembly->log) {
 		ostringstream outStr;
 		outStr << fixed 
@@ -2552,7 +2554,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 			this->_push(packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,
 				    packet.handle_index, packet.dlt, packet.sensor_id, packet.sensor_ip, packet.pid,
-				    packet.uData, packet.isSip);
+				    packet.uData, packet.uData2, packet.isSip);
 			if(packet.alloc_packet) {
 				delete packet.header;
 				delete [] packet.packet;
@@ -2583,7 +2585,7 @@ void TcpReassembly::addLog(const char *logString) {
 void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 			     pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			     void *uData, bool isSip) {
+			     void *uData, void *uData2, bool isSip) {
  
 	if(_ENABLE_DEBUG(type, true) && !_debug_stream) {
 		if(sverb.tcpreassembly_debug_file) {
@@ -2623,6 +2625,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		_packet.sensor_ip = sensor_ip;
 		_packet.pid = pid;
 		_packet.uData = uData;
+		_packet.uData2 = uData2;
 		_packet.isSip = isSip;
 		this->packetQueue.push(_packet);
 	} else {
@@ -2632,7 +2635,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		this->_push(header, header_ip, packet,
 			    block_store, block_store_index,
 			    handle_index, dlt, sensor_id, sensor_ip, pid,
-			    uData, isSip);
+			    uData, uData2, isSip);
 		if(this->enablePushLock) {
 			this->unlock_push();
 		}
@@ -2677,7 +2680,7 @@ bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
 void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 			  pcap_block_store *block_store, int block_store_index,
 			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			  void *uData, bool isSip) {
+			  void *uData, void *uData2, bool isSip) {
 
 	tcphdr2 *header_tcp_pointer;
 	tcphdr2 header_tcp;
@@ -2697,7 +2700,10 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	if(header->len > header->caplen) {
 		datalen += (header->len - header->caplen);
 	}
-	u_int32_t tcp_data_length = header_ip->get_tot_len() - header_ip->get_hdr_size() - header_tcp_pointer->doff * 4;
+	u_int8_t proto;
+	u_int32_t tcp_data_length = header_ip->get_tot_len() - 
+				    header_ip->get_hdr_size(&proto) - header_ip->get_footer_size(proto) - 
+				    header_tcp_pointer->doff * 4;
 	if(datalen > tcp_data_length) {
 		datalen = tcp_data_length;
 	}
@@ -2832,6 +2838,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		    (datalen > 4 && !memcmp(data, "GET ", 4)))) {
 			link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
 		}
+		link->uData2_last = uData2;
 	} else {
 		if(!this->enableCrazySequence &&
 		   header_tcp.syn && !header_tcp.ack) {
@@ -2850,7 +2857,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				link = new FILE_LINE(36011) TcpReassemblyLink(this, header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest(),
 									      packet, header_ip,
 									      handle_index, dlt, sensor_id, sensor_ip, pid,
-									      uData);
+									      uData, uData2);
 				this->links[id] = link;
 				create_new_link = true;
 			}
@@ -2871,7 +2878,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				link = new FILE_LINE(36012) TcpReassemblyLink(this, header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest(),
 									      packet, header_ip,
 									      handle_index, dlt, sensor_id, sensor_ip, pid,
-									      uData);
+									      uData, uData2);
 				this->links[id] = link;
 				create_new_link = true;
 				link->state = TcpReassemblyLink::STATE_SYN_FORCE_OK;
@@ -2895,7 +2902,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			link = new FILE_LINE(36013) TcpReassemblyLink(this, header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest(),
 								      packet, header_ip,
 								      handle_index, dlt, sensor_id, sensor_ip, pid,
-								      uData);
+								      uData, uData2);
 			this->links[id] = link;
 			create_new_link = true;
 			if(this->enableCrazySequence) {

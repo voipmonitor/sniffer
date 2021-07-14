@@ -38,7 +38,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
 			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			  void */*uData*/, TcpReassemblyLink *reassemblyLink,
+			  void */*uData*/, void */*uData2*/, void */*uData2_last*/, TcpReassemblyLink *reassemblyLink,
 			  std::ostream *debugStream) {
 	++this->counterProcessData;
 	if(debugStream) {
@@ -284,15 +284,18 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		unsigned dataOffset = ethHeaderLength + 
 				      iphdrSize +
 				      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
+		packet_flags pflags;
+		pflags.init();
+		pflags.tcp = 2;
+		pflags.ssl = true;
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			true, 
 			#if USE_PACKET_NUMBER
 			0, 
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, tcpHeader, tcpPacket, true, 
-			2, false, (iphdr2*)(tcpPacket + ethHeaderLength), (iphdr2*)(tcpPacket + ethHeaderLength),
+			pflags, (iphdr2*)(tcpPacket + ethHeaderLength), (iphdr2*)(tcpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	} else {
@@ -306,15 +309,17 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		unsigned dataOffset = ethHeaderLength + 
 				      iphdrSize + 
 				      sizeof(udphdr2);
+		packet_flags pflags;
+		pflags.init();
+		pflags.ssl = true;
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			true, 
 			#if USE_PACKET_NUMBER
 			0,
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, udpHeader, udpPacket, true, 
-			false, false, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
+			pflags, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	}
