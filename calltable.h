@@ -1780,6 +1780,8 @@ private:
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
 	bool set_call_counter;
 	bool set_register_counter;
+	double price_customer;
+	double price_operator;
 friend class RTPsecure;
 };
 

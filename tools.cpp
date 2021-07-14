@@ -1195,6 +1195,26 @@ tm getBeginDate(tm dateTime, const char *timezone) {
 	return(rslt);
 }
 
+tm getNextBeginMonth(tm dateTime, const char *timezone) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	if(rslt.tm_mon < 11) {
+		++rslt.tm_mon;
+	} else {
+		rslt.tm_mon = 0;
+		++rslt.tm_year;
+	}
+	time_t time_s = mktime(&rslt, timezone);
+	time_s += 60 * 60 * 36;
+	rslt = time_r(&time_s, timezone ? timezone : "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm getNextBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;
@@ -6574,6 +6594,17 @@ int cDbTablesContent::getCountRows(unsigned table_enum) {
 		return(iter->second->rows.size());
 	}
 	return(-1);
+}
+
+bool cDbTablesContent::existsColumn(unsigned table_enum, const char *column, unsigned rowIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end() && rowIndex < iter->second->rows.size()) {
+		int _columnIndex = iter->second->header.items->findIndex(column);
+		if(_columnIndex >= 0 && _columnIndex < (int)iter->second->rows[rowIndex].items->size) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 const char *cDbTablesContent::getValue_str(unsigned table_enum, const char *column, bool *null, unsigned rowIndex, int *columnIndex) {

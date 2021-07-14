@@ -127,6 +127,8 @@ struct sVerbose {
 	int suppress_fork;
 	char *trace_call;
 	int energylevels;
+	int cdr_stat_only;
+	int cdr_stat_interval_store;
 	int _debug1;
 	int _debug2;
 	int _debug3;

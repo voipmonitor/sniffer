@@ -726,6 +726,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	set_call_counter = false;
 	set_register_counter = false;
+	
+	price_customer = 0;
+	price_operator = 0;
 }
 
 u_int64_t Call::counter_s = 0;
@@ -4465,7 +4468,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_sipResponse:
 		if(lastSIPresponse[0]) {
 			v_str = lastSIPresponse;
-			if(chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
+			if(chartsCache && chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
 				v_str.resize(chartsCache->maxLengthSipResponseText);
 			}
 		} else {
@@ -4497,6 +4500,20 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_domain_dst:
 		v_str = called_domain;
+		break;
+	case _chartType_price_customer:
+		if(price_customer > 0) {
+			v = price_customer;
+		} else {
+			setNull = 0;
+		}
+		break;
+	case _chartType_price_operator:
+		if(price_operator > 0) {
+			v = price_operator;
+		} else {
+			setNull = 0;
+		}
 		break;
 	}
 	if(setNull) {
@@ -4754,7 +4771,7 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		v_str = tablesContent->getValue_string(_t_cdr, "lastSIPresponse_id", &setNull);
 		if(!setNull) {
 			if(v_str[0]) {
-				if(chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
+				if(chartsCache && chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
 					v_str.resize(chartsCache->maxLengthSipResponseText);
 				}
 			} else {
@@ -4780,6 +4797,28 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		break;
 	case _chartType_domain_dst:
 		v_str = tablesContent->getValue_string(_t_cdr, "called_domain");
+		break;
+	case _chartType_price_customer:
+		if(tablesContent->existsColumn(_t_cdr, "price_customer_mult1000000")) {
+			v = tablesContent->getValue_float(_t_cdr, "price_customer_mult1000000", false, &setNull);
+			if(!setNull && v) v /= 1e6;
+		} else if(tablesContent->existsColumn(_t_cdr, "price_customer_mult100")) {
+			v = tablesContent->getValue_float(_t_cdr, "price_customer_mult100", false, &setNull);
+			if(!setNull && v) v /= 1e2;
+		} else {
+			setNull = 0;
+		}
+		break;
+	case _chartType_price_operator:
+		if(tablesContent->existsColumn(_t_cdr, "price_operator_mult1000000")) {
+			v = tablesContent->getValue_float(_t_cdr, "price_operator_mult1000000", false, &setNull);
+			if(!setNull && v) v /= 1e6;
+		} else if(tablesContent->existsColumn(_t_cdr, "price_operator_mult100")) {
+			v = tablesContent->getValue_float(_t_cdr, "price_operator_mult100", false, &setNull);
+			if(!setNull && v) v /= 1e2;
+		} else {
+			setNull = 0;
+		}
 		break;
 	}
 	if(setNull) {
@@ -6249,6 +6288,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							 operator_price, customer_price,
 							 operator_currency_id, customer_currency_id,
 							 &billingAggregationsInserts);
+				this->price_customer = customer_price;
+				this->price_operator = operator_price;
 			}
 		} else {
 			if(existsColumns.cdr_price_operator_currency_id) {
@@ -6284,7 +6325,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	adjustSipResponse(lastSIPresponse, 0);
 	
-	if(useChartsCacheInProcessCall() && sverb.charts_cache_only) {
+	if((useChartsCacheInProcessCall() && sverb.charts_cache_only) ||
+	   (useCdrStatInProcessCall() && sverb.cdr_stat_only)) {
 		return(0);
 	}
 	
@@ -7029,7 +7071,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							      counterSqlStore % opt_mysqlstore_max_threads_charts_cache : 
 							      0);
 				} else {
-					cdr.add(_sf_db | (useChartsCacheInStore() ? _sf_charts_cache : 0), "store_flags");
+					cdr.add(_sf_db | (useChartsCacheOrCdrStatInStore() ? _sf_charts_cache : 0), "store_flags");
 					string query_str_cdr = MYSQL_MAIN_INSERT_CSV_HEADER("cdr") + cdr.implodeFields(",", "\"") + MYSQL_CSV_END +
 							       MYSQL_MAIN_INSERT_CSV_ROW("cdr") + cdr.implodeContentTypeToCsv(true) + MYSQL_CSV_END;
 					sqlStore->query_lock((query_str_cdr + query_str).c_str(), STORE_PROC_ID_CDR, storeId2);
@@ -8888,7 +8930,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	hash_modify_queue_begin_ms = 0;
 	_sync_lock_hash_modify_queue = 0;
 	
-	if(useChartsCacheProcessThreads()) {
+	if(useChartsCacheOrCdrStatProcessThreads()) {
 		chc_threads = new FILE_LINE(0) sChcThreadData[opt_charts_cache_max_threads];
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			chc_threads[i].tid = 0;
@@ -8930,7 +8972,7 @@ Calltable::~Calltable() {
 		delete asyncSystemCommand;
 	}
 	
-	if(useChartsCacheProcessThreads()) {
+	if(useChartsCacheOrCdrStatProcessThreads()) {
 		for(int i = 0; i < opt_charts_cache_max_threads; i++) {
 			if(chc_threads[i].cache) {
 				delete chc_threads[i].cache; 
@@ -10008,7 +10050,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
 			call->convertRawToWav();
-			if(useChartsCacheInProcessCall()) {
+			if(useChartsCacheOrCdrStatInProcessCall()) {
 				calltable->lock_calls_charts_cache_queue();
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
 				calltable->unlock_calls_charts_cache_queue();
@@ -10126,7 +10168,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 						Call *call = (Call*)iter_call_data->data;
 						if(!call->isEmptyCdrRow()) {
 							sChartsCacheCallData chartsCacheCallData;
-							chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+							chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						}
 						calls_for_delete.push_back(call);
 						}
@@ -10135,7 +10177,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 						{
 						cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						delete tablesContent;
 						}
 						break;
@@ -10149,7 +10191,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 						}
 						sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+						chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 						delete tablesContent;
 						delete csv;
 						}
@@ -10178,8 +10220,8 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 				}
 			}
 			__sync_lock_release(&chc_threads_count_sync);
-			chartsCacheStore();
-			chartsCacheCleanup();
+			chartsCacheAndCdrStatStore();
+			chartsCacheAndCdrStatCleanup();
 			chartsCacheReload();
 			chartsCacheInitIntervals();
 			if(!chc_size) {
@@ -10208,7 +10250,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					Call *call = (Call*)iter_call_data->data;
 					if(!call->isEmptyCdrRow()) {
 						sChartsCacheCallData chartsCacheCallData;
-						chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+						chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					}
 					calls_for_delete.push_back(call);
 					}
@@ -10217,7 +10259,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					{
 					cDbTablesContent *tablesContent = (cDbTablesContent*)iter_call_data->data;
 					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+					chartsCacheAndCdrStatAddCall(&*iter_call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					delete tablesContent;
 					}
 					break;
@@ -10231,7 +10273,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					}
 					sChartsCallData call_data(sChartsCallData::_tables_content, tablesContent);
 					sChartsCacheCallData chartsCacheCallData;
-					chartsCacheAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
+					chartsCacheAndCdrStatAddCall(&call_data, &chartsCacheCallData, chc_threads[threadIndex].cache, threadIndex);
 					delete tablesContent;
 					delete csv;
 					}
@@ -10295,7 +10337,7 @@ void Calltable::processCallsInChartsCache_thread_remove() {
 }
 
 string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
-	if(!useChartsCacheProcessThreads()) {
+	if(!useChartsCacheOrCdrStatProcessThreads()) {
 		return("");
 	}
 	ostringstream cpuStr;

@@ -672,6 +672,7 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
+	string getPartMonthName(string *limitDay_str, int next = 0);
 	string getPartDayName(string *limitDay_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next_day, int hour);
@@ -1150,14 +1151,16 @@ string prepareQueryForPrintf(string &query);
 void createMysqlPartitionsCdr();
 void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
+void createMysqlPartitionsCdrStat();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
-void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false);
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false, char type = 0);
 void createMysqlPartitionsIpacc();
 void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
+void dropMysqlPartitionsCdrStat();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsBillingAgregation();
@@ -1343,6 +1346,8 @@ public:
 		dropCdr = false;
 		createSs7 = false;
 		dropSs7 = false;
+		createCdrStat = false;
+		dropCdrStat = false;
 		createRtpStat = false;
 		dropRtpStat = false;
 		createLogSensor = false;
@@ -1355,6 +1360,7 @@ public:
 	bool isSet() {
 		return(createCdr || dropCdr || 
 		       createSs7 || dropSs7 ||
+		       createCdrStat || dropCdrStat ||
 		       createRtpStat || dropRtpStat ||
 		       createLogSensor || dropLogSensor ||
 		       createIpacc || 
@@ -1373,7 +1379,9 @@ public:
 	bool dropCdr;
 	bool createSs7;
 	bool dropSs7;
+	bool createCdrStat;
 	bool createRtpStat;
+	bool dropCdrStat;
 	bool dropRtpStat;
 	bool createLogSensor;
 	bool dropLogSensor;

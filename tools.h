@@ -381,6 +381,7 @@ string getActDateTimeF(bool useT_symbol = false);
 tm getEasterMondayDate(unsigned year, int decDays = 0, const char *timezone = NULL);
 bool isEasterMondayDate(tm &date, int decDays = 0, const char *timezone = NULL);
 tm getBeginDate(tm dateTime, const char *timezone = NULL);
+tm getNextBeginMonth(tm dateTime, const char *timezone = NULL);
 tm getNextBeginDate(tm dateTime, const char *timezone = NULL);
 tm getPrevBeginDate(tm dateTime, const char *timezone = NULL);
 tm getNextBeginHour(tm dateTime, const char *timezone = NULL);
@@ -3553,6 +3554,7 @@ public:
 	sDbString *findColumn(unsigned table_enum, const char *column, unsigned rowIndex, int *columnIndex);
 	int getCountRows(const char *table);
 	int getCountRows(unsigned table_enum);
+	bool existsColumn(unsigned table_enum, const char *column, unsigned rowIndex = 0);
 	const char *getValue_str(unsigned table_enum, const char *column, bool *null = NULL, unsigned rowIndex = 0, int *columnIndex = NULL);
 	const char *getValue_string(unsigned table_enum, const char *column, bool *null = NULL, unsigned rowIndex = 0) {
 		const char *str = getValue_str(table_enum, column, null, rowIndex);

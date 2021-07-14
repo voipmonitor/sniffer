@@ -28,6 +28,7 @@
 #include "calltable.h"
 #include "cleanspool.h"
 #include "server.h"
+#include "charts.h"
 
 #define QFILE_PREFIX "qoq"
 
@@ -42,6 +43,8 @@ extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
 extern bool opt_cdr_rtpsrcport;
+extern bool opt_cdr_stat_values;
+extern bool opt_cdr_stat_sources;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
 extern vector<dstring> opt_custom_headers_cdr;
@@ -118,6 +121,8 @@ int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
 bool opt_cdr_partition_oldver = false;
 bool opt_ss7_partition_oldver;
+bool opt_cdr_stat_values_partition_oldver = false;
+bool opt_cdr_stat_sources_partition_oldver = false;
 bool opt_rtp_stat_partition_oldver = false;
 bool opt_log_sensor_partition_oldver = false;
 sExistsColumns existsColumns;
@@ -5154,12 +5159,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
 	string limitDay;
 	string partDayName;
+	string limitMonth;
+	string partMonthName;
 	string limitHour;
 	string partHourName;
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
 		partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+		partMonthName = this->getPartMonthName(&limitMonth);
 		if(opt_cdr_partition_by_hours) {
 			partHourName = this->getPartHourName(&limitHour);
 			partHourNextName = this->getPartHourName(&limitHourNext, 1);
@@ -6029,6 +6037,52 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+	
+	if(opt_cdr_stat_values) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_stat_values` (\
+			`from_time` datetime,\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`type` enum('TA_MINUTES','TA_5MINUTES','TA_HOURS','TA_DAYS'),\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,\
+			" + cCdrStat::metrics_db_fields() + "\
+			UNIQUE KEY `comb_1` (`from_time`,`addr`,`type`,`sensor_id`,`created_at`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(supportPartitions != _supportPartitions_na ?
+		(opt_cdr_stat_values_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(`from_time`))(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
+		""));	 
+	}
+	if(opt_cdr_stat_sources) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_stat_sources` (\
+			`from_time` datetime,\
+			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`series` int unsigned NOT NULL,\
+			`type` enum('TA_MINUTES','TA_5MINUTES','TA_HOURS','TA_DAYS'),\
+			`sensor_id` int,\
+			`created_at` datetime,\
+			`updated_at` datetime,\
+			`updated_counter` smallint unsigned,\
+			`count_all` int unsigned,\
+			`count_connected` int unsigned,\
+			`data` mediumtext,\
+			UNIQUE KEY `comb_1` (`from_time`,`addr`,`series`,`type`,`sensor_id`,`created_at`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(supportPartitions != _supportPartitions_na ?
+		(opt_cdr_stat_sources_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(`from_time`))(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
+				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
+		""));	 
+	}
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\
@@ -7553,6 +7607,27 @@ bool SqlDb_mysql::createSchema_init_cdr_partitions(int connectId) {
 	return(true);
 }
 
+string SqlDb_mysql::getPartMonthName(string *limitMonth_str, int next) {
+	char partMonthName[20] = "";
+	char limitMonth[20] = "";
+	if(supportPartitions != _supportPartitions_na) {
+		time_t act_time = time(NULL);
+		struct tm partTime = time_r(&act_time);
+		if(next > 0) {
+			for(int i = 0; i < next; i++) {
+				partTime = getNextBeginMonth(partTime);
+			}
+		}
+		strftime(partMonthName, sizeof(partMonthName), "p%y%m", &partTime);
+		struct tm nextMonthTime = getNextBeginMonth(partTime);
+		strftime(limitMonth, sizeof(limitMonth), "%Y-%m-01", &nextMonthTime);
+	}
+	if(limitMonth_str) {
+		*limitMonth_str = limitMonth;
+	}
+	return(partMonthName);
+}
+
 string SqlDb_mysql::getPartDayName(string *limitDay_str, int next) {
 	char partDayName[20] = "";
 	char limitDay[20] = "";
@@ -7715,6 +7790,8 @@ void SqlDb_mysql::checkDbMode() {
 					}
 				}
 				opt_ss7_partition_oldver = true;
+				opt_cdr_stat_values_partition_oldver = true;
+				opt_cdr_stat_sources_partition_oldver = true;
 				opt_rtp_stat_partition_oldver = true;
 				opt_log_sensor_partition_oldver = true;
 			} else {
@@ -7731,6 +7808,14 @@ void SqlDb_mysql::checkDbMode() {
 				if(this->isOldVerPartition("ss7")) {
 					opt_ss7_partition_oldver = true;
 					syslog(LOG_NOTICE, "table ss7 contain old mode partitions");
+				}
+				if(opt_cdr_stat_values && this->isOldVerPartition("cdr_stat_values")) {
+					opt_cdr_stat_values_partition_oldver = true;
+					syslog(LOG_NOTICE, "table cdr_stat_values contain old mode partitions");
+				}
+				if(opt_cdr_stat_sources && this->isOldVerPartition("cdr_stat_sources")) {
+					opt_cdr_stat_sources_partition_oldver = true;
+					syslog(LOG_NOTICE, "table cdr_stat_sources contain old mode partitions");
 				}
 				if(this->isOldVerPartition("rtp_stat")) {
 					opt_rtp_stat_partition_oldver = true;
@@ -9099,6 +9184,17 @@ void createMysqlPartitionsSs7() {
 	partitionsServiceIsInProgress = 0;
 }
 
+void createMysqlPartitionsCdrStat() {
+	partitionsServiceIsInProgress = 1;
+	if(opt_cdr_stat_values) {
+		createMysqlPartitionsTable("cdr_stat_values", opt_cdr_stat_values_partition_oldver, false, 'm');
+	}
+	if(opt_cdr_stat_sources) {
+		createMysqlPartitionsTable("cdr_stat_sources", opt_cdr_stat_sources_partition_oldver, false, 'm');
+	}
+	partitionsServiceIsInProgress = 0;
+}
+
 void createMysqlPartitionsRtpStat() {
 	partitionsServiceIsInProgress = 1;
 	createMysqlPartitionsTable("rtp_stat", opt_rtp_stat_partition_oldver);
@@ -9187,18 +9283,30 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 	partitionsServiceIsInProgress = 0;
 }
 
-void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions) {
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions, char type) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-	char type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
-	for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
-		if((!next_day && type == 'd') ||
-		   isCloud() || cloud_db) {
-			sqlDb->setMaxQueryPass(1);
+	if(!type) {
+		type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
+	}
+	if(type == 'm') {
+		for(int next_month = 0; next_month < 2; next_month++) {
+			if(isCloud() || cloud_db) {
+				sqlDb->setMaxQueryPass(1);
+			}
+			_createMysqlPartition(table, type, next_month, partition_oldver, NULL, sqlDb);
+			sqlDb->setMaxQueryPass(maxQueryPassOld);
 		}
-		_createMysqlPartition(table, type, next_day, partition_oldver, NULL, sqlDb);
-		sqlDb->setMaxQueryPass(maxQueryPassOld);
+	} else {
+		for(int next_day = 0; next_day < LIMIT_DAY_PARTITIONS; next_day++) {
+			if((!next_day && type == 'd') ||
+			   isCloud() || cloud_db) {
+				sqlDb->setMaxQueryPass(1);
+			}
+			_createMysqlPartition(table, type, next_day, partition_oldver, NULL, sqlDb);
+			sqlDb->setMaxQueryPass(maxQueryPassOld);
+		}
 	}
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - end").c_str());
@@ -9226,47 +9334,74 @@ void createMysqlPartitionsIpacc() {
 }
 
 struct sPartitionInfo {
-	sPartitionInfo(string name, string limit, int day, int hour_in_day) {
+	sPartitionInfo(char type, string name, string limit, int next, int hour_in_day) {
+		this->type = type;
 		this->name = name;
 		this->limit = limit;
-		this->day = day;
+		this->next = next;
 		this->hour_in_day = hour_in_day;
-		this->hour = day * 24 + hour_in_day;
+		this->hour = next * 24 + hour_in_day;
 	}
+	char type;
 	string name;
 	string limit;
-	int day;
+	int next;
 	int hour_in_day;
 	int hour;
 };
 
-void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb) {
+void _createMysqlPartition(string table, char type, int next, bool old_ver, const char *database, SqlDb *sqlDb) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	string partDayName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(NULL, next_day);
-	if(dynamic_cast<SqlDb_mysql*>(sqlDb)->existsPartition(table.c_str(), partDayName.c_str())) {
-		if(_createSqlObject) {
-			delete sqlDb;
-		}
-		return;
+	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	switch(type) {
+	case 'm': {
+		string partMonthName = sqlDb_mysql->getPartMonthName(NULL, next);
+		if(sqlDb_mysql->existsPartition(table.c_str(), partMonthName.c_str())) {
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
+			return;
+		}}
+		break;
+	case 'd':
+	case 'h': {
+		string partDayName = sqlDb_mysql->getPartDayName(NULL, next);
+		if(sqlDb_mysql->existsPartition(table.c_str(), partDayName.c_str())) {
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
+			return;
+		}}
+		break;
 	}
 	vector<sPartitionInfo> partitions;
-	if(type == 'd') {
+	switch(type) {
+	case 'm': {
 		string partLimit;
-		string partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartDayName(&partLimit, next_day);
-		partitions.push_back(sPartitionInfo(partName, partLimit, next_day, 0));
-	} else {
+		string partName = sqlDb_mysql->getPartMonthName(&partLimit, next);
+		partitions.push_back(sPartitionInfo(type, partName, partLimit, next, 0));
+		}
+		break;
+	case 'd': {
+		string partLimit;
+		string partName = sqlDb_mysql->getPartDayName(&partLimit, next);
+		partitions.push_back(sPartitionInfo(type, partName, partLimit, next, 0));
+		}
+		break;
+	case 'h': {
 		for(int h = 0; h < 24; h++) {
 			string partLimit;
-			string partName = dynamic_cast<SqlDb_mysql*>(sqlDb)->getPartHourName(&partLimit, next_day, h);
+			string partName = sqlDb_mysql->getPartHourName(&partLimit, next, h);
 			if(!partName.empty() &&
-			   !dynamic_cast<SqlDb_mysql*>(sqlDb)->existsPartition(table.c_str(), partName.c_str())) {
-				partitions.push_back(sPartitionInfo(partName, partLimit, next_day, h));
+			   !sqlDb_mysql->existsPartition(table.c_str(), partName.c_str())) {
+				partitions.push_back(sPartitionInfo(type, partName, partLimit, next, h));
 			}
-		}
+		}}
+		break;
 	}
 	if(partitions.size()) {
 		extern bool cloud_db;
@@ -9293,8 +9428,8 @@ void _createMysqlPartition(string table, char type, int next_day, bool old_ver, 
 					string("call ") + (isCloud() ? "" : "`" + string(_database) + "`.") + "create_partition_v3(" + 
 					(isCloud() || cloud_db ? "NULL" : "'" + string(_database) + "'") + ", " +
 					"'" + table + "', " +
-					"'" + (type == 'd' ? "day" : "hour") + "', " + 
-					intToString(type == 'd' ? next_day : partitions[i].hour) + ", " +
+					"'" + (type == 'm' ? "month" : type == 'd' ? "day" : "hour") + "', " + 
+					intToString(type == 'd' ? next : partitions[i].hour) + ", " +
 					(old_ver ? "true" : "false") + ");");
 			}
 		}
@@ -9385,6 +9520,16 @@ void dropMysqlPartitionsCdr() {
 void dropMysqlPartitionsSs7() {
 	extern int opt_cleandatabase_ss7;
 	dropMysqlPartitionsTable("ss7", opt_cleandatabase_ss7, 0);
+}
+
+void dropMysqlPartitionsCdrStat() {
+	extern int opt_cleandatabase_cdr_stat;
+	if(opt_cdr_stat_values) {
+		dropMysqlPartitionsTable("cdr_stat_values", opt_cleandatabase_cdr_stat, 0);
+	}
+	if(opt_cdr_stat_sources) {
+		dropMysqlPartitionsTable("cdr_stat_sources", opt_cleandatabase_cdr_stat, 0);
+	}
 }
 
 void dropMysqlPartitionsRtpStat() {
@@ -9892,6 +10037,9 @@ void sCreatePartitions::doCreatePartitions() {
 	if(this->createSs7) {
 		createMysqlPartitionsSs7();
 	}
+	if(this->createCdrStat) {
+		createMysqlPartitionsCdrStat();
+	}
 	if(this->createRtpStat) {
 		createMysqlPartitionsRtpStat();
 	}
@@ -9912,6 +10060,9 @@ void sCreatePartitions::doDropPartitions() {
 	}
 	if(this->dropSs7) {
 		dropMysqlPartitionsSs7();
+	}
+	if(this->dropCdrStat) {
+		dropMysqlPartitionsCdrStat();
 	}
 	if(this->dropRtpStat) {
 		dropMysqlPartitionsRtpStat();

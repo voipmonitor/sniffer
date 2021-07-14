@@ -343,6 +343,8 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
+bool opt_cdr_stat_values = true;
+bool opt_cdr_stat_sources = false;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -641,6 +643,7 @@ int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 int opt_cleandatabase_sip_msg = 0;
+int opt_cleandatabase_cdr_stat = 71;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -1714,6 +1717,8 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t dropPartitionCdrAt = 0;
 	time_t createPartitionSs7At = 0;
 	time_t dropPartitionSs7At = 0;
+	time_t createPartitionCdrStatAt = 0;
+	time_t dropPartitionCdrStatAt = 0;
 	time_t createPartitionRtpStatAt = 0;
 	time_t dropPartitionRtpStatAt = 0;
 	time_t createPartitionLogSensorAt = 0;
@@ -1770,6 +1775,16 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(check_time_partition_operation(dropPartitionSs7At)) {
 					createPartitions.dropSs7 = true;
 					dropPartitionSs7At = actTime;
+				}
+			}
+			if(true /* cdr_stat */) {
+				if(check_time_partition_operation(createPartitionCdrStatAt)) {
+					createPartitions.createCdrStat = true;
+					createPartitionCdrStatAt = actTime;
+				}
+				if(check_time_partition_operation(dropPartitionCdrStatAt)) {
+					createPartitions.dropCdrStat = true;
+					dropPartitionCdrStatAt = actTime;
 				}
 			}
 			if(true /* rtp_stat */) {
@@ -1971,7 +1986,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
-				if(useChartsCacheInProcessCall()) {
+				if(useChartsCacheOrCdrStatInProcessCall()) {
 					calltable->lock_calls_charts_cache_queue();
 					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -2120,7 +2135,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
-		if(useChartsCacheInProcessCall()) {
+		if(useChartsCacheOrCdrStatInProcessCall()) {
 			calltable->lock_calls_charts_cache_queue();
 			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -3661,7 +3676,7 @@ int main(int argc, char *argv[]) {
 										  snifferClientNextServices[i]);
 			}
 		}
-		if(useChartsCacheInStore() &&
+		if(useChartsCacheOrCdrStatInStore() &&
 		   !snifferClientOptions_charts_cache.host.empty()) {
 			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, NULL, snifferClientService_charts_cache);
 		}
@@ -3943,6 +3958,9 @@ int main_init_read() {
 	}
 	
 	dbDataInit(sqlDbInit);
+	if(useCdrStatProcessThreads()) {
+		cdrStatInit(sqlDbInit);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
@@ -4176,7 +4194,7 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
-		if(useChartsCacheProcessThreads()) {
+		if(useChartsCacheOrCdrStatProcessThreads()) {
 			calltable->processCallsInChartsCache_start();
 		}
 	}
@@ -4652,6 +4670,9 @@ void main_term_read() {
 	calltable->cleanup_registers(NULL);
 	calltable->cleanup_ss7(NULL);
 
+	if(useCdrStatProcessThreads()) {
+		cdrStatStore(true);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
 	}
@@ -4757,7 +4778,7 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 	}
-	if(useChartsCacheProcessThreads()) {
+	if(useChartsCacheOrCdrStatProcessThreads()) {
 		calltable->processCallsInChartsCache_stop();
 	}
 	while(calltable->calls_queue.size() != 0) {
@@ -4866,6 +4887,9 @@ void main_term_read() {
 	CountryDetectTerm();
 	
 	dbDataTerm();
+	if(useCdrStatProcessThreads()) {
+		cdrStatTerm();
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheTerm();
 	}
@@ -6039,6 +6063,7 @@ void test() {
 			opt_cleandatabase_register_state =
 			opt_cleandatabase_sip_msg =
 			opt_cleandatabase_register_failed = 
+			opt_cleandatabase_cdr_stat = 
 			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
 		} else {
 			return;
@@ -6053,6 +6078,14 @@ void test() {
 			return;
 		}
 		dropMysqlPartitionsRtpStat();
+		break;
+	case 348:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_cdr_stat = atoi(opt_test_arg);
+		} else {
+			return;
+		}
+		dropMysqlPartitionsCdrStat();
 		break;
 	case 310:
 		{
@@ -6594,6 +6627,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 		subgroup("backup");
@@ -7365,6 +7399,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
@@ -7756,6 +7792,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"test-cleanspool-load", 1, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, 346},
+	    {"run-droppartitions-cdr_stat-maxdays", 1, 0, 348},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
@@ -7958,6 +7995,9 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 11) == "trace_call=")
 								{ sverb.trace_call = new FILE_LINE(0) char[strlen(verbParam.c_str() + 11) + 1]; strcpy(sverb.trace_call, verbParam.c_str() + 11); }
 	else if(verbParam == "energylevels")			sverb.energylevels = 1;
+	else if(verbParam == "cdr_stat_only")			sverb.cdr_stat_only = 1;
+	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
+								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9454,6 +9494,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
 		opt_cleandatabase_sip_msg = atoi(value);
 	}
+	if((value = ini.GetValue("general", "cleandatabase_cdr_stat", NULL))) {
+		opt_cleandatabase_cdr_stat = atoi(value);
+	}
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);
 	}
@@ -10709,6 +10752,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
+	}
+	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
+		opt_cdr_stat_values = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_stat_sources", NULL))) {
+		opt_cdr_stat_sources = yesno(value);
 	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);
@@ -12160,6 +12209,18 @@ bool useChartsCacheProcessThreads() {
 
 bool existsChartsCacheServer() {
 	return(snifferClientService_charts_cache);
+}
+
+bool useCdrStatInProcessCall() {
+	return((opt_cdr_stat_values || opt_cdr_stat_sources) && !useChartsCacheInStore());
+}
+
+bool useCdrStatInStore() {
+	return((opt_cdr_stat_values || opt_cdr_stat_sources) && useChartsCacheInStore());
+}
+
+bool useCdrStatProcessThreads() {
+	return(opt_cdr_stat_values || opt_cdr_stat_sources);
 }
 
 
