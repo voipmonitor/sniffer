@@ -850,6 +850,7 @@ public:
 	#if CALL_RTP_DYNAMIC_ARRAY
 	vector<RTP*> *rtp_dynamic;
 	#endif
+	list<RTP*> *rtp_canceled;
 	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;

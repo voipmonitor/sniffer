@@ -584,6 +584,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#if CALL_RTP_DYNAMIC_ARRAY
 	rtp_dynamic = NULL;
 	#endif
+	rtp_canceled = NULL;
 	rtp_remove_flag = false;
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
@@ -942,16 +943,19 @@ Call::setFlagForRemoveRTP() {
 void
 Call::_removeRTP() {
 	closeRawFiles();
+	if(!rtp_canceled) {
+		rtp_canceled = new FILE_LINE(0) list<RTP*>;
+	}
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
 		if(rtp_fix[i]) {
-			delete rtp_fix[i];
+			rtp_canceled->push_back(rtp_fix[i]);
 			rtp_fix[i] = NULL;
 		}
 	}
 	#if CALL_RTP_DYNAMIC_ARRAY
 	if(rtp_dynamic) {
 		for(CALL_RTP_DYNAMIC_ARRAY_TYPE::iterator iter = rtp_dynamic->begin(); iter != rtp_dynamic->end(); iter++) {
-			delete *iter;
+			rtp_canceled->push_back(*iter);
 		}
 		rtp_dynamic->clear();
 	}
@@ -1003,6 +1007,12 @@ Call::~Call(){
 		delete rtp_dynamic;
 	}
 	#endif
+	if(rtp_canceled) {
+		for(list<RTP*>::iterator iter = rtp_canceled->begin(); iter != rtp_canceled->end(); iter++) {
+			delete *iter;
+		}
+		delete rtp_canceled;
+	}
 	
 	if(dtls) {
 		delete dtls;
