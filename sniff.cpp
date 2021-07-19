@@ -4059,6 +4059,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at_bye_confirmed = 0;
 		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
+			if(lastSIPresponseNum == 487) {
+				fraudSessionCanceledCall(call, packetS->getTimeval());
+			}
 			if(lastSIPresponseNum == 481) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {

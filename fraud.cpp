@@ -330,6 +330,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	intervalLength = 0;
 	intervalLimit = 0;
 	filterInternational = false;
+	includeSessionCanceled = false;
 	onlyConnected = false;
 	suppressRepeatingAlerts = false;
 	alertOncePerHours = 0;
@@ -518,6 +519,9 @@ bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_cu
 	}
 	if(defFilterInternational()) {
 		filterInternational = atoi(dbRow["fraud_filter_international"].c_str());
+	}
+	if(defIncludeSessionCanceled()) {
+		includeSessionCanceled = atoi(dbRow["fraud_include_session_canceled"].c_str());
 	}
 	if(defOnlyConnected()) {
 		onlyConnected = atoi(dbRow["only_connected"].c_str());
@@ -2111,7 +2115,8 @@ FraudAlert_seq::FraudAlert_seq(unsigned int dbId)
 
 void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	if(callInfo->call_type != REGISTER &&
-	   callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_connectCall &&
+	   (callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_connectCall ||
+	    (includeSessionCanceled && callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_sessionCanceledCall)) &&
 	   (!filterInternational || !callInfo->local_called_number) &&
 	   this->okFilter(callInfo) &&
 	   this->okDayHour(callInfo)) {
@@ -2476,6 +2481,14 @@ void FraudAlerts::connectCall(Call *call, u_int64_t at) {
 	}
 }
 
+void FraudAlerts::sessionCanceledCall(Call *call, u_int64_t at) {
+	if(!checkIfCallQueueIsFull()) {
+		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
+		this->completeCallInfo(callInfo, call, sFraudCallInfo::typeCallInfo_sessionCanceledCall, at);
+		pushToCallQueue(callInfo);
+	}
+}
+
 void FraudAlerts::seenByeCall(Call *call, u_int64_t at) {
 	if(!checkIfCallQueueIsFull()) {
 		sFraudCallInfo *callInfo = new FILE_LINE(0) sFraudCallInfo;
@@ -2790,6 +2803,9 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 		break;
 	case sFraudCallInfo::typeCallInfo_connectCall:
 		callInfo->at_connect = at;
+		break;
+	case sFraudCallInfo::typeCallInfo_sessionCanceledCall:
+		callInfo->at_session_canceled = at;
 		break;
 	case sFraudCallInfo::typeCallInfo_seenByeCall:
 		callInfo->at_seen_bye = at;
@@ -3122,6 +3138,14 @@ void fraudConnectCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->connectCall(call, getTimeUS(tv));
+		fraudAlerts_unlock();
+	}
+}
+
+void fraudSessionCanceledCall(Call *call, timeval tv) {
+	if(isFraudReady()) {
+		fraudAlerts_lock();
+		fraudAlerts->sessionCanceledCall(call, getTimeUS(tv));
 		fraudAlerts_unlock();
 	}
 }
