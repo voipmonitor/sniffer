@@ -1,3 +1,12 @@
+28.6 15.07.2021
+===============
+- fix crashes when handling 3XX SIP responses for calls which includes RTP streams (all verions) [VS-1214]
+- add digestrealm column to the register_state/_failed tables [VG-1875]
+- fix content line separator: LF (\n) - fixes parsing l: tag [VS-1207]
+- ssl keylogger - fix Makefile for 'make with_tcp' (debian 10 issue) [VS-1212]
+- fix rtcp_mux for rtps 
+
+
 28.5 29.06.2021
 ===============
 - add support for ESP transport encapsulation
