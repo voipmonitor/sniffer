@@ -1018,6 +1018,9 @@ struct vmIPport {
 		return(this->ip > other.ip ||
 		       (this->ip == other.ip && this->port > other.port));
 	}
+	std::string getString(bool ipv6_in_brackets = false) {
+		return(ip.getString(ipv6_in_brackets) + ":" + port.getString());
+	}
 	vmIP ip;
 	vmPort port;
 };

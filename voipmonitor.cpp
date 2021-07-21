@@ -96,6 +96,7 @@
 #include "log_buffer.h"
 #include "heap_chunk.h"
 #include "charts.h"
+#include "ipfix.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -1098,6 +1099,11 @@ bool opt_icmp_process_data = false;
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
+
+bool opt_ipfix;
+bool opt_ipfix_set;
+string opt_ipfix_bind_ip;
+unsigned opt_ipfix_bind_port;
 
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
@@ -3684,10 +3690,6 @@ int main(int argc, char *argv[]) {
 		snifferServerStart();
 	}
 	
-	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
-		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
-	}
-
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
@@ -4368,6 +4370,14 @@ int main_init_read() {
 		bogusDumper = new FILE_LINE(42034) BogusDumper(opt_bogus_dumper_path);
 	}
 	
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
+	}
+	
 	clear_readend();
 
 	if(is_enable_packetbuffer()) {
@@ -4680,6 +4690,14 @@ void main_term_read() {
 		termSipMsg();
 	}
 	
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStop();
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStop();
+	}
+
 	terminate_processpacket();
 	
 	if(sipSendSocket) {
@@ -4738,7 +4756,7 @@ void main_term_read() {
 			cout << "end destroy tar queue" << endl << flush;
 		}
 	}
-
+	
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
@@ -7408,6 +7426,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -7804,6 +7825,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
+	    {"ipfix-client-emulation", 1, 0, 401},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8469,6 +8491,20 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
+			case 401:
+				{
+				vector<string> parameters = explode(optarg, ';');
+				if(parameters.size() >= 5) {
+					string pcap = parameters[0];
+					vmIP client_ip = str_2_vmIP(parameters[1].c_str()); 
+					vmIP server_ip = str_2_vmIP(parameters[2].c_str()); 
+					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
+					u_int64_t destination_port = atoi(parameters[4].c_str());
+					IPFix_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port);
+				}
+				exit(0);
+				}
+				break;
 		}
 		if(optarg) {
 			delete [] optarg;
@@ -8889,6 +8925,9 @@ void set_context_config() {
 		syslog(LOG_ERR, "option t2_boost_enable_call_find_threads is not suported with option call_id_alternative");
 	}
 	
+	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
+		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
+	}
 }
 
 void check_context_config() {
@@ -11603,6 +11642,17 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "icmp_process_data", NULL))) {
 		opt_icmp_process_data = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "ipfix", NULL))) {
+		opt_ipfix = yesno(value);
+		opt_ipfix_set = true;
+	}
+	if((value = ini.GetValue("general", "ipfix_bind_ip", NULL))) {
+		opt_ipfix_bind_ip = value;
+	}
+	if((value = ini.GetValue("general", "ipfix_bind_port", NULL))) {
+		opt_ipfix_bind_port = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

@@ -416,7 +416,7 @@ public:
 			}
 			return;
 		}
-		if(opt_enable_ssl) {
+		if(need_lock_push()) {
 			this->lock_push();
 		}
 		packet_s *packetS;
@@ -465,7 +465,7 @@ public:
 		} else {
 			push_packet_detach(packetS);
 		}
-		if(opt_enable_ssl) {
+		if(need_lock_push()) {
 			this->unlock_push();
 		}
 	}
@@ -645,7 +645,7 @@ public:
 		}
 	}
 	inline void push_batch() {
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+		if(typePreProcessThread == ppt_detach && need_lock_push()) {
 			this->lock_push();
 		}
 		if(this->outThreadState == 2) {
@@ -683,7 +683,7 @@ public:
 			}
 			push_batch_nothread();
 		}
-		if(typePreProcessThread == ppt_detach && opt_enable_ssl) {
+		if(typePreProcessThread == ppt_detach && need_lock_push()) {
 			this->unlock_push();
 		}
 	}
@@ -1012,6 +1012,9 @@ private:
 	}
 	void unlock_push() {
 		__sync_lock_release(&this->_sync_push);
+	}
+	inline bool need_lock_push() {
+		return(opt_enable_ssl || opt_ipfix);
 	}
 private:
 	eTypePreProcessThread typePreProcessThread;

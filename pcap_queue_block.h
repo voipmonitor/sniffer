@@ -25,6 +25,7 @@ extern int opt_enable_ss7;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
+extern bool opt_ipfix;
 
 struct pcap_pkthdr_fix_size {
 	uint32_t ts_tv_sec;
