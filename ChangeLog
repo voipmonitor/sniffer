@@ -1,3 +1,11 @@
+28.7 26.07.2021
+===============
+- support for ipfix tunneling (ACME / ORACLE SBC mirroring) [VS-133]
+- support for '487 session canceled' in 'fraud sequential' alert
+- fix SSL keylogger which was not working if the program (kamailio / etc.) was forking 
+- fix SSL keylogger compilation on Ubuntu 
+
+
 28.6 15.07.2021
 ===============
 - fix crashes when handling 3XX SIP responses for calls which includes RTP streams (all verions) [VS-1214]
