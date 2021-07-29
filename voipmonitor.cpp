@@ -370,6 +370,7 @@ char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
+int opt_pb_read_from_file_acttime_diff_secs = 0;
 int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
@@ -7806,6 +7807,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"continue-after-read", 0, 0, 302},
 	    {"nonstop-read", 0, 0, 335},
 	    {"diff-days", 1, 0, 303},
+	    {"diff-secs", 1, 0, 349},
 	    {"time-adjustment", 1, 0, 343},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
@@ -8305,7 +8307,18 @@ void get_command_line_arguments() {
 				opt_time_to_terminate = atoi(optarg);
 				break;
 			case 303:
-				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);
+				{
+				cEvalFormula f(cEvalFormula::_est_na);
+				cEvalFormula::sValue v = f.e(optarg);
+				opt_pb_read_from_file_acttime_diff_days = v.getInteger();
+				}
+				break;
+			case 349:
+				{
+				cEvalFormula f(cEvalFormula::_est_na);
+				cEvalFormula::sValue v = f.e(optarg);
+				opt_pb_read_from_file_acttime_diff_secs = v.getInteger();
+				}
 				break;
 			case 343:
 				{

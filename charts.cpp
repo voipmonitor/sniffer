@@ -922,10 +922,7 @@ double cChartIntervalSeriesData::getValue(eChartValueType typeValue, bool *null)
 	return(0);
 }
 
-void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *sqlDb) {
-	if(!counter_add) {
-		return;
-	}
+string cChartIntervalSeriesData::getChartData(cChartInterval *interval) {
 	string chart_data;
 	if(this->dataItem) {
 		chart_data = this->dataItem->json(this->series);
@@ -936,6 +933,14 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *
 	if(this->dataMultiseriesItem) {
 		chart_data = this->dataMultiseriesItem->json(this->series, this);
 	}
+	return(chart_data);
+}
+
+void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *sqlDb) {
+	if(!counter_add) {
+		return;
+	}
+	string chart_data = getChartData(interval);
 	if(chart_data.empty() ||
 	   chart_data == last_chart_data) {
 		return;
@@ -1107,6 +1112,14 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 								for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
 									cdr_stat_row.add(iter->value, iter->field, iter->null);
 								}
+								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+									if(!iter_series->second->series->sourceDataName.empty()) {
+										string chart_data = iter_series->second->getChartData(this);
+										if(!chart_data.empty()) {
+											cdr_stat_row.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
+										}
+									}
+								}
 								insert_str = MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
 									     sqlDb->insertQuery(table_name, cdr_stat_row, true, false, true));
 							} else {
@@ -1115,6 +1128,14 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 								cdr_stat_row_update.add(iter_ip->second->count_connected, "count_connected");
 								for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
 									cdr_stat_row_update.add(iter->value, iter->field, iter->null);
+								}
+								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
+									if(!iter_series->second->series->sourceDataName.empty()) {
+										string chart_data = iter_series->second->getChartData(this);
+										if(!chart_data.empty()) {
+											cdr_stat_row_update.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
+										}
+									}
 								}
 								cdr_stat_row_update.add(sqlDateTimeString(getTimeS()), "updated_at");
 								cdr_stat_row_update.add(iter_ip->second->store_counter  + 1, "updated_counter");
@@ -1493,9 +1514,12 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 	terminating = 0;
 }
 
-cChartSeries::cChartSeries(eCdrStatType cdrStatType, const char *chart_type) :
+cChartSeries::cChartSeries(eCdrStatType cdrStatType, const char *chart_type, const char *source_data_name) :
  series_id(cdrStatType, "") {
 	typeUse = _chartTypeUse_cdrStat;
+	if(source_data_name) {
+		sourceDataName = source_data_name;
+	}
 	def = getChartTypeDef(chartTypeFromString(chart_type));
 	if(def.subType == _chartSubType_acd_asr &&
 	   (def.chartType == _chartType_ner || def.chartType == _chartType_ner_avg)) {
@@ -1867,18 +1891,22 @@ cCdrStat::~cCdrStat() {
 }
 
 void cCdrStat::init() {
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_count, "TCH_count"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_minutes, "TCH_minutes"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_ner, "TCH_ner"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, "TCH_mos"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, "TCH_packet_lost"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, "TCH_jitter"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_delay, "TCH_delay"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_customer, "TCH_price_customer"));
-	series.push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_operator, "TCH_price_operator"));
+	init_series(&series);
 	init_metrics(&metrics);
+}
+
+void cCdrStat::init_series(vector<cChartSeries*> *series) {
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_count, "TCH_count", "cc"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_minutes, "TCH_minutes"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr", "asr"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd", "acd"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_ner, "TCH_ner", "ner"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, "TCH_mos", "mos"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, "TCH_packet_lost", "packet_loss"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, "TCH_jitter", "jitter"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_delay, "TCH_delay", "delay"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_customer, "TCH_price_customer"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_operator, "TCH_price_operator"));
 }
 
 void cCdrStat::init_metrics(vector<sMetrics> *metrics) {
@@ -2025,6 +2053,8 @@ void cCdrStat::cleanup(bool forceAll) {
 string cCdrStat::metrics_db_fields() {
 	vector<sMetrics> metrics;
 	init_metrics(&metrics);
+	vector<cChartSeries*> series;
+	init_series(&series);
 	string fields;
 	fields =
 		"`count_all` int unsigned,\n"
@@ -2033,6 +2063,14 @@ string cCdrStat::metrics_db_fields() {
 		fields += 
 			"`" + metrics[i].field + "` " +
 			(metrics[i].type_stat == _cdrStatType_count ? "int unsigned" : "double") + ",\n";
+	}
+	for(unsigned i = 0; i < series.size(); i++) {
+		if(!series[i]->sourceDataName.empty()) {
+			fields += 
+				"`" + series[i]->sourceDataName + "_source_data" + "` " +
+				"mediumtext" + ",\n";
+		}
+		delete series[i];
 	}
 	return(fields);
 }

@@ -131,6 +131,7 @@ extern char opt_pb_read_from_file[256];
 extern double opt_pb_read_from_file_speed;
 extern int opt_pb_read_from_file_acttime;
 extern int opt_pb_read_from_file_acttime_diff_days;
+extern int opt_pb_read_from_file_acttime_diff_secs;
 extern int64_t opt_pb_read_from_file_time_adjustment;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
@@ -3399,7 +3400,9 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if(opt_pb_read_from_file_acttime) {
 			u_int64_t packetTime = getTimeUS(*header);
 			if(!opt_pb_read_from_file_acttime_diff) {
-				opt_pb_read_from_file_acttime_diff = getTimeUS() - packetTime - opt_pb_read_from_file_acttime_diff_days * 24 * 3600 *1000000ull;
+				opt_pb_read_from_file_acttime_diff = getTimeUS() - packetTime - 
+								     opt_pb_read_from_file_acttime_diff_days * 24 * 3600 * 1000000ull - 
+								     opt_pb_read_from_file_acttime_diff_secs * 1000000ull;
 			}
 			packetTime += opt_pb_read_from_file_acttime_diff;
 			(*header)->ts.tv_sec = TIME_US_TO_S(packetTime);

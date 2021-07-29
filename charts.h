@@ -197,6 +197,7 @@ public:
 	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
+	string getChartData(class cChartInterval *interval);
 	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb);
 	void lock_data() { __SYNC_LOCK(sync_data); }
 	void unlock_data() { __SYNC_UNLOCK(sync_data); }
@@ -353,7 +354,7 @@ private:
 class cChartSeries {
 public:
 	cChartSeries(unsigned int id, const char *config_id, const char *config, class cCharts *charts);
-	cChartSeries(eCdrStatType cdrStatType, const char *chart_type);
+	cChartSeries(eCdrStatType cdrStatType, const char *chart_type, const char *source_data_name = NULL);
 	~cChartSeries();
 	void clear();
 	bool isIntervals() { 
@@ -368,6 +369,7 @@ private:
 	cChartSeriesId series_id;
 	string type_source;
 	string chartType;
+	string sourceDataName;
 	vector<double> intervals;
 	vector<string> param;
 	map<string_icase, int> param_map;
@@ -381,6 +383,7 @@ friend class cChartDataPool;
 friend class cChartIntervalSeriesData;
 friend class cChartInterval;
 friend class cCharts;
+friend class cCdrStat;
 };
 
 class cCharts {
@@ -447,6 +450,7 @@ public:
 	cCdrStat();
 	~cCdrStat();
 	void init();
+	static void init_series(vector<cChartSeries*> *series);
 	static void init_metrics(vector<sMetrics> *metrics);
 	void clear();
 	void add(sChartsCallData *call);
