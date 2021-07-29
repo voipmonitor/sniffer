@@ -407,15 +407,18 @@ static void *write_thread(void *arg) {
 	}
 }
 
-static int create_write_thread_counter;
+static bool write_thread_created;
 static void create_write_thread() {
-	++create_write_thread_counter;
-	pthread_t thread;
-	pthread_create(&thread, NULL, write_thread, NULL);
+	if(!write_thread_created) {
+		write_thread_created = true;
+		pthread_t thread;
+		pthread_create(&thread, NULL, write_thread, NULL);
+	}
 }
 
 static void write_keylog_to_queue(const SSL *ssl, const char *key) {
 	__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+	create_write_thread();
 	sKeyQueueItem *kqi = new sKeyQueueItem(key);
 	if(key_queue_last) {
 		key_queue_last->next = kqi;
@@ -619,7 +622,6 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("FAILED init_keylog - abort!");
 		abort();
 	}
-	create_write_thread();
 }
 
 

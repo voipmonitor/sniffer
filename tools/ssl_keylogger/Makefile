@@ -1,6 +1,6 @@
 default: without_tcp
 
-CC=gcc
+CC=g++
 RM=rm -f
 DSTLIB=sslkeylog.so
 
