@@ -3384,6 +3384,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			Call *call = packetS->call ? packetS->call : packetS->call_created;
 			if(call) {
 				cout << call->caller << " -> " << call->called() << endl;
+				cout << call->getSipcallerip().getString() << " -> " << call->getSipcalledip().getString() << endl;
 			}
 		}
 		cout << dump_data << endl;
@@ -3553,7 +3554,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	}
 	
-	call->check_reset_oneway(packetS->saddr_(), packetS->source_());
+	call->check_reset_oneway(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 
 	detectCallerd = call->check_is_caller_called(packetS->get_callid(), packetS->sip_method, packetS->cseq.method,
 						     packetS->saddr_(), packetS->daddr_(), 
@@ -4638,7 +4639,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	}
 	call->set_last_signal_packet_time_us(packetS->getTimeUS());
 	
-	call->check_reset_oneway(packetS->saddr_(), packetS->source_());
+	call->check_reset_oneway(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 	
 	if(packetS->lastSIPresponseNum) {
 		call->lastSIPresponseNum = packetS->lastSIPresponseNum;
@@ -4839,7 +4840,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		goto endsip;
 	}
 		
-	call->check_reset_oneway(packetS->saddr_(), packetS->source_());
+	call->check_reset_oneway(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 	
 	if(opt_norecord_header) {
 		s = gettag_sip(packetS, "\nX-VoipMonitor-norecord:", &l);
