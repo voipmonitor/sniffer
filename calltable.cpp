@@ -11778,7 +11778,10 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 	}
 	if(enableCreatePartitions) {
 		this->createTablesIfNotExists(sqlDb, true);
-		this->createMysqlPartitions(sqlDb);
+		extern bool opt_disable_partition_operations;
+		if(!opt_disable_partition_operations && !is_client()) {
+			this->createMysqlPartitions(sqlDb);
+		}
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
