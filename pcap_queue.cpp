@@ -239,6 +239,7 @@ static unsigned heapFullCounter = 0;
 
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
@@ -2164,6 +2165,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						syslog(LOG_INFO, "restore pcap_queue_deque_window_length to %i", 
 						       opt_pcap_queue_dequeu_window_length);
 					}
+				}
+			}
+			if(pcapQueueQ_outThread_detach) {
+				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(true);
+				if(detach_cpu >= 0) {
+					outStrStat << "/detach:" << setprecision(1) << detach_cpu;
 				}
 			}
 			if(pcapQueueQ_outThread_defrag) {
@@ -7568,14 +7575,20 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_udpfrag && pcapQueueQ_outThread_defrag &&
+	if(opt_t2_boost && pcapQueueQ_outThread_detach &&
 	   hp_state == _hppq_out_state_NA) {
+		pcapQueueQ_outThread_detach->push(hp);
+		return(-1);
+	}
+	
+	if(opt_udpfrag && pcapQueueQ_outThread_defrag &&
+	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach)) {
 		pcapQueueQ_outThread_defrag->push(hp);
 		return(-1);
 	}
 	
 	if(opt_dup_check && pcapQueueQ_outThread_dedup &&
-	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_defrag)) {
+	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag)) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		return(-1);
 	}
@@ -7786,7 +7799,9 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
-	if(pcapQueueQ_outThread_defrag) {
+	if(pcapQueueQ_outThread_detach) {
+		pcapQueueQ_outThread_detach->push_batch();
+	} else if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push_batch();
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push_batch();
@@ -7990,6 +8005,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			batch = this->qring[this->readit];
 			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 				switch(typeOutputThread) {
+				case detach:
+					break;
 				case defrag:
 					this->processDefrag(&batch->batch[batch_index]);
 					break;
@@ -8012,6 +8029,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			usleepSumTime += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
 			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
 				switch(typeOutputThread) {
+				case detach:
+					break;
 				case defrag:
 					if(pcapQueueQ_outThread_dedup) {
 						pcapQueueQ_outThread_dedup->push_batch();

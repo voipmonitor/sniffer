@@ -2870,6 +2870,7 @@ void test();
 PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
+PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
@@ -4422,6 +4423,10 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
+			if(opt_t2_boost) {
+				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
+				pcapQueueQ_outThread_detach->start();
+			}
 			if(opt_udpfrag) {
 				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 				pcapQueueQ_outThread_defrag->start();
@@ -5082,6 +5087,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ) {
 			pcapQueueQ->terminate();
 		}
+		if(pcapQueueQ_outThread_detach) {
+			pcapQueueQ_outThread_detach->terminate();
+		}
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->terminate();
 		}
@@ -5095,6 +5103,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueI) {
 			delete pcapQueueI;
 			pcapQueueI = NULL;
+		}
+		if(pcapQueueQ_outThread_detach) {
+			delete pcapQueueQ_outThread_detach;
+			pcapQueueQ_outThread_detach = NULL;
 		}
 		if(pcapQueueQ_outThread_defrag) {
 			delete pcapQueueQ_outThread_defrag;

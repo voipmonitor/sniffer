@@ -181,8 +181,9 @@ friend class PcapQueue_readFromFifo;
 
 enum eHeaderPacketPQoutState {
 	_hppq_out_state_NA = 0,
-	_hppq_out_state_defrag = 1,
-	_hppq_out_state_dedup = 2
+	_hppq_out_state_detach = 1,
+	_hppq_out_state_defrag = 2,
+	_hppq_out_state_dedup = 3
 };
 
 struct sHeaderPacketPQout {
@@ -991,6 +992,7 @@ friend class PcapQueue_outputThread;
 class PcapQueue_outputThread {
 public:
 	enum eTypeOutputThread {
+		detach,
 		defrag,
 		dedup
 	};
@@ -1023,6 +1025,8 @@ public:
 	inline void processDedup(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
 		switch(typeOutputThread) {
+		case detach:
+			return("detach");
 		case defrag:
 			return("defrag");
 		case dedup:
