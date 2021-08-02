@@ -107,6 +107,7 @@ extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
+extern bool opt_t2_boost_pb_detach_thread;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
@@ -7575,7 +7576,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_t2_boost && pcapQueueQ_outThread_detach &&
+	if(opt_t2_boost_pb_detach_thread && opt_t2_boost && pcapQueueQ_outThread_detach &&
 	   hp_state == _hppq_out_state_NA) {
 		pcapQueueQ_outThread_detach->push(hp);
 		return(-1);

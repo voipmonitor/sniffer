@@ -839,6 +839,7 @@ bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
+bool opt_t2_boost_pb_detach_thread = false;
 int opt_storing_cdr_max_next_threads = 3;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
@@ -4428,7 +4429,7 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
-			if(opt_t2_boost) {
+			if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
 				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
 				pcapQueueQ_outThread_detach->start();
 			}
@@ -6582,6 +6583,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
@@ -10680,6 +10682,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "t2_boost_max_next_call_threads", NULL))) {
 		opt_t2_boost_call_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
+		opt_t2_boost_pb_detach_thread = atoi(value);
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
