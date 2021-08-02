@@ -1021,6 +1021,7 @@ public:
 	inline void push(sHeaderPacketPQout *hp);
 	void push_batch();
 	void *outThreadFunction();
+	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDefrag(sHeaderPacketPQout *hp);
 	inline void processDedup(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {

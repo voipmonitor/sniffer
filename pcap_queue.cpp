@@ -8006,6 +8006,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
 				switch(typeOutputThread) {
 				case detach:
+					this->processDetach(&batch->batch[batch_index]);
 					break;
 				case defrag:
 					this->processDefrag(&batch->batch[batch_index]);
@@ -8030,7 +8031,10 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
 				switch(typeOutputThread) {
 				case detach:
-					break;
+					if(pcapQueueQ_outThread_defrag) {
+						pcapQueueQ_outThread_defrag->push_batch();
+						break;
+					}
 				case defrag:
 					if(pcapQueueQ_outThread_dedup) {
 						pcapQueueQ_outThread_dedup->push_batch();
@@ -8045,6 +8049,12 @@ void *PcapQueue_outputThread::outThreadFunction() {
 		}
 	}
 	return(NULL);
+}
+
+void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
+	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach) == 0) {
+		hp->destroy_or_unlock_blockstore();
+	}
 }
 
 void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
