@@ -1713,13 +1713,18 @@ public:
 	static void *_checkIdCdrChildTables(void *arg);
 public:
 	bool check;
+	static volatile int in_progress;
 } checkIdCdrChildTables;
 
+volatile int sCheckIdCdrChildTables::in_progress = 0;
+
 void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
+	sCheckIdCdrChildTables::in_progress = 1;
 	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
 	if(checkIdCdrChildTables->check) {
 		checkMysqlIdCdrChildTables();
 	}
+	sCheckIdCdrChildTables::in_progress = 0;
 	return(NULL);
 }
 
@@ -1838,7 +1843,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(createPartitions.isSet()) {
 				createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 			}
-			if(opt_cdr_partition) {
+			if(opt_cdr_partition && !sCheckIdCdrChildTables::in_progress) {
 				time_t actTime = time(NULL);
 				checkIdCdrChildTables.init();
 				if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
