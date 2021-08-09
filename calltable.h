@@ -1430,11 +1430,19 @@ public:
 	bool use_port_for_check_direction(vmIP /*addr*/) {
 		return(true /*ip_is_localhost(addr)*/);
 	}
-	void check_reset_oneway(vmIP saddr, vmPort source) {
-		if(lastsrcip != saddr ||
-		   (lastsrcip == lastdstip &&
-		    use_port_for_check_direction(saddr) && 
-		    lastsrcport != source)) {
+	void check_reset_oneway(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
+		if(oneway &&
+		   (lastsrcip != saddr ||
+		    (lastsrcip == lastdstip &&
+		     use_port_for_check_direction(saddr) && 
+		     lastsrcport != sport))) {
+			for(list<sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+				if(saddr == iter->saddr && daddr == iter->daddr &&
+				   (!use_port_for_check_direction(saddr) ||
+				    (sport == iter->sport && dport == iter->dport))) {
+					return;
+				}
+			}
 			oneway = 0;
 		}
 	}

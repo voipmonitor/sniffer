@@ -591,7 +591,8 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 		} else if(rsltProcessResponse == -1) {
 			break;
 		} else {
-			if(callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK) {
+			if(ignoreLastError() ||
+			   (callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK)) {
 				break;
 			}
 		}
@@ -691,7 +692,8 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 		} else if(rsltProcessResponse == -1) {
 			break;
 		} else {
-			if(callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK) {
+			if(ignoreLastError() ||
+			   (callFromStoreProcessWithFixDeadlock && getLastError() == ER_LOCK_DEADLOCK)) {
 				break;
 			}
 			if(this->getLastError() == ER_SP_ALREADY_EXISTS && pass >= 2) {
@@ -1380,6 +1382,13 @@ void SqlDb::setLastErrorString(string lastErrorString, bool sysLog) {
 	if(sysLog && lastErrorString != "") {
 		syslog(LOG_ERR, "%s", lastErrorString.c_str());
 	}
+}
+
+bool SqlDb::ignoreLastError() {
+	return(getLastError() == ER_PARSE_ERROR ||
+	       getLastError() == ER_NO_REFERENCED_ROW_2 ||
+	       getLastError() == ER_SAME_NAME_PARTITION ||
+	       getLastError() == ER_SP_DOES_NOT_EXIST);
 }
 
 void SqlDb::setEnableSqlStringInContent(bool enableSqlStringInContent) {
@@ -2081,10 +2090,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						}
 					} else if(sql_noerror || sql_disable_next_attempt_if_error || 
 						  this->disableLogError || this->disableNextAttemptIfError ||
-						  this->getLastError() == ER_PARSE_ERROR ||
-						  this->getLastError() == ER_NO_REFERENCED_ROW_2 ||
-						  this->getLastError() == ER_SAME_NAME_PARTITION ||
-						  this->getLastError() == ER_SP_DOES_NOT_EXIST ||
+						  this->ignoreLastError() ||
 						  (callFromStoreProcessWithFixDeadlock && this->getLastError() == ER_LOCK_DEADLOCK)) {
 						break;
 					} else if(useNewStore() == 2 && useSetId() && this->getLastError() == ER_DUP_ENTRY) {

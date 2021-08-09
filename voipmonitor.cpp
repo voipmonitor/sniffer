@@ -843,6 +843,7 @@ bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
+bool opt_t2_boost_pb_detach_thread = false;
 int opt_storing_cdr_max_next_threads = 3;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
@@ -1717,13 +1718,18 @@ public:
 	static void *_checkIdCdrChildTables(void *arg);
 public:
 	bool check;
+	static volatile int in_progress;
 } checkIdCdrChildTables;
 
+volatile int sCheckIdCdrChildTables::in_progress = 0;
+
 void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
+	sCheckIdCdrChildTables::in_progress = 1;
 	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
 	if(checkIdCdrChildTables->check) {
 		checkMysqlIdCdrChildTables();
 	}
+	sCheckIdCdrChildTables::in_progress = 0;
 	return(NULL);
 }
 
@@ -1854,7 +1860,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(createPartitions.isSet()) {
 				createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 			}
-			if(opt_cdr_partition) {
+			if(opt_cdr_partition && !sCheckIdCdrChildTables::in_progress) {
 				time_t actTime = time(NULL);
 				checkIdCdrChildTables.init();
 				if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
@@ -2886,6 +2892,7 @@ void test();
 PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
+PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
@@ -4441,6 +4448,10 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
+			if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
+				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
+				pcapQueueQ_outThread_detach->start();
+			}
 			if(opt_udpfrag) {
 				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 				pcapQueueQ_outThread_defrag->start();
@@ -5107,6 +5118,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ) {
 			pcapQueueQ->terminate();
 		}
+		if(pcapQueueQ_outThread_detach) {
+			pcapQueueQ_outThread_detach->terminate();
+		}
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->terminate();
 		}
@@ -5120,6 +5134,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueI) {
 			delete pcapQueueI;
 			pcapQueueI = NULL;
+		}
+		if(pcapQueueQ_outThread_detach) {
+			delete pcapQueueQ_outThread_detach;
+			pcapQueueQ_outThread_detach = NULL;
 		}
 		if(pcapQueueQ_outThread_defrag) {
 			delete pcapQueueQ_outThread_defrag;
@@ -6599,6 +6617,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
@@ -10719,6 +10738,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "t2_boost_max_next_call_threads", NULL))) {
 		opt_t2_boost_call_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
+		opt_t2_boost_pb_detach_thread = atoi(value);
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
