@@ -973,6 +973,7 @@ public:
 	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
 	u_int64_t last_signal_packet_time_us;
 	u_int64_t last_rtp_packet_time_us;
+	u_int64_t last_rtcp_packet_time_us;
 	u_int64_t last_rtp_a_packet_time_us;
 	u_int64_t last_rtp_b_packet_time_us;
 	time_t destroy_call_at;
@@ -1239,7 +1240,7 @@ public:
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, last_rtp_packet_time_us); };
+	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, max(last_rtp_packet_time_us, last_rtcp_packet_time_us)); };
 	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(get_last_packet_time_us()); };
 
 	/**
@@ -1257,6 +1258,7 @@ public:
 	*/
 	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > last_signal_packet_time_us) last_signal_packet_time_us = time_us; };
 	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtp_packet_time_us) last_rtp_packet_time_us = time_us; };
+	void set_last_rtcp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtcp_packet_time_us) last_rtcp_packet_time_us = time_us; };
 	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
 
 	/**

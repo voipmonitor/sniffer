@@ -481,6 +481,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	ipport_n = 0;
 	last_signal_packet_time_us = time_us;
 	last_rtp_packet_time_us = 0;
+	last_rtcp_packet_time_us = 0;
 	last_rtp_a_packet_time_us = 0;
 	last_rtp_b_packet_time_us = 0;
 	if(call_id_len) {

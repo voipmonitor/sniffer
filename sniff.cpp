@@ -2344,8 +2344,12 @@ void *rtp_read_thread_func(void *arg) {
 					}
 				}
 				rtpp_pq->call->shift_destroy_call_at(rtpp_pq->packet->getTime_s());
-				if(rslt_read_rtp && !rtpp_pq->is_rtcp) {
-					rtpp_pq->call->set_last_rtp_packet_time_us(rtpp_pq->packet->getTimeUS());
+				if(rslt_read_rtp) {
+					if(rtpp_pq->is_rtcp) {
+						rtpp_pq->call->set_last_rtcp_packet_time_us(rtpp_pq->packet->getTimeUS());
+					} else {
+						rtpp_pq->call->set_last_rtp_packet_time_us(rtpp_pq->packet->getTimeUS());
+					}
 				}
 				rtpp_pq->packet->blockstore_addflag(71 /*pb lock flag*/);
 				//PACKET_S_PROCESS_DESTROY(&rtpp_pq->packet);
@@ -5049,8 +5053,12 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 				}
 			}
-			if(rslt_read_rtp && !is_rtcp) {
-				call->set_last_rtp_packet_time_us(packetS->getTimeUS());
+			if(rslt_read_rtp) {
+				if(is_rtcp) {
+					call->set_last_rtcp_packet_time_us(packetS->getTimeUS());
+				} else {
+					call->set_last_rtp_packet_time_us(packetS->getTimeUS());
+				}
 			}
 			packetS->blockstore_addflag(59 /*pb lock flag*/);
 			PACKET_S_PROCESS_DESTROY(&packetS);
