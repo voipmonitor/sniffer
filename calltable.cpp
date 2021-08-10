@@ -12236,7 +12236,7 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	string limitHourNext;
 	string partHourNextName;
 	if(opt_cdr_partition) {
-		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(&limitDay);
+		partDayName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
 		if(opt_cdr_partition_by_hours) {
 			partHourName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHour);
 			partHourNextName = (dynamic_cast<SqlDb_mysql*>(sqlDb))->getPartHourName(&limitHourNext, 1);
