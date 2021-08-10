@@ -8840,7 +8840,9 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
-	if(!process_packet_rtp(packetS)) {
+	extern cProcessingLimitations processing_limitations;
+	if(processing_limitations.suppressRtpProcessing() ||
+	   !process_packet_rtp(packetS)) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 	}
 }

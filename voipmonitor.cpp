@@ -841,6 +841,7 @@ int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 bool opt_t2_boost_pb_detach_thread = false;
 int opt_storing_cdr_max_next_threads = 3;
+bool opt_processing_limitations = false;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -6585,6 +6586,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -10688,6 +10690,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations", NULL))) {
+		opt_processing_limitations = yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

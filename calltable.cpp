@@ -237,6 +237,9 @@ extern volatile int terminating;
 
 extern sSnifferClientOptions snifferClientOptions;
 
+extern bool opt_processing_limitations;
+extern cProcessingLimitations processing_limitations;
+
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -6612,8 +6615,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 			if(rtp_i->first_codec >= 0) {
 				rtps.add(rtp_i->first_codec, "payload");
-			} else if(sverb.process_rtp_header) {
-				rtps.add(0, "payload");
+			} else {
+				rtps.add(0, "payload", true);
 			}
 			rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
@@ -7137,7 +7140,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			double diff = rtime - stime;
 			SqlDb_row rtps;
 			rtps.add(cdrID, "cdr_ID");
-			rtps.add(rtp_i->first_codec, "payload");
+			if(rtp_i->first_codec >= 0) {
+				rtps.add(rtp_i->first_codec, "payload");
+			} else {
+				rtps.add(0, "payload", true);
+			}
 			rtps.add(rtp_i->saddr, "saddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			rtps.add(rtp_i->daddr, "daddr", false, sqlDbSaveCall, sql_cdr_rtp_table.c_str());
 			if(existsColumns.cdr_rtp_sport) {
@@ -8944,6 +8951,13 @@ Calltable::Calltable(SqlDb *sqlDb) {
 		chc_threads_count_sync = 0;
 		chc_threads_count_last_change = 0;
 	}
+	
+	active_calls_cache = NULL;
+	active_calls_cache_size = 0;
+	active_calls_cache_count = 0;
+	active_calls_cache_fill_at_ms = 0;
+	active_calls_cache_sync = 0;
+	
 };
 
 /* destructor */
@@ -10482,88 +10496,133 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			*zip = false;
 		}
 	}
+	
 	unsigned int now = time(NULL);
+	u_int64_t now_ms = getTimeMS();
 	
-	unsigned activeCallsMax = getCountCalls();
-	activeCallsMax += activeCallsMax / 4;
-	Call **activeCalls = new FILE_LINE(0) Call*[activeCallsMax];
-	unsigned activeCallsCount = 0;
+	Call **active_calls = NULL;
+	u_int32_t active_calls_size = 0;
+	u_int32_t active_calls_count = 0;
+
+	if(opt_processing_limitations) {
+		__SYNC_LOCK(active_calls_cache_sync);
+		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&
+		   now_ms - active_calls_cache_fill_at_ms > processing_limitations.activeCallsCacheTimeout() * 1000) {
+			for(unsigned i = 0; i < active_calls_cache_count; i++) {
+				__SYNC_DEC(active_calls_cache[i]->useInListCalls);
+			}
+			delete [] active_calls_cache;
+			active_calls_cache = NULL;
+			active_calls_cache_size = 0;
+			active_calls_cache_count = 0;
+		} else if(active_calls_cache) {
+			active_calls_size = active_calls_cache_size;
+			active_calls_count = active_calls_cache_count;
+			active_calls = new FILE_LINE(0) Call*[active_calls_size];
+			memcpy(active_calls, active_calls_cache, active_calls_count * sizeof(Call*));
+		}
+	}
 	
-	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
-		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
-		for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
-			map<string, Call*> *_calls_listMAP;
-			list<Call*>::iterator callIT1;
-			map<string, Call*>::iterator callMAPIT1;
-			map<sStreamIds2, Call*>::iterator callMAPIT2;
-			if(typeCall == INVITE) {
-				if(opt_call_id_alternative[0]) {
-					lock_calls_listMAP();
-					callIT1 = calltable->calls_list.begin();
-				} else {
-					if(passListMap == -1) {
+	if(!active_calls) {
+		active_calls_size = getCountCalls();
+		if(active_calls_size) {
+			active_calls_size += active_calls_size / 4;
+			active_calls = new FILE_LINE(0) Call*[active_calls_size];
+			active_calls_count = 0;
+			for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
+				int typeCall = passTypeCall == 0 ? INVITE : MGCP;
+				for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
+					map<string, Call*> *_calls_listMAP;
+					list<Call*>::iterator callIT1;
+					map<string, Call*>::iterator callMAPIT1;
+					map<sStreamIds2, Call*>::iterator callMAPIT2;
+					if(typeCall == INVITE) {
+						if(opt_call_id_alternative[0]) {
+							lock_calls_listMAP();
+							callIT1 = calltable->calls_list.begin();
+						} else {
+							if(passListMap == -1) {
+								lock_calls_listMAP();
+								_calls_listMAP = &calls_listMAP;
+							} else {
+								lock_calls_listMAP_X(passListMap);
+								_calls_listMAP = &calls_listMAP_X[passListMap];
+							}
+							callMAPIT1 = _calls_listMAP->begin();
+						}
+					} else {
 						lock_calls_listMAP();
-						_calls_listMAP = &calls_listMAP;
+						callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
+					}
+					while(typeCall == INVITE ? 
+					       (opt_call_id_alternative[0] ?
+						 callIT1 != calltable->calls_list.end() :
+						 callMAPIT1 != _calls_listMAP->end()) : 
+					       callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
+						Call *call;
+						if(typeCall == INVITE) {
+							call = opt_call_id_alternative[0] ? *callIT1 : callMAPIT1->second;
+						} else {
+							call = (*callMAPIT2).second;
+						}
+						extern int opt_blockcleanupcalls;
+						if(!(call->exclude_from_active_calls or
+						     call->attemptsClose or
+						     call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
+						     (call->seenbye and call->seenbyeandok) or
+						     (!opt_blockcleanupcalls &&
+						      ((call->destroy_call_at and call->destroy_call_at < now) or 
+						       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
+						       (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now))))) {
+							if(active_calls_count < active_calls_size) {
+								active_calls[active_calls_count++] = call;
+								__SYNC_INC(call->useInListCalls);
+							}
+						}
+						if(typeCall == INVITE) {
+							if(opt_call_id_alternative[0]) {
+								++callIT1;
+							} else {
+								++callMAPIT1;
+							}
+						} else {
+							++callMAPIT2;
+						}
+					}
+					if(typeCall == INVITE) {
+						if(opt_call_id_alternative[0]) {
+							unlock_calls_listMAP();
+						} else {
+							if(passListMap == -1) {
+								unlock_calls_listMAP();
+							} else {
+								unlock_calls_listMAP_X(passListMap);
+							}
+						}
 					} else {
-						lock_calls_listMAP_X(passListMap);
-						_calls_listMAP = &calls_listMAP_X[passListMap];
-					}
-					callMAPIT1 = _calls_listMAP->begin();
-				}
-			} else {
-				lock_calls_listMAP();
-				callMAPIT2 = calltable->calls_by_stream_callid_listMAP.begin();
-			}
-			while(typeCall == INVITE ? 
-			       (opt_call_id_alternative[0] ?
-				 callIT1 != calltable->calls_list.end() :
-				 callMAPIT1 != _calls_listMAP->end()) : 
-			       callMAPIT2 != calltable->calls_by_stream_callid_listMAP.end()) {
-				Call *call;
-				if(typeCall == INVITE) {
-					call = opt_call_id_alternative[0] ? *callIT1 : callMAPIT1->second;
-				} else {
-					call = (*callMAPIT2).second;
-				}
-				extern int opt_blockcleanupcalls;
-				if(!(call->exclude_from_active_calls or
-				     call->attemptsClose or
-				     call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
-				     (call->seenbye and call->seenbyeandok) or
-				     (!opt_blockcleanupcalls &&
-				      ((call->destroy_call_at and call->destroy_call_at < now) or 
-				       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
-				       (call->destroy_call_at_bye_confirmed and call->destroy_call_at_bye_confirmed < now))))) {
-					if(activeCallsCount < activeCallsMax) {
-						activeCalls[activeCallsCount++] = call;
-						call->useInListCalls = true;
-					}
-				}
-				if(typeCall == INVITE) {
-					if(opt_call_id_alternative[0]) {
-						++callIT1;
-					} else {
-						++callMAPIT1;
-					}
-				} else {
-					++callMAPIT2;
-				}
-			}
-			if(typeCall == INVITE) {
-				if(opt_call_id_alternative[0]) {
-					unlock_calls_listMAP();
-				} else {
-					if(passListMap == -1) {
 						unlock_calls_listMAP();
-					} else {
-						unlock_calls_listMAP_X(passListMap);
 					}
 				}
-			} else {
-				unlock_calls_listMAP();
 			}
 		}
 	}
+	
+	if(opt_processing_limitations) {
+		if(active_calls_count) {
+			if(!active_calls_cache) {
+				active_calls_cache_size = active_calls_size;
+				active_calls_cache_count = active_calls_count;
+				active_calls_cache = new FILE_LINE(0) Call*[active_calls_cache_size];
+				memcpy(active_calls_cache, active_calls, active_calls_cache_count * sizeof(Call*));
+				active_calls_cache_fill_at_ms = now_ms;
+			}
+			for(unsigned i = 0; i < active_calls_count; i++) {
+				__SYNC_INC(active_calls[i]->useInListCalls);
+			}
+		}
+		__SYNC_UNLOCK(active_calls_cache_sync);
+	}
+	
 	unsigned custom_headers_size = 0;
 	unsigned custom_headers_reserve = 0;
 	if(custom_headers_cdr) {
@@ -10575,8 +10634,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	map<int32_t, u_int32_t> sensor_map;
 	map<vmIP, u_int32_t> ip_src_map;
 	map<vmIP, u_int32_t> ip_dst_map;
-	for(unsigned i = 0; i < activeCallsCount; i++) {	
-		Call *call = activeCalls[i];
+	for(unsigned i = 0; i < active_calls_count; i++) {	
+		Call *call = active_calls[i];
 		bool okCallFilters = true;
 		if(callFilters.size()) {
 			for(unsigned i = 0; i < callFilters.size(); i++) {
@@ -10631,10 +10690,10 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 		}
-		call->useInListCalls = false;
+		__SYNC_DEC(call->useInListCalls);
 	}
 	
-	delete [] activeCalls;
+	delete [] active_calls;
 	
 	string table;
 	JsonExport jsonExport;
@@ -10850,6 +10909,22 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	closeCallsMax += closeCallsMax / 4;
 	Call **closeCalls = new FILE_LINE(0) Call*[closeCallsMax];
 	unsigned closeCallsCount = 0;
+	
+	if(opt_processing_limitations) {
+		u_int64_t now_ms = getTimeMS();
+		__SYNC_LOCK(active_calls_cache_sync);
+		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&
+		   now_ms - active_calls_cache_fill_at_ms > processing_limitations.activeCallsCacheTimeout() * 1000) {
+			for(unsigned i = 0; i < active_calls_cache_count; i++) {
+				__SYNC_DEC(active_calls_cache[i]->useInListCalls);
+			}
+			delete [] active_calls_cache;
+			active_calls_cache = NULL;
+			active_calls_cache_size = 0;
+			active_calls_cache_count = 0;
+		}
+		__SYNC_UNLOCK(active_calls_cache_sync);
+	}
 	
 	int rejectedCalls_count = 0;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {

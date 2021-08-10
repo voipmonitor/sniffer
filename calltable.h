@@ -2816,6 +2816,12 @@ private:
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
 	
+	Call **active_calls_cache;
+	u_int32_t active_calls_cache_size;
+	u_int32_t active_calls_cache_count;
+	u_int64_t active_calls_cache_fill_at_ms;
+	volatile int active_calls_cache_sync;
+	
 };
 
 

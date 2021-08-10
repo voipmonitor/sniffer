@@ -1470,6 +1470,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		heapPerc = memoryBufferPerc;
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
 		heapTrashPerc = memoryBufferPerc_trash;
+		extern bool opt_processing_limitations;
+		extern cProcessingLimitations processing_limitations;
+		if(opt_processing_limitations) {
+			if(heapPerc + heapTrashPerc > 25) {
+				processing_limitations.incLimitations();
+			} else if(heapPerc + heapTrashPerc < 10) {
+				processing_limitations.decLimitations();
+			}
+		}
 		outStr << fixed;
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());

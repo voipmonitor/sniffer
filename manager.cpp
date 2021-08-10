@@ -402,6 +402,7 @@ int Mgmt_gitUpgrade(Mgmt_params *params);
 int Mgmt_login_screen_popup(Mgmt_params *params);
 int Mgmt_ac_add_thread(Mgmt_params *params);
 int Mgmt_ac_remove_thread(Mgmt_params *params);
+int Mgmt_processing_limitations(Mgmt_params *params);
 int Mgmt_t2sip_add_thread(Mgmt_params *params);
 int Mgmt_t2sip_remove_thread(Mgmt_params *params);
 int Mgmt_storing_cdr_add_thread(Mgmt_params *params);
@@ -513,6 +514,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_login_screen_popup,
 	Mgmt_ac_add_thread,
 	Mgmt_ac_remove_thread,
+	Mgmt_processing_limitations,
 	Mgmt_t2sip_add_thread,
 	Mgmt_t2sip_remove_thread,
 	Mgmt_storing_cdr_add_thread,
@@ -4244,6 +4246,25 @@ int Mgmt_ac_remove_thread(Mgmt_params *params) {
 	extern AsyncClose *asyncClose;
 	asyncClose->removeThread();
 	return(params->sendString("ok\n"));
+}
+
+int Mgmt_processing_limitations(Mgmt_params *params) {
+	extern cProcessingLimitations processing_limitations;
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"processing_limitations_inc", ""},
+			{"processing_limitations_dec", ""},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "processing_limitations_inc") != NULL) {
+		processing_limitations.incLimitations(true);
+	} else if(strstr(params->buf, "processing_limitations_dec") != NULL) {
+		processing_limitations.decLimitations(true);
+	}
+	return(0);
 }
 
 int Mgmt_t2sip_add_thread(Mgmt_params *params) {
