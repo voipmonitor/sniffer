@@ -1471,11 +1471,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double memoryBufferPerc_trash = buffersControl.getPercUsePBtrash();
 		heapTrashPerc = memoryBufferPerc_trash;
 		extern bool opt_processing_limitations;
+		extern int opt_processing_limitations_heap_high_limit;
+		extern int opt_processing_limitations_heap_low_limit;
 		extern cProcessingLimitations processing_limitations;
 		if(opt_processing_limitations) {
-			if(heapPerc + heapTrashPerc > 25) {
+			if(heapPerc + heapTrashPerc > opt_processing_limitations_heap_high_limit) {
 				processing_limitations.incLimitations();
-			} else if(heapPerc + heapTrashPerc < 10) {
+			} else if(heapPerc + heapTrashPerc < opt_processing_limitations_heap_low_limit) {
 				processing_limitations.decLimitations();
 			}
 		}

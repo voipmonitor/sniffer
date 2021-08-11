@@ -749,6 +749,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	set_call_counter = false;
 	set_register_counter = false;
+	
+	suppress_rtp_read_due_to_insufficient_hw_performance = false;
+	suppress_rtp_proc_due_to_insufficient_hw_performance = false;
 }
 
 u_int64_t Call::counter_s = 0;
@@ -5634,6 +5637,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if (sdp_exists_media_type_video) {
 		cdr_flags |= CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO;
+	}
+	
+	if(suppress_rtp_proc_due_to_insufficient_hw_performance) {
+		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_PROC;
+	} else if(suppress_rtp_read_due_to_insufficient_hw_performance) {
+		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_READ;
 	}
 
 	vmIP sipcalledip_confirmed;

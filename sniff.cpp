@@ -274,6 +274,8 @@ extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
 extern int opt_ss7timeout_rlc;
 
+extern cProcessingLimitations processing_limitations;
+
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
 inline char * gettag_sip(packet_s_process *packetS,
@@ -3436,6 +3438,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		goto endsip;
 	}
 	
+	if(processing_limitations.suppressRtpAllProcessing()) {
+		call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
+	}
+	
 	if(contenttype_is_app_csta_xml) {
 		call->exclude_from_active_calls = true;
 	}
@@ -5186,6 +5192,41 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	return(call);
 }
 
+inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_calls_info *call_info, packet_s_process_0 *packetS) {
+	if(call->suppress_rtp_proc_due_to_insufficient_hw_performance) {
+		return(false);
+	}
+	if(!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+	   (call_info->find_by_dest ?
+	     call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
+	     call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
+	   (call_info->find_by_dest ?
+	     calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
+	     call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
+	     calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
+	     call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) {
+		if((opt_ignore_rtp_after_bye_confirmed &&
+		    call->seenbyeandok && call->seenbyeandok_time_usec &&
+		    packetS->getTimeUS() > call->seenbyeandok_time_usec) ||
+		   (opt_ignore_rtp_after_cancel_confirmed &&
+		    call->seencancelandok && call->seencancelandok_time_usec &&
+		    packetS->getTimeUS() > call->seencancelandok_time_usec) ||
+		   (opt_ignore_rtp_after_auth_failed &&
+		    call->seenauthfailed && call->seenauthfailed_time_usec &&
+		    packetS->getTimeUS() > call->seenauthfailed_time_usec) ||
+		   (opt_hash_modify_queue_length_ms && call->end_call_rtp) ||
+		   (call->flags & FLAG_SKIPCDR)) {
+			return(false);
+		}
+		if(processing_limitations.suppressRtpSelectiveProcessing()) {
+			call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
+			return(false);
+		}
+		return(true);
+	}
+	return(false);
+}
+
 bool process_packet_rtp(packet_s_process_0 *packetS) {
 	packetS->blockstore_addflag(21 /*pb lock flag*/);
 	if(packetS->datalen_() <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
@@ -5235,24 +5276,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 				call_rtp *call_rtp = n_call;
 			#endif
 				Call *call = call_rtp->call;
-				if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-				    (call_info->find_by_dest ?
-				      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
-				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
-				    (call_info->find_by_dest ?
-				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
-				      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
-				      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
-				      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
-				   !(opt_ignore_rtp_after_bye_confirmed &&
-				     call->seenbyeandok && call->seenbyeandok_time_usec &&
-				     packetS->getTimeUS() > call->seenbyeandok_time_usec) &&
-				   !(opt_ignore_rtp_after_cancel_confirmed &&
-				     call->seencancelandok && call->seencancelandok_time_usec &&
-				     packetS->getTimeUS() > call->seencancelandok_time_usec) &&
-				   !(opt_ignore_rtp_after_auth_failed &&
-				     call->seenauthfailed && call->seenauthfailed_time_usec &&
-				     packetS->getTimeUS() > call->seenauthfailed_time_usec)) {
+				if(call_confirmation_for_rtp_processing(call, call_info, packetS)) {
 					/*
 					if(packetS->getTimeUS() < (call->first_packet_time * 1000000ull + call->first_packet_usec) + (0 * 60 + 0) * 1000000ull) {
 						continue;
@@ -8848,8 +8872,7 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
-	extern cProcessingLimitations processing_limitations;
-	if(processing_limitations.suppressRtpProcessing() ||
+	if(processing_limitations.suppressRtpAllProcessing() ||
 	   !process_packet_rtp(packetS)) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 	}
@@ -9676,26 +9699,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			call_rtp *call_rtp = n_call;
 		#endif
 			Call *call = call_rtp->call;
-			if((!(call->typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-			    (packetS->call_info.find_by_dest ?
-			      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()) :
-			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_())) ||
-			    (packetS->call_info.find_by_dest ?
-			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) &&
-			      call->checkKnownIP_inSipCallerdIP(packetS->daddr_()) :
-			      calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
-			      call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) &&
-			   !(opt_ignore_rtp_after_bye_confirmed &&
-			     call->seenbyeandok && call->seenbyeandok_time_usec &&
-			     packetS->getTimeUS() > call->seenbyeandok_time_usec) &&
-			   !(opt_ignore_rtp_after_cancel_confirmed &&
-			     call->seencancelandok && call->seencancelandok_time_usec &&
-			     packetS->getTimeUS() > call->seencancelandok_time_usec) &&
-			   !(opt_ignore_rtp_after_auth_failed &&
-			     call->seenauthfailed && call->seenauthfailed_time_usec &&
-			     packetS->getTimeUS() > call->seenauthfailed_time_usec) &&
-			   !(opt_hash_modify_queue_length_ms && call->end_call_rtp) &&
-			   !(call->flags & FLAG_SKIPCDR)) {
+			if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
 				++counter_rtp_packets[1];
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info.calls[packetS->call_info.length].call = call;

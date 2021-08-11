@@ -17,10 +17,14 @@ void cProcessingLimitations::incLimitations(bool force) {
 			suppress_rtp_read = true;
 			last_change_suppress_rtp_time_s = time_s;
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp read");
-		} else if(!suppress_rtp_processing) {
-			suppress_rtp_processing = true;
+		} else if(!suppress_rtp_selective_processing) {
+			suppress_rtp_selective_processing = true;
 			last_change_suppress_rtp_time_s = time_s;
-			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp processing");
+			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp selective processing");
+		} else if(!suppress_rtp_all_processing) {
+			suppress_rtp_all_processing = true;
+			last_change_suppress_rtp_time_s = time_s;
+			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp all processing");
 		}
 	}
 	if(force ||
@@ -39,10 +43,14 @@ void cProcessingLimitations::decLimitations(bool force) {
 	if(force ||
 	   !last_change_suppress_rtp_time_s ||
 	   (time_s > last_change_suppress_rtp_time_s && time_s - last_change_suppress_rtp_time_s > minimum_validity_of_change_s)) {
-		if(suppress_rtp_processing) {
-			suppress_rtp_processing = false;
+		if(suppress_rtp_all_processing) {
+			suppress_rtp_all_processing = false;
 			last_change_suppress_rtp_time_s = time_s;
-			cLogSensor::log(cLogSensor::notice, "processing limitations", "resume rtp processing");
+			cLogSensor::log(cLogSensor::notice, "processing limitations", "resume rtp all processing");
+		} else if(suppress_rtp_selective_processing) {
+			suppress_rtp_selective_processing = false;
+			last_change_suppress_rtp_time_s = time_s;
+			cLogSensor::log(cLogSensor::notice, "processing limitations", "resume rtp selective processing");
 		} else if(suppress_rtp_read) {
 			suppress_rtp_read = false;
 			last_change_suppress_rtp_time_s = time_s;

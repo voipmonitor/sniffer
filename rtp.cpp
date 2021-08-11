@@ -1307,8 +1307,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 	
 	extern cProcessingLimitations processing_limitations;
+	if(processing_limitations.suppressRtpRead()) {
+		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
+	}
 	if(is_video() || 
-	   processing_limitations.suppressRtpRead()) {
+	   owner->suppress_rtp_read_due_to_insufficient_hw_performance) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
