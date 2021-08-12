@@ -238,6 +238,7 @@ extern volatile int terminating;
 extern sSnifferClientOptions snifferClientOptions;
 
 extern bool opt_processing_limitations;
+extern bool opt_processing_limitations_active_calls_cache;
 extern cProcessingLimitations processing_limitations;
 
 
@@ -10514,7 +10515,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	u_int32_t active_calls_size = 0;
 	u_int32_t active_calls_count = 0;
 
-	if(opt_processing_limitations) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
 		__SYNC_LOCK(active_calls_cache_sync);
 		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&
 		   now_ms - active_calls_cache_fill_at_ms > processing_limitations.activeCallsCacheTimeout() * 1000) {
@@ -10617,7 +10618,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 	}
 	
-	if(opt_processing_limitations) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
 		if(active_calls_count) {
 			if(!active_calls_cache) {
 				active_calls_cache_size = active_calls_size;
@@ -10920,7 +10921,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	Call **closeCalls = new FILE_LINE(0) Call*[closeCallsMax];
 	unsigned closeCallsCount = 0;
 	
-	if(opt_processing_limitations) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
 		u_int64_t now_ms = getTimeMS();
 		__SYNC_LOCK(active_calls_cache_sync);
 		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&

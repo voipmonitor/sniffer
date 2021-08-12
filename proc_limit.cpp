@@ -5,6 +5,7 @@
 #include "tools_global.h"
 
 
+extern bool opt_processing_limitations_active_calls_cache;
 cProcessingLimitations processing_limitations;
 
 
@@ -27,9 +28,10 @@ void cProcessingLimitations::incLimitations(bool force) {
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp all processing");
 		}
 	}
-	if(force ||
-	   !last_change_active_calls_cache_timeout_time_s ||
-	   (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s)) {
+	if(opt_processing_limitations_active_calls_cache &&
+	   (force ||
+	    !last_change_active_calls_cache_timeout_time_s ||
+	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {
 		if(active_calls_cache_timeout < 10) {
 			active_calls_cache_timeout += 2;
 			last_change_active_calls_cache_timeout_time_s = time_s;
@@ -57,9 +59,10 @@ void cProcessingLimitations::decLimitations(bool force) {
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "resume rtp read");
 		}
 	}
-	if(force ||
-	   !last_change_active_calls_cache_timeout_time_s ||
-	   (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s)) {
+	if(opt_processing_limitations_active_calls_cache &&
+	   (force ||
+	    !last_change_active_calls_cache_timeout_time_s ||
+	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {
 		if(active_calls_cache_timeout > 2) {
 			--active_calls_cache_timeout;
 			last_change_active_calls_cache_timeout_time_s = time_s;

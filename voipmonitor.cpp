@@ -844,6 +844,7 @@ int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
 int opt_processing_limitations_heap_high_limit = 50;
 int opt_processing_limitations_heap_low_limit = 25;
+bool opt_processing_limitations_active_calls_cache = false;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -6591,6 +6592,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_low_limit", &opt_processing_limitations_heap_low_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations_active_calls_cache", &opt_processing_limitations_active_calls_cache));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -7662,13 +7664,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "max_buffer_mem") {
 		buffersControl.setMaxBufferMem(configItem->getValueInt() * 1024 * 1024, true);
-	}
-	if(configItem->config_name == "query_cache") {
-		if(configItem->getValueInt()) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
-		}
 	}
 	if(configItem->config_name == "query_cache") {
 		if(configItem->getValueInt()) {
@@ -10703,6 +10698,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "processing_limitations_heap_low_limit", NULL))) {
 		opt_processing_limitations_heap_low_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache", NULL))) {
+		opt_processing_limitations_active_calls_cache = yesno(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
