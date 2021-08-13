@@ -5612,7 +5612,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].srtp) {
-			if(!(ip_port[i].srtp_crypto_config_list ||
+			bool stream_is_used =  false;
+			for(int j = 0; j < rtp_size(); j++) {
+				if(rtp_stream_by_index(j)->index_call_ip_port == i &&
+				   rtp_stream_by_index(j)->stats.received > 0) {
+					stream_is_used = true;
+					break;
+				}
+			}
+			if(stream_is_used &&
+			   !(ip_port[i].srtp_crypto_config_list ||
 			     (rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp()))) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 			}
