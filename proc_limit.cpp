@@ -6,6 +6,7 @@
 
 
 extern bool opt_processing_limitations_active_calls_cache;
+extern int opt_processing_limitations_active_calls_cache_type;
 cProcessingLimitations processing_limitations;
 
 
@@ -32,8 +33,9 @@ void cProcessingLimitations::incLimitations(bool force) {
 	   (force ||
 	    !last_change_active_calls_cache_timeout_time_s ||
 	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {
-		if(active_calls_cache_timeout < 10) {
-			active_calls_cache_timeout += 2;
+		int inc = (opt_processing_limitations_active_calls_cache_type == 1 ? 2 : 10);
+		if(active_calls_cache_timeout <= active_calls_cache_timeout_max - inc) {
+			active_calls_cache_timeout += inc;
 			last_change_active_calls_cache_timeout_time_s = time_s;
 			cLogSensor::log(cLogSensor::notice, "processing limitations" , "set active calls cache timeout to: %i", active_calls_cache_timeout);
 		}
@@ -63,8 +65,9 @@ void cProcessingLimitations::decLimitations(bool force) {
 	   (force ||
 	    !last_change_active_calls_cache_timeout_time_s ||
 	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {
-		if(active_calls_cache_timeout > 2) {
-			--active_calls_cache_timeout;
+		int dec = (opt_processing_limitations_active_calls_cache_type == 1 ? 1 : 5);
+		if(active_calls_cache_timeout >= active_calls_cache_timeout_min + dec) {
+			active_calls_cache_timeout -= dec;
 			last_change_active_calls_cache_timeout_time_s = time_s;
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "set active calls cache timeout to: %i", active_calls_cache_timeout);
 		}

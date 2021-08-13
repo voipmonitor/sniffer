@@ -10,7 +10,10 @@ public:
 		suppress_rtp_read = false;
 		suppress_rtp_selective_processing = false;
 		suppress_rtp_all_processing = false;
-		active_calls_cache_timeout = 2;
+		extern int opt_processing_limitations_active_calls_cache_type;
+		active_calls_cache_timeout_min = (opt_processing_limitations_active_calls_cache_type == 1 ? 2 : 10);
+		active_calls_cache_timeout_max = (opt_processing_limitations_active_calls_cache_type == 1 ? 10 : 30);
+		active_calls_cache_timeout = active_calls_cache_timeout_min;
 		minimum_validity_of_change_s = 30;
 	}
 	void incLimitations(bool force = false);
@@ -33,6 +36,8 @@ private:
 	volatile bool suppress_rtp_read;
 	volatile bool suppress_rtp_selective_processing;
 	volatile bool suppress_rtp_all_processing;
+	unsigned active_calls_cache_timeout_min;
+	unsigned active_calls_cache_timeout_max;
 	volatile unsigned active_calls_cache_timeout;
 	unsigned minimum_validity_of_change_s;
 };

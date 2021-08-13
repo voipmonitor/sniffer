@@ -239,6 +239,7 @@ extern sSnifferClientOptions snifferClientOptions;
 
 extern bool opt_processing_limitations;
 extern bool opt_processing_limitations_active_calls_cache;
+extern int opt_processing_limitations_active_calls_cache_type;
 extern cProcessingLimitations processing_limitations;
 
 
@@ -10458,6 +10459,30 @@ Calltable::mgcpCleanupStream(Call *call) {
 
 string 
 Calltable::getCallTableJson(char *params, bool *zip) {
+ 
+	unsigned int now = time(NULL);
+	u_int64_t now_ms = getTimeMS();
+	
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
+	   opt_processing_limitations_active_calls_cache_type == 2) {
+		__SYNC_LOCK(active_calls_cache_sync);
+		for(map<string, d_item2<u_int32_t, string> >::iterator iter = active_calls_cache_map.begin();
+		    iter != active_calls_cache_map.end();) {
+			if(now > iter->second.item1 && now - iter->second.item1 > processing_limitations.activeCallsCacheTimeout()) {
+				active_calls_cache_map.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+		map<string, d_item2<u_int32_t, string> >::iterator iter = active_calls_cache_map.find(params);
+		if(iter != active_calls_cache_map.end()) {
+			string rslt = iter->second.item2;
+			__SYNC_UNLOCK(active_calls_cache_sync);
+			return(rslt);
+		}
+		__SYNC_UNLOCK(active_calls_cache_sync);
+	}
+ 
 	vector<cCallFilter*> callFilters;
 	int limit = -1;
 	int sortByIndex = convCallFieldToFieldIndex(cf_calldate_num);
@@ -10517,24 +10542,17 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 	}
 	
-	unsigned int now = time(NULL);
-	u_int64_t now_ms = getTimeMS();
-	
 	Call **active_calls = NULL;
 	u_int32_t active_calls_size = 0;
 	u_int32_t active_calls_count = 0;
+	bool need_refresh_active_calls_cache = false;
 
-	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
+	   opt_processing_limitations_active_calls_cache_type == 1) {
 		__SYNC_LOCK(active_calls_cache_sync);
 		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&
 		   now_ms - active_calls_cache_fill_at_ms > processing_limitations.activeCallsCacheTimeout() * 1000) {
-			for(unsigned i = 0; i < active_calls_cache_count; i++) {
-				__SYNC_DEC(active_calls_cache[i]->useInListCalls);
-			}
-			delete [] active_calls_cache;
-			active_calls_cache = NULL;
-			active_calls_cache_size = 0;
-			active_calls_cache_count = 0;
+			need_refresh_active_calls_cache = true;
 		} else if(active_calls_cache) {
 			active_calls_size = active_calls_cache_size;
 			active_calls_count = active_calls_cache_count;
@@ -10627,7 +10645,22 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 	}
 	
-	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
+	   opt_processing_limitations_active_calls_cache_type == 1) {
+		if(active_calls_count) {
+			for(unsigned i = 0; i < active_calls_count; i++) {
+				__SYNC_INC(active_calls[i]->useInListCalls);
+			}
+		}
+		if(need_refresh_active_calls_cache) {
+			for(unsigned i = 0; i < active_calls_cache_count; i++) {
+				__SYNC_DEC(active_calls_cache[i]->useInListCalls);
+			}
+			delete [] active_calls_cache;
+			active_calls_cache = NULL;
+			active_calls_cache_size = 0;
+			active_calls_cache_count = 0;
+		}
 		if(active_calls_count) {
 			if(!active_calls_cache) {
 				active_calls_cache_size = active_calls_size;
@@ -10635,9 +10668,6 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				active_calls_cache = new FILE_LINE(0) Call*[active_calls_cache_size];
 				memcpy(active_calls_cache, active_calls, active_calls_cache_count * sizeof(Call*));
 				active_calls_cache_fill_at_ms = now_ms;
-			}
-			for(unsigned i = 0; i < active_calls_count; i++) {
-				__SYNC_INC(active_calls[i]->useInListCalls);
 			}
 		}
 		__SYNC_UNLOCK(active_calls_cache_sync);
@@ -10786,6 +10816,15 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			delete callFilters[i];
 		}
 	}
+	
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
+	   opt_processing_limitations_active_calls_cache_type == 2) {
+		__SYNC_LOCK(active_calls_cache_sync);
+		d_item2<u_int32_t, string> cache_data(now, table);
+		active_calls_cache_map[params] = cache_data;
+		__SYNC_UNLOCK(active_calls_cache_sync);
+	}
+	
 	return(table);
 }
 
@@ -10930,7 +10969,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	Call **closeCalls = new FILE_LINE(0) Call*[closeCallsMax];
 	unsigned closeCallsCount = 0;
 	
-	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache) {
+	if(opt_processing_limitations && opt_processing_limitations_active_calls_cache &&
+	   opt_processing_limitations_active_calls_cache_type == 1) {
 		u_int64_t now_ms = getTimeMS();
 		__SYNC_LOCK(active_calls_cache_sync);
 		if(active_calls_cache && now_ms > active_calls_cache_fill_at_ms &&
