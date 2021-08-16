@@ -8950,6 +8950,12 @@ void set_context_config() {
 	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
 		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
 	}
+	
+	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_ipfix = false;
+		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
 }
 
 void check_context_config() {
