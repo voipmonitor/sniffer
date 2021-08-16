@@ -846,6 +846,8 @@ int opt_processing_limitations_heap_high_limit = 50;
 int opt_processing_limitations_heap_low_limit = 25;
 bool opt_processing_limitations_active_calls_cache = false;
 int opt_processing_limitations_active_calls_cache_type = 2;
+int opt_processing_limitations_active_calls_cache_timeout_min = 0;
+int opt_processing_limitations_active_calls_cache_timeout_max = 0;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -6595,6 +6597,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_low_limit", &opt_processing_limitations_heap_low_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations_active_calls_cache", &opt_processing_limitations_active_calls_cache));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_type", &opt_processing_limitations_active_calls_cache_type));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_min", &opt_processing_limitations_active_calls_cache_timeout_min));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_max", &opt_processing_limitations_active_calls_cache_timeout_max));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -10712,6 +10716,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_type", NULL))) {
 		opt_processing_limitations_active_calls_cache_type = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_min", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_min = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_max", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_max = atoi(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

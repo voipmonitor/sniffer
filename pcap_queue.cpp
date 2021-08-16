@@ -1424,11 +1424,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTime.push_back(getTimeMS_rdtsc());
 		lapTimeDescr.push_back("pcapStatString_interface-after");
 	}
+	size_t count_calls = calltable->getCountCalls();
 	if(EXTENDED_LOG) {
 		string statString = "\n";
 		if(statCalls) {
 			ostringstream outStr;
-			outStr << "CALLS: " << calltable->getCountCalls() << ", " << calls_counter;
+			outStr << "CALLS: " << count_calls << ", " << calls_counter;
 			if(opt_ipaccount) {
 				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
 			}
@@ -1476,9 +1477,15 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		extern cProcessingLimitations processing_limitations;
 		if(opt_processing_limitations) {
 			if(heapPerc + heapTrashPerc > opt_processing_limitations_heap_high_limit) {
-				processing_limitations.incLimitations();
-			} else if(heapPerc + heapTrashPerc < opt_processing_limitations_heap_low_limit) {
-				processing_limitations.decLimitations();
+				processing_limitations.incLimitations(cProcessingLimitations::_pl_all);
+			} else if(calls_counter > 10000 &&
+				  calls_counter > (int)count_calls * 2) {
+				processing_limitations.incLimitations(cProcessingLimitations::_pl_active_calls);
+			}
+			if(heapPerc + heapTrashPerc < opt_processing_limitations_heap_low_limit) {
+				processing_limitations.decLimitations(calls_counter < (int)count_calls * 1.5 ?
+								       cProcessingLimitations::_pl_all :
+								       cProcessingLimitations::_pl_rtp);
 			}
 		}
 		outStr << fixed;
@@ -1487,7 +1494,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("check heap");
 		}
 		if(!this->isMirrorSender()) {
-			outStr << "calls[" << calltable->getCountCalls() << ",r:" << calltable->registers_listMAP.size() << "]"
+			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
 			       << "[" << calls_counter << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();
@@ -1520,7 +1527,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
 			}
 			if (opt_rrd) {
-				rrd_set_value(RRD_VALUE_inv, calltable->getCountCalls());
+				rrd_set_value(RRD_VALUE_inv, count_calls);
 				rrd_set_value(RRD_VALUE_reg, calltable->registers_listMAP.size());
 			}
 			if(sverb.log_profiler) {
@@ -2523,11 +2530,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
-		   calls_counter > (int)calltable->getCountCalls() * 2) {
+		   calls_counter > (int)count_calls * 2) {
 			extern void storing_cdr_next_thread_add();
 			storing_cdr_next_thread_add();
 		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
-			  calls_counter < (int)calltable->getCountCalls() * 1.5) {
+			  calls_counter < (int)count_calls * 1.5) {
 			extern void storing_cdr_next_thread_remove();
 			storing_cdr_next_thread_remove();
 		}

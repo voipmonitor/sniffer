@@ -10,11 +10,12 @@ extern int opt_processing_limitations_active_calls_cache_type;
 cProcessingLimitations processing_limitations;
 
 
-void cProcessingLimitations::incLimitations(bool force) {
+void cProcessingLimitations::incLimitations(eType type, bool force) {
 	u_int32_t time_s = getTimeS();
-	if(force ||
-	   !last_change_suppress_rtp_time_s ||
-	   (time_s > last_change_suppress_rtp_time_s && time_s - last_change_suppress_rtp_time_s > minimum_validity_of_change_s)) {
+	if((type & _pl_rtp) &&
+	   (force ||
+	    !last_change_suppress_rtp_time_s ||
+	    (time_s > last_change_suppress_rtp_time_s && time_s - last_change_suppress_rtp_time_s > minimum_validity_of_change_s))) {
 		if(!suppress_rtp_read) {
 			suppress_rtp_read = true;
 			last_change_suppress_rtp_time_s = time_s;
@@ -29,7 +30,8 @@ void cProcessingLimitations::incLimitations(bool force) {
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "suppress rtp all processing");
 		}
 	}
-	if(opt_processing_limitations_active_calls_cache &&
+	if((type & _pl_active_calls) &&
+	   opt_processing_limitations_active_calls_cache &&
 	   (force ||
 	    !last_change_active_calls_cache_timeout_time_s ||
 	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {
@@ -42,11 +44,12 @@ void cProcessingLimitations::incLimitations(bool force) {
 	}
 }
 
-void cProcessingLimitations::decLimitations(bool force) {
+void cProcessingLimitations::decLimitations(eType type, bool force) {
 	u_int32_t time_s = getTimeS();
-	if(force ||
-	   !last_change_suppress_rtp_time_s ||
-	   (time_s > last_change_suppress_rtp_time_s && time_s - last_change_suppress_rtp_time_s > minimum_validity_of_change_s)) {
+	if((type & _pl_rtp) &&
+	   (force ||
+	    !last_change_suppress_rtp_time_s ||
+	    (time_s > last_change_suppress_rtp_time_s && time_s - last_change_suppress_rtp_time_s > minimum_validity_of_change_s))) {
 		if(suppress_rtp_all_processing) {
 			suppress_rtp_all_processing = false;
 			last_change_suppress_rtp_time_s = time_s;
@@ -61,7 +64,8 @@ void cProcessingLimitations::decLimitations(bool force) {
 			cLogSensor::log(cLogSensor::notice, "processing limitations", "resume rtp read");
 		}
 	}
-	if(opt_processing_limitations_active_calls_cache &&
+	if((type & _pl_active_calls) &&
+	   opt_processing_limitations_active_calls_cache &&
 	   (force ||
 	    !last_change_active_calls_cache_timeout_time_s ||
 	    (time_s > last_change_active_calls_cache_timeout_time_s && time_s - last_change_active_calls_cache_timeout_time_s > minimum_validity_of_change_s))) {

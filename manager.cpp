@@ -4260,9 +4260,9 @@ int Mgmt_processing_limitations(Mgmt_params *params) {
 		return(0);
 	}
 	if(strstr(params->buf, "processing_limitations_inc") != NULL) {
-		processing_limitations.incLimitations(true);
+		processing_limitations.incLimitations(cProcessingLimitations::_pl_all, true);
 	} else if(strstr(params->buf, "processing_limitations_dec") != NULL) {
-		processing_limitations.decLimitations(true);
+		processing_limitations.decLimitations(cProcessingLimitations::_pl_all, true);
 	}
 	return(0);
 }
