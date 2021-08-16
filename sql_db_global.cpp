@@ -735,6 +735,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 	q_delim.push_back(_MYSQL_QUERY_END_new);
 	q_delim.push_back(_MYSQL_QUERY_END_SUBST_new);
 	list<string> ig;
+	list<string> ni;
 	unsigned counterQueriesWithNextInsertGroup = 0;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
 		#ifdef CLOUD_ROUTER_CLIENT
@@ -849,6 +850,9 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 						} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
 							ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
 							query_vect.erase(query_vect.begin() + i);
+						} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
+							ni.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length));
+							query_vect.erase(query_vect.begin() + i);
 						} else {
 							i++;
 						}
@@ -886,6 +890,9 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 							find_and_replace(query_vect[i], MYSQL_MAIN_INSERT_ID_OLD, MYSQL_MAIN_INSERT_ID_OLD2 + "_" + intToString(counterQueriesWithNextInsertGroup), &counter_replace_MI_ID_old);
 							if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_GROUP_new, _MYSQL_NEXT_INSERT_GROUP_new_length)) {
 								ig.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_GROUP_new_length));
+								query_vect.erase(query_vect.begin() + i);
+							} else if(MYSQL_EXISTS_PREFIX_L(query_vect[i], _MYSQL_NEXT_INSERT_new, _MYSQL_NEXT_INSERT_new_length)) {
+								ni.push_back(query_vect[i].substr(_MYSQL_NEXT_INSERT_new_length));
 								query_vect.erase(query_vect.begin() + i);
 							} else {
 								if(counter_replace_MI_ID_old) {
@@ -983,6 +990,15 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				queries_list->push_back(iter->first + " ) VALUES ( " + values_str + " )");
 			} else {
 				*queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
+			}
+		}
+	}
+	if(ni.size()) {
+		for(list<string>::iterator iter = ni.begin(); iter != ni.end(); iter++) {
+			if(enable_new_store == 2) {
+				queries_list->push_back(*iter);
+			} else {
+				*queries_str += sqlEscapeString(*iter) + _MYSQL_QUERY_END_new;
 			}
 		}
 	}
