@@ -11,6 +11,9 @@ public:
 	};
 public:
 	cProcessingLimitations() {
+		init();
+	}
+	void init() {
 		last_change_suppress_rtp_time_s = 0;
 		last_change_active_calls_cache_timeout_time_s = 0;
 		suppress_rtp_read = false;

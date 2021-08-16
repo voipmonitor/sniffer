@@ -3965,6 +3965,9 @@ int main_init_read() {
  
 	reset_counters();
 	
+	extern cProcessingLimitations processing_limitations;
+	processing_limitations.init();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
