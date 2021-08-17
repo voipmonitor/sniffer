@@ -6588,8 +6588,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(!queryForSaveUseInfo.empty()) {
 					vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
 					for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {
-						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT +
-							     queryForSaveUseInfo_vect[i]);
+						query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
 					}
 				}
 			}
@@ -7028,7 +7027,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				// TODO
 			} else {
 				for(list<string>::iterator iter = billingAggregationsInserts.begin(); iter != billingAggregationsInserts.end(); iter++) {
-					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + *iter);
+					query_str += MYSQL_ADD_QUERY_END(*iter);
 				}
 			}
 		}
@@ -8048,8 +8047,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			if(!queryForSaveUseInfo.empty()) {
 				vector<string> queryForSaveUseInfo_vect = split(queryForSaveUseInfo.c_str(), ";");
 				for(unsigned i = 0; i < queryForSaveUseInfo_vect.size(); i++) {
-					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT +
-						     queryForSaveUseInfo_vect[i]);
+					query_str += MYSQL_ADD_QUERY_END(queryForSaveUseInfo_vect[i]);
 				}
 			}
 		}

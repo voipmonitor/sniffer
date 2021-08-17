@@ -8605,6 +8605,19 @@ void set_context_config() {
 	if(!opt_mysql_enable_new_store) {
 		opt_mysql_enable_set_id = false;
 	}
+	
+	if(opt_mysql_enable_new_store == 2 && !opt_mysql_enable_set_id) {
+		opt_mysql_enable_new_store = true;
+		syslog(LOG_ERR, "option mysql_enable_new_store=per_query is only supported with option mysql_enable_set_id enabled");
+	}
+	
+	if(opt_mysql_enable_set_id) {
+		static bool mysql_enable_set_id_notice = false;
+		if(!mysql_enable_set_id_notice) {
+			syslog(LOG_NOTICE, "!!! if the mysql_enable_set_id option is enabled, no one else can write to the database !!!");
+			mysql_enable_set_id_notice = true;
+		}
+	}
  
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
