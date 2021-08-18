@@ -697,8 +697,9 @@ public:
 	void printContent(int level  = 0);
 	void addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
-	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
-	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
+	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t skip_first_items);
+	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction, u_int32_t skip_first_items);
+	u_int32_t getRemainDataItems(TcpReassemblyDataItem::eDirection direction);
 	bool existsRemainData(TcpReassemblyDataItem::eDirection direction);
 	bool existsAllAckSeq(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();

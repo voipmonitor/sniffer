@@ -25,7 +25,7 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
 		memcpy(client_random, handshake_hello->random, DTLS_RANDOM_SIZE);
 		client_random_set = true;
-		unsigned len = handshake->length_();
+		unsigned len = handshake->length_() + sizeof(cDtlsLink::sHeaderHandshake);
 		unsigned offset = sizeof(sHeaderHandshakeHello);
 		unsigned i = 0;
 		while(offset < len) {
@@ -59,8 +59,22 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 					u_int16_t e_len = ntohs(*(u_int16_t*)(ext + ext_offset + 2));
 					if(e_type == 14) { // use_srtp
 						u_int16_t prot_prof_len = ntohs(*(u_int16_t*)(ext + ext_offset + 4));
-						u_int16_t prot_prof = prot_prof_len == 2 ? ntohs(*(u_int16_t*)(ext + ext_offset + 6)) :
-								      prot_prof_len == 1 ? *(u_int8_t*)(ext + ext_offset + 6) : 0;
+						u_int16_t prot_prof = _ct_na;
+						if(prot_prof_len == 1) {
+							prot_prof = *(u_int8_t*)(ext + ext_offset + 6);
+						} else if(prot_prof_len == 2) {
+							prot_prof = ntohs(*(u_int16_t*)(ext + ext_offset + 6));
+						} else if(prot_prof_len > 2) {
+							u_int16_t _offset = 0;
+							while(_offset < prot_prof_len - 2) {
+								u_int16_t _prot_prof = ntohs(*(u_int16_t*)(ext + ext_offset + 6 + _offset));
+								if(cipherIsSupported(_prot_prof)) {
+									prot_prof = _prot_prof;
+									break;
+								}
+								_offset += 2;
+							}
+						}
 						//u_int8_t mki_len = *(u_int8_t*)(ext + ext_offset + 6 + prot_prof_len);
 						if(cipherIsSupported(prot_prof)) {
 							cipher_type = (eCipherType)prot_prof;
@@ -70,7 +84,6 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 				}
 			}
 		}
-		
 	} else if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
 		memcpy(server_random, handshake_hello->random, DTLS_RANDOM_SIZE);

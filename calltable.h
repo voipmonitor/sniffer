@@ -142,6 +142,8 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_SDP_EXISTS_MEDIA_TYPE_AUDIO	(1 << 12)
 #define CDR_SDP_EXISTS_MEDIA_TYPE_IMAGE	(1 << 13)
 #define CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO	(1 << 14)
+#define CDR_PROCLIM_SUPPRESS_RTP_READ   (1 << 15)
+#define CDR_PROCLIM_SUPPRESS_RTP_PROC   (1 << 16)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -973,6 +975,7 @@ public:
 	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
 	u_int64_t last_signal_packet_time_us;
 	u_int64_t last_rtp_packet_time_us;
+	u_int64_t last_rtcp_packet_time_us;
 	u_int64_t last_rtp_a_packet_time_us;
 	u_int64_t last_rtp_b_packet_time_us;
 	time_t destroy_call_at;
@@ -1239,7 +1242,7 @@ public:
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, last_rtp_packet_time_us); };
+	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, max(last_rtp_packet_time_us, last_rtcp_packet_time_us)); };
 	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(get_last_packet_time_us()); };
 
 	/**
@@ -1257,6 +1260,7 @@ public:
 	*/
 	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > last_signal_packet_time_us) last_signal_packet_time_us = time_us; };
 	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtp_packet_time_us) last_rtp_packet_time_us = time_us; };
+	void set_last_rtcp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtcp_packet_time_us) last_rtcp_packet_time_us = time_us; };
 	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
 
 	/**
@@ -1972,6 +1976,8 @@ public:
 	bool sdp_exists_media_type_application;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
+	bool suppress_rtp_read_due_to_insufficient_hw_performance;
+	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -2818,6 +2824,12 @@ private:
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
 	
+	Call **active_calls_cache;
+	u_int32_t active_calls_cache_size;
+	u_int32_t active_calls_cache_count;
+	u_int64_t active_calls_cache_fill_at_ms;
+	map<string, d_item2<u_int32_t, string> > active_calls_cache_map;
+	volatile int active_calls_cache_sync;
 };
 
 

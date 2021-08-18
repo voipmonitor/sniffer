@@ -1,3 +1,17 @@
+28.8 17.08.2021
+===============
+- improved conditions for detecting one-way calls in case INVITE is passing A->B->C without any response from C [VS-1223]
+- fix problem with creating duplicate partitions for tables containing custom headers [VS-1213]
+- fix creating old partitions for custom headers tables in migration instance [VS_1230]
+- new option t2_boost_pb_detach_thread (default no) which splits load in packet buffer thread (needed for very high traffic >= 2500Mbit calls >= 30000) - this option has trade off + 1 CPU core. 
+- ssl key logger option WRITE_THREAD 1/0, fix crash if ssl returns NULL key
+- reset RTP timeout (rtptimeout timer option) if RTCP packets arrive [VS-1234]
+- ssl reassembly fix - better solution for the rest of the data from previous reassembly results, fix dtls header parsing with extended protection profile content [VS-1216]
+- ignore extra trailing \r\n in sip data lenght verification in TCP reassembly (any SIP TCP with extra \r\n were ignored) [VS-1236]
+- disallow ipfix options if sniffer is configured to mirror packets 
+- fix  mysql_enable_new_store = per_query for custom headers and billing 
+
+
 28.7 26.07.2021
 ===============
 - support for ipfix tunneling (ACME / ORACLE SBC mirroring) [VS-133]

@@ -1306,14 +1306,19 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				       lastrtp and this->eqAddrPort(lastrtp);
 	}
 	
-	if(is_video()) {
+	extern cProcessingLimitations processing_limitations;
+	if(processing_limitations.suppressRtpRead()) {
+		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
+	}
+	if(is_video() || 
+	   owner->suppress_rtp_read_due_to_insufficient_hw_performance) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
 		}
 		prev_payload = curpayload;
 		prev_codec = codec;
-		lastframetype = AST_FRAME_VIDEO;
+		lastframetype = is_video() ? AST_FRAME_VIDEO : AST_FRAME_VOICE;
 		if(first_codec < 0) {
 			first_codec = codec;
 		}

@@ -845,6 +845,13 @@ int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 bool opt_t2_boost_pb_detach_thread = false;
 int opt_storing_cdr_max_next_threads = 3;
+bool opt_processing_limitations = false;
+int opt_processing_limitations_heap_high_limit = 50;
+int opt_processing_limitations_heap_low_limit = 25;
+bool opt_processing_limitations_active_calls_cache = false;
+int opt_processing_limitations_active_calls_cache_type = 2;
+int opt_processing_limitations_active_calls_cache_timeout_min = 0;
+int opt_processing_limitations_active_calls_cache_timeout_max = 0;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -3974,6 +3981,9 @@ int main_init_read() {
  
 	reset_counters();
 	
+	extern cProcessingLimitations processing_limitations;
+	processing_limitations.init();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
@@ -6619,6 +6629,13 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_low_limit", &opt_processing_limitations_heap_low_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations_active_calls_cache", &opt_processing_limitations_active_calls_cache));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_type", &opt_processing_limitations_active_calls_cache_type));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_min", &opt_processing_limitations_active_calls_cache_timeout_min));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_max", &opt_processing_limitations_active_calls_cache_timeout_max));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -7701,13 +7718,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			opt_load_query_from_files_inotify = true;
 		}
 	}
-	if(configItem->config_name == "query_cache") {
-		if(configItem->getValueInt()) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
-		}
-	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
@@ -8648,6 +8658,19 @@ void set_context_config() {
 	if(!opt_mysql_enable_new_store) {
 		opt_mysql_enable_set_id = false;
 	}
+	
+	if(opt_mysql_enable_new_store == 2 && !opt_mysql_enable_set_id) {
+		opt_mysql_enable_new_store = true;
+		syslog(LOG_ERR, "option mysql_enable_new_store=per_query is only supported with option mysql_enable_set_id enabled");
+	}
+	
+	if(opt_mysql_enable_set_id) {
+		static bool mysql_enable_set_id_notice = false;
+		if(!mysql_enable_set_id_notice) {
+			syslog(LOG_NOTICE, "!!! if the mysql_enable_set_id option is enabled, no one else can write to the database !!!");
+			mysql_enable_set_id_notice = true;
+		}
+	}
  
 	if(opt_scanpcapdir[0]) {
 		sniffer_mode = snifferMode_read_from_files;
@@ -9000,6 +9023,12 @@ void set_context_config() {
 	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
 		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
 	}
+	
+	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_ipfix = false;
+		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
 }
 
 void check_context_config() {
@@ -10744,6 +10773,27 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations", NULL))) {
+		opt_processing_limitations = yesno(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_heap_high_limit", NULL))) {
+		opt_processing_limitations_heap_high_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_heap_low_limit", NULL))) {
+		opt_processing_limitations_heap_low_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache", NULL))) {
+		opt_processing_limitations_active_calls_cache = yesno(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_type", NULL))) {
+		opt_processing_limitations_active_calls_cache_type = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_min", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_min = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_max", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_max = atoi(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);

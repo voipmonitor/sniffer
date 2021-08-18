@@ -173,6 +173,16 @@ public:
 			if(sipDataLen == data_len) {
 				return(true);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
+				if(strict && data_len - sipDataLen <= 2) {
+					while(data_len > sipDataLen && 
+					      (*(char*)(data + data_len - 1) == LF_CHAR ||
+					       *(char*)(data + data_len - 1) == CR_CHAR)) {
+						--data_len;
+					}
+					if(sipDataLen == data_len) {
+						return(true);
+					}
+				}
 				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL, true)) {
 					return(strict ? false : true);
 				} else {
