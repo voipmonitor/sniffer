@@ -3963,6 +3963,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
+						call->seenbyeandok_permanent = false;
 						if(!call->connect_time_us) {
 							call->connect_time_us = packetS->getTimeUS();
 							if(opt_enable_fraud && isFraudReady()) {
@@ -4077,6 +4078,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->getTime_s() + 180;
+				} else if(call->seenbyeandok_permanent) {
+					call->destroy_call_at = packetS->getTime_s() + 60;
 				}
 			} else if(lastSIPresponseNum == 491) {
 				// do not set timeout for 491

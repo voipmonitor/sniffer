@@ -902,6 +902,7 @@ public:
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
+	bool seenbyeandok_permanent;
 	u_int64_t seenbyeandok_time_usec;
 	bool seencancelandok;		//!< true if we see SIP OK TO CANCEL within the Call
 	u_int64_t seencancelandok_time_usec;
@@ -1732,6 +1733,9 @@ public:
 	}
 	void setSeenByeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
 		this->seenbyeandok = seenbyeandok;
+		if(seenbyeandok) {
+			this->seenbyeandok_permanent = true;
+		}
 		this->seenbyeandok_time_usec = seenbyeandok_time_usec;
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
