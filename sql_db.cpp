@@ -6045,6 +6045,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	if(opt_cdr_stat_values) {
+	vector<dstring> cdr_stat_fields;
+	string cdr_stat_fields_str = cCdrStat::metrics_db_fields(&cdr_stat_fields);
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_stat_values` (\
 			`from_time` datetime,\
@@ -6054,7 +6056,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`created_at` datetime,\
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
-			" + cCdrStat::metrics_db_fields() + "\
+			" + cdr_stat_fields_str + "\
 			UNIQUE KEY `comb_1` (`from_time`,`addr`,`type`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
@@ -6063,7 +6065,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partMonthName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
 			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
 				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
-		""));	 
+		""));
 	}
 	if(opt_cdr_stat_sources) {
 	this->query(string(
@@ -7899,6 +7901,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
 	this->checkColumns_cdr_child(!checkColumnsSilentLog);
+	this->checkColumns_cdr_stat(!checkColumnsSilentLog);
 	this->checkColumns_ss7(!checkColumnsSilentLog);
 	this->checkColumns_message(!checkColumnsSilentLog);
 	this->checkColumns_message_child(!checkColumnsSilentLog);
@@ -8293,6 +8296,26 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 				}
 			}
 			break;
+		}
+	}
+}
+
+void SqlDb_mysql::checkColumns_cdr_stat(bool log) {
+	cCdrStat::exists_columns_clear();
+	if(!opt_cdr_stat_values || !this->existsTable("cdr_stat_values")) {
+		return;
+	}
+	vector<dstring> cdr_stat_fields;
+	cCdrStat::metrics_db_fields(&cdr_stat_fields);
+	map<string, u_int64_t> tableSize;
+	for(unsigned i = 0; i < cdr_stat_fields.size(); i++) {
+		bool existsColumn = false;
+		this->checkNeedAlterAdd("cdr_stat_values", "field " + cdr_stat_fields[i].str[0], true,
+					log, &tableSize, &existsColumn,
+					cdr_stat_fields[i].str[0].c_str(), cdr_stat_fields[i].str[1].c_str(), NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		if(existsColumn) {
+			cCdrStat::exists_columns_add(cdr_stat_fields[i].str[0].c_str());
 		}
 	}
 }

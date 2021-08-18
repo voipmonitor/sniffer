@@ -687,6 +687,7 @@ public:
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_child(bool log = false);
+	void checkColumns_cdr_stat(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_message_child(bool log = false);

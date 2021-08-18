@@ -116,6 +116,7 @@ enum eCdrStatType {
 	_cdrStatType_NA,
 	_cdrStatType_total = 1,
 	_cdrStatType_count,
+	_cdrStatType_cps,
 	_cdrStatType_minutes,
 	_cdrStatType_asr = 11,
 	_cdrStatType_acd,
@@ -458,7 +459,10 @@ public:
 	void cleanup(bool forceAll = false);
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
-	static string metrics_db_fields();
+	static string metrics_db_fields(vector<dstring> *fields = NULL);
+	static bool exists_columns_check(const char *column);
+	static void exists_columns_clear();
+	static void exists_columns_add(const char *column);
 private:
 	eTypeStore typeStore;
 	vector<cChartSeries*> series;
@@ -475,6 +479,8 @@ private:
 	u_int32_t last_cleanup_at;
 	u_int32_t last_cleanup_at_real;
 	volatile int sync_intervals;
+	static map<string, bool> exists_columns;
+	static volatile int exists_column_sync;
 friend class cChartDataItem;
 friend class cChartInterval;
 };

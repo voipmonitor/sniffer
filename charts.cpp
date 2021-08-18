@@ -1110,10 +1110,13 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 								cdr_stat_row.add(iter_ip->second->count, "count_all");
 								cdr_stat_row.add(iter_ip->second->count_connected, "count_connected");
 								for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
-									cdr_stat_row.add(iter->value, iter->field, iter->null);
+									if(cCdrStat::exists_columns_check(iter->field.c_str())) {
+										cdr_stat_row.add(iter->value, iter->field, iter->null);
+									}
 								}
 								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
-									if(!iter_series->second->series->sourceDataName.empty()) {
+									if(!iter_series->second->series->sourceDataName.empty() &&
+									   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str())) {
 										string chart_data = iter_series->second->getChartData(this);
 										if(!chart_data.empty()) {
 											cdr_stat_row.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
@@ -1127,10 +1130,13 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 								cdr_stat_row_update.add(iter_ip->second->count, "count_all");
 								cdr_stat_row_update.add(iter_ip->second->count_connected, "count_connected");
 								for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
-									cdr_stat_row_update.add(iter->value, iter->field, iter->null);
+									if(cCdrStat::exists_columns_check(iter->field.c_str())) {
+										cdr_stat_row_update.add(iter->value, iter->field, iter->null);
+									}
 								}
 								for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
-									if(!iter_series->second->series->sourceDataName.empty()) {
+									if(!iter_series->second->series->sourceDataName.empty() &&
+									   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str())) {
 										string chart_data = iter_series->second->getChartData(this);
 										if(!chart_data.empty()) {
 											cdr_stat_row_update.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
@@ -1897,6 +1903,7 @@ void cCdrStat::init() {
 
 void cCdrStat::init_series(vector<cChartSeries*> *series) {
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_count, "TCH_count", "cc"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_cps, "TCH_cps", "cps"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_minutes, "TCH_minutes"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr", "asr"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd", "acd"));
@@ -1913,6 +1920,9 @@ void cCdrStat::init_metrics(vector<sMetrics> *metrics) {
 	metrics->push_back(sMetrics("cc_avg", _cdrStatType_count, _chartValueType_avg));
 	metrics->push_back(sMetrics("cc_min", _cdrStatType_count, _chartValueType_min));
 	metrics->push_back(sMetrics("cc_max", _cdrStatType_count, _chartValueType_max));
+	metrics->push_back(sMetrics("cps_avg", _cdrStatType_cps, _chartValueType_avg));
+	metrics->push_back(sMetrics("cps_min", _cdrStatType_cps, _chartValueType_min));
+	metrics->push_back(sMetrics("cps_max", _cdrStatType_cps, _chartValueType_max));
 	metrics->push_back(sMetrics("minutes", _cdrStatType_minutes, _chartValueType_max));
 	metrics->push_back(sMetrics("asr", _cdrStatType_asr, _chartValueType_na));
 	metrics->push_back(sMetrics("acd", _cdrStatType_acd, _chartValueType_na));
@@ -2050,30 +2060,64 @@ void cCdrStat::cleanup(bool forceAll) {
 	last_cleanup_at_real = real_time;
 }
 
-string cCdrStat::metrics_db_fields() {
+string cCdrStat::metrics_db_fields(vector<dstring> *fields) {
+	vector<dstring> _fields;
+	if(!fields) {
+		fields = &_fields;
+	}
 	vector<sMetrics> metrics;
 	init_metrics(&metrics);
 	vector<cChartSeries*> series;
 	init_series(&series);
-	string fields;
-	fields =
-		"`count_all` int unsigned,\n"
-		"`count_connected` int unsigned,\n";
+	fields->push_back(dstring("count_all", "int unsigned"));
+	fields->push_back(dstring("count_connected", "int unsigned"));
 	for(unsigned i = 0; i < metrics.size(); i++) {
-		fields += 
-			"`" + metrics[i].field + "` " +
-			(metrics[i].type_stat == _cdrStatType_count ? "int unsigned" : "double") + ",\n";
+		fields->push_back(dstring(metrics[i].field,
+					  metrics[i].type_stat == _cdrStatType_count ||
+					  metrics[i].type_stat == _cdrStatType_cps ?
+					   "int unsigned" : 
+					   "double"));
 	}
 	for(unsigned i = 0; i < series.size(); i++) {
 		if(!series[i]->sourceDataName.empty()) {
-			fields += 
-				"`" + series[i]->sourceDataName + "_source_data" + "` " +
-				"mediumtext" + ",\n";
+			fields->push_back(dstring(series[i]->sourceDataName + "_source_data",
+						  "mediumtext"));
 		}
 		delete series[i];
 	}
-	return(fields);
+	string fields_str;
+	for(unsigned i = 0; i < fields->size(); i++) {
+		fields_str += "`" + (*fields)[i].str[0] + "` " +
+			      (*fields)[i].str[1] + ",\n";
+	}
+	return(fields_str);
 }
+
+bool cCdrStat::exists_columns_check(const char *column) {
+	bool exists = false;
+	__SYNC_LOCK(exists_column_sync);
+	map<string, bool>::iterator iter = exists_columns.find(column);
+	if(iter != exists_columns.end()) {
+		exists = iter->second;
+	}
+	__SYNC_UNLOCK(exists_column_sync);
+	return(exists);
+}
+
+void cCdrStat::exists_columns_clear() {
+	__SYNC_LOCK(exists_column_sync);
+	exists_columns.clear();
+	__SYNC_UNLOCK(exists_column_sync);
+}
+
+void cCdrStat::exists_columns_add(const char *column) {
+	__SYNC_LOCK(exists_column_sync);
+	exists_columns[column] = true;
+	__SYNC_UNLOCK(exists_column_sync);
+}
+
+map<string, bool> cCdrStat::exists_columns;
+volatile int cCdrStat::exists_column_sync;
 
 
 void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
