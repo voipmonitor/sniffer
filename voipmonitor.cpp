@@ -1915,15 +1915,20 @@ void *storing_cdr( void */*dummy*/ ) {
 					continue;
 				}
 				if(call->isReadyForWriteCdr()) {
-					if(storing_cdr_next_threads_count) {
-						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
-						if(!mod) {
-							calls_for_store.push_back(call);
-						} else {
-							storing_cdr_next_threads[mod - 1].calls->push_back(call);
-						}
+					if(call->push_call_to_storing_cdr_queue) {
+						syslog(LOG_WARNING,"try to duplicity push call %s / %i to storing cdr queue", call->call_id.c_str(), call->getTypeBase());
 					} else {
-						calls_for_store.push_back(call);
+						call->push_call_to_storing_cdr_queue = true;
+						if(storing_cdr_next_threads_count) {
+							int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+							if(!mod) {
+								calls_for_store.push_back(call);
+							} else {
+								storing_cdr_next_threads[mod - 1].calls->push_back(call);
+							}
+						} else {
+							calls_for_store.push_back(call);
+						}
 					}
 					++calls_for_store_count;
 					calltable->lock_calls_queue();
