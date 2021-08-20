@@ -193,6 +193,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
+int opt_fix_packetization_in_create_audio = 0;
 int opt_rrd = 1;
 char *rrd_last_cmd_global = NULL;
 int opt_silencethreshold = 512; //values range from 1 to 32767 default 512
@@ -6931,6 +6932,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("fix_packetization_in_create_audio", &opt_fix_packetization_in_create_audio));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9521,6 +9523,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "fix_packetization_in_create_audio", NULL))) {
+		opt_fix_packetization_in_create_audio = yesno(value);
 	}
 	if((value = ini.GetValue("general", "rrd", NULL))) {
 		opt_rrd = yesno(value);
