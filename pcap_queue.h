@@ -430,6 +430,8 @@ protected:
 	virtual bool startCapture(string *error);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 				      bool checkProtocol = false, sCheckProtocolData *checkProtocolData = NULL);
+	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
+	inline bool check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
@@ -478,6 +480,7 @@ private:
 	u_int64_t packets_counter;
 	ListIP *filter_ip;
 	unsigned read_from_file_index;
+friend class PcapQueue_readFromInterfaceThread;
 };
 
 
@@ -619,6 +622,16 @@ public:
 		volatile uint32_t count;
 		volatile unsigned char used;
 	};
+	struct pcap_dispatch_data {
+		void *me;
+		pcap_block_store *block;
+		pcap_pkthdr_plus2 *pcap_header_plus2;
+		u_char *pcap_packet;
+		sCheckProtocolData checkProtocolData;
+		void init() {
+			memset(this, 0, sizeof(*this));
+		}
+	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
 					  PcapQueue_readFromInterfaceThread *readThread = NULL,
 					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
@@ -682,6 +695,8 @@ protected:
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void threadFunction_blocks();
+	inline static void _pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes);
+	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *h, const u_char *bytes);
 	void processBlock(pcap_block_store *block);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);

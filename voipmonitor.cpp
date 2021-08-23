@@ -841,6 +841,7 @@ int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 bool opt_t2_boost_pb_detach_thread = false;
+bool opt_t2_boost_pcap_dispatch = false;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
 int opt_processing_limitations_heap_high_limit = 50;
@@ -6600,6 +6601,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
@@ -10724,6 +10726,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
 		opt_t2_boost_pb_detach_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
+		opt_t2_boost_pcap_dispatch = atoi(value);
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);

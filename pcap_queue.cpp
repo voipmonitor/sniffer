@@ -108,6 +108,7 @@ extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
 extern bool opt_t2_boost_pb_detach_thread;
+extern bool opt_t2_boost_pcap_dispatch;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
@@ -3549,24 +3550,28 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		if(!checkProtocolData) {
 			checkProtocolData = &_checkProtocolData;
 		}
-		if(!parseEtherHeader(pcapLinklayerHeaderType, *packet,
-				     checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
-				     checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) ||
-		   !(checkProtocolData->protocol == ETHERTYPE_IP ||
-		     (VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) ||
-		   !(((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 4 ||
-		     (VM_IPV6_B && ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->version == 6)) ||
-		   ((iphdr2*)(*packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset > (*header)->len) {
+		if(!check_protocol(*header, *packet, checkProtocolData) ||
+		   (filter_ip && !check_filter_ip(*packet, checkProtocolData))) {
 			return(-11);
-		}
-		if(filter_ip) {
-			iphdr2 *iphdr = (iphdr2*)(*packet + checkProtocolData->header_ip_offset);
-			if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
-				return(-11);
-			}
 		}
 	}
 	return(1);
+}
+
+bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
+	return(parseEtherHeader(pcapLinklayerHeaderType, packet,
+				checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
+				checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) &&
+	       (checkProtocolData->protocol == ETHERTYPE_IP ||
+		(VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
+	       (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
+		(VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
+	       ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len);
+}
+
+bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData) {
+	iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
+	return(filter_ip->checkIP(iphdr->get_saddr()) || filter_ip->checkIP(iphdr->get_daddr()));
 }
 
 void PcapQueue_readFromInterface_base::restoreOneshotBuffer() {
@@ -4755,6 +4760,21 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 }
 
 void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
+	
+	if(opt_t2_boost_pcap_dispatch && this->typeThread == read) {
+		pcap_dispatch_data dd;
+		dd.init();
+		dd.me = this;
+		while(!(is_terminating() || this->threadDoTerminate)) {
+			::pcap_dispatch(this->pcapHandle, 32, _pcap_dispatch_handler, (u_char*)&dd);
+		}
+		if(dd.block) {
+			delete dd.block;
+		}
+		this->threadTerminated = true;
+		return;
+	}
+	
 	int res;
 	pcap_pkthdr *pcap_next_ex_header = NULL;
 	u_char *pcap_next_ex_packet = NULL;
@@ -4871,6 +4891,50 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	
 	this->restoreOneshotBuffer();
 	this->threadTerminated = true;
+}
+
+void PcapQueue_readFromInterfaceThread::_pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
+	pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+	((PcapQueue_readFromInterfaceThread*)dd->me)->pcap_dispatch_handler(dd, header, packet);
+}
+
+void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *header, const u_char *packet) {
+	if(is_terminating() || this->threadDoTerminate) {
+		return;
+	}
+	bool checkProtocol = opt_pcap_queue_use_blocks_read_check;
+	if(checkProtocol || filter_ip) {
+		if(!check_protocol((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData) ||
+		   (filter_ip && !check_filter_ip((u_char*)packet, &dd->checkProtocolData))) {
+			return;
+		}
+	}
+	while(!dd->block ||
+	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->pcap_packet, pcap_snaplen) ||
+	      (dd->block->count && force_push)) {
+		if(dd->block) {
+			this->push_block(dd->block);
+		}
+		dd->block = new FILE_LINE(15045) pcap_block_store(pcap_block_store::plus2);
+		force_push = false;
+	}
+	sumPacketsSize[0] += header->caplen;
+	dd->pcap_header_plus2->clear();
+	if(opt_pcap_queue_use_blocks_read_check) {
+		dd->pcap_header_plus2->detect_headers = 0x01;
+		dd->pcap_header_plus2->header_ip_encaps_offset = dd->checkProtocolData.header_ip_offset;
+		dd->pcap_header_plus2->header_ip_offset = dd->checkProtocolData.header_ip_offset;
+		dd->pcap_header_plus2->eth_protocol = dd->checkProtocolData.protocol;
+		dd->pcap_header_plus2->pid.vlan = dd->checkProtocolData.vlan;
+		dd->pcap_header_plus2->pid.flags = 0;
+	} else {
+		dd->pcap_header_plus2->header_ip_encaps_offset = 0;
+		dd->pcap_header_plus2->header_ip_offset = 0;
+	}
+	dd->pcap_header_plus2->convertFromStdHeader((pcap_pkthdr*)header);
+	dd->pcap_header_plus2->dlink = pcapLinklayerHeaderType;
+	memcpy(dd->pcap_packet, packet, header->caplen);
+	dd->block->inc_h(dd->pcap_header_plus2);
 }
 
 void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
