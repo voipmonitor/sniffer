@@ -516,6 +516,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	int interpolation_len, res;
 	short int stmp;
 	//int res2;
+	int i;
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
@@ -572,7 +573,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 					unsigned pcm_datalen = 8000 * chan->packetization / 1000;
 					if(pcm_datalen > f->datalen) {
 						unsigned char zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
-						for(int i = 0; i < (pcm_datalen - f->datalen); i++) {
+						for(i = 0; i < (pcm_datalen - f->datalen); i++) {
 							if(chan->rawstream)
 								fwrite(&zero, 1, 1, chan->rawstream);
 							if(chan->audiobuf)
