@@ -193,6 +193,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
+int opt_fix_packetization_in_create_audio = 0;
 int opt_rrd = 1;
 char *rrd_last_cmd_global = NULL;
 int opt_silencethreshold = 512; //values range from 1 to 32767 default 512
@@ -840,6 +841,7 @@ int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 bool opt_t2_boost_pb_detach_thread = false;
+bool opt_t2_boost_pcap_dispatch = false;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
 int opt_processing_limitations_heap_high_limit = 50;
@@ -1915,15 +1917,20 @@ void *storing_cdr( void */*dummy*/ ) {
 					continue;
 				}
 				if(call->isReadyForWriteCdr()) {
-					if(storing_cdr_next_threads_count) {
-						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
-						if(!mod) {
-							calls_for_store.push_back(call);
-						} else {
-							storing_cdr_next_threads[mod - 1].calls->push_back(call);
-						}
+					if(call->push_call_to_storing_cdr_queue) {
+						syslog(LOG_WARNING,"try to duplicity push call %s / %i to storing cdr queue", call->call_id.c_str(), call->getTypeBase());
 					} else {
-						calls_for_store.push_back(call);
+						call->push_call_to_storing_cdr_queue = true;
+						if(storing_cdr_next_threads_count) {
+							int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+							if(!mod) {
+								calls_for_store.push_back(call);
+							} else {
+								storing_cdr_next_threads[mod - 1].calls->push_back(call);
+							}
+						} else {
+							calls_for_store.push_back(call);
+						}
 					}
 					++calls_for_store_count;
 					calltable->lock_calls_queue();
@@ -6594,6 +6601,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
@@ -6926,6 +6934,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("fix_packetization_in_create_audio", &opt_fix_packetization_in_create_audio));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9517,6 +9526,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
 	}
+	if((value = ini.GetValue("general", "fix_packetization_in_create_audio", NULL))) {
+		opt_fix_packetization_in_create_audio = yesno(value);
+	}
 	if((value = ini.GetValue("general", "rrd", NULL))) {
 		opt_rrd = yesno(value);
 	}
@@ -10714,6 +10726,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
 		opt_t2_boost_pb_detach_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
+		opt_t2_boost_pcap_dispatch = atoi(value);
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);

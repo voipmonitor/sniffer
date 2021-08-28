@@ -512,6 +512,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenbye = false;
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
+	seenbyeandok_permanent = false;
 	seenbyeandok_time_usec = 0;
 	seencancelandok = false;
 	seencancelandok_time_usec = 0;
@@ -624,6 +625,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	end_call_hash_removed = 0;
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
+	push_call_to_storing_cdr_queue = 0;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;
