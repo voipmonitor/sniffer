@@ -364,6 +364,8 @@ struct s_get_url_response_params {
 };
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL,
 		      s_get_url_response_params *params = NULL);
+bool post_url_response(const char *url, SimpleBuffer *response, string *postData, string *error = NULL,
+		      s_get_url_response_params *params = NULL);
 long long GetFileSize(std::string filename);
 time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
