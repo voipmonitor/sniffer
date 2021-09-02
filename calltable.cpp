@@ -237,11 +237,12 @@ extern volatile int terminating;
 
 extern sSnifferClientOptions snifferClientOptions;
 
+extern char opt_curl_hook_wav[256];
+
 extern bool opt_processing_limitations;
 extern bool opt_processing_limitations_active_calls_cache;
 extern int opt_processing_limitations_active_calls_cache_type;
 extern cProcessingLimitations processing_limitations;
-
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -3511,6 +3512,33 @@ Call::convertRawToWav() {
 	addtofilesqueue(tsf_audio, tmp, 0);
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(tmp);
+	}
+	
+	// Here we put our CURL hook
+	if (strlen(opt_curl_hook_wav) > 0) {
+		string url;
+		url.append(opt_curl_hook_wav);
+		string postData;
+		postData.append("{ \"voipmonitor\": true");
+		postData.append(", \"stereo\":");
+		postData.append(useWavMix ? "false" : "true");
+		postData.append(", \"wav_file_name_with_path\": \"");
+		postData.append(out);
+		postData.append("\", \"call_id\": \"");
+		postData.append(this->call_id);
+		postData.append("\" }\n");
+		string getParams; // Not used actually
+		SimpleBuffer responseBuffer;
+		string error;
+		s_get_url_response_params curl_params;
+	
+		if (!post_url_response((url + getParams).c_str(), &responseBuffer, &postData, &error, &curl_params)) {
+			// log error message
+			if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), error.c_str());
+		} else {
+			if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
+		}
+
 	}
 	return 0;
 }

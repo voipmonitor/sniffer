@@ -1172,6 +1172,10 @@ int opt_process_pcap_type = 0;
 char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 
+// SANCOM options BEGIN
+char opt_curl_hook_wav[256] = "";
+// SANCOM options END
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -6926,6 +6930,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
+					addConfigItem(new FILE_LINE(1162) cConfigItem_string("opt_curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -11784,6 +11789,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "opt_curl_hook_wav", NULL))) {
+		strcpy_null_term(opt_curl_hook_wav, value);
 	}
 	
 	/*
