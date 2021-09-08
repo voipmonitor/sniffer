@@ -6930,7 +6930,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
-					addConfigItem(new FILE_LINE(1162) cConfigItem_string("opt_curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
+					addConfigItem(new FILE_LINE(1162) cConfigItem_string("curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
