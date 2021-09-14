@@ -16,9 +16,6 @@ AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
 
-AC_CHECK_PROG([PKGCONFIG], [pkg-config], [pkg-config], [no])
-
-
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
@@ -176,7 +173,6 @@ else
     AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
 fi
 
-AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1)
 
 LIBSSH_8=1
 LIBSSH_VERSION=`dpkg -s libssh-dev | grep Version | cut -d ' ' -f 2 | cut -d '.' -f 2`

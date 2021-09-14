@@ -1759,6 +1759,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_AMR;
        else if(strcasecmp(mimeSubtype,"AMR-WB") == 0)
 	       return PAYLOAD_AMRWB;
+	     else if(strcasecmp(mimeSubtype,"VP8") == 0)
+	       return PAYLOAD_VP8;
        else if(strcasecmp(mimeSubtype,"telephone-event") == 0)
 	       return PAYLOAD_TELEVENT;
        else if(strcasecmp(mimeSubtype,"MP4A-LATM") == 0)
@@ -1947,7 +1949,7 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, bool is_video, RTPMAP
 }
 
 int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, size_t sdp_text_len,
-			 int sip_method, char *sessid, 
+			 int sip_method, char *sessid,
 			 s_sdp_media_data *sdp_media_data,
 			 list<s_sdp_media_data*> **next_sdp_media_data) {
 	unsigned long l;
@@ -1956,7 +1958,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	if(!sdp_text_len) {
 		sdp_text_len = strlen(sdp_text);
 	}
-	
+
+
 	s = _gettag(sdp_text,sdp_text_len, "o=", &l);
 	if(l == 0) return 0;
 	while(l > 0 && *s != ' ') {
@@ -1975,7 +1978,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	unsigned sessid_length = MIN(ispace, MAXLEN_SDP_SESSID - 1);
 	memcpy(sessid, s, sessid_length);
 	sessid[sessid_length] = 0;
-	
+
+
 	vmIP ip;
 	s = _gettag(sdp_text, sdp_text_len,
 		    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
@@ -1987,7 +1991,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		ip_str[ip_length] = 0;
 		ip.setFromString(ip_str);
 	}
-	
+
+
 	unsigned sdp_media_start_max = 10;
 	unsigned sdp_media_start_count = 0;
 	char *sdp_media_start[sdp_media_start_max];
@@ -1998,7 +2003,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
 			    "\nm=", &l);
 		if(l > 0) {
-			e_sdp_media_type media_type = l > 5 ? 
+			e_sdp_media_type media_type = l > 5 ?
 						       (!strncasecmp(s, "audio", 5) ? sdp_media_type_audio :
 							!strncasecmp(s, "image", 5) ? sdp_media_type_image :
 							!strncasecmp(s, "video", 5) ? sdp_media_type_video :
@@ -2030,19 +2035,19 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		if(sdp_media_type[sdp_media_i] == sdp_media_type_video && !processing_rtp_video(call)) {
 			continue;
 		}
-		
+
 		char *sdp_media_text = sdp_media_start[sdp_media_i];
 		unsigned sdp_media_text_len = sdp_media_i < sdp_media_start_count - 1 ?
 					       sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i] :
 					       sdp_text_len - (sdp_media_start[sdp_media_i] - sdp_text);
-					       
+
 		e_sdp_protocol sdp_protocol = sdp_proto_na;
 		char *pointToBeginProtocol = strnchr(sdp_media_text, ' ', sdp_media_text_len);
 		if(pointToBeginProtocol) {
 			++pointToBeginProtocol;
 			char *pointToEndProtocol = strnchr(pointToBeginProtocol, ' ', sdp_media_text_len - (pointToBeginProtocol - sdp_media_text));
 			unsigned lengthProtocol = pointToEndProtocol ? 
-						   pointToEndProtocol - pointToBeginProtocol : 
+						   pointToEndProtocol - pointToBeginProtocol :
 						   sdp_media_text_len - (pointToBeginProtocol - sdp_media_text);
 			if(lengthProtocol > 0 && lengthProtocol < 100) {
 				static struct {
@@ -2074,7 +2079,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			continue;
 		}
 					       
-		s_sdp_media_data *sdp_media_data_item; 
+		s_sdp_media_data *sdp_media_data_item;
 		if(sdp_media_counter == 0) {
 			sdp_media_data_item = sdp_media_data;
 		} else {
@@ -2089,7 +2094,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		sdp_media_data_item->sdp_flags.media_type = sdp_media_type[sdp_media_i];
 		
 		sdp_media_data_item->sdp_flags.protocol = sdp_protocol;
-		
+
 		if(sdp_media_i > 0) {
 			s = _gettag(sdp_media_text, sdp_media_text_len,
 				    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
@@ -2105,14 +2110,16 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 				}
 			}
 		}
-		
+
+
 		s = _gettag(sdp_media_text, sdp_media_text_len, "a=label:", &l);
 		if(l > 0) {
 			unsigned label_length = MIN(l, MAXLEN_SDP_LABEL - 1);
 			memcpy(sdp_media_data_item->label, s, label_length);
 			sdp_media_data_item->label[label_length] = 0;
 		}
-		
+
+
 		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
 			s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
 			if(l > 0) {
@@ -2212,7 +2219,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		++sdp_media_counter;
 		
 	}
-	
+
 	return sdp_media_counter;
 }
 
@@ -2224,7 +2231,7 @@ int get_value_stringkeyval2(const char *data, unsigned int data_len, const char 
 	if(!tag_len) {
 		goto fail_exit;
 	} else {
-		//gettag remove trailing CR but we need it 
+		//gettag remove trailing CR but we need it
 		tag_len++;
 	}
 	if((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0 &&
@@ -3250,34 +3257,6 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 				} else if(packetS->sip_method == RES2XX) {
 					call->televent_exists_response = true;
 				}
-				//m=video support
-				if (tmp_port2)
-				{
-					call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base, tmp_port2, packetS->header_pt,
-										   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
-					// check if the IP address is listed in nat_aliases
-					in_addr_t alias = 0;
-					if ((alias = match_nat_aliases(tmp_addr)) != 0)
-					{
-						call->add_ip_port_hash(packetS->saddr, alias, ip_port_call_info::_ta_natalias, tmp_port2, packetS->header_pt,
-											   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
-					}
-					if (opt_sdp_reverse_ipport)
-					{
-						call->add_ip_port_hash(packetS->saddr, tmp_addr, ip_port_call_info::_ta_base_video, tmp_port2, packetS->header_pt,
-											   sessid, rtp_crypto_config_list, to, branch, iscaller, rtpmap, sdp_flags);
-						// check if the IP address is listed in nat_aliases
-						in_addr_t alias = 0;
-						if ((alias = match_nat_aliases(tmp_addr)) != 0)
-						{
-							syslog(LOG_ERR, "[%s] nat_aliases is not supported for video", call->fbasename);
-						}
-						if (opt_sdp_reverse_ipport)
-						{
-							syslog(LOG_ERR, "[%s] sdp_reverse_ipport is not supported for video", call->fbasename);
-						}
-					}
-				}
 			}
 			if(sdp_media_data_item->srtp_crypto_config_list) {
 				delete sdp_media_data_item->srtp_crypto_config_list;
@@ -3465,11 +3444,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		goto endsip;
 	}
-	
+
 	if(processing_limitations.suppressRtpAllProcessing()) {
 		call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
 	}
-	
+
 	if(contenttype_is_app_csta_xml) {
 		call->exclude_from_active_calls = true;
 	}
@@ -5041,8 +5020,9 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		call = call_info->calls[call_info_index].call;
 		iscaller = call_info->calls[call_info_index].iscaller;
 		sdp_flags = call_info->calls[call_info_index].sdp_flags;
-		is_rtcp = call_info->calls[call_info_index].is_rtcp || 
-			  ((sdp_flags.is_audio() || sdp_flags.is_video()) && packetS->datalen_() > 1 && RTP::isRTCP_enforce(packetS->data_()));
+		is_rtcp = call_info->calls[call_info_index].is_rtcp ||
+			  ((sdp_flags.is_audio() || sdp_flags.is_video()) && packetS->datalen_() > 1 &&
+			  ((u_char)packetS->data_()[1] == 0xC8 || (u_char)packetS->data_()[1] == 0xC9) && RTP::isRTCP_enforce(packetS->data_()));
 		stream_in_multiple_calls = call_info->calls[call_info_index].multiple_calls;
 		
 		if(!call_info->find_by_dest && iscaller_is_set(iscaller)) {

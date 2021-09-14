@@ -251,6 +251,7 @@ static unsigned long long sumPacketsSizeCompress[3];
 static unsigned long maxBypassBufferItems;
 static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
+
 static double heap_pb_perc = 0;
 static double heap_pb_used_perc = 0;
 static double heap_pb_trash_perc = 0;
@@ -1932,6 +1933,36 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							outStr << sizeSQLq;
 						}
 					}
+					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE, i) +
+							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE, i) : 0);
+						if(sizeSQLq >= 0) {
+							if(i) {
+								outStr << " ch" << (i+1) << ":";
+							} else {
+								outStr << " ch:";
+								if(sizeSQLq < 0) {
+									sizeSQLq = 0;
+								}
+							}
+							outStr << sizeSQLq;
+						}
+					}
+					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
+						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) +
+						           (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) : 0);
+						if(sizeSQLq >= 0) {
+							if(i) {
+								outStr << " chr" << (i+1) << ":";
+							} else {
+								outStr << " chr:";
+								if(sizeSQLq < 0) {
+									sizeSQLq = 0;
+								}
+							}
+							outStr << sizeSQLq;
+						}
+					}
 					for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
 						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE, i) +
 							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_MESSAGE, i) : 0);
@@ -2867,6 +2898,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			}
 		}
 	}
+
 
 	extern int global_livesniffer;
 	extern map<unsigned int, livesnifferfilter_s*> usersniffer;

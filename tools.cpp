@@ -6482,6 +6482,7 @@ void cDbStrings::explodeCsv(const char *csv) {
 			break;
 		}
 	}
+	zero_term_set = true;
 }
 
 void cDbStrings::setZeroTerm() {
@@ -6515,6 +6516,8 @@ void cDbStrings::print() {
 			cout << '|' << (strings[i].begin + strings[i].offset) << '|' << endl;
 		}
 	}
+	rslt += " )";
+	return(rslt);
 }
 
 void cDbStrings::substCB(cSqlDbData *dbData, list<string> *cb_inserts) {
@@ -8072,6 +8075,7 @@ cEvalFormula::sValueStr cEvalFormula::getBracketsBlock(const char *formula, unsi
 	} else {
 		return(sValueStr());
 	}
+	return(sValue());
 }
 
 cEvalFormula::sOperator *cEvalFormula::getU_Operator(const char *formula, unsigned pos, unsigned pos_max, unsigned *pos_end) {

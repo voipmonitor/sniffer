@@ -2215,7 +2215,6 @@ bool cConfig::loadConfigMapFromConfigFile(cConfigMap *configMap, const char *fil
 	}
 	unsigned lineBufferSize = 100000;
 	char *lineBuffer = new FILE_LINE(0) char[lineBufferSize];
-	lock();
 	while(fgets(lineBuffer, lineBufferSize, fp)) {
 		char *pointerToBegin = lineBuffer;
 		while(*pointerToBegin == ' ' || *pointerToBegin == '\t') {
@@ -2353,7 +2352,6 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 			}
 		}
 	}
-	unlock();
 	bool okNextData = false;
 	if(filter && filter->size()) {
 		for(vector<string>::iterator iter_filter = filter->begin(); iter_filter != filter->end(); iter_filter++) {
@@ -2402,7 +2400,6 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 			}
 		}
 	}
-	lock();
 	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
 		string config_name = iter->first;
 		bool set = iter->second != NULL && iter->second->size() > 0;
@@ -2424,7 +2421,6 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 			}
 		}
 	}
-	unlock();
 	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
 		if(iter->second) {
 			delete iter->second;

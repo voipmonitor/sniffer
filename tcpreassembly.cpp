@@ -2206,6 +2206,7 @@ u_char *TcpReassemblyLink::completeRemainData(TcpReassemblyDataItem::eDirection 
 				memcpy(rslt_data + offset, data, datalen);
 				offset += datalen;
 			}
+			remainData[i].clear();
 		}
 		return(rslt_data);
 	}

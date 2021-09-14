@@ -2137,7 +2137,7 @@ void *storing_cdr( void */*dummy*/ ) {
 	}
 	
 	terminating_storing_cdr = 2;
-	
+
 	return NULL;
 }
 
@@ -3638,7 +3638,7 @@ int main(int argc, char *argv[]) {
 	alaw_init();
 	ulaw_init();
 	dsp_init();
- 
+
 	init_rdtsc_interval();
 
 	thread_setup();
@@ -3682,14 +3682,14 @@ int main(int argc, char *argv[]) {
 		}
 		atexit(exit_handler_fork_mode);
 	}
-	
+
 	if(!opt_cpu_cores.empty()) {
 		vector<int> cpu_cores;
 		get_list_cores(opt_cpu_cores, cpu_cores);
 		pthread_t main_thread = pthread_self();
 		pthread_set_affinity(main_thread, &cpu_cores, NULL);
 	}
-	
+
 	if(opt_rrd) {
 		extern RrdCharts rrd_charts;
 		rrd_charts.startQueueThread();
@@ -4029,10 +4029,10 @@ void set_global_vars() {
 int main_init_read() {
  
 	reset_counters();
-	
+
 	extern cProcessingLimitations processing_limitations;
 	processing_limitations.init();
-	
+
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
@@ -4112,7 +4112,7 @@ int main_init_read() {
 			return(2);
 		}
 		if(pcap_set_timeout(global_pcap_handle, 1000) != 0) {
-			fprintf(stderr, "pcap_set_timeout failed: %s", pcap_geterr(global_pcap_handle)); 
+			fprintf(stderr, "pcap_set_timeout failed: %s", pcap_geterr(global_pcap_handle));
 			return(2);
 		}
 		if(pcap_set_buffer_size(global_pcap_handle, opt_ringbuffer * 1024 * 1024) != 0) {
@@ -5674,6 +5674,113 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		{
+		char ip_str[1000];
+		while(fgets(ip_str, sizeof(ip_str), stdin)) {
+			if(ip_str[0] == '\n') {
+				break;
+			}
+			cout << " v: " << string_is_look_like_ip(ip_str) << endl;
+			vmIP ip;
+			ip.setFromString(ip_str, NULL);
+			vmIP ipc = cConfigItem_net_map::convIP(ip, &opt_anonymize_ip_map);
+			cout << " c: " << ipc.getString() << endl;
+		}
+		}
+		break;
+	 
+		{
+		 
+		string csv = "abc,,\"\",\"def\",\"ghi\"";
+		cDbStrings strings;
+		strings.explodeCsv(csv.c_str());
+		strings.setZeroTerm();
+		strings.print();
+		cout << "---" << endl;
+		 
+		}
+		break;
+	 
+		{
+		 
+		unsigned int usleepSumTime = 0;
+		unsigned int usleepCounter = 0;
+		
+		unsigned _last = 0;
+		unsigned useconds = 100;
+		while(!terminating) {
+			unsigned _act = USLEEP_C(useconds, usleepCounter);
+			if(_act != _last) {
+				cout << usleepSumTime << " / " << usleepCounter << " / " << _act << " / " << (_act / useconds) << endl;
+				_last = _act;
+			}
+			usleepSumTime += _act; 
+			++usleepCounter;
+		}
+		break;
+		 
+		}
+	 
+		cEvalFormula f(cEvalFormula::_est_na, true);
+		f.e("3*(2 * 3 + 4 * 5 + (2+8))");
+		f.e("'abcd' like '%bc%' and 'abcd' like 'abc%' and 'abcd' like '%bcd'");
+		break;
+	 
+		IP ipt("192.168.0.0");
+	 
+		SqlDb *sqlDb0 = createSqlObject();
+		sqlDb0->query("select ip from test_ip");
+		SqlDb_row row0;
+		while((row0 = sqlDb0->fetchRow())) {
+			vmIP ip;
+			ip.setIP(&row0, "ip");
+			cout << ip.getString() << endl;
+		}
+		delete sqlDb0;
+	 
+		cResolver res;
+		vmIP ip = res.resolve("www.seznam.cz", NULL, 300/*, cResolver::_typeResolve_system_host*/);
+		cout << ip.getString() << endl;
+		break;
+	 
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->query("select * from geoipv6_country limit 10");
+		#if 0
+		string rslt = sqlDb->getCsvResult();
+		cout << rslt <<  endl;
+		sqlDb->processResponseFromCsv(rslt.c_str());
+		#else
+		string rslt = sqlDb->getJsonResult();
+		cout << rslt <<  endl;
+		sqlDb->processResponseFromQueryBy(rslt.c_str(), 0);
+		#endif
+		sqlDb->setCloudParameters("c", "c", "c");
+		
+		cout << "---" << endl;
+		
+		SqlDb_row row;
+		while((row = sqlDb->fetchRow())) {
+			vmIP ip_from;
+			ip_from.setIP(&row, "ip_from");
+			vmIP ip_to;
+			ip_to.setIP(&row, "ip_to");
+			cout << ip_from.getString() << " / "
+			     << ip_to.getString() << " / "
+			     << row["country"] << endl;
+		}
+		
+		cout << "---" << endl;
+		
+		//cout << sqlDb->getJsonResult() <<  endl;
+		delete sqlDb;
+		break;
+	 
+		dns_lookup_common_hostnames();
+
+		cout << str_2_vmIP("192.168.0.0").broadcast(16).getString() << endl;
+		cout << str_2_vmIP("192.168.1.1").isLocalIP() << endl;
+		cout << str_2_vmIP("127.0.0.1").isLocalhost() << endl;
 	 
 		{
 		char ip_str[1000];
@@ -8725,14 +8832,14 @@ void set_spool_permission() {
 }
 
 void set_context_config() {
- 
+
 	if(opt_use_dpdk) {
 		opt_t2_boost = true;
 		if(!(useNewCONFIG ? CONFIG.isSet("packetbuffer_block_maxsize") : opt_pcap_queue_block_max_size_set)) {
 			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
 		}
 	}
- 
+
 	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
 		opt_mysql_enable_new_store = false;
 		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
@@ -9112,6 +9219,9 @@ void set_context_config() {
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
+	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
+		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
+	}
 }
 
 void check_context_config() {
@@ -9798,6 +9908,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "thread_affinity", NULL))) {
 		opt_cpu_cores = value;
+	}
+	if((value = ini.GetValue("general", "interfaces_optimize", NULL))) {
+		opt_ifaces_optimize = yesno( value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
