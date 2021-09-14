@@ -1566,7 +1566,6 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 	
 	*record_dtmf = false;
 	*disable_save = false;
-	*is_video = false;
 	
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
 	   packetS->pid.vlan != this->vlan) {
