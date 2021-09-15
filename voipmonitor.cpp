@@ -1173,6 +1173,7 @@ bool heap_profiler_is_running = false;
 int opt_process_pcap_type = 0;
 char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
+cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
 
 char opt_curl_hook_wav[256] = "";
 
@@ -7504,6 +7505,7 @@ void cConfig::addConfigItems() {
 		subgroup("process pcap");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
+			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
 	minorEnd();
 	
 	setDefaultValues();

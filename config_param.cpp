@@ -1659,6 +1659,89 @@ vmIP cConfigItem_net_map::convIP(vmIP ip, t_net_map *net_map) {
 	return(ip);
 }
 
+cConfigItem_domain_map::cConfigItem_domain_map(const char* name, t_domain_map *domain_map)
+ : cConfigItem(name) {
+	init();
+	param_domain_map = domain_map;
+}
+
+string cConfigItem_domain_map::getValueStr(bool configFile) {
+	if(!param_domain_map || !param_domain_map->size()) {
+		return("");
+	}
+	ostringstream outStr;
+	int counter = 0;
+	for(t_domain_map::iterator iter = param_domain_map->begin(); iter != param_domain_map->end(); iter++) {
+		if(counter) {
+			if(configFile) {
+				outStr << endl << config_name << " = ";
+			} else {
+				outStr << ';';
+			}
+		}
+		outStr << iter->first << ':' << iter->second;
+		++counter;
+	}
+	return(outStr.str());
+}
+
+list<string> cConfigItem_domain_map::getValueListStr() {
+	list<string> l;
+	for(t_domain_map::iterator iter = param_domain_map->begin(); iter != param_domain_map->end(); iter++) {
+		l.push_back(iter->first + ":" + iter->second);
+	}
+	return(l);
+}
+
+string cConfigItem_domain_map::normalizeStringValueForCmp(string value) {
+	find_and_replace(value, " /", "/");
+	find_and_replace(value, "/ ", "/");
+	find_and_replace(value, "=", " ");
+	find_and_replace(value, ":", " ");
+	find_and_replace(value, "[", "");
+	find_and_replace(value, "]", "");
+	find_and_replace_all(value, "  ", " ");
+	return(value);
+}
+
+bool cConfigItem_domain_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_domain_map::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+}
+
+bool cConfigItem_domain_map::setParamFromValuesStr(vector<std::string> list_values_str, bool enableClearBeforeFirstSet) {
+	if(!param_domain_map) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		initBeforeSet();
+		return(false);
+	}
+	int ok = 0;
+	initBeforeSet();
+	for(vector<std::string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		string str = std::string(iter->c_str());
+		size_t pos = str.find('=');
+		if (pos) {
+			string key = str.substr(0, pos);
+			string val = str.substr(pos + 1, str.size());
+			//cout << "iter: " << iter->c_str() << endl << "key:" << key << "  val:" << val << endl;
+			param_domain_map->insert({key, val});
+			ok++;
+		}
+	}
+	return(ok > 0);
+}
+
+void cConfigItem_domain_map::initBeforeSet() {
+	if(param_domain_map) {
+		param_domain_map->clear();
+	}
+}
+
 cConfigItem_custom_headers::cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers)
  : cConfigItem(name) {
 	init();

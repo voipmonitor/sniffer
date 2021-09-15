@@ -7135,7 +7135,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			pcap_pkthdr *header_new = NULL;
 			u_char *packet_new = NULL;
 			extern cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
-			convertIPsInPacket(header_packet, &ppd, &header_new, &packet_new, &opt_anonymize_ip_map);
+			extern cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+			convertAnonymousInPacket(header_packet, &ppd, &header_new, &packet_new, &opt_anonymize_ip_map, &opt_anonymize_domain_map);
 			if(header_new && packet_new) {
 				destination->dump(header_new, packet_new, handle_dlt);
 				delete header_new;

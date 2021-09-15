@@ -4342,10 +4342,11 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	}
 }
 
-void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
+void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 			pcap_pkthdr **header_new, u_char **packet_new,
-			void *_net_map) {
+			void *_net_map, void *_domain_map) {
 	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
 	unsigned headers_ip_counter = 0;
 	unsigned headers_ip_offset[20];
 	unsigned header_ip_offset = header_packet->header_ip_encaps_offset;
@@ -4417,7 +4418,7 @@ void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 		if(do_convert_sip) {
 			u_char *payload_tcp_udp_mod;
 			unsigned payload_tcp_udp_mod_length;
-			if(convertIPs_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map)) {
+			if(convertAnonymous_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map, domain_map)) {
 				delete payload_tcp_udp;
 				payload_tcp_udp = payload_tcp_udp_mod;
 				payload_tcp_udp_length = payload_tcp_udp_mod_length;
@@ -4503,8 +4504,9 @@ void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 	}
 }
 
-bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map) {
+bool convertAnonymous_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map, void *_domain_map) {
 	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
 	bool mod = false;
 	vector<string> payload_lines = split((char*)sip_src, '\n');
 	int i_line_content_length = -1;
@@ -4522,6 +4524,10 @@ bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length,
 		}
 		string payload_line_mod;
 		if(convertIPs_string(payload_lines[i_line], &payload_line_mod, net_map)) {
+			payload_lines[i_line] = payload_line_mod;
+			mod = true;
+		}
+		if(convertDomains_string(payload_lines[i_line], payload_line_mod, domain_map)) {
 			payload_lines[i_line] = payload_line_mod;
 			mod = true;
 		}
@@ -4601,6 +4607,25 @@ bool convertIPs_string(string &src, string *dst, void *_net_map) {
 		}
 		++src_i;
 		++src_p;
+	}
+	return(mod);
+}
+
+bool convertDomains_string(string &src, string &dst, void *_domain_map) {
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
+	bool mod = false;
+	dst = src;
+	for(cConfigItem_domain_map::t_domain_map::iterator iter = domain_map->begin(); iter != domain_map->end(); iter++) {
+		string key = string(iter->first.c_str());
+		string val = string(iter->second.c_str());
+		while (true) {
+			size_t pos = dst.find(key);
+			if (pos == std::string::npos) {
+				break;
+			}
+			dst.replace(pos, key.size(), val);
+			mod = true;
+		}
 	}
 	return(mod);
 }
