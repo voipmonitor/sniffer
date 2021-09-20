@@ -3,7 +3,6 @@
 
 
 #include <pcap.h>
-#include <bits/stdint-uintn.h>
 #include <string>
 #include <string.h>
 
