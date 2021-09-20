@@ -71,8 +71,8 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 	_loadBaseDataRow(NULL, row, baseRow);
 }
 
-unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags) {
-	unsigned long int flags = 0;
+u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags) {
+	u_int64_t flags = 0;
 	
 	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
 	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
@@ -143,7 +143,7 @@ unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow,
 	return(flags);
 }
 
-void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags) {
+void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags) {
 	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
 	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
 	
