@@ -176,7 +176,7 @@ else
     AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
 fi
 
-AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1, AC_MSG_NOTICE([Unable to find dpdk. apt-get install libdpdk-dev | yum install dpdk-devel]))
+AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1)
 
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
@@ -308,7 +308,6 @@ libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
-dpdk lib found     		       : $DPDK_T
 
 shared binary: run make 
 static binary: run make static
