@@ -297,6 +297,10 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 				 true));
 }
 
+bool pthread_set_affinity(pthread_t thread, string cores_set, string cores_unset);
+bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset);
+void get_list_cores(string input, vector<int> &list);
+
 
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);

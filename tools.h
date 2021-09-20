@@ -1084,7 +1084,7 @@ public:
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		extern cBuffersControl buffersControl;
-		while(!buffersControl.check__AsyncClose__add(item->dataLength) && !is_terminating()) {
+		while(!buffersControl.check__asyncwrite__add(item->dataLength) && !is_terminating()) {
 			USLEEP(1000);
 		}
 		lock(threadIndex);
@@ -1124,11 +1124,11 @@ private:
 	}
 	void add_sizeOfDataInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
-		buffersControl.add__AsyncClose__sizeOfDataInMemory(size);
+		buffersControl.add__asyncwrite_size(size);
 	}
 	void sub_sizeOfDataInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
-		buffersControl.sub__AsyncClose__sizeOfDataInMemory(size);
+		buffersControl.sub__asyncwrite_size(size);
 	}
 private:
 	int maxPcapThreads;

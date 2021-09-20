@@ -635,6 +635,7 @@ extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_use_blocks_auto_enable;
+extern int opt_pcap_queue_use_blocks_read_check;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern int opt_pcap_queue_block_timeout;
 extern bool opt_pcap_queue_pcap_stat_per_one_interface;
@@ -811,6 +812,41 @@ vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
 bool opt_ifaces_optimize = true;
+bool opt_use_dpdk = false;
+int opt_dpdk_init = 1;
+int opt_dpdk_read_thread = 2;
+int opt_dpdk_worker_thread = 2;
+int opt_dpdk_worker2_thread = 0;
+int opt_dpdk_iterations_per_call = 1000;
+int opt_dpdk_read_usleep_if_no_packet = 1;
+int opt_dpdk_read_usleep_type = 0;
+int opt_dpdk_worker_usleep_if_no_packet = 1;
+int opt_dpdk_worker_usleep_type = 0;
+int opt_dpdk_nb_rx = 4096;
+int opt_dpdk_nb_tx = 1024;
+int opt_dpdk_nb_mbufs = 8192;
+int opt_dpdk_pkt_burst = 32;
+int opt_dpdk_ring_size = 4096;
+int opt_dpdk_mempool_cache_size = 512;
+int opt_dpdk_zc = 0;
+int opt_dpdk_mbufs_in_packetbuffer = 0;
+int opt_dpdk_prealloc_packetbuffer = 0;
+int opt_dpdk_defer_send_packetbuffer = 0;
+int opt_dpdk_rotate_packetbuffer = 1;
+int opt_dpdk_rotate_packetbuffer_pool_max_perc = 25;
+int opt_dpdk_copy_packetbuffer = 1;
+int opt_dpdk_batch_read = 0;
+string opt_dpdk_cpu_cores;
+string opt_dpdk_cpu_cores_map;
+int opt_dpdk_main_thread_lcore = -1;
+string opt_dpdk_read_thread_lcore;
+string opt_dpdk_worker_thread_lcore;
+string opt_dpdk_worker2_thread_lcore;
+int opt_dpdk_memory_channels = 4;
+string opt_dpdk_pci_device;
+int opt_dpdk_force_max_simd_bitwidth = 0;
+string opt_cpu_cores;
+
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -3630,6 +3666,13 @@ int main(int argc, char *argv[]) {
 			return(1);
 		}
 		atexit(exit_handler_fork_mode);
+	}
+	
+	if(!opt_cpu_cores.empty()) {
+		vector<int> cpu_cores;
+		get_list_cores(opt_cpu_cores, cpu_cores);
+		pthread_t main_thread = pthread_self();
+		pthread_set_affinity(main_thread, &cpu_cores, NULL);
 	}
 	
 	if(opt_rrd) {
@@ -6710,6 +6753,61 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk", &opt_use_dpdk));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_init", &opt_dpdk_init))
+						->disableYes()
+						->disableNo()
+						->addValues("main:0|separate:1|read:2")
+						->setDefaultValueStr("main"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_read_thread", &opt_dpdk_read_thread))
+						->disableYes()
+						->disableNo()
+						->addValues("std:1|rte:2")
+						->setDefaultValueStr("std"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_thread", &opt_dpdk_worker_thread))
+						->addValues("std:1|rte:2")
+						->setDefaultValueStr("std"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker2_thread", &opt_dpdk_worker2_thread))
+						->addValues("rte:1")
+						->setDefaultValueStr("no"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_iterations_per_call", &opt_dpdk_iterations_per_call));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_read_usleep_if_no_packet", &opt_dpdk_read_usleep_if_no_packet));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_read_usleep_type", &opt_dpdk_read_usleep_type))
+						->disableYes()
+						->disableNo()
+						->addValues("std:0|rte:1|pause:2")
+						->setDefaultValueStr("std"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_worker_usleep_if_no_packet", &opt_dpdk_worker_usleep_if_no_packet));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_usleep_type", &opt_dpdk_worker_usleep_type))
+						->disableYes()
+						->disableNo()
+						->addValues("std:0|rte:1|pause:2")
+						->setDefaultValueStr("std"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rx", &opt_dpdk_nb_rx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_tx", &opt_dpdk_nb_tx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_mbufs", &opt_dpdk_nb_mbufs));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_pkt_burst", &opt_dpdk_pkt_burst));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_ring_size", &opt_dpdk_ring_size));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mempool_cache_size", &opt_dpdk_mempool_cache_size));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_zc", &opt_dpdk_zc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_mbufs_in_packetbuffer", &opt_dpdk_mbufs_in_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_prealloc_packetbuffer", &opt_dpdk_prealloc_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_defer_send_packetbuffer", &opt_dpdk_defer_send_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_rotate_packetbuffer", &opt_dpdk_rotate_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_rotate_packetbuffer_pool_max_perc", &opt_dpdk_rotate_packetbuffer_pool_max_perc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_copy_packetbuffer", &opt_dpdk_copy_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_batch_read", &opt_dpdk_batch_read));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores", &opt_dpdk_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores_map", &opt_dpdk_cpu_cores_map));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_main_thread_lcore", &opt_dpdk_main_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_read_thread_lcore", &opt_dpdk_read_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker_thread_lcore", &opt_dpdk_worker_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker2_thread_lcore", &opt_dpdk_worker2_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_memory_channels", &opt_dpdk_memory_channels));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("cpu_cores", &opt_cpu_cores));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -6814,6 +6912,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(42174) cConfigItem_yesno("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks))
 						->addAlias("use_blocks"));					
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("auto_enable_use_blocks", &opt_pcap_queue_use_blocks_auto_enable));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_use_blocks_read_check", &opt_pcap_queue_use_blocks_read_check));
 					addConfigItem((new FILE_LINE(42175) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
@@ -7949,6 +8048,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "noaudiounlink")			sverb.noaudiounlink = 1;
 	else if(verbParam == "capture_filter")			sverb.capture_filter = 1;
 	else if(verbParam.substr(0, 17) == "pcap_stat_period=")	sverb.pcap_stat_period = atoi(verbParam.c_str() + 17);
+	else if(verbParam == "pcap_stat_to_stdout")		sverb.pcap_stat_to_stdout = 1;
 	else if(verbParam == "memory_stat" ||
 		verbParam == "memory_stat_ex")			sverb.memory_stat = 1;
 	else if(verbParam == "memory_stat_log" ||
@@ -8607,6 +8707,10 @@ void set_spool_permission() {
 
 void set_context_config() {
  
+	if(opt_use_dpdk) {
+		opt_t2_boost = true;
+	}
+ 
 	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
 		opt_mysql_enable_new_store = false;
 		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
@@ -8828,6 +8932,7 @@ void set_context_config() {
 
 	if(!enable_pcap_split && opt_t2_boost) {
 		opt_t2_boost = false;
+		opt_use_dpdk = false;
 	}
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
 		opt_enable_process_rtp_packet = 1;
@@ -9505,6 +9610,172 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "interfaces_optimize", NULL))) {
 		opt_ifaces_optimize = yesno( value);
+	}
+	if((value = ini.GetValue("general", "dpdk", NULL))) {
+		opt_use_dpdk = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_init", NULL))) {
+		switch(toupper(value[0])) {
+		case 'M':
+			opt_dpdk_init = 0;
+			break;
+		case 'S':
+			opt_dpdk_init = 1;
+			break;
+		case 'R':
+			opt_dpdk_init = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_read_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_read_thread = 1;
+			break;
+		case 'R':
+			opt_dpdk_read_thread = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'Y':
+		case 'S':
+		case '1':
+			opt_dpdk_worker_thread = 1;
+			break;
+		case 'R':
+			opt_dpdk_worker_thread = 2;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_dpdk_worker_thread = 0;
+			break;
+		}
+	}
+	
+	if((value = ini.GetValue("general", "dpdk_worker2_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'Y':
+		case 'R':
+		case '1':
+			opt_dpdk_worker2_thread = 1;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_dpdk_worker2_thread = 0;
+			break;
+		}
+	}
+	
+	if((value = ini.GetValue("general", "dpdk_iterations_per_call", NULL))) {
+		opt_dpdk_iterations_per_call = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_usleep_if_no_packet", NULL))) {
+		opt_dpdk_read_usleep_if_no_packet = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_usleep_type", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_read_usleep_type = 0;
+			break;
+		case 'R':
+			opt_dpdk_read_usleep_type = 1;
+			break;
+		case 'P':
+			opt_dpdk_read_usleep_type = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_usleep_if_no_packet", NULL))) {
+		opt_dpdk_worker_usleep_if_no_packet = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_usleep_type", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_worker_usleep_type = 0;
+			break;
+		case 'R':
+			opt_dpdk_worker_usleep_type = 1;
+			break;
+		case 'P':
+			opt_dpdk_worker_usleep_type = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_rx", NULL))) {
+		opt_dpdk_nb_rx = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_tx", NULL))) {
+		opt_dpdk_nb_tx = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_mbufs", NULL))) {
+		opt_dpdk_nb_mbufs = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_pkt_burst", NULL))) {
+		opt_dpdk_pkt_burst = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_ring_size", NULL))) {
+		opt_dpdk_ring_size = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_mempool_cache_size", NULL))) {
+		opt_dpdk_mempool_cache_size = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_zc", NULL))) {
+		opt_dpdk_zc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_mbufs_in_packetbuffer", NULL))) {
+		opt_dpdk_mbufs_in_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_prealloc_packetbuffer", NULL))) {
+		opt_dpdk_prealloc_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_defer_send_packetbuffer", NULL))) {
+		opt_dpdk_defer_send_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_rotate_packetbuffer", NULL))) {
+		opt_dpdk_rotate_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_rotate_packetbuffer_pool_max_perc", NULL))) {
+		opt_dpdk_rotate_packetbuffer_pool_max_perc = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_copy_packetbuffer", NULL))) {
+		opt_dpdk_copy_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_batch_read", NULL))) {
+		opt_dpdk_batch_read = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_cpu_cores", NULL))) {
+		opt_dpdk_cpu_cores = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_cpu_cores_map", NULL))) {
+		opt_dpdk_cpu_cores_map = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_main_thread_lcore", NULL))) {
+		opt_dpdk_main_thread_lcore = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_thread_lcore", NULL))) {
+		opt_dpdk_read_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_thread_lcore", NULL))) {
+		opt_dpdk_worker_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_worker2_thread_lcore", NULL))) {
+		opt_dpdk_worker2_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_memory_channels", NULL))) {
+		opt_dpdk_memory_channels = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_pci_device", NULL))) {
+		opt_dpdk_pci_device = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_force_max_simd_bitwidth", NULL))) {
+		opt_dpdk_force_max_simd_bitwidth = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cpu_cores", NULL))) {
+		opt_cpu_cores = value;
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -11159,6 +11430,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "auto_enable_use_blocks", NULL))) {
 		opt_pcap_queue_use_blocks_auto_enable = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_use_blocks_read_check", NULL))) {
+		opt_pcap_queue_use_blocks_read_check = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dispatch", NULL))) {
 		opt_pcap_dispatch = yesno(value);

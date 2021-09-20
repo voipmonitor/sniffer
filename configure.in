@@ -16,6 +16,9 @@ AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
 
+AC_CHECK_PROG([PKGCONFIG], [pkg-config], [pkg-config], [no])
+
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
@@ -173,6 +176,8 @@ else
     AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
 fi
 
+AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1, AC_MSG_NOTICE([Unable to find dpdk. apt-get install libdpdk-dev | yum install dpdk-devel]))
+
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
 	AC_DEFINE([HAVE_LIBPNG], [1], [Define if using liblpng])
@@ -239,6 +244,14 @@ if pkg-config --atleast-version 1.1.1 openssl; then
 	OPENSSL111_T=yes
 fi
 
+DPDK_T=no
+if test "x$HAVE_LIBDPDK" = "x1"; then 
+	AC_DEFINE([HAVE_LIBDPDK], [1], [Define if using dpdk])
+	AC_SUBST([DPDK_CFLAGS],[`"$PKGCONFIG" --cflags libdpdk`])
+	AC_SUBST([DPDK_LDFLAGS],[`"$PKGCONFIG" --libs libdpdk`])
+	DPDK_T=yes
+fi
+
 # Checks for header files.
 #AC_FUNC_ALLOCA
 #AC_CHECK_HEADERS([arpa/inet.h fcntl.h inttypes.h limits.h locale.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h strings.h sys/param.h sys/socket.h sys/time.h syslog.h unistd.h wchar.h])
@@ -295,6 +308,7 @@ libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+dpdk lib found     		       : $DPDK_T
 
 shared binary: run make 
 static binary: run make static

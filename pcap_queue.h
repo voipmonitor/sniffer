@@ -20,6 +20,7 @@
 #include "pstat.h"
 #include "ip_frag.h"
 #include "header_packet.h"
+#include "dpdk.h"
 
 #define READ_THREADS_MAX 20
 #define DLT_TYPES_MAX 10
@@ -160,11 +161,11 @@ private:
 	}
 	void add_sizeOfBlocksInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
-		buffersControl.add__pcap_store_queue__sizeOfBlocksInMemory(size);
+		buffersControl.add__pb_used_size(size);
 	}
 	void sub_sizeOfBlocksInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
-		buffersControl.sub__pcap_store_queue__sizeOfBlocksInMemory(size);
+		buffersControl.sub__pb_used_size(size);
 	}
 private:
 	std::string fileStoreFolder;
@@ -263,6 +264,9 @@ public:
 	bool isTerminated();
 	void setInstancePcapHandle(PcapQueue *pcapQueue);
 	void setInstancePcapFifo(class PcapQueue_readFromFifo *pcapQueue);
+	PcapQueue_readFromFifo *getInstancePcapFifo() {
+		return(instancePcapFifo);
+	}
 	inline pcap_t* getPcapHandle(int dlt);
 	inline u_int16_t getPcapHandleIndex(int dlt);
 	void pcapStat(int statPeriod = 1, bool statCalls = true);
@@ -308,6 +312,7 @@ protected:
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
 		return(""); 
 	};
+	virtual void dpdkStat() {}
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -427,7 +432,7 @@ public:
 	virtual ~PcapQueue_readFromInterface_base();
 	void setInterfaceName(const char *interfaceName);
 protected:
-	virtual bool startCapture(string *error);
+	virtual bool startCapture(string *error, sDpdkConfig *dpdkConfig);
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 				      bool checkProtocol = false, sCheckProtocolData *checkProtocolData = NULL);
 	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
@@ -459,6 +464,7 @@ protected:
 	u_int16_t pcapHandleIndex;
 	queue<pcap_t*> pcapHandlesLapsed;
 	bool pcapEnd;
+	sDpdkHandle *dpdkHandle;
 	bpf_program filterData;
 	bool filterDataUse;
 	pcap_dumper_t *pcapDumpHandle;
@@ -590,6 +596,7 @@ class PcapQueue_readFromInterfaceThread : protected PcapQueue_readFromInterface_
 public:
 	enum eTypeInterfaceThread {
 		read,
+		dpdk_worker,
 		detach,
 		pcap_process,
 		defrag,
@@ -623,18 +630,25 @@ public:
 		volatile unsigned char used;
 	};
 	struct pcap_dispatch_data {
-		void *me;
+		pcap_dispatch_data() {
+			memset(this, 0, sizeof(*this));
+		}
+		PcapQueue_readFromInterfaceThread *me;
 		pcap_block_store *block;
+		volatile pcap_block_store *next_free_block; 
+		volatile pcap_block_store *last_full_block;
+		pcap_block_store *copy_block[2];
+		volatile int copy_block_full[2];
+		volatile int copy_block_active_index;
 		pcap_pkthdr_plus2 *pcap_header_plus2;
 		u_char *pcap_packet;
 		sCheckProtocolData checkProtocolData;
-		void init() {
-			memset(this, 0, sizeof(*this));
-		}
+		sDpdkHeaderPacket headerPacket;
 	};
 	PcapQueue_readFromInterfaceThread(const char *interfaceName, eTypeInterfaceThread typeThread = read,
 					  PcapQueue_readFromInterfaceThread *readThread = NULL,
-					  PcapQueue_readFromInterfaceThread *prevThread = NULL);
+					  PcapQueue_readFromInterfaceThread *prevThread = NULL,
+					  class PcapQueue_readFromInterface *parent = NULL);
 	~PcapQueue_readFromInterfaceThread();
 protected:
 	inline void push(sHeaderPacket **header_packet);
@@ -697,6 +711,14 @@ private:
 	void threadFunction_blocks();
 	inline static void _pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes);
 	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *h, const u_char *bytes);
+	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t *packet_maxlen);
+	inline u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen);
+	inline static void _dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet);
+	inline void dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet);
+	inline static void _dpdk_packet_process(void *user);
+	inline void dpdk_packet_process(pcap_dispatch_data *dd);
+	inline static void _dpdk_packet_process__mbufs_in_packetbuffer(void *user, pcap_pkthdr *pcap_header, void *mbuf);
+	inline void dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf);
 	void processBlock(pcap_block_store *block);
 	void preparePstatData();
 	double getCpuUsagePerc(bool preparePstatData = false);
@@ -744,6 +766,7 @@ private:
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
+	PcapQueue_readFromInterfaceThread *dpdkWorkerThread;
 	PcapQueue_readFromInterfaceThread *detachThread;
 	PcapQueue_readFromInterfaceThread *pcapProcessThread;
 	PcapQueue_readFromInterfaceThread *defragThread;
@@ -752,6 +775,7 @@ private:
 	PcapQueue_readFromInterfaceThread *dedupThread;
 	PcapQueue_readFromInterfaceThread *serviceThread;
 	PcapQueue_readFromInterfaceThread *prevThread;
+	PcapQueue_readFromInterface *parent;
 	bool threadDoTerminate;
 	cHeaderPacketStack *headerPacketStackSnaplen;
 	cHeaderPacketStack *headerPacketStackShort;
@@ -760,6 +784,7 @@ private:
 	unsigned long allocStackCounter[2];
 	unsigned long long sumPacketsSize[3];
 	bool prepareHeaderPacketPool; // experimental option
+	pcap_dispatch_data dispatch_data;
 friend void *_PcapQueue_readFromInterfaceThread_threadFunction(void *arg);
 friend class PcapQueue_readFromInterface;
 };
@@ -781,7 +806,7 @@ protected:
 	void threadFunction_blocks();
 	void *writeThreadFunction(void *arg, unsigned int arg2);
 	bool openFifoForWrite(void *arg, unsigned int arg2);
-	bool startCapture(string *error);
+	bool startCapture(string *error, sDpdkConfig *dpdkConfig);
 	pcap_t* _getPcapHandle(int /*dlt*/) { 
 		return(this->pcapHandle);
 	}
@@ -796,6 +821,7 @@ protected:
 	virtual string getStatPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide);
+	void dpdkStat();
 	string getInterfaceName(bool simple = false);
 	void prepareLogTraffic();
 private:
@@ -876,6 +902,7 @@ public:
 	}
 	string debugBlockStoreTrash();
 	string saveBlockStoreTrash(const char *filter, const char *destFile);
+	pcap_block_store *getBlockStoreFromPool();
 protected:
 	bool createThread();
 	bool createDestroyBlocksThread();
@@ -976,6 +1003,12 @@ private:
 	void unlock_blockStoreTrash() {
 		__sync_lock_release(&this->blockStoreTrash_sync);
 	}
+	void lock_blockStorePool() {
+		while(__sync_lock_test_and_set(&this->blockStorePool_sync, 1));
+	}
+	void unlock_blockStorePool() {
+		__sync_lock_release(&this->blockStorePool_sync);
+	}
 protected:
 	ip_port packetServerIpPort;
 	ePacketServerDirection packetServerDirection;
@@ -990,6 +1023,8 @@ private:
 	deque<pcap_block_store*> blockStoreTrash;
 	u_int cleanupBlockStoreTrash_counter;
 	volatile int blockStoreTrash_sync;
+	deque<pcap_block_store*> blockStorePool;
+	volatile int blockStorePool_sync;
 	vmIP socketHostIP;
 	int socketHandle;
 	cSocketBlock *clientSocket;

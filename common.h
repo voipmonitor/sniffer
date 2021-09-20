@@ -49,6 +49,7 @@ struct sVerbose {
 	int noaudiounlink;
 	int capture_filter;
 	int pcap_stat_period;
+	int pcap_stat_to_stdout;
 	int memory_stat;
 	int memory_stat_log;
 	int memory_stat_ignore_limit;

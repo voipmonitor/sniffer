@@ -967,7 +967,7 @@ bool TcpReassemblyLink::push_normal(
 			} else if(reassembly->extCleanupStreamsLimitStreams &&
 				  reassembly->extCleanupStreamsLimitHeap &&
 				  this->queueStreams.size() > reassembly->extCleanupStreamsLimitStreams &&
-				  buffersControl.getPercUsePBwithouttrash() > reassembly->extCleanupStreamsLimitHeap) {
+				  buffersControl.getPerc_pb_used() > reassembly->extCleanupStreamsLimitHeap) {
 				this->extCleanup(2, true);
 			}
 		}
@@ -3118,7 +3118,7 @@ void TcpReassembly::cleanup_simple(bool all) {
 				if(this->extCleanupStreamsLimitStreams &&
 				   this->extCleanupStreamsLimitHeap &&
 				   link->queueStreams.size() > this->extCleanupStreamsLimitStreams &&
-				   buffersControl.getPercUsePBwithouttrash() > this->extCleanupStreamsLimitHeap) {
+				   buffersControl.getPerc_pb_used() > this->extCleanupStreamsLimitHeap) {
 					link->extCleanup(1, true);
 				} else {
 					deque<TcpReassemblyStream*>::iterator iterStream;
