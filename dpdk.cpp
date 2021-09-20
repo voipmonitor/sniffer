@@ -36,7 +36,6 @@
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
 #include <rte_bus.h>
-#include <rte_ring_peek_zc.h>
 
 
 extern string opt_dpdk_cpu_cores;
@@ -94,6 +93,7 @@ extern int opt_dpdk_mbufs_in_packetbuffer;
 #define DPDK_TIMESTAMP_IN_MBUF 1
 #define DPDK_WAIT_FOR_EMPTY_RING_IF_FULL 1
 #define WORKER2_THREAD_SUPPORT 0
+#define DPDK_ZC_SUPPORT 0
 
 #define DEBUG_CYCLES false
 #define DEBUG_CYCLES_MAX_LT_MS 100
@@ -860,6 +860,7 @@ static int rte_read_thread(void *arg) {
 		opt_dpdk_mbufs_in_packetbuffer ?
 		 dpdk_process_packet_2__mbufs_in_packetbuffer :
 		 dpdk_process_packet_2__std;
+	#if DPDK_ZC_SUPPORT
 	extern int opt_dpdk_zc;
 	if(opt_dpdk_zc && dpdk->rx_to_worker_ring) {
 		rte_ring_zc_data zcd;
@@ -887,6 +888,7 @@ static int rte_read_thread(void *arg) {
 		}
 		return 0;
 	}
+	#endif
 	if(opt_dpdk_batch_read > 1) {
 		unsigned pkts_burst_cnt;
 		rte_mbuf *pkts_burst[opt_dpdk_batch_read][MAX_PKT_BURST];
@@ -1356,7 +1358,7 @@ static int dpdk_pre_init(char * ebuf, int eaccess_not_fatal) {
 	strcpy(timestamp_dynfield_desc.name, "dynfield_clock");
 	timestamp_dynfield_desc.size = sizeof(u_int64_t);
 	timestamp_dynfield_desc.align = __alignof__(u_int64_t);
-	timestamp_dynfield_offset =rte_mbuf_dynfield_register(&timestamp_dynfield_desc);
+	timestamp_dynfield_offset = rte_mbuf_dynfield_register(&timestamp_dynfield_desc);
 	if(timestamp_dynfield_offset < 0) {
 		goto error;
 	}
