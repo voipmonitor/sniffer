@@ -1729,7 +1729,7 @@ bool cConfigItem_domain_map::setParamFromValuesStr(vector<std::string> list_valu
 			string key = str.substr(0, pos);
 			string val = str.substr(pos + 1, str.size());
 			//cout << "iter: " << iter->c_str() << endl << "key:" << key << "  val:" << val << endl;
-			param_domain_map->insert({key, val});
+			(*param_domain_map)[key] = val;
 			ok++;
 		}
 	}
