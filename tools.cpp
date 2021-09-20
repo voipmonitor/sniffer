@@ -730,6 +730,86 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 	return(rslt);
 }
 
+bool post_url_response(const char *url, SimpleBuffer *response, string *postData, string *error, s_get_url_response_params *params) {
+	if(error) {
+		*error = "";
+	}
+	bool rslt = false;
+	CURL *curl = curl_easy_init();
+	if(curl) {
+		struct curl_slist *headers = NULL;
+		char errorBuffer[1024];
+		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
+		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
+		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
+		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
+		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+		if(params && params->timeout_sec) {
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, params->timeout_sec);
+		}
+		char *urlPathSeparator = (char*)strchr(url + 8, '/');
+		string path = urlPathSeparator ? urlPathSeparator : "/";
+		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
+		string hostProtPrefix;
+		size_t posEndHostProtPrefix = host.rfind('/');
+		if(posEndHostProtPrefix != string::npos) {
+			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
+			host = host.substr(posEndHostProtPrefix + 1);
+		}
+		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
+		if(!hostIP.empty()) {
+			headers = curl_slist_append(headers, ("Host: " + host).c_str());
+			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+		} else {
+			curl_easy_setopt(curl, CURLOPT_URL, url);
+		}
+		if(params && params->headers) {
+			for(unsigned i = 0; i < params->headers->size(); i++) {
+				headers = curl_slist_append(headers, ((*params->headers)[i][0] + ": " + (*params->headers)[i][1]).c_str());
+			}
+		}
+		if(headers) {
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+		}
+		extern char opt_curlproxy[256];
+		if(opt_curlproxy[0]) {
+			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
+		}
+		if(params && (params->auth_user || params->auth_password)) {
+			curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
+			curl_easy_setopt(curl, CURLOPT_USERPWD,
+					 ((params->auth_user ? *params->auth_user : "") +
+					  ":" +
+					  (params->auth_password ? *params->auth_password : "")).c_str());
+		}
+		string postFields;
+		if(postData) {
+			curl_easy_setopt(curl, CURLOPT_POST, 1);
+			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData->c_str());
+		}
+		if(curl_easy_perform(curl) == CURLE_OK) {
+			rslt = true;
+		} else {
+			if(error) {
+				*error = errorBuffer;
+			}
+		}
+		if(headers) {
+			curl_slist_free_all(headers);
+		}
+		curl_easy_cleanup(curl);
+	} else {
+		if(error) {
+			*error = "initialize curl failed";
+		}
+	}
+	return(rslt);
+}
+
 /* circular buffer implementation */
 CircularBuffer::CircularBuffer(size_t capacity)
 	: beg_index_(0)
@@ -4262,10 +4342,11 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	}
 }
 
-void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
+void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 			pcap_pkthdr **header_new, u_char **packet_new,
-			void *_net_map) {
+			void *_net_map, void *_domain_map) {
 	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
 	unsigned headers_ip_counter = 0;
 	unsigned headers_ip_offset[20];
 	unsigned header_ip_offset = header_packet->header_ip_encaps_offset;
@@ -4337,7 +4418,7 @@ void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 		if(do_convert_sip) {
 			u_char *payload_tcp_udp_mod;
 			unsigned payload_tcp_udp_mod_length;
-			if(convertIPs_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map)) {
+			if(convertAnonymous_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map, domain_map)) {
 				delete payload_tcp_udp;
 				payload_tcp_udp = payload_tcp_udp_mod;
 				payload_tcp_udp_length = payload_tcp_udp_mod_length;
@@ -4423,8 +4504,9 @@ void convertIPsInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
 	}
 }
 
-bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map) {
+bool convertAnonymous_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map, void *_domain_map) {
 	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
 	bool mod = false;
 	vector<string> payload_lines = split((char*)sip_src, '\n');
 	int i_line_content_length = -1;
@@ -4442,6 +4524,10 @@ bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length,
 		}
 		string payload_line_mod;
 		if(convertIPs_string(payload_lines[i_line], &payload_line_mod, net_map)) {
+			payload_lines[i_line] = payload_line_mod;
+			mod = true;
+		}
+		if(convertDomains_string(payload_lines[i_line], payload_line_mod, domain_map)) {
 			payload_lines[i_line] = payload_line_mod;
 			mod = true;
 		}
@@ -4521,6 +4607,25 @@ bool convertIPs_string(string &src, string *dst, void *_net_map) {
 		}
 		++src_i;
 		++src_p;
+	}
+	return(mod);
+}
+
+bool convertDomains_string(string &src, string &dst, void *_domain_map) {
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
+	bool mod = false;
+	dst = src;
+	for(cConfigItem_domain_map::t_domain_map::iterator iter = domain_map->begin(); iter != domain_map->end(); iter++) {
+		string key = string(iter->first.c_str());
+		string val = string(iter->second.c_str());
+		while (true) {
+			size_t pos = dst.find(key);
+			if (pos == std::string::npos) {
+				break;
+			}
+			dst.replace(pos, key.size(), val);
+			mod = true;
+		}
 	}
 	return(mod);
 }

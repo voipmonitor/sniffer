@@ -36,7 +36,7 @@ int ssl_detect_client_hello_version( u_char* data, uint32_t len, uint16_t* ver )
 
 int ssl_detect_server_hello_version( u_char* data, uint32_t len, uint16_t* ver );
 
-void ssl3_init_handshake_digests( DSSL_Session* sess );
+int ssl3_init_handshake_digests( DSSL_Session* sess );
 int ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t len );
 
 #ifdef  __cplusplus

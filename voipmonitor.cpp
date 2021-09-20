@@ -409,7 +409,7 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
-bool opt_ss7_use_sam_subsequent_number = false;
+bool opt_ss7_use_sam_subsequent_number = true;
 int opt_ss7_type_callid = 1;
 int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
@@ -1209,6 +1209,9 @@ bool heap_profiler_is_running = false;
 int opt_process_pcap_type = 0;
 char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
+cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+
+char opt_curl_hook_wav[256] = "";
 
 
 #include <stdio.h>
@@ -7034,6 +7037,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("fix_packetization_in_create_audio", &opt_fix_packetization_in_create_audio));
+					addConfigItem(new FILE_LINE(1162) cConfigItem_string("opt_curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -7600,6 +7604,7 @@ void cConfig::addConfigItems() {
 		subgroup("process pcap");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
+			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
 	minorEnd();
 	
 	setDefaultValues();
@@ -12074,7 +12079,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
 	}
-	
+	if((value = ini.GetValue("general", "opt_curl_hook_wav", NULL))) {
+		strcpy_null_term(opt_curl_hook_wav, value);
+	}
+
 	/*
 	packetbuffer default configuration
 	

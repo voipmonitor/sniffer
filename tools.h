@@ -364,6 +364,8 @@ struct s_get_url_response_params {
 };
 bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL,
 		      s_get_url_response_params *params = NULL);
+bool post_url_response(const char *url, SimpleBuffer *response, string *postData, string *error = NULL,
+		      s_get_url_response_params *params = NULL);
 long long GetFileSize(std::string filename);
 time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
@@ -738,11 +740,12 @@ void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_c
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t seq, u_int32_t ack_seq, 
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
-void convertIPsInPacket(struct sHeaderPacket *header_packet, struct pcapProcessData *ppd, 
+void convertAnonymousInPacket(struct sHeaderPacket *header_packet, struct pcapProcessData *ppd, 
 			pcap_pkthdr **header, u_char **packet,
-			void *net_map);
-bool convertIPs_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map);
+			void *net_map, void *domain_map);
+bool convertAnonymous_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map, void *_domain_map);
 bool convertIPs_string(string &src, string *dst, void *_net_map);
+bool convertDomains_string(string &src, string &dst, void *_domain_map);
 int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_create = false);
 
 class RtpGraphSaver {
