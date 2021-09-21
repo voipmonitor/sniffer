@@ -1079,7 +1079,7 @@ extern ParsePacket _parse_packet_global_process_packet;
 
 cBuffersControl buffersControl;
 
-u_int64_t rdtsc_by_100ms;
+u_int64_t rdtsc_by_250ms = 0;
 
 char opt_git_folder[1024];
 char opt_configure_param[1024];
@@ -3622,13 +3622,8 @@ int main(int argc, char *argv[]) {
 	ulaw_init();
 	dsp_init();
  
-	#if defined(__i386__) or  defined(__x86_64__)
-	u_int64_t _rdtsc_1 = rdtsc();
-	USLEEP(100000);
-	u_int64_t _rdtsc_2 = rdtsc();
-	rdtsc_by_100ms = _rdtsc_2 - _rdtsc_1;
-	#endif
-	
+	init_rdtsc_interval();
+
 	thread_setup();
 	// end init
 

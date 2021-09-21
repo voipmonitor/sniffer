@@ -5537,6 +5537,10 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	timeval ts;
 	if(ts_input) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(ts_input) - actTimeMS;
+		if(opt_scanpcapdir[0] &&
+		   process_packet__last_cleanup_calls > ts_input->tv_sec) {
+			process_packet__last_cleanup_calls = ts_input->tv_sec;
+		}
 		if(!doQuickCleanup &&
 		   getTimeS(ts_input) <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period))) {
 			return;
@@ -7428,7 +7432,7 @@ void _process_packet__cleanup_calls(timeval *ts, const char *file, int line) {
 
 void _process_packet__cleanup_calls(const char *file, int line) {
 	process_packet__cleanup_calls(NULL, file, line);
-	u_long timeS = getTimeS();
+	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = timeS;
@@ -7437,7 +7441,7 @@ void _process_packet__cleanup_calls(const char *file, int line) {
 
 void _process_packet__cleanup_registers() {
 	process_packet__cleanup_registers(NULL);
-	u_long timeS = getTimeS();
+	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
 		process_packet__last_destroy_registers = timeS;
