@@ -74,7 +74,7 @@ void dpdk_set_initialized(sDpdkHandle *dpdk);
 void dpdk_reset_statistics(sDpdkHandle *dpdk, bool flush_buffer);
 int dpdk_read_proc(sDpdk *dpdk);
 int dpdk_worker_proc(sDpdk *dpdk);
-int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out);
+int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out = NULL);
 sDpdkConfig *dpdk_config(sDpdk *dpdk);
 void dpdk_terminating(sDpdk *dpdk);
 double rte_read_thread_cpu_usage(sDpdk *dpdk);

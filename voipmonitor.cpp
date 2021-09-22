@@ -583,6 +583,7 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_ifdrop_limit = 20;
+int opt_pcap_dpdk_ifdrop_limit = 0;
 int swapDelayCount = 0;
 int swapMysqlDelayCount = 0;
 
@@ -6955,6 +6956,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42199) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new FILE_LINE(42200) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
 					addConfigItem(new FILE_LINE(42201) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dpdk_ifdrop_limit", &opt_pcap_dpdk_ifdrop_limit));
 		subgroup("SIP");
 			addConfigItem(new FILE_LINE(42202) cConfigItem_yesno("savesip", &opt_saveSIP));
 				advanced();

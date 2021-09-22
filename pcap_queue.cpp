@@ -2096,18 +2096,18 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
 		}
 		if(this->instancePcapHandle) {
-			unsigned long bypassBufferSizeExeeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
+			unsigned long bypassBufferSizeExceeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
-			if(bypassBufferSizeExeeded || !statPacketDrops.empty()) {
+			if(bypassBufferSizeExceeded || !statPacketDrops.empty()) {
 				outStr << "drop[";
-				if(bypassBufferSizeExeeded) {
-					outStr << "H:" << bypassBufferSizeExeeded;
+				if(bypassBufferSizeExceeded) {
+					outStr << "H:" << bypassBufferSizeExceeded;
 					if(opt_rrd) {
-						rrd_set_value(RRD_VALUE_exceeded, bypassBufferSizeExeeded);
+						rrd_set_value(RRD_VALUE_exceeded, bypassBufferSizeExceeded);
 					}
 				}
 				if(!statPacketDrops.empty()) {
-					if(bypassBufferSizeExeeded) {
+					if(bypassBufferSizeExceeded) {
 						outStr << " ";
 					}
 					if(opt_rrd) {
@@ -2853,10 +2853,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 	}
 
-	if(opt_use_dpdk) {
-		this->instancePcapHandle->dpdkStat();
-	}
-	
 	extern int global_livesniffer;
 	extern map<unsigned int, livesnifferfilter_s*> usersniffer;
 	extern map<unsigned int, string> usersniffer_kill_reason;
@@ -3746,12 +3742,14 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 				bool ifdrop = false;
 				if(ps.ps_drop > this->last_ps.ps_drop) {
 					pcapdrop = true;
-					++this->countPacketDrop;
 					pcap_drop_flag = 1;
 				}
 				if(ps.ps_ifdrop > this->last_ps.ps_ifdrop &&
 				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * opt_pcap_ifdrop_limit / 100) {
 					ifdrop = true;
+				}
+				if(pcapdrop) {
+					++this->countPacketDrop;
 				}
 				if(pcapdrop || ifdrop) {
 					outStr << fixed
@@ -3773,18 +3771,63 @@ string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeri
 			}
 			this->last_ps = ps;
 		}
+	} else if(this->dpdkHandle) {
+		pcap_stat ps;
+		string dpdk_stats_str_rslt;
+		int pcapstatres = pcap_dpdk_stats(this->dpdkHandle, &ps, &dpdk_stats_str_rslt);
+		if(pcapstatres == 0) {
+			if(ps.ps_recv >= this->last_ps.ps_recv) {
+				extern int opt_pcap_dpdk_ifdrop_limit;
+				bool pcapdrop = false;
+				bool ifdrop = false;
+				if(ps.ps_drop > this->last_ps.ps_drop) {
+					pcapdrop = true;
+					pcap_drop_flag = 1;
+				}
+				if(ps.ps_ifdrop > this->last_ps.ps_ifdrop &&
+				   (ps.ps_ifdrop - this->last_ps.ps_ifdrop) > (ps.ps_recv - this->last_ps.ps_recv) * opt_pcap_dpdk_ifdrop_limit / 100) {
+					ifdrop = true;
+					pcap_drop_flag = 1;
+				}
+				if(pcapdrop || ifdrop) {
+					++this->countPacketDrop;
+				}
+				if(pcapdrop || ifdrop) {
+					outStr << fixed
+					       << "DROPPED PACKETS - " << this->getInterfaceName() << ": "
+					       << "libdpdk or interface dropped some packets!"
+					       << " rx:" << (ps.ps_recv - this->last_ps.ps_recv);
+					if(pcapdrop) {
+						outStr << " pcapdrop:" << (ps.ps_drop - this->last_ps.ps_drop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_drop - this->last_ps.ps_drop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+					}
+					if(ifdrop) {
+						outStr << " ifdrop:" << (ps.ps_ifdrop - this->last_ps.ps_ifdrop) << " " 
+						       << setprecision(1) << ((double)(ps.ps_ifdrop - this->last_ps.ps_ifdrop) / (ps.ps_recv - this->last_ps.ps_recv) * 100) << "%%";
+					}
+					outStr << endl;
+				}
+			}
+			this->last_ps = ps;
+			outStr << dpdk_stats_str_rslt << endl;
+		}
 	}
 	return(outStr.str());
 }
 
 string PcapQueue_readFromInterface_base::pcapDropCountStat_interface() {
 	ostringstream outStr;
-	if(this->pcapHandle) {
+	if(this->pcapHandle || this->dpdkHandle) {
 		outStr << this->getInterfaceName(true) << " : " << "pdropsCount [" << this->countPacketDrop << "]";
 		pcap_stat ps;
-		int pcapstatres = pcap_stats(this->pcapHandle, &ps);
+		int pcapstatres = 1;
+		if(this->pcapHandle) {
+			pcapstatres = pcap_stats(this->pcapHandle, &ps);
+		} else if(this->dpdkHandle) {
+			pcapstatres = pcap_dpdk_stats(this->dpdkHandle, &ps);
+		}
 		if(pcapstatres == 0) {
-			outStr << " ringdrop [" << ps.ps_drop << "]"
+			outStr << " pcapdrop [" << ps.ps_drop << "]"
 			       << " ifdrop [" << ps.ps_ifdrop << "]";
 		}
 	}
@@ -6289,7 +6332,7 @@ string PcapQueue_readFromInterface::pcapDropCountStat_interface() {
 				outStr << this->readThreads[i]->pcapDropCountStat_interface();
 			}
 		}
-	} else if(this->pcapHandle) {
+	} else if(this->pcapHandle || this->dpdkHandle) {
 		return(this->PcapQueue_readFromInterface_base::pcapDropCountStat_interface());
 	}
 	return(outStr.str());
@@ -6302,7 +6345,7 @@ ulong PcapQueue_readFromInterface::getCountPacketDrop() {
 			countPacketDrop += this->readThreads[i]->getCountPacketDrop();
 		}
 		return(countPacketDrop);
-	} else if(this->pcapHandle) {
+	} else if(this->pcapHandle || this->dpdkHandle) {
 		return(this->PcapQueue_readFromInterface_base::getCountPacketDrop());
 	}
 	return(0);
@@ -6321,7 +6364,7 @@ string PcapQueue_readFromInterface::getStatPacketDrop() {
 			}
 		}
 		return(rslt);
-	} else if(this->pcapHandle) {
+	} else if(this->pcapHandle || this->dpdkHandle) {
 		return(this->PcapQueue_readFromInterface_base::getStatPacketDrop());
 	}
 	return("");
@@ -6532,25 +6575,6 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 		}
 	}
 	return(outStrStat.str());
-}
-
-void PcapQueue_readFromInterface::dpdkStat() {
-	for(int i = 0; i < this->readThreadsCount; i++) {
-		if(this->readThreads[i]->threadInitFailed ||
-		   !this->readThreads[i]->dpdkHandle) {
-			continue;
-		}
-		string str_rslt;
-		pcap_dpdk_stats(this->readThreads[i]->dpdkHandle, NULL, &str_rslt);
-		vector<string> str_rslt_v;
-		split(str_rslt.c_str(), "\n", str_rslt_v);
-		for(unsigned i = 0; i < str_rslt_v.size(); i++) {
-			syslog(LOG_NOTICE, "%s", str_rslt_v[i].c_str());
-			if(sverb.pcap_stat_to_stdout) {
-				cout << "VM(" << getpid() << ") " << str_rslt_v[i] << endl;
-			}
-		}
-	}
 }
 
 string PcapQueue_readFromInterface::getInterfaceName(bool simple) {

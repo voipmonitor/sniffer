@@ -312,7 +312,6 @@ protected:
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
 		return(""); 
 	};
-	virtual void dpdkStat() {}
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
 	pstat_data *getThreadPstatData(eTypeThread typeThread);
@@ -821,7 +820,6 @@ protected:
 	virtual string getStatPacketDrop();
 	void initStat_interface();
 	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide);
-	void dpdkStat();
 	string getInterfaceName(bool simple = false);
 	void prepareLogTraffic();
 private:

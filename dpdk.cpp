@@ -236,7 +236,6 @@ static void dpdk_fmt_errmsg_for_rte_errno(char *errbuf, size_t errbuflen, int er
 static int dpdk_init_timer(sDpdk *dpdk);
 static void eth_addr_str(ETHER_ADDR_TYPE *addrp, char* mac_str, int len);
 static int check_link_status(uint16_t portid, struct rte_eth_link *plink);
-static void nic_stats_display(sDpdk *dpdk, string *str_out);
 
 
 static int is_dpdk_pre_inited = 0;
@@ -738,24 +737,80 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 	uint64_t delta_pkt = dpdk->curr_stats.ipackets - dpdk->prev_stats.ipackets;
 	uint64_t delta_usec = dpdk->curr_ts_us - dpdk->prev_ts_us;
 	uint64_t delta_bit = (dpdk->curr_stats.ibytes-dpdk->prev_stats.ibytes)*8;
-	/*
-	string str_rslt;
-	char sprintf_buff[10 * 1024];
-	snprintf(sprintf_buff, sizeof(sprintf_buff), 
-		 "delta_usec: %-10" PRIu64 " delta_pkt: %-10" PRIu64 " delta_bit: %-10" PRIu64 "\n", 
-		 delta_usec, delta_pkt, delta_bit);
-	str_rslt = sprintf_buff;
-	*/
 	dpdk->pps = (uint64_t)(delta_pkt*1e6f/delta_usec);
 	dpdk->bps = (uint64_t)(delta_bit*1e6f/delta_usec);
-	string str_rslt_stat;
-	nic_stats_display(dpdk, &str_rslt_stat);
-	dpdk->prev_stats = dpdk->curr_stats;
-	dpdk->prev_ts_us = dpdk->curr_ts_us;
 	if(str_out) {
-		*str_out = str_rslt_stat;
-	} else {
-		syslog(LOG_INFO, "%s", str_rslt_stat.c_str());
+		ostringstream outStr;
+		outStr << fixed
+		       << "DPDK "
+		       << dpdk->config.device
+		       << " portid " << dpdk->portid
+		       << " ["
+		       << setprecision(2) << dpdk->bps/1e6f << "Mb/s"
+		       << "; packets: " << dpdk->curr_stats.ipackets
+		       << "; errors: " << dpdk->curr_stats.ierrors
+		       << "; imissed: " << dpdk->curr_stats.imissed
+		       << "; nombuf: " << dpdk->curr_stats.rx_nombuf;
+		if(dpdk->rx_to_worker_ring) {
+			outStr << "; ring count: " << rte_ring_count(dpdk->rx_to_worker_ring);
+			outStr << "; ring full: " << dpdk->ring_full_drop;
+		}
+		#if WORKER2_THREAD_SUPPORT
+		if(dpdk->worker_to_worker2_ring) {
+			outStr << "; ring2 count: " << rte_ring_count(dpdk->worker_to_worker2_ring);
+			outStr << "; ring2 full: " << dpdk->ring2_full_drop;
+		}
+		#endif
+		#if DEBUG_EXT_STAT	
+		int len = rte_eth_xstats_get(dpdk->portid, NULL, 0);
+		if(len < 0) {
+			outStr << "; error: " << "rte_eth_xstats_get failed";
+		} else {
+			struct rte_eth_xstat *xstats = (rte_eth_xstat*)calloc(len, sizeof(*xstats));
+			if(xstats == NULL) {
+				outStr << "; error: " << "failed to calloc memory for xstats";
+			} else {
+				int ret = rte_eth_xstats_get(portid, xstats, len);
+				if(ret < 0 || ret > len) {
+					outStr << "; error: " << "rte_eth_xstats_get failed";
+				} else {
+					rte_eth_xstat_name *xstats_names = (rte_eth_xstat_name*)calloc(len, sizeof(*xstats_names));
+					if(xstats_names == NULL) {
+						outStr << "; error: " << "failed to calloc memory for xstats_names";
+					} else {
+						ret = rte_eth_xstats_get_names(portid, xstats_names, len);
+						if(ret < 0 || ret > len) {
+							outStr << "; error: " << "rte_eth_xstats_get_names failed";
+						} else {
+							for(int i = 0; i < len; i++) {
+								if(xstats[i].value > 0) {
+									outStr << "; " << xstats_names[i].name << ": " << xstats[i].value;
+								}
+							}
+						}
+						free(xstats_names);
+					}
+				}
+				free(xstats);
+			}
+		}
+		#endif
+		outStr << "]";
+		#if DEBUG_CYCLES
+		for(unsigned i = 0; i < sizeof(dpdk->cycles) / sizeof(dpdk->cycles[0]); i++) {
+			if(dpdk->cycles[i].count && 
+			   (!DEBUG_CYCLES_MAX_LT_MS || 
+			    dpdk->cycles[i].max * 1000000000 / dpdk->ts_helper.hz > DEBUG_CYCLES_MAX_LT_MS * 1000000ul)) {
+				outStr << " * C" << i 
+				       << " " << dpdk->cycles[i].sum / dpdk->cycles[i].count * 1000000000 / dpdk->ts_helper.hz
+				       << " " << dpdk->cycles[i].min * 1000000000 / dpdk->ts_helper.hz
+				       << " " << dpdk->cycles[i].max * 1000000000 / dpdk->ts_helper.hz
+				       << endl;
+			}
+			dpdk->cycles[i].reset = true;
+		}
+		#endif
+		*str_out = outStr.str();
 	}
 	return 0;
 }
@@ -1594,125 +1649,6 @@ static int check_link_status(uint16_t portid, struct rte_eth_link *plink) {
 	// wait up to 9 seconds to get link status
 	rte_eth_link_get(portid, plink);
 	return plink->link_status == ETH_LINK_UP;
-}
-
-
-static void nic_stats_display(sDpdk *dpdk, string *str_out) {
-	uint16_t portid = dpdk->portid;
-	struct rte_eth_stats stats;
-	rte_eth_stats_get(portid, &stats);
-	ostringstream outStr;
-	/*
-	snprintf(sprintf_buff, sizeof(sprintf_buff), 
-		 "portid:%d, RX-packets: %-10" PRIu64 "  RX-errors:  %-10" PRIu64
-		 "  RX-bytes:  %-10" PRIu64 "  RX-Imissed:  %-10" PRIu64 "  RX-Nombuf:  %-10" PRIu64 "  ring-full-drop:  %-10" PRIu64 
-		 #if WORKER2_THREAD_SUPPORT
-		 "  ring2-full-drop:  %-10" PRIu64 
-		 #endif
-		 "\n", 
-		 portid, 
-		 stats.ipackets, 
-		 stats.ierrors,
-		 stats.ibytes, 
-		 stats.imissed, 
-		 stats.rx_nombuf,
-		 dpdk->ring_full_drop
-		 #if WORKER2_THREAD_SUPPORT
-		 ,dpdk->ring2_full_drop
-		 #endif
-		 );
-	str_rslt = sprintf_buff;
-	snprintf(sprintf_buff, sizeof(sprintf_buff), 
-		 "portid:%d, RX-PPS: %-10" PRIu64 " RX-Mbps: %.2lf  rx_to_worker_ring: %s\n", 
-		 portid, dpdk->pps, dpdk->bps/1e6f,
-		 dpdk->rx_to_worker_ring ? intToString(rte_ring_count(dpdk->rx_to_worker_ring)).c_str() : "---");
-	*/
-	outStr << fixed
-	       << "DPDK "
-	       << dpdk->config.device
-	       << " portid " << portid
-	       << " ["
-	       << setprecision(2) << dpdk->bps/1e6f << "Mb/s";
-	if(stats.ipackets) {
-		outStr << "; packets: " << stats.ipackets;
-	}
-	if(stats.ierrors) {
-		outStr << "; errors: " << stats.ierrors;
-	}
-	if(stats.imissed) {
-		outStr << "; imissed: " << stats.imissed;
-	}
-	if(stats.rx_nombuf) {
-		outStr << "; nombuf: " << stats.rx_nombuf;
-	}
-	if(dpdk->rx_to_worker_ring) {
-		outStr << "; ring count: " << rte_ring_count(dpdk->rx_to_worker_ring);
-		if(dpdk->ring_full_drop) {
-			outStr << "; ring full: " << dpdk->ring_full_drop;
-		}
-	}
-	#if WORKER2_THREAD_SUPPORT
-	if(dpdk->worker_to_worker2_ring) {
-		outStr << "; ring2 count: " << rte_ring_count(dpdk->worker_to_worker2_ring);
-		if(dpdk->ring_full_drop) {
-			outStr << "; ring2 full: " << dpdk->ring2_full_drop;
-		}
-	}
-	#endif
-	#if DEBUG_EXT_STAT	
-	int len = rte_eth_xstats_get(portid, NULL, 0);
-	if(len < 0) {
-		outStr << "; error: " << "rte_eth_xstats_get failed";
-	} else {
-		struct rte_eth_xstat *xstats = (rte_eth_xstat*)calloc(len, sizeof(*xstats));
-		if(xstats == NULL) {
-			outStr << "; error: " << "failed to calloc memory for xstats";
-		} else {
-			int ret = rte_eth_xstats_get(portid, xstats, len);
-			if(ret < 0 || ret > len) {
-				outStr << "; error: " << "rte_eth_xstats_get failed";
-			} else {
-				rte_eth_xstat_name *xstats_names = (rte_eth_xstat_name*)calloc(len, sizeof(*xstats_names));
-				if(xstats_names == NULL) {
-					outStr << "; error: " << "failed to calloc memory for xstats_names";
-				} else {
-					ret = rte_eth_xstats_get_names(portid, xstats_names, len);
-					if(ret < 0 || ret > len) {
-						outStr << "; error: " << "rte_eth_xstats_get_names failed";
-					} else {
-						for(int i = 0; i < len; i++) {
-							if(xstats[i].value > 0) {
-								outStr << "; " << xstats_names[i].name << ": " << xstats[i].value;
-							}
-						}
-					}
-					free(xstats_names);
-				}
-			}
-			free(xstats);
-		}
-	}
-	#endif
-	outStr << "]" << endl;
-	#if DEBUG_CYCLES
-	for(unsigned i = 0; i < sizeof(dpdk->cycles) / sizeof(dpdk->cycles[0]); i++) {
-		if(dpdk->cycles[i].count && 
-		   (!DEBUG_CYCLES_MAX_LT_MS || 
-		    dpdk->cycles[i].max * 1000000000 / dpdk->ts_helper.hz > DEBUG_CYCLES_MAX_LT_MS * 1000000ul)) {
-			outStr << " * C" << i 
-			       << " " << dpdk->cycles[i].sum / dpdk->cycles[i].count * 1000000000 / dpdk->ts_helper.hz
-			       << " " << dpdk->cycles[i].min * 1000000000 / dpdk->ts_helper.hz
-			       << " " << dpdk->cycles[i].max * 1000000000 / dpdk->ts_helper.hz
-			       << endl;
-		}
-		dpdk->cycles[i].reset = true;
-	}
-	#endif
-	if(str_out) {
-		*str_out = outStr.str();
-	} else {
-		syslog(LOG_INFO, "%s", outStr.str().c_str());
-	}
 }
 
 
