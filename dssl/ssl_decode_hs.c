@@ -291,14 +291,16 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 		if( sess->flags & SSF_TLS_SESSION_TICKET_SET)
 		{
 			int rc = ssls_init_from_tls_ticket( sess );
-			if( NM_IS_FAILED( rc ) ) 
+			if( NM_IS_FAILED( rc ) &&
+			    !sess->get_keys_rslt_data.set ) 
 				return rc;
 		}
 		else
 		{
 			/* lookup session from the cache for stateful SSL renegotiation */
 			int rc = ssls_lookup_session( sess );
-			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) ) 
+			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) &&
+			    !sess->get_keys_rslt_data.set )
 				return rc;
 		}
 	}

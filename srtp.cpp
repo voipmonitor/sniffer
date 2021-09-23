@@ -137,14 +137,18 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 
 void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	if(is_dtls() && !cryptoConfigVector.size()) {
-		cDtlsLink::sSrtpKeys keys;
+		list<cDtlsLink::sSrtpKeys*> keys;
 		if(call->dtls->findSrtpKeys(saddr, sport, daddr, dport, &keys)) {
-			if(keys.server.ip == daddr && keys.server.port == dport &&
-			   keys.client.ip == saddr && keys.client.port == sport) {
-				addCryptoConfig(0, keys.cipher.c_str(), keys.server_key.c_str(), 0);
-			} else if(keys.server.ip == saddr && keys.server.port == sport &&
-				  keys.client.ip == daddr && keys.client.port == dport) {
-				addCryptoConfig(0, keys.cipher.c_str(), keys.client_key.c_str(), 0);
+			for(list<cDtlsLink::sSrtpKeys*>::iterator iter_keys = keys.begin(); iter_keys != keys.end(); iter_keys++) {
+				cDtlsLink::sSrtpKeys *keys_item = *iter_keys;
+				if(keys_item->server.ip == daddr && keys_item->server.port == dport &&
+				   keys_item->client.ip == saddr && keys_item->client.port == sport) {
+					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->server_key.c_str(), 0);
+				} else if(keys_item->server.ip == saddr && keys_item->server.port == sport &&
+					  keys_item->client.ip == daddr && keys_item->client.port == dport) {
+					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->client_key.c_str(), 0);
+				}
+				delete keys_item;
 			}
 		}
 	}
