@@ -12165,7 +12165,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
 	}
-	if((value = ini.GetValue("general", "opt_curl_hook_wav", NULL))) {
+	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
 		strcpy_null_term(opt_curl_hook_wav, value);
 	}
 
