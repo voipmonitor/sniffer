@@ -927,6 +927,8 @@ volatile int storing_cdr_next_threads_count_mod;
 volatile int storing_cdr_next_threads_count_mod_request;
 volatile int storing_cdr_next_threads_count_sync;
 unsigned storing_cdr_next_threads_count_last_change;
+int opt_storing_cdr_maximum_cdr_per_iteration = 50000;
+
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -1978,6 +1980,10 @@ void *storing_cdr( void */*dummy*/ ) {
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
 					--calls_queue_position;
+					if(opt_storing_cdr_maximum_cdr_per_iteration &&
+					   _calls_for_store_counter >= opt_storing_cdr_maximum_cdr_per_iteration) {
+						break;
+					}
 				} else {
 					calltable->lock_calls_queue();
 				}
@@ -6647,6 +6653,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_maximum_cdr_per_iteration", &opt_storing_cdr_maximum_cdr_per_iteration));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_low_limit", &opt_processing_limitations_heap_low_limit));
@@ -11007,6 +11014,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "storing_cdr_maximum_cdr_per_iteration", NULL))) {
+		opt_storing_cdr_maximum_cdr_per_iteration = atoi(value);
 	}
 	if((value = ini.GetValue("general", "processing_limitations", NULL))) {
 		opt_processing_limitations = yesno(value);
