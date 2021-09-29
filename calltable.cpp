@@ -10086,6 +10086,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 	if(audio_queue.size() && 
 	   audio_queue.size() > audioQueueThreads.size() * 2 && 
 	   audioQueueThreads.size() < audioQueueThreadsMax) {
+		if(verbosity > 0) printf("Starting new audio convert thread.\n");
 		sAudioQueueThread *audioQueueThread = new FILE_LINE(1010) sAudioQueueThread();
 		audioQueueThreads.push_back(audioQueueThread);
 		vm_pthread_create_autodestroy("audio convert",
@@ -10104,6 +10105,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		calltable->lock_calls_audioqueue();
 		Call *call = NULL;
 		if(calltable->audio_queue.size()) {
+			if(verbosity > 0) printf("Audio queue size %lu, get call from queue and proceed.\n", calltable->audio_queue.size());
 			call = calltable->audio_queue.front();
 			calltable->audio_queue.pop_front();
 		}
