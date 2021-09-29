@@ -185,6 +185,7 @@ extern Calltable *calltable;
 extern cDestroyCallsInfo *destroy_calls_info;
 #endif
 extern volatile int calls_counter;
+extern volatile int calls_for_store_counter;
 extern volatile int registers_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_disable_dbupgradecheck = 0; // When voipmonitor started this disable mysql db check/upgrade (if set to 1)
@@ -1919,7 +1920,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			calltable->unlock_calls_queue();
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
-			unsigned calls_for_store_count = 0;
+			int _calls_for_store_counter = 0;
 			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
@@ -1962,7 +1963,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					} else {
 						call->push_call_to_storing_cdr_queue = true;
 						if(storing_cdr_next_threads_count) {
-							int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
+							int mod = _calls_for_store_counter % (storing_cdr_next_threads_count + 1);
 							if(!mod) {
 								calls_for_store.push_back(call);
 							} else {
@@ -1972,7 +1973,7 @@ void *storing_cdr( void */*dummy*/ ) {
 							calls_for_store.push_back(call);
 						}
 					}
-					++calls_for_store_count;
+					++_calls_for_store_counter;
 					calltable->lock_calls_queue();
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
@@ -1983,7 +1984,8 @@ void *storing_cdr( void */*dummy*/ ) {
 				++calls_queue_position;
 			}
 			calltable->unlock_calls_queue();
-			if(calls_for_store_count || storing_cdr_next_threads_count_mod < 0) {
+			calls_for_store_counter = _calls_for_store_counter;
+			if(_calls_for_store_counter || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_post(&storing_cdr_next_threads[i].sem[0]);
@@ -2234,7 +2236,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 }
 
 void storing_cdr_next_thread_add() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 120) {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
 		if(storing_cdr_next_threads_count < opt_storing_cdr_max_next_threads &&
 		   storing_cdr_next_threads_count_mod == 0 &&
 		   storing_cdr_next_threads_count_mod_request == 0) {

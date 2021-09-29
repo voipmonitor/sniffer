@@ -181,7 +181,7 @@ extern bool opt_disable_sdp_multiplication_warning;
 extern bool opt_save_energylevels;
 
 volatile int calls_counter = 0;
-/* probably not used any more */
+volatile int calls_for_store_counter = 0;
 volatile int registers_counter = 0;
 
 extern char mac[32];

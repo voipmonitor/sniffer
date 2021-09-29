@@ -118,6 +118,7 @@ extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
 extern volatile int calls_counter;
+extern volatile int calls_for_store_counter;
 extern volatile int registers_counter;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 extern PreProcessPacket **preProcessPacketCallX;
@@ -1585,7 +1586,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
-			       << "[" << calls_counter << ",r:" << registers_counter << "]";
+			       << "[" << calls_counter;
+			extern volatile int storing_cdr_next_threads_count;
+			if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
+				outStr << "(s" << calls_for_store_counter << ")";
+				calls_for_store_counter = 0;
+			}
+			outStr << ",r:" << registers_counter << "]";
 			calltable->lock_calls_audioqueue();
 			size_t audioQueueSize = calltable->audio_queue.size();
 			if(audioQueueSize) {
@@ -2624,7 +2631,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
 		   calls_counter > 10000 &&
-		   calls_counter > (int)count_calls * 2) {
+		   calls_counter > (int)count_calls * 1.5) {
 			extern void storing_cdr_next_thread_add();
 			storing_cdr_next_thread_add();
 		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
