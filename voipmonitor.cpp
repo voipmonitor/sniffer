@@ -6807,8 +6807,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_rotate_packetbuffer_pool_max_perc", &opt_dpdk_rotate_packetbuffer_pool_max_perc));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_copy_packetbuffer", &opt_dpdk_copy_packetbuffer));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_batch_read", &opt_dpdk_batch_read));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores", &opt_dpdk_cpu_cores));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores_map", &opt_dpdk_cpu_cores_map));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_affinity", &opt_dpdk_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_lcores_affinity", &opt_dpdk_cpu_cores_map));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_main_thread_cpu_affinity", &opt_dpdk_main_thread_lcore));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_read_thread_cpu_affinity", &opt_dpdk_read_thread_lcore));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker_thread_cpu_affinity", &opt_dpdk_worker_thread_lcore));
@@ -6816,7 +6816,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_memory_channels", &opt_dpdk_memory_channels));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("cpu_cores", &opt_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("thread_affinity", &opt_cpu_cores));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -9762,10 +9762,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "dpdk_batch_read", NULL))) {
 		opt_dpdk_batch_read = atoi(value);
 	}
-	if((value = ini.GetValue("general", "dpdk_cpu_cores", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_cpu_affinity", NULL))) {
 		opt_dpdk_cpu_cores = value;
 	}
-	if((value = ini.GetValue("general", "dpdk_cpu_cores_map", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_lcores_affinity", NULL))) {
 		opt_dpdk_cpu_cores_map = value;
 	}
 	if((value = ini.GetValue("general", "dpdk_main_thread_cpu_affinity", NULL))) {
@@ -9789,7 +9789,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "dpdk_force_max_simd_bitwidth", NULL))) {
 		opt_dpdk_force_max_simd_bitwidth = atoi(value);
 	}
-	if((value = ini.GetValue("general", "cpu_cores", NULL))) {
+	if((value = ini.GetValue("general", "thread_affinity", NULL))) {
 		opt_cpu_cores = value;
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
