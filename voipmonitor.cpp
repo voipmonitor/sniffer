@@ -619,6 +619,7 @@ bool bashPresent = true;
 extern bool opt_pcap_queue_disable;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
+bool opt_pcap_queue_block_max_size_set;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
 extern size_t opt_pcap_queue_file_store_max_size;
 extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
@@ -826,9 +827,9 @@ int opt_dpdk_worker_usleep_if_no_packet = 1;
 int opt_dpdk_worker_usleep_type = 0;
 int opt_dpdk_nb_rx = 4096;
 int opt_dpdk_nb_tx = 1024;
-int opt_dpdk_nb_mbufs = 8192;
+int opt_dpdk_nb_mbufs = 1024;
 int opt_dpdk_pkt_burst = 32;
-int opt_dpdk_ring_size = 4096;
+int opt_dpdk_ring_size = 0;
 int opt_dpdk_mempool_cache_size = 512;
 int opt_dpdk_zc = 0;
 int opt_dpdk_mbufs_in_packetbuffer = 0;
@@ -6808,10 +6809,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_batch_read", &opt_dpdk_batch_read));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores", &opt_dpdk_cpu_cores));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_cores_map", &opt_dpdk_cpu_cores_map));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_main_thread_lcore", &opt_dpdk_main_thread_lcore));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_read_thread_lcore", &opt_dpdk_read_thread_lcore));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker_thread_lcore", &opt_dpdk_worker_thread_lcore));
-					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker2_thread_lcore", &opt_dpdk_worker2_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_main_thread_cpu_affinity", &opt_dpdk_main_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_read_thread_cpu_affinity", &opt_dpdk_read_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker_thread_cpu_affinity", &opt_dpdk_worker_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker2_thread_cpu_affinity", &opt_dpdk_worker2_thread_lcore));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_memory_channels", &opt_dpdk_memory_channels));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
@@ -8720,6 +8721,9 @@ void set_context_config() {
  
 	if(opt_use_dpdk) {
 		opt_t2_boost = true;
+		if(!(useNewCONFIG ? CONFIG.isSet("packetbuffer_block_maxsize") : opt_pcap_queue_block_max_size_set)) {
+			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
+		}
 	}
  
 	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
@@ -9764,16 +9768,16 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "dpdk_cpu_cores_map", NULL))) {
 		opt_dpdk_cpu_cores_map = value;
 	}
-	if((value = ini.GetValue("general", "dpdk_main_thread_lcore", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_main_thread_cpu_affinity", NULL))) {
 		opt_dpdk_main_thread_lcore = atoi(value);
 	}
-	if((value = ini.GetValue("general", "dpdk_read_thread_lcore", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_read_thread_cpu_affinity", NULL))) {
 		opt_dpdk_read_thread_lcore = value;
 	}
-	if((value = ini.GetValue("general", "dpdk_worker_thread_lcore", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_worker_thread_cpu_affinity", NULL))) {
 		opt_dpdk_worker_thread_lcore = value;
 	}
-	if((value = ini.GetValue("general", "dpdk_worker2_thread_lcore", NULL))) {
+	if((value = ini.GetValue("general", "dpdk_worker2_thread_cpu_affinity", NULL))) {
 		opt_dpdk_worker2_thread_lcore = value;
 	}
 	if((value = ini.GetValue("general", "dpdk_memory_channels", NULL))) {
@@ -11188,6 +11192,7 @@ int eval_config(string inistr) {
 	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
+		opt_pcap_queue_block_max_size_set = true;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);

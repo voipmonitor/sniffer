@@ -66,7 +66,7 @@ extern int opt_dpdk_mbufs_in_packetbuffer;
 #define DPDK_CFG_MAX_LEN 1024
 #endif
 #define DPDK_PORTID_MAX (64 * 1024U - 1)
-#define DPDK_NB_MBUFS ((opt_dpdk_nb_mbufs ? opt_dpdk_nb_mbufs : 8192) * 1024)
+#define DPDK_NB_MBUFS ((opt_dpdk_nb_mbufs ? opt_dpdk_nb_mbufs : 1024) * 1024)
 #define DPDK_DEF_MAC_ADDR "00:00:00:00:00:00"
 #define DPDK_TX_BUF_NAME "tx_buffer"
 #define DPDK_PREFIX "dpdk:"
@@ -75,7 +75,7 @@ extern int opt_dpdk_mbufs_in_packetbuffer;
 
 #define MAX_PKT_BURST (opt_dpdk_pkt_burst ? opt_dpdk_pkt_burst : 32)
 
-#define RING_SIZE ((opt_dpdk_ring_size ? opt_dpdk_ring_size : 4096) * 1024)
+#define RING_SIZE (opt_dpdk_ring_size ? opt_dpdk_ring_size * 1024 : DPDK_NB_MBUFS)
 
 #define MBUF_POOL_NAME "mbuf_pool"
 #define MEMPOOL_CACHE_SIZE (opt_dpdk_mempool_cache_size ? opt_dpdk_mempool_cache_size : 512)
@@ -275,8 +275,8 @@ void destroy_dpdk_handle(sDpdkHandle *dpdk) {
 
 int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	int ret = PCAP_ERROR;
-	uint16_t nb_ports=0;
-	uint16_t portid= DPDK_PORTID_MAX;
+	uint16_t nb_ports = 0;
+	uint16_t portid = DPDK_PORTID_MAX;
 	unsigned nb_mbufs = DPDK_NB_MBUFS;
 	struct rte_eth_rxconf rxq_conf;
 	struct rte_eth_txconf txq_conf;
@@ -343,7 +343,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			config->snapshot = MAXIMUM_SNAPLEN;
 		}
 		// create the mbuf pool
-		dpdk->pktmbuf_pool = rte_pktmbuf_pool_create(MBUF_POOL_NAME, nb_mbufs,
+		dpdk->pktmbuf_pool = rte_pktmbuf_pool_create((string(MBUF_POOL_NAME) + "_" + config->device).c_str(), nb_mbufs,
 							     MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE,
 							     rte_socket_id());
 		if(dpdk->pktmbuf_pool == NULL) {
