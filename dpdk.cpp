@@ -142,19 +142,26 @@ public:
 	};
 public:
 	cDpdkTools();
+	void init();
+	void setLCoresMap();
 	int getFreeLcore(eTypeLcore type);
 	void setUseLcore(int lcore);
 	void setFreeLcore(int lcore);
-	string getAllLcores(bool without_main);
+	string getAllCores(bool without_main);
+	string getCoresMap();
+	int getMainThreadLcore();
 private:
 	int getFreeLcore(map<int, bool> &main_map);
 	bool lcoreIsUsed(int lcore);
 	bool lcoreIsInAny(int lcore);
 private:
+	int main_thread_lcore;
 	map<int, bool> read_lcores;
 	map<int, bool> worker_lcores;
 	map<int, bool> worker2_lcores;
 	map<int, bool> used_lcores;
+	string lcores_map_str;
+	map<int, list<int> > lcores_map;
 	volatile int _sync_lcore;
 };
 
@@ -886,15 +893,11 @@ double rte_worker2_thread_cpu_usage(sDpdk *dpdk) {
 
 
 string get_dpdk_cpu_cores(bool without_main) {
-	if(opt_dpdk_cpu_cores_map.empty()) {
-		if(!opt_dpdk_cpu_cores.empty()) {
-			return(opt_dpdk_cpu_cores);
-		} else {
-			cDpdkTools tools;
-			return(tools.getAllLcores(without_main));
-		}
+	if(!without_main && !opt_dpdk_cpu_cores.empty()) {
+		return(opt_dpdk_cpu_cores);
 	}
-	return("");
+	cDpdkTools tools;
+	return(tools.getAllCores(without_main));
 }
 
 
@@ -1336,9 +1339,11 @@ static int dpdk_pre_init(char * ebuf, int eaccess_not_fatal) {
 	char *ptr_dpdk_cfg = NULL;
 	#else
 	string _opt_dpdk_main_thread_lcore;
+	string _opt_dpdk_cpu_cores_map;
 	string _opt_dpdk_cpu_cores;
 	string _opt_dpdk_memory_channels;
 	string _opt_dpdk_force_max_simd_bitwidth;
+	cDpdkTools tools;
 	#endif
 	if(is_dpdk_pre_inited != 0) {
 		// already inited; did that succeed?
@@ -1361,27 +1366,26 @@ static int dpdk_pre_init(char * ebuf, int eaccess_not_fatal) {
 	dargv_cnt = parse_dpdk_cfg(dpdk_cfg_buf,dargv);
 	#else
 	dargv[dargv_cnt++] = DPDK_LIB_NAME;
-	if(!opt_dpdk_cpu_cores.empty() || 
-	   !opt_dpdk_cpu_cores_map.empty()) {
-		if(!opt_dpdk_cpu_cores.empty()) {
-			dargv[dargv_cnt++] = (char*)"-l";
-			dargv[dargv_cnt++] = (char*)opt_dpdk_cpu_cores.c_str();
-		}
-		if(!opt_dpdk_cpu_cores_map.empty()) {
-			dargv[dargv_cnt++] = (char*)"--lcores";
-			dargv[dargv_cnt++] = (char*)opt_dpdk_cpu_cores_map.c_str();
-		}
+	if(!opt_dpdk_cpu_cores_map.empty()) {
+		dargv[dargv_cnt++] = (char*)"--lcores";
+		dargv[dargv_cnt++] = (char*)opt_dpdk_cpu_cores_map.c_str();
+	} else if(!opt_dpdk_cpu_cores.empty()) {
+		dargv[dargv_cnt++] = (char*)"-l";
+		dargv[dargv_cnt++] = (char*)opt_dpdk_cpu_cores.c_str();
 	} else {
-		cDpdkTools tools;
-		_opt_dpdk_cpu_cores = tools.getAllLcores(false);
-		if(!_opt_dpdk_cpu_cores.empty()) {
+		_opt_dpdk_cpu_cores_map = tools.getCoresMap();
+		_opt_dpdk_cpu_cores = tools.getAllCores(false);
+		if(!_opt_dpdk_cpu_cores_map.empty()) {
+			dargv[dargv_cnt++] = (char*)"--lcores";
+			dargv[dargv_cnt++] = (char*)_opt_dpdk_cpu_cores_map.c_str();
+		} else if(!_opt_dpdk_cpu_cores.empty()) {
 			dargv[dargv_cnt++] = (char*)"-l";
 			dargv[dargv_cnt++] = (char*)_opt_dpdk_cpu_cores.c_str();
 		}
 	}
-	if(opt_dpdk_main_thread_lcore >= 0) {
+	if(tools.getMainThreadLcore() >= 0) {
 		dargv[dargv_cnt++] = (char*)"--main-lcore";
-		_opt_dpdk_main_thread_lcore = intToString(opt_dpdk_main_thread_lcore);
+		_opt_dpdk_main_thread_lcore = intToString(tools.getMainThreadLcore());
 		dargv[dargv_cnt++] = (char*)_opt_dpdk_main_thread_lcore.c_str();
 	}
 	if(opt_dpdk_memory_channels) {
@@ -1653,6 +1657,15 @@ static int check_link_status(uint16_t portid, struct rte_eth_link *plink) {
 
 
 cDpdkTools::cDpdkTools() {
+	init();
+	_sync_lcore = 0;
+}
+
+void cDpdkTools::init() {
+	main_thread_lcore = -1;
+	read_lcores.clear();
+	worker_lcores.clear();
+	worker2_lcores.clear();
 	vector<string> read_lcores_str = split(opt_dpdk_read_thread_lcore.c_str(), ",", true);
 	for(unsigned i = 0; i < read_lcores_str.size(); i++) {
 		read_lcores[atoi(read_lcores_str[i].c_str())] = true;
@@ -1665,7 +1678,111 @@ cDpdkTools::cDpdkTools() {
 	for(unsigned i = 0; i < worker2_lcores_str.size(); i++) {
 		worker2_lcores[atoi(worker2_lcores_str[i].c_str())] = true;
 	}
-	_sync_lcore = 0;
+	setLCoresMap();
+	lcores_map.clear();
+	if(!lcores_map_str.empty() ||
+	   !opt_dpdk_cpu_cores_map.empty()) {
+		string lcores_map_str_tmp = !lcores_map_str.empty() ? lcores_map_str : opt_dpdk_cpu_cores_map;
+		int pos[2] = { 0 , 0 };
+		int length = lcores_map_str_tmp.length();
+		int bracketCounter = 0;
+		while(pos[0] < length) {
+			pos[1] = pos[0];
+			while(pos[1] < length) {
+				if(lcores_map_str_tmp[pos[1]] == ',' && !bracketCounter) {
+					break;
+				} else if(lcores_map_str_tmp[pos[1]] == '(') {
+					++bracketCounter;
+				} else if(lcores_map_str_tmp[pos[1]] == ')') {
+					--bracketCounter;
+				}
+				++pos[1];
+			}
+			if(pos[1] > pos[0] + 1) {
+				string map_item = lcores_map_str_tmp.substr(pos[0], pos[1] - pos[0]);
+				size_t posSep = map_item.find('@');
+				if(posSep != string::npos) {
+					string lc = map_item.substr(0, posSep);
+					string c = map_item.substr(posSep + 1);
+					vector<int> lcv;
+					list<int> cl;
+					get_list_cores(lc, lcv);
+					get_list_cores(c, cl);
+					if(lcv.size() && cl.size()) {
+						for(unsigned i = 0; i < lcv.size(); i++) {
+							lcores_map[lcv[i]] = cl;
+						}
+					}
+				}
+			}
+			pos[0] = pos[1] + 1;
+		}
+	}
+}
+
+void cDpdkTools::setLCoresMap() {
+	if(!(opt_dpdk_cpu_cores.empty() &&
+	     opt_dpdk_cpu_cores_map.empty() &&
+	     read_lcores.size())) {
+		return;
+	}
+	int count_cores = sysconf(_SC_NPROCESSORS_ONLN);
+	map<int, list<int> > cores_used;
+	int lcore_id = 0;
+	for(int i = 0; i < 3; i++) {
+		map<int, bool> *map_src_lcores = i == 0 ? &read_lcores :
+						 i == 1 ? &worker_lcores :
+							  &worker2_lcores;
+		for(map<int, bool>::iterator iter = map_src_lcores->begin(); iter != map_src_lcores->end(); iter++) {
+			int core = iter->first;
+			int lcore = lcore_id++;
+			cores_used[core].push_back(lcore);
+		}
+	}
+	int main_thread_core = -1;
+	if(opt_dpdk_main_thread_lcore < 0) {
+		for(int i = 0; i < count_cores; i++) {
+			if(cores_used.find(i) == cores_used.end()) {
+				main_thread_core = i;
+				break;
+			}
+		}
+	} else {
+		main_thread_core = opt_dpdk_main_thread_lcore;
+	}
+	if(main_thread_core >= 0) {
+		int lcore = lcore_id++;
+		cores_used[main_thread_core].push_back(lcore);
+	}
+	lcore_id = 0;
+	for(int i = 0; i < 3; i++) {
+		map<int, bool> *map_src_lcores = i == 0 ? &read_lcores :
+						 i == 1 ? &worker_lcores :
+							  &worker2_lcores;
+		unsigned size = map_src_lcores->size();
+		map_src_lcores->clear();
+		for(unsigned i = 0; i < size; i++) {
+			(*map_src_lcores)[lcore_id] = true;
+			++lcore_id;
+		}
+	}
+	if(main_thread_core >= 0) {
+		main_thread_lcore = lcore_id;
+	}
+	lcores_map_str = "";
+	for(map<int, list<int> >::iterator iter = cores_used.begin(); iter != cores_used.end(); iter++) {
+		string lcores;
+		for(list<int>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!lcores.empty()) {
+				lcores += ",";
+			}
+			lcores += intToString(*iter2);
+		}
+		if(!lcores_map_str.empty()) {
+			lcores_map_str += ",";
+		}
+		lcores_map_str += "(" + lcores + ")@" + intToString(iter->first);
+	}
 }
 
 int cDpdkTools::getFreeLcore(eTypeLcore type) {
@@ -1713,17 +1830,35 @@ void cDpdkTools::setFreeLcore(int lcore) {
 	__SYNC_UNLOCK(_sync_lcore);
 }
 
-string cDpdkTools::getAllLcores(bool without_main) {
+string cDpdkTools::getAllCores(bool without_main) {
 	map<int, bool> all;
 	if(!without_main) {
-		all[opt_dpdk_main_thread_lcore] = true;
+		if(lcores_map.size()) {
+			map<int, list<int> >::iterator iter = lcores_map.find(getMainThreadLcore());
+			if(iter != lcores_map.end()) {
+				for(list<int>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+					all[*iter2] = true;
+				}
+			}
+		} else {
+			all[getMainThreadLcore()] = true;
+		}
 	}
 	for(int i = 0; i < 3; i++) {
-		map<int, bool> *map_lcores = i == 0 ? &read_lcores :
-					     i == 1 ? &worker_lcores :
-						      &worker2_lcores;
-		for(map<int, bool>::iterator iter = map_lcores->begin(); iter != map_lcores->end(); iter++) {
-			all[iter->first] = true;
+		map<int, bool> *map_src_lcores = i == 0 ? &read_lcores :
+						 i == 1 ? &worker_lcores :
+							  &worker2_lcores;
+		for(map<int, bool>::iterator iter = map_src_lcores->begin(); iter != map_src_lcores->end(); iter++) {
+			if(lcores_map.size()) {
+				map<int, list<int> >::iterator iter2 = lcores_map.find(iter->first);
+				if(iter2 != lcores_map.end()) {
+					for(list<int>::iterator iter3 = iter2->second.begin(); iter3 != iter2->second.end(); iter3++) {
+						all[*iter3] = true;
+					}
+				}
+			} else {
+				all[iter->first] = true;
+			}
 		}
 	}
 	string all_str;
@@ -1734,6 +1869,14 @@ string cDpdkTools::getAllLcores(bool without_main) {
 		all_str += intToString(iter->first);
 	}
 	return(all_str);
+}
+
+string cDpdkTools::getCoresMap() {
+	return(!lcores_map_str.empty() ? lcores_map_str : opt_dpdk_cpu_cores_map);
+}
+
+int cDpdkTools::getMainThreadLcore() {
+	return(main_thread_lcore >= 0 ? main_thread_lcore  : opt_dpdk_main_thread_lcore);
 }
 
 int cDpdkTools::getFreeLcore(map<int, bool> &main_map) {

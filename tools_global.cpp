@@ -62,11 +62,12 @@ int vm_pthread_create(const char *thread_description,
 		pthread_attr_destroy(&_attr);
 	}
 	extern string opt_cpu_cores;
+	extern bool opt_use_dpdk;
 	if(!opt_cpu_cores.empty()) {
 		vector<int> cpu_cores;
 		get_list_cores(opt_cpu_cores, cpu_cores);
 		pthread_set_affinity(*thread, &cpu_cores, NULL);
-	} else {
+	} else if(opt_use_dpdk) {
 		extern string get_dpdk_cpu_cores(bool without_main) ;
 		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true);
 		if(!dpdk_cpu_cores_str.empty()) {
@@ -108,6 +109,12 @@ void get_list_cores(string input, vector<int> &list) {
 		}
 		return;
 	}
+	while(input.length() && (input[0] == '(' || input[0] == ' ')) {
+		input = input.substr(1);
+	}
+	while(input.length() && (input[input.length() - 1] == '(' || input[input.length() - 1] == ' ')) {
+		input = input.substr(0, input.length() - 1);
+	}
 	map<int, bool> list_map;
 	vector<string> input_v;
 	split(input.c_str(), ",", input_v, true);
@@ -135,6 +142,14 @@ void get_list_cores(string input, vector<int> &list) {
 		if(iter->second) {
 			list.push_back(iter->first);
 		}
+	}
+}
+
+void get_list_cores(string input, list<int> &list) {
+	vector<int> _list;
+	get_list_cores(input, _list);
+	for(unsigned i = 0; i < _list.size(); i++) {
+		list.push_back(_list[i]);
 	}
 }
 
