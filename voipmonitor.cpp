@@ -4386,7 +4386,7 @@ int main_init_read() {
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
 	}
-	if(opt_enable_ssl && ssl_ipport.size()) {
+	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_init();
@@ -4626,7 +4626,7 @@ void terminate_processpacket() {
 		delete tcpReassemblySsl;
 		tcpReassemblySsl = NULL;
 	}
-	if(opt_enable_ssl && ssl_ipport.size()) {
+	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_clean();
