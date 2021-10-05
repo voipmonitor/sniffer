@@ -723,7 +723,7 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 	   this->restoreBufferSize >= sizeof(pcap_block_store_header) &&
 	   ((pcap_block_store_header*)this->restoreBuffer)->time_s) {
 		extern int opt_receive_packetbuffer_maximum_time_diff_s;
-		int timeDiff = abs((int64_t)(((pcap_block_store_header*)this->restoreBuffer)->time_s) - (int64_t)(getTimeS())) % 3600;
+		int timeDiff = abs((int64_t)(((pcap_block_store_header*)this->restoreBuffer)->time_s) - (int64_t)(getTimeS())) % (3600/2);
 		if(timeDiff > opt_receive_packetbuffer_maximum_time_diff_s) {
 			string _error = 
 				string("Time difference between ") + 
@@ -7118,7 +7118,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 										time_t actualTimeSec = time(NULL);
 										time_t sensorTimeSec = stringToTime(sensorTime.c_str());
 										extern int opt_mirror_connect_maximum_time_diff_s;
-										int timeDiff = abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % 3600;
+										int timeDiff = abs((int64_t)actualTimeSec - (int64_t)sensorTimeSec) % (3600/2);
 										if(timeDiff > opt_mirror_connect_maximum_time_diff_s) {
 											cLogSensor::log(cLogSensor::error, 
 													"sensor is not allowed to connect because of different time",
