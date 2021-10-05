@@ -160,7 +160,11 @@ public:
 	size_t size() {
 		u_int32_t _writeit = writeit;
 		u_int32_t _readit = readit;
-		return(_writeit - _readit + (_writeit < _readit ? length : 0));
+		return(_writeit > _readit ?
+			_writeit - _readit :
+		       _writeit < _readit ?
+			_writeit + length - _readit :
+			free[_writeit] ? 0 : length);
 	}
 private:
 	size_t length;

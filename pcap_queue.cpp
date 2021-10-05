@@ -1220,11 +1220,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			this->lock_fileStore();
 		}
 		if(this->getFileStoreUseSize(false) > opt_pcap_queue_store_queue_max_disk_size) {
-			u_int64_t actTime = getTimeMS();
-			if(actTime - 1000 > this->lastTimeLogErrDiskIsFull) {
-				syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
-				this->lastTimeLogErrDiskIsFull = actTime;
-			}
+			diskBufferIsFull_log();
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
 			}
@@ -1254,11 +1250,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			this->unlock_fileStore();
 		}
 		if(!buffersControl.check__pb__add_used()) {
-			u_int64_t actTime = getTimeMS();
-			if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
-				syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
-				this->lastTimeLogErrMemoryIsFull = actTime;
-			}
+			memoryBufferIsFull_log();
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
 			}
@@ -1366,6 +1358,22 @@ uint64_t pcap_store_queue::getFileStoreUseSize(bool lock) {
 		this->unlock_fileStore();
 	}
 	return(size);
+}
+
+void pcap_store_queue::memoryBufferIsFull_log() {
+	u_int64_t actTime = getTimeMS();
+	if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
+		syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
+		this->lastTimeLogErrMemoryIsFull = actTime;
+	}
+}
+
+void pcap_store_queue::diskBufferIsFull_log() {
+	u_int64_t actTime = getTimeMS();
+	if(actTime - 1000 > this->lastTimeLogErrDiskIsFull) {
+		syslog(LOG_ERR, "packetbuffer: DISK IS FULL");
+		this->lastTimeLogErrDiskIsFull = actTime;
+	}
 }
 
 
@@ -4213,17 +4221,19 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 }
 
 inline void PcapQueue_readFromInterfaceThread::push_block(pcap_block_store *block) {
-	if(!buffersControl.check__pb__add_used()) {
-		if(!(opt_pcap_queue_store_queue_max_disk_size &&
-		     !opt_pcap_queue_disk_folder.empty())) {
-			unsigned int usleepCounter = 0;
-			do {
-				if(is_terminating()) {
-					return;
-				}
-				USLEEP_C(100, usleepCounter++);
-			} while(!buffersControl.check__pb__add_used());
-		}
+	bool useDiskBuffer = opt_pcap_queue_store_queue_max_disk_size && !opt_pcap_queue_disk_folder.empty();
+	if(!useDiskBuffer ?
+	    pcapQueueQ->checkIfMemoryBufferIsFull(block->getUseAllSize(), true) :
+	    pcapQueueQ->checkIfDiskBufferIsFull(true)) {
+		unsigned int usleepCounter = 0;
+		do {
+			if(is_terminating()) {
+				return;
+			}
+			USLEEP_C(100, usleepCounter++);
+		} while(!useDiskBuffer ?
+			 pcapQueueQ->checkIfMemoryBufferIsFull(block->getUseAllSize(), true) :
+			 pcapQueueQ->checkIfDiskBufferIsFull(true));
 	}
 	unsigned int _writeIndex = writeit % qringmax;
 	unsigned int usleepCounter = 0;
@@ -6637,17 +6647,19 @@ void PcapQueue_readFromInterface::push_blockstore(pcap_block_store **block_store
 	if(!opt_pcap_queue_compress && this->instancePcapFifo && opt_pcap_queue_suppress_t1_thread) {
 		this->instancePcapFifo->addBlockStoreToPcapStoreQueue(*block_store);
 	} else if(this->block_qring) {
-		if(!buffersControl.check__pb__add_used()) {
-			if(!(opt_pcap_queue_store_queue_max_disk_size &&
-			     !opt_pcap_queue_disk_folder.empty())) {
-				unsigned int usleepCounter = 0;
-				do {
-					if(TERMINATING) {
-						break;
-					}
-					USLEEP_C(100, usleepCounter++);
-				} while(!buffersControl.check__pb__add_used());
-			}
+		bool useDiskBuffer = opt_pcap_queue_store_queue_max_disk_size && !opt_pcap_queue_disk_folder.empty();
+		if(!useDiskBuffer ?
+		    pcapQueueQ->checkIfMemoryBufferIsFull((*block_store)->getUseAllSize(), true) :
+		    pcapQueueQ->checkIfDiskBufferIsFull(true)) {
+			unsigned int usleepCounter = 0;
+			do {
+				if(TERMINATING) {
+					break;
+				}
+				USLEEP_C(100, usleepCounter++);
+			} while(!useDiskBuffer ?
+				 pcapQueueQ->checkIfMemoryBufferIsFull((*block_store)->getUseAllSize(), true) :
+				 pcapQueueQ->checkIfDiskBufferIsFull(true));
 		}
 		this->block_qring->push(block_store, true);
 	} else {
@@ -6870,6 +6882,26 @@ string PcapQueue_readFromFifo::saveBlockStoreTrash(const char *filter, const cha
 	#endif
 	unlock_blockStoreTrash();
 	return(rslt);
+}
+
+bool PcapQueue_readFromFifo::checkIfMemoryBufferIsFull(unsigned size, bool log) {
+	if(!buffersControl.check__pb__add_used(size)) {
+		if(log) {
+			this->pcapStoreQueue.memoryBufferIsFull_log();
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool PcapQueue_readFromFifo::checkIfDiskBufferIsFull(bool log) {
+	if(this->pcapStoreQueue.getFileStoreUseSize(true) > opt_pcap_queue_store_queue_max_disk_size) {
+		if(log) {
+			this->pcapStoreQueue.diskBufferIsFull_log();
+		}
+		return(true);
+	}
+	return(false);
 }
 
 pcap_block_store *PcapQueue_readFromFifo::getBlockStoreFromPool() {

@@ -147,6 +147,8 @@ private:
 	pcap_file_store *findFileStoreById(u_int id);
 	void cleanupFileStore();
 	uint64_t getFileStoreUseSize(bool lock = true);
+	void memoryBufferIsFull_log();
+	void diskBufferIsFull_log();
 	void lock_queue() {
 		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
 	}
@@ -901,6 +903,8 @@ public:
 	string debugBlockStoreTrash();
 	string saveBlockStoreTrash(const char *filter, const char *destFile);
 	pcap_block_store *getBlockStoreFromPool();
+	bool checkIfMemoryBufferIsFull(unsigned size, bool log);
+	bool checkIfDiskBufferIsFull(bool log);
 protected:
 	bool createThread();
 	bool createDestroyBlocksThread();
