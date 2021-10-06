@@ -7617,7 +7617,7 @@ void cConfig::addConfigItems() {
 	setDefaultValues();
 	
 	const char *descriptionsHelpTable[][3] = {
-		{ "sqldriver", "SQL driver", "SQL driver - test help text" }
+		// { "sqldriver", "SQL driver", "SQL driver - test help text" }
 	};
 	for(unsigned i = 0; i < sizeof(descriptionsHelpTable) / sizeof(descriptionsHelpTable[0]); i++) {
 		if(descriptionsHelpTable[i][1]) {
