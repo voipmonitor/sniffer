@@ -675,9 +675,16 @@ public:
 	void endTrackDiffValues(list<sDiffValue> *diffValues);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
+	void lock() {
+		__SYNC_LOCK_USLEEP(config_sync, 100);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(config_sync);
+	}
 private:
 	list<string> config_list;
 	map<string, cConfigItem*> config_map;
+	volatile int config_sync;
 	cConfigItem::eTypeLevel defaultLevel;
 	string defaultGroup;
 	string defaultSubgroup;

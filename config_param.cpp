@@ -1956,6 +1956,7 @@ bool cConfigMap::isObsoleteParameter(string parameter) {
 
 
 cConfig::cConfig() {
+	config_sync = 0;
 	defaultLevel = cConfigItem::levelNormal;
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
@@ -1970,6 +1971,7 @@ cConfig::~cConfig() {
 }
 
 void cConfig::addConfigItem(cConfigItem *configItem) {
+	lock();
 	if(config_map.find(configItem->config_name) != config_map.end()) {
 		cout << "warning: duplicity config item: " << configItem->config_name << endl;
 	}
@@ -1988,6 +1990,7 @@ void cConfig::addConfigItem(cConfigItem *configItem) {
 	}
 	config_map[configItem->config_name] = configItem;
 	config_list.push_back(configItem->config_name);
+	unlock();
 }
 
 void cConfig::group(const char *groupName) {
@@ -2150,6 +2153,7 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silen
 		return(false);
 	}
 	
+	lock();
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
 		if(iter->second->setParamFromConfigFile(&ini, true)) {
 			iter->second->set = true;
@@ -2158,6 +2162,7 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silen
 			evSetConfigItem(iter->second);
 		}
 	}
+	unlock();
 	
 	if (rc != 0) {
 		if(!silent) {
@@ -2210,6 +2215,7 @@ bool cConfig::loadConfigMapFromConfigFile(cConfigMap *configMap, const char *fil
 	}
 	unsigned lineBufferSize = 100000;
 	char *lineBuffer = new FILE_LINE(0) char[lineBufferSize];
+	lock();
 	while(fgets(lineBuffer, lineBufferSize, fp)) {
 		char *pointerToBegin = lineBuffer;
 		while(*pointerToBegin == ' ' || *pointerToBegin == '\t') {
@@ -2263,6 +2269,7 @@ bool cConfig::loadConfigMapFromConfigFile(cConfigMap *configMap, const char *fil
 				configMap->addItem(name.c_str(), value.c_str());
 		}
 	}
+	unlock();
 	delete [] lineBuffer;
 	fclose(fp);
 	return(true);
@@ -2278,6 +2285,7 @@ void cConfig::loadFromConfigFileError(const char *errorString, const char *filen
 
 cConfigMap cConfig::getConfigMap() {
 	cConfigMap configMap;
+	lock();
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
@@ -2289,11 +2297,13 @@ cConfigMap cConfig::getConfigMap() {
 			}
 		}
 	}
+	unlock();
 	return(configMap);
 }
 
 string cConfig::getContentConfig(bool configFile, bool putDefault) {
 	ostringstream outStr;
+	lock();
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
@@ -2312,12 +2322,14 @@ string cConfig::getContentConfig(bool configFile, bool putDefault) {
 			}
 		}
 	}
+	unlock();
 	return(outStr.str());
 }
 
 string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 	JsonExport json;
 	int counter = 1;
+	lock();
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		if(filter && filter->size()) {
 			bool filter_ok = false;
@@ -2341,6 +2353,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 			}
 		}
 	}
+	unlock();
 	bool okNextData = false;
 	if(filter && filter->size()) {
 		for(vector<string>::iterator iter_filter = filter->begin(); iter_filter != filter->end(); iter_filter++) {
@@ -2389,6 +2402,7 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 			}
 		}
 	}
+	lock();
 	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
 		string config_name = iter->first;
 		bool set = iter->second != NULL && iter->second->size() > 0;
@@ -2410,6 +2424,7 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 			}
 		}
 	}
+	unlock();
 	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
 		if(iter->second) {
 			delete iter->second;
@@ -2440,6 +2455,7 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 	if(sqlDb->query(q.str())) {
 		SqlDb_row row = sqlDb->fetchRow();
 		if(row) {
+			lock();
 			for(size_t i = 0; i < row.getCountFields(); i++) {
 				string column = row.getNameField(i);
 				if(column != "id" && column != "id_sensor") {
@@ -2469,6 +2485,7 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 					}
 				}
 			}
+			unlock();
 		}
 		setFromMysqlOk = true;
 	}
@@ -2496,6 +2513,7 @@ void cConfig::putToMysql() {
 	sqlDb->query(q.str());
 	SqlDb_row row_get = sqlDb->fetchRow();
 	SqlDb_row row_save;
+	lock();
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
 		if(iter_map != config_map.end()) {
@@ -2518,6 +2536,7 @@ void cConfig::putToMysql() {
 			}
 		}
 	}
+	unlock();
 	if(row_get) {
 		char id_cond[20];
 		snprintf(id_cond, sizeof(id_cond), "ID = %i", atoi(row_get["id"].c_str()));
@@ -2529,16 +2548,20 @@ void cConfig::putToMysql() {
 }
 
 void cConfig::setDefaultValues() {
+	lock();
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
 		iter->second->setDefaultValue();
 	}
+	unlock();
 }
 
 void cConfig::clearToDefaultValues() {
+	lock();
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
 		iter->second->clearToDefaultValue();
 		evSetConfigItem(iter->second);
 	}
+	unlock();
 }
 
 void cConfig::setDescription(const char *itemName, const char *description) {
