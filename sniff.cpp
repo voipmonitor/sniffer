@@ -3963,6 +3963,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
+						call->seenbyeandok_permanent = false;
 						if(!call->connect_time_us) {
 							call->connect_time_us = packetS->getTimeUS();
 							if(opt_enable_fraud && isFraudReady()) {
@@ -4077,6 +4078,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->getTime_s() + 180;
+				} else if(call->seenbyeandok_permanent) {
+					call->destroy_call_at = packetS->getTime_s() + 60;
 				}
 			} else if(lastSIPresponseNum == 491) {
 				// do not set timeout for 491
@@ -5534,6 +5537,10 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	timeval ts;
 	if(ts_input) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(ts_input) - actTimeMS;
+		if(opt_scanpcapdir[0] &&
+		   process_packet__last_cleanup_calls > ts_input->tv_sec) {
+			process_packet__last_cleanup_calls = ts_input->tv_sec;
+		}
 		if(!doQuickCleanup &&
 		   getTimeS(ts_input) <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period))) {
 			return;
@@ -5578,7 +5585,8 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	extern bool opt_hugepages_anon;
 	extern int opt_hugepages_max;
 	extern int opt_hugepages_overcommit_max;
-	if(((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
+	if(opt_memory_purge_interval &&
+	   ((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
 	   ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
 		bool firstRun = __last_memory_purge == 0;
 		__last_memory_purge = ts.tv_sec;
@@ -7132,7 +7140,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			pcap_pkthdr *header_new = NULL;
 			u_char *packet_new = NULL;
 			extern cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
-			convertIPsInPacket(header_packet, &ppd, &header_new, &packet_new, &opt_anonymize_ip_map);
+			extern cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+			convertAnonymousInPacket(header_packet, &ppd, &header_new, &packet_new, &opt_anonymize_ip_map, &opt_anonymize_domain_map);
 			if(header_new && packet_new) {
 				destination->dump(header_new, packet_new, handle_dlt);
 				delete header_new;
@@ -7423,7 +7432,7 @@ void _process_packet__cleanup_calls(timeval *ts, const char *file, int line) {
 
 void _process_packet__cleanup_calls(const char *file, int line) {
 	process_packet__cleanup_calls(NULL, file, line);
-	u_long timeS = getTimeS();
+	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
 		calltable->destroyCallsIfPcapsClosed();
 		process_packet__last_destroy_calls = timeS;
@@ -7432,7 +7441,7 @@ void _process_packet__cleanup_calls(const char *file, int line) {
 
 void _process_packet__cleanup_registers() {
 	process_packet__cleanup_registers(NULL);
-	u_long timeS = getTimeS();
+	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
 		process_packet__last_destroy_registers = timeS;

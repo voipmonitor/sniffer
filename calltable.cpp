@@ -181,7 +181,7 @@ extern bool opt_disable_sdp_multiplication_warning;
 extern bool opt_save_energylevels;
 
 volatile int calls_counter = 0;
-/* probably not used any more */
+volatile int calls_for_store_counter = 0;
 volatile int registers_counter = 0;
 
 extern char mac[32];
@@ -237,11 +237,12 @@ extern volatile int terminating;
 
 extern sSnifferClientOptions snifferClientOptions;
 
+extern char opt_curl_hook_wav[256];
+
 extern bool opt_processing_limitations;
 extern bool opt_processing_limitations_active_calls_cache;
 extern int opt_processing_limitations_active_calls_cache_type;
 extern cProcessingLimitations processing_limitations;
-
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -512,6 +513,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenbye = false;
 	seenbye_time_usec = 0;
 	seenbyeandok = false;
+	seenbyeandok_permanent = false;
 	seenbyeandok_time_usec = 0;
 	seencancelandok = false;
 	seencancelandok_time_usec = 0;
@@ -624,6 +626,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	end_call_hash_removed = 0;
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
+	push_call_to_storing_cdr_queue = 0;
 	message = NULL;
 	message_info = NULL;
 	contenttype = NULL;
@@ -3514,6 +3517,30 @@ Call::convertRawToWav() {
 	addtofilesqueue(tsf_audio, tmp, 0);
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(tmp);
+	}
+	// CURL hook
+	if (strlen(opt_curl_hook_wav) > 0) {
+		string url;
+		url.append(opt_curl_hook_wav);
+		string postData;
+		postData.append("{ \"voipmonitor\": true");
+		postData.append(", \"stereo\":");
+		postData.append(useWavMix ? "false" : "true");
+		postData.append(", \"wav_file_name_with_path\": \"");
+		postData.append(out);
+		postData.append("\", \"call_id\": \"");
+		postData.append(this->call_id);
+		postData.append("\" }\n");
+		string getParams; // Not used actually
+		SimpleBuffer responseBuffer;
+		string error;
+		s_get_url_response_params curl_params;
+
+		if (!post_url_response((url + getParams).c_str(), &responseBuffer, &postData, &error, &curl_params)) {
+			if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), error.c_str());
+		} else {
+			if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
+		}
 	}
 	return 0;
 }

@@ -535,6 +535,30 @@ public:
 	static vmIP convIP(vmIP ip, t_net_map *net_map);
 };
 
+class cConfigItem_domain_map : public cConfigItem {
+public:
+	typedef std::map<std::string, std::string> t_domain_map;
+public:
+	cConfigItem_domain_map(const char* name, t_domain_map *domain_map);
+	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues() { return(true); }
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	void initBeforeSet();
+	void initParamPointers() {
+		param_domain_map = NULL;
+	}
+	string getTypeName() {
+		return("domain_map_list");
+	}
+protected:
+	t_domain_map *param_domain_map;
+};
+
 class cConfigItem_custom_headers : public cConfigItem {
 public:
 	cConfigItem_custom_headers(const char* name, vector<dstring> *custom_headers);
@@ -651,9 +675,16 @@ public:
 	void endTrackDiffValues(list<sDiffValue> *diffValues);
 private:
 	void loadFromConfigFileError(const char *errorString, const char *filename, string *error = NULL);
+	void lock() {
+		__SYNC_LOCK_USLEEP(config_sync, 100);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(config_sync);
+	}
 private:
 	list<string> config_list;
 	map<string, cConfigItem*> config_map;
+	volatile int config_sync;
 	cConfigItem::eTypeLevel defaultLevel;
 	string defaultGroup;
 	string defaultSubgroup;

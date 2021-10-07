@@ -21,6 +21,26 @@ cDtlsLink::~cDtlsLink() {
 }
 
 void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
+	sHeaderHandshake *defragmented_handshake= NULL;
+	if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ||
+	    handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) &&
+	   handshake->fragment_length_() &&
+	   handshake->fragment_length_() < handshake->length_()) {
+		if(defragmenter.empty() ||
+		   defragmenter.handshake_type != handshake->handshake_type ||
+		   defragmenter.length != handshake->length_()) {
+			defragmenter.clear();
+			defragmenter.handshake_type = handshake->handshake_type;
+			defragmenter.length = handshake->length_();
+		}
+		defragmenter.fragments[handshake->fragment_offset_()].set(handshake, sizeof(cDtlsLink::sHeaderHandshake) + handshake->fragment_length_());
+		if(defragmenter.isComplete()) {
+			defragmented_handshake = (sHeaderHandshake*)defragmenter.complete();
+			handshake = defragmented_handshake;
+		} else {
+			return;
+		}
+	}
 	if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
 		memcpy(client_random, handshake_hello->random, DTLS_RANDOM_SIZE);
@@ -62,23 +82,27 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 						u_int16_t prot_prof = _ct_na;
 						if(prot_prof_len == 1) {
 							prot_prof = *(u_int8_t*)(ext + ext_offset + 6);
+							if(cipherIsSupported(prot_prof)) {
+								cipher_types.push_back((eCipherType)prot_prof);
+							}
 						} else if(prot_prof_len == 2) {
 							prot_prof = ntohs(*(u_int16_t*)(ext + ext_offset + 6));
+							if(cipherIsSupported(prot_prof)) {
+								cipher_types.push_back((eCipherType)prot_prof);
+							}
 						} else if(prot_prof_len > 2) {
 							u_int16_t _offset = 0;
-							while(_offset < prot_prof_len - 2) {
-								u_int16_t _prot_prof = ntohs(*(u_int16_t*)(ext + ext_offset + 6 + _offset));
-								if(cipherIsSupported(_prot_prof)) {
-									prot_prof = _prot_prof;
-									break;
+							while(_offset <= prot_prof_len - 2) {
+								u_int16_t prot_prof = ntohs(*(u_int16_t*)(ext + ext_offset + 6 + _offset));
+								if(cipherIsSupported(prot_prof)) {
+									if(cipherIsSupported(prot_prof)) {
+										cipher_types.push_back((eCipherType)prot_prof);
+									}
 								}
 								_offset += 2;
 							}
 						}
 						//u_int8_t mki_len = *(u_int8_t*)(ext + ext_offset + 6 + prot_prof_len);
-						if(cipherIsSupported(prot_prof)) {
-							cipher_type = (eCipherType)prot_prof;
-						}
 					}
 					ext_offset += 4 + e_len;
 				}
@@ -89,10 +113,13 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 		memcpy(server_random, handshake_hello->random, DTLS_RANDOM_SIZE);
 		server_random_set = true;
 	}
+	if(defragmented_handshake) {
+		delete [] ((u_char*)defragmented_handshake);
+	}
 }
 
-bool cDtlsLink::findSrtpKeys(sSrtpKeys *keys) {
-	if(!cipherIsSupported(cipher_type) || !client_random_set || !server_random_set) {
+bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
+	if(!cipher_types.size() || !client_random_set || !server_random_set) {
 		return(false);
 	}
 	if(!master_secret_length && !findMasterSecret()) {
@@ -124,32 +151,37 @@ bool cDtlsLink::findSrtpKeys(sSrtpKeys *keys) {
 		puts("out");
 		hexdump(out.data(), 60);
 	}
-	SimpleBuffer server_key;
-	SimpleBuffer client_key;
-	unsigned srtp_key_len = cipherSrtpKeyLen(cipher_type);
-	unsigned srtp_salt_len = cipherSrtpSaltLen(cipher_type);
-	server_key.add(out.data(), srtp_key_len);
-	client_key.add(out.data() + srtp_key_len, srtp_key_len);
-	server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
-	client_key.add(out.data() + srtp_key_len * 2 + srtp_salt_len, srtp_salt_len);
-	if(sverb.dtls) {
-		puts("server key");
-		hexdump(server_key.data(), srtp_key_len + srtp_salt_len);
-		puts("client key");
-		hexdump(client_key.data(), srtp_key_len + srtp_salt_len);
+	for(list<eCipherType>::iterator iter_cipher_type = cipher_types.begin(); iter_cipher_type != cipher_types.end(); iter_cipher_type++) {
+		eCipherType cipher_type = *iter_cipher_type;
+		SimpleBuffer server_key;
+		SimpleBuffer client_key;
+		unsigned srtp_key_len = cipherSrtpKeyLen(cipher_type);
+		unsigned srtp_salt_len = cipherSrtpSaltLen(cipher_type);
+		server_key.add(out.data(), srtp_key_len);
+		client_key.add(out.data() + srtp_key_len, srtp_key_len);
+		server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
+		client_key.add(out.data() + srtp_key_len * 2 + srtp_salt_len, srtp_salt_len);
+		if(sverb.dtls) {
+			puts("server key");
+			hexdump(server_key.data(), srtp_key_len + srtp_salt_len);
+			puts("client key");
+			hexdump(client_key.data(), srtp_key_len + srtp_salt_len);
+		}
+		sSrtpKeys *keys_item = new FILE_LINE(0) sSrtpKeys;
+		keys_item->server_key = base64_encode(server_key.data(), srtp_key_len + srtp_salt_len);
+		keys_item->client_key = base64_encode(client_key.data(), srtp_key_len + srtp_salt_len);
+		keys_item->server = server;
+		keys_item->client = client;
+		keys_item->cipher = cipherName(cipher_type);
+		keys->push_back(keys_item);
 	}
-	keys->server_key = base64_encode(server_key.data(), srtp_key_len + srtp_salt_len);
-	keys->client_key = base64_encode(client_key.data(), srtp_key_len + srtp_salt_len);
-	keys->server = server;
-	keys->client = client;
-	keys->cipher = cipherName(cipher_type);
 	return(true);
 }
 
 void cDtlsLink::init() {
 	client_random_set = false;
 	server_random_set = false;
-	cipher_type = _ct_na;
+	cipher_types.clear();
 	master_secret_length = 0;
 	keys_block_attempts = 0;
 	max_keys_block_attempts = 4;
@@ -197,7 +229,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 			unsigned hs_offset = 0;
 			while(hs_offset < hs_len - sizeof(cDtlsLink::sHeaderHandshake)) {
 				cDtlsLink::sHeaderHandshake *hs_header = (cDtlsLink::sHeaderHandshake*)(hs_begin + hs_offset);
-				if(hs_header->length_() > hs_len - hs_offset) {
+				if(hs_header->content_length() > hs_len - hs_offset) {
 					return(false);
 				}
 				if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
@@ -218,7 +250,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 						link_iter->second->processHandshake(hs_header);
 					}
 				}
-				hs_offset += sizeof(cDtlsLink::sHeaderHandshake) + hs_header->length_();
+				hs_offset += sizeof(cDtlsLink::sHeaderHandshake) + hs_header->content_length();
 			}
 		}
 		offset += sizeof(cDtlsLink::sHeader) + header->length_();
@@ -228,7 +260,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 
 bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
-			 cDtlsLink::sSrtpKeys *keys) {
+			 list<cDtlsLink::sSrtpKeys*> *keys) {
 	for(int pass = 0; pass < 2; pass++) {
 		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? src_ip : dst_ip,
 					      pass == 0 ? src_port : dst_port,

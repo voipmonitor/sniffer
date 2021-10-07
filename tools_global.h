@@ -161,39 +161,52 @@ inline bool isSetTimeval(timeval *ts) {
 	return(ts->tv_sec);
 }
 
-extern u_int64_t rdtsc_by_100ms;
+extern u_int64_t rdtsc_by_250ms;
+
+inline void init_rdtsc_interval() {
+	#if defined(__i386__) or  defined(__x86_64__)
+	u_int64_t _rdtsc_1 = rdtsc();
+	usleep(250000);
+	u_int64_t _rdtsc_2 = rdtsc();
+	usleep(0);
+	u_int64_t _rdtsc_3 = rdtsc();
+	rdtsc_by_250ms = _rdtsc_2 - _rdtsc_1 - (_rdtsc_3 - _rdtsc_2);
+	#endif
+}
+
 inline u_int64_t getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
-    if(header) {
-         return(header->ts.tv_sec * 1000ull + header->ts.tv_usec / 1000);
-    }
-    static u_int64_t last_time;
-    #if defined(__i386__) or defined(__x86_64__)
-    static u_int32_t counter = 0;
-    static u_int64_t last_rdtsc = 0;
-    ++counter;
-    if(rdtsc_by_100ms) {
-         u_int64_t act_rdtsc = rdtsc();
-         if(counter % 100 && last_rdtsc && last_time) {
-             u_int64_t diff_rdtsc = act_rdtsc - last_rdtsc;
-             if(diff_rdtsc < rdtsc_by_100ms / 10) {
-                  last_rdtsc = act_rdtsc;
-                  last_time = last_time + diff_rdtsc * 100 / rdtsc_by_100ms;
-                  return(last_time);
-             }
-         }
-         last_rdtsc = act_rdtsc;
-    }
-    #endif
-    timespec time;
-    clock_gettime(CLOCK_REALTIME, &time);
-    last_time = time.tv_sec * 1000ull + time.tv_nsec / 1000000;
-    return(last_time);
+	if(header) {
+		return(header->ts.tv_sec * 1000ull + header->ts.tv_usec / 1000);
+	}
+	#if defined(__i386__) or defined(__x86_64__)
+	static volatile u_int64_t last_time = 0;
+	static volatile u_int64_t last_rdtsc = 0;
+	if(rdtsc_by_250ms && last_rdtsc) {
+		u_int64_t diff_rdtsc;
+		u_int64_t act_rdtsc = rdtsc();
+		if(act_rdtsc > last_rdtsc &&
+		   (diff_rdtsc = (act_rdtsc - last_rdtsc)) < rdtsc_by_250ms * 4 * 10) {
+			return(last_time + diff_rdtsc * 250 / rdtsc_by_250ms);
+		}
+	}
+	#endif
+	timespec time;
+	clock_gettime(CLOCK_REALTIME, &time);
+	#if defined(__i386__) or defined(__x86_64__)
+	last_time = time.tv_sec * 1000ull + time.tv_nsec / 1000000;
+	last_rdtsc = rdtsc();
+	#endif
+	return(last_time);
+}
+
+inline u_int32_t getTimeS_rdtsc(pcap_pkthdr* header = NULL) {
+	return(getTimeMS_rdtsc(header) / 1000);
 }
 
 inline u_int64_t getTimeUS() {
-    timespec time;
-    clock_gettime(CLOCK_REALTIME, &time);
-    return(time.tv_sec * 1000000ull + time.tv_nsec / 1000);
+	timespec time;
+	clock_gettime(CLOCK_REALTIME, &time);
+	return(time.tv_sec * 1000000ull + time.tv_nsec / 1000);
 }
 
 inline u_int64_t getTimeUS(pcap_pkthdr *pkthdr) {
@@ -296,6 +309,11 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 				 src_file, src_file_line,
 				 true));
 }
+
+bool pthread_set_affinity(pthread_t thread, string cores_set, string cores_unset);
+bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset);
+void get_list_cores(string input, vector<int> &list);
+void get_list_cores(string input, list<int> &list);
 
 
 void base64_init(void);

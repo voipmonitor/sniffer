@@ -414,7 +414,9 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
-			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
+			u_int64_t pcapQueueQ_lastUS = pcapQueueQ->getLastUS();
+			u_int64_t ts_us = getTimeUS(ts);
+			waitUS = pcapQueueQ_lastUS > ts_us ? pcapQueueQ_lastUS - ts_us : 0;
 		}
 	}
 	do {
@@ -457,7 +459,9 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
-			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
+			u_int64_t pcapQueueQ_lastUS = pcapQueueQ->getLastUS();
+			u_int64_t ts_us = getTimeUS(ts);
+			waitUS = pcapQueueQ_lastUS > ts_us ? pcapQueueQ_lastUS - ts_us : 0;
 		}
 	}
 	do {

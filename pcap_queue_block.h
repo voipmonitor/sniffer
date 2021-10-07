@@ -12,6 +12,7 @@
 #include "voipmonitor.h"
 #include "md5.h"
 #include "header_packet.h"
+#include "dpdk.h"
 
 #define PCAP_BLOCK_STORE_HEADER_STRING		"pcap_block_store"
 #define PCAP_BLOCK_STORE_HEADER_STRING_LEN	16
@@ -197,9 +198,17 @@ struct pcap_block_store {
 		uint8_t require_confirmation;
 		uint32_t time_s;
 	};
-	pcap_block_store(header_mode hm = plus) {
+	struct s_dpdk_data {
+		pcap_pkthdr_plus2 header;
+		u_char *packet;
+		void *mbuf;
+	};
+	pcap_block_store(header_mode hm = plus, bool dpdk = false) {
 		this->hm = hm;
+		this->dpdk = dpdk;
 		this->offsets = NULL;
+		this->dpdk_data_size = 0;
+		this->dpdk_data = NULL;
 		this->block = NULL;
 		this->is_voip = NULL;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
@@ -220,30 +229,52 @@ struct pcap_block_store {
 		this->destroy();
 		this->destroyRestoreBuffer();
 	}
+	inline void init(bool prefetch);
+	inline void clear(bool prefetch);
+	inline void copy(pcap_block_store *from);
 	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
 	inline void inc_h(pcap_pkthdr_plus2 *header);
 	inline bool get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **packet, unsigned min_size_for_packet);
+	inline void add_dpdk(pcap_pkthdr_plus2 *header, void *mbuf);
+	inline bool is_dpkd_data_full();
 	inline bool isFull_checkTimeout();
 	inline bool isTimeout();
 	inline pcap_pkthdr_pcap operator [] (size_t indexItem) {
 		pcap_pkthdr_pcap headerPcap;
 		if(indexItem < this->count) {
-			headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-			headerPcap.packet = (u_char*)headerPcap.header + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+			if(dpdk) {
+				headerPcap.header = (pcap_pkthdr_plus*)&this->dpdk_data[indexItem].header;
+				headerPcap.packet = this->dpdk_data[indexItem].packet;
+			} else {
+				headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
+				headerPcap.packet = (u_char*)headerPcap.header + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+			}
 		}
 		return(headerPcap);
 	}
 	inline pcap_pkthdr_plus* get_header(size_t indexItem) {
-		return((pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]));
+		return(dpdk ?
+			(pcap_pkthdr_plus*)&this->dpdk_data[indexItem].header :
+			(pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]));
 	}
 	inline u_char* get_packet(size_t indexItem) {
-		return((u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus))));
+		return(dpdk ?
+			this->dpdk_data[indexItem].packet :
+			(u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus))));
 	}
 	inline u_char* get_space_after_packet(size_t indexItem) {
 		return(get_packet(indexItem) + get_header(indexItem)->get_caplen());
 	}
 	inline bool is_ignore(size_t indexItem) {
-		return(((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
+		return(dpdk ?
+			this->dpdk_data[this->count - 1].header.ignore :
+			((pcap_pkthdr_plus2*)(this->block + this->offsets[indexItem]))->ignore);
+	}
+	void dpdk_free(size_t indexItem) {
+		if(dpdk && this->dpdk_data[indexItem].mbuf) {
+			dpdk_mbuf_free(this->dpdk_data[indexItem].mbuf);
+			this->dpdk_data[indexItem].mbuf = NULL;
+		}
 	}
 	void destroy();
 	void destroyRestoreBuffer();
@@ -279,16 +310,22 @@ struct pcap_block_store {
 	bool uncompress_snappy();
 	bool uncompress_lz4();
 	bool check_offsets() {
-		for(size_t i = 0; i < this->offsets_size - 1; i++) {
-			if(this->offsets[i] >= this->offsets[i + 1]) {
-				return(false);
+		if(dpdk) {
+			return(true);
+		} else {
+			for(size_t i = 0; i < this->offsets_size - 1; i++) {
+				if(this->offsets[i] >= this->offsets[i + 1]) {
+					return(false);
+				}
 			}
+			return(this->offsets[this->offsets_size - 1] < this->size);
 		}
-		return(this->offsets[this->offsets_size - 1] < this->size);
 	}
 	bool check_headers(string **error) {
 		for(size_t i = 0; i < this->count; i++) {
-			pcap_pkthdr_plus *header = (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
+			pcap_pkthdr_plus *header = dpdk ? 
+						    &this->dpdk_data[this->count - 1].header :
+						    (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
 			if(header->header_fix_size.caplen > 65535) {
 				if(error) {
 					*error = new FILE_LINE(0) string("caplen = " + intToString(header->header_fix_size.caplen));
@@ -323,7 +360,7 @@ struct pcap_block_store {
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	void unlock_packet(int index) {
 	#else
-	void unlock_packet(int /*index*/) {
+	void unlock_packet(int index) {
 	#endif
 		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
@@ -375,11 +412,16 @@ struct pcap_block_store {
 		}
 	}
 	u_int64_t getLastPacketHeaderTimeMS() {
-		pcap_pkthdr_plus *pkthdr = (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
+		pcap_pkthdr_plus *pkthdr = dpdk ? 
+					    &this->dpdk_data[this->count - 1].header :
+					    (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
 		return(getTimeMS(pkthdr->header_fix_size.ts_tv_sec, pkthdr->header_fix_size.ts_tv_usec));
 	}
 	header_mode hm;
+	bool dpdk;
 	uint32_t *offsets;
+	unsigned dpdk_data_size;
+	s_dpdk_data *dpdk_data;
 	u_char *block;
 	size_t size;
 	size_t size_compress;

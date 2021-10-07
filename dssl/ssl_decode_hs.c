@@ -291,14 +291,16 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 		if( sess->flags & SSF_TLS_SESSION_TICKET_SET)
 		{
 			int rc = ssls_init_from_tls_ticket( sess );
-			if( NM_IS_FAILED( rc ) ) 
+			if( NM_IS_FAILED( rc ) &&
+			    !sess->get_keys_rslt_data.set ) 
 				return rc;
 		}
 		else
 		{
 			/* lookup session from the cache for stateful SSL renegotiation */
 			int rc = ssls_lookup_session( sess );
-			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) ) 
+			if( rc != DSSL_E_SSL_SESSION_NOT_IN_CACHE && NM_IS_FAILED( rc ) &&
+			    !sess->get_keys_rslt_data.set )
 				return rc;
 		}
 	}
@@ -629,7 +631,7 @@ static int ssl3_decode_new_session_ticket(DSSL_Session* sess, u_char* data, uint
 }
 
 /* ========== Finished, handshake digest routines ========== */
-void ssl3_init_handshake_digests( DSSL_Session* sess )
+int ssl3_init_handshake_digests( DSSL_Session* sess )
 {
 	EVP_DigestInit_ex( sess->handshake_digest_md5, EVP_md5(), NULL );
 	EVP_DigestInit_ex( sess->handshake_digest_sha, EVP_sha1(), NULL );
@@ -640,6 +642,17 @@ void ssl3_init_handshake_digests( DSSL_Session* sess )
 		DSSL_CipherSuite* suite = sess->dssl_cipher_suite;
 		if ( !suite )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
+		if ( !suite )
+		{
+			if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set)
+			{
+				return DSSL_RC_OK;
+			}
+			else 
+			{
+				return DSSL_E_UNKNOWN_CIPHER_SUITE;
+			}
+		}
 		digest = (EVP_MD*)EVP_get_digestbyname( suite->digest );
 		/* 'sha256' is the default for TLS 1.2 */
 		if ( !digest )
@@ -648,6 +661,8 @@ void ssl3_init_handshake_digests( DSSL_Session* sess )
 		if ( digest )
 			EVP_DigestInit_ex( sess->handshake_digest, digest, NULL );
 	}
+	
+	return DSSL_RC_OK;
 }
 
 int ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t len )

@@ -334,6 +334,7 @@ int Mgmt_offon(Mgmt_params *params);
 int Mgmt_check_filesindex(Mgmt_params *params);
 int Mgmt_reindexspool(Mgmt_params *params);
 int Mgmt_printspool(Mgmt_params *params);
+int Mgmt_listopentars(Mgmt_params *params);
 int Mgmt_totalcalls(Mgmt_params *params);
 int Mgmt_totalregisters(Mgmt_params *params);
 int Mgmt_creategraph(Mgmt_params *params);
@@ -446,6 +447,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_check_filesindex,
 	Mgmt_reindexspool,
 	Mgmt_printspool,
+	Mgmt_listopentars,
 	Mgmt_totalcalls,
 	Mgmt_totalregisters,
 	Mgmt_creategraph,
@@ -2235,6 +2237,24 @@ int Mgmt_printspool(Mgmt_params *params) {
 		rslt = CleanSpool::run_print_spool();
 	} else {
 		rslt = "cleanspool is disable\r\n";
+	}
+	return(params->sendString(&rslt));
+}
+
+int Mgmt_listopentars(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("listopentars", "print lists of open tars");
+		return(0);
+	}
+	string rslt;
+	extern TarQueue *tarQueue[2];
+	for(int i = 0; i < 2; i++) {
+		if(tarQueue[i]) {
+			list<string> tars = tarQueue[i]->listOpenTars();
+			for(list<string>::iterator iter = tars.begin(); iter != tars.end(); iter++) {
+				rslt += *iter + "\n";
+			}
+		}
 	}
 	return(params->sendString(&rslt));
 }

@@ -61,7 +61,98 @@ int vm_pthread_create(const char *thread_description,
 	if(create_attr) {
 		pthread_attr_destroy(&_attr);
 	}
+	#ifdef CLOUD_ROUTER_CLIENT
+	extern string opt_cpu_cores;
+	extern bool opt_use_dpdk;
+	if(!opt_cpu_cores.empty()) {
+		vector<int> cpu_cores;
+		get_list_cores(opt_cpu_cores, cpu_cores);
+		pthread_set_affinity(*thread, &cpu_cores, NULL);
+	} else if(opt_use_dpdk) {
+		extern string get_dpdk_cpu_cores(bool without_main) ;
+		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true);
+		if(!dpdk_cpu_cores_str.empty()) {
+			vector<int> cpu_cores;
+			get_list_cores("all", cpu_cores);
+			vector<int> dpdk_cpu_cores;
+			get_list_cores(dpdk_cpu_cores_str, dpdk_cpu_cores);
+			pthread_set_affinity(*thread, &cpu_cores, &dpdk_cpu_cores);
+		}
+	}
+	#endif
 	return(rslt);
+}
+
+bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset) {
+	map<int, bool> cpuset_map;
+	for(unsigned i = 0; i < cores_set->size(); i++) {
+		cpuset_map[(*cores_set)[i]] = true;
+	}
+	if(cores_unset) {
+		for(unsigned i = 0; i < cores_unset->size(); i++) {
+			cpuset_map[(*cores_unset)[i]] = false;
+		}
+	}
+	cpu_set_t cpuset;
+	CPU_ZERO(&cpuset);
+	for(map<int, bool>::iterator iter = cpuset_map.begin(); iter != cpuset_map.end(); iter++) {
+		if(iter->second) {
+			CPU_SET(iter->first, &cpuset);
+		}
+	}
+	return(pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset) == 0);
+}
+
+void get_list_cores(string input, vector<int> &list) {
+	int count_cores = sysconf(_SC_NPROCESSORS_ONLN);
+	if(input == "all") {
+		for(int i = 0; i < count_cores; i++) {
+			list.push_back(i);
+		}
+		return;
+	}
+	while(input.length() && (input[0] == '(' || input[0] == ' ')) {
+		input = input.substr(1);
+	}
+	while(input.length() && (input[input.length() - 1] == '(' || input[input.length() - 1] == ' ')) {
+		input = input.substr(0, input.length() - 1);
+	}
+	map<int, bool> list_map;
+	vector<string> input_v;
+	split(input.c_str(), ",", input_v, true);
+	for(unsigned i = 0; i < input_v.size(); i++) {
+		vector<string> input_item_v;
+		split(input_v[i].c_str(), "-", input_item_v, true);
+		if(input_item_v.size() == 1) {
+			int core = atoi(input_item_v[0].c_str());
+			if(core >= 0 && core < count_cores) {
+				list_map[core] = true;
+			}
+		} else if(input_item_v.size() == 2) {
+			int core_from = atoi(input_item_v[0].c_str());
+			int core_to = atoi(input_item_v[1].c_str());
+			if(core_from <= core_to) {
+				for(int core = core_from; core <= core_to; core++) {
+					if(core >= 0 && core < count_cores) {
+						list_map[core] = true;
+					}
+				}
+			}
+		}
+	}
+	for(map<int, bool>::iterator iter = list_map.begin(); iter != list_map.end(); iter++) {
+		if(iter->second) {
+			list.push_back(iter->first);
+		}
+	}
+}
+
+void get_list_cores(string input, list<int> &list) {
+	vector<int> _list;
+	get_list_cores(input, _list);
+	for(unsigned i = 0; i < _list.size(); i++) {
+		list.push_back(_list[i]);
+	}
 }
 
 
