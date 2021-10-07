@@ -163,7 +163,7 @@ inline bool isSetTimeval(timeval *ts) {
 
 extern u_int64_t rdtsc_by_250ms;
 
-void init_rdtsc_interval() {
+inline void init_rdtsc_interval() {
 	#if defined(__i386__) or  defined(__x86_64__)
 	u_int64_t _rdtsc_1 = rdtsc();
 	usleep(250000);

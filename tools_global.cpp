@@ -61,6 +61,7 @@ int vm_pthread_create(const char *thread_description,
 	if(create_attr) {
 		pthread_attr_destroy(&_attr);
 	}
+	#ifdef CLOUD_ROUTER_CLIENT
 	extern string opt_cpu_cores;
 	extern bool opt_use_dpdk;
 	if(!opt_cpu_cores.empty()) {
@@ -78,6 +79,7 @@ int vm_pthread_create(const char *thread_description,
 			pthread_set_affinity(*thread, &cpu_cores, &dpdk_cpu_cores);
 		}
 	}
+	#endif
 	return(rslt);
 }
 
