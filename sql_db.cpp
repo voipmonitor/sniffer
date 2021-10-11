@@ -5730,7 +5730,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sport` smallint unsigned DEFAULT NULL,\
 			`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`dport` smallint unsigned DEFAULT NULL,\
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
