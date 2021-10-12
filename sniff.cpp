@@ -5537,8 +5537,7 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	timeval ts;
 	if(ts_input) {
 		process_packet__last_cleanup_calls_diff = getTimeMS(ts_input) - actTimeMS;
-		if(opt_scanpcapdir[0] &&
-		   process_packet__last_cleanup_calls > ts_input->tv_sec) {
+		if(process_packet__last_cleanup_calls > ts_input->tv_sec) {
 			process_packet__last_cleanup_calls = ts_input->tv_sec;
 		}
 		if(!doQuickCleanup &&
