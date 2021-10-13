@@ -265,9 +265,6 @@ struct pcap_block_store {
 	inline u_char* get_space_after_packet(size_t indexItem) {
 		return(get_packet(indexItem) + get_header(indexItem)->get_caplen());
 	}
-	inline u_char* get_space_after_packet(size_t indexItem) {
-		return(get_packet(indexItem) + get_header(indexItem)->get_caplen());
-	}
 	inline bool is_ignore(size_t indexItem) {
 		return(dpdk ?
 			this->dpdk_data[this->count - 1].header.ignore :

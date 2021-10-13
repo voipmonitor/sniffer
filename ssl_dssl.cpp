@@ -925,7 +925,6 @@ void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	SslDsslSessions->destroySession(saddr, daddr, sport, dport);
 	SslDsslSessions->keysCleanup();
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
-	return(false);
 }
 
 bool string_looks_like_client_random(u_char *data, unsigned datalen) {
