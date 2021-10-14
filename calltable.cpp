@@ -12313,8 +12313,6 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 	extern bool opt_cdr_partition;
 	extern bool opt_cdr_partition_oldver;
 	extern int opt_create_old_partitions;
-	extern int opt_mysqlcompress;
-	extern char opt_mysqlcompress_type[256];
 	
 	string limitDay;
 	string partDayName;
@@ -12330,9 +12328,8 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 		}
 	}
 	
-	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
-	
 	SqlDb_mysql *sqlDb_mysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
+	string compress = sqlDb_mysql->getOptimalCompressType();
 	sqlDb->query(string(
 	"CREATE TABLE IF NOT EXISTS `") + tableName + "` (\
 			`" + this->relIdColumn + "` bigint unsigned NOT NULL," +
