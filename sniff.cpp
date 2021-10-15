@@ -337,13 +337,10 @@ pthread_t usersniffer_checksize_thread;
 
 
 unsigned long process_packet__last_cleanup_calls = 0;
-int64_t process_packet__last_cleanup_calls_diff = 0;
 unsigned long process_packet__last_destroy_calls = 0;
 unsigned long process_packet__last_cleanup_registers = 0;
-int64_t process_packet__last_cleanup_registers_diff = 0;
 unsigned long process_packet__last_destroy_registers = 0;
 unsigned long process_packet__last_cleanup_ss7 = 0;
-int64_t process_packet__last_cleanup_ss7_diff = 0;
 unsigned long __last_memory_purge = 0;
 
 volatile unsigned long count_sip_bye;
@@ -3272,9 +3269,9 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 }
 
 static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
-static inline void process_packet__cleanup_calls(timeval *ts, const char *file, int line);
-static inline void process_packet__cleanup_registers(timeval *ts);
-static inline void process_packet__cleanup_ss7(timeval *ts);
+static inline void process_packet__cleanup_calls(const char *file, int line);
+static inline void process_packet__cleanup_registers();
+static inline void process_packet__cleanup_ss7();
 static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
 static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response);
 static inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen);
@@ -3437,6 +3434,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		goto endsip;
 	}
+	
+	call->updateTimeShift(getTimeUS(packetS->header_pt));
 	
 	if(processing_limitations.suppressRtpAllProcessing()) {
 		call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
@@ -4099,7 +4098,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->setSeenAuthFailed(true, packetS->getTimeUS(), packetS->get_callid());
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
-					call->removeFindTables(packetS->getTimeval_pt());
+					call->removeFindTables();
 					call->ipport_n = 0;
 					call->setFlagForRemoveRTP();
 				}
@@ -4593,7 +4592,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	const char *logPacketSipMethodCallDescr = NULL;
 
 	// checking and cleaning stuff every 10 seconds (if some packet arrive) 
-	process_packet__cleanup_registers(packetS->getTimeval_pt());
+	process_packet__cleanup_registers();
 	if(packetS->getTime_s() - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
 		process_packet__last_destroy_registers = packetS->getTime_s();
@@ -4650,6 +4649,9 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			goto endsip;
 		}
 	}
+	
+	call->updateTimeShift(getTimeUS(packetS->header_pt));
+	
 	call->set_last_signal_packet_time_us(packetS->getTimeUS());
 	
 	call->check_reset_oneway(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
@@ -5351,7 +5353,7 @@ void process_packet_other(packet_s_stack *packetS) {
 	   packetS->datalen_() <= 5) {
 		return;
 	}
-	process_packet__cleanup_ss7(packetS->getTimeval_pt());
+	process_packet__cleanup_ss7();
 	extern void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, string *rslt);
 	string dissect_rslt;
 	ws_dissect_packet(packetS->header_pt, packetS->packet, packetS->dlt, &dissect_rslt);
@@ -5524,7 +5526,7 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr, ipLocal, ipRemote);
 }
 
-inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, int line) {
+inline void process_packet__cleanup_calls(const char *file, int line) {
 	bool doQuickCleanup = false;
 	if(opt_quick_save_cdr &&
 	   (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
@@ -5533,25 +5535,9 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	    count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed)) {
 		doQuickCleanup = true;
 	}
-	u_int64_t actTimeMS = getTimeMS_rdtsc();
-	timeval ts;
-	if(ts_input) {
-		process_packet__last_cleanup_calls_diff = getTimeMS(ts_input) - actTimeMS;
-		if(process_packet__last_cleanup_calls > ts_input->tv_sec) {
-			process_packet__last_cleanup_calls = ts_input->tv_sec;
-		}
-		if(!doQuickCleanup &&
-		   getTimeS(ts_input) <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : (unsigned)opt_cleanup_calls_period))) {
-			return;
-		}
-		ts = *ts_input;
-	} else {
-		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_calls_diff;
-		ts.tv_sec = corTimeMS / 1000;
-		ts.tv_usec = corTimeMS % 1000 * 1000;
-	}
+	u_int64_t actTimeS = getTimeS_rdtsc();
 	if(!doQuickCleanup &&
-	   ts.tv_sec <= (time_t)(process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period))) {
+	   actTimeS <= (process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period))) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
@@ -5563,8 +5549,8 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size());
 		}
 	}
-	process_packet__last_cleanup_calls = ts.tv_sec;
-	calltable->cleanup_calls(&ts, false, file, line);
+	process_packet__last_cleanup_calls = actTimeS;
+	calltable->cleanup_calls(false, false, file, line);
 	listening_cleanup();
 	
 	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
@@ -5586,9 +5572,9 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 	extern int opt_hugepages_overcommit_max;
 	if(opt_memory_purge_interval &&
 	   ((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
-	   ts.tv_sec - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
+	   actTimeS - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
 		bool firstRun = __last_memory_purge == 0;
-		__last_memory_purge = ts.tv_sec;
+		__last_memory_purge = actTimeS;
 		if(!firstRun) {
 			rss_purge();
                 }
@@ -5596,61 +5582,34 @@ inline void process_packet__cleanup_calls(timeval *ts_input, const char *file, i
 
 }
 
-inline void process_packet__cleanup_registers(timeval *ts_input) {
-	u_int64_t actTimeMS = getTimeMS_rdtsc();
-	timeval ts;
-	if(ts_input) {
-		process_packet__last_cleanup_registers_diff = getTimeMS(ts_input) - actTimeMS;
-		if(getTimeS(ts_input) - process_packet__last_cleanup_registers < 10) {
-			return;
-		}
-		ts = *ts_input;
-	} else {
-		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_registers_diff;
-		ts.tv_sec = corTimeMS / 1000;
-		ts.tv_usec = corTimeMS % 1000 * 1000;
-	}
-	if(ts.tv_sec - process_packet__last_cleanup_registers < 10) {
+inline void process_packet__cleanup_registers() {
+	u_int64_t actTimeS = getTimeS_rdtsc();
+	if(actTimeS - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
-	calltable->cleanup_registers(&ts);
+	calltable->cleanup_registers(false);
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		registers.cleanup(&ts, false, 30);
+		registers.cleanup(false, 30);
 	}
-	process_packet__last_cleanup_registers = ts.tv_sec;
+	process_packet__last_cleanup_registers = actTimeS;
 }
 
-inline void process_packet__cleanup_ss7(timeval *ts_input) {
-	u_int64_t actTimeMS = getTimeMS_rdtsc();
-	timeval ts;
-	if(ts_input) {
-		process_packet__last_cleanup_ss7_diff = getTimeMS(ts_input) - actTimeMS;
-		if(getTimeS(ts_input) - process_packet__last_cleanup_ss7 < 10) {
-			return;
-		}
-		ts = *ts_input;
-	} else {
-		u_int64_t corTimeMS = actTimeMS + process_packet__last_cleanup_ss7_diff;
-		ts.tv_sec = corTimeMS / 1000;
-		ts.tv_usec = corTimeMS % 1000 * 1000;
-	}
-	if(ts.tv_sec - process_packet__last_cleanup_ss7 < 10) {
+inline void process_packet__cleanup_ss7() {
+	u_int64_t actTimeS = getTimeS_rdtsc();
+	if(actTimeS - process_packet__last_cleanup_ss7 < 10) {
 		return;
 	}
-	calltable->cleanup_ss7(&ts);
-	process_packet__last_cleanup_ss7 = ts.tv_sec;
+	calltable->cleanup_ss7(false);
+	process_packet__last_cleanup_ss7 = actTimeS;
 }
 
 void reset_cleanup_variables() {
 	process_packet__last_cleanup_calls = 0;
-	process_packet__last_cleanup_calls_diff = 0;
 	process_packet__last_destroy_calls = 0;
 	process_packet__last_cleanup_registers = 0;
-	process_packet__last_cleanup_registers_diff = 0;
 	process_packet__last_destroy_registers = 0;
 	process_packet__last_cleanup_ss7 = 0;
-	process_packet__last_cleanup_ss7_diff = 0;
 	__last_memory_purge = 0;
 }
 
@@ -7111,8 +7070,8 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 							}
 						}
 					}
-					void _process_packet__cleanup_calls(timeval *ts, const char *file, int line);
-					_process_packet__cleanup_calls(&HPH(header_packet)->ts, __FILE__, __LINE__);
+					void _process_packet__cleanup_calls(const char *file, int line);
+					_process_packet__cleanup_calls(__FILE__, __LINE__);
 					ostringstream outStr;
 					outStr << fixed;
 					outStr << "calls[" << calltable->getCountCalls() << ",r:" << calltable->registers_listMAP.size() << "]"
@@ -7421,16 +7380,8 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 }
 
 
-void _process_packet__cleanup_calls(timeval *ts, const char *file, int line) {
-	process_packet__cleanup_calls(ts, file, line);
-	if(ts->tv_sec - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
-		calltable->destroyCallsIfPcapsClosed();
-		process_packet__last_destroy_calls = ts->tv_sec;
-	}
-}
-
 void _process_packet__cleanup_calls(const char *file, int line) {
-	process_packet__cleanup_calls(NULL, file, line);
+	process_packet__cleanup_calls(file, line);
 	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_calls >= (unsigned)opt_destroy_calls_period) {
 		calltable->destroyCallsIfPcapsClosed();
@@ -7439,7 +7390,7 @@ void _process_packet__cleanup_calls(const char *file, int line) {
 }
 
 void _process_packet__cleanup_registers() {
-	process_packet__cleanup_registers(NULL);
+	process_packet__cleanup_registers();
 	u_int32_t timeS = getTimeS_rdtsc();
 	if(timeS - process_packet__last_destroy_registers >= 2) {
 		calltable->destroyRegistersIfPcapsClosed();
@@ -7448,7 +7399,7 @@ void _process_packet__cleanup_registers() {
 }
 
 void _process_packet__cleanup_ss7() {
-	process_packet__cleanup_ss7(NULL);
+	process_packet__cleanup_ss7();
 }
 
 
@@ -8801,7 +8752,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			}
 		}
 		if(opt_quick_save_cdr != 2) {
-			_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
+			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 		if(packetS->_findCall && packetS->call) {
 			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
@@ -8810,20 +8761,20 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
 		}
 		if(opt_quick_save_cdr == 2) {
-			_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
+			_process_packet__cleanup_calls(__FILE__, __LINE__);
 		}
 	} else if(packetS->typeContentIsSkinny()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
+		_process_packet__cleanup_calls(__FILE__, __LINE__);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
 	} else if(packetS->typeContentIsMgcp()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
+		_process_packet__cleanup_calls(__FILE__, __LINE__);
 		handle_mgcp(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 0);
@@ -8832,7 +8783,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 	process_packet_sip_call(packetS);
 	if(idPreProcessThread == 0) {
-		_process_packet__cleanup_calls(packetS->getTimeval_pt(), __FILE__, __LINE__);
+		_process_packet__cleanup_calls(__FILE__, __LINE__);
 	}
 	if(packetS->_findCall && packetS->call) {
 		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);

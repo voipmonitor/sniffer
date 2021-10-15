@@ -301,6 +301,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	type_base = call_type;
 	type_next = 0;
 	first_packet_time_us = time_us;
+	time_shift_ms = getTimeMS_rdtsc() - time_us / 1000;
 	fbasename[0] = 0;
 	fbasename_safe[0] = 0;
 	fname_register = 0;
@@ -762,11 +763,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 u_int64_t Call::counter_s = 0;
 
 void
-Call::hashRemove(struct timeval *ts, bool useHashQueueCounter) {
+Call::hashRemove(bool useHashQueueCounter) {
 	for(int i = 0; i < ipport_n; i++) {
-		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, ts, false, useHashQueueCounter);
+		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, useHashQueueCounter);
 		if(opt_rtcp) {
-			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), ts, true, useHashQueueCounter);
+			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, useHashQueueCounter);
 		}
 		this->evDestroyIpPortRtpStream(i);
 	}
@@ -774,7 +775,7 @@ Call::hashRemove(struct timeval *ts, bool useHashQueueCounter) {
 	if(!opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
 		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
 		if(this->rtp_ip_port_counter > 0) {
-			calltable->hashRemove(this, ts, useHashQueueCounter);
+			calltable->hashRemove(this, useHashQueueCounter);
 			if(this->rtp_ip_port_counter) {
 				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
 			}
@@ -802,12 +803,12 @@ Call::skinnyTablesRemove() {
 }
 
 void
-Call::removeFindTables(struct timeval *ts, bool set_end_call, bool destroy) {
+Call::removeFindTables(bool set_end_call, bool destroy) {
 	if(set_end_call) {
 		hash_add_lock();
 		this->end_call_rtp = 1;
 		if(!(opt_hash_modify_queue_length_ms && this->end_call_hash_removed)) {
-			this->hashRemove(ts, true);
+			this->hashRemove(true);
 			this->end_call_hash_removed = 1;
 		}
 		hash_add_unlock();
@@ -815,16 +816,16 @@ Call::removeFindTables(struct timeval *ts, bool set_end_call, bool destroy) {
 		if(opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
 			calltable->hashRemoveForce(this);
 		}
-		this->hashRemove(ts);
+		this->hashRemove();
 	} else {
-		this->hashRemove(ts, true);
+		this->hashRemove(true);
 	}
 	this->skinnyTablesRemove();
 }
 
 void
 Call::destroyCall() {
-	this->removeFindTables(NULL, false, true);
+	this->removeFindTables(false, true);
 	this->atFinish();
 	this->calls_counter_dec();
 }
@@ -1293,10 +1294,10 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 			   (this->ip_port[sessidIndex].addr != addr ||
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port, ts);
+				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
 				((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 				if(opt_rtcp) {
-					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), ts, true);
+					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), true);
 					if(!sdp_flags.rtcp_mux && !sdp_flags.is_application()) {
 						((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
 					}
@@ -1334,9 +1335,9 @@ Call::cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct time
 		   !strcmp(this->ip_port[i].branch.c_str(), branch) &&
 		   !strcmp(this->ip_port[i].to.c_str(), to)) {
 			this->ip_port[i].canceled = true;
-			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port, ts);
+			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port);
 			if(opt_rtcp) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port.inc(), ts, true);
+				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port.inc(), true);
 			}
 		}
 	}
@@ -9075,9 +9076,7 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
 		++call->hash_queue_counter;
-		if(ts) {
-			_applyHashModifyQueue(ts, true);
-		}
+		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 	} else {
 		_hashAdd(addr, port, ts ? ts->tv_sec : 0, call, iscaller, is_rtcp, sdp_flags);
@@ -9633,7 +9632,7 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 
 /* remove node from hash */
 void
-Calltable::hashRemove(Call *call, vmIP addr, vmPort port, struct timeval *ts, bool rtcp, bool useHashQueueCounter) {
+Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHashQueueCounter) {
  
 	if(sverb.hash_rtp) {
 		cout << "hashRemove: " 
@@ -9656,9 +9655,7 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, struct timeval *ts, bo
 		if(useHashQueueCounter) {
 			++call->hash_queue_counter;
 		}
-		if(ts) {
-			_applyHashModifyQueue(ts, true);
-		}
+		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 	} else {
 		_hashRemove(call, addr, port, rtcp);
@@ -9894,7 +9891,7 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_l
 }
 
 int
-Calltable::hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter) {
+Calltable::hashRemove(Call *call, bool useHashQueueCounter) {
 
 	if(opt_hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
@@ -9906,9 +9903,7 @@ Calltable::hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter) 
 		if(useHashQueueCounter) {
 			++call->hash_queue_counter;
 		}
-		if(ts) {
-			_applyHashModifyQueue(ts, true);
-		}
+		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 		return(-1);
 	} else {
@@ -10013,14 +10008,14 @@ Calltable::_hashRemove(Call *call, bool use_lock) {
 }
 
 void 
-Calltable::applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash) {
-	_applyHashModifyQueue(ts, setBegin, use_lock_calls_hash);
+Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
+	_applyHashModifyQueue(setBegin, use_lock_calls_hash);
 }
 
 void 
-Calltable::_applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash) {
+Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	if(hash_modify_queue_begin_ms) {
-		if(getTimeMS(ts) >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
+		if(getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
 			if (use_lock_calls_hash) lock_calls_hash();
 			for(list<sHashModifyData>::iterator iter = hash_modify_queue.begin(); iter != hash_modify_queue.end(); iter++) {
 				switch(iter->oper) {
@@ -10044,7 +10039,7 @@ Calltable::_applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_loc
 		}
 	} else {
 		if(setBegin) {
-			hash_modify_queue_begin_ms = getTimeMS(ts);
+			hash_modify_queue_begin_ms = getTimeMS_rdtsc();
 		}
 	}
 }
@@ -10964,9 +10959,12 @@ Calltable::add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport
 */
 
 int
-Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char *file, int line ) {
+Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int line ) {
  
-	u_int64_t beginTimeMS = getTimeMS_rdtsc();
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
+	u_int64_t beginTimeMS = currTimeMS;
+	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
 		if(file) {
@@ -11050,6 +11048,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 				} else {
 					call = (*callMAPIT2).second;
 				}
+				u_int32_t currTimeS_unshift = call->unshiftSystemTime_s(currTimeS);
 				if(verbosity > 2) {
 					call->dump();
 				}
@@ -11058,7 +11057,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 				}
 				// rtptimeout seconds of inactivity will save this call and remove from call table
 				bool closeCall = false;
-				if(!currtime || call->force_close) {
+				if(closeAll || call->force_close) {
 					closeCall = true;
 					if(!is_read_from_file()) {
 						call->force_terminate = true;
@@ -11067,40 +11066,40 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 					  call->typeIs(MGCP) ||
 					  call->in_preprocess_queue_before_process_packet <= 0 ||
 					  (!is_read_from_file() &&
-					   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currtime->tv_sec - 300 &&
+					   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currTimeS_unshift - 300 &&
 					    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
-					if(call->destroy_call_at != 0 && call->destroy_call_at <= currtime->tv_sec) {
+					if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
 						closeCall = true;
-					} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currtime->tv_sec) ||
-						  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currtime->tv_sec)) {
+					} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currTimeS_unshift) ||
+						  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currTimeS_unshift)) {
 						closeCall = true;
 						call->bye_timeout_exceeded = true;
 					} else if(call->first_rtp_time_us &&
-						  currtime->tv_sec - call->get_last_packet_time_s() > rtptimeout) {
+						  currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)rtptimeout) {
 						closeCall = true;
 						call->rtp_timeout_exceeded = true;
 					} else if(!call->first_rtp_time_us &&
-						  currtime->tv_sec - call->get_first_packet_time_s() > sipwithoutrtptimeout) {
+						  currTimeS_unshift - call->get_first_packet_time_s() > sipwithoutrtptimeout) {
 						closeCall = true;
 						call->sipwithoutrtp_timeout_exceeded = true;
-					} else if(currtime->tv_sec - call->get_first_packet_time_s() > absolute_timeout) {
+					} else if(currTimeS_unshift - call->get_first_packet_time_s() > absolute_timeout) {
 						closeCall = true;
 						call->absolute_timeout_exceeded = true;
-					} else if(currtime->tv_sec - call->get_first_packet_time_s() > 300 &&
+					} else if(currTimeS_unshift - call->get_first_packet_time_s() > 300 &&
 						  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 					}
 					if(!closeCall &&
-					   (call->oneway == 1 && (currtime->tv_sec - call->get_last_packet_time_s() > opt_onewaytimeout))) {
+					   (call->oneway == 1 && (currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
 					}
 				}
 				if(closeCall) {
 					++call->attemptsClose;
-					call->removeFindTables(currtime, true);
-					if((currtime || !forceClose) &&
+					call->removeFindTables(true);
+					if((!closeAll || !forceClose) &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue != 0 ||
 					    call->useInListCalls)) {
@@ -11161,14 +11160,14 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
 		// Close RTP dump file ASAP to save file handles
-		if((!currtime && is_terminating()) ||
+		if((closeAll && is_terminating()) ||
 		   (useCallX() && preProcessPacketCallX && preProcessPacketCallX[0]->isActiveOutThread())) {
 			call->getPcap()->close();
 			call->getPcapSip()->close();
 		}
 		call->getPcapRtp()->close();
 
-		if(!currtime) {
+		if(closeAll) {
 			/* we are saving calls because of terminating SIGTERM and we dont know 
 			 * if the call ends successfully or not. So we dont want to confuse monitoring
 			 * applications which reports unterminated calls so mark this call as sighup */
@@ -11179,8 +11178,8 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 		// we have to close all raw files as there can be data in buffers 
 		call->closeRawFiles();
 		
-		if(opt_enable_fraud && currtime) {
-			fraudEndCall(call, *currtime);
+		if(opt_enable_fraud && !closeAll) {
+			fraudEndCall(call, call->unshiftSystemTime_ms(currTimeMS));
 		}
 		extern u_int64_t counter_calls_clean;
 		++counter_calls_clean;
@@ -11200,7 +11199,7 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 	
 	delete [] closeCalls;
 	
-	if(!currtime && is_terminating()) {
+	if(closeAll && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - cleanup calls");
@@ -11215,16 +11214,19 @@ Calltable::cleanup_calls( struct timeval *currtime, bool forceClose, const char 
 }
 
 int
-Calltable::cleanup_registers(struct timeval *currtime) {
+Calltable::cleanup_registers(bool closeAll) {
+ 
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
 	}
-	Call* reg;
 
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
-		reg = (*registerMAPIT).second;
+		Call *reg = (*registerMAPIT).second;
+		u_int32_t currTimeS_unshift = reg->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
 			reg->dump();
 		}
@@ -11233,24 +11235,24 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 		}
 		// rtptimeout seconds of inactivity will save this call and remove from call table
 		bool closeReg = false;
-		if(!currtime || reg->force_close) {
+		if(closeAll || reg->force_close) {
 			closeReg = true;
 			if(!is_read_from_file()) {
 				reg->force_terminate = true;
 			}
 		} else {
-			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currtime->tv_sec) {
+			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currTimeS_unshift) {
 				closeReg = true;
-			} else if(currtime->tv_sec - reg->get_first_packet_time_s() > absolute_timeout) {
+			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} else if(currtime->tv_sec - reg->get_first_packet_time_s() > 300 &&
+			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > 300 &&
 				  !reg->seenRES18X && !reg->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
 			if(!closeReg &&
-			   (reg->oneway == 1 && (currtime->tv_sec - reg->get_last_packet_time_s() > opt_onewaytimeout))) {
+			   (reg->oneway == 1 && (currTimeS_unshift - reg->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
@@ -11260,12 +11262,12 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
 			}
 			// Close RTP dump file ASAP to save file handles
-			if(!currtime && is_terminating()) {
+			if(closeAll && is_terminating()) {
 				reg->getPcap()->close();
 				reg->getPcapSip()->close();
 			}
 
-			if(!currtime) {
+			if(closeAll) {
 				/* we are saving calls because of terminating SIGTERM and we dont know 
 				 * if the call ends successfully or not. So we dont want to confuse monitoring
 				 * applications which reports unterminated calls so mark this call as sighup */
@@ -11300,8 +11302,8 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 				}
 			}
 			registers_listMAP.erase(registerMAPIT++);
-			if(opt_enable_fraud && currtime) {
-				fraudEndCall(reg, *currtime);
+			if(opt_enable_fraud && !closeAll) {
+				fraudEndCall(reg, reg->unshiftSystemTime_ms(currTimeMS));
 			}
 			extern u_int64_t counter_registers_clean;
 			++counter_registers_clean;
@@ -11311,7 +11313,7 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 	}
 	unlock_registers_listMAP();
 	
-	if(!currtime && is_terminating()) {
+	if(closeAll && is_terminating()) {
 		extern int terminated_call_cleanup;
 		terminated_call_cleanup = 1;
 		syslog(LOG_NOTICE, "terminated - call cleanup");
@@ -11320,16 +11322,19 @@ Calltable::cleanup_registers(struct timeval *currtime) {
 	return 0;
 }
 
-int Calltable::cleanup_ss7( struct timeval *currtime ) {
+int Calltable::cleanup_ss7(bool closeAll) {
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
 	lock_process_ss7_listmap();
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
-		if((currtime && iter->second->destroy_at_s &&
+		u_int32_t currTimeS_unshift = iter->second->unshiftSystemTime_s(currTimeS);
+		if((iter->second->destroy_at_s &&
 		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
-		     iter->second->destroy_at_s <= currtime->tv_sec)) || 
-		   !currtime ||
-		   (currtime->tv_sec - TIME_US_TO_S(iter->second->last_time_us)) > (opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
+		     iter->second->destroy_at_s <= currTimeS_unshift)) || 
+		   closeAll ||
+		   (currTimeS_unshift - TIME_US_TO_S(iter->second->last_time_us)) > (unsigned)(opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;
@@ -11423,7 +11428,7 @@ void Call::saveregister(struct timeval *currtime) {
 	extern u_int64_t counter_registers_clean;
 	++counter_registers_clean;
 	
-	removeFindTables(currtime);
+	removeFindTables();
 	this->pcap.close();
 	this->pcapSip.close();
 	/* move call to queue for mysql processing */

@@ -179,8 +179,8 @@ inline u_int64_t getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
 		return(header->ts.tv_sec * 1000ull + header->ts.tv_usec / 1000);
 	}
 	#if defined(__i386__) or defined(__x86_64__)
-	static volatile u_int64_t last_time = 0;
-	static volatile u_int64_t last_rdtsc = 0;
+	static __thread u_int64_t last_time = 0;
+	static __thread u_int64_t last_rdtsc = 0;
 	if(rdtsc_by_250ms && last_rdtsc) {
 		u_int64_t diff_rdtsc;
 		u_int64_t act_rdtsc = rdtsc();

@@ -621,11 +621,27 @@ public:
 	bool isAllocFlagSetAsFree() {
 		return(alloc_flag == 0);
 	}
+	inline void updateTimeShift(u_int64_t time_us) {
+		time_shift_ms = getTimeMS_rdtsc() - time_us / 1000;
+	}
+	inline u_int64_t unshiftCallTime_ms(u_int64_t time_ms) {
+		return(time_ms + time_shift_ms);
+	}
+	inline u_int64_t unshiftCallTime_s(u_int64_t time_s) {
+		return(time_s + time_shift_ms / 1000);
+	}
+	inline u_int64_t unshiftSystemTime_ms(u_int64_t time_ms) {
+		return(time_ms - time_shift_ms);
+	}
+	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
+		return(time_s - time_shift_ms / 1000);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
 	int type_next;
 	u_int64_t first_packet_time_us;
+	int64_t time_shift_ms;
 	char fbasename[MAX_FNAME];
 	char fbasename_safe[MAX_FNAME];
 	u_int64_t fname_register;
@@ -1332,11 +1348,11 @@ public:
 	 * @brief remove call from hash table
 	 *
 	*/
-	void hashRemove(struct timeval *ts, bool useHashQueueCounter = false);
+	void hashRemove(bool useHashQueueCounter = false);
 	
 	void skinnyTablesRemove();
 	
-	void removeFindTables(struct timeval *ts, bool set_end_call = false, bool destroy = false);
+	void removeFindTables(bool set_end_call = false, bool destroy = false);
 	
 	void destroyCall();
 
@@ -2555,9 +2571,9 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls( struct timeval *currtime, bool forceClose = false, const char *file = NULL, int line = 0);
-	int cleanup_registers( struct timeval *currtime);
-	int cleanup_ss7( struct timeval *currtime );
+	int cleanup_calls(bool closeAll, bool forceClose = false, const char *file = NULL, int line = 0);
+	int cleanup_registers(bool closeAll);
+	int cleanup_ss7(bool closeAll);
 
 	/**
 	 * @brief add call to hash table
@@ -2716,13 +2732,13 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, vmIP addr, vmPort port, struct timeval *ts, bool rtcp = false, bool useHashQueueCounter = true);
+	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool useHashQueueCounter = true);
 	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool use_lock = true);
-	int hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter = true);
+	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);
-	void applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
-	inline void _applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
+	void applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
+	inline void _applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
 	string getHashStats();
 	
 	void processCallsInAudioQueue(bool lock = true);

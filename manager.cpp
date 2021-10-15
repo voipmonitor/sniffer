@@ -2019,7 +2019,7 @@ int Mgmt_cleanup_calls(Mgmt_params* params) {
 		params->registerCommand("cleanup_calls", "clean calls");
 		return(0);
 	}
-	calltable->cleanup_calls(NULL);
+	calltable->cleanup_calls(true);
 	return(params->sendString("ok"));
 }
 
@@ -2028,7 +2028,7 @@ int Mgmt_cleanup_registers(Mgmt_params* params) {
 		params->registerCommand("cleanup_registers", "clean registers");
 		return(0);
 	}
-	calltable->cleanup_registers(NULL);
+	calltable->cleanup_registers(true);
 	return(params->sendString("ok"));
 }
 
@@ -2040,10 +2040,7 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		struct timeval act_ts;
-		act_ts.tv_sec = time(NULL);
-		act_ts.tv_usec = 0;
-		registers.cleanup(&act_ts, true);
+		registers.cleanup(true);
 	}
 	return(params->sendString("ok"));
 }

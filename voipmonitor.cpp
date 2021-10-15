@@ -4749,9 +4749,9 @@ void main_term_read() {
 
 	Call *call;
 	Ss7 *ss7;
-	calltable->cleanup_calls(NULL);
-	calltable->cleanup_registers(NULL);
-	calltable->cleanup_ss7(NULL);
+	calltable->cleanup_calls(true);
+	calltable->cleanup_registers(true);
+	calltable->cleanup_ss7(true);
 
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
