@@ -10027,8 +10027,10 @@ void sCreatePartitions::createPartitions(bool inThread) {
 
 void *sCreatePartitions::_createPartitions(void *arg) {
 	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
-	createPartitionsData->setIndicPartitionOperations();
-	sleep(10);
+	if(!is_read_from_file_simple()) {
+		createPartitionsData->setIndicPartitionOperations();
+		sleep(10);
+	}
 	extern bool opt_partition_operations_drop_first;
 	if(opt_partition_operations_drop_first) {
 		createPartitionsData->doDropPartitions();
@@ -10043,7 +10045,9 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	extern volatile int partitionsServiceIsInProgress;
 	partitionsServiceIsInProgress = 0;
 	sCreatePartitions::in_progress = 0;
-	createPartitionsData->unsetIndicPartitionOperations();
+	if(!is_read_from_file_simple()) {
+		createPartitionsData->unsetIndicPartitionOperations();
+	}
 	return(NULL);
 }
 
