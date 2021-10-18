@@ -301,7 +301,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	type_base = call_type;
 	type_next = 0;
 	first_packet_time_us = time_us;
-	time_shift_ms = getTimeMS_rdtsc() - time_us / 1000;
+	time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
 	fbasename[0] = 0;
 	fbasename_safe[0] = 0;
 	fname_register = 0;

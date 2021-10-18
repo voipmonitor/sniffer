@@ -622,7 +622,7 @@ public:
 		return(alloc_flag == 0);
 	}
 	inline void updateTimeShift(u_int64_t time_us) {
-		time_shift_ms = getTimeMS_rdtsc() - time_us / 1000;
+		time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
 	}
 	inline u_int64_t unshiftCallTime_ms(u_int64_t time_ms) {
 		return(time_ms + time_shift_ms);
