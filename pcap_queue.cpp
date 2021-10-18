@@ -146,6 +146,7 @@ extern char opt_cachedir[1024];
 extern int opt_pcap_dump_tar;
 extern volatile unsigned int glob_tar_queued_files;
 extern bool opt_socket_use_poll;
+extern bool opt_interrupts_counters_stats;
 
 extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferServerClientOptions snifferServerClientOptions;
@@ -2648,40 +2649,42 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	#endif //HEAP_CHUNK_ENABLE
 	//Get load average string
 	outStrStat << getLoadAvgStr() << " ";
-	map<string, pair<string, u_int64_t> > counters;
-	get_interrupts_counters(&counters);
-	if(counters["tlb"].second) {
-		static u_int64_t oldCountersTlb;
-		if(oldCountersTlb) {
-			unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
-			outStrStat << "TLB[" << tlb << "] ";
-			static unsigned counter_high_tlb = 0;
-			if(tlb >= 500) {
-				++counter_high_tlb;
-				static bool try_disable_numa_balancing = false;
-				extern int opt_numa_balancing_set;
-				if(opt_numa_balancing_set == numa_balancing_set_autodisable &&
-				   !try_disable_numa_balancing &&
-				   counter_high_tlb >= (unsigned)(60 / sverb.pcap_stat_period)) {
-					SimpleBuffer content;
-					string error;
-					if(file_get_contents(numa_balancing_config_filename, &content, &error) &&
-					   atoi((char*)content) != 0) {
-						try_disable_numa_balancing = true;
-						syslog(LOG_NOTICE, "TLB is too high, try set numa_balancing to 0");
-						content.clear();
-						content.add("0");
-						if(!file_put_contents(numa_balancing_config_filename, &content, &error)) {
-							syslog(LOG_ERR, "%s", error.c_str());
+	if (opt_interrupts_counters_stats) {
+		map<string, pair<string, u_int64_t> > counters;
+		get_interrupts_counters(&counters);
+		if(counters["tlb"].second) {
+			static u_int64_t oldCountersTlb;
+			if(oldCountersTlb) {
+				unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
+				outStrStat << "TLB[" << tlb << "] ";
+				static unsigned counter_high_tlb = 0;
+				if(tlb >= 500) {
+					++counter_high_tlb;
+					static bool try_disable_numa_balancing = false;
+					extern int opt_numa_balancing_set;
+					if(opt_numa_balancing_set == numa_balancing_set_autodisable &&
+					   !try_disable_numa_balancing &&
+					   counter_high_tlb >= (unsigned)(60 / sverb.pcap_stat_period)) {
+						SimpleBuffer content;
+						string error;
+						if(file_get_contents(numa_balancing_config_filename, &content, &error) &&
+						  atoi((char*)content) != 0) {
+							try_disable_numa_balancing = true;
+							syslog(LOG_NOTICE, "TLB is too high, try set numa_balancing to 0");
+							content.clear();
+							content.add("0");
+							if(!file_put_contents(numa_balancing_config_filename, &content, &error)) {
+								syslog(LOG_ERR, "%s", error.c_str());
+							}
 						}
+						counter_high_tlb = 0;
 					}
+				} else {
 					counter_high_tlb = 0;
 				}
-			} else {
-				counter_high_tlb = 0;
 			}
+			oldCountersTlb = counters["tlb"].second;
 		}
-		oldCountersTlb = counters["tlb"].second;
 	}
 	outStrStat << "v" << RTPSENSOR_VERSION << " ";
 	//outStrStat << pcapStatCounter << " ";
