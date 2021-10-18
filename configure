@@ -672,6 +672,7 @@ with_dpdk_include
 with_dpdk_lib
 with_mysql
 with_heap_profiler
+enable_dpdk
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1299,6 +1300,12 @@ if test -n "$ac_init_help"; then
      short | recursive ) echo "Configuration of voipmonitor VERSION:";;
    esac
   cat <<\_ACEOF
+
+Optional Features:
+  --disable-option-checking  ignore unrecognized --enable/--with options
+  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
+  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+  --disable-dpdk          Disable searching for dpdk libs (librte_*)
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -4603,7 +4610,13 @@ fi
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrte_net" >&5
+# Check whether --enable-dpdk was given.
+if test "${enable_dpdk+set}" = set; then :
+  enableval=$enable_dpdk;
+fi
+
+if test "x$enable_dpdk" != "xno"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrte_net" >&5
 $as_echo_n "checking for main in -lrte_net... " >&6; }
 if ${ac_cv_lib_rte_net_main+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -4637,6 +4650,7 @@ if test "x$ac_cv_lib_rte_net_main" = xyes; then :
   HAVE_LIBDPDK=1
 fi
 
+fi
 
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then
