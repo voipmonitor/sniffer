@@ -12,7 +12,7 @@
 
 using namespace std;
 
-
+extern bool opt_interrupts_counters;
 bool pstat_quietly_errors = false;
 
 
@@ -190,6 +190,10 @@ int get_cpu_count() {
 }
 
 bool get_interrupts_counters(map<string, pair<string, u_int64_t> > *counters) {
+	// If interrupt counters are disabled from config do nothing
+	if(!opt_interrupts_counters)
+	    return false;
+
 	FILE *fint = fopen("/proc/interrupts", "r");
 	if(fint == NULL) {
 		#ifndef FREEBSD

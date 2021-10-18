@@ -697,6 +697,7 @@ bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
 bool opt_sql_time_utc = false;
 bool opt_socket_use_poll = true;
+bool opt_interrupts_counters = true;
 
 char configfile[1024] = "";	// config file name
 
@@ -7591,6 +7592,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interrupts_counters",  &opt_interrupts_counters));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
@@ -12059,6 +12061,9 @@ int eval_config(string inistr) {
 		opt_socket_use_poll = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "interrupts_counters", NULL))) {
+		opt_interrupts_counters = yesno(value);
+	}
 	if((value = ini.GetValue("general", "hugepages_anon", NULL))) {
 		opt_hugepages_anon = yesno(value);
 	}
