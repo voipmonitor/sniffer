@@ -470,6 +470,7 @@ private:
 	map<u_int32_t, cChartInterval*> intervals;
 	volatile u_int32_t first_interval;
 	unsigned maxValuesPartsForPercentile;
+	unsigned mainInterval;
 	unsigned intervalStore;
 	unsigned intervalCleanup;
 	unsigned intervalExpiration;

@@ -353,6 +353,7 @@ int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 bool opt_cdr_stat_values = true;
 bool opt_cdr_stat_sources = false;
+int opt_cdr_stat_interval = 15;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -7596,6 +7597,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
@@ -11215,6 +11217,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_stat_sources", NULL))) {
 		opt_cdr_stat_sources = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_stat_interval", NULL))) {
+		opt_cdr_stat_interval = atoi(value);
 	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);

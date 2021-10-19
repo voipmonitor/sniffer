@@ -9,6 +9,7 @@ extern MySqlStore *sqlStore;
 extern int opt_charts_cache_max_threads;
 extern bool opt_cdr_stat_values;
 extern bool opt_cdr_stat_sources;
+extern int opt_cdr_stat_interval;
 
 
 static sChartTypeDef ChartTypeDef[] = { 
@@ -1878,8 +1879,9 @@ cCdrStat::cCdrStat() {
 	typeStore = _typeStore_all;
 	first_interval = 0;
 	maxValuesPartsForPercentile = 1000;
-	intervalStore = sverb.cdr_stat_interval_store ? sverb.cdr_stat_interval_store : 15 * 60;
-	intervalCleanup = 2 * 60 * 60;
+	mainInterval = opt_cdr_stat_interval * 60;
+	intervalStore = sverb.cdr_stat_interval_store ? sverb.cdr_stat_interval_store : mainInterval / 4;
+	intervalCleanup = mainInterval * 2;
 	intervalExpiration = 5 * 60 * 60;
 	sqlDbStore = NULL;
 	last_store_at = 0;
@@ -1969,25 +1971,25 @@ void cCdrStat::add(sChartsCallData *call) {
 	}
 	u_int32_t callbegin_s = callbegin_us / 1000000;
 	u_int32_t callend_s = callend_us / 1000000;
-	u_int32_t callbegin_hour_s = callbegin_s / (60*60) * (60*60);
-	u_int32_t callend_hour_s = callend_s / (60*60) * (60*60);
+	u_int32_t callbegin_interval_s = callbegin_s / mainInterval * mainInterval;
+	u_int32_t callend_interval_s = callend_s / mainInterval * mainInterval;
 	unsigned interval_counter = 0;
-	for(u_int32_t interval_hour_s = callbegin_hour_s; interval_hour_s <= callend_hour_s; interval_hour_s += (60*60)) {
+	for(u_int32_t interval_iter_s = callbegin_interval_s; interval_iter_s <= callend_interval_s; interval_iter_s += mainInterval) {
 		cChartInterval* interval = NULL;
 		lock_intervals();
-		interval = intervals[interval_hour_s];
+		interval = intervals[interval_iter_s];
 		if(!interval) {
-			if(interval_hour_s > first_interval) {
-				first_interval = interval_hour_s;
+			if(interval_iter_s > first_interval) {
+				first_interval = interval_iter_s;
 			}
 			interval = new FILE_LINE(0) cChartInterval(_chartTypeUse_cdrStat);
-			interval->setInterval(interval_hour_s, interval_hour_s + (60*60), ip_src);
-			intervals[interval_hour_s] = interval;
+			interval->setInterval(interval_iter_s, interval_iter_s + mainInterval, ip_src);
+			intervals[interval_iter_s] = interval;
 		} else {
 			interval->init(ip_src);
 		}
 		unlock_intervals();
-		interval->add(call, interval_counter, interval_counter == 0, interval_hour_s == callend_hour_s, interval_counter == 0,
+		interval->add(call, interval_counter, interval_counter == 0, interval_iter_s == callend_interval_s, interval_counter == 0,
 			      callbegin_s, callend_s,
 			      ip_src);
 		++interval_counter;
