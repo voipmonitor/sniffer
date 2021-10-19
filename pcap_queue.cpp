@@ -3887,13 +3887,13 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			this->tryForcePush();
 			if(!opt_pb_read_from_file_max_packets) {
 				if(sleepCounter > 10 && sleepCounter <= 15) {
-					calltable->cleanup_calls(NULL);
-					calltable->cleanup_registers(NULL);
-					calltable->cleanup_ss7(NULL);
+					calltable->cleanup_calls(true);
+					calltable->cleanup_registers(true);
+					calltable->cleanup_ss7(true);
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;
-						registers.cleanup(0, true);
+						registers.cleanup(true);
 					}
 				}
 				if(sleepCounter > 15) {
@@ -3934,16 +3934,16 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 			if(sleepTimeBeforeCleanup) {
 				--sleepTimeBeforeCleanup;
 				if(!sleepTimeBeforeCleanup) {
-					if(calltable->cleanup_calls(NULL)) {
+					if(calltable->cleanup_calls(true)) {
 						syslog(LOG_NOTICE, "add time to cleanup calls");
 						++sleepTimeBeforeCleanup;
 					}
-					calltable->cleanup_registers(NULL);
-					calltable->cleanup_ss7(NULL);
+					calltable->cleanup_registers(true);
+					calltable->cleanup_ss7(true);
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;
-						registers.cleanup(0, true);
+						registers.cleanup(true);
 					}
 				}
 			} else if(sleepTimeAfterCleanup) {

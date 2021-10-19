@@ -2624,7 +2624,7 @@ void FraudAlerts::waitForEmptyQueues(int timeout) {
 		usleep(100000);
 		if(timeout > 0) {
 			u_int32_t time = getTimeS();
-			if(time > start && time - start > timeout) {
+			if(time > start && time - start > (unsigned)timeout) {
 				break;
 			}
 		}
@@ -2987,7 +2987,7 @@ void initFraud(SqlDb *sqlDb) {
 	if(!opt_enable_fraud) {
 		return;
 	}
-	if(opt_nocdr) {
+	if(opt_nocdr || is_read_from_file_simple()) {
 		opt_enable_fraud = false;
 		return;
 	}
@@ -3162,6 +3162,14 @@ void fraudEndCall(Call *call, timeval tv) {
 	if(isFraudReady()) {
 		fraudAlerts_lock();
 		fraudAlerts->endCall(call, getTimeUS(tv));
+		fraudAlerts_unlock();
+	}
+}
+
+void fraudEndCall(Call *call, u_int64_t time_ms) {
+	if(isFraudReady()) {
+		fraudAlerts_lock();
+		fraudAlerts->endCall(call, time_ms * 1000);
 		fraudAlerts_unlock();
 	}
 }

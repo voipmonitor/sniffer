@@ -69,6 +69,7 @@ extern int opt_mysql_enable_multiple_rows_insert;
 extern bool opt_time_precision_in_ms;
 extern bool opt_save_energylevels;
 extern int opt_save_ip_from_encaps_ipheader;
+extern int opt_sip_register;
 
 extern char sql_driver[256];
 
@@ -2580,6 +2581,149 @@ void SqlDb_mysql::evError(int pass) {
 void SqlDb_mysql::clean() {
 	this->disconnect();
 	this->cleanFields();
+}
+
+string SqlDb_mysql::getOptimalCompressType(bool memoryEngine, bool useCache) {
+	extern int opt_mysqlcompress;
+	extern char opt_mysqlcompress_type[256];
+	if(!opt_mysqlcompress) {
+		return("");
+	}
+	if(opt_mysqlcompress_type[0]) {
+		return(opt_mysqlcompress_type);
+	}
+	string dbname = getDbName();
+	if(dbname == "mysql") {
+		return(getOptimalCompressType_mysql(memoryEngine, useCache));
+	} else if(dbname == "mariadb") { 
+		return(getOptimalCompressType_mariadb(memoryEngine, useCache));
+	}
+	return("");
+}
+
+string SqlDb_mysql::getOptimalCompressType_mysql(bool memoryEngine, bool useCache) {
+	if(useCache) {
+		if(memoryEngine) {
+			if(!selectedCompressType_memoryEngine.empty()) {
+				return(selectedCompressType_memoryEngine);
+			}
+		} else {
+			if(!selectedCompressType.empty()) {
+				return(selectedCompressType);
+			}
+		}
+	}
+	int dbVersion = getDbVersion();
+	if(dbVersion >= 50708) {
+		string compressType_test = "compression=\"lz4\"";
+		if(testCreateTable(memoryEngine, compressType_test.c_str())) {
+			setSelectedCompressType(memoryEngine, compressType_test.c_str());
+			return(compressType_test);
+		}
+	}
+	string compressType_test = MYSQL_ROW_FORMAT_COMPRESSED;
+	if(testCreateTable(memoryEngine, compressType_test.c_str())) {
+		setSelectedCompressType(memoryEngine, compressType_test.c_str());
+		return(compressType_test);
+	}
+	setSelectedCompressType(memoryEngine, NULL);
+	return("");
+}
+
+string SqlDb_mysql::getOptimalCompressType_mariadb(bool memoryEngine, bool useCache) {
+	if(useCache) {
+		if(memoryEngine) {
+			if(!selectedCompressType_memoryEngine.empty()) {
+				if(selectedCompressType_memoryEngine == MARIADB_PAGE_COMPRESSED) {
+					query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype_memoryEngine + "'");
+				}
+				return(selectedCompressType_memoryEngine);
+			}
+		} else {
+			if(!selectedCompressType.empty()) {
+				if(selectedCompressType == MARIADB_PAGE_COMPRESSED) {
+					query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype + "'");
+				}
+				return(selectedCompressType);
+			}
+		}
+	}
+	int dbVersion = getDbVersion();
+	if(dbVersion >= 100204 && !memoryEngine) {
+		const char *try_compress_order[][2] = {
+			{ "lz4", "Innodb_have_lz4" },
+			{ "lzma", "Innodb_have_lzma" },
+			{ "zlib", NULL },
+			{ NULL, NULL }
+		};
+		vector<string> mariadb_compress_types;
+		for(unsigned i = 0; try_compress_order[i][0]; i++) {
+			if(try_compress_order[i][0] && try_compress_order[i][1]) {
+				mariadb_compress_types.push_back(try_compress_order[i][1]);
+			}
+		}
+		map<string, bool> mariadb_compress_enable_types;
+		if(mariadb_compress_types.size()) {
+			if(query("SHOW GLOBAL STATUS WHERE Variable_name IN ('" +
+				 implode(mariadb_compress_types, "','") +
+				 "')")) {
+				SqlDb_row row;
+				while((row = this->fetchRow())) {
+					if(row[1] == "ON") {
+						mariadb_compress_enable_types[row[0]] = true;
+					}
+				}
+			}
+		}
+		for(unsigned i = 0; try_compress_order[i][0]; i++) {
+			if(try_compress_order[i][0]) {
+				if(!try_compress_order[i][1] || 
+				   mariadb_compress_enable_types[try_compress_order[i][1]]) {
+					if(query(string("SET GLOBAL innodb_compression_algorithm='") + try_compress_order[i][0] + "'")) {
+						string compressType_test = MARIADB_PAGE_COMPRESSED;
+						if(testCreateTable(memoryEngine, compressType_test.c_str())) {
+							setSelectedCompressType(memoryEngine, compressType_test.c_str(), try_compress_order[i][0]);
+							return(compressType_test);
+						}
+					}
+				}
+			}
+		}
+	}
+	if(dbVersion < 100204) {
+		string compressType_test = MYSQL_ROW_FORMAT_COMPRESSED;
+		if(testCreateTable(memoryEngine, compressType_test.c_str())) {
+			setSelectedCompressType(memoryEngine, compressType_test.c_str());
+			return(compressType_test);
+		}
+	}
+	setSelectedCompressType(memoryEngine, NULL);
+	return("");
+}
+
+bool SqlDb_mysql::testCreateTable(bool memoryEngine, const char *compressType) {
+	bool rslt = false;
+	string tableName = "_test_compress_type_" + intToString(rand() % 100000);
+	if(existsTable(tableName)) {
+		query("drop table `" + tableName + "`");
+	}
+	if(query("create table `" + tableName + "` ( `test_field` char(10) ) ENGINE=" + (memoryEngine ? "memory" : "InnoDB") + " " + compressType)) {
+		if(existsTable(tableName)) {
+			rslt = true;
+			query("drop table `" + tableName + "`");
+		}
+	}
+	return(rslt);
+}
+
+void SqlDb_mysql::setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype) {
+	if(memoryEngine) {
+		selectedCompressType_memoryEngine = type ? type : "";
+		selectedCompressSubtype_memoryEngine = subtype ? subtype : "";
+	} else {
+		selectedCompressType = type ? type : "";
+		selectedCompressSubtype = subtype ? subtype : "";
+	}
 }
 
 
@@ -5162,7 +5306,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
+	string compress = getOptimalCompressType();
 	string limitDay;
 	string partDayName;
 	string limitMonth;
@@ -5738,7 +5882,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`saddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sport` smallint unsigned DEFAULT NULL,\
 			`daddr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`dport` smallint unsigned DEFAULT NULL,\
 			`ssrc` int unsigned DEFAULT NULL,\
 			`received` mediumint unsigned DEFAULT NULL,\
 			`loss` mediumint unsigned DEFAULT NULL,\
@@ -6374,6 +6520,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	
+	if(opt_sip_register == 2) {
+	string compress_memory = getOptimalCompressType(true);
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register` (\
 			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
@@ -6407,6 +6555,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `rrd_avg` (`rrd_avg`),\
 		KEY `src_mac` (`src_mac`)\
 	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
+	}
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `register_state` (\
@@ -6638,24 +6787,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)");
 	}
 
-	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `livepacket` (\
-			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT ,\
-			`id_sensor` INT DEFAULT NULL,\
-			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL ,\
-			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL ,\
-			`sport` SMALLINT UNSIGNED NOT NULL ,\
-			`dport` SMALLINT UNSIGNED NOT NULL ,\
-			`istcp` TINYINT UNSIGNED NOT NULL ,\
-			`created_at` TIMESTAMP NOT NULL ,\
-			`microseconds` INT UNSIGNED NOT NULL ,\
-			`callid` VARCHAR(255) NOT NULL ,\
-			`description` VARCHAR(1024),\
-			`data` VARBINARY(10000) NOT NULL ,\
-		PRIMARY KEY ( `id` ) ,\
-		INDEX (`created_at` , `microseconds`)\
-	) ENGINE=MEMORY DEFAULT CHARSET=latin1 " + compress + ";");
-	
 	this->query(
 	"CREATE TABLE IF NOT EXISTS `files` (\
 			`datehour` int NOT NULL,\
@@ -6747,7 +6878,7 @@ bool SqlDb_mysql::createSchema_tables_billing_agregation() {
 		return(true);
 	}
 	this->clearLastError();
-	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
+	string compress = getOptimalCompressType();
 	vector<cBilling::sAgregationTypePart> typeParts = cBilling::getAgregTypeParts(&agregSettings);
 	for(unsigned i = 0; i < typeParts.size(); i++) {
 		this->query(string(
@@ -6798,7 +6929,7 @@ bool SqlDb_mysql::createSchema_table_http_jj(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
+	string compress = getOptimalCompressType();
 	string limitDay;
 	string partDayName;
 	string limitHour;
@@ -6918,7 +7049,7 @@ bool SqlDb_mysql::createSchema_table_webrtc(int connectId) {
 		return(true);
 	}
 	
-	string compress = opt_mysqlcompress ? (opt_mysqlcompress_type[0] ? opt_mysqlcompress_type : MYSQL_ROW_FORMAT_COMPRESSED) : "";
+	string compress = getOptimalCompressType();
 	string limitDay;
 	string partDayName;
 	string limitHour;
@@ -7008,9 +7139,11 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 				ADD KEY `match_header` (`match_header`);" << endl;
 	}
 	//5.3 -> 5.4
+	if(opt_sip_register == 2) {
 	outStrAlter << "ALTER TABLE register\
 			ADD KEY `to_domain` (`to_domain`),\
 			ADD KEY `to_num` (`to_num`);" << endl;
+	}
 	outStrAlter << "ALTER TABLE register_state\
 			ADD `to_domain` varchar(255) NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_failed\
@@ -7030,14 +7163,18 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	//6.5RC2 ->
 	outStrAlter << "ALTER TABLE message ADD GeoPosition varchar(255);" << endl;
 	outStrAlter << "ALTER TABLE cdr_next ADD GeoPosition varchar(255);" << endl;
+	if(opt_sip_register == 2) {
 	outStrAlter << "ALTER TABLE register\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	}
 	outStrAlter << "ALTER TABLE register_failed\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_state\
 			ADD `fname` BIGINT NULL DEFAULT NULL;" << endl;
+	if(opt_sip_register == 2) {
 	outStrAlter << "ALTER TABLE register\
 			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
+	}
 	outStrAlter << "ALTER TABLE register_failed\
 			ADD `id_sensor` INT NULL DEFAULT NULL;" << endl;
 	outStrAlter << "ALTER TABLE register_state\
@@ -7086,19 +7223,23 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 	}
 	
 	//12.5
+	if(opt_sip_register == 2) {
 	outStrAlter << "ALTER TABLE register \
 		ADD `rrd_avg` mediumint unsigned DEFAULT NULL;" <<endl;
 	outStrAlter << "ALTER TABLE register \
 		ADD `rrd_count` tinyint unsigned DEFAULT NULL;" <<endl;
 	outStrAlter << "ALTER TABLE register \
 		ADD KEY `rrd_avg` (`rrd_avg`);" << endl;
+	}
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 
 	//15.1
+	if(opt_sip_register == 2) {
 	outStrAlter << "ALTER TABLE register \
 		ADD `src_mac` bigint unsigned DEFAULT NULL;" <<endl;
 	outStrAlter << "ALTER TABLE register \
 		ADD KEY `src_mac` (`src_mac`);" << endl;
+	}
 	outStrAlter << "drop trigger if exists cdr_bi;" << endl;
 	
 	//17
@@ -8455,8 +8596,10 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	map<string, u_int64_t> tableSize;
 	for(int pass = 0; pass < 2; pass++) {
 		vector<dstring> alters_ms;
-		if(!(existsColumns.register_calldate_ms = this->getTypeColumn("register", "calldate").find("(3)") != string::npos)) {
-			alters_ms.push_back(dstring("register", "modify column calldate " + column_type_datetime_ms() + " not null"));
+		if(opt_sip_register == 2) {
+			if(!(existsColumns.register_calldate_ms = this->getTypeColumn("register", "calldate").find("(3)") != string::npos)) {
+				alters_ms.push_back(dstring("register", "modify column calldate " + column_type_datetime_ms() + " not null"));
+			}
 		}
 		if(!(existsColumns.register_state_created_at_ms = this->getTypeColumn("register_state", "created_at").find("(3)") != string::npos)) {
 			alters_ms.push_back(dstring("register_state", "modify column created_at " + column_type_datetime_ms() + " not null"));
@@ -8484,7 +8627,6 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 		}
 		break;
 	}
-	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
 		bool registerFailedIdIsBig = true;
 		this->query("show columns from register_failed like 'id'");
@@ -8547,8 +8689,9 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	
-	existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
+	if(opt_sip_register == 2) {
+		existsColumns.register_rrd_count = this->existsColumn("register", "rrd_count");
+	}
 }
 
 void SqlDb_mysql::checkColumns_sip_msg(bool log) {
@@ -10052,8 +10195,10 @@ void sCreatePartitions::createPartitions(bool inThread) {
 
 void *sCreatePartitions::_createPartitions(void *arg) {
 	sCreatePartitions *createPartitionsData = (sCreatePartitions*)arg;
-	createPartitionsData->setIndicPartitionOperations();
-	sleep(10);
+	if(!is_read_from_file_simple()) {
+		createPartitionsData->setIndicPartitionOperations();
+		sleep(10);
+	}
 	extern bool opt_partition_operations_drop_first;
 	if(opt_partition_operations_drop_first) {
 		createPartitionsData->doDropPartitions();
@@ -10068,7 +10213,9 @@ void *sCreatePartitions::_createPartitions(void *arg) {
 	extern volatile int partitionsServiceIsInProgress;
 	partitionsServiceIsInProgress = 0;
 	sCreatePartitions::in_progress = 0;
-	createPartitionsData->unsetIndicPartitionOperations();
+	if(!is_read_from_file_simple()) {
+		createPartitionsData->unsetIndicPartitionOperations();
+	}
 	return(NULL);
 }
 

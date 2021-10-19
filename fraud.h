@@ -1304,6 +1304,7 @@ void fraudConnectCall(Call *call, struct timeval tv);
 void fraudSessionCanceledCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
+void fraudEndCall(Call *call, u_int64_t time_ms);
 void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			 Call *call, time_t time);
 void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,

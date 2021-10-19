@@ -133,6 +133,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 	if(call) {
 		char *tmp_str;
 		state_from_us = state_to_us = call->calltime_us();
+		time_shift_ms = call->time_shift_ms;
 		counter = 1;
 		state = convRegisterState(call);
 		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
@@ -164,6 +165,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		vlan = call->vlan;
 	} else {
 		state_from_us = state_to_us = 0;
+		time_shift_ms = 0;
 		counter = 0;
 		state = rs_na;
 		contact_num = NULL;
@@ -439,6 +441,7 @@ void Register::updateLastState(Call *call) {
 	RegisterState *state = states_last();
 	if(state) {
 		state->state_to_us = call->calltime_us();
+		state->time_shift_ms = call->time_shift_ms;
 		state->fname = call->fname_register;
 		state->expires = call->register_expires;
 		if(!opt_sip_register_state_compare_digest_realm && 
@@ -793,8 +796,7 @@ void Registers::add(Call *call) {
 	strcpy(call->digest_username, digest_username_orig.c_str());
 	*/
 	
-	struct timeval cleanup_time;
-	cleanup(call->get_calltime_tv(&cleanup_time), false, 30);
+	cleanup(false, 30);
 	
 	/*
 	eRegisterState states[] = {
@@ -829,12 +831,13 @@ bool Registers::existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq) {
 	return(rslt);
 }
 
-void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
-	if(!last_cleanup_time && act_time) {
-		last_cleanup_time = act_time->tv_sec;
+void Registers::cleanup(bool force, int expires_add) {
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(!last_cleanup_time) {
+		last_cleanup_time = actTimeS;
 		return;
 	}
-	if((act_time && act_time->tv_sec > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD) || force) {
+	if(actTimeS > last_cleanup_time + NEW_REGISTER_CLEAN_PERIOD || force) {
 		lock_registers();
 		map<RegisterId, Register*>::iterator iter;
 		for(iter = registers.begin(); iter != registers.end(); ) {
@@ -844,10 +847,10 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 			bool eraseRegister = false;
 			bool eraseRegisterFailed = false;
 			if(regstate) {
+				u_int32_t actTimeS_unshift = regstate->unshiftSystemTime_s(actTimeS);
 				if(regstate->state == rs_OK || regstate->state == rs_UnknownMessageOK) {
-					if(act_time &&
-					   regstate->expires &&
-					   TIME_US_TO_S(regstate->state_to_us) + regstate->expires + expires_add < act_time->tv_sec) {
+					if(regstate->expires &&
+					   TIME_US_TO_S(regstate->state_to_us) + regstate->expires + expires_add < actTimeS_unshift) {
 						reg->expire(false);
 						// cout << "expire" << endl;
 					}
@@ -855,23 +858,20 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 					if(regstate->state == rs_Failed) {
 						iter->second->saveFailedToDb(regstate, force);
 						RegisterState *regstate_prev = reg->states_prev_last();
-						if(act_time &&
-						   regstate_prev &&
+						if(regstate_prev &&
 						   (regstate_prev->state == rs_OK || regstate_prev->state == rs_UnknownMessageOK) &&
 						   regstate_prev->expires &&
-						   TIME_US_TO_S(regstate_prev->state_to_us) + regstate_prev->expires + expires_add < act_time->tv_sec) {
+						   TIME_US_TO_S(regstate_prev->state_to_us) + regstate_prev->expires + expires_add < actTimeS_unshift) {
 							reg->expire(false, true);
 							// cout << "expire prev state" << endl;
 						}
 					}
 					if(!_sync_registers_erase) {
-						if(act_time &&
-						   regstate->state == rs_Failed && reg->countStates == 1 &&
-						   TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_FAILED_TIMEOUT < act_time->tv_sec) {
+						if(regstate->state == rs_Failed && reg->countStates == 1 &&
+						   TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_FAILED_TIMEOUT < actTimeS_unshift) {
 							eraseRegisterFailed = true;
 							// cout << "erase failed" << endl;
-						} else if(act_time &&
-							  TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
+						} else if(TIME_US_TO_S(regstate->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < actTimeS_unshift) {
 							eraseRegister = true;
 							// cout << "erase" << endl;
 						}
@@ -889,9 +889,7 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 			}
 		}
 		unlock_registers();
-		if(act_time) {
-			last_cleanup_time = act_time->tv_sec;
-		}
+		last_cleanup_time = actTimeS;
 	}
 }
 

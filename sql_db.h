@@ -20,6 +20,7 @@
 
 
 #define MYSQL_ROW_FORMAT_COMPRESSED "ROW_FORMAT=COMPRESSED"
+#define MARIADB_PAGE_COMPRESSED "PAGE_COMPRESSED=1"
 
 #define NULL_CHAR_PTR (const char*)NULL
 
@@ -737,12 +738,21 @@ public:
 	MYSQL *getH_Mysql() {
 		return(this->hMysql);
 	}
+	string getOptimalCompressType(bool memoryEngine = false, bool useCache = true);
+	string getOptimalCompressType_mysql(bool memoryEngine, bool useCache);
+	string getOptimalCompressType_mariadb(bool memoryEngine, bool useCache);
+	bool testCreateTable(bool memoryEngine, const char *compressType);
+	void setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype = NULL);
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
 	unsigned long mysqlThreadId;
+	string selectedCompressType;
+	string selectedCompressSubtype;
+	string selectedCompressType_memoryEngine;
+	string selectedCompressSubtype_memoryEngine;
 };
 
 class SqlDb_odbc_bindBufferItem {

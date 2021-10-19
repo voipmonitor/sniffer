@@ -1496,7 +1496,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			strcpy(call->lastSIPresponse, "ON HOOK");
 			call->destroy_call_at = header->ts.tv_sec + 5;
 			if(!is_read_from_file_by_pb()) {
-				call->removeFindTables(NULL, true);
+				call->removeFindTables(true);
 			}
 			break;
 		case SKINNY_RINGOUT:
