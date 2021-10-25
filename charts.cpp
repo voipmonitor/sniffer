@@ -958,7 +958,6 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *
 		cache_row.add(this->series->series_id.id, "series");
 		cache_row.add(sqlDateTimeString(interval->timeFrom), "from_time");
 		cache_row.add(*ip, "addr", false, sqlDb, table_name.c_str());
-		cache_row.add("TA_HOURS", "type");
 	}
 	cache_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
 	cache_row.add(sqlDateTimeString(created_at_s), "created_at");
@@ -1103,7 +1102,6 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 							SqlDb_row cdr_stat_row;
 							cdr_stat_row.add(sqlDateTimeString(timeFrom), "from_time");
 							cdr_stat_row.add(iter_ip->first, "addr", false, sqlDb, table_name.c_str());
-							cdr_stat_row.add("TA_HOURS", "type");
 							cdr_stat_row.add(opt_id_sensor > 0 ? opt_id_sensor : 0, "sensor_id");
 							cdr_stat_row.add(sqlDateTimeString(created_at_real), "created_at");
 							string insert_str;

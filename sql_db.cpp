@@ -6197,13 +6197,12 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `cdr_stat_values` (\
 			`from_time` datetime,\
 			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
-			`type` enum('TA_MINUTES','TA_5MINUTES','TA_HOURS','TA_DAYS'),\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
 			" + cdr_stat_fields_str + "\
-			UNIQUE KEY `comb_1` (`from_time`,`addr`,`type`,`sensor_id`,`created_at`)\
+			UNIQUE KEY `comb_1` (`from_time`,`addr`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_stat_values_partition_oldver ? 
@@ -6219,7 +6218,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`from_time` datetime,\
 			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`series` int unsigned NOT NULL,\
-			`type` enum('TA_MINUTES','TA_5MINUTES','TA_HOURS','TA_DAYS'),\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
@@ -6227,7 +6225,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`count_all` int unsigned,\
 			`count_connected` int unsigned,\
 			`data` mediumtext,\
-			UNIQUE KEY `comb_1` (`from_time`,`addr`,`series`,`type`,`sensor_id`,`created_at`)\
+			UNIQUE KEY `comb_1` (`from_time`,`addr`,`series`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_stat_sources_partition_oldver ? 
