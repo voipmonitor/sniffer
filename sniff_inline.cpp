@@ -222,6 +222,15 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 					exists_vlan = true;
 				}
 				break;
+			case 0x8926:
+				// VN-Tag
+				header_ip_offset = 6;
+				protocol = htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + 4));
+				if(protocol == 0x8100) {
+					// VLAN tag
+					exists_vlan = true;
+				}
+				break;
 			case 0x8864:
 				// PPPoE
 				if(htons(*(u_int16_t*)(packet + link_header_offset + sizeof(ether_header) + 6)) == 0x0021) { // Point To Point protocol IPv4
