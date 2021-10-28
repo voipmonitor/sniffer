@@ -3519,8 +3519,9 @@ Call::convertRawToWav() {
 	if(opt_cachedir[0] != '\0') {
 		Call::_addtocachequeue(tmp);
 	}
-	// CURL hook
-	if (strlen(opt_curl_hook_wav) > 0) {
+	// Here we put our CURL hook
+	// And use it only if cacheing is turned off
+	if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] == '\0') {
 		string url;
 		url.append(opt_curl_hook_wav);
 		string postData;

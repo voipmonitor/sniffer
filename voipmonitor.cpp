@@ -1692,6 +1692,32 @@ void *moving_cache( void */*dummy*/ ) {
 			cachedirtransfered += move_file(src_c, dst_c, true);
 			//TODO: error handling
 			//perror ("The following error occurred");
+
+			// Here we put our CURL hook
+			// And use it only if cacheing is turned on
+			if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] != '\0') {
+				bool useWavMix = opt_saveaudio_wav_mix;
+				string url;
+				url.append(opt_curl_hook_wav);
+				string postData;
+				postData.append("{ \"voipmonitor\": true");
+				postData.append(", \"stereo\":");
+				postData.append(useWavMix ? "false" : "true");
+				postData.append(", \"wav_file_name_with_path\": \"");
+				postData.append(dst_c);
+				postData.append("\" }\n");
+				string getParams; // Not used actually
+				SimpleBuffer responseBuffer;
+				string error;
+				s_get_url_response_params curl_params;
+			
+			        if (!post_url_response((url + getParams).c_str(), &responseBuffer, &postData, &error, &curl_params)) {
+					// log error message
+					if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s], error[%s]\n", opt_curl_hook_wav, error.c_str());
+				} else {
+					if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s], response[%s]\n", opt_curl_hook_wav, (char*)responseBuffer);
+				}
+			}
 		}
 		if(terminating_moving_cache) {
 			break;
