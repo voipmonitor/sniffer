@@ -186,7 +186,7 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 }
 
 
-static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t len )
+static int ssl3_decode_server_hello( dssl_decoder_stack* stack, DSSL_Session* sess, u_char* data, uint32_t len )
 {
 	uint16_t server_version = 0;
 	u_char* org_data = data;
@@ -274,11 +274,17 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 				sess->flags |= SSF_TLS_SERVER_SESSION_TICKET;
 			}
 			if( ext_type == 0x0017)
-			{ 	sess->flags |= SSF_TLS_SERVER_EXTENDED_MASTER_SECRET;
+			{
+				sess->flags |= SSF_TLS_SERVER_EXTENDED_MASTER_SECRET;
 			}
 			if( ext_type == 0x002b)
-			{	if(ext_len == 2 && sess->version == TLS1_2_VERSION && MAKE_UINT16(data[4], data[5]) == TLS1_3_VERSION)
+			{
+				if(ext_len == 2 && sess->version == TLS1_2_VERSION && MAKE_UINT16(data[4], data[5]) == TLS1_3_VERSION)
 					sess->version = TLS1_3_VERSION;
+			}
+			if( ext_type == 0x0016)
+			{
+				sess->flags |= SSF_ENCRYPT_THEN_MAC;
 			}
 			data += ext_len + 4;
 			if(data > org_data + len) return NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
@@ -320,7 +326,21 @@ static int ssl3_decode_server_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	{
 		if( sess->version == TLS1_3_VERSION )
 		{
-			if( !sess->get_keys_rslt_data.set || !tls_generate_keys(sess, 0) )
+			if( sess->get_keys_rslt_data.set && tls_13_generate_keys(sess, 0) )
+			{	stack->state = SS_Established;
+			}
+			else
+			{
+				return DSSL_E_TLS_GENERATE_KEYS;
+			}
+		}
+		else if( sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws && sess->get_keys_rslt_data.set )
+		{
+			if( tls_12_generate_keys(sess, 0) )
+			{
+				stack->state = SS_Established;
+			}
+			else
 			{
 				return DSSL_E_TLS_GENERATE_KEYS;
 			}
@@ -556,7 +576,11 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 
 	if( rc != DSSL_RC_OK ) return rc;
 
-	rc = ssls_generate_keys( sess );
+	if( !sess->tls_session )
+	{
+		rc = ssls_generate_keys( sess );
+	}
+
 	if( rc == DSSL_RC_OK )
 	{
 		ssls_store_session( sess );
@@ -811,7 +835,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 
 	case SSL3_MT_SERVER_HELLO:
 		stack->state = SS_SeenServerHello;
-		rc = ssl3_decode_server_hello( sess, data, recLen );
+		rc = ssl3_decode_server_hello( stack, sess, data, recLen );
 		break;
 
 	case SSL3_MT_CERTIFICATE:

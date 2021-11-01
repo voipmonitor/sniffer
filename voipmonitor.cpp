@@ -429,6 +429,7 @@ bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
+int opt_ssl_tls_12_mode = 0;
 bool opt_ssl_unlimited_reassembly_attempts = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
@@ -7138,6 +7139,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_bad_finished_digest", &opt_ssl_ignore_error_bad_finished_digest));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_tls_12_mode", &opt_ssl_tls_12_mode))
+				->addValues("dssl:0|ws:1"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_unlimited_reassembly_attempts", &opt_ssl_unlimited_reassembly_attempts));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
@@ -8197,6 +8200,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cdr_stat_only")			sverb.cdr_stat_only = 1;
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
+	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -11464,6 +11468,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_error_bad_finished_digest", NULL))) {
 		opt_ssl_ignore_error_bad_finished_digest = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_tls_12_mode", NULL))) {
+		opt_ssl_tls_12_mode = !strcasecmp(value, "ws") ? 1 : 
+				      !strcasecmp(value, "dssl") ? 0 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_unlimited_reassembly_attempts", NULL))) {
 		opt_ssl_unlimited_reassembly_attempts = yesno(value);

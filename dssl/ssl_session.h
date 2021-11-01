@@ -52,6 +52,8 @@ struct DSSL_handshake_buffer_
 #define SSF_TLS_CLIENT_EXTENDED_MASTER_SECRET	0x0100
 #define SSF_TLS_SERVER_EXTENDED_MASTER_SECRET	0x0200
 
+#define SSF_ENCRYPT_THEN_MAC			0x0400
+
 
 struct DSSL_Session_get_keys_data_item
 {	u_char 				key[SSL3_MASTER_SECRET_SIZE];
@@ -143,12 +145,15 @@ struct DSSL_Session_
 	void *get_keys_fce_call_data[2];
 	struct DSSL_Session_get_keys_data get_keys_rslt_data;
 	
-	int ignore_error_invalid_mac;
-	int ignore_error_bad_finished_digest;
+	uint8_t ignore_error_invalid_mac;
+	uint8_t ignore_error_bad_finished_digest;
 	
 	void *tls_session;
 	uint64_t tls_session_server_seq;
 	uint64_t tls_session_client_seq;
+	int tls_session_state;
+	
+	uint8_t tls_12_sessionkey_via_ws;
 	
 };
 

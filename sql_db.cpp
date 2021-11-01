@@ -4332,7 +4332,9 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 	} while(true);
 	#endif
 	if(!onlyCheck) {
-		unlink(filename);
+		if(!sverb.disable_unlink_qfile) {
+			unlink(filename);
+		}
 		//rename(filename, find_and_replace(filename, "qoq", "_qoq").c_str());
 	}
 	if(sverb.qfiles) {

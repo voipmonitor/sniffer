@@ -116,22 +116,25 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	rc = ssls_get_decrypt_buffer( stack->sess, &buf, buf_len );
 	if( rc != DSSL_RC_OK ) return rc;
 
-	if(stack->sess->version == TLS1_3_VERSION)
+	if( stack->sess->version == TLS1_3_VERSION || 
+	    (stack->sess->version == TLS1_2_VERSION && stack->sess->tls_session) )
 	{
-		if(tls_decrypt_record(stack->sess, data, len, record_type, record_version, is_from_server, buf, buf_len, &buf_len)) {
-			while(buf_len > 0 && buf[buf_len - 1] == 0) --buf_len;
-			if(buf_len > 0) --buf_len;
+		if( tls_decrypt_record(stack->sess, data, len, record_type, record_version, is_from_server, buf, buf_len, &buf_len) )
+		{
+			if( stack->sess->version == TLS1_3_VERSION )
+			{
+				while(buf_len > 0 && buf[buf_len - 1] == 0) --buf_len;
+				if(buf_len > 0) --buf_len;
+			}
 			*out = buf;
 			*out_len = buf_len;
-			return(DSSL_RC_OK);
-		} 
-		else 
+			return(DSSL_RC_TLS_OK);
+		}
+		else
 		{
-			// return(DSSL_E_TLS_DECRYPT_RECORD);
-			// need continue / next attempt for next packets
 			*out = NULL;
 			*out_len = 0;
-			return(DSSL_RC_OK);
+			return(DSSL_E_TLS_DECRYPT_RECORD);
 		}
 	}
 	
@@ -295,9 +298,26 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 	if( len < recLen ) { rc = DSSL_RC_WOULD_BLOCK; }
 
 	if( rc == DSSL_RC_OK && 
-	    (stack->cipher || (stack->sess->version == TLS1_3_VERSION && stack->sess->tls_session)))
+	    (stack->cipher || 
+	     (stack->sess->version == TLS1_3_VERSION && stack->sess->tls_session) ||
+	     (stack->sess->version == TLS1_2_VERSION && stack->sess->tls_session)) )
 	{
 		rc = ssl_decrypt_record( stack, data, recLen, &data, &recLen, &decrypt_buffer_aquired, record_type, record_version, dir != ePacketDirFromClient );
+		if( rc == DSSL_RC_TLS_OK )
+		{
+			*processed = totalRecLen + SSL3_HEADER_LEN;
+			if( record_type == SSL3_RT_APPLICATION_DATA )
+			{
+				dssl_decoder_process( &stack->dappdata, dir, data, recLen );
+			}
+			return(DSSL_RC_OK);
+		}
+		else if( rc == DSSL_E_TLS_DECRYPT_RECORD )
+		{
+			// need continue / next attempt for next packets
+			*processed = totalRecLen + SSL3_HEADER_LEN;
+			return(DSSL_RC_OK);
+		}
 	}
 
 	/* check if the record length is still within bounds (failed decryption, etc) */

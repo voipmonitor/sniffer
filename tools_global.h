@@ -662,6 +662,12 @@ public:
 			this->bufferCapacity = bufferCapacity;
 		}
 	}
+	void set_data_len(u_int32_t bufferLength) {
+		if(bufferCapacity < bufferLength) {
+			set_data_capacity(bufferLength);
+		}
+		this->bufferLength = bufferLength;
+	}
 	u_int32_t data_capacity() {
 		return(bufferCapacity);
 	}

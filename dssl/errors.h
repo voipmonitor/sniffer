@@ -93,6 +93,8 @@ DSSL_EnvSetServerInfo */
 
 #define DSSL_E_UNKNOWN_CIPHER_SUITE		(-40)
 
+#define DSSL_RC_TLS_OK				(-100)
+
 #define DSSL_E_TLS_GENERATE_KEYS		(-41)
 #define DSSL_E_TLS_DECRYPT_RECORD		(-42)
 

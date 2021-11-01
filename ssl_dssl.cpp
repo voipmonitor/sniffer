@@ -112,6 +112,8 @@ bool cSslDsslSession::initSession() {
 	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
 	extern bool opt_ssl_ignore_error_bad_finished_digest;
 	session->ignore_error_bad_finished_digest = opt_ssl_ignore_error_bad_finished_digest;
+	extern int opt_ssl_tls_12_mode;
+	session->tls_12_sessionkey_via_ws = opt_ssl_tls_12_mode == 1;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);
@@ -266,9 +268,15 @@ string cSslDsslSession::get_session_data(struct timeval ts) {
 	} else {
 		json.add("server_random", hexencode(session->server_random, sizeof(session->server_random)));
 		json.add("master_secret", hexencode(session->master_secret, sizeof(session->master_secret)));
+		if(session->tls_session) {
+			json.add("seq_server", session->tls_session_server_seq);
+			json.add("seq_client", session->tls_session_client_seq);
+			json.add("state", session->tls_session_state);
+		}
 	}
 	json.add("c_dec_version", session->c_dec.version);
 	json.add("s_dec_version", session->s_dec.version);
+	json.add("tls_ws", session->tls_session != NULL);
 	json.add("stored_at", ts.tv_sec);
 	return(json.getJson());
 }
@@ -292,7 +300,16 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 		jsonGetKey(&jsonData, "key_server_traffic_secret_0", &session->get_keys_rslt_data.server_traffic_secret_0);
 		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
 		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
-		if(!tls_generate_keys(session, true)) {
+		if(!tls_13_generate_keys(session, true)) {
+			return(false);
+		}
+	} else if(session->version == TLS1_2_VERSION && atoi(jsonData.getValue("tls_ws").c_str())) {
+		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
+		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
+		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
+		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
+		session->tls_session_state = atol(jsonData.getValue("state").c_str());
+		if(!tls_12_generate_keys(session, true)) {
 			return(false);
 		}
 	} else {
