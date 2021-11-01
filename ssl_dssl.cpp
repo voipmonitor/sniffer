@@ -112,8 +112,8 @@ bool cSslDsslSession::initSession() {
 	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
 	extern bool opt_ssl_ignore_error_bad_finished_digest;
 	session->ignore_error_bad_finished_digest = opt_ssl_ignore_error_bad_finished_digest;
-	extern int opt_ssl_tls_12_mode;
-	session->tls_12_sessionkey_via_ws = opt_ssl_tls_12_mode == 1;
+	extern int opt_ssl_tls_12_sessionkey_mode;
+	session->tls_12_sessionkey_via_ws = opt_ssl_tls_12_sessionkey_mode == 1;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);
