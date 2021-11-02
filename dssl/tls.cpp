@@ -1495,11 +1495,13 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
     }
 
     /* Check authentication tag for authenticity (replaces MAC) */
+    bool auth_check_failed = false;
 #ifdef HAVE_LIBGCRYPT_AEAD
     err = gcry_cipher_gettag(decoder->evp, auth_tag_calc, auth_tag_len);
     if (err == 0 && !memcmp(auth_tag_calc, auth_tag_wire, auth_tag_len)) {
         ssl_print_data("auth_tag(OK)", auth_tag_calc, auth_tag_len);
     } else {
+	auth_check_failed = true;
         if (err) {
             ssl_debug_printf("%s cannot obtain tag: %s\n", G_STRFUNC, gcry_strerror(err));
         } else {
@@ -1523,7 +1525,8 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
      * after successful authentication to ensure that early data is skipped when
      * CLIENT_EARLY_TRAFFIC_SECRET keys are unavailable.
      */
-    if (version == TLSV1DOT2_VERSION || version == TLSV1DOT3_VERSION) {
+    if ((version == TLSV1DOT2_VERSION || version == TLSV1DOT3_VERSION) &&
+	!auth_check_failed) {
         decoder->seq++;
     }
 

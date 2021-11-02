@@ -668,7 +668,9 @@ int ssl3_init_handshake_digests( DSSL_Session* sess )
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
 		if ( !suite )
 		{
-			if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set)
+			if( sess->get_keys_rslt_data.set && 
+			    (sess->version == TLS1_3_VERSION || 
+			    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
 			{
 				return DSSL_RC_OK;
 			}
@@ -713,7 +715,9 @@ int ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t le
 			suite = DSSL_GetSSL3CipherSuite( sess->cipher_suite );
 			if( !suite ) 
 			{
-				if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set)
+				if( sess->get_keys_rslt_data.set && 
+				    (sess->version == TLS1_3_VERSION || 
+				    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
 				{
 					return DSSL_RC_OK;
 				}
@@ -839,7 +843,9 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		break;
 
 	case SSL3_MT_CERTIFICATE:
-		if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set )
+		if( sess->get_keys_rslt_data.set && 
+		    (sess->version == TLS1_3_VERSION || 
+		    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		}
@@ -858,7 +864,9 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		break;
 
 	case SSL3_MT_CLIENT_KEY_EXCHANGE:
-		if( sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set )
+		if( sess->get_keys_rslt_data.set && 
+		    (sess->version == TLS1_3_VERSION || 
+		    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		} 
@@ -882,7 +890,10 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	
 	case SSL3_MT_SERVER_KEY_EXCHANGE:
 		/*at this point it is clear that the session is not decryptable due to ephemeral keys usage.*/
-		if( sess->master_secret[0] || (sess->version == TLS1_3_VERSION && sess->get_keys_rslt_data.set) ) 
+		if( sess->master_secret[0] || 
+		    (sess->get_keys_rslt_data.set && 
+		     (sess->version == TLS1_3_VERSION || 
+		     (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws))) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		}
@@ -977,4 +988,30 @@ void ssls_handshake_done( DSSL_Session* sess )
 	{
 		ssls_handshake_data_free(sess);
 	}
+}
+
+u_int8_t ssl3_handshake_record_is_ok_plain( u_char* data, uint32_t len )
+{
+	if( len < 4 )
+	{
+		return 0;
+	}
+ 
+	uint32_t recLen = 0;
+	u_char hs_type = 0;
+	recLen = (((int32_t)data[1]) << 16) | (((int32_t)data[2]) << 8) | data[3];
+	hs_type = data[0];
+
+	if(!recLen && !hs_type)
+	{
+		return 0;
+	}
+	
+	len -= SSL3_HANDSHAKE_HEADER_LEN;
+	if( len < recLen )
+	{
+		return 0;
+	}
+	
+	return 1;
 }

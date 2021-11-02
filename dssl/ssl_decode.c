@@ -116,9 +116,18 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	rc = ssls_get_decrypt_buffer( stack->sess, &buf, buf_len );
 	if( rc != DSSL_RC_OK ) return rc;
 
-	if( stack->sess->version == TLS1_3_VERSION || 
-	    (stack->sess->version == TLS1_2_VERSION && stack->sess->tls_session) )
+	if( stack->sess->tls_session && (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION) )
 	{
+		if( record_type == SSL3_RT_HANDSHAKE )
+		{
+			extern u_int8_t ssl3_handshake_record_is_ok_plain( u_char* data, uint32_t len );
+			if( ssl3_handshake_record_is_ok_plain( data, len ) )
+			{
+				*out = NULL;
+				*out_len = 0;
+				return(DSSL_RC_TLS_OK);
+			}
+		} 
 		if( tls_decrypt_record(stack->sess, data, len, record_type, record_version, is_from_server, buf, buf_len, &buf_len) )
 		{
 			if( stack->sess->version == TLS1_3_VERSION )
@@ -299,14 +308,13 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 
 	if( rc == DSSL_RC_OK && 
 	    (stack->cipher || 
-	     (stack->sess->version == TLS1_3_VERSION && stack->sess->tls_session) ||
-	     (stack->sess->version == TLS1_2_VERSION && stack->sess->tls_session)) )
+	     (stack->sess->tls_session && (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION))) )
 	{
 		rc = ssl_decrypt_record( stack, data, recLen, &data, &recLen, &decrypt_buffer_aquired, record_type, record_version, dir != ePacketDirFromClient );
 		if( rc == DSSL_RC_TLS_OK )
 		{
 			*processed = totalRecLen + SSL3_HEADER_LEN;
-			if( record_type == SSL3_RT_APPLICATION_DATA )
+			if( data && record_type == SSL3_RT_APPLICATION_DATA )
 			{
 				dssl_decoder_process( &stack->dappdata, dir, data, recLen );
 			}
