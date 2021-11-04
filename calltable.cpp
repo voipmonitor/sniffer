@@ -674,10 +674,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	force_terminate = 0;
 	pcap_drop = 0;
 	
-	onInvite = false;
-	onCall_2XX = false;
-	onCall_18X = false;
-	onHangup = false;
+	onInvite_counter = 0;
+	onCall_2XX_counter = 0;
+	onCall_18X_counter = 0;
+	onHangup_counter = 0;
 	updateDstnumOnAnswer = false;
 	updateDstnumFromMessage = false;
 	
@@ -3522,24 +3522,14 @@ Call::convertRawToWav() {
 	// Here we put our CURL hook
 	// And use it only if cacheing is turned off
 	if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] == '\0') {
-		string url;
-		url.append(opt_curl_hook_wav);
-		string postData;
-		postData.append("{ \"voipmonitor\": true");
-		postData.append(", \"stereo\":");
-		postData.append(useWavMix ? "false" : "true");
-		postData.append(", \"wav_file_name_with_path\": \"");
-		postData.append(out);
-		postData.append("\", \"call_id\": \"");
-		postData.append(this->call_id);
-		postData.append("\" }\n");
-		string getParams; // Not used actually
 		SimpleBuffer responseBuffer;
-		string error;
-		s_get_url_response_params curl_params;
-
-		if (!post_url_response((url + getParams).c_str(), &responseBuffer, &postData, &error, &curl_params)) {
-			if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), error.c_str());
+		s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_json);
+		curl_params.addParam("voipmonitor", "true");
+		curl_params.addParam("stereo", opt_saveaudio_stereo ? "false" : "true");
+		curl_params.addParam("wav_file_name_with_path", out);
+		curl_params.addParam("call_id", this->call_id.c_str());
+		if (!get_curl_response(opt_curl_hook_wav, &responseBuffer, &curl_params)) {
+			if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), curl_params.error.c_str());
 		} else {
 			if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
 		}

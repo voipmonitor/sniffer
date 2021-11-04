@@ -635,22 +635,19 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 	return(rslt);
 }
 
-size_t _get_url_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
+size_t _get_curl_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
 	response->add(ptr, size * nmemb);
 	return size * nmemb;
 }
 
-bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error, s_get_url_response_params *params) {
-	if(error) {
-		*error = "";
-	}
+bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_response_params *params) {
 	bool rslt = false;
 	CURL *curl = curl_easy_init();
 	if(curl) {
 		struct curl_slist *headers = NULL;
 		char errorBuffer[1024];
 		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_curl_response_writer_function);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
@@ -661,26 +658,83 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		if(params && params->timeout_sec) {
 			curl_easy_setopt(curl, CURLOPT_TIMEOUT, params->timeout_sec);
 		}
-		char *urlPathSeparator = (char*)strchr(url + 8, '/');
-		string path = urlPathSeparator ? urlPathSeparator : "/";
-		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
-		string hostProtPrefix;
-		size_t posEndHostProtPrefix = host.rfind('/');
-		if(posEndHostProtPrefix != string::npos) {
-			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
-			host = host.substr(posEndHostProtPrefix + 1);
+		string url_prot_prefix;
+		string url_host;
+		string url_path;
+		string url_params;
+		string _url = url;
+		size_t pos_url_host = 0;
+		if(!strncasecmp("http:", _url.c_str(), 5)) {
+			pos_url_host = 5;
+		} else if(!strncasecmp("https:", _url.c_str(), 6)) {
+			pos_url_host = 6;
 		}
-		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
-		if(!hostIP.empty()) {
-			headers = curl_slist_append(headers, ("Host: " + host).c_str());
-			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+		if(pos_url_host) {
+			while(_url[pos_url_host] == '/') {
+				++pos_url_host;
+			}
+			url_prot_prefix = _url.substr(0, pos_url_host);
+			_url = _url.substr(pos_url_host);
+		}
+		size_t posUrlParams = _url.find('?');
+		if(posUrlParams != string::npos) {
+			url_params = _url.substr(posUrlParams);
+			_url = _url.substr(0, posUrlParams);
+		}
+		size_t posUrlPath = _url.find('/', pos_url_host ? 0 : 8);
+		if(posUrlPath != string::npos) {
+			url_path = _url.substr(posUrlPath);
+			_url = _url.substr(0, posUrlPath);
 		} else {
-			curl_easy_setopt(curl, CURLOPT_URL, url);
+			url_path = '/';
+		}
+		if(!pos_url_host) {
+			pos_url_host = _url.rfind('/');
+			if(pos_url_host != string::npos) {
+				++pos_url_host;
+				url_prot_prefix = _url.substr(0, pos_url_host);
+				_url = _url.substr(pos_url_host);
+			}
+		}
+		url_host = _url;
+		bool build_url_params = false;
+		if(params && params->request_type == s_get_curl_response_params::_rt_get && 
+		   url_params.empty() && (params->params_array->size() || params->params_string)) {
+			if(params->params_array->size()) {
+				for(unsigned i = 0; i < params->params_array->size(); i++) {
+					url_params.append(i == 0 ? "?" : "&");
+					url_params.append((*params->params_array)[i][0]);
+					url_params.append("=");
+					url_params.append(params->suppress_parameters_encoding ? 
+							   (*params->params_array)[i][1] : 
+							   url_encode((*params->params_array)[i][1]));
+				}
+			} else {
+				url_params = "?" + *params->params_string;
+			}
+			build_url_params = true;
+		}
+		string url_host_IP = cResolver::resolve_str(url_host, 0, cResolver::_typeResolve_system_host); 
+		string url_new;
+		if(!url_host_IP.empty()) {
+			headers = curl_slist_append(headers, ("Host: " + url_host).c_str());
+			url_new = url_prot_prefix + url_host_IP + url_path + url_params;
+			curl_easy_setopt(curl, CURLOPT_URL, url_new.c_str());
+		} else {
+			if(build_url_params) {
+				url_new = url + url_params;
+				curl_easy_setopt(curl, CURLOPT_URL, url_new.c_str());
+			} else {
+				curl_easy_setopt(curl, CURLOPT_URL, url);
+			}
 		}
 		if(params && params->headers) {
 			for(unsigned i = 0; i < params->headers->size(); i++) {
 				headers = curl_slist_append(headers, ((*params->headers)[i][0] + ": " + (*params->headers)[i][1]).c_str());
 			}
+		}
+		if(params && params->request_type == s_get_curl_response_params::_rt_json) {
+			headers = curl_slist_append(headers, "Content-Type: application/json");
 		}
 		if(headers) {
 			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -697,14 +751,34 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 					  (params->auth_password ? *params->auth_password : "")).c_str());
 		}
 		string postFields;
-		if(postData) {
-			for(size_t i = 0; i < postData->size(); i++) {
-				if(!postFields.empty()) {
-					postFields.append("&");
+		if(params && 
+		   (params->request_type == s_get_curl_response_params::_rt_post ||
+		    params->request_type == s_get_curl_response_params::_rt_json) &&
+		   (params->params_array->size() || params->params_string)) {
+			if(params->params_array) {
+				if(params->request_type == s_get_curl_response_params::_rt_post) {
+					for(size_t i = 0; i < params->params_array->size(); i++) {
+						if(!postFields.empty()) {
+							postFields.append("&");
+						}
+						postFields.append((*params->params_array)[i][0]);
+						postFields.append("=");
+						postFields.append(params->suppress_parameters_encoding ? 
+								   (*params->params_array)[i][1] : 
+								   url_encode((*params->params_array)[i][1]));
+					}
+				} else {
+					JsonExport jsonExport;
+					for(size_t i = 0; i < params->params_array->size(); i++) {
+						jsonExport.add((*params->params_array)[i][0].c_str(),
+							       params->suppress_parameters_encoding ? 
+								(*params->params_array)[i][1] : 
+								url_encode((*params->params_array)[i][1]));
+					}
+					postFields = jsonExport.getJson();
 				}
-				postFields.append((*postData)[i][0]);
-				postFields.append("=");
-				postFields.append(params && params->suppress_parameters_encoding ? (*postData)[i][1] : url_encode((*postData)[i][1]));
+			} else if(params->params_string) {
+				postFields = *params->params_string;
 			}
 			if(!postFields.empty()) {
 				curl_easy_setopt(curl, CURLOPT_POST, 1);
@@ -714,8 +788,8 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		if(curl_easy_perform(curl) == CURLE_OK) {
 			rslt = true;
 		} else {
-			if(error) {
-				*error = errorBuffer;
+			if(params) {
+				params->error = errorBuffer;
 			}
 		}
 		if(headers) {
@@ -723,88 +797,8 @@ bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *
 		}
 		curl_easy_cleanup(curl);
 	} else {
-		if(error) {
-			*error = "initialize curl failed";
-		}
-	}
-	return(rslt);
-}
-
-bool post_url_response(const char *url, SimpleBuffer *response, string *postData, string *error, s_get_url_response_params *params) {
-	if(error) {
-		*error = "";
-	}
-	bool rslt = false;
-	CURL *curl = curl_easy_init();
-	if(curl) {
-		struct curl_slist *headers = NULL;
-		char errorBuffer[1024];
-		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
-		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
-		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
-		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
-		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
-		if(params && params->timeout_sec) {
-			curl_easy_setopt(curl, CURLOPT_TIMEOUT, params->timeout_sec);
-		}
-		char *urlPathSeparator = (char*)strchr(url + 8, '/');
-		string path = urlPathSeparator ? urlPathSeparator : "/";
-		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
-		string hostProtPrefix;
-		size_t posEndHostProtPrefix = host.rfind('/');
-		if(posEndHostProtPrefix != string::npos) {
-			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
-			host = host.substr(posEndHostProtPrefix + 1);
-		}
-		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
-		if(!hostIP.empty()) {
-			headers = curl_slist_append(headers, ("Host: " + host).c_str());
-			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
-		} else {
-			curl_easy_setopt(curl, CURLOPT_URL, url);
-		}
-		if(params && params->headers) {
-			for(unsigned i = 0; i < params->headers->size(); i++) {
-				headers = curl_slist_append(headers, ((*params->headers)[i][0] + ": " + (*params->headers)[i][1]).c_str());
-			}
-		}
-		if(headers) {
-			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-		}
-		extern char opt_curlproxy[256];
-		if(opt_curlproxy[0]) {
-			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
-		}
-		if(params && (params->auth_user || params->auth_password)) {
-			curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
-			curl_easy_setopt(curl, CURLOPT_USERPWD,
-					 ((params->auth_user ? *params->auth_user : "") +
-					  ":" +
-					  (params->auth_password ? *params->auth_password : "")).c_str());
-		}
-		string postFields;
-		if(postData) {
-			curl_easy_setopt(curl, CURLOPT_POST, 1);
-			curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData->c_str());
-		}
-		if(curl_easy_perform(curl) == CURLE_OK) {
-			rslt = true;
-		} else {
-			if(error) {
-				*error = errorBuffer;
-			}
-		}
-		if(headers) {
-			curl_slist_free_all(headers);
-		}
-		curl_easy_cleanup(curl);
-	} else {
-		if(error) {
-			*error = "initialize curl failed";
+		if(params) {
+			params->error = "initialize curl failed";
 		}
 	}
 	return(rslt);

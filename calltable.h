@@ -1113,10 +1113,11 @@ public:
 	volatile int _proxies_lock;
 	list<vmIP> proxies;
 	
-	bool onInvite;
-	bool onCall_2XX;
-	bool onCall_18X;
-	bool onHangup;
+	u_int16_t onInvite_counter;
+	u_int16_t onCall_2XX_counter;
+	u_int16_t onCall_18X_counter;
+	u_int16_t onHangup_counter;
+	
 	bool updateDstnumOnAnswer;
 	bool updateDstnumFromMessage;
 	

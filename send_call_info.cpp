@@ -20,6 +20,7 @@ static void sendCallInfo_unlock() {
 SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
 	this->dbId = dbId;
 	infoOn = sci_18X | sci_200;
+	infoOnMatch = iom_first;
 	requestType = rt_get;
 	suppressParametersEncoding = false;
 	calledNumberSrc = cs_default;
@@ -113,8 +114,10 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 			 dbRow["info_on"] == "INVITE" ? sci_invite : 
 			 0;
 	}
+	infoOnMatch = dbRow["info_on_match"] == "all" ? iom_all : iom_first;
 	requestUrl = dbRow["request_url"];
-	requestType = dbRow["request_type"] == "get" ? rt_get : rt_post;
+	requestType = dbRow["request_type"] == "post" ? rt_post : 
+		      dbRow["request_type"] == "json" ? rt_json : rt_get;
 	suppressParametersEncoding = atoi(dbRow["suppress_parameters_encoding"].c_str());
 	calledNumberSrc = dbRow["called_number_src"] == "to" ? cs_to :
 			  dbRow["called_number_src"] == "uri" ? cs_uri : cs_default;
@@ -179,64 +182,58 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 
 void SendCallInfoItem::evSci(sSciInfo *sci) {
 	if((sci->typeSci & infoOn) &&
+	   (infoOnMatch == iom_all || sci->counter == 1) &&
 	   phoneNumberCallerFilter.checkNumber(sci->caller_number.c_str()) &&
 	   phoneNumberCalledFilter.checkNumber(called_number(sci).c_str()) &&
 	   ipCallerFilter.checkIP(sci->caller_ip) &&
 	   ipCalledFilter.checkIP(sci->called_ip) &&
 	   domainCallerFilter.check(sci->caller_domain.c_str()) &&
 	   domainCalledFilter.check(called_domain(sci).c_str())) {
-		vector<dstring> postData;
-		postData.push_back(dstring("rule", name));
-		postData.push_back(dstring("type", sci->typeSci == sci_18X ? "18X" : 
-						   sci->typeSci == sci_200 ? "200" :
-						   sci->typeSci == sci_invite ? "INVITE" : 
-						   sci->typeSci == sci_hangup ? "HANGUP" : 
-						   ""));
-		postData.push_back(dstring("caller", sci->caller_number));
-		postData.push_back(dstring("called", called_number(sci)));
-		postData.push_back(dstring("callername", sci->callername));
-		postData.push_back(dstring("caller_domain", sci->caller_domain));
-		postData.push_back(dstring("called_domain", called_domain(sci)));
-		postData.push_back(dstring("ip_src", sci->caller_ip.getString()));
-		postData.push_back(dstring("ip_dst", sci->called_ip.getString()));
-		postData.push_back(dstring("callid", sci->callid));
+		vector<dstring> requestData;
+		requestData.push_back(dstring("rule", name));
+		requestData.push_back(dstring("type", sci->typeSci == sci_18X ? "18X" : 
+						      sci->typeSci == sci_200 ? "200" :
+						      sci->typeSci == sci_invite ? "INVITE" : 
+						      sci->typeSci == sci_hangup ? "HANGUP" : 
+						      ""));
+		requestData.push_back(dstring("caller", sci->caller_number));
+		requestData.push_back(dstring("called", called_number(sci)));
+		requestData.push_back(dstring("callername", sci->callername));
+		requestData.push_back(dstring("caller_domain", sci->caller_domain));
+		requestData.push_back(dstring("called_domain", called_domain(sci)));
+		requestData.push_back(dstring("ip_src", sci->caller_ip.getString()));
+		requestData.push_back(dstring("ip_dst", sci->called_ip.getString()));
+		requestData.push_back(dstring("callid", sci->callid));
+		requestData.push_back(dstring("time", sqlDateTimeString(sci->at / 1000000ull)));
 		if(fields.size()) {
 			for(unsigned i = 0; i < fields.size(); i++) {
-				postData.push_back(fields[i]);
+				requestData.push_back(fields[i]);
 			}
 		}
-		if(jsonOutput) {
+		if(jsonOutput && requestType != rt_json) {
 			JsonExport jsonExport;
-			for(vector<dstring>::iterator it = postData.begin(); it != postData.end(); it++) {
+			for(vector<dstring>::iterator it = requestData.begin(); it != requestData.end(); it++) {
 				jsonExport.add((*it)[0].c_str(), (*it)[1]);
 			}
-			postData.clear();
-			postData.push_back(dstring("json", jsonExport.getJson()));
-		}
-		string getParams;
-		if(requestType == rt_get && postData.size()) {
-			for(vector<dstring>::iterator it = postData.begin(); it != postData.end(); it++) {
-				getParams.append(getParams.empty() ? "?" : "&");
-				getParams.append((*it)[0]);
-				getParams.append("=");
-				getParams.append(suppressParametersEncoding ? (*it)[1] : url_encode((*it)[1]));
-			}
+			requestData.clear();
+			requestData.push_back(dstring("json", jsonExport.getJson()));
 		}
 		SimpleBuffer responseBuffer;
 		string error;
-		s_get_url_response_params curl_params;
+		s_get_curl_response_params curl_params(requestType == rt_post ? s_get_curl_response_params::_rt_post :
+						       requestType == rt_json ? s_get_curl_response_params::_rt_json :
+						       s_get_curl_response_params::_rt_get);
 		if(!authUser.empty() || !authPassword.empty()) {
 			curl_params.auth_user = &authUser;
 			curl_params.auth_password = &authPassword;
 		}
 		if(headers.size()) {
-			curl_params.headers = &headers;
+			curl_params.setHeaders(&headers);
 		}
-		if(suppressParametersEncoding) {
-			curl_params.suppress_parameters_encoding = true;
-		}
-		get_url_response((requestUrl + getParams).c_str(), &responseBuffer, requestType == rt_get ? NULL : &postData, &error, &curl_params);
-		if(error.empty()) {
+		curl_params.setParams(&requestData);
+		curl_params.suppress_parameters_encoding = suppressParametersEncoding;
+		get_curl_response(requestUrl.c_str(), &responseBuffer, &curl_params);
+		if(curl_params.error.empty()) {
 			if(sverb.send_call_info) {
 				cout << "send call info response: " << (char*)responseBuffer << endl;
 			}
@@ -300,9 +297,9 @@ void SendCallInfo::stopPopCallInfoThread(bool wait) {
 	}
 }
 
-void SendCallInfo::evCall(Call *call, eTypeSci typeSci, u_int64_t at) {
+void SendCallInfo::evCall(Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter) {
 	sSciInfo sci;
-	this->getSciFromCall(&sci, call, typeSci, at);
+	this->getSciFromCall(&sci, call, typeSci, at, counter);
 	sciQueue.push(sci);
 }
 
@@ -336,7 +333,8 @@ void SendCallInfo::popCallInfoThread() {
 }
 
 void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call, 
-				  eTypeSci typeSci, u_int64_t at) {
+				  eTypeSci typeSci, u_int64_t at,
+				  u_int16_t counter) {
 	sci->callid = call->call_id;
 	sci->caller_number = call->caller;
 	sci->called_number_to = call->called_to;
@@ -351,6 +349,7 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 	sci->called_ip = call->getSipcalledip();
 	sci->typeSci = typeSci;
 	sci->at = at;
+	sci->counter = counter;
 }
 
 
@@ -393,10 +392,10 @@ void refreshSendCallInfo() {
 	}
 }
 
-void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv) {
+void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter) {
 	if(sendCallInfo && _sendCallInfo_ready) {
 		sendCallInfo_lock();
-		sendCallInfo->evCall(call, typeSci, getTimeUS(tv));
+		sendCallInfo->evCall(call, typeSci, getTimeUS(tv), counter);
 		sendCallInfo_unlock();
 	}
 }

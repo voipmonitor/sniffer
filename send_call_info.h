@@ -34,13 +34,19 @@ struct sSciInfo {
 	vmIP caller_ip;
 	vmIP called_ip;
 	u_int64_t at;
+	u_int16_t counter;
 };
 
 class SendCallInfoItem {
 public:
+	enum eInfoOnMatch {
+		iom_first,
+		iom_all
+	};
 	enum eRequestType {
 		rt_get,
-		rt_post
+		rt_post,
+		rt_json
 	};
 	enum eCalledSrc {
 		cs_default,
@@ -64,6 +70,7 @@ private:
 	SqlDb_row dbRow;
 	string name;
 	u_int8_t infoOn;
+	eInfoOnMatch infoOnMatch;
 	string requestUrl;
 	eRequestType requestType;
 	bool suppressParametersEncoding;
@@ -90,12 +97,13 @@ public:
 	void clear(bool lock = true);
 	void refresh();
 	void stopPopCallInfoThread(bool wait = false);
-	void evCall(class Call *call, eTypeSci typeSci, u_int64_t at);
+	void evCall(class Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
 	void getSciFromCall(sSciInfo *sciInfo, Call *call, 
-			    eTypeSci typeSci, u_int64_t at);
+			    eTypeSci typeSci, u_int64_t at,
+			    u_int16_t counter);
 	void lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
@@ -120,7 +128,7 @@ inline bool isSendCallInfoReady() {
 	return(_sendCallInfo_ready);
 }
 void refreshSendCallInfo();
-void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv);
+void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter);
 bool isExistsSendCallInfo(SqlDb *sqlDb = NULL);
 
 

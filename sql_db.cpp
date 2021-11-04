@@ -551,15 +551,14 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 			sleep(min(1 + pass * 2,  60u));
 			syslog(LOG_INFO, "next attempt %u - query: %s", attempt, prepareQueryForPrintf(preparedQuery).substr(0, 100).c_str());
 		}
-		vector<dstring> postData;
-		postData.push_back(dstring("query", preparedQuery.c_str()));
-		postData.push_back(dstring("token", cloud_token));
 		SimpleBuffer responseBuffer;
-		string error;
-		get_url_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
-				 &responseBuffer, &postData, &error);
-		if(!error.empty()) {
-			setLastError(0, error.c_str(), true);
+		s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_post);
+		curl_params.addParam("query", preparedQuery.c_str());
+		curl_params.addParam("token", cloud_token.c_str());
+		get_curl_response(cloud_redirect.empty() ? cloud_host.c_str() : cloud_redirect.c_str(),
+				  &responseBuffer, &curl_params);
+		if(!curl_params.error.empty()) {
+			setLastError(0, curl_params.error.c_str(), true);
 			continue;
 		}
 		if(responseBuffer.empty()) {

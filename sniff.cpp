@@ -3766,10 +3766,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
-		if(!call->onInvite) {
-			sendCallInfoEvCall(call, sci_invite, packetS->getTimeval());
-			call->onInvite = true;
-		}
+		++call->onInvite_counter;
+		sendCallInfoEvCall(call, sci_invite, packetS->getTimeval(), call->onInvite_counter);
 	} else if(packetS->sip_method == MESSAGE) {
 		call->destroy_call_at = packetS->getTime_s() + 60;
 		call->seenmessageok = false;
@@ -3863,10 +3861,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->whohanged = 1;
 			}
 		}
-		if(!call->onHangup) {
-			sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval());
-			call->onHangup = true;
-		}
+		++call->onHangup_counter;
+		sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval(), call->onHangup_counter);
 	} else if(packetS->sip_method == CANCEL) {
 		++count_sip_cancel;
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
@@ -4003,7 +3999,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					}
 					if(verbosity > 2)
 						syslog(LOG_NOTICE, "Call answered\n");
-					if(!call->onCall_2XX) {
+					++call->onCall_2XX_counter;
+					if(call->onCall_2XX_counter == 1) {
 						if(call->typeIs(INVITE)) {
 							process_packet__parse_custom_headers(call, packetS);
 							ClientThreads.onCall(call->call_id.c_str(),
@@ -4011,9 +4008,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 						}
-						sendCallInfoEvCall(call, sci_200, packetS->getTimeval());
-						call->onCall_2XX = true;
 					}
+					sendCallInfoEvCall(call, sci_200, packetS->getTimeval(), call->onCall_2XX_counter);
 					if(opt_sdp_check_direction_ext) {
 						for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
 							if(packetS->saddr_() == riter->daddr && packetS->daddr_() == riter->saddr) {
@@ -4054,7 +4050,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(!call->progress_time_us) {
 				call->progress_time_us = packetS->getTimeUS();
 			}
-			if(!call->onCall_18X) {
+			++call->onCall_18X_counter;
+			if(call->onCall_18X_counter == 1) {
 				if(call->typeIs(INVITE)) {
 					process_packet__parse_custom_headers(call, packetS);
 					ClientThreads.onCall(call->call_id.c_str(),
@@ -4062,9 +4059,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 				}
-				sendCallInfoEvCall(call, sci_18X, packetS->getTimeval());
-				call->onCall_18X = true;
 			}
+			sendCallInfoEvCall(call, sci_18X, packetS->getTimeval(), call->onCall_18X_counter);
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;

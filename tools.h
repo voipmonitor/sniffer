@@ -348,24 +348,78 @@ bool cloud_now_timeout();
 //void cloud_activecheck_start();
 */
 
-struct s_get_url_response_params {
+struct s_get_curl_response_params {
+	enum eRequestType {
+		_rt_get,
+		_rt_post,
+		_rt_json
+	};
+	eRequestType request_type;
 	unsigned timeout_sec;
 	string *auth_user;
 	string *auth_password;
 	vector<dstring> *headers;
+	vector<dstring> *params_array;
+	string *params_string;
 	bool suppress_parameters_encoding;
-	s_get_url_response_params() {
+	string error;
+	s_get_curl_response_params(eRequestType request_type = _rt_get) {
+		this->request_type = request_type;
 		timeout_sec = 0;
 		auth_user = NULL;
 		auth_password = NULL;
 		headers = NULL;
-		suppress_parameters_encoding = false;
+		params_array = NULL;
+		params_string = NULL;
+		suppress_parameters_encoding = request_type == _rt_json;
+	}
+	~s_get_curl_response_params() {
+		if(headers) {
+			delete headers;
+		}
+		if(params_array) {
+			delete params_array;
+		}
+		if(params_string) {
+			delete params_string;
+		}
+	}
+	void addHeader(const char *header, const char *content) {
+		if(!headers) {
+			headers = new FILE_LINE(0) vector<dstring>;
+		}
+		headers->push_back(dstring(header, content));
+	}
+	void setHeaders(vector<dstring> *headers_set) {
+		if(!headers) {
+			headers = new FILE_LINE(0) vector<dstring>;
+		}
+		*headers = *headers_set;
+	}
+	void addParam(const char *name, const char *value) {
+		if(!params_array) {
+			params_array = new FILE_LINE(0) vector<dstring>;
+		}
+		params_array->push_back(dstring(name, value));
+	}
+	void setParams(vector<dstring> *params_set) {
+		if(!params_array) {
+			params_array = new FILE_LINE(0) vector<dstring>;
+		}
+		*params_array = *params_set;
+	}
+	void setParams(const char *params) {
+		if(!params_string) {
+			params_string = new FILE_LINE(0) string;
+		}
+		*params_string = params;
 	}
 };
-bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error = NULL,
-		      s_get_url_response_params *params = NULL);
+bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_response_params *params = NULL);
+/*
 bool post_url_response(const char *url, SimpleBuffer *response, string *postData, string *error = NULL,
 		      s_get_url_response_params *params = NULL);
+*/
 long long GetFileSize(std::string filename);
 time_t GetFileCreateTime(std::string filename);
 long long GetFileSizeDU(std::string filename, eTypeSpoolFile typeSpoolFile, int spool_index, int dirItemSize = -1);
