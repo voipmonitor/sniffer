@@ -361,6 +361,7 @@ struct ip_port_call_info {
 	list<srtp_crypto_config> *srtp_crypto_config_list;
 	string *srtp_fingerprint;
 	string to;
+	string to_uri;
 	string branch;
 	vmIP sip_src_addr;
 	s_sdp_flags sdp_flags;
@@ -884,15 +885,59 @@ public:
 	char called_to[256];		//!< To: xxx
 	char called_uri[256];
 	char called_final[256];
-	inline char *called() {
+	inline const char *get_called() {
 		extern int opt_destination_number_mode;
-		return(called_final[0] ? called_final :
-		       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
+		if(is_multiple_to_branch()) {
+			if(called_final[0]) {
+				if(to_is_canceled(called_final)) {
+					const char *rslt = opt_destination_number_mode == 2 ? get_to_uri_not_canceled() : get_to_not_canceled();
+					if(rslt && rslt[0]) {
+						return(rslt);
+					}
+				}
+				return(called_final);
+			} else {
+				if(opt_destination_number_mode == 2) {
+					const char *rslt = get_called_uri();
+					if(rslt && rslt[0]) {
+						return(rslt);
+					}
+				}
+				return(get_called_to());
+			}
+		} else {
+			return(called_final[0] ? called_final :
+			       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
+		}
+	}
+	inline const char *get_called_to() {
+		if(is_multiple_to_branch()) {
+			if(to_is_canceled(called_to)) {
+				const char *rslt = get_to_not_canceled();
+				if(rslt && rslt[0]) {
+					return(rslt);
+				}
+			}
+		}
+		return(called_to);
+	}
+	inline const char *get_called_uri() {
+		if(is_multiple_to_branch()) {
+			if(to_is_canceled(called_to)) {
+				const char *rslt = get_to_uri_not_canceled();
+				if(rslt && rslt[0]) {
+					return(rslt);
+				}
+			}
+			return(get_called_to());
+		} else {
+			return(called_uri[0] ? called_uri : called_to);
+		}
 	}
 	map<string, dstring> called_invite_branch_map;
 	char called_domain_to[256];	//!< To: xxx
 	char called_domain_uri[256];
-	inline char *called_domain() {
+	inline char *get_called_domain() {
 		extern int opt_destination_number_mode;
 		return(called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
 	}
@@ -1191,7 +1236,10 @@ public:
 	bool is_multiple_to_branch();
 	bool all_invite_is_multibranch(vmIP saddr);
 	bool to_is_canceled(char *to);
-	string get_to_not_canceled();
+	const char *get_to_not_canceled(bool uri = false);
+	const char *get_to_uri_not_canceled() {
+		return(get_to_not_canceled(true));
+	}
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -1234,7 +1282,7 @@ public:
 	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			char *sessid, char *sdp_label, 
 			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-			char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
 				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
@@ -1243,7 +1291,7 @@ public:
 	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
-			      char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			      char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
 	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
 	

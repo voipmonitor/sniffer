@@ -251,8 +251,8 @@ Register::Register(Call *call) {
 	sipcallerport = call->sipcallerport[0];
 	sipcalledport = call->sipcalledport[0];
 	char *tmp_str;
-	to_num = REG_NEW_STR(call->called());
-	to_domain = REG_NEW_STR(call->called_domain());
+	to_num = REG_NEW_STR(call->get_called());
+	to_domain = REG_NEW_STR(call->get_called_domain());
 	contact_num = REG_NEW_STR(call->contact_num);
 	contact_domain = REG_NEW_STR(call->contact_domain);
 	digest_username = REG_NEW_STR(call->digest_username);

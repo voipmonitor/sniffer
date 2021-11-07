@@ -193,9 +193,9 @@ public:
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
-	int _add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst);
+	int _add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst);
         static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
-	static int add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst);
+	static int add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -239,9 +239,9 @@ public:
 	DOMAINfilter();
 	~DOMAINfilter();
 	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst);
+	int _add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst);
+	static int add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);

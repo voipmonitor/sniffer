@@ -7,6 +7,7 @@ extern int opt_nocdr;
 SendCallInfo *sendCallInfo = NULL;
 volatile int _sendCallInfo_ready = 0;
 volatile int _sendCallInfo_lock = 0;
+volatile int _sendCallInfo_useAdditionalPacketInformation = 0;
 
 
 static void sendCallInfo_lock() {
@@ -25,6 +26,7 @@ SendCallInfoItem::SendCallInfoItem(unsigned int dbId) {
 	suppressParametersEncoding = false;
 	calledNumberSrc = cs_default;
 	calledDomainSrc = cs_default;
+	additionalPacketInformation = false;
 }
 
 bool SendCallInfoItem::load(SqlDb *sqlDb) {
@@ -33,6 +35,7 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	_sendCallInfo_useAdditionalPacketInformation = 0;
 	char dbIdStr[10];
 	snprintf(dbIdStr, sizeof(dbIdStr), "%u", dbId);
 	sqlDb->query(string(
@@ -123,6 +126,10 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 			  dbRow["called_number_src"] == "uri" ? cs_uri : cs_default;
 	calledDomainSrc = dbRow["called_domain_src"] == "to" ? cs_to :
 			  dbRow["called_domain_src"] == "uri" ? cs_uri : cs_default;
+	additionalPacketInformation = atoi(dbRow["additional_packet_information"].c_str());
+	if(additionalPacketInformation) {
+		_sendCallInfo_useAdditionalPacketInformation = 1;
+	}
 	jsonOutput = atoi(dbRow["json_output"].c_str());
 	authUser = dbRow["auth_user"];
 	authPassword = dbRow["auth_password"];
@@ -205,6 +212,19 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 		requestData.push_back(dstring("ip_dst", sci->called_ip.getString()));
 		requestData.push_back(dstring("callid", sci->callid));
 		requestData.push_back(dstring("time", sqlDateTimeString(sci->at / 1000000ull)));
+		if(additionalPacketInformation && sci->packet_info_set) {
+			requestData.push_back(dstring("packet_caller_number", sci->packet_info.caller_number));
+			requestData.push_back(dstring("packet_called_number_to", sci->packet_info.called_number_to));
+			requestData.push_back(dstring("packet_called_number_uri", sci->packet_info.called_number_uri));
+			requestData.push_back(dstring("packet_callername", sci->packet_info.callername));
+			requestData.push_back(dstring("packet_caller_domain", sci->packet_info.caller_domain));
+			requestData.push_back(dstring("packet_called_domain_to", sci->packet_info.called_domain_to));
+			requestData.push_back(dstring("packet_called_domain_uri", sci->packet_info.called_domain_uri));
+			requestData.push_back(dstring("packet_src_ip", sci->packet_info.src_ip.getString()));
+			requestData.push_back(dstring("packet_dst_ip", sci->packet_info.dst_ip.getString()));
+			requestData.push_back(dstring("packet_src_port", sci->packet_info.src_port.getString()));
+			requestData.push_back(dstring("packet_dst_port", sci->packet_info.dst_port.getString()));
+		}
 		if(fields.size()) {
 			for(unsigned i = 0; i < fields.size(); i++) {
 				requestData.push_back(fields[i]);
@@ -297,9 +317,9 @@ void SendCallInfo::stopPopCallInfoThread(bool wait) {
 	}
 }
 
-void SendCallInfo::evCall(Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter) {
+void SendCallInfo::evCall(Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info) {
 	sSciInfo sci;
-	this->getSciFromCall(&sci, call, typeSci, at, counter);
+	this->getSciFromCall(&sci, call, typeSci, at, counter, packet_info);
 	sciQueue.push(sci);
 }
 
@@ -334,22 +354,28 @@ void SendCallInfo::popCallInfoThread() {
 
 void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call, 
 				  eTypeSci typeSci, u_int64_t at,
-				  u_int16_t counter) {
+				  u_int16_t counter, sSciPacketInfo *packet_info) {
 	sci->callid = call->call_id;
 	sci->caller_number = call->caller;
-	sci->called_number_to = call->called_to;
-	sci->called_number_uri = call->called_uri;
-	sci->called_number_final = call->called();
+	sci->called_number_to = call->get_called_to();
+	sci->called_number_uri = call->get_called_uri();
+	sci->called_number_final = call->get_called();
 	sci->callername = call->callername;
 	sci->caller_domain = call->caller_domain;
 	sci->called_domain_to = call->called_domain_to;
 	sci->called_domain_uri = call->called_domain_uri;
-	sci->called_domain_final = call->called_domain();
+	sci->called_domain_final = call->get_called_domain();
 	sci->caller_ip = call->getSipcallerip();
 	sci->called_ip = call->getSipcalledip();
 	sci->typeSci = typeSci;
 	sci->at = at;
 	sci->counter = counter;
+	if(packet_info) {
+		sci->packet_info = *packet_info;
+		sci->packet_info_set = true;
+	} else {
+		sci->packet_info_set = false;
+	}
 }
 
 
@@ -392,10 +418,10 @@ void refreshSendCallInfo() {
 	}
 }
 
-void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter) {
+void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter, sSciPacketInfo *packet_info) {
 	if(sendCallInfo && _sendCallInfo_ready) {
 		sendCallInfo_lock();
-		sendCallInfo->evCall(call, typeSci, getTimeUS(tv), counter);
+		sendCallInfo->evCall(call, typeSci, getTimeUS(tv), counter, packet_info);
 		sendCallInfo_unlock();
 	}
 }

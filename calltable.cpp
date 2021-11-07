@@ -1120,7 +1120,7 @@ int
 Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		  char *sessid, char *sdp_label, 
 		  list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		  char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		  char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -1175,6 +1175,9 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	}
 	if(to) {
 		this->ip_port[ipport_n].to = to;
+	}
+	if(to_uri) {
+		this->ip_port[ipport_n].to_uri = to_uri;
 	}
 	if(branch) {
 		this->ip_port[ipport_n].branch = branch;
@@ -1285,7 +1288,7 @@ void
 Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		       char *sessid, char *sdp_label, bool multipleSdpMedia, 
 		       list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		       char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		       char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -1323,7 +1326,7 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
-			     to, branch, iscaller, rtpmap, sdp_flags) != -1) {
+			     to, to_uri, branch, iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
@@ -1445,16 +1448,18 @@ Call::to_is_canceled(char *to) {
 	return(false);
 }
 
-string
-Call::get_to_not_canceled() {
+const char*
+Call::get_to_not_canceled(bool uri) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
 		   this->ip_port[i].to.length() &&
 		   !this->ip_port[i].canceled) {
-			return(this->ip_port[i].to);
+			return(uri && this->ip_port[i].to_uri.length() ?
+				this->ip_port[i].to_uri.c_str() :
+				this->ip_port[i].to.c_str());
 		}
 	}
-	return("");
+	return(NULL);
 }
 
 /* analyze rtcp packet */
@@ -3908,19 +3913,19 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(caller);
 		break;
 	case cf_called:
-		rfield->set(called());
+		rfield->set(get_called());
 		break;
 	case cf_caller_country:
 		rfield->set(getCountryByPhoneNumber(caller, true).c_str());
 		break;
 	case cf_called_country:
-		rfield->set(getCountryByPhoneNumber(called(), true).c_str());
+		rfield->set(getCountryByPhoneNumber(get_called(), true).c_str());
 		break;
 	case cf_caller_international:
 		rfield->set(!isLocalByPhoneNumber(caller));
 		break;
 	case cf_called_international:
-		rfield->set(!isLocalByPhoneNumber(called()));
+		rfield->set(!isLocalByPhoneNumber(get_called()));
 		break;
 	case cf_callername:
 		rfield->set(callername);
@@ -3929,7 +3934,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(caller_domain);
 		break;
 	case cf_calleddomain:
-		rfield->set(called_domain());
+		rfield->set(get_called_domain());
 		break;
 	case cf_calleragent:
 		rfield->set(a_ua);
@@ -4553,7 +4558,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		v_str = caller_domain;
 		break;
 	case _chartType_domain_dst:
-		v_str = called_domain();
+		v_str = get_called_domain();
 		break;
 	case _chartType_price_customer:
 		if(price_customer > 0) {
@@ -5814,16 +5819,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	cdr.add(sqlEscapeString(caller), "caller");
 	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-	if(is_multiple_to_branch() && to_is_canceled(called())) {
-		string called_not_canceled = get_to_not_canceled();
-		if(called_not_canceled.length()) {
-			strcpy_null_term(called_final, called_not_canceled.c_str());
-		}
-	}
-	cdr.add(sqlEscapeString(called()), "called");
-	cdr.add(sqlEscapeString(reverseString(called()).c_str()), "called_reverse");
+	cdr.add(sqlEscapeString(get_called()), "called");
+	cdr.add(sqlEscapeString(reverseString(get_called()).c_str()), "called_reverse");
 	cdr.add(sqlEscapeString(caller_domain), "caller_domain");
-	cdr.add(sqlEscapeString(called_domain()), "called_domain");
+	cdr.add(sqlEscapeString(get_called_domain()), "called_domain");
 	cdr.add(sqlEscapeString(callername), "callername");
 	cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
 	/*
@@ -5995,7 +5994,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(cr.cust_id, "caller_customer_id");
 				cdr.add(cr.reseller_id, "caller_reseller_id");
 			}
-			cr = custPnCache->getCustomerByPhoneNumber(called());
+			cr = custPnCache->getCustomerByPhoneNumber(get_called());
 			if(cr.cust_id) {
 				cdr.add(cr.cust_id, "called_customer_id");
 				cdr.add(cr.reseller_id, "called_reseller_id");
@@ -6332,8 +6331,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		unsigned customer_id = 0;
 		if(billing->billing(calltime_s(), connect_duration_s(),
 				    getSipcallerip(), getSipcalledip(),
-				    caller, called(),
-				    caller_domain, called_domain(),
+				    caller, get_called(),
+				    caller_domain, get_called_domain(),
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
@@ -6356,8 +6355,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(operator_price > 0 || customer_price > 0) {
 				billing->saveAggregation(calltime_s(),
 							 getSipcallerip(), getSipcalledip(),
-							 caller, called(),
-							 caller_domain, called_domain(),
+							 caller, get_called(),
+							 caller_domain, get_called_domain(),
 							 operator_price, customer_price,
 							 operator_currency_id, customer_currency_id,
 							 &billingAggregationsInserts);
@@ -6384,12 +6383,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(called()), "called_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
 		} else {
 			cdr_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(called(), true), "called_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
 		}
 		if(existsColumns.cdr_country_code_calldate) {
 			cdr_country_code.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_country_code_calldate_ms);
@@ -7576,8 +7575,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				sqlEscapeStringBorder(caller) + "," +
 				sqlEscapeStringBorder(callername) + "," +
 				sqlEscapeStringBorder(caller_domain) + "," +
-				sqlEscapeStringBorder(called()) + "," +
-				sqlEscapeStringBorder(called_domain()) + ",'" +
+				sqlEscapeStringBorder(get_called()) + "," +
+				sqlEscapeStringBorder(get_called_domain()) + ",'" +
 				getSipcallerip().getStringForMysqlIpColumn("register", "sipcallerip") + "','" +
 				getSipcalledip().getStringForMysqlIpColumn("register", "sipcalledip") + "'," +
 				sqlEscapeStringBorder(contact_num) + "," +
@@ -7604,7 +7603,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
 					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
-					"WHERE to_num = " + sqlEscapeStringBorder(called()) + " AND to_domain = " + sqlEscapeStringBorder(called_domain()) + " AND " +
+					"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
 					      //" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
 					"ORDER BY ID DESC"; // LIMIT 1 
@@ -7615,7 +7614,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
 					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
-					"WHERE to_num = " + sqlEscapeStringBorder(called()) + " AND to_domain = " + sqlEscapeStringBorder(called_domain()) + " AND " +
+					"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
 					"ORDER BY ID DESC";
 			}
@@ -7657,8 +7656,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
 						reg.add(sqlEscapeString(caller), "from_num");
-						reg.add(sqlEscapeString(called()), "to_num");
-						reg.add(sqlEscapeString(called_domain()), "to_domain");
+						reg.add(sqlEscapeString(get_called()), "to_num");
+						reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 						reg.add(sqlEscapeString(contact_num), "contact_num");
 						reg.add(sqlEscapeString(contact_domain), "contact_domain");
 						reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7679,8 +7678,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
 						reg.add(sqlEscapeString(caller), "from_num");
-						reg.add(sqlEscapeString(called()), "to_num");
-						reg.add(sqlEscapeString(called_domain()), "to_domain");
+						reg.add(sqlEscapeString(get_called()), "to_num");
+						reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 						reg.add(sqlEscapeString(contact_num), "contact_num");
 						reg.add(sqlEscapeString(contact_domain), "contact_domain");
 						reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7700,8 +7699,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
 					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
 					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(called()), "to_num");
-					reg.add(sqlEscapeString(called_domain()), "to_domain");
+					reg.add(sqlEscapeString(get_called()), "to_num");
+					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7727,8 +7726,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(caller), "from_num");
 					reg.add(sqlEscapeString(callername), "from_name");
 					reg.add(sqlEscapeString(caller_domain), "from_domain");
-					reg.add(sqlEscapeString(called()), "to_num");
-					reg.add(sqlEscapeString(called_domain()), "to_domain");
+					reg.add(sqlEscapeString(get_called()), "to_num");
+					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7785,7 +7784,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			string q2 = string(
 				"UPDATE register_failed SET created_at = '" + calldate_str + "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + " + cnt.str()) +
-				", to_num = " + sqlEscapeStringBorder(called()) + ", from_num = " + sqlEscapeStringBorder(called()) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
+				", to_num = " + sqlEscapeStringBorder(get_called()) + ", from_num = " + sqlEscapeStringBorder(get_called()) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
 				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
 				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00')";
 
@@ -7794,8 +7793,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 			reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 			reg.add(sqlEscapeString(caller), "from_num");
-			reg.add(sqlEscapeString(called()), "to_num");
-			reg.add(sqlEscapeString(called_domain()), "to_domain");
+			reg.add(sqlEscapeString(get_called()), "to_num");
+			reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 			reg.add(sqlEscapeString(contact_num), "contact_num");
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7818,7 +7817,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			string calldate_str = sqlDateTimeString(calltime_s());
 			query = string(
 				"SELECT counter FROM register_failed ") +
-				"WHERE to_num = " + sqlEscapeStringBorder(called()) + " AND to_domain = " + sqlEscapeStringBorder(called_domain()) + 
+				"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + 
 					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00')";
 			if(sqlDbSaveCall->query(query)) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
@@ -7826,7 +7825,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// there is already failed register, update counter and do not insert
 					string query = string(
 						"UPDATE register_failed SET created_at = '" + calldate_str+ "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + 1 ") +
-						"WHERE to_num = " + sqlEscapeStringBorder(called()) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
+						"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
 							" AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00');";
 					sqlDbSaveCall->query(query);
 				} else {
@@ -7836,8 +7835,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(called()), "to_num");
-					reg.add(sqlEscapeString(called_domain()), "to_domain");
+					reg.add(sqlEscapeString(get_called()), "to_num");
+					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
@@ -7914,10 +7913,10 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	}
 	msg.add(sqlEscapeString(caller), "caller");
 	msg.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-	msg.add(sqlEscapeString(called()), "called");
-	msg.add(sqlEscapeString(reverseString(called()).c_str()), "called_reverse");
+	msg.add(sqlEscapeString(get_called()), "called");
+	msg.add(sqlEscapeString(reverseString(get_called()).c_str()), "called_reverse");
 	msg.add(sqlEscapeString(caller_domain), "caller_domain");
-	msg.add(sqlEscapeString(called_domain()), "called_domain");
+	msg.add(sqlEscapeString(get_called_domain()), "called_domain");
 	msg.add(sqlEscapeString(callername), "callername");
 	msg.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
 	msg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
@@ -7984,12 +7983,12 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			msg_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			msg_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
 			msg_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(called()), "called_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
 		} else {
 			msg_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			msg_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
 			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(called(), true), "called_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
 		}
 		msg_country_code.add_calldate(calltime_us(), "calldate", existsColumns.message_child_country_code_calldate_ms);
 	}
@@ -8226,7 +8225,7 @@ Call::dump(){
 	}
 	if(seeninvite || seenmessage) {
 		printf("From:%s\n", caller);
-		printf("To:%s\n", called());
+		printf("To:%s\n", get_called());
 	}
 	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time_s(), (int)get_last_packet_time_s());
 	if(rtp_size() > 0) {
@@ -8262,7 +8261,7 @@ void Call::atFinish() {
 		find_and_replace(source, string("%dirname%"), escapeShellArgument(this->get_pathname(tsf_sip)));
 		find_and_replace(source, string("%calldate%"), escapeShellArgument(sqlDateTimeString(this->calltime_s())));
 		find_and_replace(source, string("%caller%"), escapeShellArgument(this->caller));
-		find_and_replace(source, string("%called%"), escapeShellArgument(this->called()));
+		find_and_replace(source, string("%called%"), escapeShellArgument(this->get_called()));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		calltable->addSystemCommand(source.c_str());
 	}
@@ -12805,7 +12804,7 @@ bool NoStoreCdrRule::check(Call *call) {
 	}
 	if(ok && number.length()) {
 		if(!check_number(call->caller) &&
-		   !check_number(call->called())) {
+		   !check_number(call->get_called())) {
 			ok = false;
 		}
 	}

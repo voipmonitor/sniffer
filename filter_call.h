@@ -74,7 +74,7 @@ public:
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
-			return(!isLocalByPhoneNumber(((Call*)rec)->called()));
+			return(!isLocalByPhoneNumber(((Call*)rec)->get_called()));
 		case cf_vlan:
 			return(((Call*)rec)->vlan);
 		}
@@ -98,11 +98,11 @@ public:
 		case cf_caller:
 			return(((Call*)rec)->caller);
 		case cf_called:
-			return(((Call*)rec)->called());
+			return(((Call*)rec)->get_called());
 		case cf_callerdomain:
 			return(((Call*)rec)->caller_domain);
 		case cf_calleddomain:
-			return(((Call*)rec)->called_domain());
+			return(((Call*)rec)->get_called_domain());
 		case cf_calleragent:
 			return(((Call*)rec)->a_ua);
 		case cf_calledagent:

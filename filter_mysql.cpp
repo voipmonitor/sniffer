@@ -527,7 +527,7 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
 
 	int lastdirection = 0;
 	
@@ -608,7 +608,7 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
@@ -737,7 +737,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -766,7 +766,7 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {

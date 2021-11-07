@@ -587,7 +587,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
         //If call is established get caller/called num from packet - else gather it from packet and save to caller called
 	if(call) {
 		strcpy_null_term(caller, call->caller);
-		strcpy_null_term(called, call->called());
+		strcpy_null_term(called, call->get_called());
 	} else {
 		bool needcaller = false;
 		bool needcalled = false;
@@ -2735,10 +2735,11 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 	}
 }
 
-inline void detect_called_invite(packet_s_process *packetS, char *called_invite, unsigned called_invite_length, bool *detected) {
-	if(!detected || !*detected) {
+inline void detect_to_uri(packet_s_process *packetS, char *to_uri, unsigned to_uri_length, bool *detected) {
+	if((packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) &&
+	   (!detected || !*detected)) {
 		get_sip_peername(packetS, packetS->sip_method == MESSAGE ? "MESSAGE " : "INVITE ", NULL,
-				 called_invite, called_invite_length,
+				 to_uri, to_uri_length,
 				 packetS->sip_method == MESSAGE ? ppntt_message : ppntt_invite, ppndt_called);
 		if(detected) {
 			*detected = true;
@@ -2774,8 +2775,8 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 
 inline unsigned int setCallFlags(unsigned long int flags,
 				 vmIP ip_src, vmIP ip_dst,
-				 char *caller, char *called,
-				 char *caller_domain, char *called_domain,
+				 const char *caller, const char *called,
+				 const char *caller_domain, const char *called_domain,
 				 ParsePacket::ppContentsX *parseContents) {
 	unsigned long int flags_old = flags;
 	cFilters::applyReload();
@@ -3098,7 +3099,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				       << call->caller << "  ";
 				outStr << "called: "
 				       << setw(15)
-				       << call->called() << "  ";
+				       << call->get_called() << "  ";
 				if(is_read_from_file()) {
 					cout << outStr.str() << endl;
 				} else {
@@ -3124,7 +3125,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 }
 
 void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
-		 char *callidstr, char *to, char *branch) {
+		 char *callidstr, char *to, char *to_uri, char *branch) {
  
 	extern bool opt_disable_process_sdp;
 	if(opt_disable_process_sdp) {
@@ -3206,20 +3207,20 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 						call->add_ip_port_hash(packetS->saddr_(), sdp_media_data_item->ip, ip_port_call_info::_ta_base, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 								       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-								       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+								       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						// check if the IP address is listed in nat_aliases
 						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
 						if(alias.isSet()) {
 							call->add_ip_port_hash(packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 						if(opt_sdp_reverse_ipport) {
 							call->add_ip_port_hash(packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-									       to, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 					}
 				}
@@ -3266,6 +3267,22 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 			syslog(LOG_ERR, "callid[%s] Can't get ip/port from SDP:\n%s\n\n", callidstr, sdp);
 		}
 	}
+}
+
+void fillSciPacketInfo(packet_s_process *packetS, int sip_method, sSciPacketInfo *packet_info) {
+	s_detect_callerd data_callerd;
+	detect_callerd(packetS, sip_method, &data_callerd);
+	packet_info->caller_number = data_callerd.caller;
+	packet_info->called_number_to = data_callerd.called_to;
+	packet_info->called_number_uri = data_callerd.called_uri;
+	packet_info->callername = data_callerd.callername;
+	packet_info->caller_domain = data_callerd.caller_domain;
+	packet_info->called_domain_to = data_callerd.called_domain_to;
+	packet_info->called_domain_uri = data_callerd.called_domain_uri;
+	packet_info->src_ip = packetS->saddr_();
+	packet_info->dst_ip = packetS->daddr_();
+	packet_info->src_port = packetS->source_();
+	packet_info->dst_port = packetS->dest_();
 }
 
 static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
@@ -3315,8 +3332,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	int merged;
 	char branch[100] = "";
 	bool branch_detected = false;
-	char called_invite[1024] = "";
-	bool called_invite_detected = false;
+	char to_uri[1024] = "";
+	bool to_uri_detected = false;
 	char to[1024] = "";
 	bool to_detected = false;
 	bool dont_save = false;
@@ -3386,7 +3403,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			<< endl;
 			Call *call = packetS->call ? packetS->call : packetS->call_created;
 			if(call) {
-				cout << call->caller << " -> " << call->called() << endl;
+				cout << call->caller << " -> " << call->get_called() << endl;
 				cout << call->getSipcallerip().getString() << " -> " << call->getSipcalledip().getString() << endl;
 			}
 		}
@@ -3733,17 +3750,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		//update called number for each invite due to overlap-dialling
 		if(((opt_sipoverlap && packetS->saddr_() == call->getSipcallerip()) || opt_last_dest_number) && !reverseInviteSdaddr) {
-			char called_to[1024] = "";
-			get_sip_peername(packetS, "\nTo:", "\nt:",
-					 called_to, sizeof(called_to), ppntt_to, ppndt_called);
-			if(strcmp(call->caller, called_to)) {
-				strcpy_null_term(call->called_to, called_to);
+			detect_to(packetS, to, sizeof(to), &to_detected);
+			if(strcmp(call->caller, to)) {
+				strcpy_null_term(call->called_to, to);
 			}
 			if(opt_destination_number_mode == 2 || isSendCallInfoReady()) {
-				char called_uri[1024] = "";
-				if(!get_sip_peername(packetS, "INVITE ", NULL, called_uri, sizeof(called_uri), ppntt_invite, ppndt_called) &&
-				   called_uri[0] != '\0' && strcmp(call->caller, called_uri)) {
-					strcpy_null_term(call->called_uri, called_uri);
+				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
+				if(to_uri[0] != '\0' && strcmp(call->caller, to_uri)) {
+					strcpy_null_term(call->called_uri, to_uri);
 				}
 			}
 		}
@@ -3767,7 +3781,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
 		++call->onInvite_counter;
-		sendCallInfoEvCall(call, sci_invite, packetS->getTimeval(), call->onInvite_counter);
+		if(isSendCallInfoReady()) {
+			sSciPacketInfo *packet_info = NULL;
+			if(useAdditionalPacketInformationInSendCallInfo()) {
+				packet_info = new FILE_LINE(0) sSciPacketInfo;
+				fillSciPacketInfo(packetS, INVITE, packet_info);
+			}
+			sendCallInfoEvCall(call, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
+			if(packet_info) {
+				delete packet_info;
+			}
+		}
 	} else if(packetS->sip_method == MESSAGE) {
 		call->destroy_call_at = packetS->getTime_s() + 60;
 		call->seenmessageok = false;
@@ -3862,7 +3886,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		++call->onHangup_counter;
-		sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval(), call->onHangup_counter);
+		if(isSendCallInfoReady()) {
+			sSciPacketInfo *packet_info = NULL;
+			if(useAdditionalPacketInformationInSendCallInfo()) {
+				packet_info = new FILE_LINE(0) sSciPacketInfo;
+				fillSciPacketInfo(packetS, INVITE, packet_info);
+			}
+			sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval(), call->onHangup_counter, packet_info);
+			if(packet_info) {
+				delete packet_info;
+			}
+		}
 	} else if(packetS->sip_method == CANCEL) {
 		++count_sip_cancel;
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
@@ -4004,12 +4038,22 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						if(call->typeIs(INVITE)) {
 							process_packet__parse_custom_headers(call, packetS);
 							ClientThreads.onCall(call->call_id.c_str(),
-									     lastSIPresponseNum, call->callername, call->caller, call->called(),
+									     lastSIPresponseNum, call->callername, call->caller, call->get_called(),
 									     call->getSipcallerip(), call->getSipcalledip(),
 									     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 						}
 					}
-					sendCallInfoEvCall(call, sci_200, packetS->getTimeval(), call->onCall_2XX_counter);
+					if(isSendCallInfoReady()) {
+						sSciPacketInfo *packet_info = NULL;
+						if(useAdditionalPacketInformationInSendCallInfo()) {
+							packet_info = new FILE_LINE(0) sSciPacketInfo;
+							fillSciPacketInfo(packetS, INVITE, packet_info);
+						}
+						sendCallInfoEvCall(call, sci_200, packetS->getTimeval(), call->onCall_2XX_counter, packet_info);
+						if(packet_info) {
+							delete packet_info;
+						}
+					}
 					if(opt_sdp_check_direction_ext) {
 						for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
 							if(packetS->saddr_() == riter->daddr && packetS->daddr_() == riter->saddr) {
@@ -4055,17 +4099,32 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(call->typeIs(INVITE)) {
 					process_packet__parse_custom_headers(call, packetS);
 					ClientThreads.onCall(call->call_id.c_str(),
-							     lastSIPresponseNum, call->callername, call->caller, call->called(),
+							     lastSIPresponseNum, call->callername, call->caller, call->get_called(),
 							     call->getSipcallerip(), call->getSipcalledip(),
 							     custom_headers_cdr->getScreenPopupFieldsString(call, INVITE).c_str());
 				}
 			}
-			sendCallInfoEvCall(call, sci_18X, packetS->getTimeval(), call->onCall_18X_counter);
+			if(isSendCallInfoReady()) {
+				sSciPacketInfo *packet_info = NULL;
+				if(useAdditionalPacketInformationInSendCallInfo()) {
+					packet_info = new FILE_LINE(0) sSciPacketInfo;
+					fillSciPacketInfo(packetS, INVITE, packet_info);
+				}
+				sendCallInfoEvCall(call, sci_18X, packetS->getTimeval(), call->onCall_18X_counter, packet_info);
+				if(packet_info) {
+					delete packet_info;
+				}
+			}
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;
 		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
+			if(IS_SIP_RES4XX(packetS->sip_method) && call->is_multiple_to_branch()) {
+				detect_to(packetS, to, sizeof(to), &to_detected);
+				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+				call->cancel_ip_port_hash(packetS->daddr_(), to, branch, packetS->getTimeval_pt());
+			}
 			if(lastSIPresponseNum == 487) {
 				fraudSessionCanceledCall(call, packetS->getTimeval());
 			}
@@ -4081,11 +4140,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
-					if(packetS->lastSIPresponseNum == 404) {
-						detect_to(packetS, to, sizeof(to), &to_detected);
-						detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-						call->cancel_ip_port_hash(packetS->daddr_(), to, branch, packetS->getTimeval_pt());
-					}
 					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? 300 : 5);
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
@@ -4117,17 +4171,17 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
 		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 		if(branch[0] != '\0') {
-			detect_called_invite(packetS, called_invite, sizeof(called_invite), &called_invite_detected);
+			detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 			detect_to(packetS, to, sizeof(to), &to_detected);
-			if(called_invite[0] != '\0' || to[0] != '\0') {
-				call->called_invite_branch_map[branch] = dstring(called_invite, to);
+			if(to_uri[0] != '\0' || to[0] != '\0') {
+				call->called_invite_branch_map[branch] = dstring(to_uri, to);
 			}
 		}
 		if(!packetS->_createCall && !existInviteSdaddr && !reverseInviteSdaddr) {
 			call->flags = setCallFlags(call->flags,
 						   packetS->saddr_(), packetS->daddr_(),
-						   call->caller, call->called(),
-						   call->caller_domain, call->called_domain(),
+						   call->caller, call->get_called(),
+						   call->caller_domain, call->get_called_domain(),
 						   &packetS->parseContents);
 		}
 		if(!reverseInviteSdaddr) {
@@ -4355,9 +4409,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if(is_application_sdp) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
+				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
-					    packetS->get_callid(), to, branch);
+					    packetS->get_callid(), to, to_uri, branch);
 			} else if(is_multipart_mixed) {
 				char *content_data = contenttype_data_ptr + contenttypetaglen;
 				unsigned content_data_len = packetS->sipDataLen - (content_data - (packetS->data_()+ packetS->sipDataOffset));
@@ -4426,9 +4481,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								unsigned content_data_length = content_data_item_length - content_data_offset;
 								if(strcasestr(content_type, "application/sdp")) {
 									detect_to(packetS, to, sizeof(to), &to_detected);
+									detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 									process_sdp(call, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
-										    packetS->get_callid(), to, branch);
+										    packetS->get_callid(), to, to_uri, branch);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
 									call->add_txt(packetS->getTimeUS(), Call::txt_type_sdp_xml, content_data_begin, content_data_length);
 								}
@@ -4445,9 +4501,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							//Content-Type found try if it is SDP 
 							if(l > 0 && strcasestr(s2, "application/sdp")){
 								detect_to(packetS, to, sizeof(to), &to_detected);
+								detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 								process_sdp(call, packetS, _iscaller_process_sdp, s2, 0,
-									    packetS->get_callid(), to, branch);
+									    packetS->get_callid(), to, to_uri, branch);
 								break;	// stop searching
 							} else {
 								// it is not SDP continue searching for another content-type 
@@ -5184,11 +5241,11 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, &header->ts, 
 			       NULL, NULL, false, 
 			       NULL, NULL,
-			       NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, &header->ts, 
 			       NULL, NULL, false, 
 			       NULL, NULL,
-			       NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }
@@ -7341,7 +7398,7 @@ void logPacketSipMethodCall(u_int64_t packet_number, int sip_method, int lastSIP
 	// called
 	outStr << "called: "
 	       << setw(15)
-	       << (call ? call->called() : "") << "  ";
+	       << (call ? call->get_called() : "") << "  ";
 	// lastSIPresponseNum
 	outStr << "last response num: "
 	       << setw(3)

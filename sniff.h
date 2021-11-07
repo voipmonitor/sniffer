@@ -51,10 +51,10 @@ bool process_pcap(const char *pcap_source, const char *pcap_destination, int pro
 void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type);
 
 unsigned int setCallFlags(unsigned long int flags,
-				 vmIP ip_src, vmIP ip_dst,
-				 char *caller, char *called,
-				 char *caller_domain, char *called_domain,
-				 ParsePacket::ppContentsX *parseContents);
+			  vmIP ip_src, vmIP ip_dst,
+			  const char *caller, const char *called,
+			  const char *caller_domain, const char *called_domain,
+			  ParsePacket::ppContentsX *parseContents);
 
 typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
 

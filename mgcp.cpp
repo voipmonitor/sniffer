@@ -18,7 +18,7 @@ using namespace std;
 
 
 extern void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
-			char *callidstr, char *to, char *branch);
+			char *callidstr, char *to, char *to_uri, char *branch);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
 extern void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected);
 
@@ -295,7 +295,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 			detect_to_extern(packetS, to, sizeof(to), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
-				    (char*)call->call_id.c_str(), to, branch);
+				    (char*)call->call_id.c_str(), to, NULL, branch);
 		}
 		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
