@@ -22,6 +22,7 @@ enum eChartType {
 	_chartType_cps,
 	_chartType_minutes,
 	_chartType_count_perc_short,
+	_chartType_response_time_100,
 	_chartType_mos,
 	_chartType_mos_caller,
 	_chartType_mos_called,

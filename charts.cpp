@@ -18,6 +18,7 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_cps,			1,	1,	_chartPercType_NA,	0,	_chartSubType_count },
 	{ _chartType_minutes,			1,	1,	_chartPercType_NA,	0,	_chartSubType_count },
 	{ _chartType_count_perc_short,		0,	1,	_chartPercType_NA,	0,	_chartSubType_perc },
+	{ _chartType_response_time_100,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_mos,			0,	0,	_chartPercType_Desc,	0,	_chartSubType_value },
 	{ _chartType_mos_caller,		0,	0,	_chartPercType_Desc,	0,	_chartSubType_value },
 	{ _chartType_mos_called,		0,	0,	_chartPercType_Desc,	0,	_chartSubType_value },
@@ -2288,6 +2289,7 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_cps" ? _chartType_cps :
 	       chartType == "TCH_minutes" ? _chartType_minutes :
 	       chartType == "TCH_count_perc_short" ? _chartType_count_perc_short :
+	       chartType == "TCH_response_time_100" ? _chartType_response_time_100 :
 	       chartType == "TCH_mos" ? _chartType_mos :
 	       chartType == "TCH_mos_caller" ? _chartType_mos_caller :
 	       chartType == "TCH_mos_called" ? _chartType_mos_called :

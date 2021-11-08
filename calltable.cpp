@@ -4146,6 +4146,13 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_count_perc_short:
 		v = 1;
 		break;
+	case _chartType_response_time_100:
+		if(first_response_100_time_us) {
+			v = MIN(65535, round((first_response_100_time_us - first_invite_time_us) / 1000.0));
+		} else {
+			setNull = true;
+		}
+		break;
 	case _chartType_mos:
 	case _chartType_mos_caller:
 	case _chartType_mos_called:
@@ -4598,6 +4605,9 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 	case _chartType_minutes:
 	case _chartType_count_perc_short:
 		v = 1;
+		break;
+	case _chartType_response_time_100:
+		v = tablesContent->getValue_float(_t_cdr, "response_time_100", false, &setNull);
 		break;
 	case _chartType_mos:
 		v = tablesContent->getValue_float(_t_cdr, "mos_min_mult10", true, &setNull);
