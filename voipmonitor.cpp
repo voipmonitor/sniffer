@@ -1108,7 +1108,7 @@ int opt_query_cache_check_utf;
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
-bool opt_load_query_from_files_inotify;
+bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
@@ -3771,7 +3771,6 @@ int main(int argc, char *argv[]) {
 		if(opt_fork) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	} else if(is_client()) {
 		snifferClientService = snifferClientStart(&snifferClientOptions, NULL, snifferClientService);
@@ -7857,21 +7856,18 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts_remote") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_remote_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
@@ -12037,17 +12033,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
 		opt_save_query_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_charts", NULL)) && yesno(value)) {
 		opt_save_query_charts_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL)) && yesno(value)) {
 		opt_save_query_charts_remote_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);
