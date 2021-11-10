@@ -587,6 +587,8 @@ PACKAGE_URL=''
 ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+DPDK_LDFLAGS
+DPDK_CFLAGS
 HEAPPROF_CXXFLAG
 LIBTCMALLOC
 LIBGNUTLSSTATIC
@@ -607,6 +609,7 @@ LIBJSON_NAME
 LIBLD
 OPENSSLDIRINC
 OPENSSLDIRLIB
+PKGCONFIG
 SET_MAKE
 INSTALL_DATA
 INSTALL_SCRIPT
@@ -640,6 +643,7 @@ infodir
 docdir
 oldincludedir
 includedir
+runstatedir
 localstatedir
 sharedstatedir
 sysconfdir
@@ -668,6 +672,7 @@ with_dpdk_include
 with_dpdk_lib
 with_mysql
 with_heap_profiler
+enable_dpdk
 '
       ac_precious_vars='build_alias
 host_alias
@@ -718,6 +723,7 @@ datadir='${datarootdir}'
 sysconfdir='${prefix}/etc'
 sharedstatedir='${prefix}/com'
 localstatedir='${prefix}/var'
+runstatedir='${localstatedir}/run'
 includedir='${prefix}/include'
 oldincludedir='/usr/include'
 docdir='${datarootdir}/doc/${PACKAGE_TARNAME}'
@@ -970,6 +976,15 @@ do
   | -silent | --silent | --silen | --sile | --sil)
     silent=yes ;;
 
+  -runstatedir | --runstatedir | --runstatedi | --runstated \
+  | --runstate | --runstat | --runsta | --runst | --runs \
+  | --run | --ru | --r)
+    ac_prev=runstatedir ;;
+  -runstatedir=* | --runstatedir=* | --runstatedi=* | --runstated=* \
+  | --runstate=* | --runstat=* | --runsta=* | --runst=* | --runs=* \
+  | --run=* | --ru=* | --r=*)
+    runstatedir=$ac_optarg ;;
+
   -sbindir | --sbindir | --sbindi | --sbind | --sbin | --sbi | --sb)
     ac_prev=sbindir ;;
   -sbindir=* | --sbindir=* | --sbindi=* | --sbind=* | --sbin=* \
@@ -1107,7 +1122,7 @@ fi
 for ac_var in	exec_prefix prefix bindir sbindir libexecdir datarootdir \
 		datadir sysconfdir sharedstatedir localstatedir includedir \
 		oldincludedir docdir infodir htmldir dvidir pdfdir psdir \
-		libdir localedir mandir
+		libdir localedir mandir runstatedir
 do
   eval ac_val=\$$ac_var
   # Remove trailing slashes.
@@ -1260,6 +1275,7 @@ Fine tuning of the installation directories:
   --sysconfdir=DIR        read-only single-machine data [PREFIX/etc]
   --sharedstatedir=DIR    modifiable architecture-independent data [PREFIX/com]
   --localstatedir=DIR     modifiable single-machine data [PREFIX/var]
+  --runstatedir=DIR       modifiable per-process data [LOCALSTATEDIR/run]
   --libdir=DIR            object code libraries [EPREFIX/lib]
   --includedir=DIR        C header files [PREFIX/include]
   --oldincludedir=DIR     C header files for non-gcc [/usr/include]
@@ -1284,6 +1300,12 @@ if test -n "$ac_init_help"; then
      short | recursive ) echo "Configuration of voipmonitor VERSION:";;
    esac
   cat <<\_ACEOF
+
+Optional Features:
+  --disable-option-checking  ignore unrecognized --enable/--with options
+  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
+  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+  --disable-dpdk          Disable searching for dpdk libs (librte_*)
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -3114,6 +3136,46 @@ fi
 
 
 
+# Extract the first word of "pkg-config", so it can be a program name with args.
+set dummy pkg-config; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_PKGCONFIG+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$PKGCONFIG"; then
+  ac_cv_prog_PKGCONFIG="$PKGCONFIG" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_PKGCONFIG="pkg-config"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_prog_PKGCONFIG" && ac_cv_prog_PKGCONFIG="no"
+fi
+fi
+PKGCONFIG=$ac_cv_prog_PKGCONFIG
+if test -n "$PKGCONFIG"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $PKGCONFIG" >&5
+$as_echo "$PKGCONFIG" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
@@ -3542,7 +3604,42 @@ _ACEOF
 fi
 
 # FIXME: Replace `main' with a function in `-lssl':
-#AC_CHECK_LIB([ssl], [main])
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lssl" >&5
+$as_echo_n "checking for main in -lssl... " >&6; }
+if ${ac_cv_lib_ssl_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lssl  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_ssl_main=yes
+else
+  ac_cv_lib_ssl_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_main" >&5
+$as_echo "$ac_cv_lib_ssl_main" >&6; }
+if test "x$ac_cv_lib_ssl_main" = xyes; then :
+  HAVE_OPENSSL=1
+else
+  as_fn_error $? "Unable to find ssl library. apt-get install libssl-dev | yum install openssl-devel" "$LINENO" 5
+fi
+
 # FIXME: Replace `main' with a function in `-lvorbis':
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lvorbis" >&5
 $as_echo_n "checking for main in -lvorbis... " >&6; }
@@ -4513,6 +4610,48 @@ fi
 
 fi
 
+# Check whether --enable-dpdk was given.
+if test "${enable_dpdk+set}" = set; then :
+  enableval=$enable_dpdk;
+fi
+
+if test "x$enable_dpdk" != "xno"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lrte_net" >&5
+$as_echo_n "checking for main in -lrte_net... " >&6; }
+if ${ac_cv_lib_rte_net_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lrte_net  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_rte_net_main=yes
+else
+  ac_cv_lib_rte_net_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_rte_net_main" >&5
+$as_echo "$ac_cv_lib_rte_net_main" >&6; }
+if test "x$ac_cv_lib_rte_net_main" = xyes; then :
+  HAVE_LIBDPDK=1
+fi
+
+fi
+
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then
 
@@ -4586,20 +4725,40 @@ $as_echo "#define HAVE_LIBTCMALLOC_HEAPPROF 1" >>confdefs.h
 
 	TCMALLOC_T="yes (with heap profiler)"
 fi
-OPENSSL_T=no
+
+HAVE_OPENSSL_T=no
+if test "x$HAVE_OPENSSL" = "x1"; then
+
+$as_echo "#define HAVE_OPENSSL 1" >>confdefs.h
+
+	HAVE_OPENSSL_T=yes
+fi
+
+OPENSSL101_T=no
 if test "x$HAVE_OPENSSL101" = "x1"; then
 
 $as_echo "#define HAVE_OPENSSL101 1" >>confdefs.h
 
-	OPENSSL_T=yes
+	OPENSSL101_T=yes
 fi
-
 OPENSSL111_T=no
 if pkg-config --atleast-version 1.1.1 openssl; then
 
 $as_echo "#define HAVE_DSSL_TLS13 1" >>confdefs.h
 
 	OPENSSL111_T=yes
+fi
+
+DPDK_T=no
+if test "x$HAVE_LIBDPDK" = "x1"; then
+
+$as_echo "#define HAVE_LIBDPDK 1" >>confdefs.h
+
+	DPDK_CFLAGS=`"$PKGCONFIG" --cflags libdpdk`
+
+	DPDK_LDFLAGS=`"$PKGCONFIG" --libs libdpdk`
+
+	DPDK_T=yes
 fi
 
 # Checks for header files.
@@ -5934,8 +6093,8 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
-openssl >= 101 found		       : $OPENSSL_T
-openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
+openssl >= 1.0.1 found		       : $OPENSSL101_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
 
 shared binary: run make
 static binary: run make static
@@ -5963,8 +6122,8 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
-openssl >= 101 found		       : $OPENSSL_T
-openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
+openssl >= 1.0.1 found		       : $OPENSSL101_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
 
 shared binary: run make
 static binary: run make static

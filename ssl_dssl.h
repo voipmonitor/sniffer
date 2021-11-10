@@ -52,7 +52,8 @@ public:
 	void termSession();
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
 			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
-			 struct timeval ts, bool init, class cSslDsslSessions *sessions);
+			 struct timeval ts, bool init, class cSslDsslSessions *sessions,
+			 bool forceTryIfExistsError = false);
 	bool isClientHello(char *data, unsigned int datalen, NM_PacketDir dir);
 private:
 	NM_PacketDir getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
@@ -127,8 +128,8 @@ public:
 	~cSslDsslSessionKeys();
 	void set(const char *type, u_char *client_random, u_char *key, unsigned key_length);
 	void set(eSessionKeyType type, u_char *client_random, u_char *key, unsigned key_length);
-	bool get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts);
-	bool get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts);
+	bool get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait = true);
+	bool get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait = true);
 	void erase(u_char *client_random);
 	void cleanup();
 	void clear();
@@ -158,11 +159,12 @@ public:
 	cSslDsslSessions();
 	~cSslDsslSessions();
 public:
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+			 bool forceTryIfExistsError = false);
 	void destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 	void keySet(const char *type, u_char *client_random, u_char *key, unsigned key_length);
-	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts);
-	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts);
+	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait = true);
+	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait = true);
 	void keyErase(u_char *client_random);
 	void keysCleanup();
 private:
@@ -218,7 +220,8 @@ public:
 
 void ssl_dssl_init();
 void ssl_dssl_clean();
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts);
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+		      bool forceTryIfExistsError = false);
 void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 bool string_looks_like_client_random(u_char *data, unsigned datalen);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);
@@ -226,6 +229,9 @@ void ssl_parse_client_random(const char *fileName);
 
 void clientRandomServerStart(const char *host, int port);
 void clientRandomServerStop();
+
+bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length);
+void erase_client_random(u_char *client_random);
 
 
 #endif //SSL_DSSL_H

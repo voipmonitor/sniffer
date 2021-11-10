@@ -27,6 +27,7 @@
 #include <string>
 #include <math.h>
 #include <iostream>
+#include <sstream>
 #include <iomanip>
 #include <string.h>
 #include <stdlib.h>
@@ -38,6 +39,9 @@
 #define	__in6_u	__u6_addr
 #endif
 #define IP_STR_MAX_LENGTH 50
+    
+#define IPPROTO_ESP_HEADER_SIZE 8
+#define IPPROTO_ESP_FOOTER_SIZE 14
 
 
 struct vmIP {
@@ -245,16 +249,16 @@ struct vmIP {
 	inline vmIP mask(vmIP mask) {
 		return(_and(mask));
 	}
-	inline vmIP network_mask(unsigned mask) {
+	inline vmIP network_mask(unsigned mask, bool enable_zero = false) {
 		vmIP ip;
 		#if VM_IPV6
 		if(!v6) {
 			ip.v6 = false;
 		#endif
-			if(!mask) {
+			if(!mask && !enable_zero) {
 				mask = 32;
 			}
-			ip.ip.v4.n = ((u_int32_t)-1 << (32 - mask)) & (u_int32_t)-1;
+			ip.ip.v4.n = mask == 0 ? 0 : ((u_int32_t)-1 << (32 - mask)) & (u_int32_t)-1;
 		#if VM_IPV6
 		} else {
 			if(!mask) {
@@ -263,10 +267,10 @@ struct vmIP {
 			ip.v6 = true;
 			for(unsigned i = 0; i < 4; i++) {
 				int _mask = mask - i * 32;
-				if(_mask >= 32) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)-1;
-				} else if(_mask <= 0) {
+				if(mask == 0 || _mask <= 0) {
 					ip.ip.v6.__in6_u.__u6_addr32[i] = 0;
+				} else if(_mask >= 32) {
+					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)-1;
 				} else {
 					ip.ip.v6.__in6_u.__u6_addr32[i] = ((u_int32_t)-1 << (32 - _mask)) & (u_int32_t)-1;
 				}
@@ -275,16 +279,16 @@ struct vmIP {
 		#endif
 		return(ip);
 	}
-	inline vmIP wildcard_mask(unsigned mask) {
+	inline vmIP wildcard_mask(unsigned mask, bool enable_zero = false) {
 		vmIP ip;
 		#if VM_IPV6
 		if(!v6) {
 			ip.v6 = false;
 		#endif
-			if(!mask) {
+			if(!mask && !enable_zero) {
 				mask = 32;
 			}
-			ip.ip.v4.n = (u_int32_t)(pow(2, 32 - mask) - 1);
+			ip.ip.v4.n = mask == 0 ? (u_int32_t)-1 : (u_int32_t)(pow(2, 32 - mask) - 1);
 		#if VM_IPV6
 		} else {
 			if(!mask) {
@@ -293,10 +297,10 @@ struct vmIP {
 			ip.v6 = true;
 			for(unsigned i = 0; i < 4; i++) {
 				int _mask = mask - i * 32;
-				if(_mask >= 32) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = 0;
-				} else if(_mask <= 0) {
+				if(mask == 0 || _mask <= 0) {
 					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)-1;
+				} else if(_mask >= 32) {
+					ip.ip.v6.__in6_u.__u6_addr32[i] = 0;
 				} else {
 					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)(pow(2, 32 -_mask) - 1);
 				}
@@ -305,11 +309,11 @@ struct vmIP {
 		#endif
 		return(ip);
 	}
-	inline vmIP network(unsigned mask) {
-		return(this->_and(this->network_mask(mask)));
+	inline vmIP network(unsigned mask, bool enable_zero = false) {
+		return(this->_and(this->network_mask(mask, enable_zero)));
 	}
-	inline vmIP broadcast(unsigned mask) {
-		return(this->_or(this->wildcard_mask(mask)));
+	inline vmIP broadcast(unsigned mask, bool enable_zero = false) {
+		return(this->_or(this->wildcard_mask(mask, enable_zero)));
 	}
 	inline u_int32_t getHashNumber() {
 		#if VM_IPV6
@@ -340,7 +344,7 @@ struct vmIP {
 			return(false);
 		#endif
 	}
-	inline u_int8_t bits() {
+	inline u_int8_t bits() const {
 		#if VM_IPV6
 			return(v6 ? 128 : 32);
 		#else
@@ -349,6 +353,19 @@ struct vmIP {
 	}
 	inline bool is_net_mask(int bits) {
 		return(bits > 0 && bits < this->bits());
+	}
+	inline void set_to_v6() {
+		#if VM_IPV6
+		v6 = true;
+		for(unsigned i = 0; i < sizeof(ip.v4.filler) / sizeof(ip.v4.filler[0]); i++) {
+			ip.v4.filler[i] = 0;
+		}
+		#endif
+	}
+	inline void set_to_v4() {
+		#if VM_IPV6
+		v6 = false;
+		#endif
 	}
 	#if VM_IPV6
 		u_int8_t v6;
@@ -463,22 +480,43 @@ struct ip6hdr2 {
 			frag->ip6f_offlg = 0;
 		}
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t _get_protocol() {
 		return(get_ext_headers(NULL, 0, NULL));
 	}
-	inline u_int16_t get_hdr_size() {
+	inline u_int8_t get_protocol() {
+		u_int8_t proto = _get_protocol();
+		if(proto == IPPROTO_ESP) {
+			proto = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1);
+		}
+		return(proto);
+	}
+	inline void set_protocol(u_int8_t protocol) {
+		nxt = protocol;
+	}
+	inline u_int16_t _get_hdr_size() {
 		return(get_total_headers_len());
+	}
+	inline u_int16_t get_hdr_size(u_int8_t *proto_rslt = NULL) {
+		u_int8_t proto;
+		u_int16_t hdr_size = get_total_headers_len(&proto);
+		if(proto_rslt) {
+			*proto_rslt = proto;
+		}
+		if(hdr_size == (u_int16_t)-1) {
+			return(-1);
+		}
+		if(proto == IPPROTO_ESP) {
+			hdr_size += IPPROTO_ESP_HEADER_SIZE;
+		}
+		return(hdr_size);
 	}
 	inline bool is_ext_headers() {
 		return(is_ext_header(nxt));
 	}
-	static inline bool is_ext_headers(u_char *packet, u_int16_t iph_offset) {
-		return(((ip6hdr2*)(packet + iph_offset))->is_ext_headers());
-	}
 	u_int8_t get_ext_headers(u_int8_t *ext_headers_type, u_int8_t ext_headers_max, u_int8_t *ext_headers_count);
-	u_int16_t get_ext_headers_len();
-	inline u_int16_t get_total_headers_len() {
-		u_int16_t ext_headers_len = get_ext_headers_len();
+	u_int16_t get_ext_headers_len(u_int8_t *proto = NULL);
+	inline u_int16_t get_total_headers_len(u_int8_t *proto = NULL) {
+		u_int16_t ext_headers_len = get_ext_headers_len(proto);
 		if(ext_headers_len == (u_int16_t)-1) {
 			return(-1);
 		}
@@ -685,27 +723,70 @@ struct iphdr2 {
 		}
 		#endif
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t _get_protocol() {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
 			return(_protocol);
 		#if VM_IPV6
 		} else {
+			return(((ip6hdr2*)this)->_get_protocol());
+		}
+		#endif
+	}
+	inline u_int8_t get_protocol() {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			if(_protocol == IPPROTO_ESP) {
+				return(*(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1));
+			} else {
+				return(_protocol);
+			}
+		#if VM_IPV6
+		} else {
 			return(((ip6hdr2*)this)->get_protocol());
 		}
 		#endif
 	}
-	inline u_int16_t get_hdr_size() {
+	inline void set_protocol(u_int8_t protocol) {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
-			return(sizeof(iphdr2));
+			_protocol = protocol;
 		#if VM_IPV6
 		} else {
-			return(((ip6hdr2*)this)->get_hdr_size());
+			((ip6hdr2*)this)->set_protocol(protocol);
 		}
 		#endif
+	}
+	inline u_int16_t get_hdr_size(u_int8_t *proto_rslt = NULL) {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			u_int16_t hdr_size = sizeof(iphdr2);
+			if(_protocol == IPPROTO_ESP) {
+				hdr_size += IPPROTO_ESP_HEADER_SIZE;
+			}
+			if(proto_rslt) {
+				*proto_rslt = _protocol;
+			}
+			return(hdr_size);
+		#if VM_IPV6
+		} else {
+			return(((ip6hdr2*)this)->get_hdr_size(proto_rslt));
+		}
+		#endif
+	}
+	inline u_int16_t get_footer_size(u_int8_t proto = (u_int8_t)-1) {
+		if(proto == (u_int8_t)-1) {
+			proto = _get_protocol();
+		}
+		if(proto == IPPROTO_ESP) {
+			u_int8_t padding = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE);
+			return(IPPROTO_ESP_FOOTER_SIZE + padding);
+		}
+		return(0);
 	}
 	inline u_int16_t get_check() {
 		#if VM_IPV6
@@ -745,6 +826,25 @@ struct iphdr2 {
 		|| version == 6
 		#endif
 		);
+	}
+	static inline iphdr2* create(unsigned version) {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			iphdr2 *iphdr = new iphdr2;
+			memset(iphdr, 0, sizeof(*iphdr));
+			iphdr->version = 4;
+			iphdr->_ihl = 5;
+			iphdr->_ttl = 50;
+			return(iphdr);
+		#if VM_IPV6
+		} else {
+			ip6hdr2 *iphdr = new ip6hdr2;
+			memset(iphdr, 0, sizeof(*iphdr));
+			iphdr->version = 6;
+			return((iphdr2*)iphdr);
+		}
+		#endif
 	}
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned int _ihl:4;
@@ -918,12 +1018,64 @@ struct vmIPport {
 		return(this->ip > other.ip ||
 		       (this->ip == other.ip && this->port > other.port));
 	}
+	std::string getString(bool ipv6_in_brackets = false) {
+		return(ip.getString(ipv6_in_brackets) + ":" + port.getString());
+	}
 	vmIP ip;
 	vmPort port;
 };
 
 
-struct vmIPmask {
+struct vmIPmask_ {
+	vmIPmask_() {
+		ip.clear();
+		mask = 0;
+	}
+	std::string getString(bool ipv6_in_brackets =  false) const {
+		std::ostringstream outStr;
+		outStr << ip.getString(ipv6_in_brackets);
+		if(mask > 0 && mask < ip.bits()) {
+			outStr << "/" << mask;
+		}
+		return(outStr.str());
+	}
+	bool setFromString(const char *ip_mask, const char **end_ptr = NULL) {
+		clear();
+		if(ip.setFromString(ip_mask, end_ptr)) {
+			const char *mask_separator = strchr(end_ptr ? *end_ptr : ip_mask, '/');
+			if(mask_separator) {
+				++mask_separator;
+				while(*mask_separator == ' ') {
+					++mask_separator;
+				}
+				int _mask = atoi(mask_separator);
+				if(_mask >= 0 && _mask <= ip.bits()) {
+					mask = _mask;
+				} else {
+					mask = ip.bits();
+				}
+				if(end_ptr) {
+					*end_ptr = mask_separator;
+					while(isdigit(**end_ptr)) {
+						++*end_ptr;
+					}
+				}
+			} else {
+				mask = ip.bits();
+			}
+			return(true);
+		}
+		return(false);
+	}
+	void clear() {
+		ip.clear();
+		mask = 0;
+	}
+	vmIP ip;
+	u_int16_t mask;
+};
+
+struct vmIPmask : vmIPmask_ {
 	vmIPmask() {
 		ip.clear();
 		mask = 0;
@@ -932,8 +1084,23 @@ struct vmIPmask {
 		this->ip = ip;
 		this->mask = mask;
 	}
-	vmIP ip;
-	u_int16_t mask;
+	inline bool operator < (const vmIPmask& other) const { 
+		return(this->ip != other.ip ? this->ip < other.ip : this->mask < other.mask); 
+	}
+};
+
+struct vmIPmask_order2 : vmIPmask_ {
+	vmIPmask_order2() {
+		ip.clear();
+		mask = 0;
+	}
+	vmIPmask_order2(vmIP ip, u_int16_t mask) {
+		this->ip = ip;
+		this->mask = mask;
+	}
+	inline bool operator < (const vmIPmask_order2& other) const { 
+		return(this->mask != other.mask ? this->mask < other.mask : this->ip < other.ip); 
+	}
 };
 
 
@@ -963,6 +1130,29 @@ inline bool ip_is_v6(const char *ips) {
 inline int ip_is_valid(const char *ips) {
 	return(ip_is_v4(ips) ? 4 :
 	       ip_is_v6(ips) ? 6 : 0);
+}
+
+inline bool string_is_look_like_ipv4(const char *str) {
+	return(isdigit(str[0]) && (str[1] == '.' ||
+	       (isdigit(str[1]) && (str[2] == '.' ||
+	       (isdigit(str[2]) && str[3] == '.')))));
+}
+
+inline bool string_is_look_like_ipv6(const char *str) {
+	if(str[0] == '[') {
+		return(string_is_look_like_ipv6(str + 1));
+	}
+	return((isxdigit(str[0]) && (str[1] == ':' ||
+	       (isxdigit(str[1]) && (str[2] == ':' ||
+	       (isxdigit(str[2]) && (str[3] == ':' ||
+	       (isxdigit(str[3]) && str[4] == ':'))))))) ||
+	       (str[0] == ':' && (isxdigit(str[1]) ||
+	       (str[1] == ':' && isxdigit(str[2])))));
+}
+
+inline int string_is_look_like_ip(const char *str) {
+	return(string_is_look_like_ipv4(str) ? 4 :
+	       string_is_look_like_ipv6(str) ? 6 : 0);
 }
 
 vmIP mysql_ip_2_vmIP(void *row, const char *column);

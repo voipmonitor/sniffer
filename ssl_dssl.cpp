@@ -23,6 +23,7 @@ extern int opt_nocdr;
 extern sExistsColumns existsColumns;
 
 static cSslDsslSessions *SslDsslSessions;
+static DSSL_Env *SslDsslEnv;
 
 
 cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
@@ -102,13 +103,17 @@ bool cSslDsslSession::initServer() {
 bool cSslDsslSession::initSession() {
 	session = new FILE_LINE(0) DSSL_Session;
 	DSSL_SessionInit(NULL, session, server_info);
-	session->env = DSSL_EnvCreate(100 /*sessionTableSize*/, 3600 /*key_timeout_interval*/);
+	session->env = SslDsslEnv;
 	session->last_packet = new FILE_LINE(0) DSSL_Pkt;
 	session->get_keys_fce = this->get_keys;
 	session->get_keys_fce_call_data[0] = this;
 	session->get_keys_fce_call_data[1] = SslDsslSessions;
 	extern bool opt_ssl_ignore_error_invalid_mac;
 	session->ignore_error_invalid_mac = opt_ssl_ignore_error_invalid_mac;
+	extern bool opt_ssl_ignore_error_bad_finished_digest;
+	session->ignore_error_bad_finished_digest = opt_ssl_ignore_error_bad_finished_digest;
+	extern int opt_ssl_tls_12_sessionkey_mode;
+	session->tls_12_sessionkey_via_ws = opt_ssl_tls_12_sessionkey_mode == 1;
 	memset(session->last_packet, 0, sizeof(*session->last_packet));
 	DSSL_SessionSetCallback(session, cSslDsslSession::dataCallback, cSslDsslSession::errorCallback, this);
 	return(true);
@@ -126,8 +131,6 @@ void cSslDsslSession::termServer() {
 
 void cSslDsslSession::termSession() {
 	if(session) {
-		DSSL_EnvDestroy(session->env);
-		session->env = NULL;
 		delete session->last_packet;
 		session->last_packet = NULL;
 		DSSL_SessionDeInit(session);
@@ -143,7 +146,8 @@ void cSslDsslSession::termSession() {
 
 void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
 				  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
-				  struct timeval ts, bool init, class cSslDsslSessions *sessions) {
+				  struct timeval ts, bool init, class cSslDsslSessions *sessions,
+				  bool forceTryIfExistsError) {
 	rslt_decrypt->clear();
 	if(!session) {
 		return;
@@ -151,12 +155,12 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 	NM_PacketDir dir = this->getDirection(saddr, sport, daddr, dport);
 	if(dir != ePacketDirInvalid) {
 		bool reinit = false;
-		if(!init && (process_error || restored)) {
+		if(!init && ((process_error && !forceTryIfExistsError) || restored)) {
 			if(this->isClientHello(data, datalen, dir)) {
 				this->term();
 				this->init();
 				reinit = true;
-			} else if(process_error) {
+			} else if(process_error && !forceTryIfExistsError) {
 				return;
 			}
 		}
@@ -174,6 +178,10 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 			this->decrypted_data = rslt_decrypt;
 			int rc = DSSL_SessionProcessData(session, dir, (u_char*)data, datalen);
 			if(rc == DSSL_RC_OK) {
+				if(process_error && forceTryIfExistsError) {
+					process_error = false;
+					process_error_code = 0;
+				}
 				if(opt_ssl_store_sessions && !opt_nocdr && !init) {
 					this->store_session(sessions, ts);
 				}
@@ -260,9 +268,15 @@ string cSslDsslSession::get_session_data(struct timeval ts) {
 	} else {
 		json.add("server_random", hexencode(session->server_random, sizeof(session->server_random)));
 		json.add("master_secret", hexencode(session->master_secret, sizeof(session->master_secret)));
+		if(session->tls_session) {
+			json.add("seq_server", session->tls_session_server_seq);
+			json.add("seq_client", session->tls_session_client_seq);
+			json.add("state", session->tls_session_state);
+		}
 	}
 	json.add("c_dec_version", session->c_dec.version);
 	json.add("s_dec_version", session->s_dec.version);
+	json.add("tls_ws", session->tls_session != NULL);
 	json.add("stored_at", ts.tv_sec);
 	return(json.getJson());
 }
@@ -286,7 +300,16 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 		jsonGetKey(&jsonData, "key_server_traffic_secret_0", &session->get_keys_rslt_data.server_traffic_secret_0);
 		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
 		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
-		if(!tls_generate_keys(session, true)) {
+		if(!tls_13_generate_keys(session, true)) {
+			return(false);
+		}
+	} else if(session->version == TLS1_2_VERSION && atoi(jsonData.getValue("tls_ws").c_str())) {
+		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
+		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
+		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
+		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
+		session->tls_session_state = atol(jsonData.getValue("state").c_str());
+		if(!tls_12_generate_keys(session, true)) {
 			return(false);
 		}
 	} else {
@@ -396,7 +419,7 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 	unlock_map();
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
+bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
 	if(sverb.ssl_sessionkey) {
 		cout << "find clientrandom with type " << enumToStrType(type) << endl;
 		hexdump(client_random, SSL3_RANDOM_SIZE);
@@ -405,10 +428,12 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
 	extern int ssl_client_random_maxwait_ms;
-	if(ssl_client_random_maxwait_ms > 0) {
+	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
-			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
+			u_int64_t pcapQueueQ_lastUS = pcapQueueQ->getLastUS();
+			u_int64_t ts_us = getTimeUS(ts);
+			waitUS = pcapQueueQ_lastUS > ts_us ? pcapQueueQ_lastUS - ts_us : 0;
 		}
 	}
 	do {
@@ -439,7 +464,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	return(rslt);
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts) {
+bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
 	if(sverb.ssl_sessionkey) {
 		cout << "find clientrandom for all type" << endl;
 		hexdump(client_random, SSL3_RANDOM_SIZE);
@@ -448,10 +473,12 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
 	extern int ssl_client_random_maxwait_ms;
-	if(ssl_client_random_maxwait_ms > 0) {
+	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
-			waitUS = pcapQueueQ->getLastUS() - getTimeUS(ts);
+			u_int64_t pcapQueueQ_lastUS = pcapQueueQ->getLastUS();
+			u_int64_t ts_us = getTimeUS(ts);
+			waitUS = pcapQueueQ_lastUS > ts_us ? pcapQueueQ_lastUS - ts_us : 0;
 		}
 	}
 	do {
@@ -597,7 +624,8 @@ cSslDsslSessions::~cSslDsslSessions() {
 	term();
 }
 
-void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
+void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+				   bool forceTryIfExistsError) {
 	/*
 	if(!(sport == 50404 || dport == 50404)) {
 		return;
@@ -675,7 +703,8 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 	if(session) {
 		session->processData(rslt_decrypt, data, datalen, 
 				     saddr, daddr, sport, dport, 
-				     ts, init_client_hello || init_store_session, this);
+				     ts, init_client_hello || init_store_session, this,
+				     forceTryIfExistsError);
 	}
 	unlock_sessions();
 }
@@ -707,12 +736,12 @@ void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *k
 	this->session_keys.set(type, client_random, key, key_length);
 }
 
-bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts) {
-	return(this->session_keys.get(client_random, type, key, key_length, ts));
+bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+	return(this->session_keys.get(client_random, type, key, key_length, ts, use_wait));
 }
 
-bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts) {
-	return(this->session_keys.get(client_random, get_keys_data, ts));
+bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait) {
+	return(this->session_keys.get(client_random, get_keys_data, ts, use_wait));
 }
 
 void cSslDsslSessions::keyErase(u_char *client_random) {
@@ -880,6 +909,7 @@ void cClientRandomConnection::evData(u_char *data, size_t dataLen) {
 void ssl_dssl_init() {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions = new FILE_LINE(0) cSslDsslSessions;
+	SslDsslEnv = DSSL_EnvCreate(10000 /*sessionTableSize*/, 4 * 60 * 60 /*key_timeout_interval*/);
 	extern bool init_lib_gcrypt();
 	init_lib_gcrypt();
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
@@ -891,13 +921,19 @@ void ssl_dssl_clean() {
 		delete SslDsslSessions;
 		SslDsslSessions = NULL;
 	}
+	if(SslDsslEnv) {
+		DSSL_EnvDestroy(SslDsslEnv);
+		SslDsslEnv = NULL;
+	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
 
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts) {
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+		      bool forceTryIfExistsError) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
-	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts);
+	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts,
+				     forceTryIfExistsError);
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
@@ -1013,6 +1049,8 @@ void ssl_parse_client_random(const char *fileName) {
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
+
+#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key) {
 	json->add(name, hexencode(key->key, key->length));
 }
@@ -1024,6 +1062,7 @@ void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_ite
 		key->length = key_str.length() / 2;
 	}
 }
+#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
 
 #if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
@@ -1048,4 +1087,31 @@ void clientRandomServerStop() {
 		clientRandomServer = NULL;
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
+}
+
+bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(!SslDsslSessions) {
+		return(false);
+	}
+	timeval ts;
+	ts.tv_sec = 0;
+	ts.tv_usec = 0;
+	unsigned _key_length;
+	bool rslt = SslDsslSessions->keyGet(client_random, cSslDsslSessionKeys::_skt_client_random, key, &_key_length, ts, false);
+	if(rslt) {
+		*key_length = _key_length;
+	}
+	return(rslt);
+	#else
+	return(false);
+	#endif
+}
+
+void erase_client_random(u_char *client_random) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(SslDsslSessions) {
+		SslDsslSessions->keyErase(client_random);
+	}
+	#endif
 }

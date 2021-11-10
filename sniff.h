@@ -26,8 +26,6 @@
 
 #define RTP_FIXED_HEADERLEN 12
 
-#define MAX_LENGTH_CALL_INFO 20
-
 
 void *rtp_read_thread_func(void *arg);
 void add_rtp_read_thread();
@@ -40,13 +38,23 @@ string get_rtp_threads_cpu_usage(bool callPstat);
 #ifdef HAS_NIDS
 void readdump_libnids(pcap_t *handle);
 #endif
-void readdump_libpcap(pcap_t *handle, u_int16_t handle_index);
+
+enum eProcessPcapType {
+	_pp_read_file = 1,
+	_pp_process_calls = 2,
+	_pp_dedup = 4,
+	_pp_anonymize_ip = 8
+};
+
+bool open_global_pcap_handle(const char *pcap, string *error = NULL);
+bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error = NULL);
+void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type);
 
 unsigned int setCallFlags(unsigned long int flags,
-				 vmIP ip_src, vmIP ip_dst,
-				 char *caller, char *called,
-				 char *caller_domain, char *called_domain,
-				 ParsePacket::ppContentsX *parseContents);
+			  vmIP ip_src, vmIP ip_dst,
+			  const char *caller, const char *called,
+			  const char *caller_domain, const char *called_domain,
+			  ParsePacket::ppContentsX *parseContents);
 
 typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
 
@@ -63,7 +71,18 @@ struct sll_header {
 
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0)
-#define IS_DTLS(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xFF00) < 0x4000)
+#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
+#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
+
+enum e_packet_type {
+	_t_packet_sip = 1,
+	_t_packet_rtp,
+	_t_packet_rtcp,
+	_t_packet_dtls,
+	_t_packet_mrcp,
+	_t_packet_skinny,
+	_t_packet_mgcp
+};
 
 enum e_packet_s_type {
 	_t_packet_s = 1,
@@ -71,6 +90,26 @@ enum e_packet_s_type {
 	_t_packet_s_plus_pointer,
 	_t_packet_s_process_0,
 	_t_packet_s_process
+};
+
+struct packet_flags {
+	u_int8_t tcp : 2;
+	u_int8_t ss7 : 1;
+	u_int8_t mrcp : 1;
+	u_int8_t ssl : 1;
+	u_int8_t skinny : 1;
+	u_int8_t mgcp: 1;
+	inline void init() {
+		for(unsigned i = 0; i < sizeof(*this); i++) {
+			((u_char*)this)[i] = 0;
+		}
+	}
+	inline bool other_processing() {
+		return(ss7);
+	}
+	inline bool rtp_processing() {
+		return(mrcp);
+	}
 };
 
 struct packet_s_kamailio_subst {
@@ -104,13 +143,9 @@ struct packet_s {
 	u_int16_t _dataoffset;
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
-	unsigned int istcp : 2;
 	sPacketInfoData pid;
-	bool isother: 1;
-	bool is_ssl : 1;
-	bool is_skinny : 1;
-	bool is_mgcp: 1;
-	bool is_need_sip_process : 1;
+	packet_flags pflags;
+	bool need_sip_process : 1;
 	bool _blockstore_lock : 1;
 	bool _packet_alloc : 1;
 	sAudiocodes *audiocodes;
@@ -212,7 +247,7 @@ struct packet_s {
 		return((tcphdr2*)((char*)header_ip + header_ip->get_hdr_size()));
 	}
 	inline u_int32_t tcp_seq() {
-		if(istcp) {
+		if(pflags.tcp) {
 			tcphdr2 *header_tcp = header_tcp_();
 			if(header_tcp) {
 				return(header_tcp->seq);
@@ -346,6 +381,9 @@ struct packet_s {
 	inline bool isDtls() {
 		return(IS_DTLS(data_(), datalen_()));
 	}
+	inline bool isMrcp() {
+		return(IS_MRCP(data_(), datalen_()));
+	}
 	inline bool isUdptl() {
 		return(!IS_RTP(data_(), datalen_()));
 	}
@@ -397,17 +435,79 @@ struct packet_s_process_rtp_call_info {
 	bool multiple_calls;
 };
 
+struct packet_s_process_calls_info {
+	unsigned length;
+	bool find_by_dest;
+	packet_s_process_rtp_call_info calls[1];
+	static unsigned __size_of;
+	static inline packet_s_process_calls_info* create() {
+		return((packet_s_process_calls_info*) new FILE_LINE(0) u_char[size_of()]);
+	}
+	static inline void free(packet_s_process_calls_info* call_info) {
+		delete [] (u_char*)call_info;
+	}
+	static inline unsigned size_of() {
+		return(__size_of);
+	}
+	static inline unsigned _size_of() {
+		return(sizeof(packet_s_process_calls_info) + 
+		       (max_calls() - 1) * sizeof(packet_s_process_rtp_call_info));
+	}
+	static inline void set_size_of() {
+		__size_of = _size_of();
+	}
+	static inline unsigned max_calls() {
+		extern int opt_sdp_multiplication;
+		return(max(opt_sdp_multiplication, 1));
+	}
+};
+
+enum packet_s_process_type_content {
+	_pptc_na = 0,
+	_pptc_sip = 1,
+	_pptc_skinny = 2,
+	_pptc_mgcp = 3
+};
+
+enum packet_s_process_next_action {
+	_ppna_na = 0,
+	_ppna_set = 1,
+	_ppna_push_to_extend = 2,
+	_ppna_push_to_rtp = 3,
+	_ppna_push_to_other = 4,
+	_ppna_destroy = 5
+};
+
 struct packet_s_process_0 : public packet_s_stack {
 	volatile u_int8_t use_reuse_counter;
 	volatile u_int8_t reuse_counter;
 	volatile u_int8_t reuse_counter_sync;
-	int isSip;
-	bool isSkinny;
-	bool isMgcp;
-	packet_s_process_rtp_call_info call_info[MAX_LENGTH_CALL_INFO];
-	int call_info_length;
-	bool call_info_find_by_dest;
+	u_int8_t type_content;
+	u_int8_t next_action;
+	packet_s_process_calls_info call_info;
+	static unsigned __size_of;
+	static inline packet_s_process_0* create() {
+		packet_s_process_0 *p = (packet_s_process_0*) new FILE_LINE(0) u_char[size_of()];
+		p->create_init();
+		return(p);
+	}
+	static inline void free(packet_s_process_0* call_info) {
+		delete [] (u_char*)call_info;
+	}
+	static inline unsigned size_of() {
+		return(__size_of);
+	}
+	static inline unsigned _size_of() {
+		return(sizeof(packet_s_process_0) + 
+		       (packet_s_process_calls_info::max_calls() - 1) * sizeof(packet_s_process_rtp_call_info));
+	}
+	static inline void set_size_of() {
+		__size_of = _size_of();
+	}
 	inline packet_s_process_0() {
+		create_init();
+	}
+	inline void create_init() {
 		__type = _t_packet_s_process_0; 
 		init();
 		init2();
@@ -422,14 +522,13 @@ struct packet_s_process_0 : public packet_s_stack {
 		reuse_counter_sync = 0;
 	}
 	inline void init2() {
-		isSip = -1;
-		isSkinny = false;
-		isMgcp = false;
-		call_info_length = -1;
+		type_content = _pptc_na;
+		next_action = _ppna_na;
+		call_info.length = -1;
 		init_reuse();
 	}
 	inline void init2_rtp() {
-		call_info_length = -1;
+		call_info.length = -1;
 		init_reuse();
 	}
 	inline void term() {
@@ -461,9 +560,23 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void reuse_counter_unlock() {
 		__sync_lock_release(&reuse_counter_sync);
 	}
+	inline bool typeContentIsSip() {
+		return(type_content == _pptc_sip);
+	}
+	inline bool typeContentIsSkinny() {
+		return(type_content == _pptc_skinny);
+	}
+	inline bool typeContentIsMgcp() {
+		return(type_content == _pptc_mgcp);
+	}
 };
 
 struct packet_s_process : public packet_s_process_0 {
+	enum eTypeChildPackets {
+		_tchp_none,
+		_tchp_packet,
+		_tchp_list
+	};
 	ParsePacket::ppContentsX parseContents;
 	u_int32_t sipDataOffset;
 	u_int32_t sipDataLen;
@@ -485,10 +598,27 @@ struct packet_s_process : public packet_s_process_0 {
 	bool _findCall : 1;
 	bool _createCall : 1;
 	bool _customHeadersDone : 1;
+	void *child_packets;
+	int8_t child_packets_type;
 	inline packet_s_process() {
 		__type = _t_packet_s_process; 
 		init();
 		init2();
+	}
+	inline packet_s_process& operator = (const packet_s_process& other) {
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic push
+		#pragma GCC diagnostic ignored "-Wclass-memaccess"
+		#endif
+		memcpy(this, &other, sizeof(*this));
+		#if __GNUC__ >= 8
+		#pragma GCC diagnostic pop
+		#endif
+		this->callid_long = NULL;
+		this->callid_alternative = NULL;
+		this->child_packets = NULL;
+		this->child_packets_type = _tchp_none;
+		return(*this);
 	}
 	inline void init() {
 		packet_s_process_0::init();
@@ -515,6 +645,8 @@ struct packet_s_process : public packet_s_process_0 {
 		_findCall = false;
 		_createCall = false;
 		_customHeadersDone = false;
+		child_packets = NULL;
+		child_packets_type = _tchp_none;
 	}
 	inline void term() {
 		packet_s_process_0::term();
@@ -525,6 +657,9 @@ struct packet_s_process : public packet_s_process_0 {
 		if(callid_alternative) {
 			delete callid_alternative;
 			callid_alternative = NULL;
+		}
+		if(child_packets && child_packets_type == _tchp_list) {
+			delete (list<packet_s_process*>*)child_packets;
 		}
 	}
 	void set_callid(char *callid_input, unsigned callid_length = 0) {
@@ -571,11 +706,25 @@ struct packet_s_process : public packet_s_process_0 {
 			++length;
 		}
 		if(length == 6) {
-			return((((int)_callid[0] * (int)_callid[1]) ^
-				((int)_callid[2] * (int)_callid[3]) ^
-				((int)_callid[4] * (int)_callid[5])) % preProcessPacketCallX_count);
+			return((((unsigned int)_callid[0] * (unsigned int)_callid[1]) ^
+				((unsigned int)_callid[2] * (unsigned int)_callid[3]) ^
+				((unsigned int)_callid[4] * (unsigned int)_callid[5])) % preProcessPacketCallX_count);
 		} else {
-			return(_callid[0] % preProcessPacketCallX_count);
+			return((unsigned int)_callid[0] % preProcessPacketCallX_count);
+		}
+	}
+	inline void register_child_packet(packet_s_process *child) {
+		if(!child_packets) {
+			child_packets = child;
+			child_packets_type = _tchp_packet;
+		} else {
+			if(child_packets_type == _tchp_packet) {
+				packet_s_process *temp_child = (packet_s_process*)child_packets;
+				child_packets = new FILE_LINE(0) list<packet_s_process*>;
+				((list<packet_s_process*>*)child_packets)->push_back(temp_child);
+				child_packets_type = _tchp_list;
+			}
+			((list<packet_s_process*>*)child_packets)->push_back(child);
 		}
 	}
 	inline bool is_message() {
@@ -1017,11 +1166,18 @@ void _process_packet__cleanup_registers();
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (call->isfax && opt_saveudptl))
+#define enable_save_mrcp(call)		((call->flags & FLAG_SAVEMRCP) || (call->isfax && opt_saveudptl))
+#define enable_save_application(call)	(enable_save_mrcp(call))
 #define enable_save_rtp_audio(call)	((call->flags & (FLAG_SAVERTP | FLAG_SAVERTPHEADER)) || (call->isfax && opt_saveudptl) || opt_saverfc2833)
 #define enable_save_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER))
-#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
-#define enable_save_rtp_av(call, is_video) \
-					(is_video ? enable_save_rtp_video(call) : enable_save_rtp_audio(call))
+#define enable_save_rtp_av(call)	(enable_save_rtp_audio(call) || enable_save_rtp_video(call))
+#define enable_save_rtp(call)		(enable_save_rtp_audio(call) || enable_save_rtp_video(call) || enable_save_application(call))
+#define enable_save_rtp_media(call, flags) \
+					(flags.is_audio() ? enable_save_rtp_audio(call) : \
+					(flags.is_video() ? enable_save_rtp_video(call) : \
+					(flags.is_application() ? enable_save_application(call) : enable_save_rtp_audio(call))))
+#define enable_save_rtp_packet(call, type) \
+					(type == _t_packet_mrcp ? enable_save_mrcp(call) : enable_save_rtp_av(call))
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
 #define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))
@@ -1034,6 +1190,15 @@ void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
 		u_int16_t header_ip_offset, u_int64_t packet_time, 
 		u_char *data, unsigned datalen,
 		const char *file, unsigned line, const char *function, const char *descr = NULL);
+
+inline u_int32_t get_pcap_snaplen() {
+	extern int opt_snaplen;
+	extern int opt_enable_http;
+	extern int opt_enable_webrtc;
+	extern int opt_enable_ssl;
+	return((opt_snaplen > 0 ? (unsigned)opt_snaplen :
+	       (opt_enable_http || opt_enable_webrtc || opt_enable_ssl ? 6000 : 3200)));
+}
 
 
 #endif

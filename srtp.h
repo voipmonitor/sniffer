@@ -12,6 +12,8 @@
 #include <srtp/srtp.h>
 #endif
 
+#include "dtls.h"
+
 
 class RTPsecure {
 public:
@@ -20,7 +22,7 @@ public:
 		err_unsupported_suite,
 		err_bad_sdes_length,
 		err_bad_sdes_content,
-		err_bad_tag_len,
+		err_bad_tag_size,
 		err_gcrypt_init,
 		err_cipher_open,
 		err_md_open,
@@ -46,15 +48,24 @@ public:
 		}
 		bool init();
 		bool keyDecode();
+		inline unsigned sdes_ok_length() {
+			return(key_size == 128 ? 40 : 64);
+		}
+		inline unsigned key_len() {
+			return(key_size == 128 ? 16 : 32);
+		}
+		inline unsigned salt_len() {
+			return(14);
+		}
 		unsigned tag;
 		std::string suite;
 		std::string sdes;
 		u_int64_t from_time_us;
-		u_char key_salt[30];
-		u_char key[16]; 
+		u_char key_salt[46];
+		u_char key[32];
 		u_char salt[14];
-		unsigned tag_len;
-		unsigned key_len;
+		unsigned tag_size;
+		unsigned key_size;
 		int cipher;
 		int md;
 		eError error;
@@ -88,7 +99,7 @@ public:
 			#endif
 			#if HAVE_LIBSRTP
 			if(srtp_ctx) {
-				free(srtp_ctx);
+				srtp_dealloc(srtp_ctx);
 			}
 			#endif
 		}
@@ -110,6 +121,11 @@ public:
 	bool setCryptoConfig();
 	void addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
 	bool existsNewerCryptoConfig(u_int64_t time_us);
+	inline bool need_prepare_decrypt() {
+		return(!cryptoConfigVector.size());
+	}
+	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
+	bool is_dtls();
 	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
@@ -119,7 +135,13 @@ public:
 	void setError(eError error);
 	void clearError();
 	bool isOK() {
-	     return(error == err_na);
+		return(error == err_na);
+	}
+	bool isOK_decrypt_rtp() {
+		return(decrypt_rtp_ok > 0);
+	}
+	bool isOK_decrypt_rtcp() {
+		return(decrypt_rtcp_ok > 0);
 	}
 private:
 	bool init();
@@ -146,11 +168,11 @@ private:
 	uint32_t get_ssrc_rtcp(u_char *data) {
 		return(htonl(*(uint32_t*)(data + 4)));
 	}
-	unsigned tag_len() {
-	       return(cryptoConfigVector[cryptoConfigActiveIndex].tag_len);
+	unsigned tag_size() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].tag_size);
 	}
-	unsigned key_len() {
-	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_len);
+	unsigned key_size() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_size);
 	}
 	int cipher() {
 	       return(cryptoConfigVector[cryptoConfigActiveIndex].cipher);
@@ -167,11 +189,11 @@ private:
 	u_char *salt() {
 	       return(cryptoConfigVector[cryptoConfigActiveIndex].salt);
 	}
-	unsigned sizeof_key() {
-	       return(sizeof(cryptoConfigVector[cryptoConfigActiveIndex].key));
+	unsigned key_len() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].key_len());
 	}
-	unsigned sizeof_salt() {
-	       return(sizeof(cryptoConfigVector[cryptoConfigActiveIndex].salt));
+	unsigned salt_len() {
+	       return(cryptoConfigVector[cryptoConfigActiveIndex].salt_len());
 	}
 private:
 	eMode mode;
@@ -190,6 +212,10 @@ private:
 	eError error;
 	int rtcp_unencrypt_header_len;
 	int rtcp_unencrypt_footer_len;
+	unsigned decrypt_rtp_ok;
+	unsigned decrypt_rtp_failed;
+	unsigned decrypt_rtcp_ok;
+	unsigned decrypt_rtcp_failed;
 };
 
 

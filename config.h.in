@@ -85,8 +85,14 @@
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
 
-/* Define if using libtcmalloc */
+/* Define if using openssl */
+#undef HAVE_OPENSSL
+
+/* Define if using openssl >= 1.0.1 */
 #undef HAVE_OPENSSL101
+
+/* Define if using dpdk */
+#undef HAVE_LIBDPDK
 
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT

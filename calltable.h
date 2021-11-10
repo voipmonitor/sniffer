@@ -44,6 +44,7 @@
 #include "tools_fifo_buffer.h"
 #include "record_array.h"
 #include "calltable_base.h"
+#include "dtls.h"
 
 
 #define MAX_IP_PER_CALL 40	//!< total maxumum of SDP sessions for one call-id
@@ -100,28 +101,29 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define FLAG_SAVERTP_VIDEO		(1 << 4)
 #define FLAG_SAVERTP_VIDEO_HEADER	(1 << 5)
 #define FLAG_PROCESSING_RTP_VIDEO	(1 << 6)
-#define FLAG_SAVERTCP			(1 << 7)
-#define FLAG_SAVEREGISTER		(1 << 8)
-#define FLAG_SAVEAUDIO			(1 << 9)
-#define FLAG_FORMATAUDIO_WAV		(1 << 10)
-#define FLAG_FORMATAUDIO_OGG		(1 << 11)
+#define FLAG_SAVEMRCP			(1 << 7)
+#define FLAG_SAVERTCP			(1 << 8)
+#define FLAG_SAVEREGISTER		(1 << 9)
+#define FLAG_SAVEAUDIO			(1 << 10)
+#define FLAG_FORMATAUDIO_WAV		(1 << 11)
+#define FLAG_FORMATAUDIO_OGG		(1 << 12)
 #define FLAG_SAVEAUDIO_WAV		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_WAV)
 #define FLAG_SAVEAUDIO_OGG		(FLAG_SAVEAUDIO|FLAG_FORMATAUDIO_OGG)
-#define FLAG_SAVEGRAPH			(1 << 12)
-#define FLAG_SKIPCDR			(1 << 13)
-#define FLAG_RUNSCRIPT			(1 << 14)
-#define FLAG_RUNAMOSLQO			(1 << 15)
-#define FLAG_RUNBMOSLQO			(1 << 16)
-#define FLAG_HIDEMESSAGE		(1 << 17)
-#define FLAG_USE_SPOOL_2		(1 << 18)
-#define FLAG_SAVEDTMFDB			(1 << 19)
-#define FLAG_SAVEDTMFPCAP		(1 << 20)
-#define FLAG_SAVEOPTIONSDB		(1 << 21)
-#define FLAG_SAVEOPTIONSPCAP		(1 << 22)
-#define FLAG_SAVENOTIFYDB		(1 << 23)
-#define FLAG_SAVENOTIFYPCAP		(1 << 24)
-#define FLAG_SAVESUBSCRIBEDB		(1 << 25)
-#define FLAG_SAVESUBSCRIBEPCAP		(1 << 26)
+#define FLAG_SAVEGRAPH			(1 << 13)
+#define FLAG_SKIPCDR			(1 << 14)
+#define FLAG_RUNSCRIPT			(1 << 15)
+#define FLAG_RUNAMOSLQO			(1 << 16)
+#define FLAG_RUNBMOSLQO			(1 << 17)
+#define FLAG_HIDEMESSAGE		(1 << 18)
+#define FLAG_USE_SPOOL_2		(1 << 19)
+#define FLAG_SAVEDTMFDB			(1 << 20)
+#define FLAG_SAVEDTMFPCAP		(1 << 21)
+#define FLAG_SAVEOPTIONSDB		(1 << 22)
+#define FLAG_SAVEOPTIONSPCAP		(1 << 23)
+#define FLAG_SAVENOTIFYDB		(1 << 24)
+#define FLAG_SAVENOTIFYPCAP		(1 << 25)
+#define FLAG_SAVESUBSCRIBEDB		(1 << 26)
+#define FLAG_SAVESUBSCRIBEPCAP		(1 << 27)
 
 #define CDR_NEXT_MAX 10
 
@@ -140,6 +142,8 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_SDP_EXISTS_MEDIA_TYPE_AUDIO	(1 << 12)
 #define CDR_SDP_EXISTS_MEDIA_TYPE_IMAGE	(1 << 13)
 #define CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO	(1 << 14)
+#define CDR_PROCLIM_SUPPRESS_RTP_READ   (1 << 15)
+#define CDR_PROCLIM_SUPPRESS_RTP_PROC   (1 << 16)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -147,6 +151,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_RTP_STREAM_IS_CALLED		(1 << 3)
 
 #define SS7_IAM 1
+#define SS7_SAM 2
 #define SS7_ACM 6
 #define SS7_CPG 44
 #define SS7_ANM 9
@@ -183,13 +188,15 @@ struct s_dtmf {
 	vmIP daddr;
 };
 
+
 enum e_sdp_protocol {
 	sdp_proto_na,
 	sdp_proto_rtp,
 	sdp_proto_srtp,
 	sdp_proto_t38,
 	sdp_proto_msrp,
-	sdp_proto_sprt
+	sdp_proto_sprt,
+	sdp_proto_tcp_mrcpv2
 };
 
 struct s_sdp_flags : public s_sdp_flags_base {
@@ -260,7 +267,7 @@ struct ip_port_call_info_rtp {
 	time_t last_packet_time;
 };
 
-struct rtp_crypto_config {
+struct srtp_crypto_config {
 	unsigned tag;
 	string suite;
 	string key;
@@ -273,7 +280,8 @@ struct s_sdp_media_data {
 		port.clear();
 		label[0] = 0;
 		inactive_ip0 = 0;
-		rtp_crypto_config_list = NULL;
+		srtp_crypto_config_list = NULL;
+		srtp_fingerprint = NULL;
 		exists_payload_televent = false;
 	}
 	vmIP ip;
@@ -281,33 +289,42 @@ struct s_sdp_media_data {
 	char label[MAXLEN_SDP_LABEL];
 	s_sdp_flags sdp_flags;
 	int8_t inactive_ip0;
-	list<rtp_crypto_config> *rtp_crypto_config_list;
+	list<srtp_crypto_config> *srtp_crypto_config_list;
+	string *srtp_fingerprint;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	bool exists_payload_televent;
 };
 
 struct ip_port_call_info {
 	ip_port_call_info() {
-		rtp_crypto_config_list = NULL;
+		srtp = false;
+		srtp_crypto_config_list = NULL;
+		srtp_fingerprint = NULL;
 		canceled = false;
 	}
 	~ip_port_call_info() {
-		if(rtp_crypto_config_list) {
-			delete rtp_crypto_config_list;
+		if(srtp_crypto_config_list) {
+			delete srtp_crypto_config_list;
+		}
+		if(srtp_fingerprint) {
+			delete srtp_fingerprint;
 		}
 	}
-	void setSdpCryptoList(list<rtp_crypto_config> *rtp_crypto_config_list, u_int64_t from_time_us) {
-		if(rtp_crypto_config_list && rtp_crypto_config_list->size()) {
-			if(!this->rtp_crypto_config_list) {
-				this->rtp_crypto_config_list = new FILE_LINE(0) list<rtp_crypto_config>;
-				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+	void setSrtp() {
+		srtp = true;
+	}
+	void setSrtpCryptoConfig(list<srtp_crypto_config> *srtp_crypto_config_list, u_int64_t from_time_us) {
+		if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
+			if(!this->srtp_crypto_config_list) {
+				this->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
+				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					iter->from_time_us = from_time_us;
-					this->rtp_crypto_config_list->push_back(*iter);
+					this->srtp_crypto_config_list->push_back(*iter);
 				}
 			} else {
-				for(list<rtp_crypto_config>::iterator iter = rtp_crypto_config_list->begin(); iter != rtp_crypto_config_list->end(); iter++) {
+				for(list<srtp_crypto_config>::iterator iter = srtp_crypto_config_list->begin(); iter != srtp_crypto_config_list->end(); iter++) {
 					bool exists = false;
-					for(list<rtp_crypto_config>::iterator iter2 = this->rtp_crypto_config_list->begin(); iter2 != this->rtp_crypto_config_list->end(); iter2++) {
+					for(list<srtp_crypto_config>::iterator iter2 = this->srtp_crypto_config_list->begin(); iter2 != this->srtp_crypto_config_list->end(); iter2++) {
 						if(iter->suite == iter2->suite && iter->key == iter2->key) {
 							exists = true;
 							break;
@@ -315,10 +332,18 @@ struct ip_port_call_info {
 					}
 					if(!exists) {
 						iter->from_time_us = from_time_us;
-						this->rtp_crypto_config_list->push_back(*iter);
+						this->srtp_crypto_config_list->push_back(*iter);
 					}
 				}
 			}
+		}
+	}
+	void setSrtpFingerprint(string *srtp_fingerprint) {
+		if(srtp_fingerprint) {
+			if(!this->srtp_fingerprint) {
+				this->srtp_fingerprint = new FILE_LINE(0) string;
+			}
+			*this->srtp_fingerprint = *srtp_fingerprint;
 		}
 	}
 	enum eTypeAddr {
@@ -332,8 +357,11 @@ struct ip_port_call_info {
 	int8_t iscaller;
 	string sessid;
 	string sdp_label;
-	list<rtp_crypto_config> *rtp_crypto_config_list;
+	bool srtp;
+	list<srtp_crypto_config> *srtp_crypto_config_list;
+	string *srtp_fingerprint;
 	string to;
+	string to_uri;
 	string branch;
 	vmIP sip_src_addr;
 	s_sdp_flags sdp_flags;
@@ -429,7 +457,55 @@ struct sCseq {
 	u_int32_t number;
 };
 
+#define P_FLAGS_IMAX 10
+#define P_FLAGS_MAX 200
+
 class Call_abstract {
+public:
+	enum ePFlags {
+		_p_flag_na,
+		_p_flag_dumper_open,			//  1
+		_p_flag_dumper_open_ok,			//  2
+		_p_flag_dumper_dump,			//  3
+		_p_flag_dumper_dump_end,		//  4
+		_p_flag_dumper_dump_close,		//  5
+		_p_flag_dumper_dump_close_2,		//  6
+		_p_flag_dumper_dump_close_3,		//  7
+		_p_flag_dumper_dump_close_4,		//  8
+		_p_flag_dumper_dump_close_5,		//  9
+		_p_flag_dumper_dump_close_end,		// 10
+		_p_flag_dumper_dump_close_not_async,	// 11
+		_p_flag_dumper_set_state_close,		// 12
+		_p_flag_init_tar_buffer,		// 13
+		_p_flag_init_tar_buffer_end,		// 14
+		_p_flag_fzh_close,			// 15
+		_p_flag_fzh_flushbuffer_1,		// 16
+		_p_flag_fzh_flushbuffer_2,		// 17
+		_p_flag_fzh_flushbuffer_3,		// 18
+		_p_flag_fzh_flushtar_1,			// 19
+		_p_flag_fzh_flushtar_2,			// 20
+		_p_flag_fzh_flushtar_3,			// 21
+		_p_flag_fzh_write_1,			// 22
+		_p_flag_fzh_write_2,			// 23
+		_p_flag_fzh_compress_ev_1,		// 24
+		_p_flag_fzh_compress_ev_2,		// 25
+		_p_flag_chb_add_tar_pos,		// 26
+		_p_flag_destroy_tar_buffer,		// 27
+		_p_flag_inc_chunk_buffer,		// 28
+		_p_flag_dec_chunk_buffer		// 29
+	};
+	struct sChbIndex {
+		inline sChbIndex(void *chb, const char *name) {
+			this->chb = chb;
+			this->name = name;
+		}
+		void *chb;
+		string name;
+		friend inline const bool operator < (const sChbIndex &i1, const sChbIndex &i2) {
+			return(i1.chb < i2.chb ? 1 : i1.chb > i2.chb ? 0 :
+			       i1.name < i2.name);
+		}
+	};
 public:
 	Call_abstract(int call_type, u_int64_t time_us);
 	virtual ~Call_abstract() {
@@ -465,24 +541,108 @@ public:
 			1 : 
 			0);
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
 	bool isEmptyChunkBuffersCount() {
-		return(!chunkBuffersCount);
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		bool rslt = chunkBuffersMap.size() == 0;
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	int getChunkBuffersCount() {
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		int rslt = chunkBuffersMap.size();
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	bool incChunkBuffers(u_char index, void *chb, const char *name) {
+		bool rslt = false;
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(index, _p_flag_inc_chunk_buffer);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter == chunkBuffersMap.end()) {
+			chunkBuffersMap[sChbIndex(chb, name)] = true;
+			rslt = true;
+		}
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	bool decChunkBuffers(u_char index, void *chb, const char *name) {
+		bool rslt = false;
+		__SYNC_LOCK(chunkBuffersCount_sync);
+		this->addPFlag(index, _p_flag_dec_chunk_buffer);
+		map<sChbIndex, bool>::iterator iter = chunkBuffersMap.find(sChbIndex(chb, name));
+		if(iter != chunkBuffersMap.end()) {
+			chunkBuffersMap.erase(iter);
+			rslt = true;
+		}
+		__SYNC_UNLOCK(chunkBuffersCount_sync);
+		return(rslt);
+	}
+	void addPFlag(u_char index, u_char pflag) {
+		if(index >= 0 && index < P_FLAGS_IMAX && isAllocFlagOK() && p_flags_count[index] < P_FLAGS_MAX - 1) {
+			p_flags[index][p_flags_count[index]++] = pflag;
+		}
+	}
+	bool isChunkBuffersCountSyncOK() {
+		return(chunkBuffersCount_sync == 0 || chunkBuffersCount_sync == 1);
+	}
+	bool isChunkBuffersCountSyncOK_wait() {
+		if(isChunkBuffersCountSyncOK()) {
+			return(true);
+		}
+		for(unsigned i = 0; i < 3; i++) {
+			usleep(10);
+			if(isChunkBuffersCountSyncOK()) {
+				return(true);
+			}
+		}
+		return(false);
+	}
+	#else
+	bool isEmptyChunkBuffersCount() {
+		return(chunkBuffersCount == 0);
+	}
+	int getChunkBuffersCount() {
+		return(chunkBuffersCount);
 	}
 	void incChunkBuffers() {
-		__sync_add_and_fetch(&chunkBuffersCount, 1);
+		__SYNC_INC(chunkBuffersCount);
 	}
 	void decChunkBuffers() {
-		__sync_sub_and_fetch(&chunkBuffersCount, 1);
+		if(chunkBuffersCount == 0) {
+			syslog(LOG_NOTICE, "invalid zero sync in decChunkBuffers in call %s", fbasename);
+		}
+		__SYNC_DEC(chunkBuffersCount);
 	}
+	#endif
 	void addTarPos(u_int64_t pos, int type);
 	bool isAllocFlagOK() {
-		return(alloc_flag);
+		return(alloc_flag == 1);
+	}
+	bool isAllocFlagSetAsFree() {
+		return(alloc_flag == 0);
+	}
+	inline void updateTimeShift(u_int64_t time_us) {
+		time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
+	}
+	inline u_int64_t unshiftCallTime_ms(u_int64_t time_ms) {
+		return(time_ms + time_shift_ms);
+	}
+	inline u_int64_t unshiftCallTime_s(u_int64_t time_s) {
+		return(time_s + time_shift_ms / 1000);
+	}
+	inline u_int64_t unshiftSystemTime_ms(u_int64_t time_ms) {
+		return(time_ms - time_shift_ms);
+	}
+	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
+		return(time_s - time_shift_ms / 1000);
 	}
 public:
-	uint8_t alloc_flag;
+	volatile uint8_t alloc_flag;
 	int type_base;
 	int type_next;
 	u_int64_t first_packet_time_us;
+	int64_t time_shift_ms;
 	char fbasename[MAX_FNAME];
 	char fbasename_safe[MAX_FNAME];
 	u_int64_t fname_register;
@@ -498,7 +658,17 @@ protected:
 	list<u_int64_t> tarPosRtp;
 	list<u_int64_t> tarPosGraph;
 private:
-	volatile u_int16_t chunkBuffersCount;
+	#if DEBUG_ASYNC_TAR_WRITE
+	map<sChbIndex, bool> chunkBuffersMap;
+	volatile int chunkBuffersCount_sync;
+	u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+	u_char p_flags_count[P_FLAGS_IMAX];
+	#else
+	volatile int chunkBuffersCount;
+	#endif
+	u_int64_t created_at;
+friend class cDestroyCallsInfo;
+friend class ChunkBuffer;
 };
 
 struct sChartsCacheCallData {
@@ -699,8 +869,11 @@ public:
 	#if CALL_RTP_DYNAMIC_ARRAY
 	vector<RTP*> *rtp_dynamic;
 	#endif
+	list<RTP*> *rtp_canceled;
+	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
+	cDtls *dtls;
 	volatile int rtplock_sync;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
@@ -709,9 +882,65 @@ public:
 	char callername[256];		//!< callerid name from SIP header
 	char caller[256];		//!< From: xxx 
 	char caller_domain[256];	//!< From: xxx 
-	char called[256];		//!< To: xxx
+	char called_to[256];		//!< To: xxx
+	char called_uri[256];
+	char called_final[256];
+	inline const char *get_called() {
+		extern int opt_destination_number_mode;
+		if(is_multiple_to_branch()) {
+			if(called_final[0]) {
+				if(to_is_canceled(called_final)) {
+					const char *rslt = opt_destination_number_mode == 2 ? get_to_uri_not_canceled() : get_to_not_canceled();
+					if(rslt && rslt[0]) {
+						return(rslt);
+					}
+				}
+				return(called_final);
+			} else {
+				if(opt_destination_number_mode == 2) {
+					const char *rslt = get_called_uri();
+					if(rslt && rslt[0]) {
+						return(rslt);
+					}
+				}
+				return(get_called_to());
+			}
+		} else {
+			return(called_final[0] ? called_final :
+			       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
+		}
+	}
+	inline const char *get_called_to() {
+		if(is_multiple_to_branch()) {
+			if(to_is_canceled(called_to)) {
+				const char *rslt = get_to_not_canceled();
+				if(rslt && rslt[0]) {
+					return(rslt);
+				}
+			}
+		}
+		return(called_to);
+	}
+	inline const char *get_called_uri() {
+		if(is_multiple_to_branch()) {
+			if(to_is_canceled(called_to)) {
+				const char *rslt = get_to_uri_not_canceled();
+				if(rslt && rslt[0]) {
+					return(rslt);
+				}
+			}
+			return(get_called_to());
+		} else {
+			return(called_uri[0] ? called_uri : called_to);
+		}
+	}
 	map<string, dstring> called_invite_branch_map;
-	char called_domain[256];	//!< To: xxx
+	char called_domain_to[256];	//!< To: xxx
+	char called_domain_uri[256];
+	inline char *get_called_domain() {
+		extern int opt_destination_number_mode;
+		return(called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
+	}
 	char contact_num[64];		//!< 
 	char contact_domain[128];	//!< 
 	char digest_username[64];	//!< 
@@ -734,6 +963,7 @@ public:
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
+	bool seenbyeandok_permanent;
 	u_int64_t seenbyeandok_time_usec;
 	bool seencancelandok;		//!< true if we see SIP OK TO CANCEL within the Call
 	u_int64_t seencancelandok_time_usec;
@@ -792,6 +1022,7 @@ public:
 	volatile int end_call_hash_removed;
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
+	volatile int push_call_to_storing_cdr_queue;
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	vector<u_int64_t> forcemark_time;
@@ -807,6 +1038,7 @@ public:
 	u_int64_t connect_time_us;	//!< time in u_seconds of 200 OK
 	u_int64_t last_signal_packet_time_us;
 	u_int64_t last_rtp_packet_time_us;
+	u_int64_t last_rtcp_packet_time_us;
 	u_int64_t last_rtp_a_packet_time_us;
 	u_int64_t last_rtp_b_packet_time_us;
 	time_t destroy_call_at;
@@ -926,9 +1158,11 @@ public:
 	volatile int _proxies_lock;
 	list<vmIP> proxies;
 	
-	bool onInvite;
-	bool onCall_2XX;
-	bool onCall_18X;
+	u_int16_t onInvite_counter;
+	u_int16_t onCall_2XX_counter;
+	u_int16_t onCall_18X_counter;
+	u_int16_t onHangup_counter;
+	
 	bool updateDstnumOnAnswer;
 	bool updateDstnumFromMessage;
 	
@@ -995,14 +1229,17 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false);
+	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
 	int get_index_by_sessid_to(char *sessid, char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
 	int get_index_by_iscaller(int iscaller);
 	
 	bool is_multiple_to_branch();
 	bool all_invite_is_multibranch(vmIP saddr);
 	bool to_is_canceled(char *to);
-	string get_to_not_canceled();
+	const char *get_to_not_canceled(bool uri = false);
+	const char *get_to_uri_not_canceled() {
+		return(get_to_not_canceled(true));
+	}
 
 	/**
 	 * @brief close all rtp[].gfileRAW
@@ -1043,14 +1280,18 @@ public:
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
 	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-			char *sessid, char *sdp_label, list<rtp_crypto_config> *rtp_crypto_config_list, char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			char *sessid, char *sdp_label, 
+			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+			char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	bool refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
-				  list<rtp_crypto_config> *rtp_crypto_config_list, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
+				  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 	
 	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-			      char *sessid, char *sdp_label, bool multipleSdpMedia, list<rtp_crypto_config> *rtp_crypto_config_list, 
-			      char *to, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
+			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
+			      char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
 
 	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
 	
@@ -1068,7 +1309,7 @@ public:
 	 *
 	 * @return time of the last packet in seconds from UNIX epoch
 	*/
-	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, last_rtp_packet_time_us); };
+	u_int64_t get_last_packet_time_us() { return max(last_signal_packet_time_us, max(last_rtp_packet_time_us, last_rtcp_packet_time_us)); };
 	u_int32_t get_last_packet_time_s() { return TIME_US_TO_S(get_last_packet_time_us()); };
 
 	/**
@@ -1086,6 +1327,7 @@ public:
 	*/
 	void set_last_signal_packet_time_us(u_int64_t time_us) { if(time_us > last_signal_packet_time_us) last_signal_packet_time_us = time_us; };
 	void set_last_rtp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtp_packet_time_us) last_rtp_packet_time_us = time_us; };
+	void set_last_rtcp_packet_time_us(u_int64_t time_us) { if(time_us > last_rtcp_packet_time_us) last_rtcp_packet_time_us = time_us; };
 	void set_last_mgcp_connect_packet_time_us(u_int64_t time_us) { if(time_us > last_mgcp_connect_packet_time_us) last_mgcp_connect_packet_time_us = time_us; };
 
 	/**
@@ -1155,11 +1397,11 @@ public:
 	 * @brief remove call from hash table
 	 *
 	*/
-	void hashRemove(struct timeval *ts, bool useHashQueueCounter = false);
+	void hashRemove(bool useHashQueueCounter = false);
 	
 	void skinnyTablesRemove();
 	
-	void removeFindTables(struct timeval *ts, bool set_end_call = false, bool destroy = false);
+	void removeFindTables(bool set_end_call = false, bool destroy = false);
 	
 	void destroyCall();
 
@@ -1167,7 +1409,13 @@ public:
 	 * @brief remove all RTP 
 	 *
 	*/
-	void removeRTP();
+	void setFlagForRemoveRTP();
+	inline void removeRTP_ifSetFlag() {
+		if(rtp_remove_flag) {
+			_removeRTP();
+		}
+	}
+	void _removeRTP();
 
 	/**
 	 * @brief stop recording packets to pcap file
@@ -1253,11 +1501,19 @@ public:
 	bool use_port_for_check_direction(vmIP /*addr*/) {
 		return(true /*ip_is_localhost(addr)*/);
 	}
-	void check_reset_oneway(vmIP saddr, vmPort source) {
-		if(lastsrcip != saddr ||
-		   (lastsrcip == lastdstip &&
-		    use_port_for_check_direction(saddr) && 
-		    lastsrcport != source)) {
+	void check_reset_oneway(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
+		if(oneway &&
+		   (lastsrcip != saddr ||
+		    (lastsrcip == lastdstip &&
+		     use_port_for_check_direction(saddr) && 
+		     lastsrcport != sport))) {
+			for(list<sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+				if(saddr == iter->saddr && daddr == iter->daddr &&
+				   (!use_port_for_check_direction(saddr) ||
+				    (sport == iter->sport && dport == iter->dport))) {
+					return;
+				}
+			}
 			oneway = 0;
 		}
 	}
@@ -1297,6 +1553,32 @@ public:
 			}
 		}
 		return(true);
+	}
+	bool closePcaps() {
+		bool callClose = false;
+		if(!pcap.isClose()) {
+			pcap.close();
+			callClose = true;
+		}
+		if(!pcapSip.isClose()) {
+			pcapSip.close();
+			callClose = true;
+		}
+		if(!pcapRtp.isClose()) {
+			pcapRtp.close();
+			callClose = true;
+		}
+		return(callClose);
+	}
+	bool closeGraphs() {
+		bool callClose = false;
+		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
+			if(rtp_i && !rtp_i->graph.isClose()) {
+				rtp_i->graph.close();
+				callClose = true;
+			}
+		}
+		return(callClose);
 	}
 	bool isReadyForWriteCdr() {
 		return(isPcapsClose() && isGraphsClose() &&
@@ -1517,6 +1799,9 @@ public:
 	}
 	void setSeenByeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
 		this->seenbyeandok = seenbyeandok;
+		if(seenbyeandok) {
+			this->seenbyeandok_permanent = true;
+		}
 		this->seenbyeandok_time_usec = seenbyeandok_time_usec;
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
@@ -1728,18 +2013,13 @@ public:
 	inline int rtp_size() {
 		return(ssrc_n);
 	}
-	
-	inline void rtp_lock() {
-		__SYNC_LOCK_USLEEP(rtplock_sync, 100);
-	}
-	inline void rtp_unlock() {
-		__SYNC_UNLOCK(rtplock_sync);
-	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	bool callerd_confirm_rtp_by_both_sides_sdp[2];
-	bool exists_crypto_suite_key;
+	bool exists_srtp;
+	bool exists_srtp_crypto_config;
+	bool exists_srtp_fingerprint;
 	bool log_srtp_callid;
 	PcapDumper pcap;
 	PcapDumper pcapSip;
@@ -1750,7 +2030,6 @@ private:
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
-	bool use_removeRtp;
 	volatile int rtp_ip_port_counter;
 	#if NEW_RTP_FIND__NODES
 	list<vmIPport> rtp_ip_port_list;
@@ -1764,8 +2043,11 @@ public:
 	bool sdp_exists_media_type_audio;
 	bool sdp_exists_media_type_image;
 	bool sdp_exists_media_type_video;
+	bool sdp_exists_media_type_application;
 	volatile int in_preprocess_queue_before_process_packet;
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
+	bool suppress_rtp_read_due_to_insufficient_hw_performance;
+	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -1780,6 +2062,9 @@ private:
 	vector<d_item2<vmIPport, bool> > sdp_rows_list;
 	bool set_call_counter;
 	bool set_register_counter;
+	double price_customer;
+	double price_operator;
+friend class RTP;
 friend class RTPsecure;
 };
 
@@ -1890,6 +2175,7 @@ public:
 		unsigned mtp3_dpc;
 		string e164_called_party_number_digits;
 		string e164_calling_party_number_digits;
+		string isup_subsequent_number;
 		unsigned isup_cause_indicator;
 	};
 public:
@@ -1939,6 +2225,7 @@ public:
 	eMessageType last_message_type;
 	// IAM (Initial Address)
 	sParseData iam_data;
+	sParseData sam_data;
 	vmIP iam_src_ip;
 	vmIP iam_dst_ip;
 	u_int64_t iam_time_us;
@@ -2335,9 +2622,9 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls( struct timeval *currtime, bool forceClose = false, const char *file = NULL, int line = 0);
-	int cleanup_registers( struct timeval *currtime);
-	int cleanup_ss7( struct timeval *currtime );
+	int cleanup_calls(bool closeAll, bool forceClose = false, const char *file = NULL, int line = 0);
+	int cleanup_registers(bool closeAll);
+	int cleanup_ss7(bool closeAll);
 
 	/**
 	 * @brief add call to hash table
@@ -2496,13 +2783,13 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, vmIP addr, vmPort port, struct timeval *ts, bool rtcp = false, bool useHashQueueCounter = true);
+	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool useHashQueueCounter = true);
 	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool use_lock = true);
-	int hashRemove(Call *call, struct timeval *ts, bool useHashQueueCounter = true);
+	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);
-	void applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
-	inline void _applyHashModifyQueue(struct timeval *ts, bool setBegin, bool use_lock_calls_hash = true);
+	void applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
+	inline void _applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
 	string getHashStats();
 	
 	void processCallsInAudioQueue(bool lock = true);
@@ -2607,6 +2894,12 @@ private:
 	volatile int chc_threads_count_sync;
 	unsigned chc_threads_count_last_change;
 	
+	Call **active_calls_cache;
+	u_int32_t active_calls_cache_size;
+	u_int32_t active_calls_cache_count;
+	u_int64_t active_calls_cache_fill_at_ms;
+	map<string, d_item2<u_int32_t, string> > active_calls_cache_map;
+	volatile int active_calls_cache_sync;
 };
 
 
@@ -2634,6 +2927,7 @@ public:
 	struct sCustomHeaderData {
 		eSpecialType specialType;
 		string header;
+		bool doNotAddColon;
 		unsigned db_id;
 		string leftBorder;
 		string rightBorder;
@@ -2815,6 +3109,55 @@ eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
 
 void reset_counters();
+
+
+#if DEBUG_ASYNC_TAR_WRITE
+class cDestroyCallsInfo {
+public:
+	struct sCallInfo {
+		sCallInfo(Call *call) {
+			pointer_to_call = call;
+			fbasename = call->fbasename;
+			destroy_time = getTimeUS();
+			tid = get_unix_tid();
+			chunk_buffers_count = call->getChunkBuffersCount();
+			dump_sip_state = call->getPcapSip()->getState();
+			for(unsigned i = 0; i < P_FLAGS_IMAX; i++) {
+				p_flags_count[i] = call->p_flags_count[i];
+				memcpy(p_flags[i], call->p_flags[i], P_FLAGS_MAX);
+			}
+		}
+		void *pointer_to_call;
+		string fbasename;
+		u_int64_t destroy_time;
+		u_int32_t tid;
+		u_int16_t chunk_buffers_count;
+		u_int16_t dump_sip_state;
+		u_char p_flags[P_FLAGS_IMAX][P_FLAGS_MAX];
+		u_char p_flags_count[P_FLAGS_IMAX];
+	};
+public:
+	cDestroyCallsInfo(unsigned limit) {
+		this->limit = limit;
+		_sync = 0;
+	}
+	~cDestroyCallsInfo();
+	void add(Call *call);
+	string find(string fbasename, int index = 0);
+private:
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+private:
+	unsigned limit;
+	deque<sCallInfo*> queue;
+	map<string, sCallInfo*> q_map;
+	volatile int _sync;
+};
+#endif
 
 
 #endif

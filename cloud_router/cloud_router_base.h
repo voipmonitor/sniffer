@@ -9,18 +9,26 @@
 #include <map>
 #include <string>
 #include <arpa/inet.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/aes.h>
-#include <openssl/evp.h>
-#include <openssl/err.h>
 
 #include "cloud_router.h"
 
 #ifdef CLOUD_ROUTER_CLIENT
 #include "../tools_global.h"
+#include "../config.h"
 #else
 #include "tools_global.h"
+#define HAVE_OPENSSL
+#endif
+
+#ifdef HAVE_OPENSSL
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/aes.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#else
+typedef u_char RSA;
+typedef u_char EVP_CIPHER_CTX;
 #endif
 
 

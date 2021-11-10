@@ -200,12 +200,15 @@ u_int8_t ip6hdr2::get_ext_headers(u_int8_t *ext_headers_type, u_int8_t ext_heade
 	return(nxt);
 }
 
-u_int16_t ip6hdr2::get_ext_headers_len() {
+u_int16_t ip6hdr2::get_ext_headers_len(u_int8_t *proto) {
 	u_int8_t ext_headers_type[IP6_EXT_HEADERS_MAX];
 	u_int8_t ext_headers_count;
 	u_int8_t nxt = get_ext_headers(ext_headers_type, sizeof(ext_headers_type) / sizeof(ext_headers_type[0]), &ext_headers_count);
 	if(nxt == (u_int8_t)-1) {
 		return(-1);
+	}
+	if(proto) {
+		*proto = nxt;
 	}
 	u_int16_t size = 0;
 	for(unsigned i = 0; i < ext_headers_count; i++) {

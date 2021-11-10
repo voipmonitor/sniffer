@@ -16,6 +16,9 @@ AC_PROG_INSTALL
 AC_PROG_MAKE_SET
 
 
+AC_CHECK_PROG([PKGCONFIG], [pkg-config], [pkg-config], [no])
+
+
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/lib"
 LDFLAGS="$LDFLAGS -L/usr/local/lib"
 
@@ -51,7 +54,7 @@ AC_CHECK_LIB([pthread], [main])
 # FIXME: Replace `main' with a function in `-lrt':
 AC_CHECK_LIB([rt], [main])
 # FIXME: Replace `main' with a function in `-lssl':
-#AC_CHECK_LIB([ssl], [main])
+AC_CHECK_LIB([ssl], [main], HAVE_OPENSSL=1 , AC_MSG_ERROR([Unable to find ssl library. apt-get install libssl-dev | yum install openssl-devel]))
 # FIXME: Replace `main' with a function in `-lvorbis':
 AC_CHECK_LIB([vorbis], [main], ,AC_MSG_ERROR([Unable to find VORBIS library. Debian: apt-get install libvorbis-dev. Centos/Redhat: yum install libogg-devel libvorbis-devel]))
 # FIXME: Replace `main' with a function in `-lvorbisenc':
@@ -173,6 +176,9 @@ else
     AC_CHECK_LIB([tcmalloc_minimal], [tc_malloc], HAVE_LIBTCMALLOC=1, AC_MSG_NOTICE([Unable to find tcmalloc_minimal library which speeds up threads by 10%. The library is optional: apt-get install libgoogle-perftools-dev | yum install gperftools-devel.x86_64 | or compile from source https://code.google.com/p/gperftools/]))
 fi
 
+AC_ARG_ENABLE([dpdk], AS_HELP_STRING([--disable-dpdk], [Disable searching for dpdk libs (librte_*)]))
+AS_IF([test "x$enable_dpdk" != "xno"], [AC_CHECK_LIB([rte_net], [main], HAVE_LIBDPDK=1)])
+
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
 	AC_DEFINE([HAVE_LIBPNG], [1], [Define if using liblpng])
@@ -221,16 +227,30 @@ if test "x$HAVE_LIBTCMALLOC_HEAPPROF" = "x1"; then
 	AC_SUBST([HEAPPROF_CXXFLAG],["-fno-omit-frame-pointer"])
 	TCMALLOC_T="yes (with heap profiler)"
 fi
-OPENSSL_T=no
-if test "x$HAVE_OPENSSL101" = "x1"; then 
-	AC_DEFINE([HAVE_OPENSSL101], [1], [Define if using libtcmalloc])
-	OPENSSL_T=yes
+
+HAVE_OPENSSL_T=no
+if test "x$HAVE_OPENSSL" = "x1"; then 
+	AC_DEFINE([HAVE_OPENSSL], [1], [Define if using openssl])
+	HAVE_OPENSSL_T=yes
 fi
 
+OPENSSL101_T=no
+if test "x$HAVE_OPENSSL101" = "x1"; then 
+	AC_DEFINE([HAVE_OPENSSL101], [1], [Define if using openssl >= 1.0.1])
+	OPENSSL101_T=yes
+fi
 OPENSSL111_T=no
 if pkg-config --atleast-version 1.1.1 openssl; then
 	AC_DEFINE([HAVE_DSSL_TLS13], [1], [Define if we have openssl >= 1.1.1])
 	OPENSSL111_T=yes
+fi
+
+DPDK_T=no
+if test "x$HAVE_LIBDPDK" = "x1"; then 
+	AC_DEFINE([HAVE_LIBDPDK], [1], [Define if using dpdk])
+	AC_SUBST([DPDK_CFLAGS],[`"$PKGCONFIG" --cflags libdpdk`])
+	AC_SUBST([DPDK_LDFLAGS],[`"$PKGCONFIG" --libs libdpdk`])
+	DPDK_T=yes
 fi
 
 # Checks for header files.
@@ -287,8 +307,8 @@ gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
-openssl >= 1.0.1 found		       : $OPENSSL_T
-openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL_T
+openssl >= 1.0.1 found		       : $OPENSSL101_T
+openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
 
 shared binary: run make 
 static binary: run make static

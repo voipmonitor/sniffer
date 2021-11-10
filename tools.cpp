@@ -26,7 +26,9 @@
 #include <curl/curl.h>
 #include <cerrno>
 #include <iomanip>
+#ifdef HAVE_OPENSSL
 #include <openssl/sha.h>
+#endif
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
@@ -84,6 +86,9 @@
 #include "filter_mysql.h"
 #include "sniff_inline.h"
 #include "sql_db.h"
+#include "config_param.h"
+#include "websocket.h"
+#include "mgcp.h"
 
 #ifndef SIZE_MAX
 # ifdef __SIZE_MAX__
@@ -630,22 +635,19 @@ bool get_url_file(const char *url, const char *toFile, string *error) {
 	return(rslt);
 }
 
-size_t _get_url_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
+size_t _get_curl_response_writer_function(void *ptr, size_t size, size_t nmemb, SimpleBuffer *response) {
 	response->add(ptr, size * nmemb);
 	return size * nmemb;
 }
 
-bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error) {
-	if(error) {
-		*error = "";
-	}
+bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_response_params *params) {
 	bool rslt = false;
 	CURL *curl = curl_easy_init();
 	if(curl) {
 		struct curl_slist *headers = NULL;
 		char errorBuffer[1024];
 		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_curl_response_writer_function);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
 		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
@@ -653,37 +655,130 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
 		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
 		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
-		curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
-		char *urlPathSeparator = (char*)strchr(url + 8, '/');
-		string path = urlPathSeparator ? urlPathSeparator : "/";
-		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
-		string hostProtPrefix;
-		size_t posEndHostProtPrefix = host.rfind('/');
-		if(posEndHostProtPrefix != string::npos) {
-			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
-			host = host.substr(posEndHostProtPrefix + 1);
+		if(params && params->timeout_sec) {
+			curl_easy_setopt(curl, CURLOPT_TIMEOUT, params->timeout_sec);
 		}
-		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
-		if(!hostIP.empty()) {
-			headers = curl_slist_append(headers, ("Host: " + host).c_str());
-			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
+		string url_prot_prefix;
+		string url_host;
+		string url_path;
+		string url_params;
+		string _url = url;
+		size_t pos_url_host = 0;
+		if(!strncasecmp("http:", _url.c_str(), 5)) {
+			pos_url_host = 5;
+		} else if(!strncasecmp("https:", _url.c_str(), 6)) {
+			pos_url_host = 6;
+		}
+		if(pos_url_host) {
+			while(_url[pos_url_host] == '/') {
+				++pos_url_host;
+			}
+			url_prot_prefix = _url.substr(0, pos_url_host);
+			_url = _url.substr(pos_url_host);
+		}
+		size_t posUrlParams = _url.find('?');
+		if(posUrlParams != string::npos) {
+			url_params = _url.substr(posUrlParams);
+			_url = _url.substr(0, posUrlParams);
+		}
+		size_t posUrlPath = _url.find('/', pos_url_host ? 0 : 8);
+		if(posUrlPath != string::npos) {
+			url_path = _url.substr(posUrlPath);
+			_url = _url.substr(0, posUrlPath);
 		} else {
-			curl_easy_setopt(curl, CURLOPT_URL, url);
+			url_path = '/';
+		}
+		if(!pos_url_host) {
+			pos_url_host = _url.rfind('/');
+			if(pos_url_host != string::npos) {
+				++pos_url_host;
+				url_prot_prefix = _url.substr(0, pos_url_host);
+				_url = _url.substr(pos_url_host);
+			}
+		}
+		url_host = _url;
+		bool build_url_params = false;
+		if(params && params->request_type == s_get_curl_response_params::_rt_get && 
+		   url_params.empty() && (params->params_array->size() || params->params_string)) {
+			if(params->params_array->size()) {
+				for(unsigned i = 0; i < params->params_array->size(); i++) {
+					url_params.append(i == 0 ? "?" : "&");
+					url_params.append((*params->params_array)[i][0]);
+					url_params.append("=");
+					url_params.append(params->suppress_parameters_encoding ? 
+							   (*params->params_array)[i][1] : 
+							   url_encode((*params->params_array)[i][1]));
+				}
+			} else {
+				url_params = "?" + *params->params_string;
+			}
+			build_url_params = true;
+		}
+		string url_host_IP = cResolver::resolve_str(url_host, 0, cResolver::_typeResolve_system_host); 
+		string url_new;
+		if(!url_host_IP.empty()) {
+			headers = curl_slist_append(headers, ("Host: " + url_host).c_str());
+			url_new = url_prot_prefix + url_host_IP + url_path + url_params;
+			curl_easy_setopt(curl, CURLOPT_URL, url_new.c_str());
+		} else {
+			if(build_url_params) {
+				url_new = url + url_params;
+				curl_easy_setopt(curl, CURLOPT_URL, url_new.c_str());
+			} else {
+				curl_easy_setopt(curl, CURLOPT_URL, url);
+			}
+		}
+		if(params && params->headers) {
+			for(unsigned i = 0; i < params->headers->size(); i++) {
+				headers = curl_slist_append(headers, ((*params->headers)[i][0] + ": " + (*params->headers)[i][1]).c_str());
+			}
+		}
+		if(params && params->request_type == s_get_curl_response_params::_rt_json) {
+			headers = curl_slist_append(headers, "Content-Type: application/json");
+		}
+		if(headers) {
+			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 		}
 		extern char opt_curlproxy[256];
 		if(opt_curlproxy[0]) {
 			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
 		}
+		if(params && (params->auth_user || params->auth_password)) {
+			curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_ANY);
+			curl_easy_setopt(curl, CURLOPT_USERPWD, 
+					 ((params->auth_user ? *params->auth_user : "") + 
+					  ":" + 
+					  (params->auth_password ? *params->auth_password : "")).c_str());
+		}
 		string postFields;
-		if(postData) {
-			for(size_t i = 0; i < postData->size(); i++) {
-				if(!postFields.empty()) {
-					postFields.append("&");
+		if(params && 
+		   (params->request_type == s_get_curl_response_params::_rt_post ||
+		    params->request_type == s_get_curl_response_params::_rt_json) &&
+		   (params->params_array->size() || params->params_string)) {
+			if(params->params_array) {
+				if(params->request_type == s_get_curl_response_params::_rt_post) {
+					for(size_t i = 0; i < params->params_array->size(); i++) {
+						if(!postFields.empty()) {
+							postFields.append("&");
+						}
+						postFields.append((*params->params_array)[i][0]);
+						postFields.append("=");
+						postFields.append(params->suppress_parameters_encoding ? 
+								   (*params->params_array)[i][1] : 
+								   url_encode((*params->params_array)[i][1]));
+					}
+				} else {
+					JsonExport jsonExport;
+					for(size_t i = 0; i < params->params_array->size(); i++) {
+						jsonExport.add((*params->params_array)[i][0].c_str(),
+							       params->suppress_parameters_encoding ? 
+								(*params->params_array)[i][1] : 
+								url_encode((*params->params_array)[i][1]));
+					}
+					postFields = jsonExport.getJson();
 				}
-				postFields.append((*postData)[i][0]);
-				postFields.append("=");
-				postFields.append(url_encode((*postData)[i][1]));
+			} else if(params->params_string) {
+				postFields = *params->params_string;
 			}
 			if(!postFields.empty()) {
 				curl_easy_setopt(curl, CURLOPT_POST, 1);
@@ -693,8 +788,8 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 		if(curl_easy_perform(curl) == CURLE_OK) {
 			rslt = true;
 		} else {
-			if(error) {
-				*error = errorBuffer;
+			if(params) {
+				params->error = errorBuffer;
 			}
 		}
 		if(headers) {
@@ -702,81 +797,8 @@ bool get_url_response_wt(unsigned int timeout_sec, const char *url, SimpleBuffer
 		}
 		curl_easy_cleanup(curl);
 	} else {
-		if(error) {
-			*error = "initialize curl failed";
-		}
-	}
-	return(rslt);
-}
-
-bool get_url_response(const char *url, SimpleBuffer *response, vector<dstring> *postData, string *error) {
-	if(error) {
-		*error = "";
-	}
-	bool rslt = false;
-	CURL *curl = curl_easy_init();
-	if(curl) {
-		struct curl_slist *headers = NULL;
-		char errorBuffer[1024];
-		curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, _get_url_response_writer_function);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, false);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, false);
-		curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_0);
-		curl_easy_setopt(curl, CURLOPT_DNS_USE_GLOBAL_CACHE, 1);
-		curl_easy_setopt(curl, CURLOPT_DNS_CACHE_TIMEOUT, -1);
-		curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
-		char *urlPathSeparator = (char*)strchr(url + 8, '/');
-		string path = urlPathSeparator ? urlPathSeparator : "/";
-		string host = urlPathSeparator ? string(url).substr(0, urlPathSeparator - url) : url;
-		string hostProtPrefix;
-		size_t posEndHostProtPrefix = host.rfind('/');
-		if(posEndHostProtPrefix != string::npos) {
-			hostProtPrefix = host.substr(0, posEndHostProtPrefix + 1);
-			host = host.substr(posEndHostProtPrefix + 1);
-		}
-		string hostIP = cResolver::resolve_str(host, 0, cResolver::_typeResolve_system_host); 
-		if(!hostIP.empty()) {
-			headers = curl_slist_append(headers, ("Host: " + host).c_str());
-			curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-			curl_easy_setopt(curl, CURLOPT_URL, (hostProtPrefix +  hostIP + path).c_str());
-		} else {
-			curl_easy_setopt(curl, CURLOPT_URL, url);
-		}
-		extern char opt_curlproxy[256];
-		if(opt_curlproxy[0]) {
-			curl_easy_setopt(curl, CURLOPT_PROXY, opt_curlproxy);
-		}
-		string postFields;
-		if(postData) {
-			for(size_t i = 0; i < postData->size(); i++) {
-				if(!postFields.empty()) {
-					postFields.append("&");
-				}
-				postFields.append((*postData)[i][0]);
-				postFields.append("=");
-				postFields.append(url_encode((*postData)[i][1]));
-			}
-			if(!postFields.empty()) {
-				curl_easy_setopt(curl, CURLOPT_POST, 1);
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postFields.c_str());
-			}
-		}
-		if(curl_easy_perform(curl) == CURLE_OK) {
-			rslt = true;
-		} else {
-			if(error) {
-				*error = errorBuffer;
-			}
-		}
-		if(headers) {
-			curl_slist_free_all(headers);
-		}
-		curl_easy_cleanup(curl);
-	} else {
-		if(error) {
-			*error = "initialize curl failed";
+		if(params) {
+			params->error = "initialize curl failed";
 		}
 	}
 	return(rslt);
@@ -1012,6 +1034,7 @@ string GetDataMD5(u_char *data, u_int32_t datalen,
 }
 
 string GetStringSHA256(std::string str) {
+	#ifdef HAVE_OPENSSL
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256_CTX sha256;
 	SHA256_Init(&sha256);
@@ -1023,6 +1046,9 @@ string GetStringSHA256(std::string str) {
 	}
 	outputBuffer[64] = 0;
 	return(outputBuffer);
+	#else
+	return("");
+	#endif
 }
 
 #pragma GCC push_options
@@ -1192,6 +1218,26 @@ tm getBeginDate(tm dateTime, const char *timezone) {
 	return(rslt);
 }
 
+tm getNextBeginMonth(tm dateTime, const char *timezone) {
+	tm rslt = dateTime;
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	if(rslt.tm_mon < 11) {
+		++rslt.tm_mon;
+	} else {
+		rslt.tm_mon = 0;
+		++rslt.tm_year;
+	}
+	time_t time_s = mktime(&rslt, timezone);
+	time_s += 60 * 60 * 36;
+	rslt = time_r(&time_s, timezone ? timezone : "local");
+	rslt.tm_hour = 0;
+	rslt.tm_min = 0;
+	rslt.tm_sec = 0;
+	return(rslt);
+}
+
 tm getNextBeginDate(tm dateTime, const char *timezone) {
 	tm rslt = dateTime;
 	rslt.tm_hour = 0;
@@ -1274,7 +1320,12 @@ PcapDumper::~PcapDumper() {
 	}
 }
 
-bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt) {
+bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t *useHandle, int useDlt, string *error) {
+	#if DEBUG_ASYNC_TAR_WRITE
+	if((this->type == sip || this->type == rtp) && call) {
+		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_open);
+	}
+	#endif
 	if(this->type == rtp && this->openAttempts >= 10) {
 		return(false);
 	}
@@ -1303,10 +1354,14 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	++this->openAttempts;
 	if(!this->handle) {
 		if(this->type != rtp || !this->openError) {
-			syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, 
-			       opt_pcap_dump_bufflength ?
-				errorString.c_str() : 
-				__pcap_geterr(_handle));
+			const char *openError = opt_pcap_dump_bufflength ?
+						 errorString.c_str() : 
+						 __pcap_geterr(_handle);
+			if(error) {
+				*error = openError;
+			} else {
+				syslog(LOG_NOTICE, "pcapdumper: error open dump handle to file %s - %s", fileName, openError);
+			}
 		}
 		this->openError = true;
 	}
@@ -1314,6 +1369,11 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 	this->fileName = fileName;
 	if(this->handle != NULL) {
 		this->state = state_open;
+		#if DEBUG_ASYNC_TAR_WRITE
+		if((this->type == sip || this->type == rtp) && call) {
+			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_open_ok);
+		}
+		#endif
 		return(true);
 	} else {
 		return(false);
@@ -1345,6 +1405,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		}
 		return;
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
+	if((this->type == sip || this->type == rtp) && call) {
+		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump);
+	}
+	#endif
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
 		if(allPackets ||
@@ -1417,27 +1482,67 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			incorrectCaplenDetected = true;
 		}
 		this->state = state_dump;
+		#if DEBUG_ASYNC_TAR_WRITE
+		if((this->type == sip || this->type == rtp) && call) {
+			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_end);
+		}
+		#endif
 	}
 }
 
 void PcapDumper::close(bool updateFilesQueue) {
+	#if DEBUG_ASYNC_TAR_WRITE
+	if((this->type == sip || this->type == rtp) && call) {
+		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close);
+	}
+	#endif
 	if(this->handle) {
+		#if DEBUG_ASYNC_TAR_WRITE
+		if((this->type == sip || this->type == rtp) && call) {
+			call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_2);
+		}
+		#endif
 		if((this->_asyncwrite < 0 ? opt_pcap_dump_asyncwrite : this->_asyncwrite) == 0) {
+			#if DEBUG_ASYNC_TAR_WRITE
+			if((this->type == sip || this->type == rtp) && call) {
+				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_not_async);
+			}
+			#endif
 			__pcap_dump_close(this->handle);
 			this->handle = NULL;
 			this->state = state_close;
 		} else {
+			#if DEBUG_ASYNC_TAR_WRITE
+			if((this->type == sip || this->type == rtp) && call) {
+				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_3);
+			}
+			#endif
 			if(asyncClose) {
+				#if DEBUG_ASYNC_TAR_WRITE
+				if((this->type == sip || this->type == rtp) && call) {
+					call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_4);
+				}
+				#endif
 				if(this->call) {
 					asyncClose->add(this->handle, updateFilesQueue,
 							this->call, this,
 							this->typeSpoolFile, this->fileName.c_str());
+					#if DEBUG_ASYNC_TAR_WRITE
+					if((this->type == sip || this->type == rtp) && call) {
+						call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_5);
+					}
+					#endif
 				} else {
 					asyncClose->add(this->handle);
 				}
 			}
 			this->handle = NULL;
 			this->state = state_do_close;
+			#if DEBUG_ASYNC_TAR_WRITE
+			if((this->type == sip || this->type == rtp) && call) {
+				call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump_close_end);
+			}
+			#endif
 		}
 	}
 }
@@ -1453,6 +1558,15 @@ void PcapDumper::remove() {
 	}
 }
 
+void PcapDumper::setStateClose() {
+	#if DEBUG_ASYNC_TAR_WRITE
+	if((this->type == sip || this->type == rtp) && call) {
+		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_set_state_close);
+	}
+	#endif
+	this->state = state_close;
+}
+
 
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;
 
@@ -1463,6 +1577,7 @@ RtpGraphSaver::RtpGraphSaver(RTP *rtp) {
 	this->existsContent = false;
 	this->enableAutoOpen = false;
 	this->_asyncwrite = opt_pcap_dump_asyncwrite ? 1 : 0;
+	this->state_async_close = _sac_na;
 }
 
 RtpGraphSaver::~RtpGraphSaver() {
@@ -1485,7 +1600,7 @@ bool RtpGraphSaver::open(eTypeSpoolFile typeSpoolFile, const char *fileName) {
 	*/
 	this->handle = new FILE_LINE(38003) FileZipHandler(opt_pcap_dump_bufflength, this->_asyncwrite, opt_gzipGRAPH,
 							   false, rtp && rtp->call_owner ? (Call*)rtp->call_owner : 0,
-							   FileZipHandler::graph_rtp);
+							   FileZipHandler::graph_rtp, rtp ? rtp->ssrc_index : 0);
 	if(!this->handle->open(typeSpoolFile, fileName)) {
 		syslog(LOG_NOTICE, "graphsaver: error open file %s - %s", fileName, this->handle->error.c_str());
 		delete this->handle;
@@ -1535,12 +1650,13 @@ void RtpGraphSaver::close(bool updateFilesQueue) {
 			Call *call = (Call*)this->rtp->call_owner;
 			if(call) {
 				asyncClose->add(this->handle, updateFilesQueue,
-						call,
+						call, this,
 						this->typeSpoolFile, this->fileName.c_str(),
 						this->handle->size);
 			} else {
 				asyncClose->add(this->handle);
 			}
+			state_async_close = _sac_sent;
 			this->handle = NULL;
 			if(updateFilesQueue && !call) {
 				syslog(LOG_ERR, "graphsaver: gfilename[%s] does not have owner", this->fileName.c_str());
@@ -1553,7 +1669,7 @@ void RtpGraphSaver::clearAutoOpen() {
 	this->enableAutoOpen = false;
 }
 
-AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcapDumper, 
+AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcapDumper, RtpGraphSaver *graphSaver,
 					   eTypeSpoolFile typeSpoolFile, const char *file, 
 					   long long writeBytes) {
 	this->call = call;
@@ -1565,6 +1681,7 @@ AsyncClose::AsyncCloseItem::AsyncCloseItem(Call_abstract *call, PcapDumper *pcap
 		this->call_spoolindex = 0;
 	}
 	this->pcapDumper = pcapDumper;
+	this->graphSaver = graphSaver;
 	this->typeSpoolFile = typeSpoolFile;
 	if(file) {
 		this->file = file;
@@ -3396,7 +3513,7 @@ bool SafeAsyncQueue_base::terminateTimerThread = false;
 
 FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeCompress typeCompress,
 			       bool dumpHandler, Call_abstract *call,
-			       eTypeFile typeFile) {
+			       eTypeFile typeFile, unsigned indexFile) {
 	this->mode = mode_na;
 	this->typeSpoolFile = tsf_na;
 	if(bufferLength <= 0) {
@@ -3434,6 +3551,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->counter = ++scounter;
 	this->userData = 0;
 	this->typeFile = typeFile;
+	this->indexFile = indexFile;
 	if(typeCompress == compress_default) {
 		this->setTypeCompressDefault();
 	}
@@ -3497,6 +3615,11 @@ void FileZipHandler::close() {
 		}
 	} else {
 		if(this->tar) {
+			#if DEBUG_ASYNC_TAR_WRITE
+			if(call) {
+				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_close);
+			}
+			#endif
 			this->flushBuffer(true);
 			this->flushTarBuffer();
 		} else  {
@@ -3548,21 +3671,51 @@ bool FileZipHandler::is_eof() {
 
 bool FileZipHandler::flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_1);
+		}
+		#endif
 		if(force && this->existsData && !this->tar && this->okHandle() &&
 		   this->compressStream && this->compressStream->getTypeCompress() != CompressStream::compress_na) {
+			#if DEBUG_ASYNC_TAR_WRITE
+			if(call) {
+				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_2);
+			}
+			#endif
 			this->compressStream->compress(NULL, 0, true, this);
 		}
 		return(true);
 	}
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_3);
+	}
+	#endif
 	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
 }
 
 void FileZipHandler::flushTarBuffer() {
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_1);
+	}
+	#endif
 	if(!this->tarBuffer)
 		return;
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_2);
+	}
+	#endif
 	this->tarBuffer->close();
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_3);
+	}
+	#endif
 	this->tarBuffer = NULL;
 }
 
@@ -3614,7 +3767,17 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			if(!this->tarBuffer) {
 				this->initTarbuffer();
 			}
+			#if DEBUG_ASYNC_TAR_WRITE
+			if(call) {
+				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_1);
+			}
+			#endif
 			this->tarBuffer->add(data, length, flush);
+			#if DEBUG_ASYNC_TAR_WRITE
+			if(call) {
+				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_2);
+			}
+			#endif
 			return(true);
 		}
 		{
@@ -3636,7 +3799,17 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 		if(!this->compressStream) {
 			this->initCompress();
 		}
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_1);
+		}
+		#endif
 		this->compressStream->compress(data, length, flush, this);
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_write_2);
+		}
+		#endif
 		break;
 	}
 	return(false);
@@ -3684,12 +3857,18 @@ void FileZipHandler::initDecompress() {
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_init_tar_buffer);
+	}
+	#endif
 	this->tarBufferCreated = true;
-	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data,
+	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data, this->needTarPos(),
 							   typeFile == pcap_sip ? 8 * 1024 : 
 							   typeFile == pcap_rtp ? 32 * 1024 : 
 							   typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
-							   call, typeFile);
+							   call, typeFile, indexFile,
+							   this->fileName.c_str());
 	if(sverb.tar > 2) {
 		syslog(LOG_NOTICE, "chunkbufer create: %s %lx %s",
 		       this->fileName.c_str(), (long)this->tarBuffer,
@@ -3725,8 +3904,12 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 			break;
 		}
 	}
-	this->tarBuffer->setName(this->fileName.c_str());
 	tarQueue[this->tar - 1]->add(&this->tar_data, this->tarBuffer, this->time);
+	#if DEBUG_ASYNC_TAR_WRITE
+	if(call) {
+		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_init_tar_buffer_end);
+	}
+	#endif
 }
 
 bool FileZipHandler::_open_write() {
@@ -3825,26 +4008,44 @@ string FileZipHandler::getConfigMenuString() {
 
 void FileZipHandler::setTypeCompressDefault() {
 	if(typeCompress == compress_default) {
-		switch(typeFile) {
-		case pcap_sip:
-			typeCompress = gzip;
-			break;
-		case pcap_rtp:
-		case graph_rtp:
-			typeCompress = lzo;
-			break;
-		default:
-			typeCompress = gzip;
-		}
+		typeCompress = getTypeCompressDefault();
 	}
+}
+
+FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
+	switch(typeFile) {
+	case pcap_sip:
+		return(gzip);
+	case pcap_rtp:
+	case graph_rtp:
+		return(lzo);
+	default:
+		return(gzip);
+	}
+}
+
+bool FileZipHandler::needTarPos() {
+	return(tar &&
+	       (typeCompress == lzo ||
+		(typeCompress == compress_default && getTypeCompressDefault() == lzo)));
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->tar) {
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_compress_ev_1);
+		}
+		#endif
 		if(!this->tarBuffer) {
 			this->initTarbuffer(true);
 		}
 		this->tarBuffer->add(data, len, false);
+		#if DEBUG_ASYNC_TAR_WRITE
+		if(call) {
+			call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_compress_ev_2);
+		}
+		#endif
 		return(true);
 	}
 	if(this->__writeToFile(data, len) <= 0) {
@@ -4153,6 +4354,324 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
 		}
 	}
+}
+
+void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd,
+			pcap_pkthdr **header_new, u_char **packet_new,
+			void *_net_map, void *_domain_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
+	unsigned headers_ip_counter = 0;
+	unsigned headers_ip_offset[20];
+	unsigned header_ip_offset = header_packet->header_ip_encaps_offset;
+	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+		headers_ip_offset[headers_ip_counter] = header_ip_offset;
+		++headers_ip_counter;
+		int next_header_ip_offset = findNextHeaderIp((iphdr2*)(HPP(header_packet) + header_ip_offset), header_ip_offset,
+							     HPP(header_packet), HPH(header_packet)->caplen, NULL);
+		if(next_header_ip_offset > 0) {
+			header_ip_offset += next_header_ip_offset;
+		} else {
+			break;
+		}
+	}
+	unsigned caplen = HPH(header_packet)->caplen;
+	iphdr2 *header_ip = ppd->header_ip;
+	header_ip_offset = ppd->header_ip_offset;
+	tcphdr2 *header_tcp = ppd->header_tcp;
+	udphdr2 *header_udp = ppd->header_udp;
+	u_char *payload_tcp_udp = NULL;
+	u_char *payload_ip = NULL;
+	unsigned payload_ip_length = MIN(header_ip->get_tot_len() - header_ip->get_hdr_size(),
+					 caplen - header_ip_offset - header_ip->get_hdr_size());
+	bool mod = false;
+	if(header_tcp || header_udp) {
+		unsigned header_tcp_udp_length = (header_tcp ? get_tcp_header_len(header_tcp) : get_udp_header_len(header_udp));
+		unsigned payload_tcp_udp_length = payload_ip_length - header_tcp_udp_length;
+		payload_tcp_udp = new FILE_LINE(0) u_char[payload_tcp_udp_length + 1];
+		memcpy(payload_tcp_udp, (u_char*)header_ip + header_ip->get_hdr_size() + header_tcp_udp_length, payload_tcp_udp_length);
+		payload_tcp_udp[payload_tcp_udp_length] = 0;
+		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
+		bool do_convert_sip = false;
+		if(check_sip20((char*)payload_tcp_udp, payload_tcp_udp_length, NULL, header_tcp != NULL)) {
+			if(check_websocket(payload_tcp_udp, payload_tcp_udp_length, header_tcp != NULL ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
+				cWebSocketHeader ws(payload_tcp_udp, payload_tcp_udp_length);
+				if(payload_tcp_udp_length > ws.getHeaderLength()) {
+					bool allocData;
+					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
+					if(!ws_data) {
+						delete [] payload_tcp_udp;
+						payload_tcp_udp = NULL;
+					}
+					delete [] payload_tcp_udp;
+					payload_tcp_udp_length =  header_tcp != NULL ?
+								   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
+								       ws.getDataLength()) :
+								   ws.getDataLength();
+					payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
+					memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
+					payload_tcp_udp[payload_tcp_udp_length] = 0;
+					if(allocData) {
+						delete [] ws_data;
+					}
+				}
+			}
+			if(payload_tcp_udp) {
+				do_convert_sip = true;
+			}
+		} else if((header_tcp ?
+			    ((unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_gateway || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_gateway ||
+			     (unsigned)(header_tcp->get_source()) == opt_tcp_port_mgcp_callagent || (unsigned)(header_tcp->get_dest()) == opt_tcp_port_mgcp_callagent) :
+			    ((unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_gateway || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_gateway ||
+			     (unsigned)(header_udp->get_source()) == opt_udp_port_mgcp_callagent || (unsigned)(header_udp->get_dest()) == opt_udp_port_mgcp_callagent)) &&
+			  check_mgcp((char*)payload_tcp_udp, payload_tcp_udp_length) &&
+			  (strstr((char*)payload_tcp_udp, "\r\n\r\n") ||
+			   strstr((char*)payload_tcp_udp, "\n\n"))) {
+			do_convert_sip = true;
+		}
+		if(do_convert_sip) {
+			u_char *payload_tcp_udp_mod;
+			unsigned payload_tcp_udp_mod_length;
+			if(convertAnonymous_sip(payload_tcp_udp, &payload_tcp_udp_mod, &payload_tcp_udp_mod_length, net_map, domain_map)) {
+				delete payload_tcp_udp;
+				payload_tcp_udp = payload_tcp_udp_mod;
+				payload_tcp_udp_length = payload_tcp_udp_mod_length;
+				mod = true;
+			}
+			payload_ip_length = header_tcp_udp_length + payload_tcp_udp_length;
+			payload_ip = new FILE_LINE(0) u_char[payload_ip_length];
+			memcpy(payload_ip, header_tcp ? (void*)header_tcp : (void*)header_udp, header_tcp_udp_length);
+			memcpy(payload_ip + header_tcp_udp_length, payload_tcp_udp, payload_tcp_udp_length);
+			if(header_udp) {
+				((udphdr2*)payload_ip)->len = htons(payload_ip_length);
+			}
+		}
+		delete [] payload_tcp_udp;
+	} 
+	if(!payload_ip) {
+		payload_ip = new FILE_LINE(0) u_char[payload_ip_length];
+		memcpy(payload_ip, (u_char*)header_ip + header_ip->get_hdr_size(), payload_ip_length);
+	}
+	iphdr2 *header_ip_dst = NULL;
+	int header_ip_dst_mod = false;
+	iphdr2 *header_ip_src = NULL;
+	for(int header_ip_i = headers_ip_counter - 1; header_ip_i >= 0; header_ip_i--) {
+		if(header_ip_dst) {
+			iphdr2 *header_ip_src_next = (iphdr2*)(HPP(header_packet) + headers_ip_offset[header_ip_i]);
+			unsigned between_ip_payload_length = (u_char*)header_ip_src - (u_char*)header_ip_src_next - header_ip_src_next->get_hdr_size();
+			unsigned payload_ip_next_length = payload_ip_length + header_ip_dst->get_hdr_size() + between_ip_payload_length;
+			u_char *payload_ip_next = new u_char[payload_ip_next_length];
+			unsigned payload_ip_next_pos = 0;
+			if(between_ip_payload_length > 0) {
+				memcpy(payload_ip_next, (u_char*)header_ip_src_next + header_ip_src_next->get_hdr_size(), between_ip_payload_length);
+				payload_ip_next_pos += between_ip_payload_length;
+				if(header_ip_dst_mod == 2 && payload_ip_next_pos >= 2) {
+					if(*(u_int16_t*)(payload_ip_next + payload_ip_next_pos - 2) == htons((header_ip_dst->version == 4 ? ETHERTYPE_IPV6 : ETHERTYPE_IP))) {
+						*(u_int16_t*)(payload_ip_next + payload_ip_next_pos - 2) = htons(header_ip_dst->version == 4 ? ETHERTYPE_IP : ETHERTYPE_IPV6);
+					}
+				}
+			}
+			memcpy(payload_ip_next + payload_ip_next_pos, header_ip_dst, header_ip_dst->get_hdr_size());
+			payload_ip_next_pos += header_ip_dst->get_hdr_size();
+			memcpy(payload_ip_next + payload_ip_next_pos, payload_ip, payload_ip_length);
+			delete [] payload_ip;
+			payload_ip = payload_ip_next;
+			payload_ip_length = payload_ip_next_length;
+			delete header_ip_dst;
+			if(header_ip_src_next->get_protocol() == IPPROTO_UDP) {
+				((udphdr2*)payload_ip)->len = htons(payload_ip_length);
+			}
+		}
+		header_ip_src = (iphdr2*)(HPP(header_packet) + headers_ip_offset[header_ip_i]);
+		if((header_ip_dst_mod = convertIPs_header_ip(header_ip_src, &header_ip_dst, net_map, true))) {
+			mod = true;
+		}
+		header_ip_dst->set_tot_len(payload_ip_length + header_ip_dst->get_hdr_size());
+	}
+	if(mod && payload_ip) {
+		unsigned packet_new_length = header_packet->header_ip_encaps_offset + header_ip_dst->get_hdr_size() + payload_ip_length;
+		*packet_new = new FILE_LINE(0) u_char[packet_new_length];
+		unsigned packet_new_pos = 0;
+		memcpy(*packet_new, HPP(header_packet), header_packet->header_ip_encaps_offset);
+		packet_new_pos += header_packet->header_ip_encaps_offset;
+		if(header_ip_dst_mod == 2 && packet_new_pos >= 2) {
+			if(*(u_int16_t*)((*packet_new) + packet_new_pos - 2) == htons((header_ip_dst->version == 4 ? ETHERTYPE_IPV6 : ETHERTYPE_IP))) {
+				*(u_int16_t*)((*packet_new) + packet_new_pos - 2) = htons(header_ip_dst->version == 4 ? ETHERTYPE_IP : ETHERTYPE_IPV6);
+			}
+		}
+		memcpy(*packet_new + packet_new_pos, header_ip_dst, header_ip_dst->get_hdr_size());
+		packet_new_pos += header_ip_dst->get_hdr_size();
+		memcpy(*packet_new + packet_new_pos, payload_ip, payload_ip_length);
+		*header_new = new FILE_LINE(0) pcap_pkthdr;
+		memcpy(*header_new, HPH(header_packet), sizeof(pcap_pkthdr));
+		(*header_new)->caplen = packet_new_length;
+		(*header_new)->len = packet_new_length;
+	} else {
+		*header_new = NULL;
+		*packet_new = NULL;
+	}
+	if(payload_ip) {
+		delete [] payload_ip;
+	}
+	if(header_ip_dst) {
+		delete header_ip_dst;
+	}
+}
+
+bool convertAnonymous_sip(u_char *sip_src, u_char **sip_dst, unsigned *sip_dst_length, void *_net_map, void *_domain_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
+	bool mod = false;
+	vector<string> payload_lines = split((char*)sip_src, '\n');
+	int i_line_content_length = -1;
+	int i_line_content = -1;
+	for(unsigned i_line = 0; i_line < payload_lines.size(); i_line++) {
+		if(i_line_content == -1 &&
+		   i_line < payload_lines.size() - 1 &&
+		   (payload_lines[i_line] == "" || payload_lines[i_line] == "\r")) {
+			i_line_content = i_line + 1;
+		}
+		if(i_line_content == -1 && i_line_content_length == -1 &&
+		   (!strncasecmp(payload_lines[i_line].c_str(), "Content-Length:", 15) ||
+		    !strncasecmp(payload_lines[i_line].c_str(), "l:", 2))) {
+			i_line_content_length = i_line;
+		}
+		string payload_line_mod;
+		if(convertIPs_string(payload_lines[i_line], &payload_line_mod, net_map)) {
+			payload_lines[i_line] = payload_line_mod;
+			mod = true;
+		}
+		if(convertDomains_string(payload_lines[i_line], payload_line_mod, domain_map)) {
+			payload_lines[i_line] = payload_line_mod;
+			mod = true;
+		}
+	}
+	if(mod) {
+		if(i_line_content_length != -1 && i_line_content != -1) {
+			string content;
+			for(unsigned i_line = i_line_content; i_line < payload_lines.size(); i_line++) {
+				content += payload_lines[i_line];
+				content += '\n';
+			}
+			string header;
+			for(unsigned i_line = 0; (int)i_line < i_line_content; i_line++) {
+				if((int)i_line == i_line_content_length) { 
+					if(tolower(payload_lines[i_line][0]) == 'l' && payload_lines[i_line][1] == ':') {
+						header += "l:" + intToString(content.length());
+					} else {
+						header += "Content-Length:" + intToString(content.length());
+					}
+					if(payload_lines[i_line][payload_lines[i_line].length() - 1] == '\r') {
+						header += '\r';
+					}
+				} else {
+					header += payload_lines[i_line];
+				}
+				header += '\n';
+			}
+			*sip_dst_length = header.length() + content.length();
+			*sip_dst = new FILE_LINE(0) u_char[*sip_dst_length + 1];
+			memcpy((*sip_dst), header.c_str(), header.length());
+			memcpy((*sip_dst) + header.length(), content.c_str(), content.length());
+			(*sip_dst)[*sip_dst_length] = 0;
+		} else {
+			string content;
+			for(unsigned i_line = 0; i_line < payload_lines.size(); i_line++) {
+				content += payload_lines[i_line];
+				content += '\n';
+			}
+			*sip_dst_length = content.length();
+			*sip_dst = new FILE_LINE(0) u_char[*sip_dst_length + 1];
+			memcpy(*sip_dst, content.c_str(), content.length());
+			(*sip_dst)[*sip_dst_length] = 0;
+		}
+	}
+	return(mod);
+}
+
+bool convertIPs_string(string &src, string *dst, void *_net_map) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	bool mod = false;
+	const char *src_p = src.c_str();
+	unsigned src_length = src.length();
+	unsigned src_i = 0;
+	while(src_i < src_length && *src_p) {
+		if(string_is_look_like_ip(src_p)) {
+			vmIP ip;
+			const char *ip_end;
+			if(ip.setFromString(src_p, &ip_end)) {
+				unsigned ip_length = ip_end - src_p;
+				vmIP ip_mod = cConfigItem_net_map::convIP(ip, net_map);
+				if(ip_mod != ip) {
+					if(!mod) {
+						*dst = src.substr(0, src_i);
+						mod = true;
+					}
+					*dst += ip_mod.getString(*src_p == '[');
+				} else if(mod) {
+					*dst += src.substr(src_i, ip_length);
+				}
+				src_i += ip_length;
+				src_p += ip_length;
+				continue;
+			}
+		}
+		if(mod) {
+			*dst += *src_p;
+		}
+		++src_i;
+		++src_p;
+	}
+	return(mod);
+}
+
+bool convertDomains_string(string &src, string &dst, void *_domain_map) {
+	cConfigItem_domain_map::t_domain_map *domain_map = (cConfigItem_domain_map::t_domain_map*)_domain_map;
+	bool mod = false;
+	dst = src;
+	for(cConfigItem_domain_map::t_domain_map::iterator iter = domain_map->begin(); iter != domain_map->end(); iter++) {
+		string key = string(iter->first.c_str());
+		string val = string(iter->second.c_str());
+		while (true) {
+			size_t pos = dst.find(key);
+			if (pos == std::string::npos) {
+				break;
+			}
+			dst.replace(pos, key.size(), val);
+			mod = true;
+		}
+	}
+	return(mod);
+}
+
+int convertIPs_header_ip(iphdr2 *src, iphdr2 **dst, void *_net_map, bool force_create) {
+	cConfigItem_net_map::t_net_map *net_map = (cConfigItem_net_map::t_net_map*)_net_map;
+	int mod = false;
+	unsigned src_version = src->version;
+	vmIP ip_src_src = src->get_saddr();
+	vmIP ip_src_dst = src->get_daddr();
+	vmIP ip_dst_src = cConfigItem_net_map::convIP(ip_src_src, net_map);
+	vmIP ip_dst_dst = cConfigItem_net_map::convIP(ip_src_dst, net_map);
+	unsigned dst_version = ip_dst_src.is_v6() || ip_dst_dst.is_v6() ? 6 : 4;
+	if(ip_dst_src == ip_src_src && ip_dst_dst == ip_src_dst) {
+		if(force_create) {
+			*dst = iphdr2::create(dst_version);
+			memcpy(*dst, src, src->get_hdr_size());
+		}
+	} else {
+		mod = true;
+		*dst = iphdr2::create(dst_version);
+		if(dst_version == src_version) {
+			mod = true;
+			memcpy(*dst, src, src->get_hdr_size());
+		} else {
+			mod = 2;
+			(*dst)->set_protocol(src->get_protocol());
+		}
+		(*dst)->set_saddr(ip_dst_src);
+		(*dst)->set_daddr(ip_dst_dst);
+	}
+	return(mod);
 }
 
 int hexdecode(unsigned char *dst, const char *src, int max)
@@ -6274,6 +6793,17 @@ int cDbTablesContent::getCountRows(unsigned table_enum) {
 		return(iter->second->rows.size());
 	}
 	return(-1);
+}
+
+bool cDbTablesContent::existsColumn(unsigned table_enum, const char *column, unsigned rowIndex) {
+	map<unsigned, cDbTableContent*>::iterator iter = tables_enum_map.find(table_enum);
+	if(iter != tables_enum_map.end() && rowIndex < iter->second->rows.size()) {
+		int _columnIndex = iter->second->header.items->findIndex(column);
+		if(_columnIndex >= 0 && _columnIndex < (int)iter->second->rows[rowIndex].items->size) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 const char *cDbTablesContent::getValue_str(unsigned table_enum, const char *column, bool *null, unsigned rowIndex, int *columnIndex) {

@@ -401,7 +401,7 @@ public:
 	void setQueryes(const char *fetchPhoneNumbers);
 	int connect();
 	bool okParams();
-	cust_reseller getCustomerByPhoneNumber(char *number);
+	cust_reseller getCustomerByPhoneNumber(const char *number);
 	int fetchPhoneNumbersFromDb();
 	void flush();
 	void setMaxQueryPass(unsigned int maxQueryPass) {

@@ -306,6 +306,9 @@ static const SslCipherSuite cipher_suites[]={
     {-1,    0,                  0,              0,          MODE_STREAM}
 };
 
+#define MAX_BLOCK_SIZE 16
+#define MAX_KEY_SIZE 32
+
 
 void
 ssl_debug_printf(const gchar* fmt, ...)
@@ -343,6 +346,11 @@ ssl_print_data(const gchar* name, const guchar* data, size_t len)
     }
 }
 
+void
+ssl_print_string(const gchar* name, StringInfo *string)
+{
+    ssl_print_data(name, string->data(), string->data_len());
+}
 
 static inline void phton16(guint8 *p, guint16 v)
 {
@@ -493,6 +501,146 @@ ssl_get_cipher_blocksize(const SslCipherSuite *cipher_suite)
     if (cipher_suite->mode != MODE_CBC) return 0;
     cipher_algo = ssl_get_cipher_by_name(ciphers[cipher_suite->enc - 0x30]);
     return (guint)gcry_cipher_get_algo_blklen(cipher_algo);
+}
+
+static guint
+ssl_get_cipher_export_keymat_size(int cipher_suite_num)
+{
+    switch (cipher_suite_num) {
+    /* See RFC 6101 (SSL 3.0), Table 2, column Key Material. */
+    case 0x0003:    /* TLS_RSA_EXPORT_WITH_RC4_40_MD5 */
+    case 0x0006:    /* TLS_RSA_EXPORT_WITH_RC2_CBC_40_MD5 */
+    case 0x0008:    /* TLS_RSA_EXPORT_WITH_DES40_CBC_SHA */
+    case 0x000B:    /* TLS_DH_DSS_EXPORT_WITH_DES40_CBC_SHA */
+    case 0x000E:    /* TLS_DH_RSA_EXPORT_WITH_DES40_CBC_SHA */
+    case 0x0011:    /* TLS_DHE_DSS_EXPORT_WITH_DES40_CBC_SHA */
+    case 0x0014:    /* TLS_DHE_RSA_EXPORT_WITH_DES40_CBC_SHA */
+    case 0x0017:    /* TLS_DH_anon_EXPORT_WITH_RC4_40_MD5 */
+    case 0x0019:    /* TLS_DH_anon_EXPORT_WITH_DES40_CBC_SHA */
+        return 5;
+
+    /* not defined in below draft, but "implemented by several vendors",
+     * https://www.ietf.org/mail-archive/web/tls/current/msg00036.html */
+    case 0x0060:    /* TLS_RSA_EXPORT1024_WITH_RC4_56_MD5 */
+    case 0x0061:    /* TLS_RSA_EXPORT1024_WITH_RC2_CBC_56_MD5 */
+        return 7;
+
+    /* Note: the draft states that DES_CBC needs 8 bytes, but Wireshark always
+     * used 7. Until a pcap proves 8, let's use the old value. Link:
+     * https://tools.ietf.org/html/draft-ietf-tls-56-bit-ciphersuites-01 */
+    case 0x0062:    /* TLS_RSA_EXPORT1024_WITH_DES_CBC_SHA */
+    case 0x0063:    /* TLS_DHE_DSS_EXPORT1024_WITH_DES_CBC_SHA */
+    case 0x0064:    /* TLS_RSA_EXPORT1024_WITH_RC4_56_SHA */
+    case 0x0065:    /* TLS_DHE_DSS_EXPORT1024_WITH_RC4_56_SHA */
+        return 7;
+
+    default:
+        return 0;
+    }
+}
+
+static void
+tls_hash(StringInfo *secret, StringInfo *seed, gint md,
+         StringInfo *out, guint out_len)
+{
+    /* RFC 2246 5. HMAC and the pseudorandom function
+     * '+' denotes concatenation.
+     * P_hash(secret, seed) = HMAC_hash(secret, A(1) + seed) +
+     *                        HMAC_hash(secret, A(2) + seed) + ...
+     * A(0) = seed
+     * A(i) = HMAC_hash(secret, A(i - 1))
+     */
+    guint8   *ptr;
+    guint     left, tocpy;
+    guint8   *A;
+    guint8    _A[DIGEST_MAX_SIZE], tmp[DIGEST_MAX_SIZE];
+    guint     A_l, tmp_l;
+    SSL_HMAC  hm;
+
+    ptr  = out->data();
+    left = out_len;
+
+    ssl_print_string("tls_hash: hash secret", secret);
+    ssl_print_string("tls_hash: hash seed", seed);
+    /* A(0) = seed */
+    A = seed->data();
+    A_l = seed->data_len();
+
+    while (left) {
+        /* A(i) = HMAC_hash(secret, A(i-1)) */
+        ssl_hmac_init(&hm, secret->data(), secret->data_len(), md);
+        ssl_hmac_update(&hm, A, A_l);
+        A_l = sizeof(_A); /* upper bound len for hash output */
+        ssl_hmac_final(&hm, _A, &A_l);
+        ssl_hmac_cleanup(&hm);
+        A = _A;
+
+        /* HMAC_hash(secret, A(i) + seed) */
+        ssl_hmac_init(&hm, secret->data(), secret->data_len(), md);
+        ssl_hmac_update(&hm, A, A_l);
+        ssl_hmac_update(&hm, seed->data(), seed->data_len());
+        tmp_l = sizeof(tmp); /* upper bound len for hash output */
+        ssl_hmac_final(&hm, tmp, &tmp_l);
+        ssl_hmac_cleanup(&hm);
+
+        /* ssl_hmac_final puts the actual digest output size in tmp_l */
+        tocpy = MIN(left, tmp_l);
+        memcpy(ptr, tmp, tocpy);
+        ptr += tocpy;
+        left -= tocpy;
+    }
+    out->set_data_len(out_len);
+
+    ssl_print_string("hash out", out);
+}
+
+static gboolean
+tls12_prf(gint md, StringInfo* secret, const gchar* usage,
+          StringInfo* rnd1, StringInfo* rnd2, StringInfo* out, guint out_len)
+{
+    StringInfo label_seed;
+    size_t     usage_len, rnd2_len;
+    rnd2_len = rnd2 ? rnd2->data_len() : 0;
+
+    usage_len = strlen(usage);
+    label_seed.set_data_len(usage_len+rnd1->data_len()+rnd2_len);
+    memcpy(label_seed.data(), usage, usage_len);
+    memcpy(label_seed.data()+usage_len, rnd1->data(), rnd1->data_len());
+    if (rnd2_len > 0)
+        memcpy(label_seed.data()+usage_len+rnd1->data_len(), rnd2->data(), rnd2->data_len());
+
+    ssl_debug_printf("tls12_prf: tls_hash(hash_alg %s secret_len %d seed_len %d )\n", gcry_md_algo_name(md), secret->data_len(), label_seed.data_len());
+    tls_hash(secret, &label_seed, md, out, out_len);
+    ssl_print_string("PRF out", out);
+    return TRUE;
+}
+
+static gboolean
+prf(SslDecryptSession *ssl, StringInfo *secret, const gchar *usage,
+    StringInfo *rnd1, StringInfo *rnd2, StringInfo *out, guint out_len)
+{
+    switch (ssl->session.version) {
+    case SSLV3_VERSION:
+        //return ssl3_prf(secret, usage, rnd1, rnd2, out, out_len);
+        return FALSE;
+
+    case TLSV1_VERSION:
+    case TLSV1DOT1_VERSION:
+    case DTLSV1DOT0_VERSION:
+    case DTLSV1DOT0_OPENSSL_VERSION:
+        //return tls_prf(secret, usage, rnd1, rnd2, out, out_len);
+        return FALSE;
+
+    default: /* TLSv1.2 */
+        switch (ssl->cipher_suite->dig) {
+        case DIG_SHA384:
+            return tls12_prf(GCRY_MD_SHA384, secret, usage, rnd1, rnd2,
+                             out, out_len);
+        default:
+            return tls12_prf(GCRY_MD_SHA256, secret, usage, rnd1, rnd2,
+                             out, out_len);
+        }
+    }
 }
 
 static inline const char *
@@ -735,6 +883,336 @@ ssl_create_decoder(const SslCipherSuite *cipher_suite, gint cipher_algo,
 
     ssl_debug_printf("decoder initialized (digest len %d)\n", ssl_cipher_suite_dig(cipher_suite)->len);
     return dec;
+}
+
+int
+ssl_generate_keyring_material(SslDecryptSession*ssl_session, gboolean restore_session)
+{
+    StringInfo  key_block = { NULL, 0 };
+    guint8      _iv_c[MAX_BLOCK_SIZE],_iv_s[MAX_BLOCK_SIZE];
+    guint8      _key_c[MAX_KEY_SIZE],_key_s[MAX_KEY_SIZE];
+    gint        needed;
+    gint        cipher_algo = -1;   /* special value (-1) for NULL encryption */
+    guint       encr_key_len, write_iv_len = 0;
+    gboolean    is_export_cipher;
+    guint8     *ptr, *c_iv = NULL, *s_iv = NULL;
+    guint8     *c_wk = NULL, *s_wk = NULL, *c_mk = NULL, *s_mk = NULL;
+    const SslCipherSuite *cipher_suite = ssl_session->cipher_suite;
+
+    /* TLS 1.3 is handled directly in tls13_change_key. */
+    if (ssl_session->session.version == TLSV1DOT3_VERSION) {
+        ssl_debug_printf("%s: detected TLS 1.3. Should not have been called!\n", G_STRFUNC);
+        return -1;
+    }
+
+    /* check for enough info to proced */
+    #if 0
+    guint need_all = SSL_CIPHER|SSL_CLIENT_RANDOM|SSL_SERVER_RANDOM|SSL_VERSION;
+    guint need_any = SSL_MASTER_SECRET | SSL_PRE_MASTER_SECRET;
+    if (((ssl_session->state & need_all) != need_all) || ((ssl_session->state & need_any) == 0)) {
+        ssl_debug_printf("ssl_generate_keyring_material not enough data to generate key "
+                         "(0x%02X required 0x%02X or 0x%02X)\n", ssl_session->state,
+                         need_all|SSL_MASTER_SECRET, need_all|SSL_PRE_MASTER_SECRET);
+        /* Special case: for NULL encryption, allow dissection of data even if
+         * the Client Hello is missing (MAC keys are now skipped though). */
+        need_all = SSL_CIPHER|SSL_VERSION;
+        if ((ssl_session->state & need_all) == need_all &&
+                cipher_suite->enc == ENC_NULL) {
+            ssl_debug_printf("%s NULL cipher found, will create a decoder but "
+                    "skip MAC validation as keys are missing.\n", G_STRFUNC);
+            goto create_decoders;
+        }
+
+        return -1;
+    }
+    #endif
+
+    #if 0
+    /* if master key is not available, generate is from the pre-master secret */
+    if (!(ssl_session->state & SSL_MASTER_SECRET)) {
+        if ((ssl_session->state & SSL_EXTENDED_MASTER_SECRET_MASK) == SSL_EXTENDED_MASTER_SECRET_MASK) {
+            StringInfo handshake_hashed_data;
+            gint ret;
+
+            handshake_hashed_data.data = NULL;
+            handshake_hashed_data.data_len = 0;
+
+            ssl_debug_printf("%s:PRF(pre_master_secret_extended)\n", G_STRFUNC);
+            ssl_print_string("pre master secret",&ssl_session->pre_master_secret);
+            DISSECTOR_ASSERT(ssl_session->handshake_data.data_len > 0);
+
+            switch(ssl_session->session.version) {
+            case TLSV1_VERSION:
+            case TLSV1DOT1_VERSION:
+            case DTLSV1DOT0_VERSION:
+            case DTLSV1DOT0_OPENSSL_VERSION:
+                ret = tls_handshake_hash(ssl_session, &handshake_hashed_data);
+                break;
+            default:
+                switch (cipher_suite->dig) {
+                case DIG_SHA384:
+                    ret = tls12_handshake_hash(ssl_session, GCRY_MD_SHA384, &handshake_hashed_data);
+                    break;
+                default:
+                    ret = tls12_handshake_hash(ssl_session, GCRY_MD_SHA256, &handshake_hashed_data);
+                    break;
+                }
+                break;
+            }
+            if (ret) {
+                ssl_debug_printf("%s can't generate handshake hash\n", G_STRFUNC);
+                return -1;
+            }
+
+            wmem_free(wmem_file_scope(), ssl_session->handshake_data.data);
+            ssl_session->handshake_data.data = NULL;
+            ssl_session->handshake_data.data_len = 0;
+
+            if (!prf(ssl_session, &ssl_session->pre_master_secret, "extended master secret",
+                     &handshake_hashed_data,
+                     NULL, &ssl_session->master_secret,
+                     SSL_MASTER_SECRET_LENGTH)) {
+                ssl_debug_printf("%s can't generate master_secret\n", G_STRFUNC);
+                g_free(handshake_hashed_data.data);
+                return -1;
+            }
+            g_free(handshake_hashed_data.data);
+        } else {
+            ssl_debug_printf("%s:PRF(pre_master_secret)\n", G_STRFUNC);
+            ssl_print_string("pre master secret",&ssl_session->pre_master_secret);
+            ssl_print_string("client random",&ssl_session->client_random);
+            ssl_print_string("server random",&ssl_session->server_random);
+            if (!prf(ssl_session, &ssl_session->pre_master_secret, "master secret",
+                     &ssl_session->client_random,
+                     &ssl_session->server_random, &ssl_session->master_secret,
+                     SSL_MASTER_SECRET_LENGTH)) {
+                ssl_debug_printf("%s can't generate master_secret\n", G_STRFUNC);
+                return -1;
+            }
+        }
+        ssl_print_string("master secret",&ssl_session->master_secret);
+
+        /* the pre-master secret has been 'consumend' so we must clear it now */
+        ssl_session->state &= ~SSL_PRE_MASTER_SECRET;
+        ssl_session->state |= SSL_MASTER_SECRET;
+    }
+    #endif
+
+    /* Find the Libgcrypt cipher algorithm for the given SSL cipher suite ID */
+    if (cipher_suite->enc != ENC_NULL) {
+        const char *cipher_name = ciphers[cipher_suite->enc-0x30];
+        ssl_debug_printf("%s CIPHER: %s\n", G_STRFUNC, cipher_name);
+        cipher_algo = ssl_get_cipher_by_name(cipher_name);
+        if (cipher_algo == 0) {
+            ssl_debug_printf("%s can't find cipher %s\n", G_STRFUNC, cipher_name);
+            return -1;
+        }
+    }
+
+    /* Export ciphers consume less material from the key block. */
+    encr_key_len = ssl_get_cipher_export_keymat_size(cipher_suite->number);
+    is_export_cipher = encr_key_len > 0;
+    if (!is_export_cipher && cipher_suite->enc != ENC_NULL) {
+        encr_key_len = (guint)gcry_cipher_get_algo_keylen(cipher_algo);
+    }
+
+    if (cipher_suite->mode == MODE_CBC) {
+        write_iv_len = (guint)gcry_cipher_get_algo_blklen(cipher_algo);
+    } else if (cipher_suite->mode == MODE_GCM || cipher_suite->mode == MODE_CCM || cipher_suite->mode == MODE_CCM_8) {
+        /* account for a four-byte salt for client and server side (from
+         * client_write_IV and server_write_IV), see GCMNonce (RFC 5288) */
+        write_iv_len = 4;
+    } else if (cipher_suite->mode == MODE_POLY1305) {
+        /* RFC 7905: SecurityParameters.fixed_iv_length is twelve bytes */
+        write_iv_len = 12;
+    }
+
+    /* Compute the key block. First figure out how much data we need */
+    needed = ssl_cipher_suite_dig(cipher_suite)->len*2;     /* MAC key  */
+    needed += 2 * encr_key_len;                             /* encryption key */
+    needed += 2 * write_iv_len;                             /* write IV */
+
+    key_block.set_data_capacity(needed);
+    ssl_debug_printf("%s sess key generation\n", G_STRFUNC);
+    if (!prf(ssl_session, &ssl_session->master_secret, "key expansion",
+            &ssl_session->server_random,&ssl_session->client_random,
+            &key_block, needed)) {
+        ssl_debug_printf("%s can't generate key_block\n", G_STRFUNC);
+        goto fail;
+    }
+    ssl_print_string("key expansion", &key_block);
+
+    ptr=key_block.data();
+    /* client/server write MAC key (for non-AEAD ciphers) */
+    if (cipher_suite->mode == MODE_STREAM || cipher_suite->mode == MODE_CBC) {
+        c_mk=ptr; ptr+=ssl_cipher_suite_dig(cipher_suite)->len;
+        s_mk=ptr; ptr+=ssl_cipher_suite_dig(cipher_suite)->len;
+    }
+    /* client/server write encryption key */
+    c_wk=ptr; ptr += encr_key_len;
+    s_wk=ptr; ptr += encr_key_len;
+    /* client/server write IV (used as IV (for CBC) or salt (for AEAD)) */
+    if (write_iv_len > 0) {
+        c_iv=ptr; ptr += write_iv_len;
+        s_iv=ptr; /* ptr += write_iv_len; */
+    }
+
+    #if 0
+    /* export ciphers work with a smaller key length */
+    if (is_export_cipher) {
+        if (cipher_suite->mode == MODE_CBC) {
+
+            /* We only have room for MAX_BLOCK_SIZE bytes IVs, but that's
+             all we should need. This is a sanity check */
+            if (write_iv_len > MAX_BLOCK_SIZE) {
+                ssl_debug_printf("%s cipher suite block must be at most %d nut is %d\n",
+                        G_STRFUNC, MAX_BLOCK_SIZE, write_iv_len);
+                goto fail;
+            }
+
+            if(ssl_session->session.version==SSLV3_VERSION){
+                /* The length of these fields are ignored by this caller */
+                StringInfo iv_c, iv_s;
+                iv_c.data = _iv_c;
+                iv_s.data = _iv_s;
+
+                ssl_debug_printf("%s ssl3_generate_export_iv\n", G_STRFUNC);
+                ssl3_generate_export_iv(&ssl_session->client_random,
+                        &ssl_session->server_random, &iv_c, write_iv_len);
+                ssl_debug_printf("%s ssl3_generate_export_iv(2)\n", G_STRFUNC);
+                ssl3_generate_export_iv(&ssl_session->server_random,
+                        &ssl_session->client_random, &iv_s, write_iv_len);
+            }
+            else{
+                guint8 _iv_block[MAX_BLOCK_SIZE * 2];
+                StringInfo iv_block;
+                StringInfo key_null;
+                guint8 _key_null;
+
+                key_null.data = &_key_null;
+                key_null.data_len = 0;
+
+                iv_block.data = _iv_block;
+
+                ssl_debug_printf("%s prf(iv_block)\n", G_STRFUNC);
+                if (!prf(ssl_session, &key_null, "IV block",
+                        &ssl_session->client_random,
+                        &ssl_session->server_random, &iv_block,
+                        write_iv_len * 2)) {
+                    ssl_debug_printf("%s can't generate tls31 iv block\n", G_STRFUNC);
+                    goto fail;
+                }
+
+                memcpy(_iv_c, iv_block.data, write_iv_len);
+                memcpy(_iv_s, iv_block.data + write_iv_len, write_iv_len);
+            }
+
+            c_iv=_iv_c;
+            s_iv=_iv_s;
+        }
+
+        if (ssl_session->session.version==SSLV3_VERSION){
+
+            SSL_MD5_CTX md5;
+            ssl_debug_printf("%s MD5(client_random)\n", G_STRFUNC);
+
+            ssl_md5_init(&md5);
+            ssl_md5_update(&md5,c_wk,encr_key_len);
+            ssl_md5_update(&md5,ssl_session->client_random.data,
+                ssl_session->client_random.data_len);
+            ssl_md5_update(&md5,ssl_session->server_random.data,
+                ssl_session->server_random.data_len);
+            ssl_md5_final(_key_c,&md5);
+            ssl_md5_cleanup(&md5);
+            c_wk=_key_c;
+
+            ssl_md5_init(&md5);
+            ssl_debug_printf("%s MD5(server_random)\n", G_STRFUNC);
+            ssl_md5_update(&md5,s_wk,encr_key_len);
+            ssl_md5_update(&md5,ssl_session->server_random.data,
+                ssl_session->server_random.data_len);
+            ssl_md5_update(&md5,ssl_session->client_random.data,
+                ssl_session->client_random.data_len);
+            ssl_md5_final(_key_s,&md5);
+            ssl_md5_cleanup(&md5);
+            s_wk=_key_s;
+        }
+        else{
+            StringInfo key_c, key_s, k;
+            key_c.data = _key_c;
+            key_s.data = _key_s;
+
+            k.data = c_wk;
+            k.data_len = encr_key_len;
+            ssl_debug_printf("%s PRF(key_c)\n", G_STRFUNC);
+            if (!prf(ssl_session, &k, "client write key",
+                    &ssl_session->client_random,
+                    &ssl_session->server_random, &key_c, sizeof(_key_c))) {
+                ssl_debug_printf("%s can't generate tll31 server key \n", G_STRFUNC);
+                goto fail;
+            }
+            c_wk=_key_c;
+
+            k.data = s_wk;
+            k.data_len = encr_key_len;
+            ssl_debug_printf("%s PRF(key_s)\n", G_STRFUNC);
+            if (!prf(ssl_session, &k, "server write key",
+                    &ssl_session->client_random,
+                    &ssl_session->server_random, &key_s, sizeof(_key_s))) {
+                ssl_debug_printf("%s can't generate tll31 client key \n", G_STRFUNC);
+                goto fail;
+            }
+            s_wk=_key_s;
+        }
+    }
+    #endif
+
+    /* show key material info */
+    if (c_mk != NULL) {
+        ssl_print_data("Client MAC key",c_mk,ssl_cipher_suite_dig(cipher_suite)->len);
+        ssl_print_data("Server MAC key",s_mk,ssl_cipher_suite_dig(cipher_suite)->len);
+    }
+    ssl_print_data("Client Write key", c_wk, encr_key_len);
+    ssl_print_data("Server Write key", s_wk, encr_key_len);
+    /* used as IV for CBC mode and the AEAD implicit nonce (salt) */
+    if (write_iv_len > 0) {
+        ssl_print_data("Client Write IV", c_iv, write_iv_len);
+        ssl_print_data("Server Write IV", s_iv, write_iv_len);
+    }
+
+create_decoders:
+    /* create both client and server ciphers*/
+    ssl_debug_printf("%s ssl_create_decoder(client)\n", G_STRFUNC);
+    ssl_session->client_new = ssl_create_decoder(cipher_suite, cipher_algo, ssl_session->session.compression, c_mk, c_wk, c_iv, write_iv_len);
+    if (!ssl_session->client_new) {
+        ssl_debug_printf("%s can't init client decoder\n", G_STRFUNC);
+        goto fail;
+    }
+    ssl_debug_printf("%s ssl_create_decoder(server)\n", G_STRFUNC);
+    ssl_session->server_new = ssl_create_decoder(cipher_suite, cipher_algo, ssl_session->session.compression, s_mk, s_wk, s_iv, write_iv_len);
+    if (!ssl_session->server_new) {
+        ssl_debug_printf("%s can't init client decoder\n", G_STRFUNC);
+        goto fail;
+    }
+    if (restore_session) {
+	ssl_session->client_new->restore_session = restore_session;
+	ssl_session->server_new->restore_session = restore_session;
+    }
+
+    #if 0
+    /* Continue the SSL stream after renegotiation with new keys. */
+    ssl_session->client_new->flow = ssl_session->client ? ssl_session->client->flow : ssl_create_flow();
+    ssl_session->server_new->flow = ssl_session->server ? ssl_session->server->flow : ssl_create_flow();
+
+    ssl_debug_printf("%s: client seq %" G_GUINT64_FORMAT ", server seq %" G_GUINT64_FORMAT "\n",
+        G_STRFUNC, ssl_session->client_new->seq, ssl_session->server_new->seq);
+    //g_free(key_block.data);
+    #endif
+    ssl_session->state |= SSL_HAVE_SESSION_KEY;
+    return 0;
+
+fail:
+    return -1;
 }
 
 gboolean
@@ -1017,11 +1495,13 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
     }
 
     /* Check authentication tag for authenticity (replaces MAC) */
+    bool auth_check_failed = false;
 #ifdef HAVE_LIBGCRYPT_AEAD
     err = gcry_cipher_gettag(decoder->evp, auth_tag_calc, auth_tag_len);
     if (err == 0 && !memcmp(auth_tag_calc, auth_tag_wire, auth_tag_len)) {
         ssl_print_data("auth_tag(OK)", auth_tag_calc, auth_tag_len);
     } else {
+	auth_check_failed = true;
         if (err) {
             ssl_debug_printf("%s cannot obtain tag: %s\n", G_STRFUNC, gcry_strerror(err));
         } else {
@@ -1045,7 +1525,8 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
      * after successful authentication to ensure that early data is skipped when
      * CLIENT_EARLY_TRAFFIC_SECRET keys are unavailable.
      */
-    if (version == TLSV1DOT2_VERSION || version == TLSV1DOT3_VERSION) {
+    if ((version == TLSV1DOT2_VERSION || version == TLSV1DOT3_VERSION) &&
+	!auth_check_failed) {
         decoder->seq++;
     }
 
@@ -1527,7 +2008,7 @@ SslDecoder::~SslDecoder() {
 
 extern "C" {
 
-u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session) {
+u_int8_t tls_13_generate_keys(void* dssl_sess, u_int8_t restore_session) {
     if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key[0] ||
        !((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key[0]) {
 	return(0);
@@ -1557,6 +2038,44 @@ u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session) {
     return(rslt_generate_keys);
 }
 
+u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
+    if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key[0] &&
+       !((DSSL_Session*)dssl_sess)->master_secret[0]) {
+	return(0);
+    }
+    SslDecryptSession *ssl_ds;
+    ssl_ds = new SslDecryptSession;
+    ssl_ds->session.version = TLSV1DOT2_VERSION;
+    ssl_ds->session.cipher = ((DSSL_Session*)dssl_sess)->cipher_suite;
+    ((DSSL_Session*)dssl_sess)->tls_session = ssl_ds;
+    for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {
+        if(c->number == ssl_ds->session.cipher) {
+            ssl_ds->cipher_suite = c;
+	    break;
+        }
+    }
+    ssl_ds->client_random.set(((DSSL_Session*)dssl_sess)->client_random, SSL3_RANDOM_SIZE);
+    ssl_ds->server_random.set(((DSSL_Session*)dssl_sess)->server_random, SSL3_RANDOM_SIZE);
+    if(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key[0]) {
+	ssl_ds->master_secret.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key,
+				  ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.length);
+    } else {
+	ssl_ds->master_secret.set(((DSSL_Session*)dssl_sess)->master_secret, SSL3_MASTER_SECRET_SIZE);
+    }
+    u_int8_t rslt_generate_keys = ssl_generate_keyring_material(ssl_ds, restore_session) == 0;
+    if(rslt_generate_keys) {
+	ssl_ds->server = ssl_ds->server_new;
+	ssl_ds->client = ssl_ds->client_new;
+	ssl_ds->server->seq = ((DSSL_Session*)dssl_sess)->tls_session_server_seq;
+	ssl_ds->client->seq = ((DSSL_Session*)dssl_sess)->tls_session_client_seq;
+	ssl_ds->state = ((DSSL_Session*)dssl_sess)->tls_session_state;
+	if(((DSSL_Session*)dssl_sess)->flags  & SSF_ENCRYPT_THEN_MAC) {
+	     ssl_ds->state |= SSL_ENCRYPT_THEN_MAC;
+	}
+    }
+    return(rslt_generate_keys);
+}
+
 void tls_destroy_session(void* dssl_sess) {
     if(((DSSL_Session*)dssl_sess)->tls_session) {
 	delete (SslDecryptSession*)((DSSL_Session*)dssl_sess)->tls_session;
@@ -1574,8 +2093,9 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
     guint outl = 0;
     StringInfo comp_str;
     StringInfo out_str;
+    extern bool opt_ssl_ignore_error_invalid_mac;
     u_int8_t rslt_decrypt = ssl_decrypt_record(ssl_ds, is_from_server ? ssl_ds->server : ssl_ds->client, record_type, record_version,
-        0 /*gboolean ignore_mac_failed*/,
+	opt_ssl_ignore_error_invalid_mac,
         data, len, &comp_str, &out_str, &outl) == 0;
     if(rslt_decrypt && outl <= rslt_max_len) {
 	memcpy(rslt, out_str.data(), outl);
@@ -1583,6 +2103,7 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
     }
     ((DSSL_Session*)dssl_sess)->tls_session_server_seq = ssl_ds->server->seq;
     ((DSSL_Session*)dssl_sess)->tls_session_client_seq = ssl_ds->client->seq;
+    ((DSSL_Session*)dssl_sess)->tls_session_state = ssl_ds->state;
     return(rslt_decrypt);
 }
 
@@ -1596,7 +2117,11 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
 
 extern "C" {
 
-u_int8_t tls_generate_keys(void* dssl_sess, u_int8_t restore_session) {
+u_int8_t tls_13_generate_keys(void* dssl_sess, u_int8_t restore_session) {
+	return(0);
+}
+
+u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
 	return(0);
 }
 

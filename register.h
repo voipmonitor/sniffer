@@ -160,9 +160,15 @@ public:
 	inline bool isOK() {
 		return(state == rs_OK || state == rs_UnknownMessageOK);
 	}
+	inline bool isEq(Call *call, Register *reg);
+	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
+		return(time_s - time_shift_ms / 1000);
+	}
 public:
 	u_int64_t state_from_us;
 	u_int64_t state_to_us;
+	int64_t time_shift_ms;
+	u_int32_t counter;
 	eRegisterState state;
 	char *contact_num;
 	char *contact_domain;
@@ -305,7 +311,7 @@ public:
 	~Registers();
 	void add(Call *call);
 	bool existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq);
-	void cleanup(struct timeval *act_time, bool force = false, int expires_add = 0);
+	void cleanup(bool force = false, int expires_add = 0);
 	void cleanup_from_timer(u_int32_t time_s);
 	void clean_all();
 	inline u_int64_t getNewRegisterId(int sensorId, bool failed);

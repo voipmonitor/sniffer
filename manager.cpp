@@ -18,7 +18,9 @@
 #include <pcap.h>
 #include <math.h>
 #include <time.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/crypto.h>  
+#endif
 #include <sstream>
 
 #include "ipaccount.h"
@@ -332,6 +334,7 @@ int Mgmt_offon(Mgmt_params *params);
 int Mgmt_check_filesindex(Mgmt_params *params);
 int Mgmt_reindexspool(Mgmt_params *params);
 int Mgmt_printspool(Mgmt_params *params);
+int Mgmt_listopentars(Mgmt_params *params);
 int Mgmt_totalcalls(Mgmt_params *params);
 int Mgmt_totalregisters(Mgmt_params *params);
 int Mgmt_creategraph(Mgmt_params *params);
@@ -400,6 +403,7 @@ int Mgmt_gitUpgrade(Mgmt_params *params);
 int Mgmt_login_screen_popup(Mgmt_params *params);
 int Mgmt_ac_add_thread(Mgmt_params *params);
 int Mgmt_ac_remove_thread(Mgmt_params *params);
+int Mgmt_processing_limitations(Mgmt_params *params);
 int Mgmt_t2sip_add_thread(Mgmt_params *params);
 int Mgmt_t2sip_remove_thread(Mgmt_params *params);
 int Mgmt_storing_cdr_add_thread(Mgmt_params *params);
@@ -443,6 +447,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_check_filesindex,
 	Mgmt_reindexspool,
 	Mgmt_printspool,
+	Mgmt_listopentars,
 	Mgmt_totalcalls,
 	Mgmt_totalregisters,
 	Mgmt_creategraph,
@@ -511,6 +516,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_login_screen_popup,
 	Mgmt_ac_add_thread,
 	Mgmt_ac_remove_thread,
+	Mgmt_processing_limitations,
 	Mgmt_t2sip_add_thread,
 	Mgmt_t2sip_remove_thread,
 	Mgmt_storing_cdr_add_thread,
@@ -2013,7 +2019,7 @@ int Mgmt_cleanup_calls(Mgmt_params* params) {
 		params->registerCommand("cleanup_calls", "clean calls");
 		return(0);
 	}
-	calltable->cleanup_calls(NULL);
+	calltable->cleanup_calls(true);
 	return(params->sendString("ok"));
 }
 
@@ -2022,7 +2028,7 @@ int Mgmt_cleanup_registers(Mgmt_params* params) {
 		params->registerCommand("cleanup_registers", "clean registers");
 		return(0);
 	}
-	calltable->cleanup_registers(NULL);
+	calltable->cleanup_registers(true);
 	return(params->sendString("ok"));
 }
 
@@ -2034,10 +2040,7 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
 		extern Registers registers;
-		struct timeval act_ts;
-		act_ts.tv_sec = time(NULL);
-		act_ts.tv_usec = 0;
-		registers.cleanup(&act_ts, false, 30);
+		registers.cleanup(true);
 	}
 	return(params->sendString("ok"));
 }
@@ -2231,6 +2234,24 @@ int Mgmt_printspool(Mgmt_params *params) {
 		rslt = CleanSpool::run_print_spool();
 	} else {
 		rslt = "cleanspool is disable\r\n";
+	}
+	return(params->sendString(&rslt));
+}
+
+int Mgmt_listopentars(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("listopentars", "print lists of open tars");
+		return(0);
+	}
+	string rslt;
+	extern TarQueue *tarQueue[2];
+	for(int i = 0; i < 2; i++) {
+		if(tarQueue[i]) {
+			list<string> tars = tarQueue[i]->listOpenTars();
+			for(list<string>::iterator iter = tars.begin(); iter != tars.end(); iter++) {
+				rslt += *iter + "\n";
+			}
+		}
 	}
 	return(params->sendString(&rslt));
 }
@@ -2510,7 +2531,7 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 				outStr.width(15);
 				outStr << call->caller << " -> ";
 				outStr.width(15);
-				outStr << call->called << "  "
+				outStr << call->get_called() << "  "
 					<< sqlDateTimeString(call->calltime_s()) << "  ";
 				outStr.width(6);
 				outStr << call->duration_s() << "s  "
@@ -2560,7 +2581,7 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 			outStr.width(15);
 			outStr << call->caller << " -> ";
 			outStr.width(15);
-			outStr << call->called << "  "
+			outStr << call->get_called() << "  "
 				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
 			outStr << call->duration_s() << "s  "
@@ -2604,7 +2625,7 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			outStr.width(15);
 			outStr << call->caller << " -> ";
 			outStr.width(15);
-			outStr << call->called << "  "
+			outStr << call->get_called() << "  "
 				<< sqlDateTimeString(call->calltime_s()) << "  ";
 			outStr.width(6);
 			outStr << call->duration_s() << "s  "
@@ -4242,6 +4263,25 @@ int Mgmt_ac_remove_thread(Mgmt_params *params) {
 	extern AsyncClose *asyncClose;
 	asyncClose->removeThread();
 	return(params->sendString("ok\n"));
+}
+
+int Mgmt_processing_limitations(Mgmt_params *params) {
+	extern cProcessingLimitations processing_limitations;
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"processing_limitations_inc", ""},
+			{"processing_limitations_dec", ""},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "processing_limitations_inc") != NULL) {
+		processing_limitations.incLimitations(cProcessingLimitations::_pl_all, true);
+	} else if(strstr(params->buf, "processing_limitations_dec") != NULL) {
+		processing_limitations.decLimitations(cProcessingLimitations::_pl_all, true);
+	}
+	return(0);
 }
 
 int Mgmt_t2sip_add_thread(Mgmt_params *params) {

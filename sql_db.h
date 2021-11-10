@@ -20,6 +20,7 @@
 
 
 #define MYSQL_ROW_FORMAT_COMPRESSED "ROW_FORMAT=COMPRESSED"
+#define MARIADB_PAGE_COMPRESSED "PAGE_COMPRESSED=1"
 
 #define NULL_CHAR_PTR (const char*)NULL
 
@@ -455,6 +456,7 @@ public:
 		this->lastError = 0;
 		this->lastErrorString = "";
 	}
+	bool ignoreLastError();
 	void setMaxQueryPass(unsigned int maxQueryPass) {
 		this->maxQueryPass = maxQueryPass;
 	}
@@ -672,6 +674,7 @@ public:
 	bool createSchema_procedures_other(int connectId);
 	bool createSchema_procedure_partition(int connectId, bool abortIfFailed = true);
 	bool createSchema_init_cdr_partitions(int connectId);
+	string getPartMonthName(string *limitDay_str, int next = 0);
 	string getPartDayName(string *limitDay_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next_day, int hour);
@@ -685,6 +688,7 @@ public:
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_child(bool log = false);
+	void checkColumns_cdr_stat(bool log = false);
 	void checkColumns_ss7(bool log = false);
 	void checkColumns_message(bool log = false);
 	void checkColumns_message_child(bool log = false);
@@ -734,12 +738,21 @@ public:
 	MYSQL *getH_Mysql() {
 		return(this->hMysql);
 	}
+	string getOptimalCompressType(bool memoryEngine = false, bool useCache = true);
+	string getOptimalCompressType_mysql(bool memoryEngine, bool useCache);
+	string getOptimalCompressType_mariadb(bool memoryEngine, bool useCache);
+	bool testCreateTable(bool memoryEngine, const char *compressType);
+	void setSelectedCompressType(bool memoryEngine, const char *type, const char *subtype = NULL);
 private:
 	MYSQL *hMysql;
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
 	unsigned long mysqlThreadId;
+	string selectedCompressType;
+	string selectedCompressSubtype;
+	string selectedCompressType_memoryEngine;
+	string selectedCompressSubtype_memoryEngine;
 };
 
 class SqlDb_odbc_bindBufferItem {
@@ -1150,14 +1163,16 @@ string prepareQueryForPrintf(string &query);
 void createMysqlPartitionsCdr();
 void _createMysqlPartitionsCdr(char type, int next_day, int connectId, SqlDb *sqlDb);
 void createMysqlPartitionsSs7();
+void createMysqlPartitionsCdrStat();
 void createMysqlPartitionsRtpStat();
 void createMysqlPartitionsLogSensor();
 void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb = NULL);
-void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false);
+void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions = false, char type = 0);
 void createMysqlPartitionsIpacc();
 void _createMysqlPartition(string table, char type, int next_day, bool old_ver, const char *database, SqlDb *sqlDb);
 void dropMysqlPartitionsCdr();
 void dropMysqlPartitionsSs7();
+void dropMysqlPartitionsCdrStat();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsBillingAgregation();
@@ -1271,6 +1286,8 @@ struct sExistsColumns {
 	bool register_failed_vlan;
 	bool register_state_sipcallerdip_encaps;
 	bool register_failed_sipcallerdip_encaps;
+	bool register_state_digestrealm;
+	bool register_failed_digestrealm;
 	bool sip_msg_time_ms;
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;
@@ -1351,6 +1368,8 @@ public:
 		dropCdr = false;
 		createSs7 = false;
 		dropSs7 = false;
+		createCdrStat = false;
+		dropCdrStat = false;
 		createRtpStat = false;
 		dropRtpStat = false;
 		createLogSensor = false;
@@ -1363,6 +1382,7 @@ public:
 	bool isSet() {
 		return(createCdr || dropCdr || 
 		       createSs7 || dropSs7 ||
+		       createCdrStat || dropCdrStat ||
 		       createRtpStat || dropRtpStat ||
 		       createLogSensor || dropLogSensor ||
 		       createIpacc || 
@@ -1381,7 +1401,9 @@ public:
 	bool dropCdr;
 	bool createSs7;
 	bool dropSs7;
+	bool createCdrStat;
 	bool createRtpStat;
+	bool dropCdrStat;
 	bool dropRtpStat;
 	bool createLogSensor;
 	bool dropLogSensor;

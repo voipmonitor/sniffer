@@ -340,6 +340,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 	if(call) {
 		char *tmp_str;
 		state_from_us = state_to_us = call->calltime_us();
+		time_shift_ms = call->time_shift_ms;
+		counter = 1;
 		state = convRegisterState(call);
 		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
 			       EQ_REG :
@@ -370,6 +372,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		vlan = call->vlan;
 	} else {
 		state_from_us = state_to_us = 0;
+		time_shift_ms = 0;
+		counter = 0;
 		state = rs_na;
 		contact_num = NULL;
 		contact_domain = NULL;
@@ -516,8 +520,8 @@ Register::Register(Call *call) {
 	sipcallerport = call->sipcallerport[0];
 	sipcalledport = call->sipcalledport[0];
 	char *tmp_str;
-	to_num = REG_NEW_STR(call->called);
-	to_domain = REG_NEW_STR(call->called_domain);
+	to_num = REG_NEW_STR(call->get_called());
+	to_domain = REG_NEW_STR(call->get_called_domain());
 	contact_num = REG_NEW_STR(call->contact_num);
 	contact_domain = REG_NEW_STR(call->contact_domain);
 	digest_username = REG_NEW_STR(call->digest_username);
@@ -669,6 +673,7 @@ void Register::updateLastState(Call *call, RegisterStates *states) {
 	RegisterState *state = states->last();
 	if(state) {
 		state->state_to_us = call->calltime_us();
+		state->time_shift_ms = call->time_shift_ms;
 		state->fname_last = call->fname_register;
 		state->expires = call->register_expires;
 		if(!opt_sip_register_state_compare_digest_realm && 
@@ -786,6 +791,9 @@ void Register::saveNewStateToDb(RegisterState *state) {
 		if(existsColumns.register_failed_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
 		}
+		if (existsColumns.register_failed_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
+		}
 	} else {
 		if(registers.isEnabledIdAssignment(state)) {
 			state->db_id = registers.getNewRegisterStateId(state->id_sensor);
@@ -807,6 +815,9 @@ void Register::saveNewStateToDb(RegisterState *state) {
 		}
 		if(existsColumns.register_state_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
+		}
+		if (existsColumns.register_state_digestrealm) {
+			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 	}
 	if(state->id_sensor > -1) {
@@ -1198,8 +1209,7 @@ void Registers::add(Call *call) {
 	strcpy(call->digest_username, digest_username_orig.c_str());
 	*/
 	
-	struct timeval cleanup_time;
-	cleanup(call->get_calltime_tv(&cleanup_time), false, 30);
+	cleanup(false, 30);
 	
 	/*
 	eRegisterState states[] = {
@@ -1234,12 +1244,13 @@ bool Registers::existsDuplTcpSeqInRegOK(Call *call, u_int32_t seq) {
 	return(rslt);
 }
 
-void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
-	if(!last_cleanup_time && act_time) {
-		last_cleanup_time = act_time->tv_sec;
+void Registers::cleanup(bool force, int expires_add) {
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(!last_cleanup_time) {
+		last_cleanup_time = actTimeS;
 		return;
 	}
-	if((act_time && act_time->tv_sec > last_cleanup_time + NEW_REGISTER_CLEANUP_PERIOD) || force) {
+	if(actTimeS > last_cleanup_time + NEW_REGISTER_CLEANUP_PERIOD || force) {
 		lock_registers();
 		map<RegisterId, Register*>::iterator iter;
 		for(iter = registers.begin(); iter != registers.end(); ) {
@@ -1247,29 +1258,32 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 			reg->lock_states();
 			RegisterState *state_state = reg->states_state.last();
 			if(state_state) {
-				if(act_time && state_state->isOK() && state_state->expires &&
-				   TIME_US_TO_S(state_state->state_to_us) + state_state->expires + expires_add < act_time->tv_sec) {
+				u_int32_t actTimeS_unshift = state_state->unshiftSystemTime_s(actTimeS);
+				if(state_state->isOK() && state_state->expires &&
+				   TIME_US_TO_S(state_state->state_to_us) + state_state->expires + expires_add < actTimeS_unshift) {
 					reg->expire(false);
 				} else {
-					reg->saveStateToDb(state_state, force ? Register::_ss_update_force : Register::_ss_update, 
-							   act_time ? act_time->tv_sec : 0);
+					reg->saveStateToDb(state_state, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift);
 				}
 			}
 			RegisterState *state_failed = reg->states_failed.last();
 			if(state_failed) {
-				reg->saveStateToDb(state_failed, force ? Register::_ss_update_force : Register::_ss_update, 
-						   act_time ? act_time->tv_sec : 0);
+				u_int32_t actTimeS_unshift = state_failed->unshiftSystemTime_s(actTimeS);
+				reg->saveStateToDb(state_failed, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift);
 			}
 			bool eraseRegister = false;
-			if(act_time && !_sync_registers_erase) {
+			if(!_sync_registers_erase) {
 				RegisterState *state_last = reg->getLastState();
-				if(state_last->state == rs_Failed && reg->states_state.count == 0 &&
-				   TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT_FAILED < act_time->tv_sec) {
-					eraseRegister = true;
-					// cout << "erase failed" << endl;
-				} else if(TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < act_time->tv_sec) {
-					eraseRegister = true;
-					// cout << "erase" << endl;
+				if(state_last) {
+					u_int32_t actTimeS_unshift = state_last->unshiftSystemTime_s(actTimeS);
+					if(state_last->state == rs_Failed && reg->states_state.count == 0 &&
+					   TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT_FAILED < actTimeS_unshift) {
+						eraseRegister = true;
+						// cout << "erase failed" << endl;
+					} else if(TIME_US_TO_S(state_last->state_to_us) + NEW_REGISTER_ERASE_TIMEOUT < actTimeS_unshift) {
+						eraseRegister = true;
+						// cout << "erase" << endl;
+					}
 				}
 			}
 			reg->unlock_states();
@@ -1284,9 +1298,7 @@ void Registers::cleanup(struct timeval *act_time, bool force, int expires_add) {
 		}
 		registers_failed.cleanup(act_time, force);
 		unlock_registers();
-		if(act_time) {
-			last_cleanup_time = act_time->tv_sec;
-		}
+		last_cleanup_time = actTimeS;
 	}
 }
 

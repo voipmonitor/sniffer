@@ -55,6 +55,7 @@ extern struct sVerbose sverb;
 
 /*! \brief On and Off plc*/
 extern int opt_disableplc ;
+extern int opt_fix_packetization_in_create_audio;
 
 /*! Internal jb flags */
 enum {
@@ -164,12 +165,13 @@ enum {
 	JB_IMPL_OK,
 	JB_IMPL_DROP,
 	JB_IMPL_INTERP,
-	JB_IMPL_NOFRAME
+	JB_IMPL_NOFRAME,
+	JB_IMPL_ERROR
 };
 
 /* Translations between impl and abstract return codes */
 static int fixed_to_abstract_code[] =
-	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME};
+	{JB_IMPL_OK, JB_IMPL_DROP, JB_IMPL_INTERP, JB_IMPL_NOFRAME, JB_IMPL_ERROR};
 static int adaptive_to_abstract_code[] =
 	{JB_IMPL_OK, JB_IMPL_NOFRAME, JB_IMPL_NOFRAME, JB_IMPL_INTERP, JB_IMPL_DROP, JB_IMPL_OK};
 
@@ -458,7 +460,14 @@ void save_empty_frame(struct ast_channel *chan) {
 			}
 		} else {
 			// write previouse frame (better than zero frame), but only once
-			if(chan->lastbuflen && opt_disableplc == 0) {
+			unsigned pcm_datalen = 0;
+			if(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) {
+				pcm_datalen = 8000 * chan->packetization / 1000;;
+			}
+			if(chan->lastbuflen && opt_disableplc == 0 && 
+			   (!opt_fix_packetization_in_create_audio ||
+			    !(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) ||
+			    chan->lastbuflen == pcm_datalen)) {
 				if(chan->rawstream)
 					fwrite(chan->lastbuf, 1, chan->lastbuflen, chan->rawstream);
 				if(chan->audiobuf)
@@ -469,7 +478,7 @@ void save_empty_frame(struct ast_channel *chan) {
 				// write empty frame
 				if(chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU) {
 					unsigned char zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
-					for(i = 0; i < chan->last_datalen; i++) {
+					for(i = 0; i < (opt_fix_packetization_in_create_audio ? pcm_datalen : chan->last_datalen); i++) {
 						if(chan->rawstream)
 							fwrite(&zero, 1, 1, chan->rawstream);
 						if(chan->audiobuf)
@@ -507,6 +516,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 	int interpolation_len, res;
 	short int stmp;
 	//int res2;
+	int i;
 
 	now = get_now(jb, NULL, mynow);
 	jb->next = jbimpl->next(jbobj);
@@ -557,6 +567,19 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
 				if(chan->audiobuf) {
 					fifobuff_add(chan->audiobuf, f->data, f->datalen);
+				}
+				if(opt_fix_packetization_in_create_audio &&
+				   (chan->codec == PAYLOAD_PCMA || chan->codec == PAYLOAD_PCMU)) {
+					unsigned pcm_datalen = 8000 * chan->packetization / 1000;
+					if(pcm_datalen > f->datalen) {
+						unsigned char zero = chan->codec == PAYLOAD_PCMA ? 213 : 255;
+						for(i = 0; i < (pcm_datalen - f->datalen); i++) {
+							if(chan->rawstream)
+								fwrite(&zero, 1, 1, chan->rawstream);
+							if(chan->audiobuf)
+								fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(char));
+						}
+					}
 				}
 				//test_raw("get", f->data, f->datalen);
 				//save last frame
@@ -617,6 +640,8 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			if(sverb.jitter) fprintf(stdout, "JB_IMPL_NOFRAME is retuned from the %s jb when now=%ld >= next=%ld, jbnext=%ld!\n", jbimpl->name, now, jb->next, jbimpl->next(jbobj));
 			if(sverb.jitter) fprintf(stdout, "\tJB_GET[%p] {now=%ld}: No frame for now!?\n", jb, now);
 			chan->last_loss_burst++;
+			return;
+		case JB_IMPL_ERROR:
 			return;
 		default:
 			if(sverb.jitter) fprintf(stdout, "This should never happen!\n");

@@ -49,6 +49,7 @@ struct sVerbose {
 	int noaudiounlink;
 	int capture_filter;
 	int pcap_stat_period;
+	int pcap_stat_to_stdout;
 	int memory_stat;
 	int memory_stat_log;
 	int memory_stat_ignore_limit;
@@ -127,6 +128,9 @@ struct sVerbose {
 	int suppress_fork;
 	char *trace_call;
 	int energylevels;
+	int cdr_stat_only;
+	int cdr_stat_interval_store;
+	int disable_unlink_qfile;
 	int _debug1;
 	int _debug2;
 	int _debug3;

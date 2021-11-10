@@ -46,6 +46,7 @@ void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, 
 	baseRow->direction = _value_is_null(sqlRow, row, "direction") ? 0 : _value(sqlRow, row, "direction");
 	baseRow->rtp = _value_is_null(sqlRow, row, "rtp") ? -1 : _value(sqlRow, row, "rtp");
 	baseRow->rtp_video = _value_is_null(sqlRow, row, "rtp_video") ? -1 : _value(sqlRow, row, "rtp_video");
+	baseRow->mrcp = _value_is_null(sqlRow, row, "mrcp") ? -1 : _value(sqlRow, row, "mrcp");
 	baseRow->rtcp = _value_is_null(sqlRow, row, "rtcp") ? -1 : _value(sqlRow, row, "rtcp");
 	baseRow->sip = _value_is_null(sqlRow, row, "sip") ? -1 : _value(sqlRow, row, "sip");
 	baseRow->reg = _value_is_null(sqlRow, row, "register") ? -1 : _value(sqlRow, row, "register");
@@ -70,8 +71,8 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 	_loadBaseDataRow(NULL, row, baseRow);
 }
 
-unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow) {
-	unsigned long int flags = 0;
+u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags) {
+	u_int64_t flags = 0;
 	
 	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
 	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
@@ -82,9 +83,8 @@ unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow)
 	else if(baseRow->rtp_video == 3)	flags |= _FLAG_RTP_VIDEO_CDR_ONLY;
 	else if(baseRow->rtp_video == 0)	flags |= _FLAG_NORTP_VIDEO;
 	
-	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
-	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
-	else if(baseRow->rtp == 0)		flags |= _FLAG_NORTP;
+	if(baseRow->mrcp == 1)			{ flags |= _FLAG_MRCP; *global_flags |= cFilters::_gf_mrcp; }
+	else if(baseRow->mrcp == 0)		flags |= _FLAG_NOMRCP;
 	
 	if(baseRow->rtcp == 1)			flags |= _FLAG_RTCP;
 	else if(baseRow->rtcp == 0)		flags |= _FLAG_NORTCP;
@@ -143,7 +143,7 @@ unsigned long int filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow)
 	return(flags);
 }
 
-void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, unsigned long int filterFlags) {
+void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags) {
 	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
 	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
 	
@@ -155,6 +155,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & _FLAG_RTP_VIDEO_HEADER)	{*callFlags |= (FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO;}
 	if(filterFlags & _FLAG_RTP_VIDEO_CDR_ONLY)	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
 	if(filterFlags & _FLAG_NORTP_VIDEO) 		{*callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO);}
+	
+	if(filterFlags & _FLAG_MRCP)			*callFlags |= FLAG_SAVEMRCP;
+	if(filterFlags & _FLAG_NOMRCP)			*callFlags &= ~FLAG_SAVEMRCP;
 	
 	if(filterFlags & _FLAG_RTCP)			*callFlags |= FLAG_SAVERTCP;
 	if(filterFlags & _FLAG_NORTCP)			*callFlags &= ~FLAG_SAVERTCP;
@@ -227,7 +230,7 @@ IPfilter::~IPfilter() {
 	}
 };
 
-void IPfilter::load(SqlDb *sqlDb) {
+void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -267,7 +270,7 @@ void IPfilter::load(SqlDb *sqlDb) {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
 		node->direction = vectDbRow[i].direction;
-		node->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		node->next = NULL;
 		node->network = vectDbRow[i].ip.network(vectDbRow[i].mask);
 		node->mask = vectDbRow[i].mask;
@@ -323,11 +326,8 @@ void IPfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool enableReload) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr) {
 	int rslt = 0;
-	if(enableReload && reload_do) {
-		applyReload();
-	}
 	lock();
 	if(filter_active) {
 		rslt = filter_active->_add_call_flags(flags, saddr, daddr);
@@ -336,10 +336,10 @@ int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP
 	return(rslt);
 }
 
-void IPfilter::loadActive(SqlDb *sqlDb) {
+void IPfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4002) IPfilter();
-	filter_active->load(sqlDb);
+	filter_active->load(global_flags, sqlDb);
 	unlock();
 }
 
@@ -352,13 +352,13 @@ void IPfilter::freeActive() {
 	unlock();
 }
 
-void IPfilter::prepareReload() {
+void IPfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4003) IPfilter;
-	filter_reload->load();
+	filter_reload->load(global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "IPfilter::prepareReload");
 	unlock_reload();
@@ -453,8 +453,8 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 };
 
 
-void TELNUMfilter::load(SqlDb *sqlDb) {
-	this->loadFile();
+void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+	this->loadFile(global_flags);
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -492,13 +492,13 @@ void TELNUMfilter::load(SqlDb *sqlDb) {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
-		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);;
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
 		add_payload(np);
 	}
 };
 
-void TELNUMfilter::loadFile() {
+void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 	extern char opt_capture_rules_telnum_file[1024];
 	if(is_sender() || is_client_packetbuffer_sender() || !opt_capture_rules_telnum_file[0]) {
 		return;
@@ -521,13 +521,13 @@ void TELNUMfilter::loadFile() {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		t_payload *np = new(t_payload);
 		np->direction = vectDbRow[i].direction;
-		np->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
 		add_payload(np);
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
 
 	int lastdirection = 0;
 	
@@ -608,11 +608,8 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, char *telnum_src, char *telnum_dst, bool enableReload) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
 	int rslt = 0;
-	if(enableReload && reload_do) {
-		applyReload();
-	}
 	lock();
 	if(filter_active) {
 		rslt = filter_active->_add_call_flags(flags, telnum_src, telnum_dst);
@@ -621,10 +618,10 @@ int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, char *telnum
 	return(rslt);
 }
 
-void TELNUMfilter::loadActive(SqlDb *sqlDb) {
+void TELNUMfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4004) TELNUMfilter();
-	filter_active->load(sqlDb);
+	filter_active->load(global_flags, sqlDb);
 	unlock();
 }
 
@@ -637,13 +634,13 @@ void TELNUMfilter::freeActive() {
 	unlock();
 }
 
-void TELNUMfilter::prepareReload() {
+void TELNUMfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4005) TELNUMfilter;
-	filter_reload->load();
+	filter_reload->load(global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "TELNUMfilter::prepareReload");
 	unlock_reload();
@@ -690,7 +687,7 @@ DOMAINfilter::~DOMAINfilter() {
 	}
 };
 
-void DOMAINfilter::load(SqlDb *sqlDb) {
+void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -729,7 +726,7 @@ void DOMAINfilter::load(SqlDb *sqlDb) {
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
 		node = new(t_node);
 		node->direction = vectDbRow[i].direction;
-		node->flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		node->next = NULL;
 		node->domain = vectDbRow[i].domain;
 
@@ -740,7 +737,7 @@ void DOMAINfilter::load(SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -769,11 +766,8 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, char *domain_src, char *domain_dst, bool enableReload) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
 	int rslt = 0;
-	if(enableReload && reload_do) {
-		applyReload();
-	}
 	lock();
 	if(filter_active) {
 		rslt = filter_active->_add_call_flags(flags, domain_src, domain_dst);
@@ -782,10 +776,10 @@ int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, char *domain
 	return(rslt);
 }
 
-void DOMAINfilter::loadActive(SqlDb *sqlDb) {
+void DOMAINfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4007) DOMAINfilter();
-	filter_active->load(sqlDb);
+	filter_active->load(global_flags, sqlDb);
 	unlock();
 }
 
@@ -798,13 +792,13 @@ void DOMAINfilter::freeActive() {
 	unlock();
 }
 
-void DOMAINfilter::prepareReload() {
+void DOMAINfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4008) DOMAINfilter;
-	filter_reload->load();
+	filter_reload->load(global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "DOMAINfilter::prepareReload");
 	unlock_reload();
@@ -845,8 +839,8 @@ SIP_HEADERfilter::SIP_HEADERfilter() {
 SIP_HEADERfilter::~SIP_HEADERfilter() {
 }
 
-void SIP_HEADERfilter::load(SqlDb *sqlDb) {
-	this->loadFile();
+void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
+	this->loadFile(global_flags);
 	if(opt_nocdr || is_sender() || is_client_packetbuffer_sender()) {
 		return;
 	}
@@ -889,7 +883,7 @@ void SIP_HEADERfilter::load(SqlDb *sqlDb) {
 		item.direction = 0;
 		item.prefix = vectDbRow[i].prefix;
 		item.regexp = vectDbRow[i].regexp;
-		item.flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		item.flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		if(item.regexp) {
 			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
 		} else {
@@ -903,7 +897,7 @@ void SIP_HEADERfilter::load(SqlDb *sqlDb) {
 	}
 }
 
-void SIP_HEADERfilter::loadFile() {
+void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	extern char opt_capture_rules_sip_header_file[1024];
 	if (is_sender() || is_client_packetbuffer_sender() || !opt_capture_rules_sip_header_file[0]) {
 		return;
@@ -931,7 +925,7 @@ void SIP_HEADERfilter::loadFile() {
 		item.direction = 0;
 		item.prefix = vectDbRow[i].prefix;
 		item.regexp = vectDbRow[i].regexp;
-		item.flags = this->getFlagsFromBaseData(&vectDbRow[i]);
+		item.flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		if (item.regexp) {
 			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
 		} else {
@@ -1013,11 +1007,8 @@ void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool enableReload) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags) {
 	int rslt = 0;
-	if(enableReload && reload_do) {
-		applyReload();
-	}
 	lock();
 	if(filter_active) {
 		rslt = filter_active->_add_call_flags(parseContents, flags);
@@ -1037,10 +1028,10 @@ void SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
 	unlock();
 }
 
-void SIP_HEADERfilter::loadActive(SqlDb *sqlDb) {
+void SIP_HEADERfilter::loadActive(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock();
 	filter_active = new FILE_LINE(4010) SIP_HEADERfilter();
-	filter_active->load(sqlDb);
+	filter_active->load(global_flags, sqlDb);
 	unlock();
 }
 
@@ -1053,13 +1044,13 @@ void SIP_HEADERfilter::freeActive() {
 	unlock();
 }
 
-void SIP_HEADERfilter::prepareReload() {
+void SIP_HEADERfilter::prepareReload(u_int32_t *global_flags, SqlDb *sqlDb) {
 	lock_reload();
 	if(filter_reload) {
 		delete filter_reload;
 	}
 	filter_reload = new FILE_LINE(4011) SIP_HEADERfilter;
-	filter_reload->load();
+	filter_reload->load(global_flags, sqlDb);
 	reload_do = true;
 	syslog(LOG_NOTICE, "SIP_HEADERfilter::prepareReload");
 	unlock_reload();
@@ -1087,3 +1078,67 @@ volatile bool SIP_HEADERfilter::reload_do = 0;
 volatile unsigned long SIP_HEADERfilter::loadTime = 0;
 volatile int SIP_HEADERfilter::_sync = 0;
 volatile int SIP_HEADERfilter::_sync_reload = 0;
+
+
+
+void cFilters::loadActive(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	global_flags = 0;
+	IPfilter::loadActive(&global_flags, sqlDb);
+	TELNUMfilter::loadActive(&global_flags, sqlDb);
+	DOMAINfilter::loadActive(&global_flags, sqlDb);
+	SIP_HEADERfilter::loadActive(&global_flags, sqlDb);
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+void cFilters::prepareReload(SqlDb *sqlDb) {
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	lock_reload();
+	reload_global_flags = 0;
+	IPfilter::prepareReload(&reload_global_flags, sqlDb);
+	TELNUMfilter::prepareReload(&reload_global_flags, sqlDb);
+	DOMAINfilter::prepareReload(&reload_global_flags, sqlDb);
+	SIP_HEADERfilter::prepareReload(&reload_global_flags, sqlDb);
+	reload_do = true;
+	unlock_reload();
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+}
+
+void cFilters::applyReload() {
+	if(reload_do) {
+		lock_reload();
+		if(reload_do) {
+			IPfilter::applyReload();
+			TELNUMfilter::applyReload();
+			DOMAINfilter::applyReload();
+			SIP_HEADERfilter::applyReload();
+			global_flags = reload_global_flags;
+			reload_do = false;
+		}
+		unlock_reload();
+	}
+}
+
+void cFilters::freeActive() {
+	IPfilter::freeActive();
+	TELNUMfilter::freeActive();
+	DOMAINfilter::freeActive();
+	SIP_HEADERfilter::freeActive();
+}
+
+u_int32_t cFilters::global_flags = 0;
+u_int32_t cFilters::reload_global_flags = 0;
+volatile bool cFilters::reload_do = 0;
+volatile int cFilters::_sync_reload = 0;

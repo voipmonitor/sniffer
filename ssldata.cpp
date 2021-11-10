@@ -38,7 +38,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			  TcpReassemblyData *data,
 			  u_char *ethHeader, u_int32_t ethHeaderLength,
 			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			  void */*uData*/, TcpReassemblyLink *reassemblyLink,
+			  void */*uData*/, void */*uData2*/, void */*uData2_last*/, TcpReassemblyLink *reassemblyLink,
 			  std::ostream *debugStream) {
 	++this->counterProcessData;
 	if(debugStream) {
@@ -82,6 +82,102 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			(*debugStream) << endl;
 		}
 		vector<string> rslt_decrypt;
+		bool ok_first_ssl_header = false;
+		u_char *ssl_data;
+		u_int32_t ssl_datalen;
+		bool alloc_ssl_data = false;
+		bool exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
+		bool ignore_remain_data = false;
+		if(exists_remain_data) {
+			u_int32_t remain_data_items = reassemblyLink->getRemainDataItems(dataItem->getDirection());
+			for(u_int32_t skip_first_remain_data_items = 0; skip_first_remain_data_items < remain_data_items; skip_first_remain_data_items++) {
+				if(alloc_ssl_data) {
+					delete [] ssl_data;
+					alloc_ssl_data = false;
+				}
+				u_int32_t remain_data_length = reassemblyLink->getRemainDataLength(dataItem->getDirection(), skip_first_remain_data_items);
+				ssl_datalen = remain_data_length + dataItem->getDatalen();
+				ssl_data = reassemblyLink->completeRemainData(dataItem->getDirection(), &ssl_datalen, dataItem->getAck(), dataItem->getSeq(), dataItem->getData(), dataItem->getDatalen(), skip_first_remain_data_items);
+				alloc_ssl_data = true;
+				SslHeader header(ssl_data, ssl_datalen);
+				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen) {
+					ok_first_ssl_header = true;
+					if(debugStream) {
+						(*debugStream) << "APPLY PREVIOUS REMAIN DATA: " << remain_data_length << endl;
+					}
+					break;
+				}
+			}
+		}
+		if(!ok_first_ssl_header) {
+			if(alloc_ssl_data) {
+				delete [] ssl_data;
+				alloc_ssl_data = false;
+			}
+			ssl_data = dataItem->getData();
+			ssl_datalen = dataItem->getDatalen();
+			SslHeader header(ssl_data, ssl_datalen);
+			if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen) {
+				ok_first_ssl_header = true;
+				if(exists_remain_data) {
+					ignore_remain_data = true;
+				}
+			}
+		}
+		if(ok_first_ssl_header) {
+			u_int32_t ssl_data_offset = 0;
+			while(ssl_data_offset < ssl_datalen &&
+			      ssl_datalen - ssl_data_offset >= 5) {
+				SslHeader header(ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
+				if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= ssl_datalen - ssl_data_offset) {
+					if(debugStream) {
+						(*debugStream)
+							<< "SSL HEADER "
+							<< "content type: " << (int)header.content_type << " / "
+							<< "version: " << hex << header.version << dec << " / "
+							<< "length: " << header.length
+							<< endl;
+					}
+					vector<string> rslt_decrypt_part;
+					if(opt_enable_ssl == 10) {
+						#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
+						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
+						#endif
+					} else {
+						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime(), ignore_remain_data);
+					}
+					if(rslt_decrypt_part.size()) {
+						for(size_t i = 0; i < rslt_decrypt_part.size(); i++) {
+							rslt_decrypt.push_back(rslt_decrypt_part[i]);
+						}
+					}
+					ssl_data_offset += header.length + header.getDataOffsetLength();
+				} else {
+					break;
+				}
+			}
+			if(exists_remain_data) {
+				reassemblyLink->clearRemainData(dataItem->getDirection());
+				if(debugStream) {
+					(*debugStream) << "CLEAR REMAIN DATA" << endl;
+				}
+			}
+			if(ssl_data_offset < ssl_datalen) {
+				reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
+				if(debugStream) {
+					(*debugStream) << "SET REMAIN DATA: " << (ssl_datalen - ssl_data_offset) << endl;
+				}
+			}
+		} else {
+			reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data, ssl_datalen);
+			if(debugStream) {
+				(*debugStream) << (exists_remain_data ? "ADD" : "SET") << " REMAIN DATA: " << ssl_datalen << endl;
+			}
+		}
+		if(alloc_ssl_data) {
+			delete [] ssl_data;
+		}
+		/* old version
 		for(int pass = 0; pass < 2; pass++) {
 			u_char *ssl_data;
 			u_int32_t ssl_datalen;
@@ -113,7 +209,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 						decrypt_ssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), htonl(_ip_src), htonl(_ip_dst), _port_src, _port_dst);
 						#endif
 					} else {
-						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime());
+						decrypt_ssl_dssl(&rslt_decrypt_part, (char*)(ssl_data + ssl_data_offset), header.length + header.getDataOffsetLength(), _ip_src, _ip_dst, _port_src, _port_dst, dataItem->getTime(),
+								 pass == 1);
 					}
 					if(rslt_decrypt_part.size()) {
 						for(size_t i = 0; i < rslt_decrypt_part.size(); i++) {
@@ -129,7 +226,8 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				bool ok = false;
 				if(reassemblyLink->existsRemainData(dataItem->getDirection()) &&
 				   !ssl_data_offset &&
-				   _checkOkSslData(dataItem->getData(), dataItem->getDatalen())) {
+				   (!checkOkSslHeader(dataItem->getData(), dataItem->getDatalen()) || 
+				    _checkOkSslData(dataItem->getData(), dataItem->getDatalen()))) {
 					// next pass with ignore remainData
 					reassemblyLink->clearRemainData(dataItem->getDirection());
 					if(debugStream) {
@@ -155,6 +253,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				}
 			}
 		}
+		*/
 		for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 			if(debugStream) {
 				string out(rslt_decrypt[i], 0,100);
@@ -282,15 +381,18 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		unsigned dataOffset = ethHeaderLength + 
 				      iphdrSize +
 				      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
+		packet_flags pflags;
+		pflags.init();
+		pflags.tcp = 2;
+		pflags.ssl = true;
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			true, 
 			#if USE_PACKET_NUMBER
 			0, 
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, tcpHeader, tcpPacket, true, 
-			2, false, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+			pflags, (iphdr2*)(tcpPacket + ethHeaderLength), (iphdr2*)(tcpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	} else {
@@ -304,15 +406,17 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		unsigned dataOffset = ethHeaderLength + 
 				      iphdrSize + 
 				      sizeof(udphdr2);
+		packet_flags pflags;
+		pflags.init();
+		pflags.ssl = true;
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			true, 
 			#if USE_PACKET_NUMBER
 			0,
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
 			handle_index, udpHeader, udpPacket, true, 
-			false, false, (iphdr2*)(udpPacket + ethHeaderLength), NULL,
+			pflags, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	}

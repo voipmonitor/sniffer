@@ -45,6 +45,7 @@ extern int opt_saveRAW;                //save RTP payload RAW data?
 extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
 extern bool opt_srtp_rtp_decrypt;
+extern bool opt_srtp_rtp_dtls_decrypt;
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
@@ -644,12 +645,12 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 	}
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
-	if(packetization <= 0) {
+	if(packetization <= 1) {
 		Call *owner = (Call*)call_owner;
 		if(owner) {
-			syslog(LOG_ERR, "call-id[%s]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe());
+			syslog(LOG_ERR, "call-id[%s]: packetization is %i in jitterbuffer function.", owner->get_fbasename_safe(), packetization);
 		} else {
-			syslog(LOG_ERR, "call-id[N/A]: packetization is 0 in jitterbuffer function.");
+			syslog(LOG_ERR, "call-id[N/A]: packetization is %i in jitterbuffer function.", packetization);
 		}
 		return;
 	}
@@ -737,13 +738,13 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	memcpy(&frame->delivery, &header_ts, sizeof(struct timeval));
 
 	/* protect for endless loops (it cannot happen in theory but to be sure */
-	if(packetization <= 0) {
+	if(packetization <= 1) {
 		if(pinformed == 0) {
 			if(owner) {
-				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is 0 in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC());
+				syslog(LOG_ERR, "call-id[%s] ssrc[%x]: packetization is %i in jitterbuffer function.", owner->get_fbasename_safe(), getSSRC(), packetization);
 				
 			} else {
-				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is 0 in jitterbuffer function.", getSSRC());
+				syslog(LOG_ERR, "call-id[N/A] ssrc[%x]: packetization is %i in jitterbuffer function.", getSSRC(), packetization);
 			}
 		}
 		pinformed = 1;
@@ -1144,7 +1145,13 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		  (owner && owner->connect_time_us && getTimeUS(header) > owner->connect_time_us))) ||
 		mos_lqo;
 	
-	if(srtp_decrypt && (opt_srtp_rtp_decrypt || use_channel_record)) {
+	if(srtp_decrypt && 
+	   (opt_srtp_rtp_decrypt || 
+	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) ||
+	    use_channel_record)) {
+		if(srtp_decrypt->need_prepare_decrypt()) {
+			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport);
+		}
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
 		this->len = *len;
 	}
@@ -1299,14 +1306,19 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				       lastrtp and this->eqAddrPort(lastrtp);
 	}
 	
-	if(is_video()) {
+	extern cProcessingLimitations processing_limitations;
+	if(processing_limitations.suppressRtpRead()) {
+		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
+	}
+	if(is_video() || 
+	   owner->suppress_rtp_read_due_to_insufficient_hw_performance) {
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
 		}
 		prev_payload = curpayload;
 		prev_codec = codec;
-		lastframetype = AST_FRAME_VIDEO;
+		lastframetype = is_video() ? AST_FRAME_VIDEO : AST_FRAME_VOICE;
 		if(first_codec < 0) {
 			first_codec = codec;
 		}
@@ -2560,7 +2572,7 @@ void RTP::rtp_stream_analysis_output() {
 	     << rsa.counter << ","
 	     << ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us) << ","
 	     << (((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
-	     << seq << ","
+	     << getSeqNum() << ","
 	     << (rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0) << ","
 	     << (rsa.counter > 1 ? (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
 	     << transit << ","

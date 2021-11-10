@@ -21,21 +21,26 @@ extern bool opt_socket_use_poll;
 extern cResolver resolver;
 
 cRsa::cRsa() {
+	#ifdef HAVE_OPENSSL
 	priv_rsa = NULL;
 	pub_rsa = NULL;
 	padding = RSA_PKCS1_PADDING;
+	#endif
 }
 
 cRsa::~cRsa() {
+	#ifdef HAVE_OPENSSL
 	if(priv_rsa) {
 		RSA_free(priv_rsa);
 	}
 	if(pub_rsa) {
 		RSA_free(pub_rsa);
 	}
+	#endif
 }
 
 void cRsa::generate_keys(unsigned keylen) {
+	#ifdef HAVE_OPENSSL
 	#if __GNUC__ >= 8
 	#pragma GCC diagnostic push
 	#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -65,9 +70,11 @@ void cRsa::generate_keys(unsigned keylen) {
 	BIO_free_all(pub_key_bio);
 	//
 	RSA_free(rsa);
+	#endif
 }
 
 RSA *cRsa::create_rsa(const char *key, eTypeKey typeKey) {
+	#ifdef HAVE_OPENSSL
 	BIO *key_bio = BIO_new_mem_buf((void*)key, -1);
 	if(!key_bio) {
 		return(NULL);
@@ -80,9 +87,13 @@ RSA *cRsa::create_rsa(const char *key, eTypeKey typeKey) {
 	}
 	BIO_free_all(key_bio);
 	return(rsa);
+	#else
+	return(NULL);
+	#endif
 }
 
 RSA *cRsa::create_rsa(eTypeKey typeKey) {
+	#ifdef HAVE_OPENSSL
 	RSA *rsa = create_rsa(typeKey == _private ? priv_key.c_str() : pub_key.c_str(), typeKey);
 	if(rsa) {
 		if(typeKey == _private) {
@@ -92,9 +103,13 @@ RSA *cRsa::create_rsa(eTypeKey typeKey) {
 		}
 	}
 	return(rsa);
+	#else
+	return(NULL);
+	#endif
 }
 
 bool cRsa::public_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	#ifdef HAVE_OPENSSL
 	if(!pub_rsa) {
 		if(!create_rsa(_public)) {
 			return(false);
@@ -111,9 +126,13 @@ bool cRsa::public_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
 	*data  = data_enc;
 	*datalen = data_enc_len;
 	return(true);
+	#else
+	return(false);
+	#endif
 }
 
 bool cRsa::private_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	#ifdef HAVE_OPENSSL
 	if(!priv_rsa) {
 		if(!create_rsa(_private)) {
 			return(false);
@@ -130,9 +149,13 @@ bool cRsa::private_decrypt(u_char **data, size_t *datalen, bool destroyOldData) 
 	*data  = data_dec;
 	*datalen = data_dec_len;
 	return(true);
+	#else
+	return(false);
+	#endif
 }
  
 bool cRsa::private_encrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	#ifdef HAVE_OPENSSL
 	if(!priv_rsa) {
 		if(!create_rsa(_private)) {
 			return(false);
@@ -149,9 +172,13 @@ bool cRsa::private_encrypt(u_char **data, size_t *datalen, bool destroyOldData) 
 	*data  = data_enc;
 	*datalen = data_enc_len;
 	return(true);
+	#else
+	return(false);
+	#endif
 }
 
 bool cRsa::public_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
+	#ifdef HAVE_OPENSSL
 	if(!pub_rsa) {
 		if(!create_rsa(_public)) {
 			return(false);
@@ -168,15 +195,22 @@ bool cRsa::public_decrypt(u_char **data, size_t *datalen, bool destroyOldData) {
 	*data  = data_dec;
 	*datalen = data_dec_len;
 	return(true);
+	#else
+	return(false);
+	#endif
 }
 
 string cRsa::getError() {
+	#ifdef HAVE_OPENSSL
 	char *error_buffer = new FILE_LINE(0) char[1000];;
 	ERR_load_crypto_strings();
 	ERR_error_string(ERR_get_error(), error_buffer);
 	string error = error_buffer;
 	delete [] error_buffer;
 	return(error);
+	#else
+	return("openssl library is not present");
+	#endif
 }
 
 
@@ -205,6 +239,7 @@ void cAes::generate_keys() {
 }
 
 bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
+	#ifdef HAVE_OPENSSL
 	*data_enc = NULL;
 	*datalen_enc = 0;
 	if(!ctx_enc) {
@@ -240,9 +275,13 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 		*data_enc = NULL;
 	}
 	return(true);
+	#else
+	return(false);
+	#endif
 }
 
 bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final) {
+	#ifdef HAVE_OPENSSL
 	*data_dec = NULL;
 	*datalen_dec = 0;
 	if(!ctx_dec) {
@@ -278,31 +317,42 @@ bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *data
 		*data_dec = NULL;
 	}
 	return(true);
+	#else
+	return(false);
+	#endif
 }
 
 string cAes::getError() {
+	#ifdef HAVE_OPENSSL
 	char *error_buffer = new FILE_LINE(0) char[1000];
 	ERR_load_crypto_strings();
 	ERR_error_string(ERR_get_error(), error_buffer);
 	string error = error_buffer;
 	delete [] error_buffer;
 	return(error);
+	#else
+	return("openssl library is not present");
+	#endif
 }
 
 void cAes::destroyCtxEnc() {
+	#ifdef HAVE_OPENSSL
 	if(ctx_enc) {
 		EVP_CIPHER_CTX_cleanup(ctx_enc);
 		EVP_CIPHER_CTX_free(ctx_enc);
 		ctx_enc = NULL;
 	}
+	#endif
 }
 
 void cAes::destroyCtxDec() {
+	#ifdef HAVE_OPENSSL
 	if(ctx_dec) {
 		EVP_CIPHER_CTX_cleanup(ctx_dec);
 		EVP_CIPHER_CTX_free(ctx_dec);
 		ctx_dec = NULL;
 	}
+	#endif
 }
 
 

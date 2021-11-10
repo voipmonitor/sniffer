@@ -1506,7 +1506,7 @@ bool CustPhoneNumberCache::okParams() {
 	       this->query_fetchPhoneNumbers.length());
 }
 
-cust_reseller CustPhoneNumberCache::getCustomerByPhoneNumber(char* number) {
+cust_reseller CustPhoneNumberCache::getCustomerByPhoneNumber(const char* number) {
 	cust_reseller rslt;
 	if(!this->okParams()) {
 		return(rslt);

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include "config.h"
 #include "common.h"
+#include "proc_limit.h"
 #include "heap_safe.h"
 
 #include "voipmonitor_define.h"
@@ -330,10 +331,26 @@ inline bool isCloud() {
 int useNewStore();
 bool useSetId();
 bool useCsvStoreFormat();
+
 bool useChartsCacheInProcessCall();
 bool useChartsCacheInStore();
 bool useChartsCacheProcessThreads();
 bool existsChartsCacheServer();
+
+bool useCdrStatInProcessCall();
+bool useCdrStatInStore();
+bool useCdrStatProcessThreads();
+
+inline bool useChartsCacheOrCdrStatInProcessCall() {
+	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall());
+}
+inline bool useChartsCacheOrCdrStatInStore() {
+	return(useChartsCacheInStore() || useCdrStatInStore());
+}
+inline bool useChartsCacheOrCdrStatProcessThreads() {
+	return(useChartsCacheProcessThreads() || useCdrStatProcessThreads());
+}
+
 
 typedef struct mysqlSSLOptions {
 	char key[PATH_MAX];

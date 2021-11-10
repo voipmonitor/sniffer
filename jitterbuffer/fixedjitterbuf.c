@@ -165,7 +165,7 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 			if(opt_enable_jitterbuffer_asserts) {
 				ASSERT(jb->tail == NULL);
 			}
-			return(0);
+			return FIXED_JB_ERROR;
 		}
 		
 		jb->force_resynch = 0;
@@ -215,7 +215,8 @@ static int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long no
 				now, ts, now - ts, jb->rxcore, jb->delay,
 				jb->rxcore + ts, jb->next_delivery, jb->rxcore + ts - jb->next_delivery);
 		if (!jb->force_resynch) {
-			if(offset < 0 || now - ts < jb->rxcore - jb->delay) {
+			if(offset < 0 || 
+			   jb->rxcore + ts > jb->next_delivery + jb->delay + jb->conf.resync_threshold) {
 				return FIXED_JB_DROP;
 			} else {
 				jb_fixed_flush_deliver(jb->chan);
@@ -286,7 +287,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 		if(opt_enable_jitterbuffer_asserts) {
 			ASSERT(data != NULL);
 		}
-		return(0);
+		return FIXED_JB_ERROR;
 	}
 	/* do not allow frames shorter than 2 ms */
 	if(!(ms >= 2)) {
@@ -294,14 +295,14 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 		if(opt_enable_jitterbuffer_asserts) {
 			ASSERT(ms >= 2);
 		}
-		return(0);
+		return FIXED_JB_ERROR;
 	}
 	if(!(ts >= 0)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_put - ts >= 0");
 		if(opt_enable_jitterbuffer_asserts) {
 			ASSERT(ts >= 0);
 		}
-		return(0);
+		return FIXED_JB_ERROR;
 	}
         // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 	
@@ -416,7 +417,7 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 			if(opt_enable_jitterbuffer_asserts) {
 				ASSERT(jb->tail == NULL);
 			}
-			return(0);
+			return FIXED_JB_ERROR;
 		}
 		jb->frames = jb->tail = newframe;
 		newframe->next = NULL;
@@ -453,14 +454,14 @@ int fixed_jb_get(struct fixed_jb *jb, struct fixed_jb_frame *frame, long now, lo
 		if(opt_enable_jitterbuffer_asserts) {
 			ASSERT(now >= 0);
 		}
-		return(0);
+		return FIXED_JB_ERROR;
 	}
 	if(!(interpl >= 2)) {
 		syslog(5 /*notice */, "JB ASSERT - fixed_jb_get - interpl >= 2");
 		if(opt_enable_jitterbuffer_asserts) {
 			ASSERT(interpl >= 2);
 		}
-		return(0);
+		return FIXED_JB_ERROR;
 	}
 	
 	if (now < jb->next_delivery) {

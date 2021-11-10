@@ -29,6 +29,8 @@
 #define ONLY_OPENSSL_111_SUPPORT 1
 #endif
 
+#define WRITE_THREAD 1
+
 #define DEBUG 1
 #define DEBUG_PREFIX "\n * SSL KEYLOG : "
 #define DEBUG_TO_SYSLOG 0
@@ -382,6 +384,7 @@ static int init_keylog(void) {
 	       keylog_filename[0]);
 }
 
+#if WRITE_THREAD
 static void *write_thread(void *arg) {
 	while(true) {
 		if(key_queue_first) {
@@ -407,15 +410,18 @@ static void *write_thread(void *arg) {
 	}
 }
 
-static int create_write_thread_counter;
+static bool write_thread_created;
 static void create_write_thread() {
-	++create_write_thread_counter;
-	pthread_t thread;
-	pthread_create(&thread, NULL, write_thread, NULL);
+	if(!write_thread_created) {
+		write_thread_created = true;
+		pthread_t thread;
+		pthread_create(&thread, NULL, write_thread, NULL);
+	}
 }
 
-static void write_keylog_to_queue(const SSL *ssl, const char *key) {
+static void write_keylog_to_queue(const char *key) {
 	__SYNC_LOCK_USLEEP(key_queue_sync, 100);
+	create_write_thread();
 	sKeyQueueItem *kqi = new sKeyQueueItem(key);
 	if(key_queue_last) {
 		key_queue_last->next = kqi;
@@ -425,6 +431,18 @@ static void write_keylog_to_queue(const SSL *ssl, const char *key) {
 		key_queue_last = kqi;
 	}
 	__SYNC_UNLOCK(key_queue_sync);
+}
+#endif
+
+static void write_keylog(const SSL *ssl, const char *key) {
+	if(!ssl || !key) {
+		return;
+	}
+	#if WRITE_THREAD
+		write_keylog_to_queue(key);
+	#else
+		write_keylog_to_dest(key);
+	#endif
 }
 
 static void write_keylog_to_dest(const char *key) {
@@ -468,7 +486,7 @@ static void *lookup_symbol(const char *sym, const char *lib_soname) {
 
 SSL *SSL_new(SSL_CTX *ctx) {
 	if(SSL_CTX_set_keylog_callback_orig) {
-		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog_to_queue);
+		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog);
 	}
 	return SSL_new_orig(ctx);
 }
@@ -485,7 +503,7 @@ int SSL_connect(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_connect changekey");
 		char complete_key[1000];
-		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_connect 2");
 	return(rslt);
@@ -502,7 +520,7 @@ int SSL_do_handshake(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_do_handshake changekey");
 		char complete_key[1000];
-		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_do_handshake_orig 2");
 	return(rslt);
@@ -519,7 +537,7 @@ int SSL_accept(SSL *ssl) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_accept changekey");
 		char complete_key[1000];
-		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_accept 2");
 	return(rslt);
@@ -536,7 +554,7 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_read changekey");
 		char complete_key[1000];
-		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_read 2");
 	return(rslt);
@@ -553,7 +571,7 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
 	if(mk1 != mk2) {
 		//debug_printf("SSL_write changekey");
 		char complete_key[1000];
-		write_keylog_to_queue(ssl, mk2.completeKey(ssl, complete_key));
+		write_keylog(ssl, mk2.completeKey(ssl, complete_key));
 	}
 	//debug_printf("SSL_write 2");
 	return(rslt);
@@ -619,7 +637,6 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("FAILED init_keylog - abort!");
 		abort();
 	}
-	create_write_thread();
 }
 
 

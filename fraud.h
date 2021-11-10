@@ -201,6 +201,7 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	enum eTypeCallInfo {
 		typeCallInfo_beginCall,
 		typeCallInfo_connectCall,
+		typeCallInfo_sessionCanceledCall,
 		typeCallInfo_seenByeCall,
 		typeCallInfo_endCall
 	};
@@ -211,6 +212,7 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 		called_ip.clear();
 		at_begin = 0;
 		at_connect = 0;
+		at_session_canceled = 0;
 		at_seen_bye = 0;
 		at_end = 0;
 		at_last = 0;
@@ -239,6 +241,7 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	map<string, string> *custom_headers;
 	u_int64_t at_begin;
 	u_int64_t at_connect;
+	u_int64_t at_session_canceled;
 	u_int64_t at_seen_bye;
 	u_int64_t at_end;
 	u_int64_t at_last;
@@ -289,6 +292,7 @@ struct sFraudEventInfo {
 		block_store = NULL;
 		block_store_index = 0; 
 		dlt = 0;
+		lock_packet = 0;
 	}
 	eTypeEventInfo typeEventInfo;
 	vmIP src_ip;
@@ -299,6 +303,7 @@ struct sFraudEventInfo {
 	struct pcap_block_store *block_store;
 	u_int32_t block_store_index; 
 	u_int16_t dlt;
+	bool lock_packet;
 };
 
 struct sFraudRegisterInfo_id {
@@ -473,6 +478,7 @@ protected:
 	virtual bool defDestPrefixes() { return(false); }
 	virtual bool defInterval() { return(false); }
 	virtual bool defFilterInternational() { return(false); }
+	virtual bool defIncludeSessionCanceled() { return(false); }
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 	virtual bool defStorePcaps() { return(false); }
@@ -504,6 +510,7 @@ protected:
 	u_int32_t intervalLength;
 	u_int32_t intervalLimit;
 	bool filterInternational;
+	bool includeSessionCanceled;
 	CheckInternational checkInternational;
 	bool onlyConnected;
 	bool suppressRepeatingAlerts;
@@ -1051,6 +1058,7 @@ protected:
 	bool defFilterNumber2() { return(true); }
 	bool defInterval() { return(true); }
 	bool defFilterInternational() { return(true); }
+	bool defIncludeSessionCanceled() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 private:
 	bool checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t at);
@@ -1162,6 +1170,7 @@ public:
 	void clear(bool lock = true);
 	void beginCall(Call *call, u_int64_t at);
 	void connectCall(Call *call, u_int64_t at);
+	void sessionCanceledCall(Call *call, u_int64_t at);
 	void seenByeCall(Call *call, u_int64_t at);
 	void endCall(Call *call, u_int64_t at);
 	void beginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
@@ -1188,6 +1197,7 @@ public:
 	bool needCustomHeaders() {
 		return(useUserRestriction_custom_headers);
 	}
+	void waitForEmptyQueues(int timeout = 60);
 private:
 	void pushToCallQueue(sFraudCallInfo *callInfo);
 	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);
@@ -1290,8 +1300,10 @@ void termFraud();
 void refreshFraud();
 void fraudBeginCall(Call *call, struct timeval tv);
 void fraudConnectCall(Call *call, struct timeval tv);
+void fraudSessionCanceledCall(Call *call, struct timeval tv);
 void fraudSeenByeCall(Call *call, struct timeval tv);
 void fraudEndCall(Call *call, struct timeval tv);
+void fraudEndCall(Call *call, u_int64_t time_ms);
 void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			 Call *call, time_t time);
 void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,

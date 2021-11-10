@@ -18,7 +18,7 @@ using namespace std;
 
 
 extern void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
-			char *callidstr, char *to, char *branch);
+			char *callidstr, char *to, char *to_uri, char *branch);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
 extern void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected);
 
@@ -200,7 +200,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call = calltable->add_mgcp(&request, packetS->header_pt->ts.tv_sec, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
-				strcpy_null_term(call->called, request.endpoint.c_str());
+				strcpy_null_term(call->called_final, request.endpoint.c_str());
 				call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
 				call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_());
 				call->flags = flags;
@@ -295,7 +295,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 			detect_to_extern(packetS, to, sizeof(to), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
-				    (char*)call->call_id.c_str(), to, branch);
+				    (char*)call->call_id.c_str(), to, NULL, branch);
 		}
 		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
@@ -303,7 +303,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call->connect_time_us = getTimeUS(packetS->header_pt);
 			}
 		}
-		save_packet(call, packetS, TYPE_MGCP);
+		save_packet(call, packetS, _t_packet_mgcp);
 		if(request.type == _mgcp_CRCX || request.type == _mgcp_MDCX || request.type == _mgcp_DLCX) {
 			call->set_last_mgcp_connect_packet_time_us(getTimeUS(packetS->header_pt));
 		}

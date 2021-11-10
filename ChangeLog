@@ -1,3 +1,97 @@
+28.8 17.08.2021
+===============
+- improved conditions for detecting one-way calls in case INVITE is passing A->B->C without any response from C [VS-1223]
+- fix problem with creating duplicate partitions for tables containing custom headers [VS-1213]
+- fix creating old partitions for custom headers tables in migration instance [VS_1230]
+- new option t2_boost_pb_detach_thread (default no) which splits load in packet buffer thread (needed for very high traffic >= 2500Mbit calls >= 30000) - this option has trade off + 1 CPU core. 
+- ssl key logger option WRITE_THREAD 1/0, fix crash if ssl returns NULL key
+- reset RTP timeout (rtptimeout timer option) if RTCP packets arrive [VS-1234]
+- ssl reassembly fix - better solution for the rest of the data from previous reassembly results, fix dtls header parsing with extended protection profile content [VS-1216]
+- ignore extra trailing \r\n in sip data lenght verification in TCP reassembly (any SIP TCP with extra \r\n were ignored) [VS-1236]
+- disallow ipfix options if sniffer is configured to mirror packets 
+- fix  mysql_enable_new_store = per_query for custom headers and billing 
+
+
+28.7 26.07.2021
+===============
+- support for ipfix tunneling (ACME / ORACLE SBC mirroring) [VS-133]
+- support for '487 session canceled' in 'fraud sequential' alert
+- fix SSL keylogger which was not working if the program (kamailio / etc.) was forking 
+- fix SSL keylogger compilation on Ubuntu 
+
+
+28.6 15.07.2021
+===============
+- fix crashes when handling 3XX SIP responses for calls which includes RTP streams (all verions) [VS-1214]
+- add digestrealm column to the register_state/_failed tables [VG-1875]
+- fix content line separator: LF (\n) - fixes parsing l: tag [VS-1207]
+- ssl keylogger - fix Makefile for 'make with_tcp' (debian 10 issue) [VS-1212]
+- fix rtcp_mux for rtps 
+
+
+28.5 29.06.2021
+===============
+- add support for ESP transport encapsulation
+- send call - implement authentification [VG-2309]
+- dtls 1.3 fix problem with the webrtc fragment length, fix fingerprint problem in sdp [
+
+
+28.4.1 24.06.2021
+=================
+- fix crash when incorrect content is in dtls packet [VS-1202]
+
+
+28.4 22.06.2021
+===============
+- DTLS RTP decryption support (needs keylogger) [VS-1202]
+- allow to run autocleanmingb / autocleanspoolminpercent outside cleanspool_enable_fromto option [VS-1183]
+- implement mrcp saving to pcap [VS-1167]
+
+
+28.3 09.06.2021
+===============
+- fix race condition leading to crash (when SIP compression was changed to LZO the race occured more often silently corrupting heap) 
+- ss7: use isup.subsequent_number for extend called number (if new configuration value "ss7_use_sam_subsequent_number" set to "yes") [VS-1188]
+- fix crash for some callerid when t2_boost_enable_call_find_threads is enabled 
+- adding support for custom headers without automatically added trailing colon [VS-1204]
+
+
+28.2 26.05.2021
+===============
+- fix rare random crashes in TCP reassembler introduced in 28.0
+- fix crash if sdp_multiplication=0
+- fix issue with caplen and snaplen when loading pcap with -r [VS-1199]
+- increase SIP processing threads to 4 and optimise first thread 
+
+
+28.1 06.05.2021
+===============
+- First line in SIP message (INVITE etc.) can be used in custom headers [VS-550] [VS-615] - use header field invite
+- fix race condition leading to crash for 3XX SIP calls
+
+
+28.0 04.05.2021
+===============
+- automatically split "d" thread in t2cpu threads which is responsible for packet classifications - now it is possible to process >5Gbit traffic on slower GHZ CPUs. 
+- automatically split "s" thread in t2cpu threads which parses SIP packets - now extreme SIP packet rate is possible on slower GHZ CPUs
+- speed optimisations in t2cpu threads (less memory copying) 
+- add support for anonymization ip in pcap [VG-2281]
+- fix crash in jitterbuffer if packetization == 1 [VS-1186]
+- ignore process error for attempt to decrypt data without data-remaing from previous pass
+- add new option ssl_unlimited_reassembly_attempts (yes/NO) for enable unlimited attempts for reassembly if next packet with the same tcp.ack arrived
+- add support for crypto suites AES_CM_256_HMAC_SHA1_80, AES_CM_256_HMAC_SHA1_32 in srtp decode
+- allow comment # in voipmonitor.conf at the end of value [VS-1195]
+- fix crash when refreshing fraud in case option for storing pcap is enabled [VS-1189]
+
+
+27.8 06.04.2021
+===============
+- fix issue with synchronizing very slow and fast traffic across multiple interfaces [VS-1177]
+- fix cases where MOS 50ms jitterbuffer was low when it should not be [VS-1178]
+- fix peername parse from header with tel: prefix [VS-1181]
+- tls/ssl: fix decrypting multiple handshake messages, added support for session ticket (restore master key from previous session)), new option ssl_ignore_error_bad_finished_digest (default yes) [VS-1179]
+
+
 27.7.4 10.03.2021
 =================
 - fix interface = any and convert_dlt_sll2en10 option for SS7 pcap files 

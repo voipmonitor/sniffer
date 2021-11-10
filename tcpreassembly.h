@@ -209,7 +209,7 @@ public:
 				 TcpReassemblyData *data,
 				 u_char *ethHeader, u_int32_t ethHeaderLength,
 				 u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-				 void *uData,
+				 void *uData, void *uData2, void *uData2_last,
 				 class TcpReassemblyLink *reassemblyLink,
 				 std::ostream *debugStream) = 0;
 	virtual void writeToDb(bool /*all*/ = false) {}
@@ -431,7 +431,8 @@ public:
 	}
 	void push(TcpReassemblyStream_packet packet);
 	int ok(bool crazySequence = false, bool enableSimpleCmpMaxNextSeq = false, u_int32_t maxNextSeq = 0,
-	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
+	       int enableValidateDataViaCheckData = -1, int needValidateDataViaCheckData = -1, int unlimitedReassemblyAttempts = -1,
+	       TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       u_int32_t forceFirstSeq = 0, int ignorePsh = -1);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
 	u_char *complete(u_int32_t *datalen, timeval *time, u_int32_t *seq, bool check = false,
@@ -531,7 +532,7 @@ public:
 			  vmPort port_src, vmPort port_dst,
 			  u_char *packet, iphdr2 *header_ip,
 			  u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-			  void *uData) {
+			  void *uData, void *uData2) {
 		this->reassembly = reassembly;
 		this->ip_src = ip_src;
 		this->ip_dst = ip_dst;
@@ -567,6 +568,8 @@ public:
 		this->sensor_ip = sensor_ip;
 		this->pid = pid;
 		this->uData = uData;
+		this->uData2 = uData2;
+		this->uData2_last = uData2;
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
 	}
@@ -694,8 +697,9 @@ public:
 	void printContent(int level  = 0);
 	void addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
-	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
-	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction);
+	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t skip_first_items);
+	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction, u_int32_t skip_first_items);
+	u_int32_t getRemainDataItems(TcpReassemblyDataItem::eDirection direction);
 	bool existsRemainData(TcpReassemblyDataItem::eDirection direction);
 	bool existsAllAckSeq(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();
@@ -753,6 +757,8 @@ private:
 	vmIP sensor_ip;
 	sPacketInfoData pid;
 	void *uData;
+	void *uData2;
+	void *uData2_last;
 	vector<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
@@ -782,6 +788,7 @@ public:
 		vmIP sensor_ip;
 		sPacketInfoData pid;
 		void *uData;
+		void *uData2;
 		bool isSip;
 	};
 public:
@@ -790,7 +797,7 @@ public:
 	void push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet, bool alloc_packet,
 		      pcap_block_store *block_store, int block_store_index, bool block_store_locked,
 		      u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-		      void *uData = NULL, bool isSip = false);
+		      void *uData = NULL, void *uData2 = NULL, bool isSip = false);
 	void cleanup(bool all = false);
 	void cleanup_simple(bool all = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
@@ -816,6 +823,9 @@ public:
 	}
 	void setEnableValidateDataViaCheckData(bool enableValidateDataViaCheckData = true) {
 		this->enableValidateDataViaCheckData = enableValidateDataViaCheckData;
+	}
+	void setUnlimitedReassemblyAttempts(bool unlimitedReassemblyAttempts = true) {
+		this->unlimitedReassemblyAttempts = unlimitedReassemblyAttempts;
 	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
 		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
@@ -927,7 +937,7 @@ private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
 		   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
-		   void *uData, bool isSip);
+		   void *uData, void *uData2, bool isSip);
 	void createCleanupThread();
 	void createPacketThread();
 	void *cleanupThreadFunction(void *);
@@ -957,6 +967,7 @@ private:
 	bool enableDestroyStreamsInComplete;
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
+	bool unlimitedReassemblyAttempts;
 	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;

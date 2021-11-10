@@ -96,6 +96,7 @@
 #include "log_buffer.h"
 #include "heap_chunk.h"
 #include "charts.h"
+#include "ipfix.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -180,7 +181,11 @@ using namespace std;
 /* global variables */
 
 extern Calltable *calltable;
+#if DEBUG_ASYNC_TAR_WRITE
+extern cDestroyCallsInfo *destroy_calls_info;
+#endif
 extern volatile int calls_counter;
+extern volatile int calls_for_store_counter;
 extern volatile int registers_counter;
 unsigned int opt_openfile_max = 65535;
 int opt_disable_dbupgradecheck = 0; // When voipmonitor started this disable mysql db check/upgrade (if set to 1)
@@ -189,6 +194,7 @@ int opt_packetbuffered = 0;	// Make .pcap files writing ‘‘packet-buffered’
 				// writen file anytime, it will be consistent.
 	
 int opt_disableplc = 0 ;	// On or Off packet loss concealment			
+int opt_fix_packetization_in_create_audio = 0;
 int opt_rrd = 1;
 char *rrd_last_cmd_global = NULL;
 int opt_silencethreshold = 512; //values range from 1 to 32767 default 512
@@ -207,9 +213,11 @@ int opt_onlyRTPheader = 0;	// do not save RTP payload, only RTP header
 int opt_saveRTPvideo = 0;
 int opt_saveRTPvideo_only_header = 0;
 int opt_processingRTPvideo = 0;
+int opt_saveMRCP = 0;
 int opt_saveRTCP = 0;		// save RTCP packets to pcap file?
 bool opt_null_rtppayload = false;
 bool opt_srtp_rtp_decrypt = false;
+bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
 int opt_use_libsrtp = 0;
@@ -343,6 +351,9 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
+bool opt_cdr_stat_values = true;
+bool opt_cdr_stat_sources = false;
+int opt_cdr_stat_interval = 15;
 bool opt_charts_cache = false;
 int opt_charts_cache_max_threads = 3;
 bool opt_charts_cache_store = false;
@@ -355,15 +366,15 @@ int opt_skinny = 0;
 int opt_mgcp = 0;
 vmIP opt_skinny_ignore_rtpip;
 unsigned int opt_skinny_call_info_message_decode_type = 2;
-bool opt_dedup_input_file = false;
 bool opt_read_from_file = false;
 char opt_read_from_file_fname[1024] = "";
-char opt_dedup_fname[1024] = "";
+char opt_process_pcap_fname[1024] = "";
 bool opt_read_from_file_no_sip_reassembly = false;
 char opt_pb_read_from_file[256] = "";
 double opt_pb_read_from_file_speed = 0;
 int opt_pb_read_from_file_acttime = 0;
 int opt_pb_read_from_file_acttime_diff_days = 0;
+int opt_pb_read_from_file_acttime_diff_secs = 0;
 int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
@@ -386,6 +397,8 @@ int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 int process_rtp_packets_distribute_threads_use = 0;
+int opt_pre_process_packets_next_thread = 0;
+int opt_pre_process_packets_next_thread_max = 1;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -401,6 +414,7 @@ int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
+bool opt_ss7_use_sam_subsequent_number = true;
 int opt_ss7_type_callid = 1;
 int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
@@ -414,6 +428,9 @@ unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
+bool opt_ssl_ignore_error_bad_finished_digest = true;
+int opt_ssl_tls_12_sessionkey_mode = 0;
+bool opt_ssl_unlimited_reassembly_attempts = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
@@ -579,6 +596,7 @@ int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
 int opt_pcap_ifdrop_limit = 20;
+int opt_pcap_dpdk_ifdrop_limit = 0;
 int swapDelayCount = 0;
 int swapMysqlDelayCount = 0;
 
@@ -613,6 +631,7 @@ bool bashPresent = true;
 extern bool opt_pcap_queue_disable;
 extern u_int opt_pcap_queue_block_max_time_ms;
 extern size_t opt_pcap_queue_block_max_size;
+bool opt_pcap_queue_block_max_size_set;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
 extern size_t opt_pcap_queue_file_store_max_size;
 extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
@@ -631,6 +650,7 @@ extern int opt_pcap_queue_dequeu_need_blocks;
 extern int opt_pcap_queue_dequeu_method;
 extern int opt_pcap_queue_use_blocks;
 extern int opt_pcap_queue_use_blocks_auto_enable;
+extern int opt_pcap_queue_use_blocks_read_check;
 extern int opt_pcap_queue_suppress_t1_thread;
 extern int opt_pcap_queue_block_timeout;
 extern bool opt_pcap_queue_pcap_stat_per_one_interface;
@@ -648,6 +668,7 @@ int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
 int opt_cleandatabase_register_time_info = 0;
 int opt_cleandatabase_sip_msg = 0;
+int opt_cleandatabase_cdr_stat = 71;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
@@ -690,6 +711,7 @@ bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
 bool opt_sql_time_utc = false;
 bool opt_socket_use_poll = true;
+bool opt_interrupts_counters = true;
 
 char configfile[1024] = "";	// config file name
 
@@ -808,6 +830,41 @@ vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
 bool opt_ifaces_optimize = true;
+bool opt_use_dpdk = false;
+int opt_dpdk_init = 1;
+int opt_dpdk_read_thread = 2;
+int opt_dpdk_worker_thread = 2;
+int opt_dpdk_worker2_thread = 0;
+int opt_dpdk_iterations_per_call = 1000;
+int opt_dpdk_read_usleep_if_no_packet = 1;
+int opt_dpdk_read_usleep_type = 0;
+int opt_dpdk_worker_usleep_if_no_packet = 1;
+int opt_dpdk_worker_usleep_type = 0;
+int opt_dpdk_nb_rx = 4096;
+int opt_dpdk_nb_tx = 1024;
+int opt_dpdk_nb_mbufs = 1024;
+int opt_dpdk_pkt_burst = 32;
+int opt_dpdk_ring_size = 0;
+int opt_dpdk_mempool_cache_size = 512;
+int opt_dpdk_zc = 0;
+int opt_dpdk_mbufs_in_packetbuffer = 0;
+int opt_dpdk_prealloc_packetbuffer = 0;
+int opt_dpdk_defer_send_packetbuffer = 0;
+int opt_dpdk_rotate_packetbuffer = 1;
+int opt_dpdk_rotate_packetbuffer_pool_max_perc = 25;
+int opt_dpdk_copy_packetbuffer = 1;
+int opt_dpdk_batch_read = 0;
+string opt_dpdk_cpu_cores;
+string opt_dpdk_cpu_cores_map;
+int opt_dpdk_main_thread_lcore = -1;
+string opt_dpdk_read_thread_lcore;
+string opt_dpdk_worker_thread_lcore;
+string opt_dpdk_worker2_thread_lcore;
+int opt_dpdk_memory_channels = 4;
+string opt_dpdk_pci_device;
+int opt_dpdk_force_max_simd_bitwidth = 0;
+string opt_cpu_cores;
+
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
 #ifndef FREEBSD
@@ -837,7 +894,16 @@ bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
+bool opt_t2_boost_pb_detach_thread = false;
+bool opt_t2_boost_pcap_dispatch = false;
 int opt_storing_cdr_max_next_threads = 3;
+bool opt_processing_limitations = false;
+int opt_processing_limitations_heap_high_limit = 50;
+int opt_processing_limitations_heap_low_limit = 25;
+bool opt_processing_limitations_active_calls_cache = false;
+int opt_processing_limitations_active_calls_cache_type = 2;
+int opt_processing_limitations_active_calls_cache_timeout_min = 0;
+int opt_processing_limitations_active_calls_cache_timeout_max = 0;
 char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
@@ -877,6 +943,8 @@ volatile int storing_cdr_next_threads_count_mod;
 volatile int storing_cdr_next_threads_count_mod_request;
 volatile int storing_cdr_next_threads_count_sync;
 unsigned storing_cdr_next_threads_count_last_change;
+int opt_storing_cdr_maximum_cdr_per_iteration = 50000;
+
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
@@ -1031,7 +1099,7 @@ extern ParsePacket _parse_packet_global_process_packet;
 
 cBuffersControl buffersControl;
 
-u_int64_t rdtsc_by_100ms;
+u_int64_t rdtsc_by_250ms = 0;
 
 char opt_git_folder[1024];
 char opt_configure_param[1024];
@@ -1048,7 +1116,7 @@ int opt_query_cache_check_utf;
 int opt_load_query_from_files;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
-bool opt_load_query_from_files_inotify;
+bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
@@ -1097,6 +1165,11 @@ bool opt_icmp_process_data = false;
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
+
+bool opt_ipfix;
+bool opt_ipfix_set;
+string opt_ipfix_bind_ip;
+unsigned opt_ipfix_bind_port;
 
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
@@ -1153,10 +1226,19 @@ int opt_next_server_connections = 0;
 
 bool heap_profiler_is_running = false;
 
+int opt_process_pcap_type = 0;
+char opt_pcap_destination[1024];
+cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
+cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+
+char opt_curl_hook_wav[256] = "";
+
 
 #include <stdio.h>
 #include <pthread.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/err.h>
+#endif
  
 #define MUTEX_TYPE       pthread_mutex_t
 #define MUTEX_SETUP(x)   pthread_mutex_init(&(x), NULL)
@@ -1185,7 +1267,9 @@ void init_management_functions(void);
  
 void handle_error(const char *file, int lineno, const char *msg){
      fprintf(stderr, "** %s:%d %s\n", file, lineno, msg);
+#ifdef HAVE_OPENSSL
      ERR_print_errors_fp(stderr);
+#endif
      /* exit(-1); */ 
  }
  
@@ -1198,10 +1282,12 @@ static MUTEX_TYPE *mutex_buf= NULL;
 #endif
 static void locking_function(int mode, int n, const char * /*file*/, int /*line*/)
 {
+#ifdef HAVE_OPENSSL
   if (mode & CRYPTO_LOCK)
     MUTEX_LOCK(mutex_buf[n]);
   else
     MUTEX_UNLOCK(mutex_buf[n]);
+#endif
 }
  
 static unsigned long id_function(void)
@@ -1214,8 +1300,8 @@ static unsigned long id_function(void)
  
 int thread_setup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   mutex_buf = new FILE_LINE(42001) MUTEX_TYPE[CRYPTO_num_locks()];
   if (!mutex_buf)
     return 0;
@@ -1224,12 +1310,15 @@ int thread_setup(void)
   CRYPTO_set_id_callback(id_function);
   CRYPTO_set_locking_callback(locking_function);
   return 1;
+#else
+  return 0;
+#endif
 }
  
 int thread_cleanup(void)
 {
+#ifdef HAVE_OPENSSL
   int i;
- 
   if (!mutex_buf)
     return 0;
   CRYPTO_set_id_callback(NULL);
@@ -1239,6 +1328,9 @@ int thread_cleanup(void)
   delete [] mutex_buf;
   mutex_buf = NULL;
   return 1;
+#else
+  return 0;
+#endif
 }
 
 char *semaphoreLockName(int index) {
@@ -1609,6 +1701,21 @@ void *moving_cache( void */*dummy*/ ) {
 			cachedirtransfered += move_file(src_c, dst_c, true);
 			//TODO: error handling
 			//perror ("The following error occurred");
+
+			// Here we put our CURL hook
+			// And use it only if cacheing is turned on
+			if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] != '\0') {
+				SimpleBuffer responseBuffer;
+				s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_json);
+				curl_params.addParam("voipmonitor", "true");
+				curl_params.addParam("stereo", opt_saveaudio_stereo ? "false" : "true");
+				curl_params.addParam("wav_file_name_with_path", dst_c);
+				if (!get_curl_response(opt_curl_hook_wav, &responseBuffer, &curl_params)) {
+					if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s], error[%s]\n", opt_curl_hook_wav, curl_params.error.c_str());
+				} else {
+					if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s], response[%s]\n", opt_curl_hook_wav, (char*)responseBuffer);
+				}
+			}
 		}
 		if(terminating_moving_cache) {
 			break;
@@ -1690,13 +1797,18 @@ public:
 	static void *_checkIdCdrChildTables(void *arg);
 public:
 	bool check;
+	static volatile int in_progress;
 } checkIdCdrChildTables;
 
+volatile int sCheckIdCdrChildTables::in_progress = 0;
+
 void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
+	sCheckIdCdrChildTables::in_progress = 1;
 	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
 	if(checkIdCdrChildTables->check) {
 		checkMysqlIdCdrChildTables();
 	}
+	sCheckIdCdrChildTables::in_progress = 0;
 	return(NULL);
 }
 
@@ -1717,6 +1829,8 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t dropPartitionCdrAt = 0;
 	time_t createPartitionSs7At = 0;
 	time_t dropPartitionSs7At = 0;
+	time_t createPartitionCdrStatAt = 0;
+	time_t dropPartitionCdrStatAt = 0;
 	time_t createPartitionRtpStatAt = 0;
 	time_t dropPartitionRtpStatAt = 0;
 	time_t createPartitionLogSensorAt = 0;
@@ -1775,6 +1889,16 @@ void *storing_cdr( void */*dummy*/ ) {
 					dropPartitionSs7At = actTime;
 				}
 			}
+			if(true /* cdr_stat */) {
+				if(check_time_partition_operation(createPartitionCdrStatAt)) {
+					createPartitions.createCdrStat = true;
+					createPartitionCdrStatAt = actTime;
+				}
+				if(check_time_partition_operation(dropPartitionCdrStatAt)) {
+					createPartitions.dropCdrStat = true;
+					dropPartitionCdrStatAt = actTime;
+				}
+			}
 			if(true /* rtp_stat */) {
 				if(check_time_partition_operation(createPartitionRtpStatAt)) {
 					createPartitions.createRtpStat = true;
@@ -1815,7 +1939,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			if(createPartitions.isSet()) {
 				createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
 			}
-			if(opt_cdr_partition) {
+			if(opt_cdr_partition && !sCheckIdCdrChildTables::in_progress) {
 				time_t actTime = time(NULL);
 				checkIdCdrChildTables.init();
 				if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
@@ -1841,7 +1965,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			calltable->unlock_calls_queue();
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
-			unsigned calls_for_store_count = 0;
+			int _calls_for_store_counter = 0;
 			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
@@ -1872,37 +1996,45 @@ void *storing_cdr( void */*dummy*/ ) {
 			while(calls_queue_position < calls_queue_size) {
 				Call *call = calltable->calls_queue[calls_queue_position];
 				calltable->unlock_calls_queue();
-				bool isPcapClose = call->isPcapsClose();
-				if(!isPcapClose) {
-					// Close SIP and SIP+RTP dump files ASAP to save file handles
-					call->getPcap()->close();
-					call->getPcapSip()->close();
+				if(call->closePcaps() || call->closeGraphs() ||
+				   !call->isEmptyChunkBuffersCount()) {
+					++calls_queue_position;
+					calltable->lock_calls_queue();
+					continue;
 				}
-				if(isPcapClose ?
-				    call->isEmptyChunkBuffersCount() :
-				    call->isReadyForWriteCdr()) {
-					if(storing_cdr_next_threads_count) {
-						int mod = calls_for_store_count % (storing_cdr_next_threads_count + 1);
-						if(!mod) {
-							calls_for_store.push_back(call);
-						} else {
-							storing_cdr_next_threads[mod - 1].calls->push_back(call);
-						}
+				if(call->isReadyForWriteCdr()) {
+					if(call->push_call_to_storing_cdr_queue) {
+						syslog(LOG_WARNING,"try to duplicity push call %s / %i to storing cdr queue", call->call_id.c_str(), call->getTypeBase());
 					} else {
-						calls_for_store.push_back(call);
+						call->push_call_to_storing_cdr_queue = true;
+						if(storing_cdr_next_threads_count) {
+							int mod = _calls_for_store_counter % (storing_cdr_next_threads_count + 1);
+							if(!mod) {
+								calls_for_store.push_back(call);
+							} else {
+								storing_cdr_next_threads[mod - 1].calls->push_back(call);
+							}
+						} else {
+							calls_for_store.push_back(call);
+						}
 					}
-					++calls_for_store_count;
+					++_calls_for_store_counter;
 					calltable->lock_calls_queue();
 					calltable->calls_queue.erase(calltable->calls_queue.begin() + calls_queue_position);
 					--calls_queue_size;
 					--calls_queue_position;
+					if(opt_storing_cdr_maximum_cdr_per_iteration &&
+					   _calls_for_store_counter >= opt_storing_cdr_maximum_cdr_per_iteration) {
+						break;
+					}
 				} else {
 					calltable->lock_calls_queue();
 				}
 				++calls_queue_position;
 			}
 			calltable->unlock_calls_queue();
-			if(calls_for_store_count || storing_cdr_next_threads_count_mod < 0) {
+			calls_for_store_counter = _calls_for_store_counter;
+			if(_calls_for_store_counter || storing_cdr_next_threads_count_mod < 0) {
 				if(storing_cdr_next_threads_count) {
 					for(int i = 0; i < storing_cdr_next_threads_count; i++) {
 						sem_post(&storing_cdr_next_threads[i].sem[0]);
@@ -1974,7 +2106,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(useConvertToWav) {
 					calltable->unlock_calls_audioqueue();
 				}
-				if(useChartsCacheInProcessCall()) {
+				if(useChartsCacheOrCdrStatInProcessCall()) {
 					calltable->lock_calls_charts_cache_queue();
 					for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -2123,7 +2255,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 		if(useConvertToWav) {
 			calltable->unlock_calls_audioqueue();
 		}
-		if(useChartsCacheInProcessCall()) {
+		if(useChartsCacheOrCdrStatInProcessCall()) {
 			calltable->lock_calls_charts_cache_queue();
 			for(list<Call*>::iterator iter_call = calls_for_delete.begin(); iter_call != calls_for_delete.end(); iter_call++) {
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, *iter_call));
@@ -2153,7 +2285,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 }
 
 void storing_cdr_next_thread_add() {
-	if(getTimeS() > storing_cdr_next_threads_count_last_change + 120) {
+	if(getTimeS() > storing_cdr_next_threads_count_last_change + 60) {
 		if(storing_cdr_next_threads_count < opt_storing_cdr_max_next_threads &&
 		   storing_cdr_next_threads_count_mod == 0 &&
 		   storing_cdr_next_threads_count_mod_request == 0) {
@@ -2523,10 +2655,7 @@ void hot_restart_with_json_config(const char *jsonConfig) {
 }
 
 void reload_capture_rules() {
-	IPfilter::prepareReload();
-	TELNUMfilter::prepareReload();
-	DOMAINfilter::prepareReload();
-	SIP_HEADERfilter::prepareReload();
+	cFilters::prepareReload();
 }
 
 #ifdef BACKTRACE
@@ -2852,6 +2981,7 @@ void test();
 PcapQueue_readFromFifo *pcapQueueR;
 PcapQueue_readFromInterface *pcapQueueI;
 PcapQueue_readFromFifo *pcapQueueQ;
+PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
 
@@ -3489,6 +3619,10 @@ int main(int argc, char *argv[]) {
 		revaluationBilling(opt_revaluation_params);
 		return(0);
 	}
+	if(opt_process_pcap_fname[0]) {
+		process_pcap(opt_process_pcap_fname, opt_pcap_destination, opt_process_pcap_type);
+		return(0);
+	}
 	
 	if(printConfigStruct) {
 		cout << "configuration: ";
@@ -3540,13 +3674,8 @@ int main(int argc, char *argv[]) {
 	ulaw_init();
 	dsp_init();
  
-	#if defined(__i386__) or  defined(__x86_64__)
-	u_int64_t _rdtsc_1 = rdtsc();
-	USLEEP(100000);
-	u_int64_t _rdtsc_2 = rdtsc();
-	rdtsc_by_100ms = _rdtsc_2 - _rdtsc_1;
-	#endif
-	
+	init_rdtsc_interval();
+
 	thread_setup();
 	// end init
 
@@ -3587,6 +3716,13 @@ int main(int argc, char *argv[]) {
 			return(1);
 		}
 		atexit(exit_handler_fork_mode);
+	}
+	
+	if(!opt_cpu_cores.empty()) {
+		vector<int> cpu_cores;
+		get_list_cores(opt_cpu_cores, cpu_cores);
+		pthread_t main_thread = pthread_self();
+		pthread_set_affinity(main_thread, &cpu_cores, NULL);
 	}
 	
 	if(opt_rrd) {
@@ -3643,7 +3779,6 @@ int main(int argc, char *argv[]) {
 		if(opt_fork) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	} else if(is_client()) {
 		snifferClientService = snifferClientStart(&snifferClientOptions, NULL, snifferClientService);
@@ -3660,7 +3795,7 @@ int main(int argc, char *argv[]) {
 										  snifferClientNextServices[i]);
 			}
 		}
-		if(useChartsCacheInStore() &&
+		if(useChartsCacheOrCdrStatInStore() &&
 		   !snifferClientOptions_charts_cache.host.empty()) {
 			snifferClientService_charts_cache = snifferClientStart(&snifferClientOptions_charts_cache, NULL, snifferClientService_charts_cache);
 		}
@@ -3668,10 +3803,6 @@ int main(int argc, char *argv[]) {
 		snifferServerStart();
 	}
 	
-	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
-		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
-	}
-
 	if(opt_generator) {
 		opt_generator_channels = 2;
 		pthread_t *genthreads = new FILE_LINE(42009) pthread_t[opt_generator_channels];		// ID of worker storing CDR thread 
@@ -3729,10 +3860,7 @@ int main(int argc, char *argv[]) {
 	if(!is_terminating()) {
 	
 		if(opt_test) {
-			IPfilter::loadActive();
-			TELNUMfilter::loadActive();
-			DOMAINfilter::loadActive();
-			SIP_HEADERfilter::loadActive();
+			cFilters::loadActive();
 			_parse_packet_global_process_packet.setStdParse();
 			test();
 			if(sqlStore) {
@@ -3936,12 +4064,18 @@ int main_init_read() {
  
 	reset_counters();
 	
+	extern cProcessingLimitations processing_limitations;
+	processing_limitations.init();
+	
 	SqlDb *sqlDbInit = NULL;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender()) {
 		sqlDbInit = createSqlObject();
 	}
 	
 	dbDataInit(sqlDbInit);
+	if(useCdrStatProcessThreads()) {
+		cdrStatInit(sqlDbInit);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheInit(sqlDbInit);
 	}
@@ -3950,6 +4084,9 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
+	#if DEBUG_ASYNC_TAR_WRITE
+	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
+	#endif
 	
 	// if the system has more than one CPU enable threading
 	if(opt_rtpsave_threaded) {
@@ -3984,20 +4121,13 @@ int main_init_read() {
 		opt_maxpoolgraphdays = 0;
 		opt_maxpoolaudiosize = 0;
 		opt_maxpoolaudiodays = 0;
-		
 		opt_manager_port = 0; // disable cleaning spooldir when reading from file 
 		printf("Reading file: %s\n", opt_read_from_file_fname);
-		char errbuf[PCAP_ERRBUF_SIZE];
-		if(opt_read_from_file_fname == string("/dev/stdin")) {
-			global_pcap_handle = pcap_open_offline("-", errbuf);
-		} else {
-			global_pcap_handle = pcap_open_offline_zip(opt_read_from_file_fname, errbuf);
-		}
-		if(global_pcap_handle == NULL) {
-			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, errbuf);
+		string pcap_error;
+		if(!open_global_pcap_handle(opt_read_from_file_fname, &pcap_error)) {
+			fprintf(stderr, "Couldn't open pcap file '%s': %s\n", opt_read_from_file_fname, pcap_error.c_str());
 			return(2);
 		}
-		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	} else if(opt_pcap_queue_disable) {
 		char errbuf[PCAP_ERRBUF_SIZE];
 		bpf_u_int32 interfaceNet;
@@ -4083,10 +4213,7 @@ int main_init_read() {
 		no_hash_message_rules = new FILE_LINE(42016) NoHashMessageRules(sqlDbInit);
 	}
 
-	IPfilter::loadActive(sqlDbInit);
-	TELNUMfilter::loadActive(sqlDbInit);
-	DOMAINfilter::loadActive(sqlDbInit);
-	SIP_HEADERfilter::loadActive(sqlDbInit);
+	cFilters::loadActive(sqlDbInit);
 
 	_parse_packet_global_process_packet.setStdParse();
 
@@ -4186,7 +4313,7 @@ int main_init_read() {
 		/*
 		vm_pthread_create(&destroy_calls_thread, NULL, destroy_calls, NULL, __FILE__, __LINE__);
 		*/
-		if(useChartsCacheProcessThreads()) {
+		if(useChartsCacheOrCdrStatProcessThreads()) {
 			calltable->processCallsInChartsCache_start();
 		}
 	}
@@ -4307,7 +4434,7 @@ int main_init_read() {
 			tcpReassemblyWebrtc->setDataCallback(webrtcData);
 		}
 	}
-	if(opt_enable_ssl && ssl_ipport.size()) {
+	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_init();
@@ -4324,6 +4451,9 @@ int main_init_read() {
 		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
 		tcpReassemblySsl->setIgnorePshInCheckOkData();
 		tcpReassemblySsl->setEnableValidateLastQueueDataViaCheckData();
+		if(opt_ssl_unlimited_reassembly_attempts) {
+			tcpReassemblySsl->setUnlimitedReassemblyAttempts();
+		}
 		sslData = new FILE_LINE(42030) SslData;
 		tcpReassemblySsl->setDataCallback(sslData);
 		tcpReassemblySsl->setLinkTimeout(opt_ssl_link_timeout);
@@ -4361,6 +4491,14 @@ int main_init_read() {
 	
 	if(opt_bogus_dumper_path[0]) {
 		bogusDumper = new FILE_LINE(42034) BogusDumper(opt_bogus_dumper_path);
+	}
+	
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStart(ssl_client_random_tcp_host.c_str(), ssl_client_random_tcp_port);
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
 	}
 	
 	clear_readend();
@@ -4407,6 +4545,10 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
+			if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
+				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
+				pcapQueueQ_outThread_detach->start();
+			}
 			if(opt_udpfrag) {
 				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
 				pcapQueueQ_outThread_defrag->start();
@@ -4504,7 +4646,8 @@ int main_init_read() {
 		
 		PcapQueue_term();
 	} else {
-		readdump_libpcap(global_pcap_handle, global_pcap_handle_index);
+		readdump_libpcap(global_pcap_handle, global_pcap_handle_index, pcap_datalink(global_pcap_handle), NULL,
+				 (is_read_from_file() ? _pp_read_file : 0) | _pp_process_calls);
 	}
 	
 	return(0);
@@ -4531,7 +4674,7 @@ void terminate_processpacket() {
 		delete tcpReassemblySsl;
 		tcpReassemblySsl = NULL;
 	}
-	if(opt_enable_ssl && ssl_ipport.size()) {
+	if(opt_enable_ssl) {
 		if(opt_enable_ssl == 10) {
 			#if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
 			ssl_clean();
@@ -4654,10 +4797,13 @@ void main_term_read() {
 
 	Call *call;
 	Ss7 *ss7;
-	calltable->cleanup_calls(NULL);
-	calltable->cleanup_registers(NULL);
-	calltable->cleanup_ss7(NULL);
+	calltable->cleanup_calls(true);
+	calltable->cleanup_registers(true);
+	calltable->cleanup_ss7(true);
 
+	if(useCdrStatProcessThreads()) {
+		cdrStatStore(true);
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheStore(true);
 	}
@@ -4674,6 +4820,14 @@ void main_term_read() {
 		termSipMsg();
 	}
 	
+	if(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) {
+		clientRandomServerStop();
+	}
+	
+	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
+		IPFixServerStop();
+	}
+
 	terminate_processpacket();
 	
 	if(sipSendSocket) {
@@ -4686,10 +4840,7 @@ void main_term_read() {
 		pthread_join(cachedir_thread, NULL);
 	}
 	
-	IPfilter::freeActive();
-	TELNUMfilter::freeActive();
-	DOMAINfilter::freeActive();
-	SIP_HEADERfilter::freeActive();
+	cFilters::freeActive();
 	
 	if(opt_sip_register == 1) {
 		termRegisters();
@@ -4739,7 +4890,7 @@ void main_term_read() {
 			cout << "end destroy tar queue" << endl << flush;
 		}
 	}
-
+	
 	if(storing_cdr_thread) {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
@@ -4767,7 +4918,7 @@ void main_term_read() {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
 	}
-	if(useChartsCacheProcessThreads()) {
+	if(useChartsCacheOrCdrStatProcessThreads()) {
 		calltable->processCallsInChartsCache_stop();
 	}
 	while(calltable->calls_queue.size() != 0) {
@@ -4809,6 +4960,10 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	#if DEBUG_ASYNC_TAR_WRITE
+	delete destroy_calls_info;
+	destroy_calls_info = NULL;
+	#endif
 	
 	extern RTPstat rtp_stat;
 	rtp_stat.flush();
@@ -4876,6 +5031,9 @@ void main_term_read() {
 	CountryDetectTerm();
 	
 	dbDataTerm();
+	if(useCdrStatProcessThreads()) {
+		cdrStatTerm();
+	}
 	if(useChartsCacheProcessThreads()) {
 		chartsCacheTerm();
 	}
@@ -5061,6 +5219,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ) {
 			pcapQueueQ->terminate();
 		}
+		if(pcapQueueQ_outThread_detach) {
+			pcapQueueQ_outThread_detach->terminate();
+		}
 		if(pcapQueueQ_outThread_defrag) {
 			pcapQueueQ_outThread_defrag->terminate();
 		}
@@ -5074,6 +5235,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueI) {
 			delete pcapQueueI;
 			pcapQueueI = NULL;
+		}
+		if(pcapQueueQ_outThread_detach) {
+			delete pcapQueueQ_outThread_detach;
+			pcapQueueQ_outThread_detach = NULL;
 		}
 		if(pcapQueueQ_outThread_defrag) {
 			delete pcapQueueQ_outThread_defrag;
@@ -5562,6 +5727,21 @@ void test() {
 	case 1: {
 	 
 		{
+		char ip_str[1000];
+		while(fgets(ip_str, sizeof(ip_str), stdin)) {
+			if(ip_str[0] == '\n') {
+				break;
+			}
+			cout << " v: " << string_is_look_like_ip(ip_str) << endl;
+			vmIP ip;
+			ip.setFromString(ip_str, NULL);
+			vmIP ipc = cConfigItem_net_map::convIP(ip, &opt_anonymize_ip_map);
+			cout << " c: " << ipc.getString() << endl;
+		}
+		}
+		break;
+	 
+		{
 		 
 		string csv = "abc,,\"\",\"def\",\"ghi\"";
 		cDbStrings strings;
@@ -6035,6 +6215,7 @@ void test() {
 			opt_cleandatabase_register_failed = 
 			opt_cleandatabase_register_time_info = 
 			opt_cleandatabase_sip_msg =
+			opt_cleandatabase_cdr_stat = 
 			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
 		} else {
 			return;
@@ -6049,6 +6230,14 @@ void test() {
 			return;
 		}
 		dropMysqlPartitionsRtpStat();
+		break;
+	case 348:
+		if(atoi(opt_test_arg) > 0) {
+			opt_cleandatabase_cdr_stat = atoi(opt_test_arg);
+		} else {
+			return;
+		}
+		dropMysqlPartitionsCdrStat();
 		break;
 	case 310:
 		{
@@ -6530,7 +6719,17 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_maximum_cdr_per_iteration", &opt_storing_cdr_maximum_cdr_per_iteration));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations", &opt_processing_limitations));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_high_limit", &opt_processing_limitations_heap_high_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_heap_low_limit", &opt_processing_limitations_heap_low_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("processing_limitations_active_calls_cache", &opt_processing_limitations_active_calls_cache));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_type", &opt_processing_limitations_active_calls_cache_type));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_min", &opt_processing_limitations_active_calls_cache_timeout_min));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("processing_limitations_active_calls_cache_timeout_max", &opt_processing_limitations_active_calls_cache_timeout_max));
 		subgroup("partitions");
 			addConfigItem(new FILE_LINE(42091) cConfigItem_yesno("disable_partition_operations", &opt_disable_partition_operations));
 			addConfigItem(new FILE_LINE(0) cConfigItem_hour_interval("partition_operations_enable_fromto", &opt_partition_operations_enable_run_hour_from, &opt_partition_operations_enable_run_hour_to));
@@ -6591,6 +6790,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info", &opt_cleandatabase_register_time_info));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
 		subgroup("backup");
@@ -6632,6 +6832,61 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk", &opt_use_dpdk));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_init", &opt_dpdk_init))
+						->disableYes()
+						->disableNo()
+						->addValues("main:0|separate:1|read:2")
+						->setDefaultValueStr("main"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_read_thread", &opt_dpdk_read_thread))
+						->disableYes()
+						->disableNo()
+						->addValues("std:1|rte:2")
+						->setDefaultValueStr("std"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_thread", &opt_dpdk_worker_thread))
+						->addValues("std:1|rte:2")
+						->setDefaultValueStr("std"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker2_thread", &opt_dpdk_worker2_thread))
+						->addValues("rte:1")
+						->setDefaultValueStr("no"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_iterations_per_call", &opt_dpdk_iterations_per_call));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_read_usleep_if_no_packet", &opt_dpdk_read_usleep_if_no_packet));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_read_usleep_type", &opt_dpdk_read_usleep_type))
+						->disableYes()
+						->disableNo()
+						->addValues("std:0|rte:1|pause:2")
+						->setDefaultValueStr("std"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_worker_usleep_if_no_packet", &opt_dpdk_worker_usleep_if_no_packet));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_usleep_type", &opt_dpdk_worker_usleep_type))
+						->disableYes()
+						->disableNo()
+						->addValues("std:0|rte:1|pause:2")
+						->setDefaultValueStr("std"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rx", &opt_dpdk_nb_rx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_tx", &opt_dpdk_nb_tx));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_mbufs", &opt_dpdk_nb_mbufs));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_pkt_burst", &opt_dpdk_pkt_burst));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_ring_size", &opt_dpdk_ring_size));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mempool_cache_size", &opt_dpdk_mempool_cache_size));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_zc", &opt_dpdk_zc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_mbufs_in_packetbuffer", &opt_dpdk_mbufs_in_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_prealloc_packetbuffer", &opt_dpdk_prealloc_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_defer_send_packetbuffer", &opt_dpdk_defer_send_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_rotate_packetbuffer", &opt_dpdk_rotate_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_rotate_packetbuffer_pool_max_perc", &opt_dpdk_rotate_packetbuffer_pool_max_perc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_copy_packetbuffer", &opt_dpdk_copy_packetbuffer));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_batch_read", &opt_dpdk_batch_read));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_cpu_affinity", &opt_dpdk_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_lcores_affinity", &opt_dpdk_cpu_cores_map));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_main_thread_cpu_affinity", &opt_dpdk_main_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_read_thread_cpu_affinity", &opt_dpdk_read_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker_thread_cpu_affinity", &opt_dpdk_worker_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_worker2_thread_cpu_affinity", &opt_dpdk_worker2_thread_lcore));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_memory_channels", &opt_dpdk_memory_channels));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("thread_affinity", &opt_cpu_cores));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -6689,6 +6944,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(42155) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_max", &opt_pre_process_packets_next_thread_max))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS));
 					addConfigItem((new FILE_LINE(42156) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
@@ -6731,6 +6991,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(42174) cConfigItem_yesno("pcap_queue_use_blocks", &opt_pcap_queue_use_blocks))
 						->addAlias("use_blocks"));					
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("auto_enable_use_blocks", &opt_pcap_queue_use_blocks_auto_enable));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("pcap_queue_use_blocks_read_check", &opt_pcap_queue_use_blocks_read_check));
 					addConfigItem((new FILE_LINE(42175) cConfigItem_integer("packetbuffer_block_maxsize", &opt_pcap_queue_block_max_size))
 						->setMultiple(1024));
 					addConfigItem(new FILE_LINE(42176) cConfigItem_integer("packetbuffer_block_maxtime", &opt_pcap_queue_block_max_time_ms));
@@ -6775,6 +7036,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42199) cConfigItem_integer("pcap_dump_writethreads", &opt_pcap_dump_writethreads));
 					addConfigItem(new FILE_LINE(42200) cConfigItem_yesno("pcap_dump_asyncwrite", &opt_pcap_dump_asyncwrite));
 					addConfigItem(new FILE_LINE(42201) cConfigItem_integer("pcap_ifdrop_limit", &opt_pcap_ifdrop_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dpdk_ifdrop_limit", &opt_pcap_dpdk_ifdrop_limit));
 		subgroup("SIP");
 			addConfigItem(new FILE_LINE(42202) cConfigItem_yesno("savesip", &opt_saveSIP));
 				advanced();
@@ -6797,6 +7059,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("savertp_video"))
 				->addValues("header:-1|h:-1|cdr_only:-2|c:-2")
 				->setDefaultValueStr("no"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("savemrcp", &opt_saveMRCP));
 			addConfigItem(new FILE_LINE(42210) cConfigItem_yesno("savertcp", &opt_saveRTCP));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignorertcpjitter", &opt_ignoreRTCPjitter));
 			addConfigItem(new FILE_LINE(42211) cConfigItem_yesno("saveudptl", &opt_saveudptl));
@@ -6807,6 +7070,7 @@ void cConfig::addConfigItems() {
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("null_rtppayload", &opt_null_rtppayload));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp", &opt_srtp_rtp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
@@ -6849,6 +7113,8 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("fix_packetization_in_create_audio", &opt_fix_packetization_in_create_audio));
+					addConfigItem(new FILE_LINE(1162) cConfigItem_string("curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6904,6 +7170,10 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_bad_finished_digest", &opt_ssl_ignore_error_bad_finished_digest));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_tls_12_sessionkey_mode", &opt_ssl_tls_12_sessionkey_mode))
+				->addValues("dssl:0|ws:1"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_unlimited_reassembly_attempts", &opt_ssl_unlimited_reassembly_attempts));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_tcp_link_on_rst", &opt_ssl_destroy_tcp_link_on_rst));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_destroy_ssl_session_on_rst", &opt_ssl_destroy_ssl_session_on_rst));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
@@ -7176,6 +7446,7 @@ void cConfig::addConfigItems() {
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
 				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7_use_sam_subsequent_number", &opt_ss7_use_sam_subsequent_number));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ss7callid", &opt_ss7_type_callid))
 					->disableNo()
 					->addValues("cic_dpc_opc:1|cic:2")
@@ -7365,6 +7636,9 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_max_threads", &opt_charts_cache_max_threads));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache_store", &opt_charts_cache_store));
@@ -7387,6 +7661,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -7394,6 +7671,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("socket_use_poll",  &opt_socket_use_poll));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interrupts_counters",  &opt_interrupts_counters));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
@@ -7411,12 +7689,16 @@ void cConfig::addConfigItems() {
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
+		subgroup("process pcap");
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
+			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
 	minorEnd();
 	
 	setDefaultValues();
 	
 	const char *descriptionsHelpTable[][3] = {
-		{ "sqldriver", "SQL driver", "SQL driver - test help text" }
+		// { "sqldriver", "SQL driver", "SQL driver - test help text" }
 	};
 	for(unsigned i = 0; i < sizeof(descriptionsHelpTable) / sizeof(descriptionsHelpTable[0]); i++) {
 		if(descriptionsHelpTable[i][1]) {
@@ -7598,28 +7880,18 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
-		}
-	}
-	if(configItem->config_name == "query_cache") {
-		if(configItem->getValueInt()) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts_remote") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_remote_to_files = true;
 			opt_load_query_from_files = 1;
-			opt_load_query_from_files_inotify = true;
 		}
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
@@ -7747,6 +8019,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"continue-after-read", 0, 0, 302},
 	    {"nonstop-read", 0, 0, 335},
 	    {"diff-days", 1, 0, 303},
+	    {"diff-secs", 1, 0, 349},
 	    {"time-adjustment", 1, 0, 343},
 	    {"reindex-all", 0, 0, 304},
 	    {"run-cleanspool", 0, 0, 305},
@@ -7754,6 +8027,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"test-cleanspool-load", 1, 0, 317},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, 346},
+	    {"run-droppartitions-cdr_stat-maxdays", 1, 0, 348},
 	    {"clean-obsolete", 0, 0, 306},
 	    {"check-db", 0, 0, 307},
 	    {"fax-deduplicate", 0, 0, 308},
@@ -7777,9 +8051,11 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
+	    {"process-pcap", 1, 0, 347},
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
+	    {"ipfix-client-emulation", 1, 0, 401},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7865,6 +8141,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "noaudiounlink")			sverb.noaudiounlink = 1;
 	else if(verbParam == "capture_filter")			sverb.capture_filter = 1;
 	else if(verbParam.substr(0, 17) == "pcap_stat_period=")	sverb.pcap_stat_period = atoi(verbParam.c_str() + 17);
+	else if(verbParam == "pcap_stat_to_stdout")		sverb.pcap_stat_to_stdout = 1;
 	else if(verbParam == "memory_stat" ||
 		verbParam == "memory_stat_ex")			sverb.memory_stat = 1;
 	else if(verbParam == "memory_stat_log" ||
@@ -7955,6 +8232,10 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 11) == "trace_call=")
 								{ sverb.trace_call = new FILE_LINE(0) char[strlen(verbParam.c_str() + 11) + 1]; strcpy(sverb.trace_call, verbParam.c_str() + 11); }
 	else if(verbParam == "energylevels")			sverb.energylevels = 1;
+	else if(verbParam == "cdr_stat_only")			sverb.cdr_stat_only = 1;
+	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
+								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
+	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8241,7 +8522,18 @@ void get_command_line_arguments() {
 				opt_time_to_terminate = atoi(optarg);
 				break;
 			case 303:
-				opt_pb_read_from_file_acttime_diff_days = atoi(optarg);
+				{
+				cEvalFormula f(cEvalFormula::_est_na);
+				cEvalFormula::sValue v = f.e(optarg);
+				opt_pb_read_from_file_acttime_diff_days = v.getInteger();
+				}
+				break;
+			case 349:
+				{
+				cEvalFormula f(cEvalFormula::_est_na);
+				cEvalFormula::sValue v = f.e(optarg);
+				opt_pb_read_from_file_acttime_diff_secs = v.getInteger();
+				}
 				break;
 			case 343:
 				{
@@ -8402,23 +8694,20 @@ void get_command_line_arguments() {
 				opt_save_sip_notify = true;
 				break;
 			case 341:
-				if(sscanf(optarg, "%s %s", opt_read_from_file_fname, opt_dedup_fname) != 2) {
+				if(sscanf(optarg, "%s %s", opt_process_pcap_fname, opt_pcap_destination) != 2) {
 					cerr << "dedup pcap: bad arguments" << endl;
 					exit(1);
 				}
-				opt_read_from_file = true;
-				opt_scanpcapdir[0] = '\0';
-				opt_cachedir[0] = '\0';
-				opt_enable_preprocess_packet = 0;
-				opt_enable_process_rtp_packet = 0;
-				opt_dedup_input_file = true;
-				opt_nocdr = 1;
-				opt_pcap_dump_tar = 0;
-				opt_pcap_split = 0;
-				opt_saveGRAPH = 0;
+				opt_process_pcap_type = _pp_dedup;
 				opt_dup_check = 1;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
+				is_gui_param = true;
+				break;
+			case 347:
+				strcpy_null_term(opt_process_pcap_fname, optarg);
+				opt_process_pcap_type = _pp_anonymize_ip;
+				is_gui_param = true;
 				break;
 			case 342:
 				#if HAVE_LIBTCMALLOC_HEAPPROF
@@ -8445,6 +8734,20 @@ void get_command_line_arguments() {
 					cout << "-- opt" << endl;
 				}
 				cout << "== " << f.e(filter_s).getFloat() << endl;
+				exit(0);
+				}
+				break;
+			case 401:
+				{
+				vector<string> parameters = explode(optarg, ';');
+				if(parameters.size() >= 5) {
+					string pcap = parameters[0];
+					vmIP client_ip = str_2_vmIP(parameters[1].c_str()); 
+					vmIP server_ip = str_2_vmIP(parameters[2].c_str()); 
+					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
+					u_int64_t destination_port = atoi(parameters[4].c_str());
+					IPFix_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port);
+				}
 				exit(0);
 				}
 				break;
@@ -8512,12 +8815,32 @@ void set_spool_permission() {
 
 void set_context_config() {
  
+	if(opt_use_dpdk) {
+		opt_t2_boost = true;
+		if(!(useNewCONFIG ? CONFIG.isSet("packetbuffer_block_maxsize") : opt_pcap_queue_block_max_size_set)) {
+			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
+		}
+	}
+ 
 	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
 		opt_mysql_enable_new_store = false;
 		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
 	}
 	if(!opt_mysql_enable_new_store) {
 		opt_mysql_enable_set_id = false;
+	}
+	
+	if(opt_mysql_enable_new_store == 2 && !opt_mysql_enable_set_id) {
+		opt_mysql_enable_new_store = true;
+		syslog(LOG_ERR, "option mysql_enable_new_store=per_query is only supported with option mysql_enable_set_id enabled");
+	}
+	
+	if(opt_mysql_enable_set_id) {
+		static bool mysql_enable_set_id_notice = false;
+		if(!mysql_enable_set_id_notice) {
+			syslog(LOG_NOTICE, "!!! if the mysql_enable_set_id option is enabled, no one else can write to the database !!!");
+			mysql_enable_set_id_notice = true;
+		}
 	}
  
 	if(opt_scanpcapdir[0]) {
@@ -8720,6 +9043,7 @@ void set_context_config() {
 
 	if(!enable_pcap_split && opt_t2_boost) {
 		opt_t2_boost = false;
+		opt_use_dpdk = false;
 	}
 	if(opt_t2_boost && !opt_enable_process_rtp_packet) {
 		opt_enable_process_rtp_packet = 1;
@@ -8879,6 +9203,15 @@ void set_context_config() {
 		opt_sip_register_deferred_save = true;
 	}
 	
+	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
+		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
+	}
+	
+	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_ipfix = false;
+		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
 }
 
 void check_context_config() {
@@ -8925,6 +9258,8 @@ void set_default_values() {
 		}
 		p++;
         }
+	packet_s_process_calls_info::set_size_of();
+	packet_s_process_0::set_size_of();
 }
 
 void create_spool_dirs() {
@@ -9398,6 +9733,172 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "interfaces_optimize", NULL))) {
 		opt_ifaces_optimize = yesno( value);
 	}
+	if((value = ini.GetValue("general", "dpdk", NULL))) {
+		opt_use_dpdk = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_init", NULL))) {
+		switch(toupper(value[0])) {
+		case 'M':
+			opt_dpdk_init = 0;
+			break;
+		case 'S':
+			opt_dpdk_init = 1;
+			break;
+		case 'R':
+			opt_dpdk_init = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_read_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_read_thread = 1;
+			break;
+		case 'R':
+			opt_dpdk_read_thread = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'Y':
+		case 'S':
+		case '1':
+			opt_dpdk_worker_thread = 1;
+			break;
+		case 'R':
+			opt_dpdk_worker_thread = 2;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_dpdk_worker_thread = 0;
+			break;
+		}
+	}
+	
+	if((value = ini.GetValue("general", "dpdk_worker2_thread", NULL))) {
+		switch(toupper(value[0])) {
+		case 'Y':
+		case 'R':
+		case '1':
+			opt_dpdk_worker2_thread = 1;
+			break;
+		case 'n':
+		case 'N':
+		case '0':
+			opt_dpdk_worker2_thread = 0;
+			break;
+		}
+	}
+	
+	if((value = ini.GetValue("general", "dpdk_iterations_per_call", NULL))) {
+		opt_dpdk_iterations_per_call = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_usleep_if_no_packet", NULL))) {
+		opt_dpdk_read_usleep_if_no_packet = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_usleep_type", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_read_usleep_type = 0;
+			break;
+		case 'R':
+			opt_dpdk_read_usleep_type = 1;
+			break;
+		case 'P':
+			opt_dpdk_read_usleep_type = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_usleep_if_no_packet", NULL))) {
+		opt_dpdk_worker_usleep_if_no_packet = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_usleep_type", NULL))) {
+		switch(toupper(value[0])) {
+		case 'S':
+			opt_dpdk_worker_usleep_type = 0;
+			break;
+		case 'R':
+			opt_dpdk_worker_usleep_type = 1;
+			break;
+		case 'P':
+			opt_dpdk_worker_usleep_type = 2;
+			break;
+		}
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_rx", NULL))) {
+		opt_dpdk_nb_rx = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_tx", NULL))) {
+		opt_dpdk_nb_tx = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_nb_mbufs", NULL))) {
+		opt_dpdk_nb_mbufs = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_pkt_burst", NULL))) {
+		opt_dpdk_pkt_burst = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_ring_size", NULL))) {
+		opt_dpdk_ring_size = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_mempool_cache_size", NULL))) {
+		opt_dpdk_mempool_cache_size = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_zc", NULL))) {
+		opt_dpdk_zc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_mbufs_in_packetbuffer", NULL))) {
+		opt_dpdk_mbufs_in_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_prealloc_packetbuffer", NULL))) {
+		opt_dpdk_prealloc_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_defer_send_packetbuffer", NULL))) {
+		opt_dpdk_defer_send_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_rotate_packetbuffer", NULL))) {
+		opt_dpdk_rotate_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_rotate_packetbuffer_pool_max_perc", NULL))) {
+		opt_dpdk_rotate_packetbuffer_pool_max_perc = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_copy_packetbuffer", NULL))) {
+		opt_dpdk_copy_packetbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_batch_read", NULL))) {
+		opt_dpdk_batch_read = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_cpu_affinity", NULL))) {
+		opt_dpdk_cpu_cores = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_lcores_affinity", NULL))) {
+		opt_dpdk_cpu_cores_map = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_main_thread_cpu_affinity", NULL))) {
+		opt_dpdk_main_thread_lcore = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_read_thread_cpu_affinity", NULL))) {
+		opt_dpdk_read_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_worker_thread_cpu_affinity", NULL))) {
+		opt_dpdk_worker_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_worker2_thread_cpu_affinity", NULL))) {
+		opt_dpdk_worker2_thread_lcore = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_memory_channels", NULL))) {
+		opt_dpdk_memory_channels = atoi(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_pci_device", NULL))) {
+		opt_dpdk_pci_device = value;
+	}
+	if((value = ini.GetValue("general", "dpdk_force_max_simd_bitwidth", NULL))) {
+		opt_dpdk_force_max_simd_bitwidth = atoi(value);
+	}
+	if((value = ini.GetValue("general", "thread_affinity", NULL))) {
+		opt_cpu_cores = value;
+	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
@@ -9418,6 +9919,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "fix_packetization_in_create_audio", NULL))) {
+		opt_fix_packetization_in_create_audio = yesno(value);
 	}
 	if((value = ini.GetValue("general", "rrd", NULL))) {
 		opt_rrd = yesno(value);
@@ -9468,6 +9972,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
 		opt_cleandatabase_sip_msg = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_cdr_stat", NULL))) {
+		opt_cleandatabase_cdr_stat = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_rtp_stat", NULL))) {
 		opt_cleandatabase_rtp_stat = atoi(value);
@@ -10091,6 +10598,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "srtp_rtp", NULL))) {
 		opt_srtp_rtp_decrypt= yesno(value);
 	}
+	if((value = ini.GetValue("general", "srtp_rtp_dtls", NULL))) {
+		opt_srtp_rtp_dtls_decrypt= yesno(value);
+	}
 	if((value = ini.GetValue("general", "srtp_rtp_audio", NULL))) {
 		opt_srtp_rtp_audio_decrypt= yesno(value);
 	}
@@ -10139,6 +10649,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "savertcp", NULL))) {
 		opt_saveRTCP = yesno(value);
+	}
+	if((value = ini.GetValue("general", "savemrcp", NULL))) {
+		opt_saveMRCP = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignorertcpjitter", NULL))) {
 		opt_ignoreRTCPjitter = atoi(value);
@@ -10628,8 +11141,38 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "t2_boost_max_next_call_threads", NULL))) {
 		opt_t2_boost_call_threads = atoi(value);
 	}
+	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
+		opt_t2_boost_pb_detach_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
+		opt_t2_boost_pcap_dispatch = atoi(value);
+	}
 	if((value = ini.GetValue("general", "storing_cdr_max_next_threads", NULL))) {
 		opt_storing_cdr_max_next_threads = atoi(value);
+	}
+	if((value = ini.GetValue("general", "storing_cdr_maximum_cdr_per_iteration", NULL))) {
+		opt_storing_cdr_maximum_cdr_per_iteration = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations", NULL))) {
+		opt_processing_limitations = yesno(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_heap_high_limit", NULL))) {
+		opt_processing_limitations_heap_high_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_heap_low_limit", NULL))) {
+		opt_processing_limitations_heap_low_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache", NULL))) {
+		opt_processing_limitations_active_calls_cache = yesno(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_type", NULL))) {
+		opt_processing_limitations_active_calls_cache_type = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_min", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_min = atoi(value);
+	}
+	if((value = ini.GetValue("general", "processing_limitations_active_calls_cache_timeout_max", NULL))) {
+		opt_processing_limitations_active_calls_cache_timeout_max = atoi(value);
 	}
 	if((value = ini.GetValue("general", "destination_number_mode", NULL))) {
 		opt_destination_number_mode = atoi(value);
@@ -10742,6 +11285,15 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
 	}
+	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
+		opt_cdr_stat_values = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_stat_sources", NULL))) {
+		opt_cdr_stat_sources = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_stat_interval", NULL))) {
+		opt_cdr_stat_interval = atoi(value);
+	}
 	if((value = ini.GetValue("general", "charts_cache", NULL))) {
 		opt_charts_cache = yesno(value);
 	}
@@ -10780,6 +11332,7 @@ int eval_config(string inistr) {
 	//EXPERT VALUES
 	if((value = ini.GetValue("general", "packetbuffer_block_maxsize", NULL))) {
 		opt_pcap_queue_block_max_size = atol(value) * 1024;
+		opt_pcap_queue_block_max_size_set = true;
 	}
 	if((value = ini.GetValue("general", "packetbuffer_block_maxtime", NULL))) {
 		opt_pcap_queue_block_max_time_ms = atoi(value);
@@ -10908,6 +11461,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_rtp_threads_max", NULL))) {
 		opt_enable_process_rtp_packet_max = min(atoi(value), MAX_PROCESS_RTP_PACKET_THREADS);
 	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread", NULL))) {
+		opt_pre_process_packets_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS) : yesno(value);
+	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread_max", NULL))) {
+		opt_pre_process_packets_next_thread_max = min(atoi(value), MAX_PRE_PROCESS_PACKET_NEXT_THREADS);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread", NULL))) {
 		opt_process_rtp_packets_hash_next_thread = atoi(value) > 1 ? min(atoi(value), MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) : yesno(value);
 	}
@@ -10920,6 +11479,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "ss7", NULL))) {
 		opt_enable_ss7 = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ss7_use_sam_subsequent_number", NULL))) {
+		opt_ss7_use_sam_subsequent_number = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ss7callid", NULL))) {
 		opt_ss7_type_callid = !strcasecmp(value, "cic") ? 2 : 1;
@@ -10939,7 +11501,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ss7_timeout", NULL))) {
 		opt_ss7timeout = atoi(value);
 	}
-	if((value = ini.GetValue("general", "ws_param", NULL))) {
+	if(ini.GetAllValues("general", "ws_param", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
 			opt_ws_params.push_back(i->pItem);
@@ -10970,6 +11532,16 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_error_invalid_mac", NULL))) {
 		opt_ssl_ignore_error_invalid_mac = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_ignore_error_bad_finished_digest", NULL))) {
+		opt_ssl_ignore_error_bad_finished_digest = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_tls_12_sessionkey_mode", NULL))) {
+		opt_ssl_tls_12_sessionkey_mode = !strcasecmp(value, "ws") ? 1 : 
+						 !strcasecmp(value, "dssl") ? 0 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_unlimited_reassembly_attempts", NULL))) {
+		opt_ssl_unlimited_reassembly_attempts = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_destroy_tcp_link_on_rst", NULL))) {
 		opt_ssl_destroy_tcp_link_on_rst = yesno(value);
@@ -11021,6 +11593,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "auto_enable_use_blocks", NULL))) {
 		opt_pcap_queue_use_blocks_auto_enable = yesno(value);
+	}
+	if((value = ini.GetValue("general", "pcap_queue_use_blocks_read_check", NULL))) {
+		opt_pcap_queue_use_blocks_read_check = yesno(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dispatch", NULL))) {
 		opt_pcap_dispatch = yesno(value);
@@ -11514,17 +12089,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
 		opt_save_query_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_charts", NULL)) && yesno(value)) {
 		opt_save_query_charts_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL)) && yesno(value)) {
 		opt_save_query_charts_remote_to_files = true;
 		opt_load_query_from_files = 1;
-		opt_load_query_from_files_inotify = true;
 	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);
@@ -11593,6 +12165,17 @@ int eval_config(string inistr) {
 		opt_icmp_process_data = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "ipfix", NULL))) {
+		opt_ipfix = yesno(value);
+		opt_ipfix_set = true;
+	}
+	if((value = ini.GetValue("general", "ipfix_bind_ip", NULL))) {
+		opt_ipfix_bind_ip = value;
+	}
+	if((value = ini.GetValue("general", "ipfix_bind_port", NULL))) {
+		opt_ipfix_bind_port = atoi(value);
+	}
+	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {
 		opt_audiocodes = yesno(value);
 	}
@@ -11617,6 +12200,9 @@ int eval_config(string inistr) {
 		opt_socket_use_poll = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "interrupts_counters", NULL))) {
+		opt_interrupts_counters = yesno(value);
+	}
 	if((value = ini.GetValue("general", "hugepages_anon", NULL))) {
 		opt_hugepages_anon = yesno(value);
 	}
@@ -11651,7 +12237,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
 	}
-	
+	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
+		strcpy_null_term(opt_curl_hook_wav, value);
+	}
+
 	/*
 	packetbuffer default configuration
 	
@@ -12186,6 +12775,18 @@ bool useChartsCacheProcessThreads() {
 
 bool existsChartsCacheServer() {
 	return(snifferClientService_charts_cache);
+}
+
+bool useCdrStatInProcessCall() {
+	return((opt_cdr_stat_values || opt_cdr_stat_sources) && !useChartsCacheInStore());
+}
+
+bool useCdrStatInStore() {
+	return((opt_cdr_stat_values || opt_cdr_stat_sources) && useChartsCacheInStore());
+}
+
+bool useCdrStatProcessThreads() {
+	return(opt_cdr_stat_values || opt_cdr_stat_sources);
 }
 
 
