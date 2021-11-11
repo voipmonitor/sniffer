@@ -111,7 +111,6 @@ unsigned int duplicate_counter = 0;
 extern struct pcap_stat pcapstat;
 int pcapstatresCount = 0;
 
-volatile unsigned int glob_last_packet_time;
 u_int64_t glob_packet_number;
 
 Calltable *calltable = NULL;
@@ -8742,7 +8741,6 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 }
 
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
-	glob_last_packet_time = packetS->getTime_s();
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		bool pushed = false;
