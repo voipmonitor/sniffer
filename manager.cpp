@@ -2028,7 +2028,12 @@ int Mgmt_cleanup_registers(Mgmt_params* params) {
 		params->registerCommand("cleanup_registers", "clean registers");
 		return(0);
 	}
-	calltable->cleanup_registers(true);
+	char parameter[100] = "";
+	sscanf(params->buf + params->command.length() + 1, "%s", parameter);
+	bool force = parameter[0] && 
+		     (!strncasecmp(parameter, "closeall", 8) ||
+		      !strncasecmp(parameter, "force", 5));
+	calltable->cleanup_registers(force);
 	return(params->sendString("ok"));
 }
 
@@ -2039,8 +2044,12 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 	}
 	extern int opt_sip_register;
 	if(opt_sip_register == 1) {
+		char parameter[100] = "";
+		sscanf(params->buf + params->command.length() + 1, "%s", parameter);
+		bool force = parameter[0] && !strncasecmp(parameter, "force", 5);
 		extern Registers registers;
-		registers.cleanup(true);
+		registers.cleanup(force);
+		registers.registers_failed.cleanup(force);
 	}
 	return(params->sendString("ok"));
 }

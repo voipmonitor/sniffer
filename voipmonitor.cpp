@@ -534,7 +534,7 @@ bool opt_sip_register_save_eq_states_time = false;
 int opt_sip_register_failed_max_details_per_minute = 1000;
 bool opt_sip_register_failed_max_details_per_minute_set = false;
 bool opt_sip_register_deferred_save = false;
-bool opt_sip_register_advanced = false;
+int opt_sip_register_advanced = 0;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -7310,7 +7310,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-save-eq-states-time", &opt_sip_register_save_eq_states_time));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-failed-max-details-per-minute", &opt_sip_register_failed_max_details_per_minute));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-deferred-save", &opt_sip_register_deferred_save));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-advanced", &opt_sip_register_advanced));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-register-advanced", &opt_sip_register_advanced))
+						->addValues("ext:2|extended:2"));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
 				->addValues("nodb:2"));
@@ -8236,6 +8237,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
+	else if(verbParam == "registers_save")			sverb.registers_save = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9194,13 +9196,13 @@ void set_context_config() {
 	
 	if(opt_sip_register_advanced) {
 		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-state-timeout") : opt_sip_register_state_timeout_set)) {
-			opt_sip_register_state_timeout = 120;
+			opt_sip_register_state_timeout = opt_sip_register_advanced > 1 ? (2 * 60) : (5 * 60);
 		}
 		opt_sip_register_save_eq_states_time = true;
 		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-failed-max-details-per-minute") : opt_sip_register_failed_max_details_per_minute_set)) {
 			opt_sip_register_failed_max_details_per_minute = 5000;
 		}
-		opt_sip_register_deferred_save = true;
+		opt_sip_register_deferred_save = opt_sip_register_advanced > 1;
 	}
 	
 	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
@@ -10197,7 +10199,8 @@ int eval_config(string inistr) {
 		opt_sip_register_deferred_save = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-advanced"))) {
-		opt_sip_register_advanced = yesno(value);
+		opt_sip_register_advanced = !strncasecmp(value, "ext", 3) ? 2 :
+					    yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
 		opt_sip_options = !strcasecmp(value, "nodb") ? 2 :

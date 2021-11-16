@@ -3893,7 +3893,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;
-						registers.cleanup(true);
+						registers.cleanup(false);
 					}
 				}
 				if(sleepCounter > 15) {
@@ -3912,6 +3912,13 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					reset_cleanup_variables();
 					syslog(LOG_NOTICE, "reset cleanup variables");
 					break;
+				}
+				if(sleepCounter > 300) {
+					extern int opt_sip_register;
+					if(opt_sip_register == 1) {
+						extern Registers registers;
+						registers.cleanup(true);
+					}
 				}
 			}
 			sleep(1);

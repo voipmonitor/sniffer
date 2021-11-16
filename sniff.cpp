@@ -4737,7 +4737,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 		}
 
-		if(call->regstate == 2 &&
+		if(call->regstate == rs_Failed &&
 		   (call->last_sip_method == RES403 || call->last_sip_method == RES404)) {
 			call->saveregister(packetS->getTimeval_pt());
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
@@ -4753,7 +4753,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(call->regcount > opt_register_max_registers && !call->reg200count && !call->reg401count_all) {
 			// to much register attempts without OK or 401 responses
-			call->regstate = 4;
+			call->regstate = rs_ManyRegMessages;
 			call->saveregister(packetS->getTimeval_pt());
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
@@ -4804,16 +4804,16 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(packetS->cseq.is_set() && packetS->cseq == call->registercseq) {
 			call->reg200count++;
 			// registration OK 
-			call->regstate = 1;
+			call->regstate = rs_OK;
 
 			// diff in ms
 			call->regrrddiff = 1000 * (packetS->getTime_s() - call->regrrdstart.tv_sec) + (packetS->getTime_us() - call->regrrdstart.tv_usec) / 1000;
 		} else {
 			// OK to unknown msg close the call
-			call->regstate = 3;
+			call->regstate = rs_UnknownMessageOK;
 		}
 		save_packet(call, packetS, _t_packet_sip);
-		if(call->regstate == 1 &&
+		if(call->regstate == rs_OK &&
 		   call->reg200count + call->reg401count_all < call->regcount) {
 			call->destroy_call_at = packetS->getTime_s() + opt_register_timeout;
 		} else {
@@ -4875,7 +4875,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   packetS->sip_method == RES403 ||
 		   packetS->sip_method == RES404) {
 			// registration failed
-			call->regstate = 2;
+			call->regstate = rs_Failed;
 			save_packet(call, packetS, _t_packet_sip);
 			if(packetS->sip_method == RES401 ||
 			   (packetS->sip_method == RES403 && call->reg403count >= call->regcount_after_4xx) ||
@@ -4905,7 +4905,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	}
 	if(call->msgcount > opt_register_max_messages) {
 		// too many REGISTER messages within the same callid
-		call->regstate = 4;
+		call->regstate = rs_ManyRegMessages;
 		save_packet(call, packetS, _t_packet_sip);
 		call->saveregister(packetS->getTimeval_pt());
 		if(logPacketSipMethodCall_enable) {

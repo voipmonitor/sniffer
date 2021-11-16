@@ -7492,7 +7492,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	
 	if(this->msgcount <= 1 or 
 	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404) {
-		this->regstate = 2;
+		this->regstate = rs_Failed;
 	}
 	
 	if(sqlStore->getSize(STORE_PROC_ID_REGISTER, -1) > opt_mysqlstore_limit_queue_register) {
@@ -11325,10 +11325,11 @@ Calltable::cleanup_registers(bool closeAll) {
 				if(opt_sip_register == 1) {
 					extern Registers registers;
 					if(reg->msgcount <= 1 || 
+					   !reg->lastSIPresponseNum ||
 					   reg->lastSIPresponseNum == 401 || reg->lastSIPresponseNum == 403 || reg->lastSIPresponseNum == 404) {
-						reg->regstate = 2;
+						reg->regstate = rs_Failed;
 					}
-					if(reg->regstate != 2 ||
+					if(reg->regstate != rs_Failed ||
 					   !opt_register_timeout_disable_save_failed) {
 						registers.add(reg);
 					}

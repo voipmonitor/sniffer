@@ -2903,7 +2903,7 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Registe
 	registerInfo->from_domain = REG_CONV_STR(regState->from_domain == EQ_REG ? reg->from_domain : regState->from_domain);
 	registerInfo->digest_realm = REG_CONV_STR(regState->digest_realm == EQ_REG ? reg->digest_realm : regState->digest_realm);
 	registerInfo->ua = REG_CONV_STR(regState->ua == EQ_REG ? reg->ua : regState->ua);
-	registerInfo->at = regState->state_from_us;
+	registerInfo->at = regState->state_to_us;
 }
 
 void FraudAlerts::refresh() {

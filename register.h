@@ -100,7 +100,7 @@ public:
 	u_int8_t sipcallerip_encaps_prot;
 	u_int8_t sipcalledip_encaps_prot;
 	u_int32_t count;
-	u_int32_t count_saved[2];
+	u_int32_t count_saved;
 };
 
 
@@ -121,7 +121,7 @@ public:
 	RegisterFailed();
 	~RegisterFailed();
 	bool add(Call *call);
-	void cleanup(struct timeval *act_time, bool force);
+	void cleanup(bool force);
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync_failed_intervals, 1));
 	}
@@ -164,12 +164,19 @@ public:
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
 		return(time_s - time_shift_ms / 1000);
 	}
+	inline void setZombie() {
+		state_from_us = state_to_us;
+		fname = fname_last;
+		next_states.clear();
+		next_states_saved = 0;
+		zombie = true;
+	}
 public:
 	u_int64_t state_from_us;
 	u_int64_t state_to_us;
 	int64_t time_shift_ms;
-	u_int32_t counter;
 	eRegisterState state;
+	bool zombie;
 	char *contact_num;
 	char *contact_domain;
 	char *from_num;
@@ -184,10 +191,10 @@ public:
 	int id_sensor;
 	u_int16_t vlan;
 	u_int64_t db_id;
-	u_int64_t save_at;
-	u_int32_t save_at_count_next_state;
+	u_int64_t save_at_us;
 	bool is_sipalg_detected;
 	vector<NextState> next_states;
+	u_int32_t next_states_saved;
 };
 
 
@@ -241,17 +248,19 @@ public:
 	inline void updateLastStateItem(char *callItem, char *registerItem, char **stateItem);
 	inline bool eqLastState(Call *call, bool *exp_state);
 	inline void clean_all();
-	inline void saveNewStateToDb(RegisterState *state);
-	inline void saveDeferredStateToDb(RegisterState *state);
-	inline void saveUpdateStateToDb(RegisterState *state);
+	inline u_int8_t saveNewStateToDb(RegisterState *state);
+	inline u_int8_t saveDeferredStateToDb(RegisterState *state);
+	inline u_int8_t saveUpdateStateToDb(RegisterState *state);
 	string getQueryStringForSaveEqNext(RegisterState *state);
-	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0);
+	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0, 
+				  const char *file = NULL, int line = 0);
 	inline RegisterState* getLastState();
 	inline eRegisterState getState();
 	inline bool stateIsOK();
 	inline int getIdSensor();
 	inline u_int32_t getStateFrom_s();
 	inline bool getDataRow(RecordArray *rec);
+	string typeSaveStateToString(eTypeSaveState typeSaveState);
 	void lock_states() {
 		while(__sync_lock_test_and_set(&_sync_states, 1));
 	}

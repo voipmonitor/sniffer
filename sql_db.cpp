@@ -6737,7 +6737,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`id_sensor` int unsigned NOT NULL,\
 			`sipcallerip` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
-			`counter_1` int DEFAULT NULL,\
+			`counter` int DEFAULT NULL,\
 			`counter_2` int DEFAULT NULL," + 
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`ID`, `created_at`)," :

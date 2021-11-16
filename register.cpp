@@ -6,8 +6,9 @@
 #include "sniff.h"
 
 
-#define NEW_REGISTER_CLEANUP_PERIOD 30
-#define NEW_REGISTER_UPDATE_PERIOD 30
+#define NEW_REGISTERS_DEBUG_PERIOD false
+#define NEW_REGISTER_CLEANUP_PERIOD (NEW_REGISTERS_DEBUG_PERIOD ? 1 : 30)
+#define NEW_REGISTER_UPDATE_PERIOD (NEW_REGISTERS_DEBUG_PERIOD ? 1 : 30)
 #define NEW_REGISTER_ERASE_TIMEOUT_FAILED 60
 #define NEW_REGISTER_ERASE_TIMEOUT 2*3600
 
@@ -167,8 +168,7 @@ RegisterFailedCount::RegisterFailedCount(Call *call) {
 		sipcalledip_encaps_prot = 0xFF;
 	}
 	count = 0;
-	count_saved[0] = 0;
-	count_saved[1] = 0;
+	count_saved = 0;
 }
 
 void RegisterFailedCount::saveToDb(u_int32_t time_interval) {
@@ -179,7 +179,7 @@ void RegisterFailedCount::saveToDb(u_int32_t time_interval) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
 	}
-	if(count > count_saved[0]) {
+	if(count > count_saved) {
 		string register_table = "register_time_info";
 		SqlDb_row reg;
 		reg.add("failed", "type_info");
@@ -189,10 +189,10 @@ void RegisterFailedCount::saveToDb(u_int32_t time_interval) {
 		reg.add(sqlDateTimeString(time_interval), "created_at");
 		reg.add(sipcallerip, "sipcallerip", false, sqlDbSaveRegister, register_table.c_str());
 		reg.add(sipcalledip, "sipcalledip", false, sqlDbSaveRegister, register_table.c_str());
-		reg.add(count - count_saved[0], "counter_1");
+		reg.add(count - count_saved, "counter");
 		if(count > (unsigned)opt_sip_register_failed_max_details_per_minute &&
-		   count - opt_sip_register_failed_max_details_per_minute > count_saved[1]) {
-			reg.add(count - opt_sip_register_failed_max_details_per_minute - count_saved[1], "counter_2");
+		   count - opt_sip_register_failed_max_details_per_minute > count_saved) {
+			reg.add(count - opt_sip_register_failed_max_details_per_minute - count_saved, "counter_2");
 		}
 		if(isSqlDriver("mysql")) {
 			string query_str;
@@ -209,8 +209,7 @@ void RegisterFailedCount::saveToDb(u_int32_t time_interval) {
 		} else {
 			sqlDbSaveRegister->insert(register_table, reg);
 		}
-		count_saved[0] = count;
-		count_saved[1] = count;
+		count_saved = count;
 	}
 }
 
@@ -277,15 +276,16 @@ bool RegisterFailed::add(Call *call) {
 	return(rslt);
 }
 
-void RegisterFailed::cleanup(struct timeval *act_time, bool force) {
+void RegisterFailed::cleanup(bool force) {
 	lock();
+	u_int32_t actTimeS = getTimeS_rdtsc();
 	int limit_oldinterval_for_save = 2 * 60;
 	int limit_oldinterval_for_clean = 5 * 60;
 	for(map<u_int32_t, RegisterFailedInterval*>::iterator iter = failed_intervals.begin(); iter != failed_intervals.end(); ) {
-		if((act_time && act_time->tv_sec / 60 * 60 > iter->first + limit_oldinterval_for_save) || force) {
+		if(actTimeS / 60 * 60 > iter->first + limit_oldinterval_for_save || force) {
 			iter->second->saveToDb();
 		}
-		if((act_time && act_time->tv_sec / 60 * 60 > iter->first + limit_oldinterval_for_clean) || force) {
+		if(actTimeS / 60 * 60 > iter->first + limit_oldinterval_for_clean || force) {
 			delete iter->second;
 			failed_intervals.erase(iter++);
 		} else {
@@ -316,7 +316,7 @@ void RegisterActive::saveToDb(u_int32_t time_s) {
 		reg.add(sqlDateTimeString(time_s), "created_at");
 		reg.add((const char *)NULL, "sipcallerip");
 		reg.add((const char *)NULL, "sipcalledip");
-		reg.add(iter->second, "counter_1");
+		reg.add(iter->second, "counter");
 		if(isSqlDriver("mysql")) {
 			string query_str;
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
@@ -341,8 +341,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		char *tmp_str;
 		state_from_us = state_to_us = call->calltime_us();
 		time_shift_ms = call->time_shift_ms;
-		counter = 1;
 		state = convRegisterState(call);
+		zombie = false;
 		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
 			       EQ_REG :
 			       REG_NEW_STR(call->contact_num);
@@ -373,8 +373,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 	} else {
 		state_from_us = state_to_us = 0;
 		time_shift_ms = 0;
-		counter = 0;
 		state = rs_na;
+		zombie = false;
 		contact_num = NULL;
 		contact_domain = NULL;
 		from_num = NULL;
@@ -390,8 +390,8 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		vlan = VLAN_UNSET;
 	}
 	db_id = 0;
-	save_at = 0;
-	save_at_count_next_state = 0;
+	save_at_us = 0;
+	next_states_saved = 0;
 }
 
 RegisterState::~RegisterState() {
@@ -449,8 +449,8 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 	if(exp_state) {
 		if(eq) {
 			*exp_state = opt_sip_register_state_timeout && 
-				      call->calltime_us() > state_from_us && 
-				      (call->calltime_us() - state_from_us) / 1000000 > (unsigned)opt_sip_register_state_timeout;
+				     call->calltime_us() > state_from_us && 
+				     (call->calltime_us() - state_from_us) / 1000000 > (unsigned)opt_sip_register_state_timeout;
 		} else {
 			*exp_state = false;
 		}
@@ -616,17 +616,21 @@ void Register::addState(Call *call) {
 		if(!exp_state) {
 			updateLastState(call, states);
 		} else {
-			saveStateToDb(states->last(), _ss_exp_state);
+			saveStateToDb(states->last(), _ss_exp_state, 0, 
+				      __FILE__, __LINE__);
 			resetLastState(call, states);
-			saveStateToDb(states->last(), _ss_reset);
+			saveStateToDb(states->last(), _ss_reset, 0, 
+				      __FILE__, __LINE__);
 		}
 	} else {
 		states->add(new FILE_LINE(20002) RegisterState(call, this));
 		RegisterState *prevState = states->prev();
 		if(prevState) {
-			saveStateToDb(prevState, _ss_end);
+			saveStateToDb(prevState, _ss_end, 0, 
+				      __FILE__, __LINE__);
 		}
-		saveStateToDb(states->last(), _ss_init);
+		saveStateToDb(states->last(), _ss_init, 0, 
+			      __FILE__, __LINE__);
 	}
 	if(!isFailed) {
 		RegisterState *state = states->last();
@@ -648,17 +652,20 @@ void Register::expire(bool need_lock_states) {
 	}
 	RegisterState *lastState = states_state.last();
 	if(lastState && lastState->isOK()) {
-		saveStateToDb(lastState, _ss_update_force);
+		saveStateToDb(lastState, _ss_update_force, 0, 
+			      __FILE__, __LINE__);
 		RegisterState *newState = new FILE_LINE(20003) RegisterState(NULL, NULL);
 		newState->copyFrom(lastState);
 		newState->state = rs_Expired;
+		newState->zombie = false;
 		newState->expires = 0;
 		newState->state_from_us = newState->state_to_us = lastState->state_to_us + TIME_S_TO_US(lastState->expires);
-		newState->save_at = 0;
-		newState->save_at_count_next_state = 0;
+		newState->save_at_us = 0;
 		newState->next_states.clear();
+		newState->next_states_saved = 0;
 		states_state.add(newState);
-		saveStateToDb(newState, _ss_save);
+		saveStateToDb(newState, _ss_save, 0, 
+			      __FILE__, __LINE__);
 		if(opt_enable_fraud && isFraudReady()) {
 			RegisterState *prevState = states_state.prev();
 			fraudRegister(this, prevState, rs_Expired, prevState ? prevState->state : rs_na, prevState ? prevState->state_to_us : 0);
@@ -672,6 +679,11 @@ void Register::expire(bool need_lock_states) {
 void Register::updateLastState(Call *call, RegisterStates *states) {
 	RegisterState *state = states->last();
 	if(state) {
+		if(state->zombie) {
+			state->state_from_us = call->calltime_us();
+			state->fname = call->fname_register;
+			state->id_sensor = call->useSensorId;
+		}
 		state->state_to_us = call->calltime_us();
 		state->time_shift_ms = call->time_shift_ms;
 		state->fname_last = call->fname_register;
@@ -704,21 +716,32 @@ void Register::updateLastState(Call *call, RegisterStates *states) {
 		if(call->is_sipalg_detected) {
 			state->is_sipalg_detected = true;
 		}
-		state->next_states.push_back(RegisterState::NextState(call->calltime_us(), call->fname_register, call->useSensorId));
+		if(!state->zombie) {
+			state->next_states.push_back(RegisterState::NextState(call->calltime_us(), call->fname_register, call->useSensorId));
+		}
+		if(state->zombie) {
+			state->zombie = false;
+		}
 	}
 }
 
 void Register::resetLastState(Call *call, RegisterStates *states) {
 	RegisterState *state = states->last();
 	if(state) {
+		if(sverb.registers_save) {
+			cout << " *** Register::resetLastState "
+			     << " c: " << this->contact_num
+			     << " t: " << sqlDateTimeString_us2ms(state->state_from_us) << " - " << sqlDateTimeString_us2ms(state->state_to_us)
+			     << " n: " << state->next_states.size()
+			     << endl;
+		}
 		updateLastState(call, states);
 		state->state_from_us = state->state_to_us = call->calltime_us();
-		state->fname = call->fname_register;
-		state->fname_last = 0;
+		state->fname = state->fname_last = call->fname_register;
 		state->db_id = 0;
-		state->save_at = 0;
-		state->save_at_count_next_state = 0;
+		state->save_at_us = 0;
 		state->next_states.clear();
+		state->next_states_saved = 0;
 	}
 }
 
@@ -744,13 +767,12 @@ void Register::clean_all() {
 	unlock_states();
 }
 
-void Register::saveNewStateToDb(RegisterState *state) {
+u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 	if(opt_nocdr || sverb.disable_save_register) {
-		return;
+		return(0);
 	}
-	if(state->save_at &&
-	   state->next_states.size() <= state->save_at_count_next_state) {
-		return;
+	if(registers.isEnabledDeferredSave(state) ? state->zombie : state->save_at_us) {
+		return(0);
 	}
 	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
 	adjustUA(&adj_ua);
@@ -853,22 +875,24 @@ void Register::saveNewStateToDb(RegisterState *state) {
 			}
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT + 
 				     sqlDbSaveRegister->insertQuery(register_table, reg));
-			if(useNewStore()) {
-				if(!useSetId()) {
-					query_str += MYSQL_GET_MAIN_INSERT_ID + 
-						     MYSQL_IF_MAIN_INSERT_ID;
+			if(state->next_states.size()) {
+				if(useNewStore()) {
+					if(!useSetId()) {
+						query_str += MYSQL_GET_MAIN_INSERT_ID + 
+							     MYSQL_IF_MAIN_INSERT_ID;
+					}
+				} else {
+					query_str += "if row_count() > 0 then\n" +
+						     MYSQL_GET_MAIN_INSERT_ID;
 				}
-			} else {
-				query_str += "if row_count() > 0 then\n" +
-					     MYSQL_GET_MAIN_INSERT_ID;
-			}
-			query_str += getQueryStringForSaveEqNext(state);
-			if(useNewStore()) {
-				if(!useSetId()) {
-					query_str += MYSQL_ENDIF_QE;
+				query_str += getQueryStringForSaveEqNext(state);
+				if(useNewStore()) {
+					if(!useSetId()) {
+						query_str += MYSQL_ENDIF_QE;
+					}
+				} else {
+					query_str += "end if";
 				}
-			} else {
-				query_str += "end if";
 			}
 		} else {
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_MAIN_INSERT_GROUP +
@@ -888,31 +912,36 @@ void Register::saveNewStateToDb(RegisterState *state) {
 		}
 		sqlDbSaveRegister->insert(register_table, reg);
 	}
-	state->save_at = state->state_to_us;
-	state->save_at_count_next_state = state->next_states.size();
-}
-
-void Register::saveDeferredStateToDb(RegisterState *state) {
-	saveNewStateToDb(state);
-}
-
-void Register::saveUpdateStateToDb(RegisterState *state) {
-	if(opt_nocdr || sverb.disable_save_register) {
-		return;
+	state->save_at_us = state->state_to_us;
+	state->next_states_saved += state->next_states.size();
+	if(registers.isEnabledDeferredSave(state)) {
+		state->setZombie();
+	} else {
+		state->next_states.clear();
 	}
-	if(!state->db_id ||
-	   state->next_states.size() <= state->save_at_count_next_state) {
-		return;
+	return(1);
+}
+
+u_int8_t Register::saveDeferredStateToDb(RegisterState *state) {
+	return(saveNewStateToDb(state));
+}
+
+u_int8_t Register::saveUpdateStateToDb(RegisterState *state) {
+	if(opt_nocdr || sverb.disable_save_register) {
+		return(0);
+	}
+	if(!state->db_id || !state->next_states.size()) {
+		return(0);
 	}
 	string query_str;
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";
 	if(state->state == rs_Failed || existsColumns.register_state_counter) {
 		SqlDb_row reg;
-		reg.add(state->next_states.size() + 1, "counter");
+		reg.add(state->next_states_saved + state->next_states.size() + 1, "counter");
 		if(isSqlDriver("mysql")) {
 			query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
 				     sqlDbSaveRegister->updateQuery(register_table, reg, 
-									   ("ID = " + intToString(state->db_id)).c_str()));
+								    ("ID = " + intToString(state->db_id)).c_str()));
 		} else {
 			sqlDbSaveRegister->update(register_table, reg, 
 						  ("ID = " + intToString(state->db_id)).c_str());
@@ -923,7 +952,7 @@ void Register::saveUpdateStateToDb(RegisterState *state) {
 	}
 	if(!query_str.empty()) {
 		static unsigned int counterSqlStore = 0;
-		sqlStore->query_lock(MYSQL_ADD_QUERY_END(query_str),
+		sqlStore->query_lock(query_str,
 				     STORE_PROC_ID_REGISTER,
 				     opt_mysqlstore_max_threads_register > 1 &&
 				     sqlStore->getSize(STORE_PROC_ID_REGISTER, 0) > 1000 ? 
@@ -931,8 +960,10 @@ void Register::saveUpdateStateToDb(RegisterState *state) {
 				      0);
 		++counterSqlStore;
 	}
-	state->save_at = state->state_to_us;
-	state->save_at_count_next_state = state->next_states.size();
+	state->save_at_us = state->state_to_us;
+	state->next_states_saved += state->next_states.size();
+	state->next_states.clear();
+	return(2);
 }
 
 string Register::getQueryStringForSaveEqNext(RegisterState *state) {
@@ -941,7 +972,7 @@ string Register::getQueryStringForSaveEqNext(RegisterState *state) {
 		string register_table_eq_next = state->state == rs_Failed ? "register_failed_eq_next" : "register_state_eq_next";
 		string register_table_eq_next_id = state->state == rs_Failed ? "register_failed_ID" : "register_state_ID";
 		vector<SqlDb_row> time_rows;
-		for(unsigned i = state->save_at_count_next_state; i < state->next_states.size(); i++) {
+		for(unsigned i = 0; i < state->next_states.size(); i++) {
 			SqlDb_row time_row;
 			if(registers.isEnabledDeferredSave(state)) {
 				time_row.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, register_table_eq_next_id);
@@ -973,7 +1004,28 @@ string Register::getQueryStringForSaveEqNext(RegisterState *state) {
 	return(query_str);
 }
 
-void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS) {
+void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS, 
+			     const char *file, int line) {
+	string registers_info;
+	if(sverb.registers_save) {
+		ostringstream outStr;
+		outStr << (state->state == rs_Failed ? "failed" : "state")
+		       << " c: " << this->contact_num
+		       << " t: " << sqlDateTimeString_us2ms(state->state_from_us) << " - " << sqlDateTimeString_us2ms(state->state_to_us)
+		       << " n: " << state->next_states.size();
+		if(state->next_states.size()) {
+			outStr << " (";
+			for(unsigned i = 0; i < state->next_states.size(); i++) {
+				if(i) {
+					outStr << ", ";
+				}
+				outStr << sqlDateTimeString_us2ms(state->next_states[i].at);
+			}
+			outStr << ")";
+		}
+		registers_info = outStr.str();
+	}
+	u_int8_t saved = false;
 	if(!sqlDbSaveRegister) {
 		sqlDbSaveRegister = createSqlObject();
 		sqlDbSaveRegister->setEnableSqlStringInContent(true);
@@ -982,42 +1034,51 @@ void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState,
 	case _ss_init:
 	case _ss_reset:
 		if(!registers.isEnabledDeferredSave(state)) {
-			saveNewStateToDb(state);
+			saved = saveNewStateToDb(state);
 		} else if(state->state == rs_Unregister) {
-			saveDeferredStateToDb(state);
+			saved = saveDeferredStateToDb(state);
 		}
 		break;
 	case _ss_update:
 		if(!registers.isEnabledDeferredSave(state)) {
-			if(TIME_US_TO_S(state->state_to_us - state->save_at) > NEW_REGISTER_UPDATE_PERIOD) {
-				saveUpdateStateToDb(state);
+			if(actTimeS > TIME_US_TO_S(state->save_at_us ? state->save_at_us : state->state_from_us) &&
+			   actTimeS - TIME_US_TO_S(state->save_at_us ? state->save_at_us : state->state_from_us) > NEW_REGISTER_UPDATE_PERIOD) {
+				saved = saveUpdateStateToDb(state);
 			}
 		} else {
 			if(opt_sip_register_state_timeout) {
-				u_int64_t actTime = actTimeS ? actTimeS * 1000000ull : getTimeUS();
-				if(actTime > state->state_to_us &&
-				   TIME_US_TO_S(actTime - state->state_to_us) > (unsigned)opt_sip_register_state_timeout) {
-					saveDeferredStateToDb(state);
+				if(!state->zombie &&
+				   actTimeS > TIME_US_TO_S(state->state_from_us) &&
+				   actTimeS - TIME_US_TO_S(state->state_from_us) > (unsigned)opt_sip_register_state_timeout) {
+					saved = saveDeferredStateToDb(state);
 				}
 			}
 		}
 		break;
 	case _ss_save:
 		if(!registers.isEnabledDeferredSave(state)) {
-			saveNewStateToDb(state);
+			saved = saveNewStateToDb(state);
 		} else {
-			saveDeferredStateToDb(state);
+			saved = saveDeferredStateToDb(state);
 		}
 		break;
 	case _ss_update_force:
 	case _ss_exp_state:
 	case _ss_end:
 		if(!registers.isEnabledDeferredSave(state)) {
-			saveUpdateStateToDb(state);
+			saved = saveUpdateStateToDb(state);
 		} else {
-			saveDeferredStateToDb(state);
+			saved = saveDeferredStateToDb(state);
 		}
 		break;
+	}
+	if(sverb.registers_save && saved) {
+		cout << " *** Register::saveStateToDb "
+		     << (saved == 1 ? "insert" : "update")
+		     << " " << typeSaveStateToString(typeSaveState)
+		     << " " << registers_info
+		     << " f: " << file << ":" << line
+		     << endl;
 	}
 }
 
@@ -1103,6 +1164,28 @@ bool Register::getDataRow(RecordArray *rec) {
 	return(true);
 }
 
+string Register::typeSaveStateToString(eTypeSaveState typeSaveState) {
+	struct {
+		eTypeSaveState typeSaveState;
+		const char *str;
+	} typeSaveState_table[] = {
+		{ _ss_init, "init" },
+		{ _ss_reset, "reset" },
+		{ _ss_update, "update" },
+		{ _ss_save, "save" },
+		{ _ss_update_force, "update_force" },
+		{ _ss_exp_state, "exp_state" },
+		{ _ss_end, "end" },
+		{ _ss_init, NULL }
+	};
+	for(unsigned i = 0; typeSaveState_table[i].str; i++) {
+		if(typeSaveState_table[i].typeSaveState == typeSaveState) {
+			return(typeSaveState_table[i].str);
+		}
+	}
+	return("");
+}
+
 volatile u_int64_t Register::_id = 0;
 volatile int Register::_sync_id = 0;
 
@@ -1162,6 +1245,15 @@ void Registers::add(Call *call) {
 	if(!state) {
 		return;
 	} else if(state == rs_Failed) {
+	 
+		/*
+		static int _c;
+		cout << " *** FAILED " << (++_c) 
+		     << " " << sqlDateTimeString_us2ms(call->calltime_us()) 
+		     << " " << call->contact_num
+		     << endl;
+		*/
+	 
 		if(!registers_failed.add(call)) {
 			return;
 		}
@@ -1263,13 +1355,15 @@ void Registers::cleanup(bool force, int expires_add) {
 				   TIME_US_TO_S(state_state->state_to_us) + state_state->expires + expires_add < actTimeS_unshift) {
 					reg->expire(false);
 				} else {
-					reg->saveStateToDb(state_state, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift);
+					reg->saveStateToDb(state_state, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift,
+							   __FILE__, __LINE__);
 				}
 			}
 			RegisterState *state_failed = reg->states_failed.last();
 			if(state_failed) {
 				u_int32_t actTimeS_unshift = state_failed->unshiftSystemTime_s(actTimeS);
-				reg->saveStateToDb(state_failed, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift);
+				reg->saveStateToDb(state_failed, force ? Register::_ss_update_force : Register::_ss_update, actTimeS_unshift,
+						   __FILE__, __LINE__);
 			}
 			bool eraseRegister = false;
 			if(!_sync_registers_erase) {
@@ -1296,7 +1390,7 @@ void Registers::cleanup(bool force, int expires_add) {
 				iter++;
 			}
 		}
-		registers_failed.cleanup(act_time, force);
+		registers_failed.cleanup(force);
 		unlock_registers();
 		last_cleanup_time = actTimeS;
 	}
@@ -1304,10 +1398,7 @@ void Registers::cleanup(bool force, int expires_add) {
 
 void Registers::cleanup_from_timer(u_int32_t time_s) {
 	if(time_s > last_cleanup_time + NEW_REGISTER_CLEANUP_PERIOD * 2) {
-		struct timeval time;
-		time.tv_sec = time_s;
-		time.tv_usec = 0;
-		cleanup(&time, false, 30);
+		cleanup(false, 30);
 	}
 }
 
@@ -1634,7 +1725,7 @@ eRegisterState convRegisterState(Call *call) {
 	return(call->msgcount <= 1 ||
 	       call->lastSIPresponseNum == 401 || call->lastSIPresponseNum == 403 || call->lastSIPresponseNum == 404 ?
 		rs_Failed :
-	       call->regstate == 1 && !call->register_expires ?
+	       call->regstate == rs_OK && !call->register_expires ?
 		rs_Unregister :
 		(eRegisterState)call->regstate);
 }
