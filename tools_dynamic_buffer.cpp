@@ -1188,7 +1188,7 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		break;
 	}
 	this->unlock_chunkBuffer();
-	this->last_add_time = getGlobalPacketTimeS();
+	this->last_add_time = getTimeS_rdtsc();
 }
 
 void ChunkBuffer::close() {

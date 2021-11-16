@@ -1247,11 +1247,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 						data.buffer->copyLastAddTimeToTar();
 						unsigned int bufferLastTarTime = data.buffer->getLastTarTime();
 						if(!isClosed &&
-						   bufferLastTarTime && bufferLastTarTime > getGlobalPacketTimeS() - 3 && 
+						   bufferLastTarTime && bufferLastTarTime > getTimeS_rdtsc() - 3 && 
 						   !data.buffer->isFull()) {
 							continue;
 						}
-						data.buffer->setLastTarTime(getGlobalPacketTimeS());
+						data.buffer->setLastTarTime(getTimeS_rdtsc());
 						#if TAR_PROF
 						unsigned long long __prof_begin2 = rdtsc();
 						#endif
@@ -1333,7 +1333,7 @@ void *TarQueue::tarthreadworker(void *arg) {
 							tarthread->qunlock();
 						}
 						if(!lastAddTime || 
-						    lastAddTime < getGlobalPacketTimeS() - 30) {
+						    lastAddTime < getTimeS_rdtsc() - 30) {
 							pthread_mutex_lock(&this2->tarslock);
 							if(this2->tars.find(processTarName) != this2->tars.end()) {
 								Tar *processTar = this2->tars[processTarName];
@@ -1497,7 +1497,7 @@ TarQueue::cleanTars(int terminate_pass) {
 		if(!tar->_sync_lock &&
 		   (tartimemap.find(tar->time) == tartimemap.end()) && 
 		   (terminate_pass ||
-		    getGlobalPacketTimeS() > (tar->created_at + 60 + 10) ||	// +10 seconds more in new period to be sure nothing is in buffers
+		    getTimeS_rdtsc() > (tar->created_at + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
 		    getTimeS() > (tar->created_at + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
 			pthread_mutex_unlock(&tartimemaplock);

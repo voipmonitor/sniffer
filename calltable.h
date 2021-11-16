@@ -1390,8 +1390,10 @@ public:
 	u_int64_t callend_us() { return calltime_us() + duration_us(); };
 	u_int32_t callend_s() { return TIME_US_TO_S(callend_us()); };
 	
-	u_int32_t duration_active_s() { return(getGlobalPacketTimeS() - TIME_US_TO_S(first_packet_time_us)); };
-	u_int32_t connect_duration_active_s() { return(connect_time_us ? duration_active_s() - TIME_US_TO_S(connect_time_us - first_packet_time_us) : 0); };
+	u_int32_t duration_active_us() { return(unshiftSystemTime_ms(getTimeMS_rdtsc()) * 1000 - first_packet_time_us); };
+	u_int32_t duration_active_s() { return(TIME_US_TO_S(duration_active_us())); };
+	u_int32_t connect_duration_active_us() { return(connect_time_us ? duration_active_us() - (connect_time_us - first_packet_time_us) : 0); };
+	u_int32_t connect_duration_active_s() { return(TIME_US_TO_S(connect_duration_active_us())); };
 	
 	/**
 	 * @brief remove call from hash table
