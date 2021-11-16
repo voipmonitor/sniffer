@@ -1,3 +1,38 @@
+29.0 16.11.2021
+===============
+- experimental DPDK implementation documented here https://www.voipmonitor.org/doc/DPDK
+- enable t2_boost=yes in default configuration 
+- implemented aggregated hour trends [VG-2304]
+- store time between first INVITE and TRYING into DB column response_time_100 [VG-2384]
+- added support for ether type 0x8926 [VS-1258]
+- new manager command listopentars
+- ss7_use_sam_subsequent_number is now yes by default
+- added CURL WAV convert end hook
+- added anonymisation of the sipdomain when exporting cdrs [VG-2355]
+- send call information: added support for json request, added support for send first or all matching packets, added send packet time [VG-2352]
+- added new parameter storing_cdr_maximum_cdr_per_iteration (default is 50000)
+- automate SQL compression selection when creating tables based on mysql / mariadb version [VG-2381]
+- fix crash in ssl3_init_handshake_digests (dssl) if cipher suite is unknown [VS-1243]
+- fix packetization when creating audio - enable via new option fix_packetization_in_create_audio = yes (default is NO) [VG-2354]
+- fix issue with next invite with reponse 481 after confirmed bye [VS-1233]
+- fix i686 issue in filter_mysql
+- fix call cleanup_calls for scanpcapdir [VS-1248]
+- fix CDR storing - quicker thread creation, added number of calls in save threads
+- fix memory consumption when the disk buffer is full [VS-1231]
+- adjustment of time comparison in mirror client server mode which fixes timezone half hour offset [VS-1168]
+- adding locking in configuration maps which prevents crashing in some scenarios [VS-1222]
+- fix rtp stream analysis export for 'RTP stream analysis' in GUI - export original rtp.seq from packets
+- create cdr_rtp table with columns sport and dport
+- fix cleanup calls for client/server mode if client runnig with scanpcapdir option [VS-1254]
+- rebuild call and registration cleanup when time-inconsistent packet flows occurs - packet flows with old packets can be sent to the server from clients when the server is unavailable to the client and the client sends old packets for processing
+- multinvite calls - treated as cancelled number for all response 4xx (originally only for response 404)
+- fix problem with call durations in GUI active calls section [VS-1261] [VS-1262]
+- fix dssl library issue when failed session_id and key sent from keylogger, fix fragmented handshake in dtls, fix multiple crypto-suite in dtls [VS-1242]
+- adding the ability to decrypt tls_1.2 with a keylogger using wireshark decryption routines - enable by new option ssl_tls_12_sessionkey_mode = ws (default is dssl) [VS-1260]
+- adjust key receive timeout in dtls [VS-1242]
+- enable ssl initialization for dtls without setting ssl_ipport options [VS-1239]
+
+
 28.8 17.08.2021
 ===============
 - improved conditions for detecting one-way calls in case INVITE is passing A->B->C without any response from C [VS-1223]
