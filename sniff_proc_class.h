@@ -173,13 +173,14 @@ public:
 			if(sipDataLen == data_len) {
 				return(true);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
-				if(strict && data_len - sipDataLen <= 2) {
-					while(data_len > sipDataLen && 
-					      (*(char*)(data + data_len - 1) == LF_CHAR ||
-					       *(char*)(data + data_len - 1) == CR_CHAR)) {
-						--data_len;
+				if(strict) {
+					int data_len_reduk = data_len;
+					while(data_len_reduk > sipDataLen && 
+					      (*(char*)(data + data_len_reduk - 1) == LF_CHAR ||
+					       *(char*)(data + data_len_reduk - 1) == CR_CHAR)) {
+						--data_len_reduk;
 					}
-					if(sipDataLen == data_len) {
+					if(sipDataLen == data_len_reduk) {
 						return(true);
 					}
 				}
