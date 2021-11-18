@@ -195,8 +195,10 @@ inline u_int64_t getTimeMS_rdtsc(pcap_pkthdr* header = NULL) {
 	#if defined(__i386__) or defined(__x86_64__)
 	last_time = time.tv_sec * 1000ull + time.tv_nsec / 1000000;
 	last_rdtsc = rdtsc();
-	#endif
 	return(last_time);
+	#else
+	return(time.tv_sec * 1000ull + time.tv_nsec / 1000000);
+	#endif
 }
 
 inline u_int32_t getTimeS_rdtsc(pcap_pkthdr* header = NULL) {

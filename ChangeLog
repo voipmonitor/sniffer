@@ -12,6 +12,7 @@
 - send call information: added support for json request, added support for send first or all matching packets, added send packet time [VG-2352]
 - added new parameter storing_cdr_maximum_cdr_per_iteration (default is 50000)
 - automate SQL compression selection when creating tables based on mysql / mariadb version [VG-2381]
+- fix tcp reassembly with multiple CR LF at end of sip data [VS-1254]
 - fix crash in ssl3_init_handshake_digests (dssl) if cipher suite is unknown [VS-1243]
 - fix packetization when creating audio - enable via new option fix_packetization_in_create_audio = yes (default is NO) [VG-2354]
 - fix issue with next invite with reponse 481 after confirmed bye [VS-1233]
