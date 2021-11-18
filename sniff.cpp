@@ -1254,31 +1254,41 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 	return(rslt);
 }
 
+enum peername_sip_tags_type {
+	_prefer_domain = 1,
+	_prefer_number = 2
+};
+
 static struct {
 	const char *prefix;
 	unsigned length;
 	unsigned skip;
 	int type;
 } peername_sip_tags[] = {
-	{ "sip:", 4, 4, 0 },
-	{ "sips:", 5, 5, 0 },
-	{ "urn:", 4, 0, 1 },
-	{ "tel:", 4, 4, 2 }
+	{ "sip:", 4, 4, _prefer_domain },
+	{ "sips:", 5, 5, _prefer_domain },
+	{ "urn:", 4, 0, _prefer_number },
+	{ "tel:", 4, 4, _prefer_number }
 };
 
 inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned int peername_tag_len, int *peer_sip_tags_index) {
-	const char *p = NULL;
-	for(unsigned i = 0; i < sizeof(peername_sip_tags) / sizeof(peername_sip_tags[0]); i++) {
-		if((p = (const char*)memmem(peername_tag, peername_tag_len, peername_sip_tags[i].prefix, peername_sip_tags[i].length))) {
-			*peer_sip_tags_index = i;
-			break;
-		}
-	}
-	if(p && 
-	   (p == peername_tag || *(p-1) == '<')) {
-		return(p);
-	}
 	*peer_sip_tags_index = -1;
+	for(unsigned i = 0; i < sizeof(peername_sip_tags) / sizeof(peername_sip_tags[0]); i++) {
+		unsigned int offset = 0;
+		do {
+			const char *p;
+			if((p = (const char*)memmem(peername_tag + offset, peername_tag_len - offset, peername_sip_tags[i].prefix, peername_sip_tags[i].length))) {
+				if(p == peername_tag || *(p-1) == '<') {
+					*peer_sip_tags_index = i;
+					return(p);
+				} else {
+					offset = p - peername_tag + 1;
+				}
+			} else {
+				break;
+			}
+		} while(true);
+	}
 	return(NULL);
 }
  
@@ -1299,20 +1309,28 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
 			extern bool opt_callernum_numberonly;
-			if(*end == '@' ||
-			  (destType == ppndt_caller && opt_callernum_numberonly  && *end == ';') ||
-			  (peername_sip_tags[peer_sip_tags_index].type == 2) && *end == ';' ) {
-				if((peername_sip_tags[peer_sip_tags_index].type == 0) || (peername_sip_tags[peer_sip_tags_index].type == 2)) {
+			if(*end == '@') {
+				--end;
+				ok = true;
+				break;
+			} else if(*end == ';') {
+				if(destType == ppndt_caller && opt_callernum_numberonly) {
 					--end;
 					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
+					--end;
+					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
 					break;
 				}
 			} else if(*end == '>') {
-				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
-					break;
-				} else {
+				if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
 					--end;
 					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
 					break;
 				}
 			}
@@ -1329,7 +1347,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			--end;
 		}
 		ok = begin < end;
-	} else if(parse_type == 3 && peername_sip_tags[peer_sip_tags_index].type == 0) { // domain
+	} else if(parse_type == 3) { // domain
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len) {
 			if(*begin == '@') {
@@ -1337,13 +1355,17 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 				break;
 			} else if(*begin == '>') {
-				begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
-				ok = true;
-				break;
+				if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
+					begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
+					break;
+				}
 			}
 			++begin;
 		}
-		if(begin == peername_tag + peername_tag_len) {
+		if(begin == (peername_tag + peername_tag_len) && (peername_sip_tags[peer_sip_tags_index].type & _prefer_domain)) {
 			begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 			ok = true;
 		}
@@ -1361,7 +1383,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 			}
 		}
-	} else if(parse_type == 4 && peername_sip_tags[peer_sip_tags_index].type == 0) { // tag
+	} else if(parse_type == 4) { // tag
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len - 4) {
 			if(*begin == ';' && strncasestr(begin + 1, "tag=", 4)) {
@@ -1484,7 +1506,8 @@ void testPN() {
 		"<tel:+33970660010>;tag=SDoduqd01-d87d01d6-0000-0bff-0000-0000",
 		"tel:+971543274144;tag=p65545t1614290087m188413c29442s3_859345611-1187759289",
 		"ů§jk§ůjsip:kljahfkjlahld",
-		"klhkjlh"
+		"klhkjlh",
+		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>"
 	};
 	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
 		char rslt[1000];
