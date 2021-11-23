@@ -1859,6 +1859,9 @@ void TarCopy::addTarsFromSpool() {
 			}
 		}
 	}
+	if(spooldirs.size() == 1 && trimSrcPath.empty()) {
+		trimSrcPath = spooldirs.begin()->first;
+	}
 	for(map<string, bool>::iterator spooldirs_iter = spooldirs.begin(); spooldirs_iter != spooldirs.end(); spooldirs_iter++) {
 		string spooldir = spooldirs_iter->first;
 		char *fts_path[2] = { (char*)spooldir.c_str(), NULL };
