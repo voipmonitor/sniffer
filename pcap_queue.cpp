@@ -2167,6 +2167,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	if(!this->isMirrorSender() && opt_pcap_dump_tar) {
 		outStr << "tarQ[" << glob_tar_queued_files << "] ";
+		extern TarCopy *tarCopy;
+		if(tarCopy) {
+			outStr << "tarMq[" << tarCopy->queueLength() << "] ";
+		}
 		u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 		if(tarBufferSize) {
 			outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";

@@ -22,6 +22,10 @@ struct vm_pthread_struct {
 void *vm_pthread_create_start_routine(void *arg) {
 	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
 	delete (vm_pthread_struct*)arg;
+	if(sverb.thread_create) {
+		syslog(LOG_NOTICE, "start thread '%s' %i", 
+		       thread_data.description.c_str(), get_unix_tid());
+	}
 	#ifdef CLOUD_ROUTER_CLIENT
 	threadMonitor.registerThread(thread_data.description.c_str());
 	#endif

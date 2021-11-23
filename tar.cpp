@@ -27,6 +27,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <stdio.h>
+#include <fts.h>
 
 #ifdef FREEBSD
 #include <sys/uio.h>
@@ -953,6 +954,11 @@ void Tar::addtofilesqueue() {
 		sdirname[11] = 0;
 		cleanSpool[spoolIndex]->addFile(sdirname, this->typeSpoolFile, pathname.c_str(), size);
 	}
+	
+	extern TarCopy *tarCopy;
+	if(tarCopy) {
+		tarCopy->addTar(pathname);
+	}
 }
 
 Tar::~Tar() {
@@ -1813,7 +1819,166 @@ void *TarQueueThread(void *_tarQueue) {
 		}
 	}      
 	return NULL;
-}      
+}
+
+TarCopy::TarCopy() {
+	move = false;
+	max_threads = 1;
+	stop = false;
+	_sync_tar_queue = 0;
+	_sync_copy_threads = 0;
+}
+
+TarCopy::~TarCopy() {
+	stop_threads();
+}
+
+void TarCopy::setDestination(string destinationPath) {
+	this->destinationPath = destinationPath;
+}
+
+void TarCopy::setTrimSrcPath(string trimSrcPath) {
+	this->trimSrcPath = trimSrcPath;
+}
+
+void TarCopy::setMove(bool move) {
+	this->move = move;
+}
+
+void TarCopy::setMaxThreads(unsigned max_threads) {
+	this->max_threads = max_threads;
+}
+
+void TarCopy::addTarsFromSpool() {
+	map<string, bool> spooldirs;
+	for(int spoolIndex = 0; spoolIndex < 2; spoolIndex++) {
+		for(int typeSpoolFile = tsf_na + 1; typeSpoolFile <= MAX_TYPE_SPOOL_FILE; typeSpoolFile++) {
+			string spooldir = getSpoolDir((eTypeSpoolFile)typeSpoolFile, spoolIndex);
+			if(!spooldir.empty() && spooldirs.find(spooldir) == spooldirs.end()) {
+				spooldirs[spooldir] = true;
+			}
+		}
+	}
+	for(map<string, bool>::iterator spooldirs_iter = spooldirs.begin(); spooldirs_iter != spooldirs.end(); spooldirs_iter++) {
+		string spooldir = spooldirs_iter->first;
+		char *fts_path[2] = { (char*)spooldir.c_str(), NULL };
+		FTS *tree = fts_open(fts_path, FTS_COMFOLLOW | FTS_NOCHDIR, 0);
+		if(!tree) {
+			continue;
+		}
+		FTSENT *node;
+		while((node = fts_read(tree)) && !is_terminating()) {
+			if(node->fts_info == FTS_F && strcasestr(node->fts_name, ".tar")) {
+				addTar(node->fts_path, false);
+			}
+		}
+		fts_close(tree);
+	}
+}
+
+void TarCopy::addTar(string filePathName, bool startThread) {
+	if(is_terminating() || stop) {
+		return;
+	}
+	sTar tar;
+	tar.filePathName = filePathName;
+	tar_queue_lock();
+	tar_queue.push_back(tar);
+	tar_queue_unlock();
+	if(startThread) {
+		start_thread();
+	}
+}
+
+void TarCopy::start_threads() {
+	stop = false;
+	for(unsigned i = 0; i < max_threads && tar_queue.size(); i++) {
+		if(i) {
+			USLEEP(10000);
+		}
+		start_thread();
+	}
+}
+
+void TarCopy::stop_threads() {
+	stop = true;
+	while(copy_threads.size()) {
+		USLEEP(100000);
+	}
+}
+
+void TarCopy::start_thread() {
+	if(is_terminating() || stop) {
+		return;
+	}
+	copy_threads_lock();
+	tar_queue_lock();
+	if(copy_threads.size() < max_threads && tar_queue.size()) {
+		sCopyThread *copy_thread = new FILE_LINE(0) sCopyThread();
+		copy_threads.push_back(copy_thread);
+		copy_thread->me = this;
+		vm_pthread_create_autodestroy("tar copy",
+					      &copy_thread->thread, NULL, &TarCopy::thread_fce, copy_thread, __FILE__, __LINE__);
+	}
+	tar_queue_unlock();
+	copy_threads_unlock();
+}
+
+void *TarCopy::thread_fce(void *arg) {
+	((sCopyThread*)arg)->tid = get_unix_tid();
+	((TarCopy*)((sCopyThread*)arg)->me)->thread_fce((sCopyThread*)arg);
+	return(NULL);
+}
+
+void TarCopy::thread_fce(sCopyThread *copy_thread) {
+	while(!is_terminating() && !stop) {
+		sTar tar;
+		tar_queue_lock();
+		if(tar_queue.size()) {
+			tar = tar_queue.front();
+			tar_queue.pop_front();
+		}
+		tar_queue_unlock();
+		if(!tar.filePathName.empty()) {
+			if(!copy(tar.filePathName)) {
+				tar_queue_lock();
+				tar_queue.push_front(tar);
+				tar_queue_unlock();
+				break;
+			}
+		} else {
+			break;
+		}
+	}
+	copy_threads_lock();
+	for(vector<sCopyThread*>::iterator iter = copy_threads.begin(); iter != copy_threads.end(); iter++) {
+		if((*iter)->tid == copy_thread->tid) {
+			copy_threads.erase(iter);
+			break;
+		}
+	}
+	copy_threads_unlock();
+	delete copy_thread;
+}
+
+bool TarCopy::copy(string src_filePathName) {
+	string dst_filePathName = 
+		destinationPath +
+		(!trimSrcPath.empty() && !strncasecmp(src_filePathName.c_str(), trimSrcPath.c_str(), trimSrcPath.length()) ? 
+		  src_filePathName.substr(trimSrcPath.length()) : 
+		  src_filePathName);
+	return(copy(src_filePathName, dst_filePathName));
+}
+
+bool TarCopy::copy(string src_filePathName, string dst_filePathName) {
+	bool rslt = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true) >= 0;
+	syslog(LOG_NOTICE, "tar %s %s : %s -> %s",
+	       move ? "move" : "copy",
+	       rslt ? "success" : "failed",
+	       src_filePathName.c_str(),
+	       dst_filePathName.c_str());
+	return(rslt);
+}
 
 int untar_gui(const char *args) {
 	char tarFile[1024] = "";

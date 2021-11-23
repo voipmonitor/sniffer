@@ -417,7 +417,7 @@ int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemove
 		rmdir(dir.c_str()));
 }
 
-unsigned long long cp_r(const char *src, const char *dst, bool move) {
+int64_t cp_r(const char *src, const char *dst, bool move) {
 	if(!file_exists((char*)src)) {
 		return(0);
 	}
@@ -425,7 +425,7 @@ unsigned long long cp_r(const char *src, const char *dst, bool move) {
 	if (!dp) {
 		return(0);
 	}
-	unsigned long long bytestransfered = 0;
+	int64_t bytestransfered = 0;
 	dirent* de;
 	while (true) {
 		de = readdir(dp);
@@ -440,14 +440,17 @@ unsigned long long cp_r(const char *src, const char *dst, bool move) {
 				rmdir(srcWithSubdir.c_str());
 			}
 		} else {
-			copy_file((string(src) + "/" + de->d_name).c_str(), (string(dst) + "/" + de->d_name).c_str(), move);
+			int64_t _bytestransfered = copy_file((string(src) + "/" + de->d_name).c_str(), (string(dst) + "/" + de->d_name).c_str(), move);
+			if(_bytestransfered > 0) {
+				bytestransfered += _bytestransfered;
+			}
 		}
 	}
 	closedir(dp);
 	return(bytestransfered);
 }
 
-unsigned long long copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
+int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
@@ -455,14 +458,14 @@ unsigned long long copy_file(const char *src, const char *dst, bool move, bool a
 
 	//check if the file exists
 	if(!file_exists(src)) {
-		return(0);
+		return(-1);
 	}
 
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
 		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
-		return(0);
+		return(-1);
 	}
 		
 	/* Stat the input file to obtain its size. */
@@ -497,22 +500,23 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		strerror_r(errno, buf, 4092);
 		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
 		close(read_fd);
-		return(0);
+		return(-1);
 	}
 #ifndef FREEBSD
 	fdatasync(write_fd);
 #endif
 	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
 	/* Blast the bytes from one file to the other. */
+	
+	int64_t bytestransfered = -1;
 #ifndef FREEBSD
 	off_t offset = 0;
-	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
-	unsigned long long bytestransfered = stat_buf.st_size;
-#else
-	int res = -1;
-	unsigned long long bytestransfered = 0;
+	if(sendfile(write_fd, read_fd, &offset, stat_buf.st_size) != -1) {
+		bytestransfered = stat_buf.st_size;
+	}
 #endif
-	if(res == -1) {
+	if(bytestransfered == -1) {
+		bytestransfered = 0;
 		if(renamedebug) {
 			syslog(LOG_ERR, "sendfile failed src[%s]", src);
 			
@@ -529,6 +533,7 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 				char buf[4092];
 				strerror_r(errno, buf, 4092);
 				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
+				bytestransfered = -1;
 				break;
 			}
 			bytestransfered += res;
@@ -2074,7 +2079,7 @@ bool RestartUpgrade::runUpgrade() {
 		}
 	}
 	unlink(binaryNameWithPath.c_str());
-	if(!copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true)) {
+	if(copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true) <= 0) {
 		this->errorString = "failed copy new binary to " + binaryNameWithPath;
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
