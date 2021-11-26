@@ -942,14 +942,19 @@ Call::_addtocachequeue(string file) {
 
 void
 Call::setFlagForRemoveRTP() {
+	u_int64_t startTimeMS = getTimeMS_rdtsc();
 	while(rtppacketsinqueue > 0) {
 		if(!opt_t2_boost && rtp_threads) {
-			extern int num_threads_max;
-			for(int i = 0; i < num_threads_max; i++) {
+			extern volatile int num_threads_active;
+			for(int i = 0; i < num_threads_active; i++) {
 				if(rtp_threads[i].threadId) {
 					rtp_threads[i].push_batch();
 				}
 			}
+		}
+		u_int64_t timeMS = getTimeMS_rdtsc();
+		if(timeMS > startTimeMS && timeMS - startTimeMS > 5000) {
+			break;
 		}
 		USLEEP(100);
 	}

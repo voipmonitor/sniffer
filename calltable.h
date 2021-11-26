@@ -1017,7 +1017,7 @@ public:
 	list<u_int32_t> *reg_tcp_seq;
 	
 	int last_sip_method;
-	volatile unsigned int rtppacketsinqueue;
+	volatile int rtppacketsinqueue;
 	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;
 	volatile int push_call_to_calls_queue;
