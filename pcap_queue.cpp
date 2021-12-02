@@ -15,6 +15,7 @@
 #include <vector>
 #include <dirent.h>
 #include <sys/poll.h>
+#include <sys/resource.h>
 
 #include <snappy-c.h>
 #ifdef HAVE_LIBLZ4
@@ -8777,6 +8778,9 @@ void PcapQueue_outputThread::push_batch() {
 }
 
 void *PcapQueue_outputThread::outThreadFunction() {
+	if(typeOutputThread == detach) {
+		setpriority(PRIO_PROCESS, get_unix_tid(), -19);
+	}
 	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();
