@@ -1382,7 +1382,15 @@ public:
 	 *
 	 * @return lenght of the call in seconds
 	*/
-	u_int64_t duration_us() { return((typeIs(MGCP) ? last_mgcp_connect_packet_time_us : get_last_packet_time_us()) - first_packet_time_us); };
+	u_int64_t duration_us() {
+		extern bool opt_ignore_duration_after_bye_confirmed;
+		return((typeIs(MGCP) ? 
+			 last_mgcp_connect_packet_time_us : 
+			 (opt_ignore_duration_after_bye_confirmed && this->seenbyeandok_time_usec && this->seenbyeandok_time_usec > first_packet_time_us ? 
+			   this->seenbyeandok_time_usec :
+			   get_last_packet_time_us())) - 
+		       first_packet_time_us);
+	};
 	double duration_sf() { return(TIME_US_TO_SF(duration_us())); };
 	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
 	u_int64_t connect_duration_us() { return(connect_time_us ? duration_us() - (connect_time_us - first_packet_time_us) : 0); };

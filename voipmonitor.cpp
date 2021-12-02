@@ -488,6 +488,7 @@ int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
 bool opt_ignore_rtp_after_bye_confirmed = false;
+bool opt_ignore_duration_after_bye_confirmed = false;
 bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
 int opt_saveaudio_reversestereo = 0;
@@ -7216,6 +7217,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
@@ -11627,6 +11629,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignore_duration_after_bye_confirmed", NULL))) {
+		opt_ignore_duration_after_bye_confirmed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_cancel_confirmed", NULL))) {
 		opt_ignore_rtp_after_cancel_confirmed = yesno(value);
