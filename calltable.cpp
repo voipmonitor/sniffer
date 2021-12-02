@@ -532,6 +532,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	called_final[0] = '\0';
 	called_domain_to[0] = '\0';
 	called_domain_uri[0] = '\0';
+	called_domain_final[0] = '\0';
 	contact_num[0] = '\0';
 	contact_domain[0] = '\0';
 	digest_username[0] = '\0';
@@ -1125,7 +1126,8 @@ int
 Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		  char *sessid, char *sdp_label, 
 		  list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		  char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		  char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
+		  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -1183,6 +1185,12 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	}
 	if(to_uri) {
 		this->ip_port[ipport_n].to_uri = to_uri;
+	}
+	if(domain_to) {
+		this->ip_port[ipport_n].domain_to = domain_to;
+	}
+	if(domain_to_uri) {
+		this->ip_port[ipport_n].domain_to_uri = domain_to_uri;
 	}
 	if(branch) {
 		this->ip_port[ipport_n].branch = branch;
@@ -1293,7 +1301,8 @@ void
 Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		       char *sessid, char *sdp_label, bool multipleSdpMedia, 
 		       list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		       char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		       char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
+		       int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -1331,7 +1340,8 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
-			     to, to_uri, branch, iscaller, rtpmap, sdp_flags) != -1) {
+			     to, to_uri, domain_to, domain_to_uri, branch, 
+			     iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
@@ -1462,6 +1472,20 @@ Call::get_to_not_canceled(bool uri) {
 			return(uri && this->ip_port[i].to_uri.length() ?
 				this->ip_port[i].to_uri.c_str() :
 				this->ip_port[i].to.c_str());
+		}
+	}
+	return(NULL);
+}
+
+const char*
+Call::get_domain_to_not_canceled(bool uri) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
+		   this->ip_port[i].domain_to.length() &&
+		   !this->ip_port[i].canceled) {
+			return(uri && this->ip_port[i].domain_to_uri.length() ?
+				this->ip_port[i].domain_to_uri.c_str() :
+				this->ip_port[i].domain_to.c_str());
 		}
 	}
 	return(NULL);

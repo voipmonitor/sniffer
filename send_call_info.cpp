@@ -362,8 +362,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 	sci->called_number_final = call->get_called();
 	sci->callername = call->callername;
 	sci->caller_domain = call->caller_domain;
-	sci->called_domain_to = call->called_domain_to;
-	sci->called_domain_uri = call->called_domain_uri;
+	sci->called_domain_to = call->get_called_domain_to();
+	sci->called_domain_uri = call->get_called_domain_uri();
 	sci->called_domain_final = call->get_called_domain();
 	sci->caller_ip = call->getSipcallerip();
 	sci->called_ip = call->getSipcalledip();
