@@ -7351,6 +7351,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	unsigned long usleepSumTime = 0;
 	unsigned long usleepSumTime_lastPush = 0;
 	sHeaderPacketPQout hp_out;
+	u_int64_t cleanupBlockStoreTrash_at_ms = 0;
 	//
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
@@ -7410,7 +7411,13 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							pti.blockStoreIndex = i;
 							pti.header = (*blockStore)[i].header;
 							pti.packet = (*blockStore)[i].packet;
-							pti.utime = getTimeUS(pti.header->header_fix_size.ts_tv_sec, pti.header->header_fix_size.ts_tv_usec);
+							pti.utime = getTimeUS(
+									      #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+									      pti.header->header.ts.tv_sec, pti.header->header.ts.tv_usec
+									      #else
+									      pti.header->header_fix_size.ts_tv_sec, pti.header->header_fix_size.ts_tv_usec
+									      #endif
+									      );
 							pti.at = at;
 							map<u_int64_t, list<sPacketTimeInfo>* >::iterator iter = listPacketTimeInfo.find(pti.utime);
 							if(iter != listPacketTimeInfo.end()) {
@@ -7468,10 +7475,24 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					if(blockStore) {
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
-						blockInfo[blockInfoCount].utime_first = getTimeUS((*blockStore)[0].header->header_fix_size.ts_tv_sec, 
-												  (*blockStore)[0].header->header_fix_size.ts_tv_usec);
-						blockInfo[blockInfoCount].utime_last = getTimeUS((*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
-												 (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec);
+						blockInfo[blockInfoCount].utime_first = getTimeUS(
+							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+							(*blockStore)[0].header->header.ts.tv_sec, 
+							(*blockStore)[0].header->header.ts.tv_usec
+							#else
+							(*blockStore)[0].header->header_fix_size.ts_tv_sec, 
+							(*blockStore)[0].header->header_fix_size.ts_tv_usec
+							#endif
+							);
+						blockInfo[blockInfoCount].utime_last = getTimeUS(
+							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+							(*blockStore)[blockStore->count - 1].header->header.ts.tv_sec, 
+							(*blockStore)[blockStore->count - 1].header->header.ts.tv_usec
+							#else
+							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
+							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec
+							#endif
+							);
 						blockInfo[blockInfoCount].at = at;
 						if(!blockInfo_utime_first ||
 						   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
@@ -7555,8 +7576,15 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								}
 							}
 						} else {
-							actBlockInfo->utime_first = getTimeUS((*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
-											      (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec);
+							actBlockInfo->utime_first = getTimeUS(
+								#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_sec,
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_usec
+								#else
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec
+								#endif
+								);
 							blockInfo_utime_first = minUtime;
 						}
 						usleepCounter = 0;
@@ -7598,7 +7626,12 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		if(!(this->packetServerDirection != directionWrite &&
 		     opt_ipaccount)) {
 			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
-				this->cleanupBlockStoreTrash();
+				u_int64_t time_ms = getTimeMS_rdtsc();
+				if(!cleanupBlockStoreTrash_at_ms || 
+				   (time_ms > cleanupBlockStoreTrash_at_ms && time_ms - cleanupBlockStoreTrash_at_ms > 1000)) {
+					this->cleanupBlockStoreTrash();
+					cleanupBlockStoreTrash_at_ms = time_ms;
+				}
 			}
 		}
 	}
@@ -7667,10 +7700,17 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
 					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];
+					#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+					ipaccount(headerPcap.header->header.ts.tv_sec,
+						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
+						  headerPcap.header->header.len - headerPcap.header->header_ip_offset,
+						  block->is_voip[i]);
+					#else
 					ipaccount(headerPcap.header->std ? headerPcap.header->header_std.ts.tv_sec : headerPcap.header->header_fix_size.ts_tv_sec,
 						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
 						  (headerPcap.header->std ? headerPcap.header->header_std.len : headerPcap.header->header_fix_size.len) - headerPcap.header->header_ip_offset,
 						  block->is_voip[i]);
+					#endif
 				}
 			}
 			buffersControl.sub__pb_trash_size(block->getUseAllSize());
