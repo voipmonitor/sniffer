@@ -152,17 +152,17 @@ struct pcap_pkthdr_plus {
 	inline u_int64_t get_time_ms() {
 		return(get_tv_sec() * 1000ull + get_tv_usec() / 1000);
 	}
-	#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD == false
+	#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+		pcap_pkthdr header;
+	#else
 		union {
 			pcap_pkthdr_fix_size header_fix_size;
 			pcap_pkthdr header_std;
 		}  __attribute__((packed));
-	#else
-		pcap_pkthdr header;
 	#endif
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
-	#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD == false
+	#if not PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 		int16_t std;
 	#endif
 	u_int16_t dlink;
