@@ -160,6 +160,7 @@ extern int opt_clippingdetect;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
+extern int opt_custom_headers_max_size;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
 extern int opt_rtpip_find_endpoints;
@@ -12149,15 +12150,17 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 					char *s = gettag_ext(data, datalen, parseContents,
 							     findHeader.c_str(), &l, &gettagLimitLen);
 					if(l) {
-						char customHeaderContent[256];
-						memcpy(customHeaderContent, s, min(l, 255lu));
-						customHeaderContent[min(l, 255lu)] = '\0';
+						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
+						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
+						memcpy(customHeaderContent, s, customHeaderContent_length);
+						customHeaderContent[customHeaderContent_length] = '\0';
 						char *customHeaderBegin = customHeaderContent;
 						if(!iter2->second.leftBorder.empty()) {
 							customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
 							if(customHeaderBegin) {
 								customHeaderBegin += iter2->second.leftBorder.length();
 							} else {
+								delete [] customHeaderContent;
 								continue;
 							}
 						}
@@ -12166,12 +12169,14 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 							if(customHeaderEnd) {
 								*customHeaderEnd = 0;
 							} else {
+								delete [] customHeaderContent;
 								continue;
 							}
 						}
 						if(!iter2->second.regularExpression.empty()) {
 							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
 							if(customHeader.empty()) {
+								delete [] customHeaderContent;
 								continue;
 							} else {
 								dstring content(iter2->second.header, customHeader);
@@ -12181,6 +12186,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 							dstring content(iter2->second.header, customHeaderBegin);
 							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
 						}
+						delete [] customHeaderContent;
 					}
 				}
 			}
@@ -12412,16 +12418,16 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 			(opt_cdr_partition ?
 				"`" + this->relTimeColumn + "` " + sqlDb_mysql->column_type_datetime_ms() + " NOT NULL," :
 				"") + 
-			"`custom_header_1` varchar(255) DEFAULT NULL,\
-			`custom_header_2` varchar(255) DEFAULT NULL,\
-			`custom_header_3` varchar(255) DEFAULT NULL,\
-			`custom_header_4` varchar(255) DEFAULT NULL,\
-			`custom_header_5` varchar(255) DEFAULT NULL,\
-			`custom_header_6` varchar(255) DEFAULT NULL,\
-			`custom_header_7` varchar(255) DEFAULT NULL,\
-			`custom_header_8` varchar(255) DEFAULT NULL,\
-			`custom_header_9` varchar(255) DEFAULT NULL,\
-			`custom_header_10` varchar(255) DEFAULT NULL," +
+			"`custom_header_1` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_2` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_3` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_4` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_5` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_6` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_7` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_8` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_9` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_10` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`" + this->relIdColumn + "`, `" + this->relTimeColumn + "`)" :
 			"PRIMARY KEY (`" + this->relIdColumn + "`)") +
@@ -12491,6 +12497,25 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 			}
 		}
 		break;
+	}
+	if(opt_custom_headers_max_size) {
+		vector<string> alters_ch;
+		for(int ch_i = 0; ch_i < 10; ch_i++) {
+			string type = sqlDb->getTypeColumn(tableName, ("custom_header_" + intToString(ch_i + 1)).c_str());
+			size_t pos_bracket = type.find('(');
+			if(pos_bracket != string::npos) {
+				int length = atoi(type.substr(pos_bracket + 1).c_str());
+				if(length < getCustomHeaderMaxSize()) {
+					alters_ch.push_back("modify column `" + ("custom_header_" + intToString(ch_i + 1)) + "` varchar(" + intToString(getCustomHeaderMaxSize()) + ") default null");
+				}
+			}
+		}
+		if(alters_ch.size()) {
+			sqlDb->logNeedAlter(tableName,
+					    "extended columns size for custom headers",
+					    string("ALTER TABLE ") + tableName + " " + implode(alters_ch, ", ") + ";",
+					    !checkColumnsSilentLog, &tableSize, NULL);
+		}
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -12629,6 +12654,10 @@ unsigned CustomHeaders::getSize() {
 	}
 	unlock_custom_headers();
 	return(size);
+}
+
+int CustomHeaders::getCustomHeaderMaxSize() {
+	return(max(opt_custom_headers_max_size, 1024));
 }
 
 

@@ -702,6 +702,7 @@ CustomHeaders *custom_headers_sip_msg;
 NoHashMessageRules *no_hash_message_rules;
 bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
+int opt_custom_headers_max_size = 0;
 bool opt_sql_time_utc = false;
 bool opt_socket_use_poll = true;
 bool opt_interrupts_counters = true;
@@ -3397,9 +3398,9 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
+	runAt = time(NULL);
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		runAt = time(NULL);
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -7261,6 +7262,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 				advanced();
 				addConfigItem(new FILE_LINE(42277) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("custom_headers_max_size", &opt_custom_headers_max_size));
 				addConfigItem(new FILE_LINE(42278) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
 				addConfigItem(new FILE_LINE(42279) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
 				addConfigItem(new FILE_LINE(42280) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
@@ -10440,6 +10442,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
 		opt_custom_headers_last_value = yesno(value);
+	}
+	if((value = ini.GetValue("general", "custom_headers_max_size", NULL))) {
+		opt_custom_headers_max_size = atoi(value);
 	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);

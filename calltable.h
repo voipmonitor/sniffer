@@ -3051,6 +3051,7 @@ public:
 	string getValue(Call *call, int type, const char *header);
 	static string tCH_Content_value(tCH_Content *ch_content, int i1, int i2);
 	unsigned getSize();
+	int getCustomHeaderMaxSize();
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));
