@@ -11147,23 +11147,23 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 						closeCall = true;
 						call->bye_timeout_exceeded = true;
 					} else if(call->first_rtp_time_us &&
-						  currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)rtptimeout) {
+						  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
 						closeCall = true;
 						call->rtp_timeout_exceeded = true;
 					} else if(!call->first_rtp_time_us &&
-						  currTimeS_unshift - call->get_first_packet_time_s() > sipwithoutrtptimeout) {
+						  currTimeS_unshift > call->get_first_packet_time_s() + sipwithoutrtptimeout) {
 						closeCall = true;
 						call->sipwithoutrtp_timeout_exceeded = true;
-					} else if(currTimeS_unshift - call->get_first_packet_time_s() > absolute_timeout) {
+					} else if(currTimeS_unshift > call->get_first_packet_time_s() + absolute_timeout) {
 						closeCall = true;
 						call->absolute_timeout_exceeded = true;
-					} else if(currTimeS_unshift - call->get_first_packet_time_s() > 300 &&
+					} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
 						  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 					}
 					if(!closeCall &&
-					   (call->oneway == 1 && (currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
+					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
 					}
@@ -11315,16 +11315,16 @@ Calltable::cleanup_registers(bool closeAll) {
 		} else {
 			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currTimeS_unshift) {
 				closeReg = true;
-			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > absolute_timeout) {
+			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > 300 &&
+			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + 300 &&
 				  !reg->seenRES18X && !reg->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
 			if(!closeReg &&
-			   (reg->oneway == 1 && (currTimeS_unshift - reg->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
+			   (reg->oneway == 1 && currTimeS_unshift > reg->get_last_packet_time_s() + opt_onewaytimeout)) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
@@ -11406,7 +11406,7 @@ int Calltable::cleanup_ss7(bool closeAll) {
 		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
 		     iter->second->destroy_at_s <= currTimeS_unshift)) || 
 		   closeAll ||
-		   (currTimeS_unshift - TIME_US_TO_S(iter->second->last_time_us)) > (unsigned)(opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
+		   currTimeS_unshift > TIME_US_TO_S(iter->second->last_time_us) + (opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;
