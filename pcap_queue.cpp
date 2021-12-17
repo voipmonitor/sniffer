@@ -3715,12 +3715,11 @@ bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckPro
 	extern bool opt_is_client_packetbuffer_sender;
 	if(opt_is_client_packetbuffer_sender) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
-		if(iphdr->get_daddr() == snifferClientOptions.host_ip) {
-			if(iphdr->get_protocol() == IPPROTO_TCP) {
-				tcphdr2 *header_tcp = (tcphdr2*)((char*)iphdr + iphdr->get_hdr_size());
-				if((unsigned)header_tcp->get_dest() == snifferClientOptions.port) {
-					return(false);
-				}
+		if(iphdr->get_daddr() == snifferClientOptions.host_ip &&
+		   iphdr->get_protocol() == IPPROTO_TCP) {
+			tcphdr2 *header_tcp = (tcphdr2*)((char*)iphdr + iphdr->get_hdr_size());
+			if((unsigned)header_tcp->get_dest() == snifferClientOptions.port) {
+				return(false);
 			}
 		}
 	}

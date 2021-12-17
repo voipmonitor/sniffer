@@ -1233,6 +1233,8 @@ cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
 
 char opt_curl_hook_wav[256] = "";
 
+bool opt_is_client_packetbuffer_sender = false;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -9206,6 +9208,11 @@ void set_context_config() {
 	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
 		opt_ipfix = false;
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
+	if(opt_is_client_packetbuffer_sender && opt_t2_boost && !opt_pcap_queue_use_blocks_read_check) {
+		opt_pcap_queue_use_blocks_read_check = 1;
 	}
 	
 }
