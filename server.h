@@ -88,6 +88,7 @@ struct sSnifferClientOptions {
 		return(!host.empty() && port);
 	}
 	string host;
+	vmIP host_ip;
 	unsigned port;
 	bool remote_query;
 	bool remote_store;

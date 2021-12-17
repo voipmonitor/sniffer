@@ -3687,7 +3687,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			checkProtocolData = &_checkProtocolData;
 		}
 		if(!check_protocol(*header, *packet, checkProtocolData) ||
-		   (filter_ip && !check_filter_ip(*packet, checkProtocolData))) {
+		   !check_filter_ip(*packet, checkProtocolData)) {
 			return(-11);
 		}
 	}
@@ -3706,8 +3706,25 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 }
 
 bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData) {
-	iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
-	return(filter_ip->checkIP(iphdr->get_saddr()) || filter_ip->checkIP(iphdr->get_daddr()));
+	if(filter_ip) {
+		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
+		if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
+			return(false);
+		}
+	}
+	extern bool opt_is_client_packetbuffer_sender;
+	if(opt_is_client_packetbuffer_sender) {
+		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
+		if(iphdr->get_daddr() == snifferClientOptions.host_ip || true) {
+			if(iphdr->get_protocol() == IPPROTO_TCP) {
+				tcphdr2 *header_tcp = (tcphdr2*)((char*)iphdr + iphdr->get_hdr_size());
+				if((unsigned)header_tcp->get_dest() == snifferClientOptions.port) {
+					return(false);
+				}
+			}
+		}
+	}
+	return(true);
 }
 
 void PcapQueue_readFromInterface_base::restoreOneshotBuffer() {
@@ -5088,7 +5105,7 @@ void PcapQueue_readFromInterfaceThread::_dpdk_packet_completion(void *user, pcap
 void PcapQueue_readFromInterfaceThread::dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet) {
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData) ||
-		   (filter_ip && !check_filter_ip((u_char*)packet, &dd->checkProtocolData))) {
+		   !check_filter_ip((u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
@@ -5518,7 +5535,7 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 	}
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData) ||
-		   (filter_ip && !check_filter_ip((u_char*)packet, &dd->checkProtocolData))) {
+		   !check_filter_ip((u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
