@@ -1209,6 +1209,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	if(!receive_socket) {
 		return(false);
 	}
+	this->client_options->host_ip = receive_socket->getIPL();
 	string connectCmd = "{\"type_connection\":\"service\"}\r\n";
 	if(!receive_socket->write(connectCmd)) {
 		if(!receive_socket->isError()) {

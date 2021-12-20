@@ -18,8 +18,9 @@ using namespace std;
 
 
 extern void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
-			char *callidstr, char *to, char *to_uri, char *branch);
+			char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
+extern void detect_domain_to_extern(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected);
 extern void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected);
 
 
@@ -291,11 +292,13 @@ void *handle_mgcp(packet_s_process *packetS) {
 						     packetS->source_(), packetS->dest_(), 
 						     &iscaller, NULL);
 			char to[1024];
+			char domain[1024];
 			char branch[100];
 			detect_to_extern(packetS, to, sizeof(to), NULL);
+			detect_domain_to_extern(packetS, domain, sizeof(domain), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
 			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
-				    (char*)call->call_id.c_str(), to, NULL, branch);
+				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch);
 		}
 		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||

@@ -466,6 +466,63 @@ private:
 	pthread_mutex_t tartimemaplock;
 };
 
+class TarCopy {
+public:
+	struct sTar {
+		string filePathName;
+	};
+	struct sCopyThread {
+		sCopyThread() {
+			memset(this, 0, sizeof(*this));
+		}
+		int tid;
+		pthread_t thread;
+		void *me;
+	};
+public:
+	TarCopy();
+	~TarCopy();
+	void setDestination(string destinationPath);
+	void setTrimSrcPath(string trimDir);
+	void setMove(bool move);
+	void setMaxThreads(unsigned max_threads);
+	void addTarsFromSpool();
+	void addTar(string filePathName, bool startThread = true);
+	void start_threads();
+	void stop_threads();
+	int queueLength() {
+		return(tar_queue.size());
+	}
+private:
+	void start_thread();
+	static void *thread_fce(void *arg);
+	void thread_fce(sCopyThread *copy_thread);
+	bool copy(string src_filePathName);
+	bool copy(string src_filePathName, string dst_filePathName);
+	void tar_queue_lock() {
+		while(__sync_lock_test_and_set(&this->_sync_tar_queue, 1));
+	}
+	void tar_queue_unlock() {
+		__sync_lock_release(&this->_sync_tar_queue);
+	}
+	void copy_threads_lock() {
+		while(__sync_lock_test_and_set(&this->_sync_copy_threads, 1));
+	}
+	void copy_threads_unlock() {
+		__sync_lock_release(&this->_sync_copy_threads);
+	}
+private:
+	string destinationPath;
+	string trimSrcPath;
+	bool move;
+	unsigned max_threads;
+	volatile bool stop;
+	deque<sTar> tar_queue;
+	vector<sCopyThread*> copy_threads;
+	volatile int _sync_tar_queue;
+	volatile int _sync_copy_threads;
+};
+
 void *TarQueueThread(void *dummy);
 
 int untar_gui(const char *args);

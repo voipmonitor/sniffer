@@ -2015,7 +2015,13 @@ void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
 				#pragma GCC diagnostic push
 				#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 				#endif
-				iter_dumper->second->dump(&(*eventInfo->block_store)[eventInfo->block_store_index].header->header_std,
+				iter_dumper->second->dump(
+							  #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+							  &(*eventInfo->block_store)[eventInfo->block_store_index].header->header
+							  #else
+							  &(*eventInfo->block_store)[eventInfo->block_store_index].header->header_std
+							  #endif
+							  ,
 							  (*eventInfo->block_store)[eventInfo->block_store_index].packet,
 							  eventInfo->dlt);
 				#if __GNUC__ >= 8

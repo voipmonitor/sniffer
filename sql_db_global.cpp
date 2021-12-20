@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <mysqld_error.h>
 
 #include "tools_local.h"
 
@@ -149,7 +150,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 	string stringValueInputSafe;
 	extern cUtfConverter utfConverter;
 	#ifdef CLOUD_ROUTER_CLIENT
-	if(useSetId() && !utfConverter.is_ascii(stringValueInput)) {
+	if(!(useSetId() ? utfConverter.is_ascii(stringValueInput) : utfConverter.check(stringValueInput))) {
 		stringValueInputSafe = utfConverter.remove_no_ascii(stringValueInput);
 	} else {
 		stringValueInputSafe = stringValueInput;
@@ -215,17 +216,26 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				SqlDb *sqlDb = createSqlObject();
 				list<SqlDb_condField> cond = this->cond;
 				cond.push_back(SqlDb_condField(columnStringValue, stringValue));
-				if(sqlDb->select(table, NULL, &cond, 1)) {
-					SqlDb_row row;
-					if((row = sqlDb->fetchRow())) {
-						rslt = atol(row[columnId].c_str());
+				sqlDb->setDisableLogError();
+				for(int forceLatin1 = 0; forceLatin1 < 2; forceLatin1++) {
+					if(sqlDb->select(table, NULL, &cond, 1, forceLatin1 == 1)) {
+						SqlDb_row row;
+						if((row = sqlDb->fetchRow())) {
+							rslt = atol(row[columnId].c_str());
+						}
+						break;
+					}
+					if(forceLatin1 == 1 ||
+					   sqlDb->getLastError() != ER_CANT_AGGREGATE_2COLLATIONS) {
+						sqlDb->checkLastError("query error in [" + sqlDb->selectQuery(table, NULL, &cond, 1, forceLatin1 == 1) + "]", true);
 					}
 				}
+				sqlDb->setEnableLogError();
 				if(!rslt) {
 					SqlDb_row row;
-					row.add(stringValueInputSafe, columnStringValue);
+					row.add(sqlEscapeString(stringValueInputSafe), columnStringValue);
 					for(list<SqlDb_condField>::iterator iter = this->cond.begin(); iter != this->cond.end(); iter++) {
-						row.add(iter->value, iter->field);
+						row.add(sqlEscapeString(iter->value), iter->field);
 					}
 					int64_t rsltInsert = sqlDb->insert(table, row);
 					if(rsltInsert > 0) {

@@ -28,6 +28,7 @@ extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
 extern bool opt_ipfix;
 
+#if not PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 struct pcap_pkthdr_fix_size {
 	uint32_t ts_tv_sec;
 	uint32_t ts_tv_usec;
@@ -36,6 +37,7 @@ struct pcap_pkthdr_fix_size {
 	uint32_t _filler1; // sizeof(pcap_pkthdr_fix_size) need eq sizeof(pcap_pkthdr) - for compatibility 32 / 64 bits
 	uint32_t _filler2;
 };
+#endif
 
 struct pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus() {
@@ -49,79 +51,120 @@ struct pcap_pkthdr_plus {
 		#endif
 	}
 	inline void convertFromStdHeader(pcap_pkthdr *header) {
-		this->std = 0;
-		this->header_fix_size.ts_tv_sec = header->ts.tv_sec;
-		this->header_fix_size.ts_tv_usec = header->ts.tv_usec;
-		this->header_fix_size.caplen = header->caplen;
-		this->header_fix_size.len = header->len;
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			this->header = *header;
+		#else
+			this->std = 0;
+			this->header_fix_size.ts_tv_sec = header->ts.tv_sec;
+			this->header_fix_size.ts_tv_usec = header->ts.tv_usec;
+			this->header_fix_size.caplen = header->caplen;
+			this->header_fix_size.len = header->len;
+		#endif
 	}
 	inline pcap_pkthdr *convertToStdHeader() {
-		if(!this->std) {
-			pcap_pkthdr header;
-			header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
-			header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
-			header.caplen = this->header_fix_size.caplen;
-			header.len = this->header_fix_size.len;
-			this->header_std = header;
-			this->std = 1;
-		}
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
-		#endif
-		return(&this->header_std);
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(&this->header);
+		#else
+			if(!this->std) {
+				pcap_pkthdr header;
+				header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
+				header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
+				header.caplen = this->header_fix_size.caplen;
+				header.len = this->header_fix_size.len;
+				this->header_std = header;
+			}
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
+			#endif
+			return(&this->header_std);
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic pop
+			#endif
 		#endif
 	}
 	inline pcap_pkthdr getStdHeader() {
-		if(this->std) {
-			return(this->header_std);
-		} else {
-			pcap_pkthdr header;
-			header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
-			header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
-			header.caplen = this->header_fix_size.caplen;
-			header.len = this->header_fix_size.len;
-			return(header);
-		}
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header);
+		#else
+			if(this->std) {
+				return(this->header_std);
+			} else {
+				pcap_pkthdr header;
+				header.ts.tv_sec = this->header_fix_size.ts_tv_sec;
+				header.ts.tv_usec = this->header_fix_size.ts_tv_usec;
+				header.caplen = this->header_fix_size.caplen;
+				header.len = this->header_fix_size.len;
+				return(header);
+			}
+		#endif
 	}
 	inline uint32_t get_caplen() {
-		return(std ? this->header_std.caplen : this->header_fix_size.caplen);
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header.caplen);
+		#else
+			return(std ? this->header_std.caplen : this->header_fix_size.caplen);
+		#endif
 	}
 	inline uint32_t get_len() {
-		return(std ? this->header_std.len : this->header_fix_size.len);
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header.len);
+		#else
+			return(std ? this->header_std.len : this->header_fix_size.len);
+		#endif
 	}
 	inline void set_caplen(uint32_t caplen) {
-		if(std) {
-			this->header_std.caplen = caplen;
-		} else { 
-			this->header_fix_size.caplen = caplen;
-		}
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			this->header.caplen = caplen;
+		#else
+			if(std) {
+				this->header_std.caplen = caplen;
+			} else { 
+				this->header_fix_size.caplen = caplen;
+			}
+		#endif
 	}
 	inline void set_len(uint32_t len) {
-		if(std) {
-			this->header_std.len = len;
-		} else {
-			this->header_fix_size.len = len;
-		}
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			this->header.len = len;
+		#else
+			if(std) {
+				this->header_std.len = len;
+			} else {
+				this->header_fix_size.len = len;
+			}
+		#endif
 	}
 	inline uint32_t get_tv_sec() {
-		return(std ? this->header_std.ts.tv_sec : this->header_fix_size.ts_tv_sec);
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header.ts.tv_sec);
+		#else
+			return(std ? this->header_std.ts.tv_sec : this->header_fix_size.ts_tv_sec);
+		#endif
 	}
 	inline uint32_t get_tv_usec() {
-		return(std ? this->header_std.ts.tv_usec : this->header_fix_size.ts_tv_usec);
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header.ts.tv_usec);
+		#else
+			return(std ? this->header_std.ts.tv_usec : this->header_fix_size.ts_tv_usec);
+		#endif
 	}
 	inline u_int64_t get_time_ms() {
 		return(get_tv_sec() * 1000ull + get_tv_usec() / 1000);
 	}
-	union {
-		pcap_pkthdr_fix_size header_fix_size;
-		pcap_pkthdr header_std;
-	}  __attribute__((packed));
+	#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+		pcap_pkthdr header;
+	#else
+		union {
+			pcap_pkthdr_fix_size header_fix_size;
+			pcap_pkthdr header_std;
+		}  __attribute__((packed));
+	#endif
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
-	int16_t std;
+	#if not PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+		int16_t std;
+	#endif
 	u_int16_t dlink;
 	sPacketInfoData pid;
 };
@@ -326,9 +369,21 @@ struct pcap_block_store {
 			pcap_pkthdr_plus *header = dpdk ? 
 						    &this->dpdk_data[this->count - 1].header :
 						    (pcap_pkthdr_plus*)(this->block + this->offsets[i]);
-			if(header->header_fix_size.caplen > 65535) {
+			if(
+			   #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			   header->header.caplen
+			   #else
+			   header->header_fix_size.caplen
+			   #endif
+			   > 65535) {
 				if(error) {
-					*error = new FILE_LINE(0) string("caplen = " + intToString(header->header_fix_size.caplen));
+					*error = new FILE_LINE(0) string("caplen = " + intToString(
+												   #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+												   header->header.caplen
+												   #else
+												   header->header_fix_size.caplen
+												   #endif
+												   ));
 				}
 				return(false);
 			}
@@ -415,7 +470,13 @@ struct pcap_block_store {
 		pcap_pkthdr_plus *pkthdr = dpdk ? 
 					    &this->dpdk_data[this->count - 1].header :
 					    (pcap_pkthdr_plus*)(this->block + this->offsets[this->count - 1]);
-		return(getTimeMS(pkthdr->header_fix_size.ts_tv_sec, pkthdr->header_fix_size.ts_tv_usec));
+		return(
+		       #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+		       getTimeMS(pkthdr->header.ts.tv_sec, pkthdr->header.ts.tv_usec)
+		       #else
+		       getTimeMS(pkthdr->header_fix_size.ts_tv_sec, pkthdr->header_fix_size.ts_tv_usec)
+		       #endif
+		);
 	}
 	header_mode hm;
 	bool dpdk;

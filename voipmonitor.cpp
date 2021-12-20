@@ -488,6 +488,7 @@ int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
 bool opt_ignore_rtp_after_bye_confirmed = false;
+bool opt_ignore_duration_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
 int opt_saveaudio_reversestereo = 0;
@@ -701,6 +702,7 @@ CustomHeaders *custom_headers_sip_msg;
 NoHashMessageRules *no_hash_message_rules;
 bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
+int opt_custom_headers_max_size = 0;
 bool opt_sql_time_utc = false;
 bool opt_socket_use_poll = true;
 bool opt_interrupts_counters = true;
@@ -914,6 +916,11 @@ char opt_spooldir_group[100];
 unsigned opt_spooldir_group_id;
 char opt_cachedir[1024];
 
+int opt_tar_move = 0;
+string opt_tar_move_destination_path;
+string opt_tar_move_source_trim_path;
+int opt_tar_move_max_threads = 2;
+
 int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
@@ -1084,6 +1091,7 @@ int opt_memory_purge_if_release_gt = 500;
 CleanSpool *cleanSpool[2] = { NULL, NULL };
 
 TarQueue *tarQueue[2] = { NULL, NULL };
+TarCopy *tarCopy;
 
 pthread_mutex_t terminate_packetbuffer_lock;
 
@@ -1224,6 +1232,8 @@ cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
 
 char opt_curl_hook_wav[256] = "";
+
+bool opt_is_client_packetbuffer_sender = false;
 
 
 #include <stdio.h>
@@ -1690,7 +1700,10 @@ void *moving_cache( void */*dummy*/ ) {
 			strcpy_null_term(dst_c, (char*)dst.c_str());
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
-			cachedirtransfered += move_file(src_c, dst_c, true);
+			int64_t _cachedirtransfered = move_file(src_c, dst_c, true);
+			if(_cachedirtransfered > 0) {
+				cachedirtransfered += _cachedirtransfered;
+			}
 			//TODO: error handling
 			//perror ("The following error occurred");
 
@@ -3387,9 +3400,9 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
+	runAt = time(NULL);
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		runAt = time(NULL);
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -4254,6 +4267,15 @@ int main_init_read() {
 				tarQueue[i] = new FILE_LINE(42019) TarQueue(i);
 			}
 		}
+		if(opt_tar_move && !opt_tar_move_destination_path.empty() && !is_read_from_file_simple()) {
+			tarCopy = new FILE_LINE(0) TarCopy;
+			tarCopy->setDestination(opt_tar_move_destination_path);
+			tarCopy->setTrimSrcPath(opt_tar_move_source_trim_path);
+			tarCopy->setMove(opt_tar_move == 1);
+			tarCopy->setMaxThreads(opt_tar_move_max_threads);
+			tarCopy->addTarsFromSpool();
+			tarCopy->start_threads();
+		}
 	}
 	
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
@@ -4868,6 +4890,10 @@ void main_term_read() {
 				pthread_join(tarqueuethread[i], NULL);
 				delete tarQueue[i];
 				tarQueue[i] = NULL;
+			}
+			if(tarCopy) {
+				delete tarCopy;
+				tarCopy = NULL;
 			}
 		}
 		if(sverb.chunk_buffer > 1) { 
@@ -7005,6 +7031,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_group", opt_spooldir_group, sizeof(opt_spooldir_group)));
 				addConfigItem(new FILE_LINE(42189) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new FILE_LINE(42190) cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("tar_move", &opt_tar_move))
+					->addValues("move:1|m:1|copy:2|c:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tar_move_destination_path", &opt_tar_move_destination_path));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tar_move_source_trim_path", &opt_tar_move_source_trim_path));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_move_max_threads", &opt_tar_move_max_threads));
 					expert();
 					addConfigItem(new FILE_LINE(42191) cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
 					addConfigItem(new FILE_LINE(42192) cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
@@ -7189,6 +7220,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
@@ -7232,6 +7264,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 				advanced();
 				addConfigItem(new FILE_LINE(42277) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("custom_headers_max_size", &opt_custom_headers_max_size));
 				addConfigItem(new FILE_LINE(42278) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
 				addConfigItem(new FILE_LINE(42279) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
 				addConfigItem(new FILE_LINE(42280) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
@@ -9177,6 +9210,11 @@ void set_context_config() {
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
+	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
+	if(opt_is_client_packetbuffer_sender && opt_t2_boost && !opt_pcap_queue_use_blocks_read_check) {
+		opt_pcap_queue_use_blocks_read_check = 1;
+	}
+	
 }
 
 void check_context_config() {
@@ -10412,6 +10450,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
 		opt_custom_headers_last_value = yesno(value);
 	}
+	if((value = ini.GetValue("general", "custom_headers_max_size", NULL))) {
+		opt_custom_headers_max_size = atoi(value);
+	}
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
 	}
@@ -10649,6 +10690,27 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cachedir", NULL))) {
 		strcpy_null_term(opt_cachedir, value);
 		spooldir_mkdir(opt_cachedir);
+	}
+	if((value = ini.GetValue("general", "tar_move", NULL))) {
+		switch(toupper(value[0])) {
+		case 'M':
+			opt_tar_move = 1;
+			break;
+		case 'C':
+			opt_tar_move = 2;
+			break;
+		default:
+			opt_tar_move = yesno(value);
+		}
+	}
+	if((value = ini.GetValue("general", "tar_move_destination_path", NULL))) {
+		opt_tar_move_destination_path = value;
+	}
+	if((value = ini.GetValue("general", "tar_move_source_trim_path", NULL))) {
+		opt_tar_move_source_trim_path = value;
+	}
+	if((value = ini.GetValue("general", "tar_move_max_threads", NULL))) {
+		opt_tar_move_max_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strcpy_null_term(opt_spooldir_main, value);
@@ -11086,7 +11148,7 @@ int eval_config(string inistr) {
 		opt_t2_boost_call_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
-		opt_t2_boost_pb_detach_thread = atoi(value);
+		opt_t2_boost_pb_detach_thread = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
 		opt_t2_boost_pcap_dispatch = atoi(value);
@@ -11579,6 +11641,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignore_duration_after_bye_confirmed", NULL))) {
+		opt_ignore_duration_after_bye_confirmed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_cancel_confirmed", NULL))) {
 		opt_ignore_rtp_after_cancel_confirmed = yesno(value);

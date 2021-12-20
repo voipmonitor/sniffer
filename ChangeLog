@@ -1,3 +1,18 @@
+29.1 20.12.2021
+===============
+- duration and connect duration is now counted up to confirmed BUY ignoring further RTP or other packets in a call. It can be changed by setting new option ignore_duration_after_bye_confirmed = no [VS-1266]
+- fix destination_number_mode=1 for some cases [VS-1264]
+- implemented moving closed tar files to another folder - new options tar_move* [VG-2359]
+- fix parsing t2_boost_pb_detach_thread
+- set thread to maximum priority when t2_boost_pb_detach_thread is enabled 
+- in case of multi call invite set SIP domain destination to the right one [VS-1268]
+- performance optimisation for dpdk 
+- custom_headers_max_size is now configurable [VS-1281]
+- fix utf parsing when reading pcap file - Illegal mix of collations [VS-1285]
+- fix unsafe timeout conditions in cleanup functions for client-server (fixes 29.0 version) [VS-1285]
+- fix mirroring: exclude sent packets to server from monitored traffic [VS-1286]
+
+
 29.0 16.11.2021
 ===============
 - experimental DPDK implementation documented here https://www.voipmonitor.org/doc/DPDK

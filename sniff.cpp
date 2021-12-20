@@ -1254,31 +1254,41 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 	return(rslt);
 }
 
+enum peername_sip_tags_type {
+	_prefer_domain = 1,
+	_prefer_number = 2
+};
+
 static struct {
 	const char *prefix;
 	unsigned length;
 	unsigned skip;
 	int type;
 } peername_sip_tags[] = {
-	{ "sip:", 4, 4, 0 },
-	{ "sips:", 5, 5, 0 },
-	{ "urn:", 4, 0, 1 },
-	{ "tel:", 4, 4, 2 }
+	{ "sip:", 4, 4, _prefer_domain },
+	{ "sips:", 5, 5, _prefer_domain },
+	{ "urn:", 4, 0, _prefer_number },
+	{ "tel:", 4, 4, _prefer_number }
 };
 
 inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned int peername_tag_len, int *peer_sip_tags_index) {
-	const char *p = NULL;
-	for(unsigned i = 0; i < sizeof(peername_sip_tags) / sizeof(peername_sip_tags[0]); i++) {
-		if((p = (const char*)memmem(peername_tag, peername_tag_len, peername_sip_tags[i].prefix, peername_sip_tags[i].length))) {
-			*peer_sip_tags_index = i;
-			break;
-		}
-	}
-	if(p && 
-	   (p == peername_tag || *(p-1) == '<')) {
-		return(p);
-	}
 	*peer_sip_tags_index = -1;
+	for(unsigned i = 0; i < sizeof(peername_sip_tags) / sizeof(peername_sip_tags[0]); i++) {
+		unsigned int offset = 0;
+		do {
+			const char *p;
+			if((p = (const char*)memmem(peername_tag + offset, peername_tag_len - offset, peername_sip_tags[i].prefix, peername_sip_tags[i].length))) {
+				if(p == peername_tag || *(p-1) == '<') {
+					*peer_sip_tags_index = i;
+					return(p);
+				} else {
+					offset = p - peername_tag + 1;
+				}
+			} else {
+				break;
+			}
+		} while(true);
+	}
 	return(NULL);
 }
  
@@ -1299,20 +1309,28 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
 			extern bool opt_callernum_numberonly;
-			if(*end == '@' ||
-			  (destType == ppndt_caller && opt_callernum_numberonly  && *end == ';') ||
-			  (peername_sip_tags[peer_sip_tags_index].type == 2) && *end == ';' ) {
-				if((peername_sip_tags[peer_sip_tags_index].type == 0) || (peername_sip_tags[peer_sip_tags_index].type == 2)) {
+			if(*end == '@') {
+				--end;
+				ok = true;
+				break;
+			} else if(*end == ';') {
+				if(destType == ppndt_caller && opt_callernum_numberonly) {
 					--end;
 					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
+					--end;
+					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
 					break;
 				}
 			} else if(*end == '>') {
-				if(peername_sip_tags[peer_sip_tags_index].type == 0) {
-					break;
-				} else {
+				if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
 					--end;
 					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
 					break;
 				}
 			}
@@ -1329,7 +1347,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			--end;
 		}
 		ok = begin < end;
-	} else if(parse_type == 3 && peername_sip_tags[peer_sip_tags_index].type == 0) { // domain
+	} else if(parse_type == 3) { // domain
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len) {
 			if(*begin == '@') {
@@ -1337,13 +1355,17 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 				break;
 			} else if(*begin == '>') {
-				begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
-				ok = true;
-				break;
+				if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
+					begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+					ok = true;
+					break;
+				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
+					break;
+				}
 			}
 			++begin;
 		}
-		if(begin == peername_tag + peername_tag_len) {
+		if(begin == (peername_tag + peername_tag_len) && (peername_sip_tags[peer_sip_tags_index].type & _prefer_domain)) {
 			begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 			ok = true;
 		}
@@ -1361,7 +1383,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 			}
 		}
-	} else if(parse_type == 4 && peername_sip_tags[peer_sip_tags_index].type == 0) { // tag
+	} else if(parse_type == 4) { // tag
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len - 4) {
 			if(*begin == ';' && strncasestr(begin + 1, "tag=", 4)) {
@@ -1484,7 +1506,8 @@ void testPN() {
 		"<tel:+33970660010>;tag=SDoduqd01-d87d01d6-0000-0bff-0000-0000",
 		"tel:+971543274144;tag=p65545t1614290087m188413c29442s3_859345611-1187759289",
 		"ů§jk§ůjsip:kljahfkjlahld",
-		"klhkjlh"
+		"klhkjlh",
+		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>"
 	};
 	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
 		char rslt[1000];
@@ -2759,6 +2782,31 @@ void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, b
 	detect_to(packetS, to, to_length, detected);
 }
 
+inline void detect_domain_to_uri(packet_s_process *packetS, char *domain_to_uri, unsigned domain_to_uri_length, bool *detected) {
+	if((packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) &&
+	   (!detected || !*detected)) {
+		get_sip_domain(packetS, packetS->sip_method == MESSAGE ? "MESSAGE " : "INVITE ", NULL,
+			       domain_to_uri, domain_to_uri_length,
+			       packetS->sip_method == MESSAGE ? ppntt_message : ppntt_invite, ppndt_called_domain);
+		if(detected) {
+			*detected = true;
+		}
+	}
+}
+
+inline void detect_domain_to(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected) {
+	if(!detected || !*detected) {
+		get_sip_domain(packetS, "\nTo:", "\nt:", domain_to, domain_to_length, ppntt_to, ppndt_called_domain);
+		if(detected) {
+			*detected = true;
+		}
+	}
+}
+
+void detect_domain_to_extern(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected) {
+	detect_domain_to(packetS, domain_to, domain_to_length, detected);
+}
+
 inline void detect_branch(packet_s_process *packetS, char *branch, unsigned branch_length, bool *detected) {
 	if(!detected || !*detected) {
 		get_sip_branch(packetS, "via:", branch, branch_length);
@@ -3124,7 +3172,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 }
 
 void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from_data, unsigned sdplen, 
-		 char *callidstr, char *to, char *to_uri, char *branch) {
+		 char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch) {
  
 	extern bool opt_disable_process_sdp;
 	if(opt_disable_process_sdp) {
@@ -3206,20 +3254,23 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 						call->add_ip_port_hash(packetS->saddr_(), sdp_media_data_item->ip, ip_port_call_info::_ta_base, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 								       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-								       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+								       to, to_uri, domain_to, domain_to_uri, branch,
+								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						// check if the IP address is listed in nat_aliases
 						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
 						if(alias.isSet()) {
 							call->add_ip_port_hash(packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-									       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       to, to_uri, domain_to, domain_to_uri, branch,
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 						if(opt_sdp_reverse_ipport) {
 							call->add_ip_port_hash(packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
-									       to, to_uri, branch, iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       to, to_uri, domain_to, domain_to_uri, branch, 
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
 						}
 					}
 				}
@@ -3335,8 +3386,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool to_uri_detected = false;
 	char to[1024] = "";
 	bool to_detected = false;
+	char domain_to_uri[1024] = "";
+	bool domain_to_uri_detected = false;
+	char domain_to[1024] = "";
+	bool domain_to_detected = false;
 	bool dont_save = false;
-
+	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
 		strncpy(contenttypestr, s, l);
@@ -3752,11 +3807,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			detect_to(packetS, to, sizeof(to), &to_detected);
 			if(strcmp(call->caller, to)) {
 				strcpy_null_term(call->called_to, to);
+				detect_domain_to(packetS, domain_to, sizeof(domain_to), &domain_to_detected);
+				strcpy_null_term(call->called_domain_to, domain_to);
 			}
 			if(opt_destination_number_mode == 2 || isSendCallInfoReady()) {
 				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 				if(to_uri[0] != '\0' && strcmp(call->caller, to_uri)) {
 					strcpy_null_term(call->called_uri, to_uri);
+					detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
+					strcpy_null_term(call->called_domain_uri, domain_to_uri);
 				}
 			}
 		}
@@ -4009,23 +4068,26 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					   call->called_invite_branch_map.size() > 1) {
 						detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 						if(branch[0] != '\0') {
-							bool use_called_invite = false;
+							bool use_uri = false;
 							if(opt_destination_number_mode == 2) {
-								use_called_invite = 1;
+								use_uri = 1;
 							} else {
-								map<string, bool> variants_called_invite;
+								map<string, bool> variants_to_uri;
 								map<string, bool> variants_to;
-								for(map<string, dstring>::iterator iter = call->called_invite_branch_map.begin(); iter != call->called_invite_branch_map.end(); iter++) {
-									variants_called_invite[iter->second[0]] = true;
-									variants_to[iter->second[1]] = true;
+								for(map<string, Call::sCalledInviteBranchItem>::iterator iter = call->called_invite_branch_map.begin(); iter != call->called_invite_branch_map.end(); iter++) {
+									variants_to_uri[iter->second.to_uri] = true;
+									variants_to[iter->second.to] = true;
 								}
-								use_called_invite = variants_called_invite.size() > variants_to.size();
+								use_uri = variants_to_uri.size() > variants_to.size();
 							}
-							map<string, dstring>::iterator iter = call->called_invite_branch_map.find(branch);
+							map<string, Call::sCalledInviteBranchItem>::iterator iter = call->called_invite_branch_map.find(branch);
 							if(iter != call->called_invite_branch_map.end()) {
-								strcpy_null_term(call->called_to, iter->second[1].c_str());
-								strcpy_null_term(call->called_uri, iter->second[0].c_str());
-								strcpy_null_term(call->called_final, iter->second[use_called_invite ? 0 : 1].c_str());
+								strcpy_null_term(call->called_to, iter->second.to.c_str());
+								strcpy_null_term(call->called_uri, iter->second.to_uri.c_str());
+								strcpy_null_term(call->called_final, use_uri ? iter->second.to_uri.c_str() : iter->second.to.c_str());
+								strcpy_null_term(call->called_domain_to, iter->second.domain_to.c_str());
+								strcpy_null_term(call->called_domain_uri, iter->second.domain_to_uri.c_str());
+								strcpy_null_term(call->called_domain_final, use_uri ? iter->second.domain_to_uri.c_str() : iter->second.domain_to.c_str());
 								call->updateDstnumOnAnswer = true;
 							}
 						}
@@ -4173,7 +4235,14 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
 			detect_to(packetS, to, sizeof(to), &to_detected);
 			if(to_uri[0] != '\0' || to[0] != '\0') {
-				call->called_invite_branch_map[branch] = dstring(to_uri, to);
+				detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
+				detect_domain_to(packetS, domain_to, sizeof(domain_to), &domain_to_detected);
+				Call::sCalledInviteBranchItem item;
+				item.to = to;
+				item.to_uri = to_uri;
+				item.domain_to = domain_to;
+				item.domain_to_uri = domain_to_uri;
+				call->called_invite_branch_map[branch] = item;
 			}
 		}
 		if(!packetS->_createCall && !existInviteSdaddr && !reverseInviteSdaddr) {
@@ -4409,9 +4478,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(is_application_sdp) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
+				detect_domain_to(packetS, domain_to, sizeof(domain_to), &domain_to_detected);
+				detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				process_sdp(call, packetS, _iscaller_process_sdp, contenttype_data_ptr, 0,
-					    packetS->get_callid(), to, to_uri, branch);
+					    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
 			} else if(is_multipart_mixed) {
 				char *content_data = contenttype_data_ptr + contenttypetaglen;
 				unsigned content_data_len = packetS->sipDataLen - (content_data - (packetS->data_()+ packetS->sipDataOffset));
@@ -4481,9 +4552,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								if(strcasestr(content_type, "application/sdp")) {
 									detect_to(packetS, to, sizeof(to), &to_detected);
 									detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
+									detect_domain_to(packetS, domain_to, sizeof(domain_to), &domain_to_detected);
+									detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 									detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 									process_sdp(call, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
-										    packetS->get_callid(), to, to_uri, branch);
+										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
 									call->add_txt(packetS->getTimeUS(), Call::txt_type_sdp_xml, content_data_begin, content_data_length);
 								}
@@ -4501,9 +4574,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							if(l > 0 && strcasestr(s2, "application/sdp")){
 								detect_to(packetS, to, sizeof(to), &to_detected);
 								detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
+								detect_domain_to(packetS, domain_to, sizeof(domain_to), &domain_to_detected);
+								detect_domain_to_uri(packetS, domain_to_uri, sizeof(domain_to_uri), &domain_to_uri_detected);
 								detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 								process_sdp(call, packetS, _iscaller_process_sdp, s2, 0,
-									    packetS->get_callid(), to, to_uri, branch);
+									    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
 								break;	// stop searching
 							} else {
 								// it is not SDP continue searching for another content-type 
@@ -5240,11 +5315,13 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	call->add_ip_port_hash(saddr, daddr, ip_port_call_info::_ta_base, dest, &header->ts, 
 			       NULL, NULL, false, 
 			       NULL, NULL,
-			       NULL, NULL, NULL, 1, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, NULL,
+			       1, rtpmap, s_sdp_flags());
 	call->add_ip_port_hash(saddr, saddr, ip_port_call_info::_ta_base, source, &header->ts, 
 			       NULL, NULL, false, 
 			       NULL, NULL,
-			       NULL, NULL, NULL, 0, rtpmap, s_sdp_flags());
+			       NULL, NULL, NULL, NULL, NULL,
+			       0, rtpmap, s_sdp_flags());
 	
 	return(call);
 }

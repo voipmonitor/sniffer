@@ -984,7 +984,7 @@ string SqlDb::getFieldsStr(list<SqlDb_field> *fields) {
 	return(fieldsStr);
 }
 
-string SqlDb::getCondStr(list<SqlDb_condField> *cond) {
+string SqlDb::getCondStr(list<SqlDb_condField> *cond, bool forceLatin1) {
 	string condStr;
 	for(list<SqlDb_condField>::iterator iter = cond->begin(); iter != cond->end(); iter++) {
 		if(!condStr.empty()) {
@@ -995,19 +995,21 @@ string SqlDb::getCondStr(list<SqlDb_condField> *cond) {
 			    iter->field;
 		condStr += iter->oper.empty() ? " = " : " " + iter->oper + " ";
 		condStr += iter->needEscapeValue ?
-			    getContentBorder() + escape(iter->value.c_str()) + getContentBorder() :
+			    (forceLatin1 ? "convert(" : "") +
+			    getContentBorder() + escape(iter->value.c_str()) + getContentBorder()  +
+			    (forceLatin1 ? "using latin1)" : "") :
 			    iter->value;
 	}
 	return(condStr);
 }
 
-string SqlDb::selectQuery(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit) {
+string SqlDb::selectQuery(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit, bool forceLatin1) {
 	string query = 
 		"select " +
 		(fields && fields->size() ? getFieldsStr(fields) : "*") + 
 		" from " + escapeTableName(table);
 	if(cond && cond->size()) {
-		query += " where " + getCondStr(cond);
+		query += " where " + getCondStr(cond, forceLatin1);
 	}
 	if(limit) {
 		query += " limit " + intToString(limit);
@@ -1015,7 +1017,7 @@ string SqlDb::selectQuery(string table, list<SqlDb_field> *fields, list<SqlDb_co
 	return(query);
 }
 
-string SqlDb::selectQuery(string table, const char *field, const char *condField, const char *condValue, unsigned limit) {
+string SqlDb::selectQuery(string table, const char *field, const char *condField, const char *condValue, unsigned limit, bool forceLatin1) {
 	list<SqlDb_field> fields;
 	if(field) {
 		fields.push_back(field);
@@ -1106,13 +1108,13 @@ string SqlDb::updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool
 	return(updateQuery(table, row, cond.c_str(), enableSqlStringInContent, escapeAll));
 }
 
-bool SqlDb::select(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit) {
-	string query = this->selectQuery(table, fields, cond, limit);
+bool SqlDb::select(string table, list<SqlDb_field> *fields, list<SqlDb_condField> *cond, unsigned limit, bool forceLatin1) {
+	string query = this->selectQuery(table, fields, cond, limit, forceLatin1);
 	return(this->query(query));
 }
 
-bool SqlDb::select(string table, const char *field, const char *condField, const char *condValue, unsigned limit) {
-	string query = this->selectQuery(table, field, condField, condValue, limit);
+bool SqlDb::select(string table, const char *field, const char *condField, const char *condValue, unsigned limit, bool forceLatin1) {
+	string query = this->selectQuery(table, field, condField, condValue, limit, forceLatin1);
 	return(this->query(query));
 }
 

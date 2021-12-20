@@ -160,6 +160,7 @@ extern int opt_clippingdetect;
 extern CustomHeaders *custom_headers_cdr;
 extern CustomHeaders *custom_headers_message;
 extern int opt_custom_headers_last_value;
+extern int opt_custom_headers_max_size;
 extern bool _save_sip_history;
 extern int opt_saveudptl;
 extern int opt_rtpip_find_endpoints;
@@ -532,6 +533,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	called_final[0] = '\0';
 	called_domain_to[0] = '\0';
 	called_domain_uri[0] = '\0';
+	called_domain_final[0] = '\0';
 	contact_num[0] = '\0';
 	contact_domain[0] = '\0';
 	digest_username[0] = '\0';
@@ -942,14 +944,19 @@ Call::_addtocachequeue(string file) {
 
 void
 Call::setFlagForRemoveRTP() {
+	u_int64_t startTimeMS = getTimeMS_rdtsc();
 	while(rtppacketsinqueue > 0) {
 		if(!opt_t2_boost && rtp_threads) {
-			extern int num_threads_max;
-			for(int i = 0; i < num_threads_max; i++) {
+			extern volatile int num_threads_active;
+			for(int i = 0; i < num_threads_active; i++) {
 				if(rtp_threads[i].threadId) {
 					rtp_threads[i].push_batch();
 				}
 			}
+		}
+		u_int64_t timeMS = getTimeMS_rdtsc();
+		if(timeMS > startTimeMS && timeMS - startTimeMS > 5000) {
+			break;
 		}
 		USLEEP(100);
 	}
@@ -1120,7 +1127,8 @@ int
 Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		  char *sessid, char *sdp_label, 
 		  list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		  char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		  char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
+		  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return(-1);
 	}
@@ -1178,6 +1186,12 @@ Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr typ
 	}
 	if(to_uri) {
 		this->ip_port[ipport_n].to_uri = to_uri;
+	}
+	if(domain_to) {
+		this->ip_port[ipport_n].domain_to = domain_to;
+	}
+	if(domain_to_uri) {
+		this->ip_port[ipport_n].domain_to_uri = domain_to_uri;
 	}
 	if(branch) {
 		this->ip_port[ipport_n].branch = branch;
@@ -1288,7 +1302,8 @@ void
 Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		       char *sessid, char *sdp_label, bool multipleSdpMedia, 
 		       list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		       char *to, char *to_uri, char *branch, int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		       char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
+		       int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(this->end_call_rtp) {
 		return;
 	}
@@ -1326,7 +1341,8 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
-			     to, to_uri, branch, iscaller, rtpmap, sdp_flags) != -1) {
+			     to, to_uri, domain_to, domain_to_uri, branch, 
+			     iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
@@ -1457,6 +1473,20 @@ Call::get_to_not_canceled(bool uri) {
 			return(uri && this->ip_port[i].to_uri.length() ?
 				this->ip_port[i].to_uri.c_str() :
 				this->ip_port[i].to.c_str());
+		}
+	}
+	return(NULL);
+}
+
+const char*
+Call::get_domain_to_not_canceled(bool uri) {
+	for(int i = 0; i < ipport_n; i++) {
+		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
+		   this->ip_port[i].domain_to.length() &&
+		   !this->ip_port[i].canceled) {
+			return(uri && this->ip_port[i].domain_to_uri.length() ?
+				this->ip_port[i].domain_to_uri.c_str() :
+				this->ip_port[i].domain_to.c_str());
 		}
 	}
 	return(NULL);
@@ -11117,23 +11147,23 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 						closeCall = true;
 						call->bye_timeout_exceeded = true;
 					} else if(call->first_rtp_time_us &&
-						  currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)rtptimeout) {
+						  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
 						closeCall = true;
 						call->rtp_timeout_exceeded = true;
 					} else if(!call->first_rtp_time_us &&
-						  currTimeS_unshift - call->get_first_packet_time_s() > sipwithoutrtptimeout) {
+						  currTimeS_unshift > call->get_first_packet_time_s() + sipwithoutrtptimeout) {
 						closeCall = true;
 						call->sipwithoutrtp_timeout_exceeded = true;
-					} else if(currTimeS_unshift - call->get_first_packet_time_s() > absolute_timeout) {
+					} else if(currTimeS_unshift > call->get_first_packet_time_s() + absolute_timeout) {
 						closeCall = true;
 						call->absolute_timeout_exceeded = true;
-					} else if(currTimeS_unshift - call->get_first_packet_time_s() > 300 &&
+					} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
 						  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 					}
 					if(!closeCall &&
-					   (call->oneway == 1 && (currTimeS_unshift - call->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
+					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
 					}
@@ -11285,16 +11315,16 @@ Calltable::cleanup_registers(bool closeAll) {
 		} else {
 			if(reg->destroy_call_at != 0 && reg->destroy_call_at <= currTimeS_unshift) {
 				closeReg = true;
-			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > absolute_timeout) {
+			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} else if(currTimeS_unshift - reg->get_first_packet_time_s() > 300 &&
+			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + 300 &&
 				  !reg->seenRES18X && !reg->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
 			if(!closeReg &&
-			   (reg->oneway == 1 && (currTimeS_unshift - reg->get_last_packet_time_s() > (unsigned)opt_onewaytimeout))) {
+			   (reg->oneway == 1 && currTimeS_unshift > reg->get_last_packet_time_s() + opt_onewaytimeout)) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
@@ -11376,7 +11406,7 @@ int Calltable::cleanup_ss7(bool closeAll) {
 		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
 		     iter->second->destroy_at_s <= currTimeS_unshift)) || 
 		   closeAll ||
-		   (currTimeS_unshift - TIME_US_TO_S(iter->second->last_time_us)) > (unsigned)(opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
+		   currTimeS_unshift > TIME_US_TO_S(iter->second->last_time_us) + (opt_ss7timeout ? opt_ss7timeout : absolute_timeout)) {
 			iter->second->pushToQueue();
 			ss7_listMAP.erase(iter++);
 			continue;
@@ -12120,15 +12150,17 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 					char *s = gettag_ext(data, datalen, parseContents,
 							     findHeader.c_str(), &l, &gettagLimitLen);
 					if(l) {
-						char customHeaderContent[256];
-						memcpy(customHeaderContent, s, min(l, 255lu));
-						customHeaderContent[min(l, 255lu)] = '\0';
+						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
+						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
+						memcpy(customHeaderContent, s, customHeaderContent_length);
+						customHeaderContent[customHeaderContent_length] = '\0';
 						char *customHeaderBegin = customHeaderContent;
 						if(!iter2->second.leftBorder.empty()) {
 							customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
 							if(customHeaderBegin) {
 								customHeaderBegin += iter2->second.leftBorder.length();
 							} else {
+								delete [] customHeaderContent;
 								continue;
 							}
 						}
@@ -12137,12 +12169,14 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 							if(customHeaderEnd) {
 								*customHeaderEnd = 0;
 							} else {
+								delete [] customHeaderContent;
 								continue;
 							}
 						}
 						if(!iter2->second.regularExpression.empty()) {
 							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
 							if(customHeader.empty()) {
+								delete [] customHeaderContent;
 								continue;
 							} else {
 								dstring content(iter2->second.header, customHeader);
@@ -12152,6 +12186,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 							dstring content(iter2->second.header, customHeaderBegin);
 							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
 						}
+						delete [] customHeaderContent;
 					}
 				}
 			}
@@ -12383,16 +12418,16 @@ void CustomHeaders::createTableIfNotExists(const char *tableName, SqlDb *sqlDb, 
 			(opt_cdr_partition ?
 				"`" + this->relTimeColumn + "` " + sqlDb_mysql->column_type_datetime_ms() + " NOT NULL," :
 				"") + 
-			"`custom_header_1` varchar(255) DEFAULT NULL,\
-			`custom_header_2` varchar(255) DEFAULT NULL,\
-			`custom_header_3` varchar(255) DEFAULT NULL,\
-			`custom_header_4` varchar(255) DEFAULT NULL,\
-			`custom_header_5` varchar(255) DEFAULT NULL,\
-			`custom_header_6` varchar(255) DEFAULT NULL,\
-			`custom_header_7` varchar(255) DEFAULT NULL,\
-			`custom_header_8` varchar(255) DEFAULT NULL,\
-			`custom_header_9` varchar(255) DEFAULT NULL,\
-			`custom_header_10` varchar(255) DEFAULT NULL," +
+			"`custom_header_1` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_2` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_3` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_4` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_5` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_6` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_7` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_8` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_9` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL,\
+			`custom_header_10` varchar(" + intToString(getCustomHeaderMaxSize()) + ") DEFAULT NULL," +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`" + this->relIdColumn + "`, `" + this->relTimeColumn + "`)" :
 			"PRIMARY KEY (`" + this->relIdColumn + "`)") +
@@ -12462,6 +12497,25 @@ void CustomHeaders::checkTableColumns(const char *tableName, int tableIndex, Sql
 			}
 		}
 		break;
+	}
+	if(opt_custom_headers_max_size) {
+		vector<string> alters_ch;
+		for(int ch_i = 0; ch_i < 10; ch_i++) {
+			string type = sqlDb->getTypeColumn(tableName, ("custom_header_" + intToString(ch_i + 1)).c_str());
+			size_t pos_bracket = type.find('(');
+			if(pos_bracket != string::npos) {
+				int length = atoi(type.substr(pos_bracket + 1).c_str());
+				if(length < getCustomHeaderMaxSize()) {
+					alters_ch.push_back("modify column `" + ("custom_header_" + intToString(ch_i + 1)) + "` varchar(" + intToString(getCustomHeaderMaxSize()) + ") default null");
+				}
+			}
+		}
+		if(alters_ch.size()) {
+			sqlDb->logNeedAlter(tableName,
+					    "extended columns size for custom headers",
+					    string("ALTER TABLE ") + tableName + " " + implode(alters_ch, ", ") + ";",
+					    !checkColumnsSilentLog, &tableSize, NULL);
+		}
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -12600,6 +12654,10 @@ unsigned CustomHeaders::getSize() {
 	}
 	unlock_custom_headers();
 	return(size);
+}
+
+int CustomHeaders::getCustomHeaderMaxSize() {
+	return(max(opt_custom_headers_max_size, 1024));
 }
 
 

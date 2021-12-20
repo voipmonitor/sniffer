@@ -886,7 +886,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				}
 				u_int64_t start = getTimeMS();
 				char *fts_path[2] = { (char*)pathHour.c_str(), NULL };
-				FTS *tree = fts_open(fts_path, FTS_NOCHDIR, 0);
+				FTS *tree = fts_open(fts_path, FTS_COMFOLLOW | FTS_NOCHDIR, 0);
 				if(!tree) {
 					continue;
 				}
