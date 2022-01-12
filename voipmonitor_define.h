@@ -47,7 +47,7 @@
 
 #define DEBUG_ASYNC_TAR_WRITE false
 
-#define HEAPSAFE true
+#define HEAPSAFE false
 
 #define RQUEUE_SAFE true
 
@@ -62,7 +62,6 @@
 #define CALL_RTP_DYNAMIC_ARRAY true
 
 #define PCAP_QUEUE_PCAP_HEADER_FORCE_STD false
-#define PCAP_QUEUE_PROCESS_PACKET_NOT_INLINE false
 
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
 

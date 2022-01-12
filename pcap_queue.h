@@ -984,9 +984,6 @@ protected:
 private:
 	void createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort);
 	void cleanupConnections(bool all = false);
-	#if not PCAP_QUEUE_PROCESS_PACKET_NOT_INLINE
-	inline
-	#endif
 	int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
 	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();

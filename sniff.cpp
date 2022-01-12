@@ -5120,13 +5120,13 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 	bool is_rtcp;
 	bool stream_in_multiple_calls;
 	s_sdp_flags sdp_flags;
-	unsigned call_info_index;
+	int call_info_index;
 	int count_use = 0;
 	packet_s_process_rtp_call_info call_info_temp[packet_s_process_calls_info::max_calls()];
 	size_t call_info_temp_length = 0;
 	for(call_info_index = 0; call_info_index < call_info->length; call_info_index++) {
 		if(threadIndex &&
-		   call_info->calls[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+		   call_info->calls[call_info_index].thread_num_rd != (threadIndex - 1)) {
 			continue;
 		}
 		
@@ -5211,7 +5211,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 	}
 	for(call_info_index = 0; call_info_index < call_info->length; call_info_index++) {
 		if(threadIndex &&
-		   call_info->calls[call_info_index].call->thread_num_rd != (threadIndex - 1)) {
+		   call_info->calls[call_info_index].thread_num_rd != (threadIndex - 1)) {
 			continue;
 		}
 		if(!call_info->calls[call_info_index].use_sync) {
@@ -5432,6 +5432,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					}
 					call_info->calls[call_info->length].use_sync = false;
 					call_info->calls[call_info->length].multiple_calls = false;
+					call_info->calls[call_info->length].thread_num_rd = call->thread_num_rd;
 					++call_info->length;
 					if(call_info->length >= packet_s_process_calls_info::max_calls()) {
 						break;
@@ -5439,7 +5440,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 				}
 			}
 			if(call_info->length > 1 && !packetS->audiocodes) {
-				for(unsigned i = 0; i < call_info->length; i++) {
+				for(int i = 0; i < call_info->length; i++) {
 					call_info->calls[i].multiple_calls = true;
 				}
 			}
@@ -9722,7 +9723,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
 			threads_rd[0] = packetS->call_info.calls[0].call->thread_num_rd;
 			int threads_rd_count = 1;
-			for(unsigned i = 1; i < packetS->call_info.length; i++) {
+			for(int i = 1; i < packetS->call_info.length; i++) {
 				int thread_rd = packetS->call_info.calls[i].call->thread_num_rd;
 				if(thread_rd != threads_rd[0]) {
 					bool exists = false;
@@ -9803,6 +9804,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				}
 				packetS->call_info.calls[packetS->call_info.length].use_sync = false;
 				packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
+				packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
 				__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
 				++packetS->call_info.length;
 				if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
@@ -9811,7 +9813,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			}
 		}
 		if(packetS->call_info.length > 1 && !packetS->audiocodes) {
-			for(unsigned i = 0; i < packetS->call_info.length; i++) {
+			for(int i = 0; i < packetS->call_info.length; i++) {
 				packetS->call_info.calls[i].multiple_calls = true;
 			}
 		}

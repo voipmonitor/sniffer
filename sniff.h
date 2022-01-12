@@ -433,10 +433,11 @@ struct packet_s_process_rtp_call_info {
 	s_sdp_flags sdp_flags;
 	bool use_sync;
 	bool multiple_calls;
+	u_int8_t thread_num_rd;
 };
 
 struct packet_s_process_calls_info {
-	unsigned length;
+	int length;
 	bool find_by_dest;
 	packet_s_process_rtp_call_info calls[1];
 	static unsigned __size_of;
@@ -456,7 +457,7 @@ struct packet_s_process_calls_info {
 	static inline void set_size_of() {
 		__size_of = _size_of();
 	}
-	static inline unsigned max_calls() {
+	static inline int max_calls() {
 		extern int opt_sdp_multiplication;
 		return(max(opt_sdp_multiplication, 1));
 	}

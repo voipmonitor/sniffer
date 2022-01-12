@@ -3096,6 +3096,8 @@ int main(int argc, char *argv[]) {
 		}
 		if(strstr(argv[i], "heapreserve")) {
 			HeapSafeCheck = _HeapSafeSafeReserve;
+		} else if(strstr(argv[i], "heapfillff")) {
+			HeapSafeCheck = _HeapSafeErrorFillFF;
 		} else if(strstr(argv[i], "heapsafe")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |

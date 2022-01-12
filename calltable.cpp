@@ -11173,7 +11173,7 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					call->removeFindTables(true);
 					if((!closeAll || !forceClose) &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
-					    call->rtppacketsinqueue != 0 ||
+					    call->rtppacketsinqueue > 0 ||
 					    call->useInListCalls)) {
 						closeCall = false;
 						++rejectedCalls_count;
