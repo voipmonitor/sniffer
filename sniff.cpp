@@ -1306,6 +1306,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	const char *end = NULL;
 	bool ok = false;
 	if(parse_type == 1) { // peername
+		bool ok_if_exists_domain = false;
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
 			extern bool opt_callernum_numberonly;
@@ -1323,6 +1324,8 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 					ok = true;
 					break;
 				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
+					--end;
+					ok_if_exists_domain = true;
 					break;
 				}
 			} else if(*end == '>') {
@@ -1331,6 +1334,18 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 					ok = true;
 					break;
 				} else if(peername_sip_tags[peer_sip_tags_index].type & _prefer_domain) {
+					break;
+				}
+			}
+		}
+		if(!ok && ok_if_exists_domain) {
+			for(const char *p = end + 1; p < peername_tag + peername_tag_len; p++) {
+				if(*p == '@') {
+					if(p < peername_tag + peername_tag_len - 1 && isalnum(*(p+1))) {
+						ok = true;
+					}
+					break;
+				} else if(*p == '>' || *p == ':' || *p == ' ') {
 					break;
 				}
 			}
@@ -1507,7 +1522,8 @@ void testPN() {
 		"tel:+971543274144;tag=p65545t1614290087m188413c29442s3_859345611-1187759289",
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh",
-		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>"
+		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>",
+		"sip:+491987117;npdi;rn=+49D2821987117@next-id.de;user=phone SIP/2.0"
 	};
 	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
 		char rslt[1000];
