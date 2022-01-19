@@ -1,3 +1,10 @@
+29.1.1 13.01.2021
+=================
+- fix rare crash 
+- speed optimisations in memory allocations
+- modify peername parsing if the peername contains multiple entries and the tag also contains domain (sip:+123;npdi;rn=+123@example.com;user=phone SIP/2.0)  [VS-1287] 
+
+
 29.1 20.12.2021
 ===============
 - duration and connect duration is now counted up to confirmed BUY ignoring further RTP or other packets in a call. It can be changed by setting new option ignore_duration_after_bye_confirmed = no [VS-1266]
