@@ -47,7 +47,7 @@
 
 #define DEBUG_ASYNC_TAR_WRITE false
 
-#define HEAPSAFE false
+#define HEAPSAFE true
 
 #define RQUEUE_SAFE true
 
