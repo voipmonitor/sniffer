@@ -51,16 +51,17 @@
  
 
 enum eHeapSafeErrors {
-	_HeapSafeErrorNotEnoughMemory =   1,
-	_HeapSafeErrorBeginEnd        =   2,
-	_HeapSafeErrorFreed           =   4,
-	_HeapSafeErrorInAllocFce      =   8,
-	_HeapSafeErrorAllocReserve    =  16,
-	_HeapSafeErrorFillFF          =  32,
-	_HeapSafeErrorInHeap          =  64,
-	_HeapSafeSafeReserve          = 128,
-	_HeapSafePlus                 = 256,
-	_HeapSafeStack                = 512
+	_HeapSafeErrorNotEnoughMemory = 1 << 0,
+	_HeapSafeErrorBeginEnd        = 1 << 1,
+	_HeapSafeErrorFreed           = 1 << 2,
+	_HeapSafeErrorInAllocFce      = 1 << 3,
+	_HeapSafeErrorAllocReserve    = 1 << 4,
+	_HeapSafeErrorFillFF          = 1 << 5,
+	_HeapSafeErrorFillRand        = 1 << 6,
+	_HeapSafeErrorInHeap          = 1 << 7,
+	_HeapSafeSafeReserve          = 1 << 8,
+	_HeapSafePlus                 = 1 << 9,
+	_HeapSafeStack                = 1 << 10
 };
 
 struct sHeapSafeMemoryControlBlock {

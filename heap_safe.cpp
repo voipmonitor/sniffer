@@ -117,7 +117,8 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		return(pointerToObject);
 	}
 	memset(pointerToObject,
-	       HeapSafeCheck & _HeapSafeErrorFillFF ? 0xFF : 0,
+	       HeapSafeCheck & _HeapSafeErrorFillFF ? 0xFF : 
+	       HeapSafeCheck & _HeapSafeErrorFillRand ? rand() % 256 : 0,
 	       sizeOfObject + HEAPSAFE_ALLOC_RESERVE +
 	       (HeapSafeCheck & _HeapSafeErrorBeginEnd ?
                 (SIZEOF_MCB + sizeof(sHeapSafeMemoryControlBlock)) :

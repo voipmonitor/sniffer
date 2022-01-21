@@ -634,7 +634,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			}
 			if(!this->remote_socket->connect()) {
-				setLastError(0, "failed connect to cloud router", true);
+				setLastError(0, isCloud() ? "failed connect to cloud router" : "failed connect to server", true);
 				continue;
 			}
 			string cmd = isCloud() ?

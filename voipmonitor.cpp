@@ -1256,6 +1256,7 @@ void daemonizeOutput(string error);
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void get_command_line_arguments_mysql();
+static void get_command_line_arguments_json_config();
 static void set_default_values();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
@@ -3098,6 +3099,8 @@ int main(int argc, char *argv[]) {
 			HeapSafeCheck = _HeapSafeSafeReserve;
 		} else if(strstr(argv[i], "heapfillff")) {
 			HeapSafeCheck = _HeapSafeErrorFillFF;
+		} else if(strstr(argv[i], "heapfillrand")) {
+			HeapSafeCheck = _HeapSafeErrorFillRand;
 		} else if(strstr(argv[i], "heapsafe")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
@@ -3370,6 +3373,7 @@ int main(int argc, char *argv[]) {
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			get_command_line_arguments_mysql();
+			get_command_line_arguments_json_config();
 			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
 			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
@@ -8255,6 +8259,7 @@ void parse_verb_param(string verbParam) {
 
 void get_command_line_arguments() {
 	get_command_line_arguments_mysql();
+	get_command_line_arguments_json_config();
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
 		char *optarg = NULL;
@@ -8682,20 +8687,6 @@ void get_command_line_arguments() {
 			case 337:
 				opt_t2_boost = true;
 				break;
-			case 338:
-				if(CONFIG.isSet()) {
-					CONFIG.setFromJson(optarg);
-				} else {
-					cConfig config;
-					config.addConfigItems();
-					config.setFromJson(optarg);
-				}
-				useCmdLineConfig = true;
-				if(!snifferServerOptions.host.empty() ||
-				   !snifferClientOptions.host.empty()) {
-					useNewCONFIG = true;
-				}
-				break;
 			case 339:
 				opt_sip_options = true;
 				opt_sip_subscribe = true;
@@ -8786,6 +8777,27 @@ void get_command_line_arguments_mysql() {
 				break;
 			case 'p':
 				strcpy_null_term(mysql_password, iter->second.c_str());
+				break;
+		}
+	}
+}
+
+void get_command_line_arguments_json_config() {
+	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
+		switch(iter->first) {
+			case 338:
+				if(CONFIG.isSet()) {
+					CONFIG.setFromJson(iter->second.c_str());
+				} else {
+					cConfig config;
+					config.addConfigItems();
+					config.setFromJson(iter->second.c_str());
+				}
+				useCmdLineConfig = true;
+				if(!snifferServerOptions.host.empty() ||
+				   !snifferClientOptions.host.empty()) {
+					useNewCONFIG = true;
+				}
 				break;
 		}
 	}
