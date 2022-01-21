@@ -1222,6 +1222,10 @@ public:
 			PACKET_S_PROCESS_DESTROY(&packetS);
 			return;
 		}
+		if(!packetS) {
+			syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+			return;
+		}
 		if(!qring_push_index) {
 			++qringPushCounter;
 			unsigned int usleepCounter = 0;

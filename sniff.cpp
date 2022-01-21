@@ -9663,6 +9663,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				    batch_index < count / (_process_rtp_packets_hash_next_threads + 1); 
 				    batch_index++) {
 					packet_s_process_0 *packetS = batch->batch[batch_index];
+					if(!packetS) {
+						syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+						continue;
+					}
 					packetS->init2_rtp();
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
