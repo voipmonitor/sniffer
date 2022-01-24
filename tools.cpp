@@ -2307,11 +2307,11 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 		pexecCmd += ";'";
 		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600);
 		if(exitCode == 0) {
-			syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
 		} else {
 			this->errorString = string(out) + "\n" + string(err);
-			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) FAILED: %s", cmd, pexecCmd.c_str(), this->errorString.c_str());
 			return(false);
 		}
 	}
