@@ -8765,6 +8765,13 @@ void get_command_line_arguments_mysql() {
 		switch(iter->first) {
 			case 'h':
 				strcpy_null_term(mysql_host, iter->second.c_str());
+				{
+					char *portSeparator = strrchr(mysql_host, ':');
+					if(portSeparator) {
+						*portSeparator = 0;
+						opt_mysql_port = atoi(portSeparator + 1);
+					}
+				}
 				break;
 			case 'O':
 				opt_mysql_port = atoi(iter->second.c_str());
