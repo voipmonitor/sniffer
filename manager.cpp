@@ -5010,7 +5010,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 	} else if(string(type_information) == "cmd_file") {
 		extern string rundir;
 		extern string appname;
-		return(params->sendPexecOutput(("file " + rundir + "/" + appname).c_str()));
+		return(params->sendPexecOutput(("file " + binaryNameWithPath).c_str()));
 	} else if(string(type_information) == "cmd_ldd") {
 		return(params->sendPexecOutput(("ldd " + binaryNameWithPath).c_str()));
 	}
