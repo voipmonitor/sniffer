@@ -1,8 +1,8 @@
-29.1.2 13.01.2021
+29.1.2 13.01.2022
 =================
 - fix 29.1.1 static builds crashing
 
-29.1.1 13.01.2021
+29.1.1 13.01.2022
 =================
 - fix rare crash 
 - speed optimisations in memory allocations
