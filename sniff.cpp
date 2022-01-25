@@ -5417,6 +5417,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		#else
 		if(n_call) {
 		#endif
+			unsigned counter_rtp_only_packets = 0;
 			++counter_rtp_packets[0];
 			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
@@ -5433,6 +5434,9 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					}
 					*/
 					++counter_rtp_packets[1];
+					if(!call_rtp->is_rtcp) {
+						++counter_rtp_only_packets;
+					}
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info->calls[call_info->length].call = call;
 					call_info->calls[call_info->length].iscaller = call_rtp->iscaller;
@@ -5455,9 +5459,11 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					}
 				}
 			}
-			if(call_info->length > 1 && !packetS->audiocodes) {
+			if(counter_rtp_only_packets > 1 && !packetS->audiocodes) {
 				for(int i = 0; i < call_info->length; i++) {
-					call_info->calls[i].multiple_calls = true;
+					if(!call_info->calls[i].is_rtcp) {
+						call_info->calls[i].multiple_calls = true;
+					}
 				}
 			}
 		}
@@ -9798,6 +9804,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	#else
 	if(n_call) {
 	#endif
+		unsigned counter_rtp_only_packets = 0;
 		++counter_rtp_packets[0];
 		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
@@ -9809,6 +9816,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			Call *call = call_rtp->call;
 			if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
 				++counter_rtp_packets[1];
+				if(!call_rtp->is_rtcp) {
+					++counter_rtp_only_packets;
+				}
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info.calls[packetS->call_info.length].call = call;
 				packetS->call_info.calls[packetS->call_info.length].iscaller = call_rtp->iscaller;
@@ -9832,9 +9842,11 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				}
 			}
 		}
-		if(packetS->call_info.length > 1 && !packetS->audiocodes) {
+		if(counter_rtp_only_packets > 1 && !packetS->audiocodes) {
 			for(int i = 0; i < packetS->call_info.length; i++) {
-				packetS->call_info.calls[i].multiple_calls = true;
+				if(!packetS->call_info.calls[i].is_rtcp) {
+					packetS->call_info.calls[i].multiple_calls = true;
+				}
 			}
 		}
 	}
