@@ -3976,25 +3976,25 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(getSipcallerip(), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip(), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip(true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_callerip_country:
 		rfield->set(getCountryByIP(getSipcallerip(), true).c_str());
 		break;
 	case cf_calledip_country:
-		rfield->set(getCountryByIP(getSipcalledip(), true).c_str());
+		rfield->set(getCountryByIP(getSipcalledip(true), true).c_str());
 		break;
 	case cf_callerip_encaps:
 		rfield->set(getSipcallerip_encaps(), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_calledip_encaps:
-		rfield->set(getSipcalledip_encaps(), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip_encaps(true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_callerip_encaps_prot:
 		rfield->set(getSipcallerip_encaps_prot());
 		break;
 	case cf_calledip_encaps_prot:
-		rfield->set(getSipcalledip_encaps_prot());
+		rfield->set(getSipcalledip_encaps_prot(true));
 		break;
 	case cf_sipproxies:
 		rfield->set(get_proxies_str().c_str());
@@ -6370,7 +6370,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		unsigned operator_id = 0;
 		unsigned customer_id = 0;
 		if(billing->billing(calltime_s(), connect_duration_s(),
-				    getSipcallerip(), getSipcalledip(),
+				    getSipcallerip(), sipcalledip_rslt,
 				    caller, get_called(),
 				    caller_domain, get_called_domain(),
 				    &operator_price, &customer_price,
@@ -6394,7 +6394,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(operator_price > 0 || customer_price > 0) {
 				billing->saveAggregation(calltime_s(),
-							 getSipcallerip(), getSipcalledip(),
+							 getSipcallerip(), sipcalledip_rslt,
 							 caller, get_called(),
 							 caller_domain, get_called_domain(),
 							 operator_price, customer_price,
@@ -6421,12 +6421,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		CountryDetectApplyReload();
 		if(opt_cdr_country_code == 2) {
 			cdr_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
-			cdr_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
+			cdr_country_code.add(getCountryIdByIP(sipcalledip_rslt), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
 			cdr_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
 		} else {
 			cdr_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
-			cdr_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
+			cdr_country_code.add(getCountryByIP(sipcalledip_rslt, true), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
 			cdr_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
 		}
@@ -10808,15 +10808,17 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 			if(needIpMap) {
-				if(ip_src_map.find(call->getSipcallerip()) == ip_src_map.end()) {
-					ip_src_map[call->getSipcallerip()] = 1;
+				vmIP sipcallerip = call->getSipcallerip();
+				if(ip_src_map.find(sipcallerip) == ip_src_map.end()) {
+					ip_src_map[sipcallerip] = 1;
 				} else {
-					++ip_src_map[call->getSipcallerip()];
+					++ip_src_map[sipcallerip];
 				}
-				if(ip_dst_map.find(call->getSipcalledip()) == ip_dst_map.end()) {
-					ip_dst_map[call->getSipcalledip()] = 1;
+				vmIP sipcalledip = call->getSipcalledip(true);
+				if(ip_dst_map.find(sipcalledip) == ip_dst_map.end()) {
+					ip_dst_map[sipcalledip] = 1;
 				} else {
-					++ip_dst_map[call->getSipcalledip()];
+					++ip_dst_map[sipcalledip];
 				}
 				if(call->is_set_proxies()) {
 					set<vmIP> proxies_undup;

@@ -1839,19 +1839,48 @@ public:
 	u_int8_t getSipcallerip_encaps_prot() {
 		return(sipcallerip_encaps_prot);
 	}
-	vmIP getSipcalledip() {
+	vmIP getSipcalledip(bool confirm_via_invite_list = false) {
+		if(confirm_via_invite_list) {
+			vmIP sipcalledip_confirmed = getSipcalledipConfirmed();
+			if(sipcalledip_confirmed.isSet()) {
+				return(sipcalledip_confirmed);
+			}
+		}
 		return(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0]);
 	}
-	vmIP getSipcalledip_encaps() {
+	vmIP getSipcalledip_encaps(bool confirm_via_invite_list = false) {
+		if(confirm_via_invite_list) {
+			vmIP sipcalledip_encaps_confirmed;
+			u_int8_t sipcalledip_encaps_prot_confirmed;
+			getSipcalledipConfirmed(NULL, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
+			if(sipcalledip_encaps_confirmed.isSet()) {
+				return(sipcalledip_encaps_confirmed);
+			}
+		}
 		return(sipcalledip_encaps);
 	}
-	u_int8_t getSipcalledip_encaps_prot() {
+	u_int8_t getSipcalledip_encaps_prot(bool confirm_via_invite_list = false) {
+		if(confirm_via_invite_list) {
+			vmIP sipcalledip_encaps_confirmed;
+			u_int8_t sipcalledip_encaps_prot_confirmed;
+			getSipcalledipConfirmed(NULL, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
+			if(sipcalledip_encaps_confirmed.isSet()) {
+				return(sipcalledip_encaps_prot_confirmed);
+			}
+		}
 		return(sipcalledip_encaps_prot);
 	}
 	vmPort getSipcallerport() {
 		return(sipcallerport[0]);
 	}
-	vmPort getSipcalledport() {
+	vmPort getSipcalledport(bool confirm_via_invite_list = false) {
+		if(confirm_via_invite_list) {
+			vmPort sipcalledport_confirmed;
+			getSipcalledipConfirmed(&sipcalledport_confirmed);
+			if(sipcalledport_confirmed.isSet()) {
+				return(sipcalledport_confirmed);
+			}
+		}
 		return(sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
 	}
 	void setSeenBye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
