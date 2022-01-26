@@ -201,12 +201,12 @@ void cRegisterFilter::setFilter(const char *filter) {
 		addFilter(filter);
 	}
 	if(!filterData["ua"].empty()) {
-		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_ua);
+		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_ua, false);
 		filter->addWhite(filterData["ua"].c_str());
 		addFilter(filter);
 	}
 	if(!filterData["ua_group_id"].empty()) {
-		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_ua);
+		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_ua, false);
 		filter->addWhite("cb_ua_groups", "ua", filterData["ua_group_id"].c_str());
 		addFilter(filter);
 	}

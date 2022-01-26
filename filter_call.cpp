@@ -156,20 +156,20 @@ void cCallFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["caller_agent"].empty() &&
 	   filterData["callerd_agent_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent);
+		cRecordFilterItem_CheckString *filter1 =  new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
 		filter1->addWhite(filterData["caller_agent"].c_str());
-		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent);
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
 		filter2->addWhite(filterData["caller_agent"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["caller_agent"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent);
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calleragent, false);
 			filter->addWhite(filterData["caller_agent"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["called_agent"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent);
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, cf_calledagent, false);
 			filter->addWhite(filterData["called_agent"].c_str());
 			gItems.addFilter(filter);
 		}

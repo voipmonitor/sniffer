@@ -1789,8 +1789,10 @@ public:
 		listUA.push_back(UA(ua));
 		if(autoLock) unlock();
 	}
-	void addComb(string &ua, ListUA *negList = NULL);
-	void addComb(const char *ua, ListUA *negList = NULL);
+	void addComb(string &ua, ListUA *negList = NULL,
+		     bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addComb(const char *ua, ListUA *negList = NULL,
+		     bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool checkUA(const char *check_ua) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -1837,8 +1839,10 @@ public:
 		listCheckString.push_back(CheckString(checkString));
 		if(autoLock) unlock();
 	}
-	void addComb(string &checkString, ListCheckString *negList = NULL);
-	void addComb(const char *checkString, ListCheckString *negList = NULL);
+	void addComb(string &checkString, ListCheckString *negList = NULL, 
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addComb(const char *checkString, ListCheckString *negList = NULL, 
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool check(const char *checkString) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -1940,10 +1944,14 @@ private:
 class ListUA_wb {
 public:
 	ListUA_wb(bool autoLock = true);
-	void addWhite(string &ua);
-	void addWhite(const char *ua);
-	void addBlack(string &ua);
-	void addBlack(const char *ua);
+	void addWhite(string &ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addWhite(const char *ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(string &ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(const char *ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool checkUA(const char *check_ua, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -1967,10 +1975,14 @@ private:
 class ListCheckString_wb {
 public:
 	ListCheckString_wb(bool autoLock = true);
-	void addWhite(string &checkString);
-	void addWhite(const char *checkString);
-	void addBlack(string &checkString);
-	void addBlack(const char *checkString);
+	void addWhite(string &checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addWhite(const char *checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(string &checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(const char *checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool check(const char *checkString, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
