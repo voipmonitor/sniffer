@@ -1,8 +1,18 @@
-29.1.2 13.01.2021
+29.1.3 25.01.2022
+=================
+- fix ssl keylogger compliation [VS-1292]
+- fix rare crash [VS-1293]
+- fix issue in report logger [VG-2437]
+- support host:port in parameter --mysql-server [VG-2426]
+- fix rare case "RTP strem used in another call" [VS-1291]
+- in billing feature destination IP was taken from the first INVITE and not the one in case of multiple INVITEs [VG-2439]
+
+
+29.1.2 13.01.2022
 =================
 - fix 29.1.1 static builds crashing
 
-29.1.1 13.01.2021
+29.1.1 13.01.2022
 =================
 - fix rare crash 
 - speed optimisations in memory allocations
