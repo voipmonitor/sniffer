@@ -1,3 +1,10 @@
+29.1.4 27.01.2022
+=================
+- disable splitting UA header by space when searching (space was OR) [VG-2429]
+- fix memory leak when sniffer configuration from web GUI was changed and reloaded (since 28.6 version) [VS-1297]
+- fix possible crash when tar=no and savertp and savesip is yes [VS-1278]
+ 
+
 29.1.3 25.01.2022
 =================
 - fix ssl keylogger compliation [VS-1292]
