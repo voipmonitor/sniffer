@@ -2974,6 +2974,7 @@ void resetTerminating() {
 	terminating_storing_cdr = 0;
 	terminating_storing_registers = 0;
 	terminated_call_cleanup = 0;
+	terminating_charts_cache = 0;
 	terminated_async = 0;
 	for(int i = 0; i < 2; i++) {
 		terminated_tar_flush_queue[i] = 0;
