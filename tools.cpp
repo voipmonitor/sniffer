@@ -3596,6 +3596,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->readBufferBeginPos = 0;
 	this->eof = false;
+	this->_sync_write_lock = 0;
 }
 
 FileZipHandler::~FileZipHandler() {
@@ -3659,11 +3660,11 @@ void FileZipHandler::close() {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_close);
 			}
 			#endif
-			this->flushBuffer(true);
-			this->flushTarBuffer();
+			this->_flushBuffer(true);
+			this->_flushTarBuffer();
 		} else  {
 			if(this->okHandle() || this->useBufferLength) {
-				this->flushBuffer(true);
+				this->_flushBuffer(true);
 				if(this->okHandle()) {
 					::close(this->fh);
 					this->fh = 0;
@@ -3708,7 +3709,7 @@ bool FileZipHandler::is_eof() {
 	return(this->eof);
 }
 
-bool FileZipHandler::flushBuffer(bool force) {
+bool FileZipHandler::_flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
 		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
@@ -3731,12 +3732,12 @@ bool FileZipHandler::flushBuffer(bool force) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_3);
 	}
 	#endif
-	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
+	bool rsltWrite = this->_writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
 }
 
-void FileZipHandler::flushTarBuffer() {
+void FileZipHandler::_flushTarBuffer() {
 	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_1);
@@ -3758,7 +3759,7 @@ void FileZipHandler::flushTarBuffer() {
 	this->tarBuffer = NULL;
 }
 
-bool FileZipHandler::writeToBuffer(char *data, int length) {
+bool FileZipHandler::_writeToBuffer(char *data, int length) {
 	if(!this->buffer) {
 		return(false);
 	}
@@ -3771,7 +3772,7 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 		return(true);
 	} else {
 		if(this->useBufferLength) {
-			flushBuffer();
+			_flushBuffer();
 		}
 		if(length <= this->bufferLength) {
 			memcpy_heapsafe(this->buffer, this->buffer,
@@ -3781,12 +3782,12 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 			this->useBufferLength = length;
 			return(true);
 		} else {
-			return(this->writeToFile(data, length));
+			return(this->_writeToFile(data, length));
 		}
 	}
 }
 
-bool FileZipHandler::writeToFile(char *data, int length, bool force) {
+bool FileZipHandler::_writeToFile(char *data, int length, bool force) {
 	if(!existsData) {
 		return(true);
 	}
@@ -3798,11 +3799,11 @@ bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 		}
 		return(true);
 	} else {
-		return(this->_writeToFile(data, length, force));
+		return(this->_directWriteToFile(data, length, force));
 	}
 }
 
-bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
+bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {
 	if(!existsData) {
 		return(true);
 	}
@@ -3829,7 +3830,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			return(true);
 		}
 		{
-		int rsltWrite = this->__writeToFile(data, length);
+		int rsltWrite = this->__directWriteToFile(data, length);
 		if(rsltWrite <= 0) {
 			this->setError();
 			return(false);
@@ -3863,7 +3864,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	return(false);
 }
 
-bool FileZipHandler::__writeToFile(char *data, int length) {
+bool FileZipHandler::__directWriteToFile(char *data, int length) {
 	if(!this->okHandle()) {
 		if(!this->error.empty() || !this->_open_write()) {
 			return(false);
@@ -4096,7 +4097,7 @@ bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompre
 		#endif
 		return(true);
 	}
-	if(this->__writeToFile(data, len) <= 0) {
+	if(this->__directWriteToFile(data, len) <= 0) {
 		this->setError();
 		return(false);
 	}

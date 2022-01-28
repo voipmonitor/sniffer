@@ -602,18 +602,28 @@ public:
 		if(!isHeader && length) {
 			existsData = true;
 		}
-		return(this->buffer ?
-			this->writeToBuffer(data, length) :
-			this->writeToFile(data, length));
+		lock_write();
+		bool rslt = this->buffer ?
+			     this->_writeToBuffer(data, length) :
+			     this->_writeToFile(data, length);
+		unlock_write();
+		return(rslt);
+	}
+	bool directWriteToFile(char *data, int length, bool flush = false) {
+		lock_write();
+		bool rslt = _directWriteToFile(data, length, flush);
+		unlock_write();
+		return(rslt);
+	}
+	bool flushBuffer(bool force = false) {
+		lock_write();
+		bool rslt = _flushBuffer(force);
+		unlock_write();
+		return(rslt);
 	}
 	bool read(unsigned length);
 	bool is_ok_decompress();
 	bool is_eof();
-	bool flushBuffer(bool force = false);
-	void flushTarBuffer();
-	bool writeToBuffer(char *data, int length);
-	bool writeToFile(char *data, int length, bool force = false);
-	bool _writeToFile(char *data, int length, bool flush = false);
 	bool _writeReady() {
 		if(tarBuffer) {
 			return(!tarBuffer->isFull());
@@ -621,7 +631,6 @@ public:
 			return(true);
 		}
 	}
-	bool __writeToFile(char *data, int length);
 	void initCompress();
 	void initDecompress();
 	void initTarbuffer(bool useFileZipHandlerCompress = false);
@@ -637,11 +646,23 @@ public:
 	bool getLineFromReadBuffer(string *line);
 	bool needTarPos();
 private:
+	bool _flushBuffer(bool force = false);
+	void _flushTarBuffer();
+	bool _writeToBuffer(char *data, int length);
+	bool _writeToFile(char *data, int length, bool force = false);
+	bool _directWriteToFile(char *data, int length, bool flush = false);
+	bool __directWriteToFile(char *data, int length);
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
 	eTypeCompress getTypeCompressDefault();
 	void addReadBuffer(char *data, u_int32_t len);
+	void lock_write() {
+		__SYNC_LOCK_USLEEP(_sync_write_lock, 10);
+	}
+	void unlock_write() {
+		__SYNC_UNLOCK(_sync_write_lock);
+	}
 public:
 	eMode mode;
 	eTypeSpoolFile typeSpoolFile;
@@ -657,7 +678,7 @@ public:
 	string error;
 	int bufferLength;
 	char *buffer;
-	int useBufferLength;
+	volatile int useBufferLength;
 	ChunkBuffer *tarBuffer;
 	bool tarBufferCreated;
 	bool enableAsyncWrite;
@@ -675,6 +696,8 @@ public:
 	deque<sReadBufferItem> readBuffer;
 	uint32_t readBufferBeginPos;
 	bool eof;
+private:
+	volatile int _sync_write_lock;
 };
 
 class PcapDumper {
@@ -917,7 +940,7 @@ public:
 			delete [] data;
 		}
 		void process() {
-			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
+			((FileZipHandler*)handle)->directWriteToFile(data, dataLength);
 		}
 		bool process_ready() {
 			return(((FileZipHandler*)handle)->_writeReady());
@@ -979,7 +1002,7 @@ public:
 			delete [] data;
 		}
 		void process() {
-			handle->_writeToFile(data, dataLength);
+			handle->directWriteToFile(data, dataLength);
 		}
 		bool process_ready() {
 			return(handle->_writeReady());
