@@ -8501,13 +8501,17 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	vmPort sport;
 	vmPort dport;
 	if(header_ip) {
-		if (header_ip->get_protocol() == IPPROTO_UDP) {
+		if(hp->header->get_caplen() <= hp->header->header_ip_offset) {
+			return(0);
+		}
+		u_int8_t header_ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
+		if(header_ip_protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
 			pflags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
-		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+		} else if(header_ip_protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
 			pflags.tcp = 1;
@@ -8518,7 +8522,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
 				pflags.mrcp = 1;
 			}
-		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
+		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
 			pflags.ss7 = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {

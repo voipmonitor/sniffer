@@ -72,6 +72,7 @@ struct pcap_pkthdr_plus {
 				header.caplen = this->header_fix_size.caplen;
 				header.len = this->header_fix_size.len;
 				this->header_std = header;
+				this->std = 1;
 			}
 			#if __GNUC__ >= 8
 			#pragma GCC diagnostic push
