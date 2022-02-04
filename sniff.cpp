@@ -9596,6 +9596,10 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			    batch_index < batch_index_end; 
 			    batch_index += batch_index_skip) {
 				packet_s_process_0 *packetS = hash_thread_data->batch->batch[batch_index];
+				if(!packetS) {
+					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+					continue;
+				}
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
@@ -9695,6 +9699,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		} else {
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
+				if(!packetS) {
+					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+					continue;
+				}
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
