@@ -625,7 +625,9 @@ public:
 		return(alloc_flag == 0);
 	}
 	inline void updateTimeShift(u_int64_t time_us) {
-		time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
+		if(time_us > 1000000000ull * 1000000ull) {
+			time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
+		}
 	}
 	inline u_int64_t unshiftCallTime_ms(u_int64_t time_ms) {
 		return(time_ms + time_shift_ms);
@@ -2502,7 +2504,7 @@ public:
 		  u_int64_t time_us, vmIP saddr, vmPort port, 
 		  pcap_t *handle, int dlt, int sensorId, int8_t ci = -1);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
-	Call *add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
+	Call *add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		       pcap_t *handle, int dlt, int sensorId);
 	
 	size_t getCountCalls();

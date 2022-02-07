@@ -198,7 +198,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 					return NULL;
 				}       
-				call = calltable->add_mgcp(&request, packetS->header_pt->ts.tv_sec, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
+				call = calltable->add_mgcp(&request, getTimeUS(packetS->header_pt), packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
 				strcpy_null_term(call->called_final, request.endpoint.c_str());

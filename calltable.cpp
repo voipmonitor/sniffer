@@ -302,7 +302,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	type_base = call_type;
 	type_next = 0;
 	first_packet_time_us = time_us;
-	time_shift_ms = (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000);
+	time_shift_ms = time_us > 1000000000ull * 1000000ull ? (int64_t)getTimeMS_rdtsc() - (int64_t)(time_us / 1000) : 0;
 	fbasename[0] = 0;
 	fbasename_safe[0] = 0;
 	fname_register = 0;
@@ -10992,10 +10992,10 @@ Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
 }
 
 Call *
-Calltable::add_mgcp(sMgcpRequest *request, time_t time, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
+Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		    pcap_t *handle, int dlt, int sensorId) {
 	string call_id = request->call_id();
-	Call *newcall = new FILE_LINE(0) Call(MGCP, (char*)call_id.c_str(), call_id.length(), NULL, time);
+	Call *newcall = new FILE_LINE(0) Call(MGCP, (char*)call_id.c_str(), call_id.length(), NULL, time_us);
 
 	if(handle) {
 		newcall->useHandle = handle;
