@@ -707,7 +707,12 @@ public:
 	bool checkDuplicitySeq(u_int32_t newSeq);
 private:
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) USLEEP(100);
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) {
+			if(opt_sip_tcp_reassembly_ext_usleep) {
+				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
+			}
+		}
 	}
 	void unlock_queue() {
 		__sync_lock_release(&this->_sync_queue);
@@ -762,6 +767,7 @@ private:
 	vector<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
+	list<d_u_int32_t> sip_offsets;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
@@ -859,6 +865,9 @@ public:
 	void setEnablePushLock(bool enablePushLock = true) {
 		this->enablePushLock = enablePushLock;
 	}
+	void setEnableLinkLock(bool enableLinkLock = true) {
+		this->enableLinkLock = enableLinkLock;
+	}
 	void setEnableSmartCompleteData(bool enableSmartCompleteData = true) {
 		this->enableSmartCompleteData = enableSmartCompleteData;
 	}
@@ -932,7 +941,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, unsigned datalen, bool strict);
+	bool checkOkData(u_char * data, unsigned datalen, bool strict, list<d_u_int32_t> *sip_offsets);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -943,22 +952,44 @@ private:
 	void *cleanupThreadFunction(void *);
 	void *packetThreadFunction(void *);
 	void lock_links() {
-		while(__sync_lock_test_and_set(&this->_sync_links, 1)) USLEEP(100);
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_links, 1)) {
+			if(opt_sip_tcp_reassembly_ext_usleep) {
+				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
+			}
+		}
 	}
 	void unlock_links() {
 		__sync_lock_release(&this->_sync_links);
 	}
 	void lock_push() {
-		while(__sync_lock_test_and_set(&this->_sync_push, 1)) USLEEP(100);
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
+			if(opt_sip_tcp_reassembly_ext_usleep) {
+				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
+			}
+		}
 	}
 	void unlock_push() {
 		__sync_lock_release(&this->_sync_push);
+	}
+	void lock_cleanup() {
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_cleanup, 1)) {
+			if(opt_sip_tcp_reassembly_ext_usleep) {
+				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
+			}
+		}
+	}
+	void unlock_cleanup() {
+		__sync_lock_release(&this->_sync_cleanup);
 	}
 private:
 	eType type;
 	map<TcpReassemblyLink_id, TcpReassemblyLink*> links;
 	volatile int _sync_links;
 	volatile int _sync_push;
+	volatile int _sync_cleanup;
 	bool enableHttpForceInit;
 	bool enableCrazySequence;
 	bool enableWildLink;
@@ -978,6 +1009,7 @@ private:
 	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
 	bool enablePushLock;
+	bool enableLinkLock;
 	bool enableSmartCompleteData;
 	bool enableExtStat;
 	unsigned int extCleanupStreamsLimitStreams;
@@ -999,7 +1031,6 @@ private:
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> packetQueue;
-	list<d_u_int32_t> sip_offsets;
 	volatile bool initCleanupThreadOk;
 	volatile bool initPacketThreadOk;
 	volatile bool terminatingCleanupThread;

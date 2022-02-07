@@ -379,6 +379,7 @@ int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 bool opt_nonstop_read = false;
+bool opt_nonstop_read_quick = false;
 int opt_time_to_terminate = 0;
 bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
@@ -405,10 +406,12 @@ int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
 unsigned int opt_preprocess_packets_qring_item_length = 0;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
+unsigned int opt_preprocess_packets_qring_push_usleep = 10;
 bool opt_preprocess_packets_qring_force_push = true;
 unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
+unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
@@ -888,7 +891,7 @@ bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
-bool opt_t2_boost_pb_detach_thread = false;
+int opt_t2_boost_pb_detach_thread = 0;
 bool opt_t2_boost_pcap_dispatch = false;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
@@ -1122,6 +1125,8 @@ bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
+int opt_sip_tcp_reassembly_ext_quick_mod = 0;
+int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
 char opt_test_arg[1024] = "";
@@ -2991,6 +2996,7 @@ PcapQueue_readFromFifo *pcapQueueQ;
 PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 void set_global_vars();
 int main_init_read();
@@ -4495,7 +4501,11 @@ int main_init_read() {
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
 		tcpReassemblySipExt->setLinkTimeout(10);
 		tcpReassemblySipExt->setEnableWildLink();
-		tcpReassemblySipExt->setEnablePushLock();
+		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+			tcpReassemblySipExt->setEnableLinkLock();
+		} else {
+			tcpReassemblySipExt->setEnablePushLock();
+		}
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
@@ -4577,6 +4587,10 @@ int main_init_read() {
 				pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
 				pcapQueueQ_outThread_dedup->start();
 			}
+			if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost) {
+				pcapQueueQ_outThread_detach2 = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach2, pcapQueueQ);
+				pcapQueueQ_outThread_detach2->start();
+			}
 		}
 		
 		pcapQueueQ->start();
@@ -4633,6 +4647,9 @@ int main_init_read() {
 						}
 					}
 				}
+				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
+				print_t2_queue_full_stat();
+				#endif
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
 				USLEEP(10000);
@@ -5245,6 +5262,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_dedup) {
 			pcapQueueQ_outThread_dedup->terminate();
 		}
+		if(pcapQueueQ_outThread_detach2) {
+			pcapQueueQ_outThread_detach2->terminate();
+		}
 		sleep(1);
 		
 		terminate_processpacket();
@@ -5264,6 +5284,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_dedup) {
 			delete pcapQueueQ_outThread_dedup;
 			pcapQueueQ_outThread_dedup = NULL;
+		}
+		if(pcapQueueQ_outThread_detach2) {
+			delete pcapQueueQ_outThread_detach2;
+			pcapQueueQ_outThread_detach2 = NULL;
 		}
 		if(pcapQueueQ) {
 			delete pcapQueueQ;
@@ -6735,7 +6759,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))
+						->addValues("two:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_maximum_cdr_per_iteration", &opt_storing_cdr_maximum_cdr_per_iteration));
@@ -6958,6 +6983,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42152) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("preprocess_packets_qring_push_usleep", &opt_preprocess_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(42155) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
@@ -6974,6 +7000,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42158) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 					addConfigItem(new FILE_LINE(42159) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
@@ -7670,6 +7697,9 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
+					->addValues("ext:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("receive_packetbuffer_maximum_time_diff_s", &opt_receive_packetbuffer_maximum_time_diff_s));
 					expert();
@@ -8034,6 +8064,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"time-to-terminate", 1, 0, 323},
 	    {"continue-after-read", 0, 0, 302},
 	    {"nonstop-read", 0, 0, 335},
+	    {"nonstop-read-quick", 0, 0, 350},
 	    {"diff-days", 1, 0, 303},
 	    {"diff-secs", 1, 0, 349},
 	    {"time-adjustment", 1, 0, 343},
@@ -8534,6 +8565,10 @@ void get_command_line_arguments() {
 				break;
 			case 335:
 				opt_nonstop_read = true;
+				break;
+			case 350:
+				opt_nonstop_read = true;
+				opt_nonstop_read_quick = true;
 				break;
 			case 323:
 				opt_time_to_terminate = atoi(optarg);
@@ -10129,7 +10164,7 @@ int eval_config(string inistr) {
 		opt_allow_zerossrc = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
-		opt_sip_register = !strcmp(value, "old") ? 2 : yesno(value);
+		opt_sip_register = !strcasecmp(value, "old") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
 		opt_register_timeout = atoi(value);
@@ -10863,7 +10898,7 @@ int eval_config(string inistr) {
 		opt_mysql_max_multiple_rows_insert = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysql_enable_new_store"))) {
-		opt_mysql_enable_new_store = strcmp(value, "per_query") ? yesno(value) : 2;
+		opt_mysql_enable_new_store = strcasecmp(value, "per_query") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
@@ -11170,7 +11205,7 @@ int eval_config(string inistr) {
 		opt_t2_boost_call_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
-		opt_t2_boost_pb_detach_thread = yesno(value);
+		opt_t2_boost_pb_detach_thread = !strcasecmp(value, "two") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
 		opt_t2_boost_pcap_dispatch = atoi(value);
@@ -11290,7 +11325,7 @@ int eval_config(string inistr) {
 		opt_rtp_streams_max_in_call = atoi(value);
 	}
 	if((value = ini.GetValue("general", "rtp_check_both_sides_by_sdp", NULL))) {
-		opt_rtp_check_both_sides_by_sdp = strcmp(value, "keep_rtp_packets") ? yesno(value) : 2;
+		opt_rtp_check_both_sides_by_sdp = strcasecmp(value, "keep_rtp_packets") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "rtpmap_by_callerd", NULL))) {
 		opt_rtpmap_by_callerd = yesno(value);
@@ -12062,6 +12097,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
 		opt_preprocess_packets_qring_usleep = atol(value);
 	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_push_usleep", NULL))) {
+		opt_preprocess_packets_qring_push_usleep = atol(value);
+	}
 	if((value = ini.GetValue("general", "preprocess_packets_qring_force_push", NULL))) {
 		opt_preprocess_packets_qring_force_push = yesno(value);
 	}
@@ -12073,6 +12111,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_usleep", NULL))) {
 		opt_process_rtp_packets_qring_usleep = atol(value);
+	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_push_usleep", NULL))) {
+		opt_process_rtp_packets_qring_push_usleep = atol(value);
 	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
 		opt_process_rtp_packets_qring_force_push = yesno(value);
@@ -12174,6 +12215,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
+		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_usleep", NULL))) {
+		opt_sip_tcp_reassembly_ext_usleep = atol(value);
 	}
 	if((value = ini.GetValue("general", "receiver_check_id_sensor", NULL))) {
 		opt_receiver_check_id_sensor = yesno(value);

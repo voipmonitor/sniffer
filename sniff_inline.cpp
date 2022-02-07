@@ -312,7 +312,10 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
-	u_int8_t ip_protocol = header_ip->get_protocol();
+	if(caplen <= header_ip_offset) {
+		return(0);
+	}
+	u_int8_t ip_protocol = header_ip->get_protocol(caplen - header_ip_offset);
 	if(ip_protocol == IPPROTO_IPIP) {
 		// ip in ip protocol
 		return(header_ip->get_hdr_size());

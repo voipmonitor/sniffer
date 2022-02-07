@@ -108,7 +108,7 @@ extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
-extern bool opt_t2_boost_pb_detach_thread;
+extern int opt_t2_boost_pb_detach_thread;
 extern bool opt_t2_boost_pcap_dispatch;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
@@ -140,6 +140,7 @@ extern int64_t opt_pb_read_from_file_time_adjustment;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
 extern bool opt_nonstop_read;
+extern bool opt_nonstop_read_quick;
 extern int opt_time_to_terminate;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
@@ -264,6 +265,7 @@ extern MySqlStore *loadFromQFiles;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 extern unsigned int glob_ssl_calls;
 
@@ -474,6 +476,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		       sizeof(int8_t) * offsets_size_old);
 		memset((void*)(this->_sync_packets_lock + offsets_size_old), 0, 
 		       sizeof(int8_t) * (this->offsets_size - offsets_size_old));
+		delete [] _sync_packets_lock_old;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		volatile int8_t *_sync_packets_flag_old = _sync_packets_flag;
 		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
@@ -481,6 +484,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		       sizeof(int8_t) * offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 		memset((void*)(this->_sync_packets_flag + offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH), 0, 
 		       sizeof(int8_t) * (this->offsets_size - offsets_size_old) * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		delete [] _sync_packets_flag_old;
 		#endif
 		#endif
 	}
@@ -2319,6 +2323,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
 				}
 			}
+			if(pcapQueueQ_outThread_detach2) {
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(true);
+				if(detach_cpu >= 0) {
+					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
+				}
+			}
 			if(opt_ipaccount) {
 				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
 				if(ipacc_cpu >= 0) {
@@ -2335,7 +2345,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 				for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 					if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
-						double percFullQring;
+						double percFullQring = 0;
 						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, j, j == 0 ? &percFullQring : NULL);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
@@ -2396,7 +2406,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_t2_boost) {
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-						double percFullQring;
+						double percFullQring = 0;
 						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, 0, &percFullQring);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
@@ -3581,10 +3591,8 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				}
 			}
 			this->lastPacketTimeUS = packetTime;
-		} else {
-			if(heap_pb_used_perc > 5) {
-				USLEEP(50);
-			}
+		} else if(!opt_nonstop_read_quick && heap_pb_used_perc > 5) {
+			USLEEP(50);
 		}
 		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {
 			syslog(LOG_NOTICE,"packetbuffer - exceed limit of read packets, exiting");
@@ -3907,7 +3915,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 		while(!is_terminating()) {
 			this->tryForcePush();
 			if(!opt_pb_read_from_file_max_packets) {
-				if(sleepCounter > 10 && sleepCounter <= 15) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 1 :
+				    sleepCounter > 10 && sleepCounter <= 15) {
 					calltable->cleanup_calls(true);
 					calltable->cleanup_registers(true);
 					calltable->cleanup_ss7(true);
@@ -3917,16 +3927,21 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 						registers.cleanup(true);
 					}
 				}
-				if(sleepCounter > 15) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 2 :
+				    sleepCounter > 15) {
 					calltable->destroyCallsIfPcapsClosed();
 					calltable->destroyRegistersIfPcapsClosed();
 				}
-				if(sleepCounter > 20) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 3 :
+				    sleepCounter > 20) {
 					if(flushAllTars()) {
 						 syslog(LOG_NOTICE, "tars flushed");
 					}
 				}
-				if(sleepCounter > 30 && opt_nonstop_read) {
+				if(opt_nonstop_read &&
+				   sleepCounter > (opt_nonstop_read_quick ? 4 : 30)) {
 					rss_purge();
 					syslog(LOG_NOTICE, "purge");
 					extern void reset_cleanup_variables();
@@ -5414,6 +5429,10 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	pcap_block_store *block = NULL;
 	sCheckProtocolData checkProtocolData;
 	
+	#if EXPERIMENTAL_INTERFACE_DUPL
+	unsigned dupl_read_counter = 0;
+	#endif
+	
 	while(!(is_terminating() || this->threadDoTerminate)) {
 		switch(this->typeThread) {
 		case read: {
@@ -5435,14 +5454,28 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					setOneshotBuffer(pcap_packet);
 				}
 			}
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			if(!(dupl_read_counter % 10)) {
+			#endif
+			
 			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet,
 						       opt_pcap_queue_use_blocks_read_check, &checkProtocolData);
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			}
+			#endif
+			
 			if(res == -1) {
 				if(opt_pb_read_from_file[0]) {
 					this->push_block(block);
 					block = NULL;
 					terminatingAtEndOfReadPcap();
-					break;
+					if(opt_nonstop_read) {
+						continue;
+					} else {
+						break;
+					}
 				}
 				break;
 			} else if(res <= 0) {
@@ -5493,6 +5526,11 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			}
 			block->inc_h(pcap_header_plus2);
 			//cout << '.' << flush;
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			++dupl_read_counter;
+			#endif
+			
 			break;
 		}
 		default:
@@ -7467,6 +7505,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								hp_out.sensor_id = pti.blockStore->sensor_id;
 								hp_out.sensor_ip = pti.blockStore->sensor_ip;
 								hp_out.block_store_locked = false;
+								hp_out.header_ip_last_offset = 0xFFFF;
 								this->processPacket(&hp_out, _hppq_out_state_NA);
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
@@ -7561,6 +7600,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.sensor_id = actBlockInfo->blockStore->sensor_id;
 						hp_out.sensor_ip = actBlockInfo->blockStore->sensor_ip;
 						hp_out.block_store_locked = false;
+						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out, _hppq_out_state_NA);
 						++actBlockInfo->count_processed;
 						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
@@ -7622,6 +7662,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.sensor_id = blockStore->sensor_id;
 						hp_out.sensor_ip = blockStore->sensor_ip;
 						hp_out.block_store_locked = false;
+						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out, _hppq_out_state_NA);
 					}
 					this->blockStoreTrashPush(blockStore);
@@ -8426,6 +8467,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(-1);
 	}
 	
+	if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost && pcapQueueQ_outThread_detach2 &&
+	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag || hp_state == _hppq_out_state_dedup)) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		return(-1);
+	}
+	 
 	/*
 	if((long)hp->block_store == 0x60e000022b00 &&
 	   hp->block_store_index == 1245) {
@@ -8472,14 +8519,16 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		this->_last_ts.tv_usec = header->ts.tv_usec;
 	}
 	
-	iphdr2 *header_ip_encaps = hp->header->header_ip_encaps_offset == 0xFFFF ?
-				   NULL :
-				   (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
-	iphdr2 *header_ip = hp->header->header_ip_offset == 0xFFFF ?
-			     NULL :
-			     (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+	iphdr2 *header_ip_encaps = hp->header->header_ip_encaps_offset != 0xFFFF ?
+				    (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset) : 
+				    NULL;
+	iphdr2 *header_ip = hp->header_ip_last_offset != 0xFFFF ?
+			     (iphdr2*)(hp->packet + hp->header_ip_last_offset) :
+			    hp->header->header_ip_offset != 0xFFFF ?
+			     (iphdr2*)(hp->packet + hp->header->header_ip_offset) :
+			     NULL;
 
-	if(header_ip) {
+	if(header_ip && hp->header_ip_last_offset == 0xFFFF) {
 		while(true) {
 			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
 								     hp->packet, hp->header->get_caplen());
@@ -8500,14 +8549,19 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	pflags.init();
 	vmPort sport;
 	vmPort dport;
+	u_int8_t header_ip_protocol;
 	if(header_ip) {
-		if (header_ip->get_protocol() == IPPROTO_UDP) {
+		if(hp->header->get_caplen() <= hp->header->header_ip_offset) {
+			return(0);
+		}
+		header_ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
+		if(header_ip_protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
 			pflags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
-		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+		} else if(header_ip_protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
 			pflags.tcp = 1;
@@ -8518,7 +8572,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
 				pflags.mrcp = 1;
 			}
-		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
+		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
 			pflags.ss7 = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
@@ -8570,7 +8624,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
 
-	if(header_ip && header_ip->get_protocol() == IPPROTO_TCP) {
+	if(header_ip && header_ip_protocol == IPPROTO_TCP) {
 		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
 		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
@@ -8604,7 +8658,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		extern bool ssl_client_random_portmatrix_set;
 		extern vector<vmIP> ssl_client_random_ip;
 		extern vector<vmIPmask> ssl_client_random_net;
-		if(header_ip && header_ip->get_protocol() == IPPROTO_UDP &&
+		if(header_ip && header_ip_protocol == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
 		   (!ssl_client_random_portmatrix_set || 
 		    ssl_client_random_portmatrix[dport]) &&
@@ -8615,6 +8669,18 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				return(0);
 			}
 		}
+		#if EXPERIMENTAL_T2_DETACH_X_MOD
+		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+			header_ip ? (u_char*)header_ip - hp->packet : 0,
+			header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
+			(u_char*)data - hp->packet,
+			datalen,
+			header_ip ? sport.getPort() : 0,
+			header_ip ? dport.getPort() : 0,
+			pflags,
+			hp,
+			this->getPcapHandleIndex(hp->dlt));
+		#else
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
@@ -8625,6 +8691,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			pflags, header_ip_encaps, header_ip,
 			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
+		#endif
 		return(1);
 	}
 	
@@ -8638,9 +8705,18 @@ void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 		pcapQueueQ_outThread_defrag->push_batch();
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push_batch();
-	} else if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+	} else if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push_batch();
+	} else 
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+	}
+	#else
+	if(preProcessPacket[PreProcessPacket::ppt_detach]) {
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 	}
+	#endif
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
@@ -8859,6 +8935,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				case dedup:
 					this->processDedup(&batch->batch[batch_index]);
 					break;
+				case detach2:
+					this->processDetach2(&batch->batch[batch_index]);
+					break;
 				}
 			}
 			batch->count = 0;
@@ -8886,7 +8965,20 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						break;
 					}
 				case dedup:
-					preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+					if(pcapQueueQ_outThread_detach2) {
+						pcapQueueQ_outThread_detach2->push_batch();
+						break;
+					}
+				case detach2:
+					#if EXPERIMENTAL_T2_DETACH_X_MOD
+					if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+						preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+					}
+					#else
+					if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+						preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+					}
+					#endif
 					break;
 				}
 				usleepSumTime_lastPush = usleepSumTime;
@@ -8897,6 +8989,26 @@ void *PcapQueue_outputThread::outThreadFunction() {
 }
 
 void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
+	if(opt_t2_boost_pb_detach_thread == 2 &&
+	   hp->header->header_ip_offset != 0xFFFF && hp->header_ip_last_offset == 0xFFFF) {
+		hp->header_ip_last_offset = hp->header->header_ip_offset;
+		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header_ip_last_offset);
+		if(header_ip) {
+			while(true) {
+				int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header_ip_last_offset, 
+									     hp->packet, hp->header->get_caplen());
+				if(next_header_ip_offset == 0) {
+					break;
+				} else if(next_header_ip_offset < 0) {
+					hp->header_ip_last_offset = 0xFFFF;
+					break;
+				} else {
+					header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+					hp->header_ip_last_offset += next_header_ip_offset;
+				}
+			}
+		}
+	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach) == 0) {
 		hp->destroy_or_unlock_blockstore();
 	}
@@ -8963,7 +9075,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
 			hp->header->header_ip_offset += next_header_ip_offset;
 		}
-		if(header_ip->get_protocol() == IPPROTO_UDP) {
+		if(header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset) == IPPROTO_UDP) {
 			int frag_data = header_ip->get_frag_data();
 			if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 				// packet is fragmented
@@ -9058,6 +9170,12 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		memcpy(this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
 	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
+		hp->destroy_or_unlock_blockstore();
+	}
+}
+
+void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
+	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach2) == 0) {
 		hp->destroy_or_unlock_blockstore();
 	}
 }

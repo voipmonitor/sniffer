@@ -126,8 +126,10 @@ struct packet_s {
 	#if USE_PACKET_NUMBER
 	u_int64_t packet_number;
 	#endif
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	vmIP _saddr;
 	vmIP _daddr; 
+	#endif
 	u_int32_t _datalen; 
 	u_int32_t _datalen_set; 
 	pcap_pkthdr *header_pt; 
@@ -163,7 +165,14 @@ struct packet_s {
 		if(kamailio_subst) {
 			return(kamailio_subst->saddr);
 		}
+		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		return(_saddr);
+		#else
+		iphdr2 *header_ip = header_ip_();
+		return(header_ip ?
+			header_ip->get_saddr() :
+			vmIP(0));
+		#endif
 	}
 	inline vmIP daddr_(bool encaps = false) {
 		if(encaps) {
@@ -178,7 +187,14 @@ struct packet_s {
 		if(kamailio_subst) {
 			return(kamailio_subst->daddr);
 		}
+		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		return(_daddr);
+		#else
+		iphdr2 *header_ip = header_ip_();
+		return(header_ip ?
+			header_ip->get_daddr() :
+			vmIP(0));
+		#endif
 	}
 	inline vmPort source_() {
 		if(audiocodes) {

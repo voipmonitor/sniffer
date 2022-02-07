@@ -193,7 +193,9 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						}
 						break;
 					default:
-						if(link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), link->reassembly->enableStrictValidateDataViaCheckData)) {
+						if(link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), 
+										 link->reassembly->enableStrictValidateDataViaCheckData,
+										 &link->sip_offsets)) {
 							this->detect_ok_max_next_seq = next_seq;
 							return(1);
 						} else {
@@ -231,7 +233,8 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 								this->detect_ok_max_next_seq = next_seq;
 							}
 							if(needValidateDataViaCheckData) {
-								if(!link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), false)) {
+								if(!link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), 
+												  false, &link->sip_offsets)) {
 									this->is_ok = false;
 									this->clearCompleteData();
 									return(0);
@@ -378,7 +381,7 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, u_int32
 			break;
 		default:
 			if(breakIfPsh && packet.header_tcp.psh &&
-			   link->reassembly->checkOkData(data, *datalen, false)) {
+			   link->reassembly->checkOkData(data, *datalen, false, &link->sip_offsets)) {
 				_break = true;
 			}
 			break;
@@ -1386,7 +1389,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 				}
 				while(true) {
 					if(streams.size() == 1) {
-						if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), true)) {
+						if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), true, &sip_offsets)) {
 							okData = true;
 							break;
 						}
@@ -1395,7 +1398,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 						for(unsigned i = streams.size(); i > 0; i--) {
 							data.add(streams[i - 1]->complete_data.getData(), streams[i - 1]->complete_data.getDatalen());
 						}
-						if(reassembly->checkOkData(data.data(), data.size(), true)) {
+						if(reassembly->checkOkData(data.data(), data.size(), true, &sip_offsets)) {
 							okData = true;
 							break;
 						}
@@ -2259,7 +2262,7 @@ bool TcpReassemblyLink::existsAllAckSeq(TcpReassemblyDataItem::eDirection direct
 }
 
 list<d_u_int32_t> *TcpReassemblyLink::getSipOffsets() {
-	return(&reassembly->sip_offsets);
+	return(&sip_offsets);
 }
 
 void TcpReassemblyLink::clearCompleteStreamsData() {
@@ -2294,6 +2297,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->type = type;
 	this->_sync_links = 0;
 	this->_sync_push = 0;
+	this->_sync_cleanup = 0;
 	this->enableHttpForceInit = false;
 	this->enableCrazySequence = false;
 	this->enableWildLink = false;
@@ -2313,6 +2317,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enablePacketThread = false;
 	this->dataCallback = NULL;
 	this->enablePushLock = false;
+	this->enableLinkLock = false;
 	this->enableSmartCompleteData = false;
 	this->enableExtStat = false;
 	this->extCleanupStreamsLimitStreams = 0;
@@ -2658,7 +2663,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	}
 }
 
-bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
+bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict, list<d_u_int32_t> *sip_offsets) {
 	switch(type) {
 	case http:
 		return(true);
@@ -2674,11 +2679,11 @@ bool TcpReassembly::checkOkData(u_char * data, unsigned datalen, bool strict) {
 		}
 		break;
 	case sip:
-		this->sip_offsets.clear();
+		sip_offsets->clear();
 		if(check_websocket(data, datalen)) {
-			this->sip_offsets.push_back(d_u_int32_t(0, datalen));
+			sip_offsets->push_back(d_u_int32_t(0, datalen));
 			return(true);
-		} else if(checkOkSipData(data, datalen, strict, &this->sip_offsets)) {
+		} else if(checkOkSipData(data, datalen, strict, sip_offsets)) {
 			return(true);
 		}
 		break;
@@ -2801,7 +2806,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	TcpReassemblyStream::eDirection direction = TcpReassemblyStream::DIRECTION_TO_DEST;
 	TcpReassemblyLink_id id(header_ip->get_saddr(), header_ip->get_daddr(), header_tcp.get_source(), header_tcp.get_dest());
 	TcpReassemblyLink_id idr(header_ip->get_daddr(), header_ip->get_saddr(), header_tcp.get_dest(), header_tcp.get_source());
-	if(this->enableCleanupThread) {
+	if(this->enableCleanupThread || this->enableLinkLock) {
 		this->lock_links();
 	}
 	if(this->last_time > this->last_erase_links_time + 5000) {
@@ -2828,7 +2833,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	bool queue_locked = false;
 	bool create_new_link = false;
 	if(link) {
-		if(this->enableCleanupThread) {
+		if(this->enableCleanupThread/* || this->enableLinkLock*/) { // not for this->enableLinkLock -> lock colision
 			link->lock_queue();
 			queue_locked = true;
 		}
@@ -2924,7 +2929,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	}
 	if(link &&
 	   !(type == sip && !isSip && !link->queueStreams.size())) {
-		if(this->enableCleanupThread) {
+		if(this->enableCleanupThread || this->enableLinkLock) {
 			if(!queue_locked) {
 				link->lock_queue();
 			}
@@ -2933,7 +2938,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		link->push(direction, header->ts, header_tcp, 
 			   data, datalen, datacaplen,
 			   block_store, block_store_index);
-		if(this->enableCleanupThread) {
+		if(this->enableCleanupThread || this->enableLinkLock) {
 			link->unlock_queue();
 		} else {
 			if(this->getType() == TcpReassembly::ssl &&
@@ -2951,15 +2956,17 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				}
 			}
 		}
-	} else if(this->enableCleanupThread) {
+	} else if(this->enableCleanupThread || this->enableLinkLock) {
 		this->unlock_links();
 	}
 
-	if(!this->enableCleanupThread) {
+	if(!this->enableCleanupThread && !this->_sync_cleanup) {
+		lock_cleanup();
 		if(this->act_time_from_header - this->last_cleanup_call_time_from_header > 20 * 1000) {
-			this->cleanup_simple();
 			this->last_cleanup_call_time_from_header = this->act_time_from_header;
+			this->cleanup_simple();
 		}
+		unlock_cleanup();
 	}
 }
 

@@ -1306,9 +1306,11 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packet_s packetS;
 	packetS.header_pt = header;
 	packetS.packet = packet;
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	packetS._saddr = saddr;
-	packetS._source = source;
 	packetS._daddr = daddr;
+	#endif
+	packetS._source = source;
 	packetS._dest = dest;
 	packetS.pflags.init();
 	packetS.pflags.tcp = istcp;

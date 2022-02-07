@@ -14,6 +14,7 @@ extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 SipTcpData::SipTcpData() {
 	this->counterProcessData = 0;
 	this->last_cache_time_cleanup = 0;
+	this->_sync_cache = 0;
 }
 
 SipTcpData::~SipTcpData() {
@@ -45,6 +46,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			cache_time = dataItem->getTimeMS();
 			string md5_data = GetDataMD5(dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1]);
 			Cache_id cache_id(ip_src, ip_dst, port_src, port_dst, dataItem->getAck(), dataItem->getSeq());
+			lock_cache();
 			map<Cache_id, Cache_data*>::iterator cache_iterator = cache.find(cache_id);
 			if(cache_iterator != cache.end()) {
 				Cache_data *cache_data = cache_iterator->second;
@@ -52,6 +54,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				if(cache_data_iterator != cache_data->data.end()) {
 					if(cache_data_iterator->second + 100 > (u_int64_t)cache_time) {
 						cache_data_iterator->second = cache_time;
+						unlock_cache();
 						continue;
 					}
 				} else {
@@ -62,6 +65,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				cache_data->data[md5_data] = cache_time;
 				cache[cache_id] = cache_data;
 			}
+			unlock_cache();
 			if(debugStream) {
 				(*debugStream)
 					<< "###"
@@ -107,9 +111,11 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					#if USE_PACKET_NUMBER
 					packetS->packet_number = 0;
 					#endif
+					#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 					packetS->_saddr = _ip_src;
-					packetS->_source = _port_src;
 					packetS->_daddr = _ip_dst; 
+					#endif
+					packetS->_source = _port_src;
 					packetS->_dest = _port_dst;
 					packetS->_datalen = _datalen; 
 					packetS->_datalen_set = 0; 
@@ -170,6 +176,7 @@ void SipTcpData::cleanupCache(u_int64_t cache_time) {
 		return;
 	}
 	if(cache_time > last_cache_time_cleanup + 10000) {
+		lock_cache();
 		map<Cache_id, Cache_data*>::iterator cache_iterator;
 		for(cache_iterator = cache.begin(); cache_iterator != cache.end(); ) {
 			Cache_data *cache_data = cache_iterator->second;
@@ -188,6 +195,7 @@ void SipTcpData::cleanupCache(u_int64_t cache_time) {
 				cache_iterator++;
 			}
 		}
+		unlock_cache();
 		last_cache_time_cleanup = cache_time;
 	}
 }

@@ -186,18 +186,20 @@ enum eHeaderPacketPQoutState {
 	_hppq_out_state_NA = 0,
 	_hppq_out_state_detach = 1,
 	_hppq_out_state_defrag = 2,
-	_hppq_out_state_dedup = 3
+	_hppq_out_state_dedup = 3,
+	_hppq_out_state_detach2 = 4
 };
 
 struct sHeaderPacketPQout {
 	pcap_pkthdr_plus *header;
 	u_char *packet;
 	pcap_block_store *block_store;
-	int block_store_index;
-	int dlt; 
-	int sensor_id; 
+	u_int32_t block_store_index;
+	u_int16_t dlt; 
+	int16_t sensor_id; 
 	vmIP sensor_ip;
 	bool block_store_locked;
+	u_int16_t header_ip_last_offset;
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
 			if(block_store_locked) {
@@ -1046,7 +1048,8 @@ public:
 	enum eTypeOutputThread {
 		detach,
 		defrag,
-		dedup
+		dedup,
+		detach2
 	};
 	struct sBatchHP {
 		sBatchHP(unsigned max_count) {
@@ -1076,6 +1079,7 @@ public:
 	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDefrag(sHeaderPacketPQout *hp);
 	inline void processDedup(sHeaderPacketPQout *hp);
+	inline void processDetach2(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
 		switch(typeOutputThread) {
 		case detach:
@@ -1084,6 +1088,8 @@ public:
 			return("defrag");
 		case dedup:
 			return("dedup");
+		case detach2:
+			return("detach2");
 		}
 		return("");
 	}

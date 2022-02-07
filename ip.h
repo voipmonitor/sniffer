@@ -483,10 +483,13 @@ struct ip6hdr2 {
 	inline u_int8_t _get_protocol() {
 		return(get_ext_headers(NULL, 0, NULL));
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t get_protocol(unsigned max_len = 0) {
 		u_int8_t proto = _get_protocol();
 		if(proto == IPPROTO_ESP) {
-			proto = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1);
+			u_int32_t tot_len = get_tot_len();
+			if(!max_len || tot_len <= max_len) {
+				proto = *(u_int8_t*)((u_char*)this + tot_len - IPPROTO_ESP_FOOTER_SIZE + 1);
+			}
 		}
 		return(proto);
 	}
@@ -734,18 +737,20 @@ struct iphdr2 {
 		}
 		#endif
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t get_protocol(unsigned max_len = 0) {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
 			if(_protocol == IPPROTO_ESP) {
-				return(*(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1));
-			} else {
-				return(_protocol);
+				u_int32_t tot_len = get_tot_len();
+				if(!max_len || tot_len <= max_len) {
+					return(*(u_int8_t*)((u_char*)this + tot_len - IPPROTO_ESP_FOOTER_SIZE + 1));
+				}
 			}
+			return(_protocol);
 		#if VM_IPV6
 		} else {
-			return(((ip6hdr2*)this)->get_protocol());
+			return(((ip6hdr2*)this)->get_protocol(max_len));
 		}
 		#endif
 	}

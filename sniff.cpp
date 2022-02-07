@@ -352,6 +352,12 @@ unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
 
+#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
+volatile int t2_queue_full_stat_sync;
+map<unsigned, unsigned> t2_queue_full_stat_map;
+#endif
+
+
 // return IP from nat_aliases[ip] or 0 if not found
 vmIP match_nat_aliases(vmIP ip) {
 	nat_aliases_t::iterator iter;
@@ -5378,6 +5384,7 @@ inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_ca
 }
 
 bool process_packet_rtp(packet_s_process_0 *packetS) {
+	#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 	packetS->blockstore_addflag(21 /*pb lock flag*/);
 	if(packetS->datalen_() <= 2) { // && (htons(*(unsigned int*)data) & 0xC000) == 0x8000) { // disable condition - failure for udptl (fax)
 		packetS->init2_rtp();
@@ -5393,6 +5400,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			return(false);
 		}
 	}
+	#endif
 	if(processRtpPacketHash) {
 		packetS->blockstore_addflag(23 /*pb lock flag*/);
 		processRtpPacketHash->push_packet(packetS);
@@ -6807,6 +6815,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 		header_packet_pqout->block_store = NULL;
 		header_packet_pqout->block_store_index = 0;
 		header_packet_pqout->block_store_locked = false;
+		header_packet_pqout->header_ip_last_offset = 0xFFFF;
 		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 			ip_frag_s *node = it->second;
 			if(i == 0) {
@@ -7386,9 +7395,11 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 			if(!call) {
 				call = new FILE_LINE(0) Call(INVITE, (char*)"", 0, NULL, 0);
 			}
+			#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 			packetS->_saddr = ppd.header_ip->get_saddr();
-			packetS->_source = ppd.header_udp->get_source();
 			packetS->_daddr = ppd.header_ip->get_daddr(); 
+			#endif
+			packetS->_source = ppd.header_udp->get_source();
 			packetS->_dest = ppd.header_udp->get_dest();
 			packetS->_datalen = ppd.datalen; 
 			packetS->_datalen_set = 0; 
@@ -8056,20 +8067,37 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 			      opt_preprocess_packets_qring_length / this->qring_batch_item_length;
 	this->readit = 0;
 	this->writeit = 0;
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	this->qring_detach_x = NULL;
+	#endif
+	this->qring_detach = NULL;
+	this->qring = NULL;
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	this->qring_detach_x_active_push_item = NULL;
+	#endif
+	this->qring_detach_active_push_item = NULL;
+	this->qring_active_push_item = NULL;
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	if(typePreProcessThread == ppt_detach_x) {
+		this->qring_detach_x = new FILE_LINE(0) batch_pcap_queue_packet_data*[this->qring_length];
+		for(unsigned int i = 0; i < this->qring_length; i++) {
+			this->qring_detach_x[i] = new FILE_LINE(0) batch_pcap_queue_packet_data(this->qring_batch_item_length);
+			this->qring_detach_x[i]->used = 0;
+		}
+	} else 
+	#endif
 	if(typePreProcessThread == ppt_detach) {
 		this->qring_detach = new FILE_LINE(26022) batch_packet_s*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
 			this->qring_detach[i] = new FILE_LINE(26023) batch_packet_s(this->qring_batch_item_length);
 			this->qring_detach[i]->used = 0;
 		}
-		this->qring = NULL;
 	} else {
 		this->qring = new FILE_LINE(26024) batch_packet_s_process*[this->qring_length];
 		for(unsigned int i = 0; i < this->qring_length; i++) {
 			this->qring[i] = new FILE_LINE(26025) batch_packet_s_process(this->qring_batch_item_length);
 			this->qring[i]->used = 0;
 		}
-		this->qring_detach = NULL;
 	}
 	this->items_flag = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
 	this->qring_push_index = 0;
@@ -8109,8 +8137,13 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	getCpuUsagePerc_counter = 0;
 	getCpuUsagePerc_counter_at_start_out_thread = 0;
-	this->next_threads = opt_t2_boost && (typePreProcessThread == ppt_detach || typePreProcessThread == ppt_sip) ? 
-			      opt_pre_process_packets_next_thread : 
+	this->next_threads = opt_t2_boost && (
+			     #if EXPERIMENTAL_T2_DETACH_X_MOD
+			     typePreProcessThread == ppt_detach_x || 
+			     #endif
+			     typePreProcessThread == ppt_detach || 
+			     typePreProcessThread == ppt_sip) ? 
+			      min(opt_pre_process_packets_next_thread, min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) : 
 			      0;
 	for(int i = 0; i < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS); i++) {
 		this->nextThreadId[i] = 0;
@@ -8131,6 +8164,14 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 
 PreProcessPacket::~PreProcessPacket() {
 	terminate();
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	if(this->qring_detach_x) {
+		for(unsigned int i = 0; i < this->qring_length; i++) {
+			delete this->qring_detach_x[i];
+		}
+		delete [] this->qring_detach_x;
+	}
+	#endif
 	if(this->qring_detach) {
 		for(unsigned int i = 0; i < this->qring_length; i++) {
 			delete this->qring_detach[i];
@@ -8177,6 +8218,61 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 	int usleepUseconds = 20;
 	unsigned int usleepCounter = 0;
 	while(!this->term_preProcess) {
+	 
+		#if EXPERIMENTAL_T2_OUTTHREAD_SIP_MOD == 1
+	 
+		if(this->typePreProcessThread == ppt_sip) {
+			s_next_thread_data *next_thread_data = &this->next_thread_data[next_thread_index_plus - 1];
+			if(next_thread_data->batch && next_thread_data->processing) {
+				batch_packet_s_process *batch = (batch_packet_s_process*)next_thread_data->batch;
+				while(true) {
+					int batch_index = -1;
+					__SYNC_LOCK(this->_sync_count);
+					if(this->items_processed < batch->count) {
+						batch_index = this->items_processed;
+						__SYNC_INC(this->items_processed);
+					}
+					__SYNC_UNLOCK(this->_sync_count);
+					if(batch_index >= 0) {
+						this->process_SIP(batch->batch[batch_index], true);
+						this->items_flag[batch_index] = 1;
+					} else {
+						break;
+					}
+				}
+				next_thread_data->batch = NULL;
+				next_thread_data->processing = 0;
+			} else {
+				usleep(20);
+			}
+			continue;
+		}
+		
+		#elif EXPERIMENTAL_T2_OUTTHREAD_SIP_MOD == 2
+				
+		if(this->typePreProcessThread == ppt_sip) {
+			s_next_thread_data *next_thread_data = &this->next_thread_data[next_thread_index_plus - 1];
+			if(next_thread_data->batch && next_thread_data->processing) {
+				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
+				unsigned batch_index_start = next_thread_data->start;
+				unsigned batch_index_end = next_thread_data->end;
+				unsigned batch_index_skip = next_thread_data->skip;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					this->process_SIP(batch[batch_index], true);
+					this->items_flag[batch_index] = 1;
+				}
+				next_thread_data->batch = NULL;
+				next_thread_data->processing = 0;
+			} else {
+				usleep(20);
+			}
+			continue;
+		}
+		
+		#endif
+	 
 		sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
 		if(this->term_preProcess) {
 			break;
@@ -8187,6 +8283,17 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 			unsigned batch_index_end = next_thread_data->end;
 			unsigned batch_index_skip = next_thread_data->skip;
 			switch(this->typePreProcessThread) {
+			#if EXPERIMENTAL_T2_DETACH_X_MOD
+			case ppt_detach_x: {
+				pcap_queue_packet_data **batch = (pcap_queue_packet_data**)next_thread_data->batch;
+				batch_packet_s *qring_detach_active_push_item = preProcessPacket[ppt_detach]->qring_detach_active_push_item;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					this->process_DETACH_X_1(batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
+				} }
+				break;
+			#endif
 			case ppt_detach: {
 				packet_s_plus_pointer **batch = (packet_s_plus_pointer**)next_thread_data->batch;
 				for(unsigned batch_index = batch_index_start; 
@@ -8219,7 +8326,11 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 }
 
 void *PreProcessPacket::outThreadFunction() {
-	if(this->typePreProcessThread == ppt_detach ||
+	if(
+	   #if EXPERIMENTAL_T2_DETACH_X_MOD
+	   this->typePreProcessThread == ppt_detach_x ||
+	   #endif
+	   this->typePreProcessThread == ppt_detach ||
 	   this->typePreProcessThread == ppt_sip ||
 	   this->typePreProcessThread == ppt_extend) {
 		 pthread_t thId = pthread_self();
@@ -8239,15 +8350,90 @@ void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	packet_s_process *packetS;
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	batch_pcap_queue_packet_data *batch_detach_x;
+	#endif
 	batch_packet_s *batch_detach;
 	batch_packet_s_process *batch;
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
-		if(this->typePreProcessThread == ppt_detach ?
-		    (this->qring_detach[this->readit]->used == 1) :
-		    (this->qring[this->readit]->used == 1)) {
-			if(this->typePreProcessThread == ppt_detach) {
+		bool exists_used = false;
+		#if EXPERIMENTAL_T2_DETACH_X_MOD
+		if(this->typePreProcessThread == ppt_detach_x) {
+			if(this->qring_detach_x[this->readit]->used == 1) {
+				exists_used = true;
+				preProcessPacket[ppt_detach]->push_packet_detach__active__prepare();
+				batch_detach_x = this->qring_detach_x[this->readit];
+				__SYNC_LOCK(this->_sync_count);
+				unsigned count = batch_detach_x->count;
+				__SYNC_UNLOCK(this->_sync_count);
+				batch_packet_s *qring_detach_active_push_item = preProcessPacket[ppt_detach]->qring_detach_active_push_item;
+				if(this->next_thread_handle[0]) {
+					unsigned completed = 0;
+					int _next_threads = this->next_threads;
+					bool _process_only_in_next_threads = _next_threads > 1;
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->items_flag[batch_index] = 0;
+					}
+					for(int i = 0; i < _next_threads; i++) {
+						if(_process_only_in_next_threads) {
+							this->next_thread_data[i].start = i;
+							this->next_thread_data[i].end = count;
+							this->next_thread_data[i].skip = _next_threads;
+						} else {
+							this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
+							this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
+							this->next_thread_data[i].skip = 1;
+						}
+						this->next_thread_data[i].batch = batch_detach_x->batch;
+						this->next_thread_data[i].processing = 1;
+						sem_post(&sem_sync_next_thread[i][0]);
+					}
+					if(_process_only_in_next_threads) {
+						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
+						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+							if(completed < count &&
+							   this->items_flag[completed] != 0) {
+								this->process_DETACH_X_2(qring_detach_active_push_item->batch[completed]);
+								++completed;
+							} else {
+								USLEEP(20);
+							}
+						}
+					} else {
+						for(unsigned batch_index = 0; 
+						    batch_index < count / (_next_threads + 1); 
+						    batch_index++) {
+							this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
+						}
+					}
+					for(int i = 0; i < _next_threads; i++) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					}
+					for(unsigned batch_index = completed; batch_index < count; batch_index++) {
+						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
+					}
+				} else {
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
+						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);
+					}
+				}
+				#if RQUEUE_SAFE
+					__SYNC_NULL(batch_detach_x->count);
+					__SYNC_NULL(batch_detach_x->used);
+				#else
+					batch_detach_x->count = 0;
+					batch_detach_x->used = 0;
+				#endif
+				preProcessPacket[ppt_detach]->push_packet_detach__active__finish(count);
+			}
+		} else 
+		#endif
+		if(this->typePreProcessThread == ppt_detach) {
+			if(this->qring_detach[this->readit]->used == 1) {
+				exists_used = true;
 				batch_detach = this->qring_detach[this->readit];
 				if(this->next_thread_handle[0]) {
 					__SYNC_LOCK(this->_sync_count);
@@ -8274,16 +8460,27 @@ void *PreProcessPacket::outThreadFunction() {
 						sem_post(&sem_sync_next_thread[i][0]);
 					}
 					if(_process_only_in_next_threads) {
+						#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
 						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
 						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
+								#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->pointer[0]);
+								if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
+									preProcessPacket[ppt_sip]->push_packet(p);
+								} else  {
+									preProcessPacket[ppt_pp_rtp]->push_packet(p);
+								}
+								#else
 								preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[completed]->pointer[0]));
+								#endif
 								++completed;
 							} else {
 								USLEEP(20);
 							}
 						}
+						#endif
 					} else {
 						for(unsigned batch_index = 0; 
 						    batch_index < count / (_next_threads + 1); 
@@ -8294,15 +8491,39 @@ void *PreProcessPacket::outThreadFunction() {
 					for(int i = 0; i < _next_threads; i++) {
 						sem_wait(&sem_sync_next_thread[i][1]);
 					}
+					#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
 					for(unsigned batch_index = completed; batch_index < batch_detach->count; batch_index++) {
+						#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
+						if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
+							preProcessPacket[ppt_sip]->push_packet(p);
+						} else  {
+							preProcessPacket[ppt_pp_rtp]->push_packet(p);
+						}
+						#else
 						preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]));
+						#endif
 					}
+					#endif
 				} else {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
+						#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+						this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
+						if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
+							preProcessPacket[ppt_sip]->push_packet(p);
+						} else  {
+							preProcessPacket[ppt_pp_rtp]->push_packet(p);
+						}
+						#else
 						this->process_DETACH_plus(batch_detach->batch[batch_index]);
+						#endif
 						batch_detach->batch[batch_index]->_packet_alloc = false;
 					}
 				}
+				#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+				counter_all_packets += batch_detach->count;
+				#endif
 				#if RQUEUE_SAFE
 					__SYNC_NULL(batch_detach->count);
 					__SYNC_NULL(batch_detach->used);
@@ -8310,8 +8531,63 @@ void *PreProcessPacket::outThreadFunction() {
 					batch_detach->count = 0;
 					batch_detach->used = 0;
 				#endif
-			} else if(this->typePreProcessThread == ppt_sip && this->next_thread_handle[0]) {
+			}
+		} else if(this->typePreProcessThread == ppt_sip) {
+			if(this->qring[this->readit]->used == 1) {
+				exists_used = true;
 				batch = this->qring[this->readit];
+				
+				#if EXPERIMENTAL_T2_OUTTHREAD_SIP_MOD == 1
+				
+				this->items_processed = 0;
+				unsigned completed = 0;
+				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+					this->items_flag[batch_index] = 0;
+				}
+				int _next_threads = this->next_threads;
+				for(int i = 0; i < _next_threads; i++) {
+					this->next_thread_data[i].batch = batch;
+					this->next_thread_data[i].processing = 1;
+				}
+				while(completed < batch->count) {
+					if(this->items_flag[completed] != 0) {
+						processNextAction(batch->batch[completed]);
+						++completed;
+					}
+				}
+				for(int i = 0; i < _next_threads; i++) {
+					while(this->next_thread_data[i].processing);
+				}
+				
+				#elif EXPERIMENTAL_T2_OUTTHREAD_SIP_MOD == 2
+				
+				this->items_processed = 0;
+				unsigned completed = 0;
+				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+					this->items_flag[batch_index] = 0;
+				}
+				int _next_threads = this->next_threads;
+				for(int i = 0; i < _next_threads; i++) {
+					this->next_thread_data[i].start = i;
+					this->next_thread_data[i].end = batch->count;
+					this->next_thread_data[i].skip = _next_threads;
+				}
+				for(int i = 0; i < _next_threads; i++) {
+					this->next_thread_data[i].batch = batch->batch;
+					this->next_thread_data[i].processing = 1;
+				}
+				while(completed < batch->count) {
+					if(this->items_flag[completed] != 0) {
+						processNextAction(batch->batch[completed]);
+						++completed;
+					}
+				}
+				for(int i = 0; i < _next_threads; i++) {
+					while(this->next_thread_data[i].processing);
+				}
+				
+				#else
+				 
 				__SYNC_LOCK(this->_sync_count);
 				unsigned count = batch->count;
 				__SYNC_UNLOCK(this->_sync_count);
@@ -8360,11 +8636,16 @@ void *PreProcessPacket::outThreadFunction() {
 					processNextAction(batch->batch[batch_index]);
 					batch->batch[batch_index] = NULL;
 				}
+				
+				#endif
+				
 				if(opt_preprocess_packets_qring_force_push) {
 					preProcessPacket[ppt_extend]->push_batch();
+					#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 					if(opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
+					#endif
 				}
 				#if RQUEUE_SAFE
 					__SYNC_NULL(batch->count);
@@ -8373,7 +8654,10 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->count = 0;
 					batch->used = 0;
 				#endif
-			} else {
+			}
+		} else {
+			if(this->qring[this->readit]->used == 1) {
+				exists_used = true;
 				batch = this->qring[this->readit];
 				__SYNC_LOCK(this->_sync_count);
 				unsigned count = batch->count;
@@ -8385,6 +8669,10 @@ void *PreProcessPacket::outThreadFunction() {
 						PACKET_S_PROCESS_DESTROY(&packetS);
 					} else {
 						switch(this->typePreProcessThread) {
+						#if EXPERIMENTAL_T2_DETACH_X_MOD
+						case ppt_detach_x:
+							break;
+						#endif
 						case ppt_detach:
 							break;
 						case ppt_sip:
@@ -8392,9 +8680,11 @@ void *PreProcessPacket::outThreadFunction() {
 							if(opt_preprocess_packets_qring_force_push &&
 							   batch_index == count - 1) {
 								preProcessPacket[ppt_extend]->push_batch();
+								#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 								if(opt_t2_boost) {
 									preProcessPacket[ppt_pp_rtp]->push_batch();
 								}
+								#endif
 							}
 							break;
 						case ppt_extend:
@@ -8404,9 +8694,11 @@ void *PreProcessPacket::outThreadFunction() {
 								preProcessPacket[ppt_pp_call]->push_batch();
 								preProcessPacket[ppt_pp_register]->push_batch();
 								preProcessPacket[ppt_pp_sip_other]->push_batch();
+								#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 								if(!opt_t2_boost) {
 									preProcessPacket[ppt_pp_rtp]->push_batch();
 								}
+								#endif
 							}
 							break;
 						case ppt_pp_call:
@@ -8443,6 +8735,8 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->used = 0;
 				#endif
 			}
+		}
+		if(exists_used) {
 			#if RQUEUE_SAFE
 				__SYNC_INCR(this->readit, this->qring_length);
 			#else
@@ -8460,23 +8754,37 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			if(usleepSumTimeForPushBatch > 500000ull) {
 				switch(this->typePreProcessThread) {
+				#if EXPERIMENTAL_T2_DETACH_X_MOD
+				case ppt_detach_x:
+					preProcessPacket[ppt_detach]->push_batch();
+					break;
+				#endif
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
-					break;
-				case ppt_sip:
-					preProcessPacket[ppt_extend]->push_batch();
+					#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 					if(opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
+					#endif
+					break;
+				case ppt_sip:
+					preProcessPacket[ppt_extend]->push_batch();
+					#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+					if(opt_t2_boost) {
+						preProcessPacket[ppt_pp_rtp]->push_batch();
+					}
+					#endif
 					preProcessPacket[ppt_pp_other]->push_batch();
 					break;
 				case ppt_extend:
 					preProcessPacket[ppt_pp_call]->push_batch();
 					preProcessPacket[ppt_pp_register]->push_batch();
 					preProcessPacket[ppt_pp_sip_other]->push_batch();
+					#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 					if(!opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
 					}
+					#endif
 					if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find && 
 					   preProcessPacketCallFindX[0]->isActiveOutThread()) {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
@@ -8546,7 +8854,11 @@ void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 		preProcessPacket[ppt_extend]->push_packet(packetS);
 		break;
 	case _ppna_push_to_rtp:
+		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+		#else
+		packetS->next_action = _ppna_destroy;
+		#endif
 		break;
 	case _ppna_push_to_other:
 		preProcessPacket[ppt_pp_other]->push_packet(packetS);
@@ -8570,6 +8882,10 @@ void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 
 void PreProcessPacket::push_batch_nothread() {
 	switch(this->typePreProcessThread) {
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	case ppt_detach_x:
+		break;
+	#endif
 	case ppt_detach:
 		if(!preProcessPacket[ppt_sip]->outThreadState) {
 			preProcessPacket[ppt_sip]->push_batch();
@@ -8579,11 +8895,13 @@ void PreProcessPacket::push_batch_nothread() {
 		if(!preProcessPacket[ppt_extend]->outThreadState) {
 			preProcessPacket[ppt_extend]->push_batch();
 		}
+		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		if(opt_t2_boost) {
 			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
 				preProcessPacket[ppt_pp_rtp]->push_batch();
 			}
 		}
+		#endif
 		if(!preProcessPacket[ppt_pp_other]->outThreadState) {
 			preProcessPacket[ppt_pp_other]->push_batch();
 		}
@@ -8598,11 +8916,13 @@ void PreProcessPacket::push_batch_nothread() {
 		if(!preProcessPacket[ppt_pp_sip_other]->outThreadState) {
 			preProcessPacket[ppt_pp_sip_other]->push_batch();
 		}
+		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		if(!opt_t2_boost) {
 			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
 				preProcessPacket[ppt_pp_rtp]->push_batch();
 			}
 		}
+		#endif
 		if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find) {
 			for(int i = 0; i < preProcessPacketCallX_count; i++) {
 				if(!preProcessPacketCallFindX[i]->outThreadState) {
@@ -8721,7 +9041,12 @@ void PreProcessPacket::terminate() {
 
 void PreProcessPacket::addNextThread() {
 	if(opt_t2_boost &&
-	   (this->typePreProcessThread == ppt_detach || this->typePreProcessThread == ppt_sip) &&
+	   (
+	    #if EXPERIMENTAL_T2_DETACH_X_MOD
+	    this->typePreProcessThread == ppt_detach_x ||
+	    #endif
+	    this->typePreProcessThread == ppt_detach || 
+	    this->typePreProcessThread == ppt_sip) &&
 	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
 		for(int j = 0; j < 2; j++) {
 			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
@@ -8736,7 +9061,13 @@ void PreProcessPacket::addNextThread() {
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_threads) {
+	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_SIP
+		packetS->next_action = _ppna_push_to_other;
+		return;
+	#endif
+	#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 	++counter_all_packets;
+	#endif
 	bool isSip = false;
 	bool isMgcp = false;
 	bool rtp = false;
@@ -8753,6 +9084,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			isMgcp = true;
 		}
 		if(packetS->pflags.tcp) {
+			extern int opt_sip_tcp_reassembly_ext_quick_mod;
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->pflags.skinny) {
 				// call process_skinny before tcp reassembly - TODO !
@@ -8770,6 +9102,10 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 						PACKET_S_PROCESS_DESTROY(&packetS);
 					}
 				}
+			} else if(opt_sip_tcp_reassembly_ext_quick_mod &&
+				  (!packetS->datalen_() ||
+				   (isSip && TcpReassemblySip::checkSip((u_char*)packetS->data_(), packetS->datalen_(), true)))) {
+				this->process_parseSipData(&packetS, NULL);
 			} else {
 				bool possibleWebSocketSip = false;
 				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {
@@ -8817,11 +9153,15 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	if(rtp) {
 		packetS->blockstore_addflag(17 /*pb lock flag*/);
 		if(opt_t2_boost) {
+			#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+			other = true;
+			#else
 			if(parallel_threads) {
 				packetS->next_action = _ppna_push_to_rtp;
 			} else {
 				preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 			}
+			#endif
 		} else {
 			packetS->type_content = _pptc_na;
 			if(parallel_threads) {
@@ -8832,6 +9172,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		}
 	}
 	if(other) {
+		packetS->init_reuse();
+		packetS->blockstore_addflag(19 /*pb lock flag*/);
 		if(parallel_threads) {
 			packetS->next_action = _ppna_push_to_other;
 		} else {
@@ -8841,6 +9183,10 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 }
 
 void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
+	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_SIP_EXTEND
+		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 6);
+		return;
+	#endif
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
 		bool pushed = false;
@@ -8879,7 +9225,11 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
 		packetS->blockstore_addflag(103 /*pb lock flag*/);
+		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+		#else
+		PACKET_S_PROCESS_DESTROY(&packetS);
+		#endif
 	}
 }
 
@@ -8982,6 +9332,10 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
+	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_RTP
+		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+		return;
+	#endif
 	if(processing_limitations.suppressRtpAllProcessing() ||
 	   !process_packet_rtp(packetS)) {
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
@@ -8989,9 +9343,11 @@ void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
 }
 
 void PreProcessPacket::process_OTHER(packet_s_stack *packetS) {
+	#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_OTHER
 	if(packetS->pflags.other_processing()) {
 		process_packet_other(packetS);
 	}
+	#endif
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 4);
 }
 
@@ -9102,11 +9458,19 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			}
 		}
 	} else if(packetS) {
+		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+		#else
 		if(packetS->next_action == _ppna_set) {
 			packetS->next_action = _ppna_push_to_rtp;
 		} else {
 			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
 		}
+		#endif
 	}
 }
 
@@ -9382,6 +9746,10 @@ void PreProcessPacket::autoStartCallX_PreProcessPacket() {
 	}
 }
 
+void PreProcessPacket::_packetS_destroy(packet_s_process_0 *packetS) {
+	PACKET_S_PROCESS_DESTROY(&packetS);
+}
+
 void PreProcessPacket::autoStopLastLevelPreProcessPacket(bool force) {
 	if(autoStartNextLevelPreProcessPacket_last_time_s &&
 	   getTimeS() < autoStartNextLevelPreProcessPacket_last_time_s + 30 * 60) {
@@ -9596,6 +9964,10 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			    batch_index < batch_index_end; 
 			    batch_index += batch_index_skip) {
 				packet_s_process_0 *packetS = hash_thread_data->batch->batch[batch_index];
+				if(!packetS) {
+					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+					continue;
+				}
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
@@ -9695,6 +10067,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		} else {
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
+				if(!packetS) {
+					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+					continue;
+				}
 				packetS->init2_rtp();
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {

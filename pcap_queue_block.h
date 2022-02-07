@@ -72,6 +72,7 @@ struct pcap_pkthdr_plus {
 				header.caplen = this->header_fix_size.caplen;
 				header.len = this->header_fix_size.len;
 				this->header_std = header;
+				this->std = 1;
 			}
 			#if __GNUC__ >= 8
 			#pragma GCC diagnostic push
@@ -98,6 +99,9 @@ struct pcap_pkthdr_plus {
 				return(header);
 			}
 		#endif
+	}
+	inline pcap_pkthdr *_getStdHeader() {
+		return((pcap_pkthdr*)this);
 	}
 	inline uint32_t get_caplen() {
 		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
