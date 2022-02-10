@@ -240,11 +240,11 @@ public:
 	u_int16_t avg_ptime;
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;
+	#if not EXPERIMENTAL_RTP_LITE
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	bool initRAW;
 	bool needInitRawForChannelRecord;
 	char *gfileRAW_buffer;
-	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
 	int rawiterator;	//!< iterator for raw file name 
 	struct ast_channel *channel_fix1;
@@ -252,6 +252,8 @@ public:
 	struct ast_channel *channel_adapt;
 	struct ast_channel *channel_record;
 	struct ast_frame *frame;
+	#endif
+	char gfilename[1024];	//!< file name of this file 
 	int lastframetype;		//!< last packet sequence number
 	char lastcng;		//!< last packet sequence number
 	u_int16_t seq;		//!< current sequence number
@@ -611,8 +613,8 @@ public:
 	inline void clearAudioBuff(class Call *call, ast_channel *channel);
 	
 	bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-		return(this->saddr == saddr && this->daddr == daddr &&
-		       this->sport == sport && this->dport == dport);
+		return(this->sport == sport && this->dport == dport &&
+		       this->saddr == saddr && this->daddr == daddr);
 	}
 	bool eqAddrPort(RTP *rtp) {
 		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));

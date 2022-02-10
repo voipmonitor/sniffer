@@ -1096,6 +1096,7 @@ Call::closeRawFiles() {
 		if(!rtp_i) {
 			continue;
 		}
+		#if not EXPERIMENTAL_RTP_LITE
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
 			rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
@@ -1108,6 +1109,7 @@ Call::closeRawFiles() {
 			}
 			rtp_i->initRAW = false;
 		}
+		#endif
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp_i->graph.isOpen()) {
@@ -1962,19 +1964,21 @@ read:
 			}
 		}
 
-		char graph_extension[100];
-		snprintf(graph_extension, sizeof(graph_extension), "%d.graph%s", rtp_new->ssrc_index, opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
-		string graph_pathfilename = get_pathfilename(tsf_graph, graph_extension);
-		strcpy(rtp_new->gfilename, graph_pathfilename.c_str());
 		if((flags & FLAG_SAVEGRAPH) && !sverb.disable_save_graph) {
+			char graph_extension[100];
+			snprintf(graph_extension, sizeof(graph_extension), "%d.graph%s", rtp_new->ssrc_index, opt_gzipGRAPH == FileZipHandler::gzip ? ".gz" : "");
+			string graph_pathfilename = get_pathfilename(tsf_graph, graph_extension);
+			strcpy(rtp_new->gfilename, graph_pathfilename.c_str());
 			rtp_new->graph.auto_open(tsf_graph, graph_pathfilename.c_str());
 		}
 		
+		#if not EXPERIMENTAL_RTP_LITE
 		char ird_extension[100];
 		snprintf(ird_extension, sizeof(ird_extension), "i%d", !iscaller);
 		string ird_pathfilename = get_pathfilename(tsf_audio, ird_extension);
 		strncpy(rtp_new->basefilename, ird_pathfilename.c_str(), 1023);
 		rtp_new->basefilename[1023] = 0;
+		#endif
 
 		rtp_new->index_call_ip_port = index_call_ip_port_find_side;
 		if(rtp_new->index_call_ip_port >= 0) {

@@ -252,9 +252,11 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	ssrc = 0;
 	ssrc2 = 0;
 	gfilename[0] = '\0';
+	#if not EXPERIMENTAL_RTP_LITE
 	gfileRAW = NULL;
 	initRAW = false;
 	needInitRawForChannelRecord = false;
+	#endif
 	last_interval_mosf1 = 45;
 	last_interval_mosf2 = 45;
 	last_interval_mosAD = 45;
@@ -276,6 +278,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	codecchanged = false;
 	had_audio = false;
 	
+	#if not EXPERIMENTAL_RTP_LITE
 	channel_fix1 = new FILE_LINE(24002) ast_channel;
 	memset(channel_fix1, 0, sizeof(ast_channel));
 	channel_fix1->jitter_impl = 0; // fixed
@@ -320,6 +323,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_record->audiobuf = NULL;
 	channel_record->audio_decode = true;
 	channel_record->rtp_stream = this;
+	#endif
+	
 	last_mos_time = 0;
 	mos_processed = false;
 	save_mos_graph_wait = false;
@@ -329,9 +334,11 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	last_voice_frame_timestamp = 0;
 
 	//channel->name = "SIP/fixed";
+	#if not EXPERIMENTAL_RTP_LITE
 	frame = new FILE_LINE(24006) ast_frame;
 	memset(frame, 0, sizeof(ast_frame));
 	frame->frametype = AST_FRAME_VOICE;
+	#endif
 	lastframetype = AST_FRAME_VOICE;
 	//frame->src = "DUMMY";
 	last_seq = -1;
@@ -351,7 +358,9 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	payload2 = -1;
 	codec = -1;
 	frame_size = 0;
+	#if not EXPERIMENTAL_RTP_LITE
 	gfileRAW_buffer = NULL;
+	#endif
 	sid = false;
 	prev_sid = false;
 	call_owner = NULL;
@@ -402,7 +411,9 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	energylevels_last_seq = 0;
 	energylevels_via_jb = false;
 	if(opt_save_energylevels && opt_save_energylevels_via_jb) {
+		#if not EXPERIMENTAL_RTP_LITE
 		channel_record->enable_save_energylevels = 1;
+		#endif
 		energylevels_via_jb = true;
 	}
 	energylevels_counter = 0;
@@ -424,6 +435,7 @@ RTP::save_mos_graph(bool delimiter) {
 		this->graph.write((char*)&graph_mos, 4);
 	}
 
+	#if not EXPERIMENTAL_RTP_LITE
 	if(opt_jitterbuffer_f1 and channel_fix1) {
 		last_interval_mosf1 = calculate_mos_fromrtp(this, 1, 1);
 
@@ -437,7 +449,9 @@ RTP::save_mos_graph(bool delimiter) {
 		}
 		mosf1_avg = ((mosf1_avg * mos_counter) + last_interval_mosf1) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
-	} else {
+	} else 
+	#endif
+	{
 		last_interval_mosf1 = 45;
 		mosf1_min = 45;
 		mosf1_avg = 45;
@@ -445,6 +459,7 @@ RTP::save_mos_graph(bool delimiter) {
 			this->graph.write((char*)&last_interval_mosf1, 1);
 		}
 	}
+	#if not EXPERIMENTAL_RTP_LITE
 	if(opt_jitterbuffer_f2 and channel_fix2) {
 		last_interval_mosf2 = calculate_mos_fromrtp(this, 2, 1);
 		//if(verbosity > 1) printf("mosf2[%d]\n", last_interval_mosf2);
@@ -458,7 +473,9 @@ RTP::save_mos_graph(bool delimiter) {
 		}
 		mosf2_avg = ((mosf2_avg * mos_counter) + last_interval_mosf2) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
-	} else {
+	} else 
+	#endif
+	{
 		last_interval_mosf2 = 45;
 		mosf2_min = 45;
 		mosf2_avg = 45;
@@ -466,6 +483,7 @@ RTP::save_mos_graph(bool delimiter) {
 			this->graph.write((char*)&last_interval_mosf2, 1);
 		}
 	}
+	#if not EXPERIMENTAL_RTP_LITE
 	if(opt_jitterbuffer_adapt and channel_adapt) {
 		last_interval_mosAD = calculate_mos_fromrtp(this, 3, 1);
 		//if(verbosity > 1) printf("mosAD[%d]\n", last_interval_mosAD);
@@ -479,7 +497,9 @@ RTP::save_mos_graph(bool delimiter) {
 		}
 		mosAD_avg = ((mosAD_avg * mos_counter) + last_interval_mosAD) / (mos_counter + 1);
 //		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
-	} else {
+	} else 
+	#endif
+	{
 		last_interval_mosAD = 45;
 		mosAD_min = 45;
 		mosAD_avg = 45;
@@ -558,14 +578,18 @@ RTP::~RTP() {
 		RTP::dump();
 	}
 
+	#if not EXPERIMENTAL_RTP_LITE
 	if(gfileRAW || initRAW) {
 		jitterbuffer_fixed_flush(channel_record);
 		if(gfileRAW) {
 			fclose(gfileRAW);
 		}
 	}
+	#endif
 
 	delete s;
+	
+	#if not EXPERIMENTAL_RTP_LITE
 	ast_jb_destroy(channel_fix1);
 	ast_jb_destroy(channel_fix2);
 	ast_jb_destroy(channel_adapt);
@@ -579,6 +603,7 @@ RTP::~RTP() {
 	if(gfileRAW_buffer) {
 		delete [] gfileRAW_buffer;
 	}
+	#endif
 
 	if(DSP) {
 		dsp_free(DSP);
@@ -632,13 +657,17 @@ const int RTP::get_payload_len() {
 
 /* flush jitterbuffer */
 void RTP::jitterbuffer_fixed_flush(struct ast_channel */*jchannel*/) {
+	#if not EXPERIMENTAL_RTP_LITE
 	jb_fixed_flush_deliver(channel_record);
+	#endif
 }
 
 /* add silence to RTP stream from last packet time to current time which is in header->ts */
 void
 RTP::jt_tail(struct pcap_pkthdr *header) {
 
+	#if not EXPERIMENTAL_RTP_LITE
+ 
 	if(!ast_jb_test(channel_record)) {
 		// there is no ongoing recording, return
 		return;
@@ -672,12 +701,17 @@ RTP::jt_tail(struct pcap_pkthdr *header) {
 		memcpy(&channel_record->last_ts, &tmp, sizeof(struct timeval));
 		msdiff -= packetization;
 	}
+	
+	#endif
+	
 }
 
 #if 1
 /* simulate jitterbuffer */
 void
 RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevels, bool mos_lqo) {
+ 
+	#if not EXPERIMENTAL_RTP_LITE
 
 	if(codec == PAYLOAD_TELEVENT) return;
 
@@ -921,6 +955,9 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	ast_jb_put(channel, frame, &header_ts);
 	
 	this->clearAudioBuff(owner, channel);
+	
+	#endif
+	
 }
 #endif
 
@@ -1009,6 +1046,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return(false);
 	
+	#if not EXPERIMENTAL_RTP_LITE
 	if(sverb.read_rtp) {
 		extern u_int64_t read_rtp_counter;
 		++read_rtp_counter;
@@ -1022,9 +1060,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		     << " counter: " << read_rtp_counter
 		     << endl;
 	}
+	#endif
 	
 	Call *owner = (Call*)call_owner;
 
+	#if not EXPERIMENTAL_RTP_LITE
 	extern bool opt_receiver_check_id_sensor;
 	if(opt_receiver_check_id_sensor && ((this->sensor_id >= 0 && this->sensor_id != sensor_id) ||
 	   (this->sensor_ip.isSet() && this->sensor_ip != sensor_ip))) {
@@ -1046,8 +1086,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 		return(false);
 	}
+	#endif
 	
 	u_int64_t pcap_header_us = getTimeUS(header->ts);
+	#if not EXPERIMENTAL_RTP_LITE
 	if(this->last_pcap_header_us && pcap_header_us < (this->last_pcap_header_us - 50000)) {
 		if(!this->pcap_header_ts_bad_time) {
 			if(pcap_header_us < (this->last_pcap_header_us - 200000)) {
@@ -1067,6 +1109,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		return(false);
 	}
 	this->last_pcap_header_us = pcap_header_us;
+	#endif
 
 	if(this->first_packet_time_us == 0) {
 		this->first_packet_time_us = pcap_header_us;
@@ -1080,6 +1123,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 	}
 
+	#if not EXPERIMENTAL_RTP_LITE
 	if(owner) {
 		owner->forcemark_lock();
 		bool checkNextForcemark = false;
@@ -1109,7 +1153,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 		} while(checkNextForcemark);
 		owner->forcemark_unlock();
-	}	       
+	}
+	#endif
 
 	payload_len = get_payload_len();
 	if(payload_len < 0) {
@@ -1128,6 +1173,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		return(false);
 	}
 	
+	#if not EXPERIMENTAL_RTP_LITE
 	bool save_audio = 
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
@@ -1144,11 +1190,15 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		 (!opt_saveaudio_answeronly ||
 		  (owner && owner->connect_time_us && getTimeUS(header) > owner->connect_time_us))) ||
 		mos_lqo;
+	#endif
 	
 	if(srtp_decrypt && 
 	   (opt_srtp_rtp_decrypt || 
-	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) ||
-	    use_channel_record)) {
+	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
+	    #if not EXPERIMENTAL_RTP_LITE
+	    || use_channel_record
+	    #endif
+	    )) {
 		if(srtp_decrypt->need_prepare_decrypt()) {
 			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport);
 		}
@@ -1169,6 +1219,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 
 	last_markbit = getMarker();
 
+	#if not EXPERIMENTAL_RTP_LITE
 	if(opt_rtp_check_timestamp) {
 		if(this->_last_ts.tv_sec &&
 		   (header->ts.tv_sec < this->_last_ts.tv_sec ||
@@ -1193,6 +1244,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 	}
 	this->_last_ts = header->ts;
+	#endif
 	
 	int curpayload = is_video() ? PAYLOAD_VIDEO : getPayload();
 
@@ -1253,6 +1305,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 	}
 
+	#if not EXPERIMENTAL_RTP_LITE
 	/* in case there was packet loss we must predict lastTimeStamp to not add nonexistant delays */
 	forcemark = 0;
 	if(last_seq != -1 and (ROT_SEQ(last_seq + 1) != seq)) {
@@ -1291,7 +1344,9 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			memcpy(&s->lastTimeRec, &tmp, sizeof(struct timeval));
 		}
 	}
+	#endif
 
+	#if not EXPERIMENTAL_RTP_LITE
 	unsigned int *lastssrc = NULL;
 	RTP *lastrtp = NULL;
 	bool diffSsrcInEqAddrPort = false;
@@ -1305,13 +1360,16 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
 				       lastrtp and this->eqAddrPort(lastrtp);
 	}
+	#endif
 	
+	#if not EXPERIMENTAL_RTP_LITE
 	extern cProcessingLimitations processing_limitations;
 	if(processing_limitations.suppressRtpRead()) {
 		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
 	}
 	if(is_video() || 
 	   owner->suppress_rtp_read_due_to_insufficient_hw_performance) {
+	#endif
 		last_seq = seq;
 		if(update_seq(seq)) {
 			update_stats();
@@ -1323,8 +1381,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			first_codec = codec;
 		}
 		return(true);
+	#if not EXPERIMENTAL_RTP_LITE
 	}
+	#endif
 	
+	#if not EXPERIMENTAL_RTP_LITE
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
 	if(getMarker() or
 	   (!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort)) {
@@ -2193,6 +2254,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 
 	return(true);
+	#endif
 }
 
 /* fill internal structures by the input RTP packet */
@@ -2933,6 +2995,7 @@ RTP::dump() {
 	printf("d50: %d, d70: %d, d90: %d, d120: %d, d150: %d, d200: %d, d300: %d\n",
 		stats.d50, stats.d70, stats.d90, stats.d120, stats.d150, stats.d200, stats.d300);
 
+	#if not EXPERIMENTAL_RTP_LITE
 	double burstr, lossr;
 	printf("jitter stats:\n");
 	burstr_calculate(channel_fix1, s->received, &burstr, &lossr, 1);
@@ -2949,6 +3012,8 @@ RTP::dump() {
 	//printf("s->received: %d, loss: %d, bursts: %d\n", s->received, lost, bursts);
 	printf("adapt(500/500)\tloss rate:\t%f\n", lossr);
 	printf("adapt(500/500)\tburst rate:\t%f\n", burstr);
+	#endif
+	
 	printf("---\n");
 }
 
@@ -3058,6 +3123,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 }
 
 int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
+	#if not EXPERIMENTAL_RTP_LITE
 	double burstr, lossr;
 	switch(jittertype) {
 	case 1: 
@@ -3084,6 +3150,9 @@ int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
 	}       
 	int mos = (int)round(calculate_mos(lossr, burstr, rtp->first_codec, rtp->stats.received, rtp->call_owner && ((Call*)rtp->call_owner)->connect_time_us) * 10);
 	return mos;
+	#else
+	return 45;
+	#endif
 }       
 
 void
