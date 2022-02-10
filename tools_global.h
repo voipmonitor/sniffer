@@ -980,4 +980,9 @@ struct sClientInfo {
 };
 
 
+inline void vm_prefetch0(const volatile void *p) {
+	asm volatile ("prefetcht0 %[p]" : : [p] "m" (*(const volatile char *)p));
+}
+
+
 #endif

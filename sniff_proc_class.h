@@ -476,9 +476,6 @@ public:
 		extern unsigned opt_udp_port_mgcp_gateway;
 		extern unsigned opt_tcp_port_mgcp_callagent;
 		extern unsigned opt_udp_port_mgcp_callagent;
-		extern bool opt_audiocodes;
-		extern unsigned opt_udp_port_audiocodes;
-		extern unsigned opt_tcp_port_audiocodes;
 		pflags.skinny = opt_skinny && pflags.tcp && (skinnyportmatrix[source] || skinnyportmatrix[dest]);
 		pflags.mgcp = opt_mgcp && 
 			      (pflags.tcp ?
@@ -486,6 +483,10 @@ public:
 				 (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
 				((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
 				 (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+		extern bool opt_audiocodes;
+		extern unsigned opt_udp_port_audiocodes;
+		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
 		if(opt_audiocodes &&
 		   (pflags.tcp ?
@@ -499,12 +500,17 @@ public:
 				audiocodes = NULL;
 			}
 		}
+		#endif
 		bool need_sip_process = (!pflags.other_processing() &&
 					 (pflags.ssl ||
 					  sipportmatrix[source] || sipportmatrix[dest] ||
 					  pflags.skinny ||
-					  pflags.mgcp)) ||
-					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP);
+					  pflags.mgcp))
+					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+					||
+					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
+					#endif
+					;
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
 			       datalen > 2 ||
@@ -552,10 +558,12 @@ public:
 		packetS->sensor_id_u = (u_int16_t)sensor_id;
 		packetS->sensor_ip = sensor_ip;
 		packetS->pid = pid;
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		packetS->audiocodes = audiocodes;
 		if(audiocodes) {
 			packetS->pid.flags |= FLAG_AUDIOCODES;
 		}
+		#endif
 		packetS->need_sip_process = need_sip_process;
 		if(blockstore_lock == 1) {
 			packetS->blockstore_lock(3 /*pb lock flag*/);
@@ -1190,12 +1198,9 @@ private:
 		extern unsigned opt_udp_port_mgcp_gateway;
 		extern unsigned opt_tcp_port_mgcp_callagent;
 		extern unsigned opt_udp_port_mgcp_callagent;
-		extern bool opt_audiocodes;
-		extern unsigned opt_udp_port_audiocodes;
-		extern unsigned opt_tcp_port_audiocodes;
 		pcap_pkthdr *header = packet_data->hp.header->_getStdHeader();
 		u_char *packet = packet_data->hp.packet;
-		#if USE_PACKET_NUMBER
+		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		vmIP saddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_saddr();
 		vmIP daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
 		#endif
@@ -1208,6 +1213,10 @@ private:
 					      (unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
 					     ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
 					      (unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent));
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+		extern bool opt_audiocodes;
+		extern unsigned opt_udp_port_audiocodes;
+		extern unsigned opt_tcp_port_audiocodes;
 		sAudiocodes *audiocodes = NULL;
 		if(opt_audiocodes &&
 		   (packet_data->pflags.tcp ?
@@ -1221,15 +1230,27 @@ private:
 				audiocodes = NULL;
 			}
 		}
+		#endif
 		bool need_sip_process = (!packet_data->pflags.other_processing() &&
 					 (packet_data->pflags.ssl ||
 					  sipportmatrix[packet_data->source] || sipportmatrix[packet_data->dest] ||
 					  packet_data->pflags.skinny ||
-					  packet_data->pflags.mgcp)) ||
-					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP);
+					  packet_data->pflags.mgcp))
+					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+					||
+					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
+					#endif
+					;
+		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+		bool is_rtp = packet_data->datalen > 2 && IS_RTP(packet + packet_data->data_offset, packet_data->datalen);
+		#endif
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
+			       #if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+			       is_rtp ||
+			       #else
 			       packet_data->datalen > 2 ||
+			       #endif
 			       blockstore_lock != 1;
 		if(!ok_push) {
 			if(packetDelete) {
@@ -1238,8 +1259,10 @@ private:
 			}
 			packetS_detach->pointer[0] = NULL;
 			packetS_detach->pointer[1] = NULL;
+			packetS_detach->skip = true;
 			return;
 		}
+		packetS_detach->skip = false;
 		packetS_detach->packet_s::init();
 		#if USE_PACKET_NUMBER
 		packetS->packet_number = packet_number;
@@ -1266,11 +1289,16 @@ private:
 		packetS_detach->sensor_id_u = (u_int16_t)packet_data->hp.sensor_id;
 		packetS_detach->sensor_ip = packet_data->hp.sensor_ip;
 		packetS_detach->pid = packet_data->hp.header->pid;
+		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		packetS_detach->audiocodes = audiocodes;
 		if(audiocodes) {
 			packetS_detach->pid.flags |= FLAG_AUDIOCODES;
 		}
+		#endif
 		packetS_detach->need_sip_process = need_sip_process;
+		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+		packetS_detach->is_rtp = is_rtp;
+		#endif
 		if(blockstore_lock == 1) {
 			packetS_detach->blockstore_lock(3 /*pb lock flag*/);
 		} else if(blockstore_lock == 2) {
@@ -1278,6 +1306,11 @@ private:
 		}
 	}
 	inline void process_DETACH_X_2(packet_s_plus_pointer *packetS_detach) {
+		if(packetS_detach->skip) {
+			packetS_detach->pointer[0] = NULL;
+			packetS_detach->pointer[1] = NULL;
+			return;
+		}
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(packetS_detach->need_sip_process) {
 			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack();
@@ -1306,6 +1339,9 @@ private:
 	inline void process_DETACH_plus(packet_s_plus_pointer *packetS_detach, bool push = true) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
+		if(!packetS) {
+			return;
+		}
 		#if EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
 			_packetS_destroy(packetS);
 			packetS_detach->blockstore_unlock();
@@ -1315,6 +1351,24 @@ private:
 		*(packet_s*)packetS = *(packet_s*)packetS_detach;
 		packetS->__type = __type;
 		packetS->stack = (cHeapItemsPointerStack*)packetS_detach->pointer[1];
+		#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX
+		if(__type >= _t_packet_s_process_0) {
+			packetS->h[0] = 
+				#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+					tuplehash(packetS->saddr_pt_()->getHashNumber(), packetS->source_());
+				#else
+					tuplehash(packetS->saddr_().getHashNumber(), packetS->source_());
+				#endif
+				;
+			packetS->h[1] =
+				#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+					tuplehash(packetS->daddr_pt_()->getHashNumber(), packetS->dest_());
+				#else
+					tuplehash(packetS->daddr_().getHashNumber(), packetS->dest_());
+				#endif
+				;
+		}
+		#endif
 		if(push) {
 			preProcessPacket[ppt_sip]->push_packet(packetS);
 		}

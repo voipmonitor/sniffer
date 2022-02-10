@@ -2805,18 +2805,60 @@ public:
 				lock_calls_hash();
 			}
 			for(node_call_rtp_ip_port *node = calls_hash[h]; node != NULL; node = node->next) {
-				if ((node->addr == addr) && (node->port == port)) {
+				if((node->port == port) && (node->addr == addr)) {
 					rslt = 
 					       #if HASH_RTP_FIND__LIST
 					       &
 					       #endif
 					       node->calls;
+					break;
 				}
 			}
 			if(lock) {
 				unlock_calls_hash();
 			}
 		#endif
+		return rslt;
+	}
+	inline node_call_rtp *hashfind_by_ip_port(vmIP *addr, vmPort port, bool lock = true) {
+		node_call_rtp *rslt = NULL;
+		u_int32_t h = tuplehash(addr->getHashNumber(), port);
+		if(lock) {
+			lock_calls_hash();
+		}
+		for(node_call_rtp_ip_port *node = calls_hash[h]; node != NULL; node = node->next) {
+			if((node->port == port) && (node->addr == *addr)) {
+				rslt = 
+				       #if HASH_RTP_FIND__LIST
+				       &
+				       #endif
+				       node->calls;
+				break;
+			}
+		}
+		if(lock) {
+			unlock_calls_hash();
+		}
+		return rslt;
+	}
+	inline node_call_rtp *hashfind_by_ip_port(u_int32_t h, vmIP *addr, vmPort port, bool lock = true) {
+		node_call_rtp *rslt = NULL;
+		if(lock) {
+			lock_calls_hash();
+		}
+		for(node_call_rtp_ip_port *node = calls_hash[h]; node != NULL; node = node->next) {
+			if((node->port == port) && (node->addr == *addr)) {
+				rslt = 
+				       #if HASH_RTP_FIND__LIST
+				       &
+				       #endif
+				       node->calls;
+				break;
+			}
+		}
+		if(lock) {
+			unlock_calls_hash();
+		}
 		return rslt;
 	}
 	inline bool check_call_in_hashfind_by_ip_port(Call *call, vmIP addr, vmPort port, bool lock = true) {

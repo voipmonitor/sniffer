@@ -751,7 +751,10 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	if(packetS->pid.flags & FLAG_AUDIOCODES) {
 		forceVirtualUdp = true;
 	}
-	if(packetS->kamailio_subst ||
+	if(
+	   #if not EXPERIMENTAL_SUPPRESS_KAMAILIO
+	   packetS->kamailio_subst ||
+	   #endif
 	   packetS->header_ip_()->_get_protocol() == IPPROTO_ESP) {
 		forceVirtualUdp = 2;
 	}
@@ -5467,7 +5470,11 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					}
 				}
 			}
-			if(counter_rtp_only_packets > 1 && !packetS->audiocodes) {
+			if(counter_rtp_only_packets > 1
+			   #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+			   && !packetS->audiocodes
+			   #endif
+			   ) {
 				for(int i = 0; i < call_info->length; i++) {
 					if(!call_info->calls[i].is_rtcp) {
 						call_info->calls[i].multiple_calls = true;
@@ -8465,16 +8472,18 @@ void *PreProcessPacket::outThreadFunction() {
 						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
-								#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->pointer[0]);
-								if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
+								if(p) {
+									#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+									if(p->need_sip_process || !p->is_rtp) {
+										preProcessPacket[ppt_sip]->push_packet(p);
+									} else  {
+										preProcessPacket[ppt_pp_rtp]->push_packet(p);
+									}
+									#else
 									preProcessPacket[ppt_sip]->push_packet(p);
-								} else  {
-									preProcessPacket[ppt_pp_rtp]->push_packet(p);
+									#endif
 								}
-								#else
-								preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[completed]->pointer[0]));
-								#endif
 								++completed;
 							} else {
 								USLEEP(20);
@@ -8493,27 +8502,31 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 					#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
 					for(unsigned batch_index = completed; batch_index < batch_detach->count; batch_index++) {
-						#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
-						if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
+						if(p) {
+							#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
+							if(p->need_sip_process || !p->is_rtp) {
+								preProcessPacket[ppt_sip]->push_packet(p);
+							} else  {
+								preProcessPacket[ppt_pp_rtp]->push_packet(p);
+							}
+							#else
 							preProcessPacket[ppt_sip]->push_packet(p);
-						} else  {
-							preProcessPacket[ppt_pp_rtp]->push_packet(p);
+							#endif
 						}
-						#else
-						preProcessPacket[ppt_sip]->push_packet((packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]));
-						#endif
 					}
 					#endif
 				} else {
 					for(unsigned batch_index = 0; batch_index < batch_detach->count; batch_index++) {
 						#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
-						this->process_DETACH_plus(batch_detach->batch[batch_index], false);
 						packet_s_process* p = (packet_s_process*)(batch_detach->batch[batch_index]->pointer[0]);
-						if(p->need_sip_process || !IS_RTP(p->data_(), p->datalen_())) {
-							preProcessPacket[ppt_sip]->push_packet(p);
-						} else  {
-							preProcessPacket[ppt_pp_rtp]->push_packet(p);
+						if(p) {
+							this->process_DETACH_plus(batch_detach->batch[batch_index], false);
+							if(p->need_sip_process || !p->is_rtp) {
+								preProcessPacket[ppt_sip]->push_packet(p);
+							} else  {
+								preProcessPacket[ppt_pp_rtp]->push_packet(p);
+							}
 						}
 						#else
 						this->process_DETACH_plus(batch_detach->batch[batch_index]);
@@ -9476,6 +9489,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 
 void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
 	extern vmIP opt_kamailio_dstip;
 	extern vmIP opt_kamailio_srcip;
 	extern unsigned opt_kamailio_port;
@@ -9550,6 +9564,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 			}
 		}
 	}
+	#endif
 	packetS->_getCallID = true;
 	if(!this->process_getCallID(&packetS)) {
 		if(packetS->next_action == _ppna_set) {
@@ -10167,12 +10182,31 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 		calltable->lock_calls_hash();
 	}
 	node_call_rtp *n_call = NULL;
-	if((n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false))) {
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+		#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX
+			n_call = calltable->hashfind_by_ip_port(packetS->h[1], packetS->daddr_pt_(), packetS->dest_(), false);
+		#else
+			n_call = calltable->hashfind_by_ip_port(packetS->daddr_pt_(), packetS->dest_(), false);
+		#endif
+	#else
+		n_call = calltable->hashfind_by_ip_port(packetS->daddr_(), packetS->dest_(), false);
+	#endif
+	if(n_call) {
 		packetS->call_info.find_by_dest = true;
 		packetS->blockstore_addflag(32 /*pb lock flag*/);
 	} else {
-		n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
-		packetS->blockstore_addflag(33 /*pb lock flag*/);
+		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+			#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX
+				n_call = calltable->hashfind_by_ip_port(packetS->h[0], packetS->saddr_pt_(), packetS->source_(), false);
+			#else
+				n_call = calltable->hashfind_by_ip_port(packetS->saddr_pt_(), packetS->source_(), false);
+			#endif
+		#else
+			n_call = calltable->hashfind_by_ip_port(packetS->saddr_(), packetS->source_(), false);
+		#endif
+		if(n_call) {
+			packetS->blockstore_addflag(33 /*pb lock flag*/);
+		}
 	}
 	packetS->call_info.length = 0;
 	#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
@@ -10190,7 +10224,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			call_rtp *call_rtp = n_call;
 		#endif
 			Call *call = call_rtp->call;
+			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 			if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
+			#endif
 				++counter_rtp_packets[1];
 				if(!call_rtp->is_rtcp) {
 					++counter_rtp_only_packets;
@@ -10216,9 +10252,15 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
 					break;
 				}
+			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 			}
+			#endif
 		}
-		if(counter_rtp_only_packets > 1 && !packetS->audiocodes) {
+		if(counter_rtp_only_packets > 1
+		   #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+		   && !packetS->audiocodes
+		   #endif
+		   ) {
 			for(int i = 0; i < packetS->call_info.length; i++) {
 				if(!packetS->call_info.calls[i].is_rtcp) {
 					packetS->call_info.calls[i].multiple_calls = true;
