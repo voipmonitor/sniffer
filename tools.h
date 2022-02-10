@@ -602,6 +602,12 @@ public:
 		if(!isHeader && length) {
 			existsData = true;
 		}
+		if(enableAsyncWrite && this->buffer) {
+			extern cBuffersControl buffersControl;
+			while(!buffersControl.check__asyncwrite__add(length) && !is_terminating()) {
+				USLEEP(1000);
+			}
+		}
 		lock_write();
 		bool rslt = this->buffer ?
 			     this->_writeToBuffer(data, length) :
@@ -1157,10 +1163,6 @@ public:
 		}
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
-		extern cBuffersControl buffersControl;
-		while(!buffersControl.check__asyncwrite__add(item->dataLength) && !is_terminating()) {
-			USLEEP(1000);
-		}
 		lock(threadIndex);
 		if(!activeThread[threadIndex]) {
 			unlock(threadIndex);
