@@ -54,7 +54,8 @@ unsigned int setCallFlags(unsigned long int flags,
 			  vmIP ip_src, vmIP ip_dst,
 			  const char *caller, const char *called,
 			  const char *caller_domain, const char *called_domain,
-			  ParsePacket::ppContentsX *parseContents);
+			  ParsePacket::ppContentsX *parseContents,
+			  bool reconfigure = false);
 
 typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
 

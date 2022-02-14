@@ -2849,25 +2849,26 @@ inline unsigned int setCallFlags(unsigned long int flags,
 				 vmIP ip_src, vmIP ip_dst,
 				 const char *caller, const char *called,
 				 const char *caller_domain, const char *called_domain,
-				 ParsePacket::ppContentsX *parseContents) {
+				 ParsePacket::ppContentsX *parseContents,
+				 bool reconfigure) {
 	unsigned long int flags_old = flags;
 	cFilters::applyReload();
-	IPfilter::add_call_flags(&flags, ip_src, ip_dst);
+	IPfilter::add_call_flags(&flags, ip_src, ip_dst, reconfigure);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	TELNUMfilter::add_call_flags(&flags, caller, called);
+	TELNUMfilter::add_call_flags(&flags, caller, called, reconfigure);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	DOMAINfilter::add_call_flags(&flags, caller_domain, called_domain);
+	DOMAINfilter::add_call_flags(&flags, caller_domain, called_domain, reconfigure);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
 		flags_old = flags;
 	}
-	SIP_HEADERfilter::add_call_flags(parseContents, &flags);
+	SIP_HEADERfilter::add_call_flags(parseContents, &flags, reconfigure);
 	if(sverb.dump_call_flags && flags != flags_old) {
 		cout << "set flags for headers : " << printCallFlags(flags) << endl;
 		flags_old = flags;
@@ -4275,7 +4276,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						   packetS->saddr_(), packetS->daddr_(),
 						   call->caller, call->get_called(),
 						   call->caller_domain, call->get_called_domain(),
-						   &packetS->parseContents);
+						   &packetS->parseContents,
+						   true);
 		}
 		if(!reverseInviteSdaddr) {
 			if(packetS->saddr_() != call->getSipcallerip() && !call->in_proxy(packetS->saddr_())) {
