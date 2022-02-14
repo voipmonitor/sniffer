@@ -2561,7 +2561,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << num_threads_active << "t] ";
 			if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
 			   (heap_pb_used_perc > 10 && tRTPcpuMax >= 98)) {
-				for(int i = 0; i < (calls_counter > 1000 || heap_pb_used_perc > 10 ? 3 : 1); i++) {
+				for(int i = 0; i < (heap_pb_used_perc > 20 ? 3 : 1); i++) {
 					add_rtp_read_thread();
 				}
 			} else if(num_threads_active > 1 &&

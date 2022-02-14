@@ -210,7 +210,7 @@ struct s_sdp_flags : public s_sdp_flags_base {
 };
 
 struct call_rtp {
-	Call *call;
+	class Call *call;
 	int8_t iscaller;
 	u_int16_t is_rtcp;
 	s_sdp_flags sdp_flags;
@@ -874,11 +874,15 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
+	#if EXPERIMENTAL_LITE_RTP_MOD
+	RTP rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
+	#else
 	RTP *rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
-	int ssrc_n;				//!< last index of rtp array
 	#if CALL_RTP_DYNAMIC_ARRAY
 	vector<RTP*> *rtp_dynamic;
 	#endif
+	#endif
+	int ssrc_n;				//!< last index of rtp array
 	list<RTP*> *rtp_canceled;
 	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
@@ -1619,11 +1623,13 @@ public:
 		       pcapRtp.isClose());
 	}
 	bool isGraphsClose() {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i && !rtp_i->graph.isClose()) {
 				return(false);
 			}
 		}
+		#endif
 		return(true);
 	}
 	bool closePcaps() {
@@ -1644,12 +1650,14 @@ public:
 	}
 	bool closeGraphs() {
 		bool callClose = false;
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i && !rtp_i->graph.isClose()) {
 				rtp_i->graph.close();
 				callClose = true;
 			}
 		}
+		#endif
 		return(callClose);
 	}
 	bool isReadyForWriteCdr() {
@@ -2085,6 +2093,7 @@ public:
 		}
 	}
 	
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	inline void add_rtp_stream(RTP *rtp) {
 		#if CALL_RTP_DYNAMIC_ARRAY
 		if(ssrc_n < MAX_SSRC_PER_CALL_FIX) {
@@ -2100,7 +2109,9 @@ public:
 		#endif
 		++ssrc_n;
 	}
+	#endif
 	inline RTP *rtp_stream_by_index(unsigned index) {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		#if CALL_RTP_DYNAMIC_ARRAY
 		if(index < MAX_SSRC_PER_CALL_FIX) {
 			return(rtp_fix[index]);
@@ -2109,6 +2120,9 @@ public:
 		}
 		#else
 		return(rtp_fix[index]);
+		#endif
+		#else
+		return(&rtp_fix[index]);
 		#endif
 	}
 	inline int rtp_size() {

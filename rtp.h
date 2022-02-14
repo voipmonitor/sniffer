@@ -201,6 +201,77 @@ enum eRtpMarkType {
 /**
  * This class implements operations on RTP strem
  */
+
+#if EXPERIMENTAL_LITE_RTP_MOD
+
+class RTP {
+public:
+	inline void init(class Call *call) {
+		codec = -1;
+		received = 0;
+		skip = false;
+		had_audio = true;
+		tailedframes = 0;
+		call_owner = call;
+	}
+	inline unsigned received_() {
+		return(received);
+	}
+	inline unsigned lost_() {
+		return(0);
+	}
+	inline int first_codec_() {
+		return(codec);
+	}
+	inline bool ok_other_ip_side_by_sip_() {
+		return(false);
+	}
+	inline bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
+		return(this->sport == sport && this->dport == dport &&
+		       this->saddr == saddr && this->daddr == daddr);
+	}
+	inline bool eqAddrPort(RTP *rtp) {
+		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
+	}
+	inline bool allowed_for_ab() {
+		return(true);
+	}
+	static inline RTPFixedHeader* getHeader(void *data) { 
+		return reinterpret_cast<RTPFixedHeader*>(data); 
+	}
+	static inline const int getPayload(void *data) { 
+		return getHeader(data)->payload; 
+	}
+	static inline const bool isSetMarkerInHeader(void *data) { 
+		return getHeader(data)->marker;
+	};
+	static inline const bool isRTCP_enforce(void *data) { 
+		if(isSetMarkerInHeader(data)) {
+			int payload = getPayload(data);
+			return(payload >= FIRST_RTCP_CONFLICT_PAYLOAD_TYPE && payload <= LAST_RTCP_CONFLICT_PAYLOAD_TYPE);
+		}
+		return(false);
+	};
+public:
+	u_int16_t ssrc_index;
+	u_int32_t ssrc;
+	vmIP saddr;
+	vmIP daddr;
+	vmPort sport;
+	vmPort dport;
+	u_int8_t iscaller;
+	int32_t codec;
+	u_int64_t first_packet_time_us;
+	u_int64_t last_packet_time_us;
+	u_int32_t received;
+	bool skip;
+	bool had_audio;
+	u_int8_t tailedframes;
+	Call *call_owner;
+};
+
+#else
+
 class RTP {
        /* extension header */
 	typedef struct {
@@ -240,7 +311,7 @@ public:
 	u_int16_t avg_ptime;
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;
-	#if not EXPERIMENTAL_RTP_LITE
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	bool initRAW;
 	bool needInitRawForChannelRecord;
@@ -263,7 +334,6 @@ public:
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
 	int last_ts;		//!< last timestamp 
-	u_int64_t last_pcap_header_us;
 	bool pcap_header_ts_bad_time;
 	int packetization_iterator;	
 	int prev_payload;
@@ -666,6 +736,19 @@ public:
 		return(!is_video());
 	}
 
+	inline unsigned received_() {
+		return(stats.received);
+	}
+	inline unsigned lost_() {
+		return(stats.lost);
+	}
+	inline int first_codec_() {
+		return(first_codec);
+	}
+	inline bool ok_other_ip_side_by_sip_() {
+		return(ok_other_ip_side_by_sip);
+	}
+	
 private: 
 	/*
 	* Per-source state information
@@ -707,6 +790,8 @@ private:
 	
 friend class Call;
 };
+
+#endif // EXPERIMENTAL_LITE_RTP_MOD
 
 
 class RTPstat {

@@ -602,29 +602,42 @@ public:
 		if(!isHeader && length) {
 			existsData = true;
 		}
-		if(enableAsyncWrite && this->buffer) {
+		if(enableAsyncWrite && this->buffer &&
+		   this->useBufferLength + length > this->bufferLength) {
 			extern cBuffersControl buffersControl;
 			while(!buffersControl.check__asyncwrite__add(length) && !is_terminating()) {
 				USLEEP(1000);
 			}
 		}
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		lock_write();
+		#endif
 		bool rslt = this->buffer ?
 			     this->_writeToBuffer(data, length) :
 			     this->_writeToFile(data, length);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		unlock_write();
+		#endif
 		return(rslt);
 	}
 	bool directWriteToFile(char *data, int length, bool flush = false) {
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		lock_write();
+		#endif
 		bool rslt = _directWriteToFile(data, length, flush);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		unlock_write();
+		#endif
 		return(rslt);
 	}
 	bool flushBuffer(bool force = false) {
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		lock_write();
+		#endif
 		bool rslt = _flushBuffer(force);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		unlock_write();
+		#endif
 		return(rslt);
 	}
 	bool read(unsigned length);

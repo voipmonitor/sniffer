@@ -1645,8 +1645,10 @@ void RtpGraphSaver::write(char *buffer, int length) {
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	this->enableAutoOpen = false;
 	if(this->isOpen()) {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		uint16_t packetization = uint16_t(this->rtp->packetization);
 		this->write((char*)&packetization, 2);
+		#endif
 		if(this->_asyncwrite == 0) {
 			this->handle->close();
 			delete this->handle;

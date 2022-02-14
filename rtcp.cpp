@@ -227,6 +227,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 	u_int32_t last_lsr = 0;
 	u_int32_t last_lsr_delay = 0;
 	RTP *rtp_sender = NULL;
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
 		if(rtp_i->ssrc == senderinfo.sender_ssrc) {
 			rtp_sender = rtp_i;
@@ -238,6 +239,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 			break;
 		}
 	}
+	#endif
 
 	if(sverb.debug_rtcp) {
 		printf("Sender SSRC [%x]\n", senderinfo.sender_ssrc);
@@ -280,6 +282,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 
 		if(rtp) {
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
 			if (reportblock.frac_lost)
@@ -318,6 +321,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 			}
 			rtp->rtcp.last_lsr = reportblock.lsr;
 			rtp->rtcp.last_lsr_delay = reportblock.delay_since_lsr;
+			#endif
 
 			if(sverb.debug_rtcp) {
 				printf("sSSRC [%x]\n", reportblock.ssrc);
@@ -402,6 +406,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 
 		if(rtp) {
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rtp->rtcp.counter++;
 			rtp->rtcp.loss = loss;
 			if (reportblock.frac_lost)
@@ -428,6 +433,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 					}
 				}
 			}
+			#endif
 			if(sverb.debug_rtcp) {
 				printf("rSSRC [%x]\n", reportblock.ssrc);
 				printf("	Fraction lost [%u]\n", reportblock.frac_lost);
@@ -581,6 +587,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 		rtcp_xr_voip_metrics_report_block_t *xr = (rtcp_xr_voip_metrics_report_block_t*)pkt;
 	
 		unsigned count_use_rtp = 0;
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
 			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
 				RTP *rtp = rtp_i;
@@ -618,6 +625,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 				++count_use_rtp;
 			}
 		}
+		#endif
 		if(!count_use_rtp) {
 			if(sverb.debug_rtcp) {
 				printf("identifier [%x] skipped (no rtp stream with this ssrc)\n", ntohl(xr->ssrc));

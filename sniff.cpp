@@ -5284,6 +5284,9 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 				pcap_pkthdr *header, const u_char */*packet*/, int /*istcp*/, struct iphdr2 *header_ip,
 				pcap_block_store */*block_store*/, int /*block_store_index*/, int dlt, int sensor_id, vmIP sensor_ip,
 				pcap_t *handle) {
+ 
+#if not EXPERIMENTAL_LITE_RTP_MOD
+
 	unsigned long int flags = 0;
 	set_global_flags(flags);
 	IPfilter::add_call_flags(&flags, saddr, daddr);
@@ -5349,6 +5352,13 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 			       0, rtpmap, s_sdp_flags());
 	
 	return(call);
+	
+#else
+
+	return(NULL);
+
+#endif
+
 }
 
 inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_calls_info *call_info, packet_s_process_0 *packetS) {
@@ -8667,6 +8677,14 @@ void *PreProcessPacket::outThreadFunction() {
 					batch->count = 0;
 					batch->used = 0;
 				#endif
+				
+				extern bool opt_sip_tcp_reassembly_ext;
+				extern int opt_sip_tcp_reassembly_ext_quick_mod;
+				if(opt_sip_tcp_reassembly_ext && opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+					extern TcpReassembly *tcpReassemblySipExt;
+					tcpReassemblySipExt->cleanup_simple();
+				}
+				
 			}
 		} else {
 			if(this->qring[this->readit]->used == 1) {

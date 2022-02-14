@@ -30,10 +30,11 @@ extern char opt_pb_read_from_file[256];
 extern int verbosity;
 
 #define ENABLE_DEBUG(type, subEnable) (_ENABLE_DEBUG(type, subEnable) && _debug_stream)
-#define _ENABLE_DEBUG(type, subEnable) ((type == TcpReassembly::http ? sverb.http : \
-					 type == TcpReassembly::webrtc ? sverb.webrtc : \
-					 type == TcpReassembly::ssl ? sverb.ssl : \
-					 type == TcpReassembly::sip ? sverb.sip : 0) && (subEnable))
+#define _ENABLE_DEBUG(type, subEnable) ((type == TcpReassembly::http ? sverb.tcpreassembly_http : \
+					 type == TcpReassembly::webrtc ? sverb.tcpreassembly_webrtc : \
+					 type == TcpReassembly::ssl ? sverb.tcpreassembly_ssl : \
+					 type == TcpReassembly::sip ? sverb.tcpreassembly_sip : 0) && (subEnable))
+#define ENABLE_CLEANUP_LOG(type) (type == TcpReassembly::sip ? sverb.tcpreassembly_sip_cleanup : 0)
 bool _debug_packet = true;
 bool _debug_rslt = true;
 bool _debug_data = true;
@@ -2313,6 +2314,8 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->simpleByAck = false;
 	this->ignorePshInCheckOkData = false;
 	this->enableCleanupThread = false;
+	this->enableAutoCleanup = true;
+	this->cleanupPeriod = 20;
 	this->enableHttpCleanupExt = false;
 	this->enablePacketThread = false;
 	this->dataCallback = NULL;
@@ -2960,13 +2963,8 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		this->unlock_links();
 	}
 
-	if(!this->enableCleanupThread && !this->_sync_cleanup) {
-		lock_cleanup();
-		if(this->act_time_from_header - this->last_cleanup_call_time_from_header > 20 * 1000) {
-			this->last_cleanup_call_time_from_header = this->act_time_from_header;
-			this->cleanup_simple();
-		}
-		unlock_cleanup();
+	if(!this->enableCleanupThread && enableAutoCleanup && !this->_sync_cleanup) {
+		this->cleanup_simple(false, this->enableLinkLock);
 	}
 }
 
@@ -3102,7 +3100,23 @@ void TcpReassembly::cleanup(bool all) {
 	}
 }
 
-void TcpReassembly::cleanup_simple(bool all) {
+void TcpReassembly::cleanup_simple(bool all, bool lock) {
+ 
+	if(lock) lock_cleanup();
+		
+	if(!all) {
+		if(this->act_time_from_header - this->last_cleanup_call_time_from_header <= cleanupPeriod * 1000) {
+			if(lock) unlock_cleanup();
+			return;
+		}
+		this->last_cleanup_call_time_from_header = this->act_time_from_header;
+	}
+	
+	u_int64_t start_at;
+	if(ENABLE_CLEANUP_LOG(getType())) {
+		start_at = getTimeMS_rdtsc();
+	}
+ 
 	if(all && ENABLE_DEBUG(type, _debug_cleanup)) {
 		(*_debug_stream) << "cleanup simple all " << getTypeString() << endl;
 	}
@@ -3115,17 +3129,19 @@ void TcpReassembly::cleanup_simple(bool all) {
 	if(simpleByAck) {
 		u_int64_t act_time = this->act_time_from_header;
 		map<TcpReassemblyLink_id, TcpReassemblyLink*>::iterator iterLink;
+		if(lock) lock_links();
 		for(iterLink = this->links.begin(); iterLink != this->links.end(); ) {
 			TcpReassemblyLink *link = iterLink->second;
 			if(all || act_time > link->last_packet_at_from_header + linkTimeout * 1000) {
+				if(lock) link->lock_queue();
 				delete link;
 				this->links.erase(iterLink++);
 			} else {
+				if(lock) link->lock_queue();
 				extern cBuffersControl buffersControl;
 				if(this->extCleanupStreamsLimitStreams &&
-				   this->extCleanupStreamsLimitHeap &&
 				   link->queueStreams.size() > this->extCleanupStreamsLimitStreams &&
-				   buffersControl.getPerc_pb_used() > this->extCleanupStreamsLimitHeap) {
+				   (!this->extCleanupStreamsLimitHeap || buffersControl.getPerc_pb_used() > this->extCleanupStreamsLimitHeap)) {
 					link->extCleanup(1, true);
 				} else {
 					deque<TcpReassemblyStream*>::iterator iterStream;
@@ -3141,8 +3157,10 @@ void TcpReassembly::cleanup_simple(bool all) {
 					}
 				}
 				iterLink++;
+				if(lock) link->unlock_queue();
 			}
 		}
+		if(lock) unlock_links();
 	} else {
 		size_t counter = 0;
 		u_int64_t time_correction = 0;
@@ -3204,6 +3222,13 @@ void TcpReassembly::cleanup_simple(bool all) {
 	if(ENABLE_DEBUG(type, _debug_print_content_summary)) {
 		this->printContentSummary();
 	}
+	
+	if(lock) unlock_cleanup();
+	
+	if(ENABLE_CLEANUP_LOG(getType())) {
+		syslog(LOG_NOTICE, "TcpReassembly::cleanup_simple (%i ms)", (int)(getTimeMS_rdtsc() - start_at));
+	}
+	
 }
 
 /*

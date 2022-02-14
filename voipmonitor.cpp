@@ -4499,16 +4499,20 @@ int main_init_read() {
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
 		sipTcpData = new FILE_LINE(42032) SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
-		tcpReassemblySipExt->setLinkTimeout(10);
 		tcpReassemblySipExt->setEnableWildLink();
-		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
-			tcpReassemblySipExt->setEnableLinkLock();
-		} else {
-			tcpReassemblySipExt->setEnablePushLock();
-		}
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
-		tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
+		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+			tcpReassemblySipExt->setLinkTimeout(3);
+			tcpReassemblySipExt->setEnableExtCleanupStreams(10, 0);
+			tcpReassemblySipExt->setEnableLinkLock();
+			tcpReassemblySipExt->setEnableAutoCleanup(false);
+			tcpReassemblySipExt->setCleanupPeriod(10);
+		} else {
+			tcpReassemblySipExt->setLinkTimeout(10);
+			tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
+			tcpReassemblySipExt->setEnablePushLock();
+		}
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -8150,12 +8154,13 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
 	else if(verbParam == "packet_lost")			sverb.packet_lost = 1;
 	else if(verbParam == "rrd_info")			sverb.rrd_info = 1;
-	else if(verbParam == "http")				sverb.http = 1;
-	else if(verbParam == "webrtc")				sverb.webrtc = 1;
-	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "tcpreassembly_http")		sverb.tcpreassembly_http = 1;
+	else if(verbParam == "tcpreassembly_webrtc")		sverb.tcpreassembly_webrtc = 1;
+	else if(verbParam == "tcpreassembly_ssl")		sverb.tcpreassembly_ssl = 1;
 	else if(verbParam == "tls")				sverb.tls = 1;
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
-	else if(verbParam == "sip")				sverb.sip = 1;
+	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
+	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;

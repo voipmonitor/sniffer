@@ -588,13 +588,15 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	//regsrcmac = 0;
 	reg_tcp_seq = NULL;
 	last_sip_method = 0;
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
 		rtp_fix[i] = NULL;
 	}
-	ssrc_n = 0;
 	#if CALL_RTP_DYNAMIC_ARRAY
 	rtp_dynamic = NULL;
 	#endif
+	#endif
+	ssrc_n = 0;
 	rtp_canceled = NULL;
 	rtp_remove_flag = false;
 	rtpab[0] = NULL;
@@ -969,6 +971,7 @@ Call::_removeRTP() {
 	if(!rtp_canceled) {
 		rtp_canceled = new FILE_LINE(0) list<RTP*>;
 	}
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
 		if(rtp_fix[i]) {
 			rtp_canceled->push_back(rtp_fix[i]);
@@ -982,6 +985,7 @@ Call::_removeRTP() {
 		}
 		rtp_dynamic->clear();
 	}
+	#endif
 	#endif
 	ssrc_n = 0;
 	for(int i = 0; i < 2; i++) {
@@ -1017,6 +1021,7 @@ Call::~Call(){
 
 	if(contenttype) delete [] contenttype;
 	
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
 		if(rtp_fix[i]) {
 			delete rtp_fix[i];
@@ -1030,6 +1035,8 @@ Call::~Call(){
 		delete rtp_dynamic;
 	}
 	#endif
+	#endif
+	
 	if(rtp_canceled) {
 		for(list<RTP*>::iterator iter = rtp_canceled->begin(); iter != rtp_canceled->end(); iter++) {
 			delete *iter;
@@ -1096,7 +1103,7 @@ Call::closeRawFiles() {
 		if(!rtp_i) {
 			continue;
 		}
-		#if not EXPERIMENTAL_RTP_LITE
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
 			rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
@@ -1110,6 +1117,7 @@ Call::closeRawFiles() {
 			rtp_i->initRAW = false;
 		}
 		#endif
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp_i->graph.isOpen()) {
@@ -1121,6 +1129,7 @@ Call::closeRawFiles() {
 				rtp_i->graph.clearAutoOpen();
 			}
 		}
+		#endif
 	}
 }
 
@@ -1548,6 +1557,87 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
+ 
+#if EXPERIMENTAL_LITE_RTP_MOD
+	
+	RTPFixedHeader* rtp_header = RTP::getHeader(packetS->data_());
+	
+	RTP *rtp_find = NULL;
+	
+	if(ssrc_n > 0) {
+		for(int i = 0; i < ssrc_n; i++) {
+			if(rtp_header->sources[0] == rtp_fix[i].ssrc) {
+				if(packetS->source_() == rtp_fix[i].sport && packetS->dest_() == rtp_fix[i].dport) {
+					if(packetS->saddr_() == rtp_fix[i].saddr && packetS->daddr_() == rtp_fix[i].daddr) {
+						rtp_find = &rtp_fix[i];
+						break;
+					}
+				}
+			}
+		}
+	}
+	
+	if(!rtp_find && ssrc_n < MAX_SSRC_PER_CALL_FIX) {
+		if(iscaller < 0) {
+			if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
+			   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
+			   this->is_sipcaller(packetS->saddr_(), packetS->source_(), 0, 0) || 
+			   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), 0, 0)) {
+				iscaller = 1;
+			} else {
+				iscaller = 0;
+			}
+		}
+		rtp_find = &rtp_fix[ssrc_n];
+		rtp_find->init(this);
+		rtp_find->ssrc_index = ssrc_n;
+		rtp_find->ssrc = rtp_header->sources[0];
+		rtp_find->saddr = packetS->saddr_();
+		rtp_find->daddr = packetS->daddr_();
+		rtp_find->sport = packetS->source_();
+		rtp_find->dport = packetS->dest_();
+		rtp_find->iscaller = iscaller;
+		rtp_find->first_packet_time_us = getTimeUS(packetS->header_pt);
+		++ssrc_n;
+	}
+	
+	if(rtp_find) {
+		if(rtp_find->codec == -1) {
+			int codec = -1;
+			if(rtp_header->payload >= 96 && rtp_header->payload <= 127) {
+				for(int pass = 0; pass < 2 && codec == -1; pass++) {
+					int index_call_ip_port = pass == 0 ? 
+								  // find side
+								  this->get_index_by_ip_port(find_by_dest ? packetS->daddr_() : packetS->saddr_(),
+											     find_by_dest ? packetS->dest_() : packetS->source_()) :
+								  // other side
+								  this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
+											     find_by_dest ? packetS->source_() : packetS->dest_());
+					if(index_call_ip_port >= 0 && isFillRtpMap(index_call_ip_port)) {
+						for(int i = 0; i < MAX_RTPMAP; i++) {
+							if(rtpmap[index_call_ip_port][i].is_set() && rtp_header->payload == rtpmap[index_call_ip_port][i].payload) {
+								codec = rtpmap[index_call_ip_port][i].codec;
+								break;
+							}
+						}
+					}
+				}
+			} else {
+				codec = rtp_header->payload;
+			}
+			if(codec >= 0 && codec != PAYLOAD_TELEVENT) {
+				rtp_find->codec = codec;
+			}
+		}
+		++rtp_find->received;
+		rtp_find->last_packet_time_us = getTimeUS(packetS->header_pt);
+	}
+	
+	_save_rtp(packetS, sdp_flags, enable_save_packet, false, false);
+	return(true);
+ 
+#else
+ 
 	extern int opt_enable_ssl;
 	extern bool opt_srtp_rtp_dtls_decrypt;
 	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtls()) {
@@ -1582,8 +1672,12 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 		this->rtp_fragmented = true;
 	}
 	return(rtp_read_rslt);
+	
+#endif
+	
 }
  
+#if not EXPERIMENTAL_LITE_RTP_MOD
 bool
 Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
@@ -1972,7 +2066,7 @@ read:
 			rtp_new->graph.auto_open(tsf_graph, graph_pathfilename.c_str());
 		}
 		
-		#if not EXPERIMENTAL_RTP_LITE
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		char ird_extension[100];
 		snprintf(ird_extension, sizeof(ird_extension), "i%d", !iscaller);
 		string ird_pathfilename = get_pathfilename(tsf_audio, ird_extension);
@@ -2067,6 +2161,7 @@ read:
 	
 	return(rtp_read_rslt);
 }
+#endif
 
 void 
 Call::read_dtls(struct packet_s *packetS) {
@@ -2761,6 +2856,9 @@ cWavMix::cWav *cWavMix::getWavNoMix(bool withoutEndSilence) {
 
 int
 Call::convertRawToWav() {
+ 
+#if not EXPERIMENTAL_LITE_RTP_MOD
+ 
 	char cmd[4092];
 	int cmd_len = sizeof(cmd) - 1;
 	char wav0[1024] = "";
@@ -3573,7 +3671,11 @@ Call::convertRawToWav() {
 			if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
 		}
 	}
+	
+#endif
+
 	return 0;
+
 }
 
 bool Call::selectRtpStreams() {
@@ -3590,19 +3692,19 @@ bool Call::selectRtpStreams() {
 		RTP *C = NULL;
 		for(int k = 0; k < rtp_size(); k++) { RTP *rtp_k = rtp_stream_by_index(k);
 			B = rtp_k;
-			if((!B->had_audio or B->stats.received == 0) and B->tailedframes < 2) {
+			if((!B->had_audio or B->received_() == 0) and B->tailedframes < 2) {
 				if(verbosity > 1) syslog(LOG_ERR, "Removing stream with SSRC[%x] srcip[%s]:[%u]->[%s]:[%u] iscaller[%u] index[%u] codec is comfortnoise received[%u] tailedframes[%u] had_audio[%u]\n", 
-					B->ssrc, B->saddr.getString().c_str(), B->sport.getPort(), B->daddr.getString().c_str(), B->dport.getPort(), B->iscaller, k, B->stats.received, B->tailedframes, B->had_audio);
+					B->ssrc, B->saddr.getString().c_str(), B->sport.getPort(), B->daddr.getString().c_str(), B->dport.getPort(), B->iscaller, k, B->received_(), B->tailedframes, B->had_audio);
 				B->skip = true;
 			}
 
-			if(A == B or A->skip or B->skip or A->stats.received < 50 or B->stats.received < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
+			if(A == B or A->skip or B->skip or A->received_() < 50 or B->received_() < 50) continue; // do not compare with ourself or already removed RTP or with RTP with <20 packets
 
 			// check if A or B time overlaps - if not we cannot treat it as duplicate stream 
 			u_int64_t Astart = A->first_packet_time_us;
-			u_int64_t Astop = A->last_pcap_header_us;
+			u_int64_t Astop = A->last_packet_time_us;
 			u_int64_t Bstart = B->first_packet_time_us;
-			u_int64_t Bstop = B->last_pcap_header_us;
+			u_int64_t Bstop = B->last_packet_time_us;
 			if(((Bstart > Astart) and (Bstart > Astop)) or ((Astart > Bstart) and (Astart > Bstop))) {
 				if(verbosity > 1) syslog(LOG_ERR, "Not removing SSRC[%x][%p] and SSRC[%x][%p] %" int_64_format_prefix "lu %" int_64_format_prefix "lu\n", A->ssrc, A, B->ssrc, B, Astart, Bstop);
 				continue;
@@ -3767,8 +3869,8 @@ u_int64_t Call::getLengthStreams_us(list<int> *streams_i) {
 			minStart = rtp_stream_by_index(*iter)->first_packet_time_us;
 		}
 		if(!maxEnd ||
-		   maxEnd < rtp_stream_by_index(*iter)->last_pcap_header_us) {
-			maxEnd = rtp_stream_by_index(*iter)->last_pcap_header_us;
+		   maxEnd < rtp_stream_by_index(*iter)->last_packet_time_us) {
+			maxEnd = rtp_stream_by_index(*iter)->last_packet_time_us;
 		}
 	}
 	return(maxEnd - minStart);
@@ -3791,13 +3893,13 @@ void Call::setSkipConcurenceStreams(int caller) {
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i->iscaller == caller && !rtp_i->skip) {
 			u_int64_t a_start = rtp_i->first_packet_time_us;
-			u_int64_t a_stop = rtp_i->last_pcap_header_us;
+			u_int64_t a_stop = rtp_i->last_packet_time_us;
 			u_int64_t a_length = a_stop - a_start;
 			for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
 				if(rtp_j != rtp_i && rtp_j->iscaller == caller && !rtp_j->skip &&
 				   !rtp_i->eqAddrPort(rtp_j)) {
 					u_int64_t b_start = rtp_j->first_packet_time_us;
-					u_int64_t b_stop = rtp_j->last_pcap_header_us;
+					u_int64_t b_stop = rtp_j->last_packet_time_us;
 					u_int64_t b_length = b_stop - b_start;
 					if(b_start > a_start && b_start < a_stop &&
 					   a_length > 0 && b_length > 0 &&
@@ -3832,13 +3934,13 @@ void Call::printSelectedRtpStreams(int caller, bool selected) {
 			   rtp_i->iscaller == pass_caller &&
 			   (!selected || !rtp_i->skip)) {
 				u_int64_t start = rtp_i->first_packet_time_us - firstTime;
-				u_int64_t stop = rtp_i->last_pcap_header_us - firstTime;
+				u_int64_t stop = rtp_i->last_packet_time_us - firstTime;
 				cout << hex << setw(10) << rtp_i->ssrc << dec << "   "
 				     << iscaller_description(rtp_i->iscaller) << "   "
 				     << setw(10) << (start / 1000000.) << " - "
 				     << setw(10) << (stop / 1000000.) <<  "   "
 				     << setw(15) << rtp_i->saddr.getString() << " -> " << setw(15) << rtp_i->daddr.getString() << "   "
-				     << setw(10) << rtp_i->s->received <<  "   "
+				     << setw(10) << rtp_i->received_() <<  "   "
 				     << (rtp_i->skip ? "SKIP" : "")
 				     << endl;
 			}
@@ -3854,12 +3956,12 @@ bool Call::existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i->iscaller == caller && !rtp_i->skip) {
 			u_int64_t a_start = rtp_i->first_packet_time_us;
-			u_int64_t a_stop = rtp_i->last_pcap_header_us;
+			u_int64_t a_stop = rtp_i->last_packet_time_us;
 			for(int j = 0; j < rtp_size(); j++) { RTP *rtp_j = rtp_stream_by_index(j);
 				if(rtp_j != rtp_i && rtp_j->iscaller == caller && !rtp_j->skip &&
 				   !rtp_i->eqAddrPort(rtp_j)) {
 					u_int64_t b_start = rtp_j->first_packet_time_us;
-					u_int64_t b_stop = rtp_j->last_pcap_header_us;
+					u_int64_t b_stop = rtp_j->last_packet_time_us;
 					if(!(b_start + tolerance_ms * 1000 > a_stop ||
 					     a_start + tolerance_ms * 1000 > b_stop)) {
 						return(true);
@@ -4036,24 +4138,36 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 			rfield->set(getCountryByIP(lastcallerrtp->daddr, true).c_str());
 			break;
 		case cf_src_mosf1:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcallerrtp->last_interval_mosf1);
+			#endif
 			break;
 		case cf_src_mosf2:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcallerrtp->last_interval_mosf2);
+			#endif
 			break;
 		case cf_src_mosAD:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcallerrtp->last_interval_mosAD);
+			#endif
 			break;
 		case cf_src_jitter:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(round(lastcallerrtp->jitter));
+			#endif
 			break;
 		case cf_src_loss:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(lastcallerrtp->stats.received + lastcallerrtp->stats.lost) {
 				rfield->set((double)lastcallerrtp->stats.lost / (lastcallerrtp->stats.received + lastcallerrtp->stats.lost) * 100.0);
 			}
+			#endif
 			break;
 		case cf_src_loss_last10sec:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcallerrtp->last_stat_loss_perc_mult10);
+			#endif
 			break;
 		default:
 			break;
@@ -4062,24 +4176,36 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	if(lastcalledrtp) {
 		switch(field) {
 		case cf_dst_mosf1:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcalledrtp->last_interval_mosf1);
+			#endif
 			break;
 		case cf_dst_mosf2:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcalledrtp->last_interval_mosf2);
+			#endif
 			break;
 		case cf_dst_mosAD:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcalledrtp->last_interval_mosAD);
+			#endif
 			break;
 		case cf_dst_jitter:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(round(lastcalledrtp->jitter));
+			#endif
 			break;
 		case cf_dst_loss:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(lastcalledrtp->stats.received + lastcalledrtp->stats.lost) {
 				rfield->set((double)lastcalledrtp->stats.lost / (lastcalledrtp->stats.received + lastcalledrtp->stats.lost) * 100.0);
 			}
+			#endif
 			break;
 		case cf_dst_loss_last10sec:
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastcalledrtp->last_stat_loss_perc_mult10);
+			#endif
 			break;
 		default:
 			break;
@@ -4259,6 +4385,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 			break;
 		}
 		switch(type) {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		case _chartType_mos:
 		case _chartType_mos_xr_avg:
 		case _chartType_mos_xr_min:
@@ -4451,6 +4578,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 				}
 			}
 			break;
+		#endif
 		case _chartType_silence:
 		case _chartType_silence_caller:
 		case _chartType_silence_called:
@@ -5031,7 +5159,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 					return(true);
 				}
 				if(*column == "received") {
-					*value = cEvalFormula::sValue(rtp_stream_by_index(rtp_rows_indexes[child_index])->s->received);
+					*value = cEvalFormula::sValue(rtp_stream_by_index(rtp_rows_indexes[child_index])->received_());
 					column_index = 5;
 					return(true);
 				}
@@ -5370,12 +5498,14 @@ void Call::selectRtpAB() {
 			     << rtp_i->saddr.getString() << " -> "
 			     << rtp_i->daddr.getString() << " /"
 			     << " iscaller: " << rtp_i->iscaller << " " 
+			     #if not EXPERIMENTAL_LITE_RTP_MOD
 			     << " packets received: " << rtp_i->s->received << " "
 			     << " packets lost: " << rtp_i->s->lost << " "
 			     << " ssrc index: " << rtp_i->ssrc_index << " "
 			     << " ok_other_ip_side_by_sip: " << rtp_i->ok_other_ip_side_by_sip << " " 
 			     << " payload: " << rtp_i->first_codec << " "
 			     << " rtcp.counter_mos: " << rtp_i->rtcp_xr.counter_mos << " "
+			     #endif
 			     << endl;
 		}
 	}
@@ -5423,7 +5553,7 @@ void Call::selectRtpAB() {
 		// bubble sort
 		for(int k = 0; k < rtp_size_reduct; k++) {
 			for(int j = 0; j < rtp_size_reduct; j++) {
-				if((rtp_stream_by_index(indexes[k])->stats.received + rtp_stream_by_index(indexes[k])->stats.lost) > (rtp_stream_by_index(indexes[j])->stats.received + rtp_stream_by_index(indexes[j])->stats.lost)) {
+				if((rtp_stream_by_index(indexes[k])->received_() + rtp_stream_by_index(indexes[k])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
 					indexes[j] = kTmp;
@@ -5431,9 +5561,9 @@ void Call::selectRtpAB() {
 			}
 		}
 		if(rtp_size_reduct > 2 &&
-		   ((rtp_stream_by_index(indexes[2])->stats.received + rtp_stream_by_index(indexes[2])->stats.lost) == 0 ||
-		    (rtp_stream_by_index(indexes[1])->stats.received + rtp_stream_by_index(indexes[1])->stats.lost) / (rtp_stream_by_index(indexes[2])->stats.received + rtp_stream_by_index(indexes[2])->stats.lost) > 10) &&
-		   rtp_stream_by_index(indexes[0])->first_codec >= 0 && rtp_stream_by_index(indexes[1])->first_codec >= 0) {
+		   ((rtp_stream_by_index(indexes[2])->received_() + rtp_stream_by_index(indexes[2])->lost_()) == 0 ||
+		    (rtp_stream_by_index(indexes[1])->received_() + rtp_stream_by_index(indexes[1])->lost_()) / (rtp_stream_by_index(indexes[2])->received_() + rtp_stream_by_index(indexes[2])->lost_()) > 10) &&
+		   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
 			if(rtp_stream_by_index(indexes[0])->iscaller != rtp_stream_by_index(indexes[1])->iscaller) {
 				if(rtp_stream_by_index(indexes[0])->iscaller) {
 					rtpab[0] = rtp_stream_by_index(indexes[0]);
@@ -5475,12 +5605,14 @@ void Call::selectRtpAB() {
 									     << rtp_stream_by_index(indexes[j])->saddr.getString() << " -> "
 									     << rtp_stream_by_index(indexes[j])->daddr.getString() << " /"
 									     << " iscaller: " << rtp_stream_by_index(indexes[j])->iscaller << " " 
-									     << " packets received: " << rtp_stream_by_index(indexes[j])->s->received << " "
-									     << " packets lost: " << rtp_stream_by_index(indexes[j])->s->lost << " "
+									     << " packets received: " << rtp_stream_by_index(indexes[j])->received_() << " "
+									     << " packets lost: " << rtp_stream_by_index(indexes[j])->lost_() << " "
+									     #if not EXPERIMENTAL_LITE_RTP_MOD
 									     << " ssrc index: " << rtp_stream_by_index(indexes[j])->ssrc_index << " "
 									     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[j])->ok_other_ip_side_by_sip << " " 
 									     << " payload: " << rtp_stream_by_index(indexes[j])->first_codec << " "
 									     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[j])->rtcp_xr.counter_mos << " "
+									     #endif
 									     << endl;
 								}
 								break;
@@ -5516,7 +5648,7 @@ void Call::selectRtpAB() {
 					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
 		if(!pass_rtpab_simple && typeIs(INVITE) && rtp_size_reduct >= 2 &&
 		   (rtp_stream_by_index(indexes[0])->iscaller + rtp_stream_by_index(indexes[1])->iscaller) == 1 &&
-		   rtp_stream_by_index(indexes[0])->first_codec >= 0 && rtp_stream_by_index(indexes[1])->first_codec >= 0) {
+		   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
 			if(rtp_size_reduct == 2) {
 				pass_rtpab_simple = true;
 			} else {
@@ -5526,9 +5658,9 @@ void Call::selectRtpAB() {
 				map<unsigned, unsigned> calledReceivedPackets;
 				for(int k = 0; k < rtp_size_reduct; k++) {
 					if(rtp_stream_by_index(indexes[k])->iscaller) {
-						callerReceivedPackets[callerStreams++] = rtp_stream_by_index(indexes[k])->s->received;
+						callerReceivedPackets[callerStreams++] = rtp_stream_by_index(indexes[k])->received_();
 					} else {
-						calledReceivedPackets[calledStreams++] = rtp_stream_by_index(indexes[k])->s->received;
+						calledReceivedPackets[calledStreams++] = rtp_stream_by_index(indexes[k])->received_();
 					}
 				}
 				if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
@@ -5546,27 +5678,29 @@ void Call::selectRtpAB() {
 						     << rtp_stream_by_index(indexes[k])->saddr.getString() << " -> "
 						     << rtp_stream_by_index(indexes[k])->daddr.getString() << " /"
 						     << " iscaller: " << rtp_stream_by_index(indexes[k])->iscaller << " " 
-						     << " packets received: " << rtp_stream_by_index(indexes[k])->s->received << " "
-						     << " packets lost: " << rtp_stream_by_index(indexes[k])->s->lost << " "
+						     << " packets received: " << rtp_stream_by_index(indexes[k])->received_() << " "
+						     << " packets lost: " << rtp_stream_by_index(indexes[k])->lost_() << " "
+						     #if not EXPERIMENTAL_LITE_RTP_MOD
 						     << " ssrc index: " << rtp_stream_by_index(indexes[k])->ssrc_index << " "
 						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip << " " 
 						     << " payload: " << rtp_stream_by_index(indexes[k])->first_codec << " "
 						     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[k])->rtcp_xr.counter_mos << " "
+						     #endif
 						     << endl;
 					}
 				}
-				if(rtp_stream_by_index(indexes[k])->stats.received &&
-				   (pass_rtpab_simple || rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip || 
-				    (pass_rtpab == 1 && rtp_stream_by_index(indexes[k])->first_codec >= 0) ||
+				if(rtp_stream_by_index(indexes[k])->received_() &&
+				   (pass_rtpab_simple || rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip_() || 
+				    (pass_rtpab == 1 && rtp_stream_by_index(indexes[k])->first_codec_() >= 0) ||
 				    pass_rtpab == 2)) {
 					if(!rtpab_ok[0] &&
 					   rtp_stream_by_index(indexes[k])->iscaller && 
-					   (!rtpab[0] || rtp_stream_by_index(indexes[k])->stats.received > rtpab[0]->stats.received)) {
+					   (!rtpab[0] || rtp_stream_by_index(indexes[k])->received_() > rtpab[0]->received_())) {
 						rtpab[0] = rtp_stream_by_index(indexes[k]);
 					}
 					if(!rtpab_ok[1] &&
 					   !rtp_stream_by_index(indexes[k])->iscaller && 
-					   (!rtpab[1] || rtp_stream_by_index(indexes[k])->stats.received > rtpab[1]->stats.received)) {
+					   (!rtpab[1] || rtp_stream_by_index(indexes[k])->received_() > rtpab[1]->received_())) {
 						rtpab[1] = rtp_stream_by_index(indexes[k]);
 					}
 				}
@@ -5593,12 +5727,14 @@ void Call::selectRtpAB() {
 				     << rtpab[k]->saddr.getString() << " -> "
 				     << rtpab[k]->daddr.getString() << " /"
 				     << " iscaller: " << rtpab[k]->iscaller << " "
-				     << " packets received: " << rtpab[k]->s->received << " "
-				     << " packets lost: " << rtpab[k]->s->lost << " "
+				     << " packets received: " << rtpab[k]->received_() << " "
+				     << " packets lost: " << rtpab[k]->lost_() << " "
+				     #if not EXPERIMENTAL_LITE_RTP_MOD
 				     << " ssrc index: " << rtpab[k]->ssrc_index << " "
 				     << " ok_other_ip_side_by_sip: " << rtpab[k]->ok_other_ip_side_by_sip << " " 
 				     << " payload: " << rtpab[k]->first_codec << " "
 				     << " rtcp.counter_mos: " << rtpab[k]->rtcp_xr.counter_mos << " "
+				     #endif
 				     << endl;
 			}
 		}
@@ -5718,6 +5854,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].srtp) {
 			bool stream_is_used =  false;
@@ -5735,6 +5872,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 	}
+	#endif
 	if (televent_exists_request) {
 		cdr_flags |= CDR_TELEVENT_EXISTS_REQUEST;
 	}
@@ -6060,10 +6198,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	rtp_rows_count = 0;
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 		if(rtp_i &&
+		   #if not EXPERIMENTAL_LITE_RTP_MOD
 		   !(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) &&
-		   (rtp_i->s->received or !existsColumns.cdr_rtp_index || (rtp_i->s->received == 0 && rtp_zeropackets_stored == false)) &&
-		   (sverb.process_rtp_header || rtp_i->first_codec != -1)) {
-			if(rtp_i->s->received == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
+		   #endif
+		   (rtp_i->received_() or !existsColumns.cdr_rtp_index || (rtp_i->received_() == 0 && rtp_zeropackets_stored == false)) &&
+		   (sverb.process_rtp_header || rtp_i->first_codec_() != -1)) {
+			if(rtp_i->received_() == 0 and rtp_zeropackets_stored == false) rtp_zeropackets_stored = true;
 			rtp_rows_indexes[rtp_rows_count++] = i;
 		}
 	}
@@ -6109,31 +6249,39 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int i = 0; i < 2; i++) {
 			if(!rtpab[i]) continue;
 			
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(i) {
 				dscp_d = rtpab[i]->dscp;
 			} else {
 				dscp_c = rtpab[i]->dscp;
 			}
+			#endif
 
 			string c = i == 0 ? "a" : "b";
 			
 			cdr.add(rtpab[i]->ssrc_index, c+"_index");
-			cdr.add(rtpab[i]->stats.received + (rtpab[i]->first_codec >= 0 ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
-			lost[i] = rtpab[i]->stats.lost;
+			
+			cdr.add(rtpab[i]->received_() + (rtpab[i]->first_codec_() >= 0 ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			lost[i] = rtpab[i]->lost_();
 			cdr.add(lost[i], c+"_lost");
-			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->stats.lost / 
-									(rtpab[i]->stats.received + 2 + rtpab[i]->stats.lost) * 100 * 1000);
+			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->lost_() / 
+									(rtpab[i]->received_() + 2 + rtpab[i]->lost_()) * 100 * 1000);
+			
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
 			jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
 			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
 			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
-			payload[i] = rtpab[i]->first_codec;
+			#endif
+			
+			payload[i] = rtpab[i]->first_codec_();
 			if(payload[i] >= 0) {
 				cdr.add(payload[i], c+"_payload");
 			} else if(sverb.process_rtp_header) {
 				cdr.add(0, c+"_payload");
 			}
 			
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			// build a_sl1 - b_sl10 fields
 			for(int j = 1; j < 11; j++) {
 				char str_j[3];
@@ -6166,10 +6314,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(delay_sum[i], c+"_delay_sum");
 			cdr.add(delay_cnt[i], c+"_delay_cnt");
 			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
+			#endif
 			
 			// store source addr
 			cdr.add(rtpab[i]->saddr, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			// calculate MOS score for fixed 50ms 
 			//double burstr, lossr;
 			//burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
@@ -6267,6 +6417,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				cdr.add(rtpab[i]->rtcp.rtd_w_max, c+"_rtcp_maxrtd_w");
 				cdr.add(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count, c+"_rtcp_avgrtd_w");
 			}
+			#endif
 
 		}
 		if(seenudptl && (exists_udptl_data || !not_acceptable)) {
@@ -6343,11 +6494,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				"lost");
 		}
 
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i->change_src_port) {
 				cdr_flags |= rtp_i->iscaller ? CDR_CHANGE_SRC_PORT_CALLER : CDR_CHANGE_SRC_PORT_CALLED;
 			}
 		}
+		#endif
 	}
 
 	if(opt_dscp && existsColumns.cdr_dscp) {
@@ -6596,7 +6749,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					"   0);\n";
 				bool existsRtp = false;
 				for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-					if(rtp_i and rtp_i->s->received) {
+					if(rtp_i and rtp_i->received_()) {
 						existsRtp = true;
 						break;
 					}
@@ -6738,8 +6891,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			SqlDb_row rtps;
 			rtps.setIgnoreCheckExistsField();
 			rtps.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			if(rtp_i->first_codec >= 0) {
-				rtps.add(rtp_i->first_codec, "payload");
+			if(rtp_i->first_codec_() >= 0) {
+				rtps.add(rtp_i->first_codec_(), "payload");
 			} else {
 				rtps.add(0, "payload", true);
 			}
@@ -6752,22 +6905,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
-			if(rtp_i->s->received > 0 || rtp_i->first_codec < 0) {
-				rtps.add(rtp_i->s->received + (rtp_i->first_codec >= 0 ? 2 : 0), "received");
+			if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
+				rtps.add(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
-			rtps.add(rtp_i->stats.lost, "loss");
+			rtps.add(rtp_i->lost_(), "loss");
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
+			#endif
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(rtp_i->stream_in_multiple_calls) {
 					flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 				}
+				#endif
 				// mark used rtp stream in a/b
 				if (rtp_stream_by_index(i) == rtpab[0] or rtp_stream_by_index(i) == rtpab[1]) {
 					flags |= CDR_RTP_STREAM_IS_AB;
@@ -6803,6 +6960,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		if(opt_save_energylevels) {
 			vector<SqlDb_row> rtp_el_rows;
 			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
@@ -6856,6 +7014,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 		}
+		#endif
 		
 		if(opt_save_sdp_ipport) {
 			vector<SqlDb_row> sdp_rows;
@@ -7265,8 +7424,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			double diff = rtime - stime;
 			SqlDb_row rtps;
 			rtps.add(cdrID, "cdr_ID");
-			if(rtp_i->first_codec >= 0) {
-				rtps.add(rtp_i->first_codec, "payload");
+			if(rtp_i->first_codec_() >= 0) {
+				rtps.add(rtp_i->first_codec_(), "payload");
 			} else {
 				rtps.add(0, "payload", true);
 			}
@@ -7279,22 +7438,26 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				rtps.add(rtp_i->dport.getPort(), "dport");
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
-			if(rtp_i->s->received > 0 || rtp_i->first_codec < 0) {
-				rtps.add(rtp_i->s->received + (rtp_i->first_codec >= 0 ? 2 : 0), "received");
+			if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
+				rtps.add(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
-			rtps.add(rtp_i->stats.lost, "loss");
+			rtps.add(rtp_i->lost_(), "loss");
+			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
+			#endif
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(rtp_i->stream_in_multiple_calls) {
 					flags |= CDR_RTP_STREAM_IN_MULTIPLE_CALLS;
 				}
+				#endif
 				// mark used rtp stream in a/b
 				if (rtp_i == rtpab[0] or rtp_i == rtpab[1]) {
 					flags |= CDR_RTP_STREAM_IS_AB;
@@ -7315,6 +7478,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			sqlDbSaveCall->insert(sql_cdr_rtp_table, rtps);
 		}
 		
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		if(opt_save_energylevels) {
 			for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
 				int i = rtp_rows_indexes[ir];
@@ -7349,6 +7513,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 		}
+		#endif
 
 		if(opt_save_sdp_ipport) {
 			if(sdp_rows_list.size()) {
@@ -8274,10 +8439,12 @@ Call::dump(){
 	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time_s(), (int)get_last_packet_time_s());
 	if(rtp_size() > 0) {
 		printf("ssrc_n:%d\n", rtp_size());
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		printf("Call statistics:\n");
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
 			rtp_i->dump();
 		}
+		#endif
 	}
 	printf("-end call dump  %p----------------------------\n", this);
 }
@@ -8315,13 +8482,14 @@ u_int32_t
 Call::getAllReceivedRtpPackets() {
 	u_int32_t receivedPackets = 0;
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		receivedPackets += rtp_i->stats.received;
+		receivedPackets += rtp_i->received_();
 	}
 	return(receivedPackets);
 }
 
 void
 Call::applyRtcpXrDataToRtp() {
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	map<u_int32_t, sRtcpXrDataSsrc>::iterator iter_ssrc;
 	for(iter_ssrc = this->rtcpXrData.begin(); iter_ssrc != this->rtcpXrData.end(); iter_ssrc++) {
 		for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
@@ -8349,6 +8517,7 @@ Call::applyRtcpXrDataToRtp() {
 			}
 		}
 	}
+	#endif
 }
 
 void Call::adjustUA() {

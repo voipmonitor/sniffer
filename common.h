@@ -20,12 +20,13 @@ struct sVerbose {
 	int disable_threads_rtp;
 	int packet_lost;
 	int rrd_info;
-	int http;
-	int webrtc;
-	int ssl;
+	int tcpreassembly_http;
+	int tcpreassembly_webrtc;
+	int tcpreassembly_ssl;
 	int tls;
 	int ssl_sessionkey;
-	int sip;
+	int tcpreassembly_sip;
+	int tcpreassembly_sip_cleanup;
 	char *tcpreassembly_debug_file;
 	int ssldecode;
 	int ssldecode_debug;

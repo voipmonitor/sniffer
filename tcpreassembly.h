@@ -805,7 +805,7 @@ public:
 		      u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 		      void *uData = NULL, void *uData2 = NULL, bool isSip = false);
 	void cleanup(bool all = false);
-	void cleanup_simple(bool all = false);
+	void cleanup_simple(bool all = false, bool lock = false);
 	void setEnableHttpForceInit(bool enableHttpForceInit = true) {
 		this->enableHttpForceInit = enableHttpForceInit;
 	}
@@ -852,6 +852,14 @@ public:
 		this->enableCleanupThread = enableCleanupThread;
 		this->createCleanupThread();
 	}
+	
+	void setEnableAutoCleanup(bool enableAutoCleanup = true) {
+		this->enableAutoCleanup = enableAutoCleanup;
+	}
+	void setCleanupPeriod(unsigned int cleanupPeriod = true) {
+		this->cleanupPeriod = cleanupPeriod;
+	}
+	
 	void setEnableHttpCleanupExt(bool enableHttpCleanupExt = true) {
 		this->enableHttpCleanupExt = enableHttpCleanupExt;
 	}
@@ -1005,6 +1013,8 @@ private:
 	bool simpleByAck;
 	bool ignorePshInCheckOkData;
 	bool enableCleanupThread;
+	bool enableAutoCleanup;
+	unsigned int cleanupPeriod;
 	bool enableHttpCleanupExt;
 	bool enablePacketThread;
 	TcpReassemblyProcessData *dataCallback;
