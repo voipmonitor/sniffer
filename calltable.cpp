@@ -9691,7 +9691,7 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 	if (useLock) lock_calls_hash();
 	// check if there is not already call in hash 
 	for (node = calls_hash[h]; node != NULL; node = node->next) {
-		if ((node->addr == addr) && (node->port == port)) {
+		if ((node->port == port) && (node->addr == addr)) {
 			// there is already some call which is receiving packets to the same IP:port
 			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
 			int found = 0;
@@ -10075,7 +10075,7 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_l
 	int h = tuplehash(addr.getHashNumber(), port);
 	if (use_lock) lock_calls_hash();
 	for (node = calls_hash[h]; node != NULL; node = node->next) {
-		if (node->addr == addr && node->port == port) {
+		if (node->port == port && node->addr == addr) {
 			#if HASH_RTP_FIND__LIST
 				for(list<call_rtp*>::iterator iter = node->calls.begin(); iter != node->calls.end();) {
 					if((*iter)->call == call && (!rtcp || (rtcp && ((*iter)->is_rtcp || !(*iter)->sdp_flags.rtcp_mux)))) {
