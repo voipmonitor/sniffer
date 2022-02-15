@@ -8772,7 +8772,14 @@ const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool
 					char sipResponse_temp[1024];
 					strcpy_null_term(sipResponse_temp, pointer + number_length);
 					unsigned ellipsis_length = min(3u, number_length - opt_cdr_sip_response_number_max_length);
+					#if __GNUC__ >= 8
+					#pragma GCC diagnostic push
+					#pragma GCC diagnostic ignored "-Wstringop-truncation"
+					#endif
 					strncpy(pointer + opt_cdr_sip_response_number_max_length, "...", ellipsis_length);
+					#if __GNUC__ >= 8
+					#pragma GCC diagnostic pop
+					#endif
 					strcpy(pointer + opt_cdr_sip_response_number_max_length + ellipsis_length, sipResponse_temp);
 					pointer += opt_cdr_sip_response_number_max_length + ellipsis_length;
 					if(adjustLength) {

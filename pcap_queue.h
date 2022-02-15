@@ -1115,6 +1115,9 @@ private:
 	u_char *dedup_buffer;
 	volatile bool initThreadOk;
 	volatile bool terminatingThread;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	unsigned push_thread;
+	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 

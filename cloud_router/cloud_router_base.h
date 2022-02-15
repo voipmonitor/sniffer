@@ -361,7 +361,14 @@ public:
 		}
 		void init(const char *header_string) {
 			memset(this, 0, sizeof(sBlockHeader));
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wstringop-truncation"
+			#endif
 			strncpy(header, get_header_string(header_string), sizeof(header));
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic pop
+			#endif
 		}
 		bool okHeader(const char *header_string) {
 			const char *_header_string = get_header_string(header_string);

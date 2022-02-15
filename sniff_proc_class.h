@@ -735,6 +735,17 @@ public:
 		qring_push_index_count = 0;
 	}
 	inline void push_packet(packet_s_process *packetS) {
+		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+		static __thread unsigned _tid = 0;
+		if(!_tid) {
+			_tid = get_unix_tid();
+		}
+		if(!push_thread) {
+			push_thread = _tid;
+		} else if(push_thread != _tid) {
+			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		}
+		#endif
 		if(is_terminating()) {
 			this->packetS_destroy(packetS);
 			return;
@@ -869,6 +880,15 @@ public:
 		}
 	}
 	inline void push_batch() {
+		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+		static __thread unsigned _tid = 0;
+		if(!_tid) {
+			_tid = get_unix_tid();
+		}
+		if(push_thread && push_thread != _tid) {
+			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		}
+		#endif
 		if(typePreProcessThread == ppt_detach && need_lock_push()) {
 			this->lock_push();
 		}
@@ -1459,6 +1479,9 @@ private:
 	u_int64_t getCpuUsagePerc_counter;
 	u_int64_t getCpuUsagePerc_counter_at_start_out_thread;
 	static u_long autoStartNextLevelPreProcessPacket_last_time_s;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	unsigned push_thread;
+	#endif
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend inline void *_PreProcessPacket_nextThreadFunction(void *arg);
 friend class TcpReassemblySip;
@@ -1614,6 +1637,17 @@ public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
 	inline void push_packet(packet_s_process_0 *packetS) {
+		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+		static __thread unsigned _tid = 0;
+		if(!_tid) {
+			_tid = get_unix_tid();
+		}
+		if(!push_thread) {
+			push_thread = _tid;
+		} else if(push_thread != _tid) {
+			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		}
+		#endif
 		if(is_terminating()) {
 			PACKET_S_PROCESS_DESTROY(&packetS);
 			return;
@@ -1664,6 +1698,15 @@ public:
 		}
 	}
 	inline void push_batch() {
+		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+		static __thread unsigned _tid = 0;
+		if(!_tid) {
+			_tid = get_unix_tid();
+		}
+		if(push_thread && push_thread != _tid) {
+			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		}
+		#endif
 		if(qring_push_index && qring_push_index_count) {
 			#if RQUEUE_SAFE
 				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
@@ -1738,6 +1781,9 @@ private:
 	volatile int *hash_find_flag;
 	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	volatile int _sync_count;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	unsigned push_thread;
+	#endif
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };

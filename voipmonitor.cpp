@@ -4576,24 +4576,38 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
-			if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
-				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
-				pcapQueueQ_outThread_detach->start();
-			}
-			if(opt_udpfrag) {
-				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
-				pcapQueueQ_outThread_defrag->start();
-			}
-			if(opt_dup_check && 
-			   (is_receiver() || is_server() ?
-			     !opt_receiver_check_id_sensor :
-			     ifnamev.size() > 1)) {
-				pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
-				pcapQueueQ_outThread_dedup->start();
-			}
-			if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost) {
-				pcapQueueQ_outThread_detach2 = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach2, pcapQueueQ);
-				pcapQueueQ_outThread_detach2->start();
+			for(int pass = 0; pass < 2; pass++) {
+				if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_detach->start();
+					}
+				}
+				if(opt_udpfrag) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_defrag->start();
+					}
+				}
+				if(opt_dup_check && 
+				   (is_receiver() || is_server() ?
+				     !opt_receiver_check_id_sensor :
+				     ifnamev.size() > 1)) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_dedup->start();
+					}
+				}
+				if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_detach2 = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach2, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_detach2->start();
+					}
+				}
 			}
 		}
 		

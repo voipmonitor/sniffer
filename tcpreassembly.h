@@ -852,14 +852,12 @@ public:
 		this->enableCleanupThread = enableCleanupThread;
 		this->createCleanupThread();
 	}
-	
 	void setEnableAutoCleanup(bool enableAutoCleanup = true) {
 		this->enableAutoCleanup = enableAutoCleanup;
 	}
 	void setCleanupPeriod(unsigned int cleanupPeriod = true) {
 		this->cleanupPeriod = cleanupPeriod;
 	}
-	
 	void setEnableHttpCleanupExt(bool enableHttpCleanupExt = true) {
 		this->enableHttpCleanupExt = enableHttpCleanupExt;
 	}

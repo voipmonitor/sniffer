@@ -8827,6 +8827,9 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	}
 	this->initThreadOk = false;
 	this->terminatingThread = false;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	push_thread = 0;
+	#endif
 }
 
 PcapQueue_outputThread::~PcapQueue_outputThread() {
@@ -8858,16 +8861,21 @@ void PcapQueue_outputThread::stop() {
 }
 
 void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	static __thread unsigned _tid = 0;
+	if(!_tid) {
+		_tid = get_unix_tid();
+	}
+	if(!push_thread) {
+		push_thread = _tid;
+	} else if(push_thread != _tid) {
+		syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+	}
+	#endif
 	if(hp && hp->block_store && !hp->block_store_locked) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
-
-	/*
-	this->processDefrag(hp);
-	return;
-	*/
-	
 	if(!qring_push_index) {
 		unsigned int usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
@@ -8896,6 +8904,15 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 }
 
 void PcapQueue_outputThread::push_batch() {
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	static __thread unsigned _tid = 0;
+	if(!_tid) {
+		_tid = get_unix_tid();
+	}
+	if(push_thread && push_thread != _tid) {
+		syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+	}
+	#endif
 	if(qring_push_index && qring_push_index_count) {
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;

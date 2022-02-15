@@ -8179,6 +8179,9 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 					  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
 	}
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	push_thread = 0;
+	#endif
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -9882,6 +9885,9 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 					  &this->next_thread_handle[i], NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
 	}
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	push_thread = 0;
+	#endif
 }
 
 ProcessRtpPacket::~ProcessRtpPacket() {
