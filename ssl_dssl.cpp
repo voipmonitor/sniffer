@@ -420,9 +420,11 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+	string log_ssl_sessionkey;
 	if(sverb.ssl_sessionkey) {
-		cout << "find clientrandom with type " << enumToStrType(type) << endl;
-		hexdump(client_random, SSL3_RANDOM_SIZE);
+		log_ssl_sessionkey = 
+			string("find clientrandom with type ") + enumToStrType(type) + " \n" +
+			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
 	}
 	bool rslt = false;
 	cSslDsslSessionKeyIndex index(client_random);
@@ -457,17 +459,25 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 			}
 		}
 	} while(!rslt && waitUS >= 0);
-	if(sverb.ssl_sessionkey && rslt) {
-		cout << "* clientrandom found" << endl;
-		hexdump(key, *key_length);
+	if(sverb.ssl_sessionkey) {
+		if(rslt) {
+			log_ssl_sessionkey +=
+				"FOUND: " + hexdump_to_string(key, *key_length) + " \n";
+		} else {
+			log_ssl_sessionkey +=
+				"NOT FOUND \n";
+		}
+		syslog(LOG_NOTICE, "%s", log_ssl_sessionkey.c_str());
 	}
 	return(rslt);
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
+	string log_ssl_sessionkey;
 	if(sverb.ssl_sessionkey) {
-		cout << "find clientrandom for all type" << endl;
-		hexdump(client_random, SSL3_RANDOM_SIZE);
+		log_ssl_sessionkey = 
+			string("find clientrandom for all type ") + " \n" +
+			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
 	}
 	bool rslt = false;
 	cSslDsslSessionKeyIndex index(client_random);
@@ -515,8 +525,8 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 					key_dst->length = iter2->second->key_length;
 				}
 			}
-			if(keys->client_random.key[0] ||
-			   (keys->client_traffic_secret_0.key[0] && keys->server_traffic_secret_0.key[0])) {
+			if(isSetKey(&keys->client_random) ||
+			   (isSetKey(&keys->client_traffic_secret_0) && isSetKey(&keys->server_traffic_secret_0))) {
 				rslt =true;
 				keys->set = true;
 			}
@@ -532,7 +542,14 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 		}
 	} while(!rslt && waitUS >= 0);
 	if(sverb.ssl_sessionkey) {
-		cout << "* clientrandom " << (rslt ? "found" : "not found") << endl;
+		if(rslt) {
+			log_ssl_sessionkey +=
+				"FOUND \n";
+		} else {
+			log_ssl_sessionkey +=
+				"NOT FOUND \n";
+		}
+		syslog(LOG_NOTICE, "%s", log_ssl_sessionkey.c_str());
 	}
 	return(rslt);
 }
@@ -1001,10 +1018,10 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(key_, key.c_str(), key_length);
 		SslDsslSessions->keySet(type.c_str(), client_random_, key_, key_length);
 		if(sverb.ssl_sessionkey) {
-			cout << "set clientrandom with type " << type << endl;
-			hexdump(client_random_, SSL3_RANDOM_SIZE);
-			cout << "key" << endl;
-			hexdump(key_, key_length);
+			syslog(LOG_NOTICE, "set clientrandom with type %s \nclientrandom: %s \nkey: %s \n", 
+			       type.c_str(), 
+			       hexdump_to_string(client_random_, SSL3_RANDOM_SIZE).c_str(),
+			       hexdump_to_string(key_, key_length).c_str());
 		}
 		return(true);
 	}
@@ -1038,10 +1055,10 @@ void ssl_parse_client_random(const char *fileName) {
 			hexdecode(key, parts[2].c_str(), key_length);
 			SslDsslSessions->keySet(parts[0].c_str(), client_random, key, key_length);
 			if(sverb.ssl_sessionkey) {
-				cout << "set clientrandom with type " << parts[0] << endl;
-				hexdump(client_random, SSL3_RANDOM_SIZE);
-				cout << "key" << endl;
-				hexdump(key, key_length);
+				syslog(LOG_NOTICE, "set clientrandom with type %s \nclientrandom: %s \nkey: %s \n", 
+				       parts[0].c_str(), 
+				       hexdump_to_string(client_random, SSL3_RANDOM_SIZE).c_str(),
+				       hexdump_to_string(key, key_length).c_str());
 			}
 		}
 	}

@@ -2009,8 +2009,8 @@ SslDecoder::~SslDecoder() {
 extern "C" {
 
 u_int8_t tls_13_generate_keys(void* dssl_sess, u_int8_t restore_session) {
-    if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0.key[0] ||
-       !((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0.key[0]) {
+    if(!isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_traffic_secret_0) ||
+       !isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.server_traffic_secret_0)) {
 	return(0);
     }
     SslDecryptSession *ssl_ds;
@@ -2039,8 +2039,8 @@ u_int8_t tls_13_generate_keys(void* dssl_sess, u_int8_t restore_session) {
 }
 
 u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
-    if(!((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key[0] &&
-       !((DSSL_Session*)dssl_sess)->master_secret[0]) {
+    if(!isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random) &&
+       !isSetMasterSecret(((DSSL_Session*)dssl_sess)->master_secret)) {
 	return(0);
     }
     SslDecryptSession *ssl_ds;
@@ -2056,7 +2056,7 @@ u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
     }
     ssl_ds->client_random.set(((DSSL_Session*)dssl_sess)->client_random, SSL3_RANDOM_SIZE);
     ssl_ds->server_random.set(((DSSL_Session*)dssl_sess)->server_random, SSL3_RANDOM_SIZE);
-    if(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key[0]) {
+    if(isSetKey(&((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random)) {
 	ssl_ds->master_secret.set(((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.key,
 				  ((DSSL_Session*)dssl_sess)->get_keys_rslt_data.client_random.length);
     } else {

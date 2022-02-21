@@ -71,6 +71,11 @@ struct DSSL_Session_get_keys_data
 	int 				set;
 };
 
+int isSetKey(struct DSSL_Session_get_keys_data_item *key);
+int isSetMasterSecret(u_char *master_secret);
+int _isSetKey(u_char *key, unsigned length);
+
+
 struct DSSL_Session_
 {
 	DSSL_Env*			env;

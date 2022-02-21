@@ -7114,6 +7114,20 @@ void hexdump(u_char *data, unsigned size) {
 	}
 }
 
+string hexdump_to_string(u_char *data, unsigned size) {
+	string rslt;
+	if(!data) {
+		size = 0;
+	}
+	unsigned i, j;
+	for(i = 0; i < size; i ++) {
+		char _rslt[10];
+		snprintf(_rslt, sizeof(_rslt), "%.2x ", data[i]&255);
+		rslt += _rslt;
+	}
+	return(rslt);
+}
+
 unsigned file_get_rows(const char *filename, vector<string> *rows) {
 	unsigned countRows = 0;
 	FILE *fh = fopen(filename, "r");

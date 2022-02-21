@@ -3764,6 +3764,10 @@ inline void hexdump(const char *data, unsigned size) {
 	hexdump((u_char*)data, size);
 }
 
+string hexdump_to_string(u_char *data, unsigned size);
+inline string hexdump_to_string(const char *data, unsigned size) {
+	return(hexdump_to_string((u_char*)data, size));
+}
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 unsigned file_get_rows(string, vector<string> *rows);
 
