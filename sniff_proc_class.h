@@ -743,7 +743,12 @@ public:
 		if(!push_thread) {
 			push_thread = _tid;
 		} else if(push_thread != _tid) {
-			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+			u_int64_t time = getTimeMS_rdtsc();
+			if(time > last_race_log[0] + 1000) {
+				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+				last_race_log[0] = time;
+			}
+			push_thread = _tid;
 		}
 		#endif
 		if(is_terminating()) {
@@ -886,7 +891,12 @@ public:
 			_tid = get_unix_tid();
 		}
 		if(push_thread && push_thread != _tid) {
-			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+			u_int64_t time = getTimeMS_rdtsc();
+			if(time > last_race_log[1] + 1000) {
+				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+				last_race_log[1] = time;
+			}
+			push_thread = _tid;
 		}
 		#endif
 		if(typePreProcessThread == ppt_detach && need_lock_push()) {
@@ -1481,6 +1491,7 @@ private:
 	static u_long autoStartNextLevelPreProcessPacket_last_time_s;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
+	u_int64_t last_race_log[2];
 	#endif
 friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend inline void *_PreProcessPacket_nextThreadFunction(void *arg);
@@ -1645,7 +1656,12 @@ public:
 		if(!push_thread) {
 			push_thread = _tid;
 		} else if(push_thread != _tid) {
-			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+			u_int64_t time = getTimeMS_rdtsc();
+			if(time > last_race_log[0] + 1000) {
+				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+				last_race_log[0] = time;
+			}
+			push_thread = _tid;
 		}
 		#endif
 		if(is_terminating()) {
@@ -1704,7 +1720,12 @@ public:
 			_tid = get_unix_tid();
 		}
 		if(push_thread && push_thread != _tid) {
-			syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+			u_int64_t time = getTimeMS_rdtsc();
+			if(time > last_race_log[1] + 1000) {
+				syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameTypeThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+				last_race_log[1] = time;
+			}
+			push_thread = _tid;
 		}
 		#endif
 		if(qring_push_index && qring_push_index_count) {
@@ -1750,6 +1771,24 @@ public:
 		return(next_thread_index < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
 		       this->nextThreadId[next_thread_index]);
 	}
+	string getNameTypeThread() {
+		switch(type) {
+		case hash:
+			return("hash");
+		case distribute:
+			return("distribute");
+		}
+		return("");
+	}
+	string getShortcatTypeThread() {
+		switch(type) {
+		case hash:
+			return("h");
+		case distribute:
+			return("d");
+		}
+		return("");
+	}
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
@@ -1783,6 +1822,7 @@ private:
 	volatile int _sync_count;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
+	u_int64_t last_race_log[2];
 	#endif
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);

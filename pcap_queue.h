@@ -1117,6 +1117,7 @@ private:
 	volatile bool terminatingThread;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
+	u_int64_t last_race_log[2];
 	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };

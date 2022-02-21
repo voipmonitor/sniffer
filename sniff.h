@@ -720,6 +720,13 @@ struct packet_s_process : public packet_s_process_0 {
 	inline void init() {
 		packet_s_process_0::init();
 	}
+	inline void init_reuse() {
+		packet_s_process_0::init_reuse();
+		if(__type == _t_packet_s_process) {
+			child_packets = NULL;
+			child_packets_type = _tchp_none;
+		}
+	}
 	inline void init2() {
 		packet_s_process_0::init2();
 		sipDataOffset = 0;

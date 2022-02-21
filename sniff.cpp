@@ -8181,6 +8181,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	}
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	push_thread = 0;
+	last_race_log[0] = 0;
+	last_race_log[1] = 0;
 	#endif
 }
 
@@ -8560,7 +8562,7 @@ void *PreProcessPacket::outThreadFunction() {
 					batch_detach->used = 0;
 				#endif
 			}
-		} else if(this->typePreProcessThread == ppt_sip) {
+		} else if(this->typePreProcessThread == ppt_sip && this->next_thread_handle[0]) {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
 				batch = this->qring[this->readit];
@@ -9501,10 +9503,18 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			PACKET_S_PROCESS_DESTROY(&packetS);
 		}
 		#else
-		if(packetS->next_action == _ppna_set) {
-			packetS->next_action = _ppna_push_to_rtp;
+		if(opt_t2_boost) {
+			if(packetS->next_action == _ppna_set) {
+				packetS->next_action = _ppna_push_to_rtp;
+			} else {
+				preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+			}
 		} else {
-			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+			if(packetS->next_action == _ppna_set) {
+				packetS->next_action = _ppna_push_to_extend;
+			} else {
+				preProcessPacket[ppt_extend]->push_packet(packetS);
+			}
 		}
 		#endif
 	}
@@ -9887,6 +9897,8 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	}
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	push_thread = 0;
+	last_race_log[0] = 0;
+	last_race_log[1] = 0;
 	#endif
 }
 

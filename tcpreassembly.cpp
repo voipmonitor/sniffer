@@ -2483,7 +2483,8 @@ string TcpReassembly::getCpuUsagePerc() {
 			outStr << '|';
 		}
 		outStr << links.size() << 'l';
-		if(this->enableExtStat) {
+		extern int opt_sip_tcp_reassembly_ext_quick_mod;
+		if(opt_sip_tcp_reassembly_ext_quick_mod != 2 && this->enableExtStat) {
 			if(this->enablePushLock) {
 				this->lock_push();
 			}

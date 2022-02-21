@@ -8829,6 +8829,8 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->terminatingThread = false;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	push_thread = 0;
+	last_race_log[0] = 0;
+	last_race_log[1] = 0;
 	#endif
 }
 
@@ -8869,7 +8871,12 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 	if(!push_thread) {
 		push_thread = _tid;
 	} else if(push_thread != _tid) {
-		syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		u_int64_t time = getTimeMS_rdtsc();
+		if(time > last_race_log[0] + 1000) {
+			syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameOutputThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+			last_race_log[0] = time;
+		}
+		push_thread = _tid;
 	}
 	#endif
 	if(hp && hp->block_store && !hp->block_store_locked) {
@@ -8910,7 +8917,12 @@ void PcapQueue_outputThread::push_batch() {
 		_tid = get_unix_tid();
 	}
 	if(push_thread && push_thread != _tid) {
-		syslog(LOG_ERR, "race in %s %i (%i != %i)", __FILE__, __LINE__, push_thread, _tid);
+		u_int64_t time = getTimeMS_rdtsc();
+		if(time > last_race_log[1] + 1000) {
+			syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameOutputThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+			last_race_log[1] = time;
+		}
+		push_thread = _tid;
 	}
 	#endif
 	if(qring_push_index && qring_push_index_count) {
