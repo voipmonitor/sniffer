@@ -70,6 +70,16 @@ struct sll_header {
 	u_int16_t sll_protocol;         /* protocol */
 };
 
+struct sll2_header {
+	uint16_t sll2_protocol;			/* protocol */
+	uint16_t sll2_reserved_mbz;		/* reserved - must be zero */
+	uint32_t sll2_if_index;			/* 1-based interface index */
+	uint16_t sll2_hatype;			/* link-layer address type */
+	uint8_t  sll2_pkttype;			/* packet type */
+	uint8_t  sll2_halen;			/* link-layer address length */
+	uint8_t  sll2_addr[SLL_ADDRLEN];	/* link-layer address */
+};
+
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0)
 #define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)

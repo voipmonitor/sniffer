@@ -174,7 +174,7 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 inline 
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
-		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
+		      ether_header **header_eth, u_char **header_ppp_o_e,
 		      u_int16_t &header_ip_offset, u_int16_t &protocol, u_int16_t &vlan) {
 	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
@@ -182,14 +182,18 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
-			header_sll = (sll_header*)packet;
-			if(htons(header_sll->sll_protocol) == 0x8100) {
+		case DLT_LINUX_SLL2:
+			{
+			u_int16_t _protocol = htons(pcapLinklayerHeaderType == DLT_LINUX_SLL ?
+						     ((sll_header*)packet)->sll_protocol :
+						     ((sll2_header*)packet)->sll2_protocol);
+			if(_protocol == 0x8100) {
 				// VLAN tag
 				header_ip_offset = 0;
 				exists_vlan = true;
 			} else {
 				header_ip_offset = 0;
-				protocol = htons(header_sll->sll_protocol);
+				protocol = _protocol;
 			}
 			if(exists_vlan) {
 				u_int16_t _protocol;
@@ -200,12 +204,16 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				} while(_protocol == 0x8100);
 				protocol = _protocol;
 			}
-			header_ip_offset += sizeof(sll_header);
+			header_ip_offset += pcapLinklayerHeaderType == DLT_LINUX_SLL ?
+					     sizeof(sll_header) : 
+					     sizeof(sll2_header);
+			}
 			break;
 		case DLT_ATM_RFC1483:
 		case DLT_EN10MB:
-			header_eth = (ether_header*)((char*)packet + link_header_offset);
-			ether_type = htons(header_eth->ether_type);
+			{
+			ether_header *_header_eth = (ether_header*)((char*)packet + link_header_offset);
+			ether_type = htons(_header_eth->ether_type);
 			switch(ether_type) {
 			case 0x8100:
 				// VLAN tag
@@ -277,6 +285,10 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				}
 			}
 			header_ip_offset += link_header_offset + sizeof(ether_header);
+			if(header_eth) {
+				*header_eth = _header_eth;
+			}
+			}
 			break;
 		case DLT_RAW:
 			header_ip_offset = 0;
@@ -469,7 +481,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 			ppd->pid = (*header_packet)->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
-					   ppd->header_sll, ppd->header_eth, NULL,
+					   &ppd->header_eth, NULL,
 					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
 			ppd->header_ip_encaps_offset = 0xFFFF;
 			(*header_packet)->detect_headers |= 0x01;
@@ -525,7 +537,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
 			ppd->pid = pcap_header_plus2->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
-					   ppd->header_sll, ppd->header_eth, NULL,
+					   &ppd->header_eth, NULL,
 					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
 			ppd->header_ip_encaps_offset = 0xFFFF;
 			pcap_header_plus2->detect_headers |= 0x01;

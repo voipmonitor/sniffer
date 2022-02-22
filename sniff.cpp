@@ -3019,13 +3019,12 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 
 /*				//Parse ether header for src mac else 0
 				if(packetS->dlt == DLT_EN10MB) {
-					sll_header *header_sll;
 					ether_header *header_eth;
 					u_int header_ip_offset;
 					int protocol;
 					u_int16_t vlan;
 					parseEtherHeader(packetS->dlt, (u_char*)packetS->packet,
-							 header_sll, header_eth, NULL,
+							 &header_eth, NULL,
 							 header_ip_offset, protocol, vlan);
 					call->regsrcmac = (convert_srcmac_ll(header_eth));
 					//syslog(LOG_NOTICE,"srcmac from first register: [%llu]\n", call->regsrcmac);
@@ -10486,12 +10485,10 @@ void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,
 	}
 	if(!data) {
 		if(!header_ip_offset) {
-			sll_header *header_sll;
-			ether_header *header_eth;
 			u_int16_t protocol;
 			u_int16_t vlan;
 			if(!parseEtherHeader(pcapLinkHeaderType, packet,
-					     header_sll, header_eth, NULL,
+					     NULL, NULL,
 					     header_ip_offset, protocol, vlan)) {
 				return;
 			}

@@ -774,7 +774,7 @@ public:
 	static inline bool enable_convert_dlt_sll_to_en10(int dlt) {
 		extern int opt_convert_dlt_sll_to_en10;
 		extern pcap_t *global_pcap_handle_dead_EN10MB;
-		return(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB);
+		return((dlt == DLT_LINUX_SLL || dlt == DLT_LINUX_SLL2) && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB);
 	}
 	static inline int convert_dlt_sll_to_en10(int dlt) {
 		return(enable_convert_dlt_sll_to_en10(dlt) ? DLT_EN10MB : dlt);

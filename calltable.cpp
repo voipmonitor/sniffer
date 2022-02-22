@@ -2211,13 +2211,12 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 				}
 			}
 			if(enableDump) {
-				sll_header *header_sll = NULL;
 				ether_header *header_eth = NULL;
 				u_int16_t header_ip_offset = 0;
 				u_int16_t protocol = 0;
 				u_int16_t vlan = VLAN_UNSET;
 				if(parseEtherHeader(packetS->dlt, (u_char*)packetS->packet, 
-						    header_sll, header_eth, NULL,
+						    &header_eth, NULL,
 						    header_ip_offset, protocol, vlan)) {
 					pcap_pkthdr *header = NULL;
 					u_char *packet = NULL;

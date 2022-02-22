@@ -3704,7 +3704,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 
 bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
 	return(parseEtherHeader(pcapLinklayerHeaderType, packet,
-				checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
+				&checkProtocolData->header_eth, NULL,
 				checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) &&
 	       (checkProtocolData->protocol == ETHERTYPE_IP ||
 		(VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
@@ -9048,13 +9048,11 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
 		hp->header->header_ip_offset = ((pcap_pkthdr_plus2*)hp->header)->header_ip_encaps_offset;
 	} else {
-		sll_header *header_sll;
-		ether_header *header_eth;
 		u_int16_t header_ip_offset = 0;
 		u_int16_t protocol;
 		u_int16_t vlan;
 		parseEtherHeader(hp->dlt, hp->packet,
-				 header_sll, header_eth, NULL,
+				 NULL, NULL,
 				 header_ip_offset, protocol, vlan);
 		hp->header->header_ip_offset = header_ip_offset;
 	}

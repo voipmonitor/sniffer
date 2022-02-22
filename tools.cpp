@@ -1402,7 +1402,9 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		   actTime - 10000 > lastTimeDltSyslog) {
 			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i) - packet will not be saved%s",
 			       dlt, this->fileName.c_str(), this->dlt,
-			       !opt_convert_dlt_sll_to_en10 && ((dlt == DLT_LINUX_SLL && this->dlt == DLT_EN10MB) || (dlt == DLT_EN10MB && this->dlt == DLT_LINUX_SLL)) ?
+			       !opt_convert_dlt_sll_to_en10 && 
+			       (((dlt == DLT_LINUX_SLL || dlt == DLT_LINUX_SLL2) && this->dlt == DLT_EN10MB) || 
+				(dlt == DLT_EN10MB && (this->dlt == DLT_LINUX_SLL || this->dlt == DLT_LINUX_SLL2))) ?
 			        "; try configuration option convert_dlt_sll2en10 = yes" :
 				"");
 			lastTimeSyslog = actTime;
@@ -1437,13 +1439,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					++packets_alloc_counter;
 				}
 				if((opt_virtualudppacket || forceVirtualUdp) && data && datalen) {
-					sll_header *header_sll = NULL;
-					ether_header *header_eth = NULL;
 					u_int16_t header_ip_offset = 0;
 					u_int16_t protocol = 0;
 					u_int16_t vlan = VLAN_UNSET;
 					if(parseEtherHeader(dlt, (u_char*)packet, 
-							    header_sll, header_eth, NULL,
+							    NULL, NULL,
 							    header_ip_offset, protocol, vlan)) {
 						unsigned iphdrSize = ((iphdr2*)(packet + header_ip_offset))->get_hdr_size();
 						if((header_ip_offset +
@@ -4392,14 +4392,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->caplen = packet_length;
 	(*header)->len = packet_length;
 	if(ether_header_length > sizeof(ether_header)) {
-		sll_header *header_sll;
-		ether_header *header_eth;
 		u_char *header_ppp_o_e = NULL;
 		u_int16_t header_ip_offset = 0;
 		u_int16_t protocol = 0;
 		u_int16_t vlan = VLAN_UNSET;
 		if(parseEtherHeader(dlt, (u_char*)*packet, 
-				    header_sll, header_eth, &header_ppp_o_e,
+				    NULL, &header_ppp_o_e,
 				    header_ip_offset, protocol, vlan) &&
 		   header_ppp_o_e) {
 			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
@@ -7119,7 +7117,7 @@ string hexdump_to_string(u_char *data, unsigned size) {
 	if(!data) {
 		size = 0;
 	}
-	unsigned i, j;
+	unsigned i;
 	for(i = 0; i < size; i ++) {
 		char _rslt[10];
 		snprintf(_rslt, sizeof(_rslt), "%.2x ", data[i]&255);

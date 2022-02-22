@@ -233,6 +233,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	unsigned ws_dlt = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
 			  dlt == DLT_MTP2_WITH_PHDR ? WTAP_ENCAP_MTP2_WITH_PHDR :
 			  dlt == DLT_LINUX_SLL ? WTAP_ENCAP_SLL :
+			  dlt == DLT_LINUX_SLL2 ? WTAP_ENCAP_SLL2 :
 			  WTAP_ENCAP_ETHERNET;
 	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
 	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605

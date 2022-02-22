@@ -401,7 +401,6 @@ struct pcapProcessData {
 		}
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
-	sll_header *header_sll;
 	ether_header *header_eth;
 	iphdr2 *header_ip;
 	tcphdr2 *header_tcp;
