@@ -39,6 +39,15 @@
 #include "heap_safe.h"
 
 
+#if !defined(DLT_LINUX_SLL2)
+#define DLT_LINUX_SLL2  276
+#endif
+
+#if !defined(WTAP_ENCAP_SLL2)
+#define WTAP_ENCAP_SLL2  210
+#endif
+
+
 using namespace std;
  
 
