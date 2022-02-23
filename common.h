@@ -145,4 +145,9 @@ struct sVerbose {
 #endif
 
 
+#if !defined(DLT_LINUX_SLL2)
+#define DLT_LINUX_SLL2  276
+#endif
+
+
 #endif

@@ -178,8 +178,6 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		      u_int16_t &header_ip_offset, u_int16_t &protocol, u_int16_t &vlan) {
 	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
-	int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
-	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
 		case DLT_LINUX_SLL2:
@@ -212,8 +210,9 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 		case DLT_ATM_RFC1483:
 		case DLT_EN10MB:
 			{
+			int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
 			ether_header *_header_eth = (ether_header*)((char*)packet + link_header_offset);
-			ether_type = htons(_header_eth->ether_type);
+			u_int16_t ether_type = htons(_header_eth->ether_type);
 			switch(ether_type) {
 			case 0x8100:
 				// VLAN tag
