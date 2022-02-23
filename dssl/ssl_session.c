@@ -1008,7 +1008,8 @@ int isSetMasterSecret(u_char *master_secret) {
 
 int _isSetKey(u_char *key, unsigned length) {
 	if(length) {
-		for(unsigned i = 0; i < length; i++) {
+		unsigned i;
+		for(i = 0; i < length; i++) {
 			if(key[i]) {
 				return(1);
 			}
