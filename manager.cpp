@@ -2935,7 +2935,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(filter_port.length()) {
 		vector<string> port = split(filter_port.c_str(), split(",|;| ", "|"), true);
 		for(unsigned i = 0; i < port.size() && i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothport[i].setPort(ntohs(atoi(port[i].c_str())));
+			filter->lv_bothport[i].setFromString(port[i].c_str());
 		}
 	}
 	string filter_number = jsonParameters.getValue("filter_number");
