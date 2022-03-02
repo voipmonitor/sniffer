@@ -1,3 +1,17 @@
+29.2 02.03.2022
+===============
+- general performance optimisations for traffic with 3 000 000 RTP packets / second 
+- add support for dlt DLT_LINUX_SLL2 [VS-1306]
+- fix crashes when pcap files are written in standalone pcap files - add lock to main write operations in FileZipHandler [VS-1278]
+- fix issue with IPPROTO_ESP
+- fix MGCP memory leaks [VS-1303]
+- disable reconfiguration of spooldir when processing capture rules on next invite [VS-1308]
+- fix race condition when t2_boost=no
+- fix some TLS decoding [VS-1242]
+- fix same configuration options across multiple configuration files [VS-1302]
+- fix TCP reassembly in case handshake is missing [VS-1300]
+
+
 29.1.4 27.01.2022
 =================
 - disable splitting UA header by space when searching (space was OR) [VG-2429]
