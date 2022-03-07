@@ -2234,11 +2234,12 @@ private:
 class SafeAsyncQueue_base {
 public:
 	SafeAsyncQueue_base();
-	~SafeAsyncQueue_base();
+	virtual ~SafeAsyncQueue_base();
 	static bool isRunTimerThread();
 	static void stopTimerThread(bool wait = false);
 protected:
-	virtual void timerEv(unsigned long long timerCounter) = 0;
+	void addToSaq();
+	virtual void timerEv(u_int64_t time_ms) = 0;
 private:
 	static void timerThread();
 	static void lock_list_saq() {
@@ -2250,7 +2251,6 @@ private:
 private:
 	static list<SafeAsyncQueue_base*> list_saq;
 	static pthread_t timer_thread;
-	static unsigned long long timer_counter;
 	static volatile int _sync_list_saq;
 	static bool runTimerThread;
 	static bool terminateTimerThread;
@@ -2260,7 +2260,7 @@ friend void *_SafeAsyncQueue_timerThread(void *arg);
 template<class type_queue_item>
 class SafeAsyncQueue : public SafeAsyncQueue_base {
 public:
-	SafeAsyncQueue(int shiftIntervalMult10S = 5);
+	SafeAsyncQueue(unsigned shiftInterval_ms = 500);
 	~SafeAsyncQueue();
 	void push(type_queue_item &item);
 	bool pop(type_queue_item *item, bool remove = true);
@@ -2268,7 +2268,7 @@ public:
 		return(size);
 	}
 protected:
-	void timerEv(unsigned long long timerCounter);
+	void timerEv(u_int64_t time_ms);
 private:
 	void shiftPush();
 	void incSize() {
@@ -2311,8 +2311,8 @@ private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
 	deque<deque<type_queue_item>*> queueItems;
-	int shiftIntervalMult10S;
-	unsigned long long lastShiftTimerCounter;
+	unsigned shiftInterval_ms;
+	unsigned long long lastShiftTime_ms;
 	volatile u_int32_t size;
 	volatile int _sync_queue;
 	volatile int _sync_push_queue;
@@ -2321,16 +2321,17 @@ private:
 };
 
 template<class type_queue_item>
-SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(int shiftIntervalMult10S) {
+SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(unsigned shiftInterval_ms) {
 	push_queue = NULL;
 	pop_queue = NULL;
-	this->shiftIntervalMult10S = shiftIntervalMult10S;
-	lastShiftTimerCounter = 0;
+	this->shiftInterval_ms = shiftInterval_ms;
+	lastShiftTime_ms = 0;
 	size = 0;
 	_sync_queue = 0;
 	_sync_push_queue = 0;
 	_sync_pop_queue = 0;
 	_sync_size = 0;
+	addToSaq();
 }
 
 template<class type_queue_item>
@@ -2394,10 +2395,10 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 }
 
 template<class type_queue_item>
-void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
-	if(timerCounter - lastShiftTimerCounter >= (unsigned)shiftIntervalMult10S) {
+void SafeAsyncQueue<type_queue_item>::timerEv(u_int64_t time_ms) {
+	if(time_ms >= lastShiftTime_ms + shiftInterval_ms) {
 		shiftPush();
-		lastShiftTimerCounter = timerCounter;
+		lastShiftTime_ms = time_ms;
 	}
 }
 

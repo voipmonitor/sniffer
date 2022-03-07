@@ -138,6 +138,7 @@ extern int opt_norecord_header;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
+extern bool opt_ssl_enable_dtls_queue;
 extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
@@ -350,6 +351,8 @@ unsigned long process_packet__last_cleanup_calls__count_sip_bye;
 unsigned long process_packet__last_cleanup_calls__count_sip_bye_confirmed;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
+
+static link_packets_queue dtls_queue;
 
 
 #if EXPERIMENTAL_T2_QUEUE_FULL_STAT
@@ -5271,6 +5274,17 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							preSyncRtp, threadIndex);
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
+				if(packetS->insert_packets) {
+					list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
+					for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+						#if DEBUG_DTLS_QUEUE
+						cout << " * use dtls" << endl;
+						#endif
+						add_to_rtp_thread_queue(call, *iter, 
+									iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+									preSyncRtp, threadIndex);
+					}
+				}
 				add_to_rtp_thread_queue(call, packetS, 
 							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
 							preSyncRtp, threadIndex);
@@ -5440,6 +5454,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		if(n_call) {
 		#endif
 			unsigned counter_rtp_only_packets = 0;
+			bool use_dtls_queue = false;
 			++counter_rtp_packets[0];
 			#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 			for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
@@ -5458,6 +5473,20 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					++counter_rtp_packets[1];
 					if(!call_rtp->is_rtcp) {
 						++counter_rtp_only_packets;
+					}
+					if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
+					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
+					   !call->existsSrtpCryptoConfig() &&
+					   call->existsSrtpFingerprint() &&
+					   !use_dtls_queue) {
+						if(dtls_queue.existsContent()) {
+							dtls_queue.lock();
+							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+								dtls_queue.moveToPacket(packetS);
+							}
+							dtls_queue.unlock();
+							use_dtls_queue = true;
+						}
 					}
 					packetS->blockstore_addflag(27 /*pb lock flag*/);
 					call_info->calls[call_info->length].call = call;
@@ -5502,6 +5531,10 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			process_packet__rtp_call_info(call_info, packetS);
 			packet_s_process_calls_info::free(call_info);
 			return(true);
+		} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+			dtls_queue.push(packetS);
+			packet_s_process_calls_info::free(call_info);
+			return(true);
 		} else if(opt_rtpnosip) {
 			process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
 						  packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
@@ -5511,7 +5544,6 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		}
 		packet_s_process_calls_info::free(call_info);
 	}
-	
 	return(false);
 }
 
@@ -8063,6 +8095,35 @@ unsigned packet_s_process_calls_info::__size_of;
 unsigned packet_s_process_0::__size_of;
 
 
+void link_packets_queue::cleanup(u_int64_t time_ms) {
+	for(map<s_link_id, s_link*>::iterator iter_link = links.begin(); iter_link != links.end(); ) {
+		s_link *link = iter_link->second;
+		if(time_ms >= link->last_time_ms + expiration_link_ms) {
+			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
+				packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
+				PACKET_S_PROCESS_DESTROY(&packetS);
+			}
+			delete link;
+			links.erase(iter_link++);
+		} else {
+			iter_link++;
+		}
+	}
+}
+
+void link_packets_queue::destroyAll() {
+	for(map<s_link_id, s_link*>::iterator iter_link = links.begin(); iter_link != links.end(); iter_link++) {
+		s_link *link = iter_link->second;
+		for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
+			packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+		delete link;
+	}
+	links.clear();
+}
+
+
 inline void *_PreProcessPacket_outThreadFunction(void *arg) {
 	return(((PreProcessPacket*)arg)->outThreadFunction());
 }
@@ -10024,6 +10085,9 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
+				} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+					dtls_queue.push(packetS);
+					this->hash_find_flag[batch_index] = -2;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);
 					this->hash_find_flag[batch_index] = -1;
@@ -10101,6 +10165,9 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
+					} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+						dtls_queue.push(packetS);
+						this->hash_find_flag[batch_index] = -2;
 					} else {
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
 						this->hash_find_flag[batch_index] = -1;
@@ -10127,6 +10194,9 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
+				} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+					dtls_queue.push(packetS);
+					this->hash_find_flag[batch_index] = -2;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
 					this->hash_find_flag[batch_index] = -1;
@@ -10153,6 +10223,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 							      true,
 							      opt_t2_boost ? indexThread + 1 : 0,
 							      indexThread + 1);
+			} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+				dtls_queue.push(packetS);
 			} else {
 				if(opt_rtpnosip) {
 					process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
@@ -10252,6 +10324,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(n_call) {
 	#endif
 		unsigned counter_rtp_only_packets = 0;
+		bool use_dtls_queue = false;
 		++counter_rtp_packets[0];
 		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
@@ -10267,6 +10340,20 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				++counter_rtp_packets[1];
 				if(!call_rtp->is_rtcp) {
 					++counter_rtp_only_packets;
+				}
+				if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
+				   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
+				   !call->existsSrtpCryptoConfig() &&
+				   call->existsSrtpFingerprint() &&
+				   !use_dtls_queue) {
+					if(dtls_queue.existsContent()) {
+						dtls_queue.lock();
+						if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+							dtls_queue.moveToPacket(packetS);
+						}
+						dtls_queue.unlock();
+						use_dtls_queue = true;
+					}
 				}
 				packetS->blockstore_addflag(34 /*pb lock flag*/);
 				packetS->call_info.calls[packetS->call_info.length].call = call;

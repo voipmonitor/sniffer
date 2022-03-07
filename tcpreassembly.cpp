@@ -2329,6 +2329,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->last_cleanup_call_time_from_header = 0;
 	this->last_erase_links_time = 0;
 	this->doPrintContent = false;
+	this->packetQueue = NULL;
 	this->cleanupThreadHandle = 0;
 	this->packetThreadHandle = 0;
 	this->cleanupThreadId = 0;
@@ -2368,6 +2369,9 @@ TcpReassembly::~TcpReassembly() {
 	if(this->initPacketThreadOk) {
 		this->terminatingPacketThread = true;
 		pthread_join(this->packetThreadHandle, NULL);
+	}
+	if(this->packetQueue) {
+		delete this->packetQueue;
 	}
 	if(!this->enableCleanupThread || opt_pb_read_from_file[0]) {
 		if(this->enableCleanupThread) {
@@ -2527,6 +2531,9 @@ void TcpReassembly::createCleanupThread() {
 }
 
 void TcpReassembly::createPacketThread() {
+	if(!this->packetQueue) {
+		this->packetQueue = new FILE_LINE(0) SafeAsyncQueue<sPacket>(50);
+	}
 	if(!this->packetThreadHandle) {
 		vm_pthread_create("tcp reassembly packets queue",
 				  &this->packetThreadHandle, NULL, _TcpReassembly_packetThreadFunction, this, __FILE__, __LINE__);
@@ -2565,9 +2572,18 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	sPacket packet;
+	#if DEBUG_DTLS_QUEUE
+	unsigned _c = 0;
+	#endif
 	while((!is_terminating() || this->ignoreTerminating) &&
 	      !this->terminatingPacketThread) {
-		if(packetQueue.pop(&packet)) {
+		if(packetQueue->pop(&packet)) {
+			#if DEBUG_DTLS_QUEUE
+			++_c;
+			if(_c == 2) {
+				sleep(10);
+			}
+			#endif
 			this->_push(packet.header, packet.header_ip, packet.packet,
 				    packet.block_store, packet.block_store_index,
 				    packet.handle_index, packet.dlt, packet.sensor_id, packet.sensor_ip, packet.pid,
@@ -2644,7 +2660,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 		_packet.uData = uData;
 		_packet.uData2 = uData2;
 		_packet.isSip = isSip;
-		this->packetQueue.push(_packet);
+		this->packetQueue->push(_packet);
 	} else {
 		if(this->enablePushLock) {
 			this->lock_push();

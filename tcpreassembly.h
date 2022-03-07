@@ -1038,7 +1038,7 @@ private:
 	pstat_data packetThreadPstatData[2];
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
-	SafeAsyncQueue<sPacket> packetQueue;
+	SafeAsyncQueue<sPacket> *packetQueue;
 	volatile bool initCleanupThreadOk;
 	volatile bool initPacketThreadOk;
 	volatile bool terminatingCleanupThread;

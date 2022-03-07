@@ -438,6 +438,7 @@ bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
+bool opt_ssl_enable_dtls_queue = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -4408,7 +4409,11 @@ int main_init_read() {
 		}
 		
 		//autostart for fork mode if t2cpu > 50%
-		if((!opt_fork || opt_t2_boost) &&
+		if(
+		   #if DEBUG_DTLS_QUEUE
+		   //false &&
+		   #endif
+		   (!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   is_enable_packetbuffer()) {
 			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
@@ -7244,6 +7249,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
 				->addValues("memory:1|persistent:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9138,19 +9144,33 @@ void set_context_config() {
 		if(!is_sender() && !is_client_packetbuffer_sender() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
 		}
+		#if DEBUG_DTLS_QUEUE
+		if(opt_process_rtp_packets_hash_next_thread < 1) {
+			opt_process_rtp_packets_hash_next_thread = 1;
+		}
+		#else
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
 			opt_process_rtp_packets_hash_next_thread = 2;
 		}
+		#endif
 		opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
 		if(opt_preprocess_packets_qring_length <= 2000 &&
 		   opt_preprocess_packets_qring_item_length == 0) {
 			opt_preprocess_packets_qring_length = 3;
+			#if DEBUG_DTLS_QUEUE
+			opt_preprocess_packets_qring_item_length = 500;
+			#else 
 			opt_preprocess_packets_qring_item_length = 5000;
+			#endif
 		}
 		if(opt_process_rtp_packets_qring_length <= 2000 &&
 		   opt_process_rtp_packets_qring_item_length == 0) {
 			opt_process_rtp_packets_qring_length = 4;
+			#if DEBUG_DTLS_QUEUE
+			opt_process_rtp_packets_qring_item_length = 500;
+			#else
 			opt_process_rtp_packets_qring_item_length = 5000;
+			#endif
 		}
 	}
 	
@@ -11637,6 +11657,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_store_sessions_expiration_hours", NULL))) {
 		opt_ssl_store_sessions_expiration_hours = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
+		opt_ssl_enable_dtls_queue = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);

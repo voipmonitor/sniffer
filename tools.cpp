@@ -3492,14 +3492,17 @@ SafeAsyncQueue_base::SafeAsyncQueue_base() {
 		vm_pthread_create("async queue",
 				  &timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
 	}
-	lock_list_saq();
-	list_saq.push_back(this);
-	unlock_list_saq();
 }
 
 SafeAsyncQueue_base::~SafeAsyncQueue_base() {
 	lock_list_saq();
 	list_saq.remove(this);
+	unlock_list_saq();
+}
+
+void SafeAsyncQueue_base::addToSaq() {
+	lock_list_saq();
+	list_saq.push_back(this);
 	unlock_list_saq();
 }
 
@@ -3520,25 +3523,22 @@ void SafeAsyncQueue_base::stopTimerThread(bool wait) {
 void SafeAsyncQueue_base::timerThread() {
 	runTimerThread = true;
 	while(!terminateTimerThread) {
-		USLEEP(100000);
+		USLEEP(1000);
+		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock_list_saq();
 		list<SafeAsyncQueue_base*>::iterator iter;
 		for(iter = list_saq.begin(); iter != list_saq.end(); iter++) {
-			(*iter)->timerEv(timer_counter);
+			(*iter)->timerEv(time_ms);
 		}
 		unlock_list_saq();
-		++timer_counter;
 	}
 	runTimerThread = false;
 	timer_thread = 0;
-	timer_counter = 0;
 }
 
 list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
 
 pthread_t SafeAsyncQueue_base::timer_thread = 0;
-
-unsigned long long SafeAsyncQueue_base::timer_counter = 0;
 
 volatile int SafeAsyncQueue_base::_sync_list_saq = 0;
 

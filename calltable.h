@@ -2128,6 +2128,13 @@ public:
 	inline int rtp_size() {
 		return(ssrc_n);
 	}
+	
+	inline bool existsSrtpCryptoConfig() {
+		return(exists_srtp_crypto_config);
+	}
+	inline bool existsSrtpFingerprint() {
+		return(exists_srtp_fingerprint);
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
