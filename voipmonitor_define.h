@@ -66,7 +66,4 @@
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
 
 
-#define DEBUG_DTLS_QUEUE true
-
-
 #endif //VOIPMONITOR_DEFINE_H
