@@ -691,7 +691,6 @@ private:
 	bool defaultMinor;
 	bool defaultMinorGroupIfNotSet;
 	string defaultDisableIf;
-	bool setFromMysqlOk;
 	list<sDiffValue> diffValues;
 	bool diffValuesTrack;
 };
