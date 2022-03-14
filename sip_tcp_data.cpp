@@ -148,6 +148,12 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 								     packetS->pflags.mgcp);
 					packetS->init2();
 					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS, (packet_s_process*)uData2_last);
+					
+					#if DEBUG_PACKET_COUNT
+					extern volatile int __xc_reassembly[10];
+					++__xc_reassembly[1];
+					#endif
+					
 				} else {
 					packet_flags pflags;
 					pflags.init();

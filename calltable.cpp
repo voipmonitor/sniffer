@@ -5746,6 +5746,13 @@ volatile u_int64_t counter_calls_save_2;
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+
+	#if DEBUG_PACKET_COUNT
+	extern volatile int __xc_callsave;
+	extern void __fc(const char *type, const char *callid);
+	++__xc_callsave;
+	__fc("callsave", call_id.c_str());
+	#endif
  
 	if(sverb.disable_save_call) {
 		return(0);
@@ -8067,6 +8074,13 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
+
+	#if DEBUG_PACKET_COUNT
+	extern volatile int __xc_callsave;
+	extern void __fc(const char *type, const char *callid);
+	++__xc_callsave;
+	__fc("callsave", call_id.c_str());
+	#endif
  
 	if(sverb.disable_save_message) {
 		return(0);
@@ -10678,7 +10692,11 @@ Calltable::destroyCallsIfPcapsClosed() {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 				call->destroyCall();
+				
+				#if not DEBUG_PACKET_COUNT
 				delete call;
+				#endif
+				
 				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
 				--size;
 			} else {
@@ -11345,6 +11363,10 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					}
 					if(!closeCall &&
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
+						/*
+						cout << " * " << currTimeS_unshift - call->get_last_packet_time_s() << endl
+						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl;
+						*/
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
 					}
@@ -11361,6 +11383,12 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					}
 				}
 				if(closeCall) {
+
+					#if DEBUG_PACKET_COUNT
+					extern map<string, Call*> __xmap_cleanup_calls;
+					__xmap_cleanup_calls[call->call_id] = call;
+					#endif
+				 
 					if(call->listening_worker_run) {
 						*call->listening_worker_run = 0;
 					}

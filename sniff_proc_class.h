@@ -420,12 +420,16 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
+		volatile unsigned modulo;
+		volatile unsigned thread_index;
 		volatile int processing;
 		void null() {
 			batch = NULL;
 			start = 0;
 			end = 0;
 			skip = 0;
+			modulo = 0;
+			thread_index = 0;
 			processing = 0;
 		}
 	};

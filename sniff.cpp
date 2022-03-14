@@ -87,6 +87,9 @@ and insert them into Call class.
 #endif
 
 
+#define T2_SIP_MOD true
+
+
 extern MirrorIP *mirrorip;
 
 #define MAXLIVEFILTERS 10
@@ -358,6 +361,37 @@ static link_packets_queue dtls_queue;
 #if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 volatile int t2_queue_full_stat_sync;
 map<unsigned, unsigned> t2_queue_full_stat_map;
+#endif
+
+
+#if DEBUG_PACKET_COUNT
+volatile int __xc_inv;
+volatile int __xc_sip;
+volatile int __xc_nosip;
+volatile int __xc_callsave;
+volatile int __xc_reassembly[10];
+map<string, u_int64_t> __xmap_calls;
+map<string, Call*> __xmap_cleanup_calls;
+
+FILE *__fc_inv;
+FILE *__fc_callsave;
+
+void __fc(const char *type, const char *callid) {
+	FILE **file = !strcmp(type, "inv") ? &__fc_inv :
+		      !strcmp(type, "callsave") ? &__fc_callsave :
+		      NULL;
+	if(file) {
+		if(!*file) {
+			const char *filename = !strcmp(type, "inv") ? "_log_inv" :
+					       !strcmp(type, "callsave") ? "_log_callsave" :
+					       NULL;
+			*file = fopen(filename, "w");
+		}
+		if(*file) {
+			fprintf(*file, "%s\n", callid);
+		}
+	}
+}
 #endif
 
 
@@ -2882,6 +2916,21 @@ inline unsigned int setCallFlags(unsigned long int flags,
 static inline void process_packet__parse_custom_headers(Call *call, packet_s_process *packetS);
 
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr, int8_t ci = -1) {
+
+	#if DEBUG_PACKET_COUNT
+	++__xc_inv;
+	__fc("inv", packetS->callid_long ? packetS->callid_long : packetS->callid);
+	if(__xmap_calls[packetS->callid]) {
+		Call *call = __xmap_cleanup_calls[ packetS->callid];
+		cout << " XXX " << packetS->callid 
+		     << " / " << call->call_id
+		     << " / " << __xmap_calls[packetS->callid]
+		     << " / " << packetS->getTimeUS()
+		     << " / " << (int)call->oneway_timeout_exceeded
+		     << endl;
+	}
+	__xmap_calls[packetS->callid] = packetS->getTimeUS();
+	#endif
  
 	if(sverb.sipcallerip_filter[0] &&
 	   packetS->saddr_().getString() != sverb.sipcallerip_filter) {
@@ -8388,13 +8437,27 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				} }
 				break;
 			case ppt_sip: {
+				#if T2_SIP_MOD
+				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
+				for(unsigned batch_index = 0; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					packet_s_process *packetS = batch[batch_index];
+					if(((packetS->source_() + packetS->dest_()) % next_thread_data->modulo) == next_thread_data->thread_index) {
+						this->process_SIP(packetS, true);
+						this->items_flag[batch_index] = 1;
+					}
+				}
+				#else
 				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
 				for(unsigned batch_index = batch_index_start; 
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
 					this->process_SIP(batch[batch_index], true);
 					this->items_flag[batch_index] = 1;
-				} }
+				}
+				#endif
+				}
 				break;
 			default:
 				break;
@@ -8530,6 +8593,7 @@ void *PreProcessPacket::outThreadFunction() {
 						this->items_flag[batch_index] = 0;
 					}
 					for(int i = 0; i < _next_threads; i++) {
+						this->next_thread_data[i].null();
 						if(_process_only_in_next_threads) {
 							this->next_thread_data[i].start = i;
 							this->next_thread_data[i].end = count;
@@ -8688,6 +8752,22 @@ void *PreProcessPacket::outThreadFunction() {
 					this->items_flag[batch_index] = 0;
 				}
 				for(int i = 0; i < _next_threads; i++) {
+					this->next_thread_data[i].null();
+					#if T2_SIP_MOD
+					if(_process_only_in_next_threads) {
+						this->next_thread_data[i].start = 0;
+						this->next_thread_data[i].end = count;
+						this->next_thread_data[i].skip = 1;
+						this->next_thread_data[i].modulo = _next_threads;
+						this->next_thread_data[i].thread_index = i;
+					} else {
+						this->next_thread_data[i].start = 0;
+						this->next_thread_data[i].end = count;
+						this->next_thread_data[i].skip = 1;
+						this->next_thread_data[i].modulo = _next_threads + 1;
+						this->next_thread_data[i].thread_index = i + 1;
+					}
+					#else
 					if(_process_only_in_next_threads) {
 						this->next_thread_data[i].start = i;
 						this->next_thread_data[i].end = count;
@@ -8697,6 +8777,7 @@ void *PreProcessPacket::outThreadFunction() {
 						this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
 						this->next_thread_data[i].skip = 1;
 					}
+					#endif
 					this->next_thread_data[i].batch = batch->batch;
 					this->next_thread_data[i].processing = 1;
 					sem_post(&sem_sync_next_thread[i][0]);
@@ -8713,11 +8794,26 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 				} else {
+					#if T2_SIP_MOD
+					if(_next_threads > 0) {
+						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+							packet_s_process *packetS = batch->batch[batch_index];
+							if(((packetS->source_() + packetS->dest_()) % (_next_threads + 1)) == 0) {
+								this->process_SIP(packetS, true);
+							}
+						}
+					} else {
+						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+							this->process_SIP(batch->batch[batch_index], true);
+						}
+					}
+					#else
 					for(unsigned batch_index = 0; 
 					    batch_index < count / (_next_threads + 1); 
 					    batch_index++) {
 						this->process_SIP(batch->batch[batch_index], true);
 					}
+					#endif
 				}
 				for(int i = 0; i < _next_threads; i++) {
 					sem_wait(&sem_sync_next_thread[i][1]);
@@ -9172,6 +9268,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
 	if(packetS->need_sip_process) {
+	 
+		#if DEBUG_PACKET_COUNT
+		++__xc_sip;
+		#endif
+	 
 		packetS->init2();
 		packetS->next_action = parallel_threads ? _ppna_set : _ppna_na;
 		if(check_sip20(packetS->data_(), packetS->datalen_(), NULL, packetS->pflags.tcp)) {
@@ -9200,10 +9301,12 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 						PACKET_S_PROCESS_DESTROY(&packetS);
 					}
 				}
+			#if not T2_SIP_MOD
 			} else if(opt_sip_tcp_reassembly_ext_quick_mod &&
 				  (!packetS->datalen_() ||
 				   (isSip && TcpReassemblySip::checkSip((u_char*)packetS->data_(), packetS->datalen_(), true)))) {
 				this->process_parseSipData(&packetS, NULL);
+			#endif
 			} else {
 				bool possibleWebSocketSip = false;
 				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {
@@ -9215,6 +9318,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 				extern bool opt_sip_tcp_reassembly_ext;
 				extern TcpReassembly *tcpReassemblySipExt;
 				if(opt_sip_tcp_reassembly_ext && tcpReassemblySipExt) {
+				 
+					#if DEBUG_PACKET_COUNT
+					++__xc_reassembly[0];
+					#endif
+				 
 					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
 								      packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip, packetS->pid,
@@ -9241,11 +9349,26 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			rtp = true;
 		}
 	} else if(packetS->pflags.mrcp) {
+	 
+		#if DEBUG_PACKET_COUNT
+		++__xc_nosip;
+		#endif
+	 
 		rtp = true;
 	} else if(!packetS->pflags.other_processing()) {
+	 
+		#if DEBUG_PACKET_COUNT
+		++__xc_nosip;
+		#endif
+	 
 		packetS->blockstore_addflag(16 /*pb lock flag*/);
 		rtp = true;
 	} else {
+	 
+		#if DEBUG_PACKET_COUNT
+		++__xc_nosip;
+		#endif
+	 
 		other = true;
 	}
 	if(rtp) {

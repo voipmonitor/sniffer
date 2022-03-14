@@ -4681,6 +4681,23 @@ int main_init_read() {
 				}
 			}
 			++_counter;
+
+			#if DEBUG_PACKET_COUNT
+			extern volatile int __xc_inv;
+			extern volatile int __xc_sip;
+			extern volatile int __xc_nosip;
+			extern volatile int __xc_callsave;
+			extern volatile int __xc_reassembly[10];
+			cout << " ***" << endl 
+			     << " * invite: " << __xc_inv << endl
+			     << " * sip: " << __xc_sip << endl
+			     << " * nosip: " << __xc_nosip << endl
+			     << " * callsave: " << __xc_callsave << endl
+			     << " * reassembly: " << __xc_reassembly[0] << endl
+			     << " * reassembly: " << __xc_reassembly[1] << endl
+			     << " ***" << endl;
+			#endif
+			
 		}
 		
 		if(wdt && !hot_restarting) {
