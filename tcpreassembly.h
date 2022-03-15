@@ -833,6 +833,9 @@ public:
 	void setUnlimitedReassemblyAttempts(bool unlimitedReassemblyAttempts = true) {
 		this->unlimitedReassemblyAttempts = unlimitedReassemblyAttempts;
 	}
+	void setMaxReassemblyAttempts(int maxReassemblyAttempts = 10) {
+		this->maxReassemblyAttempts = maxReassemblyAttempts;
+	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
 		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
 	}
@@ -1005,6 +1008,7 @@ private:
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
 	bool unlimitedReassemblyAttempts;
+	int maxReassemblyAttempts;
 	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;

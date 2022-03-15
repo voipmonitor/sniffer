@@ -1124,6 +1124,7 @@ bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
+int opt_sip_tcp_reassembly_stream_max_attempts = 10;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
@@ -4507,6 +4508,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableWildLink();
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
+		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
 		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
 			tcpReassemblySipExt->setLinkTimeout(3);
 			tcpReassemblySipExt->setEnableExtCleanupStreams(10, 0);
@@ -7736,6 +7738,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
@@ -12268,6 +12271,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_timeout", NULL))) {
 		opt_sip_tcp_reassembly_stream_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_max_attempts", NULL))) {
+		opt_sip_tcp_reassembly_stream_max_attempts = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_clean_period", NULL))) {
 		opt_sip_tcp_reassembly_clean_period = atoi(value);

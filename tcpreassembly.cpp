@@ -98,7 +98,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 		ignorePsh = link->reassembly->ignorePshInCheckOkData;
 	}
 	if(this->is_ok || 
-	   (link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > 10)) {
+	   (link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > link->reassembly->maxReassemblyAttempts)) {
 		return(1);
 	}
 	++counterTryOk;
@@ -2307,6 +2307,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableValidateDataViaCheckData = false;
 	this->unlimitedReassemblyAttempts = false;
+	this->maxReassemblyAttempts = 10;
 	this->enableValidateLastQueueDataViaCheckData = false;
 	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
