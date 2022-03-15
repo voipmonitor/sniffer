@@ -10692,11 +10692,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 			Call *call = this->calls_deletequeue[i];
 			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 				call->destroyCall();
-				
-				#if not DEBUG_PACKET_COUNT
 				delete call;
-				#endif
-				
 				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
 				--size;
 			} else {
@@ -11230,11 +11226,12 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 */
 
 int
-Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int line ) {
+Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s, const char *file, int line ) {
  
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	u_int64_t beginTimeMS = currTimeMS;
+	bool isReadFromFile = is_read_from_file();
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -11319,7 +11316,9 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 				} else {
 					call = (*callMAPIT2).second;
 				}
-				u_int32_t currTimeS_unshift = call->unshiftSystemTime_s(currTimeS);
+				u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+							       packet_time_s :
+							       call->unshiftSystemTime_s(currTimeS);
 				if(verbosity > 2) {
 					call->dump();
 				}
@@ -11330,13 +11329,13 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 				bool closeCall = false;
 				if(closeAll || call->force_close) {
 					closeCall = true;
-					if(!is_read_from_file()) {
+					if(!isReadFromFile) {
 						call->force_terminate = true;
 					}
 				} else if(call->typeIs(SKINNY_NEW) ||
 					  call->typeIs(MGCP) ||
 					  call->in_preprocess_queue_before_process_packet <= 0 ||
-					  (!is_read_from_file() &&
+					  (!isReadFromFile &&
 					   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currTimeS_unshift - 300 &&
 					    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
 					if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
@@ -11365,7 +11364,10 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
 						/*
 						cout << " * " << currTimeS_unshift - call->get_last_packet_time_s() << endl
-						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl;
+						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl
+						     << " * " << currTimeS - call->_time / 1000 << endl
+						     << " * " << packet_time_s - call->first_packet_time_us / 1000000 << endl
+						     << " * " << getTimeMS_rdtsc() - currTimeMS << endl;
 						*/
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
@@ -11495,10 +11497,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 }
 
 int
-Calltable::cleanup_registers(bool closeAll) {
+Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
  
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -11507,7 +11510,9 @@ Calltable::cleanup_registers(bool closeAll) {
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		Call *reg = (*registerMAPIT).second;
-		u_int32_t currTimeS_unshift = reg->unshiftSystemTime_s(currTimeS);
+		u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+					       packet_time_s :
+					       reg->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
 			reg->dump();
 		}
@@ -11518,7 +11523,7 @@ Calltable::cleanup_registers(bool closeAll) {
 		bool closeReg = false;
 		if(closeAll || reg->force_close) {
 			closeReg = true;
-			if(!is_read_from_file()) {
+			if(!isReadFromFile) {
 				reg->force_terminate = true;
 			}
 		} else {
@@ -11603,14 +11608,17 @@ Calltable::cleanup_registers(bool closeAll) {
 	return 0;
 }
 
-int Calltable::cleanup_ss7(bool closeAll) {
+int Calltable::cleanup_ss7(bool closeAll, u_int32_t packet_time_s) {
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
 	lock_process_ss7_listmap();
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
-		u_int32_t currTimeS_unshift = iter->second->unshiftSystemTime_s(currTimeS);
+		u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+					       packet_time_s :
+					       iter->second->unshiftSystemTime_s(currTimeS);
 		if((iter->second->destroy_at_s &&
 		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
 		     iter->second->destroy_at_s <= currTimeS_unshift)) || 

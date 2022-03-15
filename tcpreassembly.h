@@ -833,7 +833,7 @@ public:
 	void setUnlimitedReassemblyAttempts(bool unlimitedReassemblyAttempts = true) {
 		this->unlimitedReassemblyAttempts = unlimitedReassemblyAttempts;
 	}
-	void setMaxReassemblyAttempts(int maxReassemblyAttempts = 10) {
+	void setMaxReassemblyAttempts(int maxReassemblyAttempts = 50) {
 		this->maxReassemblyAttempts = maxReassemblyAttempts;
 	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
