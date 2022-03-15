@@ -7030,7 +7030,8 @@ inline int _ipfrag_add(ip_frag_queue *queue,
 		node->header_ip_offset = header_ip_offset;
 		node->len = len;
 		node->offset = offset_d;
-		node->iphdr_len = header_ip->get_hdr_size();
+		node->iphdr_len = header_ip->get_hdr_size() - 
+				  (header_ip->_get_protocol() == IPPROTO_ESP ? IPPROTO_ESP_HEADER_SIZE : 0);
 
 		// add to queue (which will sort it automatically
 		(*queue)[offset_d] = node;
