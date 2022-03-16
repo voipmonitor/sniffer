@@ -372,11 +372,14 @@ volatile int __xc_callsave;
 volatile int __xc_reassembly[10];
 map<string, u_int64_t> __xmap_calls;
 map<string, Call*> __xmap_cleanup_calls;
+volatile int __xmap_sync;
 
 FILE *__fc_inv;
 FILE *__fc_callsave;
+volatile int __fc_sync;
 
 void __fc(const char *type, const char *callid) {
+	__SYNC_LOCK(__fc_sync);
 	FILE **file = !strcmp(type, "inv") ? &__fc_inv :
 		      !strcmp(type, "callsave") ? &__fc_callsave :
 		      NULL;
@@ -391,6 +394,7 @@ void __fc(const char *type, const char *callid) {
 			fprintf(*file, "%s\n", callid);
 		}
 	}
+	__SYNC_UNLOCK(__fc_sync);
 }
 #endif
 
@@ -2918,8 +2922,9 @@ static inline void process_packet__parse_custom_headers(Call *call, packet_s_pro
 inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char *callidstr, int8_t ci = -1) {
 
 	#if DEBUG_PACKET_COUNT
-	++__xc_inv;
+	__SYNC_INC(__xc_inv);
 	__fc("inv", packetS->callid_long ? packetS->callid_long : packetS->callid);
+	__SYNC_LOCK(__xmap_sync);
 	if(__xmap_calls[packetS->callid]) {
 		//Call *call = __xmap_cleanup_calls[ packetS->callid];
 		cout << " XXX " << packetS->callid 
@@ -2930,6 +2935,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		     << endl;
 	}
 	__xmap_calls[packetS->callid] = packetS->getTimeUS();
+	__SYNC_UNLOCK(__xmap_sync);
 	#endif
  
 	if(sverb.sipcallerip_filter[0] &&
@@ -9271,7 +9277,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	if(packetS->need_sip_process) {
 	 
 		#if DEBUG_PACKET_COUNT
-		++__xc_sip;
+		__SYNC_INC(__xc_sip);
 		#endif
 	 
 		packetS->init2();
@@ -9321,7 +9327,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 				if(opt_sip_tcp_reassembly_ext && tcpReassemblySipExt) {
 				 
 					#if DEBUG_PACKET_COUNT
-					++__xc_reassembly[0];
+					__SYNC_INC(__xc_reassembly[0]);
 					#endif
 				 
 					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
@@ -9352,14 +9358,14 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	} else if(packetS->pflags.mrcp) {
 	 
 		#if DEBUG_PACKET_COUNT
-		++__xc_nosip;
+		__SYNC_INC(__xc_nosip);
 		#endif
 	 
 		rtp = true;
 	} else if(!packetS->pflags.other_processing()) {
 	 
 		#if DEBUG_PACKET_COUNT
-		++__xc_nosip;
+		__SYNC_INC(__xc_nosip);
 		#endif
 	 
 		packetS->blockstore_addflag(16 /*pb lock flag*/);
@@ -9367,7 +9373,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	} else {
 	 
 		#if DEBUG_PACKET_COUNT
-		++__xc_nosip;
+		__SYNC_INC(__xc_nosip);
 		#endif
 	 
 		other = true;

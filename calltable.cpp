@@ -5750,7 +5750,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	#if DEBUG_PACKET_COUNT
 	extern volatile int __xc_callsave;
 	extern void __fc(const char *type, const char *callid);
-	++__xc_callsave;
+	__SYNC_INC(__xc_callsave);
 	__fc("callsave", call_id.c_str());
 	#endif
  
@@ -8078,7 +8078,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	#if DEBUG_PACKET_COUNT
 	extern volatile int __xc_callsave;
 	extern void __fc(const char *type, const char *callid);
-	++__xc_callsave;
+	__SYNC_INC(__xc_callsave);
 	__fc("callsave", call_id.c_str());
 	#endif
  
@@ -11388,7 +11388,10 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 
 					#if DEBUG_PACKET_COUNT
 					extern map<string, Call*> __xmap_cleanup_calls;
+					extern volatile int __xmap_sync;
+					__SYNC_LOCK(__xmap_sync);
 					__xmap_cleanup_calls[call->call_id] = call;
+					__SYNC_UNLOCK(__xmap_sync);
 					#endif
 				 
 					if(call->listening_worker_run) {
