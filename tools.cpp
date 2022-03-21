@@ -3333,6 +3333,13 @@ void ParsePacket::setStdParse() {
 	
 	SIP_HEADERfilter::addNodes(this);
 	this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+	
+	extern bool opt_conference_processing;
+	if(opt_conference_processing) {
+		addNode("event:", typeNode_std);
+		addNode("subscription-state:", typeNode_std);
+		addNode("referred-by:", typeNode_std);
+	}
 }
 
 void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {
@@ -5052,13 +5059,17 @@ char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned d
 }
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
+	return(getbranch_xml(branch, str, strlen(str), rslt));
+}
+
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt) {
 	const char *pos = str;
 	while(pos) {
-		const char *_pos_next_1 = strcasestr(pos, (string("<") + branch + " ").c_str());
-		const char *_pos_next_2 = strcasestr(pos, (string("<") + branch + ">").c_str());
+		const char *_pos_next_1 = strncasestr(pos, (string("<") + branch + " ").c_str(), str_length - (pos - str));
+		const char *_pos_next_2 = strncasestr(pos, (string("<") + branch + ">").c_str(), str_length - (pos - str));
 		pos = _pos_next_1 && _pos_next_2 ? min(_pos_next_1, _pos_next_2) : max(_pos_next_1, _pos_next_2);
 		if(pos) {
-			const char *pos_end = strcasestr(pos, (string("</") + branch + ">").c_str());
+			const char *pos_end = strncasestr(pos, (string("</") + branch + ">").c_str(), str_length - (pos - str));
 			if(pos_end) {
 				rslt->push_back(string(pos, pos_end - pos + strlen(branch) + 3));
 				pos = pos_end + 1;
@@ -5071,10 +5082,14 @@ int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
 }
 
 string gettag_xml(const char *tag, const char *str) {
-	const char *begin = strcasestr(str, (string(tag) + "=\"").c_str());
+	return(gettag_xml(tag, str, strlen(str)));
+}
+
+string gettag_xml(const char *tag, const char *str, unsigned str_length) {
+	const char *begin = strncasestr(str, (string(tag) + "=\"").c_str(), str_length);
 	if(begin) {
 		begin += strlen(tag) + 2;
-		const char *end = strcasestr(begin, "\"");
+		const char *end = strncasestr(begin, "\"", str_length - (begin - str));
 		if(end) {
 			return(string(begin, end - begin));
 		}
@@ -5083,8 +5098,12 @@ string gettag_xml(const char *tag, const char *str) {
 }
 
 string getvalue_xml(const char *branch, const char *str) {
+	return(getvalue_xml(branch, str, strlen(str)));
+}
+
+string getvalue_xml(const char *branch, const char *str, unsigned str_length) {
 	list<string> rslt;
-	if(getbranch_xml(branch, str, &rslt)) {
+	if(getbranch_xml(branch, str, str_length, &rslt)) {
 		string branch = *rslt.begin();
 		size_t begin = branch.find('>');
 		if(begin != string::npos) {

@@ -273,6 +273,8 @@ extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
 extern int opt_ss7timeout_rlc;
+extern bool opt_conference_processing;
+extern vector<string> opt_conference_uri;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -1266,9 +1268,18 @@ inline char * gettag_sip_from(packet_s_process *packetS, const char *from,
 	return(rslt);
 }
 
-enum peername_sip_tags_type {
+enum peername_rslt_type {
 	_prefer_domain = 1,
 	_prefer_number = 2
+};
+
+enum peername_sip_tags_type {
+	_peername = 1,
+	_peercname = 2,
+	_domain = 3,
+	_tag = 4,
+	_param = 5,
+	_exists_param = 6
 };
 
 static struct {
@@ -1305,7 +1316,7 @@ inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned
 }
  
 inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
-			   int parse_type,
+			   int parse_type, const char *parse_type_param,
 			   char *rslt, unsigned int rslt_max_len, 
 			   eParsePeernameTagType /*tagType*/, eParsePeernameDestType destType) {
 	int peer_sip_tags_index;
@@ -1317,7 +1328,8 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	const char *begin = NULL;
 	const char *end = NULL;
 	bool ok = false;
-	if(parse_type == 1) { // peername
+	bool ok_exists = false;
+	if(parse_type == _peername) {
 		bool ok_if_exists_domain = false;
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
@@ -1362,7 +1374,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				}
 			}
 		}
-	} else if(parse_type == 2) { // peercname
+	} else if(parse_type == _peercname) {
 		begin = peername_tag;
 		end = sip_tag - 1;
 		while(end > begin &&
@@ -1374,7 +1386,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			--end;
 		}
 		ok = begin < end;
-	} else if(parse_type == 3) { // domain
+	} else if(parse_type == _domain) {
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len) {
 			if(*begin == '@') {
@@ -1399,7 +1411,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 		if(ok) {
 			ok = false;
 			for(end = begin; end < peername_tag + peername_tag_len; end++) {
-				if(*end == '>' || *end == ';' || *end == ':' || *end == ' ') {
+				if(*end == '>' || *end == ';' || (*begin != '[' && *end == ':') || (*begin == '[' && *(end - 1) == ']' && *end == ':') || *end == ' ') {
 					--end;
 					ok = true;
 					break;
@@ -1410,12 +1422,50 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				ok = true;
 			}
 		}
-	} else if(parse_type == 4) { // tag
+	} else if(parse_type == _tag) {
 		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
 		while(begin < peername_tag + peername_tag_len - 4) {
 			if(*begin == ';' && strncasestr(begin + 1, "tag=", 4)) {
-				begin+=5;
+				begin += 5;
 				ok = true;
+				break;
+			}
+			++begin;
+		}
+		if(ok) {
+			ok = false;
+			for(end = begin; end < peername_tag + peername_tag_len; end++) {
+				if(*end == ';' || *end == ':') {
+					--end;
+					ok = true;
+					break;
+				}
+			}
+			if(!ok && begin < end) {
+				--end;
+				ok = true;
+			}
+		}
+	} else if(parse_type == _param || parse_type == _exists_param) {
+		begin = sip_tag + peername_sip_tags[peer_sip_tags_index].skip;
+		int parse_type_param_length = strlen(parse_type_param);
+		while(begin < peername_tag + peername_tag_len - parse_type_param_length) {
+			if(*begin == ';' && 
+			   strncasestr(begin + 1, parse_type_param, parse_type_param_length)) {
+				if(begin + parse_type_param_length + 1 < peername_tag + peername_tag_len) {
+					begin += parse_type_param_length + 1;
+					if(*begin == '=') {
+						++begin;
+						ok = true;
+						ok_exists = true;
+					} else if(parse_type == _exists_param &&
+						  (*begin == ';' || *begin == ':')) {
+						ok_exists = true;
+					}
+				} else if(parse_type == _exists_param) {
+					begin += parse_type_param_length + 1;
+					ok_exists = true;
+				}
 				break;
 			}
 			++begin;
@@ -1437,13 +1487,17 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	}
 	if(ok) {
 		if(end >= begin && end - begin + 1 <= peername_tag_len) {
-			memcpy(rslt, begin, MIN(end - begin + 1, rslt_max_len));
-			rslt[MIN(end - begin + 1, rslt_max_len - 1)] = '\0';
+			if(rslt) {
+				memcpy(rslt, begin, MIN(end - begin + 1, rslt_max_len));
+				rslt[MIN(end - begin + 1, rslt_max_len - 1)] = '\0';
+			}
 			return(true);
 		}
 	}
-	*rslt = 0;
-	return(false);
+	if(rslt) {
+		*rslt = 0;
+	}
+	return(parse_type == _exists_param ? ok_exists : false);
 }
 
 inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
@@ -1467,7 +1521,7 @@ inline int get_sip_peername(packet_s_process *packetS, const char *tag, const ch
 		return(1);
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
-			      1,
+			      _peername, NULL,
 			      peername, peername_len, 
 			      tagType, destType) ? 0 : 1);
 } 
@@ -1482,7 +1536,7 @@ inline int get_sip_peercnam(packet_s_process *packetS, const char *tag, const ch
 		return(1);
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
-			      2,
+			      _peercname, NULL,
 			      peername, peername_len,
 			      tagType, destType) ? 0 : 1);
 }
@@ -1497,7 +1551,7 @@ inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char
 		return(1);
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
-			      3,
+			      _domain, NULL,
 			      domain, domain_len,
 			      tagType, destType) ? 0 : 1);
 }
@@ -1512,9 +1566,21 @@ inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const cha
 		return(1);
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
-			      4,
+			      _tag, NULL,
 			      tag_content, tag_content_len,
 			      tagType, destType) ? 0 : 1);
+}
+
+inline bool exists_sip_param(packet_s_process *packetS, const char *tag, const char *tag2, const char *param) {
+	unsigned long content_len;
+	char *content = gettag_sip(packetS, tag, tag2, &content_len);
+	if(!content_len) {
+		return(false);
+	}
+	return(parse_peername(content, content_len,
+			      _exists_param, param,
+			      NULL, 0,
+			      ppntt_undefined, ppndt_undefined));
 }
 
 void testPN() {
@@ -1544,22 +1610,22 @@ void testPN() {
 		cout << endl << e[i] << endl;
 		
 		parse_peername(e[i], strlen(e[i]),
-			       1,
+			       _peername, NULL,
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "peername: " << rslt << endl;
 		parse_peername(e[i], strlen(e[i]),
-			       2,
+			       _peercname, NULL,
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "peercname: " << rslt << endl;
 		parse_peername(e[i], strlen(e[i]),
-			       3,
+			       _domain, NULL,
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "domain: " << rslt << endl;
 		parse_peername(e[i], strlen(e[i]),
-			       4,
+			       _tag, NULL,
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "tag: " << rslt << endl;
@@ -2729,7 +2795,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 	// called number
 	
 	get_sip_peername(packetS, "\nTo:", "\nt:", data->called_to, sizeof(data->called_to), ppntt_to, ppndt_called);
-	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady())) {
+	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady() || opt_conference_processing)) {
 		get_sip_peername(packetS, "INVITE ", NULL, data->called_uri, sizeof(data->called_uri), ppntt_invite, ppndt_called);
 	}
 	
@@ -2754,7 +2820,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 	// called domain 
 	
 	get_sip_domain(packetS, "\nTo:", "\nt:", data->called_domain_to, sizeof(data->called_domain_to), ppntt_to, ppndt_called_domain);
-	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady())) {
+	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady() || opt_conference_processing)) {
 		get_sip_domain(packetS, "INVITE ", NULL, data->called_domain_uri, sizeof(data->called_domain_uri), ppntt_invite, ppndt_called_domain);
 	}
 	
@@ -3107,6 +3173,20 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			syslog(LOG_NOTICE, "New call: srcip INET_NTOA[%u] dstip INET_NTOA[%u] From[%s] To[%s] Call-ID[%s]\n", 
 				call->sipcallerip, call->sipcalledip, call->caller, call->called, call->fbasename);
 #endif
+			
+			if(opt_conference_processing) {
+				string uri = data_callerd.called_uri[0] && data_callerd.called_domain_uri[0] ?
+					      string(data_callerd.called_uri) + "@" + data_callerd.called_domain_uri :
+					     data_callerd.called_uri[0] ?
+					      data_callerd.called_uri : data_callerd.called_domain_uri;
+				for(vector<string>::iterator iter = opt_conference_uri.begin(); iter != opt_conference_uri.end(); iter++) {
+					if(uri == *iter) {
+						call->conference_is_main_leg = true;
+						break;
+					}
+				}
+			}
+
 		}
 		if(sip_method == MESSAGE) {
 			call->seenmessage = true;
@@ -3776,7 +3856,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				char number[1024] = "";
 				char party[1024] = "";
 				parse_peername(remoteParty, remotePartyLen,
-					       1,
+					       1, NULL,
 					       number, sizeof(number), 
 					       ppntt_undefined, ppndt_undefined);
 				char *partyBegin = strncasestr(remoteParty, "party=", remotePartyLen);
@@ -3876,6 +3956,45 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			sendCallInfoEvCall(call, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
 			if(packet_info) {
 				delete packet_info;
+			}
+		}
+		if(opt_conference_processing) {
+			if(!call->conference_is_main_leg &&
+			   !call->conference_is_leg &&
+			   exists_sip_param(packetS, "\nContact:", "\nm:", "isfocus")) {
+				unsigned long referred_by_length;
+				char *referred_by = gettag_sip(packetS, "referred-by:", &referred_by_length);
+				if(referred_by) {
+					char number[1024];
+					char domain[1024];
+					parse_peername(referred_by, referred_by_length,
+						       _peername, NULL,
+						       number, sizeof(number),
+						       ppntt_invite, ppndt_called);
+					parse_peername(referred_by, referred_by_length,
+						       _domain, NULL,
+						       domain, sizeof(domain),
+						       ppntt_invite, ppndt_called_domain);
+					string referred_by = /*number[0] && domain[0] ?
+							      string(number) + "@" + domain :*/
+							     number[0] ?
+							      number :
+							      domain;
+					if(!referred_by.empty()) {
+						call->conference_is_leg = true;
+						call->conference_referred_by = referred_by;
+						call->conference_referred_by_cseq = packetS->cseq;
+						#if DEBUG_CONFERENCE_PROCESSING
+						cout << call->conference_referred_by << endl;
+						cout << endl;
+						#endif
+						#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+						calltable->lock_conference_calls_map();
+						calltable->conference_calls_map[call->conference_endpoint_entity] = call;
+						calltable->unlock_conference_calls_map();
+						#endif
+					}
+				}
 			}
 		}
 	} else if(packetS->sip_method == MESSAGE) {
@@ -3983,6 +4102,23 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				delete packet_info;
 			}
 		}
+		if(opt_conference_processing) {
+			__SYNC_LOCK_USLEEP(call->conference_legs_sync, 10);
+			#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+			for(map<string, Call*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
+				if(!iter->second->conference_disconnect_time) {
+					iter->second->conference_disconnect_time = getTimeUS(packetS->header_pt);
+				}
+			}
+			#else
+			for(map<string, Call::sConferenceLeg*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
+				if(!iter->second->disconnect_time) {
+					iter->second->disconnect_time = getTimeUS(packetS->header_pt);
+				}
+			}
+			#endif
+			__SYNC_UNLOCK(call->conference_legs_sync);
+		}
 	} else if(packetS->sip_method == CANCEL) {
 		++count_sip_cancel;
 		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
@@ -4001,6 +4137,130 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
 			call->cancelcseq = packetS->cseq;
+		}
+	} else if(packetS->sip_method == NOTIFY) {
+		if(opt_conference_processing && call->conference_is_main_leg) {
+			char *xml_data = NULL;
+			unsigned xml_data_length = 0;
+			if(!strcasecmp(contenttypestr, "application/conference-info+xml")) {
+				unsigned long event_length;
+				char *event = gettag_sip(packetS, "\nevent:", &event_length);
+				if(event && event_length >= 10 && !strncasecmp(event, "conference", 10)) {
+					unsigned long subsription_state_length;
+					char *subscription_state = gettag_sip(packetS, "\nsubscription-state:", &subsription_state_length);
+					if(subscription_state && subsription_state_length >= 6 && !strncasecmp(subscription_state, "active", 6)) {
+						unsigned long l;
+						char *contLengthPos = NULL;
+						for(int pass = 0; pass < 2 && !contLengthPos; ++pass) {
+							contLengthPos = gettag_sip(packetS,
+										   pass ? 
+										    LF_LINE_SEPARATOR "l:" : 
+										    LF_LINE_SEPARATOR "Content-Length:",
+										   &l);
+						}
+						if(contLengthPos) {
+							unsigned data_length = packetS->sipDataLen - (contLengthPos - (packetS->data_() + packetS->sipDataOffset));
+							for(int pass_line_separator = 0; pass_line_separator < 2 && !xml_data; pass_line_separator++) {
+								xml_data = strnstr(contLengthPos, SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), data_length);
+								if(xml_data) {
+									xml_data += SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
+								}
+							}
+							if(xml_data) {
+								xml_data_length = data_length - (xml_data - contLengthPos);
+							}
+						}
+					}
+				}
+			}
+			if(xml_data) {
+				list<string> branch;
+				if(getbranch_xml("users", (const char*)xml_data, xml_data_length, &branch)) {
+					string user_entity;
+					string endpoint_entity;
+					string status;
+					for(list<string>::iterator iter = branch.begin(); iter != branch.end(); iter++) {
+						user_entity = gettag_xml("user entity", iter->c_str());
+						endpoint_entity = gettag_xml("endpoint entity", iter->c_str());
+						status = getvalue_xml("status", iter->c_str());
+						if(!user_entity.empty() && !endpoint_entity.empty()) {
+							break;
+						}
+					}
+					if(!user_entity.empty() && !endpoint_entity.empty()) {
+						char number[1024];
+						char domain[1024];
+						parse_peername(user_entity.c_str(), user_entity.length(),
+							       _peername, NULL,
+							       number, sizeof(number),
+							       ppntt_invite, ppndt_called);
+						parse_peername(user_entity.c_str(), user_entity.length(),
+							       _domain, NULL,
+							       domain, sizeof(domain),
+							       ppntt_invite, ppndt_called_domain);
+						user_entity = /*number[0] && domain[0] ?
+							       string(number) + "@" + domain :*/
+							      number[0] ?
+							       number :
+							       domain;
+						parse_peername(endpoint_entity.c_str(), endpoint_entity.length(),
+							       _peername, NULL,
+							       number, sizeof(number),
+							       ppntt_invite, ppndt_called);
+						parse_peername(endpoint_entity.c_str(), endpoint_entity.length(),
+							       _domain, NULL,
+							       domain, sizeof(domain),
+							       ppntt_invite, ppndt_called_domain);
+						endpoint_entity = /*number[0] && domain[0] ?
+								   string(number) + "@" + domain :*/
+								  number[0] ?
+								   number :
+								   domain;
+						#if DEBUG_CONFERENCE_PROCESSING
+						cout << user_entity << endl;
+						cout << endpoint_entity << endl;
+						cout << status << endl;
+						cout << endl;
+						#endif
+						__SYNC_LOCK_USLEEP(call->conference_legs_sync, 10);
+						#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+						calltable->lock_conference_calls_map();
+						map<string, Call*>::iterator iter = calltable->conference_calls_map.find(endpoint_entity);
+						if(iter != calltable->conference_calls_map.end()) {
+							Call *leg = iter->second;
+							if(status != "disconnected") {
+								leg->conference_active = true;
+								if(!leg->conference_connect_time) {
+									leg->main_conference_call_id = call->call_id;
+									leg->conference_user_entity = user_entity;
+									leg->conference_connect_time = packetS->getTimeUS();
+								}
+							} else if(!leg->conference_disconnect_time) {
+								leg->conference_disconnect_time = packetS->getTimeUS();
+							}
+							call->conference_legs[endpoint_entity] = leg;
+						}
+						calltable->unlock_conference_calls_map();
+						#else
+						Call::sConferenceLeg *leg = NULL;
+						map<string, Call::sConferenceLeg*>::iterator iter = call->conference_legs.find(user_entity);
+						if(iter != call->conference_legs.end()) {
+							leg = iter->second;
+						} else if(status != "disconnected") {
+							leg = new FILE_LINE(0) Call::sConferenceLeg;
+							leg->user_entity = user_entity;
+							leg->endpoint_entity = endpoint_entity;
+							leg->connect_time = packetS->getTimeUS();
+							call->conference_legs[user_entity] = leg;
+						}
+						if(leg && status == "disconnected" && !leg->disconnect_time) {
+							leg->disconnect_time = packetS->getTimeUS();
+						}
+						#endif
+						__SYNC_UNLOCK(call->conference_legs_sync);
+					}
+				}
+			}
 		}
 	} else if(IS_SIP_RESXXX(packetS->sip_method)) {
 		if(packetS->sip_method == RES2XX) {
@@ -4177,6 +4437,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
+			}
+			if(opt_conference_processing &&
+			   call->conference_is_leg &&
+			   packetS->cseq == call->conference_referred_by_cseq) {
+				call->conference_referred_by_ok_time = packetS->getTimeUS();
 			}
 		} else if(IS_SIP_RES18X(packetS->sip_method)) {
 			call->seenRES18X = true;

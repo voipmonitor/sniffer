@@ -245,6 +245,11 @@ extern bool opt_processing_limitations_active_calls_cache;
 extern int opt_processing_limitations_active_calls_cache_type;
 extern cProcessingLimitations processing_limitations;
 
+extern bool opt_conference_processing;
+extern vector<string> opt_mo_mt_identification_prefix;
+extern bool opt_separate_storage_ipv6_ipv4_address;
+extern int opt_cdr_flag_bit;
+
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
 	{ cf_callid, "callid" },
@@ -750,6 +755,16 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	exclude_from_active_calls = false;
 	
+	conference_is_main_leg = false;
+	conference_is_leg = false;
+	conference_referred_by_ok_time = 0;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	conference_connect_time = 0;
+	conference_disconnect_time = 0;
+	conference_active = 0;
+	#endif
+	conference_legs_sync = 0;
+	
 	cdr.setIgnoreCheckExistsField();
 	cdr_next.setIgnoreCheckExistsField();
 	for(int i = 0; i < CDR_NEXT_MAX; i++) {
@@ -1094,6 +1109,12 @@ Call::~Call(){
 	if(set_register_counter) {
 		registers_counter_dec();
 	}
+	
+	#if not CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	for(map<string, sConferenceLeg*>::iterator iter = conference_legs.begin(); iter != conference_legs.end(); iter++) {
+		delete iter->second;
+	}
+	#endif
 	
 }
 
@@ -5180,6 +5201,8 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 					return(true);
 				}
 				break;
+			case _t_cdr_conference:
+				break;
 			}
 			if(column_index && ord) {
 				ord->u.s.child_table = child_table_enum;
@@ -5389,6 +5412,8 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 			return(rtp_rows_count);
 		case _t_cdr_sdp:
 			return(sdp_rows_list.size());
+		case _t_cdr_conference:
+			return(conference_legs.size());
 		}
 	}
 	return(-1);
@@ -5412,7 +5437,8 @@ int Call::getTableEnumIndex(string *table) {
 	       !strcasecmp(table->c_str(), "cdr_sipresp") ? _t_cdr_sipresp :
 	       !strcasecmp(table->c_str(), "cdr_siphistory") ? _t_cdr_siphistory :
 	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
-	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp : 0);
+	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp :
+	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference : 0);
 }
 
 int Call::detectCallerdByLabelInXml(const char *label) {
@@ -5825,6 +5851,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	string sql_cdr_rtp_table = "cdr_rtp";
 	string sql_cdr_rtp_energylevels_table = "cdr_rtp_energylevels";
 	string sql_cdr_sdp_table = "cdr_sdp";
+	string sql_cdr_conference_table = "cdr_conference";
 	string sql_cdr_txt_table = "cdr_txt";
 	string sql_cdr_dtmf_table = "cdr_dtmf";
 	
@@ -5846,7 +5873,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
-	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
+	u_int64_t cdr_flags = opt_cdr_flag_bit ? ((u_int64_t)1 << opt_cdr_flag_bit) : 0;
+	if (this->unconfirmed_bye)
+		cdr_flags |= CDR_UNCONFIRMED_BYE;
 	if (is_fas_detected)
 		cdr_flags |= CDR_FAS_DETECTED;
 	if (is_zerossrc_detected)
@@ -6022,11 +6051,44 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
-	cdr.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
-	cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
-	if(existsColumns.cdr_sipport) {
-		cdr.add(getSipcallerport().getPort(), "sipcallerport");
-		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
+	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
+		vmIP ipv4[2], ipv6[2];
+		vmPort ipv4_port[2], ipv6_port[2];
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], false, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], false, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], false, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], false, 6);
+		if(ipv4[0].isSet()) {
+			cdr.add(ipv4[0], "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
+			if(existsColumns.cdr_sipport) {
+				cdr.add(ipv4_port[0].getPort(), "sipcallerport");
+			}
+		}
+		if(ipv4[1].isSet()) {
+			cdr.add(ipv4[1], "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
+			if(existsColumns.cdr_sipport) {
+				cdr.add(ipv4_port[1].getPort(), "sipcalledport");
+			}
+		}
+		if(ipv6[0].isSet()) {
+			cdr.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, sql_cdr_table);
+			if(existsColumns.cdr_sipport) {
+				cdr.add(ipv6_port[0].getPort(), "sipcallerport_v6");
+			}
+		}
+		if(ipv6[1].isSet()) {
+			cdr.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, sql_cdr_table);
+			if(existsColumns.cdr_sipport) {
+				cdr.add(ipv6_port[1].getPort(), "sipcalledport_v6");
+			}
+		}
+	} else {
+		cdr.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
+		cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
+		if(existsColumns.cdr_sipport) {
+			cdr.add(getSipcallerport().getPort(), "sipcallerport");
+			cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
+		}
 	}
 	if(existsColumns.cdr_sipcallerdip_encaps) {
 		cdr.add(getSipcallerip_encaps(), "sipcallerip_encaps", !getSipcallerip_encaps().isSet(), sqlDbSaveCall, sql_cdr_table);
@@ -6156,6 +6218,38 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	if(existsColumns.cdr_next_calldate) {
 		cdr_next.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_calldate_ms);
+	}
+	
+	if(opt_conference_processing) {
+		if(existsColumns.cdr_next_conference_flag) {
+			if(conference_is_main_leg) {
+				cdr_next.add("main", "conference_flag");
+			} else if(conference_is_leg) {
+				cdr_next.add("leg", "conference_flag");
+			}
+		}
+		if(conference_is_leg) {
+			if(existsColumns.cdr_next_conference_referred_by &&
+			   !conference_referred_by.empty()) {
+				cdr_next.add(sqlEscapeString(conference_referred_by), "conference_referred_by");
+			}
+			if(existsColumns.cdr_next_conference_referred_by_ok_time &&
+			   conference_referred_by_ok_time) {
+				cdr_next.add_calldate(conference_referred_by_ok_time, "conference_referred_by_ok_time", existsColumns.cdr_next_conference_referred_by_ok_time_ms);
+			}
+		}
+	}
+	if(opt_mo_mt_identification_prefix.size()) {
+		if(existsColumns.cdr_next_leg_flag) {
+			bool mt = false;
+			for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
+				if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
+					mt = true;
+					break;
+				}
+			}
+			cdr_next.add(mt ? "mt" : "mo", "leg_flag");
+		}
 	}
 	
 	if(custom_headers_cdr) {
@@ -7045,6 +7139,50 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				} else {
 					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
 						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_sdp_table, &sdp_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
+			}
+		}
+		
+		if(opt_conference_processing) {
+			vector<SqlDb_row> conference_rows;
+			if(conference_legs.size()) {
+				for(map<string, sConferenceLeg*>::iterator iter = conference_legs.begin(); iter != conference_legs.end(); iter++) {
+					SqlDb_row conf_leg;
+					conf_leg.setIgnoreCheckExistsField();
+					conf_leg.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+					if(!iter->second->user_entity.empty()) {
+						conf_leg.add(sqlEscapeString(iter->second->user_entity), "user_entity");
+					}
+					if(!iter->second->endpoint_entity.empty()) {
+						conf_leg.add(sqlEscapeString(iter->second->endpoint_entity), "endpoint_entity");
+					}
+					if(iter->second->connect_time) {
+						conf_leg.add_calldate(iter->second->connect_time, "connect_time", existsColumns.cdr_conference_connect_time_ms);
+					}
+					if(iter->second->disconnect_time) {
+						conf_leg.add_calldate(iter->second->disconnect_time, "disconnect_time", existsColumns.cdr_conference_disconnect_time_ms);
+					}
+					if(existsColumns.cdr_conference_calldate) {
+						conf_leg.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_conference_calldate_ms);
+					}
+					if(opt_mysql_enable_multiple_rows_insert) {
+						conference_rows.push_back(conf_leg);
+					} else {
+						query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+							     sqlDbSaveCall->insertQuery(sql_cdr_conference_table, conf_leg));
+					}
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && conference_rows.size()) {
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(sql_cdr_conference_table) + conference_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < conference_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW(sql_cdr_conference_table) + conference_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_conference_table, &conference_rows, opt_mysql_max_multiple_rows_insert, 
 												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 				}
 			}
@@ -8696,6 +8834,62 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport, vmIP *daddr_first, u_int8_t *d
 	return(daddr);
 }
 
+vmIP Call::getSipcalleripFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(port) {
+		port->clear();
+	}
+	vmIP ip;
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
+		if((!onlyConfirmed || iter->confirmed) &&
+		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
+			ip = iter->saddr;
+			if(port) {
+				*port = iter->sport;
+			}
+		}
+	}
+	return(ip);
+}
+
+vmIP Call::getSipcalledipFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(port) {
+		port->clear();
+	}
+	vmIP saddr, daddr;
+	vmPort dport;
+	list<vmIP> proxies;
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
+		if((!onlyConfirmed || iter->confirmed) &&
+		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
+			if(!saddr.isSet() && !daddr.isSet()) {
+				saddr = iter->saddr;
+				daddr = iter->daddr;
+				dport = iter->dport;
+			}
+			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
+				proxies.push_back(iter->saddr);
+			}
+			if(iter->daddr != saddr && iter->daddr != daddr && find(proxies.begin(), proxies.end(), iter->daddr) == proxies.end()) {
+				proxies.push_back(daddr);
+				daddr = iter->daddr;
+				dport = iter->dport;
+			}
+		}
+	}
+	if(daddr.isSet() && port) {
+		*port = dport;
+	}
+	return(daddr);
+}
+
 unsigned Call::getMaxRetransmissionInvite() {
 	unsigned max_retrans = 0;
 	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
@@ -9196,6 +9390,9 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;
 	_sync_lock_calls_mergeMAP = 0;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	_sync_lock_conference_calls_map = 0;
+	#endif
 	_sync_lock_registers_listMAP = 0;
 	_sync_lock_calls_queue = 0;
 	_sync_lock_calls_audioqueue = 0;
@@ -11264,6 +11461,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 		__SYNC_UNLOCK(active_calls_cache_sync);
 	}
 	
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	if(opt_conference_processing) {
+		calltable->lock_conference_calls_map();
+	}
+	#endif
 	int rejectedCalls_count = 0;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
@@ -11355,7 +11557,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					if((!closeAll || !forceClose) &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue > 0 ||
-					    call->useInListCalls)) {
+					    call->useInListCalls 
+					    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+					    || call->conference_active
+					    #endif
+					   )) {
 						closeCall = false;
 						++rejectedCalls_count;
 					}
@@ -11407,6 +11613,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 			}
 		}
 	}
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	if(opt_conference_processing) {
+		calltable->unlock_conference_calls_map();
+	}
+	#endif
 	for(unsigned i = 0; i < closeCallsCount; i++) {
 		Call *call = closeCalls[i];
 		if(verbosity && verbosityE > 1) {

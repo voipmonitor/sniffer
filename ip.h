@@ -351,6 +351,13 @@ struct vmIP {
 			return(32);
 		#endif
 	}
+	inline u_int8_t v() const {
+		#if VM_IPV6
+			return(v6 ? 6 : 4);
+		#else
+			return(4);
+		#endif
+	}
 	inline bool is_net_mask(int bits) {
 		return(bits > 0 && bits < this->bits());
 	}

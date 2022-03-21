@@ -693,7 +693,8 @@ public:
 		_t_cdr_sipresp,
 		_t_cdr_siphistory,
 		_t_cdr_rtp,
-		_t_cdr_sdp
+		_t_cdr_sdp,
+		_t_cdr_conference
 	};
 	enum eStoreFlags {
 		_sf_db = 1,
@@ -872,6 +873,17 @@ public:
 		eTxtType type;
 		string txt;
 	};
+	struct sConferenceLeg {
+		sConferenceLeg() {
+			connect_time = 0;
+			disconnect_time = 0;
+		}
+		string user_entity;
+		string endpoint_entity;
+		u_int64_t connect_time;
+		u_int64_t disconnect_time;
+	};
+	
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -1272,6 +1284,23 @@ public:
 	bool televent_exists_response;
 	
 	bool exclude_from_active_calls;
+	
+	bool conference_is_main_leg;
+	bool conference_is_leg;
+	string conference_referred_by;
+	sCseq conference_referred_by_cseq;
+	u_int64_t conference_referred_by_ok_time;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	string main_conference_call_id;
+	string conference_user_entity;
+	u_int64_t conference_connect_time;
+	u_int64_t conference_disconnect_time;
+	volatile int conference_active;
+	map<string, Call*> conference_legs;
+	#else
+	map<string, sConferenceLeg*> conference_legs;
+	#endif
+	volatile int conference_legs_sync;
 	
 	/**
 	 * constructor
@@ -1756,6 +1785,10 @@ public:
 	}
 	
 	vmIP getSipcalledipConfirmed(vmPort *dport = NULL, vmIP *daddr_first = NULL, u_int8_t *daddr_first_protocol = NULL);
+	
+	vmIP getSipcalleripFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalledipFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	
 	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
@@ -2445,6 +2478,7 @@ public:
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
 	map<string, Call*> calls_mergeMAP;
+	map<string, Call*> conference_calls_map;
 	map<string, Call*> registers_listMAP;
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
@@ -2484,6 +2518,9 @@ public:
 	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
 	void lock_calls_listMAP_X(u_int8_t ci) { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(10); };
 	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	void lock_conference_calls_map() { while(__sync_lock_test_and_set(&this->_sync_lock_conference_calls_map, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
+	#endif
 	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_skinny_maps() { while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) USLEEP(10); }
@@ -2505,6 +2542,9 @@ public:
 	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
 	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); };
 	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	void unlock_conference_calls_map() { __sync_lock_release(&this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	#endif
 	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
 	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); };
 	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
@@ -3020,6 +3060,9 @@ private:
 	volatile int _sync_lock_calls_listMAP;
 	volatile int *_sync_lock_calls_listMAP_X;
 	volatile int _sync_lock_calls_mergeMAP;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	volatile int _sync_lock_conference_calls_map;
+	#endif
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;
 	volatile int _sync_lock_calls_audioqueue;

@@ -619,6 +619,12 @@ bool opt_disable_rtp_warning = false;
 int opt_hash_modify_queue_length_ms = 0;
 bool opt_disable_process_sdp = false;
 
+bool opt_conference_processing = false;
+vector<string> opt_conference_uri;
+vector<string> opt_mo_mt_identification_prefix;
+bool opt_separate_storage_ipv6_ipv4_address;
+int opt_cdr_flag_bit;
+
 char opt_php_path[1024];
 
 struct pcap_stat pcapstat;
@@ -7350,6 +7356,11 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_process_sdp", &opt_disable_process_sdp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("conference_processing", &opt_conference_processing));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("mo_mt_identification_prefix", &opt_mo_mt_identification_prefix));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -9701,6 +9712,13 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 	}
 }
 
+void parse_config_item(const char *config, vector<string> *item) {
+	vector<string> items = split(config, ";", true);
+	for(unsigned i = 0; i < items.size(); i++) {
+		item->push_back(items[i]);
+	}
+}
+
 void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix) {
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
@@ -10549,6 +10567,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "custom_headers_max_size", NULL))) {
 		opt_custom_headers_max_size = atoi(value);
 	}
+	
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
 	}
@@ -12079,6 +12098,28 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_process_sdp", NULL))) {
 		opt_disable_process_sdp = yesno(value);
+	}
+	
+	if((value = ini.GetValue("general", "conference_processing", NULL))) {
+		opt_conference_processing = yesno(value);
+	}
+	if(ini.GetAllValues("general", "conference_uri", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			opt_conference_uri.push_back(i->pItem);
+		}
+	}
+	if(ini.GetAllValues("general", "mo_mt_identification_prefix", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_mo_mt_identification_prefix);
+		}
+	}
+	if((value = ini.GetValue("general", "separate_storage_ipv6_ipv4_address", NULL))) {
+		opt_separate_storage_ipv6_ipv4_address = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
+		opt_cdr_flag_bit = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

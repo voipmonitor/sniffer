@@ -2440,8 +2440,11 @@ char * gettag_json(const char *data, const char *tag, string *dest);
 char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists = 0);
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt);
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt);
 string gettag_xml(const char *tag, const char *str);
+string gettag_xml(const char *tag, const char *str, unsigned str_length);
 string getvalue_xml(const char *branch, const char *str);
+string getvalue_xml(const char *branch, const char *str, unsigned str_length);
 
 class SocketSimpleBufferWrite {
 public:
