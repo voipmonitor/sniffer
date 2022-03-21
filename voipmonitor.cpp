@@ -1238,6 +1238,8 @@ int opt_livesniffer_tablesize_max_mb = 0;
 int opt_abort_if_rss_gt_gb = 0;
 int opt_next_server_connections = 0;
 
+string opt_coredump_filter;
+
 bool heap_profiler_is_running = false;
 
 int opt_process_pcap_type = 0;
@@ -3750,6 +3752,16 @@ int main(int argc, char *argv[]) {
 		get_list_cores(opt_cpu_cores, cpu_cores);
 		pthread_t main_thread = pthread_self();
 		pthread_set_affinity(main_thread, &cpu_cores, NULL);
+	}
+	
+	if(!opt_coredump_filter.empty()) {
+		SimpleBuffer content;
+		string error;
+		content.clear();
+		content.add(opt_coredump_filter.c_str());
+		if(!file_put_contents(("/proc/" + intToString(getpid()) + "/coredump_filter").c_str(), &content, &error)) {
+			syslog(LOG_ERR, "%s", error.c_str());
+		}
 	}
 	
 	if(opt_rrd) {
@@ -7790,6 +7802,7 @@ void cConfig::addConfigItems() {
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12425,6 +12438,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "coredump_filter", NULL))) {
+		opt_coredump_filter = value;
 	}
 	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
 		strcpy_null_term(opt_curl_hook_wav, value);
