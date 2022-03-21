@@ -8749,7 +8749,7 @@ long getSwapUsage(int pid) {
 
 pid_t findMysqlProcess(void) {
 	char buff[16];
-	FILE *cmd_pipe = popen("pgrep 'mysqld$'", "r");
+	FILE *cmd_pipe = popen("pgrep '(mysqld|mariadbd)$'", "r");
 	int retval = 0;
 	if(cmd_pipe) {
 		if (fgets(buff, sizeof(buff), cmd_pipe)) {

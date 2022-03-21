@@ -2784,9 +2784,9 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls(bool closeAll, bool forceClose = false, const char *file = NULL, int line = 0);
-	int cleanup_registers(bool closeAll);
-	int cleanup_ss7(bool closeAll);
+	int cleanup_calls(bool closeAll, bool forceClose = false, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
+	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 
 	/**
 	 * @brief add call to hash table

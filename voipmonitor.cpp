@@ -1130,9 +1130,11 @@ bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
+int opt_sip_tcp_reassembly_stream_max_attempts = 50;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
+int opt_sip_tcp_reassembly_ext_complete_mod = 0;
 int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
@@ -4513,6 +4515,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableWildLink();
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
+		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
 		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
 			tcpReassemblySipExt->setLinkTimeout(3);
 			tcpReassemblySipExt->setEnableExtCleanupStreams(10, 0);
@@ -4687,6 +4690,23 @@ int main_init_read() {
 				}
 			}
 			++_counter;
+
+			#if DEBUG_PACKET_COUNT
+			extern volatile int __xc_inv;
+			extern volatile int __xc_sip;
+			extern volatile int __xc_nosip;
+			extern volatile int __xc_callsave;
+			extern volatile int __xc_reassembly[10];
+			cout << " ***" << endl 
+			     << " * invite: " << __xc_inv << endl
+			     << " * sip: " << __xc_sip << endl
+			     << " * nosip: " << __xc_nosip << endl
+			     << " * callsave: " << __xc_callsave << endl
+			     << " * reassembly: " << __xc_reassembly[0] << endl
+			     << " * reassembly: " << __xc_reassembly[1] << endl
+			     << " ***" << endl;
+			#endif
+			
 		}
 		
 		if(wdt && !hot_restarting) {
@@ -7730,10 +7750,12 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
 					->addValues("ext:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("receive_packetbuffer_maximum_time_diff_s", &opt_receive_packetbuffer_maximum_time_diff_s));
@@ -12293,6 +12315,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_timeout", NULL))) {
 		opt_sip_tcp_reassembly_stream_timeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_max_attempts", NULL))) {
+		opt_sip_tcp_reassembly_stream_max_attempts = atoi(value);
+	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_clean_period", NULL))) {
 		opt_sip_tcp_reassembly_clean_period = atoi(value);
 	}
@@ -12301,6 +12326,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
 		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_complete_mod", NULL))) {
+		opt_sip_tcp_reassembly_ext_complete_mod = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_usleep", NULL))) {
 		opt_sip_tcp_reassembly_ext_usleep = atol(value);

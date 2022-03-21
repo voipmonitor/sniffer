@@ -1996,7 +1996,6 @@ cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
-	setFromMysqlOk = false;
 	diffValuesTrack = true;
 }
 
@@ -2404,6 +2403,17 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 		okNextData = true;
 	}
 	if(okNextData) {
+		bool setFromMysqlOk = false;
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setSilentConnect();
+		if(sqlDb->connect()) {
+			sqlDb->setMaxQueryPass(1);
+			sqlDb->setDisableLogError();
+			if(sqlDb->existsTable("sensor_config")) {
+				setFromMysqlOk = true;
+			}
+		}
+		delete sqlDb;
 		JsonExport nextData;
 		nextData.add("setFromMysqlOk", setFromMysqlOk);
 		json.addJson("nextData", nextData.getJson());
@@ -2471,7 +2481,6 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 }
 
 void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
-	setFromMysqlOk = false;
 	SqlDb *sqlDb = createSqlObject();
 	if(checkConnect) {
 		sqlDb->setSilentConnect();
@@ -2525,7 +2534,6 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 			}
 			unlock();
 		}
-		setFromMysqlOk = true;
 	}
 	delete sqlDb;
 }

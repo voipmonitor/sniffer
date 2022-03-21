@@ -1385,10 +1385,6 @@ struct gre_hdr {
 };
 
 
-void _process_packet__cleanup_calls();
-void _process_packet__cleanup_registers();
-
-
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
 #define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (call->isfax && opt_saveudptl))
