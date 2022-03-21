@@ -29,6 +29,9 @@ extern char opt_tcpreassembly_sip_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int verbosity;
 
+extern int opt_sip_tcp_reassembly_ext_quick_mod;
+extern int opt_sip_tcp_reassembly_ext_complete_mod;
+
 #define ENABLE_DEBUG(type, subEnable) (_ENABLE_DEBUG(type, subEnable) && _debug_stream)
 #define _ENABLE_DEBUG(type, subEnable) ((type == TcpReassembly::http ? sverb.tcpreassembly_http : \
 					 type == TcpReassembly::webrtc ? sverb.tcpreassembly_webrtc : \
@@ -128,8 +131,24 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 			seq = this->min_seq;
 			iter_var = this->queuePacketVars.find(seq);
 		}
-		while(iter_var != this->queuePacketVars.end() && iter_var->second.isFail()) {
-			++iter_var;
+		if(opt_sip_tcp_reassembly_ext_complete_mod) {
+			if(iter_var != this->queuePacketVars.end() && iter_var->second.isFail()) {
+				if(this->ok_packets.size()) {
+					this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::FAIL;
+					this->ok_packets.pop_back();
+				}
+				if(!this->ok_packets.size()) {
+					while(iter_var != this->queuePacketVars.end() && iter_var->second.isFail()) {
+						++iter_var;
+					}
+					forceFirstSeq = iter_var->first;
+				}
+				continue;
+			}
+		} else {
+			while(iter_var != this->queuePacketVars.end() && iter_var->second.isFail()) {
+				++iter_var;
+			}
 		}
 		if(iter_var == this->queuePacketVars.end() && this->ok_packets.size()) {
 			u_int32_t prev_seq = this->ok_packets.back()[0];
@@ -339,7 +358,8 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, timeval *time, u_int32
 	size_t i;
 	for(i = startIndex; i < this->ok_packets.size(); i++) {
 		TcpReassemblyStream_packet packet = this->queuePacketVars[this->ok_packets[i][0]].queuePackets[this->ok_packets[i][1]];
-		if(PACKET_DATALEN(packet.datalen, packet.datacaplen)) {
+		if(PACKET_DATALEN(packet.datalen, packet.datacaplen) && 
+		   (link->reassembly->getType() != TcpReassembly::sip || packet.data[0])) {
 			if(seq && !*seq) {
 				*seq = packet.header_tcp.seq;
 			}
@@ -487,6 +507,31 @@ bool TcpReassemblyStream::isSetCompleteData() {
 
 void TcpReassemblyStream::clearCompleteData() {
 	this->complete_data.clearData();
+}
+
+void TcpReassemblyStream::cleanupCompleteData() {
+	if(ok_packets.size()) {
+		for(unsigned i = 0; i < ok_packets.size(); i++) {
+			if(queuePacketVars.find(ok_packets[i].val[0]) != queuePacketVars.end()) {
+				queuePacketVars.erase(ok_packets[i].val[0]);
+			}
+		}
+		for(map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.begin(); iter != queuePacketVars.end(); iter++) {
+			iter->second.cleanState();
+		}
+		if(queuePacketVars.size()) {
+			min_seq = queuePacketVars.begin()->first;
+			max_next_seq = 0;
+			for(map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.begin(); iter != queuePacketVars.end(); iter++) {
+				u_int32_t _max_next_seq = iter->second.getMaxNextSeq();
+				if(_max_next_seq > max_next_seq) {
+					max_next_seq = _max_next_seq;
+				}
+			}
+		}
+		ok_packets.clear();
+	}
+	clearCompleteData();
 }
 
 void TcpReassemblyStream::printContent(int level) {
@@ -801,7 +846,19 @@ bool TcpReassemblyLink::push_normal(
 			u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 			pcap_block_store *block_store, int block_store_index) {
 	if(reassembly->simpleByAck && !datalen) {
+		this->last_packet_at_from_header = getTimeMS(&time);
 		return(false);
+	}
+	if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+		if(dupl_check_direction_to_dest.isDupl(header_tcp.ack_seq, header_tcp.seq, datalen)) {
+			this->last_packet_at_from_header = getTimeMS(&time);
+			return(false);
+		}
+	} else if(direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
+		if(dupl_check_direction_to_source.isDupl(header_tcp.ack_seq, header_tcp.seq, datalen)) {
+			this->last_packet_at_from_header = getTimeMS(&time);
+			return(false);
+		}
 	}
 	bool rslt = false;
 	switch(this->state) {
@@ -1797,15 +1854,30 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 	while(this->ok_streams.size()) {
 		TcpReassemblyStream *stream = this->ok_streams[0];
 		this->ok_streams.erase(this->ok_streams.begin());
-		for(deque<TcpReassemblyStream*>::iterator iter = this->queueStreams.begin(); iter != this->queueStreams.end();) {
-			if(*iter == stream) {
-				iter = this->queueStreams.erase(iter);
-			} else {
-				++iter;
+		if(!opt_sip_tcp_reassembly_ext_complete_mod) {
+			stream->cleanupCompleteData();
+			if(!stream->queuePacketVars.size()) {
+				for(deque<TcpReassemblyStream*>::iterator iter = this->queueStreams.begin(); iter != this->queueStreams.end();) {
+					if(*iter == stream) {
+						iter = this->queueStreams.erase(iter);
+					} else {
+						++iter;
+					}
+				}
+				this->queue_by_ack.erase(stream->ack);
+				delete stream;
 			}
+		} else {
+			for(deque<TcpReassemblyStream*>::iterator iter = this->queueStreams.begin(); iter != this->queueStreams.end();) {
+				if(*iter == stream) {
+					iter = this->queueStreams.erase(iter);
+				} else {
+					++iter;
+				}
+			}
+			this->queue_by_ack.erase(stream->ack);
+			delete stream;
 		}
-		this->queue_by_ack.erase(stream->ack);
-		delete stream;
 	}
 }
 
@@ -2307,7 +2379,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableAllCompleteAfterZerodataAck = false;
 	this->enableValidateDataViaCheckData = false;
 	this->unlimitedReassemblyAttempts = false;
-	this->maxReassemblyAttempts = 10;
+	this->maxReassemblyAttempts = 50;
 	this->enableValidateLastQueueDataViaCheckData = false;
 	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
@@ -2487,7 +2559,6 @@ string TcpReassembly::getCpuUsagePerc() {
 			outStr << '|';
 		}
 		outStr << links.size() << 'l';
-		extern int opt_sip_tcp_reassembly_ext_quick_mod;
 		if(opt_sip_tcp_reassembly_ext_quick_mod != 2 && this->enableExtStat) {
 			if(this->enablePushLock) {
 				this->lock_push();

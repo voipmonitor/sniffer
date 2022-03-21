@@ -727,13 +727,14 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 		if(ppd->header_ip) {
 			ppd->header_udp = &ppd->header_udp_tmp;
-			if (ppd->header_ip->get_protocol() == IPPROTO_UDP) {
+			u_int8_t protocol = ppd->header_ip->get_protocol(caplen);
+			if (protocol == IPPROTO_UDP) {
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->flags.init();
 				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
-			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
+			} else if (protocol == IPPROTO_TCP) {
 				ppd->flags.init();
 				ppd->flags.tcp = 1;
 				// prepare packet pointers 
@@ -768,7 +769,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 				ppd->header_udp->_source = ppd->header_tcp->_source;
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
-			} else if (opt_enable_ss7 && ppd->header_ip->get_protocol() == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && protocol == IPPROTO_SCTP) {
 				ppd->flags.init();
 				ppd->flags.ss7 = 1;
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);

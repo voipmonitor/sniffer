@@ -374,6 +374,16 @@ private:
 			iter->second.cleanState();
 		}
 	}
+	u_int32_t getMaxNextSeq() {
+		u_int32_t max_next_seq = 0;
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
+			if(iter->second.next_seq > max_next_seq) {
+				max_next_seq = iter->second.next_seq;
+			}
+		}
+		return(max_next_seq);
+	}
 private:
 	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
 	u_int64_t last_packet_at_from_header;
@@ -440,6 +450,7 @@ public:
 	bool saveCompleteData(bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
 	bool isSetCompleteData();
 	void clearCompleteData();
+	void cleanupCompleteData();
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
 private:
@@ -526,6 +537,40 @@ public:
 		u_int32_t seq;
 		u_char *data;
 		u_int32_t datalen;
+	};
+	struct sDuplCheckItem {
+		u_int32_t ack;
+		u_int32_t seq;
+		u_int32_t datalen;
+	};
+	class cDuplCheck {
+	public:
+		cDuplCheck() {
+			count = 0;
+			iter = 0;
+		}
+		inline bool isDupl(u_int32_t ack, u_int32_t seq, u_int32_t datalen) {
+			for(unsigned i = 0; i < count; i++) {
+				if(items[i].ack == ack && items[i].seq == seq && items[i].datalen == datalen) {
+					return(true);
+				}
+			}
+			if(count < sizeof(items) / sizeof(items[0])) {
+				++count;
+			}
+			items[iter].ack = ack;
+			items[iter].seq = seq;
+			items[iter].datalen = datalen;
+			++iter;
+			if(iter == sizeof(items) / sizeof(items[0])) {
+				iter = 0;
+			}
+			return(false);
+		}
+	private:
+		sDuplCheckItem items[3];
+		unsigned count;
+		unsigned iter;
 	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
 			  vmIP ip_src, vmIP ip_dst, 
@@ -768,6 +813,8 @@ private:
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;
+	cDuplCheck dupl_check_direction_to_dest;
+	cDuplCheck dupl_check_direction_to_source;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };

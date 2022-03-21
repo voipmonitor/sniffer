@@ -1128,6 +1128,7 @@ int opt_sip_tcp_reassembly_stream_max_attempts = 50;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
+int opt_sip_tcp_reassembly_ext_complete_mod = 0;
 int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
@@ -7743,6 +7744,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
 					->addValues("ext:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("receive_packetbuffer_maximum_time_diff_s", &opt_receive_packetbuffer_maximum_time_diff_s));
@@ -12283,6 +12285,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
 		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_complete_mod", NULL))) {
+		opt_sip_tcp_reassembly_ext_complete_mod = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_usleep", NULL))) {
 		opt_sip_tcp_reassembly_ext_usleep = atol(value);
