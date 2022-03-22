@@ -3278,6 +3278,10 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 		filter_ip = NULL;
 	}
 	read_from_file_index = 0;
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	lastPcapTime_s = 0;
+	lastTimeErrorLogPcapTime_ms = 0;
+	#endif
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -3689,6 +3693,21 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 		}
 	}
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	if(!lastPcapTime_s) {
+		lastPcapTime_s = (*header)->ts.tv_sec;
+	} else if(abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) {
+		u_int64_t actTimeMS = getTimeMS_rdtsc();
+		if(!lastTimeErrorLogPcapTime_ms ||
+		   actTimeMS > lastTimeErrorLogPcapTime_ms + 1000) {
+			cLogSensor::log(cLogSensor::error,
+					"bad pcap time from interface %s",
+					interfaceName.c_str());
+			lastTimeErrorLogPcapTime_ms = actTimeMS;
+		}
+		return(-12);
+	}
+	#endif
 	if(checkProtocol || filter_ip) {
 		sCheckProtocolData _checkProtocolData;
 		if(!checkProtocolData) {

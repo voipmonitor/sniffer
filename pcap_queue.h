@@ -488,6 +488,10 @@ private:
 	u_int64_t packets_counter;
 	ListIP *filter_ip;
 	unsigned read_from_file_index;
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	int64_t lastPcapTime_s;
+	u_int64_t lastTimeErrorLogPcapTime_ms;
+	#endif
 friend class PcapQueue_readFromInterfaceThread;
 };
 
