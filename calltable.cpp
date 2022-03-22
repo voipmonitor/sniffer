@@ -7160,15 +7160,23 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					conf_leg.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
 					if(!iter->second->user_entity.empty()) {
 						conf_leg.add(sqlEscapeString(iter->second->user_entity), "user_entity");
+					} else {
+						conf_leg.add(0, "user_entity", true);
 					}
 					if(!iter->second->endpoint_entity.empty()) {
 						conf_leg.add(sqlEscapeString(iter->second->endpoint_entity), "endpoint_entity");
+					} else {
+						conf_leg.add(0, "endpoint_entity", true);
 					}
 					if(iter->second->connect_time) {
 						conf_leg.add_calldate(iter->second->connect_time, "connect_time", existsColumns.cdr_conference_connect_time_ms);
+					} else {
+						conf_leg.add(0, "connect_time", true);
 					}
 					if(iter->second->disconnect_time) {
 						conf_leg.add_calldate(iter->second->disconnect_time, "disconnect_time", existsColumns.cdr_conference_disconnect_time_ms);
+					} else {
+						conf_leg.add(0, "disconnect_time", true);
 					}
 					if(existsColumns.cdr_conference_calldate) {
 						conf_leg.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_conference_calldate_ms);
