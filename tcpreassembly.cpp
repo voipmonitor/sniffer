@@ -100,8 +100,18 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 	if(ignorePsh == -1) {
 		ignorePsh = link->reassembly->ignorePshInCheckOkData;
 	}
-	if(this->is_ok || 
-	   (link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > link->reassembly->maxReassemblyAttempts)) {
+	if(this->is_ok) {
+		return(1);
+	}
+	if(link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > link->reassembly->maxReassemblyAttempts) {
+		static u_int64_t lastTimeErrorLog_ms = 0;
+		u_int64_t actTimeMS = getTimeMS_rdtsc();
+		if(!lastTimeErrorLog_ms ||
+		   actTimeMS > lastTimeErrorLog_ms + 10000) {
+			cLogSensor::log(cLogSensor::info,
+					"limiting configuration value sip_tcp_reassembly_stream_max_attempts was reached during tcp reassembly");
+			lastTimeErrorLog_ms = actTimeMS;
+		}
 		return(1);
 	}
 	++counterTryOk;
