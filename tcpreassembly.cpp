@@ -1846,13 +1846,27 @@ void TcpReassemblyLink::complete_simple_by_ack() {
 		return;
 	}
 	SimpleBuffer data;
+	timeval time;
+	time.tv_sec = 0;
+	time.tv_usec = 0;
+	u_int32_t seq = 0;
+	u_int32_t ack = 0;
+	TcpReassemblyDataItem::eDirection direction = TcpReassemblyDataItem::DIRECTION_NA;
 	for(unsigned i = 0; i < this->ok_streams.size(); i++) {
-		data.add(this->ok_streams[i]->complete_data.getData(), this->ok_streams[i]->complete_data.getDatalen());
+		if(this->ok_streams[i]->complete_data.getData()) {
+			data.add(this->ok_streams[i]->complete_data.getData(), this->ok_streams[i]->complete_data.getDatalen());
+			if(!time.tv_sec) {
+				time = this->ok_streams[i]->complete_data.getTime();
+				seq = this->ok_streams[i]->complete_data.getSeq();
+				ack = this->ok_streams[i]->ack;
+				direction = (TcpReassemblyDataItem::eDirection)this->ok_streams[i]->direction;
+			}
+		}
 	}
 	TcpReassemblyData *reassemblyData = new FILE_LINE(36007) TcpReassemblyData;
 	reassemblyData->addData(data.data(), data.size(),
-				this->ok_streams[0]->complete_data.getTime(), this->ok_streams[0]->ack, this->ok_streams[0]->complete_data.getSeq(),
-				(TcpReassemblyDataItem::eDirection)this->ok_streams[0]->direction);
+				time, ack, seq,
+				direction);
 	reassembly->dataCallback->processData(
 					this->ip_src, this->ip_dst,
 					this->port_src, this->port_dst,

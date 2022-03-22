@@ -3694,8 +3694,9 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		}
 	}
 	#if EXPERIMENTAL_CHECK_PCAP_TIME
-	if(lastPcapTime_s &&
-	   abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) {
+	if((lastPcapTime_s &&
+	    abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) ||
+	   (*header)->ts.tv_sec == 0) {
 		u_int64_t actTimeMS = getTimeMS_rdtsc();
 		if(!lastTimeErrorLogPcapTime_ms ||
 		   actTimeMS > lastTimeErrorLogPcapTime_ms + 1000) {
