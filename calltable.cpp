@@ -247,7 +247,7 @@ extern cProcessingLimitations processing_limitations;
 
 extern bool opt_conference_processing;
 extern vector<string> opt_mo_mt_identification_prefix;
-extern bool opt_separate_storage_ipv6_ipv4_address;
+extern int opt_separate_storage_ipv6_ipv4_address;
 extern int opt_cdr_flag_bit;
 
 sCallField callFields[] = {
@@ -6058,43 +6058,46 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
+	cdr.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
+	cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
+	if(existsColumns.cdr_sipport) {
+		cdr.add(getSipcallerport().getPort(), "sipcallerport");
+		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
+	}
 	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
 		vmIP ipv4[2], ipv6[2];
 		vmPort ipv4_port[2], ipv6_port[2];
-		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], false, 4);
-		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], false, 4);
-		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], false, 6);
-		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], false, 6);
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 6);
 		if(ipv4[0].isSet()) {
-			cdr.add(ipv4[0], "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
-			if(existsColumns.cdr_sipport) {
-				cdr.add(ipv4_port[0].getPort(), "sipcallerport");
-			}
+			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
+		} else {
+			cdr.add(0, "sipcallerip_v4", true);
+			cdr.add(0, "sipcallerport_v4", true);
 		}
 		if(ipv4[1].isSet()) {
-			cdr.add(ipv4[1], "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
-			if(existsColumns.cdr_sipport) {
-				cdr.add(ipv4_port[1].getPort(), "sipcalledport");
-			}
+			cdr.add(ipv4[1], "sipcalledip_v4", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv4_port[1].getPort(), "sipcalledport_v4");
+		} else {
+			cdr.add(0, "sipcalledip_v4", true);
+			cdr.add(0, "sipcalledport_v4", true);
 		}
 		if(ipv6[0].isSet()) {
 			cdr.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, sql_cdr_table);
-			if(existsColumns.cdr_sipport) {
-				cdr.add(ipv6_port[0].getPort(), "sipcallerport_v6");
-			}
+			cdr.add(ipv6_port[0].getPort(), "sipcallerport_v6");
+		} else {
+			cdr.add(0, "sipcallerip_v6", true);
+			cdr.add(0, "sipcallerport_v6", true);
 		}
 		if(ipv6[1].isSet()) {
 			cdr.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, sql_cdr_table);
-			if(existsColumns.cdr_sipport) {
-				cdr.add(ipv6_port[1].getPort(), "sipcalledport_v6");
-			}
-		}
-	} else {
-		cdr.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
-		cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
-		if(existsColumns.cdr_sipport) {
-			cdr.add(getSipcallerport().getPort(), "sipcallerport");
-			cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
+			cdr.add(ipv6_port[1].getPort(), "sipcalledport_v6");
+		} else {
+			cdr.add(0, "sipcalledip_v6", true);
+			cdr.add(0, "sipcalledport_v6", true);
 		}
 	}
 	if(existsColumns.cdr_sipcallerdip_encaps) {
