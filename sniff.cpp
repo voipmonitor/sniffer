@@ -1360,7 +1360,9 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	int peer_sip_tags_index;
 	const char *sip_tag = get_peername_begin_sip_tag(peername_tag, peername_tag_len, &peer_sip_tags_index);
 	if(!sip_tag) {
-		*rslt = 0;
+		if(rslt) {
+			*rslt = 0;
+		}
 		return(false);
 	}
 	const char *begin = NULL;
