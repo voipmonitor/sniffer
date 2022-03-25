@@ -129,12 +129,15 @@ private:
 	}
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
-	static bool checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
+	static int checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
+		if(data_len_used) {
+			*data_len_used = 0;
+		}
 		if(check_websocket(data, data_len)) {
 			cWebSocketHeader ws(data, data_len);
 			bool allocData;
 			u_char *ws_data = ws.decodeData(&allocData);
-			bool rslt = checkSip(ws_data, ws.getDataLength(), strict, offsets);
+			int rslt = checkSip(ws_data, ws.getDataLength(), strict, offsets);
 			if(rslt && offsets && offsets->size()) {
 				unsigned count = 0;
 				for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
@@ -155,11 +158,16 @@ public:
 		   !check_sip20((char*)data, data_len, NULL, true)) {
 			return(false);
 		}
-		return(_checkSip(data, data_len, strict, offsets));
+		return(_checkSip(data, data_len, strict, offsets, data_len_used));
 	}
-	static bool _checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL) {
+	static int _checkSip(u_char *data, int data_len, bool strict, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
+		int count_ok = 0;
 		u_int32_t offset = 0;
+		int data_len_orig = data_len;
+		if(data_len_used) {
+			*data_len_used = 0;
+		}
 		while(data_len > 0) {
 			unsigned int contentLength = 0;
 			bool use_lf_line_separator = false;
@@ -194,11 +202,14 @@ public:
 				break;
 			}
 			int sipDataLen = (endHeaderSepPos - data) + SIP_DBLLINE_SEPARATOR_SIZE(use_lf_line_separator) + contentLength;
-			if(offsets) {
-				offsets->push_back(d_u_int32_t(offset, sipDataLen));
-			}
 			if(sipDataLen == data_len) {
-				return(true);
+				if(data_len_used) {
+					*data_len_used = data_len_orig;
+				}
+				if(offsets) {
+					offsets->push_back(d_u_int32_t(offset, sipDataLen));
+				}
+				return(count_ok + 1);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
 				if(strict) {
 					int data_len_reduk = data_len;
@@ -208,21 +219,40 @@ public:
 						--data_len_reduk;
 					}
 					if(sipDataLen == data_len_reduk) {
-						return(true);
+						if(data_len_used) {
+							*data_len_used = data_len_orig;
+						}
+						if(offsets) {
+							offsets->push_back(d_u_int32_t(offset, sipDataLen));
+						}
+						return(count_ok + 1);
 					}
 				}
 				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL, true)) {
-					return(strict ? false : true);
+					if(data_len_used) {
+						*data_len_used = strict ? 0 : offset + sipDataLen;
+					}
+					if(offsets) {
+						offsets->push_back(d_u_int32_t(offset, sipDataLen));
+					}
+					return(strict ? 0 : count_ok + 1);
 				} else {
+					if(offsets) {
+						offsets->push_back(d_u_int32_t(offset, sipDataLen));
+					}
 					data += sipDataLen;
 					data_len -= sipDataLen;
 					offset += sipDataLen;
+					++count_ok;
 				}
 			} else {
 				break;
 			}
 		}
-		return(false);
+		if(data_len_used) {
+			*data_len_used = strict ? 0 : offset;
+		}
+		return(strict ? 0 : count_ok);
 	}
 private:
 	map<tcp_stream_id, tcp_stream> tcp_streams;

@@ -4539,6 +4539,9 @@ int main_init_read() {
 			tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
 			tcpReassemblySipExt->setEnablePushLock();
 		}
+		if(opt_sip_tcp_reassembly_ext_complete_mod) {
+			tcpReassemblySipExt->setCompleteMod(opt_sip_tcp_reassembly_ext_complete_mod);
+		}
 	}
 	
 	if(sipSendSocket_ip_port) {

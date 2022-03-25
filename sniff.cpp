@@ -9555,7 +9555,9 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			isMgcp = true;
 		}
 		if(packetS->pflags.tcp) {
+			#if not T2_SIP_MOD
 			extern int opt_sip_tcp_reassembly_ext_quick_mod;
+			#endif
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->pflags.skinny) {
 				// call process_skinny before tcp reassembly - TODO !

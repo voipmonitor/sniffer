@@ -68,7 +68,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			unlock_cache();
 			if(debugStream) {
 				(*debugStream)
-					<< "###"
+					<< "### "
 					<< fixed
 					<< setw(15) << ip_src.getString()
 					<< " / "
@@ -83,6 +83,30 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					(*debugStream) << "  ack: " << setw(5) << ack;
 				}
 				(*debugStream) << endl;
+				string _data;
+				char  *_data_src = (char*)(dataItem->getData() + (*iter_sip_offset)[0]);
+				unsigned _datalen = (*iter_sip_offset)[1];
+				if(_datalen) {
+					char *__data = new FILE_LINE(0) char[_datalen + 1];
+					memcpy_heapsafe(__data, __data,
+							_data_src, NULL,
+							_datalen, 
+							__FILE__, __LINE__);
+					__data[_datalen] = 0;
+					_data = __data;
+					delete [] __data;
+					_data = _data.substr(0, 5000);
+					for(size_t i = 0; i < _data.length(); i++) {
+						if(_data[i] == 13 || _data[i] == 10) {
+							_data[i] = '\\';
+						}
+						if(_data[i] < 32) {
+							_data.resize(i);
+						}
+					}
+				}
+				(*debugStream)
+					<< "### " << _data << endl;
 			}
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
@@ -210,6 +234,11 @@ void SipTcpData::printContentSummary() {
 }
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets) {
-	return(TcpReassemblySip::checkSip(data, datalen, strict, offsets));
+int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
+	int _datalen_used;
+	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, offsets, &_datalen_used);
+	if(datalen_used) {
+		*datalen_used = _datalen_used;
+	}
+	return(rslt);
 }

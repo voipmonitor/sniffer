@@ -27,6 +27,7 @@ public:
 	TcpReassemblyDataItem() {
 		this->data = NULL;
 		this->datalen = 0;
+		this->datalen_skipped = 0;
 		this->time.tv_sec = 0;
 		this->time.tv_usec = 0;
 		this->ack = 0;
@@ -41,9 +42,11 @@ public:
 					__FILE__, __LINE__);
 			this->data[datalen] = 0;
 			this->datalen = datalen;
+			this->datalen_skipped = 0;
 		} else {
 			this->data = NULL;
 			this->datalen = 0;
+			this->datalen_skipped = 0;
 		}
 		this->time = time;
 		this->ack = ack;
@@ -57,9 +60,11 @@ public:
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
+			this->datalen_skipped = dataItem.datalen_skipped;
 		} else {
 			this->data = NULL;
 			this->datalen = 0;
+			this->datalen_skipped = 0;
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
@@ -81,9 +86,11 @@ public:
 					__FILE__, __LINE__);
 			this->data[dataItem.datalen] = 0;
 			this->datalen = dataItem.datalen;
+			this->datalen_skipped = dataItem.datalen_skipped;
 		} else {
 			this->data = NULL;
 			this->datalen = 0;
+			this->datalen_skipped = 0;
 		}
 		this->time = dataItem.time;
 		this->ack = dataItem.ack;
@@ -105,10 +112,15 @@ public:
 				this->data = data;
 			}
 			this->datalen = datalen;
+			this->datalen_skipped = 0;
 		} else {
 			this->data = NULL;
 			this->datalen = 0;
+			this->datalen_skipped = 0;
 		}
+	}
+	void setDatalenSkipped(u_int32_t datalen_skipped) {
+		this->datalen_skipped = datalen_skipped;
 	}
 	void setTime(timeval time) {
 		this->time = time;
@@ -132,6 +144,7 @@ public:
 		}
 		this->data = NULL;
 		this->datalen = 0;
+		this->datalen_skipped = 0;
 		this->ack = 0;
 		this->seq = 0;
 	}
@@ -143,6 +156,9 @@ public:
 	}
 	u_int32_t getDatalen() {
 		return(this->datalen);
+	}
+	u_int32_t getDatalenSkipped() {
+		return(this->datalen_skipped);
 	}
 	timeval getTime() {
 		return(this->time);
@@ -165,6 +181,7 @@ public:
 private:
 	u_char *data;
 	u_int32_t datalen;
+	u_int32_t datalen_skipped;
 	timeval time;
 	u_int32_t ack;
 	u_int32_t seq;
@@ -344,6 +361,7 @@ friend class TcpReassembly;
 class TcpReassemblyStream_packet_var {
 public:
 	TcpReassemblyStream_packet_var() {
+		offset = 0;
 		last_packet_at_from_header = 0;
 	}
 	void push(TcpReassemblyStream_packet packet);
@@ -384,8 +402,10 @@ private:
 		}
 		return(max_next_seq);
 	}
+	void addToLinkDuplCheck(class TcpReassemblyStream *stream);
 private:
 	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
+	u_int32_t offset;
 	u_int64_t last_packet_at_from_header;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
@@ -451,8 +471,15 @@ public:
 	bool isSetCompleteData();
 	void clearCompleteData();
 	void cleanupCompleteData();
+	void addToLinkDuplCheck();
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
+	inline eDirection getDirection() {
+		return(direction);
+	}
+	inline TcpReassemblyLink *getLink() {
+		return(link);
+	}
 private:
 	bool checkCompleteContent();
 	bool checkContentIsHttpRequest();
@@ -464,6 +491,7 @@ private:
 		this->ok_packets.clear();
 	}
 	u_int32_t getLastSeqFromNextStream();
+private:
 	eDirection direction;
 	eType type;
 	u_int32_t ack;
@@ -555,6 +583,9 @@ public:
 					return(true);
 				}
 			}
+			return(false);
+		}
+		inline void add(u_int32_t ack, u_int32_t seq, u_int32_t datalen) {
 			if(count < sizeof(items) / sizeof(items[0])) {
 				++count;
 			}
@@ -565,10 +596,9 @@ public:
 			if(iter == sizeof(items) / sizeof(items[0])) {
 				iter = 0;
 			}
-			return(false);
 		}
 	private:
-		sDuplCheckItem items[3];
+		sDuplCheckItem items[1]; // the length of items is intentionally 1 so that only the last complete packet is tested
 		unsigned count;
 		unsigned iter;
 	};
@@ -701,6 +731,16 @@ public:
 		}
 		return(NULL);
 	}
+	TcpReassemblyStream *findStreamByMaxNextSeq(u_int32_t seq_from, u_int32_t seq_to) {
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
+			if(iter->second &&
+			   iter->second->max_next_seq >= seq_from && iter->second->max_next_seq <= seq_to) {
+				return(iter->second);
+			}
+		}
+		return(NULL);
+	}
 	TcpReassemblyStream *findFlagStreamByAck(u_int32_t ack) {
 		map<uint32_t, TcpReassemblyStream*>::iterator iter;
 		iter = this->queue_flags_by_ack.find(ack);
@@ -750,6 +790,13 @@ public:
 	list<d_u_int32_t> *getSipOffsets();
 	void clearCompleteStreamsData();
 	bool checkDuplicitySeq(u_int32_t newSeq);
+	inline void addToDuplCheck(TcpReassemblyStream::eDirection direction, u_int32_t ack, u_int32_t seq, u_int32_t datalen) {
+		if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
+			dupl_check_direction_to_dest.add(ack, seq, datalen);
+		} else if(direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
+			dupl_check_direction_to_source.add(ack, seq, datalen);
+		}
+	}
 private:
 	void lock_queue() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
@@ -927,6 +974,9 @@ public:
 	void setEnableSmartCompleteData(bool enableSmartCompleteData = true) {
 		this->enableSmartCompleteData = enableSmartCompleteData;
 	}
+	void setCompleteMod(int completeMod) {
+		this->completeMod = completeMod;
+	}
 	void setEnableExtStat(bool enableExtStat = true) {
 		this->enableExtStat = enableExtStat;
 	}
@@ -997,7 +1047,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, unsigned datalen, bool strict, list<d_u_int32_t> *sip_offsets);
+	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -1070,6 +1120,7 @@ private:
 	bool enablePushLock;
 	bool enableLinkLock;
 	bool enableSmartCompleteData;
+	int completeMod;
 	bool enableExtStat;
 	unsigned int extCleanupStreamsLimitStreams;
 	unsigned int extCleanupStreamsLimitHeap;
