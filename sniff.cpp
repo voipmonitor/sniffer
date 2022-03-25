@@ -1402,15 +1402,20 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 				}
 			}
 		}
-		if(!ok && ok_if_exists_domain) {
-			for(const char *p = end + 1; p < peername_tag + peername_tag_len; p++) {
-				if(*p == '@') {
-					if(p < peername_tag + peername_tag_len - 1 && isalnum(*(p+1))) {
-						ok = true;
+		if(!ok) {
+			if(begin < end && end == peername_tag + peername_tag_len && peername_sip_tags[peer_sip_tags_index].type & _prefer_number) {
+				--end;
+				ok = true;
+			} else if(ok_if_exists_domain) {
+				for(const char *p = end + 1; p < peername_tag + peername_tag_len; p++) {
+					if(*p == '@') {
+						if(p < peername_tag + peername_tag_len - 1 && isalnum(*(p+1))) {
+							ok = true;
+						}
+						break;
+					} else if(*p == '>' || *p == ':' || *p == ' ') {
+						break;
 					}
-					break;
-				} else if(*p == '>' || *p == ':' || *p == ' ') {
-					break;
 				}
 			}
 		}
@@ -1641,7 +1646,9 @@ void testPN() {
 		"ů§jk§ůjsip:kljahfkjlahld",
 		"klhkjlh",
 		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>",
-		"sip:+491987117;npdi;rn=+49D2821987117@next-id.de;user=phone SIP/2.0"
+		"sip:+491987117;npdi;rn=+49D2821987117@next-id.de;user=phone SIP/2.0",
+		"tel:+971506301206",
+		"sip:424021412720144@[2001:8f8:3048:8fd0:16de:2829:964c:e0f]:6400;EriBindingId=110537898666928;eribind-generated-at=10.225.46.76;sitag=%22%3Curn:gsma:imei:35842514-375055-0%3E%22 SIP/2.0"
 	};
 	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
 		char rslt[1000];
