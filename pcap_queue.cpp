@@ -3198,12 +3198,13 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	vmPort sport;
 	vmPort dport;
 	bool isTcp = false;
-	if (header_ip->get_protocol() == IPPROTO_UDP) {
+	u_int8_t ip_protocol = header_ip->get_protocol(header->caplen - offset);
+	if (ip_protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
 		sport = header_udp->get_source();
 		dport = header_udp->get_dest();
-	} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+	} else if (ip_protocol == IPPROTO_TCP) {
 		tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
 		sport = header_tcp->get_source();
@@ -3715,7 +3716,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			checkProtocolData = &_checkProtocolData;
 		}
 		if(!check_protocol(*header, *packet, checkProtocolData) ||
-		   !check_filter_ip(*packet, checkProtocolData)) {
+		   !check_filter_ip(*header, *packet, checkProtocolData)) {
 			return(-11);
 		}
 	}
@@ -3733,7 +3734,7 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 	       ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len);
 }
 
-bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData) {
+bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
 	if(filter_ip) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
 		if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
@@ -3744,7 +3745,7 @@ bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckPro
 	if(opt_is_client_packetbuffer_sender) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
 		if(iphdr->get_daddr() == snifferClientOptions.host_ip &&
-		   iphdr->get_protocol() == IPPROTO_TCP) {
+		   iphdr->get_protocol(header->caplen - checkProtocolData->header_ip_offset) == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)iphdr + iphdr->get_hdr_size());
 			if((unsigned)header_tcp->get_dest() == snifferClientOptions.port) {
 				return(false);
@@ -5139,7 +5140,7 @@ void PcapQueue_readFromInterfaceThread::_dpdk_packet_completion(void *user, pcap
 void PcapQueue_readFromInterfaceThread::dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet) {
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData) ||
-		   !check_filter_ip((u_char*)packet, &dd->checkProtocolData)) {
+		   !check_filter_ip((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
@@ -5592,7 +5593,7 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 	}
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData) ||
-		   !check_filter_ip((u_char*)packet, &dd->checkProtocolData)) {
+		   !check_filter_ip((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
@@ -9122,30 +9123,28 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
 			hp->header->header_ip_offset += next_header_ip_offset;
 		}
-		if(header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset) == IPPROTO_UDP) {
-			int frag_data = header_ip->get_frag_data();
-			if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
-				// packet is fragmented
-				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
-				if(rsltDefrag > 0) {
-					header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-					header_ip->clear_frag_data();
-					for(unsigned i = 0; i < headers_ip_counter; i++) {
-						iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
-						header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
-						header_ip_prev->clear_frag_data();
-					}
-					hp->header->pid.flags |= FLAG_FRAGMENTED;
-					if(sverb.defrag) {
-						defrag_counter++;
-						cout << "*** DEFRAG 2 " << defrag_counter << endl;
-					}
-				} else {
-					if(rsltDefrag < 0) {
-						hp->destroy_or_unlock_blockstore();
-					}
-					return;
+		int frag_data = header_ip->get_frag_data();
+		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+			// packet is fragmented
+			int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+			if(rsltDefrag > 0) {
+				header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+				header_ip->clear_frag_data();
+				for(unsigned i = 0; i < headers_ip_counter; i++) {
+					iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
+					header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
+					header_ip_prev->clear_frag_data();
 				}
+				hp->header->pid.flags |= FLAG_FRAGMENTED;
+				if(sverb.defrag) {
+					defrag_counter++;
+					cout << "*** DEFRAG 2 " << defrag_counter << endl;
+				}
+			} else {
+				if(rsltDefrag < 0) {
+					hp->destroy_or_unlock_blockstore();
+				}
+				return;
 			}
 		}
 	}
@@ -9172,13 +9171,14 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			char *data = NULL;
 			int datalen = 0;
-			if(header_ip->get_protocol() == IPPROTO_UDP) {
+			u_int8_t ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
+			if(ip_protocol == IPPROTO_UDP) {
 				udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
-			} else if(header_ip->get_protocol() == IPPROTO_TCP) {
+			} else if(ip_protocol == IPPROTO_TCP) {
 				tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
-			} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && ip_protocol == IPPROTO_SCTP) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
 			if(data && datalen) {

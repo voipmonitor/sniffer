@@ -119,7 +119,7 @@ extern bool opt_mysql_mysql_redirect_cdr_queue;
 
 extern bool opt_conference_processing;
 extern vector<string> opt_mo_mt_identification_prefix;
-extern bool opt_separate_storage_ipv6_ipv4_address;
+extern int opt_separate_storage_ipv6_ipv4_address;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -5547,7 +5547,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			      "") +
 			    (opt_separate_storage_ipv6_ipv4_address ?
 			      string(
-			      "`sipcallerip_v6` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			      "`sipcallerip_v4` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcalledip_v4` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcallerip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			       `sipcallerport_v6` smallint unsigned DEFAULT NULL,\
 			       `sipcalledip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			       `sipcalledport_v6` smallint unsigned DEFAULT NULL,\
@@ -5726,7 +5730,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		      " :
 		      "") +
 		    (opt_separate_storage_ipv6_ipv4_address ?
-		      "KEY `sipcallerip_v6` (`sipcallerip_v6`),\
+		      "KEY `sipcallerip_v4` (`sipcallerip_v4`),\
+		       KEY `sipcalledip_v4` (`sipcalledip_v4`),\
+		       KEY `sipcallerip_v6` (`sipcallerip_v6`),\
 		       KEY `sipcalledip_v6` (`sipcalledip_v6`),\
 		      " :
 		      "") +
@@ -8405,6 +8411,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	if(opt_separate_storage_ipv6_ipv4_address) {
 		this->checkNeedAlterAdd("cdr", "separate storage IPv4 and IPv6 sip address", opt_separate_storage_ipv6_ipv4_address,
 					log, &tableSize, &existsColumns.cdr_sipcallerdip_v6,
+					"sipcallerip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v4` (`sipcallerip_v4`)",
+					"sipcallerport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcalledip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v4` (`sipcalledip_v4`)",
+					"sipcalledport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"sipcallerip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v6` (`sipcallerip_v6`)",
 					"sipcallerport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					"sipcalledip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v6` (`sipcalledip_v6`)",

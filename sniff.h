@@ -316,10 +316,10 @@ struct packet_s {
 	inline u_int8_t header_ip_protocol(bool encaps = false) {
 		if(encaps) {
 			return(header_ip_encaps_offset != 0xFFFF && header_ip_encaps_offset < header_ip_offset ?
-				((iphdr2*)(packet + header_ip_encaps_offset))->get_protocol() :
+				((iphdr2*)(packet + header_ip_encaps_offset))->get_protocol(header_pt->caplen - header_ip_encaps_offset) :
 				0xFF);
 		}
-		return(((iphdr2*)(packet + header_ip_offset))->get_protocol());
+		return(((iphdr2*)(packet + header_ip_offset))->get_protocol(header_pt->caplen - header_ip_offset));
 	}
 	inline udphdr2 *header_udp_() {
 		iphdr2 *header_ip = header_ip_();

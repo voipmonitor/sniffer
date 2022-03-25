@@ -622,7 +622,7 @@ bool opt_disable_process_sdp = false;
 bool opt_conference_processing = false;
 vector<string> opt_conference_uri;
 vector<string> opt_mo_mt_identification_prefix;
-bool opt_separate_storage_ipv6_ipv4_address;
+int opt_separate_storage_ipv6_ipv4_address;
 int opt_cdr_flag_bit;
 
 char opt_php_path[1024];
@@ -7394,7 +7394,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("conference_processing", &opt_conference_processing));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mo_mt_identification_prefix", &opt_mo_mt_identification_prefix));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
+						->addValues("confirmed:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
@@ -12154,7 +12155,8 @@ int eval_config(string inistr) {
 		}
 	}
 	if((value = ini.GetValue("general", "separate_storage_ipv6_ipv4_address", NULL))) {
-		opt_separate_storage_ipv6_ipv4_address = yesno(value);
+		opt_separate_storage_ipv6_ipv4_address = !strcasecmp(value, "confirmed") ? 2 :
+							 yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
 		opt_cdr_flag_bit = atoi(value);
