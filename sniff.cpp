@@ -268,6 +268,8 @@ extern int opt_bye_confirmed_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_ignore_rtp_after_auth_failed;
+extern bool opt_ignore_rtp_after_response;
+extern vector<int> opt_ignore_rtp_after_response_list;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
@@ -4538,6 +4540,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at_bye_confirmed = 0;
 		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
+			if(opt_ignore_rtp_after_response) {
+				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
+				if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
+					call->ignore_rtp_after_response_time_usec = packetS->getTimeUS();
+				}
+			}
 			if(IS_SIP_RES4XX(packetS->sip_method) && call->is_multiple_to_branch()) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
@@ -5727,6 +5735,9 @@ inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_ca
 		   (opt_ignore_rtp_after_auth_failed &&
 		    call->seenauthfailed && call->seenauthfailed_time_usec &&
 		    packetS->getTimeUS() > call->seenauthfailed_time_usec) ||
+		   (opt_ignore_rtp_after_response &&
+		    call->ignore_rtp_after_response_time_usec &&
+		    packetS->getTimeUS() > call->ignore_rtp_after_response_time_usec) ||
 		   (opt_hash_modify_queue_length_ms && call->end_call_rtp) ||
 		   (call->flags & FLAG_SKIPCDR)) {
 			return(false);
@@ -8723,10 +8734,12 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				for(unsigned batch_index = 0; 
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
-					packet_s_process *packetS = batch[batch_index];
-					if(((packetS->source_() + packetS->dest_()) % next_thread_data->modulo) == next_thread_data->thread_index) {
-						this->process_SIP(packetS, true);
-						this->items_flag[batch_index] = 1;
+					if(!this->items_flag[batch_index]) {
+						packet_s_process *packetS = batch[batch_index];
+						if(((packetS->source_() + packetS->dest_()) % next_thread_data->modulo) == next_thread_data->thread_index) {
+							this->process_SIP(packetS, true);
+							this->items_flag[batch_index] = 1;
+						}
 					}
 				}
 				#else

@@ -526,6 +526,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seencancelandok_time_usec = 0;
 	seenauthfailed = false;
 	seenauthfailed_time_usec = 0;
+	ignore_rtp_after_response_time_usec = 0;
 	unconfirmed_bye = false;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;

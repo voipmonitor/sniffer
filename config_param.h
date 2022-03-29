@@ -163,6 +163,7 @@ public:
 	cConfigItem_integer(const char *name, unsigned int *param);
 	cConfigItem_integer(const char *name, uint64_t *param);
 	cConfigItem_integer(const char *name, int64_t *param = NULL);
+	cConfigItem_integer(const char *name, vector<int> *param);
 	cConfigItem_integer *setMaximum(int maximum) {
 		this->maximum = maximum;
 		return(this);
@@ -193,8 +194,10 @@ public:
 	}
 	int64_t getValue();
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
 	int64_t getValueInt() { return(getValue()); }
 	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues();
 	int getMaximum() {
 		return(maximum);
 	}
@@ -210,11 +213,13 @@ public:
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_int = NULL;
 		param_uint = NULL;
 		param_int64 = NULL;
 		param_uint64 = NULL;
+		param_vect_int = NULL;
 	}
 	void initOther() {
 		maximum = 0;
@@ -224,12 +229,13 @@ protected:
 		yesValue = 0;
 		menuValue = false;
 		onlyMenu = false;
+		explodeSeparator = ";";
 	}
 	void initVirtParam() {
 		param_virt = 0;
 	}
 	string getTypeName() {
-		return("integer");
+		return(param_vect_int ? "integer_list" : "integer");
 	}
 protected:
 	int *param_int;
@@ -237,6 +243,7 @@ protected:
 	int64_t *param_int64;
 	uint64_t *param_uint64;
 	int64_t param_virt;
+	vector<int> *param_vect_int;
 	int maximum;
 	int minimum;
 	int ifZeroOrNegative;
@@ -244,6 +251,7 @@ protected:
 	int yesValue;
 	bool menuValue;
 	bool onlyMenu;
+	string explodeSeparator;
 };
 
 class cConfigItem_float : public cConfigItem {

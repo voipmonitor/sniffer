@@ -1041,6 +1041,7 @@ public:
 	u_int64_t seencancelandok_time_usec;
 	bool seenauthfailed;
 	u_int64_t seenauthfailed_time_usec;
+	u_int64_t ignore_rtp_after_response_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;

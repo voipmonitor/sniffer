@@ -495,6 +495,8 @@ bool opt_ignore_rtp_after_bye_confirmed = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
+bool opt_ignore_rtp_after_response = false;
+vector<int> opt_ignore_rtp_after_response_list;
 int opt_saveaudio_reversestereo = 0;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
@@ -1133,6 +1135,7 @@ int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_stream_max_attempts = 50;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
+int opt_sip_tcp_reassembly_ext_link_timeout = 0;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
 int opt_sip_tcp_reassembly_ext_complete_mod = 0;
 int opt_sip_tcp_reassembly_ext_usleep = 10;
@@ -4528,14 +4531,13 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
+		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
 		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
-			tcpReassemblySipExt->setLinkTimeout(3);
-			tcpReassemblySipExt->setEnableExtCleanupStreams(10, 0);
+			tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 10);
 			tcpReassemblySipExt->setEnableLinkLock();
 			tcpReassemblySipExt->setEnableAutoCleanup(false);
 			tcpReassemblySipExt->setCleanupPeriod(10);
 		} else {
-			tcpReassemblySipExt->setLinkTimeout(10);
 			tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
 			tcpReassemblySipExt->setEnablePushLock();
 		}
@@ -7322,6 +7324,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_rtp_after_response", &opt_ignore_rtp_after_response_list));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
@@ -7769,6 +7772,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
 					->addValues("ext:2"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
@@ -9361,6 +9365,11 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks_read_check = 1;
 	}
 	
+	if(opt_ignore_rtp_after_response_list.size() > 1) {
+		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
+	}
+	opt_ignore_rtp_after_response = opt_ignore_rtp_after_response_list.size() > 0;
+	
 }
 
 void check_context_config() {
@@ -9755,6 +9764,13 @@ void parse_config_item(const char *config, vector<string> *item) {
 	vector<string> items = split(config, ";", true);
 	for(unsigned i = 0; i < items.size(); i++) {
 		item->push_back(items[i]);
+	}
+}
+
+void parse_config_item(const char *config, vector<int> *item) {
+	vector<string> items = split(config, ";", true);
+	for(unsigned i = 0; i < items.size(); i++) {
+		item->push_back(atoi(items[i].c_str()));
 	}
 }
 
@@ -11808,6 +11824,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ignore_rtp_after_auth_failed", NULL))) {
 		opt_ignore_rtp_after_auth_failed = yesno(value);
 	}
+	if((value = ini.GetValue("general", "ignore_rtp_after_response"))) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_ignore_rtp_after_response_list);
+		}
+	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);
 	}
@@ -12341,6 +12363,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_link_timeout", NULL))) {
+		opt_sip_tcp_reassembly_ext_link_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
 		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
