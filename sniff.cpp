@@ -87,9 +87,6 @@ and insert them into Call class.
 #endif
 
 
-#define T2_SIP_MOD true
-
-
 extern MirrorIP *mirrorip;
 
 #define MAXLIVEFILTERS 10
@@ -8520,6 +8517,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		}
 	}
 	this->items_flag = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
+	this->items_thread_index = new FILE_LINE(0) volatile int[this->qring_batch_item_length];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -8610,6 +8608,7 @@ PreProcessPacket::~PreProcessPacket() {
 		delete [] this->qring;
 	}
 	delete [] this->items_flag;
+	delete [] this->items_thread_index;
 	if(this->stackSip) {
 		delete this->stackSip;
 	}
@@ -8729,28 +8728,17 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				} }
 				break;
 			case ppt_sip: {
-				#if T2_SIP_MOD
 				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
 				for(unsigned batch_index = 0; 
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
-					if(!this->items_flag[batch_index]) {
+					if(!this->items_flag[batch_index] &&
+					   this->items_thread_index[batch_index] == next_thread_data->thread_index) {
 						packet_s_process *packetS = batch[batch_index];
-						if(((packetS->source_() + packetS->dest_()) % next_thread_data->modulo) == next_thread_data->thread_index) {
-							this->process_SIP(packetS, true);
-							this->items_flag[batch_index] = 1;
-						}
+						this->process_SIP(packetS, true);
+						this->items_flag[batch_index] = 1;
 					}
 				}
-				#else
-				packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
-				for(unsigned batch_index = batch_index_start; 
-				    batch_index < batch_index_end; 
-				    batch_index += batch_index_skip) {
-					this->process_SIP(batch[batch_index], true);
-					this->items_flag[batch_index] = 1;
-				}
-				#endif
 				}
 				break;
 			default:
@@ -9042,39 +9030,30 @@ void *PreProcessPacket::outThreadFunction() {
 				unsigned completed = 0;
 				int _next_threads = this->next_threads;
 				bool _process_only_in_next_threads = _next_threads > 1;
-				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-					this->items_flag[batch_index] = 0;
-				}
-				for(int i = 0; i < _next_threads; i++) {
-					this->next_thread_data[i].null();
-					#if T2_SIP_MOD
-					if(_process_only_in_next_threads) {
-						this->next_thread_data[i].start = 0;
-						this->next_thread_data[i].end = count;
-						this->next_thread_data[i].skip = 1;
-						this->next_thread_data[i].modulo = _next_threads;
-						this->next_thread_data[i].thread_index = i;
-					} else {
-						this->next_thread_data[i].start = 0;
-						this->next_thread_data[i].end = count;
-						this->next_thread_data[i].skip = 1;
-						this->next_thread_data[i].modulo = _next_threads + 1;
-						this->next_thread_data[i].thread_index = i + 1;
+				if(_next_threads > 0) {
+					int port_modulo = _process_only_in_next_threads ? _next_threads : _next_threads + 1;
+					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+						this->items_flag[batch_index] = 0;
+						packet_s_process *packetS = batch->batch[batch_index];
+						this->items_thread_index[batch_index] = (packetS->source_() + packetS->dest_()) % port_modulo;
 					}
-					#else
-					if(_process_only_in_next_threads) {
-						this->next_thread_data[i].start = i;
-						this->next_thread_data[i].end = count;
-						this->next_thread_data[i].skip = _next_threads;
-					} else {
-						this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
-						this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
-						this->next_thread_data[i].skip = 1;
+					for(int i = 0; i < _next_threads; i++) {
+						this->next_thread_data[i].null();
+						if(_process_only_in_next_threads) {
+							this->next_thread_data[i].start = 0;
+							this->next_thread_data[i].end = count;
+							this->next_thread_data[i].skip = 1;
+							this->next_thread_data[i].thread_index = i;
+						} else {
+							this->next_thread_data[i].start = 0;
+							this->next_thread_data[i].end = count;
+							this->next_thread_data[i].skip = 1;
+							this->next_thread_data[i].thread_index = i + 1;
+						}
+						this->next_thread_data[i].batch = batch->batch;
+						this->next_thread_data[i].processing = 1;
+						sem_post(&sem_sync_next_thread[i][0]);
 					}
-					#endif
-					this->next_thread_data[i].batch = batch->batch;
-					this->next_thread_data[i].processing = 1;
-					sem_post(&sem_sync_next_thread[i][0]);
 				}
 				if(_process_only_in_next_threads) {
 					while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
@@ -9088,11 +9067,10 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 				} else {
-					#if T2_SIP_MOD
 					if(_next_threads > 0) {
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
-							packet_s_process *packetS = batch->batch[batch_index];
-							if(((packetS->source_() + packetS->dest_()) % (_next_threads + 1)) == 0) {
+							if(this->items_thread_index[batch_index] == 0) {
+								packet_s_process *packetS = batch->batch[batch_index];
 								this->process_SIP(packetS, true);
 							}
 						}
@@ -9101,16 +9079,11 @@ void *PreProcessPacket::outThreadFunction() {
 							this->process_SIP(batch->batch[batch_index], true);
 						}
 					}
-					#else
-					for(unsigned batch_index = 0; 
-					    batch_index < count / (_next_threads + 1); 
-					    batch_index++) {
-						this->process_SIP(batch->batch[batch_index], true);
-					}
-					#endif
 				}
-				for(int i = 0; i < _next_threads; i++) {
-					sem_wait(&sem_sync_next_thread[i][1]);
+				if(_next_threads > 0) {
+					for(int i = 0; i < _next_threads; i++) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					}
 				}
 				for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 					processNextAction(batch->batch[batch_index]);
@@ -9577,9 +9550,6 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			isMgcp = true;
 		}
 		if(packetS->pflags.tcp) {
-			#if not T2_SIP_MOD
-			extern int opt_sip_tcp_reassembly_ext_quick_mod;
-			#endif
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->pflags.skinny) {
 				// call process_skinny before tcp reassembly - TODO !
@@ -9597,12 +9567,6 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 						PACKET_S_PROCESS_DESTROY(&packetS);
 					}
 				}
-			#if not T2_SIP_MOD
-			} else if(opt_sip_tcp_reassembly_ext_quick_mod &&
-				  (!packetS->datalen_() ||
-				   (isSip && TcpReassemblySip::checkSip((u_char*)packetS->data_(), packetS->datalen_(), true)))) {
-				this->process_parseSipData(&packetS, NULL);
-			#endif
 			} else {
 				bool possibleWebSocketSip = false;
 				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {

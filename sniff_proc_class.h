@@ -450,7 +450,6 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
-		volatile unsigned modulo;
 		volatile unsigned thread_index;
 		volatile int processing;
 		void null() {
@@ -458,7 +457,6 @@ public:
 			start = 0;
 			end = 0;
 			skip = 0;
-			modulo = 0;
 			thread_index = 0;
 			processing = 0;
 		}
@@ -1510,6 +1508,7 @@ private:
 	int outThreadId;
 	int nextThreadId[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	volatile int *items_flag;
+	volatile int *items_thread_index;
 	volatile int items_processed;
 	volatile int _sync_push;
 	volatile int _sync_count;
