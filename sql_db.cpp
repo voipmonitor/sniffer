@@ -8559,7 +8559,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
-	existsColumns.cdr_conference_calldate = this->existsColumn("cdr_conference", "calldate");
+	if(this->existsTable("cdr_conference")) {
+		existsColumns.cdr_conference_calldate = this->existsColumn("cdr_conference", "calldate");
+	}
 	existsColumns.cdr_txt_calldate = this->existsColumn("cdr_txt", "calldate");
 	map<string, u_int64_t> tableSize;
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
