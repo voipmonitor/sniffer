@@ -4771,7 +4771,8 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 		"get_radius_ip_password",
 		"odbcpass",
 		"manager_sshpassword",
-		"server_password"
+		"server_password",
+		"cloud_token"
 	};
 	list<string> hidePasswordForOptions;
 	for(unsigned i = 0; i < sizeof(_hidePasswordForOptions) / sizeof(_hidePasswordForOptions[0]); i++) {
