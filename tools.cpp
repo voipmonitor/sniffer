@@ -511,8 +511,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	int64_t bytestransfered = -1;
 #ifndef FREEBSD
 	off_t offset = 0;
-	if(sendfile(write_fd, read_fd, &offset, stat_buf.st_size) != -1) {
+	ssize_t sendfile_result = 0;
+	while(offset < stat_buf.st_size) {
+		sendfile_result = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+		if(sendfile_result <= 0) {
+			break;
+		}
+	}
+	if(offset == stat_buf.st_size) {
 		bytestransfered = stat_buf.st_size;
+	} else if(sendfile_result < 0) {
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dts[%s] error[%s]", src, dst, buf);
+		close (read_fd);
+		close (write_fd);
+		return(-1);
 	}
 #endif
 	if(bytestransfered == -1) {
