@@ -704,8 +704,11 @@ bool cConfigItem_integer::setParamFromValuesStr(vector<string> list_values_str, 
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		param_vect_int->push_back(atoi(iter->c_str()));
-		++ok;
+		vector<int> _param_vect_int = split2int(iter->c_str(), explodeSeparator[0]);
+		for(unsigned i = 0; i < _param_vect_int.size(); i++) {
+			param_vect_int->push_back(_param_vect_int[i]);
+			++ok;
+		}
 	}
 	return(ok > 0);
 }

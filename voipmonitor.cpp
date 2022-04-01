@@ -11824,7 +11824,7 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ignore_rtp_after_auth_failed", NULL))) {
 		opt_ignore_rtp_after_auth_failed = yesno(value);
 	}
-	if((value = ini.GetValue("general", "ignore_rtp_after_response"))) {
+	if(ini.GetAllValues("general", "ignore_rtp_after_response", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
 			parse_config_item(i->pItem, &opt_ignore_rtp_after_response_list);
