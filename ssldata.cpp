@@ -360,9 +360,11 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			cWebSocketHeader ws(data, dataLength);
 			bool allocWsData;
 			u_char *ws_data = ws.decodeData(&allocWsData);
-			cout << string((char*)ws_data, ws.getDataLength()) << endl;
-			if(allocWsData) {
-				delete [] ws_data;
+			if(ws_data) {
+				cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				if(allocWsData) {
+					delete [] ws_data;
+				}
 			}
 		} else {
 			cout << string((char*)data, dataLength) << endl;

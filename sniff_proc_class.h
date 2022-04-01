@@ -137,21 +137,25 @@ public:
 			cWebSocketHeader ws(data, data_len);
 			bool allocData;
 			u_char *ws_data = ws.decodeData(&allocData);
-			int rslt = checkSip(ws_data, ws.getDataLength(), strict, offsets);
-			if(rslt && offsets && offsets->size()) {
-				unsigned count = 0;
-				for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
-					if(count > 0) {
-						iter->val[0] += ws.getHeaderLength();
+			if(ws_data) {
+				int rslt = checkSip(ws_data, ws.getDataLength(), strict, offsets);
+				if(rslt && offsets && offsets->size()) {
+					unsigned count = 0;
+					for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
+						if(count > 0) {
+							iter->val[0] += ws.getHeaderLength();
+						}
+						iter->val[1] += ws.getHeaderLength();
+						++count;
 					}
-					iter->val[1] += ws.getHeaderLength();
-					++count;
 				}
+				if(allocData) {
+					delete [] ws_data;
+				}
+				return(rslt);
+			} else {
+				return(false);
 			}
-			if(allocData) {
-				delete [] ws_data;
-			}
-			return(rslt);
 		}
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 		if(!data || data_len < 10 ||

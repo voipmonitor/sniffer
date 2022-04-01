@@ -10105,23 +10105,28 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_
 	if(!packetS_orig) {
 		packetS_orig = packetS;
 	}
+	packet_s_process *newPacketS = NULL;
 	cWebSocketHeader ws(packetS->data_(), packetS->datalen_());
 	bool allocWsData;
 	u_char *ws_data = ws.decodeData(&allocWsData);
-	packet_s_process *newPacketS = clonePacketS(ws_data, ws.getDataLength(), packetS);
-	if(allocWsData) {
-		delete [] ws_data;
-	}
-	if(packetS_orig && packetS_orig->next_action) {
-		packetS_orig->register_child_packet(newPacketS);
-		newPacketS->next_action = _ppna_set;
+	if(ws_data) {
+		newPacketS = clonePacketS(ws_data, ws.getDataLength(), packetS);
+		if(allocWsData) {
+			delete [] ws_data;
+		}
+		if(packetS_orig && packetS_orig->next_action) {
+			packetS_orig->register_child_packet(newPacketS);
+			newPacketS->next_action = _ppna_set;
+		}
 	}
 	if(packetS->next_action == _ppna_set) {
 		packetS->next_action = _ppna_destroy;
 	} else {
 		PACKET_S_PROCESS_DESTROY(&packetS);
 	}
-	this->process_parseSipData(&newPacketS, packetS);
+	if(newPacketS) {
+		this->process_parseSipData(&newPacketS, packetS);
+	}
 }
 
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {

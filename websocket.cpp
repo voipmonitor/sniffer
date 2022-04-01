@@ -16,11 +16,16 @@ u_char *cWebSocketHeader::decodeData(bool *allocData, unsigned dataLength) {
 		} else {
 			dataLength = getDataLength();
 		}
-		*allocData = true;
-		u_char *data = new FILE_LINE(0) u_char[dataLength];
-		memcpy(data, getData(), dataLength);
-		xorData(data, dataLength, (const char*)getMask(), 4, 0);
-		return(data);
+		if(dataLength > 0 && dataLength <= 0xFFFF) {
+			*allocData = true;
+			u_char *data = new FILE_LINE(0) u_char[dataLength];
+			memcpy(data, getData(), dataLength);
+			xorData(data, dataLength, (const char*)getMask(), 4, 0);
+			return(data);
+		} else {
+			*allocData = false;
+			return(NULL);
+		}
 	} else {
 		*allocData = false;
 		return(getData());

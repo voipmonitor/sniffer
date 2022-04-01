@@ -4469,20 +4469,21 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 				if(payload_tcp_udp_length > ws.getHeaderLength()) {
 					bool allocData;
 					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
-					if(!ws_data) {
+					if(ws_data) {
+						delete [] payload_tcp_udp;
+						payload_tcp_udp_length =  header_tcp != NULL ?
+									   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
+									       ws.getDataLength()) :
+									   ws.getDataLength();
+						payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
+						memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
+						payload_tcp_udp[payload_tcp_udp_length] = 0;
+						if(allocData) {
+							delete [] ws_data;
+						}
+					} else {
 						delete [] payload_tcp_udp;
 						payload_tcp_udp = NULL;
-					}
-					delete [] payload_tcp_udp;
-					payload_tcp_udp_length =  header_tcp != NULL ?
-								   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
-								       ws.getDataLength()) :
-								   ws.getDataLength();
-					payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
-					memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
-					payload_tcp_udp[payload_tcp_udp_length] = 0;
-					if(allocData) {
-						delete [] ws_data;
 					}
 				}
 			}
