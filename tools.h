@@ -330,8 +330,19 @@ int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot =
 int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
 int64_t cp_r(const char *src, const char *dst, bool move = false);
 inline int64_t mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
-int64_t copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false);
+
+
+enum eCopyFileErrType {
+	_copyfile_src_missing = -1,
+	_copyfile_src_open_failed = -2,
+	_copyfile_dst_open_failed = -3,
+	_copyfile_sendfile_failed = -4,
+	_copyfile_dst_write_failed = -5
+};
+int64_t copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false, string *syserror = NULL);
 inline int64_t move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
+string copy_file_err_type_str(int err_type);
+
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);

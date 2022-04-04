@@ -1974,13 +1974,18 @@ bool TarCopy::copy(string src_filePathName) {
 }
 
 bool TarCopy::copy(string src_filePathName, string dst_filePathName) {
-	bool rslt = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true) >= 0;
+	string syserror;
+	int64_t rslt_copy = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true, &syserror);
 	syslog(LOG_NOTICE, "tar %s %s : %s -> %s",
-	       move ? "move" : "copy",
-	       rslt ? "success" : "failed",
+	       move ? 
+		"move" : 
+		"copy",
+	       rslt_copy >= 0 ? 
+		"success" : 
+		("failed (" + copy_file_err_type_str(rslt_copy) + (!syserror.empty() ? ", error: " + syserror : "") + ")").c_str(),
 	       src_filePathName.c_str(),
 	       dst_filePathName.c_str());
-	return(rslt);
+	return(rslt_copy >= 0 || rslt_copy == _copyfile_src_missing);
 }
 
 int untar_gui(const char *args) {

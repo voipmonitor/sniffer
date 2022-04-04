@@ -450,22 +450,32 @@ int64_t cp_r(const char *src, const char *dst, bool move) {
 	return(bytestransfered);
 }
 
-int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
+int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir, string *syserror) {
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
 	int renamedebug = 0;
+	
+	if(syserror) {
+		*syserror = "";
+	}
 
 	//check if the file exists
 	if(!file_exists(src)) {
-		return(-1);
+		syslog(LOG_ERR, "Missing source file [%s]\n", src);
+		return(_copyfile_src_missing);
 	}
 
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
-		return(-1);
+		char buf[4092];
+		strerror_r(errno, buf, 4092);
+		syslog(LOG_ERR, "Cannot open file for reading [%s] error[%s]\n", src, buf);
+		if(syserror) {
+			*syserror = buf;
+		}
+		return(_copyfile_src_open_failed);
 	}
 		
 	/* Stat the input file to obtain its size. */
@@ -499,8 +509,11 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		char buf[4092];
 		strerror_r(errno, buf, 4092);
 		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
+		if(syserror) {
+			*syserror = buf;
+		}
 		close(read_fd);
-		return(-1);
+		return(_copyfile_dst_open_failed);
 	}
 #ifndef FREEBSD
 	fdatasync(write_fd);
@@ -524,9 +537,12 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		char buf[4092];
 		strerror_r(errno, buf, 4092);
 		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dts[%s] error[%s]", src, dst, buf);
+		if(syserror) {
+			*syserror = buf;
+		}
 		close (read_fd);
 		close (write_fd);
-		return(-1);
+		return(_copyfile_sendfile_failed);
 	}
 #endif
 	if(bytestransfered == -1) {
@@ -547,8 +563,13 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 				char buf[4092];
 				strerror_r(errno, buf, 4092);
 				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
+				if(syserror) {
+					*syserror = buf;
+				}
 				bytestransfered = -1;
-				break;
+				close (read_fd);
+				close (write_fd);
+				return(_copyfile_dst_write_failed);
 			}
 			bytestransfered += res;
 		}
@@ -561,6 +582,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		unlink(src);
 	}
 	return(bytestransfered);
+}
+
+string copy_file_err_type_str(int err_type) {
+	switch(err_type) {
+	case _copyfile_src_missing:
+		return("missing src file");
+	case _copyfile_src_open_failed:
+		return("failed open src file");
+	case _copyfile_dst_open_failed:
+		return("failed open dst file");
+	case _copyfile_sendfile_failed:
+		return("failed call sendfile");
+	case _copyfile_dst_write_failed:
+		return("failed write to dst file");
+	}
+	return("");
 }
 
 size_t _get_url_file_writer_function(void *ptr, size_t size, size_t nmemb, FILE *stream) {
