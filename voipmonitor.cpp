@@ -8684,6 +8684,7 @@ void get_command_line_arguments() {
 				break;
 			case 313:
 			case 346:
+			case 348:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
