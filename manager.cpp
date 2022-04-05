@@ -4052,7 +4052,7 @@ int Mgmt_custipcache_vect_print(Mgmt_params *params) {
 int Mgmt_upgrade_restart(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
-			{"upgrade", "upgrades senso"},
+			{"upgrade", "upgrades sensor"},
 			{"restart", "restarts sensor"},
 			{NULL, NULL}
 		};
