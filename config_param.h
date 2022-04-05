@@ -380,6 +380,7 @@ protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	void initBeforeSet();
 	void clear();
 	void initParamPointers() {
 		param_port_matrix = NULL;

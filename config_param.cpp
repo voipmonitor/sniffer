@@ -1160,6 +1160,10 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 	return(ok > 0);
 }
 
+void cConfigItem_ports::initBeforeSet() {
+	clear();
+}
+
 void cConfigItem_ports::clear() {
 	if(param_port_matrix) {
 		for(unsigned i = 0; i <= this->port_max; i++) {
