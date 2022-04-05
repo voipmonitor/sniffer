@@ -484,6 +484,7 @@ int opt_database_backup_insert_threads = 1;
 int opt_database_backup_pass_rows = 0;
 bool opt_database_backup_desc_dir = false;
 bool opt_database_backup_skip_register = false;
+bool opt_database_backup_check_src_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -1501,7 +1502,8 @@ void *database_backup(void */*dummy*/) {
 					       &optMySSLBackup);
 		if(sqlDbSrc->connect()) {
 			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
-			if(sqlDbSrc_mysql->checkSourceTables()) {
+			if(!opt_database_backup_check_src_tables ||
+			   sqlDbSrc_mysql->checkSourceTables()) {
 			 
 				if(!callCreateSchema) {
 					sqlDb->createSchema();
@@ -1543,7 +1545,8 @@ void *database_backup(void */*dummy*/) {
 				sqlDb_mysql->copyFromSourceTablesMain(sqlDbSrc_mysql, 
 								      opt_database_backup_pass_rows, 
 								      opt_database_backup_desc_dir, 
-								      opt_database_backup_skip_register);
+								      opt_database_backup_skip_register,
+								      !opt_database_backup_check_src_tables);
 			}
 		}
 		delete sqlDbSrc;
@@ -6917,6 +6920,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_pass_rows", &opt_database_backup_pass_rows));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_desc_dir", &opt_database_backup_desc_dir));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_skip_register", &opt_database_backup_skip_register));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_check_src_tables", &opt_database_backup_check_src_tables));
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");
@@ -11174,6 +11178,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "database_backup_skip_register", NULL))) {
 		opt_database_backup_skip_register = yesno(value);
+	}
+	if((value = ini.GetValue("general", "database_backup_check_src_tables", NULL))) {
+		opt_database_backup_check_src_tables = yesno(value);
 	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strcpy_null_term(get_customer_by_ip_sql_driver, value);

@@ -8992,10 +8992,12 @@ void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
 
 void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 					   unsigned long limit, bool descDir,
-					   bool skipRegister) {
+					   bool skipRegister,
+					   bool skipMissingTables) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(size_t i = 0; i < tablesMain.size() && !is_terminating(); i++) {
-		if(!skipRegister || !strstr(tablesMain[i].c_str(), "register")) {
+		if((!skipMissingTables || sqlDbSrc->existsTable(tablesMain[i].c_str())) &&
+		   (!skipRegister || !strstr(tablesMain[i].c_str(), "register"))) {
 			this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), limit ? limit : 10000, descDir);
 		}
 	}

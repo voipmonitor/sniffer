@@ -704,7 +704,8 @@ public:
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit = 0, bool descDir = false,
-				      bool skipRegister = false);
+				      bool skipRegister = false,
+				      bool skipMissingTables = false);
 	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				 const char *tableName, 
 				 unsigned long limit, bool descDir = false);
