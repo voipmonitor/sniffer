@@ -2846,7 +2846,9 @@ string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
 u_int32_t octal_decimal(u_int32_t n);
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, 
+	      int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1,
+	      bool closeAllFdAfterFork = false);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();

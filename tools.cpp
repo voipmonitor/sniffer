@@ -2358,7 +2358,7 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			pexecCmd += "make install";
 		}
 		pexecCmd += ";'";
-		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600);
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true);
 		if(exitCode == 0) {
 			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
@@ -5407,7 +5407,8 @@ u_int32_t octal_decimal(u_int32_t n) {
 }
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
-	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec) {
+	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec,
+	      bool closeAllFdAfterFork) {
 	if(exitCode) {
 		*exitCode = -1;
 	}
@@ -5423,7 +5424,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	int pipe_stderr[2];
 	pipe(pipe_stdout);
 	pipe(pipe_stderr);
-	int fork_rslt = vfork();
+	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
@@ -5431,6 +5432,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		dup2(pipe_stderr[1], 2);
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
+		if(closeAllFdAfterFork) {
+			close_all_fd();
+		}
 		if(execvp(exec_args[0], exec_args) == -1) {
 			char errmessage[1000];
 			snprintf(errmessage, sizeof(errmessage), "exec failed: %s", exec_args[0]);
