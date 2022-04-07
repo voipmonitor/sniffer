@@ -1240,6 +1240,7 @@ int opt_livesniffer_timeout_s = 0;
 int opt_livesniffer_tablesize_max_mb = 0;
 
 int opt_abort_if_rss_gt_gb = 0;
+int opt_abort_if_alloc_gt_gb = 0;
 int opt_next_server_connections = 0;
 
 string opt_coredump_filter;
@@ -7810,6 +7811,7 @@ void cConfig::addConfigItems() {
 							     "enable:" + intToString(numa_balancing_set_enable) + "|" +
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 						obsolete();
@@ -12473,6 +12475,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "abort_if_alloc_gt_gb", NULL))) {
+		opt_abort_if_alloc_gt_gb = atoi(value);
 	}
 	if((value = ini.GetValue("general", "coredump_filter", NULL))) {
 		opt_coredump_filter = value;

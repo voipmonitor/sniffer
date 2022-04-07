@@ -16,6 +16,7 @@
 //#endif
 
 extern sVerbose sverb;
+extern int opt_abort_if_alloc_gt_gb;
 
 unsigned int HeapSafeCheck = 0;
 unsigned int MemoryStatQuick = 0;
@@ -465,6 +466,10 @@ inline void * realloc_memory_stat_quick(void *pointerToObject, size_t sizeOfObje
 void * operator new(size_t sizeOfObject) { 
 	if(sizeOfObject > 1000000000ull) {
 		syslog(LOG_WARNING, "too big allocated block - %zd", sizeOfObject);
+		if(opt_abort_if_alloc_gt_gb && sizeOfObject > 1000000000ull * opt_abort_if_alloc_gt_gb) {
+			syslog(LOG_ERR, "allocated block > abort_if_alloc_gt_gb - abort!");
+			abort();
+		}
 	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -483,6 +488,10 @@ void * operator new(size_t sizeOfObject) {
 void * operator new[](size_t sizeOfObject) {
 	if(sizeOfObject > 1000000000ull) {
 		syslog(LOG_WARNING, "too big allocated block - %zd", sizeOfObject);
+		if(opt_abort_if_alloc_gt_gb && sizeOfObject > 1000000000ull * opt_abort_if_alloc_gt_gb) {
+			syslog(LOG_ERR, "allocated block > abort_if_alloc_gt_gb - abort!");
+			abort();
+		}
 	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -501,6 +510,10 @@ void * operator new[](size_t sizeOfObject) {
 void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) { 
 	if(sizeOfObject > 1000000000ull) {
 		syslog(LOG_WARNING, "too big allocated block - %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		if(opt_abort_if_alloc_gt_gb && sizeOfObject > 1000000000ull * opt_abort_if_alloc_gt_gb) {
+			syslog(LOG_ERR, "allocated block > abort_if_alloc_gt_gb - abort!");
+			abort();
+		}
 	}
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -519,6 +532,10 @@ void * operator new(size_t sizeOfObject, const char *memory_type1, int memory_ty
 void * operator new[](size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
 	if(sizeOfObject > 1000000000ull) {
 		syslog(LOG_WARNING, "too big allocated block - %zd, %s, %i", sizeOfObject, memory_type1 ? memory_type1 : "", memory_type2);
+		if(opt_abort_if_alloc_gt_gb && sizeOfObject > 1000000000ull * opt_abort_if_alloc_gt_gb) {
+			syslog(LOG_ERR, "allocated block > abort_if_alloc_gt_gb - abort!");
+			abort();
+		}
 	}
 	void *newPointer = HeapSafeCheck ? 
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?

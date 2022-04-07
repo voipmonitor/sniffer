@@ -4715,6 +4715,7 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 			{"memcrash_test_3", ""},
 			{"memcrash_test_4", ""},
 			{"memcrash_test_5", ""},
+			{"memcrash_test_6", ""},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -4741,6 +4742,8 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 	} else if(strstr(params->buf, "memcrash_test_5") != NULL) {
 		char *test = NULL;
 		*test = 0;
+	} else if(strstr(params->buf, "memcrash_test_6") != NULL) {
+		new FILE_LINE(0) char[1000000001];
 	}
 	return(0);
 }
