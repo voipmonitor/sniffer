@@ -2871,13 +2871,13 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	sPacket packet;
-	#if DEBUG_DTLS_QUEUE
+	#if DEBUG_DTLS_QUEUE_DEFERRED_SDP
 	unsigned _c = 0;
 	#endif
 	while((!is_terminating() || this->ignoreTerminating) &&
 	      !this->terminatingPacketThread) {
 		if(packetQueue->pop(&packet)) {
-			#if DEBUG_DTLS_QUEUE
+			#if DEBUG_DTLS_QUEUE_DEFERRED_SDP
 			++_c;
 			if(_c == 2) {
 				sleep(10);
