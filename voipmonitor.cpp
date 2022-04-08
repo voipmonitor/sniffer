@@ -1256,6 +1256,8 @@ char opt_curl_hook_wav[256] = "";
 
 bool opt_is_client_packetbuffer_sender = false;
 
+cWsCalls *ws_calls;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -4075,6 +4077,11 @@ int main(int argc, char *argv[]) {
 	
 	delete regfailedcache;
 	
+	if(ws_calls) {
+		cout << ws_calls->printUncofirmed();
+		delete ws_calls;
+	}
+	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
 		printMemoryStat(true);
@@ -4098,7 +4105,7 @@ int main(int argc, char *argv[]) {
 	#endif
 	
 	termTimeCacheForThread();
-
+	
 	return(0);
 }
 
@@ -8184,6 +8191,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
+	    {"ws-calls", 1, 0, 402},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8871,6 +8879,10 @@ void get_command_line_arguments() {
 				}
 				exit(0);
 				}
+				break;
+			case 402:
+				ws_calls = new FILE_LINE(0) cWsCalls();
+				ws_calls->load(optarg);
 				break;
 		}
 		if(optarg) {

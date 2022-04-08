@@ -3523,6 +3523,7 @@ public:
 	};
 public:
 	cCsv();
+	~cCsv();
 	void setFirstRowContainFieldNames(bool firstRowContainFieldNames = true);
 	void setFieldSeparator(char fieldSeparator);
 	int load(const char *fileName, sTable *table = NULL);
@@ -4661,6 +4662,40 @@ inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
 		((cNodeItem_nodes*)this)->destruct();
 	}
 }
+
+
+class cWsCalls {
+public:
+	struct sSip {
+		sSip() {
+			confirm = false;
+		}
+		bool request;
+		string str;
+		bool confirm;
+	};
+	struct sCall {
+		bool isConfirmed() {
+			for(unsigned i = 0; i < sip.size(); i++) {
+				if(!sip[i].confirm) {
+					return(false);
+				}
+			}
+			return(true);
+		}
+		string callid;
+		vector<sSip> sip;
+	};
+public:
+	cWsCalls();
+	~cWsCalls();
+	void load(const char *filename);
+	void setConfirm(const char *callid, bool request, string str);
+	string printUncofirmed();
+public:
+	map<string, sCall> calls;
+	cCsv *csv;
+};
 
 
 #endif

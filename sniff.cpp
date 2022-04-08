@@ -377,7 +377,9 @@ volatile int __xmap_sync;
 
 FILE *__fc_inv;
 FILE *__fc_callsave;
+FILE *__ftcp_sip_file;
 volatile int __fc_sync;
+volatile int __ftcp_sip_sync;
 
 void __fc(const char *type, const char *callid) {
 	__SYNC_LOCK(__fc_sync);
@@ -396,6 +398,21 @@ void __fc(const char *type, const char *callid) {
 		}
 	}
 	__SYNC_UNLOCK(__fc_sync);
+}
+
+void __ftcp_sip(const char *callid, const char *req, const char *stat) {
+	__SYNC_LOCK(__ftcp_sip_sync);
+	FILE **file = &__ftcp_sip_file;
+	if(file) {
+		if(!*file) {
+			const char *filename = "_log_tcp_sip";
+			*file = fopen(filename, "w");
+		}
+		if(*file) {
+			fprintf(*file, "%s,%s,%s\n", callid, req, stat);
+		}
+	}
+	__SYNC_UNLOCK(__ftcp_sip_sync);
 }
 #endif
 

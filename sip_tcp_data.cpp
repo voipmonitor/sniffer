@@ -116,11 +116,34 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
 			u_char *_data = dataItem->getData() + (*iter_sip_offset)[0];
 			unsigned int _datalen = (*iter_sip_offset)[1];
-			while(_datalen >= 2 && _data[0] == '\r' && _data[1] == '\n') {
-				_data += 2;
-				_datalen -= 2;
+			while(_datalen >= 1 && (_data[0] == '\r' || _data[0] == '\n')) {
+				_data += 1;
+				_datalen -= 1;
 			}
 			if(_datalen > 0) {
+				#if DEBUG_PACKET_COUNT
+				extern void __ftcp_sip(const char *callid, const char *req, const char *stat);
+				extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
+							 const char *tag, unsigned long *gettaglen, unsigned long *limitLen);
+				unsigned long callid_length;
+				char *callid = gettag_ext(_data, _datalen, NULL,
+							  "\nCall-ID:", &callid_length, NULL);
+				if(callid) {
+					const char *first_cr = strnchr((char*)_data, '\r', _datalen);
+					if(first_cr) {
+						string req_stat = string((char*)_data, (u_char*)first_cr - _data);
+						__ftcp_sip(string(callid, callid_length).c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? "" : req_stat.c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? req_stat.c_str() : "");
+						extern cWsCalls *ws_calls;
+						if(ws_calls) {
+							ws_calls->setConfirm(string(callid, callid_length).c_str(),
+									     req_stat.substr(0, 3) != "SIP",
+									     req_stat.c_str());
+						}
+					}
+				}
+				#endif
 				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 							  ethHeader, _data, _datalen,
 							  _ip_src, _ip_dst, _port_src, _port_dst,

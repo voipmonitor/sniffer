@@ -6385,6 +6385,10 @@ cCsv::cCsv() {
 	firstRowContainFieldNames = false;
 }
 
+cCsv::~cCsv() {
+	table.clear();
+}
+
 void cCsv::setFirstRowContainFieldNames(bool firstRowContainFieldNames) {
 	this->firstRowContainFieldNames = firstRowContainFieldNames;
 }
@@ -8858,4 +8862,67 @@ void checkSwapUsage(void) {
 	} else {
 		swapDelayCount = ONE_HOUR;
 	}
+}
+
+
+cWsCalls::cWsCalls() {
+	csv = NULL;
+}
+
+cWsCalls::~cWsCalls() {
+	delete csv;
+}
+
+void cWsCalls::load(const char *filename) {
+	csv = new FILE_LINE(0) cCsv;
+	csv->setFirstRowContainFieldNames();
+	csv->load(filename);
+	//cout << csv.getRowsCount() << endl;
+	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
+		map<string, string> row;
+		csv->getRow(i, &row);
+		//cout << row["Call-ID"] << endl;
+		//cout << row["Request-Line"] << endl;
+		//cout << row["Status-Line"] << endl;
+		calls[row["Call-ID"]].callid = row["Call-ID"];
+		sSip sip;
+		sip.request = !row["Request-Line"].empty();
+		sip.str = !row["Request-Line"].empty() ? row["Request-Line"] : row["Status-Line"];
+		calls[row["Call-ID"]].sip.push_back(sip);
+	}
+	//cout << "load finished" << endl;
+}
+
+void cWsCalls::setConfirm(const char *callid, bool request, string str) {
+	map<string, sCall>::iterator iter = calls.find(callid);
+	if(iter != calls.end()) {
+		for(vector<sSip>::iterator iter2 = iter->second.sip.begin(); iter2 != iter->second.sip.end(); iter2++) {
+			if(!iter2->confirm &&
+			   iter2->request == request &&
+			   iter2->str == str) {
+				iter2->confirm = true;
+				break;
+			}
+		}
+	}
+}
+
+string cWsCalls::printUncofirmed() {
+	ostringstream out;
+	unsigned counter = 0;
+	for(map<string, sCall>::iterator iter = calls.begin(); iter != calls.end(); iter++) {
+		if(!iter->second.isConfirmed()) {
+			out << (++counter) << "  - " << iter->first << endl;
+			for(unsigned i = 0; i < iter->second.sip.size(); i++) {
+				out << "   "
+				    << (iter->second.sip[i].confirm ? " " : "*")
+				    << " "
+				    << (i + 1) 
+				    << " "
+				    << iter->second.sip[i].str
+				    << endl;
+			}
+		}
+	}
+	return(out.str());
 }

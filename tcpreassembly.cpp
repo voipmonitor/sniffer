@@ -1560,6 +1560,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 								stream->confirmCompleteData(datalen_confirmed);
 								stream->complete_data.setDatalen(datalen_confirmed);
 							}
+							this->ok_streams.push_back(streams[0]);
 							okStreams = 1;
 							break;
 						} else {
@@ -1598,16 +1599,28 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 										<< " (" << __FILE__ << ":" << __LINE__ << ")"
 										<< endl;
 								}
+								unsigned fromStream = 0;
 								if(reassembly->completeMod == 1 &&
 								   datalen_confirmed &&
-								   datalen_confirmed < data.size() &&
-								   (data.size() - datalen_confirmed) < streams[0]->complete_data.getDatalen()) {
-									if(checkOkStreams == 1) {
-										streams[0]->confirmCompleteData(datalen_confirmed);
-										streams[0]->complete_data.setDatalen(datalen_confirmed);
-									} else {
-										streams[0]->confirmCompleteData(streams[0]->complete_data.getDatalen() - (data.size() - datalen_confirmed));
+								   datalen_confirmed < data.size()) {
+									unsigned fromStreamSize = 0;
+									while(checkOkStreams - 1 > fromStream &&
+									      (data.size() - datalen_confirmed - fromStreamSize) >= streams[fromStream]->complete_data.getDatalen()) {
+										fromStreamSize += streams[fromStream]->complete_data.getDatalen();
+										++fromStream;
 									}
+									if(datalen_confirmed < data.size() - fromStreamSize &&
+									   (data.size() - datalen_confirmed - fromStreamSize) < streams[fromStream]->complete_data.getDatalen()) {
+										if((checkOkStreams - fromStream) == 1) {
+											streams[fromStream]->confirmCompleteData(datalen_confirmed);
+											streams[fromStream]->complete_data.setDatalen(datalen_confirmed);
+										} else {
+											streams[fromStream]->confirmCompleteData(streams[fromStream]->complete_data.getDatalen() - (data.size() - datalen_confirmed));
+										}
+									}
+								}
+								for(int i = checkOkStreams - 1; i >= (int)fromStream; i--) {
+									this->ok_streams.push_back(streams[i]);
 								}
 								okStreams = checkOkStreams;
 								break;
@@ -1642,11 +1655,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 						break;
 					}
 				}
-				if(okStreams) {
-					for(unsigned i = 0; i < okStreams; i++) {
-						this->ok_streams.push_back(streams[okStreams - 1 - i]);
-					}
-				} else if(!reassembly->enableSmartCompleteData) {
+				if(!okStreams && !reassembly->enableSmartCompleteData) {
 					for(unsigned i = 0; i < streams.size();i++) {
 						streams[i]->clearCompleteData();
 						streams[i]->is_ok = false;
@@ -1692,6 +1701,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 									stream->confirmCompleteData(datalen_confirmed);
 									stream->complete_data.setDatalen(datalen_confirmed);
 								}
+								this->ok_streams.push_back(stream);
 								okStreams = 1;
 							} else {
 								if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
@@ -1709,7 +1719,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t ack, bool enableDebug) {
 					}
 				}
 			}
-			return(okStreams > 0);
+			return(okStreams);
 		}
 	}
 	return(-1);
