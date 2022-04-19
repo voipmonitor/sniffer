@@ -4671,8 +4671,22 @@ public:
 			confirm = false;
 		}
 		bool request;
+		string info;
 		string str;
+		string cseq;
+		string src;
+		string src_port;
+		string dst;
+		string dst_port;
 		bool confirm;
+		friend bool operator == (const sSip &s1, const sSip &s2) {
+			return(s1.str == s2.str &&
+			       s1.cseq == s2.cseq &&
+			       s1.src == s2.src &&
+			       s1.src_port == s2.src_port &&
+			       s1.dst == s2.dst &&
+			       s1.dst_port == s2.dst_port);
+		}
 	};
 	struct sCall {
 		bool isConfirmed() {
@@ -4690,7 +4704,7 @@ public:
 	cWsCalls();
 	~cWsCalls();
 	void load(const char *filename);
-	void setConfirm(const char *callid, bool request, string str);
+	void setConfirm(const char *callid, bool request, const char *str, const char *cseq);
 	string printUncofirmed();
 public:
 	map<string, sCall> calls;

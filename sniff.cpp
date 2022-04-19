@@ -6325,6 +6325,10 @@ inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bo
 	return(sip_method);
 }
 
+int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response) {
+	return(process_packet__parse_sip_method(data, datalen, sip_response));
+}
+
 inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response) {
 	return(process_packet__parse_sip_method(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, sip_response));
 }
@@ -8384,7 +8388,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 	b_data->buffer->add(data, length);
 	if(!createStream &&
 	   ((b_data->type == _websocket && check_websocket(b_data->buffer->data(), b_data->buffer->size())) ||
-	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), false)))) {
+	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), false, false)))) {
 		dataRslt->push_back(complete(&id, b_data));
 		delete b_data->buffer;
 		delete b_data->ethHeader;

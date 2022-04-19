@@ -300,7 +300,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
 				dataType = ReassemblyBuffer::_websocket_incomplete;
 			} else if(check_sip20((char*)data, dataLength, NULL, false)) {
-				if(TcpReassemblySip::_checkSip(data, dataLength, false)) {
+				if(TcpReassemblySip::_checkSip(data, dataLength, false, false)) {
 					dataType = ReassemblyBuffer::_sip;
 				} else {
 					dataType = ReassemblyBuffer::_sip_incomplete;

@@ -8881,25 +8881,60 @@ void cWsCalls::load(const char *filename) {
 	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
 		map<string, string> row;
 		csv->getRow(i, &row);
+		if(row["Call-ID"].empty() || row["Call-ID"].find(',') != string::npos) {
+			continue;
+		}
+		if(row["Info"].substr(0, 7) != "Request" && row["Info"].substr(0, 6) != "Status") {
+			continue;
+		}
+		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
 		//cout << row["Call-ID"] << endl;
 		//cout << row["Request-Line"] << endl;
 		//cout << row["Status-Line"] << endl;
-		calls[row["Call-ID"]].callid = row["Call-ID"];
+		sCall *call;
+		map<string, sCall>::iterator iter = calls.find(row["Call-ID"]);
+		if(iter != calls.end()) {
+			call = &iter->second;
+		} else {
+			call = &calls[row["Call-ID"]];
+			call->callid = row["Call-ID"];
+		}
 		sSip sip;
+		sip.info = row["Info"];
 		sip.request = !row["Request-Line"].empty();
 		sip.str = !row["Request-Line"].empty() ? row["Request-Line"] : row["Status-Line"];
-		calls[row["Call-ID"]].sip.push_back(sip);
+		if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
+			continue;
+		}
+		sip.cseq = row["CSeq"];
+		sip.src = row["Source"];
+		sip.src_port = row["Source Port"];
+		sip.dst = row["Destination"];
+		sip.dst_port = row["Destination Port"];
+		bool dupl = false;
+		if(call->sip.size()) {
+			for(unsigned i = 0; i < call->sip.size(); i++) {
+				if(call->sip[i] == sip) {
+					dupl = true;
+					break;
+				}
+			}
+		}
+		if(!dupl) {
+			call->sip.push_back(sip);
+		}
 	}
 	//cout << "load finished" << endl;
 }
 
-void cWsCalls::setConfirm(const char *callid, bool request, string str) {
+void cWsCalls::setConfirm(const char *callid, bool request, const char *str, const char *cseq) {
 	map<string, sCall>::iterator iter = calls.find(callid);
 	if(iter != calls.end()) {
 		for(vector<sSip>::iterator iter2 = iter->second.sip.begin(); iter2 != iter->second.sip.end(); iter2++) {
 			if(!iter2->confirm &&
 			   iter2->request == request &&
-			   iter2->str == str) {
+			   iter2->str == str &&
+			   iter2->cseq == cseq) {
 				iter2->confirm = true;
 				break;
 			}
@@ -8912,14 +8947,22 @@ string cWsCalls::printUncofirmed() {
 	unsigned counter = 0;
 	for(map<string, sCall>::iterator iter = calls.begin(); iter != calls.end(); iter++) {
 		if(!iter->second.isConfirmed()) {
-			out << (++counter) << "  - " << iter->first << endl;
+			out << (++counter) << "  - " << iter->first
+			    << endl;
 			for(unsigned i = 0; i < iter->second.sip.size(); i++) {
 				out << "   "
 				    << (iter->second.sip[i].confirm ? " " : "*")
-				    << " "
-				    << (i + 1) 
-				    << " "
-				    << iter->second.sip[i].str
+				    << " " << (i + 1) 
+				    << " " << iter->second.sip[i].str
+				    << " " << iter->second.sip[i].cseq
+				    << " (" << iter->second.sip[i].info << ")"
+				    << endl;
+				out << "     "
+				    << "     ( filter: "
+				    << "ip" << (iter->second.sip[i].src.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].src << " && "
+				    << "ip" << (iter->second.sip[i].dst.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].dst << " && "
+				    << "tcp.port == " << iter->second.sip[i].src_port << " && "
+				    << "tcp.port == " << iter->second.sip[i].dst_port << " )"
 				    << endl;
 			}
 		}

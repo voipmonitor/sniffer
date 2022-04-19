@@ -17,6 +17,18 @@
 extern int opt_tcpreassembly_thread;
 
 
+#define TCP_SEQ_IS_ROT(seq1, seq2) ((seq1) > ((u_int32_t)0xFFFF0000u) && (seq2) < (u_int32_t)0xFFFF)
+
+#define TCP_SEQ_CMP(seq1, seq2) \
+	((seq1) > (seq2) ? (TCP_SEQ_IS_ROT(seq1, seq2) ? -1 : 1) : \
+	 (seq2) > (seq1) ? (TCP_SEQ_IS_ROT(seq2, seq1) ? 1 : -1): \
+			   0)
+	
+#define TCP_SEQ_SUB(seq1, seq2) \
+	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFF0000u) - (seq1) + (seq2)) : \
+				      ((seq1) - (seq2)))
+
+
 class TcpReassemblyDataItem {
 public: 
 	enum eDirection {
@@ -371,6 +383,19 @@ public:
 		}
 		return(true);
 	}
+	TcpReassemblyStream_packet *getPacket(u_int32_t next_seq) {
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter = queuePackets.find(next_seq);
+		if(iter != queuePackets.end()) {
+			return(&iter->second);
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet *getFirstPacket() {
+		if(queuePackets.size()) {
+			return(&(queuePackets.begin()->second));
+		}
+		return(NULL);
+	}
 private:
 	void cleanState() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
@@ -380,10 +405,13 @@ private:
 	}
 	u_int32_t getMaxNextSeq() {
 		u_int32_t max_next_seq = 0;
+		bool max_next_seq_set = false;
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
 		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
-			if(iter->second.next_seq > max_next_seq) {
+			if(!max_next_seq_set ||
+			   TCP_SEQ_CMP(iter->second.next_seq, max_next_seq) > 0) {
 				max_next_seq = iter->second.next_seq;
+				max_next_seq_set = true;
 			}
 		}
 		return(max_next_seq);
@@ -469,6 +497,27 @@ public:
 	void confirmCompleteData(u_int32_t datalen_confirmed);
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
+	TcpReassemblyStream_packet *getPacket(u_int32_t seq, u_int32_t next_seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(iter->second.getPacket(next_seq));
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet *getPacket(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(iter->second.getFirstPacket());
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet_var *getPacketVars(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(&iter->second);
+		}
+		return(NULL);
+	}
 	inline eDirection getDirection() {
 		return(direction);
 	}
@@ -638,9 +687,9 @@ public:
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index);
-	int okQueue(int final = 0, u_int32_t ack = 0, bool enableDebug = false);
+	int okQueue(int final = 0, u_int32_t seq = 0, u_int32_t next_seq = 0, u_int32_t ack = 0, bool psh = false, bool enableDebug = false);
 	int okQueue_normal(int final = 0, bool enableDebug = false);
-	int okQueue_simple_by_ack(u_int32_t ack, bool enableDebug = false);
+	int okQueue_simple_by_ack(u_int32_t seq, u_int32_t ack, u_int32_t next_seq, bool psh, bool enableDebug = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
 	void complete(bool final = false, bool eraseCompletedStreams = false);
 	void complete_normal(bool final = false);
@@ -697,6 +746,33 @@ public:
 			if(iter->second &&
 			   iter->second->max_next_seq >= seq_from && iter->second->max_next_seq <= seq_to) {
 				return(iter->second);
+			}
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream *findStreamByNextSeq(u_int32_t seq_from, u_int32_t seq_to, TcpReassemblyStream_packet **packet) {
+		*packet = NULL;
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end() && !*packet; iter++) {
+			if(iter->second &&
+			   (seq_to ?
+			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_to :
+			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_from)) {
+				TcpReassemblyStream *stream = iter->second;
+				map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter2;
+				for(iter2 = stream->queuePacketVars.begin(); iter2 != stream->queuePacketVars.end() && !*packet; iter2++) {
+					map<uint32_t, TcpReassemblyStream_packet>::iterator iter3;
+					for(iter3 = iter2->second.queuePackets.begin(); iter3 != iter2->second.queuePackets.end() && !*packet; iter3++) {
+						if(seq_to ?
+						    iter3->first >= seq_from && iter3->first <= seq_to :
+						    iter3->first == seq_from) {
+							*packet = &iter3->second;
+						}
+					}
+				}
+				if(*packet) {
+					return(stream);
+				}
 			}
 		}
 		return(NULL);
@@ -786,6 +862,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queueStreams;
+	uint32_t last_ok_seq_direction[2];
 	volatile int _sync_queue;
 	volatile int _erase;
 	//u_int64_t created_at;
@@ -896,6 +973,15 @@ public:
 	void setIgnorePshInCheckOkData(bool ignorePshInCheckOkData = true) {
 		this->ignorePshInCheckOkData = ignorePshInCheckOkData;
 	}
+	void setSmartMaxSeqByPsh(bool smartMaxSeqByPsh = true) {
+		this->smartMaxSeqByPsh = smartMaxSeqByPsh;
+	}
+	void setSkipZeroData(bool skipZeroData = true) {
+		this->skipZeroData = skipZeroData;
+	}
+	void setIgnoreZeroData(bool ignoreZeroData = true) {
+		this->ignoreZeroData = ignoreZeroData;
+	}
 	void setEnableCleanupThread(bool enableCleanupThread = true) {
 		this->enableCleanupThread = enableCleanupThread;
 		this->createCleanupThread();
@@ -998,7 +1084,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
+	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -1062,6 +1148,9 @@ private:
 	bool needValidateDataViaCheckData;
 	bool simpleByAck;
 	bool ignorePshInCheckOkData;
+	bool smartMaxSeqByPsh;
+	bool skipZeroData;
+	bool ignoreZeroData;
 	bool enableCleanupThread;
 	bool enableAutoCleanup;
 	unsigned int cleanupPeriod;

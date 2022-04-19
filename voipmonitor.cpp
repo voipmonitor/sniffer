@@ -4536,6 +4536,8 @@ int main_init_read() {
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
 		tcpReassemblySipExt->setSimpleByAck();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
+		tcpReassemblySipExt->setSmartMaxSeqByPsh();
+		tcpReassemblySipExt->setSkipZeroData();
 		sipTcpData = new FILE_LINE(42032) SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
 		tcpReassemblySipExt->setEnableWildLink();
@@ -4544,12 +4546,16 @@ int main_init_read() {
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
 		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
-			tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 10);
+			if(!is_read_from_file()) {
+				tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 25);
+			}
 			tcpReassemblySipExt->setEnableLinkLock();
 			tcpReassemblySipExt->setEnableAutoCleanup(false);
 			tcpReassemblySipExt->setCleanupPeriod(10);
 		} else {
-			tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
+			if(!is_read_from_file()) {
+				tcpReassemblySipExt->setEnableExtCleanupStreams(50, 25);
+			}
 			tcpReassemblySipExt->setEnablePushLock();
 		}
 		if(opt_sip_tcp_reassembly_ext_complete_mod) {
@@ -8881,8 +8887,10 @@ void get_command_line_arguments() {
 				}
 				break;
 			case 402:
-				ws_calls = new FILE_LINE(0) cWsCalls();
-				ws_calls->load(optarg);
+				if(!ws_calls) {
+					ws_calls = new FILE_LINE(0) cWsCalls();
+					ws_calls->load(optarg);
+				}
 				break;
 		}
 		if(optarg) {

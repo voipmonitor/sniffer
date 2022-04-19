@@ -128,7 +128,10 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				unsigned long callid_length;
 				char *callid = gettag_ext(_data, _datalen, NULL,
 							  "\nCall-ID:", &callid_length, NULL);
-				if(callid) {
+				unsigned long cseq_length;
+				char *cseq = gettag_ext(_data, _datalen, NULL,
+							"\nCSeq:", &cseq_length, NULL);
+				if(callid && cseq) {
 					const char *first_cr = strnchr((char*)_data, '\r', _datalen);
 					if(first_cr) {
 						string req_stat = string((char*)_data, (u_char*)first_cr - _data);
@@ -139,7 +142,8 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 						if(ws_calls) {
 							ws_calls->setConfirm(string(callid, callid_length).c_str(),
 									     req_stat.substr(0, 3) != "SIP",
-									     req_stat.c_str());
+									     req_stat.c_str(),
+									     string(cseq, cseq_length).c_str());
 						}
 					}
 				}
@@ -257,9 +261,9 @@ void SipTcpData::printContentSummary() {
 }
 
 
-int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
+int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
 	int _datalen_used;
-	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, offsets, &_datalen_used);
+	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, check_ext, offsets, &_datalen_used);
 	if(datalen_used) {
 		*datalen_used = _datalen_used;
 	}
