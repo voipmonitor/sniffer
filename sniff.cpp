@@ -2126,6 +2126,7 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			 int sip_method, char *sessid, 
 			 s_sdp_media_data *sdp_media_data,
 			 list<s_sdp_media_data*> **next_sdp_media_data) {
+ 
 	unsigned long l;
 	char *s;
 
@@ -2359,20 +2360,6 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			call->use_rtcp_mux = true;
 		}
 		
-		bool sdp_sendonly = false;
-		bool sdp_sendrecv = false;
-		if(memmem(sdp_media_text, sdp_media_text_len, "a=sendonly", 10)) {
-			call->use_sdp_sendonly = true;
-			if (sip_method == INVITE)
-				sdp_sendonly = true;
-		}
-		if (sip_method == INVITE) {
-			if(memmem(sdp_media_text, sdp_media_text_len, "a=sendrecv", 10))
-				sdp_sendrecv = true;
-
-			call->HandleHold(sdp_sendonly, sdp_sendrecv);
-		}
-		
 		if(!sdp_media_data_item->ip.isSet() && memmem(sdp_media_text, sdp_media_text_len, "a=inactive", 10)) {
 			sdp_media_data_item->inactive_ip0 = true;
 		}
@@ -2389,6 +2376,21 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		
 	}
 	
+	bool sdp_sendonly = false;
+	bool sdp_sendrecv = false;
+	if(memmem(sdp_text, sdp_text_len, "a=sendonly", 10)) {
+		call->use_sdp_sendonly = true;
+		if(sip_method == INVITE) {
+			sdp_sendonly = true;
+		}
+	}
+	if(sip_method == INVITE) {
+		if(memmem(sdp_text, sdp_text_len, "a=sendrecv", 10)) {
+			sdp_sendrecv = true;
+		}
+		call->HandleHold(sdp_sendonly, sdp_sendrecv);
+	}
+
 	return sdp_media_counter;
 }
 
