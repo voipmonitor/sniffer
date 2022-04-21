@@ -1350,8 +1350,11 @@ void *manager_read_thread(void * arg) {
 
 void perror_syslog(const char *msg) {
 	char buf[1024];
-	strerror_r(errno, buf, 1024);
-	syslog(LOG_ERR, "%s:%s\n", msg, buf);
+	const char *errstr = strerror_r(errno, buf, sizeof(buf));
+	if(!errstr || !errstr[0]) {
+		errstr = "unknown error";
+	}
+	syslog(LOG_ERR, "%s:%s\n", msg, errstr);
 }
 
 

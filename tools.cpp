@@ -470,10 +470,13 @@ int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "Cannot open file for reading [%s] error[%s]\n", src, buf);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for reading [%s] error[%s]\n", src, errstr);
 		if(syserror) {
-			*syserror = buf;
+			*syserror = errstr;
 		}
 		return(_copyfile_src_open_failed);
 	}
@@ -507,10 +510,13 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	}
 	if(write_fd == -1) {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, errstr, src);
 		if(syserror) {
-			*syserror = buf;
+			*syserror = errstr;
 		}
 		close(read_fd);
 		return(_copyfile_dst_open_failed);
@@ -535,10 +541,13 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		bytestransfered = stat_buf.st_size;
 	} else if(sendfile_result < 0) {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dts[%s] error[%s]", src, dst, buf);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dst[%s] error[%s]", src, dst, errstr);
 		if(syserror) {
-			*syserror = buf;
+			*syserror = errstr;
 		}
 		close (read_fd);
 		close (write_fd);
@@ -561,10 +570,13 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 			res = write(write_fd, &buf[0], result);
 			if(res == -1) {
 				char buf[4092];
-				strerror_r(errno, buf, 4092);
-				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
+				const char *errstr = strerror_r(errno, buf, sizeof(buf));
+				if(!errstr || !errstr[0]) {
+					errstr = "unknown error";
+				}
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, errstr);
 				if(syserror) {
-					*syserror = buf;
+					*syserror = errstr;
 				}
 				bytestransfered = -1;
 				close (read_fd);
@@ -4899,19 +4911,19 @@ string _gunzip_s(const char *zipFilename, const char *unzipFilename) {
 			fclose(zip);
 		} else {
 			char buf[4092];
-			strerror_r(errno, buf, 4092);
+			char *errstr = strerror_r(errno, buf, sizeof(buf));
 			fclose(zip);
-			if(buf[0]) {
-				error = buf;
+			if(errstr && errstr[0]) {
+				error = errstr;
 			} else {
 				error = string("open output file ") + unzipFilename + " failed";
 			}
 		}
 	} else {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		if(buf[0]) {
-			error = buf;
+		char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(errstr && errstr[0]) {
+			error = errstr;
 		} else {
 			error = string("open inut file ") + zipFilename + " failed";
 		}

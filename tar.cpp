@@ -937,8 +937,11 @@ void Tar::addtofilesqueue() {
 		//error or file does not exists
 		char buf[4092];
 		buf[0] = '\0';
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, buf);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, errstr);
 		return;
 	}
 
