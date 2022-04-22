@@ -45,6 +45,10 @@
 #include <malloc.h>
 #endif
 
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
+#endif
+
 
 #define TEST_DEBUG_PARAMS 0
 #if TEST_DEBUG_PARAMS == 1
@@ -2760,6 +2764,29 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			   << setprecision(0) << (double)hugepages_base/1024/1024
 			   << "]MB ";
 	}
+	#if HAVE_LIBTCMALLOC
+	outStrStat << "TCM[";
+	const char *tcm_status_types[][2] = {
+		{"generic.heap_size", "h"},
+		{"generic.current_allocated_bytes", "a"},
+		{"tcmalloc.pageheap_free_bytes", "f"},
+		{"tcmalloc.pageheap_unmapped_bytes", "u"},
+		{"tcmalloc.slack_bytes", "s"},
+		{"tcmalloc.current_total_thread_cache_bytes", "tc"}
+	};
+	for(unsigned i = 0, j = 0; i < sizeof(tcm_status_types)/sizeof(tcm_status_types[0]); i++) {
+		size_t tcm_bytes = 0;
+		MallocExtension::instance()->GetNumericProperty(tcm_status_types[i][0], &tcm_bytes);
+		if(round((double)tcm_bytes/1024/1024) > 0) {
+			if(j) {
+				outStrStat << "/";
+			}
+			outStrStat << tcm_status_types[i][1] << ":" << setprecision(0) << (double)tcm_bytes/1024/1024;
+			++j;
+		}
+	}
+	outStrStat << "]MB ";
+	#endif
 	#ifdef HEAP_CHUNK_ENABLE
 	extern cHeap *heap_vm;
 	if(heap_vm) {

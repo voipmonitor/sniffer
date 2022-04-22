@@ -8615,11 +8615,16 @@ void rss_purge(bool force) {
 		} else {
 			extern int opt_memory_purge_if_release_gt;
 			extern u_int64_t all_ringbuffers_size;
-			size_t allocated_bytes = 0;
-			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &allocated_bytes);
+			size_t tcm_heap_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.heap_size", &tcm_heap_bytes);
+			size_t tcm_allocated_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &tcm_allocated_bytes);
 			size_t rss = getRss();
-			int64_t release_size = rss - all_ringbuffers_size - allocated_bytes;
-			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10)) {
+			int64_t release_size = rss - all_ringbuffers_size - tcm_allocated_bytes;
+			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			   (tcm_heap_bytes > tcm_allocated_bytes && 
+			    (tcm_heap_bytes - tcm_allocated_bytes > MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			     tcm_heap_bytes > tcm_allocated_bytes * 1.5))) {
 				tcmalloc_need_purge = true;
 			}
 		}
