@@ -2771,7 +2771,6 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		{"generic.current_allocated_bytes", "a"},
 		{"tcmalloc.pageheap_free_bytes", "f"},
 		{"tcmalloc.pageheap_unmapped_bytes", "u"},
-		{"tcmalloc.slack_bytes", "s"},
 		{"tcmalloc.current_total_thread_cache_bytes", "tc"}
 	};
 	for(unsigned i = 0, j = 0; i < sizeof(tcm_status_types)/sizeof(tcm_status_types[0]); i++) {
