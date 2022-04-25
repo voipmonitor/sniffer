@@ -4193,9 +4193,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 			#else
-			for(map<string, Call::sConferenceLeg*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
-				if(!iter->second->disconnect_time) {
-					iter->second->disconnect_time = getTimeUS(packetS->header_pt);
+			for(map<Call::sConferenceLegId, Call::sConferenceLegs*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
+				if(iter->second->isConnect()) {
+					iter->second->setDisconnectTime(getTimeUS(packetS->header_pt));
 				}
 			}
 			#endif
@@ -4324,19 +4324,27 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						}
 						calltable->unlock_conference_calls_map();
 						#else
-						Call::sConferenceLeg *leg = NULL;
-						map<string, Call::sConferenceLeg*>::iterator iter = call->conference_legs.find(user_entity);
+						Call::sConferenceLegs *legs = NULL;
+						Call::sConferenceLegId legId;
+						legId.user_entity = user_entity;
+						legId.endpoint_entity = endpoint_entity;
+						map<Call::sConferenceLegId, Call::sConferenceLegs*>::iterator iter = call->conference_legs.find(legId);
 						if(iter != call->conference_legs.end()) {
-							leg = iter->second;
+							legs = iter->second;
 						} else if(status != "disconnected") {
-							leg = new FILE_LINE(0) Call::sConferenceLeg;
-							leg->user_entity = user_entity;
-							leg->endpoint_entity = endpoint_entity;
-							leg->connect_time = packetS->getTimeUS();
-							call->conference_legs[user_entity] = leg;
+							legs = new FILE_LINE(0) Call::sConferenceLegs;
+							call->conference_legs[legId] = legs;
 						}
-						if(leg && status == "disconnected" && !leg->disconnect_time) {
-							leg->disconnect_time = packetS->getTimeUS();
+						if(legs) {
+							if(legs->isConnect()) {
+								if(status == "disconnected") {
+									legs->setDisconnectTime(packetS->getTimeUS());
+								}
+							} else {
+								if(status != "disconnected") {
+									legs->addLeg(user_entity.c_str(), endpoint_entity.c_str(), packetS->getTimeUS());
+								}
+							}
 						}
 						#endif
 						__SYNC_UNLOCK(call->conference_legs_sync);
