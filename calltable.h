@@ -873,6 +873,18 @@ public:
 		eTxtType type;
 		string txt;
 	};
+	struct sConferenceLegId {
+		string user_entity;
+		string endpoint_entity;
+		bool operator == (const sConferenceLegId& other) const { 
+			return(this->user_entity == other.user_entity &&
+			       this->endpoint_entity == other.endpoint_entity); 
+		}
+		bool operator < (const sConferenceLegId& other) const { 
+			return(this->user_entity < other.user_entity ||
+			       (this->user_entity == other.user_entity && this->endpoint_entity < other.endpoint_entity)); 
+		}
+	};
 	struct sConferenceLeg {
 		sConferenceLeg() {
 			connect_time = 0;
@@ -883,7 +895,30 @@ public:
 		u_int64_t connect_time;
 		u_int64_t disconnect_time;
 	};
-	
+	struct sConferenceLegs {
+		vector<sConferenceLeg*> legs;
+		~sConferenceLegs() {
+			for(vector<sConferenceLeg*>::iterator iter = legs.begin(); iter != legs.end(); iter++) {
+				delete (*iter);
+			}
+		}
+		void addLeg(const char *user_entity, const char *endpoint_entity, u_int64_t connect_time) {
+			sConferenceLeg *leg = new FILE_LINE(0) sConferenceLeg;
+			leg->user_entity = user_entity;
+			leg->endpoint_entity = endpoint_entity;
+			leg->connect_time = connect_time;
+			legs.push_back(leg);
+		}
+		void setDisconnectTime(u_int64_t disconnect_time) {
+			if(isConnect()) {
+				legs.back()->disconnect_time = disconnect_time;
+			}
+		}
+		bool isConnect() {
+			return(legs.size() &&
+			       !legs.back()->disconnect_time);
+		}
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -1299,7 +1334,7 @@ public:
 	volatile int conference_active;
 	map<string, Call*> conference_legs;
 	#else
-	map<string, sConferenceLeg*> conference_legs;
+	map<sConferenceLegId, sConferenceLegs*> conference_legs;
 	#endif
 	volatile int conference_legs_sync;
 	
