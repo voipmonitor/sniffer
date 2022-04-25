@@ -2450,6 +2450,7 @@ private:
 		Call* call;
 		int8_t iscaller;
 		int8_t is_rtcp;
+		int8_t ignore_rtcp_check;
 		s_sdp_flags sdp_flags;
 		bool use_hash_queue_counter;
 	};
@@ -2988,8 +2989,8 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool useHashQueueCounter = true);
-	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool use_lock = true);
+	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
+	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
 	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);

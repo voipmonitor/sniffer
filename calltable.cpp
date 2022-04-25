@@ -788,16 +788,16 @@ u_int64_t Call::counter_s = 0;
 void
 Call::hashRemove(bool useHashQueueCounter) {
 	for(int i = 0; i < ipport_n; i++) {
-		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, useHashQueueCounter);
+		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, true, useHashQueueCounter);
 		if(opt_rtcp) {
-			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, useHashQueueCounter);
+			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, true, useHashQueueCounter);
 		}
 		this->evDestroyIpPortRtpStream(i);
 	}
 	
 	if(!opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
 		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
-		if(this->rtp_ip_port_counter > 0) {
+		if(this->rtp_ip_port_counter) {
 			calltable->hashRemove(this, useHashQueueCounter);
 			if(this->rtp_ip_port_counter) {
 				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
@@ -9548,6 +9548,7 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 		hmd.call = call;
 		hmd.iscaller = iscaller;
 		hmd.is_rtcp = is_rtcp;
+		hmd.ignore_rtcp_check = false;
 		hmd.sdp_flags = sdp_flags;
 		hmd.use_hash_queue_counter = true;
 		lock_hash_modify_queue();
@@ -9563,6 +9564,8 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 	
 }
  
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
+
 void
 Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
  
@@ -10107,9 +10110,155 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 	
 }
 
+#else
+
+inline node_call_rtp *insert_node_call(node_call_rtp *&begin, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
+	__SYNC_INC(call->rtp_ip_port_counter);
+	node_call_rtp *node_new = new FILE_LINE(0) node_call_rtp;
+	node_new->next = begin;
+	node_new->call = call;
+	node_new->iscaller = iscaller;
+	node_new->is_rtcp = is_rtcp;
+	node_new->sdp_flags = *sdp_flags;
+	begin = node_new;
+	return(node_new);
+}
+
+inline void replace_node_call(node_call_rtp *node, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
+	__SYNC_INC(call->rtp_ip_port_counter);
+	__SYNC_DEC(node->call->rtp_ip_port_counter);
+	node->call = call;
+	node->iscaller = iscaller;
+	node->is_rtcp = is_rtcp;
+	node->sdp_flags = *sdp_flags;
+}
+
+inline node_call_rtp *delete_node_call(node_call_rtp *&begin, node_call_rtp *node, node_call_rtp *prev) {
+	node_call_rtp *next = node->next;
+	if(prev) {
+		prev->next = next;
+	} else {
+		begin = next;
+	}
+	__SYNC_DEC(node->call->rtp_ip_port_counter);
+	delete node;
+	return(next);
+}
+
+inline node_call_rtp_ip_port *delete_node(node_call_rtp_ip_port *&begin, node_call_rtp_ip_port *node, node_call_rtp_ip_port *prev) {
+	node_call_rtp_ip_port *next = node->next;
+	if(prev) {
+		prev->next = node->next;
+	} else {
+		begin = node->next;
+	}
+	delete node;
+	return(next);
+}
+
+void
+Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
+ 
+	if(call->end_call_rtp) {
+		return;
+	}
+	
+	u_int32_t h;
+	node_call_rtp_ip_port *node = NULL;
+	node_call_rtp *node_call = NULL;
+
+	h = tuplehash(addr.getHashNumber(), port);
+	if (useLock) lock_calls_hash();
+	// check if there is not already call in hash 
+	for (node = calls_hash[h]; node != NULL; node = node->next) {
+		if ((node->port == port) && (node->addr == addr)) {
+			// there is already some call which is receiving packets to the same IP:port
+			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
+			int found = 0;
+			int count = 0;
+			node_call_rtp *prev_node_call = NULL;
+			node_call = node->calls;
+			while(node_call != NULL) {
+				if(node_call->call->destroy_call_at != 0 &&
+				   (node_call->call->seenbye ||
+				    node_call->call->lastSIPresponseNum / 10 == 48 ||
+				    (time_s != 0 && time_s > node_call->call->destroy_call_at))) {
+					if(sverb.hash_rtp) {
+						cout << "remove call with destroy_call_at: " 
+						     << node_call->call->call_id << " " << addr.getString() << ":" << port.getString() << " " 
+						     << endl;
+					}
+					node_call = delete_node_call(node->calls, node_call, prev_node_call);
+					continue;
+				}
+				prev_node_call = node_call;
+				count++;
+				if(node_call->call == call) {
+					found = 1;
+					node_call->sdp_flags = sdp_flags;
+				}
+				node_call = node_call->next;
+			}
+			if(!found) {
+				if(opt_sdp_multiplication == 0 && count == 1 && node->calls && node->calls->call) {
+					replace_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+				} else {
+					if(opt_sdp_multiplication > 0 && count >= opt_sdp_multiplication) {
+						// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
+						if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
+							static u_int64_t lastTimeSyslog = 0;
+							u_int64_t actTime = getTimeMS();
+							if(actTime - 10 * 1000 > lastTimeSyslog) {
+								string call_ids;
+								node_call = node->calls;
+								while(node_call != NULL) {
+									if(!call_ids.empty()) {
+										call_ids += " ";
+									}
+									call_ids += string("[") + node_call->call->fbasename + "]";
+									node_call = node_call->next;
+								}
+								syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
+								       call->fbasename, addr.getString().c_str(), (int)port,
+								       call_ids.c_str(),
+								       opt_sdp_multiplication);
+								call->syslog_sdp_multiplication = true;
+								lastTimeSyslog = actTime;
+							}
+						}
+						if (useLock) unlock_calls_hash();
+						return;
+					}
+				 
+					// the same ip/port is shared with some other call which is not yet in node - add it
+					insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+				}
+			}
+			if (useLock) unlock_calls_hash();
+			return;
+		}
+	}
+
+	// addr / port combination not found - add it to hash at first position
+
+	node = new FILE_LINE(1009) node_call_rtp_ip_port;
+	node->addr = addr;
+	node->port = port;
+	node->next = calls_hash[h];
+	node->calls = NULL;
+	calls_hash[h] = node;
+	
+	insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+	
+	if (useLock) unlock_calls_hash();
+	
+}
+
+#endif
+
 /* remove node from hash */
 void
-Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHashQueueCounter) {
+Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
  
 	if(sverb.hash_rtp) {
 		cout << "hashRemove: " 
@@ -10126,6 +10275,7 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHas
 		hmd.port = port;
 		hmd.call = call;
 		hmd.is_rtcp = rtcp;
+		hmd.ignore_rtcp_check = ignore_rtcp_check;
 		hmd.use_hash_queue_counter = useHashQueueCounter;
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
@@ -10135,10 +10285,12 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHas
 		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 	} else {
-		_hashRemove(call, addr, port, rtcp);
+		_hashRemove(call, addr, port, rtcp, ignore_rtcp_check);
 	}
 	
 }
+
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
 
 int
 Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_lock) {
@@ -10367,6 +10519,41 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_l
 	
 }
 
+#else
+
+int
+Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
+ 
+	int removeCounter = 0;
+	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
+	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
+	int h = tuplehash(addr.getHashNumber(), port);
+	if (use_lock) lock_calls_hash();
+	for (node = calls_hash[h]; node != NULL; node = node->next) {
+		if (node->port == port && node->addr == addr) {
+			for (node_call = node->calls; node_call != NULL; node_call = node_call->next) {
+				// walk through all calls under the node and check if the call matches
+				if(node_call->call == call && (ignore_rtcp_check || !rtcp || (rtcp && (node_call->is_rtcp || !node_call->sdp_flags.rtcp_mux)))) {
+					delete_node_call(node->calls, node_call, prev_node_call);
+					++removeCounter;
+					break;
+				}
+				prev_node_call = node_call;
+			}
+			if(node->calls == NULL) {
+				delete_node(calls_hash[h], node, prev_node);
+			}
+			break;
+		}
+		prev_node = node;
+	}
+	if (use_lock) unlock_calls_hash();
+	return(removeCounter);
+
+}
+
+#endif
+
 int
 Calltable::hashRemove(Call *call, bool useHashQueueCounter) {
 
@@ -10393,6 +10580,8 @@ int
 Calltable::hashRemoveForce(Call *call) {
 	return(_hashRemove(call));
 }
+
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
   
 int
 Calltable::_hashRemove(Call *call, bool use_lock) {
@@ -10484,6 +10673,43 @@ Calltable::_hashRemove(Call *call, bool use_lock) {
 	
 }
 
+#else
+
+int
+Calltable::_hashRemove(Call *call, bool use_lock) {
+ 
+	int removeCounter = 0;
+	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
+	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
+	if (use_lock) lock_calls_hash();
+	for(int h = 0; h < MAXNODE; h++) {
+		prev_node = NULL;
+		for(node = calls_hash[h]; node != NULL;) {
+			prev_node_call = NULL;
+			for(node_call = node->calls; node_call != NULL;) {
+				if(node_call->call == call) {
+					node_call = delete_node_call(node->calls, node_call, prev_node_call);
+					++removeCounter;
+				} else {
+					prev_node_call = node_call;
+					node_call = node_call->next;
+				}
+			}
+			if(node->calls == NULL) {
+				node = delete_node(calls_hash[h], node, prev_node);
+			} else {
+				prev_node = node;
+				node = node->next;
+			}
+		}
+	}
+	if (use_lock) unlock_calls_hash();
+	return(removeCounter);
+	
+}
+
+#endif
+
 void 
 Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	_applyHashModifyQueue(setBegin, use_lock_calls_hash);
@@ -10500,7 +10726,7 @@ Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 					_hashAdd(iter->addr, iter->port, iter->time_s, iter->call, iter->iscaller, iter->is_rtcp, iter->sdp_flags, false);
 					break;
 				case hmo_remove:
-					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, false);
+					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, iter->ignore_rtcp_check, false);
 					break;
 				case hmo_remove_call:
 					_hashRemove(iter->call, false);
