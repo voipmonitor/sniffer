@@ -6734,6 +6734,8 @@ string cDbStrings::implodeInsertValues(const char *table, cDbStrings *header, Sq
 			case SqlDb_row::_ift_sql:
 				if(strings[i].ai_id) {
 					rslt += intToString(strings[i].ai_id);
+				} else {
+					rslt += strings[i].str;
 				}
 				break;
 			default:
