@@ -811,7 +811,7 @@ Tar::flush() {
 		if(this->flushLzma()) {
 			lzma_end(this->lzmaStream);
 			delete this->lzmaStream;
-			delete this->zipBuffer;
+			delete [] this->zipBuffer;
 			this->lzmaStream = NULL;
 			this->zipBuffer = NULL;
 			this->initLzma();
@@ -823,7 +823,7 @@ Tar::flush() {
 		if(this->flushZip()) {
 			deflateEnd(this->zipStream);
 			delete this->zipStream;
-			delete this->zipBuffer;
+			delete [] this->zipBuffer;
 			this->zipStream = NULL;
 			this->zipBuffer = NULL;
 			this->initZip();
