@@ -9750,28 +9750,29 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		if(opt_detect_alone_bye &&
-		   ((packetS->_findCall && packetS->call && packetS->call->typeIs(BYE)) ||
-		    (packetS->_createCall && packetS->call_created && packetS->call_created->typeIs(BYE)))) {
-			process_packet_sip_alone_bye(packetS);
-		} else {
-			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process &&
-			   preProcessPacketCallX[0]->isActiveOutThread()) {
-				Call *call = packetS->call ? packetS->call : packetS->call_created;
-				preProcessPacketCallX[call ? call->counter % preProcessPacketCallX_count : 0]->push_packet(packetS);
-				return;
+		Call *call = packetS->call ? packetS->call : packetS->call_created;
+		bool bad_flags = call && (call->alloc_flag != 1 || call->attemptsClose != 0);
+		if(!bad_flags) {
+			if(opt_detect_alone_bye && call && call->typeIs(BYE)) {
+				process_packet_sip_alone_bye(packetS);
 			} else {
-				process_packet_sip_call(packetS);
+				if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_process &&
+				   preProcessPacketCallX[0]->isActiveOutThread()) {
+					preProcessPacketCallX[call ? call->counter % preProcessPacketCallX_count : 0]->push_packet(packetS);
+					return;
+				} else {
+					process_packet_sip_call(packetS);
+				}
 			}
-		}
-		if(opt_quick_save_cdr != 2) {
-			_process_packet__cleanup_calls(packetS, __FILE__, __LINE__);
-		}
-		if(packetS->_findCall && packetS->call) {
-			__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
-		}
-		if(packetS->_createCall && packetS->call_created) {
-			__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+			if(opt_quick_save_cdr != 2) {
+				_process_packet__cleanup_calls(packetS, __FILE__, __LINE__);
+			}
+			if(packetS->_findCall && packetS->call) {
+				__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+			}
+			if(packetS->_createCall && packetS->call_created) {
+				__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+			}
 		}
 		if(opt_quick_save_cdr == 2) {
 			_process_packet__cleanup_calls(packetS, __FILE__, __LINE__);
