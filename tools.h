@@ -3660,7 +3660,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;
@@ -3672,7 +3672,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;

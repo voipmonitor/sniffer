@@ -1243,7 +1243,7 @@ void cLzo::init() {
 
 void cLzo::term() {
 	if(wrkmem) {
-		delete wrkmem;
+		delete [] wrkmem;
 		wrkmem = NULL;
 	}
 }

@@ -729,7 +729,7 @@ int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
 			if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
 				okSendQuery = false;
 			}
-			delete queryGzip;
+			delete [] queryGzip;
 		}
 	} else {
 		if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
