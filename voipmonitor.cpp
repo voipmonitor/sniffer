@@ -690,6 +690,7 @@ bool opt_detect_alone_bye = false;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_partition_by_hours = 0;
+bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
@@ -1138,7 +1139,7 @@ int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
-int opt_sip_tcp_reassembly_ext_complete_mod = 0;
+int opt_sip_tcp_reassembly_ext_complete_mod = 1;
 int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
@@ -1243,7 +1244,7 @@ int opt_abort_if_rss_gt_gb = 0;
 int opt_abort_if_alloc_gt_gb = 0;
 int opt_next_server_connections = 0;
 
-string opt_coredump_filter;
+string opt_coredump_filter = "0x7F";
 
 bool heap_profiler_is_running = false;
 
@@ -7660,6 +7661,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42404) cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
 					addConfigItem(new FILE_LINE(42405) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_partition_by_hours", &opt_cdr_partition_by_hours));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_force_primary_index_in_all_tables", &opt_cdr_force_primary_index_in_all_tables));
 					addConfigItem(new FILE_LINE(42406) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
 					addConfigItem(new FILE_LINE(42407) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
 					addConfigItem(new FILE_LINE(42408) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
@@ -10506,6 +10508,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_partition_by_hours", NULL))) {
 		opt_cdr_partition_by_hours = yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_force_primary_index_in_all_tables", NULL))) {
+		opt_cdr_force_primary_index_in_all_tables = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_sipport", NULL))) {
 		opt_cdr_sipport = yesno(value);
