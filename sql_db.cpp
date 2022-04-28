@@ -39,6 +39,7 @@ extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
 extern bool opt_cdr_partition_by_hours;
+extern bool opt_cdr_force_primary_index_in_all_tables;
 extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
@@ -5906,9 +5907,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,\
 			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY `cdr_ID` (`cdr_ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `dst` (`dst`)" + 
@@ -5930,6 +5933,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -5947,6 +5951,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`index` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`duration` " + column_type_duration_ms("float") + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5970,12 +5975,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(opt_save_energylevels) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp_energylevels` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`index` tinyint unsigned DEFAULT NULL,\
 			`energylevels` mediumblob,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5999,6 +6006,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6008,6 +6016,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6030,12 +6039,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" +
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6059,6 +6070,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(_save_sip_history) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
+				" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 				`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 				(opt_cdr_partition ?
 					"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6067,6 +6079,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`SIPrequest_id` mediumint unsigned DEFAULT NULL,\
 				`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
 				`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+			" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 			KEY (`cdr_ID`)" + 
 			(opt_cdr_partition ? 
 				",KEY (`calldate`)" :
@@ -6090,12 +6103,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`type` tinyint unsigned DEFAULT NULL,\
 			`pos` bigint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6131,6 +6146,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`sipcalledip_country_code` varchar(5),\
 				`caller_number_country_code` varchar(5),\
 				`called_number_country_code` varchar(5),") +
+		(opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`cdr_ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + 
 		"KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6157,6 +6173,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sdp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6164,6 +6181,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
 			`is_caller` tinyint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6225,6 +6243,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_txt` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6232,6 +6251,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`time` bigint unsigned DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
 			`content` mediumtext DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6254,11 +6274,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_flags` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6519,9 +6541,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_proxy` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + messageIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,\
 			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY `message_ID` (`message_ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `dst` (`dst`)" + 
@@ -6556,6 +6580,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`sipcalledip_country_code` varchar(5),\
 				`caller_number_country_code` varchar(5),\
 				`called_number_country_code` varchar(5),") +
+		(opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`message_ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + 
 		"KEY (`message_ID`)" +
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6582,11 +6607,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_flags` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + messageIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`message_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
