@@ -1139,7 +1139,7 @@ int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
 int opt_sip_tcp_reassembly_ext_quick_mod = 0;
-int opt_sip_tcp_reassembly_ext_complete_mod = 0;
+int opt_sip_tcp_reassembly_ext_complete_mod = 1;
 int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
@@ -1244,7 +1244,7 @@ int opt_abort_if_rss_gt_gb = 0;
 int opt_abort_if_alloc_gt_gb = 0;
 int opt_next_server_connections = 0;
 
-string opt_coredump_filter;
+string opt_coredump_filter = "0x7F";
 
 bool heap_profiler_is_running = false;
 
