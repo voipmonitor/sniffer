@@ -2440,6 +2440,18 @@ bool SqlDb_mysql::existsColumnInTypeCache_static(const char *table, const char *
 	return(rslt);
 }
 
+bool SqlDb_mysql::existsIndex(const char *table, const char *indexColumn, int seqInIndex) {
+	this->query(string("show index from ") + escapeTableName(table) + 
+		    " where (Column_name='" + indexColumn + "' or Key_name='" + indexColumn + "')" + 
+		    (seqInIndex ? " and seq_in_index = " + intToString(seqInIndex) : ""));
+	int countIndex = 0;
+	SqlDb_row cdr_index_row;
+	while((cdr_index_row = this->fetchRow())) {
+		++countIndex;
+	}
+	return(countIndex > 0);
+}
+
 int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool useCache) {
 	if(useCache) {
 		bool existsInCache = false;
@@ -3017,6 +3029,11 @@ string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, 
 }
 
 bool SqlDb_odbc::existsColumnInTypeCache(const char */*table*/, const char */*column*/) {
+	// TODO
+	return(false);
+}
+
+bool SqlDb_odbc::existsIndex(const char */*table*/, const char */*indexColumn*/, int /*seqInIndex*/) {
 	// TODO
 	return(false);
 }
@@ -8420,6 +8437,20 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 					"sipcalledip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v6` (`sipcalledip_v6`)",
 					"sipcalledport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 					NULL_CHAR_PTR);
+	}
+	
+	if(!this->existsIndex("sensors", "id_sensor", 1)) {
+		bool dupl = false;
+		if(this->query("select count(*) as cnt from sensors \
+				group by id_sensor order by cnt desc limit 1")) {
+			SqlDb_row row = this->fetchRow();
+			if(row && atoi(row["cnt"].c_str()) > 1) {
+				dupl = true;
+			}
+		}
+		if(!dupl) {
+			this->query("alter table sensors add unique(id_sensor)");
+		}
 	}
 }
 
