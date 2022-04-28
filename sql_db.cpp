@@ -39,6 +39,7 @@ extern int opt_ipaccount;
 extern int opt_id_sensor;
 extern bool opt_cdr_partition;
 extern bool opt_cdr_partition_by_hours;
+extern bool opt_cdr_force_primary_index_in_all_tables;
 extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
@@ -117,6 +118,9 @@ extern int opt_load_query_from_files;
 extern bool opt_disable_cdr_indexes_rtp;
 extern bool opt_mysql_mysql_redirect_cdr_queue;
 
+extern bool opt_conference_processing;
+extern vector<string> opt_mo_mt_identification_prefix;
+extern int opt_separate_storage_ipv6_ipv4_address;
 
 int sql_noerror = 0;
 int sql_disable_next_attempt_if_error = 0;
@@ -726,7 +730,7 @@ int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
 			if(!this->remote_socket->writeBlock(queryGzip, queryGzipLength, cSocket::_te_aes)) {
 				okSendQuery = false;
 			}
-			delete queryGzip;
+			delete [] queryGzip;
 		}
 	} else {
 		if(!this->remote_socket->writeBlock(query, cSocket::_te_aes)) {
@@ -2437,6 +2441,18 @@ bool SqlDb_mysql::existsColumnInTypeCache_static(const char *table, const char *
 	return(rslt);
 }
 
+bool SqlDb_mysql::existsIndex(const char *table, const char *indexColumn, int seqInIndex) {
+	this->query(string("show index from ") + escapeTableName(table) + 
+		    " where (Column_name='" + indexColumn + "' or Key_name='" + indexColumn + "')" + 
+		    (seqInIndex ? " and seq_in_index = " + intToString(seqInIndex) : ""));
+	int countIndex = 0;
+	SqlDb_row cdr_index_row;
+	while((cdr_index_row = this->fetchRow())) {
+		++countIndex;
+	}
+	return(countIndex > 0);
+}
+
 int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool useCache) {
 	if(useCache) {
 		bool existsInCache = false;
@@ -3014,6 +3030,11 @@ string SqlDb_odbc::getTypeColumn(const char */*table*/, const char */*column*/, 
 }
 
 bool SqlDb_odbc::existsColumnInTypeCache(const char */*table*/, const char */*column*/) {
+	// TODO
+	return(false);
+}
+
+bool SqlDb_odbc::existsIndex(const char */*table*/, const char */*indexColumn*/, int /*seqInIndex*/) {
 	// TODO
 	return(false);
 }
@@ -5541,7 +5562,19 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcallerip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
-			      "") + 
+			      "") +
+			    (opt_separate_storage_ipv6_ipv4_address ?
+			      string(
+			      "`sipcallerip_v4` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcalledip_v4` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcallerip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerport_v6` smallint unsigned DEFAULT NULL,\
+			       `sipcalledip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledport_v6` smallint unsigned DEFAULT NULL,\
+			      " :
+			      "") +
 			"`whohanged` enum('caller','callee') DEFAULT NULL,\
 			`bye` tinyint unsigned DEFAULT NULL,\
 			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
@@ -5714,6 +5747,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
 		      " :
 		      "") +
+		    (opt_separate_storage_ipv6_ipv4_address ?
+		      "KEY `sipcallerip_v4` (`sipcallerip_v4`),\
+		       KEY `sipcalledip_v4` (`sipcalledip_v4`),\
+		       KEY `sipcallerip_v6` (`sipcallerip_v6`),\
+		       KEY `sipcalledip_v6` (`sipcalledip_v6`),\
+		      " :
+		      "") +
 		"KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
 		KEY `bye` (`bye`),\
 		KEY `a_saddr` (`a_saddr`),\
@@ -5826,11 +5866,22 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`GeoPosition` varchar(255) DEFAULT NULL, \
 			`hold` varchar(1024) DEFAULT NULL, \
 			`spool_index` tinyint unsigned DEFAULT NULL," +
+			(opt_conference_processing ?
+				"`conference_flag` enum('main','leg') DEFAULT NULL,\
+				 `conference_referred_by` varchar(1024) DEFAULT NULL,\
+				 `conference_referred_by_ok_time` " + column_type_datetime_ms() + " DEFAULT NULL," :
+				"") +
+			(opt_mo_mt_identification_prefix.size() ?
+				"`leg_flag` enum('mo','mt') DEFAULT NULL," :
+				"") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
 		"KEY `fbasename` (`fbasename`),\
 		 KEY `match_header` (`match_header`)" + 
+		(opt_conference_processing ?
+			",KEY `conference_referred_by` (`conference_referred_by`)" :
+			"") +
 		(opt_cdr_partition ?
 			"" :
 			",CONSTRAINT `cdr_next_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
@@ -5856,9 +5907,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_proxy` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,\
 			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY `cdr_ID` (`cdr_ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `dst` (`dst`)" + 
@@ -5880,6 +5933,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -5897,6 +5951,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`index` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`duration` " + column_type_duration_ms("float") + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5920,12 +5975,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(opt_save_energylevels) {
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp_energylevels` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`index` tinyint unsigned DEFAULT NULL,\
 			`energylevels` mediumblob,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5949,6 +6006,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_dtmf` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -5958,6 +6016,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`firsttime` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 			`dtmf` char DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -5980,12 +6039,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sipresp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
 			`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" +
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6009,6 +6070,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	if(_save_sip_history) {
 		this->query(string(
 		"CREATE TABLE IF NOT EXISTS `cdr_siphistory` (\
+				" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 				`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 				(opt_cdr_partition ?
 					"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6017,6 +6079,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`SIPrequest_id` mediumint unsigned DEFAULT NULL,\
 				`SIPresponse_id` mediumint unsigned DEFAULT NULL,\
 				`SIPresponseNum` smallint unsigned DEFAULT NULL,\
+			" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 			KEY (`cdr_ID`)" + 
 			(opt_cdr_partition ? 
 				",KEY (`calldate`)" :
@@ -6040,12 +6103,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_tar_part` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`type` tinyint unsigned DEFAULT NULL,\
 			`pos` bigint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6081,6 +6146,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`sipcalledip_country_code` varchar(5),\
 				`caller_number_country_code` varchar(5),\
 				`called_number_country_code` varchar(5),") +
+		(opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`cdr_ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + 
 		"KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6107,6 +6173,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_sdp` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6114,6 +6181,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
 			`is_caller` tinyint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6136,9 +6204,46 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
+
+	if(opt_conference_processing) {
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_conference` (\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") + 
+		       "`user_entity` varchar(1024) DEFAULT NULL,\
+			`endpoint_entity` varchar(1024) DEFAULT NULL,\
+			`connect_time` " + column_type_datetime_ms() + " DEFAULT NULL,\
+			`disconnect_time` " + column_type_datetime_ms() + " DEFAULT NULL," + 
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY (`cdr_ID`)" + 
+		(opt_cdr_partition ? 
+			",KEY (`calldate`)" :
+			"") +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_conference_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	}
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_txt` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
@@ -6146,6 +6251,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`time` bigint unsigned DEFAULT NULL,\
 			`type` tinyint unsigned DEFAULT NULL,\
 			`content` mediumtext DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6168,11 +6274,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_flags` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6433,9 +6541,11 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_proxy` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + messageIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,\
 			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
 			`dst` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY `message_ID` (`message_ID`),\
 		KEY `calldate` (`calldate`),\
 		KEY `dst` (`dst`)" + 
@@ -6470,6 +6580,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				`sipcalledip_country_code` varchar(5),\
 				`caller_number_country_code` varchar(5),\
 				`called_number_country_code` varchar(5),") +
+		(opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`message_ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + 
 		"KEY (`message_ID`)" +
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -6496,11 +6607,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `message_flags` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + messageIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
 			`message_ID` " + messageIdType + " unsigned NOT NULL,") +
 			(opt_cdr_partition ?
 				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
 				"") + 
 			"`deleted` smallint unsigned DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`message_ID`)" + 
 		(opt_cdr_partition ? 
 			",KEY (`calldate`)" :
@@ -8042,6 +8155,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->checkColumns_cdr_next(!checkColumnsSilentLog);
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
+	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
 	this->checkColumns_cdr_child(!checkColumnsSilentLog);
 	this->checkColumns_cdr_stat(!checkColumnsSilentLog);
 	this->checkColumns_ss7(!checkColumnsSilentLog);
@@ -8337,6 +8451,34 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	
 	existsColumns.cdr_a_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("unsigned") != string::npos;
 	existsColumns.cdr_b_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("unsigned") != string::npos;
+	
+	if(opt_separate_storage_ipv6_ipv4_address) {
+		this->checkNeedAlterAdd("cdr", "separate storage IPv4 and IPv6 sip address", opt_separate_storage_ipv6_ipv4_address,
+					log, &tableSize, &existsColumns.cdr_sipcallerdip_v6,
+					"sipcallerip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v4` (`sipcallerip_v4`)",
+					"sipcallerport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcalledip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v4` (`sipcalledip_v4`)",
+					"sipcalledport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcallerip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v6` (`sipcallerip_v6`)",
+					"sipcallerport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcalledip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v6` (`sipcalledip_v6`)",
+					"sipcalledport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
+	
+	if(!this->existsIndex("sensors", "id_sensor", 1)) {
+		bool dupl = false;
+		if(this->query("select count(*) as cnt from sensors \
+				group by id_sensor order by cnt desc limit 1")) {
+			SqlDb_row row = this->fetchRow();
+			if(row && atoi(row["cnt"].c_str()) > 1) {
+				dupl = true;
+			}
+		}
+		if(!dupl) {
+			this->query("alter table sensors add unique(id_sensor)");
+		}
+	}
 }
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
@@ -8349,6 +8491,49 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 				log, &tableSize, &existsColumns.cdr_next_hold,
 				"hold", "varchar(1024) DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
+	if(opt_conference_processing) {
+		this->checkNeedAlterAdd("cdr_next", "conference flag", true,
+					log, &tableSize, &existsColumns.cdr_next_conference_flag,
+					"conference_flag", "enum('main','leg') DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cdr_next", "conference referred_by", true,
+					log, &tableSize, &existsColumns.cdr_next_conference_referred_by,
+					"conference_referred_by", "varchar(1024) DEFAULT NULL", "`conference_referred_by` (`conference_referred_by`)",
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cdr_next", "conference referred_by ok_time", true,
+					log, &tableSize, &existsColumns.cdr_next_conference_referred_by_ok_time,
+					"conference_referred_by_ok_time", (column_type_datetime_ms() + " DEFAULT NULL").c_str(), NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		for(int pass = 0; pass < 2; pass++) {
+			vector<string> alters_ms;
+			if(!(existsColumns.cdr_next_conference_referred_by_ok_time_ms = this->getTypeColumn("cdr_next", "conference_referred_by_ok_time").find("(3)") != string::npos)) {
+				alters_ms.push_back("modify column connect_time " + column_type_datetime_ms() + " not null");
+			}
+			if(pass == 0 && opt_time_precision_in_ms) {
+				if(alters_ms.size()) {
+					if(isSupportForDatetimeMs()) {
+						if(this->logNeedAlter("cdr_next",
+								      "time accuracy in milliseconds",
+								      "ALTER TABLE cdr_next " + implode(alters_ms, ", ") + ";",
+								      log, &tableSize, NULL)) {
+							this->removeTableFromColumnCache("cdr_next");
+						}
+						continue;
+					} else {
+						cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+						opt_time_precision_in_ms = false;
+					}
+				}
+			}
+			break;
+		}
+	}
+	if(opt_mo_mt_identification_prefix.size()) {
+		this->checkNeedAlterAdd("cdr_next", "leg flag", true,
+					log, &tableSize, &existsColumns.cdr_next_leg_flag,
+					"leg_flag", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 }
 
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
@@ -8384,6 +8569,40 @@ void SqlDb_mysql::checkColumns_cdr_dtmf(bool log) {
 				NULL_CHAR_PTR);
 }
 
+void SqlDb_mysql::checkColumns_cdr_conference(bool log) {
+	existsColumns.cdr_conference = this->existsTable("cdr_conference");
+	if(!existsColumns.cdr_conference) {
+		return;
+	}
+	map<string, u_int64_t> tableSize;
+	for(int pass = 0; pass < 2; pass++) {
+		vector<string> alters_ms;
+		if(!(existsColumns.cdr_conference_connect_time_ms = this->getTypeColumn("cdr_conference", "connect_time").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column connect_time " + column_type_datetime_ms() + " not null");
+		}
+		if(!(existsColumns.cdr_conference_disconnect_time_ms = this->getTypeColumn("cdr_conference", "disconnect_time").find("(3)") != string::npos)) {
+			alters_ms.push_back("modify column disconnect_time " + column_type_datetime_ms() + " not null");
+		}
+		if(pass == 0 && opt_time_precision_in_ms) {
+			if(alters_ms.size()) {
+				if(isSupportForDatetimeMs()) {
+					if(this->logNeedAlter("cdr_conference",
+							      "time accuracy in milliseconds",
+							      "ALTER TABLE cdr_conference " + implode(alters_ms, ", ") + ";",
+							      log, &tableSize, NULL)) {
+						this->removeTableFromColumnCache("cdr_conference");
+					}
+					continue;
+				} else {
+					cLogSensor::log(cLogSensor::error, "Your database version does not support time accuracy in milliseconds.");
+					opt_time_precision_in_ms = false;
+				}
+			}
+		}
+		break;
+	}
+}
+
 void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
 	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
@@ -8398,6 +8617,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_tar_part_calldate = this->existsColumn("cdr_tar_part", "calldate");
 	existsColumns.cdr_country_code_calldate = this->existsColumn("cdr_country_code", "calldate");
 	existsColumns.cdr_sdp_calldate = this->existsColumn("cdr_sdp", "calldate");
+	if(this->existsTable("cdr_conference")) {
+		existsColumns.cdr_conference_calldate = this->existsColumn("cdr_conference", "calldate");
+	}
 	existsColumns.cdr_txt_calldate = this->existsColumn("cdr_txt", "calldate");
 	map<string, u_int64_t> tableSize;
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
@@ -8413,6 +8635,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_tar_part_calldate_ms, "cdr_tar_part"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_country_code_calldate_ms, "cdr_country_code"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_sdp_calldate_ms, "cdr_sdp"));
+	if(opt_conference_processing) {
+		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_conference_calldate_ms, "cdr_conference"));
+	}
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_txt_calldate_ms, "cdr_txt"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
 	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
@@ -8825,10 +9050,12 @@ void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
 
 void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 					   unsigned long limit, bool descDir,
-					   bool skipRegister) {
+					   bool skipRegister,
+					   bool skipMissingTables) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(size_t i = 0; i < tablesMain.size() && !is_terminating(); i++) {
-		if(!skipRegister || !strstr(tablesMain[i].c_str(), "register")) {
+		if((!skipMissingTables || sqlDbSrc->existsTable(tablesMain[i].c_str())) &&
+		   (!skipRegister || !strstr(tablesMain[i].c_str(), "register"))) {
 			this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), limit ? limit : 10000, descDir);
 		}
 	}
@@ -9219,6 +9446,9 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				tables.push_back("cdr_tar_part");
 				tables.push_back("cdr_country_code");
 				tables.push_back("cdr_sdp");
+				if(opt_conference_processing) {
+					tables.push_back("cdr_conference");
+				}
 				tables.push_back("cdr_txt");
 				tables.push_back("cdr_flags");
 			}
@@ -9652,6 +9882,9 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_tar_part", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_country_code", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_sdp", opt_cleandatabase_cdr, 0, sqlDb);
+	if(sqlDb->existsTable("cdr_conference")) {
+		_dropMysqlPartitions("cdr_conference", opt_cleandatabase_cdr, 0, sqlDb);
+	}
 	_dropMysqlPartitions("cdr_txt", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_flags", opt_cleandatabase_cdr, 0, sqlDb);

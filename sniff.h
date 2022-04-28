@@ -316,10 +316,10 @@ struct packet_s {
 	inline u_int8_t header_ip_protocol(bool encaps = false) {
 		if(encaps) {
 			return(header_ip_encaps_offset != 0xFFFF && header_ip_encaps_offset < header_ip_offset ?
-				((iphdr2*)(packet + header_ip_encaps_offset))->get_protocol() :
+				((iphdr2*)(packet + header_ip_encaps_offset))->get_protocol(header_pt->caplen - header_ip_encaps_offset) :
 				0xFF);
 		}
-		return(((iphdr2*)(packet + header_ip_offset))->get_protocol());
+		return(((iphdr2*)(packet + header_ip_offset))->get_protocol(header_pt->caplen - header_ip_offset));
 	}
 	inline udphdr2 *header_udp_() {
 		iphdr2 *header_ip = header_ip_();
@@ -482,7 +482,8 @@ struct packet_s {
 		return(IS_STUN(data_(), datalen_()));
 	}
 	inline bool isDtls() {
-		return(IS_DTLS(data_(), datalen_()));
+		return(!pflags.tcp &&
+		       IS_DTLS(data_(), datalen_()));
 	}
 	inline bool isMrcp() {
 		return(IS_MRCP(data_(), datalen_()));
@@ -588,6 +589,7 @@ struct packet_s_process_0 : public packet_s_stack {
 	volatile u_int8_t reuse_counter_sync;
 	u_int8_t type_content;
 	u_int8_t next_action;
+	void *insert_packets;
 	#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX
 	u_int32_t h[2];
 	#endif
@@ -622,11 +624,13 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void init() {
 		packet_s_stack::init();
 		use_reuse_counter = 0;
+		insert_packets = NULL;
 	}
 	inline void init_reuse() {
 		use_reuse_counter = 0;
 		reuse_counter = 0;
 		reuse_counter_sync = 0;
+		insert_packets = NULL;
 	}
 	inline void init2() {
 		type_content = _pptc_na;
@@ -640,6 +644,9 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline void term() {
 		packet_s_stack::term();
+		if(insert_packets) {
+			delete (list<packet_s_process_0*>*)insert_packets;
+		}
 	}
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE(27001) pcap_pkthdr;
@@ -675,6 +682,12 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline bool typeContentIsMgcp() {
 		return(type_content == _pptc_mgcp);
+	}
+	inline void insert_packet(packet_s_process_0 *packet) {
+		if(!insert_packets) {
+			insert_packets = new FILE_LINE(0) list<packet_s_process_0*>;
+		}
+		((list<packet_s_process_0*>*)insert_packets)->push_back(packet);
 	}
 };
 
@@ -856,6 +869,105 @@ struct packet_s_process : public packet_s_process_0 {
 	inline bool is_subscribe() {
 		return(sip_method == SUBSCRIBE || cseq.method == SUBSCRIBE);
 	}
+};
+
+
+class link_packets_queue {
+private:
+	struct s_link_id : public d_item<vmIPport> {
+	};
+	struct s_link {
+		u_int64_t first_time_ms;
+		u_int64_t last_time_ms;
+		list<packet_s*> queue;
+	};
+public:
+	link_packets_queue() {
+		sync = 0;
+		last_cleanup_ms = 0;
+		cleanup_interval_ms = 5000;
+		expiration_link_ms = 10000;
+	}
+	~link_packets_queue() {
+		destroyAll();
+	}
+	void push(packet_s *packetS) {
+		u_int64_t time_ms = getTimeMS_rdtsc();
+		lock();
+		if(time_ms >= last_cleanup_ms + cleanup_interval_ms) {
+			cleanup(time_ms);
+			last_cleanup_ms = time_ms;
+		}
+		s_link_id id;
+		createId(&id, packetS);
+		s_link *link = NULL;
+		map<s_link_id, s_link*>::iterator iter_link = links.find(id);
+		if(iter_link != links.end()) {
+			link = iter_link->second;
+		}
+		if(!link) {
+			link = new FILE_LINE(0) s_link;
+			links[id] = link;
+			link->first_time_ms = time_ms;
+		}
+		link->queue.push_back(packetS);
+		link->last_time_ms = time_ms;
+		unlock();
+		#if DEBUG_DTLS_QUEUE
+		cout << " * queue dtls" << endl;
+		#endif
+	}
+	void moveToPacket(packet_s_process_0 *packetS) {
+		s_link_id id;
+		createId(&id, packetS);
+		s_link *link = NULL;
+		map<s_link_id, s_link*>::iterator iter_link = links.find(id);
+		if(iter_link != links.end()) {
+			link = iter_link->second;
+			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
+				packetS->insert_packet((packet_s_process_0*)(*iter));
+				#if DEBUG_DTLS_QUEUE
+				cout << " * insert dtls" << endl;
+				#endif
+			}
+			delete link;
+			links.erase(iter_link);
+		}
+	}
+	inline bool existsContent() {
+		return(links.size());
+	}
+	inline bool existsLink(packet_s *packetS) {
+		s_link_id id;
+		createId(&id, packetS);
+		return(links.find(id) != links.end());
+	}
+	void cleanup(u_int64_t time_ms);
+	void destroyAll();
+	void lock() {
+		__SYNC_LOCK_USLEEP(sync, 10);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(sync);
+	}
+private:
+	inline void createId(s_link_id *id, packet_s *packetS) {
+		vmIPport src = vmIPport(packetS->saddr_(), packetS->source_());
+		vmIPport dst = vmIPport(packetS->daddr_(), packetS->dest_());
+		if(src > dst) {
+			id->items[0] = src;
+			id->items[1] = dst;
+		} else {
+			id->items[0] = dst;
+			id->items[1] = src;
+		}
+	}
+private:
+	map<s_link_id, s_link*> links;
+	volatile int sync;
+	u_int64_t last_cleanup_ms;
+	unsigned cleanup_interval_ms;
+	unsigned expiration_link_ms;
 };
 
 
@@ -1271,10 +1383,6 @@ struct gre_hdr {
 	__be16	protocol;
 #endif
 };
-
-
-void _process_packet__cleanup_calls();
-void _process_packet__cleanup_registers();
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)

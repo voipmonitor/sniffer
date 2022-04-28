@@ -1121,18 +1121,28 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 
 void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
-	bool existsRowSensor = sqlDb->fetchRow();
-	if(existsRowSensor) {
-		SqlDb_row rowU;
-		rowU.add(socket->getIP(), "host");
-		sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
-	} else {
+	if(sqlDb->existsIndex("sensors", "id_sensor", 1)) {
 		SqlDb_row rowI;
 		rowI.add(sensor_id, "id_sensor");
 		rowI.add("auto insert id " + intToString(sensor_id), "name");
 		rowI.add(socket->getIP(), "host");
-		sqlDb->insert("sensors", rowI);
+		SqlDb_row rowU;
+		rowU.add(socket->getIP(), "host");
+		sqlDb->query(sqlDb->insertOrUpdateQuery("sensors", rowI, rowU));
+	} else {
+		sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
+		bool existsRowSensor = sqlDb->fetchRow();
+		if(existsRowSensor) {
+			SqlDb_row rowU;
+			rowU.add(socket->getIP(), "host");
+			sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
+		} else {
+			SqlDb_row rowI;
+			rowI.add(sensor_id, "id_sensor");
+			rowI.add("auto insert id " + intToString(sensor_id), "name");
+			rowI.add(socket->getIP(), "host");
+			sqlDb->insert("sensors", rowI);
+		}
 	}
 	delete sqlDb;
 }

@@ -1350,8 +1350,11 @@ void *manager_read_thread(void * arg) {
 
 void perror_syslog(const char *msg) {
 	char buf[1024];
-	strerror_r(errno, buf, 1024);
-	syslog(LOG_ERR, "%s:%s\n", msg, buf);
+	const char *errstr = strerror_r(errno, buf, sizeof(buf));
+	if(!errstr || !errstr[0]) {
+		errstr = "unknown error";
+	}
+	syslog(LOG_ERR, "%s:%s\n", msg, errstr);
 }
 
 
@@ -2935,7 +2938,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(filter_port.length()) {
 		vector<string> port = split(filter_port.c_str(), split(",|;| ", "|"), true);
 		for(unsigned i = 0; i < port.size() && i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothport[i].setPort(ntohs(atoi(port[i].c_str())));
+			filter->lv_bothport[i].setFromString(port[i].c_str());
 		}
 	}
 	string filter_number = jsonParameters.getValue("filter_number");
@@ -4052,7 +4055,7 @@ int Mgmt_custipcache_vect_print(Mgmt_params *params) {
 int Mgmt_upgrade_restart(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
-			{"upgrade", "upgrades senso"},
+			{"upgrade", "upgrades sensor"},
 			{"restart", "restarts sensor"},
 			{NULL, NULL}
 		};
@@ -4715,6 +4718,7 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 			{"memcrash_test_3", ""},
 			{"memcrash_test_4", ""},
 			{"memcrash_test_5", ""},
+			{"memcrash_test_6", ""},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -4741,6 +4745,8 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 	} else if(strstr(params->buf, "memcrash_test_5") != NULL) {
 		char *test = NULL;
 		*test = 0;
+	} else if(strstr(params->buf, "memcrash_test_6") != NULL) {
+		new FILE_LINE(0) char[1000000001];
 	}
 	return(0);
 }
@@ -4771,7 +4777,8 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 		"get_radius_ip_password",
 		"odbcpass",
 		"manager_sshpassword",
-		"server_password"
+		"server_password",
+		"cloud_token"
 	};
 	list<string> hidePasswordForOptions;
 	for(unsigned i = 0; i < sizeof(_hidePasswordForOptions) / sizeof(_hidePasswordForOptions[0]); i++) {

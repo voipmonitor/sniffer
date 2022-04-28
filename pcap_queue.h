@@ -438,7 +438,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 				      bool checkProtocol = false, sCheckProtocolData *checkProtocolData = NULL);
 	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
-	inline bool check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData);
+	inline bool check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
@@ -488,6 +488,10 @@ private:
 	u_int64_t packets_counter;
 	ListIP *filter_ip;
 	unsigned read_from_file_index;
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	int64_t lastPcapTime_s;
+	u_int64_t lastTimeErrorLogPcapTime_ms;
+	#endif
 friend class PcapQueue_readFromInterfaceThread;
 };
 

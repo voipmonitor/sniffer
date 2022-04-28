@@ -300,7 +300,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
 				dataType = ReassemblyBuffer::_websocket_incomplete;
 			} else if(check_sip20((char*)data, dataLength, NULL, false)) {
-				if(TcpReassemblySip::_checkSip(data, dataLength, false)) {
+				if(TcpReassemblySip::_checkSip(data, dataLength, false, false)) {
 					dataType = ReassemblyBuffer::_sip;
 				} else {
 					dataType = ReassemblyBuffer::_sip_incomplete;
@@ -360,9 +360,11 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			cWebSocketHeader ws(data, dataLength);
 			bool allocWsData;
 			u_char *ws_data = ws.decodeData(&allocWsData);
-			cout << string((char*)ws_data, ws.getDataLength()) << endl;
-			if(allocWsData) {
-				delete [] ws_data;
+			if(ws_data) {
+				cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				if(allocWsData) {
+					delete [] ws_data;
+				}
 			}
 		} else {
 			cout << string((char*)data, dataLength) << endl;

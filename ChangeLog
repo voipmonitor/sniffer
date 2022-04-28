@@ -1,3 +1,29 @@
+30.0 28.04.2022
+===============
+- TCP reassemble is now more robust with many fixes
+- new configuration option sip_tcp_reassembly_stream_max_attempts (default is 10)
+- change default value of parameter sip_tcp_reassembly_stream_max_attempts to 50
+- use packet time for cleanup calls in 'read from file' mode
+- fraud alerts optimization - each fraud alert has its own queue processing [VG-2458]
+- fix port filter in live sniffer [VS-1309]
+- adding queue for dtls packets - solves problem with decryption for some cases [VS-1242]
+- fix database configuration options - 'Configuration values in mysql have a higher weight than the values in the text configuration file' [VG-2422] 
+- fix ipdefrag for ESP protocol
+- fix potential crash in iphdr2::get_protocol if header contain ESP protocol
+- skip packets with invalid time
+- fix crash in parse_peername
+- fix parse phone number for cases - INVITE sip:1231234@[2231:1a1:3... [VS-1316]
+- fix potential race when splitting packets into reassembly threads
+- fix tar_move for long file (>=2GB) 
+- hide cloud_token when generating debug log [VG-2474]
+- -run-droppartitions-maxdays will not delete cdr_stat and rtp_stat
+- fix database backup if source database does not contain all tables - new option option database_backup_check_src_tables [VS-1315]
+- do not set default port 5060 if not required [VG-2472]
+- fix git self update (close all descriptors before upgrade) 
+- fix SIP hold/unhold detection 
+- rtp hashing optimisation 
+
+
 29.2 02.03.2022
 ===============
 - general performance optimisations for traffic with 3 000 000 RTP packets / second 

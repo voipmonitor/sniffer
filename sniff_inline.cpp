@@ -633,7 +633,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			headers_ip_offset[headers_ip_counter] = ppd->header_ip_offset;
 			++headers_ip_counter;
 			if(ppd->header_ip_encaps_offset == 0xFFFF &&
-			   (!opt_save_ip_from_encaps_ipheader_only_gre || ppd->header_ip->get_protocol() == IPPROTO_GRE)) {
+			   (!opt_save_ip_from_encaps_ipheader_only_gre || 
+			    ppd->header_ip->get_protocol((header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen()) - ppd->header_ip_offset) == IPPROTO_GRE)) {
 				ppd->header_ip_encaps_offset = ppd->header_ip_offset;
 			}
 			int next_header_ip_offset = findNextHeaderIp(ppd->header_ip, ppd->header_ip_offset,
@@ -669,29 +670,27 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					}
 				}
 			}
-			if(ppd->header_ip->get_protocol() == IPPROTO_UDP) {
-				u_int16_t frag_data = ppd->header_ip->get_frag_data();
-				if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
-					is_ip_frag = 1;
-					if((ppf & ppf_defrag) && opt_udpfrag) {
-						if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
-							ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-							ppd->header_ip->clear_frag_data();
-							for(unsigned i = 0; i < headers_ip_counter; i++) {
-								iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
-								header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
-								header_ip_prev->clear_frag_data();
-							}
-							ppd->pid.flags |= FLAG_FRAGMENTED;
-							if(sverb.defrag) {
-								defrag_counter++;
-								cout << "*** DEFRAG 2 " << defrag_counter << endl;
-							}
-							is_ip_frag = 2;
-						} else {
-							//cout << "pcapProcess exit 003" << endl;
-							return(0);
+			u_int16_t frag_data = ppd->header_ip->get_frag_data();
+			if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
+				is_ip_frag = 1;
+				if((ppf & ppf_defrag) && opt_udpfrag) {
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
+						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+						ppd->header_ip->clear_frag_data();
+						for(unsigned i = 0; i < headers_ip_counter; i++) {
+							iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
+							header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
+							header_ip_prev->clear_frag_data();
 						}
+						ppd->pid.flags |= FLAG_FRAGMENTED;
+						if(sverb.defrag) {
+							defrag_counter++;
+							cout << "*** DEFRAG 2 " << defrag_counter << endl;
+						}
+						is_ip_frag = 2;
+					} else {
+						//cout << "pcapProcess exit 003" << endl;
+						return(0);
 					}
 				}
 			}
@@ -727,13 +726,14 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 		if(ppd->header_ip) {
 			ppd->header_udp = &ppd->header_udp_tmp;
-			if (ppd->header_ip->get_protocol() == IPPROTO_UDP) {
+			u_int8_t protocol = ppd->header_ip->get_protocol(caplen - ppd->header_ip_offset);
+			if (protocol == IPPROTO_UDP) {
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->flags.init();
 				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
-			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
+			} else if (protocol == IPPROTO_TCP) {
 				ppd->flags.init();
 				ppd->flags.tcp = 1;
 				// prepare packet pointers 
@@ -768,7 +768,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 				ppd->header_udp->_source = ppd->header_tcp->_source;
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
-			} else if (opt_enable_ss7 && ppd->header_ip->get_protocol() == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && protocol == IPPROTO_SCTP) {
 				ppd->flags.init();
 				ppd->flags.ss7 = 1;
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);

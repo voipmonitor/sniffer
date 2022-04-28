@@ -693,7 +693,8 @@ public:
 		_t_cdr_sipresp,
 		_t_cdr_siphistory,
 		_t_cdr_rtp,
-		_t_cdr_sdp
+		_t_cdr_sdp,
+		_t_cdr_conference
 	};
 	enum eStoreFlags {
 		_sf_db = 1,
@@ -872,6 +873,52 @@ public:
 		eTxtType type;
 		string txt;
 	};
+	struct sConferenceLegId {
+		string user_entity;
+		string endpoint_entity;
+		bool operator == (const sConferenceLegId& other) const { 
+			return(this->user_entity == other.user_entity &&
+			       this->endpoint_entity == other.endpoint_entity); 
+		}
+		bool operator < (const sConferenceLegId& other) const { 
+			return(this->user_entity < other.user_entity ||
+			       (this->user_entity == other.user_entity && this->endpoint_entity < other.endpoint_entity)); 
+		}
+	};
+	struct sConferenceLeg {
+		sConferenceLeg() {
+			connect_time = 0;
+			disconnect_time = 0;
+		}
+		string user_entity;
+		string endpoint_entity;
+		u_int64_t connect_time;
+		u_int64_t disconnect_time;
+	};
+	struct sConferenceLegs {
+		vector<sConferenceLeg*> legs;
+		~sConferenceLegs() {
+			for(vector<sConferenceLeg*>::iterator iter = legs.begin(); iter != legs.end(); iter++) {
+				delete (*iter);
+			}
+		}
+		void addLeg(const char *user_entity, const char *endpoint_entity, u_int64_t connect_time) {
+			sConferenceLeg *leg = new FILE_LINE(0) sConferenceLeg;
+			leg->user_entity = user_entity;
+			leg->endpoint_entity = endpoint_entity;
+			leg->connect_time = connect_time;
+			legs.push_back(leg);
+		}
+		void setDisconnectTime(u_int64_t disconnect_time) {
+			if(isConnect()) {
+				legs.back()->disconnect_time = disconnect_time;
+			}
+		}
+		bool isConnect() {
+			return(legs.size() &&
+			       !legs.back()->disconnect_time);
+		}
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -1029,6 +1076,7 @@ public:
 	u_int64_t seencancelandok_time_usec;
 	bool seenauthfailed;
 	u_int64_t seenauthfailed_time_usec;
+	u_int64_t ignore_rtp_after_response_time_usec;
 	bool unconfirmed_bye;
 	bool seenRES2XX;
 	bool seenRES2XX_no_BYE;
@@ -1272,6 +1320,23 @@ public:
 	bool televent_exists_response;
 	
 	bool exclude_from_active_calls;
+	
+	bool conference_is_main_leg;
+	bool conference_is_leg;
+	string conference_referred_by;
+	sCseq conference_referred_by_cseq;
+	u_int64_t conference_referred_by_ok_time;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	string main_conference_call_id;
+	string conference_user_entity;
+	u_int64_t conference_connect_time;
+	u_int64_t conference_disconnect_time;
+	volatile int conference_active;
+	map<string, Call*> conference_legs;
+	#else
+	map<sConferenceLegId, sConferenceLegs*> conference_legs;
+	#endif
+	volatile int conference_legs_sync;
 	
 	/**
 	 * constructor
@@ -1756,6 +1821,10 @@ public:
 	}
 	
 	vmIP getSipcalledipConfirmed(vmPort *dport = NULL, vmIP *daddr_first = NULL, u_int8_t *daddr_first_protocol = NULL);
+	
+	vmIP getSipcalleripFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalledipFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	
 	unsigned getMaxRetransmissionInvite();
 	
 	void calls_counter_inc() {
@@ -2128,6 +2197,13 @@ public:
 	inline int rtp_size() {
 		return(ssrc_n);
 	}
+	
+	inline bool existsSrtpCryptoConfig() {
+		return(exists_srtp_crypto_config);
+	}
+	inline bool existsSrtpFingerprint() {
+		return(exists_srtp_fingerprint);
+	}
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
@@ -2409,6 +2485,7 @@ private:
 		Call* call;
 		int8_t iscaller;
 		int8_t is_rtcp;
+		int8_t ignore_rtcp_check;
 		s_sdp_flags sdp_flags;
 		bool use_hash_queue_counter;
 	};
@@ -2438,6 +2515,7 @@ public:
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
 	map<string, Call*> calls_mergeMAP;
+	map<string, Call*> conference_calls_map;
 	map<string, Call*> registers_listMAP;
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
@@ -2477,6 +2555,9 @@ public:
 	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
 	void lock_calls_listMAP_X(u_int8_t ci) { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(10); };
 	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	void lock_conference_calls_map() { while(__sync_lock_test_and_set(&this->_sync_lock_conference_calls_map, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
+	#endif
 	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_skinny_maps() { while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
 	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) USLEEP(10); }
@@ -2498,6 +2579,9 @@ public:
 	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
 	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); };
 	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	void unlock_conference_calls_map() { __sync_lock_release(&this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	#endif
 	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
 	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); };
 	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
@@ -2737,9 +2821,9 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls(bool closeAll, bool forceClose = false, const char *file = NULL, int line = 0);
-	int cleanup_registers(bool closeAll);
-	int cleanup_ss7(bool closeAll);
+	int cleanup_calls(bool closeAll, bool forceClose = false, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
+	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 
 	/**
 	 * @brief add call to hash table
@@ -2940,8 +3024,8 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool useHashQueueCounter = true);
-	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool use_lock = true);
+	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
+	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
 	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);
@@ -3013,6 +3097,9 @@ private:
 	volatile int _sync_lock_calls_listMAP;
 	volatile int *_sync_lock_calls_listMAP_X;
 	volatile int _sync_lock_calls_mergeMAP;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	volatile int _sync_lock_conference_calls_map;
+	#endif
 	volatile int _sync_lock_registers_listMAP;
 	volatile int _sync_lock_calls_queue;
 	volatile int _sync_lock_calls_audioqueue;

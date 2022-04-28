@@ -330,8 +330,19 @@ int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot =
 int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
 int64_t cp_r(const char *src, const char *dst, bool move = false);
 inline int64_t mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
-int64_t copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false);
+
+
+enum eCopyFileErrType {
+	_copyfile_src_missing = -1,
+	_copyfile_src_open_failed = -2,
+	_copyfile_dst_open_failed = -3,
+	_copyfile_sendfile_failed = -4,
+	_copyfile_dst_write_failed = -5
+};
+int64_t copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false, string *syserror = NULL);
 inline int64_t move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
+string copy_file_err_type_str(int err_type);
+
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);
@@ -2234,11 +2245,12 @@ private:
 class SafeAsyncQueue_base {
 public:
 	SafeAsyncQueue_base();
-	~SafeAsyncQueue_base();
+	virtual ~SafeAsyncQueue_base();
 	static bool isRunTimerThread();
 	static void stopTimerThread(bool wait = false);
 protected:
-	virtual void timerEv(unsigned long long timerCounter) = 0;
+	void addToSaq();
+	virtual void timerEv(u_int64_t time_ms) = 0;
 private:
 	static void timerThread();
 	static void lock_list_saq() {
@@ -2250,7 +2262,6 @@ private:
 private:
 	static list<SafeAsyncQueue_base*> list_saq;
 	static pthread_t timer_thread;
-	static unsigned long long timer_counter;
 	static volatile int _sync_list_saq;
 	static bool runTimerThread;
 	static bool terminateTimerThread;
@@ -2260,7 +2271,7 @@ friend void *_SafeAsyncQueue_timerThread(void *arg);
 template<class type_queue_item>
 class SafeAsyncQueue : public SafeAsyncQueue_base {
 public:
-	SafeAsyncQueue(int shiftIntervalMult10S = 5);
+	SafeAsyncQueue(unsigned shiftInterval_ms = 500);
 	~SafeAsyncQueue();
 	void push(type_queue_item &item);
 	bool pop(type_queue_item *item, bool remove = true);
@@ -2268,7 +2279,7 @@ public:
 		return(size);
 	}
 protected:
-	void timerEv(unsigned long long timerCounter);
+	void timerEv(u_int64_t time_ms);
 private:
 	void shiftPush();
 	void incSize() {
@@ -2311,8 +2322,8 @@ private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
 	deque<deque<type_queue_item>*> queueItems;
-	int shiftIntervalMult10S;
-	unsigned long long lastShiftTimerCounter;
+	unsigned shiftInterval_ms;
+	unsigned long long lastShiftTime_ms;
 	volatile u_int32_t size;
 	volatile int _sync_queue;
 	volatile int _sync_push_queue;
@@ -2321,16 +2332,17 @@ private:
 };
 
 template<class type_queue_item>
-SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(int shiftIntervalMult10S) {
+SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(unsigned shiftInterval_ms) {
 	push_queue = NULL;
 	pop_queue = NULL;
-	this->shiftIntervalMult10S = shiftIntervalMult10S;
-	lastShiftTimerCounter = 0;
+	this->shiftInterval_ms = shiftInterval_ms;
+	lastShiftTime_ms = 0;
 	size = 0;
 	_sync_queue = 0;
 	_sync_push_queue = 0;
 	_sync_pop_queue = 0;
 	_sync_size = 0;
+	addToSaq();
 }
 
 template<class type_queue_item>
@@ -2394,10 +2406,10 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 }
 
 template<class type_queue_item>
-void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
-	if(timerCounter - lastShiftTimerCounter >= (unsigned)shiftIntervalMult10S) {
+void SafeAsyncQueue<type_queue_item>::timerEv(u_int64_t time_ms) {
+	if(time_ms >= lastShiftTime_ms + shiftInterval_ms) {
 		shiftPush();
-		lastShiftTimerCounter = timerCounter;
+		lastShiftTime_ms = time_ms;
 	}
 }
 
@@ -2439,8 +2451,11 @@ char * gettag_json(const char *data, const char *tag, string *dest);
 char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists = 0);
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt);
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt);
 string gettag_xml(const char *tag, const char *str);
+string gettag_xml(const char *tag, const char *str, unsigned str_length);
 string getvalue_xml(const char *branch, const char *str);
+string getvalue_xml(const char *branch, const char *str, unsigned str_length);
 
 class SocketSimpleBufferWrite {
 public:
@@ -2831,7 +2846,9 @@ string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
 u_int32_t octal_decimal(u_int32_t n);
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, 
+	      int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1,
+	      bool closeAllFdAfterFork = false);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();
@@ -3506,6 +3523,7 @@ public:
 	};
 public:
 	cCsv();
+	~cCsv();
 	void setFirstRowContainFieldNames(bool firstRowContainFieldNames = true);
 	void setFieldSeparator(char fieldSeparator);
 	int load(const char *fileName, sTable *table = NULL);
@@ -3642,7 +3660,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;
@@ -3654,7 +3672,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;
@@ -4644,6 +4662,54 @@ inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
 		((cNodeItem_nodes*)this)->destruct();
 	}
 }
+
+
+class cWsCalls {
+public:
+	struct sSip {
+		sSip() {
+			confirm = false;
+		}
+		bool request;
+		string info;
+		string str;
+		string cseq;
+		string src;
+		string src_port;
+		string dst;
+		string dst_port;
+		bool confirm;
+		friend bool operator == (const sSip &s1, const sSip &s2) {
+			return(s1.str == s2.str &&
+			       s1.cseq == s2.cseq &&
+			       s1.src == s2.src &&
+			       s1.src_port == s2.src_port &&
+			       s1.dst == s2.dst &&
+			       s1.dst_port == s2.dst_port);
+		}
+	};
+	struct sCall {
+		bool isConfirmed() {
+			for(unsigned i = 0; i < sip.size(); i++) {
+				if(!sip[i].confirm) {
+					return(false);
+				}
+			}
+			return(true);
+		}
+		string callid;
+		vector<sSip> sip;
+	};
+public:
+	cWsCalls();
+	~cWsCalls();
+	void load(const char *filename);
+	void setConfirm(const char *callid, bool request, const char *str, const char *cseq);
+	string printUncofirmed();
+public:
+	map<string, sCall> calls;
+	cCsv *csv;
+};
 
 
 #endif

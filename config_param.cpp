@@ -454,6 +454,12 @@ cConfigItem_integer::cConfigItem_integer(const char *name, uint64_t *param)
 	param_uint64 = param;
 }
 
+cConfigItem_integer::cConfigItem_integer(const char *name, vector<int> *param)
+ : cConfigItem(name) {
+	init();
+	param_vect_int = param;
+}
+
 int64_t cConfigItem_integer::getValue() {
 	if(param_int) {
 		return(*param_int);
@@ -470,7 +476,23 @@ int64_t cConfigItem_integer::getValue() {
 	return(0);
 }
 
-string cConfigItem_integer::getValueStr(bool /*configFile*/) {
+string cConfigItem_integer::getValueStr(bool configFile) {
+	if(param_vect_int) {
+		ostringstream outStr;
+		int counter = 0;
+		for(vector<int>::iterator iter = param_vect_int->begin(); iter != param_vect_int->end(); iter++) {
+			if(counter) {
+				if(configFile) {
+					outStr << endl << config_name << " = ";
+				} else {
+					outStr << explodeSeparator;
+				}
+			}
+			outStr << *iter;
+			++counter;
+		}
+		return(outStr.str());
+	}
 	int64_t val = 0;
 	if(param_int) {
 		val = *param_int;
@@ -501,22 +523,54 @@ string cConfigItem_integer::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_integer::getValueListStr() {
+	list<string> l;
+	if(param_vect_int) {
+		for(vector<int>::iterator iter = param_vect_int->begin(); iter != param_vect_int->end(); iter++) {
+			l.push_back(intToString(*iter));
+		}
+	} else {
+		l.push_back(getValueStr());
+	}
+	return(l);
+}
+
 string cConfigItem_integer::normalizeStringValueForCmp(string value) {
-	int _value;
-	if(getValueFromMapValues(value.c_str(), &_value)) {
-		return(intToString(_value));
+	if(param_vect_int && !explodeSeparator.empty()) {
+		vector<string> value_vect = split(value.c_str(), explodeSeparator.c_str(), true);
+		string rslt;
+		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
+			if(!rslt.empty()) {
+				rslt += explodeSeparator;
+			}
+			rslt += *iter;
+		}
+		return(rslt);
+	} else {
+		int _value;
+		if(getValueFromMapValues(value.c_str(), &_value)) {
+			return(intToString(_value));
+		}
+		if(value == "no") {
+			return("0");
+		}
+		return(value);
 	}
-	if(value == "no") {
-		return("0");
-	}
-	return(value);
+}
+
+bool cConfigItem_integer::enableMultiValues() {
+	return(param_vect_int && !explodeSeparator.empty());
 }
 
 bool cConfigItem_integer::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
+	if(param_vect_int) {
+		return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
+	} else {
+		return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
+	}
 }
 
-bool cConfigItem_integer::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
+bool cConfigItem_integer::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -620,6 +674,39 @@ bool cConfigItem_integer::setParamFromValueStr(string value_str, bool /*enableIn
 			if(!*param_uint64 && yesValue && yesno(value)) {
 				*param_uint64 = yesValue;
 			}
+			++ok;
+		}
+		if(param_vect_int && !explodeSeparator.empty()) {
+			if(enableInitBeforeSet) {
+				initBeforeSet();
+			}
+			*param_vect_int = split2int(value, explodeSeparator[0]);
+		}
+	}
+	return(ok > 0);
+}
+
+bool cConfigItem_integer::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	if(!param_vect_int) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
+		return(false);
+	}
+	int ok = 0;
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
+	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		if(!ok && enableClearBeforeFirstSet) {
+			doClearBeforeFirstSet();
+		}
+		vector<int> _param_vect_int = split2int(iter->c_str(), explodeSeparator[0]);
+		for(unsigned i = 0; i < _param_vect_int.size(); i++) {
+			param_vect_int->push_back(_param_vect_int[i]);
 			++ok;
 		}
 	}
@@ -1071,6 +1158,10 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 		ok += setPortMatrix(iter->c_str(), param_port_matrix, this->port_max);
 	}
 	return(ok > 0);
+}
+
+void cConfigItem_ports::initBeforeSet() {
+	clear();
 }
 
 void cConfigItem_ports::clear() {
@@ -1996,7 +2087,6 @@ cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
-	setFromMysqlOk = false;
 	diffValuesTrack = true;
 }
 
@@ -2404,6 +2494,17 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 		okNextData = true;
 	}
 	if(okNextData) {
+		bool setFromMysqlOk = false;
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setSilentConnect();
+		if(sqlDb->connect()) {
+			sqlDb->setMaxQueryPass(1);
+			sqlDb->setDisableLogError();
+			if(sqlDb->existsTable("sensor_config")) {
+				setFromMysqlOk = true;
+			}
+		}
+		delete sqlDb;
 		JsonExport nextData;
 		nextData.add("setFromMysqlOk", setFromMysqlOk);
 		json.addJson("nextData", nextData.getJson());
@@ -2471,7 +2572,6 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 }
 
 void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
-	setFromMysqlOk = false;
 	SqlDb *sqlDb = createSqlObject();
 	if(checkConnect) {
 		sqlDb->setSilentConnect();
@@ -2525,7 +2625,6 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 			}
 			unlock();
 		}
-		setFromMysqlOk = true;
 	}
 	delete sqlDb;
 }

@@ -434,6 +434,11 @@ public:
 	virtual void evEvent(sFraudEventInfo */*eventInfo*/) {}
 	virtual void evRegister(sFraudRegisterInfo */*registerInfo*/) {}
 	virtual void evTimer(u_int32_t /*time_s*/) {}
+	virtual bool needEvCall_call() { return(false); }
+	virtual bool needEvCall_register() { return(false); }
+	virtual bool needEvRtpStream() { return(false); }
+	virtual bool needEvEvent() { return(false); }
+	virtual bool needEvRegister() { return(false); }
 	virtual bool okFilterIp(vmIP ip, vmIP ip2);
 	virtual bool okFilterPhoneNumber(const char *numb, const char *numb2);
 	virtual bool okFilterDomain(const char *domain);
@@ -561,6 +566,7 @@ public:
 	~FraudAlertReg();
 protected:
 	void evRegister(sFraudRegisterInfo *registerInfo);
+	bool needEvRegister();
 	bool checkUA(const char *ua);
 	bool checkRegisterTimeSecLe(sFraudRegisterInfo *registerInfo);
 private:
@@ -814,6 +820,8 @@ public:
 	FraudAlert_rcc(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
 	void evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo);
+	bool needEvCall_call();
+	bool needEvRtpStream();
 protected:
 	void addFraudDef(SqlDb_row *row, SqlDb *sqlDb = NULL);
 	bool defByIP() { return(true); }
@@ -860,6 +868,7 @@ class FraudAlert_chc : public FraudAlert {
 public:
 	FraudAlert_chc(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	bool needEvCall_call();
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
@@ -875,6 +884,7 @@ class FraudAlert_chcr : public FraudAlert {
 public:
 	FraudAlert_chcr(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	bool needEvCall_register();
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterIp2() { return(true); }
@@ -915,6 +925,7 @@ private:
 public:
 	FraudAlert_d(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	bool needEvCall_call();
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterNumber() { return(true); }
@@ -964,6 +975,7 @@ private:
 public:
 	FraudAlert_spc(unsigned int dbId);
 	void evEvent(sFraudEventInfo *eventInfo);
+	bool needEvEvent();
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterUA() { return(true); }
@@ -991,6 +1003,7 @@ public:
 	FraudAlert_rc(unsigned int dbId);
 	~FraudAlert_rc();
 	void evEvent(sFraudEventInfo *eventInfo);
+	bool needEvEvent();
 protected:
 	bool defFilterIp() { return(true); }
 	bool defFilterUA() { return(true); }
@@ -1055,6 +1068,7 @@ private:
 public:
 	FraudAlert_seq(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	bool needEvCall_call();
 protected:
 	bool defByIP() { return(true); }
 	bool defFilterIp() { return(true); }
@@ -1128,6 +1142,7 @@ public:
 public:
 	FraudAlert_ccd(unsigned int dbId);
 	void evCall(sFraudCallInfo *callInfo);
+	bool needEvCall_call();
 	void evTimer(u_int32_t time_s);
 protected:
 	void loadAlertVirt(SqlDb *sqlDb);
@@ -1159,6 +1174,18 @@ private:
 
 
 class FraudAlerts {
+public:
+	enum eTypeEvents {
+		_call,
+		_rtpStream,
+		_event,
+		_register,
+		__end
+	};
+	struct sThreadData {
+		FraudAlerts *me;
+		eTypeEvents type_events;
+	};
 public:
 	FraudAlerts();
 	~FraudAlerts();
@@ -1205,7 +1232,7 @@ private:
 	bool checkIfEventQueueIsFull(bool log = true);
 	bool checkIfRegisterQueueIsFull(bool log = true);
 	void initPopCallInfoThread();
-	void popCallInfoThread();
+	void popCallInfoThread(eTypeEvents type_events);
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
 	void completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call);
@@ -1224,21 +1251,28 @@ private:
 	void stopTimerThread();
 	static void *_timerFce(void *arg);
 	void timerFce();
+	void clearNeedEv();
+	void setNeedEv();
 private:
 	vector<FraudAlert*> alerts;
 	SafeAsyncQueue<sFraudCallInfo*> callQueue;
 	SafeAsyncQueue<sFraudRtpStreamInfo*> rtpStreamQueue;
 	SafeAsyncQueue<sFraudEventInfo*> eventQueue;
 	SafeAsyncQueue<sFraudRegisterInfo*> registerQueue;
+	bool needEvCall_call;
+	bool needEvCall_register;
+	bool needEvRtpStream;
+	bool needEvEvent;
+	bool needEvRegister;
 	u_int64_t lastTimeCallsIsFull;
 	u_int64_t lastTimeRtpStreamsIsFull;
 	u_int64_t lastTimeEventsIsFull;
 	u_int64_t lastTimeRegistersIsFull;
 	u_int32_t maxLengthAsyncQueue;
 	GroupsIP groupsIP;
-	pthread_t threadPopCallInfo;
-	bool runPopCallInfoThread;
-	bool termPopCallInfoThread;
+	pthread_t threadPopCallInfo[10];
+	bool runPopCallInfoThread[10];
+	bool termPopCallInfoThread[10];
 	bool useUserRestriction;
 	bool useUserRestriction_custom_headers;
 	string gui_timezone;

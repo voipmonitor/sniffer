@@ -245,6 +245,11 @@ extern bool opt_processing_limitations_active_calls_cache;
 extern int opt_processing_limitations_active_calls_cache_type;
 extern cProcessingLimitations processing_limitations;
 
+extern bool opt_conference_processing;
+extern vector<string> opt_mo_mt_identification_prefix;
+extern int opt_separate_storage_ipv6_ipv4_address;
+extern int opt_cdr_flag_bit;
+
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
 	{ cf_callid, "callid" },
@@ -521,6 +526,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seencancelandok_time_usec = 0;
 	seenauthfailed = false;
 	seenauthfailed_time_usec = 0;
+	ignore_rtp_after_response_time_usec = 0;
 	unconfirmed_bye = false;
 	seenRES2XX = false;
 	seenRES2XX_no_BYE = false;
@@ -750,6 +756,16 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	exclude_from_active_calls = false;
 	
+	conference_is_main_leg = false;
+	conference_is_leg = false;
+	conference_referred_by_ok_time = 0;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	conference_connect_time = 0;
+	conference_disconnect_time = 0;
+	conference_active = 0;
+	#endif
+	conference_legs_sync = 0;
+	
 	cdr.setIgnoreCheckExistsField();
 	cdr_next.setIgnoreCheckExistsField();
 	for(int i = 0; i < CDR_NEXT_MAX; i++) {
@@ -772,16 +788,16 @@ u_int64_t Call::counter_s = 0;
 void
 Call::hashRemove(bool useHashQueueCounter) {
 	for(int i = 0; i < ipport_n; i++) {
-		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, useHashQueueCounter);
+		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, true, useHashQueueCounter);
 		if(opt_rtcp) {
-			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, useHashQueueCounter);
+			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, true, useHashQueueCounter);
 		}
 		this->evDestroyIpPortRtpStream(i);
 	}
 	
 	if(!opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
 		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
-		if(this->rtp_ip_port_counter > 0) {
+		if(this->rtp_ip_port_counter) {
 			calltable->hashRemove(this, useHashQueueCounter);
 			if(this->rtp_ip_port_counter) {
 				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
@@ -889,8 +905,11 @@ Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirname
 		//error or file does not exists
 		char buf[4092];
 		buf[0] = '\0';
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", file.c_str(), errno, buf);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", file.c_str(), errno, errstr);
 		return;
 	}
 
@@ -1094,6 +1113,12 @@ Call::~Call(){
 	if(set_register_counter) {
 		registers_counter_dec();
 	}
+	
+	#if not CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	for(map<sConferenceLegId, sConferenceLegs*>::iterator iter = conference_legs.begin(); iter != conference_legs.end(); iter++) {
+		delete iter->second;
+	}
+	#endif
 	
 }
 
@@ -5180,6 +5205,8 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 					return(true);
 				}
 				break;
+			case _t_cdr_conference:
+				break;
 			}
 			if(column_index && ord) {
 				ord->u.s.child_table = child_table_enum;
@@ -5389,6 +5416,8 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 			return(rtp_rows_count);
 		case _t_cdr_sdp:
 			return(sdp_rows_list.size());
+		case _t_cdr_conference:
+			return(conference_legs.size());
 		}
 	}
 	return(-1);
@@ -5412,7 +5441,8 @@ int Call::getTableEnumIndex(string *table) {
 	       !strcasecmp(table->c_str(), "cdr_sipresp") ? _t_cdr_sipresp :
 	       !strcasecmp(table->c_str(), "cdr_siphistory") ? _t_cdr_siphistory :
 	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
-	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp : 0);
+	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp :
+	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference : 0);
 }
 
 int Call::detectCallerdByLabelInXml(const char *label) {
@@ -5746,6 +5776,13 @@ volatile u_int64_t counter_calls_save_2;
 /* TODO: implement failover -> write INSERT into file */
 int
 Call::saveToDb(bool enableBatchIfPossible) {
+
+	#if DEBUG_PACKET_COUNT
+	extern volatile int __xc_callsave;
+	extern void __fc(const char *type, const char *callid);
+	__SYNC_INC(__xc_callsave);
+	__fc("callsave", call_id.c_str());
+	#endif
  
 	if(sverb.disable_save_call) {
 		return(0);
@@ -5825,6 +5862,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	string sql_cdr_rtp_table = "cdr_rtp";
 	string sql_cdr_rtp_energylevels_table = "cdr_rtp_energylevels";
 	string sql_cdr_sdp_table = "cdr_sdp";
+	string sql_cdr_conference_table = "cdr_conference";
 	string sql_cdr_txt_table = "cdr_txt";
 	string sql_cdr_dtmf_table = "cdr_dtmf";
 	
@@ -5846,7 +5884,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = 0,
 			a_ua_id = 0,
 			b_ua_id = 0;
-	u_int64_t cdr_flags = this->unconfirmed_bye ? CDR_UNCONFIRMED_BYE : 0;
+	u_int64_t cdr_flags = opt_cdr_flag_bit ? ((u_int64_t)1 << opt_cdr_flag_bit) : 0;
+	if (this->unconfirmed_bye)
+		cdr_flags |= CDR_UNCONFIRMED_BYE;
 	if (is_fas_detected)
 		cdr_flags |= CDR_FAS_DETECTED;
 	if (is_zerossrc_detected)
@@ -6028,6 +6068,42 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(getSipcallerport().getPort(), "sipcallerport");
 		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
 	}
+	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
+		vmIP ipv4[2], ipv6[2];
+		vmPort ipv4_port[2], ipv6_port[2];
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		if(ipv4[0].isSet()) {
+			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
+		} else {
+			cdr.add(0, "sipcallerip_v4", true);
+			cdr.add(0, "sipcallerport_v4", true);
+		}
+		if(ipv4[1].isSet()) {
+			cdr.add(ipv4[1], "sipcalledip_v4", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv4_port[1].getPort(), "sipcalledport_v4");
+		} else {
+			cdr.add(0, "sipcalledip_v4", true);
+			cdr.add(0, "sipcalledport_v4", true);
+		}
+		if(ipv6[0].isSet()) {
+			cdr.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv6_port[0].getPort(), "sipcallerport_v6");
+		} else {
+			cdr.add(0, "sipcallerip_v6", true);
+			cdr.add(0, "sipcallerport_v6", true);
+		}
+		if(ipv6[1].isSet()) {
+			cdr.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, sql_cdr_table);
+			cdr.add(ipv6_port[1].getPort(), "sipcalledport_v6");
+		} else {
+			cdr.add(0, "sipcalledip_v6", true);
+			cdr.add(0, "sipcalledport_v6", true);
+		}
+	}
 	if(existsColumns.cdr_sipcallerdip_encaps) {
 		cdr.add(getSipcallerip_encaps(), "sipcallerip_encaps", !getSipcallerip_encaps().isSet(), sqlDbSaveCall, sql_cdr_table);
 		cdr.add(sipcalledip_encaps_rslt, "sipcalledip_encaps", !sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
@@ -6156,6 +6232,38 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	if(existsColumns.cdr_next_calldate) {
 		cdr_next.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_calldate_ms);
+	}
+	
+	if(opt_conference_processing) {
+		if(existsColumns.cdr_next_conference_flag) {
+			if(conference_is_main_leg) {
+				cdr_next.add("main", "conference_flag");
+			} else if(conference_is_leg) {
+				cdr_next.add("leg", "conference_flag");
+			}
+		}
+		if(conference_is_leg) {
+			if(existsColumns.cdr_next_conference_referred_by &&
+			   !conference_referred_by.empty()) {
+				cdr_next.add(sqlEscapeString(conference_referred_by), "conference_referred_by");
+			}
+			if(existsColumns.cdr_next_conference_referred_by_ok_time &&
+			   conference_referred_by_ok_time) {
+				cdr_next.add_calldate(conference_referred_by_ok_time, "conference_referred_by_ok_time", existsColumns.cdr_next_conference_referred_by_ok_time_ms);
+			}
+		}
+	}
+	if(opt_mo_mt_identification_prefix.size()) {
+		if(existsColumns.cdr_next_leg_flag) {
+			bool mt = false;
+			for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
+				if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
+					mt = true;
+					break;
+				}
+			}
+			cdr_next.add(mt ? "mt" : "mo", "leg_flag");
+		}
 	}
 	
 	if(custom_headers_cdr) {
@@ -7045,6 +7153,60 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				} else {
 					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
 						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_sdp_table, &sdp_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
+			}
+		}
+		
+		if(opt_conference_processing) {
+			vector<SqlDb_row> conference_rows;
+			if(conference_legs.size()) {
+				for(map<sConferenceLegId, sConferenceLegs*>::iterator iter_legs = conference_legs.begin(); iter_legs != conference_legs.end(); iter_legs++) {
+					for(vector<sConferenceLeg*>::iterator iter = iter_legs->second->legs.begin(); iter != iter_legs->second->legs.end(); iter++) {
+						SqlDb_row conf_leg;
+						conf_leg.setIgnoreCheckExistsField();
+						conf_leg.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+						if(!(*iter)->user_entity.empty()) {
+							conf_leg.add(sqlEscapeString((*iter)->user_entity), "user_entity");
+						} else {
+							conf_leg.add(0, "user_entity", true);
+						}
+						if(!(*iter)->endpoint_entity.empty()) {
+							conf_leg.add(sqlEscapeString((*iter)->endpoint_entity), "endpoint_entity");
+						} else {
+							conf_leg.add(0, "endpoint_entity", true);
+						}
+						if((*iter)->connect_time) {
+							conf_leg.add_calldate((*iter)->connect_time, "connect_time", existsColumns.cdr_conference_connect_time_ms);
+						} else {
+							conf_leg.add(0, "connect_time", true);
+						}
+						if((*iter)->disconnect_time) {
+							conf_leg.add_calldate((*iter)->disconnect_time, "disconnect_time", existsColumns.cdr_conference_disconnect_time_ms);
+						} else {
+							conf_leg.add(0, "disconnect_time", true);
+						}
+						if(existsColumns.cdr_conference_calldate) {
+							conf_leg.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_conference_calldate_ms);
+						}
+						if(opt_mysql_enable_multiple_rows_insert) {
+							conference_rows.push_back(conf_leg);
+						} else {
+							query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT + 
+								     sqlDbSaveCall->insertQuery(sql_cdr_conference_table, conf_leg));
+						}
+					}
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && conference_rows.size()) {
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER(sql_cdr_conference_table) + conference_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < conference_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW(sql_cdr_conference_table) + conference_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_conference_table, &conference_rows, opt_mysql_max_multiple_rows_insert, 
 												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
 				}
 			}
@@ -8067,6 +8229,13 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 int
 Call::saveMessageToDb(bool enableBatchIfPossible) {
+
+	#if DEBUG_PACKET_COUNT
+	extern volatile int __xc_callsave;
+	extern void __fc(const char *type, const char *callid);
+	__SYNC_INC(__xc_callsave);
+	__fc("callsave", call_id.c_str());
+	#endif
  
 	if(sverb.disable_save_message) {
 		return(0);
@@ -8696,6 +8865,62 @@ vmIP Call::getSipcalledipConfirmed(vmPort *dport, vmIP *daddr_first, u_int8_t *d
 	return(daddr);
 }
 
+vmIP Call::getSipcalleripFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(port) {
+		port->clear();
+	}
+	vmIP ip;
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
+		if((!onlyConfirmed || iter->confirmed) &&
+		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
+			ip = iter->saddr;
+			if(port) {
+				*port = iter->sport;
+			}
+		}
+	}
+	return(ip);
+}
+
+vmIP Call::getSipcalledipFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(port) {
+		port->clear();
+	}
+	vmIP saddr, daddr;
+	vmPort dport;
+	list<vmIP> proxies;
+	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
+		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
+		for(unsigned i = 0; i < *iter_order; i++) {
+			iter++;
+		}
+		if((!onlyConfirmed || iter->confirmed) &&
+		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
+			if(!saddr.isSet() && !daddr.isSet()) {
+				saddr = iter->saddr;
+				daddr = iter->daddr;
+				dport = iter->dport;
+			}
+			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
+				proxies.push_back(iter->saddr);
+			}
+			if(iter->daddr != saddr && iter->daddr != daddr && find(proxies.begin(), proxies.end(), iter->daddr) == proxies.end()) {
+				proxies.push_back(daddr);
+				daddr = iter->daddr;
+				dport = iter->dport;
+			}
+		}
+	}
+	if(daddr.isSet() && port) {
+		*port = dport;
+	}
+	return(daddr);
+}
+
 unsigned Call::getMaxRetransmissionInvite() {
 	unsigned max_retrans = 0;
 	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
@@ -9196,6 +9421,9 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;
 	_sync_lock_calls_mergeMAP = 0;
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	_sync_lock_conference_calls_map = 0;
+	#endif
 	_sync_lock_registers_listMAP = 0;
 	_sync_lock_calls_queue = 0;
 	_sync_lock_calls_audioqueue = 0;
@@ -9322,6 +9550,7 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 		hmd.call = call;
 		hmd.iscaller = iscaller;
 		hmd.is_rtcp = is_rtcp;
+		hmd.ignore_rtcp_check = false;
 		hmd.sdp_flags = sdp_flags;
 		hmd.use_hash_queue_counter = true;
 		lock_hash_modify_queue();
@@ -9337,6 +9566,8 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 	
 }
  
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
+
 void
 Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
  
@@ -9881,9 +10112,155 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 	
 }
 
+#else
+
+inline node_call_rtp *insert_node_call(node_call_rtp *&begin, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
+	__SYNC_INC(call->rtp_ip_port_counter);
+	node_call_rtp *node_new = new FILE_LINE(0) node_call_rtp;
+	node_new->next = begin;
+	node_new->call = call;
+	node_new->iscaller = iscaller;
+	node_new->is_rtcp = is_rtcp;
+	node_new->sdp_flags = *sdp_flags;
+	begin = node_new;
+	return(node_new);
+}
+
+inline void replace_node_call(node_call_rtp *node, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
+	__SYNC_INC(call->rtp_ip_port_counter);
+	__SYNC_DEC(node->call->rtp_ip_port_counter);
+	node->call = call;
+	node->iscaller = iscaller;
+	node->is_rtcp = is_rtcp;
+	node->sdp_flags = *sdp_flags;
+}
+
+inline node_call_rtp *delete_node_call(node_call_rtp *&begin, node_call_rtp *node, node_call_rtp *prev) {
+	node_call_rtp *next = node->next;
+	if(prev) {
+		prev->next = next;
+	} else {
+		begin = next;
+	}
+	__SYNC_DEC(node->call->rtp_ip_port_counter);
+	delete node;
+	return(next);
+}
+
+inline node_call_rtp_ip_port *delete_node(node_call_rtp_ip_port *&begin, node_call_rtp_ip_port *node, node_call_rtp_ip_port *prev) {
+	node_call_rtp_ip_port *next = node->next;
+	if(prev) {
+		prev->next = node->next;
+	} else {
+		begin = node->next;
+	}
+	delete node;
+	return(next);
+}
+
+void
+Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
+ 
+	if(call->end_call_rtp) {
+		return;
+	}
+	
+	u_int32_t h;
+	node_call_rtp_ip_port *node = NULL;
+	node_call_rtp *node_call = NULL;
+
+	h = tuplehash(addr.getHashNumber(), port);
+	if (useLock) lock_calls_hash();
+	// check if there is not already call in hash 
+	for (node = calls_hash[h]; node != NULL; node = node->next) {
+		if ((node->port == port) && (node->addr == addr)) {
+			// there is already some call which is receiving packets to the same IP:port
+			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
+			int found = 0;
+			int count = 0;
+			node_call_rtp *prev_node_call = NULL;
+			node_call = node->calls;
+			while(node_call != NULL) {
+				if(node_call->call->destroy_call_at != 0 &&
+				   (node_call->call->seenbye ||
+				    node_call->call->lastSIPresponseNum / 10 == 48 ||
+				    (time_s != 0 && time_s > node_call->call->destroy_call_at))) {
+					if(sverb.hash_rtp) {
+						cout << "remove call with destroy_call_at: " 
+						     << node_call->call->call_id << " " << addr.getString() << ":" << port.getString() << " " 
+						     << endl;
+					}
+					node_call = delete_node_call(node->calls, node_call, prev_node_call);
+					continue;
+				}
+				prev_node_call = node_call;
+				count++;
+				if(node_call->call == call) {
+					found = 1;
+					node_call->sdp_flags = sdp_flags;
+				}
+				node_call = node_call->next;
+			}
+			if(!found) {
+				if(opt_sdp_multiplication == 0 && count == 1 && node->calls && node->calls->call) {
+					replace_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+				} else {
+					if(opt_sdp_multiplication > 0 && count >= opt_sdp_multiplication) {
+						// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
+						if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
+							static u_int64_t lastTimeSyslog = 0;
+							u_int64_t actTime = getTimeMS();
+							if(actTime - 10 * 1000 > lastTimeSyslog) {
+								string call_ids;
+								node_call = node->calls;
+								while(node_call != NULL) {
+									if(!call_ids.empty()) {
+										call_ids += " ";
+									}
+									call_ids += string("[") + node_call->call->fbasename + "]";
+									node_call = node_call->next;
+								}
+								syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
+								       call->fbasename, addr.getString().c_str(), (int)port,
+								       call_ids.c_str(),
+								       opt_sdp_multiplication);
+								call->syslog_sdp_multiplication = true;
+								lastTimeSyslog = actTime;
+							}
+						}
+						if (useLock) unlock_calls_hash();
+						return;
+					}
+				 
+					// the same ip/port is shared with some other call which is not yet in node - add it
+					insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+				}
+			}
+			if (useLock) unlock_calls_hash();
+			return;
+		}
+	}
+
+	// addr / port combination not found - add it to hash at first position
+
+	node = new FILE_LINE(1009) node_call_rtp_ip_port;
+	node->addr = addr;
+	node->port = port;
+	node->next = calls_hash[h];
+	node->calls = NULL;
+	calls_hash[h] = node;
+	
+	insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
+	
+	if (useLock) unlock_calls_hash();
+	
+}
+
+#endif
+
 /* remove node from hash */
 void
-Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHashQueueCounter) {
+Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
  
 	if(sverb.hash_rtp) {
 		cout << "hashRemove: " 
@@ -9900,6 +10277,7 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHas
 		hmd.port = port;
 		hmd.call = call;
 		hmd.is_rtcp = rtcp;
+		hmd.ignore_rtcp_check = ignore_rtcp_check;
 		hmd.use_hash_queue_counter = useHashQueueCounter;
 		lock_hash_modify_queue();
 		hash_modify_queue.push_back(hmd);
@@ -9909,10 +10287,12 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool useHas
 		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 	} else {
-		_hashRemove(call, addr, port, rtcp);
+		_hashRemove(call, addr, port, rtcp, ignore_rtcp_check);
 	}
 	
 }
+
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
 
 int
 Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_lock) {
@@ -10141,6 +10521,41 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_l
 	
 }
 
+#else
+
+int
+Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
+ 
+	int removeCounter = 0;
+	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
+	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
+	int h = tuplehash(addr.getHashNumber(), port);
+	if (use_lock) lock_calls_hash();
+	for (node = calls_hash[h]; node != NULL; node = node->next) {
+		if (node->port == port && node->addr == addr) {
+			for (node_call = node->calls; node_call != NULL; node_call = node_call->next) {
+				// walk through all calls under the node and check if the call matches
+				if(node_call->call == call && (ignore_rtcp_check || !rtcp || (rtcp && (node_call->is_rtcp || !node_call->sdp_flags.rtcp_mux)))) {
+					delete_node_call(node->calls, node_call, prev_node_call);
+					++removeCounter;
+					break;
+				}
+				prev_node_call = node_call;
+			}
+			if(node->calls == NULL) {
+				delete_node(calls_hash[h], node, prev_node);
+			}
+			break;
+		}
+		prev_node = node;
+	}
+	if (use_lock) unlock_calls_hash();
+	return(removeCounter);
+
+}
+
+#endif
+
 int
 Calltable::hashRemove(Call *call, bool useHashQueueCounter) {
 
@@ -10167,6 +10582,8 @@ int
 Calltable::hashRemoveForce(Call *call) {
 	return(_hashRemove(call));
 }
+
+#if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
   
 int
 Calltable::_hashRemove(Call *call, bool use_lock) {
@@ -10258,6 +10675,43 @@ Calltable::_hashRemove(Call *call, bool use_lock) {
 	
 }
 
+#else
+
+int
+Calltable::_hashRemove(Call *call, bool use_lock) {
+ 
+	int removeCounter = 0;
+	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
+	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
+	if (use_lock) lock_calls_hash();
+	for(int h = 0; h < MAXNODE; h++) {
+		prev_node = NULL;
+		for(node = calls_hash[h]; node != NULL;) {
+			prev_node_call = NULL;
+			for(node_call = node->calls; node_call != NULL;) {
+				if(node_call->call == call) {
+					node_call = delete_node_call(node->calls, node_call, prev_node_call);
+					++removeCounter;
+				} else {
+					prev_node_call = node_call;
+					node_call = node_call->next;
+				}
+			}
+			if(node->calls == NULL) {
+				node = delete_node(calls_hash[h], node, prev_node);
+			} else {
+				prev_node = node;
+				node = node->next;
+			}
+		}
+	}
+	if (use_lock) unlock_calls_hash();
+	return(removeCounter);
+	
+}
+
+#endif
+
 void 
 Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	_applyHashModifyQueue(setBegin, use_lock_calls_hash);
@@ -10274,7 +10728,7 @@ Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 					_hashAdd(iter->addr, iter->port, iter->time_s, iter->call, iter->iscaller, iter->is_rtcp, iter->sdp_flags, false);
 					break;
 				case hmo_remove:
-					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, false);
+					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, iter->ignore_rtcp_check, false);
 					break;
 				case hmo_remove_call:
 					_hashRemove(iter->call, false);
@@ -11212,11 +11666,12 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 */
 
 int
-Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int line ) {
+Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s, const char *file, int line ) {
  
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	u_int64_t beginTimeMS = currTimeMS;
+	bool isReadFromFile = is_read_from_file();
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -11264,6 +11719,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 		__SYNC_UNLOCK(active_calls_cache_sync);
 	}
 	
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	if(opt_conference_processing) {
+		calltable->lock_conference_calls_map();
+	}
+	#endif
 	int rejectedCalls_count = 0;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
@@ -11301,7 +11761,9 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 				} else {
 					call = (*callMAPIT2).second;
 				}
-				u_int32_t currTimeS_unshift = call->unshiftSystemTime_s(currTimeS);
+				u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+							       packet_time_s :
+							       call->unshiftSystemTime_s(currTimeS);
 				if(verbosity > 2) {
 					call->dump();
 				}
@@ -11312,13 +11774,13 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 				bool closeCall = false;
 				if(closeAll || call->force_close) {
 					closeCall = true;
-					if(!is_read_from_file()) {
+					if(!isReadFromFile) {
 						call->force_terminate = true;
 					}
 				} else if(call->typeIs(SKINNY_NEW) ||
 					  call->typeIs(MGCP) ||
 					  call->in_preprocess_queue_before_process_packet <= 0 ||
-					  (!is_read_from_file() &&
+					  (!isReadFromFile &&
 					   (call->in_preprocess_queue_before_process_packet_at[0] && call->in_preprocess_queue_before_process_packet_at[0] < currTimeS_unshift - 300 &&
 					    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
 					if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
@@ -11345,6 +11807,13 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					}
 					if(!closeCall &&
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
+						/*
+						cout << " * " << currTimeS_unshift - call->get_last_packet_time_s() << endl
+						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl
+						     << " * " << currTimeS - call->_time / 1000 << endl
+						     << " * " << packet_time_s - call->first_packet_time_us / 1000000 << endl
+						     << " * " << getTimeMS_rdtsc() - currTimeMS << endl;
+						*/
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
 					}
@@ -11355,12 +11824,25 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 					if((!closeAll || !forceClose) &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue > 0 ||
-					    call->useInListCalls)) {
+					    call->useInListCalls 
+					    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+					    || call->conference_active
+					    #endif
+					   )) {
 						closeCall = false;
 						++rejectedCalls_count;
 					}
 				}
 				if(closeCall) {
+
+					#if DEBUG_PACKET_COUNT
+					extern map<string, Call*> __xmap_cleanup_calls;
+					extern volatile int __xmap_sync;
+					__SYNC_LOCK(__xmap_sync);
+					__xmap_cleanup_calls[call->call_id] = call;
+					__SYNC_UNLOCK(__xmap_sync);
+					#endif
+				 
 					if(call->listening_worker_run) {
 						*call->listening_worker_run = 0;
 					}
@@ -11407,6 +11889,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 			}
 		}
 	}
+	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
+	if(opt_conference_processing) {
+		calltable->unlock_conference_calls_map();
+	}
+	#endif
 	for(unsigned i = 0; i < closeCallsCount; i++) {
 		Call *call = closeCalls[i];
 		if(verbosity && verbosityE > 1) {
@@ -11467,10 +11954,11 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, const char *file, int l
 }
 
 int
-Calltable::cleanup_registers(bool closeAll) {
+Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
  
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
 
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -11479,7 +11967,9 @@ Calltable::cleanup_registers(bool closeAll) {
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		Call *reg = (*registerMAPIT).second;
-		u_int32_t currTimeS_unshift = reg->unshiftSystemTime_s(currTimeS);
+		u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+					       packet_time_s :
+					       reg->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
 			reg->dump();
 		}
@@ -11490,7 +11980,7 @@ Calltable::cleanup_registers(bool closeAll) {
 		bool closeReg = false;
 		if(closeAll || reg->force_close) {
 			closeReg = true;
-			if(!is_read_from_file()) {
+			if(!isReadFromFile) {
 				reg->force_terminate = true;
 			}
 		} else {
@@ -11575,14 +12065,17 @@ Calltable::cleanup_registers(bool closeAll) {
 	return 0;
 }
 
-int Calltable::cleanup_ss7(bool closeAll) {
+int Calltable::cleanup_ss7(bool closeAll, u_int32_t packet_time_s) {
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
+	bool isReadFromFile = is_read_from_file();
 	lock_process_ss7_listmap();
 	lock_ss7_listMAP();
 	map<string, Ss7*>::iterator iter;
 	for(iter = ss7_listMAP.begin(); iter != ss7_listMAP.end(); ) {
-		u_int32_t currTimeS_unshift = iter->second->unshiftSystemTime_s(currTimeS);
+		u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+					       packet_time_s :
+					       iter->second->unshiftSystemTime_s(currTimeS);
 		if((iter->second->destroy_at_s &&
 		    ((iter->second->last_message_type == Ss7::rel || iter->second->last_message_type == Ss7::rlc) && 
 		     iter->second->destroy_at_s <= currTimeS_unshift)) || 

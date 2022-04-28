@@ -17,6 +17,18 @@
 extern int opt_tcpreassembly_thread;
 
 
+#define TCP_SEQ_IS_ROT(seq1, seq2) ((seq1) > ((u_int32_t)0xFFFF0000u) && (seq2) < (u_int32_t)0xFFFF)
+
+#define TCP_SEQ_CMP(seq1, seq2) \
+	((seq1) > (seq2) ? (TCP_SEQ_IS_ROT(seq1, seq2) ? -1 : 1) : \
+	 (seq2) > (seq1) ? (TCP_SEQ_IS_ROT(seq2, seq1) ? 1 : -1): \
+			   0)
+	
+#define TCP_SEQ_SUB(seq1, seq2) \
+	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFF0000u) - (seq1) + (seq2)) : \
+				      ((seq1) - (seq2)))
+
+
 class TcpReassemblyDataItem {
 public: 
 	enum eDirection {
@@ -143,6 +155,9 @@ public:
 	}
 	u_int32_t getDatalen() {
 		return(this->datalen);
+	}
+	void setDatalen(u_int32_t datalen) {
+		this->datalen = datalen;
 	}
 	timeval getTime() {
 		return(this->time);
@@ -344,6 +359,7 @@ friend class TcpReassembly;
 class TcpReassemblyStream_packet_var {
 public:
 	TcpReassemblyStream_packet_var() {
+		offset = 0;
 		last_packet_at_from_header = 0;
 	}
 	void push(TcpReassemblyStream_packet packet);
@@ -367,6 +383,19 @@ public:
 		}
 		return(true);
 	}
+	TcpReassemblyStream_packet *getPacket(u_int32_t next_seq) {
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter = queuePackets.find(next_seq);
+		if(iter != queuePackets.end()) {
+			return(&iter->second);
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet *getFirstPacket() {
+		if(queuePackets.size()) {
+			return(&(queuePackets.begin()->second));
+		}
+		return(NULL);
+	}
 private:
 	void cleanState() {
 		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
@@ -374,8 +403,22 @@ private:
 			iter->second.cleanState();
 		}
 	}
+	u_int32_t getMaxNextSeq() {
+		u_int32_t max_next_seq = 0;
+		bool max_next_seq_set = false;
+		map<uint32_t, TcpReassemblyStream_packet>::iterator iter;
+		for(iter = this->queuePackets.begin(); iter != this->queuePackets.end(); iter++) {
+			if(!max_next_seq_set ||
+			   TCP_SEQ_CMP(iter->second.next_seq, max_next_seq) > 0) {
+				max_next_seq = iter->second.next_seq;
+				max_next_seq_set = true;
+			}
+		}
+		return(max_next_seq);
+	}
 private:
 	map<uint32_t, TcpReassemblyStream_packet> queuePackets;
+	u_int32_t offset;
 	u_int64_t last_packet_at_from_header;
 friend class TcpReassemblyStream;
 friend class TcpReassemblyLink;
@@ -402,6 +445,16 @@ public:
 		HTTP_TYPE_GET,
 		HTTP_TYPE_HEAD,
 		HTTP_TYPE_HTTP
+	};
+	struct s_index_item {
+		inline s_index_item(u_int32_t seq, u_int32_t next_seq, u_int32_t len) {
+			this->seq = seq;
+			this->next_seq = next_seq;
+			this->len = len;
+		}
+		u_int32_t seq;
+		u_int32_t next_seq;
+		u_int32_t len;
 	};
 	TcpReassemblyStream(class TcpReassemblyLink *link) {
 		direction = DIRECTION_TO_DEST;
@@ -435,13 +488,42 @@ public:
 	       TcpReassemblyStream *prevHttpStream = NULL, bool enableDebug = false,
 	       u_int32_t forceFirstSeq = 0, int ignorePsh = -1);
 	bool ok2_ec(u_int32_t nextAck, bool enableDebug = false);
-	u_char *complete(u_int32_t *datalen, timeval *time, u_int32_t *seq, bool check = false,
+	u_char *complete(u_int32_t *datalen, deque<s_index_item> *data_index, timeval *time, u_int32_t *seq, bool check = false,
 			 size_t startIndex = 0, size_t *endIndex = NULL, bool breakIfPsh = false);
 	bool saveCompleteData(bool check = false, TcpReassemblyStream *prevHttpStream = NULL);
 	bool isSetCompleteData();
 	void clearCompleteData();
+	void cleanupCompleteData();
+	void confirmCompleteData(u_int32_t datalen_confirmed);
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
+	TcpReassemblyStream_packet *getPacket(u_int32_t seq, u_int32_t next_seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(iter->second.getPacket(next_seq));
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet *getPacket(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(iter->second.getFirstPacket());
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream_packet_var *getPacketVars(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(&iter->second);
+		}
+		return(NULL);
+	}
+	inline eDirection getDirection() {
+		return(direction);
+	}
+	inline TcpReassemblyLink *getLink() {
+		return(link);
+	}
 private:
 	bool checkCompleteContent();
 	bool checkContentIsHttpRequest();
@@ -453,6 +535,7 @@ private:
 		this->ok_packets.clear();
 	}
 	u_int32_t getLastSeqFromNextStream();
+private:
 	eDirection direction;
 	eType type;
 	u_int32_t ack;
@@ -466,6 +549,7 @@ private:
 	bool completed_finally;
 	bool exists_data;
 	TcpReassemblyDataItem complete_data;
+	deque<s_index_item> complete_data_index;
 	eHttpType http_type;
 	u_int32_t http_header_length;
 	u_int32_t http_content_length;
@@ -603,9 +687,9 @@ public:
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 		  pcap_block_store *block_store, int block_store_index);
-	int okQueue(int final = 0, u_int32_t ack = 0, bool enableDebug = false);
+	int okQueue(int final = 0, u_int32_t seq = 0, u_int32_t next_seq = 0, u_int32_t ack = 0, bool psh = false, bool enableDebug = false);
 	int okQueue_normal(int final = 0, bool enableDebug = false);
-	int okQueue_simple_by_ack(u_int32_t ack, bool enableDebug = false);
+	int okQueue_simple_by_ack(u_int32_t seq, u_int32_t ack, u_int32_t next_seq, bool psh, bool enableDebug = false);
 	int okQueue_crazy(int final = 0, bool enableDebug = false);
 	void complete(bool final = false, bool eraseCompletedStreams = false);
 	void complete_normal(bool final = false);
@@ -652,6 +736,43 @@ public:
 			if(iter->second &&
 			   iter->second->max_next_seq == seq) {
 				return(iter->second);
+			}
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream *findStreamByMaxNextSeq(u_int32_t seq_from, u_int32_t seq_to) {
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
+			if(iter->second &&
+			   iter->second->max_next_seq >= seq_from && iter->second->max_next_seq <= seq_to) {
+				return(iter->second);
+			}
+		}
+		return(NULL);
+	}
+	TcpReassemblyStream *findStreamByNextSeq(u_int32_t seq_from, u_int32_t seq_to, TcpReassemblyStream_packet **packet) {
+		*packet = NULL;
+		map<uint32_t, TcpReassemblyStream*>::iterator iter;
+		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end() && !*packet; iter++) {
+			if(iter->second &&
+			   (seq_to ?
+			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_to :
+			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_from)) {
+				TcpReassemblyStream *stream = iter->second;
+				map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter2;
+				for(iter2 = stream->queuePacketVars.begin(); iter2 != stream->queuePacketVars.end() && !*packet; iter2++) {
+					map<uint32_t, TcpReassemblyStream_packet>::iterator iter3;
+					for(iter3 = iter2->second.queuePackets.begin(); iter3 != iter2->second.queuePackets.end() && !*packet; iter3++) {
+						if(seq_to ?
+						    iter3->first >= seq_from && iter3->first <= seq_to :
+						    iter3->first == seq_from) {
+							*packet = &iter3->second;
+						}
+					}
+				}
+				if(*packet) {
+					return(stream);
+				}
 			}
 		}
 		return(NULL);
@@ -741,6 +862,7 @@ private:
 	map<uint32_t, TcpReassemblyStream*> queue_flags_by_ack;
 	map<uint32_t, TcpReassemblyStream*> queue_nul_by_ack;
 	deque<TcpReassemblyStream*> queueStreams;
+	uint32_t last_ok_seq_direction[2];
 	volatile int _sync_queue;
 	volatile int _erase;
 	//u_int64_t created_at;
@@ -833,6 +955,9 @@ public:
 	void setUnlimitedReassemblyAttempts(bool unlimitedReassemblyAttempts = true) {
 		this->unlimitedReassemblyAttempts = unlimitedReassemblyAttempts;
 	}
+	void setMaxReassemblyAttempts(int maxReassemblyAttempts = 50) {
+		this->maxReassemblyAttempts = maxReassemblyAttempts;
+	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
 		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
 	}
@@ -847,6 +972,15 @@ public:
 	}
 	void setIgnorePshInCheckOkData(bool ignorePshInCheckOkData = true) {
 		this->ignorePshInCheckOkData = ignorePshInCheckOkData;
+	}
+	void setSmartMaxSeqByPsh(bool smartMaxSeqByPsh = true) {
+		this->smartMaxSeqByPsh = smartMaxSeqByPsh;
+	}
+	void setSkipZeroData(bool skipZeroData = true) {
+		this->skipZeroData = skipZeroData;
+	}
+	void setIgnoreZeroData(bool ignoreZeroData = true) {
+		this->ignoreZeroData = ignoreZeroData;
 	}
 	void setEnableCleanupThread(bool enableCleanupThread = true) {
 		this->enableCleanupThread = enableCleanupThread;
@@ -876,6 +1010,9 @@ public:
 	}
 	void setEnableSmartCompleteData(bool enableSmartCompleteData = true) {
 		this->enableSmartCompleteData = enableSmartCompleteData;
+	}
+	void setCompleteMod(int completeMod) {
+		this->completeMod = completeMod;
 	}
 	void setEnableExtStat(bool enableExtStat = true) {
 		this->enableExtStat = enableExtStat;
@@ -947,7 +1084,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, unsigned datalen, bool strict, list<d_u_int32_t> *sip_offsets);
+	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -1005,11 +1142,15 @@ private:
 	bool enableAllCompleteAfterZerodataAck;
 	bool enableValidateDataViaCheckData;
 	bool unlimitedReassemblyAttempts;
+	int maxReassemblyAttempts;
 	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;
 	bool simpleByAck;
 	bool ignorePshInCheckOkData;
+	bool smartMaxSeqByPsh;
+	bool skipZeroData;
+	bool ignoreZeroData;
 	bool enableCleanupThread;
 	bool enableAutoCleanup;
 	unsigned int cleanupPeriod;
@@ -1019,6 +1160,7 @@ private:
 	bool enablePushLock;
 	bool enableLinkLock;
 	bool enableSmartCompleteData;
+	int completeMod;
 	bool enableExtStat;
 	unsigned int extCleanupStreamsLimitStreams;
 	unsigned int extCleanupStreamsLimitHeap;
@@ -1038,7 +1180,7 @@ private:
 	pstat_data packetThreadPstatData[2];
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
-	SafeAsyncQueue<sPacket> packetQueue;
+	SafeAsyncQueue<sPacket> *packetQueue;
 	volatile bool initCleanupThreadOk;
 	volatile bool initPacketThreadOk;
 	volatile bool terminatingCleanupThread;

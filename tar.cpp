@@ -811,7 +811,7 @@ Tar::flush() {
 		if(this->flushLzma()) {
 			lzma_end(this->lzmaStream);
 			delete this->lzmaStream;
-			delete this->zipBuffer;
+			delete [] this->zipBuffer;
 			this->lzmaStream = NULL;
 			this->zipBuffer = NULL;
 			this->initLzma();
@@ -823,7 +823,7 @@ Tar::flush() {
 		if(this->flushZip()) {
 			deflateEnd(this->zipStream);
 			delete this->zipStream;
-			delete this->zipBuffer;
+			delete [] this->zipBuffer;
 			this->zipStream = NULL;
 			this->zipBuffer = NULL;
 			this->initZip();
@@ -937,8 +937,11 @@ void Tar::addtofilesqueue() {
 		//error or file does not exists
 		char buf[4092];
 		buf[0] = '\0';
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, buf);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "addtofilesqueue ERROR file[%s] - error[%d][%s]", pathname.c_str(), errno, errstr);
 		return;
 	}
 
@@ -1974,13 +1977,18 @@ bool TarCopy::copy(string src_filePathName) {
 }
 
 bool TarCopy::copy(string src_filePathName, string dst_filePathName) {
-	bool rslt = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true) >= 0;
+	string syserror;
+	int64_t rslt_copy = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true, &syserror);
 	syslog(LOG_NOTICE, "tar %s %s : %s -> %s",
-	       move ? "move" : "copy",
-	       rslt ? "success" : "failed",
+	       move ? 
+		"move" : 
+		"copy",
+	       rslt_copy >= 0 ? 
+		"success" : 
+		("failed (" + copy_file_err_type_str(rslt_copy) + (!syserror.empty() ? ", error: " + syserror : "") + ")").c_str(),
 	       src_filePathName.c_str(),
 	       dst_filePathName.c_str());
-	return(rslt);
+	return(rslt_copy >= 0 || rslt_copy == _copyfile_src_missing);
 }
 
 int untar_gui(const char *args) {

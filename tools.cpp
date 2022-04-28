@@ -450,22 +450,35 @@ int64_t cp_r(const char *src, const char *dst, bool move) {
 	return(bytestransfered);
 }
 
-int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
+int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir, string *syserror) {
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
 	int renamedebug = 0;
+	
+	if(syserror) {
+		*syserror = "";
+	}
 
 	//check if the file exists
 	if(!file_exists(src)) {
-		return(-1);
+		syslog(LOG_ERR, "Missing source file [%s]\n", src);
+		return(_copyfile_src_missing);
 	}
 
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
-		return(-1);
+		char buf[4092];
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for reading [%s] error[%s]\n", src, errstr);
+		if(syserror) {
+			*syserror = errstr;
+		}
+		return(_copyfile_src_open_failed);
 	}
 		
 	/* Stat the input file to obtain its size. */
@@ -497,10 +510,16 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	}
 	if(write_fd == -1) {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, errstr, src);
+		if(syserror) {
+			*syserror = errstr;
+		}
 		close(read_fd);
-		return(-1);
+		return(_copyfile_dst_open_failed);
 	}
 #ifndef FREEBSD
 	fdatasync(write_fd);
@@ -511,8 +530,28 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	int64_t bytestransfered = -1;
 #ifndef FREEBSD
 	off_t offset = 0;
-	if(sendfile(write_fd, read_fd, &offset, stat_buf.st_size) != -1) {
+	ssize_t sendfile_result = 0;
+	while(offset < stat_buf.st_size) {
+		sendfile_result = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+		if(sendfile_result <= 0) {
+			break;
+		}
+	}
+	if(offset == stat_buf.st_size) {
 		bytestransfered = stat_buf.st_size;
+	} else if(sendfile_result < 0) {
+		char buf[4092];
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dst[%s] error[%s]", src, dst, errstr);
+		if(syserror) {
+			*syserror = errstr;
+		}
+		close (read_fd);
+		close (write_fd);
+		return(_copyfile_sendfile_failed);
 	}
 #endif
 	if(bytestransfered == -1) {
@@ -531,10 +570,18 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 			res = write(write_fd, &buf[0], result);
 			if(res == -1) {
 				char buf[4092];
-				strerror_r(errno, buf, 4092);
-				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
+				const char *errstr = strerror_r(errno, buf, sizeof(buf));
+				if(!errstr || !errstr[0]) {
+					errstr = "unknown error";
+				}
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, errstr);
+				if(syserror) {
+					*syserror = errstr;
+				}
 				bytestransfered = -1;
-				break;
+				close (read_fd);
+				close (write_fd);
+				return(_copyfile_dst_write_failed);
 			}
 			bytestransfered += res;
 		}
@@ -547,6 +594,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		unlink(src);
 	}
 	return(bytestransfered);
+}
+
+string copy_file_err_type_str(int err_type) {
+	switch(err_type) {
+	case _copyfile_src_missing:
+		return("missing src file");
+	case _copyfile_src_open_failed:
+		return("failed open src file");
+	case _copyfile_dst_open_failed:
+		return("failed open dst file");
+	case _copyfile_sendfile_failed:
+		return("failed call sendfile");
+	case _copyfile_dst_write_failed:
+		return("failed write to dst file");
+	}
+	return("");
 }
 
 size_t _get_url_file_writer_function(void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -2307,7 +2370,7 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			pexecCmd += "make install";
 		}
 		pexecCmd += ";'";
-		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600);
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true);
 		if(exitCode == 0) {
 			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
@@ -3333,6 +3396,13 @@ void ParsePacket::setStdParse() {
 	
 	SIP_HEADERfilter::addNodes(this);
 	this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+	
+	extern bool opt_conference_processing;
+	if(opt_conference_processing) {
+		addNode("event:", typeNode_std);
+		addNode("subscription-state:", typeNode_std);
+		addNode("referred-by:", typeNode_std);
+	}
 }
 
 void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {
@@ -3492,14 +3562,17 @@ SafeAsyncQueue_base::SafeAsyncQueue_base() {
 		vm_pthread_create("async queue",
 				  &timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
 	}
-	lock_list_saq();
-	list_saq.push_back(this);
-	unlock_list_saq();
 }
 
 SafeAsyncQueue_base::~SafeAsyncQueue_base() {
 	lock_list_saq();
 	list_saq.remove(this);
+	unlock_list_saq();
+}
+
+void SafeAsyncQueue_base::addToSaq() {
+	lock_list_saq();
+	list_saq.push_back(this);
 	unlock_list_saq();
 }
 
@@ -3520,25 +3593,22 @@ void SafeAsyncQueue_base::stopTimerThread(bool wait) {
 void SafeAsyncQueue_base::timerThread() {
 	runTimerThread = true;
 	while(!terminateTimerThread) {
-		USLEEP(100000);
+		USLEEP(1000);
+		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock_list_saq();
 		list<SafeAsyncQueue_base*>::iterator iter;
 		for(iter = list_saq.begin(); iter != list_saq.end(); iter++) {
-			(*iter)->timerEv(timer_counter);
+			(*iter)->timerEv(time_ms);
 		}
 		unlock_list_saq();
-		++timer_counter;
 	}
 	runTimerThread = false;
 	timer_thread = 0;
-	timer_counter = 0;
 }
 
 list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
 
 pthread_t SafeAsyncQueue_base::timer_thread = 0;
-
-unsigned long long SafeAsyncQueue_base::timer_counter = 0;
 
 volatile int SafeAsyncQueue_base::_sync_list_saq = 0;
 
@@ -4448,20 +4518,21 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 				if(payload_tcp_udp_length > ws.getHeaderLength()) {
 					bool allocData;
 					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
-					if(!ws_data) {
+					if(ws_data) {
+						delete [] payload_tcp_udp;
+						payload_tcp_udp_length =  header_tcp != NULL ?
+									   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
+									       ws.getDataLength()) :
+									   ws.getDataLength();
+						payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
+						memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
+						payload_tcp_udp[payload_tcp_udp_length] = 0;
+						if(allocData) {
+							delete [] ws_data;
+						}
+					} else {
 						delete [] payload_tcp_udp;
 						payload_tcp_udp = NULL;
-					}
-					delete [] payload_tcp_udp;
-					payload_tcp_udp_length =  header_tcp != NULL ?
-								   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
-								       ws.getDataLength()) :
-								   ws.getDataLength();
-					payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
-					memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
-					payload_tcp_udp[payload_tcp_udp_length] = 0;
-					if(allocData) {
-						delete [] ws_data;
 					}
 				}
 			}
@@ -4840,19 +4911,19 @@ string _gunzip_s(const char *zipFilename, const char *unzipFilename) {
 			fclose(zip);
 		} else {
 			char buf[4092];
-			strerror_r(errno, buf, 4092);
+			char *errstr = strerror_r(errno, buf, sizeof(buf));
 			fclose(zip);
-			if(buf[0]) {
-				error = buf;
+			if(errstr && errstr[0]) {
+				error = errstr;
 			} else {
 				error = string("open output file ") + unzipFilename + " failed";
 			}
 		}
 	} else {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		if(buf[0]) {
-			error = buf;
+		char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(errstr && errstr[0]) {
+			error = errstr;
 		} else {
 			error = string("open inut file ") + zipFilename + " failed";
 		}
@@ -5052,13 +5123,17 @@ char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned d
 }
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
+	return(getbranch_xml(branch, str, strlen(str), rslt));
+}
+
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt) {
 	const char *pos = str;
 	while(pos) {
-		const char *_pos_next_1 = strcasestr(pos, (string("<") + branch + " ").c_str());
-		const char *_pos_next_2 = strcasestr(pos, (string("<") + branch + ">").c_str());
+		const char *_pos_next_1 = strncasestr(pos, (string("<") + branch + " ").c_str(), str_length - (pos - str));
+		const char *_pos_next_2 = strncasestr(pos, (string("<") + branch + ">").c_str(), str_length - (pos - str));
 		pos = _pos_next_1 && _pos_next_2 ? min(_pos_next_1, _pos_next_2) : max(_pos_next_1, _pos_next_2);
 		if(pos) {
-			const char *pos_end = strcasestr(pos, (string("</") + branch + ">").c_str());
+			const char *pos_end = strncasestr(pos, (string("</") + branch + ">").c_str(), str_length - (pos - str));
 			if(pos_end) {
 				rslt->push_back(string(pos, pos_end - pos + strlen(branch) + 3));
 				pos = pos_end + 1;
@@ -5071,10 +5146,14 @@ int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
 }
 
 string gettag_xml(const char *tag, const char *str) {
-	const char *begin = strcasestr(str, (string(tag) + "=\"").c_str());
+	return(gettag_xml(tag, str, strlen(str)));
+}
+
+string gettag_xml(const char *tag, const char *str, unsigned str_length) {
+	const char *begin = strncasestr(str, (string(tag) + "=\"").c_str(), str_length);
 	if(begin) {
 		begin += strlen(tag) + 2;
-		const char *end = strcasestr(begin, "\"");
+		const char *end = strncasestr(begin, "\"", str_length - (begin - str));
 		if(end) {
 			return(string(begin, end - begin));
 		}
@@ -5083,8 +5162,12 @@ string gettag_xml(const char *tag, const char *str) {
 }
 
 string getvalue_xml(const char *branch, const char *str) {
+	return(getvalue_xml(branch, str, strlen(str)));
+}
+
+string getvalue_xml(const char *branch, const char *str, unsigned str_length) {
 	list<string> rslt;
-	if(getbranch_xml(branch, str, &rslt)) {
+	if(getbranch_xml(branch, str, str_length, &rslt)) {
 		string branch = *rslt.begin();
 		size_t begin = branch.find('>');
 		if(begin != string::npos) {
@@ -5336,7 +5419,8 @@ u_int32_t octal_decimal(u_int32_t n) {
 }
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
-	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec) {
+	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec,
+	      bool closeAllFdAfterFork) {
 	if(exitCode) {
 		*exitCode = -1;
 	}
@@ -5352,7 +5436,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	int pipe_stderr[2];
 	pipe(pipe_stdout);
 	pipe(pipe_stderr);
-	int fork_rslt = vfork();
+	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
@@ -5360,6 +5444,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		dup2(pipe_stderr[1], 2);
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
+		if(closeAllFdAfterFork) {
+			close_all_fd();
+		}
 		if(execvp(exec_args[0], exec_args) == -1) {
 			char errmessage[1000];
 			snprintf(errmessage, sizeof(errmessage), "exec failed: %s", exec_args[0]);
@@ -6310,6 +6397,10 @@ cCsv::cCsv() {
 	firstRowContainFieldNames = false;
 }
 
+cCsv::~cCsv() {
+	table.clear();
+}
+
 void cCsv::setFirstRowContainFieldNames(bool firstRowContainFieldNames) {
 	this->firstRowContainFieldNames = firstRowContainFieldNames;
 }
@@ -6643,6 +6734,8 @@ string cDbStrings::implodeInsertValues(const char *table, cDbStrings *header, Sq
 			case SqlDb_row::_ift_sql:
 				if(strings[i].ai_id) {
 					rslt += intToString(strings[i].ai_id);
+				} else {
+					rslt += strings[i].str;
 				}
 				break;
 			default:
@@ -8524,11 +8617,16 @@ void rss_purge(bool force) {
 		} else {
 			extern int opt_memory_purge_if_release_gt;
 			extern u_int64_t all_ringbuffers_size;
-			size_t allocated_bytes = 0;
-			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &allocated_bytes);
+			size_t tcm_heap_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.heap_size", &tcm_heap_bytes);
+			size_t tcm_allocated_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &tcm_allocated_bytes);
 			size_t rss = getRss();
-			int64_t release_size = rss - all_ringbuffers_size - allocated_bytes;
-			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10)) {
+			int64_t release_size = rss - all_ringbuffers_size - tcm_allocated_bytes;
+			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			   (tcm_heap_bytes > tcm_allocated_bytes && 
+			    (tcm_heap_bytes - tcm_allocated_bytes > MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			     tcm_heap_bytes > tcm_allocated_bytes * 1.5))) {
 				tcmalloc_need_purge = true;
 			}
 		}
@@ -8730,7 +8828,7 @@ long getSwapUsage(int pid) {
 
 pid_t findMysqlProcess(void) {
 	char buff[16];
-	FILE *cmd_pipe = popen("pgrep 'mysqld$'", "r");
+	FILE *cmd_pipe = popen("pgrep '(mysqld|mariadbd)$'", "r");
 	int retval = 0;
 	if(cmd_pipe) {
 		if (fgets(buff, sizeof(buff), cmd_pipe)) {
@@ -8783,4 +8881,110 @@ void checkSwapUsage(void) {
 	} else {
 		swapDelayCount = ONE_HOUR;
 	}
+}
+
+
+cWsCalls::cWsCalls() {
+	csv = NULL;
+}
+
+cWsCalls::~cWsCalls() {
+	delete csv;
+}
+
+void cWsCalls::load(const char *filename) {
+	csv = new FILE_LINE(0) cCsv;
+	csv->setFirstRowContainFieldNames();
+	csv->load(filename);
+	//cout << csv.getRowsCount() << endl;
+	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
+		map<string, string> row;
+		csv->getRow(i, &row);
+		if(row["Call-ID"].empty() || row["Call-ID"].find(',') != string::npos) {
+			continue;
+		}
+		if(row["Info"].substr(0, 7) != "Request" && row["Info"].substr(0, 6) != "Status") {
+			continue;
+		}
+		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
+		//cout << row["Call-ID"] << endl;
+		//cout << row["Request-Line"] << endl;
+		//cout << row["Status-Line"] << endl;
+		sCall *call;
+		map<string, sCall>::iterator iter = calls.find(row["Call-ID"]);
+		if(iter != calls.end()) {
+			call = &iter->second;
+		} else {
+			call = &calls[row["Call-ID"]];
+			call->callid = row["Call-ID"];
+		}
+		sSip sip;
+		sip.info = row["Info"];
+		sip.request = !row["Request-Line"].empty();
+		sip.str = !row["Request-Line"].empty() ? row["Request-Line"] : row["Status-Line"];
+		if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
+			continue;
+		}
+		sip.cseq = row["CSeq"];
+		sip.src = row["Source"];
+		sip.src_port = row["Source Port"];
+		sip.dst = row["Destination"];
+		sip.dst_port = row["Destination Port"];
+		bool dupl = false;
+		if(call->sip.size()) {
+			for(unsigned i = 0; i < call->sip.size(); i++) {
+				if(call->sip[i] == sip) {
+					dupl = true;
+					break;
+				}
+			}
+		}
+		if(!dupl) {
+			call->sip.push_back(sip);
+		}
+	}
+	//cout << "load finished" << endl;
+}
+
+void cWsCalls::setConfirm(const char *callid, bool request, const char *str, const char *cseq) {
+	map<string, sCall>::iterator iter = calls.find(callid);
+	if(iter != calls.end()) {
+		for(vector<sSip>::iterator iter2 = iter->second.sip.begin(); iter2 != iter->second.sip.end(); iter2++) {
+			if(!iter2->confirm &&
+			   iter2->request == request &&
+			   iter2->str == str &&
+			   iter2->cseq == cseq) {
+				iter2->confirm = true;
+				break;
+			}
+		}
+	}
+}
+
+string cWsCalls::printUncofirmed() {
+	ostringstream out;
+	unsigned counter = 0;
+	for(map<string, sCall>::iterator iter = calls.begin(); iter != calls.end(); iter++) {
+		if(!iter->second.isConfirmed()) {
+			out << (++counter) << "  - " << iter->first
+			    << endl;
+			for(unsigned i = 0; i < iter->second.sip.size(); i++) {
+				out << "   "
+				    << (iter->second.sip[i].confirm ? " " : "*")
+				    << " " << (i + 1) 
+				    << " " << iter->second.sip[i].str
+				    << " " << iter->second.sip[i].cseq
+				    << " (" << iter->second.sip[i].info << ")"
+				    << endl;
+				out << "     "
+				    << "     ( filter: "
+				    << "ip" << (iter->second.sip[i].src.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].src << " && "
+				    << "ip" << (iter->second.sip[i].dst.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].dst << " && "
+				    << "tcp.port == " << iter->second.sip[i].src_port << " && "
+				    << "tcp.port == " << iter->second.sip[i].dst_port << " )"
+				    << endl;
+			}
+		}
+	}
+	return(out.str());
 }
