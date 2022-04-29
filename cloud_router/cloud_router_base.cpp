@@ -1109,7 +1109,8 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 	return(line);
 }
 
-void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout) {
+void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout,
+					    SimpleBuffer *rsltBuffer) {
 	string verb_str;
 	if(!timeout) {
 		timeout = timeouts.readblock;
@@ -1141,6 +1142,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 				this->decodeAesReadBuffer(buffer, len, &data_dec, &data_dec_len, false);
 				if(data_dec_len) {
 					dest->write(data_dec, data_dec_len);
+					if(rsltBuffer) {
+						rsltBuffer->add(data_dec, data_dec_len);
+					}
 				}
 				if(data_dec) {
 					delete [] data_dec;
@@ -1155,6 +1159,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 			this->decodeAesReadBuffer(NULL, 0, &data_dec, &data_dec_len, true);
 			if(data_dec_len) {
 				dest->write(data_dec, data_dec_len);
+				if(rsltBuffer) {
+					rsltBuffer->add(data_dec, data_dec_len);
+				}
 			}
 			if(data_dec) {
 				delete [] data_dec;

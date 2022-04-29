@@ -195,6 +195,7 @@ public:
 	string getIdService(int32_t sensor_id, const char *sensor_string);
 	bool existsService(int32_t sensor_id, const char *sensor_string);
 	sSnifferServerService getService(int32_t sensor_id, const char *sensor_string);
+	void stopServiceBySensorId(int32_t sensor_id);
 	class cSnifferServerConnection *getServiceConnection(int32_t sensor_id, const char *sensor_string);
 	bool getAesKeys(int32_t sensor_id, const char *sensor_string, string *ckey, string *ivec);
 	string listJsonServices();
@@ -289,6 +290,9 @@ public:
 	virtual void evData(u_char *data, size_t dataLen);
 	void addTask(sSnifferServerGuiTask task);
 	sSnifferServerGuiTask getTask();
+	void doStop() {
+		stop = true;
+	}
 	void doTerminate() {
 		terminate = true;
 	}
@@ -324,6 +328,7 @@ private:
 protected: 
 	queue<sSnifferServerGuiTask> tasks;
 	volatile int _sync_tasks;
+	volatile bool stop;
 	volatile bool terminate;
 	volatile bool orphan;
 	cSnifferServer *server;

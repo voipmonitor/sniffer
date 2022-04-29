@@ -476,7 +476,8 @@ public:
 		return(readBlock(str, typeCode, xor_key, quietEwouldblock, timeout));
 	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
-	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0);
+	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0,
+				      SimpleBuffer *rsltBuffer = NULL);
 	void generate_rsa_keys(unsigned keylen = 2048) {
 		rsa.generate_keys(keylen);
 	}
