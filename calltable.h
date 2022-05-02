@@ -959,20 +959,20 @@ public:
 				return(called_final);
 			} else {
 				if(opt_destination_number_mode == 2) {
-					const char *rslt = get_called_uri();
+					const char *rslt = get_called_uri(true);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(get_called_to());
+				return(get_called_to(true));
 			}
 		} else {
 			return(called_final[0] ? called_final :
 			       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
 		}
 	}
-	inline const char *get_called_to() {
-		if(is_multiple_to_branch()) {
+	inline const char *get_called_to(int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
 			if(to_is_canceled(called_to)) {
 				const char *rslt = get_to_not_canceled();
 				if(rslt && rslt[0]) {
@@ -982,13 +982,15 @@ public:
 		}
 		return(called_to);
 	}
-	inline const char *get_called_uri() {
-		if(is_multiple_to_branch()) {
+	inline const char *get_called_uri(int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
 			if(to_is_canceled(called_to)) {
 				const char *rslt = get_to_uri_not_canceled();
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
+			} else if(called_uri[0]) {
+				return(called_uri);
 			}
 			return(get_called_to());
 		} else {
@@ -1011,20 +1013,20 @@ public:
 				return(called_domain_final);
 			} else {
 				if(opt_destination_number_mode == 2) {
-					const char *rslt = get_called_domain_uri();
+					const char *rslt = get_called_domain_uri(true);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(get_called_domain_to());
+				return(get_called_domain_to(true));
 			}
 		} else {
 			return(called_domain_final[0] ? called_domain_final :
 			       called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
 		}
 	}
-	inline const char *get_called_domain_to() {
-		if(is_multiple_to_branch()) {
+	inline const char *get_called_domain_to(int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
 			if(to_is_canceled(called_to)) {
 				const char *rslt = get_domain_to_not_canceled();
 				if(rslt && rslt[0]) {
@@ -1034,13 +1036,15 @@ public:
 		}
 		return(called_domain_to);
 	}
-	inline const char *get_called_domain_uri() {
-		if(is_multiple_to_branch()) {
+	inline const char *get_called_domain_uri(int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
 			if(to_is_canceled(called_to)) {
 				const char *rslt = get_domain_to_uri_not_canceled();
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
+			} else if(called_domain_uri[0]) {
+				return(called_domain_uri);
 			}
 			return(get_called_domain_to());
 		} else {
