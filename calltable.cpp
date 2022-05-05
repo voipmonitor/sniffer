@@ -204,6 +204,7 @@ extern int opt_skinny;
 extern int opt_enable_fraud;
 extern char opt_call_id_alternative[256];
 extern char opt_callidmerge_header[128];
+extern bool opt_sdp_check_direction_ext;
 extern int opt_sdp_multiplication;
 extern int opt_hide_message_content;
 extern char opt_hide_message_content_secret[1024];
@@ -660,6 +661,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sipcalledip_encaps_prot = 0xFF;
 	lastsipcallerip.clear();
 	sipcallerdip_reverse = false;
+	_invite_list_lock = 0;
+	invite_sdaddr_last_ts = 0;
+	invite_sdaddr_all_confirmed = -1;
+	invite_sdaddr_bad_order = false;
 	skinny_partyid = 0;
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
 	caller_sipdscp = 0;
@@ -1462,11 +1467,13 @@ Call::is_multiple_to_branch() {
 
 bool
 Call::all_invite_is_multibranch(vmIP saddr) {
+	invite_list_lock();
 	if(invite_sdaddr.size() < 2) {
+		invite_list_unlock();
 		return(false);
 	}
-	list<Call::sInviteSD_Addr>::iterator iter1;
-	list<Call::sInviteSD_Addr>::iterator iter2;
+	vector<Call::sInviteSD_Addr>::iterator iter1;
+	vector<Call::sInviteSD_Addr>::iterator iter2;
 	unsigned int counter1 = 0;
 	unsigned int counter2 = 0;
 	for(iter1 = invite_sdaddr.begin(); iter1 != invite_sdaddr.end(); iter1++) {
@@ -1478,6 +1485,7 @@ Call::all_invite_is_multibranch(vmIP saddr) {
 					++counter2;
 					if(counter2 > counter1) {
 						if(iter1->called == iter2->called || iter1->branch == iter2->branch) {
+							invite_list_unlock();
 							return(false);
 						}
 					}
@@ -1485,6 +1493,7 @@ Call::all_invite_is_multibranch(vmIP saddr) {
 			}
 		}
 	}
+	invite_list_unlock();
 	return(counter1 >= 1);
 }
 
@@ -4103,31 +4112,31 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(b_ua);
 		break;
 	case cf_callerip:
-		rfield->set(getSipcallerip(), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcallerip(true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip(true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip(true, true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_callerip_country:
-		rfield->set(getCountryByIP(getSipcallerip(), true).c_str());
+		rfield->set(getCountryByIP(getSipcallerip(true), true).c_str());
 		break;
 	case cf_calledip_country:
-		rfield->set(getCountryByIP(getSipcalledip(true), true).c_str());
+		rfield->set(getCountryByIP(getSipcalledip(true, true), true).c_str());
 		break;
 	case cf_callerip_encaps:
-		rfield->set(getSipcallerip_encaps(), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcallerip_encaps(true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_calledip_encaps:
-		rfield->set(getSipcalledip_encaps(true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip_encaps(true, true), RecordArrayField::tf_ip_n4);
 		break;
 	case cf_callerip_encaps_prot:
-		rfield->set(getSipcallerip_encaps_prot());
+		rfield->set(getSipcallerip_encaps_prot(true));
 		break;
 	case cf_calledip_encaps_prot:
-		rfield->set(getSipcalledip_encaps_prot(true));
+		rfield->set(getSipcalledip_encaps_prot(true, true));
 		break;
 	case cf_sipproxies:
-		rfield->set(get_proxies_str().c_str());
+		rfield->set(getProxies_str(true, true).c_str());
 		break;
 	case cf_lastSIPresponseNum:
 		rfield->set(lastSIPresponseNum);
@@ -5119,12 +5128,12 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			switch(child_table_enum) {
 			case _t_cdr_proxy:
 				{
-				list<vmIP>::iterator iter = proxies.begin();
+				list<vmIPport>::iterator iter = proxies.begin();
 				for(unsigned i = 0; i < child_index; i++) {
 					++iter;
 				}
 				if(*column == "dst") {
-					*value = cEvalFormula::sValue(*iter);
+					*value = cEvalFormula::sValue(iter->ip);
 					column_index = 1;
 					return(true);
 				}
@@ -5581,7 +5590,7 @@ void Call::selectRtpAB() {
 		rtp_size_reduct = j;
 		// bubble sort
 		for(int k = 0; k < rtp_size_reduct; k++) {
-			for(int j = 0; j < rtp_size_reduct; j++) {
+			for(int j = k + 1; j < rtp_size_reduct; j++) {
 				if((rtp_stream_by_index(indexes[k])->received_() + rtp_stream_by_index(indexes[k])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
 					int kTmp = indexes[k];
 					indexes[k] = indexes[j];
@@ -5939,50 +5948,78 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	} else if(suppress_rtp_read_due_to_insufficient_hw_performance) {
 		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_READ;
 	}
-
-	vmIP sipcalledip_confirmed;
-	vmIP sipcalledip_encaps_confirmed;
-	u_int8_t sipcalledip_encaps_prot_confirmed;
-	vmPort sipcalledport_confirmed;
-	sipcalledip_confirmed = getSipcalledipConfirmed(&sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
-	sipcalledip_rslt = sipcalledip_confirmed.isSet() ? sipcalledip_confirmed : getSipcalledip();
-	sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps();
-	sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot();
-	sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport();
 	
-	string query_str_cdrproxy;
-	if(opt_cdrproxy) {
-		vector<SqlDb_row> cdrproxy_rows;
-		set<vmIP> proxies_undup;
-		this->proxies_undup(&proxies_undup);
-		set<vmIP>::iterator iter_undup = proxies_undup.begin();
-		while(iter_undup != proxies_undup.end()) {
-			if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
-			SqlDb_row cdrproxy;
-			cdrproxy.setIgnoreCheckExistsField();
-			cdrproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-			cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
-			cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str() );
-			if(opt_mysql_enable_multiple_rows_insert) {
-				cdrproxy_rows.push_back(cdrproxy);
-			} else {
-				query_str_cdrproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-						      sqlDbSaveCall->insertQuery(sql_cdr_proxy_table, cdrproxy));
-			}
-			++iter_undup;
+	bool set_sipcallerip = false;
+	bool set_sipcalledip = false;
+	set<vmIP> proxies_undup;
+	bool set_proxies = false;
+	if(invite_sdaddr_bad_order) {
+		vmIP sipcallerip;
+		vmPort sipcallerport;
+		vmIP sipcallerip_encaps;
+		u_int8_t sipcallerip_encaps_prot;
+		sipcallerip = getSipcalleripFromInviteList(&sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false);
+		if(sipcallerip.isSet()) {
+			set_sipcallerip = true;
+			sipcallerip_rslt = sipcallerip;
+			sipcallerport_rslt = sipcallerport;
+			sipcallerip_encaps_rslt = sipcallerip_encaps;
+			sipcallerip_encaps_prot_rslt = sipcallerip_encaps_prot;
 		}
-		if(opt_mysql_enable_multiple_rows_insert && cdrproxy_rows.size()) {
-			if(useCsvStoreFormat()) {
-				query_str_cdrproxy += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_proxy") + cdrproxy_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
-				for(unsigned i = 0; i < cdrproxy_rows.size(); i++) {
-					query_str_cdrproxy += MYSQL_MAIN_INSERT_CSV_ROW("cdr_proxy") + cdrproxy_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
-				}
-			} else {
-				query_str_cdrproxy += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
-						      sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_proxy_table, &cdrproxy_rows, opt_mysql_max_multiple_rows_insert, 
-												     MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+		vmIP sipcalledip;
+		vmPort sipcalledport;
+		vmIP sipcalledip_encaps;
+		u_int8_t sipcalledip_encaps_prot;
+		list<vmIPport> proxies;
+		for(int i = 0; i < 2; i++) {
+			sipcalledip = getSipcalledipFromInviteList(&sipcalledport, &sipcalledip_encaps, &sipcalledip_encaps_prot, &proxies, i == 0);
+			if(sipcalledip.isSet()) {
+				set_sipcalledip = true;
+				sipcalledip_rslt = sipcalledip;
+				sipcalledport_rslt = sipcalledport;
+				sipcalledip_encaps_rslt = sipcalledip_encaps;
+				sipcalledip_encaps_prot_rslt = sipcalledip_encaps_prot;
+				vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
+				this->proxies_undup(&proxies_undup, &proxies, &proxy_exclude);
+				set_proxies = true;
+				break;
 			}
 		}
+	}
+	if(!set_sipcallerip) {
+		sipcallerip_rslt = getSipcallerip();
+		sipcallerip_encaps_rslt = getSipcallerip_encaps();
+		sipcallerip_encaps_prot_rslt = getSipcallerip_encaps_prot();
+		sipcallerport_rslt = getSipcallerport();
+	}
+	if(!set_sipcalledip && !isAllInviteConfirmed()) {
+		vmIP sipcalledip_confirmed;
+		vmIP sipcalledip_encaps_confirmed;
+		u_int8_t sipcalledip_encaps_prot_confirmed;
+		vmPort sipcalledport_confirmed;
+		list<vmIPport> proxies;
+		sipcalledip_confirmed = getSipcalledipFromInviteList(&sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed, &proxies, true);
+		if(sipcalledip_confirmed.isSet()) {
+			set_sipcalledip = true;
+			sipcalledip_rslt = getSipcalledip();
+			sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps();
+			sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot();
+			sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport();
+			vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
+			this->proxies_undup(&proxies_undup, &proxies, &proxy_exclude);
+			set_proxies = true;
+		}
+	}
+	if(!set_sipcalledip) {
+		sipcalledip_rslt = getSipcalledip();
+		sipcalledip_encaps_rslt = getSipcalledip_encaps();
+		sipcalledip_encaps_prot_rslt = getSipcalledip_encaps_prot();
+		sipcalledport_rslt = getSipcalledport();
+	}
+	
+	if(!set_proxies) {
+		vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
+		this->proxies_undup(&proxies_undup, NULL, &proxy_exclude);
 	}
 
 	list<sSipResponse> SIPresponseUnique;
@@ -6062,19 +6099,30 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
-	cdr.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
+	cdr.add(sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
 	cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
 	if(existsColumns.cdr_sipport) {
-		cdr.add(getSipcallerport().getPort(), "sipcallerport");
+		cdr.add(sipcallerport_rslt.getPort(), "sipcallerport");
 		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
 	}
+	if(existsColumns.cdr_sipcallerdip_encaps) {
+		cdr.add(sipcallerip_encaps_rslt, "sipcallerip_encaps", !sipcallerip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
+		cdr.add(sipcallerip_encaps_rslt.isSet() && sipcallerip_encaps_prot_rslt != 0xFF ? sipcallerip_encaps_prot_rslt : 0, 
+			"sipcallerip_encaps_prot", 
+			!sipcallerip_encaps_rslt.isSet() || sipcallerip_encaps_prot_rslt == 0xFF);
+		cdr.add(sipcalledip_encaps_rslt, "sipcalledip_encaps", !sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
+		cdr.add(sipcalledip_encaps_rslt.isSet() && sipcalledip_encaps_prot_rslt != 0xFF ? sipcalledip_encaps_prot_rslt : 0, 
+			"sipcalledip_encaps_prot", 
+			!sipcalledip_encaps_rslt.isSet() || sipcalledip_encaps_prot_rslt == 0xFF);
+	}
+	
 	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
 		vmIP ipv4[2], ipv6[2];
 		vmPort ipv4_port[2], ipv6_port[2];
-		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], opt_separate_storage_ipv6_ipv4_address == 2, 6);
-		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
 		if(ipv4[0].isSet()) {
 			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
@@ -6103,16 +6151,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(0, "sipcalledip_v6", true);
 			cdr.add(0, "sipcalledport_v6", true);
 		}
-	}
-	if(existsColumns.cdr_sipcallerdip_encaps) {
-		cdr.add(getSipcallerip_encaps(), "sipcallerip_encaps", !getSipcallerip_encaps().isSet(), sqlDbSaveCall, sql_cdr_table);
-		cdr.add(sipcalledip_encaps_rslt, "sipcalledip_encaps", !sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
-		cdr.add(getSipcallerip_encaps().isSet() && getSipcallerip_encaps_prot() != 0xFF ? getSipcallerip_encaps_prot() : 0, 
-			"sipcallerip_encaps_prot", 
-			!getSipcallerip_encaps().isSet() || getSipcallerip_encaps_prot() == 0xFF);
-		cdr.add(sipcalledip_encaps_rslt.isSet() && sipcalledip_encaps_prot_rslt != 0xFF ? sipcalledip_encaps_prot_rslt : 0, 
-			"sipcalledip_encaps_prot", 
-			!sipcalledip_encaps_rslt.isSet() || sipcalledip_encaps_prot_rslt == 0xFF);
 	}
 	cdr.add_duration(duration_us(), "duration", existsColumns.cdr_duration_ms);
 	if(progress_time_us) {
@@ -6984,8 +7022,35 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				query_str += sqlDbSaveCall->insertQuery(sql_cdr_table_last1d, cdr) + ";\n";
 			}
 		}
-
-		query_str += query_str_cdrproxy;
+		
+		if(opt_cdrproxy) {
+			vector<SqlDb_row> cdrproxy_rows;
+			for(set<vmIP>::iterator iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); iter_undup++) {
+				SqlDb_row cdrproxy;
+				cdrproxy.setIgnoreCheckExistsField();
+				cdrproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+				cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
+				cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str() );
+				if(opt_mysql_enable_multiple_rows_insert) {
+					cdrproxy_rows.push_back(cdrproxy);
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQuery(sql_cdr_proxy_table, cdrproxy));
+				}
+			}
+			if(opt_mysql_enable_multiple_rows_insert && cdrproxy_rows.size()) {
+				if(useCsvStoreFormat()) {
+					query_str += MYSQL_MAIN_INSERT_CSV_HEADER("cdr_proxy") + cdrproxy_rows[0].implodeFields(",", "\"") + MYSQL_CSV_END;
+					for(unsigned i = 0; i < cdrproxy_rows.size(); i++) {
+						query_str += MYSQL_MAIN_INSERT_CSV_ROW("cdr_proxy") + cdrproxy_rows[i].implodeContentTypeToCsv(true) + MYSQL_CSV_END;
+					}
+				} else {
+					query_str += MYSQL_ADD_QUERY_END(MYSQL_NEXT_INSERT_GROUP + 
+						     sqlDbSaveCall->insertQueryWithLimitMultiInsert(sql_cdr_proxy_table, &cdrproxy_rows, opt_mysql_max_multiple_rows_insert, 
+												    MYSQL_QUERY_END.c_str(), MYSQL_QUERY_END_SUBST.c_str()), false);
+				}
+			}
+		}
 
 		vector<SqlDb_row> rtp_rows;
 		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
@@ -7563,17 +7628,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(cdrID > 0) {
 
 		if(opt_cdrproxy) {
-			set<vmIP> proxies_undup;
-			this->proxies_undup(&proxies_undup);
-			set<vmIP>::iterator iter_undup = proxies_undup.begin();
-			while(iter_undup != proxies_undup.end()) {
-				if(*iter_undup == sipcalledip_rslt) { ++iter_undup; continue; }
+			for(set<vmIP>::iterator iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); iter_undup++) {
 				SqlDb_row cdrproxy;
 				cdrproxy.add(cdrID, "cdr_ID");
 				cdrproxy.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_proxy_calldate_ms);
 				cdrproxy.add((vmIP)(*iter_undup), "dst", false, sqlDbSaveCall, sql_cdr_proxy_table.c_str());
 				sqlDbSaveCall->insert(sql_cdr_proxy_table, cdrproxy);
-				++iter_undup;
 			}
 		}
 
@@ -8699,44 +8759,19 @@ void Call::adjustUA() {
 	}
 }
 
-bool Call::is_set_proxies() {
-	bool set_proxies;
-	proxies_lock();
-	set_proxies = proxies.size() > 0;
-	proxies_unlock();
-	return(set_proxies);
-}
-
-void Call::proxies_undup(set<vmIP> *proxies_undup) {
-	proxies_lock();
-	list<vmIP>::iterator iter = proxies.begin();
-	while (iter != proxies.end()) {
-		if (proxies_undup->find(*iter) == proxies_undup->end()) {
-			proxies_undup->insert(*iter);
-		}
-		++iter;
+void Call::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
+	bool need_lock = !proxies;
+	if(need_lock) proxies_lock();
+	if(!proxies) {
+		proxies = &this->proxies;
 	}
-	proxies_unlock();
-}
-
-string Call::get_proxies_str() {
-	string sipproxies;
-	if(is_set_proxies()) {
-		stringstream spp;
-		set<vmIP> proxies_undup;
-		this->proxies_undup(&proxies_undup);
-		set<vmIP>::iterator iter_undup;
-		for (iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ) {
-			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
-			spp << ((vmIP)(*iter_undup)).getString();
-			++iter_undup;
-			if (iter_undup != proxies_undup.end()) {
-				spp << ',';
-			}
+	for(list<vmIPport>::iterator iter = proxies->begin(); iter != proxies->end(); iter++) {
+		if((!exclude || !(*iter == *exclude)) &&
+		   proxies_undup->find(iter->ip) == proxies_undup->end()) {
+			proxies_undup->insert(iter->ip);
 		}
-		sipproxies = spp.str();
 	}
-	return(sipproxies);
+	if(need_lock) proxies_unlock();
 }
 
 void Call::createListeningBuffers() {
@@ -8779,151 +8814,153 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
-vmIP Call::getSipcalledipConfirmed(vmPort *dport, vmIP *daddr_first, u_int8_t *daddr_first_protocol) {
-	if(dport) {
-		dport->clear();
+vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(sport) {
+		sport->clear();
 	}
-	if(daddr_first) {
-		daddr_first->clear();
+	if(saddr_encaps) {
+		saddr_encaps->clear();
 	}
-	if(daddr_first_protocol) {
-		*daddr_first_protocol = 0xFF;
+	if(saddr_encaps_protocol) {
+		*saddr_encaps_protocol = 0xFF;
 	}
-	vmIP saddr, daddr;
-	list<vmIP> proxies;
-	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
-		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
-		for(unsigned i = 0; i < *iter_order; i++) {
-			iter++;
+	if(!(invite_sdaddr_bad_order || onlyConfirmed)) {
+		return(vmIP(0));
+	}
+	invite_list_lock();
+	map<unsigned, unsigned> sort_indexes;
+	unsigned invite_sdaddr_order_size = invite_sdaddr_order.size();
+	if(invite_sdaddr_bad_order) {
+		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
+			sort_indexes[i] = i;
 		}
-		if(iter->confirmed) {
-			if(!saddr.isSet() && !daddr.isSet()) {
-				saddr = iter->saddr;
-				daddr = iter->daddr;
-				if(dport) {
-					*dport = iter->dport;
-				}
-				if(daddr_first) {
-					*daddr_first = iter->daddr_first;
-					if(daddr_first_protocol) {
-						*daddr_first_protocol = iter->daddr_first_protocol;
-					}
-				}
-			}
-			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
-				proxies.push_back(iter->saddr);
-			}
-			if(iter->daddr != saddr && iter->daddr != daddr && find(proxies.begin(), proxies.end(), iter->daddr) == proxies.end()) {
-				proxies.push_back(daddr);
-				daddr = iter->daddr;
-				if(dport) {
-					*dport = iter->dport;
-				}
-				if(daddr_first) {
-					*daddr_first = iter->daddr_first;
-					if(daddr_first_protocol) {
-						*daddr_first_protocol = iter->daddr_first_protocol;
-					}
+		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
+			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
+				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
+					unsigned tmp = sort_indexes[i];
+					sort_indexes[i] = sort_indexes[j];
+					sort_indexes[j] = tmp;
 				}
 			}
 		}
-	}
-	/* old version
-	vmIP saddr, 
-	     daddr, 
-	     lastsaddr;
-	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
-		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
-		for(unsigned i = 0; i < *iter_order; i++) {
-			iter++;
-		}
-		bool exists = false;
-		list<Call::sInviteSD_Addr>::iterator iter_check_exists = invite_sdaddr.begin();
-		for(unsigned i = 0; i < (*iter_order - 1); i++) {
-			if(iter_check_exists->saddr == iter->saddr && iter_check_exists->daddr == iter->daddr) {
-				exists = true;
-				break;
-			}
-			iter_check_exists++;
-		}
-		if(iter->confirmed && !exists) {
-			if((daddr != iter->daddr && saddr != iter->daddr && 
-			    lastsaddr != iter->saddr) ||
-			   lastsaddr == iter->saddr) {
-				if(!saddr.isSet()) {
-					saddr = iter->saddr;
-				}
-				daddr = iter->daddr;
-				if(dport) {
-					*dport = iter->dport;
-				}
-				lastsaddr = iter->saddr;
-			}
-		}
-	}
-	*/
-	return(daddr);
-}
-
-vmIP Call::getSipcalleripFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
-	if(port) {
-		port->clear();
 	}
 	vmIP ip;
-	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
-		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
-		for(unsigned i = 0; i < *iter_order; i++) {
-			iter++;
+	for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
+		unsigned _index = invite_sdaddr_bad_order ? sort_indexes[index] : index;
+		if(_index >= invite_sdaddr_order_size) {
+			continue;
 		}
+		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + _index;
 		if((!onlyConfirmed || iter->confirmed) &&
 		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
 			ip = iter->saddr;
-			if(port) {
-				*port = iter->sport;
+			if(sport) {
+				*sport = iter->sport;
 			}
+			if(saddr_encaps) {
+				*saddr_encaps = iter->saddr_first;
+			}
+			if(saddr_encaps_protocol) {
+				*saddr_encaps_protocol = iter->saddr_first_protocol;
+			}
+			break;
 		}
 	}
+	invite_list_unlock();
 	return(ip);
 }
 
-vmIP Call::getSipcalledipFromInviteList(vmPort *port, bool onlyConfirmed, u_int8_t only_ipv) {
-	if(port) {
-		port->clear();
+vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, bool onlyConfirmed, u_int8_t only_ipv) {
+	if(dport) {
+		dport->clear();
 	}
-	vmIP saddr, daddr;
-	vmPort dport;
-	list<vmIP> proxies;
-	for(list<unsigned>::iterator iter_order = invite_sdaddr_order.begin(); iter_order != invite_sdaddr_order.end(); iter_order++) {
-		list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin();
-		for(unsigned i = 0; i < *iter_order; i++) {
-			iter++;
+	if(daddr_encaps) {
+		daddr_encaps->clear();
+	}
+	if(daddr_encaps_protocol) {
+		*daddr_encaps_protocol = 0xFF;
+	}
+	if(proxies) {
+		proxies->clear();
+	}
+	if(!(invite_sdaddr_bad_order || onlyConfirmed)) {
+		return(vmIP(0));
+	}
+	invite_list_lock();
+	map<unsigned, unsigned> sort_indexes;
+	unsigned invite_sdaddr_order_size = invite_sdaddr_order.size();
+	if(invite_sdaddr_bad_order) {
+		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
+			sort_indexes[i] = i;
 		}
+		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
+			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
+				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
+					unsigned tmp = sort_indexes[i];
+					sort_indexes[i] = sort_indexes[j];
+					sort_indexes[j] = tmp;
+				}
+			}
+		}
+	}
+	vmIP _saddr, _daddr;
+	vmPort _sport, _dport;
+	list<vmIPport> _proxies;
+	vector<Call::sInviteSD_Addr>::iterator iter_rslt = invite_sdaddr.end();
+	for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
+		unsigned _index = invite_sdaddr_bad_order ? sort_indexes[index] : index;
+		if(_index >= invite_sdaddr_order_size) {
+			continue;
+		}
+		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + _index;
 		if((!onlyConfirmed || iter->confirmed) &&
 		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
-			if(!saddr.isSet() && !daddr.isSet()) {
-				saddr = iter->saddr;
-				daddr = iter->daddr;
-				dport = iter->dport;
+			if(!_saddr.isSet() && !_daddr.isSet()) {
+				_saddr = iter->saddr;
+				_sport = iter->sport;
+				_daddr = iter->daddr;
+				_dport = iter->dport;
+				iter_rslt = iter;
 			}
-			if(iter->saddr != saddr && find(proxies.begin(), proxies.end(), iter->saddr) == proxies.end()) {
-				proxies.push_back(iter->saddr);
+			if((iter->sport != _sport || iter->saddr != _saddr) && 
+			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
+				_proxies.push_back(vmIPport(iter->saddr, iter->sport));
 			}
-			if(iter->daddr != saddr && iter->daddr != daddr && find(proxies.begin(), proxies.end(), iter->daddr) == proxies.end()) {
-				proxies.push_back(daddr);
-				daddr = iter->daddr;
-				dport = iter->dport;
+			if((iter->dport != _sport || iter->daddr != _saddr) && 
+			   (iter->dport != _dport || iter->daddr != _daddr) && 
+			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
+				if(!(opt_sdp_check_direction_ext &&
+				     iter->saddr == _saddr && all_invite_is_multibranch(iter->saddr))) {
+					_proxies.push_back(vmIPport(_daddr, _dport));
+					_daddr = iter->daddr;
+					_dport = iter->dport;
+					iter_rslt = iter;
+				}
 			}
 		}
 	}
-	if(daddr.isSet() && port) {
-		*port = dport;
+	if(_daddr.isSet()) {
+		if(dport) {
+			*dport = _dport;
+		}
+		if(daddr_encaps) {
+			*daddr_encaps = iter_rslt->saddr_first;
+		}
+		if(daddr_encaps_protocol) {
+			*daddr_encaps_protocol = iter_rslt->daddr_first_protocol;
+		}
+		if(proxies) {
+			*proxies = _proxies;
+		}
 	}
-	return(daddr);
+	invite_list_unlock();
+	return(_daddr);
 }
 
 unsigned Call::getMaxRetransmissionInvite() {
 	unsigned max_retrans = 0;
-	for(list<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+	invite_list_lock();
+	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
 		if(iter->counter > 1 && (iter->counter - 1) > max_retrans) {
 			max_retrans = iter->counter - 1;
 		}
@@ -8931,6 +8968,7 @@ unsigned Call::getMaxRetransmissionInvite() {
 			max_retrans = iter->counter_reverse - 1;
 		}
 	}
+	invite_list_unlock();
 	return(max_retrans);
 }
 
@@ -11441,29 +11479,26 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 			if(needIpMap) {
-				vmIP sipcallerip = call->getSipcallerip();
+				vmIP sipcallerip = call->getSipcallerip(true);
 				if(ip_src_map.find(sipcallerip) == ip_src_map.end()) {
 					ip_src_map[sipcallerip] = 1;
 				} else {
 					++ip_src_map[sipcallerip];
 				}
-				vmIP sipcalledip = call->getSipcalledip(true);
+				vmPort sipcalledport;
+				set<vmIP> proxies;
+				vmIP sipcalledip = call->getSipcalledip(true, true, NULL, &proxies);
 				if(ip_dst_map.find(sipcalledip) == ip_dst_map.end()) {
 					ip_dst_map[sipcalledip] = 1;
 				} else {
 					++ip_dst_map[sipcalledip];
 				}
-				if(call->is_set_proxies()) {
-					set<vmIP> proxies_undup;
-					call->proxies_undup(&proxies_undup);
-					for(set<vmIP>::iterator iter_undup = proxies_undup.begin(); iter_undup != proxies_undup.end(); ++iter_undup) {
-						if(*iter_undup == call->getSipcalledip()) { 
-							continue;
-						}
-						if(ip_dst_map.find(*iter_undup) == ip_dst_map.end()) {
-							ip_dst_map[*iter_undup] = 1;
+				if(proxies.size()) {
+					for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); ++iter) {
+						if(ip_dst_map.find(*iter) == ip_dst_map.end()) {
+							ip_dst_map[*iter] = 1;
 						} else {
-							++ip_dst_map[*iter_undup];
+							++ip_dst_map[*iter];
 						}
 					}
 				}
@@ -12389,7 +12424,6 @@ Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_metho
 				     sipcallerip[i] == saddr && sipcalledip[i] == daddr : 
 				     sipcallerip[i] == saddr) &&
 				   (sipcallerip[i] != sipcalledip[i] ||
-				    !use_port_for_check_direction(saddr) || 
 				    (use_both_side_for_check_direction() ?
 				      sipcallerport[i] == sport && sipcalledport[i] == dport :
 				      sipcallerport[i] == sport))) {
@@ -12416,7 +12450,6 @@ Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_metho
 					     sipcallerip[i] == daddr && sipcalledip[i] == saddr :
 					     sipcallerip[i] == daddr) &&
 					   (sipcallerip[i] != sipcalledip[i] ||
-					    !use_port_for_check_direction(daddr) || 
 					    (use_both_side_for_check_direction() ?
 					      sipcallerport[i] == dport && sipcalledport[i] == sport :
 					      sipcallerport[i] == dport))) {
@@ -12496,7 +12529,6 @@ Call::is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 		     saddr == sipcallerip[i] && daddr == sipcalledip[i] :
 		     saddr == sipcallerip[i]) &&
 		   (sipcallerip[i] != sipcalledip[i] ||
-		    !use_port_for_check_direction(saddr) || 
 		    (use_both_side_for_check_direction() && dport.isSet() ?
 		      sport == sipcallerport[i] && dport == sipcalledport[i] :
 		      sport == sipcallerport[i]))) {
@@ -12528,7 +12560,6 @@ Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 		     daddr == sipcalledip[i] && saddr == sipcallerip[i] :
 		     daddr == sipcalledip[i]) &&
 		   (sipcallerip[i] != sipcalledip[i] ||
-		    !use_port_for_check_direction(daddr) || 
 		    (use_both_side_for_check_direction() && sport.isSet() ?
 		      dport == sipcalledport[i] && sport == sipcallerport[i] :
 		      dport == sipcalledport[i]))) {
@@ -13540,7 +13571,7 @@ bool NoStoreCdrRule::check(Call *call) {
  	if(ok && ip.isSet()) {
 		if(!check_ip(call->getSipcallerip(), ip, ip_mask_length) &&
 		   !check_ip(call->getSipcalledip(), ip, ip_mask_length) &&
-		   !check_ip(call->getSipcalledipConfirmed(), ip, ip_mask_length)) {
+		   !check_ip(call->getSipcalledip(true, true), ip, ip_mask_length)) {
 			ok = false;
 		}
 	}

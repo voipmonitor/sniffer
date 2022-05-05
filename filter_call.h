@@ -17,9 +17,9 @@ public:
 			*findInBlackList = false;
 		}
 		Call *call = (Call*)rec;
-		if(call->is_set_proxies()) {
-			set<vmIP> proxies;
-			call->proxies_undup(&proxies);
+		set<vmIP> proxies;
+		call->getProxies(&proxies, true, true);
+		if(proxies.size()) {
 			for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 				bool _findInBlackList = false;
 				if(check_ip(*iter, &_findInBlackList)) {
@@ -83,13 +83,13 @@ public:
 	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_callerip:
-			return(((Call*)rec)->getSipcallerip());
+			return(((Call*)rec)->getSipcallerip(true));
 		case cf_calledip:
-			return(((Call*)rec)->getSipcalledip());
+			return(((Call*)rec)->getSipcalledip(true, true));
 		case cf_callerip_encaps:
-			return(((Call*)rec)->getSipcallerip_encaps());
+			return(((Call*)rec)->getSipcallerip_encaps(true));
 		case cf_calledip_encaps:
-			return(((Call*)rec)->getSipcalledip_encaps());
+			return(((Call*)rec)->getSipcalledip_encaps(true, true));
 		}
 		return(0);
 	}

@@ -1019,8 +1019,8 @@ struct vmIPport {
 		this->port = port;
 	}
 	inline bool operator == (const vmIPport& other) const {
-		return(this->ip == other.ip &&
-		       this->port == other.port);
+		return(this->port == other.port &&
+		       this->ip == other.ip);
 	}
 	inline bool operator < (const vmIPport& other) const { 
 		return(this->ip < other.ip ||

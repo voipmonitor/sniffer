@@ -3581,6 +3581,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	char domain_to[1024] = "";
 	bool domain_to_detected = false;
 	bool dont_save = false;
+	u_int64_t packet_time_us = packetS->getTimeUS();
 	
 	s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
 	if(s && l <= 1023) {
@@ -3669,16 +3670,16 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(call->first_invite_time_us) {
 			if(lastSIPresponseNum == 100) {
 				if(!call->first_response_100_time_us) {
-					call->first_response_100_time_us = packetS->getTimeUS();
+					call->first_response_100_time_us = packet_time_us;
 				}
 			} else {
 				if(!call->first_response_xxx_time_us) {
-					call->first_response_xxx_time_us = packetS->getTimeUS();
+					call->first_response_xxx_time_us = packet_time_us;
 				}
 			}
 		} else if(call->first_message_time_us && lastSIPresponseNum == 200) {
 			if(!call->first_response_200_time_us) {
-				call->first_response_200_time_us = packetS->getTimeUS();
+				call->first_response_200_time_us = packet_time_us;
 			}
 		}
 	}
@@ -3739,20 +3740,23 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	 
 	if(packetS->sip_method == INVITE && !call->first_invite_time_us) {
-		call->first_invite_time_us = packetS->getTimeUS();
+		call->first_invite_time_us = packet_time_us;
 	} else if(packetS->sip_method == MESSAGE && !call->first_message_time_us) {
-		call->first_message_time_us = packetS->getTimeUS();
+		call->first_message_time_us = packet_time_us;
 	}
 	
 	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+		call->invite_list_lock();
 		int inviteSdaddrCounter = 0;
-		for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-			if(packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
+		for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+			if(packetS->source_() == iter->sport && packetS->dest_() == iter->dport && 
+			   packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
 				existInviteSdaddr = true;
 				inviteSdaddrIndex = inviteSdaddrCounter;
 				++iter->counter;
 				break;
-			} else if(packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
+			} else if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport &&
+				  packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
 				reverseInviteSdaddr = true;
 				if(opt_sdp_check_direction_ext) {
 					mainInviteForReverse = &(*iter);
@@ -3785,11 +3789,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					invite_sd.branch = branch;
 				}
 				call->invite_sdaddr.push_back(invite_sd);
+				call->invite_sdaddr_all_confirmed = -1;
 				inviteSdaddrIndex = call->invite_sdaddr.size() - 1;
 			} else if(opt_sdp_check_direction_ext) {
 				bool existRInviteSdaddr = false;
-				for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
-					if(packetS->saddr_() == riter->saddr && packetS->daddr_() == riter->daddr) {
+				for(vector<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
+					if(packetS->source_() == riter->sport && packetS->dest_() == riter->dport &&
+					   packetS->saddr_() == riter->saddr && packetS->daddr_() == riter->daddr) {
 						existRInviteSdaddr = true;
 						reverseInvite = &(*riter);
 						++riter->counter;
@@ -3813,15 +3819,20 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 					rinvite_sd.branch = branch;
 					call->rinvite_sdaddr.push_back(rinvite_sd);
-					list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.end();
+					vector<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.end();
 					--riter;
 					reverseInvite = &(*riter);
 				}
 			}
 		}
 		if(inviteSdaddrIndex >= 0) {
-			call->invite_sdaddr_order.push_back(inviteSdaddrIndex);
+			call->invite_sdaddr_order.push_back(Call::sInviteSD_OrderItem(inviteSdaddrIndex, packet_time_us));
+			if(call->invite_sdaddr_last_ts && packet_time_us < call->invite_sdaddr_last_ts) {
+				call->invite_sdaddr_bad_order = true;
+			}
+			call->invite_sdaddr_last_ts = packet_time_us;
 		}
+		call->invite_list_unlock();
 	}
 	
 	call->check_reset_oneway(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
@@ -3855,7 +3866,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	// we have packet, extend pending destroy requests
 	call->shift_destroy_call_at(packetS->getTime_s(), lastSIPresponseNum);
 
-	call->set_last_signal_packet_time_us(packetS->getTimeUS());
+	call->set_last_signal_packet_time_us(packet_time_us);
 	// save lastSIPresponseNum but only if previouse was not 487 (CANCEL) and call was not answered 
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 	   (call->typeIsOnly(MESSAGE) ?
@@ -4152,7 +4163,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
 			call->setByeCseq(&packetS->cseq);
-			call->setSeenBye(true, packetS->getTimeUS(), packetS->get_callid());
+			call->setSeenBye(true, packet_time_us, packetS->get_callid());
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen bye\n");
 			if(opt_enable_fraud && isFraudReady()) {
@@ -4315,10 +4326,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								if(!leg->conference_connect_time) {
 									leg->main_conference_call_id = call->call_id;
 									leg->conference_user_entity = user_entity;
-									leg->conference_connect_time = packetS->getTimeUS();
+									leg->conference_connect_time = packet_time_us;
 								}
 							} else if(!leg->conference_disconnect_time) {
-								leg->conference_disconnect_time = packetS->getTimeUS();
+								leg->conference_disconnect_time = packet_time_us;
 							}
 							call->conference_legs[endpoint_entity] = leg;
 						}
@@ -4338,11 +4349,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						if(legs) {
 							if(legs->isConnect()) {
 								if(status == "disconnected") {
-									legs->setDisconnectTime(packetS->getTimeUS());
+									legs->setDisconnectTime(packet_time_us);
 								}
 							} else {
 								if(status != "disconnected") {
-									legs->addLeg(user_entity.c_str(), endpoint_entity.c_str(), packetS->getTimeUS());
+									legs->addLeg(user_entity.c_str(), endpoint_entity.c_str(), packet_time_us);
 								}
 							}
 						}
@@ -4360,7 +4371,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   !call->existsByeCseq(&packetS->cseq)) {
 				call->seenRES2XX_no_BYE = true;
 				if(!call->progress_time_us) {
-					call->progress_time_us = packetS->getTimeUS();
+					call->progress_time_us = packet_time_us;
 				}
 			}
 			if(opt_call_id_alternative[0] &&
@@ -4390,7 +4401,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						}
 					}
 					if(okByeRes2xx) {
-						call->setSeenByeAndOk(true, packetS->getTimeUS(), packetS->get_callid());
+						call->setSeenByeAndOk(true, packet_time_us, packetS->get_callid());
 						call->unconfirmed_bye = false;
 						
 						// update who hanged up 
@@ -4421,16 +4432,20 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					    (call->invitecseq_next.size() && find(call->invitecseq_next.begin(), call->invitecseq_next.end(), packetS->cseq) != call->invitecseq_next.end()) ||
 					    (call->invitecseq_in_dialog.size() && find(call->invitecseq_in_dialog.begin(), call->invitecseq_in_dialog.end(), packetS->cseq) != call->invitecseq_in_dialog.end()))) ||
 					  (packetS->cseq.method == MESSAGE && packetS->cseq == call->messagecseq)) {
-					for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-						if(packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
+					call->invite_list_lock();
+					for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+						if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport &&
+						   packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
 							iter->confirmed = true;
+							call->invite_sdaddr_all_confirmed = -1;
 						}
 					}
+					call->invite_list_unlock();
 					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
 						call->seenbyeandok_permanent = false;
 						if(!call->connect_time_us) {
-							call->connect_time_us = packetS->getTimeUS();
+							call->connect_time_us = packet_time_us;
 							if(opt_enable_fraud && isFraudReady()) {
 								if(needCustomHeadersForFraud()) {
 									process_packet__parse_custom_headers(call, packetS);
@@ -4493,16 +4508,19 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							delete packet_info;
 						}
 					}
+					call->invite_list_lock();
 					if(opt_sdp_check_direction_ext) {
-						for(list<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
-							if(packetS->saddr_() == riter->daddr && packetS->daddr_() == riter->saddr) {
+						for(vector<Call::sInviteSD_Addr>::iterator riter = call->rinvite_sdaddr.begin(); riter != call->rinvite_sdaddr.end(); riter++) {
+							if(packetS->source_() == riter->dport && packetS->dest_() == riter->sport &&
+							   packetS->saddr_() == riter->daddr && packetS->daddr_() == riter->saddr) {
 								reverseInviteConfirmSdaddr = true;
 								reverseInvite = &(*riter);
 								if(sverb.reverse_invite) {
 									cout << "reverse invite: confirm / " << call->call_id << endl;
 								}
-								for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-									if(packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
+								for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+									if(packetS->source_() == iter->sport && packetS->dest_() == iter->dport && 
+									   packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
 										mainInviteForReverse = &(*iter);
 										break;
 									}
@@ -4511,8 +4529,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							}
 						}
 					} else {
-						for(list<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
-							if(packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
+						for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
+							if(packetS->source_() == iter->sport && packetS->dest_() == iter->dport &&
+							   packetS->saddr_() == iter->saddr && packetS->daddr_() == iter->daddr) {
 								reverseInviteConfirmSdaddr = true;
 								if(sverb.reverse_invite) {
 									cout << "reverse invite: confirm / " << call->call_id << endl;
@@ -4520,10 +4539,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							}
 						}
 					}
+					call->invite_list_unlock();
 				} else if(packetS->cseq.method == CANCEL &&
 					  call->cancelcseq.is_set() && packetS->cseq == call->cancelcseq) {
 					++count_sip_cancel_confirmed;
-					call->setSeenCancelAndOk(true, packetS->getTimeUS(), packetS->get_callid());
+					call->setSeenCancelAndOk(true, packet_time_us, packetS->get_callid());
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
 				}
@@ -4531,12 +4551,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(opt_conference_processing &&
 			   call->conference_is_leg &&
 			   packetS->cseq == call->conference_referred_by_cseq) {
-				call->conference_referred_by_ok_time = packetS->getTimeUS();
+				call->conference_referred_by_ok_time = packet_time_us;
 			}
 		} else if(IS_SIP_RES18X(packetS->sip_method)) {
 			call->seenRES18X = true;
 			if(!call->progress_time_us) {
-				call->progress_time_us = packetS->getTimeUS();
+				call->progress_time_us = packet_time_us;
 			}
 			++call->onCall_18X_counter;
 			if(call->onCall_18X_counter == 1) {
@@ -4567,7 +4587,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(opt_ignore_rtp_after_response) {
 				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
 				if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
-					call->ignore_rtp_after_response_time_usec = packetS->getTimeUS();
+					call->ignore_rtp_after_response_time_usec = packet_time_us;
 				}
 			}
 			if(IS_SIP_RES4XX(packetS->sip_method) && call->is_multiple_to_branch()) {
@@ -4595,7 +4615,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;
 				} else if(lastSIPresponseNum == 403) {
-					call->setSeenAuthFailed(true, packetS->getTimeUS(), packetS->get_callid());
+					call->setSeenAuthFailed(true, packet_time_us, packetS->get_callid());
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
 					call->removeFindTables();
@@ -4643,13 +4663,16 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						   true);
 		}
 		if(!reverseInviteSdaddr) {
-			if(packetS->saddr_() != call->getSipcallerip() && !call->in_proxy(packetS->saddr_())) {
-				call->proxy_add(packetS->saddr_());
+			if((packetS->source_() != call->getSipcallerport() || packetS->saddr_() != call->getSipcallerip()) && 
+			   !call->in_proxy(packetS->saddr_(), packetS->source_())) {
+				call->proxy_add(packetS->saddr_(), packetS->source_());
 			}
-			if(packetS->daddr_() != call->getSipcallerip() && packetS->daddr_() != call->getSipcalledip() && !call->in_proxy(packetS->daddr_())) {
+			if((packetS->dest_() != call->getSipcallerport() || packetS->daddr_() != call->getSipcallerip()) && 
+			   (packetS->dest_() != call->getSipcalledport() || packetS->daddr_() != call->getSipcalledip()) && 
+			   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
 				if(!(opt_sdp_check_direction_ext &&
 				     packetS->saddr_() == call->getSipcallerip() && call->all_invite_is_multibranch(packetS->saddr_()))) {
-					call->proxy_add(call->getSipcalledip());
+					call->proxy_add(call->getSipcalledip(), call->getSipcalledport());
 					call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				}
 			}
@@ -4948,7 +4971,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 									process_sdp(call, packetS, _iscaller_process_sdp, content_data_begin, content_data_length,
 										    packetS->get_callid(), to, to_uri, domain_to, domain_to_uri, branch);
 								} else if(strcasestr(content_type, "application/rs-metadata+xml")) {
-									call->add_txt(packetS->getTimeUS(), Call::txt_type_sdp_xml, content_data_begin, content_data_length);
+									call->add_txt(packet_time_us, Call::txt_type_sdp_xml, content_data_begin, content_data_length);
 								}
 							}
 						}
@@ -5017,7 +5040,7 @@ endsip:
 			    _lastSIPresponseNum) &&
 			   call->SIPhistory.size() < 1000) {
 				call->SIPhistory.push_back(Call::sSipHistory(
-					packetS->getTimeUS(),
+					packet_time_us,
 					_request,
 					_lastSIPresponse, _lastSIPresponseNum));
 			}

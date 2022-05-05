@@ -760,6 +760,14 @@ public:
 		string called_invite;
 		string branch;
 	};
+	struct sInviteSD_OrderItem {
+		inline sInviteSD_OrderItem(unsigned order, u_int64_t ts) {
+			this->order = order;
+			this->ts = ts;
+		}
+		unsigned order;
+		u_int64_t ts;
+	};
 	struct sCalledInviteBranchItem {
 		string to;
 		string to_uri;
@@ -1185,20 +1193,28 @@ public:
 	vmIP sipcalledip_encaps;
 	u_int8_t sipcallerip_encaps_prot;
 	u_int8_t sipcalledip_encaps_prot;
+	vmIP sipcallerip_rslt;
 	vmIP sipcalledip_rslt;
+	vmIP sipcallerip_encaps_rslt;
 	vmIP sipcalledip_encaps_rslt;
+	u_int8_t sipcallerip_encaps_prot_rslt;
 	u_int8_t sipcalledip_encaps_prot_rslt;
 	vmPort sipcallerport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport[MAX_SIPCALLERDIP];
 	vmPort sipcalledport_mod;
+	vmPort sipcallerport_rslt;
 	vmPort sipcalledport_rslt;
 	map<string, sSipcalleRD_IP> map_sipcallerdip;
 	vmIP lastsipcallerip;
 	bool sipcallerdip_reverse;
 	
-	list<sInviteSD_Addr> invite_sdaddr;
-	list<sInviteSD_Addr> rinvite_sdaddr;
-	list<unsigned> invite_sdaddr_order;
+	volatile int _invite_list_lock;
+	vector<sInviteSD_Addr> invite_sdaddr;
+	vector<sInviteSD_Addr> rinvite_sdaddr;
+	vector<sInviteSD_OrderItem> invite_sdaddr_order;
+	u_int64_t invite_sdaddr_last_ts;
+	int8_t invite_sdaddr_all_confirmed;
+	bool invite_sdaddr_bad_order;
 
 	char lastSIPresponse[128];
 	int lastSIPresponseNum;
@@ -1268,7 +1284,7 @@ public:
 	volatile int _custom_headers_content_sync;
 
 	volatile int _proxies_lock;
-	list<vmIP> proxies;
+	list<vmIPport> proxies;
 	
 	u_int16_t onInvite_counter;
 	u_int16_t onCall_2XX_counter;
@@ -1643,22 +1659,20 @@ public:
 		extern bool opt_both_side_for_check_direction;
 		return(opt_both_side_for_check_direction);
 	}
-	bool use_port_for_check_direction(vmIP /*addr*/) {
-		return(true /*ip_is_localhost(addr)*/);
-	}
 	void check_reset_oneway(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 		if(oneway &&
 		   (lastsrcip != saddr ||
 		    (lastsrcip == lastdstip &&
-		     use_port_for_check_direction(saddr) && 
 		     lastsrcport != sport))) {
-			for(list<sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
-				if(saddr == iter->saddr && daddr == iter->daddr &&
-				   (!use_port_for_check_direction(saddr) ||
-				    (sport == iter->sport && dport == iter->dport))) {
+			invite_list_lock();
+			for(vector<sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+				if(sport == iter->sport && dport == iter->dport &&
+				   saddr == iter->saddr && daddr == iter->daddr) {
+					invite_list_unlock();
 					return;
 				}
 			}
+			invite_list_unlock();
 			oneway = 0;
 		}
 	}
@@ -1764,6 +1778,13 @@ public:
 		__sync_lock_release(&this->_proxies_lock);
 	}
 	
+	void invite_list_lock() {
+		while(__sync_lock_test_and_set(&this->_invite_list_lock, 1));
+	}
+	void invite_list_unlock() {
+		__sync_lock_release(&this->_invite_list_lock);
+	}
+	
 	bool is_enable_set_destroy_call_at_for_call(sCseq *cseq, int merged) {
 		return((!cseq || !this->invitecseq_in_dialog.size() || find(this->invitecseq_in_dialog.begin(),this->invitecseq_in_dialog.end(), *cseq) == this->invitecseq_in_dialog.end()) &&
 		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
@@ -1792,20 +1813,18 @@ public:
 	
 	void adjustUA();
 	
-	bool is_set_proxies();
-	void proxies_undup(set<vmIP> *proxies_undup);
-	string get_proxies_str();
+	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
 
-	void proxy_add(vmIP sipproxyip) {
-		if(sipproxyip.isSet()) {
+	void proxy_add(vmIP ip, vmPort port) {
+		if(ip.isSet()) {
 			proxies_lock();
-			proxies.push_back(sipproxyip);
+			proxies.push_back(vmIPport(ip, port));
 			proxies_unlock();
 		}
 	}
-	bool in_proxy(vmIP ip) {
+	bool in_proxy(vmIP ip, vmPort port) {
 		proxies_lock();
-		bool rslt = find(proxies.begin(), proxies.end(), ip) != proxies.end();
+		bool rslt = find(proxies.begin(), proxies.end(), vmIPport(ip, port)) != proxies.end();
 		proxies_unlock();
 		return(rslt);
 	}
@@ -1824,10 +1843,24 @@ public:
 		return(false);
 	}
 	
-	vmIP getSipcalledipConfirmed(vmPort *dport = NULL, vmIP *daddr_first = NULL, u_int8_t *daddr_first_protocol = NULL);
+	bool isAllInviteConfirmed() {
+		if(invite_sdaddr_all_confirmed == -1) {
+			bool all_confirmed = true;
+			invite_list_lock();
+			for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+				if(!iter->confirmed) {
+					all_confirmed = false;
+					break;
+				}
+			}
+			invite_sdaddr_all_confirmed = all_confirmed;
+			invite_list_unlock();
+		}
+		return(invite_sdaddr_all_confirmed);
+	}
 	
-	vmIP getSipcalleripFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
-	vmIP getSipcalledipFromInviteList(vmPort *port = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
 	
 	unsigned getMaxRetransmissionInvite();
 	
@@ -1913,58 +1946,136 @@ public:
 			}
 		}
 	}
-	vmIP getSipcallerip() {
+	vmIP getSipcallerip(bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+			vmIP sipcallerip_correction = getSipcalleripFromInviteList();
+			if(sipcallerip_correction.isSet()) {
+				return(sipcallerip_correction);
+			}
+		}
 		return(sipcallerip[0]);
 	}
-	vmIP getSipcallerip_encaps() {
+	vmIP getSipcallerip_encaps(bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+			vmIP sipcallerip_encaps_correction;
+			u_int8_t sipcallerip_encaps_prot_correction;
+			getSipcalleripFromInviteList(NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
+			if(sipcallerip_encaps_correction.isSet()) {
+				return(sipcallerip_encaps_correction);
+			}
+		}
 		return(sipcallerip_encaps);
 	}
-	u_int8_t getSipcallerip_encaps_prot() {
+	u_int8_t getSipcallerip_encaps_prot(bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+			vmIP sipcallerip_encaps_correction;
+			u_int8_t sipcallerip_encaps_prot_correction;
+			getSipcalleripFromInviteList(NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
+			if(sipcallerip_encaps_correction.isSet()) {
+				return(sipcallerip_encaps_prot_correction);
+			}
+		}
 		return(sipcallerip_encaps_prot);
 	}
-	vmIP getSipcalledip(bool confirm_via_invite_list = false) {
-		if(confirm_via_invite_list) {
-			vmIP sipcalledip_confirmed = getSipcalledipConfirmed();
-			if(sipcalledip_confirmed.isSet()) {
-				return(sipcalledip_confirmed);
+	vmIP getSipcalledip(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false, vmPort *port = NULL, std::set<vmIP> *proxies = NULL) {
+		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+		if(need_correction || need_confirmed) {
+			vmPort sipcalledport_correction;
+			list<vmIPport> proxies_correction;
+			vmIP sipcalledip_correction;
+			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
+				sipcalledip_correction = getSipcalledipFromInviteList(&sipcalledport_correction, NULL, NULL, proxies ? &proxies_correction : NULL, need_confirmed && i == 0);
+				if(sipcalledip_correction.isSet()) {
+					if(port) {
+						*port = sipcalledport_correction;
+					}
+					if(proxies && proxies_correction.size()) {
+						vmIPport proxy_exclude(sipcalledip_correction, sipcalledport_correction);
+						proxies_undup(proxies, &proxies_correction, &proxy_exclude);
+					}
+					return(sipcalledip_correction);
+				}
 			}
+		}
+		if(port) {
+			*port = sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0];
+		}
+		if(proxies && this->proxies.size()) {
+			vmIPport proxy_exclude(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0], 
+					       sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
+			proxies_undup(proxies, NULL, &proxy_exclude);
 		}
 		return(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0]);
 	}
-	vmIP getSipcalledip_encaps(bool confirm_via_invite_list = false) {
-		if(confirm_via_invite_list) {
-			vmIP sipcalledip_encaps_confirmed;
-			u_int8_t sipcalledip_encaps_prot_confirmed;
-			getSipcalledipConfirmed(NULL, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
-			if(sipcalledip_encaps_confirmed.isSet()) {
-				return(sipcalledip_encaps_confirmed);
+	vmIP getSipcalledip_encaps(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+		if(need_correction || need_confirmed) {
+			vmIP sipcalledip_encaps_correction;
+			u_int8_t sipcalledip_encaps_prot_correction;
+			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
+				getSipcalledipFromInviteList(NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
+				if(sipcalledip_encaps_correction.isSet()) {
+					return(sipcalledip_encaps_correction);
+				}
 			}
 		}
 		return(sipcalledip_encaps);
 	}
-	u_int8_t getSipcalledip_encaps_prot(bool confirm_via_invite_list = false) {
-		if(confirm_via_invite_list) {
-			vmIP sipcalledip_encaps_confirmed;
-			u_int8_t sipcalledip_encaps_prot_confirmed;
-			getSipcalledipConfirmed(NULL, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed);
-			if(sipcalledip_encaps_confirmed.isSet()) {
-				return(sipcalledip_encaps_prot_confirmed);
+	u_int8_t getSipcalledip_encaps_prot(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+		if(need_correction || need_confirmed) {
+			vmIP sipcalledip_encaps_correction;
+			u_int8_t sipcalledip_encaps_prot_correction;
+			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
+				getSipcalledipFromInviteList(NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
+				if(sipcalledip_encaps_correction.isSet()) {
+					return(sipcalledip_encaps_prot_correction);
+				}
 			}
 		}
 		return(sipcalledip_encaps_prot);
 	}
-	vmPort getSipcallerport() {
+	vmPort getSipcallerport(bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+			vmPort sipcallerport_correction;
+			getSipcalleripFromInviteList(&sipcallerport_correction);
+			if(sipcallerport_correction.isSet()) {
+				return(sipcallerport_correction);
+			}
+		}
 		return(sipcallerport[0]);
 	}
-	vmPort getSipcalledport(bool confirm_via_invite_list = false) {
-		if(confirm_via_invite_list) {
-			vmPort sipcalledport_confirmed;
-			getSipcalledipConfirmed(&sipcalledport_confirmed);
-			if(sipcalledport_confirmed.isSet()) {
-				return(sipcalledport_confirmed);
+	vmPort getSipcalledport(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+		if(need_correction || need_confirmed) {
+			vmPort sipcalledport_correction;
+			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
+				getSipcalledipFromInviteList(&sipcalledport_correction, NULL, NULL, NULL, need_confirmed && i == 0);
+				if(sipcalledport_correction.isSet()) {
+					return(sipcalledport_correction);
+				}
 			}
 		}
 		return(sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
+	}
+	void getProxies(std::set<vmIP> *proxies = NULL, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		getSipcalledip(correction_via_invite_list_if_need, confirm_via_invite_list, NULL, proxies);
+	}
+	string getProxies_str(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		string rslt;
+		std::set<vmIP> proxies;
+		getProxies(&proxies, correction_via_invite_list_if_need, confirm_via_invite_list);
+		for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
+			if(!rslt.empty()) {
+				rslt += ",";
+			}
+			rslt += iter->getString();
+		}
+		return(rslt);
 	}
 	void setSeenBye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
 		this->seenbye = seenbye;
