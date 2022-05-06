@@ -8,6 +8,7 @@
 
 #include <queue>
 #include <map>
+#include <set>
 #include <semaphore.h>
 
 #include "rqueue.h"
@@ -1279,7 +1280,7 @@ public:
 #define MAXLIVEFILTERS 10
 #define MAXLIVEFILTERSCHARS 64
 
-struct livesnifferfilter_s {
+struct livesnifferfilter_s_base {
 	struct state_s {
 		bool all_saddr;
 		bool all_daddr;
@@ -1298,18 +1299,17 @@ struct livesnifferfilter_s {
 		bool all_siptypes;
 		bool all_all;
 	};
-	livesnifferfilter_s() {
+	livesnifferfilter_s_base() {
 		#if __GNUC__ >= 8
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wclass-memaccess"
 		#endif
-		memset(this, 0, sizeof(livesnifferfilter_s));
+		memset(this, 0, sizeof(livesnifferfilter_s_base));
 		#if __GNUC__ >= 8
 		#pragma GCC diagnostic pop
 		#endif
 		created_at = time(NULL);
 	}
-	int sensor_id;
 	bool sensor_id_set;
         vmIP lv_saddr[MAXLIVEFILTERS];
         vmIP lv_daddr[MAXLIVEFILTERS];
@@ -1332,6 +1332,12 @@ struct livesnifferfilter_s {
         time_t created_at;
 	state_s state;
 	SimpleBuffer parameters;
+};
+
+struct livesnifferfilter_s : public livesnifferfilter_s_base {
+	livesnifferfilter_s() : livesnifferfilter_s_base() {
+	}
+	std::set<int> sensor_id;
 	void updateState();
 	string getStringState();
 };

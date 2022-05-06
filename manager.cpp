@@ -2920,8 +2920,12 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	}
 	string filter_sensor_id = jsonParameters.getValue("filter_sensor_id");
 	if(filter_sensor_id.length()) {
-		filter->sensor_id = atoi(filter_sensor_id.c_str());
-		filter->sensor_id_set = true;
+		vector<string> sensors_id = split(filter_sensor_id.c_str(), split(",|;| ", "|"), true);
+		for(unsigned i = 0; i < sensors_id.size(); i++) {
+			int sensor_id = atoi(sensors_id[i].c_str());
+			filter->sensor_id.insert(sensor_id > 0 ? sensor_id : 0);
+			filter->sensor_id_set = true;
+		}
 	}
 	string filter_ip = jsonParameters.getValue("filter_ip");
 	if(filter_ip.length()) {
