@@ -613,6 +613,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	listening_worker_run = NULL;
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
+	lastactivecallerrtp = NULL;
+	lastactivecalledrtp = NULL;
 	saddr.clear();
 	sport.clear();
 	daddr.clear();
@@ -1018,6 +1020,8 @@ Call::_removeRTP() {
 	}
 	lastcallerrtp = NULL;
 	lastcalledrtp = NULL;
+	lastactivecallerrtp = NULL;
+	lastactivecalledrtp = NULL;
 	rtp_remove_flag = false;
 }
 
@@ -1891,6 +1895,17 @@ read:
 						    rtp_i->prev_dport.isSet() && rtp_i->prev_dport != packetS->dest_()) {
 							rtp_i->change_src_port = true;
 						}
+						if(rtp_i->iscaller) {
+							if(!lastactivecallerrtp || 
+							   (lastactivecallerrtp != rtp_i && lastactivecallerrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us)) {
+								lastactivecallerrtp = rtp_i;
+							}
+						} else {
+							if(!lastactivecalledrtp || 
+							   (lastactivecalledrtp != rtp_i && lastactivecalledrtp->last_packet_time_us + 500000 < rtp_i->last_packet_time_us)) {
+								lastactivecalledrtp = rtp_i;
+							}
+						}
 						u_int32_t datalen = packetS->datalen_();
 						if(rtp_i->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 							       packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
@@ -2138,6 +2153,12 @@ read:
 			}
 		}
 
+		if(iscaller) {
+			lastactivecallerrtp = rtp_new;
+		} else {
+			lastactivecalledrtp = rtp_new;
+		}
+		
 		u_int32_t datalen = packetS->datalen_();
 		if(rtp_new->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 				 packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
@@ -4156,88 +4177,111 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	default:
 		break;
 	};
-	if(lastcallerrtp) {
+	if(lastactivecallerrtp) {
 		switch(field) {
 		case cf_rtp_src:
-			rfield->set(lastcallerrtp->saddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecallerrtp->saddr, RecordArrayField::tf_ip_n4);
 			break;
 		case cf_rtp_dst:
-			rfield->set(lastcallerrtp->daddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecallerrtp->daddr, RecordArrayField::tf_ip_n4);
 			break;
 		case cf_rtp_src_country:
-			rfield->set(getCountryByIP(lastcallerrtp->saddr, true).c_str());
+			rfield->set(getCountryByIP(lastactivecallerrtp->saddr, true).c_str());
 			break;
 		case cf_rtp_dst_country:
-			rfield->set(getCountryByIP(lastcallerrtp->daddr, true).c_str());
+			rfield->set(getCountryByIP(lastactivecallerrtp->daddr, true).c_str());
 			break;
+		default:
+			break;
+		}
+	} else if(lastactivecalledrtp) {
+		switch(field) {
+		case cf_rtp_src:
+			rfield->set(lastactivecalledrtp->daddr, RecordArrayField::tf_ip_n4);
+			break;
+		case cf_rtp_dst:
+			rfield->set(lastactivecalledrtp->saddr, RecordArrayField::tf_ip_n4);
+			break;
+		case cf_rtp_src_country:
+			rfield->set(getCountryByIP(lastactivecalledrtp->daddr, true).c_str());
+			break;
+		case cf_rtp_dst_country:
+			rfield->set(getCountryByIP(lastactivecalledrtp->saddr, true).c_str());
+			break;
+		default:
+			break;
+		}
+	}
+	if(lastactivecallerrtp) {
+		switch(field) {
 		case cf_src_mosf1:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcallerrtp->last_interval_mosf1);
+			rfield->set(lastactivecallerrtp->last_interval_mosf1);
 			#endif
 			break;
 		case cf_src_mosf2:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcallerrtp->last_interval_mosf2);
+			rfield->set(lastactivecallerrtp->last_interval_mosf2);
 			#endif
 			break;
 		case cf_src_mosAD:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcallerrtp->last_interval_mosAD);
+			rfield->set(lastactivecallerrtp->last_interval_mosAD);
 			#endif
 			break;
 		case cf_src_jitter:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(round(lastcallerrtp->jitter));
+			rfield->set(round(lastactivecallerrtp->jitter));
 			#endif
 			break;
 		case cf_src_loss:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			if(lastcallerrtp->stats.received + lastcallerrtp->stats.lost) {
-				rfield->set((double)lastcallerrtp->stats.lost / (lastcallerrtp->stats.received + lastcallerrtp->stats.lost) * 100.0);
+			if(lastactivecallerrtp->stats.received + lastactivecallerrtp->stats.lost) {
+				rfield->set((double)lastactivecallerrtp->stats.lost / (lastactivecallerrtp->stats.received + lastactivecallerrtp->stats.lost) * 100.0);
 			}
 			#endif
 			break;
 		case cf_src_loss_last10sec:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcallerrtp->last_stat_loss_perc_mult10);
+			rfield->set(lastactivecallerrtp->last_stat_loss_perc_mult10);
 			#endif
 			break;
 		default:
 			break;
 		}
 	}
-	if(lastcalledrtp) {
+	if(lastactivecalledrtp) {
 		switch(field) {
 		case cf_dst_mosf1:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcalledrtp->last_interval_mosf1);
+			rfield->set(lastactivecalledrtp->last_interval_mosf1);
 			#endif
 			break;
 		case cf_dst_mosf2:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcalledrtp->last_interval_mosf2);
+			rfield->set(lastactivecalledrtp->last_interval_mosf2);
 			#endif
 			break;
 		case cf_dst_mosAD:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcalledrtp->last_interval_mosAD);
+			rfield->set(lastactivecalledrtp->last_interval_mosAD);
 			#endif
 			break;
 		case cf_dst_jitter:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(round(lastcalledrtp->jitter));
+			rfield->set(round(lastactivecalledrtp->jitter));
 			#endif
 			break;
 		case cf_dst_loss:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			if(lastcalledrtp->stats.received + lastcalledrtp->stats.lost) {
-				rfield->set((double)lastcalledrtp->stats.lost / (lastcalledrtp->stats.received + lastcalledrtp->stats.lost) * 100.0);
+			if(lastactivecalledrtp->stats.received + lastactivecalledrtp->stats.lost) {
+				rfield->set((double)lastactivecalledrtp->stats.lost / (lastactivecalledrtp->stats.received + lastactivecalledrtp->stats.lost) * 100.0);
 			}
 			#endif
 			break;
 		case cf_dst_loss_last10sec:
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(lastcalledrtp->last_stat_loss_perc_mult10);
+			rfield->set(lastactivecalledrtp->last_stat_loss_perc_mult10);
 			#endif
 			break;
 		default:

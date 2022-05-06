@@ -1346,21 +1346,27 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	}
 	#endif
 
-	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	unsigned int *lastssrc = NULL;
 	RTP *lastrtp = NULL;
+	RTP *lastactivertp = NULL;
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	bool diffSsrcInEqAddrPort = false;
+	#endif
 	if(owner) {
 		lastssrc = iscaller ? 
 			(owner->lastcallerrtp ? &owner->lastcallerrtp->ssrc : NULL) :
 			(owner->lastcalledrtp ? &owner->lastcalledrtp->ssrc : NULL);
 		lastrtp = iscaller ?
-			(owner->lastcallerrtp ? owner->lastcallerrtp : NULL) :
-			(owner->lastcalledrtp ? owner->lastcalledrtp : NULL);
+			owner->lastcallerrtp :
+			owner->lastcalledrtp;
+		lastactivertp = iscaller ?
+			owner->lastactivecallerrtp :
+			owner->lastactivecalledrtp;
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
 				       lastrtp and this->eqAddrPort(lastrtp);
+		#endif
 	}
-	#endif
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	extern cProcessingLimitations processing_limitations;
@@ -2097,7 +2103,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			    getTimeUS(this->header_ts) > owner->connect_time_us;
 	bool do_energylevels = opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels)) &&
 			       !energylevels_via_jb;
-	if(owner and (opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
+	bool do_silencedetect = opt_silencedetect && this == lastactivertp;
+	if(owner and (opt_inbanddtmf or opt_faxt30detect or do_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
 		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
 
 		int res;
@@ -2111,7 +2118,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				if (opt_faxt30detect) {
 					features |= DSP_FEATURE_FAX_DETECT;
 				}
-				if (opt_silencedetect) {
+				if (do_silencedetect) {
 					features |= DSP_FEATURE_SILENCE_SUPPRESS;
 				}
 				dsp_set_features(DSP, features);
@@ -2129,6 +2136,13 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			} else {
 				dsp_clear_feature(DSP, DSP_FEATURE_ENERGYLEVEL);
 			}
+			if (opt_silencedetect) {
+				if (do_silencedetect) {
+					dsp_set_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
+				} else {
+					dsp_clear_feature(DSP, DSP_FEATURE_SILENCE_SUPPRESS);
+				}
+			}
 		}
 
 		char event_digit;
@@ -2141,7 +2155,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		if(codec == 0) {
 			for(int i = 0; i < payload_len; i++) {
 				sdata[i] = ULAW((unsigned char)payload_data[i]);
-				if(opt_clippingdetect and ((abs(sdata[i])) >= 32124)) {
+				if(opt_clippingdetect && this == lastactivertp && ((abs(sdata[i])) >= 32124)) {
 					if(iscaller) {
 						owner->caller_clipping_8k++;
 					} else {
@@ -2152,7 +2166,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		} else if(codec == 8) {
 			for(int i = 0; i < payload_len; i++) {
 				sdata[i] = ALAW((unsigned char)payload_data[i]);
-				if(opt_clippingdetect and ((abs(sdata[i])) >= 32256)) {
+				if(opt_clippingdetect && this == lastactivertp && ((abs(sdata[i])) >= 32256)) {
 					if(iscaller) {
 						owner->caller_clipping_8k++;
 					} else {
@@ -2161,34 +2175,36 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				}
 			}
 		}
-		if(opt_inbanddtmf or opt_faxt30detect or opt_silencedetect or do_fasdetect or do_energylevels) {
+		if(opt_inbanddtmf or opt_faxt30detect or do_silencedetect or do_fasdetect or do_energylevels) {
 			int silence0 = 0;
 			int totalsilence = 0;
 			int totalnoise = 0;
 			int res_call_progress = 0;
 			u_int16_t energylevel = 0;
 			res = dsp_process(DSP, sdata, payload_len, &event_digit, &event_len, &silence0, &totalsilence, &totalnoise, &res_call_progress, &energylevel);
-			if(silence0) {
-				if(!last_was_silence) {
-					sum_silence_changes++;
-				}
-				if(iscaller) {
-					owner->caller_lastsilence += payload_len / 8;
-					owner->caller_silence += payload_len / 8;
+			if(do_silencedetect) {
+				if(silence0) {
+					if(!last_was_silence) {
+						sum_silence_changes++;
+					}
+					if(iscaller) {
+						owner->caller_lastsilence += payload_len / 8;
+						owner->caller_silence += payload_len / 8;
+					} else {
+						owner->called_lastsilence += payload_len / 8;
+						owner->called_silence += payload_len / 8;
+					}
+					last_was_silence = true;
 				} else {
-					owner->called_lastsilence += payload_len / 8;
-					owner->called_silence += payload_len / 8;
+					if(iscaller) {
+						owner->caller_lastsilence = 0;
+						owner->caller_noise += payload_len / 8;
+					} else {
+						owner->called_lastsilence = 0;
+						owner->called_noise += payload_len / 8;
+					}
+					last_was_silence = false;
 				}
-				last_was_silence = true;
-			} else {
-				if(iscaller) {
-					owner->caller_lastsilence = 0;
-					owner->caller_noise += payload_len / 8;
-				} else {
-					owner->called_lastsilence = 0;
-					owner->called_noise += payload_len / 8;
-				}
-				last_was_silence = false;
 			}
 			if(res) {
 				if(opt_faxt30detect and (event_digit == 'f' or event_digit == 'e')) {

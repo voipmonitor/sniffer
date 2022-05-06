@@ -1100,6 +1100,8 @@ public:
 	bool rtpmap_used_flags[MAX_IP_PER_CALL];
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
+	RTP *lastactivecallerrtp;
+	RTP *lastactivecalledrtp;
 	vmIP saddr;		//!< source IP address of first INVITE
 	vmPort sport;		//!< source port of first INVITE
 	vmIP daddr;
