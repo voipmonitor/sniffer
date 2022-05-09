@@ -9152,8 +9152,8 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_sip) {
 			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 		}
-		if(opt_pcap_dump_tar_compress_rtp) {
-			opt_pcap_dump_zip_rtp = FileZipHandler::compress_na;
+		if(opt_pcap_dump_zip_rtp != FileZipHandler::compress_na) {
+			opt_pcap_dump_tar_compress_rtp = 0;
 		}
 		if(opt_pcap_dump_tar_compress_graph) {
 			opt_gzipGRAPH = FileZipHandler::compress_na;
