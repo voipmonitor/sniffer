@@ -477,7 +477,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip_encaps_offset = (*header_packet)->header_ip_encaps_offset;
 			ppd->header_ip_offset = (*header_packet)->header_ip_offset;
 			ppd->protocol = (*header_packet)->eth_protocol;
-			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 			ppd->pid = (*header_packet)->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
 					   &ppd->header_eth, NULL,
@@ -533,7 +533,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip_encaps_offset = pcap_header_plus2->header_ip_encaps_offset;
 			ppd->header_ip_offset = pcap_header_plus2->header_ip_offset;
 			ppd->protocol = pcap_header_plus2->eth_protocol;
-			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
+			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(packet + ppd->header_ip_offset);
 			ppd->pid = pcap_header_plus2->pid;
 		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
 					   &ppd->header_eth, NULL,

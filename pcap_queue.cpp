@@ -3750,14 +3750,20 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 }
 
 bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
-	return(parseEtherHeader(pcapLinklayerHeaderType, packet,
-				&checkProtocolData->header_eth, NULL,
-				checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) &&
-	       (checkProtocolData->protocol == ETHERTYPE_IP ||
-		(VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
-	       (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
-		(VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
-	       ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len);
+	if(parseEtherHeader(pcapLinklayerHeaderType, packet,
+			    &checkProtocolData->header_eth, NULL,
+			    checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan)) {
+		if((checkProtocolData->protocol == ETHERTYPE_IP ||
+		    (VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
+		   (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
+		    (VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
+		   ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len) {
+			return(true);
+		} else if(checkProtocolData->header_ip_offset == 0xFFFF) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
@@ -9103,74 +9109,76 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 				 header_ip_offset, protocol, vlan);
 		hp->header->header_ip_offset = header_ip_offset;
 	}
-	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-	u_int16_t frag_data = header_ip->get_frag_data();
-	if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
-		if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
-			static u_int64_t lastTimeLogErrBadIpHeader = 0;
-			u_int64_t actTime = hp->header->get_time_ms();
-			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
-				lastTimeLogErrBadIpHeader = actTime;
-			}
-			hp->destroy_or_unlock_blockstore();
-			return;
-		}
-		// packet is fragmented
-		int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
-		if(rsltDefrag > 0) {
-			// packets are reassembled
-			header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-			hp->header->pid.flags |= FLAG_FRAGMENTED;
-			if(sverb.defrag) {
-				defrag_counter++;
-				cout << "*** DEFRAG 1 " << defrag_counter << endl;
-			}
-		} else {
-			if(rsltDefrag < 0) {
-				hp->destroy_or_unlock_blockstore();
-			}
-			return;
-		}
-	}
-	unsigned headers_ip_counter = 0;
-	unsigned headers_ip_offset[20];
-	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
-		headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
-		++headers_ip_counter;
-		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
-							     hp->packet, hp->header->get_caplen());
-		if(next_header_ip_offset == 0) {
-			break;
-		} else if(next_header_ip_offset < 0) {
-			hp->destroy_or_unlock_blockstore();
-			return;
-		} else {
-			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
-			hp->header->header_ip_offset += next_header_ip_offset;
-		}
-		int frag_data = header_ip->get_frag_data();
+	if(hp->header->header_ip_offset != 0xFFFF) {
+		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+		u_int16_t frag_data = header_ip->get_frag_data();
 		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+			if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
+				static u_int64_t lastTimeLogErrBadIpHeader = 0;
+				u_int64_t actTime = hp->header->get_time_ms();
+				if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+					syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
+					lastTimeLogErrBadIpHeader = actTime;
+				}
+				hp->destroy_or_unlock_blockstore();
+				return;
+			}
 			// packet is fragmented
 			int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 			if(rsltDefrag > 0) {
+				// packets are reassembled
 				header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-				header_ip->clear_frag_data();
-				for(unsigned i = 0; i < headers_ip_counter; i++) {
-					iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
-					header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
-					header_ip_prev->clear_frag_data();
-				}
 				hp->header->pid.flags |= FLAG_FRAGMENTED;
 				if(sverb.defrag) {
 					defrag_counter++;
-					cout << "*** DEFRAG 2 " << defrag_counter << endl;
+					cout << "*** DEFRAG 1 " << defrag_counter << endl;
 				}
 			} else {
 				if(rsltDefrag < 0) {
 					hp->destroy_or_unlock_blockstore();
 				}
 				return;
+			}
+		}
+		unsigned headers_ip_counter = 0;
+		unsigned headers_ip_offset[20];
+		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+			headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
+			++headers_ip_counter;
+			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+								     hp->packet, hp->header->get_caplen());
+			if(next_header_ip_offset == 0) {
+				break;
+			} else if(next_header_ip_offset < 0) {
+				hp->destroy_or_unlock_blockstore();
+				return;
+			} else {
+				header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+				hp->header->header_ip_offset += next_header_ip_offset;
+			}
+			int frag_data = header_ip->get_frag_data();
+			if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+				// packet is fragmented
+				int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+				if(rsltDefrag > 0) {
+					header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+					header_ip->clear_frag_data();
+					for(unsigned i = 0; i < headers_ip_counter; i++) {
+						iphdr2 *header_ip_prev = (iphdr2*)(hp->packet + headers_ip_offset[i]);
+						header_ip_prev->set_tot_len(header_ip->get_tot_len() + (hp->header->header_ip_offset - headers_ip_offset[i]));
+						header_ip_prev->clear_frag_data();
+					}
+					hp->header->pid.flags |= FLAG_FRAGMENTED;
+					if(sverb.defrag) {
+						defrag_counter++;
+						cout << "*** DEFRAG 2 " << defrag_counter << endl;
+					}
+				} else {
+					if(rsltDefrag < 0) {
+						hp->destroy_or_unlock_blockstore();
+					}
+					return;
+				}
 			}
 		}
 	}
