@@ -628,10 +628,12 @@ struct packet_s_process_0 : public packet_s_stack {
 		insert_packets = NULL;
 	}
 	inline void init_reuse() {
-		use_reuse_counter = 0;
-		reuse_counter = 0;
-		reuse_counter_sync = 0;
-		insert_packets = NULL;
+		if(__type >= _t_packet_s_process_0) {
+			use_reuse_counter = 0;
+			reuse_counter = 0;
+			reuse_counter_sync = 0;
+			insert_packets = NULL;
+		}
 	}
 	inline void init2() {
 		type_content = _pptc_na;
