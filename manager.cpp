@@ -4847,7 +4847,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 			sqlDb->setDisableLogError();
 			extern int opt_id_sensor;
 			if(sqlDb->query("SELECT * FROM sensor_config WHERE id_sensor " + 
-					(opt_id_sensor > 0 ? intToString(opt_id_sensor) : "IS NULL"))) {
+					(opt_id_sensor > 0 ? "= " + intToString(opt_id_sensor) : "IS NULL"))) {
 				SqlDb_row row = sqlDb->fetchRow();
 				delete sqlDb;
 				if(row) {
