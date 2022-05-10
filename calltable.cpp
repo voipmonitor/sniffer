@@ -12686,13 +12686,9 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
 				ch_data.screenPopupField = atoi(row["screen_popup_field"].c_str());
-				if(type == sip_msg) {
-					ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
-								   row["direction"] == "response" ? dir_response :
-								   row["direction"] == "both" ? dir_both : dir_na;
-				} else {
-					ch_data.reqRespDirection = dir_na;
-				}
+				ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
+							   row["direction"] == "response" ? dir_response :
+							   row["direction"] == "both" ? dir_both : dir_na;
 				int tmpOcc = atoi(row["select_occurrence"].c_str());
 				if (tmpOcc) {
 					if (tmpOcc == 1) {
@@ -12876,8 +12872,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				dstring ds_content(iter2->second.header, content);
 				this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &ds_content, true);
 			} else {
-				if(this->type == sip_msg &&
-				   reqRespDirection != dir_na &&
+				if(reqRespDirection != dir_na && iter2->second.reqRespDirection != dir_na &&
 				   !(reqRespDirection & iter2->second.reqRespDirection)) {
 					continue;
 				}

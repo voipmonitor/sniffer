@@ -6026,10 +6026,12 @@ inline void process_packet__parse_custom_headers(Call *call, packet_s_process *p
 		return;
 	}
 	if(call->typeIs(INVITE) && custom_headers_cdr) {
-		custom_headers_cdr->parse(call, INVITE, NULL, packetS);
+		custom_headers_cdr->parse(call, INVITE, NULL, packetS,
+					  IS_SIP_RESXXX(packetS->sip_method) ? CustomHeaders::dir_response : CustomHeaders::dir_request);
 	}
 	if(call->typeIs(MESSAGE) && custom_headers_message) {
-		custom_headers_message->parse(call, MESSAGE, NULL, packetS);
+		custom_headers_message->parse(call, MESSAGE, NULL, packetS,
+					      IS_SIP_RESXXX(packetS->sip_method) ? CustomHeaders::dir_response : CustomHeaders::dir_request);
 	}
 	packetS->_customHeadersDone = true;
 }
