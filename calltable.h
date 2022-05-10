@@ -1381,7 +1381,7 @@ public:
 	int get_index_by_iscaller(int iscaller);
 	
 	bool is_multiple_to_branch();
-	bool all_invite_is_multibranch(vmIP saddr);
+	bool all_invite_is_multibranch(vmIP saddr, bool use_lock = true);
 	bool to_is_canceled(char *to);
 	const char *get_to_not_canceled(bool uri = false);
 	const char *get_to_uri_not_canceled() {

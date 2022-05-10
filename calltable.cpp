@@ -1470,10 +1470,10 @@ Call::is_multiple_to_branch() {
 }
 
 bool
-Call::all_invite_is_multibranch(vmIP saddr) {
-	invite_list_lock();
+Call::all_invite_is_multibranch(vmIP saddr, bool use_lock) {
+	if(use_lock) invite_list_lock();
 	if(invite_sdaddr.size() < 2) {
-		invite_list_unlock();
+		if(use_lock) invite_list_unlock();
 		return(false);
 	}
 	vector<Call::sInviteSD_Addr>::iterator iter1;
@@ -1489,7 +1489,7 @@ Call::all_invite_is_multibranch(vmIP saddr) {
 					++counter2;
 					if(counter2 > counter1) {
 						if(iter1->called == iter2->called || iter1->branch == iter2->branch) {
-							invite_list_unlock();
+							if(use_lock) invite_list_unlock();
 							return(false);
 						}
 					}
@@ -1497,7 +1497,7 @@ Call::all_invite_is_multibranch(vmIP saddr) {
 			}
 		}
 	}
-	invite_list_unlock();
+	if(use_lock) invite_list_unlock();
 	return(counter1 >= 1);
 }
 
@@ -8974,7 +8974,7 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 			   (iter->dport != _dport || iter->daddr != _daddr) && 
 			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
 				if(!(opt_sdp_check_direction_ext &&
-				     iter->saddr == _saddr && all_invite_is_multibranch(iter->saddr))) {
+				     iter->saddr == _saddr && all_invite_is_multibranch(iter->saddr, false))) {
 					_proxies.push_back(vmIPport(_daddr, _dport));
 					_daddr = iter->daddr;
 					_dport = iter->dport;
