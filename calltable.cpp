@@ -8868,7 +8868,7 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 	if(saddr_encaps_protocol) {
 		*saddr_encaps_protocol = 0xFF;
 	}
-	if(!(invite_sdaddr_bad_order || onlyConfirmed)) {
+	if(!(invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
 		return(vmIP(0));
 	}
 	invite_list_lock();
@@ -8894,7 +8894,7 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 		if(_index >= invite_sdaddr_order_size) {
 			continue;
 		}
-		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + _index;
+		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + invite_sdaddr_order[_index].order;
 		if((!onlyConfirmed || iter->confirmed) &&
 		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
 			ip = iter->saddr;
@@ -8927,7 +8927,7 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 	if(proxies) {
 		proxies->clear();
 	}
-	if(!(invite_sdaddr_bad_order || onlyConfirmed)) {
+	if(!(invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
 		return(vmIP(0));
 	}
 	invite_list_lock();
@@ -8956,7 +8956,7 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 		if(_index >= invite_sdaddr_order_size) {
 			continue;
 		}
-		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + _index;
+		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + invite_sdaddr_order[_index].order;
 		if((!onlyConfirmed || iter->confirmed) &&
 		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
 			if(!_saddr.isSet() && !_daddr.isSet()) {
