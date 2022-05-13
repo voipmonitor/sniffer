@@ -12682,6 +12682,13 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				ch_data.header = row["header_field"];
 				ch_data.doNotAddColon = atoi(row["do_not_add_colon"].c_str());
+				ch_data.header_find = ch_data.header;
+				if(!ch_data.doNotAddColon &&
+				   ch_data.header_find[ch_data.header_find.length() - 1] != ':' &&
+				   ch_data.header_find[ch_data.header_find.length() - 1] != '=' &&
+				   strcasecmp(ch_data.header_find.c_str(), "invite")) {
+					ch_data.header_find.append(":");
+				}
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
@@ -12795,15 +12802,8 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		map<int, sCustomHeaderData>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			string findHeader = iter2->second.header;
-			if(findHeader.length()) {
-				if(!iter2->second.doNotAddColon &&
-				   findHeader[findHeader.length() - 1] != ':' &&
-				   findHeader[findHeader.length() - 1] != '=' &&
-				   strcasecmp(findHeader.c_str(), "invite")) {
-					findHeader.append(":");
-				}
-				parsePacket->addNode(findHeader.c_str(), ParsePacket::typeNode_custom);
+			if(iter2->second.header_find.length()) {
+				parsePacket->addNode(iter2->second.header_find.c_str(), ParsePacket::typeNode_custom);
 			}
 		}
 	}
@@ -12884,15 +12884,10 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
 					continue;
 				}
-				string findHeader = iter2->second.header;
-				if(findHeader.length()) {
-					if(findHeader[findHeader.length() - 1] != ':' &&
-					   findHeader[findHeader.length() - 1] != '=') {
-						findHeader.append(":");
-					}
+				if(iter2->second.header_find.length()) {
 					unsigned long l;
 					char *s = gettag_ext(data, datalen, parseContents,
-							     findHeader.c_str(), &l, &gettagLimitLen);
+							     iter2->second.header_find.c_str(), &l, &gettagLimitLen);
 					if(l) {
 						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
 						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
