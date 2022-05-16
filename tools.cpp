@@ -4401,7 +4401,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
@@ -4445,8 +4445,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	tcphdr.set_dest(dest);
 	tcphdr.seq = htonl(seq);
 	tcphdr.ack_seq = htonl(ack_seq);
-	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
+	if(flags) {
+		tcphdr.flags = flags;
+	} else {
+		tcphdr.flags_bit.ack = 1;
+	}
 	tcphdr.window = htons(0x8000);
 	memcpy(*packet + ether_header_length + iphdr_size, &tcphdr, sizeof(tcphdr2));
 	memset(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2), 0, tcp_options_length);

@@ -8188,7 +8188,7 @@ bool TcpReassemblySip::addPacket(tcp_stream *stream, packet_s_process **packetS_
 	newPacket->next = NULL;
 	newPacket->ts = packetS->getTime_s();
 
-	newPacket->lastpsh = header_tcp->psh;
+	newPacket->lastpsh = header_tcp->flags_bit.psh;
 	newPacket->seq = seq;
 	newPacket->ack_seq = ack_seq;
 	newPacket->next_seq = newPacket->seq + (unsigned long int)packetS->header_pt->caplen - ((unsigned long int)header_tcp - (unsigned long int)packetS->packet + header_tcp->doff * 4);

@@ -377,7 +377,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 					  ethHeader, data, dataLength,
 					  ip_src, ip_dst, port_src, port_dst,
-					  seq, ack, 
+					  seq, ack, 0,
 					  time.tv_sec, time.tv_usec, dlt);
 		unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
 		unsigned dataOffset = ethHeaderLength + 

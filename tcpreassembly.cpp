@@ -267,14 +267,14 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				}
 				this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].state = TcpReassemblyStream_packet::CHECK;
 				if(waitForPsh ?
-				    this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.psh :
+				    this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.flags_bit.psh :
 				    ((maxNextSeq && next_seq == maxNextSeq) ||
 				     (!enableSimpleCmpMaxNextSeq && maxNextSeq && next_seq == maxNextSeq - 1) ||
 				     (this->last_seq && next_seq == this->last_seq) ||
 				     (this->last_seq && next_seq == this->last_seq - 1) ||
 				     (enableSimpleCmpMaxNextSeq && next_seq == this->max_next_seq) ||
 				     (!crazySequence && next_seq == this->max_next_seq && next_seq == this->getLastSeqFromNextStream()))) {
-					if(!this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.psh && 
+					if(!this->queuePacketVars[this->ok_packets.back()[0]].queuePackets[this->ok_packets.back()[1]].header_tcp.flags_bit.psh && 
 					   !ignorePsh) {
 						waitForPsh = true;
 					} else {
@@ -487,12 +487,12 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, deque<s_index_item> *d
 		bool _break = false;
 		switch(link->reassembly->getType()) {
 		case TcpReassembly::http:
-			if(breakIfPsh && packet.header_tcp.psh) {
+			if(breakIfPsh && packet.header_tcp.flags_bit.psh) {
 				_break = true;
 			}
 			break;
 		default:
-			if(breakIfPsh && packet.header_tcp.psh &&
+			if(breakIfPsh && packet.header_tcp.flags_bit.psh &&
 			   link->reassembly->checkOkData(data, *datalen, false, false, &link->sip_offsets)) {
 				// TODO: remove next items from ok_packets ?
 				_break = true;
@@ -996,7 +996,7 @@ bool TcpReassemblyLink::push_normal(
 	switch(this->state) {
 	case STATE_NA:
 		if(direction == TcpReassemblyStream::DIRECTION_TO_DEST &&
-		   header_tcp.syn && !header_tcp.ack) {
+		   header_tcp.flags_bit.syn && !header_tcp.flags_bit.ack) {
 			this->first_seq_to_dest = header_tcp.seq + 1;
 			this->state = STATE_SYN_SENT;
 			rslt = true;
@@ -1004,7 +1004,7 @@ bool TcpReassemblyLink::push_normal(
 		break;
 	case STATE_SYN_SENT:
 		if(direction == TcpReassemblyStream::DIRECTION_TO_SOURCE &&
-		   header_tcp.syn && header_tcp.ack) {
+		   header_tcp.flags_bit.syn && header_tcp.flags_bit.ack) {
 			this->first_seq_to_source = header_tcp.seq + 1;
 			this->state = STATE_SYN_RECV;
 			rslt = true;
@@ -1012,14 +1012,14 @@ bool TcpReassemblyLink::push_normal(
 		break;
 	case STATE_SYN_RECV:
 		if(direction == TcpReassemblyStream::DIRECTION_TO_DEST &&
-		   !header_tcp.syn && header_tcp.ack) {
+		   !header_tcp.flags_bit.syn && header_tcp.flags_bit.ack) {
 			this->state = STATE_SYN_OK;
 			rslt = true;
 		}
 		break;
 	case STATE_SYN_OK:
 	case STATE_SYN_FORCE_OK:
-		if(header_tcp.rst) {
+		if(header_tcp.flags_bit.rst) {
 			this->rst = true;
 			this->state = STATE_RESET;
 			if(reassembly->getType() == TcpReassembly::ssl) {
@@ -1037,7 +1037,7 @@ bool TcpReassemblyLink::push_normal(
 			rslt = true;
 		}
 	case STATE_RESET:
-		if(header_tcp.fin) {
+		if(header_tcp.flags_bit.fin) {
 			if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
 				this->fin_to_dest = true;
 				this->setLastSeq(TcpReassemblyStream::DIRECTION_TO_SOURCE, 
@@ -1060,7 +1060,7 @@ bool TcpReassemblyLink::push_normal(
 		break;
 	case STATE_CLOSE:
 	case STATE_CLOSED:
-		if(this->rst && header_tcp.fin &&
+		if(this->rst && header_tcp.flags_bit.fin &&
 		   direction == TcpReassemblyStream::DIRECTION_TO_SOURCE) {
 			this->setLastSeq(TcpReassemblyStream::DIRECTION_TO_SOURCE, 
 					 header_tcp.seq);
@@ -1074,7 +1074,7 @@ bool TcpReassemblyLink::push_normal(
 	if(state == STATE_SYN_OK || 
 	   state == STATE_SYN_FORCE_OK ||
 	   (state >= STATE_RESET &&
-	    !header_tcp.fin && !header_tcp.rst) || 
+	    !header_tcp.flags_bit.fin && !header_tcp.flags_bit.rst) || 
 	   reassembly->ignoreTcpHandshake) {
 		if(datalen > 0) {
 			TcpReassemblyStream_packet packet;
@@ -1100,7 +1100,7 @@ bool TcpReassemblyLink::push_normal(
 				}
 			}
 			if(reassembly->enableAllCompleteAfterZerodataAck) {
-				if(!header_tcp.psh && header_tcp.ack) {
+				if(!header_tcp.flags_bit.psh && header_tcp.flags_bit.ack) {
 					this->setLastSeq(direction == TcpReassemblyStream::DIRECTION_TO_DEST ?
 								TcpReassemblyStream::DIRECTION_TO_SOURCE :
 								TcpReassemblyStream::DIRECTION_TO_DEST, 
@@ -1111,8 +1111,8 @@ bool TcpReassemblyLink::push_normal(
 							 header_tcp.seq);
 					runCompleteAfterZerodataAck = true;
 				} else if(prevStreamByLastAck &&
-					 prevStreamByLastAck->direction != direction &&
-					 header_tcp.ack) {
+					  prevStreamByLastAck->direction != direction &&
+					  header_tcp.flags_bit.ack) {
 					runCompleteAfterZerodataAck = true;
 				}
 			}
@@ -1132,7 +1132,7 @@ bool TcpReassemblyLink::push_normal(
 			int countDataStream = this->okQueue(final || runCompleteAfterZerodataAck ? 2 : 1,
 							    header_tcp.seq, header_tcp.seq + datalen,
 							    reassembly->simpleByAck ? header_tcp.ack_seq : 0,
-							    header_tcp.psh,
+							    header_tcp.flags_bit.psh,
 							    ENABLE_DEBUG(reassembly->type, _debug_check_ok));
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 				(*_debug_stream) << " -- RSLT: ";
@@ -1177,7 +1177,7 @@ bool TcpReassemblyLink::push_crazy(
 			u_char *data, u_int32_t datalen, u_int32_t datacaplen,
 			pcap_block_store *block_store, int block_store_index) {
 	/*if(!(datalen > 0 ||
-	     header_tcp.syn || header_tcp.fin || header_tcp.rst)) {
+	     header_tcp.flags_bit.syn || header_tcp.flags_bit.fin || header_tcp.flags_bit.rst)) {
 		return(false);
 	}*/
 	direction = header_tcp.get_dest() == this->port_dst ?
@@ -1185,8 +1185,8 @@ bool TcpReassemblyLink::push_crazy(
 		     TcpReassemblyStream::DIRECTION_TO_SOURCE;
 	if(this->direction_confirm < 2) {
 		TcpReassemblyStream::eDirection checked_direction = direction;
-		if(this->direction_confirm < 2 && header_tcp.syn) {
-			if(header_tcp.ack) {
+		if(this->direction_confirm < 2 && header_tcp.flags_bit.syn) {
+			if(header_tcp.flags_bit.ack) {
 				checked_direction = TcpReassemblyStream::DIRECTION_TO_SOURCE;
 			} else {
 				checked_direction = TcpReassemblyStream::DIRECTION_TO_DEST;
@@ -1213,8 +1213,8 @@ bool TcpReassemblyLink::push_crazy(
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	for(int i = 0; i < 3; i++) {
 		if(i == 0 ? datalen > 0 : 
-		   i == 1 ? header_tcp.syn || header_tcp.fin || header_tcp.rst : 
-			    datalen == 0 && !(header_tcp.syn || header_tcp.fin || header_tcp.rst)) {
+		   i == 1 ? header_tcp.flags_bit.syn || header_tcp.flags_bit.fin || header_tcp.flags_bit.rst : 
+			    datalen == 0 && !(header_tcp.flags_bit.syn || header_tcp.flags_bit.fin || header_tcp.flags_bit.rst)) {
 			map<uint32_t, TcpReassemblyStream*> *queue = i == 0 ? &this->queue_by_ack : 
 								     i == 1 ? &this->queue_flags_by_ack :
 									      &this->queue_nul_by_ack;
@@ -1224,17 +1224,19 @@ bool TcpReassemblyLink::push_crazy(
 				stream->direction = direction;
 				stream->ack = packet.header_tcp.ack_seq;
 				if(i == 1) {
-					stream->type = header_tcp.syn ? (header_tcp.ack ? 
-										TcpReassemblyStream::TYPE_SYN_RECV :
-										TcpReassemblyStream::TYPE_SYN_SENT) :
-						       header_tcp.fin ? TcpReassemblyStream::TYPE_FIN :
-									TcpReassemblyStream::TYPE_RST;
+					stream->type = header_tcp.flags_bit.syn ? 
+								(header_tcp.flags_bit.ack ? 
+									TcpReassemblyStream::TYPE_SYN_RECV :
+									TcpReassemblyStream::TYPE_SYN_SENT) :
+						       header_tcp.flags_bit.fin ? 
+								TcpReassemblyStream::TYPE_FIN :
+								TcpReassemblyStream::TYPE_RST;
 				}
 				(*queue)[stream->ack] = stream;
-				if(header_tcp.rst) {
+				if(header_tcp.flags_bit.rst) {
 					this->rst = true;
 				}
-				if(header_tcp.fin) {
+				if(header_tcp.flags_bit.fin) {
 					if(direction == TcpReassemblyStream::DIRECTION_TO_DEST) {
 						this->fin_to_dest = true;
 					} else {
@@ -3331,12 +3333,12 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 			<< " -> " 
 			<< setw(15) << header_ip->get_daddr().getString() << "/" << setw(6) << header_tcp.get_dest()
 			<< "   "
-			<< (header_tcp.fin ? 'F' : '-')
-			<< (header_tcp.syn ? 'S' : '-') 
-			<< (header_tcp.rst ? 'R' : '-')
-			<< (header_tcp.psh ? 'P' : '-')
-			<< (header_tcp.ack ? 'A' : '-')
-			<< (header_tcp.urg ? 'U' : '-')
+			<< (header_tcp.flags_bit.fin ? 'F' : '-')
+			<< (header_tcp.flags_bit.syn ? 'S' : '-') 
+			<< (header_tcp.flags_bit.rst ? 'R' : '-')
+			<< (header_tcp.flags_bit.psh ? 'P' : '-')
+			<< (header_tcp.flags_bit.ack ? 'A' : '-')
+			<< (header_tcp.flags_bit.urg ? 'U' : '-')
 			<< "  "
 			<< " len: " << setw(5) << datalen
 			<< " seq: " << setw(12) << header_tcp.seq
@@ -3411,7 +3413,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 		link->uData2_last = uData2;
 	} else {
 		if(!this->enableCrazySequence &&
-		   header_tcp.syn && !header_tcp.ack) {
+		   header_tcp.flags_bit.syn && !header_tcp.flags_bit.ack) {
 			if(this->check_port(header_tcp.get_dest(), header_ip->get_daddr())) {
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					(*_debug_stream) <<

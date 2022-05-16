@@ -97,6 +97,7 @@
 #include "heap_chunk.h"
 #include "charts.h"
 #include "ipfix.h"
+#include "hep.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -1189,6 +1190,12 @@ bool opt_ipfix;
 bool opt_ipfix_set;
 string opt_ipfix_bind_ip;
 unsigned opt_ipfix_bind_port;
+
+bool opt_hep;
+bool opt_hep_set;
+string opt_hep_bind_ip;
+unsigned opt_hep_bind_port;
+bool opt_hep_bind_udp;
 
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
@@ -4581,6 +4588,10 @@ int main_init_read() {
 		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
 	}
 	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
+	}
+	
 	clear_readend();
 
 	if(is_enable_packetbuffer()) {
@@ -4944,6 +4955,10 @@ void main_term_read() {
 	
 	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
 		IPFixServerStop();
+	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStop();
 	}
 
 	terminate_processpacket();
@@ -7805,6 +7820,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -8338,6 +8357,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
+	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
@@ -9384,6 +9404,15 @@ void set_context_config() {
 	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
 		opt_ipfix = false;
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	if(!(useNewCONFIG ? CONFIG.isSet("hep") : opt_hep_set)) {
+		opt_hep = !opt_hep_bind_ip.empty() && opt_hep_bind_port;
+	}
+	
+	if(opt_hep && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_hep = false;
+		syslog(LOG_ERR, "the hep option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
 	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
@@ -12438,6 +12467,20 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ipfix_bind_port", NULL))) {
 		opt_ipfix_bind_port = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "hep", NULL))) {
+		opt_hep = yesno(value);
+		opt_hep_set = true;
+	}
+	if((value = ini.GetValue("general", "hep_bind_ip", NULL))) {
+		opt_hep_bind_ip = value;
+	}
+	if((value = ini.GetValue("general", "hep_bind_port", NULL))) {
+		opt_hep_bind_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "hep_bind_udp", NULL))) {
+		opt_hep_bind_udp = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

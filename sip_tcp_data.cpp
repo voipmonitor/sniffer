@@ -151,7 +151,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 							  ethHeader, _data, _datalen,
 							  _ip_src, _ip_dst, _port_src, _port_dst,
-							  dataItem->getSeq(), dataItem->getAck(), 
+							  dataItem->getSeq(), dataItem->getAck(), 0,
 							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
 				unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
 				unsigned dataOffset = ethHeaderLength + 
