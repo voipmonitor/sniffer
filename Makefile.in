@@ -41,7 +41,7 @@ endif
 default: shared ;
 
 
-WIRESHARKLIBSTATIC =$(shell pkg-config --libs --static wireshark)
+WIRESHARKLIBSTATIC =$(shell pkg-config --libs-only-l --static wireshark)
 WIRESHARKCFLAGS =$(shell pkg-config --cflags wireshark)
 
 core2cust: GCCARCH = core2
