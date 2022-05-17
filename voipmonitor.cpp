@@ -3383,7 +3383,7 @@ int main(int argc, char *argv[]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
-			if(!useCmdLineConfig) {
+			if(!useCmdLineConfig && sverb.check_config) {
 				cConfigMap configMap1 = CONFIG.getConfigMap();
 				cConfigMap configMap2;
 				CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
@@ -8401,6 +8401,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
+	else if(verbParam == "check_config")			sverb.check_config = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9816,14 +9817,14 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 }
 
 void parse_config_item(const char *config, vector<string> *item) {
-	vector<string> items = split(config, ";", true);
+	vector<string> items = split(config, split2chars(";,"), true);
 	for(unsigned i = 0; i < items.size(); i++) {
 		item->push_back(items[i]);
 	}
 }
 
 void parse_config_item(const char *config, vector<int> *item) {
-	vector<string> items = split(config, ";", true);
+	vector<string> items = split(config, split2chars(";,"), true);
 	for(unsigned i = 0; i < items.size(); i++) {
 		item->push_back(atoi(items[i].c_str()));
 	}

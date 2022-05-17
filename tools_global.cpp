@@ -834,6 +834,15 @@ std::vector<int> split2int(const std::string &s, char delim) {
     return elems;
 }
 
+std::vector<std::string> split2chars(const std::string &s) {
+	std::vector<std::string> elems;
+	string _s = trim_str(s);
+	for(unsigned i = 0; i < _s.length(); i++) {
+		elems.push_back(_s.substr(i, 1));
+	}
+	return(elems);
+}
+
 
 bool check_regexp(const char *pattern) {
 	regex_t re;

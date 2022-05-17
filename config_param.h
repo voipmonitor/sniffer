@@ -229,7 +229,7 @@ protected:
 		yesValue = 0;
 		menuValue = false;
 		onlyMenu = false;
-		explodeSeparator = ";";
+		explodeSeparators = ";,";
 	}
 	void initVirtParam() {
 		param_virt = 0;
@@ -251,7 +251,7 @@ protected:
 	int yesValue;
 	bool menuValue;
 	bool onlyMenu;
-	string explodeSeparator;
+	string explodeSeparators;
 };
 
 class cConfigItem_float : public cConfigItem {
@@ -294,8 +294,8 @@ public:
 		this->suffix = suffix;
 		return(this);
 	}
-	cConfigItem_string *setExplodeSeparator(const char *explodeSeparator) {
-		this->explodeSeparator = explodeSeparator;
+	cConfigItem_string *setExplodeSeparators(const char *explodeSeparators) {
+		this->explodeSeparators = explodeSeparators;
 		return(this);
 	}
 	cConfigItem_string *setPassword() {
@@ -324,7 +324,7 @@ protected:
 	void initOther() {
 		prefix = "";
 		suffix = "";
-		explodeSeparator = ";";
+		explodeSeparators = ";,";
 		password = false;
 	}
 	void initVirtParam() {
@@ -341,7 +341,7 @@ protected:
 	vector<string> *param_vect_str;
 	string prefix;
 	string suffix;
-	string explodeSeparator;
+	string explodeSeparators;
 	bool password;
 };
 
