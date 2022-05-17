@@ -4580,7 +4580,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;
-		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
+		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE || (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
 			if(opt_ignore_rtp_after_response) {
 				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
