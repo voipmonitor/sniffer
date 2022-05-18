@@ -473,6 +473,7 @@ unsigned long getUptime();
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
+char *strnrchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
 int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
 int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);

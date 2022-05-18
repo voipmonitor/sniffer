@@ -2696,6 +2696,18 @@ char *strnchr(const char *haystack, char needle, size_t len)
         return NULL;
 }
 
+char *strnrchr(const char *haystack, char needle, size_t len)
+{
+        int i;
+
+        for (i=(int)(len-1); i>=0; i--)
+        {
+                if (haystack[i] == needle)
+                        return (char *)(haystack + i);
+        }
+        return NULL;
+}
+
 char *strncasechr(const char *haystack, char needle, size_t len)
 {
         int i;
@@ -4358,8 +4370,16 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+
+
 	#if VM_IPV6
+	u_int16_t *eth_type_ptr=(u_int16_t *)(*packet + ether_header_length - sizeof(u_int16_t));
 	if(saddr.is_v6()) {
+		if(htons(*eth_type_ptr) == 0x0800) {
+			//Captured frame type is IPV4 type, make it IPV6
+			*eth_type_ptr = ntohs(0x86dd);
+		}
+	
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4369,6 +4389,10 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
+		if(htons(*eth_type_ptr) == 0x86dd) {
+			//Captured frame type is IPV6 type, make it IPV4
+			*eth_type_ptr = ntohs(0x0800);
+		}
 	#endif
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
