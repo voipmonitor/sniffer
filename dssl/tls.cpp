@@ -1787,10 +1787,12 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 	    if(restore_session && auth_tag_used_seq && auth_tag_failed) {
 		gboolean seq_ok = FALSE;
 		guint64 seq_old = decoder->seq;
-		guint try_seq_backward = TRY_SEQ_BACKWARD;
-		guint try_seq_forward = TRY_SEQ_FORWARD;
+                extern int opt_ssl_aead_try_seq_backward;
+                extern int opt_ssl_aead_try_seq_forward;
+		guint try_seq_backward = opt_ssl_aead_try_seq_backward ? opt_ssl_aead_try_seq_backward : TRY_SEQ_BACKWARD;
+		guint try_seq_forward = opt_ssl_aead_try_seq_forward ? opt_ssl_aead_try_seq_forward : TRY_SEQ_FORWARD;
 		guint64 try_seq_from = decoder->seq > try_seq_backward ? decoder->seq - try_seq_backward : 0;
-		guint64 try_seq_to = decoder->seq - try_seq_forward;
+		guint64 try_seq_to = decoder->seq + try_seq_forward;
 		for(guint64 try_seq = try_seq_from; try_seq <= try_seq_to && !seq_ok; try_seq++) {
 		    if (try_seq != seq_old) {
 			decoder->seq = try_seq;

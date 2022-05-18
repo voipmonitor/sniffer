@@ -439,6 +439,8 @@ bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
+int opt_ssl_aead_try_seq_backward = 0;
+int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -7323,6 +7325,8 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
 				->addValues("memory:1|persistent:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
 		setDisableIfEnd();
 	group("SKINNY");
@@ -11793,6 +11797,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_store_sessions_expiration_hours", NULL))) {
 		opt_ssl_store_sessions_expiration_hours = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_backward", NULL))) {
+		opt_ssl_aead_try_seq_backward = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_forward", NULL))) {
+		opt_ssl_aead_try_seq_forward = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
 		opt_ssl_enable_dtls_queue = yesno(value);

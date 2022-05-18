@@ -808,8 +808,10 @@ void cSslDsslSessions::loadSessions() {
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
 	}
+	syslog(LOG_NOTICE, "try load ssl/tls sessions from table %s", storeSessionsTableName().c_str());
 	exists_sessions_table = sqlDb->existsTable(storeSessionsTableName());
 	if(!exists_sessions_table) {
+		syslog(LOG_NOTICE, "sessions table %s is missing", storeSessionsTableName().c_str());
 		return;
 	}
 	list<SqlDb_condField> cond;
@@ -817,6 +819,7 @@ void cSslDsslSessions::loadSessions() {
 	cond.push_back(SqlDb_condField("stored_at", sqlDateTimeString(getTimeS() - opt_ssl_store_sessions_expiration_hours * 3600)).setOper(">"));
 	sqlDb->select(storeSessionsTableName(), NULL, &cond);
 	SqlDb_row row;
+	unsigned session_rows = 0;
 	while((row = sqlDb->fetchRow())) {
 		sStreamId sid(mysql_ip_2_vmIP(&row, "serverip"), atoi(row["serverport"].c_str()), 
 			      mysql_ip_2_vmIP(&row, "clientip"), atoi(row["clientport"].c_str()));
@@ -825,6 +828,12 @@ void cSslDsslSessions::loadSessions() {
 		lock_sessions_db();
 		sessions_db[sid] = session_data;
 		unlock_sessions_db();
+		++session_rows;
+	}
+	if(session_rows) {
+		syslog(LOG_NOTICE, "load %u current ssl/tls sessions", session_rows);
+	} else {
+		syslog(LOG_NOTICE, "there are no current ssl/tls sessions");
 	}
 }
 
