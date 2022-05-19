@@ -885,6 +885,8 @@ ssl_create_decoder(const SslCipherSuite *cipher_suite, gint cipher_algo,
     return dec;
 }
 
+#define MAX_TRY_SEQ_ATTEMPTS 3
+
 int
 ssl_generate_keyring_material(SslDecryptSession*ssl_session, gboolean restore_session)
 {
@@ -1195,8 +1197,8 @@ create_decoders:
         goto fail;
     }
     if (restore_session) {
-	ssl_session->client_new->restore_session = restore_session;
-	ssl_session->server_new->restore_session = restore_session;
+	ssl_session->client_new->enable_try_seq_attempts = MAX_TRY_SEQ_ATTEMPTS;
+	ssl_session->server_new->enable_try_seq_attempts = MAX_TRY_SEQ_ATTEMPTS;
     }
 
     #if 0
@@ -1287,7 +1289,7 @@ tls13_generate_keys(SslDecryptSession *ssl_session, const StringInfo *secret, gb
     ssl_debug_printf("%s ssl_create_decoder(%s)\n", G_STRFUNC, is_from_server ? "server" : "client");
     decoder = ssl_create_decoder(cipher_suite, cipher_algo, 0, NULL, write_key, write_iv, iv_length);
     if (restore_session) {
-	decoder->restore_session = restore_session;
+	decoder->enable_try_seq_attempts = MAX_TRY_SEQ_ATTEMPTS;
     }
     if (!decoder) {
         ssl_debug_printf("%s can't init %s decoder\n", G_STRFUNC, is_from_server ? "server" : "client");
@@ -1741,8 +1743,8 @@ ssl_decompress_record(SslDecompress* decomp _U_, const guchar* in _U_, guint inl
 }
 #endif
 
-#define TRY_SEQ_BACKWARD 10
-#define TRY_SEQ_FORWARD 100
+#define TRY_SEQ_BACKWARD 1000
+#define TRY_SEQ_FORWARD 1000
 
 int
 ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint16 record_version,
@@ -1751,8 +1753,11 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 {
     guint   pad, worklen, uncomplen, maclen, mac_fraglen = 0;
     guint8 *mac = NULL, *mac_frag = NULL;
-    gboolean restore_session = decoder->restore_session;
-    decoder->restore_session = FALSE;
+    gboolean enable_try_seq = FALSE;
+    if(decoder->enable_try_seq_attempts > 0) {
+        enable_try_seq = TRUE;
+        --decoder->enable_try_seq_attempts;
+    }
 
     ssl_debug_printf("ssl_decrypt_record ciphertext len %d\n", inl);
     ssl_print_data("Ciphertext",in, inl);
@@ -1784,7 +1789,7 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
         if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
             /* decryption failed */
             // return -1;
-	    if(restore_session && auth_tag_used_seq && auth_tag_failed) {
+	    if(enable_try_seq && auth_tag_used_seq && auth_tag_failed) {
 		gboolean seq_ok = FALSE;
 		guint64 seq_old = decoder->seq;
                 extern int opt_ssl_aead_try_seq_backward;
