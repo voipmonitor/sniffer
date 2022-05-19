@@ -4472,7 +4472,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								use_uri = variants_to_uri.size() > variants_to.size();
 							}
 							map<string, Call::sCalledInviteBranchItem>::iterator iter = call->called_invite_branch_map.find(branch);
-							if(iter != call->called_invite_branch_map.end()) {
+							if(iter != call->called_invite_branch_map.end() &&
+							   strcmp(call->caller, opt_destination_number_mode == 2 && iter->second.to_uri.length() ? iter->second.to_uri.c_str() : iter->second.to.c_str())) {
 								strcpy_null_term(call->called_to, iter->second.to.c_str());
 								strcpy_null_term(call->called_uri, iter->second.to_uri.c_str());
 								strcpy_null_term(call->called_final, use_uri ? iter->second.to_uri.c_str() : iter->second.to.c_str());
