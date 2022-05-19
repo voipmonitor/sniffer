@@ -70,10 +70,12 @@ extern "C" {
 */
 
 extern unsigned int __unsigned_int_flags_dummy;
+#if HEAPSAFE_JITTERBUFFER_CHECK
 #ifndef FREEBSD
 extern unsigned int HeapSafeCheck;
 #else
 extern "C++" unsigned int HeapSafeCheck;
+#endif
 #endif
 
 
@@ -342,9 +344,11 @@ void * attribute_malloc _ast_malloc(size_t len, const char *file, int lineno, co
 {
 	void *p;
 
+	#if HEAPSAFE_JITTERBUFFER_CHECK
 	if(HeapSafeCheck) {
 		p = c_heapsafe_alloc(len, file, lineno);
 	} else
+	#endif
 		p = malloc(len);
 	if (!p)
 		MALLOC_FAILURE_MSG;
@@ -369,12 +373,14 @@ void * attribute_malloc _ast_calloc(size_t num, size_t len, const char *file, in
 {
 	void *p;
 	
+	#if HEAPSAFE_JITTERBUFFER_CHECK
 	if(HeapSafeCheck) {
 		p = c_heapsafe_alloc(num * len, file, lineno);
 		if(p) {
 			memset(p, 0, num * len);
 		}
 	} else
+	#endif
 		p = calloc(num, len);
 
 	if (!p)
@@ -400,9 +406,11 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 {
 	void *newp;
 
+	#if HEAPSAFE_JITTERBUFFER_CHECK
 	if(HeapSafeCheck) {
 		newp = c_heapsafe_realloc(p, len, file, lineno);
 	} else
+	#endif
 		newp = realloc(p, len);
 	
 	if (!newp)
@@ -421,9 +429,11 @@ void * attribute_malloc _ast_realloc(void *p, size_t len, const char *file, int 
 AST_INLINE_API(
 void _ast_free(void *p),
 {
+	#if HEAPSAFE_JITTERBUFFER_CHECK
 	if(HeapSafeCheck) {
 		c_heapsafe_free(p);
 	} else
+	#endif
 		free(p);
 }
 )
