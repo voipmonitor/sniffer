@@ -2696,6 +2696,18 @@ char *strnchr(const char *haystack, char needle, size_t len)
         return NULL;
 }
 
+char *strnrchr(const char *haystack, char needle, size_t len)
+{
+        int i;
+
+        for (i=(int)(len-1); i>=0; i--)
+        {
+                if (haystack[i] == needle)
+                        return (char *)(haystack + i);
+        }
+        return NULL;
+}
+
 char *strncasechr(const char *haystack, char needle, size_t len)
 {
         int i;
@@ -4358,8 +4370,10 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		header_eth->ether_type = htons(ETHERTYPE_IPV6);
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4370,6 +4384,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
 	#endif
+		header_eth->ether_type = htons(ETHERTYPE_IP);
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4414,8 +4429,10 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	u_int32_t packet_length = ether_header_length + iphdr_size + tcp_doff * 4 + datalen;
 	*packet = new FILE_LINE(38024) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		header_eth->ether_type = htons(ETHERTYPE_IPV6);
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4426,6 +4443,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else {
 	#endif
+		header_eth->ether_type = htons(ETHERTYPE_IP);
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;

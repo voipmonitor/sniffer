@@ -10042,7 +10042,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 					unsigned long l = i == 0 ? from_ip_l : to_ip_l;
 					char *p_sep_ip = strnchr(ip, ':', l);
 					if(p_sep_ip) {
-						char *p_sep_port = strnchr(p_sep_ip + 1, ':', l - (p_sep_ip - ip));
+						char *p_sep_port = strnrchr(p_sep_ip + 1, ':', l - (p_sep_ip - ip));
 						if(p_sep_port) {
 							is_tcp[i] = ip[0] == 't' || ip[0] == 'T';
 							string str_ip = string(p_sep_ip + 1, p_sep_port - p_sep_ip - 1);
