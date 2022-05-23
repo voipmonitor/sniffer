@@ -3615,8 +3615,8 @@ class cDbStrings {
 public:
 	cDbStrings(unsigned capacity = 0, unsigned capacity_inc = 0);
 	~cDbStrings();
-	void add(const char *begin, unsigned offset, unsigned length);
-	void explodeCsv(const char *csv);
+	void add(const char *begin, unsigned offset, unsigned length, bool needUnescape = false);
+	void explodeCsv(const char *csv, bool header = false);
 	void setZeroTerm();
 	void setNextData();
 	void createMap(bool icase);

@@ -6610,7 +6610,7 @@ cDbStrings::~cDbStrings() {
 	}
 }
 
-void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
+void cDbStrings::add(const char *begin, unsigned offset, unsigned length, bool needUnescape) {
 	if(size == capacity) {
 		sDbString *strings_new = new FILE_LINE(0) sDbString[capacity + capacity_inc];
 		if(strings) {
@@ -6620,13 +6620,24 @@ void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
 		strings = strings_new;
 		capacity += capacity_inc;
 	}
+	if(needUnescape) {
+		const char *_begin = begin + offset;
+		for(unsigned i = 0; i < length - 2; i++) {
+			if(_begin[i] == '\\' && _begin[i + 1] == '"' && _begin[i + 2] == ',') {
+				for(unsigned j = i; j < length - 1; j++) {
+					((char*)_begin)[j] = _begin[j + 1];
+				}
+				--length;
+			}
+		}
+	}
 	strings[size].begin = begin;
 	strings[size].offset = offset;
 	strings[size].length = length;
 	++size;
 }
 
-void cDbStrings::explodeCsv(const char *csv) {
+void cDbStrings::explodeCsv(const char *csv, bool header) {
 	unsigned lengthCsv = strlen(csv);
 	while(lengthCsv &&
 	      (csv[lengthCsv - 1] == '\r' || csv[lengthCsv - 1] == '\n')) {
@@ -6636,22 +6647,36 @@ void cDbStrings::explodeCsv(const char *csv) {
 	while(pos < lengthCsv) {
 		bool is_string = csv[pos] == '"';
 		const char *nextSep = strstr(csv + pos, is_string ? "\"," : ",");
-		if(is_string) {
-			while(nextSep && *(nextSep - 1) == '\\') {
+		bool needUnescape = false;
+		if(nextSep && is_string) {
+			while(nextSep) {
+				if(*(nextSep - 1) == '\\') {
+					needUnescape = true;
+				} else if(!header) {
+					unsigned posNextSep = nextSep - csv;
+					if((posNextSep < lengthCsv - 2 && 
+					    *(nextSep + 2) == ('0' + SqlDb_row::_ift_null)) ||
+					   (posNextSep < lengthCsv - 3 && 
+					    *(nextSep + 2) == '"' && *(nextSep + 4) == ':' && *(nextSep + 3) >= '0' && *(nextSep + 3) < ('0' + SqlDb_row::_ift_null))) {
+						break;
+					}
+				} else {
+					break;
+				}
 				nextSep = strstr(nextSep + 1, is_string ? "\"," : ",");
 			}
 		}
 		if(nextSep) {
 			unsigned nextSepPos = nextSep - csv;
 			if(is_string) {
-				add(csv, pos + 1, nextSepPos - pos - 1);
+				add(csv, pos + 1, nextSepPos - pos - 1, needUnescape);
 			} else {
 				add(csv, pos, nextSepPos - pos);
 			}
 			pos = nextSepPos + (is_string ? 2 : 1);
 		} else {
 			if(is_string) {
-				add(csv, pos + 1, lengthCsv - pos - 2);
+				add(csv, pos + 1, lengthCsv - pos - 2, needUnescape);
 			} else {
 				add(csv, pos, lengthCsv - pos);
 			}
@@ -6790,7 +6815,7 @@ void cDbTableContent::addHeader(const char *source) {
 	strcpy(content, source);
 	header.content = content;
 	header.items = new FILE_LINE(0) cDbStrings(100);
-	header.items->explodeCsv(content);
+	header.items->explodeCsv(content, true);
 	header.items->setZeroTerm();
 	header.items->createMap(true);
 }

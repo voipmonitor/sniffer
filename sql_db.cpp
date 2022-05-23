@@ -350,9 +350,26 @@ string SqlDb_row::implodeContentTypeToCsv(bool enableSqlString) {
 				'"';
 		} else if(this->row[i].ifv.type == _ift_cb_string) {
 			rslt += '"' + 
-				string(1, '0' + this->row[i].ifv.type + this->row[i].ifv.cb_type) + ':' +
-				this->row[i].content + 
-				'"';
+				string(1, '0' + this->row[i].ifv.type + this->row[i].ifv.cb_type) + ':';
+			if(this->row[i].content.find("\",") != string::npos) {
+				const char *content_src = this->row[i].content.c_str();
+				unsigned content_src_length = this->row[i].content.length();
+				string content_esc;
+				for(unsigned i = 0; i < content_src_length; i++) {
+					if(i < content_src_length  - 1 &&
+					   content_src[i] == '"' && content_src[i + 1] == ',' &&
+					   (i == 0 || content_src[i - 1] != '\\')) {
+						content_esc += "\\\",";
+						++i;
+					} else {
+						content_esc += content_src[i];
+					}
+				}
+				rslt += content_esc;
+			} else {
+				rslt += this->row[i].content;
+			}
+			rslt += '"';
 		} else {
 			rslt += '"' + 
 				string(1, '0' + this->row[i].ifv.type) + ':' +
