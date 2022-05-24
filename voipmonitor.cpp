@@ -901,6 +901,7 @@ unsigned int gthread_num = 0;
 int opt_pcapdump = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
+bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
@@ -6853,6 +6854,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
@@ -11370,6 +11372,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
+	}
+	if((value = ini.GetValue("general", "disable_cdr_fields_rtp", NULL))) {
+		opt_disable_cdr_fields_rtp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "disable_cdr_indexes_rtp", NULL))) {
 		opt_disable_cdr_indexes_rtp = yesno(value);

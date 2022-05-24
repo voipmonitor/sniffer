@@ -180,6 +180,7 @@ extern int preProcessPacketCallX_count;
 extern volatile PreProcessPacket::eCallX_state preProcessPacketCallX_state;
 extern bool opt_disable_sdp_multiplication_warning;
 extern bool opt_save_energylevels;
+extern bool opt_disable_cdr_fields_rtp;
 
 volatile int calls_counter = 0;
 volatile int calls_for_store_counter = 0;
@@ -6457,10 +6458,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 									(rtpab[i]->received_() + 2 + rtpab[i]->lost_()) * 100 * 1000);
 			
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
-			jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
-			cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
-			cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
+			if(!opt_disable_cdr_fields_rtp) {
+				cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
+				jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
+				cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
+				cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
+			}
 			#endif
 			
 			payload[i] = rtpab[i]->first_codec_();
@@ -6471,140 +6474,144 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			// build a_sl1 - b_sl10 fields
-			for(int j = 1; j < 11; j++) {
-				char str_j[3];
-				snprintf(str_j, sizeof(str_j), "%d", j);
-				cdr.add(rtpab[i]->stats.slost[j], c+"_sl"+str_j);
+			if(!opt_disable_cdr_fields_rtp) {
+				// build a_sl1 - b_sl10 fields
+				for(int j = 1; j < 11; j++) {
+					char str_j[3];
+					snprintf(str_j, sizeof(str_j), "%d", j);
+					cdr.add(rtpab[i]->stats.slost[j], c+"_sl"+str_j);
+				}
+				// build a_d50 - b_d300 fileds
+				cdr.add(rtpab[i]->stats.d50, c+"_d50");
+				cdr.add(rtpab[i]->stats.d70, c+"_d70");
+				cdr.add(rtpab[i]->stats.d90, c+"_d90");
+				cdr.add(rtpab[i]->stats.d120, c+"_d120");
+				cdr.add(rtpab[i]->stats.d150, c+"_d150");
+				cdr.add(rtpab[i]->stats.d200, c+"_d200");
+				cdr.add(rtpab[i]->stats.d300, c+"_d300");
+				delay_sum[i] = rtpab[i]->stats.d50 * 60 + 
+						rtpab[i]->stats.d70 * 80 + 
+						rtpab[i]->stats.d90 * 105 + 
+						rtpab[i]->stats.d120 * 135 +
+						rtpab[i]->stats.d150 * 175 + 
+						rtpab[i]->stats.d200 * 250 + 
+						rtpab[i]->stats.d300 * 300;
+				delay_cnt[i] = rtpab[i]->stats.d50 + 
+						rtpab[i]->stats.d70 + 
+						rtpab[i]->stats.d90 + 
+						rtpab[i]->stats.d120 +
+						rtpab[i]->stats.d150 + 
+						rtpab[i]->stats.d200 + 
+						rtpab[i]->stats.d300;
+				delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
+				cdr.add(delay_sum[i], c+"_delay_sum");
+				cdr.add(delay_cnt[i], c+"_delay_cnt");
+				cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
 			}
-			// build a_d50 - b_d300 fileds
-			cdr.add(rtpab[i]->stats.d50, c+"_d50");
-			cdr.add(rtpab[i]->stats.d70, c+"_d70");
-			cdr.add(rtpab[i]->stats.d90, c+"_d90");
-			cdr.add(rtpab[i]->stats.d120, c+"_d120");
-			cdr.add(rtpab[i]->stats.d150, c+"_d150");
-			cdr.add(rtpab[i]->stats.d200, c+"_d200");
-			cdr.add(rtpab[i]->stats.d300, c+"_d300");
-			delay_sum[i] = rtpab[i]->stats.d50 * 60 + 
-					rtpab[i]->stats.d70 * 80 + 
-					rtpab[i]->stats.d90 * 105 + 
-					rtpab[i]->stats.d120 * 135 +
-					rtpab[i]->stats.d150 * 175 + 
-					rtpab[i]->stats.d200 * 250 + 
-					rtpab[i]->stats.d300 * 300;
-			delay_cnt[i] = rtpab[i]->stats.d50 + 
-					rtpab[i]->stats.d70 + 
-					rtpab[i]->stats.d90 + 
-					rtpab[i]->stats.d120 +
-					rtpab[i]->stats.d150 + 
-					rtpab[i]->stats.d200 + 
-					rtpab[i]->stats.d300;
-			delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
-			cdr.add(delay_sum[i], c+"_delay_sum");
-			cdr.add(delay_cnt[i], c+"_delay_cnt");
-			cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
 			#endif
 			
 			// store source addr
 			cdr.add(rtpab[i]->saddr, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			// calculate MOS score for fixed 50ms 
-			//double burstr, lossr;
-			//burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
-			if(rtpab[i]->mosf1_avg > 0) {
-				int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
-				cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
-				mos_min_mult10[i] = mos_f1_mult10;
-			}
-			if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
-				cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
-			}
+			if(!opt_disable_cdr_fields_rtp) {
+				// calculate MOS score for fixed 50ms 
+				//double burstr, lossr;
+				//burstr_calculate(rtpab[i]->channel_fix1, rtpab[i]->stats.received, &burstr, &lossr, 0);
+				//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+				if(rtpab[i]->mosf1_avg > 0) {
+					int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
+					cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
+					mos_min_mult10[i] = mos_f1_mult10;
+				}
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
+					cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
+				}
 
-			// calculate MOS score for fixed 200ms 
-			//burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
-			if(rtpab[i]->mosf2_avg > 0) {
-				int mos_f2_mult10 = (int)round(rtpab[i]->mosf2_avg);
-				cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
-				if(mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i]) {
-					mos_min_mult10[i] = mos_f2_mult10;
+				// calculate MOS score for fixed 200ms 
+				//burstr_calculate(rtpab[i]->channel_fix2, rtpab[i]->stats.received, &burstr, &lossr, 0);
+				//int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+				if(rtpab[i]->mosf2_avg > 0) {
+					int mos_f2_mult10 = (int)round(rtpab[i]->mosf2_avg);
+					cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
+					if(mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i]) {
+						mos_min_mult10[i] = mos_f2_mult10;
+					}
 				}
-			}
-			if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
-				cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
-			}
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
+					cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
+				}
 
-			// calculate MOS score for adaptive 500ms 
-			//burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
-			//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
-			if(rtpab[i]->mosAD_avg > 0) {
-				int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
-				cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
-				if(mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i]) {
-					mos_min_mult10[i] = mos_adapt_mult10;
+				// calculate MOS score for adaptive 500ms 
+				//burstr_calculate(rtpab[i]->channel_adapt, rtpab[i]->stats.received, &burstr, &lossr, 0);
+				//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
+				if(rtpab[i]->mosAD_avg > 0) {
+					int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
+					cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
+					if(mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i]) {
+						mos_min_mult10[i] = mos_adapt_mult10;
+					}
 				}
-			}
-			if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
-				cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
-			}
+				if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
+					cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
+				}
 
-			// silence MOS 
-			if(existsColumns.cdr_mos_silence and rtpab[i]->mosSilence_min != (uint8_t)-1) {
-				int mos_silence_mult10 = (int)round(rtpab[i]->mosSilence_avg);
-				if(mos_silence_mult10 > 0) {
-					cdr.add(mos_silence_mult10, c+"_mos_silence_mult10");
+				// silence MOS 
+				if(existsColumns.cdr_mos_silence and rtpab[i]->mosSilence_min != (uint8_t)-1) {
+					int mos_silence_mult10 = (int)round(rtpab[i]->mosSilence_avg);
+					if(mos_silence_mult10 > 0) {
+						cdr.add(mos_silence_mult10, c+"_mos_silence_mult10");
+					}
+					if(rtpab[i]->mosSilence_min > 0) {
+						cdr.add(rtpab[i]->mosSilence_min, c+"_mos_silence_min_mult10");
+					}
 				}
-				if(rtpab[i]->mosSilence_min > 0) {
-					cdr.add(rtpab[i]->mosSilence_min, c+"_mos_silence_min_mult10");
-				}
-			}
 
-			// XR MOS 
-			if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
-				if(rtpab[i]->rtcp_xr.minmos > 0) {
-					cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
+				// XR MOS 
+				if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
+					if(rtpab[i]->rtcp_xr.minmos > 0) {
+						cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
+					}
+					if(rtpab[i]->rtcp_xr.avgmos > 0) {
+						cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
+					}
 				}
-				if(rtpab[i]->rtcp_xr.avgmos > 0) {
-					cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
-				}
-			}
 
-			if(opt_mosmin_f2 && rtpab[i]->mosf2_avg > 0) {
-				mos_min_mult10[i] = (int)round(rtpab[i]->mosf2_avg);
-			}
-			
-			if(mos_min_mult10[i] >= 0) {
-				cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
-			}
-
-			if(rtpab[i]->rtcp.counter) {
-				if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) && existsColumns.cdr_rtcp_loss_is_smallint_type) {
-					cdr.add(0xFFFF, c+"_rtcp_loss");
-				} else {
-					cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+				if(opt_mosmin_f2 && rtpab[i]->mosf2_avg > 0) {
+					mos_min_mult10[i] = (int)round(rtpab[i]->mosf2_avg);
 				}
-				cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
-				rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
-				cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
-				/* max jitter (interarrival jitter) may be 32bit unsigned int, so use MIN for sure (we use smallint unsigned) */
-				cdr.add(MIN(0xFFFF, rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec)), c+"_rtcp_maxjitter");
-				rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
-				cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
-				if (existsColumns.cdr_rtcp_fraclost_pktcount)
-					cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
-			}
-			if(existsColumns.cdr_rtp_ptime) {
-				cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
-			}
-			if(existsColumns.cdr_rtcp_rtd && rtpab[i]->rtcp.rtd_count) {
-				cdr.add(rtpab[i]->rtcp.rtd_max * 10000 / 65536, c+"_rtcp_maxrtd_mult10");
-				cdr.add(rtpab[i]->rtcp.rtd_sum * 10000 / 65536 / rtpab[i]->rtcp.rtd_count, c+"_rtcp_avgrtd_mult10");
-			}
-			if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_w_count) {
-				cdr.add(rtpab[i]->rtcp.rtd_w_max, c+"_rtcp_maxrtd_w");
-				cdr.add(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count, c+"_rtcp_avgrtd_w");
+				
+				if(mos_min_mult10[i] >= 0) {
+					cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
+				}
+
+				if(rtpab[i]->rtcp.counter) {
+					if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) && existsColumns.cdr_rtcp_loss_is_smallint_type) {
+						cdr.add(0xFFFF, c+"_rtcp_loss");
+					} else {
+						cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
+					}
+					cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
+					rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
+					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+					/* max jitter (interarrival jitter) may be 32bit unsigned int, so use MIN for sure (we use smallint unsigned) */
+					cdr.add(MIN(0xFFFF, rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec)), c+"_rtcp_maxjitter");
+					rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
+					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
+					if (existsColumns.cdr_rtcp_fraclost_pktcount)
+						cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
+				}
+				if(existsColumns.cdr_rtp_ptime) {
+					cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
+				}
+				if(existsColumns.cdr_rtcp_rtd && rtpab[i]->rtcp.rtd_count) {
+					cdr.add(rtpab[i]->rtcp.rtd_max * 10000 / 65536, c+"_rtcp_maxrtd_mult10");
+					cdr.add(rtpab[i]->rtcp.rtd_sum * 10000 / 65536 / rtpab[i]->rtcp.rtd_count, c+"_rtcp_avgrtd_mult10");
+				}
+				if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_w_count) {
+					cdr.add(rtpab[i]->rtcp.rtd_w_max, c+"_rtcp_maxrtd_w");
+					cdr.add(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count, c+"_rtcp_avgrtd_w");
+				}
 			}
 			#endif
 
@@ -6620,64 +6627,67 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		cdr.add(payload_rslt, "payload");
 
-		if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
-			cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
-				"jitter_mult10");
-		}
-		if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
-			cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
-					min(mos_min_mult10[0], mos_min_mult10[1]) :
-					(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
-				"mos_min_mult10");
-			/* DEBUG
-			unsigned mos = mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
-					min(mos_min_mult10[0], mos_min_mult10[1]) :
-					(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]);
-			double v;
-			string v_str;
-			bool v_null;
-			getChartCacheValue(_chartType_mos, &v, &v_str, &v_null, NULL);
-			if((unsigned)(v * 10) != mos) {
-				cout << "** MOS ** " << mos << " / " << (unsigned)(v * 10) << " / " << v << " / " << round(v * 10) / 10 << endl;
+		if(!opt_disable_cdr_fields_rtp) {
+			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
+				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
+					"jitter_mult10");
 			}
-			*/
-		}
-		if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
-			cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
-				"packet_loss_perc_mult1000");
-			/* DEBUG
-			unsigned pl = max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]);
-			double v;
-			string v_str;
-			bool v_null;
-			getChartCacheValue(_chartType_packet_lost, &v, &v_str, &v_null, NULL);
-			if((unsigned)round(v * 1000) != pl) {
-				cout << "** PL ** " << pl << " / " << (unsigned)(v * 1000) << " / " << v << " / " << round(v * 1000) / 1000 << endl;
+			if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
+				cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+						min(mos_min_mult10[0], mos_min_mult10[1]) :
+						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
+					"mos_min_mult10");
+				/* DEBUG
+				unsigned mos = mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+						min(mos_min_mult10[0], mos_min_mult10[1]) :
+						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]);
+				double v;
+				string v_str;
+				bool v_null;
+				getChartCacheValue(_chartType_mos, &v, &v_str, &v_null, NULL);
+				if((unsigned)(v * 10) != mos) {
+					cout << "** MOS ** " << mos << " / " << (unsigned)(v * 10) << " / " << v << " / " << round(v * 10) / 10 << endl;
+				}
+				*/
 			}
-			*/
+			if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
+				cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
+					"packet_loss_perc_mult1000");
+				/* DEBUG
+				unsigned pl = max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]);
+				double v;
+				string v_str;
+				bool v_null;
+				getChartCacheValue(_chartType_packet_lost, &v, &v_str, &v_null, NULL);
+				if((unsigned)round(v * 1000) != pl) {
+					cout << "** PL ** " << pl << " / " << (unsigned)(v * 1000) << " / " << v << " / " << round(v * 1000) / 1000 << endl;
+				}
+				*/
+			}
+			if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
+				cdr.add(max(delay_sum[0], delay_sum[1]), 
+					"delay_sum");
+			}
+			if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
+				cdr.add(max(delay_cnt[0], delay_cnt[1]), 
+					"delay_cnt");
+			}
+			if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
+				cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
+					"delay_avg_mult100");
+			}
+			if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
+				cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
+					(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
+					"rtcp_avgfr_mult10");
+			}
+			if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
+				cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
+					(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
+					"rtcp_avgjitter_mult10");
+			}
 		}
-		if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
-			cdr.add(max(delay_sum[0], delay_sum[1]), 
-				"delay_sum");
-		}
-		if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
-			cdr.add(max(delay_cnt[0], delay_cnt[1]), 
-				"delay_cnt");
-		}
-		if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
-			cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
-				"delay_avg_mult100");
-		}
-		if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
-			cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-				(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
-				"rtcp_avgfr_mult10");
-		}
-		if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
-			cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-				(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
-				"rtcp_avgjitter_mult10");
-		}
+		
 		if(lost[0] >= 0 || lost[1] >= 0) {
 			cdr.add(max(lost[0], lost[1]), 
 				"lost");

@@ -115,6 +115,7 @@ extern sSnifferServerClientOptions snifferServerClientOptions;
 
 extern int opt_load_query_from_files;
 
+extern bool opt_disable_cdr_fields_rtp;
 extern bool opt_disable_cdr_indexes_rtp;
 extern bool opt_mysql_mysql_redirect_cdr_queue;
 
@@ -5614,7 +5615,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_lost` mediumint unsigned DEFAULT NULL,\
 			`a_ua_id` int unsigned DEFAULT NULL,\
 			`b_ua_id` int unsigned DEFAULT NULL,\
-			`a_avgjitter_mult10` mediumint unsigned DEFAULT NULL,\
+		       " + (opt_disable_cdr_fields_rtp ? "" :
+		       "`a_avgjitter_mult10` mediumint unsigned DEFAULT NULL,\
 			`b_avgjitter_mult10` mediumint unsigned DEFAULT NULL,\
 			`a_maxjitter` smallint unsigned DEFAULT NULL,\
 			`b_maxjitter` smallint unsigned DEFAULT NULL,\
@@ -5692,14 +5694,18 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_rtcp_maxrtd_mult10` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_avgrtd_w` smallint unsigned DEFAULT NULL,\
 			`b_rtcp_maxrtd_w` smallint unsigned DEFAULT NULL,\
-			`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
+		       ") + 
+		       "`a_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
 			`b_last_rtp_from_end` " + column_type_duration_ms("smallint") + " DEFAULT NULL,\
-			`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
+		       " + (opt_disable_cdr_fields_rtp ? "" :
+		       "`a_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
 			`b_rtcp_fraclost_pktcount` int unsigned DEFAULT NULL,\
-			`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
+		       ") +
+		       "`a_rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`b_rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`payload` int DEFAULT NULL,\
-			`jitter_mult10` mediumint unsigned DEFAULT NULL,\
+		       " + (opt_disable_cdr_fields_rtp ? "" :
+		       "`jitter_mult10` mediumint unsigned DEFAULT NULL,\
 			`mos_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`a_mos_min_mult10` tinyint unsigned DEFAULT NULL,\
 			`b_mos_min_mult10` tinyint unsigned DEFAULT NULL,\
@@ -5717,7 +5723,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`b_delay_cnt` mediumint unsigned DEFAULT NULL,\
 			`rtcp_avgfr_mult10` smallint unsigned DEFAULT NULL,\
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
-			`lost` mediumint unsigned DEFAULT NULL,\
+		       ") + 
+		       "`lost` mediumint unsigned DEFAULT NULL,\
 			`caller_clipping_div3` smallint unsigned DEFAULT NULL,\
 			`called_clipping_div3` smallint unsigned DEFAULT NULL,\
 			`caller_silence` tinyint unsigned DEFAULT NULL,\
@@ -5775,7 +5782,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `bye` (`bye`),\
 		KEY `a_saddr` (`a_saddr`),\
 		KEY `b_saddr` (`b_saddr`)," +
-		(opt_disable_cdr_indexes_rtp ? "" :
+		(opt_disable_cdr_fields_rtp || opt_disable_cdr_indexes_rtp ? "" :
 		"KEY `a_lost` (`a_lost`),\
 		KEY `b_lost` (`b_lost`),\
 		KEY `a_maxjitter` (`a_maxjitter`),\
@@ -5792,7 +5799,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `b_rtcp_maxjitter` (`b_rtcp_maxjitter`),") +
 		"KEY `a_ua_id` (`a_ua_id`),\
 		KEY `b_ua_id` (`b_ua_id`)," + 
-		(opt_disable_cdr_indexes_rtp ? "" :
+		(opt_disable_cdr_fields_rtp || opt_disable_cdr_indexes_rtp ? "" :
 		"KEY `a_avgjitter_mult10` (`a_avgjitter_mult10`),\
 		KEY `b_avgjitter_mult10` (`b_avgjitter_mult10`),\
 		KEY `a_rtcp_avgjitter_mult10` (`a_rtcp_avgjitter_mult10`),\
@@ -8328,11 +8335,13 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"caller_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
 				"called_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "rctp_fraclost_pktcount", true,
-				log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,
-				"a_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
-				"b_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
+	if(!opt_disable_cdr_fields_rtp) {
+		this->checkNeedAlterAdd("cdr", "rctp_fraclost_pktcount", true,
+					log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,
+					"a_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
+					"b_rtcp_fraclost_pktcount", "int unsigned default NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	this->checkNeedAlterAdd("cdr", "rtp ptime", true,
 				log, &tableSize, &existsColumns.cdr_rtp_ptime,
 				"a_rtp_ptime", "tinyint unsigned default NULL", NULL_CHAR_PTR,
@@ -8412,45 +8421,51 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 	existsColumns.cdr_response_time_100 = this->existsColumn("cdr", "response_time_100");
 	existsColumns.cdr_response_time_xxx = this->existsColumn("cdr", "response_time_xxx");
 	//14.0
-	this->checkNeedAlterAdd("cdr", "MOS min", true,
-				log, &tableSize, &existsColumns.cdr_mos_min,
-				"a_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
+	if(!opt_disable_cdr_fields_rtp) {
+		this->checkNeedAlterAdd("cdr", "MOS min", true,
+					log, &tableSize, &existsColumns.cdr_mos_min,
+					"a_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_f1_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_f2_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_adapt_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	//14.3
-	this->checkNeedAlterAdd("cdr", "MOS RTCP XR", true,
-				log, &tableSize, &existsColumns.cdr_mos_xr,
-				"a_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay", true,
-				log, &tableSize, &existsColumns.cdr_rtcp_rtd,
-				"a_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay (wireshark version)", true,
-				log, &tableSize, &existsColumns.cdr_rtcp_rtd_w,
-				"a_rtcp_avgrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_rtcp_avgrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_rtcp_maxrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_rtcp_maxrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
+	if(!opt_disable_cdr_fields_rtp) {
+		this->checkNeedAlterAdd("cdr", "MOS RTCP XR", true,
+					log, &tableSize, &existsColumns.cdr_mos_xr,
+					"a_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_xr_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_xr_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay", true,
+					log, &tableSize, &existsColumns.cdr_rtcp_rtd,
+					"a_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_rtcp_avgrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_rtcp_maxrtd_mult10", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cdr", "RTCP Roundtrip Delay (wireshark version)", true,
+					log, &tableSize, &existsColumns.cdr_rtcp_rtd_w,
+					"a_rtcp_avgrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_rtcp_avgrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_rtcp_maxrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_rtcp_maxrtd_w", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	//23.7
-	this->checkNeedAlterAdd("cdr", "Columns MOS Silence", true,
-				log, &tableSize, &existsColumns.cdr_mos_silence,
-				"a_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"a_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				"b_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
+	if(!opt_disable_cdr_fields_rtp) {
+		this->checkNeedAlterAdd("cdr", "Columns MOS Silence", true,
+					log, &tableSize, &existsColumns.cdr_mos_silence,
+					"a_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_silence_min_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"a_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"b_mos_silence_mult10", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	this->checkNeedAlterAdd("cdr", "Vlan", true,
 				log, &tableSize, &existsColumns.cdr_vlan,
 				"vlan", "smallint DEFAULT NULL", "`vlan` (`vlan`)", NULL_CHAR_PTR,
