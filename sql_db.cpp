@@ -5725,13 +5725,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`rtcp_avgjitter_mult10` smallint unsigned DEFAULT NULL,\
 		       ") + 
 		       "`lost` mediumint unsigned DEFAULT NULL,\
-			`caller_clipping_div3` smallint unsigned DEFAULT NULL,\
+		       " + (opt_disable_cdr_fields_rtp ? "" :
+		       "`caller_clipping_div3` smallint unsigned DEFAULT NULL,\
 			`called_clipping_div3` smallint unsigned DEFAULT NULL,\
 			`caller_silence` tinyint unsigned DEFAULT NULL,\
 			`called_silence` tinyint unsigned DEFAULT NULL,\
 			`caller_silence_end` smallint unsigned DEFAULT NULL,\
 			`called_silence_end` smallint unsigned DEFAULT NULL,\
-			`response_time_100` smallint unsigned DEFAULT NULL,\
+		       ") +
+		       "`response_time_100` smallint unsigned DEFAULT NULL,\
 			`response_time_xxx` smallint unsigned DEFAULT NULL,\
 			`max_retransmission_invite` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
@@ -8321,20 +8323,24 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL_CHAR_PTR,
 				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	extern int opt_silencedetect;
-	this->checkNeedAlterAdd("cdr", "silencedetect", opt_silencedetect,
-				log, &tableSize, &existsColumns.cdr_silencedetect,
-				"caller_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
-				"called_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
-				"caller_silence_end", "smallint default NULL", NULL_CHAR_PTR,
-				"called_silence_end", "smallint default NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
-	extern int opt_clippingdetect;
-	this->checkNeedAlterAdd("cdr", "clippingdetect", opt_clippingdetect,
-				log, &tableSize, &existsColumns.cdr_clippingdetect,
-				"caller_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
-				"called_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
+	if(!opt_disable_cdr_fields_rtp) {
+		extern int opt_silencedetect;
+		this->checkNeedAlterAdd("cdr", "silencedetect", opt_silencedetect,
+					log, &tableSize, &existsColumns.cdr_silencedetect,
+					"caller_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+					"called_silence", "tinyint unsigned default NULL", NULL_CHAR_PTR,
+					"caller_silence_end", "smallint default NULL", NULL_CHAR_PTR,
+					"called_silence_end", "smallint default NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
+	if(!opt_disable_cdr_fields_rtp) {
+		extern int opt_clippingdetect;
+		this->checkNeedAlterAdd("cdr", "clippingdetect", opt_clippingdetect,
+					log, &tableSize, &existsColumns.cdr_clippingdetect,
+					"caller_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
+					"called_clipping_div3", "smallint unsigned default NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
 	if(!opt_disable_cdr_fields_rtp) {
 		this->checkNeedAlterAdd("cdr", "rctp_fraclost_pktcount", true,
 					log, &tableSize, &existsColumns.cdr_rtcp_fraclost_pktcount,

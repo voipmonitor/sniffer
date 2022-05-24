@@ -6405,22 +6405,24 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	 
 		this->applyRtcpXrDataToRtp();
 		
-		if(opt_silencedetect && existsColumns.cdr_silencedetect) {
-			if(caller_silence > 0 or caller_noise > 0) {
-				cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
+		if(!opt_disable_cdr_fields_rtp) {
+			if(opt_silencedetect && existsColumns.cdr_silencedetect) {
+				if(caller_silence > 0 or caller_noise > 0) {
+					cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
+				}
+				if(called_silence > 0 or called_noise > 0) {
+					cdr.add(called_silence * 100 / (called_silence + called_noise), "called_silence");
+				}
+				cdr.add(caller_lastsilence / 1000, "caller_silence_end");
+				cdr.add(called_lastsilence / 1000, "called_silence_end");
 			}
-			if(called_silence > 0 or called_noise > 0) {
-				cdr.add(called_silence * 100 / (called_silence + called_noise), "called_silence");
-			}
-			cdr.add(caller_lastsilence / 1000, "caller_silence_end");
-			cdr.add(called_lastsilence / 1000, "called_silence_end");
-		}
-		if(opt_clippingdetect && existsColumns.cdr_clippingdetect) {
-			if(caller_clipping_8k) {
-				cdr.add(MIN(USHRT_MAX, round(caller_clipping_8k / 3)), "caller_clipping_div3");
-			}
-			if(called_clipping_8k) {
-				cdr.add(MIN(USHRT_MAX, round(called_clipping_8k / 3)), "called_clipping_div3");
+			if(opt_clippingdetect && existsColumns.cdr_clippingdetect) {
+				if(caller_clipping_8k) {
+					cdr.add(MIN(USHRT_MAX, round(caller_clipping_8k / 3)), "caller_clipping_div3");
+				}
+				if(called_clipping_8k) {
+					cdr.add(MIN(USHRT_MAX, round(called_clipping_8k / 3)), "called_clipping_div3");
+				}
 			}
 		}
 
