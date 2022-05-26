@@ -265,6 +265,11 @@ int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, bool check_ext,
 	int _datalen_used;
 	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, check_ext, offsets, &_datalen_used);
 	if(datalen_used) {
+		while(_datalen_used < datalen &&
+		      (data[_datalen_used] == LF_CHAR ||
+		       data[_datalen_used] == CR_CHAR)) {
+			++_datalen_used;
+		}
 		*datalen_used = _datalen_used;
 	}
 	return(rslt);
