@@ -328,6 +328,8 @@ void Register::update(Call *call) {
 	sipcalledip_encaps = call->sipcalledip_encaps;
 	sipcallerip_encaps_prot = call->sipcallerip_encaps_prot;
 	sipcalledip_encaps_prot = call->sipcalledip_encaps_prot;
+	sipcallerport = call->sipcallerport[0];
+	sipcalledport = call->sipcalledport[0];
 	vlan = call->vlan;
 	reg_call_id = call->call_id;
 	if(call->reg_tcp_seq) {
