@@ -544,6 +544,10 @@ struct packet_s_process_rtp_call_info {
 struct packet_s_process_calls_info {
 	int length;
 	bool find_by_dest;
+	#if EXPERIMENTAL_PROCESS_RTP_MOD_01
+	u_int8_t threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
+	u_int8_t threads_rd_count;
+	#endif
 	packet_s_process_rtp_call_info calls[1];
 	static unsigned __size_of;
 	static inline packet_s_process_calls_info* create() {

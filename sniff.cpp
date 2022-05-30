@@ -10690,6 +10690,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 			packetS->blockstore_addflag(42 /*pb lock flag*/);
 			processRtpPacketDistribute[packetS->call_info.calls[0].call->thread_num_rd]->push_packet(packetS);
 		} else {
+			#if not EXPERIMENTAL_PROCESS_RTP_MOD_01
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
 			threads_rd[0] = packetS->call_info.calls[0].call->thread_num_rd;
 			int threads_rd_count = 1;
@@ -10714,6 +10715,14 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
+			#else
+			packetS->set_use_reuse_counter();
+			packetS->reuse_counter_inc_sync(packetS->call_info.length);
+			for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
+				packetS->blockstore_addflag(46 /*pb lock flag*/);
+				processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
+			}
+			#endif
 		}
 	} else {
 		if(packetS->call_info.length > 1) {
@@ -10824,6 +10833,29 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			}
 			#endif
 		}
+		#if EXPERIMENTAL_PROCESS_RTP_MOD_01
+		if(packetS->call_info.length > 0) {
+			packetS->call_info.threads_rd[0] = packetS->call_info.calls[0].call->thread_num_rd;
+			packetS->call_info.threads_rd_count = 1;
+			if(packetS->call_info.length > 1) {
+				for(int i = 1; i < packetS->call_info.length; i++) {
+					int thread_rd = packetS->call_info.calls[i].call->thread_num_rd;
+					if(thread_rd != packetS->call_info.threads_rd[0]) {
+						bool exists = false;
+						for(int j = 1; j < packetS->call_info.threads_rd_count; j++) {
+							if(packetS->call_info.threads_rd[j] == thread_rd) {
+								exists = true;
+								break;
+							}
+						}
+						if(!exists) {
+							packetS->call_info.threads_rd[packetS->call_info.threads_rd_count++] = thread_rd;
+						}
+					}
+				}
+			}
+		}
+		#endif
 		if(counter_rtp_only_packets > 1
 		   #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		   && !packetS->audiocodes
