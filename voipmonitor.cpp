@@ -1138,7 +1138,7 @@ bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
-int opt_sip_tcp_reassembly_stream_max_attempts = 50;
+int opt_sip_tcp_reassembly_stream_max_attempts = 200;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;

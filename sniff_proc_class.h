@@ -1497,7 +1497,7 @@ private:
 		__sync_lock_release(&this->_sync_push);
 	}
 	inline bool need_lock_push() {
-		return(opt_enable_ssl || opt_ipfix);
+		return(opt_enable_ssl || opt_ipfix || opt_hep);
 	}
 private:
 	eTypePreProcessThread typePreProcessThread;
