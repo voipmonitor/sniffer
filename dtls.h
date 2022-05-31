@@ -47,6 +47,18 @@ public:
 			       (this->server == other.server && this->client < other.client));
 		}
 	};
+	struct sDtlsServerId {
+		vmIPport server;
+		sDtlsServerId(vmIP server_ip, vmPort server_port) 
+			: server(server_ip, server_port) {
+		}
+		inline bool operator == (const sDtlsServerId& other) const {
+			return(this->server == other.server);
+		}
+		inline bool operator < (const sDtlsServerId& other) const { 
+			return(this->server < other.server);
+		}
+	};
 	struct sSrtpKeys {
 		string server_key;
 		string client_key;
@@ -197,7 +209,9 @@ public:
 			  vmIP dst_ip, vmPort dst_port,
 			  list<cDtlsLink::sSrtpKeys*> *keys);
 private:
-	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links;
+	list<cDtlsLink*> links;
+	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;
+	map<cDtlsLink::sDtlsServerId, cDtlsLink*> links_by_server_id;
 };
 
 

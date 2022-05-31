@@ -203,8 +203,8 @@ cDtls::cDtls() {
 }
 
 cDtls::~cDtls() {
-	for(map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator iter = links.begin(); iter != links.end(); iter++) {
-		delete iter->second;
+	for(list<cDtlsLink*>::iterator iter = links.begin(); iter != links.end(); iter++) {
+		delete *iter;
 	}
 }
 
@@ -233,21 +233,40 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					return(false);
 				}
 				if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
+					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(dst_ip, dst_port, src_ip, src_port);
-					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links.find(linkId);
-					cDtlsLink *link;
-					if(link_iter != links.end()) {
+					cDtlsLink::sDtlsServerId serverId(dst_ip, dst_port);
+					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
+					if(link_iter != links_by_link_id.end()) {
 						link = link_iter->second;
 					} else {
+						map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
+						if(link_iter != links_by_server_id.end()) {
+							link = link_iter->second;
+						} 
+					}
+					if(!link) {
 						link = new FILE_LINE(0) cDtlsLink(dst_ip, dst_port, src_ip, src_port);
-						links[linkId] = link;
+						links_by_link_id[linkId] = link;
+						links_by_server_id[serverId] = link;
+						links.push_back(link);
 					}
 					link->processHandshake(hs_header);
 				} else if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
+					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(src_ip, src_port, dst_ip, dst_port);
-					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links.find(linkId);
-					if(link_iter != links.end()) {
-						link_iter->second->processHandshake(hs_header);
+					cDtlsLink::sDtlsServerId serverId(src_ip, src_port);
+					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
+					if(link_iter != links_by_link_id.end()) {
+						link = link_iter->second;
+					} else {
+						map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
+						if(link_iter != links_by_server_id.end()) {
+							link = link_iter->second;
+						} 
+					}
+					if(link) {
+						link->processHandshake(hs_header);
 					}
 				}
 				hs_offset += sizeof(cDtlsLink::sHeaderHandshake) + hs_header->content_length();
@@ -262,15 +281,24 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
 			 list<cDtlsLink::sSrtpKeys*> *keys) {
 	for(int pass = 0; pass < 2; pass++) {
+		cDtlsLink *link = NULL;
 		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? src_ip : dst_ip,
 					      pass == 0 ? src_port : dst_port,
 					      pass == 0 ? dst_ip : src_ip,
 					      pass == 0 ? dst_port : src_port);
-		map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links.find(linkId);
-		if(link_iter != links.end()) {
-			if(link_iter->second->findSrtpKeys(keys)) {
-				return(true);
+		cDtlsLink::sDtlsServerId serverId(pass == 0 ? src_ip : dst_ip,
+						  pass == 0 ? src_port : dst_port);
+		map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
+		if(link_iter != links_by_link_id.end()) {
+			link = link_iter->second;
+		} else {
+			map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
+			if(link_iter != links_by_server_id.end()) {
+				link = link_iter->second;
 			}
+		}
+		if(link && link->findSrtpKeys(keys)) {
+			return(true);
 		}
 	}
 	return(false);
