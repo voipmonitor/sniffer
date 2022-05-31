@@ -442,6 +442,7 @@ int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_ssl_aead_try_seq_backward = 0;
 int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = true;
+bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -7330,6 +7331,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -11811,6 +11813,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
 		opt_ssl_enable_dtls_queue = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
+		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);
