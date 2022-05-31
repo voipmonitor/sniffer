@@ -9612,7 +9612,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			} else if(packetS->pflags.mgcp && isMgcp) {
 				// call process_mgcp before tcp reassembly - TODO !
 				this->process_mgcp(&packetS);
-			} else if(no_sip_reassembly() || packetS->pflags.ssl) {
+			} else if(no_sip_reassembly() || packetS->pflags.ssl || packetS->pflags.tcp == 2) {
 				if(isSip) {
 					this->process_parseSipData(&packetS, NULL);
 				} else {

@@ -209,7 +209,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packet_flags pflags;
 					pflags.init();
 					pflags.tcp = 2;
-					preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
+					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 							#if USE_PACKET_NUMBER
 							0, 
 							#endif
@@ -265,7 +265,7 @@ int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, bool check_ext,
 	int _datalen_used;
 	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, check_ext, offsets, &_datalen_used);
 	if(datalen_used) {
-		while(_datalen_used < datalen &&
+		while(_datalen_used < (int)datalen &&
 		      (data[_datalen_used] == LF_CHAR ||
 		       data[_datalen_used] == CR_CHAR)) {
 			++_datalen_used;
