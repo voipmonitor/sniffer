@@ -4373,7 +4373,9 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
-		header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4384,7 +4386,9 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
 	#endif
-		header_eth->ether_type = htons(ETHERTYPE_IP);
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4432,7 +4436,9 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
-		header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4443,7 +4449,9 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else {
 	#endif
-		header_eth->ether_type = htons(ETHERTYPE_IP);
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
