@@ -469,7 +469,7 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
-		volatile unsigned thread_index;
+		volatile int thread_index;
 		volatile int processing;
 		void null() {
 			batch = NULL;

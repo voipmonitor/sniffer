@@ -2349,7 +2349,7 @@ public:
 	volatile int attemptsClose;
 	#if SAFE_CLEANUP_CALLS
 	volatile bool stopProcessing;
-	int32_t stopProcessingAt_s;
+	u_int32_t stopProcessingAt_s;
 	bool bad_flags_warning[2];
 	#endif
 	volatile int useInListCalls;
