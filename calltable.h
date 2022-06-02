@@ -630,16 +630,16 @@ public:
 		}
 	}
 	inline u_int64_t unshiftCallTime_ms(u_int64_t time_ms) {
-		return(time_ms + time_shift_ms);
+		return(time_ms ? (time_ms + time_shift_ms) : 0);
 	}
 	inline u_int64_t unshiftCallTime_s(u_int64_t time_s) {
-		return(time_s + time_shift_ms / 1000);
+		return(time_s ? (time_s + time_shift_ms / 1000) : 0);
 	}
 	inline u_int64_t unshiftSystemTime_ms(u_int64_t time_ms) {
-		return(time_ms - time_shift_ms);
+		return(time_ms ? (time_ms - time_shift_ms) : 0);
 	}
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
-		return(time_s - time_shift_ms / 1000);
+		return(time_s ? (time_s - time_shift_ms / 1000) : 0);
 	}
 public:
 	volatile uint8_t alloc_flag;
@@ -2344,6 +2344,10 @@ public:
 	#endif
 	volatile int hash_queue_counter;
 	volatile int attemptsClose;
+	#if SAFE_CLEANUP_CALLS
+	volatile bool stopProcessing;
+	int32_t stopProcessingAt_s;
+	#endif
 	volatile int useInListCalls;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;

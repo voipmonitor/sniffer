@@ -6147,8 +6147,14 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size());
 		}
 	}
+	#if SAFE_CLEANUP_CALLS
+	if(packetS) {
+	#endif
 	process_packet__last_cleanup_calls = actTimeS;
 	calltable->cleanup_calls(false, false, packetS ? packetS->getTime_s() : 0, file, line);
+	#if SAFE_CLEANUP_CALLS
+	}
+	#endif
 	listening_cleanup();
 	
 	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
@@ -6185,12 +6191,18 @@ inline void process_packet__cleanup_registers(packet_s *packetS) {
 	if(actTimeS - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
+	#if SAFE_CLEANUP_CALLS
+	if(packetS) {
+	#endif
 	calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : 0);
 	if(opt_sip_register == 1) {
 		extern Registers registers;
 		registers.cleanup(false, 30);
 	}
 	process_packet__last_cleanup_registers = actTimeS;
+	#if SAFE_CLEANUP_CALLS
+	}
+	#endif
 }
 
 inline void process_packet__cleanup_ss7(packet_s *packetS) {
@@ -9734,8 +9746,24 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			} else {
 				this->process_findCall(&packetS);
 				this->process_createCall(&packetS);
-				if((packetS->_findCall && packetS->call) ||
-				   (packetS->_createCall && packetS->call_created)) {
+				if(packetS->_findCall && packetS->call) {
+					#if SAFE_CLEANUP_CALLS
+					if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
+					#else
+					{
+					#endif					
+					preProcessPacket[ppt_pp_call]->push_packet(packetS);
+					pushed = true;
+					#if SAFE_CLEANUP_CALLS
+					} else {
+						syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i", 
+						       packetS->get_callid(),
+						       packetS->call->alloc_flag, packetS->call->stopProcessing);
+					}
+					#else
+					}
+					#endif					
+				} else if(packetS->_createCall && packetS->call_created) {
 					preProcessPacket[ppt_pp_call]->push_packet(packetS);
 					pushed = true;
 				}
@@ -10787,6 +10815,9 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			call_rtp *call_rtp = n_call;
 		#endif
 			Call *call = call_rtp->call;
+			#if SAFE_CLEANUP_CALLS
+			if(call->isAllocFlagOK() && !call->stopProcessing) {
+			#endif
 			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 			if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
 			#endif
@@ -10830,6 +10861,13 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 					break;
 				}
 			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
+			}
+			#endif
+			#if SAFE_CLEANUP_CALLS
+			} else {
+				syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i", 
+				       call->call_id.c_str(),
+				       call->alloc_flag, call->stopProcessing);
 			}
 			#endif
 		}

@@ -729,6 +729,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtp_ip_port_counter = 0;
 	hash_queue_counter = 0;
 	attemptsClose = 0;
+	#if SAFE_CLEANUP_CALLS
+	stopProcessing = false;
+	stopProcessingAt_s = 0;
+	#endif
 	useInListCalls = 0;
 	use_rtcp_mux = false;
 	use_sdp_sendonly = false;
@@ -803,6 +807,12 @@ Call::hashRemove(bool useHashQueueCounter) {
 		this->evDestroyIpPortRtpStream(i);
 	}
 	
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	int rest = calltable->hashRemove(this, useHashQueueCounter);
+	if(rest) {
+		syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, rest);
+	}
+	#else
 	if(!opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
 		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
 		if(this->rtp_ip_port_counter) {
@@ -812,6 +822,7 @@ Call::hashRemove(bool useHashQueueCounter) {
 			}
 		}
 	}
+	#endif
 }
 
 void
@@ -11763,6 +11774,14 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 	u_int32_t currTimeS = currTimeMS / 1000;
 	u_int64_t beginTimeMS = currTimeMS;
 	bool isReadFromFile = is_read_from_file();
+	bool usePacketTime = isReadFromFile;
+	
+	#if SAFE_CLEANUP_CALLS
+	if(!packet_time_s && !closeAll && !forceClose) {
+		return(0);
+	}
+	usePacketTime = true;
+	#endif
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -11852,7 +11871,7 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 				} else {
 					call = (*callMAPIT2).second;
 				}
-				u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+				u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
 							       packet_time_s :
 							       call->unshiftSystemTime_s(currTimeS);
 				if(verbosity > 2) {
@@ -11923,6 +11942,20 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 						closeCall = false;
 						++rejectedCalls_count;
 					}
+					#if SAFE_CLEANUP_CALLS
+					if((!closeAll || !forceClose) && closeCall) {
+						if(!call->stopProcessing) {
+							call->stopProcessing = true;
+							call->stopProcessingAt_s = currTimeS_unshift;
+							closeCall = false;
+							++rejectedCalls_count;
+						} else if(currTimeS_unshift <= call->stopProcessingAt_s ||
+							  currTimeS_unshift - call->stopProcessingAt_s < 30) {
+							closeCall = false;
+							++rejectedCalls_count;
+						}
+					}
+					#endif
 				}
 				if(closeCall) {
 
@@ -12050,7 +12083,15 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	bool isReadFromFile = is_read_from_file();
+	bool usePacketTime = isReadFromFile;
 
+	#if SAFE_CLEANUP_CALLS
+	if(!packet_time_s && !closeAll) {
+		return(0);
+	}
+	usePacketTime = true;
+	#endif
+	
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
 	}
@@ -12058,7 +12099,7 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		Call *reg = (*registerMAPIT).second;
-		u_int32_t currTimeS_unshift = isReadFromFile && packet_time_s ?
+		u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
 					       packet_time_s :
 					       reg->unshiftSystemTime_s(currTimeS);
 		if(verbosity > 2) {
@@ -12090,6 +12131,20 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
+		}
+		if(closeReg) {
+			#if SAFE_CLEANUP_CALLS
+			if(!closeAll && closeReg) {
+				if(!reg->stopProcessing) {
+					reg->stopProcessing = true;
+					reg->stopProcessingAt_s = currTimeS_unshift;
+					closeReg = false;
+				} else if(currTimeS_unshift <= reg->stopProcessingAt_s ||
+					  currTimeS_unshift - reg->stopProcessingAt_s < 15) {
+					closeReg = false;
+				}
+			}
+			#endif
 		}
 		if(closeReg) {
 			if(verbosity && verbosityE > 1) {
