@@ -9761,6 +9761,7 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 							       packetS->get_callid(),
 							       packetS->call->alloc_flag, packetS->call->stopProcessing);
 							packetS->call->bad_flags_warning[0] = true;
+						}
 					}
 					#else
 					}
@@ -10867,7 +10868,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			#endif
 			#if SAFE_CLEANUP_CALLS
 			} else {
-				if(!packetS->call->bad_flags_warning[1]) {
+				if(!call->bad_flags_warning[1]) {
 					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
 					       call->call_id.c_str(),
 					       call->alloc_flag, call->stopProcessing);
