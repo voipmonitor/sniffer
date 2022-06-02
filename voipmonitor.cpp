@@ -4573,6 +4573,9 @@ int main_init_read() {
 		if(opt_sip_tcp_reassembly_ext_complete_mod) {
 			tcpReassemblySipExt->setCompleteMod(opt_sip_tcp_reassembly_ext_complete_mod);
 		}
+		if(sverb.tcpreassembly_sip_dumper) {
+			tcpReassemblySipExt->enableDumper(sverb.tcpreassembly_sip_dumper, sverb.tcpreassembly_sip_dumper_ports);
+		}
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -8281,6 +8284,10 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
 	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
+	else if(verbParam.substr(0, 25) == "tcpreassembly_sip_dumper=")
+								{ sverb.tcpreassembly_sip_dumper = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_sip_dumper, verbParam.c_str() + 25); }
+	else if(verbParam.substr(0, 31) == "tcpreassembly_sip_dumper_ports=")
+								{ sverb.tcpreassembly_sip_dumper_ports = new FILE_LINE(0) char[strlen(verbParam.c_str() + 31) + 1]; strcpy(sverb.tcpreassembly_sip_dumper_ports, verbParam.c_str() + 31); }
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;

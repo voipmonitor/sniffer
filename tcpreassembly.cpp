@@ -1657,6 +1657,19 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 						pass = 2;
 					}
 				}
+
+				#if TCP_REASSEMBLY_STREAMS_MAX_LOG
+				static unsigned __max = 0;
+				if(streams.size() > __max) {
+					__max = streams.size();
+					if(__max > 1) {
+						string link_id = ip_src.getString(true) + ":" + port_src.getString() + "->" +
+								 ip_dst.getString(true) + ":" + port_dst.getString();
+						syslog(LOG_NOTICE, " *** tcp reassembly streams max: %u (%s)", __max, link_id.c_str());
+					}
+				}
+				#endif
+				
 				while(true) {
 					if(streams.size() == 1) {
 						u_int32_t datalen_confirmed;
@@ -2898,6 +2911,11 @@ TcpReassembly::TcpReassembly(eType type) {
 	} else {
 		this->log = NULL;
 	}
+	this->dumperEnable = false;
+	this->dumper = NULL;
+	this->dumperSync = 0;
+	this->dumperFileCounter = 0;
+	this->dumperPacketCounter = 0;
 }
 
 TcpReassembly::~TcpReassembly() {
@@ -2928,6 +2946,10 @@ TcpReassembly::~TcpReassembly() {
 	if(this->log) {
 		this->addLog((string(" -- stop ") + sqlDateTimeString(getTimeMS()/1000)).c_str());
 		fclose(this->log);
+	}
+	if(this->dumper) {
+		this->dumper->close();
+		delete this->dumper;
 	}
 }
 
@@ -3159,6 +3181,53 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 			     u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			     void *uData, void *uData2, bool isSip) {
  
+	if(dumperEnable) {
+		bool port_ok = false;
+		if(dumperPorts.size()) {
+			tcphdr2 *header_tcp = (tcphdr2*)((u_char*)header_ip + header_ip->get_hdr_size());
+			for(int i = 0; i < 2 && !port_ok; i++) {
+				u_int16_t port = i == 0 ? header_tcp->get_source() : header_tcp->get_dest();
+				list<u_int16_t>::iterator port_iter;
+				if((port_iter = std::lower_bound(dumperPorts.begin(), dumperPorts.end(), port)) != dumperPorts.end() &&
+				   *port_iter == port) {
+					port_ok = true;
+					break;
+				}
+			}
+		} else {
+			port_ok = true;
+		}
+		if(port_ok) {
+			__SYNC_LOCK(dumperSync);
+			if(!dumper || (dumperPacketCounter && !(dumperPacketCounter % 1000000))) {
+				if(dumper) {
+					dumper->close();
+					delete dumper;
+				}
+				dumper = new FILE_LINE(0) PcapDumper(PcapDumper::na, NULL);
+				dumper->setEnableAsyncWrite(false);
+				dumper->setTypeCompress(FileZipHandler::compress_na);
+				string dumpFileName = dumperFileName + "-" + intToString(++dumperFileCounter) + ".pcap";
+				if(dumper->open(tsf_na, dumpFileName.c_str(), dlt)) {
+					dumper->dump(header, packet, dlt, true);
+					++dumperPacketCounter;
+				} else {
+					dumper->close();
+					delete dumper;
+					dumper = NULL;
+					dumperEnable = false;
+				}
+			} else {
+				dumper->dump(header, packet, dlt, true);
+				++dumperPacketCounter;
+				if(!(dumperPacketCounter % 1000)) {
+					dumper->flush();
+				}
+			}
+			__SYNC_UNLOCK(dumperSync);
+		}
+	}
+ 
 	if(_ENABLE_DEBUG(type, true) && !_debug_stream) {
 		if(sverb.tcpreassembly_debug_file) {
 			_debug_stream = new std::ofstream((sverb.tcpreassembly_debug_file + (" " + sqlDateTimeString(time(NULL)))).c_str(), 
@@ -3247,6 +3316,20 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, bool strict, b
 		break;
 	}
 	return(false);
+}
+
+void TcpReassembly::enableDumper(const char *fileName, const char *ports) {
+	dumperEnable = true;
+	dumperFileName = fileName;
+	if(ports && *ports) {
+		vector<string> ports_vect_str = split(ports, 'x');
+		if(ports_vect_str.size()) {
+			for(unsigned i = 0; i < ports_vect_str.size(); i++) {
+				dumperPorts.push_back(atoi(ports_vect_str[i].c_str()));
+				dumperPorts.sort();
+			}
+		}
+	}
 }
  
 void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,

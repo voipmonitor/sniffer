@@ -1085,6 +1085,7 @@ public:
 		this->linkTimeout = linkTimeout;
 	}
 	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
+	void enableDumper(const char *fileName, const char *ports);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -1185,6 +1186,13 @@ private:
 	volatile bool initPacketThreadOk;
 	volatile bool terminatingCleanupThread;
 	volatile bool terminatingPacketThread;
+	bool dumperEnable;
+	list<u_int16_t> dumperPorts;
+	string dumperFileName;
+	PcapDumper *dumper;
+	volatile int dumperSync;
+	u_int64_t dumperFileCounter;
+	u_int64_t dumperPacketCounter;
 friend class TcpReassemblyLink;
 friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);
