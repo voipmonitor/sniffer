@@ -735,6 +735,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#if SAFE_CLEANUP_CALLS
 	stopProcessing = false;
 	stopProcessingAt_s = 0;
+	for(unsigned i = 0; i < sizeof(bad_flags_warning) / sizeof(bad_flags_warning[0]); i++) {
+		bad_flags_warning[i] = false;
+	}
 	#endif
 	useInListCalls = 0;
 	use_rtcp_mux = false;
