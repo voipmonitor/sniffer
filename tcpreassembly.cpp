@@ -1650,7 +1650,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 									break;
 								}
 							}
-						} while(prevStream);
+						} while(prevStream && streams.size() < 20);
 					}
 					streamsSizePass0 = streams.size();
 					if(streamsSizePass0 == 1) {
