@@ -2339,6 +2339,9 @@ public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
 	volatile int rtp_ip_port_counter;
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	volatile int rtp_ip_port_counter_add;
+	#endif
 	#if NEW_RTP_FIND__NODES
 	list<vmIPport> rtp_ip_port_list;
 	#endif

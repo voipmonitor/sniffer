@@ -727,6 +727,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	error_negative_payload_length = false;
 	rtp_ip_port_counter = 0;
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	rtp_ip_port_counter_add = 0;
+	#endif
 	hash_queue_counter = 0;
 	attemptsClose = 0;
 	#if SAFE_CLEANUP_CALLS
@@ -807,22 +810,12 @@ Call::hashRemove(bool useHashQueueCounter) {
 		this->evDestroyIpPortRtpStream(i);
 	}
 	
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	int rest = calltable->hashRemove(this, useHashQueueCounter);
-	if(rest) {
-		syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, rest);
-	}
-	#else
-	if(!opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
-		syslog(LOG_WARNING, "WARNING: rest before hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
-		if(this->rtp_ip_port_counter) {
-			calltable->hashRemove(this, useHashQueueCounter);
-			if(this->rtp_ip_port_counter) {
-				syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, this->rtp_ip_port_counter);
-			}
+	if(!opt_hash_modify_queue_length_ms) {
+		int rest = calltable->hashRemove(this, useHashQueueCounter);
+		if(rest) {
+			syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, rest);
 		}
 	}
-	#endif
 }
 
 void
@@ -855,7 +848,7 @@ Call::removeFindTables(bool set_end_call, bool destroy) {
 		}
 		hash_add_unlock();
 	} else if(destroy) {
-		if(opt_hash_modify_queue_length_ms && this->rtp_ip_port_counter) {
+		if(opt_hash_modify_queue_length_ms) {
 			calltable->hashRemoveForce(this);
 		}
 		this->hashRemove();
@@ -10221,6 +10214,9 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 
 inline node_call_rtp *insert_node_call(node_call_rtp *&begin, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
 	__SYNC_INC(call->rtp_ip_port_counter);
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	__SYNC_INC(call->rtp_ip_port_counter_add);
+	#endif
 	node_call_rtp *node_new = new FILE_LINE(0) node_call_rtp;
 	node_new->next = begin;
 	node_new->call = call;
@@ -10234,6 +10230,9 @@ inline node_call_rtp *insert_node_call(node_call_rtp *&begin, Call *call, int is
 inline void replace_node_call(node_call_rtp *node, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
 	__SYNC_INC(call->rtp_ip_port_counter);
 	__SYNC_DEC(node->call->rtp_ip_port_counter);
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	__SYNC_INC(call->rtp_ip_port_counter_add);
+	#endif
 	node->call = call;
 	node->iscaller = iscaller;
 	node->is_rtcp = is_rtcp;
@@ -10786,27 +10785,33 @@ int
 Calltable::_hashRemove(Call *call, bool use_lock) {
  
 	int removeCounter = 0;
-	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
-	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
 	if (use_lock) lock_calls_hash();
-	for(int h = 0; h < MAXNODE; h++) {
-		prev_node = NULL;
-		for(node = calls_hash[h]; node != NULL;) {
-			prev_node_call = NULL;
-			for(node_call = node->calls; node_call != NULL;) {
-				if(node_call->call == call) {
-					node_call = delete_node_call(node->calls, node_call, prev_node_call);
-					++removeCounter;
-				} else {
-					prev_node_call = node_call;
-					node_call = node_call->next;
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	if(call->rtp_ip_port_counter_add) {
+	#else
+	if(call->rtp_ip_port_counter) {
+	#endif
+		node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
+		node_call_rtp *node_call = NULL, *prev_node_call = NULL;
+		for(int h = 0; h < MAXNODE; h++) {
+			prev_node = NULL;
+			for(node = calls_hash[h]; node != NULL;) {
+				prev_node_call = NULL;
+				for(node_call = node->calls; node_call != NULL;) {
+					if(node_call->call == call) {
+						node_call = delete_node_call(node->calls, node_call, prev_node_call);
+						++removeCounter;
+					} else {
+						prev_node_call = node_call;
+						node_call = node_call->next;
+					}
 				}
-			}
-			if(node->calls == NULL) {
-				node = delete_node(calls_hash[h], node, prev_node);
-			} else {
-				prev_node = node;
-				node = node->next;
+				if(node->calls == NULL) {
+					node = delete_node(calls_hash[h], node, prev_node);
+				} else {
+					prev_node = node;
+					node = node->next;
+				}
 			}
 		}
 	}
