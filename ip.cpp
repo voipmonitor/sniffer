@@ -229,7 +229,7 @@ u_int16_t ip6hdr2::get_ext_header_offset(u_int8_t header_id) {
 		if(ext_headers_type[i] == header_id) {
 			return(offset);
 		}
-		offset += get_ext_header_size((u_char*)this + sizeof(ip6hdr2) + offset, ext_headers_type[i]);
+		offset += get_ext_header_size((u_char*)this + offset, ext_headers_type[i]);
 	}
 	return(-1);
 }
