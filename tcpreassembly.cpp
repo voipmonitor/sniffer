@@ -3750,7 +3750,7 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 		this->last_cleanup_call_time_from_header = this->act_time_from_header;
 	}
 	
-	u_int64_t start_at;
+	u_int64_t start_at = 0;
 	if(ENABLE_CLEANUP_LOG(getType())) {
 		start_at = getTimeMS_rdtsc();
 	}

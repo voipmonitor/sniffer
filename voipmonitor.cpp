@@ -416,6 +416,7 @@ unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
+int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
 bool opt_ss7_use_sam_subsequent_number = true;
@@ -7109,6 +7110,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
+						->addValues("ext:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 			setDisableIfEnd();
 	group("manager");
@@ -12357,6 +12360,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
 		opt_destroy_calls_period = atoi(value);
+	}
+	if((value = ini.GetValue("general", "safe_cleanup_calls", NULL))) {
+		opt_safe_cleanup_calls = !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "destroy_calls_in_storing_cdr", NULL))) {
 		opt_destroy_calls_in_storing_cdr = yesno(value);

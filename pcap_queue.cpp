@@ -8602,7 +8602,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	pflags.init();
 	vmPort sport;
 	vmPort dport;
-	u_int8_t header_ip_protocol;
+	u_int8_t header_ip_protocol = 0;
 	if(header_ip) {
 		if(hp->header->get_caplen() <= hp->header->header_ip_offset) {
 			return(0);

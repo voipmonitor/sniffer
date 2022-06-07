@@ -274,6 +274,7 @@ extern int opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
+extern int opt_safe_cleanup_calls;
 extern int opt_ss7timeout_rlc;
 extern bool opt_conference_processing;
 extern vector<string> opt_conference_uri;
@@ -6147,14 +6148,10 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size());
 		}
 	}
-	#if SAFE_CLEANUP_CALLS
-	if(packetS) {
-	#endif
-	process_packet__last_cleanup_calls = actTimeS;
-	calltable->cleanup_calls(false, false, packetS ? packetS->getTime_s() : 0, file, line);
-	#if SAFE_CLEANUP_CALLS
+	if(packetS || opt_safe_cleanup_calls != 2) {
+		process_packet__last_cleanup_calls = actTimeS;
+		calltable->cleanup_calls(false, packetS ? packetS->getTime_s() : 0, file, line);
 	}
-	#endif
 	listening_cleanup();
 	
 	process_packet__last_cleanup_calls__count_sip_bye = count_sip_bye;
@@ -6191,18 +6188,14 @@ inline void process_packet__cleanup_registers(packet_s *packetS) {
 	if(actTimeS - process_packet__last_cleanup_registers < 10) {
 		return;
 	}
-	#if SAFE_CLEANUP_CALLS
-	if(packetS) {
-	#endif
-	calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : 0);
-	if(opt_sip_register == 1) {
-		extern Registers registers;
-		registers.cleanup(false, 30);
+	if(packetS || opt_safe_cleanup_calls != 2) {
+		calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : 0);
+		if(opt_sip_register == 1) {
+			extern Registers registers;
+			registers.cleanup(false, 30);
+		}
+		process_packet__last_cleanup_registers = actTimeS;
 	}
-	process_packet__last_cleanup_registers = actTimeS;
-	#if SAFE_CLEANUP_CALLS
-	}
-	#endif
 }
 
 inline void process_packet__cleanup_ss7(packet_s *packetS) {
@@ -9747,14 +9740,9 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 				this->process_findCall(&packetS);
 				this->process_createCall(&packetS);
 				if(packetS->_findCall && packetS->call) {
-					#if SAFE_CLEANUP_CALLS
 					if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
-					#else
-					{
-					#endif					
-					preProcessPacket[ppt_pp_call]->push_packet(packetS);
-					pushed = true;
-					#if SAFE_CLEANUP_CALLS
+						preProcessPacket[ppt_pp_call]->push_packet(packetS);
+						pushed = true;
 					} else {
 						if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
 							syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)", 
@@ -9763,9 +9751,6 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 							packetS->call->bad_flags_warning[0] = true;
 						}
 					}
-					#else
-					}
-					#endif					
 				} else if(packetS->_createCall && packetS->call_created) {
 					preProcessPacket[ppt_pp_call]->push_packet(packetS);
 					pushed = true;
@@ -10818,55 +10803,52 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 			call_rtp *call_rtp = n_call;
 		#endif
 			Call *call = call_rtp->call;
-			#if SAFE_CLEANUP_CALLS
 			if(call->isAllocFlagOK() && !call->stopProcessing) {
-			#endif
-			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
-			if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
-			#endif
-				++counter_rtp_packets[1];
-				if(!call_rtp->is_rtcp) {
-					++counter_rtp_only_packets;
-				}
-				if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
-				   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
-				   !call->existsSrtpCryptoConfig() &&
-				   call->existsSrtpFingerprint() &&
-				   !use_dtls_queue) {
-					if(dtls_queue.existsContent()) {
-						dtls_queue.lock();
-						if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
-							dtls_queue.moveToPacket(packetS);
+				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
+				if(call_confirmation_for_rtp_processing(call, &packetS->call_info, packetS)) {
+				#endif
+					++counter_rtp_packets[1];
+					if(!call_rtp->is_rtcp) {
+						++counter_rtp_only_packets;
+					}
+					if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
+					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
+					   !call->existsSrtpCryptoConfig() &&
+					   call->existsSrtpFingerprint() &&
+					   !use_dtls_queue) {
+						if(dtls_queue.existsContent()) {
+							dtls_queue.lock();
+							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+								dtls_queue.moveToPacket(packetS);
+							}
+							dtls_queue.unlock();
+							use_dtls_queue = true;
 						}
-						dtls_queue.unlock();
-						use_dtls_queue = true;
 					}
-				}
-				packetS->blockstore_addflag(34 /*pb lock flag*/);
-				packetS->call_info.calls[packetS->call_info.length].call = call;
-				packetS->call_info.calls[packetS->call_info.length].iscaller = call_rtp->iscaller;
-				packetS->call_info.calls[packetS->call_info.length].is_rtcp = call_rtp->is_rtcp;
-				packetS->call_info.calls[packetS->call_info.length].sdp_flags = call_rtp->sdp_flags;
-				if(call->use_rtcp_mux && !packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux) {
-					s_sdp_flags *sdp_flags_other_side = packetS->call_info.find_by_dest ?
-									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
-									     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
-					if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
-						packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux = true;
+					packetS->blockstore_addflag(34 /*pb lock flag*/);
+					packetS->call_info.calls[packetS->call_info.length].call = call;
+					packetS->call_info.calls[packetS->call_info.length].iscaller = call_rtp->iscaller;
+					packetS->call_info.calls[packetS->call_info.length].is_rtcp = call_rtp->is_rtcp;
+					packetS->call_info.calls[packetS->call_info.length].sdp_flags = call_rtp->sdp_flags;
+					if(call->use_rtcp_mux && !packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux) {
+						s_sdp_flags *sdp_flags_other_side = packetS->call_info.find_by_dest ?
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->saddr_(), packetS->source_(), false) :
+										     calltable->get_sdp_flags_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false);
+						if(sdp_flags_other_side && sdp_flags_other_side->rtcp_mux) {
+							packetS->call_info.calls[packetS->call_info.length].sdp_flags.rtcp_mux = true;
+						}
 					}
+					packetS->call_info.calls[packetS->call_info.length].use_sync = false;
+					packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
+					packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
+					__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
+					++packetS->call_info.length;
+					if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
+						break;
+					}
+				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 				}
-				packetS->call_info.calls[packetS->call_info.length].use_sync = false;
-				packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
-				packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
-				__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
-				++packetS->call_info.length;
-				if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
-					break;
-				}
-			#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
-			}
-			#endif
-			#if SAFE_CLEANUP_CALLS
+				#endif
 			} else {
 				if(!call->bad_flags_warning[1]) {
 					syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (find_hash)", 
@@ -10875,7 +10857,6 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 					call->bad_flags_warning[1] = true;
 				}
 			}
-			#endif
 		}
 		#if EXPERIMENTAL_PROCESS_RTP_MOD_01
 		if(packetS->call_info.length > 0) {
@@ -11042,7 +11023,7 @@ void rtp_read_thread::alloc_qring() {
 }
 
 void rtp_read_thread::init_thread_buffer() {
-	thread_buffer_length = 10;
+	thread_buffer_length = MAX_PROCESS_RTP_PACKET_THREADS;
 	this->thread_buffer = new FILE_LINE(26038) batch_packet_rtp_thread_buffer*[thread_buffer_length];
 	for(unsigned int i = 0; i < thread_buffer_length; i++) {
 		this->thread_buffer[i] = new FILE_LINE(26039) batch_packet_rtp_thread_buffer(this->qring_batch_item_length);

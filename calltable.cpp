@@ -251,6 +251,9 @@ extern bool opt_conference_processing;
 extern vector<string> opt_mo_mt_identification_prefix;
 extern int opt_separate_storage_ipv6_ipv4_address;
 extern int opt_cdr_flag_bit;
+extern int opt_safe_cleanup_calls;
+extern int opt_quick_save_cdr;
+
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -732,13 +735,11 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#endif
 	hash_queue_counter = 0;
 	attemptsClose = 0;
-	#if SAFE_CLEANUP_CALLS
 	stopProcessing = false;
 	stopProcessingAt_s = 0;
 	for(unsigned i = 0; i < sizeof(bad_flags_warning) / sizeof(bad_flags_warning[0]); i++) {
 		bad_flags_warning[i] = false;
 	}
-	#endif
 	useInListCalls = 0;
 	use_rtcp_mux = false;
 	use_sdp_sendonly = false;
@@ -11776,20 +11777,17 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 */
 
 int
-Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s, const char *file, int line ) {
+Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *file, int line ) {
  
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	u_int64_t beginTimeMS = currTimeMS;
 	bool isReadFromFile = is_read_from_file();
-	bool usePacketTime = isReadFromFile;
+	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
 	
-	#if SAFE_CLEANUP_CALLS
-	if(!packet_time_s && !closeAll && !forceClose) {
+	if(!packet_time_s && opt_safe_cleanup_calls == 2 && !closeAll) {
 		return(0);
 	}
-	usePacketTime = true;
-	#endif
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -11939,7 +11937,7 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 				if(closeCall) {
 					++call->attemptsClose;
 					call->removeFindTables(true);
-					if((!closeAll || !forceClose) &&
+					if(!closeAll &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue > 0 ||
 					    call->useInListCalls 
@@ -11950,20 +11948,18 @@ Calltable::cleanup_calls(bool closeAll, bool forceClose, u_int32_t packet_time_s
 						closeCall = false;
 						++rejectedCalls_count;
 					}
-					#if SAFE_CLEANUP_CALLS
-					if((!closeAll || !forceClose) && closeCall) {
+					if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeCall) {
 						if(!call->stopProcessing) {
 							call->stopProcessing = true;
-							call->stopProcessingAt_s = currTimeS_unshift;
+							call->stopProcessingAt_s = currTimeS;
 							closeCall = false;
 							++rejectedCalls_count;
-						} else if(currTimeS_unshift <= call->stopProcessingAt_s ||
-							  currTimeS_unshift - call->stopProcessingAt_s < 30) {
+						} else if(currTimeS <= call->stopProcessingAt_s ||
+							  currTimeS - call->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 							closeCall = false;
 							++rejectedCalls_count;
 						}
 					}
-					#endif
 				}
 				if(closeCall) {
 
@@ -12091,14 +12087,11 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	bool isReadFromFile = is_read_from_file();
-	bool usePacketTime = isReadFromFile;
+	bool usePacketTime = isReadFromFile || opt_safe_cleanup_calls == 2;
 
-	#if SAFE_CLEANUP_CALLS
-	if(!packet_time_s && !closeAll) {
+	if(!packet_time_s && opt_safe_cleanup_calls == 2 && !closeAll) {
 		return(0);
 	}
-	usePacketTime = true;
-	#endif
 	
 	if(verbosity && verbosityE > 1) {
 		syslog(LOG_NOTICE, "call Calltable::cleanup_registers");
@@ -12141,18 +12134,16 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 			}
 		}
 		if(closeReg) {
-			#if SAFE_CLEANUP_CALLS
-			if(!closeAll && closeReg) {
+			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeReg) {
 				if(!reg->stopProcessing) {
 					reg->stopProcessing = true;
-					reg->stopProcessingAt_s = currTimeS_unshift;
+					reg->stopProcessingAt_s = currTimeS;
 					closeReg = false;
-				} else if(currTimeS_unshift <= reg->stopProcessingAt_s ||
-					  currTimeS_unshift - reg->stopProcessingAt_s < 15) {
+				} else if(currTimeS <= reg->stopProcessingAt_s ||
+					  currTimeS - reg->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 					closeReg = false;
 				}
 			}
-			#endif
 		}
 		if(closeReg) {
 			if(verbosity && verbosityE > 1) {

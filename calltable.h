@@ -2347,11 +2347,9 @@ public:
 	#endif
 	volatile int hash_queue_counter;
 	volatile int attemptsClose;
-	#if SAFE_CLEANUP_CALLS
 	volatile bool stopProcessing;
 	u_int32_t stopProcessingAt_s;
 	bool bad_flags_warning[2];
-	#endif
 	volatile int useInListCalls;
 	bool use_rtcp_mux;
 	bool use_sdp_sendonly;
@@ -2946,7 +2944,7 @@ public:
 	 *
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
-	int cleanup_calls(bool closeAll, bool forceClose = false, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	int cleanup_calls(bool closeAll, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
 	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
 	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 

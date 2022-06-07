@@ -1291,7 +1291,7 @@ void cServer::listen_process(int index) {
 			}
 		}
 	} else {
-		u_char *data;
+		u_char *data = NULL;
 		size_t dataLen;
 		size_t dataLen_max = 0xFFFF;
 		if(simple_read) {
@@ -1351,7 +1351,7 @@ void *cServerConnection::connection_process(void *arg) {
 }
 
 void cServerConnection::connection_process() {
-	u_char *data;
+	u_char *data = NULL;
 	size_t dataLen;
 	size_t dataLen_max = 0xFFFF;
 	if(simple_read) {
