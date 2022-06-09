@@ -139,6 +139,7 @@ extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
 extern bool opt_ssl_enable_dtls_queue;
+extern bool ssl_client_random_use;
 extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
@@ -280,6 +281,10 @@ extern bool opt_conference_processing;
 extern vector<string> opt_conference_uri;
 
 extern cProcessingLimitations processing_limitations;
+
+
+#define ENABLE_DTLS_QUEUE (opt_enable_ssl && ssl_client_random_use && opt_ssl_enable_dtls_queue)
+
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
 		     const char *tag, unsigned long *gettaglen, unsigned long *limitLen = NULL);
@@ -5861,7 +5866,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 					if(!call_rtp->is_rtcp) {
 						++counter_rtp_only_packets;
 					}
-					if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
+					if(ENABLE_DTLS_QUEUE &&
 					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
 					   !call->existsSrtpCryptoConfig() &&
 					   call->existsSrtpFingerprint() &&
@@ -5918,7 +5923,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			process_packet__rtp_call_info(call_info, packetS);
 			packet_s_process_calls_info::free(call_info);
 			return(true);
-		} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+		} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 			dtls_queue.push(packetS);
 			packet_s_process_calls_info::free(call_info);
 			return(true);
@@ -10559,7 +10564,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
-				} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 					dtls_queue.push(packetS);
 					this->hash_find_flag[batch_index] = -2;
 				} else {
@@ -10588,7 +10593,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 							packetS->reuse_counter_inc_sync(packetS->call_info.length);
 						}
 						this->hash_find_flag[batch_index] = 1;
-					} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 						dtls_queue.push(packetS);
 						this->hash_find_flag[batch_index] = -2;
 					} else {
@@ -10691,7 +10696,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
-					} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 						dtls_queue.push(packetS);
 						this->hash_find_flag[batch_index] = -2;
 					} else {
@@ -10720,7 +10725,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
-				} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 					dtls_queue.push(packetS);
 					this->hash_find_flag[batch_index] = -2;
 				} else {
@@ -10818,7 +10823,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 							      true,
 							      opt_t2_boost ? indexThread + 1 : 0,
 							      indexThread + 1);
-			} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtlsHandshake()) {
+			} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
 				dtls_queue.push(packetS);
 			} else {
 				if(opt_rtpnosip) {
@@ -10946,7 +10951,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 					if(!call_rtp->is_rtcp) {
 						++counter_rtp_only_packets;
 					}
-					if(opt_enable_ssl && opt_ssl_enable_dtls_queue &&
+					if(ENABLE_DTLS_QUEUE &&
 					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
 					   !call->existsSrtpCryptoConfig() &&
 					   call->existsSrtpFingerprint() &&
@@ -11309,7 +11314,7 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 
 
 void dtls_queue_cleanup() {
-	if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
+	if(ENABLE_DTLS_QUEUE) {
 		dtls_queue.cleanup();
 	}
 }

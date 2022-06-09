@@ -1006,6 +1006,7 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
+bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
@@ -9353,6 +9354,10 @@ void set_context_config() {
 			ssl_client_random_maxwait_ms = 2000;
 		}
 	}
+	
+	ssl_client_random_use = ssl_client_random_enable || 
+				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
+				ssl_master_secret_file[0];
 	
 	if(opt_callidmerge_header[0] &&
 	   !(useNewCONFIG ? CONFIG.isSet("rtpip_find_endpoints") : opt_rtpip_find_endpoints_set)) {
