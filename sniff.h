@@ -84,6 +84,7 @@ struct sll2_header {
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0)
 #define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
+#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)data == 0x16)
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
 
 enum e_packet_type {
@@ -485,6 +486,10 @@ struct packet_s {
 	inline bool isDtls() {
 		return(!pflags.tcp &&
 		       IS_DTLS(data_(), datalen_()));
+	}
+	inline bool isDtlsHandshake() {
+		return(!pflags.tcp &&
+		       IS_DTLS_HANDSHAKE(data_(), datalen_()));
 	}
 	inline bool isMrcp() {
 		return(IS_MRCP(data_(), datalen_()));
