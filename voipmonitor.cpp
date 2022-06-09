@@ -4736,6 +4736,10 @@ int main_init_read() {
 				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 				print_t2_queue_full_stat();
 				#endif
+				if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
+					extern void dtls_queue_cleanup();
+					dtls_queue_cleanup();
+				}
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
 				USLEEP(10000);

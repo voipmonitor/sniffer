@@ -901,10 +901,7 @@ public:
 	void push(packet_s *packetS) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock();
-		if(time_ms >= last_cleanup_ms + cleanup_interval_ms) {
-			cleanup(time_ms);
-			last_cleanup_ms = time_ms;
-		}
+		_cleanup(time_ms);
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;
@@ -949,7 +946,8 @@ public:
 		createId(&id, packetS);
 		return(links.find(id) != links.end());
 	}
-	void cleanup(u_int64_t time_ms);
+	void cleanup();
+	void _cleanup(u_int64_t time_ms);
 	void destroyAll();
 	void lock() {
 		__SYNC_LOCK_USLEEP(sync, 10);

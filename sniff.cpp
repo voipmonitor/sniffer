@@ -8493,7 +8493,16 @@ unsigned packet_s_process_calls_info::__size_of;
 unsigned packet_s_process_0::__size_of;
 
 
-void link_packets_queue::cleanup(u_int64_t time_ms) {
+void link_packets_queue::cleanup() {
+	lock();
+	_cleanup(getTimeMS_rdtsc());
+	unlock();
+}
+
+void link_packets_queue::_cleanup(u_int64_t time_ms) {
+	if(time_ms < last_cleanup_ms + cleanup_interval_ms) {
+		return;
+	}
 	for(map<s_link_id, s_link*>::iterator iter_link = links.begin(); iter_link != links.end(); ) {
 		s_link *link = iter_link->second;
 		if(time_ms >= link->last_time_ms + expiration_link_ms) {
@@ -8503,10 +8512,14 @@ void link_packets_queue::cleanup(u_int64_t time_ms) {
 			}
 			delete link;
 			links.erase(iter_link++);
+			#if DEBUG_DTLS_QUEUE
+			cout << " * clean dtls" << endl;
+			#endif
 		} else {
 			iter_link++;
 		}
 	}
+	last_cleanup_ms = time_ms;
 }
 
 void link_packets_queue::destroyAll() {
@@ -10530,6 +10543,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 		}
 		s_hash_thread_data *hash_thread_data = &this->hash_thread_data[next_thread_index_plus - 1];
 		if(hash_thread_data->batch) {
+			#if not EXPERIMENTAL_PROCESS_RTP_MOD_02
 			unsigned batch_index_start = hash_thread_data->start;
 			unsigned batch_index_end = hash_thread_data->end;
 			unsigned batch_index_skip = hash_thread_data->skip;
@@ -10553,6 +10567,57 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 					this->hash_find_flag[batch_index] = -1;
 				}
 			}
+			#else
+			if(hash_thread_data->processing == 1) {
+				unsigned batch_index_start = hash_thread_data->start;
+				unsigned batch_index_end = hash_thread_data->end;
+				unsigned batch_index_skip = hash_thread_data->skip;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					packet_s_process_0 *packetS = hash_thread_data->batch->batch[batch_index];
+					if(!packetS) {
+						syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
+						continue;
+					}
+					packetS->init2_rtp();
+					this->find_hash(packetS, false);
+					if(packetS->call_info.length > 0) {
+						if(packetS->call_info.length > 1) {
+							packetS->set_use_reuse_counter();
+							packetS->reuse_counter_inc_sync(packetS->call_info.length);
+						}
+						this->hash_find_flag[batch_index] = 1;
+					} else if(opt_enable_ssl && opt_ssl_enable_dtls_queue && packetS->isDtls()) {
+						dtls_queue.push(packetS);
+						this->hash_find_flag[batch_index] = -2;
+					} else {
+						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);
+						this->hash_find_flag[batch_index] = -1;
+					}
+				}
+			} else if(hash_thread_data->processing == 2) {
+				if(hash_thread_data->thread_index < process_rtp_packets_distribute_threads_use) {
+					unsigned batch_index_end = hash_thread_data->end;
+					for(unsigned batch_index = 0; batch_index < batch_index_end; batch_index++) {
+						if(this->hash_find_flag[batch_index] == 1) {
+							packet_s_process_0 *packetS = hash_thread_data->batch->batch[batch_index];
+							if(packetS->call_info.length == 1) {
+								if(packetS->call_info.calls[0].call->thread_num_rd == hash_thread_data->thread_index) {
+									processRtpPacketDistribute[packetS->call_info.calls[0].call->thread_num_rd]->push_packet(packetS);
+								}
+							} else if(packetS->call_info.length > 1) {
+								for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
+									if(packetS->call_info.threads_rd[i] == hash_thread_data->thread_index) {
+										processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			#endif
 			hash_thread_data->processing = 0;
 			usleepCounter = 0;
 			if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
@@ -10574,6 +10639,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 			this->hash_find_flag[batch_index] = 0;
 		}
+		#if not EXPERIMENTAL_PROCESS_RTP_MOD_02
 		calltable->lock_calls_hash();
 		if(this->next_thread_handle[0]) {
 			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
@@ -10671,6 +10737,75 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				this->rtp_packet_distr(packetS, _process_rtp_packets_distribute_threads_use);
 			}
 		}
+		#else
+		calltable->lock_calls_hash();
+		if(this->next_thread_handle[0] && _find_hash_only_in_next_threads) {
+			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
+				this->hash_thread_data[i].null();
+			}
+			for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+				this->hash_thread_data[i].start = i;
+				this->hash_thread_data[i].end = count;
+				this->hash_thread_data[i].skip = _process_rtp_packets_hash_next_threads;
+				this->hash_thread_data[i].thread_index = i;
+				this->hash_thread_data[i].batch = batch;
+				this->hash_thread_data[i].processing = 1;
+			}
+			for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+				sem_post(&sem_sync_next_thread[i][0]);
+			}
+			if(opt_process_rtp_packets_hash_next_thread_sem_sync == 1) {
+				while(this->hash_thread_data[0].processing || this->hash_thread_data[1].processing ||
+				      (_process_rtp_packets_hash_next_threads > 2 && this->isNextThreadsGt2Processing(_process_rtp_packets_hash_next_threads))) {
+					if(batch_index_distribute < count &&
+					   this->hash_find_flag[batch_index_distribute] == 1) {
+						packet_s_process_0 *packetS = batch->batch[batch_index_distribute];
+						if(packetS->call_info.length == 1) {
+							processRtpPacketDistribute[packetS->call_info.calls[0].call->thread_num_rd]->push_packet(packetS);
+						} else if(packetS->call_info.length > 1) {
+							for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
+								processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
+							}
+						}
+						this->hash_find_flag[batch_index_distribute] = 2;
+						++batch_index_distribute;
+					} else {
+						USLEEP(5);
+					}
+				}
+			} else {
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					} else {
+						while(this->hash_thread_data[i].processing) { 
+							USLEEP(5); 
+						}
+					}
+				}
+			}
+			calltable->unlock_calls_hash();
+			if(batch_index_distribute < count) {
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					this->hash_thread_data[i].processing = 2;
+				}
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					sem_post(&sem_sync_next_thread[i][0]);
+				}
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
+						sem_wait(&sem_sync_next_thread[i][1]);
+					} else {
+						while(this->hash_thread_data[i].processing) { 
+							USLEEP(5); 
+						}
+					}
+				}
+			}
+		} else {
+			// TODO
+		}		
+		#endif
 	} else {
 		for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index];
@@ -11170,4 +11305,11 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 	}
 	usersniffer_checksize_sync = 0;
 	return(NULL);
+}
+
+
+void dtls_queue_cleanup() {
+	if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
+		dtls_queue.cleanup();
+	}
 }
