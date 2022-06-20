@@ -8955,50 +8955,87 @@ void cWsCalls::load(const char *filename) {
 	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
 		map<string, string> row;
 		csv->getRow(i, &row);
-		if(row["Call-ID"].empty() || row["Call-ID"].find(',') != string::npos) {
+		if(row["Call-ID"].empty()) {
 			continue;
 		}
 		if(row["Info"].substr(0, 7) != "Request" && row["Info"].substr(0, 6) != "Status") {
+			cout << " * bad csv row (err 1) with Call-ID: " << row["Call-ID"] 
+			     << " / " 
+			     << "Info: " << row["Info"] << endl;
+			continue;
+		}
+		vector<string> Call_ID;
+		vector<string> Request_Line;
+		vector<string> Status_Line;
+		vector<string> CSeq;
+		vector<string> Info;
+		if(row["Call-ID"].find(',') != string::npos) {
+			Call_ID = split(row["Call-ID"].c_str(), ",", true);
+			Request_Line = split(row["Request-Line"].c_str(), ",", true);
+			Status_Line = split(row["Status-Line"].c_str(), ",", true);
+			CSeq = split(row["CSeq"].c_str(), ",", true);
+			Info = split(row["Info"].c_str(), "|", true);
+		} else {
+			Call_ID.push_back(row["Call-ID"]);
+			Request_Line.push_back(row["Request-Line"]);
+			Status_Line.push_back(row["Status-Line"]);
+			CSeq.push_back(row["CSeq"]);
+			Info.push_back(row["Info"]);
+		}
+		if(!(Call_ID.size() == CSeq.size() &&
+		     Call_ID.size() == Info.size() &&
+		     Call_ID.size() == (!row["Request-Line"].empty() ? Request_Line.size() : Status_Line.size()))) {
+			cout << " * bad csv row (err 2) with Call-ID: " << row["Call-ID"] 
+			     << " / "
+			     << "Request-Line: " << row["Request-Line"] << " / "
+			     << "Status-Line: " << row["Status-Line"] << " / "
+			     << "CSeq: " << row["CSeq"] << " / "
+			     << "Info: " << row["Info"] << endl;
 			continue;
 		}
 		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
 		//cout << row["Call-ID"] << endl;
 		//cout << row["Request-Line"] << endl;
 		//cout << row["Status-Line"] << endl;
-		sCall *call;
-		map<string, sCall>::iterator iter = calls.find(row["Call-ID"]);
-		if(iter != calls.end()) {
-			call = &iter->second;
-		} else {
-			call = &calls[row["Call-ID"]];
-			call->callid = row["Call-ID"];
-		}
-		sSip sip;
-		sip.info = row["Info"];
-		sip.request = !row["Request-Line"].empty();
-		sip.str = !row["Request-Line"].empty() ? row["Request-Line"] : row["Status-Line"];
-		if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
-			continue;
-		}
-		sip.cseq = row["CSeq"];
-		sip.src = row["Source"];
-		sip.src_port = row["Source Port"];
-		sip.dst = row["Destination"];
-		sip.dst_port = row["Destination Port"];
-		bool dupl = false;
-		if(call->sip.size()) {
-			for(unsigned i = 0; i < call->sip.size(); i++) {
-				if(call->sip[i] == sip) {
-					dupl = true;
-					break;
+		for(unsigned i = 0; i < Call_ID.size(); i++) {
+			sCall *call;
+			map<string, sCall>::iterator iter = calls.find(Call_ID[i]);
+			if(iter != calls.end()) {
+				call = &iter->second;
+			} else {
+				call = &calls[Call_ID[i]];
+				call->callid = Call_ID[i];
+			}
+			sSip sip;
+			sip.info = Info[i];
+			sip.request = !row["Request-Line"].empty();
+			sip.str = !row["Request-Line"].empty() ? Request_Line[i] : Status_Line[i];
+			if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
+				cout << " * bad csv row (err 3) with Call-ID: " << row["Call-ID"] 
+				     << " / " 
+				     << "sip.str: " << sip.str << endl;
+				continue;
+			}
+			sip.cseq = CSeq[i];
+			sip.src = row["Source"];
+			sip.src_port = row["Source Port"];
+			sip.dst = row["Destination"];
+			sip.dst_port = row["Destination Port"];
+			bool dupl = false;
+			if(call->sip.size()) {
+				for(unsigned i = 0; i < call->sip.size(); i++) {
+					if(call->sip[i] == sip) {
+						dupl = true;
+						break;
+					}
 				}
 			}
-		}
-		if(!dupl) {
-			call->sip.push_back(sip);
+			if(!dupl) {
+				call->sip.push_back(sip);
+			}
 		}
 	}
-	//cout << "load finished" << endl;
+	cout << "wireshark csv load finished (" << calls.size() << " calls)" << endl;
 }
 
 void cWsCalls::setConfirm(const char *callid, bool request, const char *str, const char *cseq) {

@@ -4550,7 +4550,8 @@ int main_init_read() {
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
 		tcpReassemblySipExt->setSimpleByAck();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
-		tcpReassemblySipExt->setSmartMaxSeqByPsh();
+		tcpReassemblySipExt->setSmartMaxSeq();
+		//tcpReassemblySipExt->setSmartMaxSeqByPsh();
 		tcpReassemblySipExt->setSkipZeroData();
 		sipTcpData = new FILE_LINE(42032) SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
