@@ -14,6 +14,7 @@
 using namespace std;
 
 extern int opt_enable_ssl;
+extern bool opt_ssl_enable_redirection_unencrypted_sip_content;
 
 extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 
@@ -53,6 +54,42 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		vmIP _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 		vmPort _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 		vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+		if(opt_ssl_enable_redirection_unencrypted_sip_content) {
+			u_char *_data = dataItem->getData();
+			unsigned int _datalen = dataItem->getDatalen();
+			while(_datalen >= 1 && (_data[0] == '\r' || _data[0] == '\n')) {
+				_data += 1;
+				_datalen -= 1;
+			}
+			if(_datalen > 0 &&
+			   TcpReassemblySip::checkSip(_data, _datalen, false, false)) {
+				pcap_pkthdr *tcpHeader;
+				u_char *tcpPacket;
+				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
+							  ethHeader, _data, _datalen,
+							  _ip_src, _ip_dst, _port_src, _port_dst,
+							  dataItem->getSeq(), dataItem->getAck(), 0,
+							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
+				unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
+				unsigned dataOffset = ethHeaderLength + 
+						      iphdrSize +
+						      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
+				packet_flags pflags;
+				pflags.init();
+				pflags.tcp = 2;
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+						#if USE_PACKET_NUMBER
+						0, 
+						#endif
+						_ip_src, _port_src, _ip_dst, _port_dst, 
+						_datalen, dataOffset,
+						handle_index, tcpHeader, tcpPacket, true, 
+						pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+						NULL, 0, dlt, sensor_id, sensor_ip, pid,
+						false);
+				continue;
+			}
+		}
 		if(reassemblyLink->checkDuplicitySeq(dataItem->getSeq())) {
 			if(debugStream) {
 				(*debugStream) << "SKIP SEQ " << dataItem->getSeq() << endl;
@@ -377,7 +414,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
 					  ethHeader, data, dataLength,
 					  ip_src, ip_dst, port_src, port_dst,
-					  seq, ack, 
+					  seq, ack, 0,
 					  time.tv_sec, time.tv_usec, dlt);
 		unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
 		unsigned dataOffset = ethHeaderLength + 

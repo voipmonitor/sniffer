@@ -79,7 +79,7 @@ public:
 	inline void copyFrom(const RegisterState *src);
 	inline bool isEq(Call *call, Register *reg);
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
-		return(time_s - time_shift_ms / 1000);
+		return(time_s ? (time_s - time_shift_ms / 1000) : 0);
 	}
 public:
 	u_int64_t state_from_us;

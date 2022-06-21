@@ -27,6 +27,8 @@ struct sVerbose {
 	int ssl_sessionkey;
 	int tcpreassembly_sip;
 	int tcpreassembly_sip_cleanup;
+	char *tcpreassembly_sip_dumper;
+	char *tcpreassembly_sip_dumper_ports;
 	char *tcpreassembly_debug_file;
 	int ssldecode;
 	int ssldecode_debug;
@@ -95,6 +97,7 @@ struct sVerbose {
 	int heap_use_time;
 	int dtmf;
 	int dtls;
+	int hep3;
 	int cleanspool;
 	int cleanspool_disable_rm;
 	int t2_destroy_all;
@@ -132,6 +135,7 @@ struct sVerbose {
 	int cdr_stat_only;
 	int cdr_stat_interval_store;
 	int disable_unlink_qfile;
+	int check_config;
 	int _debug1;
 	int _debug2;
 	int _debug3;

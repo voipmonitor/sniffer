@@ -19,7 +19,11 @@
 
 #include <glib.h>
 #include <wireshark/wsutil/privileges.h>
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 30605
+#include <wireshark/epan/register.h>
+#else
 #include <wireshark/register.h>
+#endif
 #include <wireshark/epan/epan.h>
 #include <wireshark/cfile.h>
 #include <wireshark/wiretap/wtap.h>

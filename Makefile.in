@@ -40,13 +40,17 @@ endif
 .PHONY: default
 default: shared ;
 
+
+WIRESHARKLIBSTATIC =$(shell pkg-config --libs-only-l --static wireshark)
+WIRESHARKCFLAGS =$(shell pkg-config --cflags wireshark)
+
 core2cust: GCCARCH = core2
 core2: GCCARCH = core2
 armv6k: GCCARCH = armv6k
 clean: GCCARCH = core2
 ss7: core2 static
-ss7: CXXFLAGS += -DHAVE_LIBWIRESHARK -I/usr/src/wireshark -I/usr/src
-ss7: SS7= -L/usr/src/wireshark/epan/.libs/ -L/usr/src/wireshark/wsutil/.libs/ -L/usr/src/wireshark/epan/wslua/.libs/ -L/usr/src/wireshark/wiretap/.libs/ -lwiretap -lwireshark -lwsutil -llua5.1 -lwslua -lgmodule-2.0 -lglib-2.0 -lpcre -llz4
+ss7: CXXFLAGS += -DHAVE_LIBWIRESHARK -DLIBWIRESHARK_VERSION=30605 ${WIRESHARKCFLAGS}
+ss7: SS7= ${WIRESHARKLIBSTATIC} -lwiretap -lwsutil -llua5.2 -lxml2 -llz4 -llzma -lz -lcares -lnghttp2
 #Makefile.deps: GCCARCH = core2
 
 
@@ -71,6 +75,11 @@ endif
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
+GLIBLIBPATH =$(shell pkg-config --libs-only-L glib-2.0)
+CURLCFLAGS =$(shell pkg-config --cflags libcurl)
+CURLLIB =$(shell pkg-config --libs libcurl)
+CURLLIBSTATIC =$(shell pkg-config --libs --static libcurl)
+PCAPLIBSTATIC =$(shell pkg-config --libs --static libpcap)
 
 LIBPNG=@LIBPNG@
 LIBFFT=@LIBFFT@
@@ -79,9 +88,9 @@ LIBLZMA=@LIBLZMA@
 LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
 SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} -llzo2 ${LIBPNG} ${LIBFFT} @DPDK_LDFLAGS@
-STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm -lcurl -lssl -lcrypto -static-libstdc++ -static-libgcc -lpcap -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD}
+STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD}
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
-LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@
+LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
 CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 

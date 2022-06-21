@@ -144,6 +144,17 @@ sSnifferServerService sSnifferServerServices::getService(int32_t sensor_id, cons
 	return(service);
 }
 
+void sSnifferServerServices::stopServiceBySensorId(int32_t sensor_id) {
+	lock();
+	for(map<string, sSnifferServerService>::iterator iter = services.begin(); iter != services.end(); iter++) {
+		if(iter->second.sensor_id == sensor_id) {
+			iter->second.service_connection->doStop();
+			break;
+		}
+	}
+	unlock();
+}
+
 cSnifferServerConnection *sSnifferServerServices::getServiceConnection(int32_t sensor_id, const char *sensor_string) {
 	return(getService(sensor_id, sensor_string).service_connection);
 }
@@ -332,6 +343,7 @@ void cSnifferServer::terminateSocketInConnectionThreads() {
 cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServer *server) 
  : cServerConnection(socket) {
 	_sync_tasks = 0;
+	stop = false;
 	terminate = false;
 	orphan = false;
 	typeConnection = _tc_na;
@@ -590,7 +602,7 @@ void cSnifferServerConnection::cp_service() {
 	while(!server->isTerminate() &&
 	      !terminate) {
 		u_int64_t time_us = getTimeUS();
-		if(!socket->checkHandleRead()) {
+		if(stop || !socket->checkHandleRead()) {
 			if(SS_VERBOSE().connect_info) {
 				ostringstream verbstr;
 				verbstr << "SNIFFER SERVICE STOP: "
@@ -723,6 +735,7 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 		delete this;
 		return;
 	}
+	sSnifferServerGuiTask task = snifferServerGuiTasks.getTask(gui_task_id);
 	int32_t sensor_id = snifferServerGuiTasks.getSensorId(gui_task_id);
 	string aes_ckey, aes_ivec;
 	snifferServerServices.getAesKeys(sensor_id, NULL, &aes_ckey, &aes_ivec);
@@ -734,7 +747,15 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 		return;
 	}
 	socket->set_aes_keys(aes_ckey, aes_ivec);
-	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length);
+	bool needStopServiceIfResponseOk = !strncasecmp(task.command.c_str(), "set_json_config", 15) || 
+					   !strncasecmp(task.command.c_str(), "hot_restart", 11);
+	SimpleBuffer rsltBuffer;
+	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length, 0,
+					 needStopServiceIfResponseOk ? &rsltBuffer : NULL);
+	if(needStopServiceIfResponseOk &&
+	   rsltBuffer.data_len() >= 2 && !strncasecmp(rsltBuffer, "ok", 2)) {
+		snifferServerServices.stopServiceBySensorId(sensor_id);
+	}
 	snifferServerGuiTasks.setTaskState(gui_task_id, sSnifferServerGuiTask::_complete);
 	delete this;
 }

@@ -8,6 +8,7 @@
 
 #include <queue>
 #include <map>
+#include <set>
 #include <semaphore.h>
 
 #include "rqueue.h"
@@ -83,6 +84,7 @@ struct sll2_header {
 #define IS_RTP(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x8000)
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0)
 #define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
+#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)data == 0x16)
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
 
 enum e_packet_type {
@@ -485,6 +487,10 @@ struct packet_s {
 		return(!pflags.tcp &&
 		       IS_DTLS(data_(), datalen_()));
 	}
+	inline bool isDtlsHandshake() {
+		return(!pflags.tcp &&
+		       IS_DTLS_HANDSHAKE(data_(), datalen_()));
+	}
 	inline bool isMrcp() {
 		return(IS_MRCP(data_(), datalen_()));
 	}
@@ -543,6 +549,10 @@ struct packet_s_process_rtp_call_info {
 struct packet_s_process_calls_info {
 	int length;
 	bool find_by_dest;
+	#if EXPERIMENTAL_PROCESS_RTP_MOD_01
+	u_int8_t threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
+	u_int8_t threads_rd_count;
+	#endif
 	packet_s_process_rtp_call_info calls[1];
 	static unsigned __size_of;
 	static inline packet_s_process_calls_info* create() {
@@ -627,10 +637,12 @@ struct packet_s_process_0 : public packet_s_stack {
 		insert_packets = NULL;
 	}
 	inline void init_reuse() {
-		use_reuse_counter = 0;
-		reuse_counter = 0;
-		reuse_counter_sync = 0;
-		insert_packets = NULL;
+		if(__type >= _t_packet_s_process_0) {
+			use_reuse_counter = 0;
+			reuse_counter = 0;
+			reuse_counter_sync = 0;
+			insert_packets = NULL;
+		}
 	}
 	inline void init2() {
 		type_content = _pptc_na;
@@ -894,10 +906,7 @@ public:
 	void push(packet_s *packetS) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock();
-		if(time_ms >= last_cleanup_ms + cleanup_interval_ms) {
-			cleanup(time_ms);
-			last_cleanup_ms = time_ms;
-		}
+		_cleanup(time_ms);
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;
@@ -942,7 +951,8 @@ public:
 		createId(&id, packetS);
 		return(links.find(id) != links.end());
 	}
-	void cleanup(u_int64_t time_ms);
+	void cleanup();
+	void _cleanup(u_int64_t time_ms);
 	void destroyAll();
 	void lock() {
 		__SYNC_LOCK_USLEEP(sync, 10);
@@ -1279,7 +1289,7 @@ public:
 #define MAXLIVEFILTERS 10
 #define MAXLIVEFILTERSCHARS 64
 
-struct livesnifferfilter_s {
+struct livesnifferfilter_s_base {
 	struct state_s {
 		bool all_saddr;
 		bool all_daddr;
@@ -1298,18 +1308,17 @@ struct livesnifferfilter_s {
 		bool all_siptypes;
 		bool all_all;
 	};
-	livesnifferfilter_s() {
+	livesnifferfilter_s_base() {
 		#if __GNUC__ >= 8
 		#pragma GCC diagnostic push
 		#pragma GCC diagnostic ignored "-Wclass-memaccess"
 		#endif
-		memset(this, 0, sizeof(livesnifferfilter_s));
+		memset(this, 0, sizeof(livesnifferfilter_s_base));
 		#if __GNUC__ >= 8
 		#pragma GCC diagnostic pop
 		#endif
 		created_at = time(NULL);
 	}
-	int sensor_id;
 	bool sensor_id_set;
         vmIP lv_saddr[MAXLIVEFILTERS];
         vmIP lv_daddr[MAXLIVEFILTERS];
@@ -1329,9 +1338,16 @@ struct livesnifferfilter_s {
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
 	int timeout_s;
+	bool disable_timeout_warn_msg;
         time_t created_at;
 	state_s state;
 	SimpleBuffer parameters;
+};
+
+struct livesnifferfilter_s : public livesnifferfilter_s_base {
+	livesnifferfilter_s() : livesnifferfilter_s_base() {
+	}
+	std::set<int> sensor_id;
 	void updateState();
 	string getStringState();
 };

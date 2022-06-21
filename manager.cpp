@@ -2920,8 +2920,12 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	}
 	string filter_sensor_id = jsonParameters.getValue("filter_sensor_id");
 	if(filter_sensor_id.length()) {
-		filter->sensor_id = atoi(filter_sensor_id.c_str());
-		filter->sensor_id_set = true;
+		vector<string> sensors_id = split(filter_sensor_id.c_str(), split(",|;| ", "|"), true);
+		for(unsigned i = 0; i < sensors_id.size(); i++) {
+			int sensor_id = atoi(sensors_id[i].c_str());
+			filter->sensor_id.insert(sensor_id > 0 ? sensor_id : 0);
+			filter->sensor_id_set = true;
+		}
 	}
 	string filter_ip = jsonParameters.getValue("filter_ip");
 	if(filter_ip.length()) {
@@ -3002,6 +3006,8 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(timeout > 0) {
 		filter->timeout_s = timeout;
 	}
+	string disable_timeout_warn_msg = jsonParameters.getValue("disable_live_sniffer_timeout_warning");
+	filter->disable_timeout_warn_msg = disable_timeout_warn_msg == "true" ? true : false;
 	updateLivesnifferfilters();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
@@ -4843,7 +4849,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 			sqlDb->setDisableLogError();
 			extern int opt_id_sensor;
 			if(sqlDb->query("SELECT * FROM sensor_config WHERE id_sensor " + 
-					(opt_id_sensor > 0 ? intToString(opt_id_sensor) : "IS NULL"))) {
+					(opt_id_sensor > 0 ? "= " + intToString(opt_id_sensor) : "IS NULL"))) {
 				SqlDb_row row = sqlDb->fetchRow();
 				delete sqlDb;
 				if(row) {

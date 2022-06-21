@@ -2399,19 +2399,9 @@ void FraudAlert_ccd::loadAlertVirt(SqlDb *sqlDb) {
 
 
 FraudAlerts::FraudAlerts() {
-	for(unsigned i = 0; i < sizeof(threadPopCallInfo) / sizeof(threadPopCallInfo[0]); i++) {
-		threadPopCallInfo[i] = 0;
-	}
-	for(unsigned i = 0; i < sizeof(runPopCallInfoThread) / sizeof(runPopCallInfoThread[0]); i++) {
-		runPopCallInfoThread[i] = false;
-	}
-	for(unsigned i = 0; i < sizeof(termPopCallInfoThread) / sizeof(termPopCallInfoThread[0]); i++) {
-		termPopCallInfoThread[i] = false;
-	}
 	useUserRestriction = false;
 	useUserRestriction_custom_headers = false;
 	_sync_alerts = 0;
-	initPopCallInfoThread();
 	lastTimeCallsIsFull = 0;
 	lastTimeRtpStreamsIsFull = 0;
 	lastTimeEventsIsFull = 0;
@@ -2422,6 +2412,7 @@ FraudAlerts::FraudAlerts() {
 	timer_thread_last_time_us = 0;
 	timer_thread_last_time_s = 0;
 	timer_thread_last_time_m = 0;
+	initPopCallInfoThreads();
 	clearNeedEv();
 }
 
@@ -2513,6 +2504,7 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 	}
 	clearNeedEv();
 	setNeedEv();
+	startPopCallInfoThreads();
 	if(lock) unlock_alerts();
 	craeteTimerThread(lock, true);
 }
@@ -2675,7 +2667,7 @@ void FraudAlerts::evRegister(Register *reg, RegisterState *regState, eRegisterSt
 	}
 }
 
-void FraudAlerts::stopPopCallInfoThread(bool wait) {
+void FraudAlerts::stopPopCallInfoThreads(bool wait) {
 	for(unsigned i = 0; i < sizeof(termPopCallInfoThread) / sizeof(termPopCallInfoThread[0]); i++) {
 		termPopCallInfoThread[i] = true;
 	}
@@ -2783,13 +2775,7 @@ bool FraudAlerts::checkIfRegisterQueueIsFull(bool log) {
 	return(false);
 }
 
-void *_FraudAlerts_popCallInfoThread(void *arg) {
-	FraudAlerts::sThreadData *thread_data = (FraudAlerts::sThreadData*)arg;
-	thread_data->me->popCallInfoThread(thread_data->type_events);
-	delete thread_data;
-	return(NULL);
-}
-void FraudAlerts::initPopCallInfoThread() {
+void FraudAlerts::initPopCallInfoThreads() {
 	for(unsigned i = 0; i < sizeof(threadPopCallInfo) / sizeof(threadPopCallInfo[0]); i++) {
 		threadPopCallInfo[i] = 0;
 	}
@@ -2799,6 +2785,10 @@ void FraudAlerts::initPopCallInfoThread() {
 	for(unsigned i = 0; i < sizeof(termPopCallInfoThread) / sizeof(termPopCallInfoThread[0]); i++) {
 		termPopCallInfoThread[i] = false;
 	}
+}
+
+void FraudAlerts::startPopCallInfoThreads() {
+	initPopCallInfoThreads();
 	for(unsigned type_events = _call; type_events < __end; type_events++) {
 		if(type_events == _call ? needEvCall_call || needEvCall_register :
 		   type_events == _rtpStream ? needEvRtpStream :
@@ -2812,9 +2802,16 @@ void FraudAlerts::initPopCallInfoThread() {
 					    type_events == _rtpStream ? "rtp_streams" :
 					    type_events == _event ? "events" :
 					    type_events == _register ? "registers" : "")).c_str(),
-					  &this->threadPopCallInfo[type_events], NULL, _FraudAlerts_popCallInfoThread, thread_data, __FILE__, __LINE__);
+					  &this->threadPopCallInfo[type_events], NULL, FraudAlerts::popCallInfoThread, thread_data, __FILE__, __LINE__);
 		}
 	}
+}
+
+void *FraudAlerts::popCallInfoThread(void *arg) {
+	FraudAlerts::sThreadData *thread_data = (FraudAlerts::sThreadData*)arg;
+	thread_data->me->popCallInfoThread(thread_data->type_events);
+	delete thread_data;
+	return(NULL);
 }
 
 void FraudAlerts::popCallInfoThread(eTypeEvents type_events) {
@@ -3189,9 +3186,9 @@ void initFraud(SqlDb *sqlDb) {
 void termFraud() {
 	if(fraudAlerts) {
 		_fraudAlerts_ready = 0;
-		fraudAlerts->waitForEmptyQueues();
 		fraudAlerts_lock();
-		fraudAlerts->stopPopCallInfoThread(true);
+		fraudAlerts->waitForEmptyQueues();
+		fraudAlerts->stopPopCallInfoThreads(true);
 		delete fraudAlerts;
 		fraudAlerts = NULL;
 		fraudAlerts_unlock();
@@ -3278,10 +3275,13 @@ void refreshFraud() {
 				opt_enable_fraud_store_pcaps =  enable_fraud_store_pcaps;
 				initFraud();
 			} else {
+				fraudAlerts_lock();
 				fraudAlerts->waitForEmptyQueues();
+				fraudAlerts->stopPopCallInfoThreads(true);
 				opt_enable_fraud_store_pcaps =  enable_fraud_store_pcaps;
 				fraudAlerts->refresh();
 				_fraudAlerts_ready = 1;
+				fraudAlerts_unlock();
 			}
 		} else {
 			if(fraudAlerts) {

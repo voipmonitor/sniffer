@@ -2696,6 +2696,18 @@ char *strnchr(const char *haystack, char needle, size_t len)
         return NULL;
 }
 
+char *strnrchr(const char *haystack, char needle, size_t len)
+{
+        int i;
+
+        for (i=(int)(len-1); i>=0; i--)
+        {
+                if (haystack[i] == needle)
+                        return (char *)(haystack + i);
+        }
+        return NULL;
+}
+
 char *strncasechr(const char *haystack, char needle, size_t len)
 {
         int i;
@@ -4358,8 +4370,12 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4370,6 +4386,9 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
 	#endif
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4401,7 +4420,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
@@ -4414,8 +4433,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	u_int32_t packet_length = ether_header_length + iphdr_size + tcp_doff * 4 + datalen;
 	*packet = new FILE_LINE(38024) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
@@ -4426,6 +4449,9 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else {
 	#endif
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4445,8 +4471,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	tcphdr.set_dest(dest);
 	tcphdr.seq = htonl(seq);
 	tcphdr.ack_seq = htonl(ack_seq);
-	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
+	if(flags) {
+		tcphdr.flags = flags;
+	} else {
+		tcphdr.flags_bit.ack = 1;
+	}
 	tcphdr.window = htons(0x8000);
 	memcpy(*packet + ether_header_length + iphdr_size, &tcphdr, sizeof(tcphdr2));
 	memset(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2), 0, tcp_options_length);
@@ -6588,7 +6618,7 @@ cDbStrings::~cDbStrings() {
 	}
 }
 
-void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
+void cDbStrings::add(const char *begin, unsigned offset, unsigned length, bool needUnescape) {
 	if(size == capacity) {
 		sDbString *strings_new = new FILE_LINE(0) sDbString[capacity + capacity_inc];
 		if(strings) {
@@ -6598,13 +6628,24 @@ void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
 		strings = strings_new;
 		capacity += capacity_inc;
 	}
+	if(needUnescape) {
+		const char *_begin = begin + offset;
+		for(unsigned i = 0; i < length - 2; i++) {
+			if(_begin[i] == '\\' && _begin[i + 1] == '"' && _begin[i + 2] == ',') {
+				for(unsigned j = i; j < length - 1; j++) {
+					((char*)_begin)[j] = _begin[j + 1];
+				}
+				--length;
+			}
+		}
+	}
 	strings[size].begin = begin;
 	strings[size].offset = offset;
 	strings[size].length = length;
 	++size;
 }
 
-void cDbStrings::explodeCsv(const char *csv) {
+void cDbStrings::explodeCsv(const char *csv, bool header) {
 	unsigned lengthCsv = strlen(csv);
 	while(lengthCsv &&
 	      (csv[lengthCsv - 1] == '\r' || csv[lengthCsv - 1] == '\n')) {
@@ -6614,22 +6655,36 @@ void cDbStrings::explodeCsv(const char *csv) {
 	while(pos < lengthCsv) {
 		bool is_string = csv[pos] == '"';
 		const char *nextSep = strstr(csv + pos, is_string ? "\"," : ",");
-		if(is_string) {
-			while(nextSep && *(nextSep - 1) == '\\') {
+		bool needUnescape = false;
+		if(nextSep && is_string) {
+			while(nextSep) {
+				if(*(nextSep - 1) == '\\') {
+					needUnescape = true;
+				} else if(!header) {
+					unsigned posNextSep = nextSep - csv;
+					if((posNextSep < lengthCsv - 2 && 
+					    *(nextSep + 2) == ('0' + SqlDb_row::_ift_null)) ||
+					   (posNextSep < lengthCsv - 3 && 
+					    *(nextSep + 2) == '"' && *(nextSep + 4) == ':' && *(nextSep + 3) >= '0' && *(nextSep + 3) < ('0' + SqlDb_row::_ift_null))) {
+						break;
+					}
+				} else {
+					break;
+				}
 				nextSep = strstr(nextSep + 1, is_string ? "\"," : ",");
 			}
 		}
 		if(nextSep) {
 			unsigned nextSepPos = nextSep - csv;
 			if(is_string) {
-				add(csv, pos + 1, nextSepPos - pos - 1);
+				add(csv, pos + 1, nextSepPos - pos - 1, needUnescape);
 			} else {
 				add(csv, pos, nextSepPos - pos);
 			}
 			pos = nextSepPos + (is_string ? 2 : 1);
 		} else {
 			if(is_string) {
-				add(csv, pos + 1, lengthCsv - pos - 2);
+				add(csv, pos + 1, lengthCsv - pos - 2, needUnescape);
 			} else {
 				add(csv, pos, lengthCsv - pos);
 			}
@@ -6768,7 +6823,7 @@ void cDbTableContent::addHeader(const char *source) {
 	strcpy(content, source);
 	header.content = content;
 	header.items = new FILE_LINE(0) cDbStrings(100);
-	header.items->explodeCsv(content);
+	header.items->explodeCsv(content, true);
 	header.items->setZeroTerm();
 	header.items->createMap(true);
 }
@@ -8900,50 +8955,87 @@ void cWsCalls::load(const char *filename) {
 	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
 		map<string, string> row;
 		csv->getRow(i, &row);
-		if(row["Call-ID"].empty() || row["Call-ID"].find(',') != string::npos) {
+		if(row["Call-ID"].empty()) {
 			continue;
 		}
 		if(row["Info"].substr(0, 7) != "Request" && row["Info"].substr(0, 6) != "Status") {
+			cout << " * bad csv row (err 1) with Call-ID: " << row["Call-ID"] 
+			     << " / " 
+			     << "Info: " << row["Info"] << endl;
+			continue;
+		}
+		vector<string> Call_ID;
+		vector<string> Request_Line;
+		vector<string> Status_Line;
+		vector<string> CSeq;
+		vector<string> Info;
+		if(row["Call-ID"].find(',') != string::npos) {
+			Call_ID = split(row["Call-ID"].c_str(), ",", true);
+			Request_Line = split(row["Request-Line"].c_str(), ",", true);
+			Status_Line = split(row["Status-Line"].c_str(), ",", true);
+			CSeq = split(row["CSeq"].c_str(), ",", true);
+			Info = split(row["Info"].c_str(), "|", true);
+		} else {
+			Call_ID.push_back(row["Call-ID"]);
+			Request_Line.push_back(row["Request-Line"]);
+			Status_Line.push_back(row["Status-Line"]);
+			CSeq.push_back(row["CSeq"]);
+			Info.push_back(row["Info"]);
+		}
+		if(!(Call_ID.size() == CSeq.size() &&
+		     Call_ID.size() == Info.size() &&
+		     Call_ID.size() == (!row["Request-Line"].empty() ? Request_Line.size() : Status_Line.size()))) {
+			cout << " * bad csv row (err 2) with Call-ID: " << row["Call-ID"] 
+			     << " / "
+			     << "Request-Line: " << row["Request-Line"] << " / "
+			     << "Status-Line: " << row["Status-Line"] << " / "
+			     << "CSeq: " << row["CSeq"] << " / "
+			     << "Info: " << row["Info"] << endl;
 			continue;
 		}
 		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
 		//cout << row["Call-ID"] << endl;
 		//cout << row["Request-Line"] << endl;
 		//cout << row["Status-Line"] << endl;
-		sCall *call;
-		map<string, sCall>::iterator iter = calls.find(row["Call-ID"]);
-		if(iter != calls.end()) {
-			call = &iter->second;
-		} else {
-			call = &calls[row["Call-ID"]];
-			call->callid = row["Call-ID"];
-		}
-		sSip sip;
-		sip.info = row["Info"];
-		sip.request = !row["Request-Line"].empty();
-		sip.str = !row["Request-Line"].empty() ? row["Request-Line"] : row["Status-Line"];
-		if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
-			continue;
-		}
-		sip.cseq = row["CSeq"];
-		sip.src = row["Source"];
-		sip.src_port = row["Source Port"];
-		sip.dst = row["Destination"];
-		sip.dst_port = row["Destination Port"];
-		bool dupl = false;
-		if(call->sip.size()) {
-			for(unsigned i = 0; i < call->sip.size(); i++) {
-				if(call->sip[i] == sip) {
-					dupl = true;
-					break;
+		for(unsigned i = 0; i < Call_ID.size(); i++) {
+			sCall *call;
+			map<string, sCall>::iterator iter = calls.find(Call_ID[i]);
+			if(iter != calls.end()) {
+				call = &iter->second;
+			} else {
+				call = &calls[Call_ID[i]];
+				call->callid = Call_ID[i];
+			}
+			sSip sip;
+			sip.info = Info[i];
+			sip.request = !row["Request-Line"].empty();
+			sip.str = !row["Request-Line"].empty() ? Request_Line[i] : Status_Line[i];
+			if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
+				cout << " * bad csv row (err 3) with Call-ID: " << row["Call-ID"] 
+				     << " / " 
+				     << "sip.str: " << sip.str << endl;
+				continue;
+			}
+			sip.cseq = CSeq[i];
+			sip.src = row["Source"];
+			sip.src_port = row["Source Port"];
+			sip.dst = row["Destination"];
+			sip.dst_port = row["Destination Port"];
+			bool dupl = false;
+			if(call->sip.size()) {
+				for(unsigned i = 0; i < call->sip.size(); i++) {
+					if(call->sip[i] == sip) {
+						dupl = true;
+						break;
+					}
 				}
 			}
-		}
-		if(!dupl) {
-			call->sip.push_back(sip);
+			if(!dupl) {
+				call->sip.push_back(sip);
+			}
 		}
 	}
-	//cout << "load finished" << endl;
+	cout << "wireshark csv load finished (" << calls.size() << " calls)" << endl;
 }
 
 void cWsCalls::setConfirm(const char *callid, bool request, const char *str, const char *cseq) {

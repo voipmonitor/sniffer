@@ -266,6 +266,14 @@ public:
 		CHECK,
 		FAIL
 	};
+	struct sFlags {
+		union {
+			int8_t flags;
+			struct {
+				int8_t is_sip : 1;
+			} flags_bit;
+		};
+	};
 	TcpReassemblyStream_packet() {
 		time.tv_sec = 0;
 		time.tv_usec = 0;
@@ -277,6 +285,7 @@ public:
 		block_store = NULL;
 		block_store_index = 0;
 		state = NA;
+		flags.flags = 0;
 		//locked_packet = false;
 	}
 	TcpReassemblyStream_packet(const TcpReassemblyStream_packet &packet) {
@@ -306,7 +315,8 @@ public:
 	}
 	void setData(timeval time, tcphdr2 header_tcp,
 		     u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		     pcap_block_store *block_store, int block_store_index) {
+		     pcap_block_store *block_store, int block_store_index,
+		     bool isSip) {
 		this->time = time;
 		this->header_tcp = header_tcp;
 		this->next_seq = header_tcp.seq + datalen;
@@ -323,6 +333,7 @@ public:
 		this->datacaplen = datacaplen;
 		this->block_store = block_store;
 		this->block_store_index = block_store_index;
+		this->flags.flags_bit.is_sip = isSip;
 	}
 private:
 	void copyFrom(const TcpReassemblyStream_packet &packet) {
@@ -335,6 +346,7 @@ private:
 		this->block_store = packet.block_store;
 		this->block_store_index = packet.block_store_index;
 		this->state = packet.state;
+		this->flags.flags = packet.flags.flags;
 	}
 	void cleanState() {
 		this->state = NA;
@@ -349,6 +361,7 @@ private:
 	pcap_block_store *block_store;
 	int block_store_index;
 	eState state;
+	sFlags flags;
 	//bool locked_packet;
 friend class TcpReassemblyStream_packet_var;
 friend class TcpReassemblyStream;
@@ -494,7 +507,7 @@ public:
 	bool isSetCompleteData();
 	void clearCompleteData();
 	void cleanupCompleteData();
-	void confirmCompleteData(u_int32_t datalen_confirmed);
+	void confirmCompleteData(u_int32_t datalen_confirmed, u_int32_t *last_seq = NULL);
 	void printContent(int level  = 0);
 	bool checkOkPost(TcpReassemblyStream *nextStream = NULL);
 	TcpReassemblyStream_packet *getPacket(u_int32_t seq, u_int32_t next_seq) {
@@ -517,6 +530,19 @@ public:
 			return(&iter->second);
 		}
 		return(NULL);
+	}
+	u_int32_t getPacketOffset(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			return(iter->second.offset);
+		}
+		return(0);
+	}
+	void clearPacketOffset(u_int32_t seq) {
+		map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter = queuePacketVars.find(seq);
+		if(iter != queuePacketVars.end()) {
+			iter->second.offset = 0;
+		}
 	}
 	inline eDirection getDirection() {
 		return(direction);
@@ -661,7 +687,8 @@ public:
 	bool push(TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index) {
+		  pcap_block_store *block_store, int block_store_index,
+		  bool isSip) {
 		if(datalen) {
 			this->exists_data = true;
 		}
@@ -669,24 +696,28 @@ public:
 			return(this->push_crazy(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index));
+				block_store, block_store_index,
+				isSip));
 		} else {
 			return(this->push_normal(
 				direction, time, header_tcp, 
 				data, datalen, datacaplen,
-				block_store, block_store_index));
+				block_store, block_store_index,
+				isSip));
 		}
 	}
 	bool push_normal(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index);
+		  pcap_block_store *block_store, int block_store_index,
+		  bool isSip);
 	bool push_crazy(
 		  TcpReassemblyStream::eDirection direction,
 		  timeval time, tcphdr2 header_tcp, 
 		  u_char *data, u_int32_t datalen, u_int32_t datacaplen,
-		  pcap_block_store *block_store, int block_store_index);
+		  pcap_block_store *block_store, int block_store_index,
+		  bool isSip);
 	int okQueue(int final = 0, u_int32_t seq = 0, u_int32_t next_seq = 0, u_int32_t ack = 0, bool psh = false, bool enableDebug = false);
 	int okQueue_normal(int final = 0, bool enableDebug = false);
 	int okQueue_simple_by_ack(u_int32_t seq, u_int32_t ack, u_int32_t next_seq, bool psh, bool enableDebug = false);
@@ -839,7 +870,8 @@ private:
 		__sync_lock_release(&this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
-		        TcpReassemblyStream_packet packet);
+		        TcpReassemblyStream_packet packet,
+			bool isSip);
 	void setLastSeq(TcpReassemblyStream::eDirection direction, 
 			u_int32_t lastSeq);
 	void switchDirection();
@@ -973,6 +1005,9 @@ public:
 	void setIgnorePshInCheckOkData(bool ignorePshInCheckOkData = true) {
 		this->ignorePshInCheckOkData = ignorePshInCheckOkData;
 	}
+	void setSmartMaxSeq(bool smartMaxSeq = true) {
+		this->smartMaxSeq = smartMaxSeq;
+	}
 	void setSmartMaxSeqByPsh(bool smartMaxSeqByPsh = true) {
 		this->smartMaxSeqByPsh = smartMaxSeqByPsh;
 	}
@@ -1085,6 +1120,7 @@ public:
 		this->linkTimeout = linkTimeout;
 	}
 	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
+	void enableDumper(const char *fileName, const char *ports);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,
 		   pcap_block_store *block_store, int block_store_index,
@@ -1148,6 +1184,7 @@ private:
 	bool needValidateDataViaCheckData;
 	bool simpleByAck;
 	bool ignorePshInCheckOkData;
+	bool smartMaxSeq;
 	bool smartMaxSeqByPsh;
 	bool skipZeroData;
 	bool ignoreZeroData;
@@ -1185,6 +1222,13 @@ private:
 	volatile bool initPacketThreadOk;
 	volatile bool terminatingCleanupThread;
 	volatile bool terminatingPacketThread;
+	bool dumperEnable;
+	list<u_int16_t> dumperPorts;
+	string dumperFileName;
+	PcapDumper *dumper;
+	volatile int dumperSync;
+	u_int64_t dumperFileCounter;
+	u_int64_t dumperPacketCounter;
 friend class TcpReassemblyLink;
 friend class TcpReassemblyStream;
 friend void *_TcpReassembly_cleanupThreadFunction(void* arg);

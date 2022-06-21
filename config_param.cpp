@@ -485,7 +485,7 @@ string cConfigItem_integer::getValueStr(bool configFile) {
 				if(configFile) {
 					outStr << endl << config_name << " = ";
 				} else {
-					outStr << explodeSeparator;
+					outStr << explodeSeparators[0];
 				}
 			}
 			outStr << *iter;
@@ -536,12 +536,12 @@ list<string> cConfigItem_integer::getValueListStr() {
 }
 
 string cConfigItem_integer::normalizeStringValueForCmp(string value) {
-	if(param_vect_int && !explodeSeparator.empty()) {
-		vector<string> value_vect = split(value.c_str(), explodeSeparator.c_str(), true);
+	if(param_vect_int && !explodeSeparators.empty()) {
+		vector<string> value_vect = split(value.c_str(), split2chars(explodeSeparators), true);
 		string rslt;
 		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
 			if(!rslt.empty()) {
-				rslt += explodeSeparator;
+				rslt += explodeSeparators[0];
 			}
 			rslt += *iter;
 		}
@@ -559,7 +559,7 @@ string cConfigItem_integer::normalizeStringValueForCmp(string value) {
 }
 
 bool cConfigItem_integer::enableMultiValues() {
-	return(param_vect_int && !explodeSeparator.empty());
+	return(param_vect_int && !explodeSeparators.empty());
 }
 
 bool cConfigItem_integer::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
@@ -676,11 +676,11 @@ bool cConfigItem_integer::setParamFromValueStr(string value_str, bool enableInit
 			}
 			++ok;
 		}
-		if(param_vect_int && !explodeSeparator.empty()) {
+		if(param_vect_int && !explodeSeparators.empty()) {
 			if(enableInitBeforeSet) {
 				initBeforeSet();
 			}
-			*param_vect_int = split2int(value, explodeSeparator[0]);
+			*param_vect_int = split2int(value, split2chars(explodeSeparators), true);
 		}
 	}
 	return(ok > 0);
@@ -704,7 +704,7 @@ bool cConfigItem_integer::setParamFromValuesStr(vector<string> list_values_str, 
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		vector<int> _param_vect_int = split2int(iter->c_str(), explodeSeparator[0]);
+		vector<int> _param_vect_int = split2int(iter->c_str(), split2chars(explodeSeparators), true);
 		for(unsigned i = 0; i < _param_vect_int.size(); i++) {
 			param_vect_int->push_back(_param_vect_int[i]);
 			++ok;
@@ -818,7 +818,7 @@ string cConfigItem_string::getValueStr(bool configFile) {
 				if(configFile) {
 					outStr << endl << config_name << " = ";
 				} else {
-					outStr << explodeSeparator;
+					outStr << explodeSeparators[0];
 				}
 			}
 			outStr << *iter;
@@ -853,12 +853,12 @@ list<string> cConfigItem_string::getValueListStr() {
 }
 
 string cConfigItem_string::normalizeStringValueForCmp(string value) {
-	if(param_vect_str && !explodeSeparator.empty()) {
-		vector<string> value_vect = split(value.c_str(), explodeSeparator.c_str(), true);
+	if(param_vect_str && !explodeSeparators.empty()) {
+		vector<string> value_vect = split(value.c_str(), split2chars(explodeSeparators), true);
 		string rslt;
 		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
 			if(!rslt.empty()) {
-				rslt += explodeSeparator;
+				rslt += explodeSeparators[0];
 			}
 			rslt += *iter;
 		}
@@ -875,7 +875,7 @@ string cConfigItem_string::normalizeStringValueForCmp(string value) {
 }
 
 bool cConfigItem_string::enableMultiValues() {
-	return(param_vect_str && !explodeSeparator.empty());
+	return(param_vect_str && !explodeSeparators.empty());
 }
 
 bool cConfigItem_string::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
@@ -919,11 +919,11 @@ bool cConfigItem_string::setParamFromValueStr(string value_str, bool enableInitB
 			}
 			++ok;
 		}
-		if(param_vect_str && !explodeSeparator.empty()) {
+		if(param_vect_str && !explodeSeparators.empty()) {
 			if(enableInitBeforeSet) {
 				initBeforeSet();
 			}
-			*param_vect_str = split(value, explodeSeparator.c_str());
+			*param_vect_str = split(value, split2chars(explodeSeparators), true);
 		}
 	}
 	return(ok > 0);
@@ -947,8 +947,11 @@ bool cConfigItem_string::setParamFromValuesStr(vector<string> list_values_str, b
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		param_vect_str->push_back(*iter);
-		++ok;
+		vector<string> _param_vect_str = split(iter->c_str(), split2chars(explodeSeparators), true);
+		for(unsigned i = 0; i < _param_vect_str.size(); i++) {
+			param_vect_str->push_back(_param_vect_str[i]);
+			++ok;
+		}
 	}
 	return(ok > 0);
 }
@@ -1958,7 +1961,7 @@ string cConfigMap::cItem::valuesToStr() {
 	int counter = 0;
 	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
 		if(counter) {
-			outStr << "; ";
+			outStr << ";";
 		}
 		outStr << *iter;
 		++counter;

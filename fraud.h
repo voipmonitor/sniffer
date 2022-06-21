@@ -1207,7 +1207,7 @@ public:
 	void evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(Call *call, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
 	void evRegister(class Register *reg, class RegisterState *regState, eRegisterState state, eRegisterState prev_state = rs_na, u_int64_t prev_state_at = 0);
-	void stopPopCallInfoThread(bool wait = false);
+	void stopPopCallInfoThreads(bool wait = false);
 	void refresh();
 	const char *getGuiTimezone() {
 		if(gui_timezone.empty()) {
@@ -1231,7 +1231,9 @@ private:
 	bool checkIfRtpStreamQueueIsFull(bool log = true);
 	bool checkIfEventQueueIsFull(bool log = true);
 	bool checkIfRegisterQueueIsFull(bool log = true);
-	void initPopCallInfoThread();
+	void initPopCallInfoThreads();
+	void startPopCallInfoThreads();
+	static void *popCallInfoThread(void *arg);
 	void popCallInfoThread(eTypeEvents type_events);
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
@@ -1282,7 +1284,6 @@ private:
 	u_int64_t timer_thread_last_time_us;
 	u_int32_t timer_thread_last_time_s;
 	u_int32_t timer_thread_last_time_m;
-friend void *_FraudAlerts_popCallInfoThread(void *arg);
 };
 
 

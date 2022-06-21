@@ -246,6 +246,7 @@ public:
 	cSocket(const char *name, bool autoClose = false);
 	virtual ~cSocket();
 	void setHostPort(string host, u_int16_t port);
+	void setUdp(bool udp);
 	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
 	bool listen();
@@ -335,6 +336,7 @@ protected:
 	bool autoClose;
 	string host;
 	u_int16_t port;
+	bool udp;
 	vmIP ip;
 	sTimeouts timeouts;
 	int handle;
@@ -476,7 +478,8 @@ public:
 		return(readBlock(str, typeCode, xor_key, quietEwouldblock, timeout));
 	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
-	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0);
+	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0,
+				      SimpleBuffer *rsltBuffer = NULL);
 	void generate_rsa_keys(unsigned keylen = 2048) {
 		rsa.generate_keys(keylen);
 	}
@@ -504,15 +507,18 @@ private:
 		unsigned index;
 	};
 public:
-	 cServer();
+	 cServer(bool udp = false, bool simple_read = false);
 	 virtual ~cServer();
 	 bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
 	 void listen_stop(unsigned index = 0);
 	 static void *listen_process(void *arg);
 	 void listen_process(int index);
 	 virtual void createConnection(cSocket *socket);
+	 virtual void evData(u_char *data, size_t dataLen);
 	 void setStartVerbString(const char *startVerbString);
 protected:
+	 bool udp;
+	 bool simple_read;
 	 cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
 	 pthread_t listen_thread[MAX_LISTEN_SOCKETS];
 	 string startVerbString;
@@ -521,7 +527,7 @@ protected:
 
 class cServerConnection {
 public:
-	cServerConnection(cSocket *socket);
+	cServerConnection(cSocket *socket, bool simple_read = false);
 	virtual ~cServerConnection();
 	bool connection_start();
 	static void *connection_process(void *arg);
@@ -533,6 +539,7 @@ public:
 	}
 protected:
 	cSocketBlock *socket;
+	bool simple_read;
 	pthread_t thread;
 	u_int64_t begin_time_ms;
 };

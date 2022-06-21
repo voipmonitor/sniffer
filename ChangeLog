@@ -1,3 +1,36 @@
+30.1 21.6.2022
+==============
+- added support for HEP encapsulation 
+- fix manager command set_json_config & hot_restart in client/server mode (force stop sniffer service in server)
+- fix apply destination_number_mode=2 for multibranch call [VS-1330]
+- fix issue with bad packet order when tls leg is waiting for a key [VS-1327]
+- add port resolution to invite and proxies list
+- fix problem with silencedetect and clippingdetect and multiple rtp streams in the same direction [VS-1328]
+- fix issue with livesniffer when multiple sensors are selected in client/server mode and using packetbuffer_sender mode [VG-2484]
+- fix sql condition for manager command 'get_sensor_information configuration_db' [VG-2464]
+- fix long pcap extraction from tar when tar_compress_rtp = yes [VS-1329]
+- fix ss7/isdn when t2_boost is enabled [VS-1334]
+- adding direction (request/response) resolution to cdr and message custom headers
+- fix inconsistency in 'do not add colon' option in custom headers
+- fix apply explode-separators in multiple-string configuration item
+- accept in call processing response 481 in cseq method prack
+- add expert tls options ssl_aead_try_seq_backward / ssl_aead_try_seq_forward [VS-1319]
+- do not overwrite called number when using the update_dstnum_onanswer=yes option if called is same as caller [VS-1336]
+- add option disable_cdr_fields_rtp (NO/yes) which excludes storing RTP metric columns 
+- TCP reassemble fixes - skip multiple CR/LF after sip data in checkOkSipData [VS-1339]
+- adding a registration port update in the registration table if subsequent registrations in the same group have different ports
+- fix initialization of fraud threads [VS-1341]
+- change default options for ssl_tls_12_sessionkey_mode = ws, ssl_dtls_queue = yes [VS-1338]
+- fix heap-buffer-overflow and potential crash if next ip-header is incorrect
+- redirecting data from ssl stream to sip processing if the data contains unencrypted valid sip content [VS-1331]
+- do server-side dtls-only comparison when searching for a dtls link [VS-1319]
+- fix find ipv6 ext header (if exists multiple ext headers)
+- fix potential packet buffer leak with very low traffic (and small packet buffer) if ssl=yes is set and if there are dtls packets
+- limiting packet storage to dtls queue to 'handshake' type only
+- limiting the use of dtls queue only if ssl_client_random is enabled
+- allow to disable live sniffer timeout warning [VG-2483]
+
+
 30.0 28.04.2022
 ===============
 - TCP reassemble is now more robust with many fixes

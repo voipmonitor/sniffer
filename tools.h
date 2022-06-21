@@ -473,6 +473,7 @@ unsigned long getUptime();
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
+char *strnrchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
 int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
 int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
@@ -839,7 +840,7 @@ void createSimpleUdpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_c
 void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
 			       u_char *source_packet, u_char *data, unsigned int datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
 void convertAnonymousInPacket(struct sHeaderPacket *header_packet, struct pcapProcessData *ppd, 
 			pcap_pkthdr **header, u_char **packet,
@@ -3614,8 +3615,8 @@ class cDbStrings {
 public:
 	cDbStrings(unsigned capacity = 0, unsigned capacity_inc = 0);
 	~cDbStrings();
-	void add(const char *begin, unsigned offset, unsigned length);
-	void explodeCsv(const char *csv);
+	void add(const char *begin, unsigned offset, unsigned length, bool needUnescape = false);
+	void explodeCsv(const char *csv, bool header = false);
 	void setZeroTerm();
 	void setNextData();
 	void createMap(bool icase);
@@ -3785,6 +3786,9 @@ inline void hexdump(const char *data, unsigned size) {
 string hexdump_to_string(u_char *data, unsigned size);
 inline string hexdump_to_string(const char *data, unsigned size) {
 	return(hexdump_to_string((u_char*)data, size));
+}
+inline string hexdump_to_string(SimpleBuffer *buffer) {
+	return(hexdump_to_string(buffer->data(), buffer->data_len()));
 }
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 unsigned file_get_rows(string, vector<string> *rows);

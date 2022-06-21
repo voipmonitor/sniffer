@@ -97,6 +97,7 @@
 #include "heap_chunk.h"
 #include "charts.h"
 #include "ipfix.h"
+#include "hep.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -415,6 +416,7 @@ unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
+int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
 bool opt_ss7_use_sam_subsequent_number = true;
@@ -432,13 +434,16 @@ bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
-int opt_ssl_tls_12_sessionkey_mode = 0;
+int opt_ssl_tls_12_sessionkey_mode = 1;
 bool opt_ssl_unlimited_reassembly_attempts = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
-bool opt_ssl_enable_dtls_queue = false;
+int opt_ssl_aead_try_seq_backward = 0;
+int opt_ssl_aead_try_seq_forward = 0;
+bool opt_ssl_enable_dtls_queue = true;
+bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -898,6 +903,7 @@ unsigned int gthread_num = 0;
 int opt_pcapdump = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
+bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
@@ -1000,6 +1006,7 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
+bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
@@ -1134,7 +1141,7 @@ bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
-int opt_sip_tcp_reassembly_stream_max_attempts = 50;
+int opt_sip_tcp_reassembly_stream_max_attempts = 200;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
@@ -1189,6 +1196,12 @@ bool opt_ipfix;
 bool opt_ipfix_set;
 string opt_ipfix_bind_ip;
 unsigned opt_ipfix_bind_port;
+
+bool opt_hep;
+bool opt_hep_set;
+string opt_hep_bind_ip;
+unsigned opt_hep_bind_port;
+bool opt_hep_bind_udp;
 
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
@@ -3376,7 +3389,7 @@ int main(int argc, char *argv[]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
-			if(!useCmdLineConfig) {
+			if(!useCmdLineConfig && sverb.check_config) {
 				cConfigMap configMap1 = CONFIG.getConfigMap();
 				cConfigMap configMap2;
 				CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
@@ -4537,7 +4550,8 @@ int main_init_read() {
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
 		tcpReassemblySipExt->setSimpleByAck();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
-		tcpReassemblySipExt->setSmartMaxSeqByPsh();
+		tcpReassemblySipExt->setSmartMaxSeq();
+		//tcpReassemblySipExt->setSmartMaxSeqByPsh();
 		tcpReassemblySipExt->setSkipZeroData();
 		sipTcpData = new FILE_LINE(42032) SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
@@ -4562,6 +4576,9 @@ int main_init_read() {
 		if(opt_sip_tcp_reassembly_ext_complete_mod) {
 			tcpReassemblySipExt->setCompleteMod(opt_sip_tcp_reassembly_ext_complete_mod);
 		}
+		if(sverb.tcpreassembly_sip_dumper) {
+			tcpReassemblySipExt->enableDumper(sverb.tcpreassembly_sip_dumper, sverb.tcpreassembly_sip_dumper_ports);
+		}
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -4579,6 +4596,10 @@ int main_init_read() {
 	
 	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
 		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
+	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
 	}
 	
 	clear_readend();
@@ -4717,6 +4738,10 @@ int main_init_read() {
 				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 				print_t2_queue_full_stat();
 				#endif
+				if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
+					extern void dtls_queue_cleanup();
+					dtls_queue_cleanup();
+				}
 			}
 			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
 				USLEEP(10000);
@@ -4944,6 +4969,10 @@ void main_term_read() {
 	
 	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
 		IPFixServerStop();
+	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStop();
 	}
 
 	terminate_processpacket();
@@ -6836,6 +6865,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
@@ -7086,6 +7116,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
+						->addValues("ext:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 			setDisableIfEnd();
 	group("manager");
@@ -7308,7 +7340,10 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
 				->addValues("memory:1|persistent:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -7805,6 +7840,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -8254,6 +8293,10 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
 	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
 	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
+	else if(verbParam.substr(0, 25) == "tcpreassembly_sip_dumper=")
+								{ sverb.tcpreassembly_sip_dumper = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_sip_dumper, verbParam.c_str() + 25); }
+	else if(verbParam.substr(0, 31) == "tcpreassembly_sip_dumper_ports=")
+								{ sverb.tcpreassembly_sip_dumper_ports = new FILE_LINE(0) char[strlen(verbParam.c_str() + 31) + 1]; strcpy(sverb.tcpreassembly_sip_dumper_ports, verbParam.c_str() + 31); }
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
@@ -8338,6 +8381,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
+	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
@@ -8381,6 +8425,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
+	else if(verbParam == "check_config")			sverb.check_config = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9152,8 +9197,8 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_sip) {
 			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 		}
-		if(opt_pcap_dump_tar_compress_rtp) {
-			opt_pcap_dump_zip_rtp = FileZipHandler::compress_na;
+		if(opt_pcap_dump_zip_rtp != FileZipHandler::compress_na) {
+			opt_pcap_dump_tar_compress_rtp = 0;
 		}
 		if(opt_pcap_dump_tar_compress_graph) {
 			opt_gzipGRAPH = FileZipHandler::compress_na;
@@ -9311,6 +9356,10 @@ void set_context_config() {
 		}
 	}
 	
+	ssl_client_random_use = ssl_client_random_enable || 
+				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
+				ssl_master_secret_file[0];
+	
 	if(opt_callidmerge_header[0] &&
 	   !(useNewCONFIG ? CONFIG.isSet("rtpip_find_endpoints") : opt_rtpip_find_endpoints_set)) {
 		opt_rtpip_find_endpoints = 1;
@@ -9384,6 +9433,15 @@ void set_context_config() {
 	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
 		opt_ipfix = false;
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	if(!(useNewCONFIG ? CONFIG.isSet("hep") : opt_hep_set)) {
+		opt_hep = !opt_hep_bind_ip.empty() && opt_hep_bind_port;
+	}
+	
+	if(opt_hep && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_hep = false;
+		syslog(LOG_ERR, "the hep option is not supported on a client with packet buffer sending or in mirror sender mode");
 	}
 	
 	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
@@ -9787,14 +9845,14 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 }
 
 void parse_config_item(const char *config, vector<string> *item) {
-	vector<string> items = split(config, ";", true);
+	vector<string> items = split(config, split2chars(";,"), true);
 	for(unsigned i = 0; i < items.size(); i++) {
 		item->push_back(items[i]);
 	}
 }
 
 void parse_config_item(const char *config, vector<int> *item) {
-	vector<string> items = split(config, ";", true);
+	vector<string> items = split(config, split2chars(";,"), true);
 	for(unsigned i = 0; i < items.size(); i++) {
 		item->push_back(atoi(items[i].c_str()));
 	}
@@ -11337,6 +11395,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
+	if((value = ini.GetValue("general", "disable_cdr_fields_rtp", NULL))) {
+		opt_disable_cdr_fields_rtp = yesno(value);
+	}
 	if((value = ini.GetValue("general", "disable_cdr_indexes_rtp", NULL))) {
 		opt_disable_cdr_indexes_rtp = yesno(value);
 	}
@@ -11764,8 +11825,17 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_store_sessions_expiration_hours", NULL))) {
 		opt_ssl_store_sessions_expiration_hours = atoi(value);
 	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_backward", NULL))) {
+		opt_ssl_aead_try_seq_backward = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_forward", NULL))) {
+		opt_ssl_aead_try_seq_forward = atoi(value);
+	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
 		opt_ssl_enable_dtls_queue = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
+		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);
@@ -12301,6 +12371,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
 		opt_destroy_calls_period = atoi(value);
 	}
+	if((value = ini.GetValue("general", "safe_cleanup_calls", NULL))) {
+		opt_safe_cleanup_calls = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
 	if((value = ini.GetValue("general", "destroy_calls_in_storing_cdr", NULL))) {
 		opt_destroy_calls_in_storing_cdr = yesno(value);
 	}
@@ -12438,6 +12511,20 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ipfix_bind_port", NULL))) {
 		opt_ipfix_bind_port = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "hep", NULL))) {
+		opt_hep = yesno(value);
+		opt_hep_set = true;
+	}
+	if((value = ini.GetValue("general", "hep_bind_ip", NULL))) {
+		opt_hep_bind_ip = value;
+	}
+	if((value = ini.GetValue("general", "hep_bind_port", NULL))) {
+		opt_hep_bind_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "hep_bind_udp", NULL))) {
+		opt_hep_bind_udp = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

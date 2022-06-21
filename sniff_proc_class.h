@@ -469,7 +469,7 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
-		volatile unsigned thread_index;
+		volatile int thread_index;
 		volatile int processing;
 		void null() {
 			batch = NULL;
@@ -1497,7 +1497,7 @@ private:
 		__sync_lock_release(&this->_sync_push);
 	}
 	inline bool need_lock_push() {
-		return(opt_enable_ssl || opt_ipfix);
+		return(opt_enable_ssl || opt_ipfix || opt_hep);
 	}
 private:
 	eTypePreProcessThread typePreProcessThread;
@@ -1687,12 +1687,18 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
+		#if EXPERIMENTAL_PROCESS_RTP_MOD_02
+		volatile int thread_index;
+		#endif
 		volatile int processing;
 		void null() {
 			batch = NULL;
 			start = 0;
 			end = 0;
 			skip = 0;
+			#if EXPERIMENTAL_PROCESS_RTP_MOD_02
+			thread_index = 0;
+			#endif
 			processing = 0;
 		}
 	};

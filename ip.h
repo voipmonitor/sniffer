@@ -966,30 +966,40 @@ struct tcphdr2{
 #  if __BYTE_ORDER == __LITTLE_ENDIAN
 	u_int16_t res1:4;
 	u_int16_t doff:4;
-	u_int16_t fin:1;
-	u_int16_t syn:1;
-	u_int16_t rst:1;
-	u_int16_t psh:1;
-	u_int16_t ack:1;
-	u_int16_t urg:1;
-	u_int16_t res2:2;
+	union {
+		struct {
+			u_int16_t fin:1;
+			u_int16_t syn:1;
+			u_int16_t rst:1;
+			u_int16_t psh:1;
+			u_int16_t ack:1;
+			u_int16_t urg:1;
+			u_int16_t res2:2;
+		} __attribute__((packed)) flags_bit;
+		u_int8_t flags;
+	};
 #  elif __BYTE_ORDER == __BIG_ENDIAN
 	u_int16_t doff:4;
 	u_int16_t res1:4;
-	u_int16_t res2:2;
-	u_int16_t urg:1;
-	u_int16_t ack:1;
-	u_int16_t psh:1;
-	u_int16_t rst:1;
-	u_int16_t syn:1;
-	u_int16_t fin:1;
+	union {
+		struct {
+			u_int16_t res2:2;
+			u_int16_t urg:1;
+			u_int16_t ack:1;
+			u_int16_t psh:1;
+			u_int16_t rst:1;
+			u_int16_t syn:1;
+			u_int16_t fin:1;
+		} __attribute__((packed)) flags_bit;
+		u_int8_t flags;
+	};
 #  else
 #   error "Adjust your <bits/endian.h> defines"
 #  endif
 	u_int16_t window;
 	u_int16_t check;
 	u_int16_t urg_ptr;
-};
+} __attribute__((packed));
 
 struct udphdr2 {
 	inline vmPort get_source() {
@@ -1008,7 +1018,7 @@ struct udphdr2 {
         uint16_t        _dest;
         uint16_t        len;
         uint16_t        check;
-};
+} __attribute__((packed));
 
 
 struct vmIPport {
@@ -1019,8 +1029,8 @@ struct vmIPport {
 		this->port = port;
 	}
 	inline bool operator == (const vmIPport& other) const {
-		return(this->ip == other.ip &&
-		       this->port == other.port);
+		return(this->port == other.port &&
+		       this->ip == other.ip);
 	}
 	inline bool operator < (const vmIPport& other) const { 
 		return(this->ip < other.ip ||
