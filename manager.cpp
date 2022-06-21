@@ -3006,6 +3006,8 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(timeout > 0) {
 		filter->timeout_s = timeout;
 	}
+	string disable_timeout_warn_msg = jsonParameters.getValue("disable_live_sniffer_timeout_warning");
+	filter->disable_timeout_warn_msg = disable_timeout_warn_msg == "true" ? true : false;
 	updateLivesnifferfilters();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
