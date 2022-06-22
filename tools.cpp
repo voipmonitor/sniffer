@@ -1454,7 +1454,7 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 bool incorrectCaplenDetected = false;
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
-		      u_char *data, unsigned int datalen, bool forceCaplen,
+		      u_char *data, unsigned int datalen, u_int32_t forceDatalen,
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
 	extern int opt_convert_dlt_sll_to_en10;
@@ -1515,10 +1515,11 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 								      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
 								      sizeof(udphdr2));
 						if(hdrsSize + datalen != header->caplen ||
+						   (forceDatalen && forceDatalen < datalen) ||
 						   forceVirtualUdp == 2) {
 							unsigned datalen_orig = datalen;
-							if(forceCaplen && header->caplen > hdrsSize) {
-								datalen = header->caplen - hdrsSize;
+							if(forceDatalen && forceDatalen < datalen) {
+								datalen = forceDatalen;
 							}
 							u_char *packet_mod;
 							pcap_pkthdr *header_mod;

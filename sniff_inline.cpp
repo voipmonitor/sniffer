@@ -486,52 +486,54 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->protocol = (*header_packet)->eth_protocol;
 			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 			ppd->pid = (*header_packet)->pid;
-		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
-					   &ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
-			ppd->header_ip_encaps_offset = 0xFFFF;
-			(*header_packet)->detect_headers |= 0x01;
-			(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
-			(*header_packet)->header_ip_offset = ppd->header_ip_offset;
-			(*header_packet)->eth_protocol = ppd->protocol;
-			(*header_packet)->pid = ppd->pid;
-			(*header_packet)->pid.flags = 0;
-			if(!(ppd->protocol == ETHERTYPE_IP ||
-			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFF)) {
-				if(sverb.tcpreplay) {
-					if(ppd->protocol == 0) {
-						ppd->header_ip_offset += 2;
-						ppd->protocol = ETHERTYPE_IP;
+		} else {
+			ppd->pid.clear();
+			if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
+					    &ppd->header_eth, NULL,
+					    ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+				ppd->header_ip_encaps_offset = 0xFFFF;
+				(*header_packet)->detect_headers |= 0x01;
+				(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+				(*header_packet)->header_ip_offset = ppd->header_ip_offset;
+				(*header_packet)->eth_protocol = ppd->protocol;
+				(*header_packet)->pid = ppd->pid;
+				if(!(ppd->protocol == ETHERTYPE_IP ||
+				     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
+				     ppd->header_ip_offset == 0xFFFF)) {
+					if(sverb.tcpreplay) {
+						if(ppd->protocol == 0) {
+							ppd->header_ip_offset += 2;
+							ppd->protocol = ETHERTYPE_IP;
+						} else {
+							return(0);
+						}
 					} else {
+						pcapProcessEvalError(bad_eth_protocol, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 						return(0);
 					}
+				}
+				if(ppd->header_ip_offset == 0xFFFF) {
+					ppd->header_ip = NULL;
 				} else {
-					pcapProcessEvalError(bad_eth_protocol, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
+					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+					if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+					     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
+						pcapProcessEvalError(bad_ip_version, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						return(0);
+					}
+					if((ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) && !sverb.process_rtp_header)  {
+						pcapProcessEvalError(bad_ip_length, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						return(0);
+					}
 				}
-			}
-			if(ppd->header_ip_offset == 0xFFFF) {
-				ppd->header_ip = NULL;
 			} else {
-				ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
-					pcapProcessEvalError(bad_ip_version, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
-				}
-				if((ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) && !sverb.process_rtp_header)  {
-					pcapProcessEvalError(bad_ip_length, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
-				}
+				pcapProcessEvalError(bad_datalink, *HPH(*header_packet), HPP(*header_packet),
+						     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+				return(0);
 			}
-		} else {
-			pcapProcessEvalError(bad_datalink, *HPH(*header_packet), HPP(*header_packet),
-					     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-			return(0);
 		}
 	} else {
 		pcap_header_plus2 = (pcap_pkthdr_plus2*)block_store->get_header(block_store_index);
@@ -542,58 +544,60 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->protocol = pcap_header_plus2->eth_protocol;
 			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(packet + ppd->header_ip_offset);
 			ppd->pid = pcap_header_plus2->pid;
-		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
-					   &ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
-			ppd->header_ip_encaps_offset = 0xFFFF;
-			pcap_header_plus2->detect_headers |= 0x01;
-			pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
-			pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
-			pcap_header_plus2->eth_protocol = ppd->protocol;
-			pcap_header_plus2->pid = ppd->pid;
-			pcap_header_plus2->pid.flags = 0;
-			if(!(ppd->protocol == ETHERTYPE_IP ||
-			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFF)) {
-				if(sverb.tcpreplay) {
-					if(ppd->protocol == 0) {
-						ppd->header_ip_offset += 2;
-						ppd->protocol = ETHERTYPE_IP;
+		} else {
+			ppd->pid.clear();
+			if(parseEtherHeader(pcapLinklayerHeaderType, packet,
+					    &ppd->header_eth, NULL,
+					    ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+				ppd->header_ip_encaps_offset = 0xFFFF;
+				pcap_header_plus2->detect_headers |= 0x01;
+				pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+				pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
+				pcap_header_plus2->eth_protocol = ppd->protocol;
+				pcap_header_plus2->pid = ppd->pid;
+				if(!(ppd->protocol == ETHERTYPE_IP ||
+				     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
+				     ppd->header_ip_offset == 0xFFFF)) {
+					if(sverb.tcpreplay) {
+						if(ppd->protocol == 0) {
+							ppd->header_ip_offset += 2;
+							ppd->protocol = ETHERTYPE_IP;
+						} else {
+							pcap_header_plus2->ignore = true;
+							return(0);
+						}
 					} else {
+						pcapProcessEvalError(bad_eth_protocol, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 						pcap_header_plus2->ignore = true;
 						return(0);
 					}
+				}
+				if(ppd->header_ip_offset == 0xFFFF) {
+					ppd->header_ip = NULL;
 				} else {
-					pcapProcessEvalError(bad_eth_protocol, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
+					ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
+					if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+					     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
+						pcapProcessEvalError(bad_ip_version, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						pcap_header_plus2->ignore = true;
+						return(0);
+					}
+					if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > pcap_header_plus2->get_len()) {
+						pcapProcessEvalError(bad_ip_length, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						pcap_header_plus2->ignore = true;
+						return(0);
+					}
 				}
-			}
-			if(ppd->header_ip_offset == 0xFFFF) {
-				ppd->header_ip = NULL;
 			} else {
-				ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
-				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
-					pcapProcessEvalError(bad_ip_version, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
-				}
-				if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > pcap_header_plus2->get_len()) {
-					pcapProcessEvalError(bad_ip_length, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
-				}
+				pcapProcessEvalError(bad_datalink, pcap_header_plus2, packet,
+						     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+				pcap_header_plus2->ignore = true;
+				return(0);
 			}
-		} else {
-			pcapProcessEvalError(bad_datalink, pcap_header_plus2, packet,
-					     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-			pcap_header_plus2->ignore = true;
-			return(0);
-		}
+	}
 	}
 	
 	int is_ip_frag = 0;

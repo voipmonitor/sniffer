@@ -761,7 +761,7 @@ public:
 		return(this->open(typeSpoolFile, fileName, NULL, dlt));
 	}
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
-		  u_char *data = NULL, unsigned int datalen = 0, bool forceCaplen = false,
+		  u_char *data = NULL, unsigned int datalen = 0, u_int32_t forceDatalen = 0,
 		  vmIP saddr = 0, vmIP daddr = 0, vmPort source = 0, vmPort dest = 0,
 		  bool istcp = false, u_int8_t forceVirtualUdp = false, timeval *ts = NULL);
 	void close(bool updateFilesQueue = true);

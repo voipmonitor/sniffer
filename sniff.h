@@ -981,8 +981,8 @@ private:
 };
 
 
-void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false, bool forceCaplen = false);
-void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false, bool forceCaplen = false);
+void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
+void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
 
 
 typedef struct {

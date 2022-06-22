@@ -3829,7 +3829,6 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_
 			     block_store, block_store_index,
 			     ppf,
 			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceName().c_str()));
-	return(0);
 }
 
 string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeriod*/) {
@@ -4974,7 +4973,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
-			bool okPush = true;;
+			bool okPush = true;
 			if(opt_udpfrag) {
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 							NULL, 0,

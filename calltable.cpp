@@ -2336,12 +2336,17 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 			if(packetS->isStun()) {
 				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
-			   packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
-				unsigned int tmp_u32 = packetS->header_pt->caplen;
-				packetS->header_pt->caplen = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
-								 packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
-				save_packet(this, packetS, _t_packet_rtp, false, true);
-				packetS->header_pt->caplen = tmp_u32;
+				  packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
+				unsigned int caplen_new = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
+							      packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
+				if(caplen_new < packetS->header_pt->caplen) {
+					unsigned int caplen_old = packetS->header_pt->caplen;
+					packetS->header_pt->caplen = caplen_new;
+					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, RTP_FIXED_HEADERLEN);
+					packetS->header_pt->caplen = caplen_old;
+				} else {
+					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);
+				}
 			}
 		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
 			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);

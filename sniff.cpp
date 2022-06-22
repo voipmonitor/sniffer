@@ -807,7 +807,7 @@ static int parse_packet__message(packet_s_process *packetS, bool strictCheckLeng
    type - 1 is SIP, 2 is RTP, 3 is RTCP
 
 */
-void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp, bool forceCaplen) {
+void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp, u_int32_t forceDatalen) {
 	if(call->flags & FLAG_SKIPCDR) {
 		return;
 	}
@@ -939,12 +939,12 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 				if(call->getPcapSip()->isOpen()){
 					if(type == _t_packet_sip) {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
-									 (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, false,
+									 (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 0,
 									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp, 
 									 forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL);
 					} else {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false,
-									 (u_char*)packetS->data_(), packetS->datalen_(), false,
+									 (u_char*)packetS->data_(), packetS->datalen_(), 0,
 									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 					}
 				}
@@ -955,13 +955,13 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_rtcp:
 				if(call->getPcapRtp()->isOpen()){
 					call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
-								 (u_char*)packetS->data_(), packetS->datalen_(), forceCaplen,
+								 (u_char*)packetS->data_(), packetS->datalen_(), forceDatalen,
 								 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 				} else if(type == _t_packet_rtcp ? enable_save_rtcp(call) : enable_save_rtp_packet(call, type)) {
 					string pathfilename = call->get_pathfilename(tsf_rtp);
 					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
 						call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
-									 (u_char*)packetS->data_(), packetS->datalen_(), forceCaplen,
+									 (u_char*)packetS->data_(), packetS->datalen_(), forceDatalen,
 									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 						if(verbosity > 3) { 
 							syslog(LOG_NOTICE,"pcap_filename: [%s]\n", pathfilename.c_str());
@@ -974,12 +974,12 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			if (call->getPcap()->isOpen()){
 				if(type == _t_packet_sip) {
 					call->getPcap()->dump(header, packet, packetS->dlt, false, 
-							      (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, false,
+							      (u_char*)packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, 0,
 							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp, 
 							      forceVirtualUdp == 2 ? packetS->getTimeval_pt() : NULL);
 				} else {
 					call->getPcap()->dump(header, packet, packetS->dlt, false,
-							      (u_char*)packetS->data_(), packetS->datalen_(), false,
+							      (u_char*)packetS->data_(), packetS->datalen_(), 0,
 							      packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 				}
 			}
@@ -994,9 +994,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 	}
 }
 
-void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp, bool forceCaplen) {
+void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp, u_int32_t forceDatalen) {
 	if(type != _t_packet_sip) {
-		save_packet(call, (packet_s_process*)packetS, type, forceVirtualUdp, forceCaplen);
+		save_packet(call, (packet_s_process*)packetS, type, forceVirtualUdp, forceDatalen);
 	}
 }
 
