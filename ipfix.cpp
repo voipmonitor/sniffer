@@ -160,7 +160,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 		pcap_pkthdr *tcpHeader;
 		u_char *tcpPacket;
 		createSimpleTcpDataPacket(sizeof(header_eth), &tcpHeader,  &tcpPacket,
-					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(),
+					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(), 0,
 					  src.ip, dst.ip, src.port, dst.port,
 					  0, 0, 0,
 					  time.tv_sec, time.tv_usec, global_pcap_dlink);
@@ -188,7 +188,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 		pcap_pkthdr *udpHeader;
 		u_char *udpPacket;
 		createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
-					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(),
+					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(), 0,
 					  src.ip, dst.ip, src.port, dst.port,
 					  time.tv_sec, time.tv_usec);
 		unsigned iphdrSize = ((iphdr2*)(udpPacket + sizeof(header_eth)))->get_hdr_size();

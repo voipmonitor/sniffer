@@ -2297,7 +2297,7 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 						htons(((udphdr2*)(packetS->packet + packetS->header_ip_offset + packetS->header_ip_()->get_hdr_size()))->len) - 
 						sizeof(udphdr2);
 					createSimpleUdpDataPacket(sizeof(ether_header), &header, &packet,
-								  (u_char*)header_eth, (u_char*)packetS->data_(), dataLen,
+								  (u_char*)header_eth, (u_char*)packetS->data_(), dataLen, 0,
 								  packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
 								  packetS->header_pt->ts.tv_sec, packetS->header_pt->ts.tv_usec);
 					udptlDumper->dumper->dump(header, packet, DLT_EN10MB);
@@ -2340,7 +2340,7 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 				unsigned int tmp_u32 = packetS->header_pt->caplen;
 				packetS->header_pt->caplen = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
 								 packetS->dataoffset_() + RTP_FIXED_HEADERLEN);
-				save_packet(this, packetS, _t_packet_rtp);
+				save_packet(this, packetS, _t_packet_rtp, false, true);
 				packetS->header_pt->caplen = tmp_u32;
 			}
 		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {

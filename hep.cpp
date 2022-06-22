@@ -95,7 +95,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
 			createSimpleTcpDataPacket(sizeof(header_eth), &tcpHeader,  &tcpPacket,
-						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(),
+						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(), 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  0, 0, (hepData.set_flags & (1ull << _hep_chunk_tcp_flag)) ? hepData.tcp_flag : 0,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds, global_pcap_dlink);
@@ -122,7 +122,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 			pcap_pkthdr *udpHeader;
 			u_char *udpPacket;
 			createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
-						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(),
+						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(), 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds);
 			unsigned iphdrSize = ((iphdr2*)(udpPacket + sizeof(header_eth)))->get_hdr_size();
