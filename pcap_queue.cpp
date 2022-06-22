@@ -2950,10 +2950,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					} else {
 						kill_reason = "timeout (define in gui)";
 					}
-					if(!log) {
-						log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+					if (!(iter->second->disable_timeout_warn_msg)) {
+						if(!log) {
+							log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+						}
+						log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
 					}
-					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
 					delete iter->second;
 					usersniffer_kill_reason[iter->first] = kill_reason;
 					usersniffer.erase(iter++);

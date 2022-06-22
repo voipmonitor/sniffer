@@ -1338,6 +1338,7 @@ struct livesnifferfilter_s_base {
 	unsigned char lv_siptypes[MAXLIVEFILTERS];
         int uid;
 	int timeout_s;
+	bool disable_timeout_warn_msg;
         time_t created_at;
 	state_s state;
 	SimpleBuffer parameters;
