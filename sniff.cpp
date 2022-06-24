@@ -3565,6 +3565,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	int lastSIPresponseNum = 0;
 	bool existInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
+	bool reverseInviteSdaddr_ignore_port = false;
 	bool reverseInviteConfirmSdaddr = false;
 	Call::sInviteSD_Addr *mainInviteForReverse = NULL;
 	Call::sInviteSD_Addr *reverseInvite = NULL;
@@ -3584,6 +3585,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool domain_to_uri_detected = false;
 	char domain_to[1024] = "";
 	bool domain_to_detected = false;
+	bool in_dialog_invite = false;
 	bool dont_save = false;
 	u_int64_t packet_time_us = packetS->getTimeUS();
 	
@@ -3759,17 +3761,20 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				inviteSdaddrIndex = inviteSdaddrCounter;
 				++iter->counter;
 				break;
-			} else if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport &&
-				  packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
-				reverseInviteSdaddr = true;
-				if(opt_sdp_check_direction_ext) {
-					mainInviteForReverse = &(*iter);
+			} else if(packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
+				if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport) {
+					reverseInviteSdaddr = true;
+					if(opt_sdp_check_direction_ext) {
+						mainInviteForReverse = &(*iter);
+					}
+					++iter->counter_reverse;
+					if(sverb.reverse_invite) {
+						cout << "reverse invite: invite / " << call->call_id << endl;
+					}
+					break;
+				} else {
+					reverseInviteSdaddr_ignore_port = true;
 				}
-				++iter->counter_reverse;
-				if(sverb.reverse_invite) {
-					cout << "reverse invite: invite / " << call->call_id << endl;
-				}
-				break;
 			}
 			++inviteSdaddrCounter;
 		}
@@ -4036,6 +4041,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(call->invitecseq_in_dialog.size() > 10) {
 						call->invitecseq_in_dialog.pop_front();
 					}
+					in_dialog_invite = true;
 				} else {
 					call->invitecseq_next.push_back(packetS->cseq);
 				}
@@ -4667,7 +4673,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						   &packetS->parseContents,
 						   true);
 		}
-		if(!reverseInviteSdaddr) {
+		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
 			if((packetS->source_() != call->getSipcallerport() || packetS->saddr_() != call->getSipcallerip()) && 
 			   !call->in_proxy(packetS->saddr_(), packetS->source_())) {
 				call->proxy_add(packetS->saddr_(), packetS->source_());
@@ -9809,7 +9815,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
 		Call *call = packetS->call ? packetS->call : packetS->call_created;
-		bool bad_flags = call && (call->alloc_flag != 1 || call->attemptsClose != 0);
+		bool bad_flags = call && (call->alloc_flag != 1 || (opt_safe_cleanup_calls ? call->stopProcessing : call->attemptsClose != 0));
 		if(!bad_flags) {
 			if(opt_detect_alone_bye && call && call->typeIs(BYE)) {
 				process_packet_sip_alone_bye(packetS);

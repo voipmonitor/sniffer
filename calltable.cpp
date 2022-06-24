@@ -1606,6 +1606,10 @@ bool
 Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
  
 #if EXPERIMENTAL_LITE_RTP_MOD
+ 
+	if(first_rtp_time_us == 0) {
+		first_rtp_time_us = getTimeUS(packetS->header_pt);
+	}
 	
 	RTPFixedHeader* rtp_header = RTP::getHeader(packetS->data_());
 	
