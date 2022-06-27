@@ -62,6 +62,7 @@
 #include "sniff_proc_class.h"
 #include "charts.h"
 #include "server.h"
+#include "separate_processing.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -800,12 +801,31 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 
 	suppress_rtp_read_due_to_insufficient_hw_performance = false;
 	suppress_rtp_proc_due_to_insufficient_hw_performance = false;
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	sp_sent_close_call = false;
+	sp_arrived_rtp_streams = false;
+	sp_stop_rtp_processing_at = 0;
+	sp_do_destroy_call_at = 0;
+	#endif
+	
 }
 
 u_int64_t Call::counter_s = 0;
 
 void
 Call::hashRemove(bool useHashQueueCounter) {
+ 
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		for(set<vmIPport>::iterator iter = sp_rtp_ipport.begin(); iter != sp_rtp_ipport.end(); iter++) {
+			calltable->hashRemove(this, iter->ip, iter->port, false, true, useHashQueueCounter);
+			// TODO: evDestroyIpPortRtpStream ?
+		}
+		return;
+	}
+	#endif
+ 
 	for(int i = 0; i < ipport_n; i++) {
 		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, true, useHashQueueCounter);
 		if(opt_rtcp) {
@@ -1370,11 +1390,11 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 			    this->ip_port[sessidIndex].port != port ||
 			    this->ip_port[sessidIndex].iscaller != iscaller)) {
 				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
-				((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
+				((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), this, iscaller, 0, sdp_flags);
 				if(opt_rtcp) {
 					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), true);
 					if(!sdp_flags.rtcp_mux && !sdp_flags.is_application()) {
-						((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
+						((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), this, iscaller, 1, sdp_flags);
 					}
 				}
 				//cout << "change ip/port for sessid " << sessid << " ip:" << addr.getString() << "/" << this->ip_port[sessidIndex].addr.getString() << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
@@ -1397,9 +1417,9 @@ Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAdd
 			     srtp_crypto_config_list, srtp_fingerprint,
 			     to, to_uri, domain_to, domain_to_uri, branch, 
 			     iscaller, rtpmap, sdp_flags) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, ts, this, iscaller, 0, sdp_flags);
+		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), this, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
-			((Calltable*)calltable)->hashAdd(addr, port.inc(), ts, this, iscaller, 1, sdp_flags);
+			((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), this, iscaller, 1, sdp_flags);
 		}
 	}
 }
@@ -6306,7 +6326,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 105;
 	} else if(zombie_timeout_exceeded) {
 		bye = 107;
-	} else if(sipwithoutrtp_timeout_exceeded) {
+	} else if(sipwithoutrtp_timeout_exceeded && !first_rtp_time_us) {
 		bye = 108;
 	} else if(oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
 		bye = 101;
@@ -9636,14 +9656,8 @@ Calltable::~Calltable() {
 
 /* add node to hash. collisions are linked list of nodes*/
 void
-Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
+Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
-	call->hash_add_lock();
-	if(call->end_call_rtp) {
-		call->hash_add_unlock();
-		return;
-	}
-	
 	if(sverb.hash_rtp) {
 		cout << "hashAdd: " 
 		     << call->call_id << " " << addr.getString() << ":" << port << " " 
@@ -9652,12 +9666,37 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 		     << endl;
 	}
 	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_sip) {
+		cSeparateProcessing::sDataRtpIpPort dataRtpIpPort;
+		memset((void*)&dataRtpIpPort, 0, sizeof(dataRtpIpPort));
+		dataRtpIpPort.add = true;
+		dataRtpIpPort.ip = addr;
+		dataRtpIpPort.port = port;
+		dataRtpIpPort.is_caller = iscaller;
+		dataRtpIpPort.is_rtcp = is_rtcp;
+		dataRtpIpPort.sdp_flags = sdp_flags;
+		sendRtpIpPort(call->call_id.c_str(), 
+			      call->first_packet_time_us, 
+			      call->flags,
+			      time_us,
+			      &dataRtpIpPort);
+		return;
+	}
+	#endif
+ 
+	call->hash_add_lock();
+	if(call->end_call_rtp) {
+		call->hash_add_unlock();
+		return;
+	}
+	
 	if(opt_hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_add;
 		hmd.addr = addr;
 		hmd.port = port;
-		hmd.time_s = ts ? ts->tv_sec : 0;
+		hmd.time_s = TIME_US_TO_S(time_us);
 		hmd.call = call;
 		hmd.iscaller = iscaller;
 		hmd.is_rtcp = is_rtcp;
@@ -9670,7 +9709,7 @@ Calltable::hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int i
 		_applyHashModifyQueue(true);
 		unlock_hash_modify_queue();
 	} else {
-		_hashAdd(addr, port, ts ? ts->tv_sec : 0, call, iscaller, is_rtcp, sdp_flags);
+		_hashAdd(addr, port, TIME_US_TO_S(time_us), call, iscaller, is_rtcp, sdp_flags);
 	}
 	
 	call->hash_add_unlock();
@@ -10375,6 +10414,11 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 
 #endif
 
+void
+Calltable::_hashAddExt(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
+	_hashAdd(addr, port, time_s, call, iscaller, is_rtcp, sdp_flags, useLock);
+}
+
 /* remove node from hash */
 void
 Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
@@ -10386,7 +10430,25 @@ Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore
 		     << (rtcp ? "rtcp" : "") << " "
 		     << endl;
 	}
-
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_sip) {
+		cSeparateProcessing::sDataRtpIpPort dataRtpIpPort;
+		memset((void*)&dataRtpIpPort, 0, sizeof(dataRtpIpPort));
+		dataRtpIpPort.add = false;
+		dataRtpIpPort.ip = addr;
+		dataRtpIpPort.port = port;
+		dataRtpIpPort.is_rtcp = rtcp;
+		dataRtpIpPort.ignore_rtcp_check = ignore_rtcp_check;
+		sendRtpIpPort(call->call_id.c_str(), 
+			      call->first_packet_time_us, 
+			      call->flags,
+			      0,
+			      &dataRtpIpPort);
+		return;
+	}
+	#endif
+	
 	if(opt_hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_remove;
@@ -10672,6 +10734,11 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignor
 }
 
 #endif
+
+int
+Calltable::_hashRemoveExt(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
+	return(_hashRemove(call, addr, port, rtcp, ignore_rtcp_check, use_lock));
+}
 
 int
 Calltable::hashRemove(Call *call, bool useHashQueueCounter) {
@@ -11788,6 +11855,12 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 int
 Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *file, int line ) {
  
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		return(0);
+	}
+	#endif
+ 
 	u_int64_t currTimeMS = getTimeMS_rdtsc();
 	u_int32_t currTimeS = currTimeMS / 1000;
 	u_int64_t beginTimeMS = currTimeMS;
@@ -11914,7 +11987,11 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currTimeS_unshift)) {
 						closeCall = true;
 						call->bye_timeout_exceeded = true;
-					} else if(call->first_rtp_time_us &&
+					} else if(
+						  #if EXPERIMENTAL_SEPARATE_PROCESSSING
+						  separate_processing() != cSeparateProcessing::_sip &&
+						  #endif
+						  call->first_rtp_time_us &&
 						  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
 						closeCall = true;
 						call->rtp_timeout_exceeded = true;
@@ -11944,8 +12021,62 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					}
 				}
 				if(closeCall) {
-					++call->attemptsClose;
+					if(sverb.cleanup_calls_log) {
+						ostringstream str;
+						str << " *** closeCall " << call->call_id
+						    << " " << (call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift ?
+								"destroy_call_at" :
+							       call->bye_timeout_exceeded ?
+								"bye timeout" :
+							       call->rtp_timeout_exceeded ?
+								"rtp timeout" :
+							       call->sipwithoutrtp_timeout_exceeded ?
+								"sip without rtp" :
+							       call->absolute_timeout_exceeded ?
+								"absolute timeout" :
+							       call->zombie_timeout_exceeded ?
+								"zombie timeout" :
+							       call->oneway_timeout_exceeded ?
+								"oneway timeout" :
+								"other");
+						if(call->stopProcessing) {
+							str << " / stop processing";
+						}
+						#if EXPERIMENTAL_SEPARATE_PROCESSSING
+						if(separate_processing()) {
+							if(call->sp_sent_close_call) {
+								str << " / sent close";
+							}
+							if(call->sp_arrived_rtp_streams) {
+								str << " / arrived rtp streams";
+							}
+						}
+						#endif
+						cout << str.str() << endl;
+					}
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					if(separate_processing()) {
+						if(!call->sp_sent_close_call) {
+							sendCloseCall(call->call_id.c_str(), 
+								      call->first_packet_time_us, 
+								      call->flags,
+								      call->sipwithoutrtp_timeout_exceeded ||
+								      call->zombie_timeout_exceeded ? 
+								       cSeparateProcessing::_destroy_call_if_not_exists_rtp :
+								       cSeparateProcessing::_destroy_call, 
+								      packet_time_s ? packet_time_s * 1000000ull :  currTimeMS * 1000ull);
+							call->sp_sent_close_call = true;
+							closeCall = false;
+						} else if(!call->sp_arrived_rtp_streams) {
+							closeCall =  false;
+						}
+					} else {
+						call->removeFindTables(true);
+					}
+					#else
 					call->removeFindTables(true);
+					#endif
+					++call->attemptsClose;
 					if(!closeAll &&
 					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue > 0 ||
@@ -11961,12 +12092,22 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						if(!call->stopProcessing) {
 							call->stopProcessing = true;
 							call->stopProcessingAt_s = currTimeS;
+							/*
+							cout << " *** set stop processing" << endl;
+							*/
 							closeCall = false;
 							++rejectedCalls_count;
 						} else if(currTimeS <= call->stopProcessingAt_s ||
 							  currTimeS - call->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 							closeCall = false;
 							++rejectedCalls_count;
+							/*
+							cout << " *** wait for stop processing" << endl;
+							*/
+						} else {
+							/*
+							cout << " *** ok for stop processing" << endl;
+							*/
 						}
 					}
 				}
@@ -12089,6 +12230,76 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	
 	return rejectedCalls_count;
 }
+
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+void
+Calltable::cleanup_calls_separate_processing_rtp() {
+
+	if(separate_processing() == cSeparateProcessing::_sip) {
+		return;
+	}
+
+	u_int64_t currTimeMS = getTimeMS_rdtsc();
+	u_int32_t currTimeS = currTimeMS / 1000;
+	list<Call*> close_calls;
+	lock_calls_listMAP();
+	for(map<string, Call*>::iterator iter = calls_listMAP.begin(); iter != calls_listMAP.end(); ) {
+		Call *call = iter->second;
+		bool closeCall = false;
+		if(call->sp_do_destroy_call_at && currTimeS > call->sp_do_destroy_call_at + 5) {
+			closeCall = true;
+		} else if(call->first_rtp_time_us && currTimeS > call->get_last_packet_time_s() + rtptimeout) {
+			call->sp_do_destroy_call_at = currTimeS;
+		}
+		if(closeCall) {
+			call->removeFindTables(true);
+			if((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
+			   call->rtppacketsinqueue > 0) {
+				closeCall = false;
+			}
+		}
+		if(closeCall) {
+			close_calls.push_back(call);
+			calls_listMAP.erase(iter++);
+		} else {
+			iter++;
+		}
+	}
+	unlock_calls_listMAP();
+	lock_calls_queue();
+	for(list<Call*>::iterator iter = close_calls.begin(); iter != close_calls.end(); iter++) {
+		Call *call = *iter;
+		call->closePcaps();
+		call->closeGraphs();
+		calls_queue.push_back(call);
+	}
+	unlock_calls_queue();
+	if(!calls_queue.size()) {
+		return;
+	}
+	lock_calls_queue();
+	size_t calls_queue_size = calls_queue.size();
+	size_t calls_queue_position = 0;
+	while(calls_queue_position < calls_queue_size) {
+		Call *call = calls_queue[calls_queue_position];
+		unlock_calls_queue();
+		if(currTimeS > call->sp_do_destroy_call_at + 10 &&
+		   call->isEmptyChunkBuffersCount()) {
+			call->removeFindTables(false, true);
+			sendRtpStreams(call);
+			delete call;
+			lock_calls_queue();
+			calls_queue.erase(calls_queue.begin() + calls_queue_position);
+			--calls_queue_size;
+			--calls_queue_position;
+		} else {
+			lock_calls_queue();
+		}
+		++calls_queue_position;
+	}
+	unlock_calls_queue();
+}
+#endif
 
 int
 Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
@@ -12294,21 +12505,41 @@ size_t Calltable::getCountCalls() {
 }
 
 bool Calltable::enableCallX() {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		return(false);
+	}
+	#endif
 	return(opt_t2_boost && opt_t2_boost_call_threads > 0);
 }
 
 bool Calltable::useCallX() {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		return(false);
+	}
+	#endif
 	return(enableCallX() &&
 	       (preProcessPacketCallX_state == PreProcessPacket::callx_process ||
 		preProcessPacketCallX_state == PreProcessPacket::callx_find));
 }
 
 bool Calltable::enableCallFindX() {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		return(false);
+	}
+	#endif
 	return(opt_t2_boost && opt_t2_boost_call_threads > 0 && opt_t2_boost_call_find_threads &&
 	       !opt_call_id_alternative[0]);
 }
 
 bool Calltable::useCallFindX() {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		return(false);
+	}
+	#endif
 	return(enableCallFindX() &&
 	       preProcessPacketCallX_state == PreProcessPacket::callx_find);
 }

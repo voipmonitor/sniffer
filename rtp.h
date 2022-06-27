@@ -217,11 +217,20 @@ public:
 	inline unsigned received_() {
 		return(received);
 	}
+	inline void set_received_(u_int32_t r) {
+		received = r;
+	}
 	inline unsigned lost_() {
 		return(0);
 	}
+	inline void set_lost_(u_int32_t l) {
+		//
+	}
 	inline int first_codec_() {
 		return(codec);
+	}
+	inline void set_first_codec_(int c) {
+		codec = c;
 	}
 	inline bool ok_other_ip_side_by_sip_() {
 		return(false);
@@ -739,11 +748,20 @@ public:
 	inline unsigned received_() {
 		return(stats.received);
 	}
+	inline void set_received_(u_int32_t r) {
+		stats.received = r;
+	}
 	inline unsigned lost_() {
 		return(stats.lost);
 	}
+	inline void set_lost_(u_int32_t l) {
+		stats.lost = l;
+	}
 	inline int first_codec_() {
 		return(first_codec);
+	}
+	inline void set_first_codec_(int c) {
+		first_codec = c;
 	}
 	inline bool ok_other_ip_side_by_sip_() {
 		return(ok_other_ip_side_by_sip);

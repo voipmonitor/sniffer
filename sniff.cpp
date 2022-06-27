@@ -77,6 +77,7 @@ and insert them into Call class.
 #include "options.h"
 #include "sniff_inline.h"
 #include "config_param.h"
+#include "separate_processing.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -4434,6 +4435,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 													    (opt_quick_save_cdr ? 1 : 5));
 							call->destroy_call_at_bye_confirmed = packetS->getTime_s() + opt_bye_confirmed_timeout;
 						}
+						#if EXPERIMENTAL_SEPARATE_PROCESSSING
+						if(opt_ignore_rtp_after_bye_confirmed && separate_processing() == cSeparateProcessing::_sip) {
+							sendCloseCall(call->call_id.c_str(), 
+								      call->first_packet_time_us, 
+								      call->flags,
+								      cSeparateProcessing::_stop_processing, 
+								      packetS->getTimeUS());
+						}
+						#endif
 					}
 					process_packet__parse_custom_headers(call, packetS);
 					goto endsip_save_packet;
@@ -4556,6 +4566,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					++count_sip_cancel_confirmed;
 					call->setSeenCancelAndOk(true, packet_time_us, packetS->get_callid());
 					process_packet__parse_custom_headers(call, packetS);
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					if(opt_ignore_rtp_after_cancel_confirmed && separate_processing() == cSeparateProcessing::_sip) {
+						sendCloseCall(call->call_id.c_str(), 
+							      call->first_packet_time_us, 
+							      call->flags,
+							      cSeparateProcessing::_stop_processing, 
+							      packetS->getTimeUS());
+					}
+					#endif
 					goto endsip_save_packet;
 				}
 			}
@@ -4599,6 +4618,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
 				if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
 					call->ignore_rtp_after_response_time_usec = packet_time_us;
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					if(separate_processing() == cSeparateProcessing::_sip) {
+						sendCloseCall(call->call_id.c_str(), 
+							      call->first_packet_time_us, 
+							      call->flags,
+							      cSeparateProcessing::_stop_processing, 
+							      packetS->getTimeUS());
+					}
+					#endif
 				}
 			}
 			if(IS_SIP_RES4XX(packetS->sip_method) && call->is_multiple_to_branch()) {
@@ -4627,6 +4655,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->not_acceptable = true;
 				} else if(lastSIPresponseNum == 403) {
 					call->setSeenAuthFailed(true, packet_time_us, packetS->get_callid());
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					if(opt_ignore_rtp_after_auth_failed && separate_processing() == cSeparateProcessing::_sip) {
+						sendCloseCall(call->call_id.c_str(), 
+							      call->first_packet_time_us, 
+							      call->flags,
+							      cSeparateProcessing::_stop_processing, 
+							      packetS->getTimeUS());
+					}
+					#endif
 				} else if(IS_SIP_RES3XX(packetS->sip_method)) {
 					// remove all RTP  
 					call->removeFindTables();
@@ -9606,6 +9643,12 @@ void PreProcessPacket::addNextThread() {
 }
 
 void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_threads) {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_rtp) {
+		PACKET_S_PROCESS_DESTROY(&packetS);
+		return;
+	}
+	#endif
 	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_SIP
 		packetS->next_action = _ppna_push_to_other;
 		return;
@@ -9833,9 +9876,15 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			}
 			if(packetS->_findCall && packetS->call) {
 				__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** -- 1 in_preprocess_queue_before_process_packet " << packetS->call->in_preprocess_queue_before_process_packet << endl;
+				*/
 			}
 			if(packetS->_createCall && packetS->call_created) {
 				__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** -- 2 in_preprocess_queue_before_process_packet " << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
+				*/
 			}
 		}
 		if(opt_quick_save_cdr == 2) {
@@ -9865,9 +9914,15 @@ void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 	}
 	if(packetS->_findCall && packetS->call) {
 		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+		/*
+		cout << " *** -- 3 in_preprocess_queue_before_process_packet " << packetS->call->in_preprocess_queue_before_process_packet << endl;
+		*/
 	}
 	if(packetS->_createCall && packetS->call_created) {
 		__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+		/*
+		cout << " *** -- 4 in_preprocess_queue_before_process_packet " << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
+		*/
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + idPreProcessThread);
 }
@@ -9909,6 +9964,12 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing() == cSeparateProcessing::_sip) {
+		PACKET_S_PROCESS_DESTROY(&packetS);
+		return;
+	}
+	#endif
 	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_RTP
 		PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
 		return;

@@ -223,11 +223,11 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 	senderinfo.sender_pkt_cnt = ntohl(senderinfo.sender_pkt_cnt);
 	senderinfo.sender_octet_cnt = ntohl(senderinfo.sender_octet_cnt);
 
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	u_int32_t cur_lsr = ((senderinfo.timestamp_MSW & 0xffff) << 16) | ((senderinfo.timestamp_LSW & 0xffff0000) >> 16);
 	u_int32_t last_lsr = 0;
 	u_int32_t last_lsr_delay = 0;
 	RTP *rtp_sender = NULL;
-	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
 		if(rtp_i->ssrc == senderinfo.sender_ssrc) {
 			rtp_sender = rtp_i;

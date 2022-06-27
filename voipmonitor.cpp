@@ -98,6 +98,7 @@
 #include "charts.h"
 #include "ipfix.h"
 #include "hep.h"
+#include "separate_processing.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -965,6 +966,13 @@ unsigned storing_cdr_next_threads_count_last_change;
 int opt_storing_cdr_maximum_cdr_per_iteration = 50000;
 
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
+
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+pthread_t cleanup_calls_separate_processing_thread;
+int cleanup_calls_separate_processing_tid;
+bool cleanup_calls_separate_processing_terminating;
+#endif
+
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
@@ -1252,6 +1260,10 @@ int opt_client_server_sleep_ms_if_queue_is_full = 1000;
 
 int opt_livesniffer_timeout_s = 0;
 int opt_livesniffer_tablesize_max_mb = 0;
+
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+int opt_separate_processing = 0;
+#endif
 
 int opt_abort_if_rss_gt_gb = 0;
 int opt_abort_if_alloc_gt_gb = 0;
@@ -2447,6 +2459,25 @@ void *storing_registers( void */*dummy*/ ) {
 	
 	return NULL;
 }
+
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+void *cleanup_calls_separate_processing(void *) {
+	int period = opt_cleanup_calls_period;
+	while(!cleanup_calls_separate_processing_terminating) {
+		u_int64_t startTimeMS = getTimeMS_rdtsc();
+		if(separate_processing() == cSeparateProcessing::_rtp) {
+			calltable->cleanup_calls_separate_processing_rtp();
+		}
+		while(startTimeMS + period * 1000 > getTimeMS_rdtsc()) {
+			USLEEP(10000);
+			if(logBuffer) {
+				logBuffer->apply();
+			}
+		}
+	}
+	return(NULL);
+}
+#endif
 
 void stop_cloud_receiver() {
 	if(cloud_response_sender) {
@@ -4374,7 +4405,11 @@ int main_init_read() {
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
-	if(!is_sender() && !is_client_packetbuffer_sender()) {
+	if(!is_sender() && !is_client_packetbuffer_sender()
+	   #if EXPERIMENTAL_SEPARATE_PROCESSSING
+	   && separate_processing() != cSeparateProcessing::_rtp
+	   #endif
+	   ) {
 		if(opt_storing_cdr_max_next_threads) {
 			storing_cdr_next_threads = new FILE_LINE(0) sStoringCdrNextThreads[opt_storing_cdr_max_next_threads];
 		}
@@ -4603,6 +4638,18 @@ int main_init_read() {
 	}
 	
 	clear_readend();
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		separate_processing_init();
+		separate_processing_start();
+		if(separate_processing() == cSeparateProcessing::_rtp) {
+			cleanup_calls_separate_processing_terminating = false;
+			vm_pthread_create("cleanup calls separate processing (rtp)",
+					  &cleanup_calls_separate_processing_thread, NULL, cleanup_calls_separate_processing, NULL, __FILE__, __LINE__);
+		}
+	}
+	#endif
 
 	if(is_enable_packetbuffer()) {
 		PcapQueue_init();
@@ -4704,9 +4751,8 @@ int main_init_read() {
 		}
 
 		while(!is_terminating()) {
-			long timeProcessStatMS = 0;
+			u_int64_t startTimeMS = getTimeMS_rdtsc();
 			if(_counter) {
-				u_int64_t startTimeMS = getTimeMS_rdtsc();
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
 				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
@@ -4718,10 +4764,6 @@ int main_init_read() {
 				}
 				if(tcpReassemblyWebrtc) {
 					tcpReassemblyWebrtc->setDoPrintContent();
-				}
-				u_int64_t endTimeMS = getTimeMS_rdtsc();
-				if(endTimeMS > startTimeMS) {
-					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
 				if(!is_read_from_file() && !sverb.suppress_fork) {
 					if (!is_client_packetbuffer_sender()) {
@@ -4743,7 +4785,7 @@ int main_init_read() {
 					dtls_queue_cleanup();
 				}
 			}
-			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
+			while(startTimeMS + sverb.pcap_stat_period * 1000 > getTimeMS_rdtsc()) {
 				USLEEP(10000);
 				if(logBuffer) {
 					logBuffer->apply();
@@ -4797,6 +4839,20 @@ int main_init_read() {
 }
 
 void terminate_processpacket() {
+ 
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		separate_processing_stop();
+		separate_processing_term();
+		if(cleanup_calls_separate_processing_thread) {
+			cleanup_calls_separate_processing_terminating = true;
+			pthread_join(cleanup_calls_separate_processing_thread, NULL);
+			cleanup_calls_separate_processing_thread = 0;
+			cleanup_calls_separate_processing_terminating = false;
+		}
+	}
+	#endif
+ 
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 		tcpReassemblyHttp = NULL;
@@ -5064,7 +5120,9 @@ void main_term_read() {
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
+		storing_registers_thread = 0;
 	}
+	
 	if(useChartsCacheOrCdrStatProcessThreads()) {
 		calltable->processCallsInChartsCache_stop();
 	}
@@ -7076,6 +7134,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mirror_connect_maximum_time_diff_s", &opt_mirror_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_timeout_s", &opt_livesniffer_timeout_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_tablesize_max_mb", &opt_livesniffer_tablesize_max_mb));
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					expert();
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_processing", &opt_separate_processing))
+						->addValues("sip:1|rtp:2"));
+					#endif
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -8405,6 +8468,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "screen_popup")			sverb.screen_popup = 1;
 	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
+	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
 	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
@@ -8426,6 +8490,7 @@ void parse_verb_param(string verbParam) {
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	else if(verbParam == "check_config")			sverb.check_config = 1;
+	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -11717,6 +11782,13 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "livesniffer_tablesize_max_mb", NULL))) {
 		opt_livesniffer_tablesize_max_mb = atoi(value);
 	}
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if((value = ini.GetValue("general", "separate_processing", NULL))) {
+		opt_separate_processing = !strcasecmp(value, "sip") ? 1 :
+					  !strcasecmp(value, "rtp") ? 2 :
+					  yesno(value);
+	}
+	#endif
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
 					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end_base :

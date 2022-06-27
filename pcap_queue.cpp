@@ -3760,6 +3760,50 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 		   (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
 		    (VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
 		   ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len) {
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING_NEXT_01
+			if(separate_processing()) {
+				u_int header_ip_offset = checkProtocolData->header_ip_offset;
+				iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
+				while(true) {
+					u_int16_t frag_data = header_ip->get_frag_data();
+					if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+						return(true);
+					}
+					int next_header_ip_offset = findNextHeaderIp(header_ip, header_ip_offset, packet, header->caplen);
+					if(next_header_ip_offset == 0) {
+						break;
+					} else if(next_header_ip_offset < 0) {
+						return(false);
+					} else {
+						header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+						header_ip_offset += next_header_ip_offset;
+					}
+				}
+				char *data = NULL;
+				int datalen = 0;
+				u_int8_t ip_protocol = header_ip->get_protocol(header->caplen - header_ip_offset);
+				if(ip_protocol == IPPROTO_UDP) {
+					udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
+				} else if(ip_protocol == IPPROTO_TCP) {
+					tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
+				} else {
+					return(false);
+				}
+				if(IS_RTP(data, datalen)) {
+					if(separate_processing() == 1) {
+						return(false);
+					}
+				} else {
+					if(separate_processing() == 2) {
+						return(false);
+					}
+				}
+			}
+			#endif
+			#endif
 			return(true);
 		} else if(checkProtocolData->header_ip_offset == 0xFFFF) {
 			return(true);
@@ -8655,6 +8699,17 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 		return(0);
 	}
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	#if not EXPERIMENTAL_SEPARATE_PROCESSSING_NEXT_01
+	if(separate_processing()) {
+		bool is_rtp = datalen > 2 && IS_RTP(data, datalen);
+		if(separate_processing() == 1 ? is_rtp : !is_rtp) {
+			return(0);
+		}
+	}
+	#endif
+	#endif
 	
 	#if TRACE_INVITE_BYE
 	if(memmem(data, datalen, "INVITE sip", 10)) {

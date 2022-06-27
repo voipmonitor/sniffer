@@ -673,6 +673,7 @@ private:
 	u_int64_t created_at;
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
+friend class cSeparateProcessing;
 };
 
 struct sChartsCacheCallData {
@@ -2362,6 +2363,13 @@ public:
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
 	bool suppress_rtp_read_due_to_insufficient_hw_performance;
 	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	volatile bool sp_sent_close_call;
+	volatile bool sp_arrived_rtp_streams;
+	volatile u_int32_t sp_stop_rtp_processing_at;
+	volatile u_int32_t sp_do_destroy_call_at;
+	set<vmIPport> sp_rtp_ipport;
+	#endif
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -2778,6 +2786,9 @@ public:
 			}
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 1 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2794,6 +2805,9 @@ public:
 			rslt_call = callMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 2 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2841,6 +2855,9 @@ public:
 			rslt_call = mergeMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 3 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2945,6 +2962,9 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	int cleanup_calls(bool closeAll, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	void cleanup_calls_separate_processing_rtp();
+	#endif
 	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
 	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 
@@ -2952,8 +2972,9 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
+	void hashAdd(vmIP addr, vmPort port, u_int64_t time_us, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
 	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
+	void _hashAddExt(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
 
 	/**
 	 * @brief find call
@@ -3149,6 +3170,7 @@ public:
 	*/
 	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
 	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
+	int _hashRemoveExt(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
 	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);

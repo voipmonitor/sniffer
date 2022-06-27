@@ -120,6 +120,7 @@ struct sVerbose {
 	int screen_popup;
 	int screen_popup_syslog;
 	int cleanup_calls;
+	int cleanup_calls_log;
 	int usleep_stats;
 	int charts_cache_only;
 	int charts_cache_filters_eval;
@@ -136,6 +137,7 @@ struct sVerbose {
 	int cdr_stat_interval_store;
 	int disable_unlink_qfile;
 	int check_config;
+	int separate_processing;
 	int _debug1;
 	int _debug2;
 	int _debug3;
