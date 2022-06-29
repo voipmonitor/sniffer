@@ -903,6 +903,9 @@ public:
 	~link_packets_queue() {
 		destroyAll();
 	}
+	void setExpirationLink_ms(unsigned expiration_link_ms) {
+		this->expiration_link_ms = expiration_link_ms;
+	}
 	void push(packet_s *packetS) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock();

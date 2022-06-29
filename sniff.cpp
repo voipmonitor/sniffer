@@ -960,7 +960,13 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 								 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
 				} else if(type == _t_packet_rtcp ? enable_save_rtcp(call) : enable_save_rtp_packet(call, type)) {
 					string pathfilename = call->get_pathfilename(tsf_rtp);
-					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, call->useDlt)) {
+					if(call->getPcapRtp()->open(tsf_rtp, pathfilename.c_str(), call->useHandle, 
+					   #if EXPERIMENTAL_SEPARATE_PROCESSSING
+					   separate_processing() == cSeparateProcessing::_rtp ? packetS->dlt : call->useDlt
+					   #else
+					   call->useDlt
+					   #endif
+					   )) {
 						call->getPcapRtp()->dump(header, packet, packetS->dlt, false,
 									 (u_char*)packetS->data_(), packetS->datalen_(), forceDatalen,
 									 packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), packetS->pflags.tcp, forceVirtualUdp);
@@ -9645,7 +9651,11 @@ void PreProcessPacket::addNextThread() {
 void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_threads) {
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	if(separate_processing() == cSeparateProcessing::_rtp) {
-		PACKET_S_PROCESS_DESTROY(&packetS);
+		if(parallel_threads) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
 		return;
 	}
 	#endif
@@ -9726,8 +9736,17 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 				}
 			}
 		} else if(isSip) {
-			packetS->blockstore_addflag(14 /*pb lock flag*/);
-			this->process_parseSipData(&packetS, NULL);
+			extern bool opt_sip_only_tcp;
+			if(!opt_sip_only_tcp) {
+				packetS->blockstore_addflag(14 /*pb lock flag*/);
+				this->process_parseSipData(&packetS, NULL);
+			} else {
+				if(packetS->next_action == _ppna_set) {
+					packetS->next_action = _ppna_destroy;
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
+			}
 		} else if(isMgcp) {
 			//packetS->blockstore_addflag(14 /*pb lock flag*/);
 			this->process_mgcp(&packetS);
@@ -11384,4 +11403,8 @@ void dtls_queue_cleanup() {
 	if(ENABLE_DTLS_QUEUE) {
 		dtls_queue.cleanup();
 	}
+}
+
+void dtls_queue_set_expiration_s(unsigned expiration_s) {
+	dtls_queue.setExpirationLink_ms(expiration_s * 1000);
 }

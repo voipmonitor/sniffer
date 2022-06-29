@@ -26,7 +26,7 @@ TODO
 cSeparateProcessing::cSeparateProcessing(eMainType mainType, eSideType sideType) {
 	this->mainType = mainType;
 	this->sideType = sideType;
-	buff_queue_max_length = 10000;
+	buff_queue_max_length = 50000;
 	buff_queue = new FILE_LINE(0) rqueue_quick<void*>(buff_queue_max_length, 0, 0, NULL, true);
 	readThreadHandle = 0;
 	writeThreadHandle = 0;
@@ -185,7 +185,13 @@ void cSeparateProcessing::sendRtpStreams(const char *call_id,
 		memcpy(buff + offset, &tar_pos[i], sizeof(tar_pos[i]));
 		offset += sizeof(tar_pos[i]);
 	}
+	/*
+	cout << " * try send rtp streams for callid " << call_id << endl;
+	*/
 	pushBuff(buff);
+	/*
+	cout << " * sent rtp streams for callid " << call_id << endl;
+	*/
 }
 
 void cSeparateProcessing::sendRtpExists(Call *call) {
@@ -364,6 +370,7 @@ void cSeparateProcessing::processThread() {
 }
 
 void cSeparateProcessing::pushBuff(u_char *buff) {
+	buff_queue->lock();
 	if(!buff_queue->push((void**)&buff, false)) {
 		static u_int32_t lastLog_at = 0;
 		if(lastLog_at + 10 < getTimeS_rdtsc()) {
@@ -372,6 +379,7 @@ void cSeparateProcessing::pushBuff(u_char *buff) {
 		}
 		while(!is_terminating() && !buff_queue->push((void**)&buff, false));
 	}
+	buff_queue->unlock();
 }
 
 void cSeparateProcessing::processBuff(u_char *buff) {

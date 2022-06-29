@@ -124,6 +124,7 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 	this->limitTableRows = limitTableRows;
 	this->caseSensitive = caseSensitive;
 	this->u_data = NULL;
+	data = new FILE_LINE(0) map<string, unsigned>;
 	autoLoadPeriod = 0;
 	loaded = false;
 	data_overflow = false;
@@ -131,6 +132,10 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 	_sync_load = 0;
 	lastBeginLoadTime = 0;
 	lastEndLoadTime = 0;
+}
+
+cSqlDbCodebook::~cSqlDbCodebook() {
+	delete data;
 }
 
 void cSqlDbCodebook::setUData(void *u_data) {
@@ -177,9 +182,9 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 	#endif
 	unsigned rslt = 0;
 	lock_data();
-	if(data.size()) {
-		map<string, unsigned>::iterator iter = data.find(stringValue);
-		if(iter != data.end()) {
+	if(data->size()) {
+		map<string, unsigned>::iterator iter = data->find(stringValue);
+		if(iter != data->end()) {
 			rslt = iter->second;
 		}
 	} else {
@@ -211,7 +216,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				extern MySqlStore *sqlStore;
 				sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER, 0);
 				delete sqlDb;
-				data[stringValue] = rslt;
+				(*data)[stringValue] = rslt;
 			} else if(enableInsert) {
 				SqlDb *sqlDb = createSqlObject();
 				list<SqlDb_condField> cond = this->cond;
@@ -254,7 +259,7 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				values += "," + sqlEscapeStringBorder(iter->value);
 			}
 			*insertQuery = "insert into " + this->table + " (" + columns + ") values (" + values + ")";
-			data[stringValue] = rslt;
+			(*data)[stringValue] = rslt;
 		#endif
 	}
 	unlock_data();
@@ -272,14 +277,17 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 
 void cSqlDbCodebook::load(SqlDb *sqlDb) {
 	if(lock_load(1000000)) {
-		map<string, unsigned> data;
+		map<string, unsigned> *data = new FILE_LINE(0) map<string, unsigned>;
 		bool data_overflow;
-		_load(&data, &data_overflow, sqlDb);
-		if(data.size() || data_overflow) {
+		_load(data, &data_overflow, sqlDb);
+		if(data->size() || data_overflow) {
 			lock_data();
+			delete this->data;
 			this->data = data;
 			this->data_overflow = data_overflow;
 			unlock_data();
+		} else {
+			delete data;
 		}
 		loaded = true;
 		unlock_load();
@@ -362,14 +370,17 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 
 void *cSqlDbCodebook::_loadInBackground(void *arg) {
 	cSqlDbCodebook *me = (cSqlDbCodebook*)arg;
-	map<string, unsigned> data;
+	map<string, unsigned> *data = new FILE_LINE(0) map<string, unsigned>;
 	bool data_overflow;
-	me->_load(&data, &data_overflow);
-	if(data.size() || data_overflow) {
+	me->_load(data, &data_overflow);
+	if(data->size() || data_overflow) {
 		me->lock_data();
+		delete me->data;
 		me->data = data;
 		me->data_overflow = data_overflow;
 		me->unlock_data();
+	} else {
+		delete data;
 	}
 	me->unlock_load();
 	return(NULL);

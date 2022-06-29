@@ -11852,6 +11852,56 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
  * ic currtime = 0, save it immediatly
 */
 
+struct sCleanupCallsStat {
+	sCleanupCallsStat() {
+		memset(this, 0, sizeof(*this));
+	}
+	string str() {
+		ostringstream str;
+		if(all) {
+			str << "*** cleanup calls stat - begin ***" << endl;
+			str << "all " << all << endl;
+			if(close_destroy_at) str << "close_destroy_at " << close_destroy_at << endl;
+			if(close_bye_timeout) str << "close_bye_timeout " << close_bye_timeout << endl;
+			if(close_rtp_timeout) str << "close_rtp_timeout " << close_rtp_timeout << endl;
+			if(close_sipwithoutrtp_timeout) str << "close_sipwithoutrtp_timeout " << close_sipwithoutrtp_timeout << endl;
+			if(close_absolute_timeout) str << "close_absolute_timeout " << close_absolute_timeout << endl;
+			if(close_zombie_timeout) str << "close_zombie_timeout " << close_zombie_timeout << endl;
+			if(close_oneway_timeout) str << "close_oneway_timeout " << close_oneway_timeout << endl;
+			if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
+			if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
+			if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
+			if(rejected_hash_or_rtppacketsinqueue) str << "rejected_hash_or_rtppacketsinqueue " << rejected_hash_or_rtppacketsinqueue << endl;
+			if(rejected_set_stop_processing) str << "rejected_set_stop_processing " << rejected_set_stop_processing << endl;
+			if(rejected_wait_for_stop_processing) str << "rejected_wait_for_stop_processing " << rejected_wait_for_stop_processing << endl;
+			if(ok) str << "ok " << ok << endl;
+			str << "*** cleanup calls stat - end ***" << endl;
+		}
+		return(str.str());
+	}
+	void print() {
+		string stat_str = str();
+		if(stat_str.length()) {
+			cout << stat_str;
+		}
+	}
+	u_int32_t all;
+	u_int32_t close_destroy_at;
+	u_int32_t close_bye_timeout;
+	u_int32_t close_rtp_timeout;
+	u_int32_t close_sipwithoutrtp_timeout;
+	u_int32_t close_absolute_timeout;
+	u_int32_t close_zombie_timeout;
+	u_int32_t close_oneway_timeout;
+	u_int32_t in_preprocess_issue;
+	u_int32_t sp_sent_close_call;
+	u_int32_t sp_arrived_rtp_streams;
+	u_int32_t rejected_hash_or_rtppacketsinqueue;
+	u_int32_t rejected_set_stop_processing;
+	u_int32_t rejected_wait_for_stop_processing;
+	u_int32_t ok;
+};
+
 int
 Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *file, int line ) {
  
@@ -11870,6 +11920,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	if(!packet_time_s && opt_safe_cleanup_calls == 2 && !closeAll) {
 		return(0);
 	}
+	
+	sCleanupCallsStat stat;
 	
 	if(sverb.cleanup_calls) {
 		cout << "*** cleanup_calls begin";
@@ -11959,6 +12011,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				} else {
 					call = (*callMAPIT2).second;
 				}
+				++stat.all;
 				u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
 							       packet_time_s :
 							       call->unshiftSystemTime_s(currTimeS);
@@ -11983,10 +12036,12 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					    call->in_preprocess_queue_before_process_packet_at[1] && call->in_preprocess_queue_before_process_packet_at[1] < (getTimeMS_rdtsc() / 1000) - 300))) {
 					if(call->destroy_call_at != 0 && call->destroy_call_at <= currTimeS_unshift) {
 						closeCall = true;
+						++stat.close_destroy_at;
 					} else if((call->destroy_call_at_bye != 0 && call->destroy_call_at_bye <= currTimeS_unshift) ||
 						  (call->destroy_call_at_bye_confirmed != 0 && call->destroy_call_at_bye_confirmed <= currTimeS_unshift)) {
 						closeCall = true;
 						call->bye_timeout_exceeded = true;
+						++stat.close_bye_timeout;
 					} else if(
 						  #if EXPERIMENTAL_SEPARATE_PROCESSSING
 						  separate_processing() != cSeparateProcessing::_sip &&
@@ -11995,17 +12050,21 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						  currTimeS_unshift > call->get_last_packet_time_s() + rtptimeout) {
 						closeCall = true;
 						call->rtp_timeout_exceeded = true;
+						++stat.close_rtp_timeout;
 					} else if(!call->first_rtp_time_us &&
 						  currTimeS_unshift > call->get_first_packet_time_s() + sipwithoutrtptimeout) {
 						closeCall = true;
 						call->sipwithoutrtp_timeout_exceeded = true;
+						++stat.close_sipwithoutrtp_timeout;
 					} else if(currTimeS_unshift > call->get_first_packet_time_s() + absolute_timeout) {
 						closeCall = true;
 						call->absolute_timeout_exceeded = true;
+						++stat.close_absolute_timeout;
 					} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
 						  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
+						++stat.close_zombie_timeout;
 					}
 					if(!closeCall &&
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
@@ -12018,7 +12077,10 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						*/
 						closeCall = true;
 						call->oneway_timeout_exceeded = true;
+						++stat.close_oneway_timeout;
 					}
+				} else {
+					++stat.in_preprocess_issue;
 				}
 				if(closeCall) {
 					if(sverb.cleanup_calls_log) {
@@ -12067,8 +12129,10 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 								      packet_time_s ? packet_time_s * 1000000ull :  currTimeMS * 1000ull);
 							call->sp_sent_close_call = true;
 							closeCall = false;
+							++stat.sp_sent_close_call;
 						} else if(!call->sp_arrived_rtp_streams) {
 							closeCall =  false;
+							++stat.sp_arrived_rtp_streams;
 						}
 					} else {
 						call->removeFindTables(true);
@@ -12087,20 +12151,23 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					   )) {
 						closeCall = false;
 						++rejectedCalls_count;
+						++stat.rejected_hash_or_rtppacketsinqueue;
 					}
 					if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeCall) {
 						if(!call->stopProcessing) {
 							call->stopProcessing = true;
 							call->stopProcessingAt_s = currTimeS;
+							closeCall = false;
+							++rejectedCalls_count;
+							++stat.rejected_set_stop_processing;;
 							/*
 							cout << " *** set stop processing" << endl;
 							*/
-							closeCall = false;
-							++rejectedCalls_count;
 						} else if(currTimeS <= call->stopProcessingAt_s ||
 							  currTimeS - call->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 							closeCall = false;
 							++rejectedCalls_count;
+							++stat.rejected_wait_for_stop_processing;
 							/*
 							cout << " *** wait for stop processing" << endl;
 							*/
@@ -12112,6 +12179,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					}
 				}
 				if(closeCall) {
+				 
+					++stat.ok;
 
 					#if DEBUG_PACKET_COUNT
 					extern map<string, Call*> __xmap_cleanup_calls;
@@ -12228,6 +12297,10 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		     << setprecision(3) << (getTimeMS_rdtsc() - beginTimeMS) / 1000. << "s" << endl;
 	}
 	
+	if(sverb.cleanup_calls_stat) {
+		stat.print();
+	}
+	
 	return rejectedCalls_count;
 }
 
@@ -12284,6 +12357,7 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 		Call *call = calls_queue[calls_queue_position];
 		unlock_calls_queue();
 		if(currTimeS > call->sp_do_destroy_call_at + 10 &&
+		   !call->closePcaps() && !call->closeGraphs() &&
 		   call->isEmptyChunkBuffersCount()) {
 			call->removeFindTables(false, true);
 			sendRtpStreams(call);

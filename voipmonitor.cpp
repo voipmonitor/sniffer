@@ -444,6 +444,7 @@ int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_ssl_aead_try_seq_backward = 0;
 int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = true;
+int opt_ssl_dtls_queue_expiration_s = 10;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -1004,6 +1005,7 @@ vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
+bool opt_sip_only_tcp = false;
 map<vmIPport, string> ssl_ipport;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
@@ -7406,6 +7408,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 		setDisableIfEnd();
 	group("SKINNY");
@@ -7514,6 +7517,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
 						->addValues("confirmed:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -8469,6 +8473,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
 	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
+	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
 	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
@@ -9518,6 +9523,9 @@ void set_context_config() {
 		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
 	}
 	opt_ignore_rtp_after_response = opt_ignore_rtp_after_response_list.size() > 0;
+	
+	extern void dtls_queue_set_expiration_s(unsigned expiration_s);
+	dtls_queue_set_expiration_s(opt_ssl_dtls_queue_expiration_s);
 	
 }
 
@@ -11906,6 +11914,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
 		opt_ssl_enable_dtls_queue = yesno(value);
 	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_expiration", NULL))) {
+		opt_ssl_dtls_queue_expiration_s = atoi(value);
+	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
 	}
@@ -12356,6 +12367,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
 		opt_cdr_flag_bit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip_only_tcp", NULL))) {
+		opt_sip_only_tcp = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

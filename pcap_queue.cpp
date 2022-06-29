@@ -1604,7 +1604,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
-			       << "[" << calls_counter;
+			       << "[";
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			if(separate_processing() == 2) {
+				outStr << calltable->calls_queue.size();
+			} else {
+				outStr << calls_counter;
+			}
+			#else
+			outStr << calls_counter;
+			#endif
 			extern volatile int storing_cdr_next_threads_count;
 			if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
 				outStr << "(s" << calls_for_store_counter << ")";
@@ -3765,20 +3774,9 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 			if(separate_processing()) {
 				u_int header_ip_offset = checkProtocolData->header_ip_offset;
 				iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
-				while(true) {
-					u_int16_t frag_data = header_ip->get_frag_data();
-					if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
-						return(true);
-					}
-					int next_header_ip_offset = findNextHeaderIp(header_ip, header_ip_offset, packet, header->caplen);
-					if(next_header_ip_offset == 0) {
-						break;
-					} else if(next_header_ip_offset < 0) {
-						return(false);
-					} else {
-						header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
-						header_ip_offset += next_header_ip_offset;
-					}
+				u_int16_t frag_data = header_ip->get_frag_data();
+				if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+					return(true);
 				}
 				char *data = NULL;
 				int datalen = 0;
@@ -3790,7 +3788,7 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 					tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 					datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
 				} else {
-					return(false);
+					return(true);
 				}
 				if(IS_RTP(data, datalen)) {
 					if(separate_processing() == 1) {
@@ -8701,14 +8699,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
-	#if not EXPERIMENTAL_SEPARATE_PROCESSSING_NEXT_01
 	if(separate_processing()) {
 		bool is_rtp = datalen > 2 && IS_RTP(data, datalen);
 		if(separate_processing() == 1 ? is_rtp : !is_rtp) {
 			return(0);
 		}
 	}
-	#endif
 	#endif
 	
 	#if TRACE_INVITE_BYE
