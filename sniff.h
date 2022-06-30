@@ -748,14 +748,7 @@ struct packet_s_process : public packet_s_process_0 {
 		init2();
 	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memcpy(this, &other, sizeof(*this));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memcpy((void*)this, &other, sizeof(*this));
 		this->callid_long = NULL;
 		this->callid_alternative = NULL;
 		this->child_packets = NULL;
@@ -1332,14 +1325,7 @@ struct livesnifferfilter_s_base {
 		bool all_all;
 	};
 	livesnifferfilter_s_base() {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memset(this, 0, sizeof(livesnifferfilter_s_base));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memset((void*)this, 0, sizeof(livesnifferfilter_s_base));
 		created_at = time(NULL);
 	}
 	bool sensor_id_set;

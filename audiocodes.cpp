@@ -68,14 +68,7 @@
 
 
 void sAudiocodes::init() {
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(this, 0, sizeof(*this));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)this, 0, sizeof(*this));
 }
 
 bool sAudiocodes::parse(u_char *ac_header, unsigned /*length*/) {

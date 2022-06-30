@@ -7897,14 +7897,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 		if(onlyRtp) {
 			if(!packetS) {
 				 packetS = new packet_s;
-				 #if __GNUC__ >= 8
-				 #pragma GCC diagnostic push
-				 #pragma GCC diagnostic ignored "-Wclass-memaccess"
-				 #endif
-				 memset(packetS, 0, sizeof(packet_s));
-				 #if __GNUC__ >= 8
-				 #pragma GCC diagnostic pop
-				 #endif
+				 memset((void*)packetS, 0, sizeof(packet_s));
 			}
 			if(!call) {
 				call = new FILE_LINE(0) Call(INVITE, (char*)"", 0, NULL, 0);

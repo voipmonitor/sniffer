@@ -227,15 +227,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	first = true;
 	first_packet_time_us = 0;
 	last_packet_time_us = 0;
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(rtpmap, 0, sizeof(rtpmap));
-	memset(rtpmap_other_side, 0, sizeof(rtpmap_other_side));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)rtpmap, 0, sizeof(rtpmap));
+	memset((void*)rtpmap_other_side, 0, sizeof(rtpmap_other_side));
 	rtpmap_call_index = -1;
 	rtpmap_other_side_call_index = -1;
 	s = new FILE_LINE(24001) source;
