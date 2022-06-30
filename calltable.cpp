@@ -168,6 +168,7 @@ extern int opt_rtpip_find_endpoints;
 extern rtp_read_thread *rtp_threads;
 extern bool opt_rtpmap_by_callerd;
 extern bool opt_rtpmap_combination;
+extern bool opt_rtpmap_indirect;
 extern int opt_register_timeout_disable_save_failed;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
@@ -1837,15 +1838,18 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 */
 
 			if (opt_saverfc2833 || !enable_save_dtmf_pcap(this)) { // DTMF in dynamic payload types (rfc4733)
-				for(int j = 0; j < MAX_RTPMAP; j++) {
-					if(rtp_i->rtpmap[j].is_set() && rtp_i->rtpmap[j].codec == PAYLOAD_TELEVENT && rtp_i->rtpmap[j].payload == curpayload) {
-						if (!enable_save_dtmf_pcap(this)) {
-							*disable_save = true;
+				RTPMAP *_rtpmap = rtp_i->get_rtpmap(this);
+				if(_rtpmap) {
+					for(int j = 0; j < MAX_RTPMAP; j++) {
+						if(_rtpmap[j].is_set() && _rtpmap[j].codec == PAYLOAD_TELEVENT && _rtpmap[j].payload == curpayload) {
+							if (!enable_save_dtmf_pcap(this)) {
+								*disable_save = true;
+							}
+							if (opt_saverfc2833) {
+								*record_dtmf = true;
+							}
+							break;
 						}
-						if (opt_saverfc2833) {
-							*record_dtmf = true;
-						}
-						break;
 					}
 				}
 			}
@@ -1885,13 +1889,15 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 					// check if the stream started with DTMF
 					if(rtp_i->payload2 >= 96 && rtp_i->payload2 <= 127) {
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2; pass_find_rtpmap++) {
-							RTPMAP *rtpmap = pass_find_rtpmap ? rtp_i->rtpmap_other_side : rtp_i->rtpmap;
-							for(int j = 0; j < MAX_RTPMAP; j++) {
-								if(rtpmap[j].is_set() && rtp_i->payload2 == rtpmap[j].payload) {
-									if(rtpmap[j].codec == PAYLOAD_TELEVENT) {
-										//it is DTMF 
-										rtp_i->payload2 = curpayload;
-										goto read;
+							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, pass_find_rtpmap);
+							if(_rtpmap) {
+								for(int j = 0; j < MAX_RTPMAP; j++) {
+									if(_rtpmap[j].is_set() && rtp_i->payload2 == _rtpmap[j].payload) {
+										if(_rtpmap[j].codec == PAYLOAD_TELEVENT) {
+											//it is DTMF 
+											rtp_i->payload2 = curpayload;
+											goto read;
+										}
 									}
 								}
 							}
@@ -1902,11 +1908,13 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 					if(curpayload >= 96 && curpayload <= 127) {
 						bool found = false;
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2 && !found; pass_find_rtpmap++) {
-							RTPMAP *rtpmap = pass_find_rtpmap ? rtp_i->rtpmap_other_side : rtp_i->rtpmap;
-							for(int j = 0; j < MAX_RTPMAP; j++) {
-								if(rtpmap[j].is_set() && curpayload == rtpmap[j].payload) {
-									rtp_i->codec = rtpmap[j].codec;
-									found = true;
+							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, pass_find_rtpmap);
+							if(_rtpmap) {
+								for(int j = 0; j < MAX_RTPMAP; j++) {
+									if(_rtpmap[j].is_set() && curpayload == _rtpmap[j].payload) {
+										rtp_i->codec = _rtpmap[j].codec;
+										found = true;
+									}
 								}
 							}
 						}
@@ -2164,21 +2172,37 @@ read:
 		}
 		if(opt_rtpmap_by_callerd) {
 			unsigned index_rtpmap = isFillRtpMap(iscaller) ? iscaller : !iscaller;
-			memcpy(rtp_new->rtpmap, rtpmap[index_rtpmap], MAX_RTPMAP * sizeof(RTPMAP));
+			if(opt_rtpmap_indirect) {
+				rtp_new->rtpmap_call_index = index_rtpmap;
+			} else {
+				memcpy(rtp_new->rtpmap, rtpmap[index_rtpmap], MAX_RTPMAP * sizeof(RTPMAP));
+			}
 			rtpmap_used_flags[index_rtpmap] = true;
 		} else {
 			if(rtp_new->index_call_ip_port >= 0 && isFillRtpMap(rtp_new->index_call_ip_port)) {
-				memcpy(rtp_new->rtpmap, rtpmap[rtp_new->index_call_ip_port], MAX_RTPMAP * sizeof(RTPMAP));
+				if(opt_rtpmap_indirect) {
+					rtp_new->rtpmap_call_index = rtp_new->index_call_ip_port;
+				} else {
+					memcpy(rtp_new->rtpmap, rtpmap[rtp_new->index_call_ip_port], MAX_RTPMAP * sizeof(RTPMAP));
+				}
 				rtpmap_used_flags[rtp_new->index_call_ip_port] = true;
 				if(index_call_ip_port_other_side >= 0 && isFillRtpMap(index_call_ip_port_other_side)) {
-					memcpy(rtp_new->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(RTPMAP));
+					if(opt_rtpmap_indirect) {
+						rtp_new->rtpmap_other_side_call_index = index_call_ip_port_other_side;
+					} else {
+						memcpy(rtp_new->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(RTPMAP));
+					}
 					rtpmap_used_flags[index_call_ip_port_other_side] = true;
 				}
 			} else {
 				for(int j = 0; j < 2; j++) {
 					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
 					if(index_ip_port_first_for_callerd >= 0) {
-						memcpy(rtp_new->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(RTPMAP));
+						if(opt_rtpmap_indirect) {
+							rtp_new->rtpmap_call_index = index_ip_port_first_for_callerd;
+						} else {
+							memcpy(rtp_new->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(RTPMAP));
+						}
 						rtpmap_used_flags[index_ip_port_first_for_callerd] = true;
 						break;
 					}
@@ -2212,16 +2236,19 @@ read:
 
 		//set codec
 		if(curpayload >= 96 && curpayload <= 127) {
-			for(int i = 0; i < MAX_RTPMAP; i++) {
-				if(rtp_new->rtpmap[i].is_set() && curpayload == rtp_new->rtpmap[i].payload) {
-					rtp_new->codec = rtp_new->rtpmap[i].codec;
-					rtp_new->frame_size = rtp_new->rtpmap[i].frame_size;
-					if(rtp_new->rtpmap[i].is_set() && rtp_new->rtpmap[i].codec == PAYLOAD_TELEVENT) {
-						if (!enable_save_dtmf_pcap(this)) {
-							*disable_save = true;
-						}
-						if (opt_saverfc2833) {
-							*record_dtmf = true;
+			RTPMAP *_rtpmap = rtp_new->get_rtpmap(this);
+			if(_rtpmap) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
+						rtp_new->codec = _rtpmap[i].codec;
+						rtp_new->frame_size = _rtpmap[i].frame_size;
+						if(_rtpmap[i].is_set() && _rtpmap[i].codec == PAYLOAD_TELEVENT) {
+							if (!enable_save_dtmf_pcap(this)) {
+								*disable_save = true;
+							}
+							if (opt_saverfc2833) {
+								*record_dtmf = true;
+							}
 						}
 					}
 				}
@@ -2229,9 +2256,12 @@ read:
 		} else {
 			rtp_new->codec = curpayload;
 			if(curpayload == PAYLOAD_ILBC) {
-				for(int i = 0; i < MAX_RTPMAP; i++) {
-					if(rtp_new->rtpmap[i].is_set() && curpayload == rtp_new->rtpmap[i].payload) {
-						rtp_new->frame_size = rtp_new->rtpmap[i].frame_size;
+				RTPMAP *_rtpmap = rtp_new->get_rtpmap(this);
+				if(_rtpmap) {
+					for(int i = 0; i < MAX_RTPMAP; i++) {
+						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
+							rtp_new->frame_size = _rtpmap[i].frame_size;
+						}
 					}
 				}
 			}

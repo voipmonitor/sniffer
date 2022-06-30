@@ -624,6 +624,7 @@ bool opt_enable_content_type_application_csta_xml = false;
 bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
+bool opt_rtpmap_indirect = true;
 int opt_jitter_forcemark_transit_threshold = 10;
 int opt_jitter_forcemark_delta_threshold = 500;
 bool opt_disable_rtp_warning = false;
@@ -7622,6 +7623,7 @@ void cConfig::addConfigItems() {
 					->addValues("keep_rtp_packets:2"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpmap_indirect", &opt_rtpmap_indirect));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_transit_threshold", &opt_jitter_forcemark_transit_threshold));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_delta_threshold", &opt_jitter_forcemark_delta_threshold));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
@@ -11615,6 +11617,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "rtpmap_combination", NULL))) {
 		opt_rtpmap_combination = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpmap_indirect", NULL))) {
+		opt_rtpmap_indirect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "jitter_forcemark_transit_threshold", NULL))) {
 		opt_jitter_forcemark_transit_threshold = atoi(value);

@@ -354,6 +354,8 @@ public:
 	int frame_size;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
+	int rtpmap_call_index;
+	int rtpmap_other_side_call_index;
 	unsigned char* data;    //!< pointer to UDP payload
 	iphdr2 *header_ip;
 	int len;		//!< lenght of UDP payload
@@ -766,6 +768,8 @@ public:
 	inline bool ok_other_ip_side_by_sip_() {
 		return(ok_other_ip_side_by_sip);
 	}
+	
+	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
 	
 private: 
 	/*
