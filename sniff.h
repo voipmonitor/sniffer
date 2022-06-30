@@ -671,6 +671,16 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void set_use_reuse_counter() {
 		use_reuse_counter = 1;
 	}
+	inline void set_reuse_counter(u_int8_t inc = 1) {
+		use_reuse_counter = 1;
+		__sync_add_and_fetch(&reuse_counter, inc);
+		if(insert_packets) {
+			list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)this->insert_packets;
+			for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+				(*iter)->set_reuse_counter(inc);
+			}
+		}
+	}
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
 	}
@@ -899,12 +909,16 @@ public:
 		last_cleanup_ms = 0;
 		cleanup_interval_ms = 5000;
 		expiration_link_ms = 10000;
+		expiration_link_count = 20;
 	}
 	~link_packets_queue() {
 		destroyAll();
 	}
 	void setExpirationLink_ms(unsigned expiration_link_ms) {
 		this->expiration_link_ms = expiration_link_ms;
+	}
+	void setExpirationLink_count(unsigned expiration_link_count) {
+		this->expiration_link_count = expiration_link_count;
 	}
 	void push(packet_s *packetS) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
@@ -924,7 +938,11 @@ public:
 		}
 		link->queue.push_back(packetS);
 		link->last_time_ms = time_ms;
+		if(!link->first_time_ms) {
+			link->first_time_ms = time_ms;
+		}
 		unlock();
+		packetS->blockstore_addflag(121 /*pb lock flag*/);
 		#if DEBUG_DTLS_QUEUE
 		cout << " * queue dtls" << endl;
 		#endif
@@ -938,6 +956,7 @@ public:
 			link = iter_link->second;
 			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 				packetS->insert_packet((packet_s_process_0*)(*iter));
+				((packet_s_process_0*)(*iter))->blockstore_addflag(122 /*pb lock flag*/);
 				#if DEBUG_DTLS_QUEUE
 				cout << " * insert dtls" << endl;
 				#endif
@@ -981,6 +1000,7 @@ private:
 	u_int64_t last_cleanup_ms;
 	unsigned cleanup_interval_ms;
 	unsigned expiration_link_ms;
+	unsigned expiration_link_count;
 };
 
 

@@ -5687,6 +5687,18 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			}
 			if(packetS) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
+				if(packetS->insert_packets) {
+					list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
+					for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+						packet_s_process_0 *packetS_i = *iter;
+						packetS_i->blockstore_addflag(124 /*pb lock flag*/);
+						if(opt_t2_boost ? threadIndex : threadIndex2) {
+							PACKET_S_PROCESS_PUSH_TO_STACK(&packetS_i, 50 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
+						} else {
+							PACKET_S_PROCESS_DESTROY(&packetS_i);
+						}
+					}
+				}
 				if(opt_t2_boost ? threadIndex : threadIndex2) {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 50 + (opt_t2_boost ? threadIndex : threadIndex2) - 1);
 				} else {
@@ -5705,6 +5717,18 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			is_rtcp = call_info_temp[i].is_rtcp;
 			stream_in_multiple_calls = call_info_temp[i].multiple_calls;
 			packetS->blockstore_addflag(55 /*pb lock flag*/);
+			if(packetS->insert_packets) {
+				list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
+				for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+					#if DEBUG_DTLS_QUEUE
+					cout << " * use dtls" << endl;
+					#endif
+					(*iter)->blockstore_addflag(123 /*pb lock flag*/);
+					add_to_rtp_thread_queue(call, *iter, 
+								iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+								false, threadIndex);
+				}
+			}
 			if(is_rtcp) {
 				packetS->blockstore_addflag(56 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS,
@@ -5712,17 +5736,6 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							preSyncRtp, threadIndex);
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
-				if(packetS->insert_packets) {
-					list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
-					for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
-						#if DEBUG_DTLS_QUEUE
-						cout << " * use dtls" << endl;
-						#endif
-						add_to_rtp_thread_queue(call, *iter, 
-									iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
-									preSyncRtp, threadIndex);
-					}
-				}
 				add_to_rtp_thread_queue(call, packetS, 
 							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
 							preSyncRtp, threadIndex);
@@ -5966,8 +5979,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		calltable->unlock_calls_hash();
 		if(call_info->length) {
 			if(call_info->length > 1) {
-				packetS->set_use_reuse_counter();
-				packetS->reuse_counter_inc_sync(call_info->length);
+				packetS->set_reuse_counter(call_info->length);
 			}
 			process_packet__rtp_call_info(call_info, packetS);
 			packet_s_process_calls_info::free(call_info);
@@ -8559,9 +8571,11 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 	}
 	for(map<s_link_id, s_link*>::iterator iter_link = links.begin(); iter_link != links.end(); ) {
 		s_link *link = iter_link->second;
-		if(time_ms >= link->last_time_ms + expiration_link_ms) {
+		if(link->last_time_ms &&
+		   time_ms >= link->last_time_ms + expiration_link_ms) {
 			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 				packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
+				packetS->blockstore_addflag(125 /*pb lock flag*/);
 				PACKET_S_PROCESS_DESTROY(&packetS);
 			}
 			delete link;
@@ -8570,6 +8584,28 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 			cout << " * clean dtls" << endl;
 			#endif
 		} else {
+			if((link->last_time_ms > link->first_time_ms &&
+			    link->last_time_ms - link->first_time_ms > expiration_link_ms) ||
+			   link->queue.size() > expiration_link_count) {
+				bool destroy_packet = false;
+				while(link->queue.size() > 0 &&
+				      (time_ms >= ((packet_s_process_0*)link->queue.front())->getTime_us() / 1000 + expiration_link_ms ||
+				       link->queue.size() > expiration_link_count)) {
+					packet_s_process_0 *packetS = (packet_s_process_0*)link->queue.front();
+					packetS->blockstore_addflag(126 /*pb lock flag*/);
+					PACKET_S_PROCESS_DESTROY(&packetS);
+					link->queue.pop_front();
+					destroy_packet = true;
+				}
+				if(destroy_packet) {
+					if(link->queue.size() > 0) {
+						link->first_time_ms = ((packet_s_process_0*)link->queue.front())->getTime_us() / 1000;
+					} else {
+						link->first_time_ms = 0;
+						link->last_time_ms = 0;
+					}
+				}
+			}
 			iter_link++;
 		}
 	}
@@ -10675,8 +10711,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						if(packetS->call_info.length > 1) {
-							packetS->set_use_reuse_counter();
-							packetS->reuse_counter_inc_sync(packetS->call_info.length);
+							packetS->set_reuse_counter(packetS->call_info.length);
 						}
 						this->hash_find_flag[batch_index] = 1;
 					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
@@ -10951,15 +10986,13 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 					}
 				}
 			}
-			packetS->set_use_reuse_counter();
-			packetS->reuse_counter_inc_sync(packetS->call_info.length);
+			packetS->set_reuse_counter(packetS->call_info.length);
 			for(int i = 0; i < threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
 			#else
-			packetS->set_use_reuse_counter();
-			packetS->reuse_counter_inc_sync(packetS->call_info.length);
+			packetS->set_reuse_counter(packetS->call_info.length);
 			for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
@@ -10968,8 +11001,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 		}
 	} else {
 		if(packetS->call_info.length > 1) {
-			packetS->set_use_reuse_counter();
-			packetS->reuse_counter_inc_sync(packetS->call_info.length);
+			packetS->set_reuse_counter(packetS->call_info.length);
 		}
 		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 						       processRtpPacketDistribute[min(packetS->source_().getPort(), packetS->dest_().getPort()) / 2 % _process_rtp_packets_distribute_threads_use] :
@@ -11407,4 +11439,8 @@ void dtls_queue_cleanup() {
 
 void dtls_queue_set_expiration_s(unsigned expiration_s) {
 	dtls_queue.setExpirationLink_ms(expiration_s * 1000);
+}
+
+void dtls_queue_set_expiration_count(unsigned expiration_count) {
+	dtls_queue.setExpirationLink_count(expiration_count);
 }

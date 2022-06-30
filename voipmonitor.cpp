@@ -445,6 +445,7 @@ int opt_ssl_aead_try_seq_backward = 0;
 int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = true;
 int opt_ssl_dtls_queue_expiration_s = 10;
+int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -7409,6 +7410,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 		setDisableIfEnd();
 	group("SKINNY");
@@ -9525,7 +9527,9 @@ void set_context_config() {
 	opt_ignore_rtp_after_response = opt_ignore_rtp_after_response_list.size() > 0;
 	
 	extern void dtls_queue_set_expiration_s(unsigned expiration_s);
+	extern void dtls_queue_set_expiration_count(unsigned expiration_count);
 	dtls_queue_set_expiration_s(opt_ssl_dtls_queue_expiration_s);
+	dtls_queue_set_expiration_count(opt_ssl_dtls_queue_expiration_count);
 	
 }
 
@@ -11916,6 +11920,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue_expiration", NULL))) {
 		opt_ssl_dtls_queue_expiration_s = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_max_packets", NULL))) {
+		opt_ssl_dtls_queue_expiration_count = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
