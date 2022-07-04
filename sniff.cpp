@@ -2165,15 +2165,19 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	sessid[sessid_length] = 0;
 	
 	vmIP ip;
-	s = _gettag(sdp_text, sdp_text_len,
-		    packetS->saddr_().is_v6() ? "c=IN IP6 " : "c=IN IP4 ",
-		    &l);
-	if(l > 0) {
-		char ip_str[IP_STR_MAX_LENGTH];
-		unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
-		memcpy(ip_str, s, ip_length);
-		ip_str[ip_length] = 0;
-		ip.setFromString(ip_str);
+	int v6_i = VM_IPV6_B && packetS->saddr_().is_v6() ? 0 : 1;
+	for(int i = 0; i < (VM_IPV6_B ? 2 : 1); i++) {
+		s = _gettag(sdp_text, sdp_text_len,
+			    i == v6_i ? "c=IN IP6 " : "c=IN IP4 ",
+			    &l);
+		if(l > 0) {
+			char ip_str[IP_STR_MAX_LENGTH];
+			unsigned ip_length = MIN(l, IP_STR_MAX_LENGTH - 1);
+			memcpy(ip_str, s, ip_length);
+			ip_str[ip_length] = 0;
+			ip.setFromString(ip_str);
+			break;
+		}
 	}
 	
 	unsigned sdp_media_start_max = 10;
