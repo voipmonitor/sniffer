@@ -636,6 +636,12 @@ vector<string> opt_conference_uri;
 vector<string> opt_mo_mt_identification_prefix;
 int opt_separate_storage_ipv6_ipv4_address;
 int opt_cdr_flag_bit;
+vector<string> opt_srvcc_numbers;
+bool srvcc_set;
+ListCheckString *srvcc_numbers;
+bool opt_srvcc_processing_only;
+bool opt_save_srvcc_cdr = true;
+bool opt_srvcc_correlation;
 
 char opt_php_path[1024];
 
@@ -7520,6 +7526,10 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
 						->addValues("confirmed:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("srvcc_numbers", &opt_srvcc_numbers));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_processing_only", &opt_srvcc_processing_only));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
@@ -9532,6 +9542,18 @@ void set_context_config() {
 	extern void dtls_queue_set_expiration_count(unsigned expiration_count);
 	dtls_queue_set_expiration_s(opt_ssl_dtls_queue_expiration_s);
 	dtls_queue_set_expiration_count(opt_ssl_dtls_queue_expiration_count);
+	
+	if(srvcc_numbers) {
+		delete srvcc_numbers;
+		srvcc_numbers = NULL;
+	}
+	srvcc_set = opt_srvcc_numbers.size();
+	if(srvcc_set) {
+		srvcc_numbers = new FILE_LINE(0) ListCheckString;
+		for(unsigned i = 0; i < opt_srvcc_numbers.size(); i++) {
+			srvcc_numbers->add(opt_srvcc_numbers[i].c_str());
+		}
+	}
 	
 }
 
@@ -12379,6 +12401,21 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
 		opt_cdr_flag_bit = atoi(value);
+	}
+	if(ini.GetAllValues("general", "srvcc_numbers", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_srvcc_numbers);
+		}
+	}
+	if((value = ini.GetValue("general", "srvcc_processing_only", NULL))) {
+		opt_srvcc_processing_only = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save_srvcc_cdr", NULL))) {
+		opt_save_srvcc_cdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "srvcc_correlation", NULL))) {
+		opt_srvcc_correlation = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_only_tcp", NULL))) {
 		opt_sip_only_tcp = yesno(value);

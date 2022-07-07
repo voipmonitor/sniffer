@@ -928,6 +928,11 @@ public:
 			       !legs.back()->disconnect_time);
 		}
 	};
+	enum eSrvccFlag {
+		_srvcc_na,
+		_srvcc_post,
+		_srvcc_pre
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -1360,6 +1365,8 @@ public:
 	map<sConferenceLegId, sConferenceLegs*> conference_legs;
 	#endif
 	volatile int conference_legs_sync;
+	eSrvccFlag srvcc_flag;
+	string srvcc_call_id;
 	
 	/**
 	 * constructor
@@ -2280,6 +2287,9 @@ public:
 		}
 	}
 	
+	void srvcc_check_post();
+	void srvcc_check_pre();
+	
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	inline void add_rtp_stream(RTP *rtp) {
 		#if CALL_RTP_DYNAMIC_ARRAY
@@ -2629,6 +2639,46 @@ private:
 		list<sChartsCallData> *calls;
 		class cFiltersCache *cache;
 	};
+	struct sSrvccCall {
+		inline sSrvccCall(const char *call_id = NULL, u_int64_t first_packet_time_us = 0) {
+			this->call_id = call_id ? call_id : "";
+			this->first_packet_time_us = first_packet_time_us;
+		}
+		string call_id;
+		u_int64_t first_packet_time_us;
+	};
+	class cSrvccCalls {
+	public:
+		cSrvccCalls() {
+			_sync_calls = 0;
+			cleanup_last_time_s = getTimeS_rdtsc();
+			cleanup_period_s = 60;
+		}
+		void set(const char *caller, const char *call_id, u_int64_t first_packet_time_us) {
+			__SYNC_LOCK(_sync_calls);
+			calls[caller] = sSrvccCall(call_id, first_packet_time_us);
+			__SYNC_UNLOCK(_sync_calls);
+			cleanup();
+		}
+		string get(const char *caller, u_int64_t first_packet_time_us) {
+			string call_id;
+			__SYNC_LOCK(_sync_calls);
+			map<string, sSrvccCall>::iterator iter = calls.find(caller);
+			if(iter != calls.end() &&
+			   first_packet_time_us <= iter->second.first_packet_time_us) {
+				call_id = iter->second.call_id;
+			}
+			__SYNC_UNLOCK(_sync_calls);
+			return(call_id);
+		}
+	private:
+		void cleanup();
+	private:
+		map<string, sSrvccCall> calls;
+		volatile int _sync_calls;
+		u_int32_t cleanup_last_time_s;
+		u_int32_t cleanup_period_s;
+	};
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
@@ -2651,6 +2701,7 @@ public:
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
 	map<string, Ss7*> ss7_listMAP;
+	cSrvccCalls srvcc_calls;
 
 	/**
 	 * @brief constructor

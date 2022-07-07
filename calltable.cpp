@@ -253,6 +253,11 @@ extern bool opt_conference_processing;
 extern vector<string> opt_mo_mt_identification_prefix;
 extern int opt_separate_storage_ipv6_ipv4_address;
 extern int opt_cdr_flag_bit;
+extern bool srvcc_set;
+extern ListCheckString *srvcc_numbers;
+extern bool opt_srvcc_processing_only;
+extern bool opt_save_srvcc_cdr;
+extern bool opt_srvcc_correlation;
 extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
 
@@ -786,6 +791,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	conference_active = 0;
 	#endif
 	conference_legs_sync = 0;
+	srvcc_flag = _srvcc_na;
 	
 	cdr.setIgnoreCheckExistsField();
 	cdr_next.setIgnoreCheckExistsField();
@@ -5916,6 +5922,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
+	if(srvcc_set) {
+		if(srvcc_flag == _srvcc_post && !opt_save_srvcc_cdr) {
+			return(0);
+		}
+		srvcc_check_pre();
+	}
+	
 	/*
 	strcpy(this->caller, "ěščřžý");
 	this->proxies.push_back(1);
@@ -6413,6 +6426,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 			cdr_next.add(mt ? "mt" : "mo", "leg_flag");
+		}
+	}
+	if(srvcc_set) {
+		if(existsColumns.cdr_next_srvcc_call_id) {
+			if(srvcc_flag != _srvcc_na) {
+				cdr_next.add(srvcc_flag == _srvcc_post ? "post_srvcc" : "pre_srvcc", "srvcc_flag");
+			}
+		}
+		if(existsColumns.cdr_next_srvcc_flag) {
+			if(srvcc_flag == _srvcc_pre && !srvcc_call_id.empty()) {
+				cdr_next.add(srvcc_call_id, "srvcc_call_id");
+			}
 		}
 	}
 	
@@ -12648,6 +12673,22 @@ bool Calltable::useCallFindX() {
 	       preProcessPacketCallX_state == PreProcessPacket::callx_find);
 }
 
+void Calltable::cSrvccCalls::cleanup() {
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(actTimeS <= cleanup_last_time_s + cleanup_period_s) {
+		return;
+	}
+	__SYNC_LOCK(_sync_calls);
+	for(map<string, sSrvccCall>::iterator iter = calls.begin(); iter != calls.end(); ) {
+		if(TIME_US_TO_S(iter->second.first_packet_time_us) + absolute_timeout < actTimeS) {
+			calls.erase(iter++);
+		} else {
+			iter++;
+		}
+	}
+	__SYNC_UNLOCK(_sync_calls);
+}
+
 
 void Call::saveregister(struct timeval *currtime) {
 	((Calltable*)calltable)->lock_registers_listMAP();
@@ -13021,6 +13062,30 @@ Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 		}
 	}
 	return(false);
+}
+
+void Call::srvcc_check_post() {
+	if(!srvcc_set || !srvcc_numbers) {
+		return;
+	}
+	if(srvcc_numbers->check(get_called())) {
+		srvcc_flag = _srvcc_post;
+		calltable->srvcc_calls.set(caller, call_id.c_str(), first_packet_time_us);
+	}
+}
+
+void Call::srvcc_check_pre() {
+	if(!srvcc_set || !opt_srvcc_correlation || srvcc_flag == _srvcc_post) {
+		return;
+	}
+	string call_id = calltable->srvcc_calls.get(caller, first_packet_time_us);
+	if(call_id.empty()) {
+		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us);
+	}
+	if(!call_id.empty()) {
+		srvcc_flag = _srvcc_pre;
+		srvcc_call_id = call_id;
+	}
 }
 
 

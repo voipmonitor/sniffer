@@ -280,6 +280,8 @@ extern int opt_safe_cleanup_calls;
 extern int opt_ss7timeout_rlc;
 extern bool opt_conference_processing;
 extern vector<string> opt_conference_uri;
+extern bool srvcc_set;
+extern bool opt_srvcc_processing_only;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -3370,6 +3372,14 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 			unsigned indexSetByeCseq = call->setByeCseq(&packetS->cseq);
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen BYE, CSeq: %u\n", call->byecseq[indexSetByeCseq].number);
+		}
+	}
+	
+	if(srvcc_set) {
+		call->srvcc_check_post();
+		if(opt_srvcc_processing_only && call->srvcc_flag != Call::_srvcc_post) {
+			call->stopProcessing = true;
+			call->flags |= FLAG_SKIPCDR;
 		}
 	}
 	
@@ -9195,7 +9205,18 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 						packet_s_process *packetS = batch->batch[batch_index];
-						this->items_thread_index[batch_index] = (packetS->source_() + packetS->dest_()) % port_modulo;
+						unsigned int thread_index = (unsigned int)(min(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
+											   max(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
+											   min(packetS->source_(), packetS->dest_()) * 
+											   max(packetS->source_(), packetS->dest_()));
+						thread_index += ~(thread_index << 15);
+						thread_index ^=  (thread_index >> 10);
+						thread_index +=  (thread_index << 3);
+						thread_index ^=  (thread_index >> 6);
+						thread_index += ~(thread_index << 11);
+						thread_index ^=  (thread_index >> 16);
+						thread_index %= port_modulo;
+						this->items_thread_index[batch_index] = thread_index;
 					}
 					for(int i = 0; i < _next_threads; i++) {
 						this->next_thread_data[i].null();

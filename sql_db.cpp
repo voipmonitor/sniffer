@@ -121,6 +121,7 @@ extern bool opt_mysql_mysql_redirect_cdr_queue;
 
 extern bool opt_conference_processing;
 extern vector<string> opt_mo_mt_identification_prefix;
+extern bool srvcc_set;
 extern int opt_separate_storage_ipv6_ipv4_address;
 
 int sql_noerror = 0;
@@ -5900,6 +5901,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			(opt_mo_mt_identification_prefix.size() ?
 				"`leg_flag` enum('mo','mt') DEFAULT NULL," :
 				"") +
+			(srvcc_set ?
+				"`srvcc_call_id` varchar(255) DEFAULT NULL,\
+				 `srvcc_flag` enum('post_srvcc','pre_srvcc') DEFAULT NULL," :
+				"") +
 		(opt_cdr_partition ? 
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
@@ -5907,6 +5912,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		 KEY `match_header` (`match_header`)" + 
 		(opt_conference_processing ?
 			",KEY `conference_referred_by` (`conference_referred_by`)" :
+			"") +
+		(srvcc_set ?
+			",KEY `srvcc_call_id` (`srvcc_call_id`)\
+			 ,KEY `srvcc_flag` (`srvcc_flag`)" :
 			"") +
 		(opt_cdr_partition ?
 			"" :
@@ -8569,7 +8578,17 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	if(opt_mo_mt_identification_prefix.size()) {
 		this->checkNeedAlterAdd("cdr_next", "leg flag", true,
 					log, &tableSize, &existsColumns.cdr_next_leg_flag,
-					"leg_flag", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
+					"srvcc_call_id", "enum('mo','mt') DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
+	if(srvcc_set) {
+		this->checkNeedAlterAdd("cdr_next", "srvcc call id", true,
+					log, &tableSize, &existsColumns.cdr_next_srvcc_call_id,
+					"srvcc_call_id", "varchar(255) DEFAULT NULL", "srvcc_call_id (srvcc_call_id)",
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cdr_next", "srvcc flag", true,
+					log, &tableSize, &existsColumns.cdr_next_srvcc_flag,
+					"srvcc_flag", "enum('post_srvcc','pre_srvcc') DEFAULT NULL", "srvcc_flag (srvcc_flag)",
 					NULL_CHAR_PTR);
 	}
 }

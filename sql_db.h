@@ -1241,6 +1241,8 @@ struct sExistsColumns {
 	bool cdr_next_conference_referred_by_ok_time;
 	bool cdr_next_conference_referred_by_ok_time_ms;
 	bool cdr_next_leg_flag;
+	bool cdr_next_srvcc_call_id;
+	bool cdr_next_srvcc_flag;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;
