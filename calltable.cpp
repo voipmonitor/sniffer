@@ -71,6 +71,7 @@ using namespace std;
 
 extern int verbosity;
 extern int verbosityE;
+extern bool opt_sip_message;
 extern int opt_sip_register;
 extern int opt_saveRTP;
 extern int opt_onlyRTPheader;
@@ -8447,7 +8448,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	__fc("callsave", call_id.c_str());
 	#endif
  
-	if(sverb.disable_save_message) {
+	if(sverb.disable_save_message || !opt_sip_message) {
 		return(0);
 	}
 	

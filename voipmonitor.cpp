@@ -267,6 +267,7 @@ int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute 
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_ringbuffer = 50;	// ring buffer in MB 
+bool opt_sip_message = true;
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
 int opt_sip_options = 0;
 int opt_sip_subscribe = 0;
@@ -7490,6 +7491,7 @@ void cConfig::addConfigItems() {
 				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-message", &opt_sip_message));
 				advanced();
 				addConfigItem(new FILE_LINE(42277) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("custom_headers_max_size", &opt_custom_headers_max_size));
@@ -10460,6 +10462,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "allow-zerossrc", NULL))) {
 		opt_allow_zerossrc = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-message", NULL))) {
+		opt_sip_message = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
 		opt_sip_register = !strcasecmp(value, "old") ? 2 : yesno(value);

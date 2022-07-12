@@ -131,6 +131,7 @@ extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
 extern int verbosityE;
 extern int opt_rtp_firstleg;
+extern bool opt_sip_message;
 extern int opt_sip_register;
 extern int opt_sip_options;
 extern int opt_sip_subscribe;
@@ -3739,7 +3740,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if((packetS->sip_method == INVITE && call->typeIsOnly(MESSAGE)) ||
-	   (packetS->sip_method == MESSAGE && call->typeIsOnly(INVITE))) {
+	   (opt_sip_message && packetS->sip_method == MESSAGE && call->typeIsOnly(INVITE))) {
 		call->addNextType(packetS->sip_method);
 		if(packetS->sip_method == INVITE) {
 			call->seeninvite = true;
@@ -3768,11 +3769,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	 
 	if(packetS->sip_method == INVITE && !call->first_invite_time_us) {
 		call->first_invite_time_us = packet_time_us;
-	} else if(packetS->sip_method == MESSAGE && !call->first_message_time_us) {
+	} else if(opt_sip_message && packetS->sip_method == MESSAGE && !call->first_message_time_us) {
 		call->first_message_time_us = packet_time_us;
 	}
 	
-	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
 		call->invite_list_lock();
 		int inviteSdaddrCounter = 0;
 		for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
@@ -3907,7 +3908,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		  (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
 		 !call->seeninviteok &&
 		 !(call->lastSIPresponseNum / 100 == 5 && lastSIPresponseNum / 100 == 5))) &&
-	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE) &&
+	   (lastSIPresponseNum != 200 || packetS->cseq.method == INVITE || (opt_sip_message && packetS->cseq.method == MESSAGE)) &&
 	   !(call->cancelcseq.is_set() && packetS->cseq.is_set() && packetS->cseq == call->cancelcseq)) {
 		strcpy_null_term(call->lastSIPresponse, lastSIPresponse);
 		call->lastSIPresponseNum = lastSIPresponseNum;
@@ -4121,7 +4122,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 		}
-	} else if(packetS->sip_method == MESSAGE) {
+	} else if(opt_sip_message && packetS->sip_method == MESSAGE) {
 		call->destroy_call_at = packetS->getTime_s() + 60;
 		call->seenmessageok = false;
 
@@ -4471,7 +4472,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					   (packetS->cseq == call->invitecseq || 
 					    (call->invitecseq_next.size() && find(call->invitecseq_next.begin(), call->invitecseq_next.end(), packetS->cseq) != call->invitecseq_next.end()) ||
 					    (call->invitecseq_in_dialog.size() && find(call->invitecseq_in_dialog.begin(), call->invitecseq_in_dialog.end(), packetS->cseq) != call->invitecseq_in_dialog.end()))) ||
-					  (packetS->cseq.method == MESSAGE && packetS->cseq == call->messagecseq)) {
+					  (opt_sip_message && packetS->cseq.method == MESSAGE && packetS->cseq == call->messagecseq)) {
 					call->invite_list_lock();
 					for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {
 						if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport &&
@@ -4632,7 +4633,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->destroy_call_at = 0;
 			call->destroy_call_at_bye = 0;
 			call->destroy_call_at_bye_confirmed = 0;
-		} else if((packetS->cseq.method == INVITE || packetS->cseq.method == MESSAGE || (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
+		} else if((packetS->cseq.method == INVITE || 
+			   (opt_sip_message && packetS->cseq.method == MESSAGE) || 
+			   (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
 			if(opt_ignore_rtp_after_response) {
 				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
@@ -4706,7 +4709,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	}
 
-	if(packetS->sip_method == INVITE || packetS->sip_method == MESSAGE) {
+	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
 		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 		if(branch[0] != '\0') {
 			detect_to_uri(packetS, to_uri, sizeof(to_uri), &to_uri_detected);
@@ -10004,7 +10007,7 @@ void PreProcessPacket::process_CallFindX(packet_s_process *packetS) {
 	packetS->call = calltable->find_by_call_id_x(idPreProcessThread, packetS->get_callid(), 0, packetS->getTime_s());
 	packetS->_findCall = true;
 	if(!packetS->call &&
-	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE ||
+	   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
 	    (opt_detect_alone_bye && packetS->sip_method == BYE))) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), idPreProcessThread);
 		packetS->_createCall = true;
@@ -10433,7 +10436,7 @@ void PreProcessPacket::process_findCall(packet_s_process **packetS_ref) {
 void PreProcessPacket::process_createCall(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	if(packetS->_findCall && !packetS->call &&
-	   (packetS->sip_method == INVITE || packetS->sip_method == MESSAGE ||
+	   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
 	    (opt_detect_alone_bye && packetS->sip_method == BYE))) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 		packetS->_createCall = true;
