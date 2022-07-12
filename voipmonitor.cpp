@@ -8380,6 +8380,7 @@ void parse_verb_param(string verbParam) {
 								{ sverb.tcpreassembly_sip_dumper_ports = new FILE_LINE(0) char[strlen(verbParam.c_str() + 31) + 1]; strcpy(sverb.tcpreassembly_sip_dumper_ports, verbParam.c_str() + 31); }
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
+	else if(verbParam == "tcpreassembly_ext")		sverb.tcpreassembly_ext = 1;
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
 	else if(verbParam == "ssldecode_debug")			sverb.ssldecode_debug = 1;
 	else if(verbParam == "sip_packets")			sverb.sip_packets = 1;

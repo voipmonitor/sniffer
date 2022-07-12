@@ -30,6 +30,7 @@ struct sVerbose {
 	char *tcpreassembly_sip_dumper;
 	char *tcpreassembly_sip_dumper_ports;
 	char *tcpreassembly_debug_file;
+	int tcpreassembly_ext;
 	int ssldecode;
 	int ssldecode_debug;
 	int sip_packets;

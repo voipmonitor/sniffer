@@ -104,13 +104,15 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 		return(1);
 	}
 	if(link->reassembly->getType() != TcpReassembly::http && !unlimitedReassemblyAttempts && counterTryOk > link->reassembly->maxReassemblyAttempts) {
-		static u_int64_t lastTimeErrorLog_ms = 0;
-		u_int64_t actTimeMS = getTimeMS_rdtsc();
-		if(!lastTimeErrorLog_ms ||
-		   actTimeMS > lastTimeErrorLog_ms + 10000) {
-			cLogSensor::log(cLogSensor::info,
-					"limiting configuration value sip_tcp_reassembly_stream_max_attempts was reached during tcp reassembly");
-			lastTimeErrorLog_ms = actTimeMS;
+		if(sverb.tcpreassembly_ext) {
+			static u_int64_t lastTimeErrorLog_ms = 0;
+			u_int64_t actTimeMS = getTimeMS_rdtsc();
+			if(!lastTimeErrorLog_ms ||
+			   actTimeMS > lastTimeErrorLog_ms + 10000) {
+				cLogSensor::log(cLogSensor::info,
+						"limiting configuration value sip_tcp_reassembly_stream_max_attempts was reached during tcp reassembly");
+				lastTimeErrorLog_ms = actTimeMS;
+			}
 		}
 		if(enableDebug && _debug_stream) {
 			(*_debug_stream)
