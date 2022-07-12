@@ -5926,7 +5926,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(srvcc_flag == _srvcc_post && !opt_save_srvcc_cdr) {
 			return(0);
 		}
-		srvcc_check_pre();
+		if(srvcc_flag == _srvcc_na) {
+			srvcc_check_pre();
+		}
 	}
 	
 	/*
@@ -13078,9 +13080,10 @@ void Call::srvcc_check_pre() {
 	if(!srvcc_set || !opt_srvcc_correlation || srvcc_flag == _srvcc_post) {
 		return;
 	}
-	string call_id = calltable->srvcc_calls.get(caller, first_packet_time_us);
+	u_int64_t last_time_us = get_last_time_us();
+	string call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
 	if(call_id.empty()) {
-		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us);
+		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us, last_time_us);
 	}
 	if(!call_id.empty()) {
 		srvcc_flag = _srvcc_pre;
