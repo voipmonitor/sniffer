@@ -227,15 +227,10 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	first = true;
 	first_packet_time_us = 0;
 	last_packet_time_us = 0;
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(rtpmap, 0, sizeof(rtpmap));
-	memset(rtpmap_other_side, 0, sizeof(rtpmap_other_side));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)rtpmap, 0, sizeof(rtpmap));
+	memset((void*)rtpmap_other_side, 0, sizeof(rtpmap_other_side));
+	rtpmap_call_index = -1;
+	rtpmap_other_side_call_index = -1;
 	s = new FILE_LINE(24001) source;
 	memset(s, 0, sizeof(source));
 	memset(&stats, 0, sizeof(stats));
@@ -1252,21 +1247,27 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		if(curpayload >= 96 && curpayload <= 127) {
 			/* for dynamic payload we look into rtpmap */
 			int found = 0;
-			for(int i = 0; i < MAX_RTPMAP; i++) {
-				if(rtpmap[i].is_set() && curpayload == rtpmap[i].payload) {
-					codec = rtpmap[i].codec;
-					frame_size = rtpmap[i].frame_size;
-					found = 1;
-					break;
+			RTPMAP *_rtpmap = get_rtpmap(owner);
+			if(_rtpmap) {
+				for(int i = 0; i < MAX_RTPMAP; i++) {
+					if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
+						codec = _rtpmap[i].codec;
+						frame_size = _rtpmap[i].frame_size;
+						found = 1;
+						break;
+					}
 				}
 			}
 			if(!found) {
-				for(int i = 0; i < MAX_RTPMAP; i++) {
-					if(rtpmap_other_side[i].is_set() && curpayload == rtpmap_other_side[i].payload) {
-						codec = rtpmap_other_side[i].codec;
-						frame_size = rtpmap_other_side[i].frame_size;
-						found = 1;
-						break;
+				_rtpmap = get_rtpmap(owner, true);
+				if(_rtpmap) {
+					for(int i = 0; i < MAX_RTPMAP; i++) {
+						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
+							codec = _rtpmap[i].codec;
+							frame_size = _rtpmap[i].frame_size;
+							found = 1;
+							break;
+						}
 					}
 				}
 			}
@@ -1291,10 +1292,13 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		} else {
 			codec = curpayload;
 			if(codec == PAYLOAD_ILBC) {
-				for(int i = 0; i < MAX_RTPMAP; i++) {
-					if(rtpmap[i].is_set() && curpayload == rtpmap[i].payload) {
-						frame_size = rtpmap[i].frame_size;
-						break;
+				RTPMAP *_rtpmap = get_rtpmap(owner);
+				if(_rtpmap) {
+					for(int i = 0; i < MAX_RTPMAP; i++) {
+						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
+							frame_size = _rtpmap[i].frame_size;
+							break;
+						}
 					}
 				}
 			}
@@ -2939,8 +2943,22 @@ void RTP::addEnergyLevel(void *data, int datalen, int codec) {
 	}
 }
 
-#endif // not EXPERIMENTAL_LITE_RTP_MOD
+RTPMAP *RTP::get_rtpmap(Call *call, bool other_side) {
+	extern bool opt_rtpmap_indirect;
+	if(opt_rtpmap_indirect) {
+		if(call) {
+			int rtpmap_call_index = other_side ? this->rtpmap_other_side_call_index : this->rtpmap_call_index;
+			if(rtpmap_call_index >= 0) {
+				return(call->rtpmap[rtpmap_call_index]);
+			}
+		}
+		return(NULL);
+	} else {
+		return(other_side ? rtpmap_other_side : rtpmap);
+	}
+}
 
+#endif // not EXPERIMENTAL_LITE_RTP_MOD
 
 extern "C" {
 void save_rtp_energylevels(void *rtp_stream, void *data, int datalen, int codec) {

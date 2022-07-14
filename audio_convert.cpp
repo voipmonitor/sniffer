@@ -502,15 +502,17 @@ cAudioConvert::eResult cAudioConvert::writeOggData(u_char *data, unsigned datale
 
 	/* uninterleave samples */
 	signed char *_data = (signed char*)data;
-	for(unsigned i = 0; i < datalen / 4; i++){
-		analysis_buffer[0][i] = ((_data[i*4+1]<<8)|
-					(0x00ff&(int)_data[i*4]))/32768.f;
-		analysis_buffer[1][i] = ((_data[i*4+3]<<8)|
-					(0x00ff&(int)_data[i*4+2]))/32768.f;
+	for(unsigned i = 0; i < datalen / (audioInfo.channels*2); i++){
+		analysis_buffer[0][i] = ((_data[i*(audioInfo.channels*2)+1]<<8)|
+					(0x00ff&(int)_data[i*(audioInfo.channels*2)]))/32768.f;
+		if(audioInfo.channels > 1) {
+			analysis_buffer[1][i] = ((_data[i*4+3]<<8)|
+						(0x00ff&(int)_data[i*4+2]))/32768.f;
+		}
 	}
 
 	/* tell the library how much we actually submitted */
-	vorbis_analysis_wrote(&ogg.vd, datalen / 4);
+	vorbis_analysis_wrote(&ogg.vd, datalen / (audioInfo.channels*2));
 	
 	return(_writeOgg());
 }

@@ -66,7 +66,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				pcap_pkthdr *tcpHeader;
 				u_char *tcpPacket;
 				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-							  ethHeader, _data, _datalen,
+							  ethHeader, _data, _datalen, 0,
 							  _ip_src, _ip_dst, _port_src, _port_dst,
 							  dataItem->getSeq(), dataItem->getAck(), 0,
 							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
@@ -412,7 +412,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pcap_pkthdr *tcpHeader;
 		u_char *tcpPacket;
 		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-					  ethHeader, data, dataLength,
+					  ethHeader, data, dataLength, 0,
 					  ip_src, ip_dst, port_src, port_dst,
 					  seq, ack, 0,
 					  time.tv_sec, time.tv_usec, dlt);
@@ -438,7 +438,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pcap_pkthdr *udpHeader;
 		u_char *udpPacket;
 		createSimpleUdpDataPacket(ethHeaderLength, &udpHeader,  &udpPacket,
-					  ethHeader, data, dataLength,
+					  ethHeader, data, dataLength, 0,
 					  ip_src, ip_dst, port_src, port_dst,
 					  time.tv_sec, time.tv_usec);
 		unsigned iphdrSize = ((iphdr2*)(udpPacket + ethHeaderLength))->get_hdr_size();
@@ -458,6 +458,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			pflags, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
+	}
+	if(sverb.ssl_stats) {
+		ssl_stats_add_delay_processPacket(getTimeUS(time));
 	}
 	if(ethHeaderAlloc) {
 		delete [] ethHeader;

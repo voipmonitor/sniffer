@@ -673,6 +673,7 @@ private:
 	u_int64_t created_at;
 friend class cDestroyCallsInfo;
 friend class ChunkBuffer;
+friend class cSeparateProcessing;
 };
 
 struct sChartsCacheCallData {
@@ -926,6 +927,11 @@ public:
 			return(legs.size() &&
 			       !legs.back()->disconnect_time);
 		}
+	};
+	enum eSrvccFlag {
+		_srvcc_na,
+		_srvcc_post,
+		_srvcc_pre
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
@@ -1359,6 +1365,8 @@ public:
 	map<sConferenceLegId, sConferenceLegs*> conference_legs;
 	#endif
 	volatile int conference_legs_sync;
+	eSrvccFlag srvcc_flag;
+	string srvcc_call_id;
 	
 	/**
 	 * constructor
@@ -1498,6 +1506,16 @@ public:
 	*/
 	void set_first_packet_time_us(u_int64_t time_us) { first_packet_time_us = time_us; };
 
+	u_int64_t get_last_time_us() {
+		extern bool opt_ignore_duration_after_bye_confirmed;
+		return(typeIs(MGCP) ? 
+			last_mgcp_connect_packet_time_us : 
+			(opt_ignore_duration_after_bye_confirmed && this->seenbyeandok_time_usec && this->seenbyeandok_time_usec > first_packet_time_us ? 
+			  this->seenbyeandok_time_usec :
+			  get_last_packet_time_us()));
+	}
+	u_int32_t get_last_time_s() { return TIME_US_TO_S(get_last_time_us()); }
+	
 	/**
 	 * handle hold times
 	 *
@@ -1536,13 +1554,7 @@ public:
 	 * @return lenght of the call in seconds
 	*/
 	u_int64_t duration_us() {
-		extern bool opt_ignore_duration_after_bye_confirmed;
-		return((typeIs(MGCP) ? 
-			 last_mgcp_connect_packet_time_us : 
-			 (opt_ignore_duration_after_bye_confirmed && this->seenbyeandok_time_usec && this->seenbyeandok_time_usec > first_packet_time_us ? 
-			   this->seenbyeandok_time_usec :
-			   get_last_packet_time_us())) - 
-		       first_packet_time_us);
+		return(get_last_time_us() - first_packet_time_us);
 	};
 	double duration_sf() { return(TIME_US_TO_SF(duration_us())); };
 	u_int32_t duration_s() { return(TIME_US_TO_S(duration_us())); };
@@ -1551,9 +1563,9 @@ public:
 	u_int64_t callend_us() { return calltime_us() + duration_us(); };
 	u_int32_t callend_s() { return TIME_US_TO_S(callend_us()); };
 	
-	u_int32_t duration_active_us() { return(unshiftSystemTime_ms(getTimeMS_rdtsc()) * 1000 - first_packet_time_us); };
+	u_int64_t duration_active_us() { return(unshiftSystemTime_ms(getTimeMS_rdtsc()) * 1000 - first_packet_time_us); };
 	u_int32_t duration_active_s() { return(TIME_US_TO_S(duration_active_us())); };
-	u_int32_t connect_duration_active_us() { return(connect_time_us ? duration_active_us() - (connect_time_us - first_packet_time_us) : 0); };
+	u_int64_t connect_duration_active_us() { return(connect_time_us ? duration_active_us() - (connect_time_us - first_packet_time_us) : 0); };
 	u_int32_t connect_duration_active_s() { return(TIME_US_TO_S(connect_duration_active_us())); };
 	
 	/**
@@ -2279,6 +2291,9 @@ public:
 		}
 	}
 	
+	void srvcc_check_post();
+	void srvcc_check_pre();
+	
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	inline void add_rtp_stream(RTP *rtp) {
 		#if CALL_RTP_DYNAMIC_ARRAY
@@ -2362,6 +2377,13 @@ public:
 	volatile u_int32_t in_preprocess_queue_before_process_packet_at[2];
 	bool suppress_rtp_read_due_to_insufficient_hw_performance;
 	bool suppress_rtp_proc_due_to_insufficient_hw_performance;
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	volatile bool sp_sent_close_call;
+	volatile bool sp_arrived_rtp_streams;
+	volatile u_int32_t sp_stop_rtp_processing_at;
+	volatile u_int32_t sp_do_destroy_call_at;
+	set<vmIPport> sp_rtp_ipport;
+	#endif
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -2621,6 +2643,48 @@ private:
 		list<sChartsCallData> *calls;
 		class cFiltersCache *cache;
 	};
+	struct sSrvccCall {
+		inline sSrvccCall(const char *call_id = NULL, u_int64_t first_packet_time_us = 0) {
+			this->call_id = call_id ? call_id : "";
+			this->first_packet_time_us = first_packet_time_us;
+		}
+		string call_id;
+		u_int64_t first_packet_time_us;
+	};
+	class cSrvccCalls {
+	public:
+		cSrvccCalls() {
+			_sync_calls = 0;
+			cleanup_last_time_s = getTimeS_rdtsc();
+			cleanup_period_s = 60;
+		}
+		void set(const char *caller, const char *call_id, u_int64_t first_packet_time_us) {
+			__SYNC_LOCK(_sync_calls);
+			calls[caller] = sSrvccCall(call_id, first_packet_time_us);
+			__SYNC_UNLOCK(_sync_calls);
+			cleanup();
+		}
+		string get(const char *caller, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
+			string call_id;
+			__SYNC_LOCK(_sync_calls);
+			map<string, sSrvccCall>::iterator iter = calls.find(caller);
+			if(iter != calls.end()) {
+				if(first_packet_time_us <= iter->second.first_packet_time_us &&
+				   last_packet_time_us >= iter->second.first_packet_time_us) {
+					call_id = iter->second.call_id;
+				}
+			}
+			__SYNC_UNLOCK(_sync_calls);
+			return(call_id);
+		}
+	private:
+		void cleanup();
+	private:
+		map<string, sSrvccCall> calls;
+		volatile int _sync_calls;
+		u_int32_t cleanup_last_time_s;
+		u_int32_t cleanup_period_s;
+	};
 public:
 	deque<Call*> calls_queue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	deque<Call*> audio_queue; //!< this queue is used for asynchronous audio convert by the worker thread
@@ -2643,6 +2707,7 @@ public:
 	map<d_item<vmIP>, Call*> skinny_ipTuples;
 	map<unsigned int, Call*> skinny_partyID;
 	map<string, Ss7*> ss7_listMAP;
+	cSrvccCalls srvcc_calls;
 
 	/**
 	 * @brief constructor
@@ -2778,6 +2843,9 @@ public:
 			}
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 1 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2794,6 +2862,9 @@ public:
 			rslt_call = callMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 2 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2841,6 +2912,9 @@ public:
 			rslt_call = mergeMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				/*
+				cout << " *** ++ 3 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				*/
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -2945,6 +3019,9 @@ public:
 	 * @return reference of the Call if found, otherwise return NULL
 	*/
 	int cleanup_calls(bool closeAll, u_int32_t packet_time_s = 0, const char *file = NULL, int line = 0);
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	void cleanup_calls_separate_processing_rtp();
+	#endif
 	int cleanup_registers(bool closeAll, u_int32_t packet_time_s = 0);
 	int cleanup_ss7(bool closeAll, u_int32_t packet_time_s = 0);
 
@@ -2952,8 +3029,9 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(vmIP addr, vmPort port, struct timeval *ts, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
+	void hashAdd(vmIP addr, vmPort port, u_int64_t time_us, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
 	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
+	void _hashAddExt(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
 
 	/**
 	 * @brief find call
@@ -3149,6 +3227,7 @@ public:
 	*/
 	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
 	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
+	int _hashRemoveExt(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
 	int hashRemove(Call *call, bool useHashQueueCounter = true);
 	int hashRemoveForce(Call *call);
 	inline int _hashRemove(Call *call, bool use_lock = true);

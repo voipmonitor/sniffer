@@ -149,7 +149,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				}
 				#endif
 				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-							  ethHeader, _data, _datalen,
+							  ethHeader, _data, _datalen, 0,
 							  _ip_src, _ip_dst, _port_src, _port_dst,
 							  dataItem->getSeq(), dataItem->getAck(), 0,
 							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);

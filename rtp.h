@@ -217,11 +217,20 @@ public:
 	inline unsigned received_() {
 		return(received);
 	}
+	inline void set_received_(u_int32_t r) {
+		received = r;
+	}
 	inline unsigned lost_() {
 		return(0);
 	}
+	inline void set_lost_(u_int32_t l) {
+		//
+	}
 	inline int first_codec_() {
 		return(codec);
+	}
+	inline void set_first_codec_(int c) {
+		codec = c;
 	}
 	inline bool ok_other_ip_side_by_sip_() {
 		return(false);
@@ -345,6 +354,8 @@ public:
 	int frame_size;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
+	int rtpmap_call_index;
+	int rtpmap_other_side_call_index;
 	unsigned char* data;    //!< pointer to UDP payload
 	iphdr2 *header_ip;
 	int len;		//!< lenght of UDP payload
@@ -739,15 +750,26 @@ public:
 	inline unsigned received_() {
 		return(stats.received);
 	}
+	inline void set_received_(u_int32_t r) {
+		stats.received = r;
+	}
 	inline unsigned lost_() {
 		return(stats.lost);
+	}
+	inline void set_lost_(u_int32_t l) {
+		stats.lost = l;
 	}
 	inline int first_codec_() {
 		return(first_codec);
 	}
+	inline void set_first_codec_(int c) {
+		first_codec = c;
+	}
 	inline bool ok_other_ip_side_by_sip_() {
 		return(ok_other_ip_side_by_sip);
 	}
+	
+	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
 	
 private: 
 	/*

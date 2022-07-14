@@ -1454,7 +1454,7 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 bool incorrectCaplenDetected = false;
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
-		      u_char *data, unsigned int datalen,
+		      u_char *data, unsigned int datalen, u_int32_t forceDatalen,
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
 	extern int opt_convert_dlt_sll_to_en10;
@@ -1509,17 +1509,22 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 							    NULL, NULL,
 							    header_ip_offset, protocol, vlan)) {
 						unsigned iphdrSize = ((iphdr2*)(packet + header_ip_offset))->get_hdr_size();
-						if((header_ip_offset +
-						    iphdrSize +
-						    (istcp ? 
-						      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
-						      sizeof(udphdr2)) + 
-						    datalen) != header->caplen ||
+						unsigned hdrsSize = header_ip_offset +
+								    iphdrSize +
+								    (istcp ? 
+								      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
+								      sizeof(udphdr2));
+						if(hdrsSize + datalen != header->caplen ||
+						   (forceDatalen && forceDatalen < datalen) ||
 						   forceVirtualUdp == 2) {
+							unsigned datalen_orig = datalen;
+							if(forceDatalen && forceDatalen < datalen) {
+								datalen = forceDatalen;
+							}
 							u_char *packet_mod;
 							pcap_pkthdr *header_mod;
 							createSimpleUdpDataPacket(header_ip_offset,  &header_mod, &packet_mod,
-										  (u_char*)packet, data, datalen,
+										  (u_char*)packet, data, datalen, datalen_orig,
 										  saddr, daddr, source, dest,
 										  ts && isSetTimeval(ts) ? ts->tv_sec : header->ts.tv_sec, 
 										  ts && isSetTimeval(ts) ? ts->tv_usec : header->ts.tv_usec);
@@ -4358,9 +4363,12 @@ char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 }
 
 void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen, unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t time_sec, u_int32_t time_usec) {
+	if(!hdrs_datalen) {
+		hdrs_datalen = datalen;
+	}
 	unsigned iphdr_size = 
 		#if VM_IPV6
 		saddr.is_v6() ? 
@@ -4368,6 +4376,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		#endif
 		 sizeof(iphdr2);
 	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
+	u_int32_t packet_length_hdr = ether_header_length + iphdr_size + sizeof(udphdr2) + hdrs_datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
 	ether_header *header_eth = (ether_header*)*packet;
@@ -4382,7 +4391,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr.nxt = IPPROTO_UDP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + hdrs_datalen);
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
 	#endif
@@ -4396,7 +4405,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr._protocol = IPPROTO_UDP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + hdrs_datalen);
 		iphdr._ttl = 50;
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	#if VM_IPV6
@@ -4406,7 +4415,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	memset(&udphdr, 0, sizeof(udphdr2));
 	udphdr.set_source(source);
 	udphdr.set_dest(dest);
-	udphdr.len = htons(sizeof(udphdr2) + datalen);
+	udphdr.len = htons(sizeof(udphdr2) + hdrs_datalen);
 	memcpy(*packet + ether_header_length + iphdr_size, &udphdr, sizeof(udphdr2));
 	memcpy(*packet + ether_header_length + iphdr_size + sizeof(udphdr2), data, datalen);
 	*header = new FILE_LINE(38023) pcap_pkthdr;
@@ -4414,14 +4423,17 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
 	(*header)->caplen = packet_length;
-	(*header)->len = packet_length;
+	(*header)->len = packet_length_hdr;
 }
 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen, unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
+	if(!hdrs_datalen) {
+		hdrs_datalen = datalen;
+	}
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	unsigned iphdr_size = 
@@ -4431,6 +4443,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		#endif
 		 sizeof(iphdr2);
 	u_int32_t packet_length = ether_header_length + iphdr_size + tcp_doff * 4 + datalen;
+	u_int32_t packet_length_hdr = ether_header_length + iphdr_size + tcp_doff * 4 + hdrs_datalen;
 	*packet = new FILE_LINE(38024) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
 	ether_header *header_eth = (ether_header*)*packet;
@@ -4445,7 +4458,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr.nxt = IPPROTO_TCP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + hdrs_datalen);
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else {
 	#endif
@@ -4459,7 +4472,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr._protocol = IPPROTO_TCP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + hdrs_datalen);
 		iphdr._ttl = 50;
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	#if VM_IPV6
@@ -4490,7 +4503,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
 	(*header)->caplen = packet_length;
-	(*header)->len = packet_length;
+	(*header)->len = packet_length_hdr;
 	if(ether_header_length > sizeof(ether_header)) {
 		u_char *header_ppp_o_e = NULL;
 		u_int16_t header_ip_offset = 0;
@@ -4500,7 +4513,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 				    NULL, &header_ppp_o_e,
 				    header_ip_offset, protocol, vlan) &&
 		   header_ppp_o_e) {
-			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
+			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + hdrs_datalen + 2);
 		}
 	}
 }

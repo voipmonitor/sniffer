@@ -762,34 +762,31 @@ public:
 		return(NULL);
 	}
 	TcpReassemblyStream *findStreamByMaxNextSeq(u_int32_t seq) {
-		map<uint32_t, TcpReassemblyStream*>::iterator iter;
-		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
-			if(iter->second &&
-			   iter->second->max_next_seq == seq) {
-				return(iter->second);
+		deque<TcpReassemblyStream*>::reverse_iterator iter;
+		for(iter = this->queueStreams.rbegin(); iter != this->queueStreams.rend(); iter++) {
+			if((*iter)->max_next_seq == seq) {
+				return(*iter);
 			}
 		}
 		return(NULL);
 	}
 	TcpReassemblyStream *findStreamByMaxNextSeq(u_int32_t seq_from, u_int32_t seq_to) {
-		map<uint32_t, TcpReassemblyStream*>::iterator iter;
-		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {
-			if(iter->second &&
-			   iter->second->max_next_seq >= seq_from && iter->second->max_next_seq <= seq_to) {
-				return(iter->second);
+		deque<TcpReassemblyStream*>::reverse_iterator iter;
+		for(iter = this->queueStreams.rbegin(); iter != this->queueStreams.rend(); iter++) {
+			if((*iter)->max_next_seq >= seq_from && (*iter)->max_next_seq <= seq_to) {
+				return(*iter);
 			}
 		}
 		return(NULL);
 	}
 	TcpReassemblyStream *findStreamByNextSeq(u_int32_t seq_from, u_int32_t seq_to, TcpReassemblyStream_packet **packet) {
 		*packet = NULL;
-		map<uint32_t, TcpReassemblyStream*>::iterator iter;
-		for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end() && !*packet; iter++) {
-			if(iter->second &&
-			   (seq_to ?
-			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_to :
-			     iter->second->min_seq <= seq_from && iter->second->max_next_seq >= seq_from)) {
-				TcpReassemblyStream *stream = iter->second;
+		deque<TcpReassemblyStream*>::reverse_iterator iter;
+		for(iter = this->queueStreams.rbegin(); iter != this->queueStreams.rend() && !*packet; iter++) {
+			if(seq_to ?
+			    (*iter)->min_seq <= seq_from && (*iter)->max_next_seq >= seq_to :
+			    (*iter)->min_seq <= seq_from && (*iter)->max_next_seq >= seq_from) {
+				TcpReassemblyStream *stream = *iter;
 				map<uint32_t, TcpReassemblyStream_packet_var>::iterator iter2;
 				for(iter2 = stream->queuePacketVars.begin(); iter2 != stream->queuePacketVars.end() && !*packet; iter2++) {
 					map<uint32_t, TcpReassemblyStream_packet>::iterator iter3;

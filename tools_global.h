@@ -220,7 +220,7 @@ inline u_int64_t getTimeUS(timeval &ts) {
 }
 
 inline u_int64_t getTimeUS(timeval *ts) {
-    return(ts->tv_sec * 1000000ull + ts->tv_usec);
+    return(ts ? ts->tv_sec * 1000000ull + ts->tv_usec : 0);
 }
 
 inline u_int64_t getTimeUS(const timeval &ts) {

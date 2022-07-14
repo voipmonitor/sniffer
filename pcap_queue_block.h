@@ -42,14 +42,7 @@ struct pcap_pkthdr_fix_size {
 
 struct pcap_pkthdr_plus {
 	inline pcap_pkthdr_plus() {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memset(this, 0, sizeof(pcap_pkthdr_plus));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memset((void*)this, 0, sizeof(pcap_pkthdr_plus));
 	}
 	inline void convertFromStdHeader(pcap_pkthdr *header) {
 		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD

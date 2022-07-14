@@ -25,6 +25,8 @@ extern sExistsColumns existsColumns;
 static cSslDsslSessions *SslDsslSessions;
 static DSSL_Env *SslDsslEnv;
 
+static sSslDsslStats stats;
+
 
 cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
 	this->ip = ip;
@@ -479,6 +481,9 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 			string("find clientrandom for all type ") + " \n" +
 			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
 	}
+	if(sverb.ssl_stats) {
+		stats.delay_keys_get_begin.add_delay_from_act(getTimeUS(ts));
+	}
 	bool rslt = false;
 	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
@@ -550,6 +555,9 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 				"NOT FOUND \n";
 		}
 		syslog(LOG_NOTICE, "%s", log_ssl_sessionkey.c_str());
+	}
+	if(sverb.ssl_stats) {
+		stats.delay_keys_get_end.add_delay_from_act(getTimeUS(ts));
 	}
 	return(rslt);
 }
@@ -661,6 +669,9 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		unlock_sessions();
 		return;
 	}
+	if(sverb.ssl_stats) {
+		stats.delay_processData_begin.add_delay_from_act(getTimeUS(ts));
+	}
 	vmIP server_addr, client_addr;
 	vmPort server_port, client_port;
 	server_addr = dir == ePacketDirFromClient ? daddr : saddr;
@@ -722,6 +733,9 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 				     saddr, daddr, sport, dport, 
 				     ts, init_client_hello || init_store_session, this,
 				     forceTryIfExistsError);
+	}
+	if(sverb.ssl_stats) {
+		stats.delay_processData_end.add_delay_from_act(getTimeUS(ts));
 	}
 	unlock_sessions();
 }
@@ -926,6 +940,26 @@ void cClientRandomConnection::connection_process() {
 
 void cClientRandomConnection::evData(u_char *data, size_t dataLen) {
 	ssl_parse_client_random(data, dataLen);
+}
+
+string sSslDsslStatsItem_time::str() {
+	ostringstream str;
+	str << "c" << count << "/"
+	    << "m" << max_ms <<  "/"
+	    << "a" << avg_ms();
+	return(str.str());
+}
+
+string sSslDsslStats::str() {
+	ostringstream str;
+	str << "SSL_STATS "
+	    << "delay_processData_begin: " << delay_processData_begin.str() << "; "
+	    << "delay_processData_end: " << delay_processData_end.str() << "; "
+	    << "delay_keys_get_begin: " << delay_keys_get_begin.str() << "; "
+	    << "delay_keys_get_end: " << delay_keys_get_end.str() << "; "
+	    << "delay_processPacket: " << delay_processPacket.str() << "; "
+	    << "delay_parseSdp: " << delay_parseSdp.str();
+	return(str.str());
 }
 
 
@@ -1138,6 +1172,39 @@ void erase_client_random(u_char *client_random) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	if(SslDsslSessions) {
 		SslDsslSessions->keyErase(client_random);
+	}
+	#endif
+}
+
+string ssl_stats_str() {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(sverb.ssl_stats) {
+		return(stats.str());
+	}
+	#endif
+	return("");
+}
+
+void ssl_stats_reset() {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(sverb.ssl_stats) {
+		stats.reset();
+	}
+	#endif
+}
+
+void ssl_stats_add_delay_processPacket(u_int64_t time_us) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(sverb.ssl_stats) {
+		stats.delay_processPacket.add_delay_from_act(time_us);
+	}
+	#endif
+}
+
+void ssl_stats_add_delay_parseSdp(u_int64_t time_us) {
+	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
+	if(sverb.ssl_stats) {
+		stats.delay_parseSdp.add_delay_from_act(time_us);
 	}
 	#endif
 }

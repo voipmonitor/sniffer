@@ -671,6 +671,16 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void set_use_reuse_counter() {
 		use_reuse_counter = 1;
 	}
+	inline void set_reuse_counter(u_int8_t inc = 1) {
+		use_reuse_counter = 1;
+		__sync_add_and_fetch(&reuse_counter, inc);
+		if(insert_packets) {
+			list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)this->insert_packets;
+			for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+				(*iter)->set_reuse_counter(inc);
+			}
+		}
+	}
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
 	}
@@ -738,14 +748,7 @@ struct packet_s_process : public packet_s_process_0 {
 		init2();
 	}
 	inline packet_s_process& operator = (const packet_s_process& other) {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memcpy(this, &other, sizeof(*this));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memcpy((void*)this, &other, sizeof(*this));
 		this->callid_long = NULL;
 		this->callid_alternative = NULL;
 		this->child_packets = NULL;
@@ -899,9 +902,16 @@ public:
 		last_cleanup_ms = 0;
 		cleanup_interval_ms = 5000;
 		expiration_link_ms = 10000;
+		expiration_link_count = 20;
 	}
 	~link_packets_queue() {
 		destroyAll();
+	}
+	void setExpirationLink_ms(unsigned expiration_link_ms) {
+		this->expiration_link_ms = expiration_link_ms;
+	}
+	void setExpirationLink_count(unsigned expiration_link_count) {
+		this->expiration_link_count = expiration_link_count;
 	}
 	void push(packet_s *packetS) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
@@ -921,7 +931,11 @@ public:
 		}
 		link->queue.push_back(packetS);
 		link->last_time_ms = time_ms;
+		if(!link->first_time_ms) {
+			link->first_time_ms = time_ms;
+		}
 		unlock();
+		packetS->blockstore_addflag(121 /*pb lock flag*/);
 		#if DEBUG_DTLS_QUEUE
 		cout << " * queue dtls" << endl;
 		#endif
@@ -935,6 +949,7 @@ public:
 			link = iter_link->second;
 			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 				packetS->insert_packet((packet_s_process_0*)(*iter));
+				((packet_s_process_0*)(*iter))->blockstore_addflag(122 /*pb lock flag*/);
 				#if DEBUG_DTLS_QUEUE
 				cout << " * insert dtls" << endl;
 				#endif
@@ -978,11 +993,12 @@ private:
 	u_int64_t last_cleanup_ms;
 	unsigned cleanup_interval_ms;
 	unsigned expiration_link_ms;
+	unsigned expiration_link_count;
 };
 
 
-void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false);
-void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false);
+void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
+void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
 
 
 typedef struct {
@@ -1309,14 +1325,7 @@ struct livesnifferfilter_s_base {
 		bool all_all;
 	};
 	livesnifferfilter_s_base() {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memset(this, 0, sizeof(livesnifferfilter_s_base));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memset((void*)this, 0, sizeof(livesnifferfilter_s_base));
 		created_at = time(NULL);
 	}
 	bool sensor_id_set;

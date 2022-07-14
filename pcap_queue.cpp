@@ -1604,7 +1604,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
-			       << "[" << calls_counter;
+			       << "[";
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			if(separate_processing() == 2) {
+				outStr << calltable->calls_queue.size();
+			} else {
+				outStr << calls_counter;
+			}
+			#else
+			outStr << calls_counter;
+			#endif
 			extern volatile int storing_cdr_next_threads_count;
 			if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
 				outStr << "(s" << calls_for_store_counter << ")";
@@ -2890,6 +2899,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
+		if(sverb.ssl_stats) {
+			outStr << endl;
+			outStr << ssl_stats_str();
+			ssl_stats_reset();
+		}
 		string outStr_str = outStr.str();
 		char *pointToBeginLine = (char*)outStr_str.c_str();
 		while(pointToBeginLine && *pointToBeginLine) {
@@ -3760,6 +3774,39 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 		   (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
 		    (VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
 		   ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len) {
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING_NEXT_01
+			if(separate_processing()) {
+				u_int header_ip_offset = checkProtocolData->header_ip_offset;
+				iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
+				u_int16_t frag_data = header_ip->get_frag_data();
+				if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+					return(true);
+				}
+				char *data = NULL;
+				int datalen = 0;
+				u_int8_t ip_protocol = header_ip->get_protocol(header->caplen - header_ip_offset);
+				if(ip_protocol == IPPROTO_UDP) {
+					udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
+				} else if(ip_protocol == IPPROTO_TCP) {
+					tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
+				} else {
+					return(true);
+				}
+				if(IS_RTP(data, datalen)) {
+					if(separate_processing() == 1) {
+						return(false);
+					}
+				} else {
+					if(separate_processing() == 2) {
+						return(false);
+					}
+				}
+			}
+			#endif
+			#endif
 			return(true);
 		} else if(checkProtocolData->header_ip_offset == 0xFFFF) {
 			return(true);
@@ -3829,7 +3876,6 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_
 			     block_store, block_store_index,
 			     ppf,
 			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceName().c_str()));
-	return(0);
 }
 
 string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeriod*/) {
@@ -4974,7 +5020,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
-			bool okPush = true;;
+			bool okPush = true;
 			if(opt_udpfrag) {
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 							NULL, 0,
@@ -8656,6 +8702,15 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		}
 		return(0);
 	}
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		bool is_rtp = datalen > 2 && IS_RTP(data, datalen);
+		if(separate_processing() == 1 ? is_rtp : !is_rtp) {
+			return(0);
+		}
+	}
+	#endif
 	
 	#if TRACE_INVITE_BYE
 	if(memmem(data, datalen, "INVITE sip", 10)) {
