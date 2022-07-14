@@ -1,3 +1,19 @@
+30.2 14.7.2022
+==============
+- add support savertp=header for audiocodes [VS-1346]
+- fix result type in functions duration_active_us and connect_duration_active_us (from unsigned 32bit to unsigned 64bit) [VG-2496]
+- fix convert from wav to ogg for mono [VG-2499]
+- ignore in-dialog invite (if is it reverse via ip) for detect ip and proxy
+- fix memory leak in packetbuffer if dtls packets are assign to rtcp packet
+- adding ssl_dtls_queue_max_packets (default is 20) parameter to limit the number of packets per connection
+- fix RTP codec if codec was not in first invite 
+- search for both sdp ip types (v4 and v6) if ipv6 is enabled [VG-2498]
+- tcpreassembly - better distribution between threads
+- suppress warning 'limiting configuration value sip_tcp_reassembly_stream_max_attempts...' 
+- add option sip-message (YES/no) (SIP MESSAGE request can be now disabled) 
+- fix keylogger compilation [VS-1345]
+
+
 30.1 21.6.2022
 ==============
 - added support for HEP encapsulation 
