@@ -2899,6 +2899,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
+		if(sverb.ssl_stats) {
+			outStr << endl;
+			outStr << ssl_stats_str();
+			ssl_stats_reset();
+		}
 		string outStr_str = outStr.str();
 		char *pointToBeginLine = (char*)outStr_str.c_str();
 		while(pointToBeginLine && *pointToBeginLine) {

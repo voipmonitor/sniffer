@@ -33,6 +33,7 @@ struct sVerbose {
 	int tcpreassembly_ext;
 	int ssldecode;
 	int ssldecode_debug;
+	int ssl_stats;
 	int sip_packets;
 	int set_ua;
 	int dscp;

@@ -459,6 +459,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
 	}
+	if(sverb.ssl_stats) {
+		ssl_stats_add_delay_processPacket(getTimeUS(time));
+	}
 	if(ethHeaderAlloc) {
 		delete [] ethHeader;
 	}

@@ -8385,6 +8385,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "tcpreassembly_ext")		sverb.tcpreassembly_ext = 1;
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
 	else if(verbParam == "ssldecode_debug")			sverb.ssldecode_debug = 1;
+	else if(verbParam == "ssl_stats")			sverb.ssl_stats = 1;
 	else if(verbParam == "sip_packets")			sverb.sip_packets = 1;
 	else if(verbParam == "set_ua")				sverb.set_ua = 1;
 	else if(verbParam == "dscp")				sverb.dscp = 1;

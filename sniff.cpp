@@ -3394,6 +3394,10 @@ void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from
 	if(opt_disable_process_sdp) {
 		return;
 	}
+	
+	if(sverb.ssl_stats && packetS->pflags.ssl) {
+		ssl_stats_add_delay_parseSdp(packetS->getTimeUS());
+	}
  
 	char *sdp;
 	if(sdplen) {
