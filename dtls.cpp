@@ -265,6 +265,12 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 							link = link_iter->second;
 						} 
 					}
+					if(!link) {
+						link = new FILE_LINE(0) cDtlsLink(src_ip, src_port, dst_ip, dst_port);
+						links_by_link_id[linkId] = link;
+						links_by_server_id[serverId] = link;
+						links.push_back(link);
+					}
 					if(link) {
 						link->processHandshake(hs_header);
 					}
