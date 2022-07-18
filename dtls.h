@@ -207,7 +207,8 @@ public:
 			      u_char *data, unsigned data_len);
 	bool findSrtpKeys(vmIP src_ip, vmPort src_port,
 			  vmIP dst_ip, vmPort dst_port,
-			  list<cDtlsLink::sSrtpKeys*> *keys);
+			  list<cDtlsLink::sSrtpKeys*> *keys,
+			  int8_t *direction, bool *oneNode);
 private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;

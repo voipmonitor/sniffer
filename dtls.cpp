@@ -285,22 +285,35 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 
 bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
-			 list<cDtlsLink::sSrtpKeys*> *keys) {
+			 list<cDtlsLink::sSrtpKeys*> *keys,
+			 int8_t *direction, bool *oneNode) {
 	for(int pass = 0; pass < 2; pass++) {
 		cDtlsLink *link = NULL;
-		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? src_ip : dst_ip,
-					      pass == 0 ? src_port : dst_port,
-					      pass == 0 ? dst_ip : src_ip,
-					      pass == 0 ? dst_port : src_port);
-		cDtlsLink::sDtlsServerId serverId(pass == 0 ? src_ip : dst_ip,
-						  pass == 0 ? src_port : dst_port);
+		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? dst_ip : src_ip,
+					      pass == 0 ? dst_port : src_port,
+					      pass == 0 ? src_ip : dst_ip,
+					      pass == 0 ? src_port : dst_port);
+		cDtlsLink::sDtlsServerId serverId(pass == 0 ? dst_ip : src_ip,
+						  pass == 0 ? dst_port : src_port);
 		map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
 		if(link_iter != links_by_link_id.end()) {
 			link = link_iter->second;
+			if(direction) {
+				*direction = pass;
+			}
+			if(oneNode) {
+				*oneNode = false;
+			}
 		} else {
 			map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
 			if(link_iter != links_by_server_id.end()) {
 				link = link_iter->second;
+				if(direction) {
+					*direction = pass;
+				}
+				if(oneNode) {
+					*oneNode = true;
+				}
 			}
 		}
 		if(link && link->findSrtpKeys(keys)) {

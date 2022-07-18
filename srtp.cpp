@@ -138,15 +138,16 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	if(is_dtls() && !cryptoConfigVector.size()) {
 		list<cDtlsLink::sSrtpKeys*> keys;
-		if(call->dtls->findSrtpKeys(saddr, sport, daddr, dport, &keys)) {
+		int8_t direction; bool oneNode;
+		if(call->dtls->findSrtpKeys(saddr, sport, daddr, dport, &keys, &direction, &oneNode)) {
 			for(list<cDtlsLink::sSrtpKeys*>::iterator iter_keys = keys.begin(); iter_keys != keys.end(); iter_keys++) {
 				cDtlsLink::sSrtpKeys *keys_item = *iter_keys;
-				if(keys_item->server.ip == daddr && keys_item->server.port == dport &&
-				   keys_item->client.ip == saddr && keys_item->client.port == sport) {
+				if(direction == 0) {
 					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->server_key.c_str(), 0);
-				} else if(keys_item->server.ip == saddr && keys_item->server.port == sport &&
-					  keys_item->client.ip == daddr && keys_item->client.port == dport) {
+					clearError();
+				} else if(direction == 1) {
 					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->client_key.c_str(), 0);
+					clearError();
 				}
 				delete keys_item;
 			}
