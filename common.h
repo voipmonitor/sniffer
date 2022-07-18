@@ -25,6 +25,7 @@ struct sVerbose {
 	int tcpreassembly_ssl;
 	int tls;
 	int ssl_sessionkey;
+	char *ssl_sessionkey_to_file;
 	int tcpreassembly_sip;
 	int tcpreassembly_sip_cleanup;
 	char *tcpreassembly_sip_dumper;

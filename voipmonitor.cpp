@@ -8374,6 +8374,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "tcpreassembly_ssl")		sverb.tcpreassembly_ssl = 1;
 	else if(verbParam == "tls")				sverb.tls = 1;
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
+	else if(verbParam.substr(0, 23) == "ssl_sessionkey_to_file=")
+								{ sverb.ssl_sessionkey_to_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 23) + 1]; strcpy(sverb.ssl_sessionkey_to_file, verbParam.c_str() + 23); }
 	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
 	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_sip_dumper=")
