@@ -122,19 +122,30 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 	if(!cipher_types.size() || !client_random_set || !server_random_set) {
 		return(false);
 	}
-	if(!master_secret_length && !findMasterSecret()) {
-		 return(false);
+	string log_str;
+	if(sverb.dtls) {
+		log_str += "client random: ";
+		log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
+		log_str += "server random: ";
+		log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
 	}
-	if(keys_block_attempts > max_keys_block_attempts) {
+	if(!master_secret_length && !findMasterSecret()) {
+		if(sverb.dtls) {
+			log_str += "master secret not found\n";
+			ssl_sessionkey_log(log_str);
+		}
 		return(false);
 	}
 	if(sverb.dtls) {
-		puts("client random");
-		hexdump(client_random, DTLS_RANDOM_SIZE);
-		puts("server random");
-		hexdump(server_random, DTLS_RANDOM_SIZE);
-		puts("master secret");
-		hexdump(master_secret, master_secret_length);
+		log_str += "master secret: ";
+		log_str += hexdump_to_string(master_secret, master_secret_length) + "\n";
+	}
+	if(keys_block_attempts > max_keys_block_attempts) {
+		if(sverb.dtls) {
+			log_str += "the max_keys_block_attempts limit has been reached\n";
+			ssl_sessionkey_log(log_str);
+		}
+		return(false);
 	}
 	SimpleBuffer secret;
 	secret.set(master_secret, master_secret_length);
@@ -145,11 +156,15 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 	SimpleBuffer out;
 	++keys_block_attempts;
 	if(!dtls_srtp_keys_block(&secret, "EXTRACTOR-dtls_srtp", &rnd1, &rnd2, &out, 60)) {
+		if(sverb.dtls) {
+			log_str += "dtls_srtp_keys_block failed\n";
+			ssl_sessionkey_log(log_str);
+		}
 		return(false);
 	}
 	if(sverb.dtls) {
-		puts("out");
-		hexdump(out.data(), 60);
+		log_str += "out: ";
+		log_str += hexdump_to_string(out.data(), 60) + "\n";
 	}
 	for(list<eCipherType>::iterator iter_cipher_type = cipher_types.begin(); iter_cipher_type != cipher_types.end(); iter_cipher_type++) {
 		eCipherType cipher_type = *iter_cipher_type;
@@ -162,10 +177,10 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 		server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
 		client_key.add(out.data() + srtp_key_len * 2 + srtp_salt_len, srtp_salt_len);
 		if(sverb.dtls) {
-			puts("server key");
-			hexdump(server_key.data(), srtp_key_len + srtp_salt_len);
-			puts("client key");
-			hexdump(client_key.data(), srtp_key_len + srtp_salt_len);
+			log_str += "server key: ";
+			log_str += hexdump_to_string(server_key.data(), srtp_key_len + srtp_salt_len) + "\n";
+			log_str += "client key: ";
+			log_str += hexdump_to_string(client_key.data(), srtp_key_len + srtp_salt_len) + "\n";
 		}
 		sSrtpKeys *keys_item = new FILE_LINE(0) sSrtpKeys;
 		keys_item->server_key = base64_encode(server_key.data(), srtp_key_len + srtp_salt_len);
@@ -174,6 +189,9 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 		keys_item->client = client;
 		keys_item->cipher = cipherName(cipher_type);
 		keys->push_back(keys_item);
+	}
+	if(sverb.dtls) {
+		ssl_sessionkey_log(log_str);
 	}
 	return(true);
 }
@@ -184,7 +202,7 @@ void cDtlsLink::init() {
 	cipher_types.clear();
 	master_secret_length = 0;
 	keys_block_attempts = 0;
-	max_keys_block_attempts = 4;
+	max_keys_block_attempts = 20;
 }
 
 bool cDtlsLink::findMasterSecret() {
@@ -418,9 +436,11 @@ static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *label, Simple
 	if(rnd2) {
 		memcpy(label_seed.data() + label_len+  rnd1->data_len(), rnd2->data(), rnd2->data_len());
 	}
-	if(sverb.dtls) {
-		puts("seed");
-		hexdump(label_seed.data(), label_seed.data_capacity());
+	if(sverb.dtls && !sverb.ssl_sessionkey_to_file) {
+		string log_str;
+		log_str += "seed: ";
+		log_str += hexdump_to_string(label_seed.data(), label_seed.data_capacity()) + "\n";
+		ssl_sessionkey_log(log_str);
 	}
 	return(tls_hash(secret, &label_seed, GCRY_MD_SHA256, out, out_len));
 	#else

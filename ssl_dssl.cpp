@@ -28,32 +28,6 @@ static DSSL_Env *SslDsslEnv;
 static sSslDsslStats stats;
 
 
-static bool ssl_sessionkey_enable() {
-	return(sverb.ssl_sessionkey || sverb.ssl_sessionkey_to_file);
-}
-
-static void ssl_sessionkey_log(string &str) {
-	static FILE *log_file = NULL;
-	static volatile int log_sync = 0;
-	__SYNC_LOCK(log_sync);
-	if(sverb.ssl_sessionkey) {
-		syslog(LOG_NOTICE, "%s", str.c_str());
-	}
-	if(sverb.ssl_sessionkey_to_file) {
-		if(!log_file) {
-			log_file = fopen(sverb.ssl_sessionkey_to_file, "a");
-		}
-		if(log_file) {
-			fprintf(log_file, "%s: ", sqlDateTimeString(getTimeS_rdtsc()).c_str());
-			fwrite(str.c_str(), str.length(), 1, log_file);
-			fwrite("\n", 1, 1, log_file);
-			fflush(log_file);
-		}
-	}
-	__SYNC_UNLOCK(log_sync);
-}
-
-
 cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
 	this->ip = ip;
 	this->port = port;
@@ -1235,4 +1209,29 @@ void ssl_stats_add_delay_parseSdp(u_int64_t time_us) {
 		stats.delay_parseSdp.add_delay_from_act(time_us);
 	}
 	#endif
+}
+
+bool ssl_sessionkey_enable() {
+	return(sverb.ssl_sessionkey || sverb.ssl_sessionkey_to_file);
+}
+
+void ssl_sessionkey_log(string &str) {
+	static FILE *log_file = NULL;
+	static volatile int log_sync = 0;
+	__SYNC_LOCK(log_sync);
+	if(sverb.ssl_sessionkey) {
+		syslog(LOG_NOTICE, "%s", str.c_str());
+	}
+	if(sverb.ssl_sessionkey_to_file) {
+		if(!log_file) {
+			log_file = fopen(sverb.ssl_sessionkey_to_file, "a");
+		}
+		if(log_file) {
+			fprintf(log_file, "%s: ", sqlDateTimeString(getTimeS_rdtsc()).c_str());
+			fwrite(str.c_str(), str.length(), 1, log_file);
+			fwrite("\n", 1, 1, log_file);
+			fflush(log_file);
+		}
+	}
+	__SYNC_UNLOCK(log_sync);
 }
