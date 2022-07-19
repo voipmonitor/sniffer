@@ -124,9 +124,10 @@ public:
 	inline bool need_prepare_decrypt() {
 		return(!cryptoConfigVector.size());
 	}
-	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, const char *call_id);
+	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class Call *call);
 	bool is_dtls();
-	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us);
+	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
+			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class Call *call);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us);

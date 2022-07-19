@@ -136,7 +136,7 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 	return(false);
 }
 
-void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, const char *call_id) {
+void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, Call *call) {
 	if(is_dtls() && !cryptoConfigVector.size()) {
 		list<cDtlsLink::sSrtpKeys*> keys;
 		int8_t direction; bool oneNode;
@@ -147,7 +147,7 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->server_key.c_str(), 0);
 					if(sverb.dtls) {
 						string log_str;
-						log_str += string("set crypto config for call: ") + (call_id ? call_id : "unknown") + 
+						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown");
 						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " d" + intToString(direction) + "\n";
 						log_str += "cipher: " + keys_item->cipher + "\n";
 						log_str += "key: " + hexdump_to_string_from_base64(keys_item->server_key.c_str()) + "\n";
@@ -159,7 +159,7 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 					clearError();
 					if(sverb.dtls) {
 						string log_str;
-						log_str += string("set crypto config for call: ") + (call_id ? call_id : "unknown");
+						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown");
 						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " d" + intToString(direction) + "\n";
 						log_str += "cipher: " + keys_item->cipher + "\n";
 						log_str += "key: " + hexdump_to_string_from_base64(keys_item->client_key.c_str()) + "\n";
@@ -177,10 +177,17 @@ bool RTPsecure::is_dtls() {
 	       (call->ip_port[index_ip_port].srtp_fingerprint || !call->ip_port[index_ip_port].srtp_crypto_config_list));
 }
 
-bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us) {
+bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
+			    vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, Call *call) {
 	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
 		++decrypt_rtp_failed;
+		if(is_dtls() && sverb.dtls) {
+			string log_str;
+			log_str += string("decrypt_rtp failed (empty cryptoConfigVector) for call: ") + (call ? call->call_id : "unknown");
+			log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+			ssl_sessionkey_log(log_str);
+		}
 		return(false);
 	}
 	if(!rtp && cryptoConfigVector.size() == 1) {
@@ -189,6 +196,12 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	}
 	if(!isOK()) {
 		++decrypt_rtp_failed;
+		if(is_dtls() && sverb.dtls) {
+			string log_str;
+			log_str += string("decrypt_rtp failed (not isOK) for call: ") + (call ? call->call_id : "unknown");
+			log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+			ssl_sessionkey_log(log_str);
+		}
 		return(false);
 	}
 	if(rtp) {
@@ -199,8 +212,16 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
 				++decrypt_rtp_ok;
 				return(true);
-			} else if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
-				term();
+			} else {
+				if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
+					term();
+				}
+				if(is_dtls() && sverb.dtls) {
+					string log_str;
+					log_str += string("decrypt_rtp failed 1 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
+					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+					ssl_sessionkey_log(log_str);
+				}
 			}
 		}
 	}
@@ -224,6 +245,12 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				      decrypt_rtp_native(data, data_len, payload, payload_len) :
 				      decrypt_rtp_libsrtp(data, data_len, payload, payload_len))) {
 					term();
+					if(is_dtls() && sverb.dtls) {
+						string log_str;
+						log_str += string("decrypt_rtp failed 2 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
+						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+						ssl_sessionkey_log(log_str);
+					}
 					continue;
 				}
 				++decrypt_rtp_ok;
@@ -232,6 +259,12 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 		}
 	}
 	++decrypt_rtp_failed;
+	if(is_dtls() && sverb.dtls) {
+		string log_str;
+		log_str += string("decrypt_rtp failed 3 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
+		log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+		ssl_sessionkey_log(log_str);
+	}
 	return(false);
 }
  
