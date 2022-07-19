@@ -1615,7 +1615,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	if(srtp_decrypt && opt_srtp_rtcp_decrypt) {
 		u_int32_t datalen = packetS->datalen_();
 		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_());
+			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), call_id.c_str());
 		}
 		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
 		packetS->set_datalen_(datalen);

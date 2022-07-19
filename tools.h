@@ -3790,6 +3790,7 @@ inline string hexdump_to_string(const char *data, unsigned size) {
 inline string hexdump_to_string(SimpleBuffer *buffer) {
 	return(hexdump_to_string(buffer->data(), buffer->data_len()));
 }
+string hexdump_to_string_from_base64(const char *data);
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 unsigned file_get_rows(string, vector<string> *rows);
 

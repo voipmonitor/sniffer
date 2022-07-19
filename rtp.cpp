@@ -1195,7 +1195,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	    #endif
 	    )) {
 		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport);
+			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, owner ? owner->call_id.c_str() : NULL);
 		}
 		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
 		this->len = *len;

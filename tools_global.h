@@ -320,6 +320,7 @@ void get_list_cores(string input, list<int> &list);
 
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
+u_char *base64decode(const char *src, int *dst_length);
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
 void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);

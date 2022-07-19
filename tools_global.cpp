@@ -644,6 +644,13 @@ int base64decode(unsigned char *dst, const char *src, int max)
         return cnt;
 }
 
+u_char *base64decode(const char *src, int *dst_length) {
+	int src_length = strlen(src);
+	unsigned char *dst = new FILE_LINE(0) u_char[src_length * 3];
+	*dst_length = base64decode(dst, src, src_length);
+	return(dst);
+}
+
 string base64_encode(const unsigned char *data, size_t input_length) {
 	if(!input_length) {
 		input_length = strlen((char*)data);

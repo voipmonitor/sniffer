@@ -7287,6 +7287,14 @@ string hexdump_to_string(u_char *data, unsigned size) {
 	return(rslt);
 }
 
+string hexdump_to_string_from_base64(const char *data) {
+	int dst_length;
+	u_char *dst = base64decode(data, &dst_length);
+	string rslt = hexdump_to_string(dst, dst_length);
+	delete [] dst;
+	return(rslt);
+}
+
 unsigned file_get_rows(const char *filename, vector<string> *rows) {
 	unsigned countRows = 0;
 	FILE *fh = fopen(filename, "r");

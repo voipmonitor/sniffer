@@ -113,13 +113,29 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 		memcpy(server_random, handshake_hello->random, DTLS_RANDOM_SIZE);
 		server_random_set = true;
 	}
+	if(sverb.dtls) {
+		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && client_random_set) ||
+		   (handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO && server_random_set)) {
+			string log_str;
+			log_str += string(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ? "detect client random" : "detect server random") + "\n";
+			if(client_random_set) {
+				log_str += "client random: ";
+				log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
+			}
+			if(server_random_set) {
+				log_str += "server random: ";
+				log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
+			}
+			ssl_sessionkey_log(log_str);
+		}
+	}
 	if(defragmented_handshake) {
 		delete [] ((u_char*)defragmented_handshake);
 	}
 }
 
 bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
-	if(!cipher_types.size() || !client_random_set || !server_random_set) {
+	if(!client_random_set || !server_random_set) {
 		return(false);
 	}
 	string log_str;
@@ -128,6 +144,13 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 		log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
 		log_str += "server random: ";
 		log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
+	}
+	if(!cipher_types.size()) {
+		if(sverb.dtls) {
+			log_str += "missing cipher_types\n";
+			ssl_sessionkey_log(log_str);
+		}
+		return(false);
 	}
 	if(!master_secret_length && !findMasterSecret()) {
 		if(sverb.dtls) {
