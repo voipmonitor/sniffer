@@ -136,7 +136,7 @@ bool RTPsecure::existsNewerCryptoConfig(u_int64_t time_us) {
 	return(false);
 }
 
-void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, Call *call) {
+void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, Call *call, bool callFromRtcp) {
 	if(is_dtls() && !cryptoConfigVector.size()) {
 		list<cDtlsLink::sSrtpKeys*> keys;
 		int8_t direction; bool oneNode;
@@ -147,7 +147,7 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 					addCryptoConfig(0, keys_item->cipher.c_str(), keys_item->server_key.c_str(), 0);
 					if(sverb.dtls) {
 						string log_str;
-						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown");
+						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown") + " " + (callFromRtcp ? "rtcp" : "rtp");
 						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " d" + intToString(direction) + "\n";
 						log_str += "cipher: " + keys_item->cipher + "\n";
 						log_str += "key: " + hexdump_to_string_from_base64(keys_item->server_key.c_str()) + "\n";
@@ -159,7 +159,7 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 					clearError();
 					if(sverb.dtls) {
 						string log_str;
-						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown");
+						log_str += string("set crypto config for call: ") + (call ? call->call_id : "unknown") + " " + (callFromRtcp ? "rtcp" : "rtp");
 						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " d" + intToString(direction) + "\n";
 						log_str += "cipher: " + keys_item->cipher + "\n";
 						log_str += "key: " + hexdump_to_string_from_base64(keys_item->client_key.c_str()) + "\n";
