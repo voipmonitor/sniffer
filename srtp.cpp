@@ -179,10 +179,11 @@ bool RTPsecure::is_dtls() {
 
 bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
 			    vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, Call *call) {
+	int failed_limit = 20;
 	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
 		++decrypt_rtp_failed;
-		if(is_dtls() && sverb.dtls) {
+		if(is_dtls() && sverb.dtls && decrypt_rtp_failed < failed_limit) {
 			string log_str;
 			log_str += string("decrypt_rtp failed (empty cryptoConfigVector) for call: ") + (call ? call->call_id : "unknown");
 			log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
@@ -196,7 +197,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	}
 	if(!isOK()) {
 		++decrypt_rtp_failed;
-		if(is_dtls() && sverb.dtls) {
+		if(is_dtls() && sverb.dtls && decrypt_rtp_failed < failed_limit) {
 			string log_str;
 			log_str += string("decrypt_rtp failed (not isOK) for call: ") + (call ? call->call_id : "unknown");
 			log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
@@ -210,13 +211,19 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			if(mode == mode_native ?
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
+				if(is_dtls() && sverb.dtls && !decrypt_rtp_ok) {
+					string log_str;
+					log_str += string("decrypt_rtp ok 1 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
+					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+					ssl_sessionkey_log(log_str);
+				}
 				++decrypt_rtp_ok;
 				return(true);
 			} else {
 				if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
 					term();
 				}
-				if(is_dtls() && sverb.dtls) {
+				if(is_dtls() && sverb.dtls && decrypt_rtp_failed < failed_limit) {
 					string log_str;
 					log_str += string("decrypt_rtp failed 1 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
 					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
@@ -245,7 +252,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				      decrypt_rtp_native(data, data_len, payload, payload_len) :
 				      decrypt_rtp_libsrtp(data, data_len, payload, payload_len))) {
 					term();
-					if(is_dtls() && sverb.dtls) {
+					if(is_dtls() && sverb.dtls && decrypt_rtp_failed < failed_limit) {
 						string log_str;
 						log_str += string("decrypt_rtp failed 2 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
 						log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
@@ -253,13 +260,19 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					}
 					continue;
 				}
+				if(is_dtls() && sverb.dtls && !decrypt_rtp_ok) {
+					string log_str;
+					log_str += string("decrypt_rtp ok 2 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
+					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+					ssl_sessionkey_log(log_str);
+				}
 				++decrypt_rtp_ok;
 				return(true);
 			}
 		}
 	}
 	++decrypt_rtp_failed;
-	if(is_dtls() && sverb.dtls) {
+	if(is_dtls() && sverb.dtls && decrypt_rtp_failed < failed_limit) {
 		string log_str;
 		log_str += string("decrypt_rtp failed 3 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
 		log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
