@@ -213,10 +213,12 @@ private:
 	eError error;
 	int rtcp_unencrypt_header_len;
 	int rtcp_unencrypt_footer_len;
+	unsigned decrypt_rtp_attempt[2];
 	unsigned decrypt_rtp_ok;
 	unsigned decrypt_rtp_failed;
 	unsigned decrypt_rtcp_ok;
 	unsigned decrypt_rtcp_failed;
+friend class RTP;
 };
 
 

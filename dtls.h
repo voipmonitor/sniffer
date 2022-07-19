@@ -154,7 +154,7 @@ public:
 		  vmIP client_ip, vmPort client_port);
 	~cDtlsLink();
 	void processHandshake(sHeaderHandshake *handshake);
-	bool findSrtpKeys(list<sSrtpKeys*> *keys);
+	bool findSrtpKeys(list<sSrtpKeys*> *keys, class Call *call);
 private:
 	void init();
 	bool findMasterSecret();
@@ -208,7 +208,8 @@ public:
 	bool findSrtpKeys(vmIP src_ip, vmPort src_port,
 			  vmIP dst_ip, vmPort dst_port,
 			  list<cDtlsLink::sSrtpKeys*> *keys,
-			  int8_t *direction, bool *oneNode);
+			  int8_t *direction, bool *oneNode,
+			  class Call *call);
 private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;

@@ -2,6 +2,7 @@
 
 #include "tools.h"
 #include "ssl_dssl.h"
+#include "calltable.h"
 
 
 static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *usage, SimpleBuffer* rnd1, SimpleBuffer* rnd2, SimpleBuffer* out, unsigned out_len);
@@ -113,7 +114,7 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 		memcpy(server_random, handshake_hello->random, DTLS_RANDOM_SIZE);
 		server_random_set = true;
 	}
-	if(sverb.dtls) {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
 		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && client_random_set) ||
 		   (handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO && server_random_set)) {
 			string log_str;
@@ -134,37 +135,38 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 	}
 }
 
-bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
+bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call) {
 	if(!client_random_set || !server_random_set) {
 		return(false);
 	}
 	string log_str;
-	if(sverb.dtls) {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
+		log_str += string("find srtp key for call: ") + (call ? call->call_id : "unknown") + "\n";
 		log_str += "client random: ";
 		log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
 		log_str += "server random: ";
 		log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
 	}
 	if(!cipher_types.size()) {
-		if(sverb.dtls) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
 			log_str += "missing cipher_types\n";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
 	if(!master_secret_length && !findMasterSecret()) {
-		if(sverb.dtls) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
 			log_str += "master secret not found\n";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
-	if(sverb.dtls) {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
 		log_str += "master secret: ";
 		log_str += hexdump_to_string(master_secret, master_secret_length) + "\n";
 	}
 	if(keys_block_attempts > max_keys_block_attempts) {
-		if(sverb.dtls) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
 			log_str += "the max_keys_block_attempts limit has been reached\n";
 			ssl_sessionkey_log(log_str);
 		}
@@ -179,13 +181,13 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 	SimpleBuffer out;
 	++keys_block_attempts;
 	if(!dtls_srtp_keys_block(&secret, "EXTRACTOR-dtls_srtp", &rnd1, &rnd2, &out, 60)) {
-		if(sverb.dtls) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
 			log_str += "dtls_srtp_keys_block failed\n";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
-	if(sverb.dtls) {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
 		log_str += "out: ";
 		log_str += hexdump_to_string(out.data(), 60) + "\n";
 	}
@@ -199,7 +201,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 		client_key.add(out.data() + srtp_key_len, srtp_key_len);
 		server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
 		client_key.add(out.data() + srtp_key_len * 2 + srtp_salt_len, srtp_salt_len);
-		if(sverb.dtls) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
 			log_str += "server key: ";
 			log_str += hexdump_to_string(server_key.data(), srtp_key_len + srtp_salt_len) + "\n";
 			log_str += "client key: ";
@@ -213,7 +215,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys) {
 		keys_item->cipher = cipherName(cipher_type);
 		keys->push_back(keys_item);
 	}
-	if(sverb.dtls) {
+	if(sverb.dtls && ssl_sessionkey_enable()) {
 		ssl_sessionkey_log(log_str);
 	}
 	return(true);
@@ -327,7 +329,8 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
 			 list<cDtlsLink::sSrtpKeys*> *keys,
-			 int8_t *direction, bool *oneNode) {
+			 int8_t *direction, bool *oneNode,
+			 Call *call) {
 	for(int pass = 0; pass < 2; pass++) {
 		cDtlsLink *link = NULL;
 		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? dst_ip : src_ip,
@@ -357,7 +360,7 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 				}
 			}
 		}
-		if(link && link->findSrtpKeys(keys)) {
+		if(link && link->findSrtpKeys(keys, call)) {
 			return(true);
 		}
 	}

@@ -32,6 +32,7 @@ Each Call class contains two RTP classes.
 #include "mos_g729.h"   
 #include "sql_db.h"   
 #include "srtp.h"
+#include "ssl_dssl.h"
 
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
@@ -1187,19 +1188,38 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		mos_lqo;
 	#endif
 	
-	if(srtp_decrypt && 
-	   (opt_srtp_rtp_decrypt || 
-	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
-	    #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	    || use_channel_record
-	    #endif
-	    )) {
-		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, owner, false);
+	if(srtp_decrypt) {
+		if(!srtp_decrypt->decrypt_rtp_attempt[0]) {
+			if(sverb.dtls && ssl_sessionkey_enable()) {
+				string log_str;
+				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+				ssl_sessionkey_log(log_str);
+			}
 		}
-		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header),
-					  saddr, daddr, sport, dport, owner); 
-		this->len = *len;
+		++srtp_decrypt->decrypt_rtp_attempt[0];
+		if(opt_srtp_rtp_decrypt || 
+		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
+		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		   || use_channel_record
+		   #endif
+		   ) {
+			if(!srtp_decrypt->decrypt_rtp_attempt[1]) {
+				if(sverb.dtls && ssl_sessionkey_enable()) {
+					string log_str;
+					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+					ssl_sessionkey_log(log_str);
+				}
+			}
+			++srtp_decrypt->decrypt_rtp_attempt[1];
+			if(srtp_decrypt->need_prepare_decrypt()) {
+				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, owner, false);
+			}
+			srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header),
+						  saddr, daddr, sport, dport, owner); 
+			this->len = *len;
+		}
 	}
 
 	if(getVersion() != 2) {
