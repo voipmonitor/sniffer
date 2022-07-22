@@ -10753,7 +10753,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 						}
 						this->hash_find_flag[batch_index] = 1;
 					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-						dtls_queue.push(packetS);
+						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
 						this->hash_find_flag[batch_index] = -2;
 					} else {
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);

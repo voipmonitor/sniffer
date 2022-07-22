@@ -189,6 +189,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	unsigned failed_log_limit = 20;
 	setCryptoConfig();
 	if(!cryptoConfigVector.size()) {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		++decrypt_rtp_failed;
 		++stream->decrypt_srtp_failed;
 		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
@@ -198,6 +199,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 			ssl_sessionkey_log(log_str);
 		}
+		#endif
 		return(false);
 	}
 	if(!rtp && cryptoConfigVector.size() == 1) {
@@ -206,6 +208,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 	}
 	if(!isOK()) {
 		++decrypt_rtp_failed;
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		++stream->decrypt_srtp_failed;
 		if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
 			string log_str;
@@ -214,6 +217,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 			ssl_sessionkey_log(log_str);
 		}
+		#endif
 		return(false);
 	}
 	if(rtp) {
@@ -222,19 +226,24 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 			if(mode == mode_native ?
 			    decrypt_rtp_native(data, data_len, payload, payload_len) :
 			    decrypt_rtp_libsrtp(data, data_len, payload, payload_len)) {
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && !stream->decrypt_srtp_ok) {
 					string log_str;
 					log_str += string("decrypt_rtp ok 1 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 					ssl_sessionkey_log(log_str);
 				}
+				#endif
 				++decrypt_rtp_ok;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				++stream->decrypt_srtp_ok;
+				#endif
 				return(true);
 			} else {
 				if(cryptoConfigVector.size() > 1 && existsNewerCryptoConfig(time_us)) {
 					term();
 				}
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
 					string log_str;
 					log_str += string("decrypt_rtp failed 1/") + intToString(stream->decrypt_srtp_failed) + 
@@ -242,6 +251,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 					ssl_sessionkey_log(log_str);
 				}
+				#endif
 			}
 		}
 	}
@@ -265,6 +275,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 				      decrypt_rtp_native(data, data_len, payload, payload_len) :
 				      decrypt_rtp_libsrtp(data, data_len, payload, payload_len))) {
 					term();
+					#if not EXPERIMENTAL_LITE_RTP_MOD
 					if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
 						string log_str;
 						log_str += string("decrypt_rtp failed 2/") + intToString(stream->decrypt_srtp_failed) + 
@@ -272,21 +283,27 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 						log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 						ssl_sessionkey_log(log_str);
 					}
+					#endif
 					continue;
 				}
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && !stream->decrypt_srtp_ok) {
 					string log_str;
 					log_str += string("decrypt_rtp ok 2 (") + (mode == mode_native ? "native" : "libsrtp") + ") for call: " + (call ? call->call_id : "unknown");
 					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 					ssl_sessionkey_log(log_str);
 				}
+				#endif
 				++decrypt_rtp_ok;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
 				++stream->decrypt_srtp_ok;
+				#endif
 				return(true);
 			}
 		}
 	}
 	++decrypt_rtp_failed;
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	++stream->decrypt_srtp_failed;
 	if(is_dtls() && sverb.dtls && ssl_sessionkey_enable() && stream->decrypt_srtp_failed < failed_log_limit) {
 		string log_str;
@@ -295,6 +312,7 @@ bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, u
 		log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 		ssl_sessionkey_log(log_str);
 	}
+	#endif
 	return(false);
 }
  
