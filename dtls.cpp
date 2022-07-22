@@ -118,14 +118,14 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && client_random_set) ||
 		   (handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO && server_random_set)) {
 			string log_str;
-			log_str += string(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ? "detect client random" : "detect server random") + "\n";
+			log_str += string(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO ? "detect client random" : "detect server random");
 			if(client_random_set) {
-				log_str += "client random: ";
-				log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
+				log_str += "; client random: ";
+				log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE);
 			}
 			if(server_random_set) {
-				log_str += "server random: ";
-				log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
+				log_str += "; server random: ";
+				log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE);
 			}
 			ssl_sessionkey_log(log_str);
 		}
@@ -136,38 +136,49 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake) {
 }
 
 bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call) {
-	if(!client_random_set || !server_random_set) {
-		return(false);
-	}
 	string log_str;
 	if(sverb.dtls && ssl_sessionkey_enable()) {
-		log_str += string("find srtp key for call: ") + (call ? call->call_id : "unknown") + "\n";
-		log_str += "client random: ";
-		log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE) + "\n";
-		log_str += "server random: ";
-		log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE) + "\n";
+		log_str += string("find srtp key for call: ") + (call ? call->call_id : "unknown");
+	}
+	if(!client_random_set || !server_random_set) {
+		if(sverb.dtls && ssl_sessionkey_enable()) {
+			if(!client_random_set) {
+				log_str += "; missing client_random";
+			}
+			if(!server_random_set) {
+				log_str += "; missing server_random";
+			}
+			ssl_sessionkey_log(log_str);
+		}
+		return(false);
+	}
+	if(sverb.dtls && ssl_sessionkey_enable()) {
+		log_str += "; client random: ";
+		log_str += hexdump_to_string(client_random, DTLS_RANDOM_SIZE);
+		log_str += "; server random: ";
+		log_str += hexdump_to_string(server_random, DTLS_RANDOM_SIZE);
 	}
 	if(!cipher_types.size()) {
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "missing cipher_types\n";
+			log_str += "; missing cipher_types";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
 	if(!master_secret_length && !findMasterSecret()) {
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "master secret not found\n";
+			log_str += "; master secret not found";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
-		log_str += "master secret: ";
-		log_str += hexdump_to_string(master_secret, master_secret_length) + "\n";
+		log_str += "; master secret: ";
+		log_str += hexdump_to_string(master_secret, master_secret_length);
 	}
 	if(keys_block_attempts > max_keys_block_attempts) {
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "the max_keys_block_attempts limit has been reached\n";
+			log_str += "; the max_keys_block_attempts limit has been reached";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
@@ -182,14 +193,14 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call) {
 	++keys_block_attempts;
 	if(!dtls_srtp_keys_block(&secret, "EXTRACTOR-dtls_srtp", &rnd1, &rnd2, &out, 60)) {
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "dtls_srtp_keys_block failed\n";
+			log_str += "; dtls_srtp_keys_block failed";
 			ssl_sessionkey_log(log_str);
 		}
 		return(false);
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
-		log_str += "out: ";
-		log_str += hexdump_to_string(out.data(), 60) + "\n";
+		log_str += "; out: ";
+		log_str += hexdump_to_string(out.data(), 60);
 	}
 	for(list<eCipherType>::iterator iter_cipher_type = cipher_types.begin(); iter_cipher_type != cipher_types.end(); iter_cipher_type++) {
 		eCipherType cipher_type = *iter_cipher_type;
@@ -202,10 +213,10 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call) {
 		server_key.add(out.data() + srtp_key_len * 2, srtp_salt_len);
 		client_key.add(out.data() + srtp_key_len * 2 + srtp_salt_len, srtp_salt_len);
 		if(sverb.dtls && ssl_sessionkey_enable()) {
-			log_str += "server key: ";
-			log_str += hexdump_to_string(server_key.data(), srtp_key_len + srtp_salt_len) + "\n";
-			log_str += "client key: ";
-			log_str += hexdump_to_string(client_key.data(), srtp_key_len + srtp_salt_len) + "\n";
+			log_str += "; server key: ";
+			log_str += hexdump_to_string(server_key.data(), srtp_key_len + srtp_salt_len);
+			log_str += "; client key: ";
+			log_str += hexdump_to_string(client_key.data(), srtp_key_len + srtp_salt_len);
 		}
 		sSrtpKeys *keys_item = new FILE_LINE(0) sSrtpKeys;
 		keys_item->server_key = base64_encode(server_key.data(), srtp_key_len + srtp_salt_len);
@@ -243,6 +254,7 @@ bool cDtlsLink::findMasterSecret() {
 }
 
 cDtls::cDtls() {
+	memset(debug_flags, 0, sizeof(debug_flags));
 }
 
 cDtls::~cDtls() {
@@ -331,6 +343,7 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 list<cDtlsLink::sSrtpKeys*> *keys,
 			 int8_t *direction, bool *oneNode,
 			 Call *call) {
+	bool existsLink = false;
 	for(int pass = 0; pass < 2; pass++) {
 		cDtlsLink *link = NULL;
 		cDtlsLink::sDtlsLinkId linkId(pass == 0 ? dst_ip : src_ip,
@@ -360,9 +373,19 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 				}
 			}
 		}
-		if(link && link->findSrtpKeys(keys, call)) {
-			return(true);
+		if(link) {
+			existsLink = true;
+			if(link->findSrtpKeys(keys, call)) {
+				return(true);
+			}
 		}
+	}
+	if(sverb.dtls && ssl_sessionkey_enable()) {
+		string log_str;
+		log_str += string("failed findSrtpKeys for call: ") + (call ? call->call_id : "unknown");
+		log_str += "; stream: " + src_ip.getString() + ":" + src_port.getString() + " -> " + dst_ip.getString() + ":" + dst_port.getString() +
+			   "; exists_link: " + (existsLink ? "Y" : "N");
+		ssl_sessionkey_log(log_str);
 	}
 	return(false);
 }
@@ -465,7 +488,7 @@ static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *label, Simple
 	if(sverb.dtls && !sverb.ssl_sessionkey_to_file) {
 		string log_str;
 		log_str += "seed: ";
-		log_str += hexdump_to_string(label_seed.data(), label_seed.data_capacity()) + "\n";
+		log_str += hexdump_to_string(label_seed.data(), label_seed.data_capacity());
 		ssl_sessionkey_log(log_str);
 	}
 	return(tls_hash(secret, &label_seed, GCRY_MD_SHA256, out, out_len));

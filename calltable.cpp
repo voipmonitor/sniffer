@@ -63,6 +63,7 @@
 #include "charts.h"
 #include "server.h"
 #include "separate_processing.h"
+#include "ssl_dssl.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -621,6 +622,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
 	dtls = NULL;
+	dtls_queue_move = false;
 	rtplock_sync = 0;
 	listening_worker_run = NULL;
 	lastcallerrtp = NULL;
@@ -1624,7 +1626,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), this);
 	
 	if(enable_save_packet) {
-		save_packet(this, packetS, _t_packet_rtcp, packetS->datalen_() != datalen_orig);
+		save_packet(this, packetS, _t_packet_rtcp, packetS->datalen_() != datalen_orig, 0, __FILE__, __LINE__);
 	}
 	return(true);
 }
@@ -1722,12 +1724,12 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtls()) {
 		read_dtls(packetS);
 		if(enable_save_packet) {
-			save_packet(this, packetS, _t_packet_dtls);
+			save_packet(this, packetS, _t_packet_dtls, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
 	} else if(packetS->pflags.mrcp) {
 		if(enable_save_packet) {
-			save_packet(this, packetS, _t_packet_mrcp);
+			save_packet(this, packetS, _t_packet_mrcp, 0, 0, __FILE__, __LINE__);
 		}
 		return(true);
 	}
@@ -1934,6 +1936,37 @@ Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, boo
 					}
 					if(rtp_i->codec == PAYLOAD_TELEVENT) {
 read:
+
+						if(exists_srtp && 
+						   !rtp_i->srtp_decrypt &&
+						   rtp_i->find_by_dest &&
+						   rtp_i->call_ipport_n_orig != ipport_n &&
+						   (opt_srtp_rtp_decrypt || 
+						    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
+						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
+						    opt_saveRAW || opt_savewav_force)) {
+							int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
+							if(index_call_ip_port_by_src < 0) {
+								index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
+							}
+							if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
+								index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
+							}
+							if(index_call_ip_port_by_src >= 0 && 
+							   this->ip_port[index_call_ip_port_by_src].srtp) {
+								if(!rtp_secure_map[index_call_ip_port_by_src]) {
+									rtp_secure_map[index_call_ip_port_by_src] = 
+										new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+													   this, index_call_ip_port_by_src);
+									if(sverb.log_srtp_callid && !log_srtp_callid) {
+										syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
+										log_srtp_callid = true;
+									}
+								}
+								rtp_i->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+							}
+						}
+
 						if(rtp_i->index_call_ip_port >= 0) {
 							evProcessRtpStream(rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
 									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
@@ -2130,7 +2163,7 @@ read:
 						log_srtp_callid = true;
 					}
 				}
-				rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src]);
+				rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
 			}
 		}
 		rtp_new->call_owner = this;
@@ -2143,6 +2176,7 @@ read:
 						    this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
 		rtp_new->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
 		rtp_new->sdp_flags = sdp_flags;
+		rtp_new->call_ipport_n_orig = ipport_n;
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
@@ -2293,6 +2327,12 @@ Call::read_dtls(struct packet_s *packetS) {
 	if(!dtls) {
 		dtls = new FILE_LINE(0) cDtls;
 	}
+	if(sverb.dtls && ssl_sessionkey_enable() && packetS->isDtlsHandshake()) {
+		string log_str;
+		log_str += string("process handshake for call: ") + call_id;
+		log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " datalen: " + intToString(packetS->datalen_());
+		ssl_sessionkey_log(log_str);
+	}
 	dtls->processHandshake(packetS->saddr_(), packetS->source_(),
 			       packetS->daddr_(), packetS->dest_(),
 			       (u_char*)packetS->data_(), packetS->datalen_());
@@ -2395,7 +2435,7 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 		if((this->silencerecording || (this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
 		   !this->isfax && !record_dtmf) {
 			if(packetS->isStun()) {
-				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);
+				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
 				  packetS->header_pt->caplen > (unsigned)(packetS->datalen_() - RTP_FIXED_HEADERLEN)) {
 				unsigned int caplen_new = min(packetS->header_pt->caplen - (packetS->datalen_() - RTP_FIXED_HEADERLEN),
@@ -2403,14 +2443,14 @@ Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_
 				if(caplen_new < packetS->header_pt->caplen) {
 					unsigned int caplen_old = packetS->header_pt->caplen;
 					packetS->header_pt->caplen = caplen_new;
-					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, RTP_FIXED_HEADERLEN);
+					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, RTP_FIXED_HEADERLEN, __FILE__, __LINE__);
 					packetS->header_pt->caplen = caplen_old;
 				} else {
-					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);
+					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 				}
 			}
 		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
-			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp);
+			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 		}
 	}
 }
@@ -6034,17 +6074,46 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	for(int i = 0; i < ipport_n; i++) {
 		if(ip_port[i].srtp) {
 			bool stream_is_used =  false;
+			int srtp_decrypt_index_call_ip_port = -1;
 			for(int j = 0; j < rtp_size(); j++) {
 				if(rtp_stream_by_index(j)->index_call_ip_port == i &&
 				   rtp_stream_by_index(j)->stats.received > 0) {
 					stream_is_used = true;
+					srtp_decrypt_index_call_ip_port = rtp_stream_by_index(j)->srtp_decrypt_index_call_ip_port;
 					break;
 				}
 			}
 			if(stream_is_used &&
 			   !(ip_port[i].srtp_crypto_config_list ||
-			     (rtp_secure_map[i] && rtp_secure_map[i]->isOK_decrypt_rtp()))) {
+			     (rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
+			      rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+				if(sverb.dtls && ssl_sessionkey_enable()) {
+					string log_str;
+					log_str += string("set flag CDR_SRTP_WITHOUT_KEY for call: ") + call_id;
+					for(int k = 0; k < ipport_n; k++) {
+						log_str += "\nip_port " + intToString(k) + " " +
+							   ip_port[k].addr.getString() + ":" + ip_port[k].port.getString() + 
+							   "; exist srtp_crypto_config_list: " + (ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
+							   "; exist rtp_secure_map: " + (rtp_secure_map[k] ? "Y" : "n") + 
+							   (rtp_secure_map[k] ?
+							     string("; isOK_decrypt_rtp: ") + (rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
+							     "") + 
+							   (rtp_secure_map[k] && !rtp_secure_map[k]->isOK_decrypt_rtp() ?
+							     string("; ok/f: ") + intToString(rtp_secure_map[k]->decrypt_rtp_ok) + "/" + intToString(rtp_secure_map[k]->decrypt_rtp_failed) :
+							     "");
+					}
+					for(int k = 0; k < rtp_size(); k++) {
+						RTP *_rtp = rtp_stream_by_index(k);
+						log_str += "\nrtp stream " + intToString(k) + " " +
+							   _rtp->saddr.getString() + ":" + _rtp->sport.getString() + " -> " + 
+							   _rtp->daddr.getString() + ":" + _rtp->dport.getString() + 
+							   "; index_call_ip_port: " + intToString(_rtp->index_call_ip_port) + 
+							   "; received: " + intToString(_rtp->stats.received) + 
+							   "; ok/f: " + intToString(_rtp->decrypt_srtp_ok) + "/" + intToString(_rtp->decrypt_srtp_failed);
+					}
+					ssl_sessionkey_log(log_str);
+				}
 			}
 		}
 	}

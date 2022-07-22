@@ -214,6 +214,8 @@ private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;
 	map<cDtlsLink::sDtlsServerId, cDtlsLink*> links_by_server_id;
+	int debug_flags[2];
+friend class RTP;
 };
 
 

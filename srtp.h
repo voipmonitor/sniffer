@@ -127,7 +127,7 @@ public:
 	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class Call *call, bool callFromRtcp);
 	bool is_dtls();
 	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
-			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class Call *call);
+			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class Call *call, class RTP *stream);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us);
@@ -139,10 +139,10 @@ public:
 		return(error == err_na);
 	}
 	bool isOK_decrypt_rtp() {
-		return(decrypt_rtp_ok > 0);
+		return(decrypt_rtp_ok > 0 || decrypt_rtp_failed == 0);
 	}
 	bool isOK_decrypt_rtcp() {
-		return(decrypt_rtcp_ok > 0);
+		return(decrypt_rtcp_ok > 0 || decrypt_rtcp_failed == 0);
 	}
 private:
 	bool init();
@@ -213,12 +213,12 @@ private:
 	eError error;
 	int rtcp_unencrypt_header_len;
 	int rtcp_unencrypt_footer_len;
-	unsigned decrypt_rtp_attempt[2];
 	unsigned decrypt_rtp_ok;
 	unsigned decrypt_rtp_failed;
 	unsigned decrypt_rtcp_ok;
 	unsigned decrypt_rtcp_failed;
 friend class RTP;
+friend class Call;
 };
 
 

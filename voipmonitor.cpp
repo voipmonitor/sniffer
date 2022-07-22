@@ -447,6 +447,7 @@ int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = true;
 int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
+bool opt_ssl_dtls_queue_keep = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -1025,6 +1026,7 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
+bool ssl_client_random_keep = false;
 bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
@@ -7402,6 +7404,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_port", &ssl_client_random_tcp_port));
 			addConfigItem((new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_maxwait_ms", &ssl_client_random_maxwait_ms))
 				->addAlias("ssl_sessionkey_udp_maxwait_ms"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_keep", &ssl_client_random_keep));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
@@ -7420,6 +7423,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -10051,6 +10055,9 @@ int eval_config(string inistr) {
 	   (value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
 		ssl_client_random_maxwait_ms = atoi(value);
 	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_keep", NULL))) {
+		ssl_client_random_keep = yesno(value);
+	}
 	
 	// http ip
 	if (ini.GetAllValues("general", "httpip", values)) {
@@ -11956,6 +11963,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue_max_packets", NULL))) {
 		opt_ssl_dtls_queue_expiration_count = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_keep", NULL))) {
+		opt_ssl_dtls_queue_keep = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);

@@ -511,7 +511,7 @@ public:
 	*/
 	~RTP();
 	
-	void setSRtpDecrypt(class RTPsecure *srtp_decrypt);
+	void setSRtpDecrypt(class RTPsecure *srtp_decrypt, int index_call_ip_port);
 
 	/**
 	 * @brief simulate jitter buffer
@@ -802,6 +802,7 @@ private:
 	bool stopReadProcessing;
 	
 	class RTPsecure *srtp_decrypt;
+	int srtp_decrypt_index_call_ip_port;
 	
 	sRSA rsa;
 	
@@ -810,7 +811,12 @@ private:
 	bool energylevels_via_jb;
 	u_int32_t energylevels_counter;
 	
+	int call_ipport_n_orig;
+	unsigned decrypt_rtp_attempt[2];
+	unsigned decrypt_srtp_ok;
+	unsigned decrypt_srtp_failed;	
 friend class Call;
+friend class RTPsecure;
 };
 
 #endif // EXPERIMENTAL_LITE_RTP_MOD

@@ -425,8 +425,8 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
-			string("find clientrandom with type ") + enumToStrType(type) + " \n" +
-			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
+			string("find clientrandom with type ") + enumToStrType(type) +
+			"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
 	}
 	bool rslt = false;
 	cSslDsslSessionKeyIndex index(client_random);
@@ -464,10 +464,10 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	if(ssl_sessionkey_enable()) {
 		if(rslt) {
 			log_ssl_sessionkey +=
-				"FOUND: " + hexdump_to_string(key, *key_length) + " \n";
+				"; FOUND: " + hexdump_to_string(key, *key_length);
 		} else {
 			log_ssl_sessionkey +=
-				"NOT FOUND \n";
+				"; NOT FOUND";
 		}
 		ssl_sessionkey_log(log_ssl_sessionkey);
 	}
@@ -478,8 +478,8 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
-			string("find clientrandom for all type ") + " \n" +
-			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
+			string("find clientrandom for all type ") +
+			"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
 	}
 	if(sverb.ssl_stats) {
 		stats.delay_keys_get_begin.add_delay_from_act(getTimeUS(ts));
@@ -549,10 +549,10 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 	if(ssl_sessionkey_enable()) {
 		if(rslt) {
 			log_ssl_sessionkey +=
-				"FOUND \n";
+				"; FOUND";
 		} else {
 			log_ssl_sessionkey +=
-				"NOT FOUND \n";
+				"; NOT FOUND";
 		}
 		ssl_sessionkey_log(log_ssl_sessionkey);
 	}
@@ -776,7 +776,10 @@ bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data
 }
 
 void cSslDsslSessions::keyErase(u_char *client_random) {
-	this->session_keys.erase(client_random);
+	extern bool ssl_client_random_keep;
+	if(!ssl_client_random_keep) {
+		this->session_keys.erase(client_random);
+	}
 }
 
 void cSslDsslSessions::keysCleanup() {
@@ -1062,9 +1065,9 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		SslDsslSessions->keySet(type.c_str(), client_random_, key_, key_length);
 		if(ssl_sessionkey_enable()) {
 			string log_ssl_sessionkey =
-				string("set clientrandom with type ") + type + " \n" +
-				"clientrandom: " + hexdump_to_string(client_random_, SSL3_RANDOM_SIZE) + " \n" + 
-				"key: " + hexdump_to_string(key_, key_length) + " \n";
+				string("set clientrandom with type ") + type +
+				"; clientrandom: " + hexdump_to_string(client_random_, SSL3_RANDOM_SIZE) +
+				"; key: " + hexdump_to_string(key_, key_length);
 			ssl_sessionkey_log(log_ssl_sessionkey);
 		}
 		return(true);
@@ -1100,9 +1103,9 @@ void ssl_parse_client_random(const char *fileName) {
 			SslDsslSessions->keySet(parts[0].c_str(), client_random, key, key_length);
 			if(ssl_sessionkey_enable()) {
 				string log_ssl_sessionkey =
-					string("set clientrandom with type ") + parts[0] + " \n" +
-					"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n" + 
-					"key: " + hexdump_to_string(key, key_length) + " \n";
+					string("set clientrandom with type ") + parts[0] +
+					"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) +
+					"; key: " + hexdump_to_string(key, key_length);
 				ssl_sessionkey_log(log_ssl_sessionkey);
 			}
 		}

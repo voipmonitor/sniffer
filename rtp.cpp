@@ -404,6 +404,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
+	srtp_decrypt_index_call_ip_port = -1;
 	
 	energylevels = NULL;
 	energylevels_last_seq = 0;
@@ -416,11 +417,16 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	}
 	energylevels_counter = 0;
 	
+	call_ipport_n_orig = 0;
+	memset(decrypt_rtp_attempt, 0, sizeof(decrypt_rtp_attempt));
+	decrypt_srtp_ok = 0;
+	decrypt_srtp_failed = 0;
 }
 
 void 
-RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt) {
+RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt, int index_call_ip_port) {
 	this->srtp_decrypt = srtp_decrypt;
+	this->srtp_decrypt_index_call_ip_port = index_call_ip_port;
 }
 
 
@@ -1189,36 +1195,46 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	#endif
 	
 	if(srtp_decrypt) {
-		if(!srtp_decrypt->decrypt_rtp_attempt[0]) {
+		if(!decrypt_rtp_attempt[0]) {
 			if(sverb.dtls && ssl_sessionkey_enable()) {
 				string log_str;
 				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
-				log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 				ssl_sessionkey_log(log_str);
 			}
 		}
-		++srtp_decrypt->decrypt_rtp_attempt[0];
+		++decrypt_rtp_attempt[0];
 		if(opt_srtp_rtp_decrypt || 
 		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
 		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		   || use_channel_record
 		   #endif
 		   ) {
-			if(!srtp_decrypt->decrypt_rtp_attempt[1]) {
+			if(!decrypt_rtp_attempt[1]) {
 				if(sverb.dtls && ssl_sessionkey_enable()) {
 					string log_str;
 					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
-					log_str += " stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + "\n";
+					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
 					ssl_sessionkey_log(log_str);
 				}
 			}
-			++srtp_decrypt->decrypt_rtp_attempt[1];
+			++decrypt_rtp_attempt[1];
 			if(srtp_decrypt->need_prepare_decrypt()) {
 				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, owner, false);
 			}
 			srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header),
-						  saddr, daddr, sport, dport, owner); 
+						  saddr, daddr, sport, dport, owner, this); 
 			this->len = *len;
+		}
+	} else if(owner && owner->dtls) {
+		 if(sverb.dtls && ssl_sessionkey_enable()) {
+			if(!owner->dtls->debug_flags[0]) {
+				string log_str;
+				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+				ssl_sessionkey_log(log_str);
+				++owner->dtls->debug_flags[0];
+			}
 		}
 	}
 
