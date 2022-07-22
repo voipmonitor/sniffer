@@ -12751,11 +12751,22 @@ void Calltable::cSrvccCalls::cleanup() {
 		return;
 	}
 	__SYNC_LOCK(_sync_calls);
-	for(map<string, sSrvccCall>::iterator iter = calls.begin(); iter != calls.end(); ) {
-		if(TIME_US_TO_S(iter->second.first_packet_time_us) + absolute_timeout < actTimeS) {
-			calls.erase(iter++);
-		} else {
+	for(map<string, sSrvccPostCalls*>::iterator iter = calls.begin(); iter != calls.end(); ) {
+		sSrvccPostCalls *post_calls = iter->second;
+		while(post_calls->calls.size()) {
+			sSrvccPostCall *post_call = post_calls->calls.front();
+			if(TIME_US_TO_S(post_call->first_packet_time_us) + absolute_timeout < actTimeS) {
+				delete post_call;
+				post_calls->calls.pop_front();
+			} else {
+				break;
+			}
+		}
+		if(post_calls->calls.size()) {
 			iter++;
+		} else {
+			calls.erase(iter++);
+			delete post_calls;
 		}
 	}
 	__SYNC_UNLOCK(_sync_calls);

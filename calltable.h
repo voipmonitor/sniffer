@@ -2644,13 +2644,16 @@ private:
 		list<sChartsCallData> *calls;
 		class cFiltersCache *cache;
 	};
-	struct sSrvccCall {
-		inline sSrvccCall(const char *call_id = NULL, u_int64_t first_packet_time_us = 0) {
+	struct sSrvccPostCall {
+		inline sSrvccPostCall(const char *call_id = NULL, u_int64_t first_packet_time_us = 0) {
 			this->call_id = call_id ? call_id : "";
 			this->first_packet_time_us = first_packet_time_us;
 		}
 		string call_id;
 		u_int64_t first_packet_time_us;
+	};
+	struct sSrvccPostCalls {
+		list<sSrvccPostCall*> calls;
 	};
 	class cSrvccCalls {
 	public:
@@ -2661,18 +2664,33 @@ private:
 		}
 		void set(const char *caller, const char *call_id, u_int64_t first_packet_time_us) {
 			__SYNC_LOCK(_sync_calls);
-			calls[caller] = sSrvccCall(call_id, first_packet_time_us);
+			sSrvccPostCalls *post_calls = NULL;
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
+			if(iter != calls.end()) {
+				post_calls = iter->second;
+			} else {
+				post_calls = new FILE_LINE(0) sSrvccPostCalls;
+				calls[caller] = post_calls;
+			}
+			post_calls->calls.push_back(new FILE_LINE(0) sSrvccPostCall(call_id, first_packet_time_us));
 			__SYNC_UNLOCK(_sync_calls);
 			cleanup();
 		}
 		string get(const char *caller, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
 			string call_id;
 			__SYNC_LOCK(_sync_calls);
-			map<string, sSrvccCall>::iterator iter = calls.find(caller);
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
 			if(iter != calls.end()) {
-				if(first_packet_time_us <= iter->second.first_packet_time_us &&
-				   last_packet_time_us >= iter->second.first_packet_time_us) {
-					call_id = iter->second.call_id;
+				sSrvccPostCalls *post_calls = iter->second;
+				for(list<sSrvccPostCall*>::iterator iter_2 = post_calls->calls.begin(); iter_2 != post_calls->calls.end(); iter_2++) {
+					if(first_packet_time_us <= (*iter_2)->first_packet_time_us &&
+					   last_packet_time_us >= (*iter_2)->first_packet_time_us) {
+						sSrvccPostCall *post_call = *iter_2;
+						call_id = post_call->call_id;
+						post_calls->calls.erase(iter_2);
+						delete post_call;
+						break;
+					}
 				}
 			}
 			__SYNC_UNLOCK(_sync_calls);
@@ -2681,7 +2699,7 @@ private:
 	private:
 		void cleanup();
 	private:
-		map<string, sSrvccCall> calls;
+		map<string, sSrvccPostCalls*> calls;
 		volatile int _sync_calls;
 		u_int32_t cleanup_last_time_s;
 		u_int32_t cleanup_period_s;
