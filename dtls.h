@@ -33,6 +33,10 @@ public:
 	struct sDtlsLinkId {
 		vmIPport server;
 		vmIPport client;
+		sDtlsLinkId(cDtlsLink *link) 
+			: server(link->server.ip, link->server.port), 
+			  client(link->client.ip, link->client.port) {
+		}
 		sDtlsLinkId(vmIP server_ip, vmPort server_port,
 			    vmIP client_ip, vmPort client_port) 
 			: server(server_ip, server_port), 
@@ -49,6 +53,9 @@ public:
 	};
 	struct sDtlsServerId {
 		vmIPport server;
+		sDtlsServerId(cDtlsLink *link) 
+			: server(link->server.ip, link->server.port) {
+		}
 		sDtlsServerId(vmIP server_ip, vmPort server_port) 
 			: server(server_ip, server_port) {
 		}
@@ -149,11 +156,31 @@ public:
 		_ct_SRTP_AEAD_AES_128_GCM = 0x0007,
 		_ct_SRTP_AEAD_AES_256_GCM = 0x0008
 	};
+	struct sHandshakeData {
+		sHandshakeData() {
+			client_random_set = false;
+			server_random_set = false;
+		}
+		void init() {
+			client_random_set = false;
+			server_random_set = false;
+			cipher_types.clear();
+		}
+		bool isComplete() {
+			return(client_random_set && server_random_set &&
+			       cipher_types.size() > 0);
+		}
+		u_char client_random[DTLS_RANDOM_SIZE];
+		bool client_random_set;
+		u_char server_random[DTLS_RANDOM_SIZE];
+		bool server_random_set;
+		list<eCipherType> cipher_types;
+	};
 public:
 	cDtlsLink(vmIP server_ip, vmPort server_port,
 		  vmIP client_ip, vmPort client_port);
 	~cDtlsLink();
-	void processHandshake(sHeaderHandshake *handshake);
+	void processHandshake(sHeaderHandshake *handshake, u_int64_t time_us);
 	bool findSrtpKeys(list<sSrtpKeys*> *keys, class Call *call);
 private:
 	void init();
@@ -186,35 +213,44 @@ private:
 private:
 	vmIPport server;
 	vmIPport client;
-	u_char client_random[DTLS_RANDOM_SIZE];
-	bool client_random_set;
-	u_char server_random[DTLS_RANDOM_SIZE];
-	bool server_random_set;
-	list<eCipherType> cipher_types;
+	sHandshakeData handshake_data;
 	u_char master_secret[SSL3_MASTER_SECRET_SIZE];
 	u_int16_t master_secret_length;
 	u_int16_t keys_block_attempts;
 	u_int16_t max_keys_block_attempts;
 	sHeaderHandshakeDefragmenter defragmenter;
+	u_int64_t last_time_us;
+friend class cDtls;
 };
 
 class cDtls {
 public:
 	cDtls();
 	~cDtls();
+	void setNeedLock(bool need_lock);
 	bool processHandshake(vmIP src_ip, vmPort src_port,
 			      vmIP dst_ip, vmPort dst_port,
-			      u_char *data, unsigned data_len);
+			      u_char *data, unsigned data_len,
+			      u_int64_t time_us);
 	bool findSrtpKeys(vmIP src_ip, vmPort src_port,
 			  vmIP dst_ip, vmPort dst_port,
 			  list<cDtlsLink::sSrtpKeys*> *keys,
 			  int8_t *direction, bool *oneNode,
 			  class Call *call);
+	bool getHandshakeData(vmIP server_ip, vmPort server_port,
+			      vmIP client_ip, vmPort client_port,
+			      cDtlsLink::sHandshakeData *handshake_data);
+	void cleanup();
 private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;
 	map<cDtlsLink::sDtlsServerId, cDtlsLink*> links_by_server_id;
 	int debug_flags[2];
+	bool need_lock;
+	volatile int _sync;
+	u_int32_t last_cleanup_at_s;
+	u_int32_t cleanup_interval_s;
+	u_int32_t link_expiration_s;
 friend class RTP;
 };
 

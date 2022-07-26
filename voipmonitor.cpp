@@ -448,6 +448,7 @@ bool opt_ssl_enable_dtls_queue = true;
 int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
+bool opt_ssl_dtls_handshake_safe = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -7424,6 +7425,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -9453,6 +9455,9 @@ void set_context_config() {
 	ssl_client_random_use = ssl_client_random_enable || 
 				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
 				ssl_master_secret_file[0];
+	
+	extern cDtls dtls_handshake_safe_links;
+	dtls_handshake_safe_links.setNeedLock(true);
 	
 	if(opt_callidmerge_header[0] &&
 	   !(useNewCONFIG ? CONFIG.isSet("rtpip_find_endpoints") : opt_rtpip_find_endpoints_set)) {
@@ -11966,6 +11971,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue_keep", NULL))) {
 		opt_ssl_dtls_queue_keep = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
+		opt_ssl_dtls_handshake_safe = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);

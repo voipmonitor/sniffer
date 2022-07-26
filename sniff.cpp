@@ -284,11 +284,13 @@ extern vector<string> opt_conference_uri;
 extern bool srvcc_set;
 extern bool opt_srvcc_processing_only;
 extern bool opt_ssl_dtls_queue_keep;
+extern bool opt_ssl_dtls_handshake_safe;
 
 extern cProcessingLimitations processing_limitations;
 
 
 #define ENABLE_DTLS_QUEUE (opt_enable_ssl && ssl_client_random_use && opt_ssl_enable_dtls_queue)
+#define ENABLE_DTLS_HANDSHAKE_SAFE_LINKS (opt_enable_ssl && ssl_client_random_use && opt_ssl_dtls_handshake_safe)
 
 
 inline char * gettag(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
@@ -367,7 +369,8 @@ unsigned long process_packet__last_cleanup_calls__count_sip_bye_confirmed;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel;
 unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
-static link_packets_queue dtls_queue;
+link_packets_queue dtls_queue;
+cDtls dtls_handshake_safe_links;
 
 
 #if EXPERIMENTAL_T2_QUEUE_FULL_STAT
@@ -5920,6 +5923,12 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 	} else {
 		packetS->blockstore_addflag(24 /*pb lock flag*/);
 		packetS->init2_rtp();
+		if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
+			dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+								   packetS->daddr_(), packetS->dest_(),
+								   (u_char*)packetS->data_(), packetS->datalen_(),
+								   packetS->getTimeUS());
+		}
 		packet_s_process_calls_info *call_info = packet_s_process_calls_info::create();
 		call_info->length = 0;
 		call_info->find_by_dest = false;
@@ -10720,6 +10729,12 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 					continue;
 				}
 				packetS->init2_rtp();
+				if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
+					dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+										   packetS->daddr_(), packetS->dest_(),
+										   (u_char*)packetS->data_(), packetS->datalen_(),
+										   packetS->getTimeUS());
+				}
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
@@ -10745,6 +10760,12 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 						continue;
 					}
 					packetS->init2_rtp();
+					if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
+						dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+											   packetS->daddr_(), packetS->dest_(),
+											   (u_char*)packetS->data_(), packetS->datalen_(),
+											   packetS->getTimeUS());
+					}
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						if(packetS->call_info.length > 1) {
@@ -10852,6 +10873,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						continue;
 					}
 					packetS->init2_rtp();
+					if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
+						dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+											   packetS->daddr_(), packetS->dest_(),
+											   (u_char*)packetS->data_(), packetS->datalen_(),
+											   packetS->getTimeUS());
+					}
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
@@ -10881,6 +10908,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					continue;
 				}
 				packetS->init2_rtp();
+				if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
+					dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+										   packetS->daddr_(), packetS->dest_(),
+										   (u_char*)packetS->data_(), packetS->datalen_(),
+										   packetS->getTimeUS());
+				}
 				this->find_hash(packetS, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
@@ -11477,6 +11510,9 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 void dtls_queue_cleanup() {
 	if(ENABLE_DTLS_QUEUE) {
 		dtls_queue.cleanup();
+	}
+	if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS) {
+		dtls_handshake_safe_links.cleanup();
 	}
 }
 

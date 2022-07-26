@@ -2335,7 +2335,8 @@ Call::read_dtls(struct packet_s *packetS) {
 	}
 	dtls->processHandshake(packetS->saddr_(), packetS->source_(),
 			       packetS->daddr_(), packetS->dest_(),
-			       (u_char*)packetS->data_(), packetS->datalen_());
+			       (u_char*)packetS->data_(), packetS->datalen_(),
+			       packetS->getTimeUS());
 }
 
 void
