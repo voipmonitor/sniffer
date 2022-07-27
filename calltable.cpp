@@ -622,6 +622,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtpab[0] = NULL;
 	rtpab[1] = NULL;
 	dtls = NULL;
+	dtls_exists = false;
 	dtls_queue_move = false;
 	rtplock_sync = 0;
 	listening_worker_run = NULL;
@@ -2324,6 +2325,7 @@ read:
 
 void 
 Call::read_dtls(struct packet_s *packetS) {
+	dtls_exists = true;
 	if(!dtls) {
 		dtls = new FILE_LINE(0) cDtls;
 	}

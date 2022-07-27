@@ -181,9 +181,12 @@ public:
 		  vmIP client_ip, vmPort client_port);
 	~cDtlsLink();
 	void processHandshake(sHeaderHandshake *handshake, u_int64_t time_us);
-	bool findSrtpKeys(list<sSrtpKeys*> *keys, class Call *call);
+	bool findSrtpKeys(list<sSrtpKeys*> *keys, class Call *call,
+			  bool enable_handshake_safe, bool use_handshake_safe);
 private:
 	void init();
+	void setClientRandom(u_char *client_random);
+	void setServerRandom(u_char *server_random);
 	bool findMasterSecret();
 	bool cipherTypeIsOK(unsigned ct) {
 		return(ct == _ct_SRTP_AES128_CM_HMAC_SHA1_80 ||
@@ -236,11 +239,15 @@ public:
 			  vmIP dst_ip, vmPort dst_port,
 			  list<cDtlsLink::sSrtpKeys*> *keys,
 			  int8_t *direction, bool *oneNode,
-			  class Call *call);
+			  class Call *call,
+			  bool enable_handshake_safe, bool use_handshake_safe);
 	bool getHandshakeData(vmIP server_ip, vmPort server_port,
 			      vmIP client_ip, vmPort client_port,
 			      cDtlsLink::sHandshakeData *handshake_data);
 	void cleanup();
+private:
+	void lock();
+	void unlock();
 private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;

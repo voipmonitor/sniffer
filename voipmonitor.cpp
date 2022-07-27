@@ -448,7 +448,7 @@ bool opt_ssl_enable_dtls_queue = true;
 int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
-bool opt_ssl_dtls_handshake_safe = false;
+int opt_ssl_dtls_handshake_safe = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -7425,7 +7425,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
+				->addValues("ext:2"));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -11973,7 +11974,7 @@ int eval_config(string inistr) {
 		opt_ssl_dtls_queue_keep = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
-		opt_ssl_dtls_handshake_safe = yesno(value);
+		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);

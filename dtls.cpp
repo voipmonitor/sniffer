@@ -8,6 +8,10 @@
 static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *usage, SimpleBuffer* rnd1, SimpleBuffer* rnd2, SimpleBuffer* out, unsigned out_len);
 
 
+extern int opt_ssl_dtls_handshake_safe;
+extern cDtls dtls_handshake_safe_links;
+
+
 cDtlsLink::cDtlsLink(vmIP server_ip, vmPort server_port,
 		     vmIP client_ip, vmPort client_port) 
 	: server(server_ip, server_port),
@@ -44,8 +48,7 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake, u_int64_t time_us)
 	}
 	if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
-		memcpy(handshake_data.client_random, handshake_hello->random, DTLS_RANDOM_SIZE);
-		handshake_data.client_random_set = true;
+		setClientRandom(handshake_hello->random);
 		unsigned len = handshake->length_() + sizeof(cDtlsLink::sHeaderHandshake);
 		unsigned offset = sizeof(sHeaderHandshakeHello);
 		unsigned i = 0;
@@ -111,8 +114,7 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake, u_int64_t time_us)
 		}
 	} else if(handshake->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
 		cDtlsLink::sHeaderHandshakeHello *handshake_hello = (cDtlsLink::sHeaderHandshakeHello*)handshake;
-		memcpy(handshake_data.server_random, handshake_hello->random, DTLS_RANDOM_SIZE);
-		handshake_data.server_random_set = true;
+		setServerRandom(handshake_hello->random);
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
 		if((handshake->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO && handshake_data.client_random_set) ||
@@ -136,26 +138,40 @@ void cDtlsLink::processHandshake(sHeaderHandshake *handshake, u_int64_t time_us)
 	last_time_us = time_us;
 }
 
-bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call) {
+bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call, 
+			     bool enable_handshake_safe, bool use_handshake_safe) {
 	string log_str;
 	if(sverb.dtls && ssl_sessionkey_enable()) {
 		log_str += string("find srtp key for call: ") + (call ? call->call_id : "unknown");
+		if(use_handshake_safe) {
+			log_str += " (use safe handshake)";
+		}
 	}
-	extern bool opt_ssl_dtls_handshake_safe;
-	if(opt_ssl_dtls_handshake_safe) {
-		extern cDtls dtls_handshake_safe_links;
-		if((handshake_data.client_random_set || handshake_data.server_random_set) &&
+	if(opt_ssl_dtls_handshake_safe && enable_handshake_safe) {
+		if((opt_ssl_dtls_handshake_safe == 2 || handshake_data.client_random_set || handshake_data.server_random_set) &&
 		   (!handshake_data.client_random_set || !handshake_data.server_random_set)) {
 			sHandshakeData handshake_data_;
 			if(dtls_handshake_safe_links.getHandshakeData(server.ip, server.port,
 								      client.ip, client.port,
 								      &handshake_data_)) {
-				if(handshake_data.client_random_set ?
-				    !memcmp(handshake_data.client_random, handshake_data_.client_random, DTLS_RANDOM_SIZE) :
-				    !memcmp(handshake_data.server_random, handshake_data_.server_random, DTLS_RANDOM_SIZE)) {
+				if(handshake_data.client_random_set) {
+					if(!memcmp(handshake_data.client_random, handshake_data_.client_random, DTLS_RANDOM_SIZE)) {
+						handshake_data = handshake_data_;
+						if(sverb.dtls && ssl_sessionkey_enable()) {
+							log_str += "; apply server random from safe handshake";
+						}
+					}
+				} else if(handshake_data.server_random_set) {
+					if(!memcmp(handshake_data.server_random, handshake_data_.server_random, DTLS_RANDOM_SIZE)) {
+						handshake_data = handshake_data_;
+						if(sverb.dtls && ssl_sessionkey_enable()) {
+							log_str += "; apply client random from safe handshake";
+						}
+					}
+				} else if(opt_ssl_dtls_handshake_safe == 2) {
 					handshake_data = handshake_data_;
 					if(sverb.dtls && ssl_sessionkey_enable()) {
-						log_str += "; apply safe handshake";
+						log_str += "; force apply safe handshake";
 					}
 				}
 			}
@@ -261,6 +277,26 @@ void cDtlsLink::init() {
 	last_time_us = 0;
 }
 
+void cDtlsLink::setClientRandom(u_char *client_random) {
+	if(!handshake_data.client_random_set) {
+		memcpy(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE);
+		handshake_data.client_random_set = true;
+	} else if(memcmp(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE)) {
+		memcpy(handshake_data.client_random, client_random, DTLS_RANDOM_SIZE);
+		master_secret_length = 0;
+	}
+}
+
+void cDtlsLink::setServerRandom(u_char *server_random) {
+	if(!handshake_data.server_random_set) {
+		memcpy(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE);
+		handshake_data.server_random_set = true;
+	} else if(memcmp(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE)) {
+		memcpy(handshake_data.server_random, server_random, DTLS_RANDOM_SIZE);
+		master_secret_length = 0;
+	}
+}
+
 bool cDtlsLink::findMasterSecret() {
 	if(!handshake_data.client_random_set || !handshake_data.server_random_set) {
 		return(false);
@@ -318,9 +354,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					return(false);
 				}
 				if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_CLIENT_HELLO) {
-					if(need_lock) {
-						__SYNC_LOCK(_sync);
-					}
+					lock();
 					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(dst_ip, dst_port, src_ip, src_port);
 					cDtlsLink::sDtlsServerId serverId(dst_ip, dst_port);
@@ -340,13 +374,9 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 						links.push_back(link);
 					}
 					link->processHandshake(hs_header, time_us);
-					if(need_lock) {
-						__SYNC_UNLOCK(_sync);
-					}
+					unlock();
 				} else if(hs_header->handshake_type == DTLS_HANDSHAKE_TYPE_SERVER_HELLO) {
-					if(need_lock) {
-						__SYNC_LOCK(_sync);
-					}
+					lock();
 					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(src_ip, src_port, dst_ip, dst_port);
 					cDtlsLink::sDtlsServerId serverId(src_ip, src_port);
@@ -368,9 +398,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					if(link) {
 						link->processHandshake(hs_header, time_us);
 					}
-					if(need_lock) {
-						__SYNC_UNLOCK(_sync);
-					}
+					unlock();
 				}
 				hs_offset += sizeof(cDtlsLink::sHeaderHandshake) + hs_header->content_length();
 			}
@@ -384,9 +412,13 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
 			 list<cDtlsLink::sSrtpKeys*> *keys,
 			 int8_t *direction, bool *oneNode,
-			 Call *call) {
+			 Call *call,
+			 bool enable_handshake_safe, bool use_handshake_safe) {
 	bool existsLink = false;
 	for(int pass_type = 0; pass_type < 2; pass_type++) {
+		if(use_handshake_safe) {
+			lock();
+		}
 		for(int pass_direction = 0; pass_direction < 2; pass_direction++) {
 			cDtlsLink *link = NULL;
 			if(pass_type == 0) {
@@ -418,12 +450,18 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 					}
 				}
 			}
-			if(link) {
+			if(link && (!use_handshake_safe || link->handshake_data.isComplete())) {
 				existsLink = true;
-				if(link->findSrtpKeys(keys, call)) {
+				if(link->findSrtpKeys(keys, call, enable_handshake_safe, use_handshake_safe)) {
+					if(use_handshake_safe) {
+						unlock();
+					}
 					return(true);
 				}
 			}
+		}
+		if(use_handshake_safe) {
+			unlock();
 		}
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
@@ -440,9 +478,7 @@ bool cDtls::getHandshakeData(vmIP server_ip, vmPort server_port,
 			     vmIP client_ip, vmPort client_port,
 			     cDtlsLink::sHandshakeData *handshake_data) {
 	bool rslt = false;
-	if(need_lock) {
-		__SYNC_LOCK(_sync);
-	}
+	lock();
 	for(int pass_type = 0; pass_type < 2; pass_type++) {
 		cDtlsLink *link = NULL;
 		if(pass_type == 0) {
@@ -465,9 +501,7 @@ bool cDtls::getHandshakeData(vmIP server_ip, vmPort server_port,
 			break;
 		}
 	}
-	if(need_lock) {
-		__SYNC_UNLOCK(_sync);
-	}
+	unlock();
 	return(rslt);
 }
 
@@ -476,9 +510,7 @@ void cDtls::cleanup() {
 	if(last_cleanup_at_s + cleanup_interval_s < time_s) {
 		return;
 	}
-	if(need_lock) {
-		__SYNC_LOCK(_sync);
-	}
+	lock();
 	for(list<cDtlsLink*>::iterator iter = links.begin(); iter != links.end(); ) {
 		if((*iter)->last_time_us + link_expiration_s < time_s) {
 			cDtlsLink *link = *iter;
@@ -499,6 +531,16 @@ void cDtls::cleanup() {
 		}
 	}
 	last_cleanup_at_s = time_s;
+	unlock();
+}
+
+void cDtls::lock() {
+	if(need_lock) {
+		__SYNC_LOCK(_sync);
+	}
+}
+
+void cDtls::unlock() {
 	if(need_lock) {
 		__SYNC_UNLOCK(_sync);
 	}

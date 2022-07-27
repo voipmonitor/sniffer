@@ -284,7 +284,7 @@ extern vector<string> opt_conference_uri;
 extern bool srvcc_set;
 extern bool opt_srvcc_processing_only;
 extern bool opt_ssl_dtls_queue_keep;
-extern bool opt_ssl_dtls_handshake_safe;
+extern int opt_ssl_dtls_handshake_safe;
 
 extern cProcessingLimitations processing_limitations;
 

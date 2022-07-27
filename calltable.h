@@ -949,6 +949,7 @@ public:
 	RTP *rtpab[2];
 	map<int, class RTPsecure*> rtp_secure_map;
 	cDtls *dtls;
+	bool dtls_exists;
 	bool dtls_queue_move;
 	volatile int rtplock_sync;
 	unsigned long call_id_len;	//!< length of call-id 	
