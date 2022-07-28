@@ -262,6 +262,7 @@ extern bool opt_save_srvcc_cdr;
 extern bool opt_srvcc_correlation;
 extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
+extern bool opt_ssl_dtls_rtp_local;
 
 
 sCallField callFields[] = {
@@ -624,6 +625,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	dtls = NULL;
 	dtls_exists = false;
 	dtls_queue_move = false;
+	dtls_keys_sync = 0;
 	rtplock_sync = 0;
 	listening_worker_run = NULL;
 	lastcallerrtp = NULL;
@@ -1169,6 +1171,8 @@ Call::~Call(){
 	}
 	#endif
 	
+	dtls_keys_clear();
+	
 }
 
 void
@@ -1618,7 +1622,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	if(srtp_decrypt && opt_srtp_rtcp_decrypt) {
 		u_int32_t datalen = packetS->datalen_();
 		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), this, true);
+			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), true);
 		}
 		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
 		packetS->set_datalen_(datalen);
@@ -1946,25 +1950,31 @@ read:
 						    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 						    opt_saveRAW || opt_savewav_force)) {
-							int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
-							if(index_call_ip_port_by_src < 0) {
-								index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
-							}
-							if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-								index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
-							}
-							if(index_call_ip_port_by_src >= 0 && 
-							   this->ip_port[index_call_ip_port_by_src].srtp) {
-								if(!rtp_secure_map[index_call_ip_port_by_src]) {
-									rtp_secure_map[index_call_ip_port_by_src] = 
-										new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-													   this, index_call_ip_port_by_src);
-									if(sverb.log_srtp_callid && !log_srtp_callid) {
-										syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
-										log_srtp_callid = true;
-									}
+							if(opt_ssl_dtls_rtp_local) {
+								RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+														   this, -1);
+								rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
+							} else {
+								int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
+								if(index_call_ip_port_by_src < 0) {
+									index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
 								}
-								rtp_i->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+								if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
+									index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
+								}
+								if(index_call_ip_port_by_src >= 0 && 
+								   this->ip_port[index_call_ip_port_by_src].srtp) {
+									if(!rtp_secure_map[index_call_ip_port_by_src]) {
+										rtp_secure_map[index_call_ip_port_by_src] = 
+											new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+														   this, index_call_ip_port_by_src);
+										if(sverb.log_srtp_callid && !log_srtp_callid) {
+											syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
+											log_srtp_callid = true;
+										}
+									}
+									rtp_i->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+								}
 							}
 						}
 
@@ -2146,29 +2156,35 @@ read:
 		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
-			int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
-			if(index_call_ip_port_by_src < 0) {
-				index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
-			}
-			if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-				index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
-			}
-			if(index_call_ip_port_by_src >= 0 && 
-			   this->ip_port[index_call_ip_port_by_src].srtp) {
-				if(!rtp_secure_map[index_call_ip_port_by_src]) {
-					rtp_secure_map[index_call_ip_port_by_src] = 
-						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-									   this, index_call_ip_port_by_src);
-					if(sverb.log_srtp_callid && !log_srtp_callid) {
-						syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
-						log_srtp_callid = true;
-					}
+			if(opt_ssl_dtls_rtp_local) {
+				RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+										   this, -1);
+				rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
+			} else {
+				int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
+				if(index_call_ip_port_by_src < 0) {
+					index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
 				}
-				rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+				if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
+					index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
+				}
+				if(index_call_ip_port_by_src >= 0 && 
+				   this->ip_port[index_call_ip_port_by_src].srtp) {
+					if(!rtp_secure_map[index_call_ip_port_by_src]) {
+						rtp_secure_map[index_call_ip_port_by_src] = 
+							new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+										   this, index_call_ip_port_by_src);
+						if(sverb.log_srtp_callid && !log_srtp_callid) {
+							syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
+							log_srtp_callid = true;
+						}
+					}
+					rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+				}
 			}
 		}
 		rtp_new->call_owner = this;
-		rtp_new->iscaller = iscaller; 
+		rtp_new->iscaller = iscaller;
 		rtp_new->find_by_dest = find_by_dest;
 		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
 						   (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
@@ -2332,7 +2348,7 @@ Call::read_dtls(struct packet_s *packetS) {
 	if(sverb.dtls && ssl_sessionkey_enable() && packetS->isDtlsHandshake()) {
 		string log_str;
 		log_str += string("process handshake for call: ") + call_id;
-		log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " datalen: " + intToString(packetS->datalen_());
+		log_str += "; stream: " + packetS->saddr_().getString() + ":" + packetS->source_().getString() + " -> " + packetS->daddr_().getString() + ":" + packetS->dest_().getString() + " datalen: " + intToString(packetS->datalen_());
 		ssl_sessionkey_log(log_str);
 	}
 	dtls->processHandshake(packetS->saddr_(), packetS->source_(),
@@ -6074,48 +6090,58 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
-	for(int i = 0; i < ipport_n; i++) {
-		if(ip_port[i].srtp) {
-			bool stream_is_used =  false;
-			int srtp_decrypt_index_call_ip_port = -1;
-			for(int j = 0; j < rtp_size(); j++) {
-				if(rtp_stream_by_index(j)->index_call_ip_port == i &&
-				   rtp_stream_by_index(j)->stats.received > 0) {
-					stream_is_used = true;
-					srtp_decrypt_index_call_ip_port = rtp_stream_by_index(j)->srtp_decrypt_index_call_ip_port;
-					break;
-				}
-			}
-			if(stream_is_used &&
-			   !(ip_port[i].srtp_crypto_config_list ||
-			     (rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
-			      rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
+	if(dtls_exists && opt_ssl_dtls_rtp_local) {
+		for(int i = 0; i < rtp_size(); i++) {
+			RTP *rtp_i = rtp_stream_by_index(i);
+			if(rtp_i->srtp_decrypt && rtp_i->stats.received > 0 && !rtp_i->srtp_decrypt->isOK_decrypt_rtp()) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
-				if(sverb.dtls && ssl_sessionkey_enable()) {
-					string log_str;
-					log_str += string("set flag CDR_SRTP_WITHOUT_KEY for call: ") + call_id;
-					for(int k = 0; k < ipport_n; k++) {
-						log_str += "\nip_port " + intToString(k) + " " +
-							   ip_port[k].addr.getString() + ":" + ip_port[k].port.getString() + 
-							   "; exist srtp_crypto_config_list: " + (ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
-							   "; exist rtp_secure_map: " + (rtp_secure_map[k] ? "Y" : "n") + 
-							   (rtp_secure_map[k] ?
-							     string("; isOK_decrypt_rtp: ") + (rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
-							     "") + 
-							   (rtp_secure_map[k] && !rtp_secure_map[k]->isOK_decrypt_rtp() ?
-							     string("; ok/f: ") + intToString(rtp_secure_map[k]->decrypt_rtp_ok) + "/" + intToString(rtp_secure_map[k]->decrypt_rtp_failed) :
-							     "");
+				break;
+			}
+		}
+	} else {
+		for(int i = 0; i < ipport_n; i++) {
+			if(ip_port[i].srtp) {
+				bool stream_is_used =  false;
+				int srtp_decrypt_index_call_ip_port = -1;
+				for(int j = 0; j < rtp_size(); j++) {
+					if(rtp_stream_by_index(j)->index_call_ip_port == i &&
+					   rtp_stream_by_index(j)->stats.received > 0) {
+						stream_is_used = true;
+						srtp_decrypt_index_call_ip_port = rtp_stream_by_index(j)->srtp_decrypt_index_call_ip_port;
+						break;
 					}
-					for(int k = 0; k < rtp_size(); k++) {
-						RTP *_rtp = rtp_stream_by_index(k);
-						log_str += "\nrtp stream " + intToString(k) + " " +
-							   _rtp->saddr.getString() + ":" + _rtp->sport.getString() + " -> " + 
-							   _rtp->daddr.getString() + ":" + _rtp->dport.getString() + 
-							   "; index_call_ip_port: " + intToString(_rtp->index_call_ip_port) + 
-							   "; received: " + intToString(_rtp->stats.received) + 
-							   "; ok/f: " + intToString(_rtp->decrypt_srtp_ok) + "/" + intToString(_rtp->decrypt_srtp_failed);
+				}
+				if(stream_is_used &&
+				   !(ip_port[i].srtp_crypto_config_list ||
+				     (rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
+				      rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
+					cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+					if(sverb.dtls && ssl_sessionkey_enable()) {
+						string log_str;
+						log_str += string("set flag CDR_SRTP_WITHOUT_KEY for call: ") + call_id;
+						for(int k = 0; k < ipport_n; k++) {
+							log_str += "\nip_port " + intToString(k) + " " +
+								   ip_port[k].addr.getString() + ":" + ip_port[k].port.getString() + 
+								   "; exist srtp_crypto_config_list: " + (ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
+								   "; exist rtp_secure_map: " + (rtp_secure_map[k] ? "Y" : "n") + 
+								   (rtp_secure_map[k] ?
+								     string("; isOK_decrypt_rtp: ") + (rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
+								     "") + 
+								   (rtp_secure_map[k] && !rtp_secure_map[k]->isOK_decrypt_rtp() ?
+								     string("; ok/f: ") + intToString(rtp_secure_map[k]->decrypt_rtp_ok) + "/" + intToString(rtp_secure_map[k]->decrypt_rtp_failed) :
+								     "");
+						}
+						for(int k = 0; k < rtp_size(); k++) {
+							RTP *_rtp = rtp_stream_by_index(k);
+							log_str += "\nrtp stream " + intToString(k) + " " +
+								   _rtp->saddr.getString() + ":" + _rtp->sport.getString() + " -> " + 
+								   _rtp->daddr.getString() + ":" + _rtp->dport.getString() + 
+								   "; index_call_ip_port: " + intToString(_rtp->index_call_ip_port) + 
+								   "; received: " + intToString(_rtp->stats.received) + 
+								   "; ok/f: " + intToString(_rtp->decrypt_srtp_ok) + "/" + intToString(_rtp->decrypt_srtp_failed);
+						}
+						ssl_sessionkey_log(log_str);
 					}
-					ssl_sessionkey_log(log_str);
 				}
 			}
 		}
@@ -13173,6 +13199,59 @@ void Call::srvcc_check_pre() {
 		srvcc_flag = _srvcc_pre;
 		srvcc_call_id = call_id;
 	}
+}
+
+
+void Call::dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item) {
+	dtls_keys_lock();
+	bool exists = false;
+	for(vector<cDtlsLink::sSrtpKeys*>::iterator iter = dtls_keys.begin(); iter != dtls_keys.end(); iter++) {
+		if(*(*iter) == *keys_item) {
+			exists = true;
+			break;
+		}
+	}
+	if(!exists) {
+		cDtlsLink::sSrtpKeys* keys_new = new FILE_LINE(0) cDtlsLink::sSrtpKeys(*keys_item);
+		dtls_keys.push_back(keys_new);
+	}
+	dtls_keys_unlock();
+}
+
+unsigned Call::dtls_keys_count() {
+	unsigned count;
+	dtls_keys_lock();
+	count = dtls_keys.size();
+	dtls_keys_unlock();
+	return(count);
+}
+
+cDtlsLink::sSrtpKeys* Call::dtls_keys_get(unsigned index) {
+	cDtlsLink::sSrtpKeys *rslt = NULL;
+	dtls_keys_lock();
+	if(index < dtls_keys.size()) {
+		rslt = dtls_keys[index];
+	}
+	dtls_keys_unlock();
+	return(rslt);
+}
+
+void Call::dtls_keys_clear() {
+	dtls_keys_lock();
+	for(vector<cDtlsLink::sSrtpKeys*>::iterator iter = dtls_keys.begin(); iter != dtls_keys.end(); iter++) {
+		cDtlsLink::sSrtpKeys* keys_item = *iter;
+		delete keys_item;
+	}
+	dtls_keys.clear();
+	dtls_keys_unlock();
+}
+
+void Call::dtls_keys_lock() {
+	__SYNC_LOCK(dtls_keys_sync);
+}
+
+void Call::dtls_keys_unlock() {
+	__SYNC_UNLOCK(dtls_keys_sync);
 }
 
 

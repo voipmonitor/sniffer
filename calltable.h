@@ -951,6 +951,8 @@ public:
 	cDtls *dtls;
 	bool dtls_exists;
 	bool dtls_queue_move;
+	vector<cDtlsLink::sSrtpKeys*> dtls_keys;
+	volatile int dtls_keys_sync;
 	volatile int rtplock_sync;
 	unsigned long call_id_len;	//!< length of call-id 	
 	string call_id;	//!< call-id from SIP session
@@ -2338,6 +2340,13 @@ public:
 	inline bool existsSrtpFingerprint() {
 		return(exists_srtp_fingerprint);
 	}
+	
+	void dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item);
+	unsigned dtls_keys_count();
+	cDtlsLink::sSrtpKeys* dtls_keys_get(unsigned index);
+	void dtls_keys_clear();
+	void dtls_keys_lock();
+	void dtls_keys_unlock();
 
 private:
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];

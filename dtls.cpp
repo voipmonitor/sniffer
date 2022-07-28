@@ -261,7 +261,17 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 		keys_item->server = server;
 		keys_item->client = client;
 		keys_item->cipher = cipherName(cipher_type);
-		keys->push_back(keys_item);
+		bool exists = false;
+		for(list<cDtlsLink::sSrtpKeys*>::iterator iter = keys->begin(); iter != keys->end(); iter++) {
+			if(*(*iter) == *keys_item) {
+				exists = true;
+				break;
+			}
+		}
+		if(!exists) {
+			keys->push_back(keys_item);
+			call->dtls_keys_add(keys_item);
+		}
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {
 		ssl_sessionkey_log(log_str);

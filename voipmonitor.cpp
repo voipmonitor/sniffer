@@ -449,6 +449,7 @@ int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
 int opt_ssl_dtls_handshake_safe = false;
+int opt_ssl_dtls_rtp_local = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -7427,6 +7428,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
 				->addValues("ext:2"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -11976,6 +11978,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
 		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
+	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
+		opt_ssl_dtls_rtp_local = yesno(value);
+	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
 	}
@@ -13342,7 +13347,7 @@ bool init_lib_gcrypt() {
 
 
 #if HAVE_LIBSRTP
-#include <srtp/srtp.h>
+#include <srtp2/srtp.h>
 volatile int _init_lib_srtp_rslt = -1;
 volatile int _init_lib_srtp_sync = 0;
 bool init_lib_srtp() {

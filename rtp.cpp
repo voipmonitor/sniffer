@@ -404,6 +404,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
+	srtp_decrypt_local = false;
 	srtp_decrypt_index_call_ip_port = -1;
 	
 	energylevels = NULL;
@@ -424,9 +425,10 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 }
 
 void 
-RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt, int index_call_ip_port) {
+RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt, int index_call_ip_port, bool local) {
 	this->srtp_decrypt = srtp_decrypt;
 	this->srtp_decrypt_index_call_ip_port = index_call_ip_port;
+	this->srtp_decrypt_local = local;
 }
 
 
@@ -614,6 +616,10 @@ RTP::~RTP() {
 	
 	if(energylevels) {
 		delete energylevels;
+	}
+	
+	if(srtp_decrypt && srtp_decrypt_local) {
+		delete srtp_decrypt;
 	}
 }
 
@@ -1220,10 +1226,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 			++decrypt_rtp_attempt[1];
 			if(srtp_decrypt->need_prepare_decrypt()) {
-				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, owner, false);
+				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false);
 			}
 			srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header),
-						  saddr, daddr, sport, dport, owner, this); 
+						  saddr, daddr, sport, dport, this); 
 			this->len = *len;
 		}
 	} else if(owner && owner->dtls) {

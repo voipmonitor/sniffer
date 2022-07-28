@@ -511,7 +511,7 @@ public:
 	*/
 	~RTP();
 	
-	void setSRtpDecrypt(class RTPsecure *srtp_decrypt, int index_call_ip_port);
+	void setSRtpDecrypt(class RTPsecure *srtp_decrypt, int index_call_ip_port, bool local = false);
 
 	/**
 	 * @brief simulate jitter buffer
@@ -802,6 +802,7 @@ private:
 	bool stopReadProcessing;
 	
 	class RTPsecure *srtp_decrypt;
+	bool srtp_decrypt_local;
 	int srtp_decrypt_index_call_ip_port;
 	
 	sRSA rsa;

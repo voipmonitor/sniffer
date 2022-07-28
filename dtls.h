@@ -72,6 +72,13 @@ public:
 		vmIPport server;
 		vmIPport client;
 		string cipher;
+		inline bool operator == (const sSrtpKeys& other) const {
+			return(this->server_key == other.server_key &&
+			       this->client_key == other.client_key &&
+			       this->server == other.server &&
+			       this->client == other.client &&
+			       this->cipher == other.cipher);
+		}
 	};
 	struct sHeader {
 		u_int8_t content_type;
