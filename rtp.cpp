@@ -422,6 +422,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	memset(decrypt_rtp_attempt, 0, sizeof(decrypt_rtp_attempt));
 	decrypt_srtp_ok = 0;
 	decrypt_srtp_failed = 0;
+	probably_unencrypted_payload = false;
 }
 
 void 
@@ -1211,7 +1212,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		}
 		++decrypt_rtp_attempt[0];
 		if(opt_srtp_rtp_decrypt || 
-		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
+		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls())
 		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		   || use_channel_record
 		   #endif
@@ -1226,10 +1227,14 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 			++decrypt_rtp_attempt[1];
 			if(srtp_decrypt->need_prepare_decrypt()) {
-				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false);
+				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false, pcap_header_us);
 			}
-			srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header),
-						  saddr, daddr, sport, dport, this); 
+			if(!srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
+						      saddr, daddr, sport, dport, this)) {
+				if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
+					probably_unencrypted_payload = true;
+				}
+			}
 			this->len = *len;
 		}
 	} else if(owner && owner->dtls) {
@@ -2999,6 +3004,25 @@ RTPMAP *RTP::get_rtpmap(Call *call, bool other_side) {
 	} else {
 		return(other_side ? rtpmap_other_side : rtpmap);
 	}
+}
+
+bool RTP::is_unencrypted_payload(u_char *data, unsigned datalen) {
+	if(codec == PAYLOAD_PCMA) {
+		for(unsigned i = 0; i < min(datalen, 20u); i++) {
+			if(!((data[i] >= 0x50 && data[i] <= 0x5F) || (data[i] >= 0xD0 && data[i] <= 0xDF) || data[i] == 0xFF)) {
+				return(false);
+			}
+		}
+		return(true);
+	} else if(codec == PAYLOAD_PCMU) {
+		for(unsigned i = 0; i < min(datalen, 20u); i++) {
+			if(!((data[i] >= 0xC0 && data[i] <= 0xCF) || (data[i] >= 0xF0 && data[i] <= 0xFF) || data[i] == 0xFF)) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	return(false);
 }
 
 #endif // not EXPERIMENTAL_LITE_RTP_MOD

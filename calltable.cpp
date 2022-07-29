@@ -534,6 +534,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenmessageok = false;
 	seenbye = false;
 	seenbye_time_usec = 0;
+	seenbyeok = false;
+	seenbyeok_time_usec = 0;
 	seenbyeandok = false;
 	seenbyeandok_permanent = false;
 	seenbyeandok_time_usec = 0;
@@ -1622,7 +1624,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 	if(srtp_decrypt && opt_srtp_rtcp_decrypt) {
 		u_int32_t datalen = packetS->datalen_();
 		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), true);
+			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), true, packetS->getTimeUS());
 		}
 		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
 		packetS->set_datalen_(datalen);
@@ -6093,9 +6095,21 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(dtls_exists && opt_ssl_dtls_rtp_local) {
 		for(int i = 0; i < rtp_size(); i++) {
 			RTP *rtp_i = rtp_stream_by_index(i);
-			if(rtp_i->srtp_decrypt && rtp_i->stats.received > 0 && !rtp_i->srtp_decrypt->isOK_decrypt_rtp()) {
+			if(rtp_i->srtp_decrypt && !rtp_i->probably_unencrypted_payload && 
+			   rtp_i->stats.received > 0 && !rtp_i->srtp_decrypt->isOK_decrypt_rtp(10)) {
 				cdr_flags |= CDR_SRTP_WITHOUT_KEY;
-				break;
+				if(sverb.dtls && ssl_sessionkey_enable()) {
+					string log_str;
+					log_str += "failed decrypt rtp stream " + intToString(i+1) + " in call " + call_id + " " +
+						   rtp_i->saddr.getString() + ":" + rtp_i->sport.getString() + " -> " + 
+						   rtp_i->daddr.getString() + ":" + rtp_i->dport.getString() + 
+						   "; index_call_ip_port: " + intToString(rtp_i->index_call_ip_port) + 
+						   "; received: " + intToString(rtp_i->stats.received) + 
+						   "; ok/f: " + intToString(rtp_i->decrypt_srtp_ok) + "/" + intToString(rtp_i->decrypt_srtp_failed);
+					ssl_sessionkey_log(log_str);
+				} else {
+					break;
+				}
 			}
 		}
 	} else {

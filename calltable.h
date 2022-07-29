@@ -723,6 +723,8 @@ public:
 		sMergeLegInfo() {
 			seenbye = false;
 			seenbye_time_usec = 0;
+			seenbyeok = false;
+			seenbyeok_time_usec = 0;
 			seenbyeandok = false;
 			seenbyeandok_time_usec = 0;
 			seencancelandok = false;
@@ -732,6 +734,8 @@ public:
 		}
 		bool seenbye;
 		u_int64_t seenbye_time_usec;
+		bool seenbyeok;
+		u_int64_t seenbyeok_time_usec;
 		bool seenbyeandok;
 		u_int64_t seenbyeandok_time_usec;
 		bool seencancelandok;
@@ -1091,6 +1095,8 @@ public:
 	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
+	bool seenbyeok;
+	u_int64_t seenbyeok_time_usec;
 	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
 	bool seenbyeandok_permanent;
 	u_int64_t seenbyeandok_time_usec;
@@ -2104,6 +2110,19 @@ public:
 			if(mergecalls.find(call_id) != mergecalls.end()) {
 				mergecalls[call_id].seenbye = seenbye;
 				mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+			}
+			mergecalls_unlock();
+		}
+	}
+	void setSeenByeOk(bool seenbyeok, u_int64_t seenbyeok_time_usec, const char *call_id) {
+		this->seenbyeok = seenbyeok;
+		this->seenbyeok_time_usec = seenbyeok_time_usec;
+		if(isSetCallidMergeHeader() &&
+		   call_id && *call_id) {
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seenbyeok = seenbyeok;
+				mergecalls[call_id].seenbyeok_time_usec = seenbyeok_time_usec;
 			}
 			mergecalls_unlock();
 		}

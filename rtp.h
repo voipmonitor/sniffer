@@ -771,6 +771,8 @@ public:
 	
 	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
 	
+	bool is_unencrypted_payload(u_char *data, unsigned datalen);
+	
 private: 
 	/*
 	* Per-source state information
@@ -815,7 +817,8 @@ private:
 	int call_ipport_n_orig;
 	unsigned decrypt_rtp_attempt[2];
 	unsigned decrypt_srtp_ok;
-	unsigned decrypt_srtp_failed;	
+	unsigned decrypt_srtp_failed;
+	bool probably_unencrypted_payload;
 friend class Call;
 friend class RTPsecure;
 };

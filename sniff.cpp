@@ -266,6 +266,7 @@ unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
+extern bool opt_ignore_rtp_after_bye;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
 extern bool opt_ignore_rtp_after_auth_failed;
 extern bool opt_ignore_rtp_after_response;
@@ -4041,6 +4042,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 		// if(!call->seenbye) {
 		call->setSeenBye(false, 0, packetS->get_callid());
+		call->setSeenByeOk(false, 0, packetS->get_callid());
 		call->setSeenByeAndOk(false, 0, packetS->get_callid());
 		call->setSeenCancelAndOk(false, 0, packetS->get_callid());
 		call->setSeenAuthFailed(false, 0, packetS->get_callid());
@@ -4415,6 +4417,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(packetS->sip_method == RES2XX) {
 			call->seenRES2XX = true;
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
+			if(packetS->cseq.method == BYE) {
+				call->setSeenByeOk(true, packet_time_us, packetS->get_callid());
+			}
 			if(packetS->cseq.method != BYE ||
 			   !call->existsByeCseq(&packetS->cseq)) {
 				call->seenRES2XX_no_BYE = true;
@@ -5876,6 +5881,11 @@ inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_ca
 		if((opt_ignore_rtp_after_bye_confirmed &&
 		    call->seenbyeandok && call->seenbyeandok_time_usec &&
 		    packetS->getTimeUS() > call->seenbyeandok_time_usec) ||
+		   (opt_ignore_rtp_after_bye &&
+		    ((call->seenbye && call->seenbye_time_usec &&
+		      packetS->getTimeUS() > call->seenbye_time_usec) ||
+		     (call->seenbyeok && call->seenbyeok_time_usec &&
+		      packetS->getTimeUS() > call->seenbyeok_time_usec))) ||
 		   (opt_ignore_rtp_after_cancel_confirmed &&
 		    call->seencancelandok && call->seencancelandok_time_usec &&
 		    packetS->getTimeUS() > call->seencancelandok_time_usec) ||

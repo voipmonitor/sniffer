@@ -118,13 +118,13 @@ public:
 public:
 	RTPsecure(eMode mode, class Call *call, int index_ip_port);
 	~RTPsecure();
-	bool setCryptoConfig();
+	bool setCryptoConfig(u_int64_t time_us);
 	bool addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
 	bool existsNewerCryptoConfig(u_int64_t time_us);
 	inline bool need_prepare_decrypt() {
 		return(!cryptoConfigVector.size());
 	}
-	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, bool callFromRtcp);
+	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, bool callFromRtcp, u_int64_t time_us);
 	bool is_dtls();
 	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
 			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class RTP *stream);
@@ -138,8 +138,8 @@ public:
 	bool isOK() {
 		return(error == err_na);
 	}
-	bool isOK_decrypt_rtp() {
-		return(decrypt_rtp_ok > 0 || decrypt_rtp_failed == 0);
+	bool isOK_decrypt_rtp(unsigned failed_tolerance = 0) {
+		return(decrypt_rtp_ok > 0 || decrypt_rtp_failed <= failed_tolerance);
 	}
 	bool isOK_decrypt_rtcp() {
 		return(decrypt_rtcp_ok > 0 || decrypt_rtcp_failed == 0);
