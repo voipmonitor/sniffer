@@ -377,6 +377,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	this->sensor_id = sensor_id;
 	this->sensor_ip = sensor_ip;
 	this->index_call_ip_port = -1;
+	this->index_call_ip_port_other_side = -1;
 	this->index_call_ip_port_by_dest = false;
 	
 	this->_last_ts.tv_sec = 0;

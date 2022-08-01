@@ -1952,19 +1952,17 @@ read:
 						    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 						    opt_saveRAW || opt_savewav_force)) {
+							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
 							if(opt_ssl_dtls_rtp_local) {
-								RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-														   this, -1);
-								rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
+								if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
+								   (rtp_i->index_call_ip_port >= 0 && this->ip_port[rtp_i->index_call_ip_port].srtp) ||
+								   (rtp_i->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
+									RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+															   this, -1);
+									rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
+								}
 							} else {
-								int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
-								if(index_call_ip_port_by_src < 0) {
-									index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
-								}
-								if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-									index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
-								}
-								if(index_call_ip_port_by_src >= 0 && 
+								if(index_call_ip_port_by_src >= 0 &&
 								   this->ip_port[index_call_ip_port_by_src].srtp) {
 									if(!rtp_secure_map[index_call_ip_port_by_src]) {
 										rtp_secure_map[index_call_ip_port_by_src] = 
@@ -2153,24 +2151,43 @@ read:
 		
 		RTP *rtp_new = new FILE_LINE(1001) RTP(packetS->sensor_id_(), packetS->sensor_ip);
 		rtp_new->ssrc_index = rtp_size();
+		rtp_new->call_owner = this;
+		rtp_new->iscaller = iscaller;
+		rtp_new->find_by_dest = find_by_dest;
+		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
+						   (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
+						   this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
+						   (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
+						    this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
+		rtp_new->index_call_ip_port = index_call_ip_port_find_side;
+		rtp_new->index_call_ip_port_other_side = index_call_ip_port_other_side;
+		if(rtp_new->index_call_ip_port >= 0) {
+			rtp_new->index_call_ip_port_by_dest = find_by_dest;
+		}
+		rtp_new->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
+		rtp_new->sdp_flags = sdp_flags;
+		rtp_new->call_ipport_n_orig = ipport_n;
+		if(rtp_cur[iscaller]) {
+			rtp_prev[iscaller] = rtp_cur[iscaller];
+		}
+		rtp_cur[iscaller] = rtp_new; 
+		
 		if(exists_srtp && 
 		   (opt_srtp_rtp_decrypt || 
 		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
+			int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
 			if(opt_ssl_dtls_rtp_local) {
-				RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-										   this, -1);
-				rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
+				if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
+				   (rtp_new->index_call_ip_port >= 0 && this->ip_port[rtp_new->index_call_ip_port].srtp) ||
+				   (rtp_new->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
+					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+											   this, -1);
+					rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
+				}
 			} else {
-				int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_());
-				if(index_call_ip_port_by_src < 0) {
-					index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true);
-				}
-				if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-					index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
-				}
-				if(index_call_ip_port_by_src >= 0 && 
+				if(index_call_ip_port_by_src >= 0 &&
 				   this->ip_port[index_call_ip_port_by_src].srtp) {
 					if(!rtp_secure_map[index_call_ip_port_by_src]) {
 						rtp_secure_map[index_call_ip_port_by_src] = 
@@ -2185,21 +2202,6 @@ read:
 				}
 			}
 		}
-		rtp_new->call_owner = this;
-		rtp_new->iscaller = iscaller;
-		rtp_new->find_by_dest = find_by_dest;
-		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
-						   (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-						   this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
-						   (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
-						    this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
-		rtp_new->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
-		rtp_new->sdp_flags = sdp_flags;
-		rtp_new->call_ipport_n_orig = ipport_n;
-		if(rtp_cur[iscaller]) {
-			rtp_prev[iscaller] = rtp_cur[iscaller];
-		}
-		rtp_cur[iscaller] = rtp_new; 
 		
 		if(opt_dscp) {
 			rtp_new->dscp = packetS->header_ip_()->get_tos() >> 2;
@@ -2224,9 +2226,7 @@ read:
 		rtp_new->basefilename[1023] = 0;
 		#endif
 
-		rtp_new->index_call_ip_port = index_call_ip_port_find_side;
 		if(rtp_new->index_call_ip_port >= 0) {
-			rtp_new->index_call_ip_port_by_dest = find_by_dest;
 			evProcessRtpStream(rtp_new->index_call_ip_port, rtp_new->index_call_ip_port_by_dest, 
 					   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
 		}

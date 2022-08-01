@@ -794,6 +794,7 @@ private:
 	int sensor_id;
 	vmIP sensor_ip;
 	int index_call_ip_port;
+	int index_call_ip_port_other_side;
 	bool index_call_ip_port_by_dest;
 	
 	int _last_sensor_id;
