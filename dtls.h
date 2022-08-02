@@ -66,6 +66,21 @@ public:
 			return(this->server < other.server);
 		}
 	};
+	struct sDtlsClientId {
+		vmIPport client;
+		sDtlsClientId(cDtlsLink *link)
+			: client(link->client.ip, link->client.port) {
+		}
+		sDtlsClientId(vmIP client_ip, vmPort client_port) 
+			: client(client_ip, client_port) {
+		}
+		inline bool operator == (const sDtlsClientId& other) const {
+			return(this->client == other.client);
+		}
+		inline bool operator < (const sDtlsClientId& other) const { 
+			return(this->client < other.client);
+		}
+	};
 	struct sSrtpKeys {
 		string server_key;
 		string client_key;
@@ -245,7 +260,7 @@ public:
 	bool findSrtpKeys(vmIP src_ip, vmPort src_port,
 			  vmIP dst_ip, vmPort dst_port,
 			  list<cDtlsLink::sSrtpKeys*> *keys,
-			  int8_t *direction, bool *oneNode,
+			  int8_t *direction, int8_t *node,
 			  class Call *call,
 			  bool enable_handshake_safe, bool use_handshake_safe);
 	bool getHandshakeData(vmIP server_ip, vmPort server_port,
@@ -259,6 +274,7 @@ private:
 	list<cDtlsLink*> links;
 	map<cDtlsLink::sDtlsLinkId, cDtlsLink*> links_by_link_id;
 	map<cDtlsLink::sDtlsServerId, cDtlsLink*> links_by_server_id;
+	map<cDtlsLink::sDtlsClientId, cDtlsLink*> links_by_client_id;
 	int debug_flags[2];
 	bool need_lock;
 	volatile int _sync;

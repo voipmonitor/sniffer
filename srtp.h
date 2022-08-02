@@ -116,7 +116,7 @@ public:
 		#endif
 	};
 public:
-	RTPsecure(eMode mode, class Call *call, int index_ip_port);
+	RTPsecure(eMode mode, class Call *call, int index_ip_port, bool local = false);
 	~RTPsecure();
 	bool setCryptoConfig(u_int64_t time_us);
 	bool addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
@@ -200,6 +200,7 @@ private:
 	eMode mode;
 	Call *call;
 	int index_ip_port;
+	bool local;
 	vector<sCryptoConfig> cryptoConfigVector;
 	unsigned cryptoConfigCallSize;
 	unsigned cryptoConfigActiveIndex;

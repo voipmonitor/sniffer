@@ -450,6 +450,8 @@ int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
 int opt_ssl_dtls_handshake_safe = false;
 int opt_ssl_dtls_rtp_local = false;
+bool opt_ssl_dtls_find_by_server_side = true;
+bool opt_ssl_dtls_find_by_client_side = false;
 int opt_ssl_dtls_boost = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
@@ -7431,6 +7433,8 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
 				->addValues("ext:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
 		setDisableIfEnd();
 	group("SKINNY");
@@ -9472,6 +9476,8 @@ void set_context_config() {
 		opt_ssl_dtls_queue_keep = true;
 		opt_ssl_dtls_handshake_safe = 2;
 		opt_ssl_dtls_rtp_local = true;
+		opt_ssl_dtls_find_by_server_side = true;
+		opt_ssl_dtls_find_by_client_side = true;
 	}
 	
 	if(opt_callidmerge_header[0] &&
@@ -11990,11 +11996,17 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
 		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
-	if((value = ini.GetValue("general", "ssl_dtls_boost", NULL))) {
-		opt_ssl_dtls_boost = yesno(value);
-	}
 	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
 		opt_ssl_dtls_rtp_local = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
+		opt_ssl_dtls_find_by_server_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_client_side", NULL))) {
+		opt_ssl_dtls_find_by_client_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_boost", NULL))) {
+		opt_ssl_dtls_boost = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);

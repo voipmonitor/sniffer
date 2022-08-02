@@ -1395,10 +1395,10 @@ public:
 	~Call();
 
 	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
-	inline int get_index_by_ip_port_by_src(vmIP addr, vmPort port, int iscaller) {
-		int index_call_ip_port_by_src = get_index_by_ip_port(addr, port);
+	inline int get_index_by_ip_port_by_src(vmIP addr, vmPort port, int iscaller, bool rtcp = false) {
+		int index_call_ip_port_by_src = get_index_by_ip_port(addr, port, false, rtcp);
 		if(index_call_ip_port_by_src < 0) {
-			index_call_ip_port_by_src = get_index_by_ip_port(addr, port, true);
+			index_call_ip_port_by_src = get_index_by_ip_port(addr, port, true, rtcp);
 		}
 		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
 			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));

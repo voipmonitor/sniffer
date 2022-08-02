@@ -5689,6 +5689,16 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		} else {
 			bool rslt_read_rtp = false;
 			if(!sverb.disable_read_rtp) {
+				if(packetS->insert_packets) {
+					list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
+					for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+						#if DEBUG_DTLS_QUEUE
+						cout << " * use dtls" << endl;
+						#endif
+						call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+							       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+					}
+				}
 				if(is_rtcp) {
 					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 				} else {

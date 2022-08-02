@@ -1598,13 +1598,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 	RTPsecure *srtp_decrypt = NULL;
 	if(exists_srtp && opt_srtp_rtcp_decrypt) {
-		int index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), false, true);
-		if(index_call_ip_port_by_src < 0) {
-			index_call_ip_port_by_src = get_index_by_ip_port(packetS->saddr_(), packetS->source_(), true, true);
-		}
-		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
-		}
+		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller, true);
 		if(index_call_ip_port_by_src >= 0 && 
 		   this->ip_port[index_call_ip_port_by_src].srtp) {
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
@@ -1958,7 +1952,7 @@ read:
 								   (rtp_i->index_call_ip_port >= 0 && this->ip_port[rtp_i->index_call_ip_port].srtp) ||
 								   (rtp_i->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
 									RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-															   this, -1);
+															   this, index_call_ip_port_by_src, true);
 									rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
 								}
 							} else {
@@ -2183,7 +2177,7 @@ read:
 				   (rtp_new->index_call_ip_port >= 0 && this->ip_port[rtp_new->index_call_ip_port].srtp) ||
 				   (rtp_new->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
 					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-											   this, -1);
+											   this, index_call_ip_port_by_src, true);
 					rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
 				}
 			} else {

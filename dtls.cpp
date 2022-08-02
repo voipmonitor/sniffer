@@ -10,6 +10,8 @@ static bool dtls_srtp_keys_block(SimpleBuffer *secret, const char *usage, Simple
 
 extern int opt_ssl_dtls_handshake_safe;
 extern cDtls dtls_handshake_safe_links;
+extern bool opt_ssl_dtls_find_by_server_side;
+extern bool opt_ssl_dtls_find_by_client_side;
 
 
 cDtlsLink::cDtlsLink(vmIP server_ip, vmPort server_port,
@@ -368,6 +370,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(dst_ip, dst_port, src_ip, src_port);
 					cDtlsLink::sDtlsServerId serverId(dst_ip, dst_port);
+					cDtlsLink::sDtlsClientId clientId(src_ip, src_port);
 					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
 					if(link_iter != links_by_link_id.end()) {
 						link = link_iter->second;
@@ -381,6 +384,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 						link = new FILE_LINE(0) cDtlsLink(dst_ip, dst_port, src_ip, src_port);
 						links_by_link_id[linkId] = link;
 						links_by_server_id[serverId] = link;
+						links_by_client_id[clientId] = link;
 						links.push_back(link);
 					}
 					link->processHandshake(hs_header, time_us);
@@ -390,6 +394,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 					cDtlsLink *link = NULL;
 					cDtlsLink::sDtlsLinkId linkId(src_ip, src_port, dst_ip, dst_port);
 					cDtlsLink::sDtlsServerId serverId(src_ip, src_port);
+					cDtlsLink::sDtlsClientId clientId(dst_ip, dst_port);
 					map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
 					if(link_iter != links_by_link_id.end()) {
 						link = link_iter->second;
@@ -403,6 +408,7 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 						link = new FILE_LINE(0) cDtlsLink(src_ip, src_port, dst_ip, dst_port);
 						links_by_link_id[linkId] = link;
 						links_by_server_id[serverId] = link;
+						links_by_client_id[clientId] = link;
 						links.push_back(link);
 					}
 					if(link) {
@@ -421,11 +427,11 @@ bool cDtls::processHandshake(vmIP src_ip, vmPort src_port,
 bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 			 vmIP dst_ip, vmPort dst_port,
 			 list<cDtlsLink::sSrtpKeys*> *keys,
-			 int8_t *direction, bool *oneNode,
+			 int8_t *direction, int8_t *node,
 			 Call *call,
 			 bool enable_handshake_safe, bool use_handshake_safe) {
 	bool existsLink = false;
-	for(int pass_type = 0; pass_type < 2; pass_type++) {
+	for(int pass_type = 0; pass_type < 3; pass_type++) {
 		if(use_handshake_safe) {
 			lock();
 		}
@@ -442,11 +448,11 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 					if(direction) {
 						*direction = pass_direction;
 					}
-					if(oneNode) {
-						*oneNode = false;
+					if(node) {
+						*node = 0;
 					}
 				}
-			} else {
+			} else if(pass_type == 1 && opt_ssl_dtls_find_by_server_side) {
 				cDtlsLink::sDtlsServerId serverId(pass_direction == 0 ? dst_ip : src_ip,
 								  pass_direction == 0 ? dst_port : src_port);
 				map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
@@ -455,8 +461,21 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 					if(direction) {
 						*direction = pass_direction;
 					}
-					if(oneNode) {
-						*oneNode = true;
+					if(node) {
+						*node = 1;
+					}
+				}
+			} else if(pass_type == 2 && opt_ssl_dtls_find_by_client_side) {
+				cDtlsLink::sDtlsClientId clientId(pass_direction == 0 ? src_ip : dst_ip,
+								  pass_direction == 0 ? src_port : dst_port);
+				map<cDtlsLink::sDtlsClientId, cDtlsLink*>::iterator link_iter = links_by_client_id.find(clientId);
+				if(link_iter != links_by_client_id.end()) {
+					link = link_iter->second;
+					if(direction) {
+						*direction = pass_direction;
+					}
+					if(node) {
+						*node = true;
 					}
 				}
 			}
@@ -489,7 +508,7 @@ bool cDtls::getHandshakeData(vmIP server_ip, vmPort server_port,
 			     cDtlsLink::sHandshakeData *handshake_data) {
 	bool rslt = false;
 	lock();
-	for(int pass_type = 0; pass_type < 2; pass_type++) {
+	for(int pass_type = 0; pass_type < 3; pass_type++) {
 		cDtlsLink *link = NULL;
 		if(pass_type == 0) {
 			cDtlsLink::sDtlsLinkId linkId(server_ip, server_port,
@@ -498,10 +517,16 @@ bool cDtls::getHandshakeData(vmIP server_ip, vmPort server_port,
 			if(link_iter != links_by_link_id.end()) {
 				link = link_iter->second;
 			}
-		} else {
+		} else if(pass_type == 1 && opt_ssl_dtls_find_by_server_side) {
 			cDtlsLink::sDtlsServerId serverId(server_ip, server_port);
 			map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter = links_by_server_id.find(serverId);
 			if(link_iter != links_by_server_id.end()) {
+				link = link_iter->second;
+			}
+		} else if(pass_type == 2 && opt_ssl_dtls_find_by_client_side) {
+			cDtlsLink::sDtlsClientId clientId(client_ip, client_port);
+			map<cDtlsLink::sDtlsClientId, cDtlsLink*>::iterator link_iter = links_by_client_id.find(clientId);
+			if(link_iter != links_by_client_id.end()) {
 				link = link_iter->second;
 			}
 		}
@@ -526,14 +551,19 @@ void cDtls::cleanup() {
 			cDtlsLink *link = *iter;
 			cDtlsLink::sDtlsLinkId linkId(link);
 			cDtlsLink::sDtlsServerId serverId(link);
+			cDtlsLink::sDtlsClientId clientId(link);
 			map<cDtlsLink::sDtlsLinkId, cDtlsLink*>::iterator link_iter = links_by_link_id.find(linkId);
-			if(link_iter != links_by_link_id.end()) {
+			if(link_iter != links_by_link_id.end() && link_iter->second == link) {
 				links_by_link_id.erase(link_iter);
 			}
 			map<cDtlsLink::sDtlsServerId, cDtlsLink*>::iterator link_iter_s = links_by_server_id.find(serverId);
-			if(link_iter_s != links_by_server_id.end()) {
+			if(link_iter_s != links_by_server_id.end() && link_iter_s->second == link) {
 				links_by_server_id.erase(link_iter_s);
-			} 
+			}
+			map<cDtlsLink::sDtlsClientId, cDtlsLink*>::iterator link_iter_c = links_by_client_id.find(clientId);
+			if(link_iter_c != links_by_client_id.end() && link_iter_c->second == link) {
+				links_by_client_id.erase(link_iter_c);
+			}
 			links.erase(iter++);
 			delete link;
 		} else {
