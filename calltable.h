@@ -723,23 +723,23 @@ public:
 		sMergeLegInfo() {
 			seenbye = false;
 			seenbye_time_usec = 0;
-			seenbyeok = false;
-			seenbyeok_time_usec = 0;
-			seenbyeandok = false;
-			seenbyeandok_time_usec = 0;
-			seencancelandok = false;
-			seencancelandok_time_usec = 0;
+			seenokbye = false;
+			seenokbye_time_usec = 0;
+			seenbye_and_ok = false;
+			seenbye_and_ok_time_usec = 0;
+			seencancel_and_ok = false;
+			seencancel_and_ok_time_usec = 0;
 			seenauthfailed = false;
 			seenauthfailed_time_usec = 0;
 		}
 		bool seenbye;
 		u_int64_t seenbye_time_usec;
-		bool seenbyeok;
-		u_int64_t seenbyeok_time_usec;
-		bool seenbyeandok;
-		u_int64_t seenbyeandok_time_usec;
-		bool seencancelandok;
-		u_int64_t seencancelandok_time_usec;
+		bool seenokbye;
+		u_int64_t seenokbye_time_usec;
+		bool seenbye_and_ok;
+		u_int64_t seenbye_and_ok_time_usec;
+		bool seencancel_and_ok;
+		u_int64_t seencancel_and_ok_time_usec;
 		bool seenauthfailed;
 		u_int64_t seenauthfailed_time_usec;
 	};
@@ -1095,13 +1095,13 @@ public:
 	bool seenmessageok;
 	bool seenbye;			//!< true if we see SIP BYE within the Call
 	u_int64_t seenbye_time_usec;
-	bool seenbyeok;
-	u_int64_t seenbyeok_time_usec;
-	bool seenbyeandok;		//!< true if we see SIP OK TO BYE within the Call
-	bool seenbyeandok_permanent;
-	u_int64_t seenbyeandok_time_usec;
-	bool seencancelandok;		//!< true if we see SIP OK TO CANCEL within the Call
-	u_int64_t seencancelandok_time_usec;
+	bool seenokbye;
+	u_int64_t seenokbye_time_usec;
+	bool seenbye_and_ok;		//!< true if we see SIP OK TO BYE within the Call
+	bool seenbye_and_ok_permanent;
+	u_int64_t seenbye_and_ok_time_usec;
+	bool seencancel_and_ok;		//!< true if we see SIP OK TO CANCEL within the Call
+	u_int64_t seencancel_and_ok_time_usec;
 	bool seenauthfailed;
 	u_int64_t seenauthfailed_time_usec;
 	u_int64_t ignore_rtp_after_response_time_usec;
@@ -1530,8 +1530,8 @@ public:
 		extern bool opt_ignore_duration_after_bye_confirmed;
 		return(typeIs(MGCP) ? 
 			last_mgcp_connect_packet_time_us : 
-			(opt_ignore_duration_after_bye_confirmed && this->seenbyeandok_time_usec && this->seenbyeandok_time_usec > first_packet_time_us ? 
-			  this->seenbyeandok_time_usec :
+			(opt_ignore_duration_after_bye_confirmed && this->seenbye_and_ok_time_usec && this->seenbye_and_ok_time_usec > first_packet_time_us ? 
+			  this->seenbye_and_ok_time_usec :
 			  get_last_packet_time_us()));
 	}
 	u_int32_t get_last_time_s() { return TIME_US_TO_S(get_last_time_us()); }
@@ -1831,7 +1831,7 @@ public:
 			time_t new_destroy_call_at = 
 				typeIs(REGISTER) ?
 					time_s + opt_register_timeout :
-					(this->seenbyeandok ?
+					(this->seenbye_and_ok ?
 						time_s + (opt_quick_save_cdr == 2 ? 0 :
 							 (opt_quick_save_cdr ? 1 : 5)) :
 					 this->seenbye ?
@@ -2113,68 +2113,88 @@ public:
 	}
 	void setSeenBye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
 		this->seenbye = seenbye;
-		this->seenbye_time_usec = seenbye_time_usec;
+		if(!this->seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
+			this->seenbye_time_usec = seenbye_time_usec;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
 				mergecalls[call_id].seenbye = seenbye;
-				mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+				if(!mergecalls[call_id].seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
+					mergecalls[call_id].seenbye_time_usec = seenbye_time_usec;
+				}
 			}
 			mergecalls_unlock();
 		}
 	}
-	void setSeenByeOk(bool seenbyeok, u_int64_t seenbyeok_time_usec, const char *call_id) {
-		this->seenbyeok = seenbyeok;
-		this->seenbyeok_time_usec = seenbyeok_time_usec;
+	void setSeenOkBye(bool seenokbye, u_int64_t seenokbye_time_usec, const char *call_id) {
+		this->seenokbye = seenokbye;
+		if(!this->seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
+			this->seenokbye_time_usec = seenokbye_time_usec;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenbyeok = seenbyeok;
-				mergecalls[call_id].seenbyeok_time_usec = seenbyeok_time_usec;
+				mergecalls[call_id].seenokbye = seenokbye;
+				if(!mergecalls[call_id].seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
+					mergecalls[call_id].seenokbye_time_usec = seenokbye_time_usec;
+				}
 			}
 			mergecalls_unlock();
 		}
 	}
-	void setSeenByeAndOk(bool seenbyeandok, u_int64_t seenbyeandok_time_usec, const char *call_id) {
-		this->seenbyeandok = seenbyeandok;
-		if(seenbyeandok) {
-			this->seenbyeandok_permanent = true;
+	void setSeenByeAndOk(bool seenbye_and_ok, u_int64_t seenbye_and_ok_time_usec, const char *call_id) {
+		this->seenbye_and_ok = seenbye_and_ok;
+		if(seenbye_and_ok) {
+			this->seenbye_and_ok_permanent = true;
 		}
-		this->seenbyeandok_time_usec = seenbyeandok_time_usec;
+		if(!this->seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
+			this->seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seenbyeandok = seenbyeandok;
-				mergecalls[call_id].seenbyeandok_time_usec = seenbyeandok_time_usec;
+				mergecalls[call_id].seenbye_and_ok = seenbye_and_ok;
+				if(!mergecalls[call_id].seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
+					mergecalls[call_id].seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
+				}
 			}
 			mergecalls_unlock();
 		}
 	}
-	void setSeenCancelAndOk(bool seencancelandok, u_int64_t seencancelandok_time_usec, const char *call_id) {
-		this->seencancelandok = seencancelandok;
-		this->seencancelandok_time_usec = seencancelandok_time_usec;
+	void setSeenCancelAndOk(bool seencancel_and_ok, u_int64_t seencancel_and_ok_time_usec, const char *call_id) {
+		this->seencancel_and_ok = seencancel_and_ok;
+		if(!this->seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
+			this->seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
-				mergecalls[call_id].seencancelandok = seencancelandok;
-				mergecalls[call_id].seencancelandok_time_usec = seencancelandok_time_usec;
+				mergecalls[call_id].seencancel_and_ok = seencancel_and_ok;
+				if(!mergecalls[call_id].seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
+					mergecalls[call_id].seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
+				}
 			}
 			mergecalls_unlock();
 		}
 	}
 	void setSeenAuthFailed(bool seenauthfailed, u_int64_t seenauthfailed_time_usec, const char *call_id) {
 		this->seenauthfailed = seenauthfailed;
-		this->seenauthfailed_time_usec = seenauthfailed_time_usec;
+		if(!this->seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
+			this->seenauthfailed_time_usec = seenauthfailed_time_usec;
+		}
 		if(isSetCallidMergeHeader() &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
 				mergecalls[call_id].seenauthfailed = seenauthfailed;
-				mergecalls[call_id].seenauthfailed_time_usec = seenauthfailed_time_usec;
+				if(!mergecalls[call_id].seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
+					mergecalls[call_id].seenauthfailed_time_usec = seenauthfailed_time_usec;
+				}
 			}
 			mergecalls_unlock();
 		}
@@ -2199,39 +2219,39 @@ public:
 	}
 	u_int64_t getSeenByeAndOkTimeUS() {
 		if(isSetCallidMergeHeader()) {
-			u_int64_t seenbyeandok_time_usec = 0;
+			u_int64_t seenbye_and_ok_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
-				if(!it->second.seenbyeandok || !it->second.seenbyeandok_time_usec) {
+				if(!it->second.seenbye_and_ok || !it->second.seenbye_and_ok_time_usec) {
 					mergecalls_unlock();
 					return(0);
 				}
-				if(seenbyeandok_time_usec < it->second.seenbyeandok_time_usec) {
-					seenbyeandok_time_usec = it->second.seenbyeandok_time_usec;
+				if(seenbye_and_ok_time_usec < it->second.seenbye_and_ok_time_usec) {
+					seenbye_and_ok_time_usec = it->second.seenbye_and_ok_time_usec;
 				}
 			}
 			mergecalls_unlock();
-			return(seenbyeandok_time_usec);
+			return(seenbye_and_ok_time_usec);
 		}
-		return(seenbyeandok ? seenbyeandok_time_usec : 0);
+		return(seenbye_and_ok ? seenbye_and_ok_time_usec : 0);
 	}
 	u_int64_t getSeenCancelAndOkTimeUS() {
 		if(isSetCallidMergeHeader()) {
-			u_int64_t seencancelandok_time_usec = 0;
+			u_int64_t seencancel_and_ok_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
-				if(!it->second.seencancelandok || !it->second.seencancelandok_time_usec) {
+				if(!it->second.seencancel_and_ok || !it->second.seencancel_and_ok_time_usec) {
 					mergecalls_unlock();
 					return(0);
 				}
-				if(seencancelandok_time_usec < it->second.seencancelandok_time_usec) {
-					seencancelandok_time_usec = it->second.seencancelandok_time_usec;
+				if(seencancel_and_ok_time_usec < it->second.seencancel_and_ok_time_usec) {
+					seencancel_and_ok_time_usec = it->second.seencancel_and_ok_time_usec;
 				}
 			}
 			mergecalls_unlock();
-			return(seencancelandok_time_usec);
+			return(seencancel_and_ok_time_usec);
 		}
-		return(seencancelandok ? seencancelandok_time_usec : 0);
+		return(seencancel_and_ok ? seencancel_and_ok_time_usec : 0);
 	}
 	u_int64_t getSeenAuthFailedTimeUS() {
 		if(isSetCallidMergeHeader()) {
@@ -2726,8 +2746,6 @@ private:
 					   last_packet_time_us >= (*iter_2)->first_packet_time_us) {
 						sSrvccPostCall *post_call = *iter_2;
 						call_id = post_call->call_id;
-						post_calls->calls.erase(iter_2);
-						delete post_call;
 						break;
 					}
 				}

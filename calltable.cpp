@@ -534,13 +534,13 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	seenmessageok = false;
 	seenbye = false;
 	seenbye_time_usec = 0;
-	seenbyeok = false;
-	seenbyeok_time_usec = 0;
-	seenbyeandok = false;
-	seenbyeandok_permanent = false;
-	seenbyeandok_time_usec = 0;
-	seencancelandok = false;
-	seencancelandok_time_usec = 0;
+	seenokbye = false;
+	seenokbye_time_usec = 0;
+	seenbye_and_ok = false;
+	seenbye_and_ok_permanent = false;
+	seenbye_and_ok_time_usec = 0;
+	seencancel_and_ok = false;
+	seencancel_and_ok_time_usec = 0;
 	seenauthfailed = false;
 	seenauthfailed_time_usec = 0;
 	ignore_rtp_after_response_time_usec = 0;
@@ -6487,7 +6487,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	} else if(!seenRES2XX_no_BYE && !seenRES18X && seenbye) {
 		bye = 106;
 	} else {
-		bye = seeninviteok ? (seenbye ? (seenbyeandok ? 3 : 2) : 1) : 0;
+		bye = seeninviteok ? (seenbye ? (seenbye_and_ok ? 3 : 2) : 1) : 0;
 	}
 	cdr.add(bye, "bye");
 
@@ -11688,7 +11688,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 						if(!(call->exclude_from_active_calls or
 						     call->attemptsClose or
 						     call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
-						     (call->seenbye and call->seenbyeandok) or
+						     (call->seenbye and call->seenbye_and_ok) or
 						     (!opt_blockcleanupcalls &&
 						      ((call->destroy_call_at and call->destroy_call_at < now) or 
 						       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 

@@ -4042,7 +4042,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		// festr - 14.03.2015 - this prevents some type of call to process call in case of call merging
 		// if(!call->seenbye) {
 		call->setSeenBye(false, 0, packetS->get_callid());
-		call->setSeenByeOk(false, 0, packetS->get_callid());
+		call->setSeenOkBye(false, 0, packetS->get_callid());
 		call->setSeenByeAndOk(false, 0, packetS->get_callid());
 		call->setSeenCancelAndOk(false, 0, packetS->get_callid());
 		call->setSeenAuthFailed(false, 0, packetS->get_callid());
@@ -4418,7 +4418,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			call->seenRES2XX = true;
 			// if the progress time was not set yet set it here so PDD (Post Dial Delay) is accurate if no ringing is present
 			if(packetS->cseq.method == BYE) {
-				call->setSeenByeOk(true, packet_time_us, packetS->get_callid());
+				call->setSeenOkBye(true, packet_time_us, packetS->get_callid());
 			}
 			if(packetS->cseq.method != BYE ||
 			   !call->existsByeCseq(&packetS->cseq)) {
@@ -4505,7 +4505,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					call->invite_list_unlock();
 					if(packetS->cseq.method == INVITE) {
 						call->seeninviteok = true;
-						call->seenbyeandok_permanent = false;
+						call->seenbye_and_ok_permanent = false;
 						if(!call->connect_time_us) {
 							call->connect_time_us = packet_time_us;
 							if(opt_enable_fraud && isFraudReady()) {
@@ -4658,7 +4658,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   (opt_sip_message && packetS->cseq.method == MESSAGE) || 
 			   (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
-			if(opt_ignore_rtp_after_response) {
+			if(opt_ignore_rtp_after_response && !call->ignore_rtp_after_response_time_usec) {
 				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
 				if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
 					call->ignore_rtp_after_response_time_usec = packet_time_us;
@@ -4685,7 +4685,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
 					call->destroy_call_at = packetS->getTime_s() + 180;
-				} else if(call->seenbyeandok_permanent) {
+				} else if(call->seenbye_and_ok_permanent) {
 					call->destroy_call_at = packetS->getTime_s() + 60;
 				}
 			} else if(lastSIPresponseNum == 491) {
@@ -4722,7 +4722,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				}
 			}
 		} else if(packetS->cseq.method == BYE &&
-			  !call->seenbyeandok &&
+			  !call->seenbye_and_ok &&
 			  IS_SIP_RES4XX(packetS->sip_method) &&
 			  call->existsByeCseq(&packetS->cseq) &&
 			  lastSIPresponseNum == 481) {
@@ -5889,16 +5889,16 @@ inline bool call_confirmation_for_rtp_processing(Call *call, packet_s_process_ca
 	     calltable->check_call_in_hashfind_by_ip_port(call, packetS->daddr_(), packetS->dest_(), false) &&
 	     call->checkKnownIP_inSipCallerdIP(packetS->saddr_()))) {
 		if((opt_ignore_rtp_after_bye_confirmed &&
-		    call->seenbyeandok && call->seenbyeandok_time_usec &&
-		    packetS->getTimeUS() > call->seenbyeandok_time_usec) ||
+		    call->seenbye_and_ok && call->seenbye_and_ok_time_usec &&
+		    packetS->getTimeUS() > call->seenbye_and_ok_time_usec) ||
 		   (opt_ignore_rtp_after_bye &&
 		    ((call->seenbye && call->seenbye_time_usec &&
 		      packetS->getTimeUS() > call->seenbye_time_usec) ||
-		     (call->seenbyeok && call->seenbyeok_time_usec &&
-		      packetS->getTimeUS() > call->seenbyeok_time_usec))) ||
+		     (call->seenokbye && call->seenokbye_time_usec &&
+		      packetS->getTimeUS() > call->seenokbye_time_usec))) ||
 		   (opt_ignore_rtp_after_cancel_confirmed &&
-		    call->seencancelandok && call->seencancelandok_time_usec &&
-		    packetS->getTimeUS() > call->seencancelandok_time_usec) ||
+		    call->seencancel_and_ok && call->seencancel_and_ok_time_usec &&
+		    packetS->getTimeUS() > call->seencancel_and_ok_time_usec) ||
 		   (opt_ignore_rtp_after_auth_failed &&
 		    call->seenauthfailed && call->seenauthfailed_time_usec &&
 		    packetS->getTimeUS() > call->seenauthfailed_time_usec) ||
