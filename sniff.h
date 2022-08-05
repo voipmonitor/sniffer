@@ -668,12 +668,11 @@ struct packet_s_process_0 : public packet_s_stack {
 		header_pt = header_pt_new;
 		packet = packet_new;
 	}
-	inline void set_use_reuse_counter() {
-		use_reuse_counter = 1;
-	}
 	inline void set_reuse_counter(u_int8_t inc = 1) {
 		use_reuse_counter = 1;
 		__sync_add_and_fetch(&reuse_counter, inc);
+	}
+	inline void set_reuse_counter_for_insert_packets(u_int8_t inc = 1) {
 		if(insert_packets) {
 			list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)this->insert_packets;
 			for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
@@ -683,9 +682,6 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
-	}
-	inline void reuse_counter_inc_sync(u_int8_t inc = 1) {
-		__sync_add_and_fetch(&reuse_counter, inc);
 	}
 	inline void reuse_counter_dec() {
 		--reuse_counter;
@@ -913,7 +909,7 @@ public:
 	void setExpirationLink_count(unsigned expiration_link_count) {
 		this->expiration_link_count = expiration_link_count;
 	}
-	void push(packet_s *packetS) {
+	void push(packet_s *packetS, bool keep) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock();
 		_cleanup(time_ms);
@@ -934,13 +930,16 @@ public:
 		if(!link->first_time_ms) {
 			link->first_time_ms = time_ms;
 		}
+		if(keep) {
+			((packet_s_process_0*)packetS)->set_reuse_counter();
+		}
 		unlock();
 		packetS->blockstore_addflag(121 /*pb lock flag*/);
 		#if DEBUG_DTLS_QUEUE
 		cout << " * queue dtls" << endl;
 		#endif
 	}
-	void moveToPacket(packet_s_process_0 *packetS) {
+	void moveToPacket(packet_s_process_0 *packetS, bool keep) {
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;
@@ -949,13 +948,18 @@ public:
 			link = iter_link->second;
 			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 				packetS->insert_packet((packet_s_process_0*)(*iter));
+				if(keep) {
+					((packet_s_process_0*)(*iter))->set_reuse_counter();
+				}
 				((packet_s_process_0*)(*iter))->blockstore_addflag(122 /*pb lock flag*/);
 				#if DEBUG_DTLS_QUEUE
 				cout << " * insert dtls" << endl;
 				#endif
 			}
-			delete link;
-			links.erase(iter_link);
+			if(!keep) {
+				delete link;
+				links.erase(iter_link);
+			}
 		}
 	}
 	inline bool existsContent() {
@@ -997,8 +1001,8 @@ private:
 };
 
 
-void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
-void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0);
+void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0, const char *file = NULL, unsigned line = 0);
+void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t forceVirtualUdp = false, u_int32_t forceDatalen = 0, const char *file = NULL, unsigned line = 0);
 
 
 typedef struct {

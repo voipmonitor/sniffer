@@ -447,6 +447,12 @@ int opt_ssl_aead_try_seq_forward = 0;
 bool opt_ssl_enable_dtls_queue = true;
 int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
+bool opt_ssl_dtls_queue_keep = false;
+int opt_ssl_dtls_handshake_safe = false;
+int opt_ssl_dtls_rtp_local = false;
+bool opt_ssl_dtls_find_by_server_side = true;
+bool opt_ssl_dtls_find_by_client_side = false;
+int opt_ssl_dtls_boost = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -502,6 +508,7 @@ int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
 bool opt_ignore_rtp_after_bye_confirmed = false;
+bool opt_ignore_rtp_after_bye = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
@@ -1025,6 +1032,7 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
+bool ssl_client_random_keep = false;
 bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
@@ -7402,6 +7410,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_port", &ssl_client_random_tcp_port));
 			addConfigItem((new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_maxwait_ms", &ssl_client_random_maxwait_ms))
 				->addAlias("ssl_sessionkey_udp_maxwait_ms"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_keep", &ssl_client_random_keep));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
@@ -7420,6 +7429,13 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
+				->addValues("ext:2"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -7448,6 +7464,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye", &opt_ignore_rtp_after_bye));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
@@ -8374,6 +8391,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "tcpreassembly_ssl")		sverb.tcpreassembly_ssl = 1;
 	else if(verbParam == "tls")				sverb.tls = 1;
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
+	else if(verbParam.substr(0, 23) == "ssl_sessionkey_to_file=")
+								{ sverb.ssl_sessionkey_to_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 23) + 1]; strcpy(sverb.ssl_sessionkey_to_file, verbParam.c_str() + 23); }
 	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
 	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
 	else if(verbParam.substr(0, 25) == "tcpreassembly_sip_dumper=")
@@ -9448,6 +9467,19 @@ void set_context_config() {
 				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
 				ssl_master_secret_file[0];
 	
+	extern cDtls dtls_handshake_safe_links;
+	dtls_handshake_safe_links.setNeedLock(true);
+	
+	if(opt_ssl_dtls_boost) {
+		opt_ssl_dtls_queue_expiration_s = 30;
+		ssl_client_random_keep = true;
+		opt_ssl_dtls_queue_keep = true;
+		opt_ssl_dtls_handshake_safe = 2;
+		opt_ssl_dtls_rtp_local = true;
+		opt_ssl_dtls_find_by_server_side = true;
+		opt_ssl_dtls_find_by_client_side = true;
+	}
+	
 	if(opt_callidmerge_header[0] &&
 	   !(useNewCONFIG ? CONFIG.isSet("rtpip_find_endpoints") : opt_rtpip_find_endpoints_set)) {
 		opt_rtpip_find_endpoints = 1;
@@ -10048,6 +10080,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_sessionkey_maxwait_ms", NULL)) ||
 	   (value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
 		ssl_client_random_maxwait_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_keep", NULL))) {
+		ssl_client_random_keep = yesno(value);
 	}
 	
 	// http ip
@@ -11955,6 +11990,24 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_dtls_queue_max_packets", NULL))) {
 		opt_ssl_dtls_queue_expiration_count = atoi(value);
 	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_keep", NULL))) {
+		opt_ssl_dtls_queue_keep = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
+		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
+		opt_ssl_dtls_rtp_local = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
+		opt_ssl_dtls_find_by_server_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_client_side", NULL))) {
+		opt_ssl_dtls_find_by_client_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_boost", NULL))) {
+		opt_ssl_dtls_boost = yesno(value);
+	}
 	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
 		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
 	}
@@ -12037,6 +12090,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignore_rtp_after_bye", NULL))) {
+		opt_ignore_rtp_after_bye = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignore_duration_after_bye_confirmed", NULL))) {
 		opt_ignore_duration_after_bye_confirmed = yesno(value);
@@ -13321,7 +13377,7 @@ bool init_lib_gcrypt() {
 
 
 #if HAVE_LIBSRTP
-#include <srtp/srtp.h>
+#include <srtp2/srtp.h>
 volatile int _init_lib_srtp_rslt = -1;
 volatile int _init_lib_srtp_sync = 0;
 bool init_lib_srtp() {

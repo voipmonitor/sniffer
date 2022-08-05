@@ -511,7 +511,7 @@ public:
 	*/
 	~RTP();
 	
-	void setSRtpDecrypt(class RTPsecure *srtp_decrypt);
+	void setSRtpDecrypt(class RTPsecure *srtp_decrypt, int index_call_ip_port, bool local = false);
 
 	/**
 	 * @brief simulate jitter buffer
@@ -771,6 +771,8 @@ public:
 	
 	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
 	
+	bool is_unencrypted_payload(u_char *data, unsigned datalen);
+	
 private: 
 	/*
 	* Per-source state information
@@ -792,6 +794,7 @@ private:
 	int sensor_id;
 	vmIP sensor_ip;
 	int index_call_ip_port;
+	int index_call_ip_port_other_side;
 	bool index_call_ip_port_by_dest;
 	
 	int _last_sensor_id;
@@ -802,6 +805,8 @@ private:
 	bool stopReadProcessing;
 	
 	class RTPsecure *srtp_decrypt;
+	bool srtp_decrypt_local;
+	int srtp_decrypt_index_call_ip_port;
 	
 	sRSA rsa;
 	
@@ -810,7 +815,13 @@ private:
 	bool energylevels_via_jb;
 	u_int32_t energylevels_counter;
 	
+	int call_ipport_n_orig;
+	unsigned decrypt_rtp_attempt[2];
+	unsigned decrypt_srtp_ok;
+	unsigned decrypt_srtp_failed;
+	bool probably_unencrypted_payload;
 friend class Call;
+friend class RTPsecure;
 };
 
 #endif // EXPERIMENTAL_LITE_RTP_MOD

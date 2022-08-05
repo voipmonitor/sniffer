@@ -286,5 +286,8 @@ void ssl_stats_reset();
 void ssl_stats_add_delay_processPacket(u_int64_t time_us);
 void ssl_stats_add_delay_parseSdp(u_int64_t time_us);
 
+bool ssl_sessionkey_enable();
+void ssl_sessionkey_log(string &str);
+
 
 #endif //SSL_DSSL_H

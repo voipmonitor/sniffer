@@ -9,7 +9,7 @@
 #endif
 
 #if HAVE_LIBSRTP
-#include <srtp/srtp.h>
+#include <srtp2/srtp.h>
 #endif
 
 #include "dtls.h"
@@ -116,17 +116,18 @@ public:
 		#endif
 	};
 public:
-	RTPsecure(eMode mode, class Call *call, unsigned index_ip_port);
+	RTPsecure(eMode mode, class Call *call, int index_ip_port, bool local = false);
 	~RTPsecure();
-	bool setCryptoConfig();
-	void addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
+	bool setCryptoConfig(u_int64_t time_us);
+	bool addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
 	bool existsNewerCryptoConfig(u_int64_t time_us);
 	inline bool need_prepare_decrypt() {
 		return(!cryptoConfigVector.size());
 	}
-	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
+	void prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, bool callFromRtcp, u_int64_t time_us);
 	bool is_dtls();
-	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us);
+	bool decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,
+			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, class RTP *stream);
 	bool decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtp_libsrtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len);
 	bool decrypt_rtcp(u_char *data, unsigned *data_len, u_int64_t time_us);
@@ -137,11 +138,11 @@ public:
 	bool isOK() {
 		return(error == err_na);
 	}
-	bool isOK_decrypt_rtp() {
-		return(decrypt_rtp_ok > 0);
+	bool isOK_decrypt_rtp(unsigned failed_tolerance = 0) {
+		return(decrypt_rtp_ok > 0 || decrypt_rtp_failed <= failed_tolerance);
 	}
 	bool isOK_decrypt_rtcp() {
-		return(decrypt_rtcp_ok > 0);
+		return(decrypt_rtcp_ok > 0 || decrypt_rtcp_failed == 0);
 	}
 private:
 	bool init();
@@ -198,7 +199,8 @@ private:
 private:
 	eMode mode;
 	Call *call;
-	unsigned index_ip_port;
+	int index_ip_port;
+	bool local;
 	vector<sCryptoConfig> cryptoConfigVector;
 	unsigned cryptoConfigCallSize;
 	unsigned cryptoConfigActiveIndex;
@@ -216,6 +218,8 @@ private:
 	unsigned decrypt_rtp_failed;
 	unsigned decrypt_rtcp_ok;
 	unsigned decrypt_rtcp_failed;
+friend class RTP;
+friend class Call;
 };
 
 

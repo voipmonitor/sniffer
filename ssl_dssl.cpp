@@ -423,10 +423,10 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 
 bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
 	string log_ssl_sessionkey;
-	if(sverb.ssl_sessionkey) {
+	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
-			string("find clientrandom with type ") + enumToStrType(type) + " \n" +
-			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
+			string("find clientrandom with type ") + enumToStrType(type) +
+			"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
 	}
 	bool rslt = false;
 	cSslDsslSessionKeyIndex index(client_random);
@@ -461,25 +461,25 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 			}
 		}
 	} while(!rslt && waitUS >= 0);
-	if(sverb.ssl_sessionkey) {
+	if(ssl_sessionkey_enable()) {
 		if(rslt) {
 			log_ssl_sessionkey +=
-				"FOUND: " + hexdump_to_string(key, *key_length) + " \n";
+				"; FOUND: " + hexdump_to_string(key, *key_length);
 		} else {
 			log_ssl_sessionkey +=
-				"NOT FOUND \n";
+				"; NOT FOUND";
 		}
-		syslog(LOG_NOTICE, "%s", log_ssl_sessionkey.c_str());
+		ssl_sessionkey_log(log_ssl_sessionkey);
 	}
 	return(rslt);
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
 	string log_ssl_sessionkey;
-	if(sverb.ssl_sessionkey) {
+	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
-			string("find clientrandom for all type ") + " \n" +
-			"clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) + " \n";
+			string("find clientrandom for all type ") +
+			"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
 	}
 	if(sverb.ssl_stats) {
 		stats.delay_keys_get_begin.add_delay_from_act(getTimeUS(ts));
@@ -546,15 +546,15 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 			}
 		}
 	} while(!rslt && waitUS >= 0);
-	if(sverb.ssl_sessionkey) {
+	if(ssl_sessionkey_enable()) {
 		if(rslt) {
 			log_ssl_sessionkey +=
-				"FOUND \n";
+				"; FOUND";
 		} else {
 			log_ssl_sessionkey +=
-				"NOT FOUND \n";
+				"; NOT FOUND";
 		}
-		syslog(LOG_NOTICE, "%s", log_ssl_sessionkey.c_str());
+		ssl_sessionkey_log(log_ssl_sessionkey);
 	}
 	if(sverb.ssl_stats) {
 		stats.delay_keys_get_end.add_delay_from_act(getTimeUS(ts));
@@ -776,7 +776,10 @@ bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data
 }
 
 void cSslDsslSessions::keyErase(u_char *client_random) {
-	this->session_keys.erase(client_random);
+	extern bool ssl_client_random_keep;
+	if(!ssl_client_random_keep) {
+		this->session_keys.erase(client_random);
+	}
 }
 
 void cSslDsslSessions::keysCleanup() {
@@ -1060,11 +1063,12 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 		hexdecode(client_random_, client_random.c_str(), SSL3_RANDOM_SIZE);
 		hexdecode(key_, key.c_str(), key_length);
 		SslDsslSessions->keySet(type.c_str(), client_random_, key_, key_length);
-		if(sverb.ssl_sessionkey) {
-			syslog(LOG_NOTICE, "set clientrandom with type %s \nclientrandom: %s \nkey: %s \n", 
-			       type.c_str(), 
-			       hexdump_to_string(client_random_, SSL3_RANDOM_SIZE).c_str(),
-			       hexdump_to_string(key_, key_length).c_str());
+		if(ssl_sessionkey_enable()) {
+			string log_ssl_sessionkey =
+				string("set clientrandom with type ") + type +
+				"; clientrandom: " + hexdump_to_string(client_random_, SSL3_RANDOM_SIZE) +
+				"; key: " + hexdump_to_string(key_, key_length);
+			ssl_sessionkey_log(log_ssl_sessionkey);
 		}
 		return(true);
 	}
@@ -1097,11 +1101,12 @@ void ssl_parse_client_random(const char *fileName) {
 			hexdecode(client_random, parts[1].c_str(), SSL3_RANDOM_SIZE);
 			hexdecode(key, parts[2].c_str(), key_length);
 			SslDsslSessions->keySet(parts[0].c_str(), client_random, key, key_length);
-			if(sverb.ssl_sessionkey) {
-				syslog(LOG_NOTICE, "set clientrandom with type %s \nclientrandom: %s \nkey: %s \n", 
-				       parts[0].c_str(), 
-				       hexdump_to_string(client_random, SSL3_RANDOM_SIZE).c_str(),
-				       hexdump_to_string(key, key_length).c_str());
+			if(ssl_sessionkey_enable()) {
+				string log_ssl_sessionkey =
+					string("set clientrandom with type ") + parts[0] +
+					"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) +
+					"; key: " + hexdump_to_string(key, key_length);
+				ssl_sessionkey_log(log_ssl_sessionkey);
 			}
 		}
 	}
@@ -1207,4 +1212,29 @@ void ssl_stats_add_delay_parseSdp(u_int64_t time_us) {
 		stats.delay_parseSdp.add_delay_from_act(time_us);
 	}
 	#endif
+}
+
+bool ssl_sessionkey_enable() {
+	return(sverb.ssl_sessionkey || sverb.ssl_sessionkey_to_file);
+}
+
+void ssl_sessionkey_log(string &str) {
+	static FILE *log_file = NULL;
+	static volatile int log_sync = 0;
+	__SYNC_LOCK(log_sync);
+	if(sverb.ssl_sessionkey) {
+		syslog(LOG_NOTICE, "%s", str.c_str());
+	}
+	if(sverb.ssl_sessionkey_to_file) {
+		if(!log_file) {
+			log_file = fopen(sverb.ssl_sessionkey_to_file, "a");
+		}
+		if(log_file) {
+			fprintf(log_file, "%s: ", sqlDateTimeString(getTimeS_rdtsc()).c_str());
+			fwrite(str.c_str(), str.length(), 1, log_file);
+			fwrite("\n", 1, 1, log_file);
+			fflush(log_file);
+		}
+	}
+	__SYNC_UNLOCK(log_sync);
 }

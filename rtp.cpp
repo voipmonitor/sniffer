@@ -32,6 +32,7 @@ Each Call class contains two RTP classes.
 #include "mos_g729.h"   
 #include "sql_db.h"   
 #include "srtp.h"
+#include "ssl_dssl.h"
 
 #include "jitterbuffer/asterisk/channel.h"
 #include "jitterbuffer/asterisk/frame.h"
@@ -376,6 +377,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	this->sensor_id = sensor_id;
 	this->sensor_ip = sensor_ip;
 	this->index_call_ip_port = -1;
+	this->index_call_ip_port_other_side = -1;
 	this->index_call_ip_port_by_dest = false;
 	
 	this->_last_ts.tv_sec = 0;
@@ -403,6 +405,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	change_packetization_iterator = 0;
 	srtp_decrypt = NULL;
+	srtp_decrypt_local = false;
+	srtp_decrypt_index_call_ip_port = -1;
 	
 	energylevels = NULL;
 	energylevels_last_seq = 0;
@@ -415,11 +419,18 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	}
 	energylevels_counter = 0;
 	
+	call_ipport_n_orig = 0;
+	memset(decrypt_rtp_attempt, 0, sizeof(decrypt_rtp_attempt));
+	decrypt_srtp_ok = 0;
+	decrypt_srtp_failed = 0;
+	probably_unencrypted_payload = false;
 }
 
 void 
-RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt) {
+RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt, int index_call_ip_port, bool local) {
 	this->srtp_decrypt = srtp_decrypt;
+	this->srtp_decrypt_index_call_ip_port = index_call_ip_port;
+	this->srtp_decrypt_local = local;
 }
 
 
@@ -607,6 +618,10 @@ RTP::~RTP() {
 	
 	if(energylevels) {
 		delete energylevels;
+	}
+	
+	if(srtp_decrypt && srtp_decrypt_local) {
+		delete srtp_decrypt;
 	}
 }
 
@@ -1112,8 +1127,8 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	this->last_packet_time_us = pcap_header_us;
 
 	if(owner && !is_read_from_file_simple()) {
-		u_int64_t seenbyeandok_time_usec = owner->getSeenByeAndOkTimeUS();
-		if(seenbyeandok_time_usec && getTimeUS(header) > seenbyeandok_time_usec) {
+		u_int64_t seenbye_and_ok_time_usec = owner->getSeenByeAndOkTimeUS();
+		if(seenbye_and_ok_time_usec && getTimeUS(header) > seenbye_and_ok_time_usec) {
 			return(false);
 		}
 	}
@@ -1187,18 +1202,52 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		mos_lqo;
 	#endif
 	
-	if(srtp_decrypt && 
-	   (opt_srtp_rtp_decrypt || 
-	    (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls()) 
-	    #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	    || use_channel_record
-	    #endif
-	    )) {
-		if(srtp_decrypt->need_prepare_decrypt()) {
-			srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport);
+	if(srtp_decrypt) {
+		if(!decrypt_rtp_attempt[0]) {
+			if(sverb.dtls && ssl_sessionkey_enable()) {
+				string log_str;
+				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+				ssl_sessionkey_log(log_str);
+			}
 		}
-		srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, getTimeUS(header)); 
-		this->len = *len;
+		++decrypt_rtp_attempt[0];
+		if(opt_srtp_rtp_decrypt || 
+		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls())
+		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		   || use_channel_record
+		   #endif
+		   ) {
+			if(!decrypt_rtp_attempt[1]) {
+				if(sverb.dtls && ssl_sessionkey_enable()) {
+					string log_str;
+					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+					ssl_sessionkey_log(log_str);
+				}
+			}
+			++decrypt_rtp_attempt[1];
+			if(srtp_decrypt->need_prepare_decrypt()) {
+				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false, pcap_header_us);
+			}
+			if(!srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
+						      saddr, daddr, sport, dport, this)) {
+				if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
+					probably_unencrypted_payload = true;
+				}
+			}
+			this->len = *len;
+		}
+	} else if(owner && owner->dtls) {
+		 if(sverb.dtls && ssl_sessionkey_enable()) {
+			if(!owner->dtls->debug_flags[0]) {
+				string log_str;
+				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+				ssl_sessionkey_log(log_str);
+				++owner->dtls->debug_flags[0];
+			}
+		}
 	}
 
 	if(getVersion() != 2) {
@@ -2956,6 +3005,25 @@ RTPMAP *RTP::get_rtpmap(Call *call, bool other_side) {
 	} else {
 		return(other_side ? rtpmap_other_side : rtpmap);
 	}
+}
+
+bool RTP::is_unencrypted_payload(u_char *data, unsigned datalen) {
+	if(codec == PAYLOAD_PCMA) {
+		for(unsigned i = 0; i < min(datalen, 20u); i++) {
+			if(!((data[i] >= 0x50 && data[i] <= 0x5F) || (data[i] >= 0xD0 && data[i] <= 0xDF) || data[i] == 0xFF)) {
+				return(false);
+			}
+		}
+		return(true);
+	} else if(codec == PAYLOAD_PCMU) {
+		for(unsigned i = 0; i < min(datalen, 20u); i++) {
+			if(!((data[i] >= 0xC0 && data[i] <= 0xCF) || (data[i] >= 0xF0 && data[i] <= 0xFF) || data[i] == 0xFF)) {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	return(false);
 }
 
 #endif // not EXPERIMENTAL_LITE_RTP_MOD
