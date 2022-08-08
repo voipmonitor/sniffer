@@ -1,3 +1,10 @@
+30.3 05.08.2022
+===============
+- fix situation when dtls "server hello" overtakes "client hello"
+- dtls fixes
+- always use only first BYE-OK or CANCEL-OK sequence for call duration [VS-1351]
+
+
 30.2 14.7.2022
 ==============
 - add support savertp=header for audiocodes [VS-1346]
