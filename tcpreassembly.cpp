@@ -1088,6 +1088,18 @@ bool TcpReassemblyLink::push_normal(
 	    !header_tcp.flags_bit.fin && !header_tcp.flags_bit.rst) || 
 	   reassembly->ignoreTcpHandshake) {
 		if(datalen > 0) {
+			if(!this->queueStreams.size() && (data[0] == '\n' || data[0] == '\r' || data[0] == 0)) {
+				bool ok = false;
+				for(unsigned i = 0; i < datalen; i++) {
+					if(!(data[i] == '\n' || data[i] == '\r' || data[i] == 0)) {
+						ok = true;
+						break;
+					}
+				}
+				if(!ok) {
+					return(false);
+				}
+			}
 			TcpReassemblyStream_packet packet;
 			packet.setData(time, header_tcp,
 				       data, datalen, datacaplen,
