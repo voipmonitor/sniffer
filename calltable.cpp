@@ -3333,6 +3333,7 @@ Call::convertRawToWav() {
 				samplerate = 32000;
 				break;
 			case PAYLOAD_AMRWB:
+			case PAYLOAD_EVS:
 				samplerate = 16000;
 				break;
 		}
@@ -3887,6 +3888,18 @@ Call::convertRawToWav() {
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_EVS:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s evs \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-evs \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting EVS[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
 				system(cmd);
 				break;
 			default:

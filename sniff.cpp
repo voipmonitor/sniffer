@@ -2153,6 +2153,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_AAL2_G72632;
        else if(strcasecmp(mimeSubtype,"AAL2-G726-40") == 0)
 	       return PAYLOAD_AAL2_G72640;
+       else if(strcasecmp(mimeSubtype,"EVS") == 0)
+	       return PAYLOAD_EVS;
        else
 	       return 0;
 }
