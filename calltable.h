@@ -937,6 +937,11 @@ public:
 		_srvcc_post,
 		_srvcc_pre
 	};
+	enum eMoMtLegFlag {
+		_momt_na,
+		_momt_mt,
+		_momt_mo
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -2344,6 +2349,7 @@ public:
 		}
 	}
 	
+	eMoMtLegFlag momt_get();
 	void srvcc_check_post();
 	void srvcc_check_pre();
 	

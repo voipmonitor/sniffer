@@ -6527,14 +6527,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(opt_mo_mt_identification_prefix.size()) {
 		if(existsColumns.cdr_next_leg_flag) {
-			bool mt = false;
-			for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
-				if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
-					mt = true;
-					break;
-				}
+			eMoMtLegFlag momt_leg = momt_get();
+			if(momt_leg != _momt_na) {
+				cdr_next.add(momt_leg == _momt_mt ? "mt" : "mo", "leg_flag");
 			}
-			cdr_next.add(mt ? "mt" : "mo", "leg_flag");
 		}
 	}
 	if(srvcc_set) {
@@ -13184,6 +13180,20 @@ Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 	return(false);
 }
 
+Call::eMoMtLegFlag Call::momt_get() {
+	if(opt_mo_mt_identification_prefix.size()) {
+		bool mt = false;
+		for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
+			if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
+				mt = true;
+				break;
+			}
+		}
+		return(mt ? _momt_mt : _momt_mo);
+	}
+	return(_momt_na);
+}
+
 void Call::srvcc_check_post() {
 	if(!srvcc_set || !srvcc_numbers) {
 		return;
@@ -13199,8 +13209,13 @@ void Call::srvcc_check_pre() {
 		return;
 	}
 	u_int64_t last_time_us = get_last_time_us();
-	string call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
-	if(call_id.empty()) {
+	eMoMtLegFlag momt_leg = momt_get();
+	string call_id;
+	if(momt_leg == _momt_na || momt_leg == _momt_mo) {
+		call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
+	}
+	if(call_id.empty() &&
+	   (momt_leg == _momt_na || momt_leg == _momt_mt)) {
 		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us, last_time_us);
 	}
 	if(!call_id.empty()) {
