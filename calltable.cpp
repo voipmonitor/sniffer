@@ -6353,10 +6353,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
 		vmIP ipv4[2], ipv6[2];
 		vmPort ipv4_port[2], ipv6_port[2];
-		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
-		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
+		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
 		if(ipv4[0].isSet()) {
 			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
@@ -9067,7 +9069,8 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
-vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, bool onlyConfirmed, u_int8_t only_ipv) {
+vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
+					bool onlyConfirmed, bool /*onlyFirst*/, u_int8_t only_ipv) {
 	if(sport) {
 		sport->clear();
 	}
@@ -9123,7 +9126,8 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 	return(ip);
 }
 
-vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, bool onlyConfirmed, u_int8_t only_ipv) {
+vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, 
+					bool onlyConfirmed, bool onlyFirst, u_int8_t only_ipv) {
 	if(dport) {
 		dport->clear();
 	}
@@ -9174,6 +9178,9 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 				_daddr = iter->daddr;
 				_dport = iter->dport;
 				iter_rslt = iter;
+				if(onlyFirst) {
+					break;
+				}
 			}
 			if((iter->sport != _sport || iter->saddr != _saddr) && 
 			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {

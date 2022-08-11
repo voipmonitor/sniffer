@@ -7543,7 +7543,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mo_mt_identification_prefix", &opt_mo_mt_identification_prefix));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
-						->addValues("confirmed:2"));
+						->addValues("confirmed:2|first:3|first_confirmed:4"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("srvcc_numbers", &opt_srvcc_numbers));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_processing_only", &opt_srvcc_processing_only));
@@ -12457,6 +12457,8 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "separate_storage_ipv6_ipv4_address", NULL))) {
 		opt_separate_storage_ipv6_ipv4_address = !strcasecmp(value, "confirmed") ? 2 :
+							 !strcasecmp(value, "first") ? 3 :
+							 !strcasecmp(value, "first_confirmed") ? 4 :
 							 yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {

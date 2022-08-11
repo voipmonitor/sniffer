@@ -1898,8 +1898,10 @@ public:
 		return(invite_sdaddr_all_confirmed);
 	}
 	
-	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
-	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
+					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 
+					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
 	
 	unsigned getMaxRetransmissionInvite();
 	
