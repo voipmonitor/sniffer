@@ -25,7 +25,7 @@ extern int opt_tcpreassembly_thread;
 			   0)
 	
 #define TCP_SEQ_SUB(seq1, seq2) \
-	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFF0000u) - (seq1) + (seq2)) : \
+	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFFFFFFu) - (seq1) + (seq2)) : \
 				      ((seq1) - (seq2)))
 
 
