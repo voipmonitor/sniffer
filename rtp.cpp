@@ -2664,6 +2664,11 @@ RTP::update_seq(u_int16_t seq) {
 	return 1;
 }
 
+#define RTP_TS_SUB(ts1, ts2) \
+	((u_int32_t)ts2 > (u_int32_t)ts1 && (u_int32_t)ts2 - (u_int32_t)ts1 < (u_int32_t)0xFFFFFFu ? \
+		-(int64_t)((u_int32_t)ts2 - (u_int32_t)ts1) : \
+		(int64_t)((u_int32_t)ts1 - (u_int32_t)ts2))
+
 void RTP::rtp_stream_analysis_output() {
 	if(!rsa.first_packet_time_us) {
 		rsa.first_packet_time_us = getTimeUS(header_ts);
@@ -2696,18 +2701,18 @@ void RTP::rtp_stream_analysis_output() {
 	++rsa.counter;
 	int64_t transit = rsa.counter > 1 ? 
 			   (((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) -
-			    (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
+			    (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
 			   0;
 	double jitter = rsa.jitter + (double)(((transit < 0) ? -transit/1000. : transit/1000.) - rsa.jitter)/16. ;
 	cout << "rsa,"
 	     << rsa.counter << ","
 	     << ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us) << ","
-	     << (((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
+	     << (RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
 	     << getSeqNum() << ","
 	     << (rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0) << ","
-	     << (rsa.counter > 1 ? (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
+	     << (rsa.counter > 1 ? (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
 	     << transit << ","
-	     << ((((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
+	     << ((RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
 		 ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us)) << ","
 	     << this->jitter << ","
 	     << jitter << ","
