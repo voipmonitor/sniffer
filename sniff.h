@@ -669,22 +669,30 @@ struct packet_s_process_0 : public packet_s_stack {
 		packet = packet_new;
 	}
 	inline void set_reuse_counter(u_int8_t inc = 1) {
-		use_reuse_counter = 1;
-		__sync_add_and_fetch(&reuse_counter, inc);
+		reuse_counter_lock();
+		reuse_counter_set(inc);
+		reuse_counter_unlock();
 	}
-	inline void set_reuse_counter_for_insert_packets(u_int8_t inc = 1) {
-		if(insert_packets) {
+	inline void set_reuse_counter_with_insert_packets(u_int8_t inc = 1, u_int8_t inc_insert_packets = 1) {
+		reuse_counter_lock();
+		reuse_counter_set(inc);
+		if(insert_packets && inc_insert_packets) {
 			list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)this->insert_packets;
 			for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
-				(*iter)->set_reuse_counter(inc);
+				(*iter)->reuse_counter_set(inc_insert_packets);
 			}
 		}
+		reuse_counter_unlock();
 	}
 	inline bool is_use_reuse_counter() {
 		return(use_reuse_counter);
 	}
+	inline void reuse_counter_set(u_int8_t inc = 1) {
+		use_reuse_counter = 1;
+		__sync_add_and_fetch(&reuse_counter, inc);
+	}
 	inline void reuse_counter_dec() {
-		--reuse_counter;
+		__sync_sub_and_fetch(&reuse_counter, 1);
 	}
 	inline void reuse_counter_lock() {
 		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
@@ -912,7 +920,6 @@ public:
 	void push(packet_s *packetS, bool keep) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock();
-		_cleanup(time_ms);
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;

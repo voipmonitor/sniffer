@@ -2564,6 +2564,11 @@ void *rtp_read_thread_func(void *arg) {
 				}
 				rtpp_pq->packet->blockstore_addflag(71 /*pb lock flag*/);
 				//PACKET_S_PROCESS_DESTROY(&rtpp_pq->packet);
+				#if DEBUG_DTLS_QUEUE
+				if(rtpp_pq->packet->isDtls()) {
+					cout << " * processing dtls" << endl;
+				}
+				#endif
 				PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 60 + read_thread->threadNum);
 				__sync_sub_and_fetch(&rtpp_pq->call->rtppacketsinqueue, 1);
 			}
@@ -6040,8 +6045,8 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		calltable->unlock_calls_hash();
 		if(call_info->length) {
 			if(call_info->length > 1) {
-				packetS->set_reuse_counter(call_info->length);
-				packetS->set_reuse_counter_for_insert_packets(call_info->length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+				packetS->set_reuse_counter_with_insert_packets(call_info->length,
+									       call_info->length - (opt_ssl_dtls_queue_keep ? 1 : 0));
 			}
 			process_packet__rtp_call_info(call_info, packetS);
 			packet_s_process_calls_info::free(call_info);
@@ -10378,17 +10383,46 @@ void PreProcessPacket::process_mgcp(packet_s_process **packetS_ref) {
 	}
 }
 
+// #define WEBSOCKET_CLONE_PACKETS 3
+
 void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
 	packet_s_process *packetS = *packetS_ref;
 	if(!packetS_orig) {
 		packetS_orig = packetS;
 	}
 	packet_s_process *newPacketS = NULL;
+	#if WEBSOCKET_CLONE_PACKETS
+	packet_s_process *newPacketS_clone[WEBSOCKET_CLONE_PACKETS];
+	for(unsigned i = 0; i < WEBSOCKET_CLONE_PACKETS; i++) {
+		newPacketS_clone[i] = NULL;
+	}
+	#endif
 	cWebSocketHeader ws(packetS->data_(), packetS->datalen_());
 	bool allocWsData;
 	u_char *ws_data = ws.decodeData(&allocWsData);
 	if(ws_data) {
 		newPacketS = clonePacketS(ws_data, ws.getDataLength(), packetS);
+		#if WEBSOCKET_CLONE_PACKETS
+		string call_id;
+		unsigned long l;
+		char *s = gettag(newPacketS->data_(), newPacketS->datalen_(), NULL,
+				 "\nCall-ID:", &l);
+		if(s && l <= 1023) {
+			call_id = string(s, l);
+			char call_id_clone_first_char = call_id[0];
+			for(unsigned i = 0; i < WEBSOCKET_CLONE_PACKETS; i++) {
+				newPacketS_clone[i] = clonePacketS(ws_data, ws.getDataLength(), packetS);
+				u_char *call_id_clone = (u_char*)memmem(newPacketS_clone[i]->data_(), newPacketS_clone[i]->datalen_(), call_id.c_str(), call_id.length());
+				if(call_id_clone) {
+					++call_id_clone_first_char;
+					while(!isdigit(call_id_clone_first_char) && !isalpha(call_id_clone_first_char)) {
+						++call_id_clone_first_char;
+					}
+					call_id_clone[0] = call_id_clone_first_char;
+				}
+			}
+		}
+		#endif
 		if(allocWsData) {
 			delete [] ws_data;
 		}
@@ -10405,6 +10439,13 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_
 	if(newPacketS) {
 		this->process_parseSipData(&newPacketS, packetS);
 	}
+	#if WEBSOCKET_CLONE_PACKETS
+	for(unsigned i = 0; i < WEBSOCKET_CLONE_PACKETS; i++) {
+		if(newPacketS_clone[i]) {
+			this->process_parseSipData(&newPacketS_clone[i], NULL);
+		}
+	}
+	#endif
 }
 
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
@@ -10789,8 +10830,8 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 					this->find_hash(packetS, false);
 					if(packetS->call_info.length > 0) {
 						if(packetS->call_info.length > 1) {
-							packetS->set_reuse_counter(packetS->call_info.length);
-							packetS->set_reuse_counter_for_insert_packets(packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+							packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
+												       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
 						}
 						this->hash_find_flag[batch_index] = 1;
 					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
@@ -11077,15 +11118,15 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 					}
 				}
 			}
-			packetS->set_reuse_counter(packetS->call_info.length);
-			packetS->set_reuse_counter_for_insert_packets(packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
 			for(int i = 0; i < threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
 			#else
-			packetS->set_reuse_counter(packetS->call_info.length);
-			packetS->set_reuse_counter_for_insert_packets(packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
 			for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
@@ -11094,8 +11135,8 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 		}
 	} else {
 		if(packetS->call_info.length > 1) {
-			packetS->set_reuse_counter(packetS->call_info.length);
-			packetS->set_reuse_counter_for_insert_packets(packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
 		}
 		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 						       processRtpPacketDistribute[min(packetS->source_().getPort(), packetS->dest_().getPort()) / 2 % _process_rtp_packets_distribute_threads_use] :
@@ -11171,7 +11212,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 					   !call->dtls_queue_move) {
 						if(dtls_queue.existsContent()) {
 							dtls_queue.lock();
-							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets && !call->dtls_queue_move) {
 								dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
 								call->dtls_queue_move = true;
 							}

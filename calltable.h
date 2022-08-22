@@ -959,7 +959,7 @@ public:
 	map<int, class RTPsecure*> rtp_secure_map;
 	cDtls *dtls;
 	bool dtls_exists;
-	bool dtls_queue_move;
+	volatile bool dtls_queue_move;
 	vector<cDtlsLink::sSrtpKeys*> dtls_keys;
 	volatile int dtls_keys_sync;
 	volatile int rtplock_sync;
