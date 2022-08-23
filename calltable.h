@@ -2729,24 +2729,34 @@ private:
 			cleanup_last_time_s = getTimeS_rdtsc();
 			cleanup_period_s = 60;
 		}
-		void set(const char *caller, const char *call_id, u_int64_t first_packet_time_us) {
+		void set(const char *number, const char *call_id, u_int64_t first_packet_time_us) {
+			extern int opt_srvcc_compare_number_length;
+			string number_str = number;
+			if(opt_srvcc_compare_number_length > 0 && number_str.length() > (unsigned)opt_srvcc_compare_number_length) {
+				number_str = number_str.substr(number_str.length() - opt_srvcc_compare_number_length);
+			}
 			__SYNC_LOCK(_sync_calls);
 			sSrvccPostCalls *post_calls = NULL;
-			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(number_str);
 			if(iter != calls.end()) {
 				post_calls = iter->second;
 			} else {
 				post_calls = new FILE_LINE(0) sSrvccPostCalls;
-				calls[caller] = post_calls;
+				calls[number_str] = post_calls;
 			}
 			post_calls->calls.push_back(new FILE_LINE(0) sSrvccPostCall(call_id, first_packet_time_us));
 			__SYNC_UNLOCK(_sync_calls);
 			cleanup();
 		}
-		string get(const char *caller, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
+		string get(const char *number, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
 			string call_id;
+			extern int opt_srvcc_compare_number_length;
+			string number_str = number;
+			if(opt_srvcc_compare_number_length > 0 && number_str.length() > (unsigned)opt_srvcc_compare_number_length) {
+				number_str = number_str.substr(number_str.length() - opt_srvcc_compare_number_length);
+			}
 			__SYNC_LOCK(_sync_calls);
-			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(number_str);
 			if(iter != calls.end()) {
 				sSrvccPostCalls *post_calls = iter->second;
 				for(list<sSrvccPostCall*>::iterator iter_2 = post_calls->calls.begin(); iter_2 != post_calls->calls.end(); iter_2++) {

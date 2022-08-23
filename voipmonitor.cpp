@@ -645,6 +645,7 @@ vector<string> opt_mo_mt_identification_prefix;
 int opt_separate_storage_ipv6_ipv4_address;
 int opt_cdr_flag_bit;
 vector<string> opt_srvcc_numbers;
+int opt_srvcc_compare_number_length = 9;
 bool srvcc_set;
 ListCheckString *srvcc_numbers;
 bool opt_srvcc_processing_only;
@@ -7546,6 +7547,7 @@ void cConfig::addConfigItems() {
 						->addValues("confirmed:2|first:3|first_confirmed:4"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("srvcc_numbers", &opt_srvcc_numbers));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("srvcc_compare_length", &opt_srvcc_compare_number_length));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_processing_only", &opt_srvcc_processing_only));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
@@ -12469,6 +12471,9 @@ int eval_config(string inistr) {
 		for (; i != values.end(); ++i) {
 			parse_config_item(i->pItem, &opt_srvcc_numbers);
 		}
+	}
+	if((value = ini.GetValue("general", "srvcc_compare_length", NULL))) {
+		opt_srvcc_compare_number_length = atoi(value);
 	}
 	if((value = ini.GetValue("general", "srvcc_processing_only", NULL))) {
 		opt_srvcc_processing_only = yesno(value);
