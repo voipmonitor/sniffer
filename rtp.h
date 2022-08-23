@@ -536,7 +536,7 @@ public:
 	 *
 	*/
 	bool read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-		  int sensor_id, vmIP sensor_ip, char *ifname = NULL);
+		  int sensor_id, vmIP sensor_ip, char *ifname = NULL, bool *decrypt_ok = NULL, volatile int8_t *decrypt_sync = NULL);
 
 
 	/**

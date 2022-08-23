@@ -286,6 +286,9 @@ struct packet_s {
 		if(_datalen_set) {
 			return(_datalen_set);
 		}
+		return(datalen_orig_());
+	}
+	inline u_int32_t datalen_orig_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		if(audiocodes) {
 			return(_datalen - audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
@@ -600,6 +603,13 @@ struct packet_s_process_0 : public packet_s_stack {
 	u_int8_t type_content;
 	u_int8_t next_action;
 	void *insert_packets;
+	union {
+		u_int8_t i;
+		struct {
+			bool decrypt_ok : 1;
+		} s;
+	} flags;
+	volatile int8_t decrypt_sync;
 	#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX
 	u_int32_t h[2];
 	#endif
@@ -642,6 +652,8 @@ struct packet_s_process_0 : public packet_s_stack {
 			reuse_counter = 0;
 			reuse_counter_sync = 0;
 			insert_packets = NULL;
+			flags.i = 0;
+			decrypt_sync = 0;
 		}
 	}
 	inline void init2() {

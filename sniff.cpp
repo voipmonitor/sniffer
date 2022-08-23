@@ -7932,7 +7932,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 	const u_char *pcap_next_ex_packet;
 	sHeaderPacket *header_packet = NULL;
 	pcapProcessData ppd;
-	packet_s *packetS = NULL;
+	packet_s_process_0 *packetS = NULL;
 	Call *call = NULL;
 	int res;
 	while((res = pcap_next_ex(handle, &pcap_next_ex_header, &pcap_next_ex_packet)) > 0) {
@@ -7963,8 +7963,8 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 		unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 		if(onlyRtp) {
 			if(!packetS) {
-				 packetS = new packet_s;
-				 memset((void*)packetS, 0, sizeof(packet_s));
+				 packetS = new packet_s_process_0;
+				 memset((void*)packetS, 0, sizeof(packet_s_process_0));
 			}
 			if(!call) {
 				call = new FILE_LINE(0) Call(INVITE, (char*)"", 0, NULL, 0);

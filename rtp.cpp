@@ -1031,7 +1031,7 @@ RTP::process_dtmf_rfc2833() {
 /* read rtp packet */
 bool
 RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-	  int sensor_id, vmIP sensor_ip, char *ifname) {
+	  int sensor_id, vmIP sensor_ip, char *ifname, bool *decrypt_ok, volatile int8_t *decrypt_sync) {
  
 	if(this->stopReadProcessing) {
 		return(false);
@@ -1230,11 +1230,28 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			if(srtp_decrypt->need_prepare_decrypt()) {
 				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false, pcap_header_us);
 			}
-			if(!srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
-						      saddr, daddr, sport, dport, this)) {
-				if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
-					probably_unencrypted_payload = true;
+			if(decrypt_sync) {
+				__SYNC_LOCK(*decrypt_sync);
+			}
+			if(decrypt_ok && *decrypt_ok) {
+				probably_unencrypted_payload = true;
+			} else {
+				if(srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
+							     saddr, daddr, sport, dport, this)) {
+					if(decrypt_ok) {
+						*decrypt_ok = true;
+					}
+				} else {
+					if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
+						probably_unencrypted_payload = true;
+						if(decrypt_ok) {
+							*decrypt_ok = true;
+						}
+					}
 				}
+			}
+			if(decrypt_sync) {
+				__SYNC_UNLOCK(*decrypt_sync);
 			}
 			this->len = *len;
 		}
