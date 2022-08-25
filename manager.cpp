@@ -112,6 +112,10 @@ int opt_block_alloc_stack = 0;
 
 using namespace std;
 
+#ifndef MIN
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#endif
+
 int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mode*/);
 
 std::map<string, int> MgmtCmdsRegTable;
