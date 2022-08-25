@@ -1038,6 +1038,7 @@ bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
+bool opt_rtp_count_all_sequencegap_as_loss = false;
 
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
@@ -7660,6 +7661,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -11695,6 +11697,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sdp_check_direction_ext", NULL))) {
 		opt_sdp_check_direction_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtp_count_all_sequencegap_as_loss", NULL))) {
+		opt_rtp_count_all_sequencegap_as_loss = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
