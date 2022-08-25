@@ -2468,8 +2468,12 @@ list<int> getPids(string app, string grep_search) {
 #endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
 	while(fgets(buffRslt, 512, cmd_pipe)) {
-		int pid = findPIDinPSline(buffRslt);
-		pids.push_back(pid);
+		if(!strcasestr(buffRslt, "<defunct>")) {
+			int pid = findPIDinPSline(buffRslt);
+			if(pid) {
+				pids.push_back(pid);
+			}
+		}
 	}
 	pclose(cmd_pipe);
 	return(pids);
