@@ -2,6 +2,7 @@
 #define HEAP_SAFE_H
 
 
+#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
