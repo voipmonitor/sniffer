@@ -152,7 +152,6 @@ signal_def signal_data[] =
         { "SIGTERM", SIGTERM, "Termination (ANSI)" },
         { "SIGSTKFLT", SIGSTKFLT, "Stack fault" },
         { "SIGCHLD", SIGCHLD, "Child status has changed (POSIX)" },
-        { "SIGCLD", SIGCLD, "Same as SIGCHLD (System V)" },
         { "SIGCONT", SIGCONT, "Continue (POSIX)" },
         { "SIGSTOP", SIGSTOP, "Stop, unblockable (POSIX)" },
         { "SIGTSTP", SIGTSTP, "Keyboard stop (POSIX)" },
