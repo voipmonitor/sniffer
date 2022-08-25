@@ -791,7 +791,7 @@ std::string addThousandSeparators(u_int64_t num) {
 }
 
 void printMemoryStat(bool all) {
-#ifndef FREEBSD
+#ifdef __GLIBC__
 	malloc_trim(0);
 #endif
 	std::cout << getMemoryStat(all);
