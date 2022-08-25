@@ -29,7 +29,7 @@ bool vmIP::setFromString(const char *ip_str) {
 					ip_str_tmp[min(ip_str_length - 2, (unsigned)sizeof(ip_str_tmp))] = 0;
 					if(inet_pton(AF_INET6, ip_str_tmp, &ip.v6)) {
 						for(unsigned i = 0; i < 4; i++) {
-							ip.v6.__in6_u.__u6_addr32[i] = ntohl(ip.v6.__in6_u.__u6_addr32[i]);
+							ip.v6.s6_addr32[i] = ntohl(ip.v6.s6_addr32[i]);
 						}
 						return(true);
 					}
@@ -37,7 +37,7 @@ bool vmIP::setFromString(const char *ip_str) {
 			} else {
 				if(inet_pton(AF_INET6, ip_str, &ip.v6)) {
 					for(unsigned i = 0; i < 4; i++) {
-						ip.v6.__in6_u.__u6_addr32[i] = ntohl(ip.v6.__in6_u.__u6_addr32[i]);
+						ip.v6.s6_addr32[i] = ntohl(ip.v6.s6_addr32[i]);
 					}
 					return(true);
 				}
@@ -83,7 +83,7 @@ bool vmIP::setFromString(const char *ip_str, const char **end_ptr) {
 				ip_str_tmp[min(ip_str_length, (unsigned)sizeof(ip_str_tmp))] = 0;
 				if(inet_pton(AF_INET6, ip_str_tmp, &ip.v6)) {
 					for(unsigned i = 0; i < 4; i++) {
-						ip.v6.__in6_u.__u6_addr32[i] = ntohl(ip.v6.__in6_u.__u6_addr32[i]);
+						ip.v6.s6_addr32[i] = ntohl(ip.v6.s6_addr32[i]);
 					}
 					if(end_ptr) {
 						*end_ptr = ip_str + ip_str_length + (ip_str[ip_str_length] == ']' ? 1 : 0);
@@ -122,7 +122,7 @@ std::string vmIP::getString(bool ipv6_in_brackets) const {
 			char ip_str[IP_STR_MAX_LENGTH];
 			in6_addr ip_v6;
 			for(unsigned i = 0; i < 4; i++) {
-				ip_v6.__in6_u.__u6_addr32[i] = htonl(ip.v6.__in6_u.__u6_addr32[i]);
+				ip_v6.s6_addr32[i] = htonl(ip.v6.s6_addr32[i]);
 			}
 			inet_ntop(AF_INET6, &ip_v6, ip_str, IP_STR_MAX_LENGTH);
 			return(ipv6_in_brackets ? 
