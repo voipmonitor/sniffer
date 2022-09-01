@@ -1116,7 +1116,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
+	bool checkOkData(u_char * data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 	void enableDumper(const char *fileName, const char *ports);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,

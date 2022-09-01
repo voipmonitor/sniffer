@@ -1025,6 +1025,213 @@ void save_packet(Call *call, packet_s *packetS, int type, u_int8_t forceVirtualU
 
 ParsePacket _parse_packet_global_process_packet;
 
+inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool check_end_space, bool *sip_response) {
+	if(sip_response) {
+		*sip_response =  false;
+	}
+	if(datalen < 1) {
+		return(0);
+	}
+	unsigned end_space_length = check_end_space ? 1 : 0;
+	switch(data[0]) {
+	case 'I':
+		if(datalen >= (6 + end_space_length) && data[2] == 'V' && !memcmp(data, "INVITE ", 6 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: INVITE\n");
+			#endif
+			return(INVITE);
+		} else if(datalen >= (4 + end_space_length) && data[2] == 'F' && !memcmp(data, "INFO ", 4 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: INFO\n");
+			#endif
+			return(INFO);
+		}
+		break;
+	case 'M':
+		if(datalen >= (7 + end_space_length) && !memcmp(data, "MESSAGE ", 7 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");
+			#endif
+			return(MESSAGE);
+		}
+		break;
+	case 'R':
+		if(datalen >= (8 + end_space_length) && data[2] == 'G' && !memcmp(data, "REGISTER ", 8 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
+			#endif
+			return(REGISTER);
+		} else if(datalen >= (5 + end_space_length) && data[2] == 'F' && !memcmp(data, "REFER ", 5 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: REFER\n");
+			#endif
+			return(REFER);
+		}
+		break;
+	case 'B':
+		if(datalen >= (3 + end_space_length) && !memcmp(data, "BYE ", 3 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: BYE\n");
+			#endif
+			return(BYE);
+		}
+		break;
+	case 'C':
+		if(datalen >= (6 + end_space_length) && !memcmp(data, "CANCEL ", 6 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
+			#endif
+			return(CANCEL);
+		}
+		break;
+	case 'O':
+		if(datalen >= (7 + end_space_length) && !memcmp(data, "OPTIONS ", 7 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
+			#endif
+			return(OPTIONS);
+		}
+		break;
+	case 'S':
+		if(datalen >= (9 + end_space_length) && data[1] == 'U' && !memcmp(data, "SUBSCRIBE ", 9 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
+			#endif
+			return(SUBSCRIBE);
+		}
+		break;
+	case 'N':
+		if(datalen >= (6 + end_space_length) && !memcmp(data, "NOTIFY ", 6 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: NOTIFY\n");
+			#endif
+			return(NOTIFY);
+		}
+		break;
+	case 'A':
+		if(datalen >= (3 + end_space_length) && !memcmp(data, "ACK ", 3 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: ACK\n");
+			#endif
+			return(ACK);
+		}
+		break;
+	case 'P':
+		if(datalen >= (5 + end_space_length) && data[1] == 'R' && !memcmp(data, "PRACK ", 5 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: PRACK\n");
+			#endif
+			return(PRACK);
+		} else if(datalen >= (7 + end_space_length) && data[1] == 'U' && !memcmp(data, "PUBLISH ", 7 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: PUBLISH\n");
+			#endif
+			return(PUBLISH);
+		}
+		break;
+	case 'U':
+		if(datalen >= (6 + end_space_length) && !memcmp(data, "UPDATE ", 6 + end_space_length)) {
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: UPDATE\n");
+			#endif
+			return(UPDATE);
+		}
+		break;
+	}
+	if(data[0] == 'S' && datalen >= 9 && data[1] == 'I' && !memcmp(data, "SIP/2.0 ", 8)){
+		if(sip_response) {
+			*sip_response = true;
+		}
+		switch(data[8]) {
+		case '1':
+			if(datalen >= 10) {
+				switch(data[9]) {
+				case '0':
+					#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+					if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 10X\n");
+					#endif
+					return(RES10X);
+				case '8': 
+					if(datalen >= 11 && data[10] == '2') {
+						#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+						if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 182\n");
+						#endif
+						return(RES182);
+					}
+					#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+					if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 18X\n");
+					#endif
+					return(RES18X);
+				}
+			}
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 10X\n");
+			#endif
+			return(RES10X);
+		case '2':
+			if(datalen >= 23 && (data[12] == 'A' || data[12] == 'a') && !memcmp(data, "SIP/2.0 200 Auth failed", 23)) {
+				#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+				if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 4XX (simulate 4XX response when auth failed received)\n");
+				#endif
+				return(RES4XX);
+			}
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 2XX\n");
+			#endif
+			return(RES2XX);
+		case '3':
+			if(datalen >= 11 && data[9] == '0' && data[10] == '0') {
+				#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+				if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 300\n");
+				#endif
+				return(RES300);
+			}
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 3XX\n");
+			#endif
+			return(RES3XX);
+		case '4':
+			if(datalen >= 11 && data[9] == '0') {
+				switch(data[10]) {
+				case '1':
+					#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+					if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 401\n");
+					#endif
+					return(RES401);
+				case '3':
+					#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+					if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 403\n");
+					#endif
+					return(RES403);
+				case '4':
+					#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+					if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 404\n");
+					#endif
+					return(RES404);
+				}
+			}
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 4XX\n");
+			#endif
+			return(RES4XX);
+		case '5':
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 5XX\n");
+			#endif
+			return(RES5XX);
+		case '6':
+			#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+			if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 6XX\n");
+			#endif
+			return(RES6XX);
+		}
+	}
+	#if ENABLE_VERBOSE_PARSE_SIP_METHOD
+	if(verbosity > 2) syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
+	#endif
+	return(0);
+}
+
 int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp) {
  
 	if(check_websocket(data, len, isTcp ? cWebSocketHeader::_chdst_na : cWebSocketHeader::_chdst_ge_limit)) {
@@ -1070,44 +1277,7 @@ int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseCo
 		return(parseContents->isSip());
 	}
 	
-	int ok;
-	//List of SIP request methods
-	//RFC 3261
-	if(!strncasecmp(data, "SIP/2.0", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "INVITE ", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "ACK ", 4)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "BYE ", 4)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "CANCEL ", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "OPTIONS", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "REGISTER", 8)) {
-		ok = 1;
-	//RFC 3262
-	} else if(!strncasecmp(data, "PRACK", 5)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "SUBSCRIBE", 9)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "NOTIFY", 6)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "PUBLISH", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "INFO", 4)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "REFER", 5)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "MESSAGE", 7)) {
-		ok = 1;
-	} else if(!strncasecmp(data, "UPDATE", 6)) {
-		ok = 1;
-	} else {
-		ok = 0;
-	}
-	return ok;
+	return(process_packet__parse_sip_method(data, len, true, NULL) > 0);
 }
 
 inline char * _gettag(const void *ptr, unsigned long len,
@@ -3577,8 +3747,7 @@ static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *pa
 static inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, int line);
 static inline void process_packet__cleanup_registers(packet_s *packetS);
 static inline void process_packet__cleanup_ss7(packet_s *packetS);
-static inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response);
-static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response);
+static inline int process_packet__parse_sip_method(packet_s_process *packetS, bool check_end_space, bool *sip_response);
 static inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen);
 static inline bool process_packet__parse_cseq(sCseq *cseq, packet_s_process *packetS);
 static inline int parse_packet__last_sip_response(char *data, unsigned int datalen, int sip_method, bool sip_response,
@@ -6349,160 +6518,12 @@ void reset_cleanup_variables() {
 	__last_memory_purge = 0;
 }
 
-inline int process_packet__parse_sip_method(char *data, unsigned int datalen, bool *sip_response) {
-	int sip_method = 0;
-	if(sip_response) {
-		*sip_response =  false;
-	}
-	// parse SIP method 
-	if ((datalen > 5) && data[0] == 'I' && !(memmem(data, 6, "INVITE", 6) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: INVITE\n");
-		sip_method = INVITE;
-	} else if ((datalen > 7) && data[0] == 'R' && data[2] == 'G' && !(memmem(data, 8, "REGISTER", 8) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: REGISTER\n");
-		sip_method = REGISTER;
-	} else if ((datalen > 6) && data[0] == 'M' && !(memmem(data, 7, "MESSAGE", 7) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: MESSAGE\n");
-		sip_method = MESSAGE;
-	} else if ((datalen > 2) && data[0] == 'B' && !(memmem(data, 3, "BYE", 3) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: BYE\n");
-		sip_method = BYE;
-	} else if ((datalen > 3) && data[0] == 'I' && !(memmem(data, 4, "INFO", 4) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: INFO\n");
-		sip_method = INFO;
-	} else if ((datalen > 5) && data[0] == 'C' && !(memmem(data, 6, "CANCEL", 6) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: CANCEL\n");
-		sip_method = CANCEL;
-	} else if ((datalen > 6) && data[0] == 'O' && !(memmem(data, 7, "OPTIONS", 7) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: OPTIONS\n");
-		sip_method = OPTIONS;
-	} else if ((datalen > 8) && data[0] == 'S' && data[1] == 'U' && !(memmem(data, 9, "SUBSCRIBE", 9) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: SUBSCRIBE\n");
-		sip_method = SUBSCRIBE;
-	} else if ((datalen > 5) && data[0] == 'N' && !(memmem(data, 6, "NOTIFY", 6) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: NOTIFY\n");
-		sip_method = NOTIFY;
-	} else if ((datalen > 2) && data[0] == 'A' && !(memmem(data, 3, "ACK", 3) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: ACK\n");
-		sip_method = ACK;
-	} else if ((datalen > 4) && data[0] == 'P' && data[1] == 'R' && !(memmem(data, 5, "PRACK", 5) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: PRACK\n");
-		sip_method = PRACK;
-	} else if ((datalen > 6) && data[0] == 'P' && data[1] == 'U' && !(memmem(data, 7, "PUBLISH", 7) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: PUBLISH\n");
-		sip_method = PUBLISH;
-	} else if ((datalen > 4) && data[0] == 'R' && data[2] == 'F' && !(memmem(data, 5, "REFER", 5) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: REFER\n");
-		sip_method = REFER;
-	} else if ((datalen > 5) && data[0] == 'U' && !(memmem(data, 6, "UPDATE", 6) == 0)) {
-		if(verbosity > 2) 
-			 syslog(LOG_NOTICE,"SIP msg: UPDATE\n");
-		sip_method = UPDATE;
-	} else if( (datalen > 8) && data[0] == 'S' && data[1] == 'I' && !(memmem(data, 8, "SIP/2.0 ", 8) == 0)){
-		if(sip_response) {
-			*sip_response = true;
-		}
-		switch(data[8]) {
-		case '2':
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 2XX\n");
-			sip_method = RES2XX;
-			if((data[12] == 'A' or data[12] == 'a') and datalen > 23 and !(memmem(data, 23, "SIP/2.0 200 Auth failed", 23) == 0)) {
-				// simulate 4XX response when auth failed received
-				sip_method = RES4XX;
-			}
-			break;
-		case '1':
-			if(datalen > 9) {
-				if(data[9] == '0') {
-					if(verbosity > 2) 
-						 syslog(LOG_NOTICE,"SIP msg: 10X\n");
-					sip_method = RES10X;
-				} else {
-					// SIP/2.0 182 Queued, avaya-cm-data=00480BEE0C18002A
-					if(data[9] == '8') {
-						if( (datalen > 10) && (data[10] == '2') ) {
-							if(verbosity > 2) 
-								 syslog(LOG_NOTICE,"SIP msg: 182\n");
-							sip_method = RES182;
-						} else {
-							if(verbosity > 2) 
-								 syslog(LOG_NOTICE,"SIP msg: 18X\n");
-							sip_method = RES18X;
-						}
-					}
-				}
-			}
-			break;
-		case '3':
-			if ((datalen > 10) && data[9] == '0' && data[10] == '0') {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 300\n");
-				sip_method = RES300;
-			} else {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 3XX\n");
-				sip_method = RES3XX;
-			}
-			break;
-		case '4':
-			if ((datalen > 10) && data[9] == '0' && data[10] == '1') {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 401\n");
-				sip_method = RES401;
-			} else if ((datalen > 10) && data[9] == '0' && data[10] == '3') {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 403\n");
-				sip_method = RES403;
-			} else if ((datalen > 10) && data[9] == '0' && data[10] == '4') {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 404\n");
-				sip_method = RES404;
-			} else {
-				if(verbosity > 2) 
-					 syslog(LOG_NOTICE,"SIP msg: 4XX\n");
-				sip_method = RES4XX;
-			}
-			break;
-		case '5':
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 5XX\n");
-			sip_method = RES5XX;
-			break;
-		case '6':
-			if(verbosity > 2) 
-				 syslog(LOG_NOTICE,"SIP msg: 6XX\n");
-			sip_method = RES6XX;
-			break;
-		}
-	}
-	if(!sip_method) {
-		if(verbosity > 2) {
-			syslog(LOG_NOTICE,"SIP msg: 1XX or Unknown msg \n");
-		}
-	}
-	return(sip_method);
+int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response) {
+	return(process_packet__parse_sip_method(data, datalen, check_end_space, sip_response));
 }
 
-int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response) {
-	return(process_packet__parse_sip_method(data, datalen, sip_response));
-}
-
-inline int process_packet__parse_sip_method(packet_s_process *packetS, bool *sip_response) {
-	return(process_packet__parse_sip_method(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, sip_response));
+inline int process_packet__parse_sip_method(packet_s_process *packetS, bool check_end_space, bool *sip_response) {
+	return(process_packet__parse_sip_method(packetS->data_()+ packetS->sipDataOffset, packetS->sipDataLen, check_end_space, sip_response));
 }
 
 inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int cseqlen) {
@@ -6511,7 +6532,7 @@ inline bool process_packet__parse_cseq(sCseq *cseq, char *cseqstr, unsigned int 
 		++cseq_pos_method;
 	}
 	if(cseq_pos_method < cseqlen) {
-		cseq->method = process_packet__parse_sip_method(cseqstr + cseq_pos_method, cseqlen - cseq_pos_method, NULL);
+		cseq->method = process_packet__parse_sip_method(cseqstr + cseq_pos_method, cseqlen - cseq_pos_method, false, NULL);
 		cseq->number = atol(cseqstr);
 		return(true);
 	}
@@ -8553,7 +8574,7 @@ void ReassemblyBuffer::processPacket(u_char *ethHeader, unsigned ethHeaderLength
 	b_data->buffer->add(data, length);
 	if(!createStream &&
 	   ((b_data->type == _websocket && check_websocket(b_data->buffer->data(), b_data->buffer->size())) ||
-	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), false, false)))) {
+	    (b_data->type == _sip && TcpReassemblySip::_checkSip(b_data->buffer->data(), b_data->buffer->size(), TcpReassemblySip::_chssm_na)))) {
 		dataRslt->push_back(complete(&id, b_data));
 		delete b_data->buffer;
 		delete b_data->ethHeader;
@@ -9344,7 +9365,7 @@ void *PreProcessPacket::outThreadFunction() {
 				
 				extern bool opt_sip_tcp_reassembly_ext;
 				extern int opt_sip_tcp_reassembly_ext_quick_mod;
-				if(opt_sip_tcp_reassembly_ext && opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+				if(opt_sip_tcp_reassembly_ext && (opt_sip_tcp_reassembly_ext_quick_mod & 2)) {
 					extern TcpReassembly *tcpReassemblySipExt;
 					tcpReassemblySipExt->cleanup_simple();
 				}
@@ -9794,6 +9815,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			isMgcp = true;
 		}
 		if(packetS->pflags.tcp) {
+			extern int opt_sip_tcp_reassembly_ext_quick_mod;
 			packetS->blockstore_addflag(13 /*pb lock flag*/);
 			if(packetS->pflags.skinny) {
 				// call process_skinny before tcp reassembly - TODO !
@@ -9811,6 +9833,14 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 						PACKET_S_PROCESS_DESTROY(&packetS);
 					}
 				}
+			} else if((opt_sip_tcp_reassembly_ext_quick_mod & 1) &&
+				  (!packetS->datalen_() ||
+				   (isSip && TcpReassemblySip::checkSip((u_char*)packetS->data_(), packetS->datalen_(), TcpReassemblySip::_chssm_strict | TcpReassemblySip::_chssm_content_length)))) {
+				this->process_parseSipData(&packetS, NULL
+							   #if DEBUG_PACKET_COUNT
+							   , true
+							   #endif
+							   );
 			} else {
 				bool possibleWebSocketSip = false;
 				if(!isSip && check_websocket(packetS->data_(), packetS->datalen_(), cWebSocketHeader::_chdst_na)) {
@@ -10123,7 +10153,11 @@ void PreProcessPacket::process_parseSipDataExt(packet_s_process **packetS_ref, p
 	this->process_parseSipData(packetS_ref, packetS_orig);
 }
 
-void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
+void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig
+					    #if DEBUG_PACKET_COUNT
+					    , bool debug_packet_count
+					    #endif
+					    ) {
 	packet_s_process *packetS = *packetS_ref;
 	if(!packetS_orig) {
 		packetS_orig = packetS;
@@ -10198,6 +10232,37 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 			} else {
 				this->process_sip(&packetS);
 			}
+			#if DEBUG_PACKET_COUNT
+			if(debug_packet_count) {
+				extern void __ftcp_sip(const char *callid, const char *req, const char *stat);
+				extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
+							 const char *tag, unsigned long *gettaglen, unsigned long *limitLen);
+				unsigned long callid_length;
+				u_char *_data = (u_char*)packetS->data_() + packetS->sipDataOffset;
+				unsigned int _datalen = packetS->sipDataLen;
+				char *callid = gettag_ext(_data, _datalen, NULL,
+							  "\nCall-ID:", &callid_length, NULL);
+				unsigned long cseq_length;
+				char *cseq = gettag_ext(_data, _datalen, NULL,
+							"\nCSeq:", &cseq_length, NULL);
+				if(callid && cseq) {
+					const char *first_cr = strnchr((char*)_data, '\r', _datalen);
+					if(first_cr) {
+						string req_stat = string((char*)_data, (u_char*)first_cr - _data);
+						__ftcp_sip(string(callid, callid_length).c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? "" : req_stat.c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? req_stat.c_str() : "");
+						extern cWsCalls *ws_calls;
+						if(ws_calls) {
+							ws_calls->setConfirm(string(callid, callid_length).c_str(),
+									     req_stat.substr(0, 3) != "SIP",
+									     req_stat.c_str(),
+									     string(cseq, cseq_length).c_str());
+						}
+					}
+				}
+			}
+			#endif
 			if(nextSip) {
 				if(nextSipDataOffset) {
 					packetS->sipDataOffset = nextSipDataOffset;
@@ -10491,7 +10556,7 @@ bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref)
 
 void PreProcessPacket::process_getSipMethod(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
-	packetS->sip_method = process_packet__parse_sip_method(packetS, &packetS->sip_response);
+	packetS->sip_method = process_packet__parse_sip_method(packetS, true, &packetS->sip_response);
 	process_packet__parse_cseq(&packetS->cseq, packetS);
 	packetS->_getSipMethod = true;
 }

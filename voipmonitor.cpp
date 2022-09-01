@@ -1305,6 +1305,8 @@ bool opt_is_client_packetbuffer_sender = false;
 
 cWsCalls *ws_calls;
 
+bool opt_all_configuration_options_in_gui = false;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -4616,7 +4618,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
-		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
 			if(!is_read_from_file()) {
 				tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 25);
 			}
@@ -7713,8 +7715,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42359) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
 				addConfigItem(new FILE_LINE(42360) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
-
-	minorGroupIfNotSetBegin();
 	group("ss7");
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
@@ -7730,6 +7730,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
+
+	minorGroupIfNotSetBegin();
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -7930,7 +7932,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
-					->addValues("ext:2"));
+					->addValues("ext:2|comb_ext:3"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
@@ -7972,6 +7974,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12680,7 +12683,8 @@ int eval_config(string inistr) {
 		opt_sip_tcp_reassembly_ext_link_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
-		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
+		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "comb_ext") ? 3 :
+						       !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_complete_mod", NULL))) {
 		opt_sip_tcp_reassembly_ext_complete_mod = yesno(value);
@@ -12803,6 +12807,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
 		strcpy_null_term(opt_curl_hook_wav, value);
+	}
+	if((value = ini.GetValue("general", "all_configuration_options_in_gui", NULL))) {
+		opt_all_configuration_options_in_gui = yesno(value);
 	}
 
 	/*

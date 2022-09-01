@@ -53,6 +53,12 @@ inline void print_t2_queue_full_stat() {
 
 class TcpReassemblySip {
 public:
+	enum e_checksip_strict_mode {
+		_chssm_na = 0,
+		_chssm_strict = 1,
+		_chssm_ext = 2,
+		_chssm_content_length = 4
+	};
 	struct tcp_stream_packet {
 		packet_s_process *packetS;
 		time_t ts;
@@ -125,11 +131,11 @@ private:
 			data_len = stream->packets->packetS->datalen_();
 			data = (u_char*)stream->packets->packetS->data_();
 		}
-		return(this->checkSip(data, data_len, false, false));
+		return(this->checkSip(data, data_len, TcpReassemblySip::_chssm_na));
 	}
 	void cleanStream(tcp_stream *stream, bool callFromClean = false);
 public:
-	static int checkSip(u_char *data, int data_len, bool strict, bool check_ext, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
+	static int checkSip(u_char *data, int data_len, int8_t strict_mode, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
 		if(data_len_used) {
 			*data_len_used = 0;
 		}
@@ -138,7 +144,7 @@ public:
 			bool allocData;
 			u_char *ws_data = ws.decodeData(&allocData);
 			if(ws_data) {
-				int rslt = checkSip(ws_data, ws.getDataLength(), strict, check_ext, offsets);
+				int rslt = checkSip(ws_data, ws.getDataLength(), strict_mode, offsets);
 				if(rslt && offsets && offsets->size()) {
 					unsigned count = 0;
 					for(list<d_u_int32_t>::iterator iter = offsets->begin(); iter != offsets->end(); iter++) {
@@ -162,9 +168,9 @@ public:
 		   !check_sip20((char*)data, data_len, NULL, true)) {
 			return(false);
 		}
-		return(_checkSip(data, data_len, strict, check_ext, offsets, data_len_used));
+		return(_checkSip(data, data_len, strict_mode, offsets, data_len_used));
 	}
-	static int _checkSip(u_char *data, int data_len, bool strict, bool ext_check, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
+	static int _checkSip(u_char *data, int data_len, int8_t strict_mode, list<d_u_int32_t> *offsets = NULL, int *data_len_used = NULL) {
 		extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 		int count_ok = 0;
 		u_int32_t offset = 0;
@@ -173,6 +179,7 @@ public:
 			*data_len_used = 0;
 		}
 		while(data_len > 0) {
+			bool existsContentLength = false;
 			unsigned int contentLength = 0;
 			bool use_lf_line_separator = false;
 			u_char *endHeaderSepPos = NULL;
@@ -198,6 +205,7 @@ public:
 							++contentLengthPos;
 						}
 						contentLength = atol(contentLengthPos);
+						existsContentLength = true;
 						break;
 					}
 				}
@@ -205,9 +213,12 @@ public:
 			} else {
 				break;
 			}
+			if((strict_mode & _chssm_content_length)  && !existsContentLength) {
+				return(0);
+			}
 			int sipDataLen = (endHeaderSepPos - data) + SIP_DBLLINE_SEPARATOR_SIZE(use_lf_line_separator) + contentLength;
 			if(sipDataLen == data_len) {
-				if(ext_check && !_checkSipExt(data, sipDataLen)) {
+				if((strict_mode & _chssm_ext) && !_checkSipExt(data, sipDataLen)) {
 					return(0);
 				}
 				if(data_len_used) {
@@ -218,7 +229,7 @@ public:
 				}
 				return(count_ok + 1);
 			} else if(sipDataLen > 0 && sipDataLen < data_len) {
-				if(strict) {
+				if(strict_mode & _chssm_strict) {
 					int data_len_reduk = data_len;
 					while(data_len_reduk > sipDataLen && 
 					      (*(char*)(data + data_len_reduk - 1) == LF_CHAR ||
@@ -226,7 +237,7 @@ public:
 						--data_len_reduk;
 					}
 					if(sipDataLen == data_len_reduk &&
-					   (!ext_check || _checkSipExt(data, sipDataLen))) {
+					   (!(strict_mode & _chssm_ext) || _checkSipExt(data, sipDataLen))) {
 						if(data_len_used) {
 							*data_len_used = data_len_orig;
 						}
@@ -238,12 +249,12 @@ public:
 				}
 				if(!check_sip20((char*)(data + sipDataLen), data_len - sipDataLen, NULL, true)) {
 					if(data_len_used) {
-						*data_len_used = strict ? 0 : offset + sipDataLen;
+						*data_len_used = (strict_mode & _chssm_strict) ? 0 : offset + sipDataLen;
 					}
 					if(offsets) {
 						offsets->push_back(d_u_int32_t(offset, sipDataLen));
 					}
-					return(strict ? 0 : count_ok + 1);
+					return((strict_mode & _chssm_strict) ? 0 : count_ok + 1);
 				} else {
 					if(offsets) {
 						offsets->push_back(d_u_int32_t(offset, sipDataLen));
@@ -258,9 +269,9 @@ public:
 			}
 		}
 		if(data_len_used) {
-			*data_len_used = strict ? 0 : offset;
+			*data_len_used = (strict_mode & _chssm_strict) ? 0 : offset;
 		}
-		return(strict ? 0 : count_ok);
+		return((strict_mode & _chssm_strict) ? 0 : count_ok);
 	}
 	static int _checkSipExt(u_char *data, int data_len) {
 		char *callIdPos = strncasestr((char*)data, LF_LINE_SEPARATOR "Call-ID:", data_len);
@@ -1464,7 +1475,11 @@ private:
 	void process_RTP(packet_s_process_0 *packetS);
 	void process_OTHER(packet_s_stack *packetS);
 	void process_parseSipDataExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
-	inline void process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
+	inline void process_parseSipData(packet_s_process **packetS_ref, packet_s_process *packetS_orig
+	#if DEBUG_PACKET_COUNT
+	, bool debug_packet_count = false
+	#endif
+	);
 	inline void process_sip(packet_s_process **packetS_ref);
 	inline void process_skinny(packet_s_process **packetS_ref);
 	inline void process_mgcp(packet_s_process **packetS_ref);

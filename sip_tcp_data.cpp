@@ -261,9 +261,9 @@ void SipTcpData::printContentSummary() {
 }
 
 
-int checkOkSipData(u_char *data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
+int checkOkSipData(u_char *data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
 	int _datalen_used;
-	int rslt = TcpReassemblySip::checkSip(data, datalen, strict, check_ext, offsets, &_datalen_used);
+	int rslt = TcpReassemblySip::checkSip(data, datalen, strict_mode, offsets, &_datalen_used);
 	if(datalen_used) {
 		while(_datalen_used < (int)datalen &&
 		      (data[_datalen_used] == LF_CHAR ||
