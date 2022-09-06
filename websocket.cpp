@@ -9,6 +9,10 @@ u_char *cWebSocketHeader::decodeData(bool *allocData, unsigned dataLength) {
 		if(dataLength) {
 			if(dataLength > getHeaderLength()) {
 				dataLength -= getHeaderLength();
+				unsigned dataLengthMax = getDataLength();
+				if(dataLength > dataLengthMax) {
+					dataLength = dataLengthMax;
+				}
 			} else {
 				*allocData = false;
 				return(NULL);

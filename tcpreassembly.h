@@ -682,6 +682,8 @@ public:
 		this->uData2_last = uData2;
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
+		this->counter = 0;
+		this->exists_sip = false;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -691,6 +693,10 @@ public:
 		  bool isSip) {
 		if(datalen) {
 			this->exists_data = true;
+		}
+		++this->counter;
+		if(isSip) {
+			this->exists_sip = true;
 		}
 		if(this->state == STATE_CRAZY) {
 			return(this->push_crazy(
@@ -919,6 +925,8 @@ private:
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;
+	u_int64_t counter;
+	bool exists_sip;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };

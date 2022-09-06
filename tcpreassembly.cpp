@@ -1149,7 +1149,8 @@ bool TcpReassemblyLink::push_normal(
 	if(!reassembly->enableCleanupThread) {
 		bool final = !reassembly->simpleByAck &&
 			     (this->state == STATE_RESET || this->state == STATE_CLOSE);
-		if(this->queueStreams.size()) {
+		if(this->queueStreams.size() &&
+		   !(reassembly->getType() == TcpReassembly::sip && !exists_sip)) {
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
 				(*_debug_stream) << " -- TRY ack " << header_tcp.ack_seq << endl;
 			}
