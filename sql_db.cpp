@@ -606,7 +606,7 @@ bool SqlDb::queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock) 
 				continue;
 			}
 		}
-		int rsltProcessResponse = processResponseFromQueryBy(responseBuffer, pass);
+		int rsltProcessResponse = processResponseFromQueryBy(responseBuffer, query.c_str(), pass);
 		send_query_counter++;
 		if(rsltProcessResponse == 1) {
 			ok = true;
@@ -783,14 +783,14 @@ int SqlDb::_queryByRemoteSocket(string query, unsigned int pass) {
 		return(0);
 	}
 	if(isJsonObject(queryResponseStr)) {
-		return(processResponseFromQueryBy(queryResponseStr.c_str(), pass));
+		return(processResponseFromQueryBy(queryResponseStr.c_str(), query.c_str(), pass));
 	} else if(queryResponseStr.substr(0, 3) == "CSV") {
 		return(processResponseFromCsv(queryResponseStr.c_str()));
 	}
 	return(0);
 }
 
-int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
+int SqlDb::processResponseFromQueryBy(const char *response, const char *query, unsigned pass) {
 	response_data_columns.clear();
 	response_data_columns_types.clear();
 	response_data.clear();
@@ -820,6 +820,9 @@ int SqlDb::processResponseFromQueryBy(const char *response, unsigned pass) {
 			errorString = result;
 		}
 		if(!sql_noerror && !this->disableLogError) {
+			if(query) {
+				errorString = "sql response: [" + errorString + "] from query: [" + query + "]";
+			}
 			setLastError(errorCode, errorString.c_str(), true);
 		}
 		if(tryNext) {

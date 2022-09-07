@@ -46,8 +46,6 @@ struct sCloudRouterVerbose {
 		start_client = true;
 		connect_command = true;
 		connect_info = true;
-		socket_decode = false;
-		sql_query = false;
 		sql_error = true;
 	}
 	bool start_server;
@@ -55,10 +53,13 @@ struct sCloudRouterVerbose {
 	bool socket_connect;
 	bool connect_command;
 	bool connect_info;
+	bool connect_info_service;
 	bool create_thread;
 	bool socket_decode;
+	bool sql_connect;
 	bool sql_query;
 	bool sql_error;
+	bool sql_ignore_query;
 };
 
 

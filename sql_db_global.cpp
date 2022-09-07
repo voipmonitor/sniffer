@@ -191,11 +191,11 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 		#ifdef CLOUD_ROUTER_SERVER
 		if(sqlDb && !loaded) {
 			lock_load();
-			this->_load(&data, NULL, sqlDb);
+			this->_load(data, NULL, sqlDb);
 			unlock_load();
-			if(data.size()) {
-				map<string, unsigned>::iterator iter = data.find(stringValue);
-				if(iter != data.end()) {
+			if(data->size()) {
+				map<string, unsigned>::iterator iter = data->find(stringValue);
+				if(iter != data->end()) {
 					rslt = iter->second;
 				}
 			}
