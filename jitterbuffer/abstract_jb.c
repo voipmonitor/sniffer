@@ -295,9 +295,7 @@ int ast_jb_put(struct ast_channel *chan, struct ast_frame *f, struct timeval *my
                         */
 			chan->prev_frame_is_dtmf = 1;
 		}
-		if(ast_test_flag(jb, JB_CREATED)) {
-			return -1;
-		}
+		return -1;
 	}
 
 	if (chan->resync && f->marker) {
