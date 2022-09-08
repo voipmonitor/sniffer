@@ -7761,6 +7761,12 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			 (process_pcap_type & _pp_dedup) ? (ppf_dedup | ppf_calcMD5) :
 			 (process_pcap_type & _pp_anonymize_ip) ? ppf_na :
 			 ppf_na;
+	
+	extern string extract_payload;
+	extern string extract_rtp_payload;
+	bool _extract_payload = extract_payload.length();
+	bool _extract_rtp_payload = extract_rtp_payload.length();
+	map<string, FILE*> payload_dump;
 			 
 	while(!is_terminating()) {
 		pcap_pkthdr *pcap_next_ex_header;
@@ -7926,6 +7932,50 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				}
 			}
 		}
+		
+		if((_extract_payload || _extract_rtp_payload) && 
+		   ppd.data && ppd.datalen) {
+			if(_extract_payload) {
+				if(!payload_dump[extract_payload] && payload_dump[extract_payload] != (FILE*)-1) {
+					payload_dump[extract_payload] = fopen(extract_payload.c_str(), "w");
+					if(!payload_dump[extract_payload]) {
+						payload_dump[extract_payload] = (FILE*)-1;
+					}
+				}
+				if(payload_dump[extract_payload]) {
+					fwrite(ppd.data, 1, ppd.datalen, payload_dump[extract_payload]);
+				}
+			}
+			if(_extract_rtp_payload && IS_RTP(ppd.data, ppd.datalen)) {
+				RTP rtp(0, 0);
+				rtp.fill_data((u_char*)ppd.data, ppd.datalen);
+				int payload_len = rtp.get_payload_len();
+				if(payload_len > 0) {
+					RTPFixedHeader *rtp_header = (RTPFixedHeader*)ppd.data;
+					if(!(rtp_header->marker &&
+					     rtp_header->payload >= FIRST_RTCP_CONFLICT_PAYLOAD_TYPE && rtp_header->payload <= LAST_RTCP_CONFLICT_PAYLOAD_TYPE)) {
+						ostringstream str_rtp_stream_filename_suffix;
+						str_rtp_stream_filename_suffix
+							<< ppd.header_ip->get_saddr().getString() << ":"
+							<< ppd.header_udp->get_source().getString() << "_"
+							<< ppd.header_ip->get_daddr().getString() << ":"
+							<< ppd.header_udp->get_dest().getString() << "_"
+							<< (int)rtp_header->payload << "_"
+							<< hex << ntohl(rtp_header->sources[0]) << dec;
+						string rtp_stream_filename = extract_rtp_payload + "_" + str_rtp_stream_filename_suffix.str();
+						if(!payload_dump[rtp_stream_filename] && payload_dump[rtp_stream_filename] != (FILE*)-1) {
+							payload_dump[rtp_stream_filename] = fopen(rtp_stream_filename.c_str(), "w");
+							if(!payload_dump[rtp_stream_filename]) {
+								payload_dump[rtp_stream_filename] = (FILE*)-1;
+							}
+						}
+						if(payload_dump[rtp_stream_filename]) {
+							fwrite(rtp.payload_data, 1, payload_len, payload_dump[rtp_stream_filename]);
+						}
+					}
+				}
+			}
+		}
 	}
 	
 	if(header_packet) {
@@ -7938,6 +7988,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 
 	if(opt_pcapdump) {
 		pcap_dump_close(tmppcap);
+	}
+	
+	if(payload_dump.size()) {
+		for(map<string, FILE*>::iterator iter = payload_dump.begin(); iter != payload_dump.end(); iter++) {
+			if(iter->second != (FILE*)-1) {
+				fclose(iter->second);
+			}
+		}
 	}
 }
 

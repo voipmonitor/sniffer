@@ -1305,6 +1305,9 @@ bool opt_is_client_packetbuffer_sender = false;
 
 cWsCalls *ws_calls;
 
+string extract_payload;
+string extract_rtp_payload;
+
 bool opt_all_configuration_options_in_gui = false;
 
 
@@ -8346,6 +8349,8 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
 	    {"ws-calls", 1, 0, 402},
+	    {"extract_payload", 1, 0, 403},
+	    {"extract_rtp_payload", 1, 0, 404},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -9052,6 +9057,12 @@ void get_command_line_arguments() {
 					ws_calls = new FILE_LINE(0) cWsCalls();
 					ws_calls->load(optarg);
 				}
+				break;
+			case 403:
+				extract_payload = optarg;
+				break;
+			case 404:
+				extract_rtp_payload = optarg;
 				break;
 		}
 		if(optarg) {
