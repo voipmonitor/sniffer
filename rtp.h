@@ -773,6 +773,11 @@ public:
 	
 	bool is_unencrypted_payload(u_char *data, unsigned datalen);
 	
+	bool channel_is_adaptive(struct ast_channel *channel);
+	bool channel_record_is_adaptive() {
+		return(channel_is_adaptive(channel_record));
+	}
+	
 private: 
 	/*
 	* Per-source state information

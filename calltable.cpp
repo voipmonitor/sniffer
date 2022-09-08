@@ -1186,7 +1186,9 @@ Call::closeRawFiles() {
 		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
-			rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
+			if(!rtp_i->channel_record_is_adaptive()) {
+				rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
+			}
 			if(rtp_i->gfileRAW) {
 				/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
 				FILE *tmp;

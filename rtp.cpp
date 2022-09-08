@@ -71,6 +71,8 @@ extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_big_jitter_resync_threshold;
+extern bool opt_saveaudio_resync_jitterbuffer;
+extern bool opt_saveaudio_adaptive_jitterbuffer;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern char *opt_rtp_stream_analysis_params;
@@ -314,12 +316,17 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	channel_record = new FILE_LINE(24005) ast_channel;
 	memset(channel_record, 0, sizeof(ast_channel));
-	channel_record->jitter_impl = 0; // fixed
-	channel_record->jitter_max = 60; 
+	if(opt_saveaudio_adaptive_jitterbuffer) {
+		channel_record->jitter_impl = 1;
+		channel_record->jitter_max = 500; 
+	} else {
+		channel_record->jitter_impl = 0;
+		channel_record->jitter_max = 60; 
+	}
 	channel_record->jitter_resync_threshold = opt_saveaudio_big_jitter_resync_threshold ? 5000 : 1000; 
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
-	channel_record->resync = 0;
+	channel_record->resync = opt_saveaudio_resync_jitterbuffer;
 	channel_record->audiobuf = NULL;
 	channel_record->audio_decode = true;
 	channel_record->rtp_stream = this;
@@ -3047,6 +3054,10 @@ bool RTP::is_unencrypted_payload(u_char *data, unsigned datalen) {
 		return(true);
 	}
 	return(false);
+}
+
+bool RTP::channel_is_adaptive(struct ast_channel *channel) {
+	return(channel && channel->jitter_impl);
 }
 
 #endif // not EXPERIMENTAL_LITE_RTP_MOD

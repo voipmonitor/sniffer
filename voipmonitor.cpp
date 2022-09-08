@@ -515,6 +515,8 @@ bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
 int opt_saveaudio_reversestereo = 0;
+bool opt_saveaudio_adaptive_jitterbuffer = false;
+bool opt_saveaudio_resync_jitterbuffer = false;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
@@ -7358,6 +7360,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_afterconnect", &opt_saveaudio_afterconnect));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_adaptive_jitterbuffer", &opt_saveaudio_adaptive_jitterbuffer));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
@@ -12153,6 +12157,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
 		opt_saveaudio_reversestereo = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_adaptive_jitterbuffer", NULL))) {
+		opt_saveaudio_adaptive_jitterbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_resync_jitterbuffer", NULL))) {
+		opt_saveaudio_resync_jitterbuffer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ogg_quality", NULL))) {
 		opt_saveaudio_oggquality = atof(value);
