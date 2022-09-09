@@ -531,6 +531,42 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 
 int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 
+	if (this->count == 0) {
+		// no filters, return 
+		return 0;
+	}
+	
+	unsigned found_length = 0;
+	u_int64_t found_flags = 0;
+	for(int src_dst = 1; src_dst <= 2; src_dst++) {
+		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
+		unsigned telnum_length = strlen(telnum);
+		t_node_tel *node = first_node;
+		for(unsigned int i = 0; i < telnum_length; i++) {
+			unsigned char checkChar = telnum[i];
+			if(checkChar == '%' && !strncmp(telnum + i, "%23", 3)) {
+				checkChar = '#';
+				i += 2;
+			}
+			if(!node->nodes[checkChar]) {
+				break;
+			}
+			node = node->nodes[checkChar];
+			if(node && node->payload &&
+			   (node->payload->direction == 0 ||
+			    node->payload->direction == src_dst) &&
+			   (i + 1) > found_length) {
+				found_length = i + 1;
+				found_flags = node->payload->flags;
+			}
+		}
+	}
+	if(found_length > 0) {
+		this->setCallFlagsFromFilterFlags(flags, found_flags, reconfigure);
+	}
+	return(found_length > 0);
+	
+	/* obsolete
 	int lastdirection = 0;
 	
 	if (this->count == 0) {
@@ -591,6 +627,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char 
         }
 
 	return 0;
+	*/
 }
 
 void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
