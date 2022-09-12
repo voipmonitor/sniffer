@@ -249,7 +249,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_ip_sensors \
 			  where filter_ip_id = filter_ip.id) as sensors_id" :
 		       "") +
-		     " FROM filter_ip");
+		     " FROM filter_ip ORDER BY ip desc, mask desc");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
@@ -296,13 +296,13 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmI
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 
-		unsigned long int origflags = *flags;
+		// unsigned long int origflags = *flags;
 
 		if((!node->network.isSet() && !node->mask) ||
 		   ((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
 		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
 
-			*flags = origflags;
+			// *flags = origflags;
 
 			if(node->mask < last_mask) {
 				continue;
