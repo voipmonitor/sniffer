@@ -71,6 +71,8 @@ extern MySqlStore *sqlStore;
 extern int opt_id_sensor;
 extern bool opt_saveaudio_answeronly;
 extern bool opt_saveaudio_big_jitter_resync_threshold;
+extern bool opt_saveaudio_resync_jitterbuffer;
+extern bool opt_saveaudio_adaptive_jitterbuffer;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern char *opt_rtp_stream_analysis_params;
@@ -80,6 +82,7 @@ extern bool opt_save_energylevels;
 extern bool opt_save_energylevels_check_seq;
 extern bool opt_save_energylevels_via_jb;
 extern char opt_energylevelheader[128];
+extern bool opt_rtp_count_all_sequencegap_as_loss;
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -313,12 +316,17 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 
 	channel_record = new FILE_LINE(24005) ast_channel;
 	memset(channel_record, 0, sizeof(ast_channel));
-	channel_record->jitter_impl = 0; // fixed
-	channel_record->jitter_max = 60; 
+	if(opt_saveaudio_adaptive_jitterbuffer) {
+		channel_record->jitter_impl = 1;
+		channel_record->jitter_max = 500; 
+	} else {
+		channel_record->jitter_impl = 0;
+		channel_record->jitter_max = 60; 
+	}
 	channel_record->jitter_resync_threshold = opt_saveaudio_big_jitter_resync_threshold ? 5000 : 1000; 
 	channel_record->last_datalen = 0;
 	channel_record->lastbuflen = 0;
-	channel_record->resync = 0;
+	channel_record->resync = opt_saveaudio_resync_jitterbuffer;
 	channel_record->audiobuf = NULL;
 	channel_record->audio_decode = true;
 	channel_record->rtp_stream = this;
@@ -1031,7 +1039,7 @@ RTP::process_dtmf_rfc2833() {
 /* read rtp packet */
 bool
 RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-	  int sensor_id, vmIP sensor_ip, char *ifname) {
+	  int sensor_id, vmIP sensor_ip, char *ifname, bool *decrypt_ok, volatile int8_t *decrypt_sync) {
  
 	if(this->stopReadProcessing) {
 		return(false);
@@ -1230,11 +1238,28 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			if(srtp_decrypt->need_prepare_decrypt()) {
 				srtp_decrypt->prepare_decrypt(saddr, daddr, sport, dport, false, pcap_header_us);
 			}
-			if(!srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
-						      saddr, daddr, sport, dport, this)) {
-				if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
-					probably_unencrypted_payload = true;
+			if(decrypt_sync) {
+				__SYNC_LOCK(*decrypt_sync);
+			}
+			if(decrypt_ok && *decrypt_ok) {
+				probably_unencrypted_payload = true;
+			} else {
+				if(srtp_decrypt->decrypt_rtp(data, len, payload_data, (unsigned int*)&payload_len, pcap_header_us,
+							     saddr, daddr, sport, dport, this)) {
+					if(decrypt_ok) {
+						*decrypt_ok = true;
+					}
+				} else {
+					if(!probably_unencrypted_payload && is_unencrypted_payload(payload_data, payload_len)) {
+						probably_unencrypted_payload = true;
+						if(decrypt_ok) {
+							*decrypt_ok = true;
+						}
+					}
 				}
+			}
+			if(decrypt_sync) {
+				__SYNC_UNLOCK(*decrypt_sync);
 			}
 			this->len = *len;
 		}
@@ -1446,7 +1471,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
-	if(getMarker() or
+	if((getMarker() && (!opt_rtp_count_all_sequencegap_as_loss || getMarker() != _forcemark_diff_seq)) or
 	   (!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort)) {
 		if(sverb.graph) printf("rtp[%p] mark[%u] lastframetype[%u] codec[%u] lastssrc[%x] ssrc[%x] iscaller[%u] lastframetype[%u][%u] codec[%u]\n", this, getMarker(), lastframetype, codec, (lastssrc ? *lastssrc : 0), ssrc, iscaller, lastframetype, AST_FRAME_DTMF, codec);
 
@@ -2664,6 +2689,11 @@ RTP::update_seq(u_int16_t seq) {
 	return 1;
 }
 
+#define RTP_TS_SUB(ts1, ts2) \
+	((u_int32_t)ts2 > (u_int32_t)ts1 && (u_int32_t)ts2 - (u_int32_t)ts1 < (u_int32_t)0xFFFFFFu ? \
+		-(int64_t)((u_int32_t)ts2 - (u_int32_t)ts1) : \
+		(int64_t)((u_int32_t)ts1 - (u_int32_t)ts2))
+
 void RTP::rtp_stream_analysis_output() {
 	if(!rsa.first_packet_time_us) {
 		rsa.first_packet_time_us = getTimeUS(header_ts);
@@ -2696,18 +2726,18 @@ void RTP::rtp_stream_analysis_output() {
 	++rsa.counter;
 	int64_t transit = rsa.counter > 1 ? 
 			   (((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) -
-			    (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
+			    (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
 			   0;
 	double jitter = rsa.jitter + (double)(((transit < 0) ? -transit/1000. : transit/1000.) - rsa.jitter)/16. ;
 	cout << "rsa,"
 	     << rsa.counter << ","
 	     << ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us) << ","
-	     << (((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
+	     << (RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
 	     << getSeqNum() << ","
 	     << (rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0) << ","
-	     << (rsa.counter > 1 ? (((int64_t)getTimestamp() - (int64_t)rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
+	     << (rsa.counter > 1 ? (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
 	     << transit << ","
-	     << ((((int64_t)getTimestamp() - (int64_t)rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
+	     << ((RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
 		 ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us)) << ","
 	     << this->jitter << ","
 	     << jitter << ","
@@ -3024,6 +3054,10 @@ bool RTP::is_unencrypted_payload(u_char *data, unsigned datalen) {
 		return(true);
 	}
 	return(false);
+}
+
+bool RTP::channel_is_adaptive(struct ast_channel *channel) {
+	return(channel && channel->jitter_impl);
 }
 
 #endif // not EXPERIMENTAL_LITE_RTP_MOD

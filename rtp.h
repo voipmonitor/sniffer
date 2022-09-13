@@ -536,7 +536,7 @@ public:
 	 *
 	*/
 	bool read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-		  int sensor_id, vmIP sensor_ip, char *ifname = NULL);
+		  int sensor_id, vmIP sensor_ip, char *ifname = NULL, bool *decrypt_ok = NULL, volatile int8_t *decrypt_sync = NULL);
 
 
 	/**
@@ -772,6 +772,11 @@ public:
 	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
 	
 	bool is_unencrypted_payload(u_char *data, unsigned datalen);
+	
+	bool channel_is_adaptive(struct ast_channel *channel);
+	bool channel_record_is_adaptive() {
+		return(channel_is_adaptive(channel_record));
+	}
 	
 private: 
 	/*

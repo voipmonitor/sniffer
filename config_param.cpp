@@ -247,8 +247,11 @@ string cConfigItem::getJson() {
 	json.add("group", group_name);
 	json.add("subgroup", subgroup_name);
 	json.add("level", level);
-	json.add("minor", minor);
-	json.add("minor_group_if_not_set", minorGroupIfNotSet);
+	extern bool opt_all_configuration_options_in_gui;
+	if(!opt_all_configuration_options_in_gui) {
+		json.add("minor", minor);
+		json.add("minor_group_if_not_set", minorGroupIfNotSet);
+	}
 	json.add("read_only", readOnly);
 	if(!disableIf.empty()) {
 		json.add("disable_if", disableIf);

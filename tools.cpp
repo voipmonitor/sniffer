@@ -2468,8 +2468,12 @@ list<int> getPids(string app, string grep_search) {
 #endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
 	while(fgets(buffRslt, 512, cmd_pipe)) {
-		int pid = findPIDinPSline(buffRslt);
-		pids.push_back(pid);
+		if(!strcasestr(buffRslt, "<defunct>")) {
+			int pid = findPIDinPSline(buffRslt);
+			if(pid) {
+				pids.push_back(pid);
+			}
+		}
 	}
 	pclose(cmd_pipe);
 	return(pids);
@@ -9014,7 +9018,7 @@ void cWsCalls::load(const char *filename) {
 			     << "Info: " << row["Info"] << endl;
 			continue;
 		}
-		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
+		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response);
 		//cout << row["Call-ID"] << endl;
 		//cout << row["Request-Line"] << endl;
 		//cout << row["Status-Line"] << endl;
@@ -9031,7 +9035,7 @@ void cWsCalls::load(const char *filename) {
 			sip.info = Info[i];
 			sip.request = !row["Request-Line"].empty();
 			sip.str = !row["Request-Line"].empty() ? Request_Line[i] : Status_Line[i];
-			if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), NULL)) {
+			if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), true, NULL)) {
 				cout << " * bad csv row (err 3) with Call-ID: " << row["Call-ID"] 
 				     << " / " 
 				     << "sip.str: " << sip.str << endl;

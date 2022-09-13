@@ -937,6 +937,11 @@ public:
 		_srvcc_post,
 		_srvcc_pre
 	};
+	enum eMoMtLegFlag {
+		_momt_na,
+		_momt_mt,
+		_momt_mo
+	};
 public:
 	bool is_ssl;			//!< call was decrypted
 	#if EXPERIMENTAL_LITE_RTP_MOD
@@ -954,7 +959,7 @@ public:
 	map<int, class RTPsecure*> rtp_secure_map;
 	cDtls *dtls;
 	bool dtls_exists;
-	bool dtls_queue_move;
+	volatile bool dtls_queue_move;
 	vector<cDtlsLink::sSrtpKeys*> dtls_keys;
 	volatile int dtls_keys_sync;
 	volatile int rtplock_sync;
@@ -1434,9 +1439,9 @@ public:
 	 * Used for reading RTP packet 
 	 * 
 	*/
-	bool read_rtp(struct packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname = NULL);
-	inline bool _read_rtp(struct packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
-	inline void _save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
+	bool read_rtp(struct packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname = NULL);
+	inline bool _read_rtp(packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
+	inline void _save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
 
 	/**
 	 * @brief read RTCP packet 
@@ -1444,9 +1449,9 @@ public:
 	 * Used for reading RTCP packet 
 	 * 
 	*/
-	bool read_rtcp(struct packet_s *packetS, int iscaller, char enable_save_packet);
+	bool read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_packet);
 	
-	void read_dtls(struct packet_s *packetS);
+	void read_dtls(packet_s_process_0 *packetS);
 
 	/**
 	 * @brief adds RTP stream to the this Call 
@@ -1893,8 +1898,10 @@ public:
 		return(invite_sdaddr_all_confirmed);
 	}
 	
-	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
-	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, bool onlyConfirmed = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
+					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
+	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 
+					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
 	
 	unsigned getMaxRetransmissionInvite();
 	
@@ -2344,6 +2351,7 @@ public:
 		}
 	}
 	
+	eMoMtLegFlag momt_get();
 	void srvcc_check_post();
 	void srvcc_check_pre();
 	
@@ -2721,24 +2729,34 @@ private:
 			cleanup_last_time_s = getTimeS_rdtsc();
 			cleanup_period_s = 60;
 		}
-		void set(const char *caller, const char *call_id, u_int64_t first_packet_time_us) {
+		void set(const char *number, const char *call_id, u_int64_t first_packet_time_us) {
+			extern int opt_srvcc_compare_number_length;
+			string number_str = number;
+			if(opt_srvcc_compare_number_length > 0 && number_str.length() > (unsigned)opt_srvcc_compare_number_length) {
+				number_str = number_str.substr(number_str.length() - opt_srvcc_compare_number_length);
+			}
 			__SYNC_LOCK(_sync_calls);
 			sSrvccPostCalls *post_calls = NULL;
-			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(number_str);
 			if(iter != calls.end()) {
 				post_calls = iter->second;
 			} else {
 				post_calls = new FILE_LINE(0) sSrvccPostCalls;
-				calls[caller] = post_calls;
+				calls[number_str] = post_calls;
 			}
 			post_calls->calls.push_back(new FILE_LINE(0) sSrvccPostCall(call_id, first_packet_time_us));
 			__SYNC_UNLOCK(_sync_calls);
 			cleanup();
 		}
-		string get(const char *caller, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
+		string get(const char *number, u_int64_t first_packet_time_us, u_int64_t last_packet_time_us) {
 			string call_id;
+			extern int opt_srvcc_compare_number_length;
+			string number_str = number;
+			if(opt_srvcc_compare_number_length > 0 && number_str.length() > (unsigned)opt_srvcc_compare_number_length) {
+				number_str = number_str.substr(number_str.length() - opt_srvcc_compare_number_length);
+			}
 			__SYNC_LOCK(_sync_calls);
-			map<string, sSrvccPostCalls*>::iterator iter = calls.find(caller);
+			map<string, sSrvccPostCalls*>::iterator iter = calls.find(number_str);
 			if(iter != calls.end()) {
 				sSrvccPostCalls *post_calls = iter->second;
 				for(list<sSrvccPostCall*>::iterator iter_2 = post_calls->calls.begin(); iter_2 != post_calls->calls.end(); iter_2++) {

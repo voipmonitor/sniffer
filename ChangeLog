@@ -1,3 +1,17 @@
+30.4 13.09.2022
+===============
+- TCP reassembly optimization - excluding tcp fragments that start a stream and contain a sequence \r, \n and \0 characters [VS-1352]
+- exclude tcp links from processing unless they contain at least one packet whose beginning looks like a sip
+- fix RTP sequence overlap in analyzer 
+- dtls/srtp fixes 
+- fix condition comparing minimum length of rtcp data block
+- fix problem with starting daemon mode without specifying a configuration file
+- new parameter rtp_count_all_sequencegap_as_loss (NO/yes)
+- fix audio decode desync when there is DTMF (broken since 2019) [VS-1359]
+- modify capture rules by telnum - specific prefixes has now priority over generic prefixes [VS-1310]
+- change capture rules by ip - larger networks are processed first now 
+
+
 30.3 05.08.2022
 ===============
 - fix situation when dtls "server hello" overtakes "client hello"

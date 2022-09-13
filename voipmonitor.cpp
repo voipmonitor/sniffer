@@ -515,6 +515,8 @@ bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
 int opt_saveaudio_reversestereo = 0;
+bool opt_saveaudio_adaptive_jitterbuffer = false;
+bool opt_saveaudio_resync_jitterbuffer = false;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
@@ -645,6 +647,7 @@ vector<string> opt_mo_mt_identification_prefix;
 int opt_separate_storage_ipv6_ipv4_address;
 int opt_cdr_flag_bit;
 vector<string> opt_srvcc_numbers;
+int opt_srvcc_compare_number_length = 9;
 bool srvcc_set;
 ListCheckString *srvcc_numbers;
 bool opt_srvcc_processing_only;
@@ -1037,6 +1040,7 @@ bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
+bool opt_rtp_count_all_sequencegap_as_loss = false;
 
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
@@ -1302,6 +1306,11 @@ char opt_curl_hook_wav[256] = "";
 bool opt_is_client_packetbuffer_sender = false;
 
 cWsCalls *ws_calls;
+
+string extract_payload;
+string extract_rtp_payload;
+
+bool opt_all_configuration_options_in_gui = false;
 
 
 #include <stdio.h>
@@ -4614,7 +4623,7 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
-		if(opt_sip_tcp_reassembly_ext_quick_mod == 2) {
+		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
 			if(!is_read_from_file()) {
 				tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 25);
 			}
@@ -6035,7 +6044,7 @@ void test() {
 		#else
 		string rslt = sqlDb->getJsonResult();
 		cout << rslt <<  endl;
-		sqlDb->processResponseFromQueryBy(rslt.c_str(), 0);
+		sqlDb->processResponseFromQueryBy(rslt.c_str(), NULL, 0);
 		#endif
 		sqlDb->setCloudParameters("c", "c", "c");
 		
@@ -7351,6 +7360,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_afterconnect", &opt_saveaudio_afterconnect));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_adaptive_jitterbuffer", &opt_saveaudio_adaptive_jitterbuffer));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
@@ -7543,9 +7554,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mo_mt_identification_prefix", &opt_mo_mt_identification_prefix));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
-						->addValues("confirmed:2"));
+						->addValues("confirmed:2|first:3|first_confirmed:4"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("srvcc_numbers", &opt_srvcc_numbers));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("srvcc_compare_length", &opt_srvcc_compare_number_length));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_processing_only", &opt_srvcc_processing_only));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
@@ -7658,6 +7670,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -7709,8 +7722,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42359) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
 				addConfigItem(new FILE_LINE(42360) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
-
-	minorGroupIfNotSetBegin();
 	group("ss7");
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
@@ -7726,6 +7737,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
+
+	minorGroupIfNotSetBegin();
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -7926,7 +7939,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
-					->addValues("ext:2"));
+					->addValues("ext:2|comb_ext:3"));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
@@ -7968,6 +7981,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -8339,6 +8353,8 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
 	    {"ws-calls", 1, 0, 402},
+	    {"extract_payload", 1, 0, 403},
+	    {"extract_rtp_payload", 1, 0, 404},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -9045,6 +9061,12 @@ void get_command_line_arguments() {
 					ws_calls = new FILE_LINE(0) cWsCalls();
 					ws_calls->load(optarg);
 				}
+				break;
+			case 403:
+				extract_payload = optarg;
+				break;
+			case 404:
+				extract_rtp_payload = optarg;
 				break;
 		}
 		if(optarg) {
@@ -11694,6 +11716,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sdp_check_direction_ext", NULL))) {
 		opt_sdp_check_direction_ext = yesno(value);
 	}
+	if((value = ini.GetValue("general", "rtp_count_all_sequencegap_as_loss", NULL))) {
+		opt_rtp_count_all_sequencegap_as_loss = yesno(value);
+	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
 	}
@@ -12133,6 +12158,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
 		opt_saveaudio_reversestereo = yesno(value);
 	}
+	if((value = ini.GetValue("general", "saveaudio_adaptive_jitterbuffer", NULL))) {
+		opt_saveaudio_adaptive_jitterbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_resync_jitterbuffer", NULL))) {
+		opt_saveaudio_resync_jitterbuffer = yesno(value);
+	}
 	if((value = ini.GetValue("general", "ogg_quality", NULL))) {
 		opt_saveaudio_oggquality = atof(value);
 	}
@@ -12457,6 +12488,8 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "separate_storage_ipv6_ipv4_address", NULL))) {
 		opt_separate_storage_ipv6_ipv4_address = !strcasecmp(value, "confirmed") ? 2 :
+							 !strcasecmp(value, "first") ? 3 :
+							 !strcasecmp(value, "first_confirmed") ? 4 :
 							 yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
@@ -12467,6 +12500,9 @@ int eval_config(string inistr) {
 		for (; i != values.end(); ++i) {
 			parse_config_item(i->pItem, &opt_srvcc_numbers);
 		}
+	}
+	if((value = ini.GetValue("general", "srvcc_compare_length", NULL))) {
+		opt_srvcc_compare_number_length = atoi(value);
 	}
 	if((value = ini.GetValue("general", "srvcc_processing_only", NULL))) {
 		opt_srvcc_processing_only = yesno(value);
@@ -12668,7 +12704,8 @@ int eval_config(string inistr) {
 		opt_sip_tcp_reassembly_ext_link_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
-		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "ext") ? 2 : yesno(value);
+		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "comb_ext") ? 3 :
+						       !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_complete_mod", NULL))) {
 		opt_sip_tcp_reassembly_ext_complete_mod = yesno(value);
@@ -12791,6 +12828,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
 		strcpy_null_term(opt_curl_hook_wav, value);
+	}
+	if((value = ini.GetValue("general", "all_configuration_options_in_gui", NULL))) {
+		opt_all_configuration_options_in_gui = yesno(value);
 	}
 
 	/*

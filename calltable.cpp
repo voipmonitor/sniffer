@@ -1186,7 +1186,9 @@ Call::closeRawFiles() {
 		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
-			rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
+			if(!rtp_i->channel_record_is_adaptive()) {
+				rtp_i->jitterbuffer_fixed_flush(rtp_i->channel_record);
+			}
 			if(rtp_i->gfileRAW) {
 				/* preventing race condition as gfileRAW is checking for NULL pointer in rtp classes */ 
 				FILE *tmp;
@@ -1589,7 +1591,7 @@ Call::get_domain_to_not_canceled(bool uri) {
 
 /* analyze rtcp packet */
 bool
-Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
+Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_packet) {
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
 	   packetS->pid.vlan != this->vlan) {
@@ -1624,7 +1626,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 		packetS->set_datalen_(datalen);
 	}
 
-	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), this);
+	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), this, packetS->saddr_(), packetS->daddr_());
 	
 	if(enable_save_packet) {
 		save_packet(this, packetS, _t_packet_rtcp, packetS->datalen_() != datalen_orig, 0, __FILE__, __LINE__);
@@ -1634,7 +1636,7 @@ Call::read_rtcp(packet_s *packetS, int iscaller, char enable_save_packet) {
 
 /* analyze rtp packet */
 bool
-Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
+Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
  
 #if EXPERIMENTAL_LITE_RTP_MOD
  
@@ -1745,7 +1747,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
 	}
 	bool record_dtmf = false;
 	bool disable_save = false;
-	unsigned datalen_orig = packetS->datalen_();
+	unsigned datalen_orig = packetS->datalen_orig_();
 	bool rtp_read_rslt = _read_rtp(packetS, iscaller, sdp_flags, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
 	if(!disable_save) {
 		_save_rtp(packetS, sdp_flags, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
@@ -1761,7 +1763,7 @@ Call::read_rtp(packet_s *packetS, int iscaller, bool find_by_dest, bool stream_i
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
 bool
-Call::_read_rtp(packet_s *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
+Call::_read_rtp(packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	removeRTP_ifSetFlag();
  
@@ -1993,12 +1995,14 @@ read:
 							}
 						}
 						u_int32_t datalen = packetS->datalen_();
+						bool decrypt_ok = packetS->flags.s.decrypt_ok;
 						if(rtp_i->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-							       packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
+							       packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
 								rtp_i->stream_in_multiple_calls = true;
 							}
+							packetS->flags.s.decrypt_ok = decrypt_ok;
 						}
 						if(opt_rtp_stream_analysis_params) {
 							rtp_i->rtp_stream_analysis_output();
@@ -2271,12 +2275,14 @@ read:
 		}
 		
 		u_int32_t datalen = packetS->datalen_();
+		bool decrypt_ok = packetS->flags.s.decrypt_ok;
 		if(rtp_new->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-				 packetS->sensor_id_(), packetS->sensor_ip, ifname)) {
+				 packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 			rtp_read_rslt = true;
 			if(stream_in_multiple_calls) {
 				rtp_new->stream_in_multiple_calls = true;
 			}
+			packetS->flags.s.decrypt_ok = decrypt_ok;
 		}
 		if(opt_rtp_stream_analysis_params) {
 			rtp_new->rtp_stream_analysis_output();
@@ -2336,7 +2342,7 @@ read:
 #endif
 
 void 
-Call::read_dtls(struct packet_s *packetS) {
+Call::read_dtls(packet_s_process_0 *packetS) {
 	dtls_exists = true;
 	if(!dtls) {
 		dtls = new FILE_LINE(0) cDtls;
@@ -2354,7 +2360,7 @@ Call::read_dtls(struct packet_s *packetS) {
 }
 
 void
-Call::_save_rtp(packet_s *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp) {
+Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp) {
 	extern int opt_fax_create_udptl_streams;
 	extern int opt_fax_dup_seq_check;
 	if(opt_fax_create_udptl_streams) {
@@ -6353,10 +6359,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
 		vmIP ipv4[2], ipv6[2];
 		vmPort ipv4_port[2], ipv6_port[2];
-		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 4);
-		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
-		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, opt_separate_storage_ipv6_ipv4_address == 2, 6);
+		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
+		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
+		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
 		if(ipv4[0].isSet()) {
 			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
 			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
@@ -6527,14 +6535,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(opt_mo_mt_identification_prefix.size()) {
 		if(existsColumns.cdr_next_leg_flag) {
-			bool mt = false;
-			for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
-				if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
-					mt = true;
-					break;
-				}
+			eMoMtLegFlag momt_leg = momt_get();
+			if(momt_leg != _momt_na) {
+				cdr_next.add(momt_leg == _momt_mt ? "mt" : "mo", "leg_flag");
 			}
-			cdr_next.add(mt ? "mt" : "mo", "leg_flag");
 		}
 	}
 	if(srvcc_set) {
@@ -9071,7 +9075,8 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
-vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, bool onlyConfirmed, u_int8_t only_ipv) {
+vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
+					bool onlyConfirmed, bool /*onlyFirst*/, u_int8_t only_ipv) {
 	if(sport) {
 		sport->clear();
 	}
@@ -9127,7 +9132,8 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 	return(ip);
 }
 
-vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, bool onlyConfirmed, u_int8_t only_ipv) {
+vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, 
+					bool onlyConfirmed, bool onlyFirst, u_int8_t only_ipv) {
 	if(dport) {
 		dport->clear();
 	}
@@ -9178,6 +9184,9 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 				_daddr = iter->daddr;
 				_dport = iter->dport;
 				iter_rslt = iter;
+				if(onlyFirst) {
+					break;
+				}
 			}
 			if((iter->sport != _sport || iter->saddr != _saddr) && 
 			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
@@ -13184,6 +13193,20 @@ Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 	return(false);
 }
 
+Call::eMoMtLegFlag Call::momt_get() {
+	if(opt_mo_mt_identification_prefix.size()) {
+		bool mt = false;
+		for(unsigned i = 0; i < opt_mo_mt_identification_prefix.size(); i++) {
+			if(!strncasecmp(call_id.c_str(), opt_mo_mt_identification_prefix[i].c_str(), opt_mo_mt_identification_prefix[i].length())) {
+				mt = true;
+				break;
+			}
+		}
+		return(mt ? _momt_mt : _momt_mo);
+	}
+	return(_momt_na);
+}
+
 void Call::srvcc_check_post() {
 	if(!srvcc_set || !srvcc_numbers) {
 		return;
@@ -13199,8 +13222,13 @@ void Call::srvcc_check_pre() {
 		return;
 	}
 	u_int64_t last_time_us = get_last_time_us();
-	string call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
-	if(call_id.empty()) {
+	eMoMtLegFlag momt_leg = momt_get();
+	string call_id;
+	if(momt_leg == _momt_na || momt_leg == _momt_mo) {
+		call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
+	}
+	if(call_id.empty() &&
+	   (momt_leg == _momt_na || momt_leg == _momt_mt)) {
 		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us, last_time_us);
 	}
 	if(!call_id.empty()) {

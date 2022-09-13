@@ -25,7 +25,7 @@ extern int opt_tcpreassembly_thread;
 			   0)
 	
 #define TCP_SEQ_SUB(seq1, seq2) \
-	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFF0000u) - (seq1) + (seq2)) : \
+	(TCP_SEQ_IS_ROT(seq1, seq2) ? (((u_int32_t)0xFFFFFFFFu) - (seq1) + (seq2)) : \
 				      ((seq1) - (seq2)))
 
 
@@ -682,6 +682,8 @@ public:
 		this->uData2_last = uData2;
 		this->check_duplicity_seq = NULL;
 		this->check_duplicity_seq_length = 10;
+		this->counter = 0;
+		this->exists_sip = false;
 	}
 	~TcpReassemblyLink();
 	bool push(TcpReassemblyStream::eDirection direction,
@@ -691,6 +693,10 @@ public:
 		  bool isSip) {
 		if(datalen) {
 			this->exists_data = true;
+		}
+		++this->counter;
+		if(isSip) {
+			this->exists_sip = true;
 		}
 		if(this->state == STATE_CRAZY) {
 			return(this->push_crazy(
@@ -919,6 +925,8 @@ private:
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;
+	u_int64_t counter;
+	bool exists_sip;
 friend class TcpReassembly;
 friend class TcpReassemblyStream;
 };
@@ -1116,7 +1124,7 @@ public:
 	void setLinkTimeout(u_int32_t linkTimeout) {
 		this->linkTimeout = linkTimeout;
 	}
-	bool checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
+	bool checkOkData(u_char * data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used = NULL);
 	void enableDumper(const char *fileName, const char *ports);
 private:
 	void _push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet,

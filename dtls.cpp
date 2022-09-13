@@ -273,6 +273,8 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 		if(!exists) {
 			keys->push_back(keys_item);
 			call->dtls_keys_add(keys_item);
+		} else {
+			delete keys_item;
 		}
 	}
 	if(sverb.dtls && ssl_sessionkey_enable()) {

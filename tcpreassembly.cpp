@@ -257,7 +257,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 						break;
 					default:
 						if(link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), 
-										 link->reassembly->enableStrictValidateDataViaCheckData, false,
+										 link->reassembly->enableStrictValidateDataViaCheckData ? TcpReassemblySip::_chssm_strict : TcpReassemblySip::_chssm_na,
 										 &link->sip_offsets)) {
 							this->detect_ok_max_next_seq = next_seq;
 							return(1);
@@ -293,7 +293,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 							}
 							if(needValidateDataViaCheckData) {
 								if(!link->reassembly->checkOkData(this->complete_data.getData(), this->complete_data.getDatalen(), 
-												  false, false, &link->sip_offsets)) {
+												  TcpReassemblySip::_chssm_na, &link->sip_offsets)) {
 									this->is_ok = false;
 									this->clearCompleteData();
 									return(0);
@@ -495,7 +495,7 @@ u_char *TcpReassemblyStream::complete(u_int32_t *datalen, deque<s_index_item> *d
 			break;
 		default:
 			if(breakIfPsh && packet.header_tcp.flags_bit.psh &&
-			   link->reassembly->checkOkData(data, *datalen, false, false, &link->sip_offsets)) {
+			   link->reassembly->checkOkData(data, *datalen, TcpReassemblySip::_chssm_na, &link->sip_offsets)) {
 				// TODO: remove next items from ok_packets ?
 				_break = true;
 			}
@@ -1088,6 +1088,18 @@ bool TcpReassemblyLink::push_normal(
 	    !header_tcp.flags_bit.fin && !header_tcp.flags_bit.rst) || 
 	   reassembly->ignoreTcpHandshake) {
 		if(datalen > 0) {
+			if(!this->queueStreams.size() && (data[0] == '\n' || data[0] == '\r' || data[0] == 0)) {
+				bool ok = false;
+				for(unsigned i = 0; i < datalen; i++) {
+					if(!(data[i] == '\n' || data[i] == '\r' || data[i] == 0)) {
+						ok = true;
+						break;
+					}
+				}
+				if(!ok) {
+					return(false);
+				}
+			}
 			TcpReassemblyStream_packet packet;
 			packet.setData(time, header_tcp,
 				       data, datalen, datacaplen,
@@ -1137,7 +1149,8 @@ bool TcpReassemblyLink::push_normal(
 	if(!reassembly->enableCleanupThread) {
 		bool final = !reassembly->simpleByAck &&
 			     (this->state == STATE_RESET || this->state == STATE_CLOSE);
-		if(this->queueStreams.size()) {
+		if(this->queueStreams.size() &&
+		   !(reassembly->getType() == TcpReassembly::sip && !exists_sip)) {
 			if(ENABLE_DEBUG(reassembly->getType(), _debug_check_ok)) {
 				(*_debug_stream) << " -- TRY ack " << header_tcp.ack_seq << endl;
 			}
@@ -1678,8 +1691,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 											}
 											if(!ok) {
 												TcpReassemblyStream_packet *packet = streams[streams.size() - 1]->getPacket(streams[streams.size() - 1]->ok_packets[0][0], streams[streams.size() - 1]->ok_packets[0][1]);
-												extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool *sip_response);
-												if(packet && !process_packet__parse_sip_method_ext((char*)packet->data, packet->datalen, NULL)) {
+												extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response);
+												if(packet && !process_packet__parse_sip_method_ext((char*)packet->data, packet->datalen, true, NULL)) {
 													ok = true;
 												}
 											}
@@ -1726,7 +1739,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 						if(streams.size() == 1) {
 							u_int32_t datalen_confirmed;
 							if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), 
-										   reassembly->completeMod == 1 ? false : true, false,
+										   reassembly->completeMod == 1 ? TcpReassemblySip::_chssm_na : TcpReassemblySip::_chssm_strict,
 										   &sip_offsets, &datalen_confirmed)) {
 								if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 									(*_debug_stream)
@@ -1837,7 +1850,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 								}
 								u_int32_t datalen_confirmed;
 								if(reassembly->checkOkData(data.data(), data.size(), 
-											   reassembly->completeMod == 1 ? false : true, checkOkStreams > 1 ? true : false,
+											   (reassembly->completeMod == 1 ? TcpReassemblySip::_chssm_na : TcpReassemblySip::_chssm_strict) |
+											   (checkOkStreams > 1 ? TcpReassemblySip::_chssm_ext : TcpReassemblySip::_chssm_na),
 											   &sip_offsets, &datalen_confirmed)) {
 									if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 										(*_debug_stream)
@@ -1944,7 +1958,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 						stream->saveCompleteData();
 						u_int32_t datalen_confirmed;
 						if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), 
-									   reassembly->completeMod == 1 ? false : true, false, 
+									   reassembly->completeMod == 1 ? TcpReassemblySip::_chssm_na : TcpReassemblySip::_chssm_strict, 
 									   &sip_offsets, &datalen_confirmed)) {
 							if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 								(*_debug_stream)
@@ -1995,7 +2009,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 								stream->saveCompleteData();
 								u_int32_t datalen_confirmed;
 								if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), 
-											   reassembly->completeMod == 1 ? false : true, false, 
+											   reassembly->completeMod == 1 ? TcpReassemblySip::_chssm_na : TcpReassemblySip::_chssm_strict, 
 											   &sip_offsets, &datalen_confirmed)) {
 									if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 										(*_debug_stream)
@@ -2046,7 +2060,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 						stream->saveCompleteData();
 						u_int32_t datalen_confirmed;
 						if(reassembly->checkOkData(stream->complete_data.getData(), stream->complete_data.getDatalen(), 
-									   reassembly->completeMod == 1 ? false : true, false, 
+									   reassembly->completeMod == 1 ? TcpReassemblySip::_chssm_na : TcpReassemblySip::_chssm_strict, 
 									   &sip_offsets, &datalen_confirmed)) {
 							if(ENABLE_DEBUG(reassembly->getType(), _debug_rslt)) {
 								(*_debug_stream)
@@ -3170,7 +3184,7 @@ string TcpReassembly::getCpuUsagePerc() {
 		}
 		outStr << links.size() << 'l';
 		extern int opt_sip_tcp_reassembly_ext_quick_mod;
-		if(opt_sip_tcp_reassembly_ext_quick_mod != 2 && this->enableExtStat) {
+		if(!(opt_sip_tcp_reassembly_ext_quick_mod & 2) && this->enableExtStat) {
 			if(this->enablePushLock) {
 				this->lock_push();
 			}
@@ -3412,7 +3426,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	}
 }
 
-bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, bool strict, bool check_ext, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used) {
+bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *sip_offsets, u_int32_t *datalen_used) {
 	switch(type) {
 	case http:
 		return(true);
@@ -3432,7 +3446,7 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, bool strict, b
 		if(check_websocket(data, datalen)) {
 			sip_offsets->push_back(d_u_int32_t(0, datalen));
 			return(true);
-		} else if(checkOkSipData(data, datalen, strict, check_ext, sip_offsets, datalen_used)) {
+		} else if(checkOkSipData(data, datalen, strict_mode, sip_offsets, datalen_used)) {
 			return(true);
 		}
 		break;

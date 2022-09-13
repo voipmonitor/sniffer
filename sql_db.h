@@ -333,7 +333,7 @@ public:
 	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	int _queryByRemoteSocket(string query, unsigned int pass);
-	int processResponseFromQueryBy(const char *response, unsigned pass);
+	int processResponseFromQueryBy(const char *response, const char *query, unsigned pass);
 	int processResponseFromCsv(const char *response);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow() = 0;

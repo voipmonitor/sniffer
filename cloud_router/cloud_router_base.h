@@ -46,8 +46,6 @@ struct sCloudRouterVerbose {
 		start_client = true;
 		connect_command = true;
 		connect_info = true;
-		socket_decode = false;
-		sql_query = false;
 		sql_error = true;
 	}
 	bool start_server;
@@ -55,10 +53,13 @@ struct sCloudRouterVerbose {
 	bool socket_connect;
 	bool connect_command;
 	bool connect_info;
+	bool connect_info_service;
 	bool create_thread;
 	bool socket_decode;
+	bool sql_connect;
 	bool sql_query;
 	bool sql_error;
+	bool sql_ignore_query;
 };
 
 
@@ -214,6 +215,61 @@ private:
         map<vmIP, u_int32_t> ip_counter;
         volatile int _sync_lock;
 };
+
+
+class cCounterIP_per_interval {
+public:
+	struct sCountInterval {
+		sCountInterval() {
+			count = 0;
+			start_interval_ms = 0;
+		}
+		u_int32_t count;
+		u_int64_t start_interval_ms;
+	};
+public:
+	cCounterIP_per_interval(u_int64_t interval_ms = 10000) {
+		this->interval_ms = interval_ms;
+		_sync_lock = 0;
+	}
+	u_int32_t inc(vmIP ip) {
+		u_int32_t rslt = 0;
+		lock();
+		u_int64_t act_time_ms = getTimeMS_rdtsc();
+		map<vmIP, sCountInterval>::iterator iter = ip_counter.find(ip);
+		if(iter != ip_counter.end()) {
+			if(act_time_ms > iter->second.start_interval_ms + interval_ms) {
+				iter->second.count = 1;
+				iter->second.start_interval_ms = act_time_ms;
+				rslt = 1;
+			} else {
+				rslt = ++iter->second.count;
+			}
+		} else {
+			sCountInterval ci;
+			ci.count = 1;
+			ci.start_interval_ms = act_time_ms;
+			ip_counter[ip] = ci;
+			rslt = 1;
+		}
+		unlock();
+		return(rslt);
+	}
+private:
+        void lock() {
+                while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+                        if(SYNC_LOCK_USLEEP) {
+                                usleep(SYNC_LOCK_USLEEP);
+                        }
+                }
+        }
+        void unlock() {
+                __sync_lock_release(&_sync_lock);
+        }
+private:
+	u_int64_t interval_ms;
+        map<vmIP, sCountInterval> ip_counter;
+        volatile int _sync_lock;};
 
 
 class cSocket {
