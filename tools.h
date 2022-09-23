@@ -325,9 +325,11 @@ void set_mac();
 bool existsAnotherInstance();
 bool existsPidProcess(int pid);
 int mkdir_r(std::string, mode_t, unsigned uid = 0, unsigned gid = 0);
-int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
-int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
-int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
+int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code =  NULL, int line_src_code = 0);
+int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code = NULL, int line_src_code = 0);
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code = NULL, int line_src_code = 0);
+int unlink(const char *pathname, const char *file_src_code, int line_src_code);
+int rmdir(const char *path, const char *file_src_code, int line_src_code);
 int64_t cp_r(const char *src, const char *dst, bool move = false);
 inline int64_t mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
 

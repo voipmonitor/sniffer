@@ -1311,6 +1311,7 @@ string extract_payload;
 string extract_rtp_payload;
 
 bool opt_all_configuration_options_in_gui = false;
+bool opt_all_unlink_log = false;
 
 
 #include <stdio.h>
@@ -7982,6 +7983,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12831,6 +12833,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "all_configuration_options_in_gui", NULL))) {
 		opt_all_configuration_options_in_gui = yesno(value);
+	}
+	if((value = ini.GetValue("general", "all_unlink_log", NULL))) {
+		opt_all_unlink_log = yesno(value);
 	}
 
 	/*
