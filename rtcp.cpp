@@ -200,7 +200,72 @@ extern unsigned int opt_ignoreRTCPjitter;
 **----------------------------------------------------------------------------
 */
 
-char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst)
+
+struct sPrepareRtcpDataParams {
+	struct sRtpStream {
+		vmIP saddr;
+		vmIP daddr;
+		u_int32_t ssrc;
+		int index;
+	};
+	vector<int> select_streams;
+	vector<sRtpStream> rtp_streams;
+	double jitter_limit;
+	sPrepareRtcpDataParams() {
+		jitter_limit = 0;
+	}
+};
+
+sPrepareRtcpDataParams *prepare_rtcp_data_params;
+
+
+static inline RTP *find_rtp(Call *call, u_int32_t ssrc, vmIP ip_src, vmIP ip_dst, int *rtp_find_type) {
+	RTP *rtp = NULL;
+	*rtp_find_type = -1;
+	for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
+		for(int i = 0; i < call->rtp_size(); i++) { 
+			RTP *rtp_i = call->rtp_stream_by_index(i);
+			if(rtp_i->ssrc == ssrc &&
+			   ((find_pass == 0 && 
+			     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
+			      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
+			    find_pass == 1)) {
+				rtp = rtp_i;
+				*rtp_find_type = find_pass;
+			}
+		}
+	}
+	return(rtp);
+}
+
+static inline int find_rtp_index(u_int32_t ssrc, vmIP ip_src, vmIP ip_dst) {
+	int stream_index = -1;
+	for(int find_pass = 0; find_pass < 2 && stream_index == -1; find_pass++) {
+		for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
+			if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc &&
+			   ((find_pass == 0 && 
+			     ((prepare_rtcp_data_params->rtp_streams[i].saddr == ip_src && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_dst) ||
+			      (prepare_rtcp_data_params->rtp_streams[i].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_src))) ||
+			    find_pass == 1)) {
+				stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
+			}
+		}
+	}
+	if(stream_index >= 0) {
+		if(prepare_rtcp_data_params->select_streams.size() == 0) {
+			return(stream_index);
+		} else {
+			for(unsigned i = 0; i < prepare_rtcp_data_params->select_streams.size(); i++) { 
+				if(stream_index == prepare_rtcp_data_params->select_streams[i]) {
+					return(stream_index);
+				}
+			}
+		}
+	}
+	return(-1);
+}
+ 
+char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_sr_senderinfo_t senderinfo;
@@ -276,86 +341,82 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 		reportblock.lsr = ntohl(reportblock.lsr);
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
 
-		RTP *rtp = NULL;
-		int rtp_find_type = -1;
-		for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
-			for(int i = 0; i < call->rtp_size(); i++) { 
-				RTP *rtp_i = call->rtp_stream_by_index(i);
-				if(rtp_i->ssrc == reportblock.ssrc &&
-				   ((find_pass == 0 && 
-				     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
-				      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
-				    find_pass == 1)) {
-					// found 
-					rtp = rtp_i;
-					rtp_find_type = find_pass;
+		if(!prepare_rtcp_data_params) {
+			int rtp_find_type;
+			RTP *rtp = find_rtp(call, reportblock.ssrc, ip_src, ip_dst, &rtp_find_type);
+			if(rtp) {
+				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
+				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
+				loss |= (int32_t)reportblock.packets_lost[0];
+				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
+				rtp->rtcp.counter++;
+				rtp->rtcp.loss = loss;
+				if (reportblock.frac_lost)
+					rtp->rtcp.fraclost_pkt_counter++;
+				rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+				rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
+				if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {
+					rtp->rtcp.jitt_counter++;
+					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-			}
-		}
-	
-		int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
-		loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
-		loss |= (int32_t)reportblock.packets_lost[0];
-		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
-
-		if(rtp) {
-			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rtp->rtcp.counter++;
-			rtp->rtcp.loss = loss;
-			if (reportblock.frac_lost)
-				rtp->rtcp.fraclost_pkt_counter++;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
-			if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {
-				rtp->rtcp.jitt_counter++;
-				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
-				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
-			}
-			// calculate rtcp round trip delay
-			if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
-				if (last_lsr && last_lsr_delay && rtp_sender) {
-					int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
-					if (tmpdiff > 0) {
-						rtp_sender->rtcp.rtd_sum += tmpdiff;
-						rtp_sender->rtcp.rtd_count++;
-						if (rtp_sender->rtcp.rtd_max < (uint)tmpdiff) {
-							rtp_sender->rtcp.rtd_max = tmpdiff;
+				// calculate rtcp round trip delay
+				if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
+					if (last_lsr && last_lsr_delay && rtp_sender) {
+						int tmpdiff = cur_lsr - last_lsr - last_lsr_delay - reportblock.delay_since_lsr;
+						if (tmpdiff > 0) {
+							rtp_sender->rtcp.rtd_sum += tmpdiff;
+							rtp_sender->rtcp.rtd_count++;
+							if (rtp_sender->rtcp.rtd_max < (uint)tmpdiff) {
+								rtp_sender->rtcp.rtd_max = tmpdiff;
+							}
+						}
+					}
+					if (timerisset(&rtp->rtcp.sniff_ts)) {
+						struct timeval tmpts;
+						timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
+						unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr *1000 / 65536;
+						if (ms > 0) {
+							rtp->rtcp.rtd_w_count++;
+							rtp->rtcp.rtd_w_sum += ms;
+							if (rtp->rtcp.rtd_w_max < ms) {
+								rtp->rtcp.rtd_w_max = ms;
+							}
 						}
 					}
 				}
-				if (timerisset(&rtp->rtcp.sniff_ts)) {
-					struct timeval tmpts;
-					timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
-					unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr *1000 / 65536;
-					if (ms > 0) {
-						rtp->rtcp.rtd_w_count++;
-						rtp->rtcp.rtd_w_sum += ms;
-						if (rtp->rtcp.rtd_w_max < ms) {
-							rtp->rtcp.rtd_w_max = ms;
-						}
-					}
+				rtp->rtcp.last_lsr = reportblock.lsr;
+				rtp->rtcp.last_lsr_delay = reportblock.delay_since_lsr;
+				#endif
+				if(sverb.debug_rtcp) {
+					cout << "sSSRC: " << hex << reportblock.ssrc << dec
+					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
+					     << " RTP->ssrc_index: " << rtp->ssrc_index
+					     << " Fraction lost: " << (int)reportblock.frac_lost
+					     << " Packets lost: " << loss
+					     << " Highest seqno received: " << reportblock.ext_seqno_recvd
+					     << " Jitter: " << reportblock.jitter
+					     << " Last SR: " << reportblock.lsr
+					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     << endl;
 				}
-			}
-			rtp->rtcp.last_lsr = reportblock.lsr;
-			rtp->rtcp.last_lsr_delay = reportblock.delay_since_lsr;
-			#endif
-
-			if(sverb.debug_rtcp) {
-				cout << "sSSRC: " << hex << reportblock.ssrc << dec
-				     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
-				     << " RTP->ssrc_index: " << rtp->ssrc_index
-				     << " Fraction lost: " << (int)reportblock.frac_lost
-				     << " Packets lost: " << loss
-				     << " Highest seqno received: " << reportblock.ext_seqno_recvd
-				     << " Jitter: " << reportblock.jitter
-				     << " Last SR: " << reportblock.lsr
-				     << " Delay since last SR: " <<reportblock.delay_since_lsr
-				     << endl;
+			} else {
+				if(sverb.debug_rtcp) {
+					cout << "sSSRC: " << hex << reportblock.ssrc << dec 
+					     << " skipped (no rtp stream with this ssrc)" 
+					     << endl;
+				}
 			}
 		} else {
-			if(sverb.debug_rtcp) {
-				cout << "sSSRC: " << hex << reportblock.ssrc << dec 
-				     << " skipped (no rtp stream with this ssrc)" 
+			int stream_index = find_rtp_index(reportblock.ssrc, ip_src, ip_dst);
+			if(stream_index >= 0) {
+				cout << "rtcp,"
+				     << stream_index << ","
+				     << TIME_US_TO_SF(call->getRelTime(ts)) << ","
+				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
+				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
+				     << (srtcp ? "1" : "")
 				     << endl;
 			}
 		}
@@ -374,7 +435,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 **----------------------------------------------------------------------------
 */
 
-char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst)
+char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_sr_reportblock_t reportblock;
@@ -414,73 +475,72 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 		reportblock.jitter = ntohl(reportblock.jitter);
 		reportblock.lsr = ntohl(reportblock.lsr);
 		reportblock.delay_since_lsr = ntohl(reportblock.delay_since_lsr);
+		
+		if(!prepare_rtcp_data_params) {
 
-		RTP *rtp = NULL;
-		int rtp_find_type = -1;
-		for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
-			for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
-				if(rtp_i->ssrc == reportblock.ssrc &&
-				   ((find_pass == 0 && 
-				     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
-				      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
-				    find_pass == 1)) {
-					// found 
-					rtp = rtp_i;
-					rtp_find_type = find_pass;
+			int rtp_find_type;
+			RTP *rtp = find_rtp(call, reportblock.ssrc, ip_src, ip_dst, &rtp_find_type);
+			if(rtp) {
+				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
+				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
+				loss |= (int32_t)reportblock.packets_lost[0];
+				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
+				#if not EXPERIMENTAL_LITE_RTP_MOD
+				rtp->rtcp.counter++;
+				rtp->rtcp.loss = loss;
+				if (reportblock.frac_lost)
+					rtp->rtcp.fraclost_pkt_counter++;
+				rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
+				rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
+				if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {
+					rtp->rtcp.jitt_counter++;
+					rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
+					rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
 				}
-			}
-		}
-
-		int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
-		loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
-		loss |= (int32_t)reportblock.packets_lost[0];
-		loss = loss & 0x800000 ? 0xff000000 | loss : loss;
-
-		if(rtp) {
-			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rtp->rtcp.counter++;
-			rtp->rtcp.loss = loss;
-			if (reportblock.frac_lost)
-				rtp->rtcp.fraclost_pkt_counter++;
-			rtp->rtcp.maxfr = (rtp->rtcp.maxfr < reportblock.frac_lost) ? reportblock.frac_lost : rtp->rtcp.maxfr;
-			rtp->rtcp.avgfr = (rtp->rtcp.avgfr * (rtp->rtcp.counter - 1) + reportblock.frac_lost) / rtp->rtcp.counter;
-			if (opt_ignoreRTCPjitter == 0 or reportblock.jitter < opt_ignoreRTCPjitter) {
-				rtp->rtcp.jitt_counter++;
-				rtp->rtcp.maxjitter = (rtp->rtcp.maxjitter < reportblock.jitter) ? reportblock.jitter : rtp->rtcp.maxjitter;
-				rtp->rtcp.avgjitter = (rtp->rtcp.avgjitter * (rtp->rtcp.jitt_counter - 1) + reportblock.jitter) / rtp->rtcp.jitt_counter;
-			}
-			// calculate rtcp round trip delay
-			if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
-				if (timerisset(&rtp->rtcp.sniff_ts)) {
-					struct timeval tmpts;
-					timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
-					unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr * 1000 / 65536;
-					if (ms > 0) {
-						rtp->rtcp.rtd_w_count++;
-						rtp->rtcp.rtd_w_sum += ms;
-						if (rtp->rtcp.rtd_w_max < ms) {
-							rtp->rtcp.rtd_w_max = ms;
+				// calculate rtcp round trip delay
+				if (reportblock.lsr && reportblock.delay_since_lsr && rtp->rtcp.lsr4compare == reportblock.lsr) {
+					if (timerisset(&rtp->rtcp.sniff_ts)) {
+						struct timeval tmpts;
+						timersub(ts, &rtp->rtcp.sniff_ts, &tmpts);
+						unsigned int ms = tmpts.tv_sec * 1000 + tmpts.tv_usec / 1000 - reportblock.delay_since_lsr * 1000 / 65536;
+						if (ms > 0) {
+							rtp->rtcp.rtd_w_count++;
+							rtp->rtcp.rtd_w_sum += ms;
+							if (rtp->rtcp.rtd_w_max < ms) {
+								rtp->rtcp.rtd_w_max = ms;
+							}
 						}
 					}
 				}
-			}
-			#endif
-			if(sverb.debug_rtcp) {
-				cout << "rSSRC: " << hex << reportblock.ssrc << dec
-				     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
-				     << " RTP->ssrc_index: " << rtp->ssrc_index
-				     << " Fraction lost: " << (int)reportblock.frac_lost
-				     << " Packets lost: " << loss
-				     << " Highest seqno received: " << reportblock.ext_seqno_recvd
-				     << " Jitter: " << reportblock.jitter
-				     << " Last SR: " << reportblock.lsr
-				     << " Delay since last SR: " <<reportblock.delay_since_lsr
-				     << endl;
+				#endif
+				if(sverb.debug_rtcp) {
+					cout << "rSSRC: " << hex << reportblock.ssrc << dec
+					     << " " << ip_src.getString() << "->" << ip_dst.getString() << " (" <<  rtp_find_type << ")"
+					     << " RTP->ssrc_index: " << rtp->ssrc_index
+					     << " Fraction lost: " << (int)reportblock.frac_lost
+					     << " Packets lost: " << loss
+					     << " Highest seqno received: " << reportblock.ext_seqno_recvd
+					     << " Jitter: " << reportblock.jitter
+					     << " Last SR: " << reportblock.lsr
+					     << " Delay since last SR: " <<reportblock.delay_since_lsr
+					     << endl;
+				}
+			} else {
+				if(sverb.debug_rtcp) {
+					cout << "sSSRC: " << hex << reportblock.ssrc << dec 
+					     << " skipped (no rtp stream with this ssrc)" 
+					     << endl;
+				}
 			}
 		} else {
-			if(sverb.debug_rtcp) {
-				cout << "sSSRC: " << hex << reportblock.ssrc << dec 
-				     << " skipped (no rtp stream with this ssrc)" 
+			int stream_index = find_rtp_index(reportblock.ssrc, ip_src, ip_dst);
+			if(stream_index >= 0) {
+				cout << "rtcp,"
+				     << stream_index << ","
+				     << TIME_US_TO_SF(call->getRelTime(ts)) << ","
+				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
+				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
+				     << (srtcp ? "1" : "")
 				     << endl;
 			}
 		}
@@ -689,7 +749,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 **----------------------------------------------------------------------------
 */
 
-void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, vmIP ip_dst)
+void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, vmIP ip_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_header_t *rtcp;
@@ -698,6 +758,7 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, v
 		cout << "RTCP PACKET " << call->fbasename
 		     << " ts: " << ts->tv_sec << "." 
 				<< setfill('0') << setw(6) << ts->tv_usec
+		     << " " << ip_src.getString() << "->" << ip_dst.getString()
 		     << endl;
 	}
 
@@ -741,19 +802,25 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, v
 			
 		switch(rtcp->packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst);
+			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst, srtcp);
 			break;
 		case RTCP_PACKETTYPE_RR:
-			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst);
+			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst, srtcp);
 			break;
 		case RTCP_PACKETTYPE_SDES:
 			// we do not need to parse it
 			//dump_rtcp_sdes(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc);
+			if(sverb.debug_rtcp) {
+				cout << " * packet type: sdes - skip" << endl;
+			}
 			break;
 		case RTCP_PACKETTYPE_XR:
 			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp_size, call);
 			break;
 		default:
+			if(sverb.debug_rtcp) {
+				cout << " * packet type: other - skip" << endl;
+			}
 			break;
 		}
 
@@ -763,4 +830,37 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, v
 	if(sverb.debug_rtcp) {
 		cout << endl;
 	}
+}
+
+
+void parseRtcpParams(string &rtcp_params_string, sPrepareRtcpDataParams *rtcp_params) {
+	JsonItem jsonData;
+	jsonData.parse(rtcp_params_string);
+	JsonItem *item_streams = jsonData.getItem("select_streams");
+	if(item_streams) {
+		for(size_t i = 0; i < item_streams->getLocalCount(); i++) {
+			rtcp_params->select_streams.push_back(atoi(item_streams->getLocalItem(i)->getLocalValue().c_str()));
+		}
+	}
+	JsonItem *item_rtp_streams = jsonData.getItem("rtp_streams");
+	if(item_rtp_streams) {
+		for(size_t i = 0; i < item_rtp_streams->getLocalCount(); i++) {
+			JsonItem *item_rtp_stream = item_rtp_streams->getLocalItem(i);
+			sPrepareRtcpDataParams::sRtpStream rtp_stream;
+			rtp_stream.saddr = str_2_vmIP(item_rtp_stream->getValue("saddr").c_str());
+			rtp_stream.daddr = str_2_vmIP(item_rtp_stream->getValue("daddr").c_str());
+			rtp_stream.ssrc = atoll(item_rtp_stream->getValue("ssrc").c_str());
+			rtp_stream.index = atoll(item_rtp_stream->getValue("index").c_str());
+			rtcp_params->rtp_streams.push_back(rtp_stream);
+		}
+	}
+	JsonItem *item_jitter_limit = jsonData.getItem("jitter_limit");
+	if(item_jitter_limit) {
+		rtcp_params->jitter_limit = atof(item_jitter_limit->getLocalValue().c_str());
+	}
+}
+
+void parseRtcpParams(string &rtcp_params_string) {
+	prepare_rtcp_data_params = new FILE_LINE(0) sPrepareRtcpDataParams;
+	parseRtcpParams(rtcp_params_string, prepare_rtcp_data_params);
 }

@@ -44,7 +44,8 @@ enum eProcessPcapType {
 	_pp_read_file = 1,
 	_pp_process_calls = 2,
 	_pp_dedup = 4,
-	_pp_anonymize_ip = 8
+	_pp_anonymize_ip = 8,
+	_pp_prepare_rtcp_data = 16
 };
 
 bool open_global_pcap_handle(const char *pcap, string *error = NULL);

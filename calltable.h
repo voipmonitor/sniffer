@@ -641,6 +641,9 @@ public:
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
 		return(time_s ? (time_s - time_shift_ms / 1000) : 0);
 	}
+	inline u_int64_t getRelTime(struct timeval *ts) {
+		return(getTimeUS(ts) > first_packet_time_us ? getTimeUS(ts) - first_packet_time_us : 0);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
@@ -2391,11 +2394,17 @@ public:
 		return(ssrc_n);
 	}
 	
+	inline bool existsSrtp() {
+		return(exists_srtp);
+	}
 	inline bool existsSrtpCryptoConfig() {
 		return(exists_srtp_crypto_config);
 	}
 	inline bool existsSrtpFingerprint() {
 		return(exists_srtp_fingerprint);
+	}
+	inline bool isSrtpInIpPort(int indexIpPort) {
+		return(ip_port[indexIpPort].srtp);
 	}
 	
 	void dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item);
