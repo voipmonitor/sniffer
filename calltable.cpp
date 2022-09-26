@@ -6802,8 +6802,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
 					/* max jitter (interarrival jitter) may be 32bit unsigned int, so use MIN for sure (we use smallint unsigned) */
-					cdr.add(MIN(0xFFFF, rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec)), c+"_rtcp_maxjitter");
+					int rtcp_maxjitter = (int)round((double)rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec));
 					rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
+					if(rtcp_maxjitter * 10 < rtcp_avgjitter_mult10[i]) {
+						++rtcp_maxjitter;
+					}
+					cdr.add(MIN(0xFFFF, rtcp_maxjitter), c+"_rtcp_maxjitter");
 					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 					if (existsColumns.cdr_rtcp_fraclost_pktcount)
 						cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
