@@ -4098,7 +4098,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 	   (call->typeIsOnly(MESSAGE) ?
 		((call->lastSIPresponseNum != 487 && lastSIPresponseNum > call->lastSIPresponseNum) ||
-		 (call->lastSIPresponseNum == 407 && lastSIPresponseNum / 100 == 2)) :
+		 ((call->lastSIPresponseNum == 401 || call->lastSIPresponseNum == 407) && lastSIPresponseNum / 100 == 2)) :
 		((call->lastSIPresponseNum != 487 || 
 		  (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
 		  (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
