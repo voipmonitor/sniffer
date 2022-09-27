@@ -9231,11 +9231,15 @@ unsigned Call::getMaxRetransmissionInvite() {
 	unsigned max_retrans = 0;
 	invite_list_lock();
 	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
-		if(iter->counter > 1 && (iter->counter - 1) > max_retrans) {
-			max_retrans = iter->counter - 1;
+		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_by_cseq.begin(); iter_c != iter->counter_by_cseq.end(); iter_c++) {
+			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
+				max_retrans = iter_c->second - 1;
+			}
 		}
-		if(iter->counter_reverse > 1 && (iter->counter_reverse - 1) > max_retrans) {
-			max_retrans = iter->counter_reverse - 1;
+		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_reverse_by_cseq.begin(); iter_c != iter->counter_reverse_by_cseq.end(); iter_c++) {
+			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
+				max_retrans = iter_c->second - 1;
+			}
 		}
 	}
 	invite_list_unlock();

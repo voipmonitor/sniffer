@@ -763,6 +763,8 @@ public:
 		bool confirmed;
 		unsigned counter;
 		unsigned counter_reverse;
+		map<u_int32_t, u_int32_t> counter_by_cseq;
+		map<u_int32_t, u_int32_t> counter_reverse_by_cseq;
 		string caller;
 		string called;
 		string called_invite;

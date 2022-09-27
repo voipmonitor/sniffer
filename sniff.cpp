@@ -3973,6 +3973,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				existInviteSdaddr = true;
 				inviteSdaddrIndex = inviteSdaddrCounter;
 				++iter->counter;
+				++iter->counter_by_cseq[packetS->cseq.number];
 				break;
 			} else if(packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
 				if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport) {
@@ -3981,6 +3982,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						mainInviteForReverse = &(*iter);
 					}
 					++iter->counter_reverse;
+					++iter->counter_reverse_by_cseq[packetS->cseq.number];
 					if(sverb.reverse_invite) {
 						cout << "reverse invite: invite / " << call->call_id << endl;
 					}
@@ -4003,6 +4005,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				invite_sd.sport = packetS->source_();
 				invite_sd.dport = packetS->dest_();
 				invite_sd.counter = 1;
+				invite_sd.counter_by_cseq[packetS->cseq.number] = 1;
 				if(opt_sdp_check_direction_ext) {
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &invite_sd.called, ppntt_to, ppndt_called);
@@ -4021,6 +4024,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						existRInviteSdaddr = true;
 						reverseInvite = &(*riter);
 						++riter->counter;
+						++riter->counter_by_cseq[packetS->cseq.number];
 						break;
 					}
 				}
@@ -4035,6 +4039,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					rinvite_sd.sport = packetS->source_();
 					rinvite_sd.dport = packetS->dest_();
 					rinvite_sd.counter = 1;
+					rinvite_sd.counter_by_cseq[packetS->cseq.number] = 1;
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &rinvite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &rinvite_sd.called_invite, ppntt_invite, ppndt_called);
