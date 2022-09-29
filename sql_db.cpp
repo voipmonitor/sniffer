@@ -1964,7 +1964,7 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		}
 	}
 	if(missing || diff) {
-		syslog(LOG_NOTICE, "create %s %s", (routineType == procedure ? "procedure" : "function"), routineName.c_str());
+		syslog(LOG_NOTICE, "%s %s %s", diff ? "update" : "create",(routineType == procedure ? "procedure" : "function"), routineName.c_str());
 		this->query(string("drop ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") +
 			    " if exists " + routineName);
 		bool rslt = this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
