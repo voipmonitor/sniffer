@@ -378,6 +378,7 @@ struct raws_t {
 	int frame_size;
 	struct timeval tv;
 	string filename;
+	class RTP *rtp;
 };
 
 enum eCallField {

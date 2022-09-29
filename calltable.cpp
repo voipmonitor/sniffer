@@ -3341,6 +3341,7 @@ Call::convertRawToWav() {
 		unsigned int last_ssrc_index = 0;
 		long long last_size = 0;
 		unsigned int unknown_codec_counter = 0;
+		RTP *last_rtp = NULL;
 		/* 
 			read rawInfo file where there are stored raw files (rtp streams) 
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
@@ -3354,14 +3355,15 @@ Call::convertRawToWav() {
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(!force_convert_raw_to_wav &&
-			   (ssrc_index < 0 || ssrc_index >= rtp_size() ||
-			    last_ssrc_index >= (unsigned)rtp_size())) {
-				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
-				       ssrc_index, last_ssrc_index, 
-				       rtp_size(), fbasename, raw_pathfilename.c_str(), 
-				       ssrc_index >= rtp_size() ? 0 : rtp_stream_by_index(ssrc_index)->ssrc,
-				       last_ssrc_index >= (unsigned)rtp_size() ? 0 : rtp_stream_by_index(last_ssrc_index)->ssrc);
+			   (ssrc_index < 0 || ssrc_index >= rtp_size() || last_ssrc_index >= (unsigned)rtp_size())) {
 				if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+				if(verbosity > 1 || sverb.wavmix) {
+					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or bad last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
+					       ssrc_index, last_ssrc_index, rtp_size(), 
+					       fbasename, raw_pathfilename.c_str(), 
+					       ssrc_index >= rtp_size() ? 0 : rtp_stream_by_index(ssrc_index)->ssrc,
+					       last_ssrc_index >= (unsigned)rtp_size() ? 0 : rtp_stream_by_index(last_ssrc_index)->ssrc);
+				}
 			} else {
 				struct raws_t rawl;
 				rawl.ssrc_index = ssrc_index;
@@ -3371,37 +3373,92 @@ Call::convertRawToWav() {
 				rawl.codec = codec;
 				rawl.frame_size = frame_size;
 				rawl.filename = raw_pathfilename.c_str();
+				rawl.rtp = rtp_stream_by_index(ssrc_index);
+				if(!rawl.rtp) {
+					if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+					if(verbosity > 1 || sverb.wavmix) {
+						syslog(LOG_NOTICE, "ignoring rtp stream - unknown ssrc_index[%i]; call [%s] stream[%s]", 
+						       ssrc_index, 
+						       fbasename, raw_pathfilename.c_str());
+					}
+					continue;
+				}
 				if(iter > 0) {
 					if(!force_convert_raw_to_wav &&
-					   (rtp_stream_by_index(ssrc_index)->ssrc == rtp_stream_by_index(last_ssrc_index)->ssrc and
-					    rtp_stream_by_index(ssrc_index)->codec == rtp_stream_by_index(last_ssrc_index)->codec and
-					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-					    abs((long)rtp_stream_by_index(ssrc_index)->stats.received - (long)rtp_stream_by_index(last_ssrc_index)->stats.received) < max(rtp_stream_by_index(ssrc_index)->stats.received, rtp_stream_by_index(last_ssrc_index)->stats.received) * 0.02 and
+					   (last_rtp &&
+					    rawl.rtp->ssrc == last_rtp->ssrc && rawl.rtp->codec == last_rtp->codec &&
+					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 &&
+					    abs((long)rawl.rtp->stats.received - (long)last_rtp->stats.received) < max(rawl.rtp->stats.received, last_rtp->stats.received) * 0.02 &&
 					    last_size > 10000)) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
-						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(tv0, lasttv)=[%d]", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc, ast_tvdiff_ms(tv0, lasttv));
+						if(verbosity > 1 || sverb.wavmix) {
+							syslog(LOG_NOTICE, "ignoring duplicate stream ssrc_index[%i] last_ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x] ast_tvdiff_ms(tv0, lasttv)=[%d]", 
+							       ssrc_index, last_ssrc_index,
+							       fbasename, raw_pathfilename.c_str(), 
+							       rawl.rtp->ssrc, last_rtp->ssrc, 
+							       ast_tvdiff_ms(tv0, lasttv));
+						}
 					} else {
-						if(!force_convert_raw_to_wav &&
-						   rtp_stream_by_index(rawl.ssrc_index)->skip) {
-							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] skip==1", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc);
-							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+						if(force_convert_raw_to_wav || !rawl.rtp->skip) {
+							bool skip_becose_too_big_loss = false;
+							if(useWavMix) {
+								if(rawl.rtp->lost_ratio_() > 1) {
+									RTP *up_stream = NULL;
+									for(list<raws_t>::iterator iter = raws.begin(); iter != raws.end(); iter++) {
+										if(iter->rtp->first_packet_time_us < rawl.rtp->first_packet_time_us &&
+										   iter->rtp->last_packet_time_us > rawl.rtp->last_packet_time_us) {
+											if(!up_stream ||
+											   ((up_stream->last_packet_time_us - up_stream->first_packet_time_us) > 
+											    (iter->rtp->last_packet_time_us - iter->rtp->first_packet_time_us))) {
+												up_stream = iter->rtp;
+											}
+										}
+									}
+									if(up_stream && 
+									   rawl.rtp->lost_ratio_() > up_stream->lost_ratio_() * 2) {
+										skip_becose_too_big_loss = true;
+									}
+								}
+							}
+							if(!skip_becose_too_big_loss) {
+								raws.push_back(rawl);
+							} else {
+								if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+								if(verbosity > 1 || sverb.wavmix) {
+									syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip becose too big loss]", 
+									       ssrc_index,
+									       fbasename, raw_pathfilename.c_str(), 
+									       rawl.rtp->ssrc);
+								}
+							}
 						} else {
-							raws.push_back(rawl);
+							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+							if(verbosity > 1 || sverb.wavmix) {
+								syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip==1]", 
+								       ssrc_index,
+								       fbasename, raw_pathfilename.c_str(), 
+								       rawl.rtp->ssrc);
+							}
 						}
 					}
 				} else {
-					if(force_convert_raw_to_wav ||
-					   !rtp_stream_by_index(rawl.ssrc_index)->skip) {
+					if(force_convert_raw_to_wav || !rawl.rtp->skip) {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
-						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1 || sverb.wavmix) {
+							syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip==1]", 
+							       ssrc_index,
+							       fbasename, raw_pathfilename.c_str(), 
+							       rawl.rtp->ssrc);
+						}
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;
 				lasttv.tv_usec = tv0.tv_usec;
 				last_ssrc_index = ssrc_index;
+				last_rtp = rawl.rtp;
 				iter++;
 				last_size = GetFileSize(raw_pathfilename.c_str());
 			}
