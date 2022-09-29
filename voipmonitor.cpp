@@ -10880,9 +10880,7 @@ int eval_config(string inistr) {
 				if(posSep) {
 					*posSep = 0;
 				}
-				string custom_header = pos;
-				custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+				string custom_header = trim_str(pos);
 				string custom_header_field = "custom_header__" + custom_header;
 				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
 				if(i == 0) {

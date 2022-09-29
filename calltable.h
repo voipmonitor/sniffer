@@ -3476,10 +3476,38 @@ public:
 		dir_response = 2,
 		dir_both     = 3
 	};
+	enum eSelectOccurence {
+		so_sensor_setting = 0,
+		so_first_value = 1,
+		so_last_value = 2
+	};
 	struct sCustomHeaderData {
+		sCustomHeaderData() {
+			specialType = st_na;
+			doNotAddColon = false;
+			db_id = 0;
+			screenPopupField = false;
+			reqRespDirection = dir_na;
+			useLastValue = false;
+		}
+		inline string first_header() {
+			return(header.size() ? header[0] : "");
+		}
+		inline string first_header_find() {
+			return(header_find.size() ? header_find[0] : "");
+		}
+		void setHeaderFindSuffix() {
+			for(unsigned i = 0; i < header_find.size(); i++) {
+				if(header_find[i][header_find[i].length() - 1] != ':' &&
+				   header_find[i][header_find[i].length() - 1] != '=' &&
+				   strcasecmp(header_find[i].c_str(), "invite")) {
+					header_find[i].append(":");
+				}
+			}
+		}
 		eSpecialType specialType;
-		string header;
-		string header_find;
+		vector<string> header;
+		vector<string> header_find;
 		bool doNotAddColon;
 		unsigned db_id;
 		string leftBorder;
@@ -3487,7 +3515,7 @@ public:
 		string regularExpression;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
-		bool selectOccurrence;
+		bool useLastValue;
 		std::vector<int> cseqMethod;
 		std::vector<pair<int, int> > sipResponseCodeInfo;
 	};

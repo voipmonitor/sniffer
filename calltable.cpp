@@ -13422,14 +13422,13 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 						      specialType == "max_retransmission_invite" ? max_retransmission_invite : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
-				ch_data.header = row["header_field"];
+				if(ch_data.specialType == st_na) {
+					ch_data.header = split(row["header_field"].c_str(), split("\n|\r", '|'), true);
+				}
 				ch_data.doNotAddColon = atoi(row["do_not_add_colon"].c_str());
 				ch_data.header_find = ch_data.header;
-				if(!ch_data.doNotAddColon &&
-				   ch_data.header_find[ch_data.header_find.length() - 1] != ':' &&
-				   ch_data.header_find[ch_data.header_find.length() - 1] != '=' &&
-				   strcasecmp(ch_data.header_find.c_str(), "invite")) {
-					ch_data.header_find.append(":");
+				if(!ch_data.doNotAddColon) {
+					ch_data.setHeaderFindSuffix();
 				}
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
@@ -13438,15 +13437,11 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
 							   row["direction"] == "response" ? dir_response :
 							   row["direction"] == "both" ? dir_both : dir_na;
-				int tmpOcc = atoi(row["select_occurrence"].c_str());
-				if (tmpOcc) {
-					if (tmpOcc == 1) {
-						ch_data.selectOccurrence = false;
-					} else {
-						ch_data.selectOccurrence = true;
-					}
+				eSelectOccurence selectOccurence = (eSelectOccurence)atoi(row["select_occurrence"].c_str());
+				if(selectOccurence != so_sensor_setting) {
+					ch_data.useLastValue = selectOccurence == so_last_value;
 				} else {
-					ch_data.selectOccurrence = (bool) opt_custom_headers_last_value;
+					ch_data.useLastValue = (bool)opt_custom_headers_last_value;
 				}
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
 				std::vector<int> tmpvect = split2int(row["sip_response_code"], split(",|;| |", "|"), true);
@@ -13460,7 +13455,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
 					if(!this->fixedTable.empty()) {
-						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->header)) {
+						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->first_header())) {
 							custom_headers[0][custom_headers[0].size()] = *iter;
 						}
 					}
@@ -13495,13 +13490,16 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 		if(!existsConfigTable ||
 		   !row || row.getIndexField("state") < 0 || row["state"] != "delete") {
 			sCustomHeaderData ch_data;
-			ch_data.header = (*iter)[0];
-			ch_data.db_id = 0;
+			ch_data.header.push_back((*iter)[0]);
+			ch_data.header_find = ch_data.header;
+			ch_data.setHeaderFindSuffix();
 			bool exists =  false;
-			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-				if(!strcasecmp(custom_headers[0][i].header.c_str(), ch_data.header.c_str())) {
-					exists = true;
-					break;
+			for(unsigned i = 0; i < custom_headers[0].size() && !exists; i++) {
+				for(unsigned j = 0; j < custom_headers[0][i].header.size() && !exists; i++) {
+					if(!strcasecmp(custom_headers[0][i].header[j].c_str(), ch_data.first_header().c_str())) {
+						exists = true;
+						break;
+					}
 				}
 			}
 			if(!exists) {
@@ -13544,8 +13542,10 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		map<int, sCustomHeaderData>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(iter2->second.header_find.length()) {
-				parsePacket->addNode(iter2->second.header_find.c_str(), ParsePacket::typeNode_custom);
+			for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
+				if(iter2->second.header_find[i].length()) {
+					parsePacket->addNode(iter2->second.header_find[i].c_str(), ParsePacket::typeNode_custom);
+				}
 			}
 		}
 	}
@@ -13611,7 +13611,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				case st_na:
 					break;
 				}
-				dstring ds_content(iter2->second.header, content);
+				dstring ds_content(iter2->second.first_header(), content);
 				this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &ds_content, true);
 			} else {
 				if(reqRespDirection != dir_na && iter2->second.reqRespDirection != dir_na &&
@@ -13626,48 +13626,50 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
 					continue;
 				}
-				if(iter2->second.header_find.length()) {
-					unsigned long l;
-					char *s = gettag_ext(data, datalen, parseContents,
-							     iter2->second.header_find.c_str(), &l, &gettagLimitLen);
-					if(l) {
-						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
-						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
-						memcpy(customHeaderContent, s, customHeaderContent_length);
-						customHeaderContent[customHeaderContent_length] = '\0';
-						char *customHeaderBegin = customHeaderContent;
-						if(!iter2->second.leftBorder.empty()) {
-							customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
-							if(customHeaderBegin) {
-								customHeaderBegin += iter2->second.leftBorder.length();
-							} else {
-								delete [] customHeaderContent;
-								continue;
+				for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
+					if(iter2->second.header_find[i].length()) {
+						unsigned long l;
+						char *s = gettag_ext(data, datalen, parseContents,
+								     iter2->second.header_find[i].c_str(), &l, &gettagLimitLen);
+						if(l) {
+							int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
+							char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
+							memcpy(customHeaderContent, s, customHeaderContent_length);
+							customHeaderContent[customHeaderContent_length] = '\0';
+							char *customHeaderBegin = customHeaderContent;
+							if(!iter2->second.leftBorder.empty()) {
+								customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
+								if(customHeaderBegin) {
+									customHeaderBegin += iter2->second.leftBorder.length();
+								} else {
+									delete [] customHeaderContent;
+									continue;
+								}
 							}
-						}
-						if(!iter2->second.rightBorder.empty()) {
-							char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
-							if(customHeaderEnd) {
-								*customHeaderEnd = 0;
-							} else {
-								delete [] customHeaderContent;
-								continue;
+							if(!iter2->second.rightBorder.empty()) {
+								char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
+								if(customHeaderEnd) {
+									*customHeaderEnd = 0;
+								} else {
+									delete [] customHeaderContent;
+									continue;
+								}
 							}
-						}
-						if(!iter2->second.regularExpression.empty()) {
-							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
-							if(customHeader.empty()) {
-								delete [] customHeaderContent;
-								continue;
+							if(!iter2->second.regularExpression.empty()) {
+								string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+								if(customHeader.empty()) {
+									delete [] customHeaderContent;
+									continue;
+								} else {
+									dstring content(iter2->second.header[i], customHeader);
+									this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+								}
 							} else {
-								dstring content(iter2->second.header, customHeader);
-								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
+								dstring content(iter2->second.header[i], customHeaderBegin);
+								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
 							}
-						} else {
-							dstring content(iter2->second.header, customHeaderBegin);
-							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
+							delete [] customHeaderContent;
 						}
-						delete [] customHeaderContent;
 					}
 				}
 			}
@@ -14013,8 +14015,8 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 		_createSqlObject = true;
 	}
 	for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].header)) {
-			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].header + "` VARCHAR(255);");
+		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].first_header())) {
+			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].first_header() + "` VARCHAR(255);");
 		}
 	}
 	if(_createSqlObject) {
@@ -14057,7 +14059,7 @@ void CustomHeaders::getHeaders(list<string> *rslt) {
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			if(!iter->first) {
-				rslt->push_back("custom_header__" + iter2->second.header);
+				rslt->push_back("custom_header__" + iter2->second.first_header());
 			} else {
 				rslt->push_back("custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first));
 			}
@@ -14086,7 +14088,7 @@ void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *r
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			if(!iter->first) {
-				(*rslt)["custom_header__" + iter2->second.header] = tCH_Content_value(ch_content, iter->first, iter2->first);
+				(*rslt)["custom_header__" + iter2->second.first_header()] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			} else {
 				(*rslt)["custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first)] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			}
@@ -14104,7 +14106,7 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end() && rslt.empty(); iter2++) {
 			string cmpHeaderName = !iter->first ?
-						"custom_header__" + iter2->second.header :
+						"custom_header__" + iter2->second.first_header() :
 						"custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first);
 			if(header == cmpHeaderName) {
 				rslt = tCH_Content_value(ch_content, iter->first, iter2->first);
