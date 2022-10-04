@@ -7963,6 +7963,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			}
 		}
 		
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		if((_extract_payload || _extract_rtp_payload) && 
 		   ppd.data && ppd.datalen) {
 			if(_extract_payload) {
@@ -8006,6 +8007,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				}
 			}
 		}
+		#endif
 	}
 	
 	if(header_packet) {

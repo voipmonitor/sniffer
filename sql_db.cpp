@@ -1190,6 +1190,16 @@ int SqlDb::getIdOrInsert(string table, string idField, string uniqueField, SqlDb
 	return(this->insert(table, row));
 }
 
+string SqlDb::getQueryRsltStringValue(string query, int indexRslt) {
+	if(this->query(query)) {
+		SqlDb_row row;
+		if((row = this->fetchRow())) {
+			return(row[indexRslt]);
+		}
+	}
+	return("");
+}
+
 int64_t SqlDb::getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult) {
 	if(this->query(query)) {
 		SqlDb_row row;
@@ -2674,14 +2684,18 @@ string SqlDb_mysql::getOptimalCompressType_mariadb(bool memoryEngine, bool useCa
 		if(memoryEngine) {
 			if(!selectedCompressType_memoryEngine.empty()) {
 				if(selectedCompressType_memoryEngine == MARIADB_PAGE_COMPRESSED) {
-					query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype_memoryEngine + "'");
+					if(getQueryRsltStringValue("show global variables like 'innodb_compression_algorithm'", 1) != selectedCompressSubtype_memoryEngine) {
+						query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype_memoryEngine + "'");
+					}
 				}
 				return(selectedCompressType_memoryEngine);
 			}
 		} else {
 			if(!selectedCompressType.empty()) {
 				if(selectedCompressType == MARIADB_PAGE_COMPRESSED) {
-					query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype + "'");
+					if(getQueryRsltStringValue("show global variables like 'innodb_compression_algorithm'", 1) != selectedCompressSubtype) {
+						query("SET GLOBAL innodb_compression_algorithm='" + selectedCompressSubtype + "'");
+					}
 				}
 				return(selectedCompressType);
 			}
@@ -2718,7 +2732,8 @@ string SqlDb_mysql::getOptimalCompressType_mariadb(bool memoryEngine, bool useCa
 			if(try_compress_order[i][0]) {
 				if(!try_compress_order[i][1] || 
 				   mariadb_compress_enable_types[try_compress_order[i][1]]) {
-					if(query(string("SET GLOBAL innodb_compression_algorithm='") + try_compress_order[i][0] + "'")) {
+					if(getQueryRsltStringValue("show global variables like 'innodb_compression_algorithm'", 1) == try_compress_order[i][0] ||
+					   query(string("SET GLOBAL innodb_compression_algorithm='") + try_compress_order[i][0] + "'")) {
 						string compressType_test = MARIADB_PAGE_COMPRESSED;
 						if(testCreateTable(memoryEngine, compressType_test.c_str())) {
 							setSelectedCompressType(memoryEngine, compressType_test.c_str(), try_compress_order[i][0]);
