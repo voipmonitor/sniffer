@@ -3298,6 +3298,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci);
 	call->is_ssl = packetS->pflags.ssl;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	call->is_audiocodes = packetS->audiocodes != NULL;
+	#endif
 	call->set_first_packet_time_us(packetS->getTimeUS());
 	call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_(), packetS->get_callid());
 	call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
@@ -3930,6 +3933,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(packetS->pid.flags & FLAG_FRAGMENTED) {
 		call->sip_fragmented = true;
 	}
+	
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	if(packetS->audiocodes) {
+		call->is_audiocodes = true;
+	}
+	#endif
 	
 	if((packetS->sip_method == INVITE && call->typeIsOnly(MESSAGE)) ||
 	   (opt_sip_message && packetS->sip_method == MESSAGE && call->typeIsOnly(INVITE))) {

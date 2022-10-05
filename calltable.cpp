@@ -620,6 +620,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#endif
 	#endif
 	ssrc_n = 0;
+	rtcp_exists = false;
 	rtp_canceled = NULL;
 	rtp_remove_flag = false;
 	rtpab[0] = NULL;
@@ -766,6 +767,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sdp_exists_media_type_application = false;
 	
 	is_ssl = false;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	is_audiocodes = false;
+	#endif
 
 	rtp_zeropackets_stored = 0;
 	
@@ -1598,6 +1602,22 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 		return(false);
 	}
 
+#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern int opt_audiocodes_rtcp;
+	if(packetS->audiocodes) {
+		if(opt_audiocodes_rtcp == 0 ||
+		   (opt_audiocodes_rtcp == 3 && !this->is_audiocodes)) {
+			return(false);
+		}
+	} else {
+		if(opt_audiocodes_rtcp == 2) {
+			return(false);
+		}
+	}
+#endif
+
+	this->rtcp_exists = true;
+
 	RTPsecure *srtp_decrypt = NULL;
 	if(exists_srtp && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller, true);
@@ -1637,6 +1657,20 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
+ 
+#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern int opt_audiocodes_rtp;
+	if(packetS->audiocodes) {
+		if(opt_audiocodes_rtp == 0 ||
+		   (opt_audiocodes_rtp == 3 && !this->is_audiocodes)) {
+			return(false);
+		}
+	} else {
+		if(opt_audiocodes_rtp == 2) {
+			return(false);
+		}
+	}
+#endif
  
 #if EXPERIMENTAL_LITE_RTP_MOD
  
@@ -6244,6 +6278,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_PROC;
 	} else if(suppress_rtp_read_due_to_insufficient_hw_performance) {
 		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_READ;
+	}
+	
+	if(this->rtcp_exists) {
+		cdr_flags |= CDR_RTCP_EXISTS;
 	}
 	
 	bool set_sipcallerip = false;

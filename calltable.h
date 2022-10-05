@@ -144,6 +144,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO	(1 << 14)
 #define CDR_PROCLIM_SUPPRESS_RTP_READ   (1 << 15)
 #define CDR_PROCLIM_SUPPRESS_RTP_PROC   (1 << 16)
+#define CDR_RTCP_EXISTS   		(1 << 17)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -950,6 +951,9 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	bool is_audiocodes;
+	#endif
 	#if EXPERIMENTAL_LITE_RTP_MOD
 	RTP rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
 	#else
@@ -959,6 +963,7 @@ public:
 	#endif
 	#endif
 	int ssrc_n;				//!< last index of rtp array
+	bool rtcp_exists;
 	list<RTP*> *rtp_canceled;
 	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];

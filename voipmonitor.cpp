@@ -1223,6 +1223,8 @@ bool opt_icmp_process_data = false;
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
+int opt_audiocodes_rtp = 1;
+int opt_audiocodes_rtcp = 1;
 
 bool opt_ipfix;
 bool opt_ipfix_set;
@@ -7964,6 +7966,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtp",  &opt_audiocodes_rtp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
@@ -12802,6 +12808,14 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
 		opt_tcp_port_audiocodes = atoi(value);
+	}
+	if((value = ini.GetValue("general", "audiocodes_rtp", NULL))) {
+		opt_audiocodes_rtp = !strcasecmp(value, "only") ? 2 :
+				     !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "audiocodes_rtcp", NULL))) {
+		opt_audiocodes_rtcp = !strcasecmp(value, "only") ? 2 :
+				      !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "kamailio_dstip", NULL))) {
