@@ -144,6 +144,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_SDP_EXISTS_MEDIA_TYPE_VIDEO	(1 << 14)
 #define CDR_PROCLIM_SUPPRESS_RTP_READ   (1 << 15)
 #define CDR_PROCLIM_SUPPRESS_RTP_PROC   (1 << 16)
+#define CDR_RTCP_EXISTS   		(1 << 17)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -378,6 +379,7 @@ struct raws_t {
 	int frame_size;
 	struct timeval tv;
 	string filename;
+	class RTP *rtp;
 };
 
 enum eCallField {
@@ -641,6 +643,9 @@ public:
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
 		return(time_s ? (time_s - time_shift_ms / 1000) : 0);
 	}
+	inline u_int64_t getRelTime(struct timeval *ts) {
+		return(getTimeUS(ts) > first_packet_time_us ? getTimeUS(ts) - first_packet_time_us : 0);
+	}
 public:
 	volatile uint8_t alloc_flag;
 	int type_base;
@@ -760,6 +765,8 @@ public:
 		bool confirmed;
 		unsigned counter;
 		unsigned counter_reverse;
+		map<u_int32_t, u_int32_t> counter_by_cseq;
+		map<u_int32_t, u_int32_t> counter_reverse_by_cseq;
 		string caller;
 		string called;
 		string called_invite;
@@ -944,6 +951,9 @@ public:
 	};
 public:
 	bool is_ssl;			//!< call was decrypted
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	bool is_audiocodes;
+	#endif
 	#if EXPERIMENTAL_LITE_RTP_MOD
 	RTP rtp_fix[MAX_SSRC_PER_CALL_FIX];	//!< array of RTP streams
 	#else
@@ -953,6 +963,7 @@ public:
 	#endif
 	#endif
 	int ssrc_n;				//!< last index of rtp array
+	bool rtcp_exists;
 	list<RTP*> *rtp_canceled;
 	volatile bool rtp_remove_flag;
 	RTP *rtpab[2];
@@ -2391,11 +2402,17 @@ public:
 		return(ssrc_n);
 	}
 	
+	inline bool existsSrtp() {
+		return(exists_srtp);
+	}
 	inline bool existsSrtpCryptoConfig() {
 		return(exists_srtp_crypto_config);
 	}
 	inline bool existsSrtpFingerprint() {
 		return(exists_srtp_fingerprint);
+	}
+	inline bool isSrtpInIpPort(int indexIpPort) {
+		return(ip_port[indexIpPort].srtp);
 	}
 	
 	void dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item);
@@ -3464,10 +3481,38 @@ public:
 		dir_response = 2,
 		dir_both     = 3
 	};
+	enum eSelectOccurence {
+		so_sensor_setting = 0,
+		so_first_value = 1,
+		so_last_value = 2
+	};
 	struct sCustomHeaderData {
+		sCustomHeaderData() {
+			specialType = st_na;
+			doNotAddColon = false;
+			db_id = 0;
+			screenPopupField = false;
+			reqRespDirection = dir_na;
+			useLastValue = false;
+		}
+		inline string first_header() {
+			return(header.size() ? header[0] : "");
+		}
+		inline string first_header_find() {
+			return(header_find.size() ? header_find[0] : "");
+		}
+		void setHeaderFindSuffix() {
+			for(unsigned i = 0; i < header_find.size(); i++) {
+				if(header_find[i][header_find[i].length() - 1] != ':' &&
+				   header_find[i][header_find[i].length() - 1] != '=' &&
+				   strcasecmp(header_find[i].c_str(), "invite")) {
+					header_find[i].append(":");
+				}
+			}
+		}
 		eSpecialType specialType;
-		string header;
-		string header_find;
+		vector<string> header;
+		vector<string> header_find;
 		bool doNotAddColon;
 		unsigned db_id;
 		string leftBorder;
@@ -3475,7 +3520,7 @@ public:
 		string regularExpression;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
-		bool selectOccurrence;
+		bool useLastValue;
 		std::vector<int> cseqMethod;
 		std::vector<pair<int, int> > sipResponseCodeInfo;
 	};

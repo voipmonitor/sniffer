@@ -165,11 +165,17 @@ bool cConfigItem::getValueFromMapValues(const char *str_value, int *rslt_value) 
 	if(mapValues.size()) {
 		string _str_value = str_value;
 		std::transform(_str_value.begin(), _str_value.end(), _str_value.begin(), ::tolower);
+		unsigned find_length = 0;
 		for(list<sMapValue>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
 			if(!strncmp(_str_value.c_str(), iter->str.c_str(), iter->str.length())) {
-				*rslt_value = iter->value;
-				return(true);
+				if(!find_length || iter->str.length() > find_length) {
+					*rslt_value = iter->value;
+					find_length = iter->str.length();
+				}
 			}
+		}
+		if(find_length > 0) {
+			return(true);
 		}
 	}
 	return(false);
@@ -1930,9 +1936,7 @@ bool cConfigItem_custom_headers::setParamFromValueStr(string value_str, bool ena
 		if(posSep) {
 			*posSep = 0;
 		}
-		string custom_header = pos;
-		custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-		custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+		string custom_header = trim_str(pos);
 		string custom_header_field = "custom_header__" + custom_header;
 		std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
 		param_custom_headers->push_back(dstring(custom_header, custom_header_field));

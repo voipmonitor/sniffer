@@ -364,6 +364,7 @@ public:
 	virtual bool update(string table, SqlDb_row row, SqlDb_row whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int64_t getInsertId() = 0;
+	string getQueryRsltStringValue(string query, int indexRslt);
 	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);
 	virtual bool existsDatabase() = 0;
 	virtual bool existsTable(const char *table) = 0;

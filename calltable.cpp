@@ -620,6 +620,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	#endif
 	#endif
 	ssrc_n = 0;
+	rtcp_exists = false;
 	rtp_canceled = NULL;
 	rtp_remove_flag = false;
 	rtpab[0] = NULL;
@@ -766,6 +767,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sdp_exists_media_type_application = false;
 	
 	is_ssl = false;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	is_audiocodes = false;
+	#endif
 
 	rtp_zeropackets_stored = 0;
 	
@@ -1598,6 +1602,23 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 		return(false);
 	}
 
+#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern int opt_audiocodes_rtcp;
+	if(packetS->audiocodes) {
+		if(opt_audiocodes_rtcp == 0 ||
+		   (opt_audiocodes_rtcp == 3 && !this->is_audiocodes)) {
+			return(false);
+		}
+	} else {
+		if(opt_audiocodes_rtcp == 2 ||
+		   (opt_audiocodes_rtcp == 3 && this->is_audiocodes)) {
+			return(false);
+		}
+	}
+#endif
+
+	this->rtcp_exists = true;
+
 	RTPsecure *srtp_decrypt = NULL;
 	if(exists_srtp && opt_srtp_rtcp_decrypt) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller, true);
@@ -1637,6 +1658,21 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 /* analyze rtp packet */
 bool
 Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
+ 
+#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern int opt_audiocodes_rtp;
+	if(packetS->audiocodes) {
+		if(opt_audiocodes_rtp == 0 ||
+		   (opt_audiocodes_rtp == 3 && !this->is_audiocodes)) {
+			return(false);
+		}
+	} else {
+		if(opt_audiocodes_rtp == 2 ||
+		   (opt_audiocodes_rtp == 3 && this->is_audiocodes)) {
+			return(false);
+		}
+	}
+#endif
  
 #if EXPERIMENTAL_LITE_RTP_MOD
  
@@ -3341,6 +3377,7 @@ Call::convertRawToWav() {
 		unsigned int last_ssrc_index = 0;
 		long long last_size = 0;
 		unsigned int unknown_codec_counter = 0;
+		RTP *last_rtp = NULL;
 		/* 
 			read rawInfo file where there are stored raw files (rtp streams) 
 			if any of such stream has same SSRC as previous stream and it starts at the same time with 500ms tolerance that stream is eliminated (it is probably duplicate stream)
@@ -3354,14 +3391,15 @@ Call::convertRawToWav() {
 			samplerate = 1000 * get_ticks_bycodec(codec);
 			if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 			if(!force_convert_raw_to_wav &&
-			   (ssrc_index < 0 || ssrc_index >= rtp_size() ||
-			    last_ssrc_index >= (unsigned)rtp_size())) {
-				syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
-				       ssrc_index, last_ssrc_index, 
-				       rtp_size(), fbasename, raw_pathfilename.c_str(), 
-				       ssrc_index >= rtp_size() ? 0 : rtp_stream_by_index(ssrc_index)->ssrc,
-				       last_ssrc_index >= (unsigned)rtp_size() ? 0 : rtp_stream_by_index(last_ssrc_index)->ssrc);
+			   (ssrc_index < 0 || ssrc_index >= rtp_size() || last_ssrc_index >= (unsigned)rtp_size())) {
 				if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+				if(verbosity > 1 || sverb.wavmix) {
+					syslog(LOG_NOTICE, "ignoring rtp stream - bad ssrc_index[%i] or bad last_ssrc_index[%i] ssrc_n[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x]", 
+					       ssrc_index, last_ssrc_index, rtp_size(), 
+					       fbasename, raw_pathfilename.c_str(), 
+					       ssrc_index >= rtp_size() ? 0 : rtp_stream_by_index(ssrc_index)->ssrc,
+					       last_ssrc_index >= (unsigned)rtp_size() ? 0 : rtp_stream_by_index(last_ssrc_index)->ssrc);
+				}
 			} else {
 				struct raws_t rawl;
 				rawl.ssrc_index = ssrc_index;
@@ -3371,37 +3409,92 @@ Call::convertRawToWav() {
 				rawl.codec = codec;
 				rawl.frame_size = frame_size;
 				rawl.filename = raw_pathfilename.c_str();
+				rawl.rtp = rtp_stream_by_index(ssrc_index);
+				if(!rawl.rtp) {
+					if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+					if(verbosity > 1 || sverb.wavmix) {
+						syslog(LOG_NOTICE, "ignoring rtp stream - unknown ssrc_index[%i]; call [%s] stream[%s]", 
+						       ssrc_index, 
+						       fbasename, raw_pathfilename.c_str());
+					}
+					continue;
+				}
 				if(iter > 0) {
 					if(!force_convert_raw_to_wav &&
-					   (rtp_stream_by_index(ssrc_index)->ssrc == rtp_stream_by_index(last_ssrc_index)->ssrc and
-					    rtp_stream_by_index(ssrc_index)->codec == rtp_stream_by_index(last_ssrc_index)->codec and
-					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 and
-					    abs((long)rtp_stream_by_index(ssrc_index)->stats.received - (long)rtp_stream_by_index(last_ssrc_index)->stats.received) < max(rtp_stream_by_index(ssrc_index)->stats.received, rtp_stream_by_index(last_ssrc_index)->stats.received) * 0.02 and
+					   (last_rtp &&
+					    rawl.rtp->ssrc == last_rtp->ssrc && rawl.rtp->codec == last_rtp->codec &&
+					    abs(ast_tvdiff_ms(tv0, lasttv)) < 200 &&
+					    abs((long)rawl.rtp->stats.received - (long)last_rtp->stats.received) < max(rawl.rtp->stats.received, last_rtp->stats.received) * 0.02 &&
 					    last_size > 10000)) {
 						// ignore this raw file it is duplicate 
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
-						if(verbosity > 1) syslog(LOG_NOTICE, "A ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(tv0, lasttv)=[%d]", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc, ast_tvdiff_ms(tv0, lasttv));
+						if(verbosity > 1 || sverb.wavmix) {
+							syslog(LOG_NOTICE, "ignoring duplicate stream ssrc_index[%i] last_ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] ssrc/last[%x] ast_tvdiff_ms(tv0, lasttv)=[%d]", 
+							       ssrc_index, last_ssrc_index,
+							       fbasename, raw_pathfilename.c_str(), 
+							       rawl.rtp->ssrc, last_rtp->ssrc, 
+							       ast_tvdiff_ms(tv0, lasttv));
+						}
 					} else {
-						if(!force_convert_raw_to_wav &&
-						   rtp_stream_by_index(rawl.ssrc_index)->skip) {
-							if(verbosity > 1) syslog(LOG_NOTICE, "B ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] skip==1", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc);
-							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+						if(force_convert_raw_to_wav || !rawl.rtp->skip) {
+							bool skip_becose_too_big_loss = false;
+							if(useWavMix) {
+								if(rawl.rtp->lost_ratio_() > 1) {
+									RTP *up_stream = NULL;
+									for(list<raws_t>::iterator iter = raws.begin(); iter != raws.end(); iter++) {
+										if(iter->rtp->first_packet_time_us < rawl.rtp->first_packet_time_us &&
+										   iter->rtp->last_packet_time_us > rawl.rtp->last_packet_time_us) {
+											if(!up_stream ||
+											   ((up_stream->last_packet_time_us - up_stream->first_packet_time_us) > 
+											    (iter->rtp->last_packet_time_us - iter->rtp->first_packet_time_us))) {
+												up_stream = iter->rtp;
+											}
+										}
+									}
+									if(up_stream && 
+									   rawl.rtp->lost_ratio_() > up_stream->lost_ratio_() * 2) {
+										skip_becose_too_big_loss = true;
+									}
+								}
+							}
+							if(!skip_becose_too_big_loss) {
+								raws.push_back(rawl);
+							} else {
+								if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+								if(verbosity > 1 || sverb.wavmix) {
+									syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip becose too big loss]", 
+									       ssrc_index,
+									       fbasename, raw_pathfilename.c_str(), 
+									       rawl.rtp->ssrc);
+								}
+							}
 						} else {
-							raws.push_back(rawl);
+							if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+							if(verbosity > 1 || sverb.wavmix) {
+								syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip==1]", 
+								       ssrc_index,
+								       fbasename, raw_pathfilename.c_str(), 
+								       rawl.rtp->ssrc);
+							}
 						}
 					}
 				} else {
-					if(force_convert_raw_to_wav ||
-					   !rtp_stream_by_index(rawl.ssrc_index)->skip) {
+					if(force_convert_raw_to_wav || !rawl.rtp->skip) {
 						raws.push_back(rawl);
 					} else {
 						if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
-						if(verbosity > 1) syslog(LOG_NOTICE, "C ignoring duplicate stream [%s] ssrc[%x] ssrc[%x] ast_tvdiff_ms(lasttv, tv0)=[%d]", raw_pathfilename.c_str(), rtp_stream_by_index(last_ssrc_index)->ssrc, rtp_stream_by_index(ssrc_index)->ssrc, ast_tvdiff_ms(lasttv, tv0));
+						if(verbosity > 1 || sverb.wavmix) {
+							syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip==1]", 
+							       ssrc_index,
+							       fbasename, raw_pathfilename.c_str(), 
+							       rawl.rtp->ssrc);
+						}
 					}
 				}
 				lasttv.tv_sec = tv0.tv_sec;
 				lasttv.tv_usec = tv0.tv_usec;
 				last_ssrc_index = ssrc_index;
+				last_rtp = rawl.rtp;
 				iter++;
 				last_size = GetFileSize(raw_pathfilename.c_str());
 			}
@@ -6189,6 +6282,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_PROCLIM_SUPPRESS_RTP_READ;
 	}
 	
+	if(this->rtcp_exists) {
+		cdr_flags |= CDR_RTCP_EXISTS;
+	}
+	
 	bool set_sipcallerip = false;
 	bool set_sipcalledip = false;
 	set<vmIP> proxies_undup;
@@ -6802,8 +6899,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
 					/* max jitter (interarrival jitter) may be 32bit unsigned int, so use MIN for sure (we use smallint unsigned) */
-					cdr.add(MIN(0xFFFF, rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec)), c+"_rtcp_maxjitter");
+					int rtcp_maxjitter = (int)round((double)rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec));
 					rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
+					if(rtcp_maxjitter * 10 < rtcp_avgjitter_mult10[i]) {
+						++rtcp_maxjitter;
+					}
+					cdr.add(MIN(0xFFFF, rtcp_maxjitter), c+"_rtcp_maxjitter");
 					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
 					if (existsColumns.cdr_rtcp_fraclost_pktcount)
 						cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
@@ -9227,11 +9328,15 @@ unsigned Call::getMaxRetransmissionInvite() {
 	unsigned max_retrans = 0;
 	invite_list_lock();
 	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
-		if(iter->counter > 1 && (iter->counter - 1) > max_retrans) {
-			max_retrans = iter->counter - 1;
+		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_by_cseq.begin(); iter_c != iter->counter_by_cseq.end(); iter_c++) {
+			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
+				max_retrans = iter_c->second - 1;
+			}
 		}
-		if(iter->counter_reverse > 1 && (iter->counter_reverse - 1) > max_retrans) {
-			max_retrans = iter->counter_reverse - 1;
+		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_reverse_by_cseq.begin(); iter_c != iter->counter_reverse_by_cseq.end(); iter_c++) {
+			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
+				max_retrans = iter_c->second - 1;
+			}
 		}
 	}
 	invite_list_unlock();
@@ -13357,14 +13462,13 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 						      specialType == "max_retransmission_invite" ? max_retransmission_invite : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
-				ch_data.header = row["header_field"];
+				if(ch_data.specialType == st_na) {
+					ch_data.header = split(row["header_field"].c_str(), split("\n|\r", '|'), true);
+				}
 				ch_data.doNotAddColon = atoi(row["do_not_add_colon"].c_str());
 				ch_data.header_find = ch_data.header;
-				if(!ch_data.doNotAddColon &&
-				   ch_data.header_find[ch_data.header_find.length() - 1] != ':' &&
-				   ch_data.header_find[ch_data.header_find.length() - 1] != '=' &&
-				   strcasecmp(ch_data.header_find.c_str(), "invite")) {
-					ch_data.header_find.append(":");
+				if(!ch_data.doNotAddColon) {
+					ch_data.setHeaderFindSuffix();
 				}
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
@@ -13373,15 +13477,11 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
 							   row["direction"] == "response" ? dir_response :
 							   row["direction"] == "both" ? dir_both : dir_na;
-				int tmpOcc = atoi(row["select_occurrence"].c_str());
-				if (tmpOcc) {
-					if (tmpOcc == 1) {
-						ch_data.selectOccurrence = false;
-					} else {
-						ch_data.selectOccurrence = true;
-					}
+				eSelectOccurence selectOccurence = (eSelectOccurence)atoi(row["select_occurrence"].c_str());
+				if(selectOccurence != so_sensor_setting) {
+					ch_data.useLastValue = selectOccurence == so_last_value;
 				} else {
-					ch_data.selectOccurrence = (bool) opt_custom_headers_last_value;
+					ch_data.useLastValue = (bool)opt_custom_headers_last_value;
 				}
 				ch_data.cseqMethod = split2int(row["cseq_method"], ',');
 				std::vector<int> tmpvect = split2int(row["sip_response_code"], split(",|;| |", "|"), true);
@@ -13395,7 +13495,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 			for(list<sCustomHeaderDataPlus>::iterator iter = customHeaderData.begin(); iter != customHeaderData.end(); iter++) {
 				if(iter->type == "fixed") {
 					if(!this->fixedTable.empty()) {
-						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->header)) {
+						if(sqlDb->existsColumn(this->fixedTable, "custom_header__" + iter->first_header())) {
 							custom_headers[0][custom_headers[0].size()] = *iter;
 						}
 					}
@@ -13430,13 +13530,16 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 		if(!existsConfigTable ||
 		   !row || row.getIndexField("state") < 0 || row["state"] != "delete") {
 			sCustomHeaderData ch_data;
-			ch_data.header = (*iter)[0];
-			ch_data.db_id = 0;
+			ch_data.header.push_back((*iter)[0]);
+			ch_data.header_find = ch_data.header;
+			ch_data.setHeaderFindSuffix();
 			bool exists =  false;
-			for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-				if(!strcasecmp(custom_headers[0][i].header.c_str(), ch_data.header.c_str())) {
-					exists = true;
-					break;
+			for(unsigned i = 0; i < custom_headers[0].size() && !exists; i++) {
+				for(unsigned j = 0; j < custom_headers[0][i].header.size() && !exists; i++) {
+					if(!strcasecmp(custom_headers[0][i].header[j].c_str(), ch_data.first_header().c_str())) {
+						exists = true;
+						break;
+					}
 				}
 			}
 			if(!exists) {
@@ -13479,8 +13582,10 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		map<int, sCustomHeaderData>::iterator iter2;
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
-			if(iter2->second.header_find.length()) {
-				parsePacket->addNode(iter2->second.header_find.c_str(), ParsePacket::typeNode_custom);
+			for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
+				if(iter2->second.header_find[i].length()) {
+					parsePacket->addNode(iter2->second.header_find[i].c_str(), ParsePacket::typeNode_custom);
+				}
 			}
 		}
 	}
@@ -13546,7 +13651,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				case st_na:
 					break;
 				}
-				dstring ds_content(iter2->second.header, content);
+				dstring ds_content(iter2->second.first_header(), content);
 				this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &ds_content, true);
 			} else {
 				if(reqRespDirection != dir_na && iter2->second.reqRespDirection != dir_na &&
@@ -13561,48 +13666,50 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
 					continue;
 				}
-				if(iter2->second.header_find.length()) {
-					unsigned long l;
-					char *s = gettag_ext(data, datalen, parseContents,
-							     iter2->second.header_find.c_str(), &l, &gettagLimitLen);
-					if(l) {
-						int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
-						char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
-						memcpy(customHeaderContent, s, customHeaderContent_length);
-						customHeaderContent[customHeaderContent_length] = '\0';
-						char *customHeaderBegin = customHeaderContent;
-						if(!iter2->second.leftBorder.empty()) {
-							customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
-							if(customHeaderBegin) {
-								customHeaderBegin += iter2->second.leftBorder.length();
-							} else {
-								delete [] customHeaderContent;
-								continue;
+				for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
+					if(iter2->second.header_find[i].length()) {
+						unsigned long l;
+						char *s = gettag_ext(data, datalen, parseContents,
+								     iter2->second.header_find[i].c_str(), &l, &gettagLimitLen);
+						if(l) {
+							int customHeaderContent_length = min(getCustomHeaderMaxSize(), (int)l);
+							char *customHeaderContent = new FILE_LINE(0) char[customHeaderContent_length + 1];
+							memcpy(customHeaderContent, s, customHeaderContent_length);
+							customHeaderContent[customHeaderContent_length] = '\0';
+							char *customHeaderBegin = customHeaderContent;
+							if(!iter2->second.leftBorder.empty()) {
+								customHeaderBegin = strcasestr(customHeaderBegin, iter2->second.leftBorder.c_str());
+								if(customHeaderBegin) {
+									customHeaderBegin += iter2->second.leftBorder.length();
+								} else {
+									delete [] customHeaderContent;
+									continue;
+								}
 							}
-						}
-						if(!iter2->second.rightBorder.empty()) {
-							char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
-							if(customHeaderEnd) {
-								*customHeaderEnd = 0;
-							} else {
-								delete [] customHeaderContent;
-								continue;
+							if(!iter2->second.rightBorder.empty()) {
+								char *customHeaderEnd = strcasestr(customHeaderBegin, iter2->second.rightBorder.c_str());
+								if(customHeaderEnd) {
+									*customHeaderEnd = 0;
+								} else {
+									delete [] customHeaderContent;
+									continue;
+								}
 							}
-						}
-						if(!iter2->second.regularExpression.empty()) {
-							string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
-							if(customHeader.empty()) {
-								delete [] customHeaderContent;
-								continue;
+							if(!iter2->second.regularExpression.empty()) {
+								string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+								if(customHeader.empty()) {
+									delete [] customHeaderContent;
+									continue;
+								} else {
+									dstring content(iter2->second.header[i], customHeader);
+									this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+								}
 							} else {
-								dstring content(iter2->second.header, customHeader);
-								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
+								dstring content(iter2->second.header[i], customHeaderBegin);
+								this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
 							}
-						} else {
-							dstring content(iter2->second.header, customHeaderBegin);
-							this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.selectOccurrence);
+							delete [] customHeaderContent;
 						}
-						delete [] customHeaderContent;
 					}
 				}
 			}
@@ -13948,8 +14055,8 @@ void CustomHeaders::createColumnsForFixedHeaders(SqlDb *sqlDb) {
 		_createSqlObject = true;
 	}
 	for(unsigned i = 0; i < custom_headers[0].size(); i++) {
-		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].header)) {
-			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].header + "` VARCHAR(255);");
+		if(!sqlDb->existsColumn(this->fixedTable, "custom_header__" + custom_headers[0][i].first_header())) {
+			sqlDb->query(string("ALTER TABLE `") + this->fixedTable + "` ADD COLUMN `custom_header__" + custom_headers[0][i].first_header() + "` VARCHAR(255);");
 		}
 	}
 	if(_createSqlObject) {
@@ -13992,7 +14099,7 @@ void CustomHeaders::getHeaders(list<string> *rslt) {
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			if(!iter->first) {
-				rslt->push_back("custom_header__" + iter2->second.header);
+				rslt->push_back("custom_header__" + iter2->second.first_header());
 			} else {
 				rslt->push_back("custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first));
 			}
@@ -14021,7 +14128,7 @@ void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *r
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			if(!iter->first) {
-				(*rslt)["custom_header__" + iter2->second.header] = tCH_Content_value(ch_content, iter->first, iter2->first);
+				(*rslt)["custom_header__" + iter2->second.first_header()] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			} else {
 				(*rslt)["custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first)] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			}
@@ -14039,7 +14146,7 @@ string CustomHeaders::getValue(Call *call, int type, const char *header) {
 	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end() && rslt.empty(); iter++) {
 		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end() && rslt.empty(); iter2++) {
 			string cmpHeaderName = !iter->first ?
-						"custom_header__" + iter2->second.header :
+						"custom_header__" + iter2->second.first_header() :
 						"custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first);
 			if(header == cmpHeaderName) {
 				rslt = tCH_Content_value(ch_content, iter->first, iter2->first);

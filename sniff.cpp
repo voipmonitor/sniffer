@@ -265,6 +265,7 @@ extern int opt_t2_boost;
 unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
+extern int opt_redirect_response_300_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_ignore_rtp_after_bye;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
@@ -3297,6 +3298,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 				    packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), 
 				    get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), ci);
 	call->is_ssl = packetS->pflags.ssl;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	call->is_audiocodes = packetS->audiocodes != NULL;
+	#endif
 	call->set_first_packet_time_us(packetS->getTimeUS());
 	call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_(), packetS->get_callid());
 	call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
@@ -3930,6 +3934,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		call->sip_fragmented = true;
 	}
 	
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	if(packetS->audiocodes) {
+		call->is_audiocodes = true;
+	}
+	#endif
+	
 	if((packetS->sip_method == INVITE && call->typeIsOnly(MESSAGE)) ||
 	   (opt_sip_message && packetS->sip_method == MESSAGE && call->typeIsOnly(INVITE))) {
 		call->addNextType(packetS->sip_method);
@@ -3973,6 +3983,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				existInviteSdaddr = true;
 				inviteSdaddrIndex = inviteSdaddrCounter;
 				++iter->counter;
+				++iter->counter_by_cseq[packetS->cseq.number];
 				break;
 			} else if(packetS->daddr_() == iter->saddr && packetS->saddr_() == iter->daddr) {
 				if(packetS->dest_() == iter->sport && packetS->source_() == iter->dport) {
@@ -3981,6 +3992,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						mainInviteForReverse = &(*iter);
 					}
 					++iter->counter_reverse;
+					++iter->counter_reverse_by_cseq[packetS->cseq.number];
 					if(sverb.reverse_invite) {
 						cout << "reverse invite: invite / " << call->call_id << endl;
 					}
@@ -4003,6 +4015,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				invite_sd.sport = packetS->source_();
 				invite_sd.dport = packetS->dest_();
 				invite_sd.counter = 1;
+				invite_sd.counter_by_cseq[packetS->cseq.number] = 1;
 				if(opt_sdp_check_direction_ext) {
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &invite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &invite_sd.called, ppntt_to, ppndt_called);
@@ -4021,6 +4034,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						existRInviteSdaddr = true;
 						reverseInvite = &(*riter);
 						++riter->counter;
+						++riter->counter_by_cseq[packetS->cseq.number];
 						break;
 					}
 				}
@@ -4035,6 +4049,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					rinvite_sd.sport = packetS->source_();
 					rinvite_sd.dport = packetS->dest_();
 					rinvite_sd.counter = 1;
+					rinvite_sd.counter_by_cseq[packetS->cseq.number] = 1;
 					get_sip_peername(packetS, "\nFrom:", "\nf:", &rinvite_sd.caller, ppntt_from, ppndt_caller);
 					get_sip_peername(packetS, "\nTo:", "\nt:", &rinvite_sd.called, ppntt_to, ppndt_called);
 					get_sip_peername(packetS, "INVITE ", NULL, &rinvite_sd.called_invite, ppntt_invite, ppndt_called);
@@ -4093,7 +4108,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(lastSIPresponseNum != 0 && lastSIPresponse[0] != '\0' && 
 	   (call->typeIsOnly(MESSAGE) ?
 		((call->lastSIPresponseNum != 487 && lastSIPresponseNum > call->lastSIPresponseNum) ||
-		 (call->lastSIPresponseNum == 407 && lastSIPresponseNum / 100 == 2)) :
+		 ((call->lastSIPresponseNum == 401 || call->lastSIPresponseNum == 407) && lastSIPresponseNum / 100 == 2)) :
 		((call->lastSIPresponseNum != 487 || 
 		  (call->new_invite_after_lsr487 && lastSIPresponseNum == 200) ||
 		  (call->cancel_lsr487 && lastSIPresponseNum/10 == 48)) &&
@@ -4867,7 +4882,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(&packetS->cseq, merged)) {
-					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? 300 : 5);
+					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : 5);
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;
@@ -5862,22 +5877,35 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			++call_info_temp_length;
 		} else {
 			bool rslt_read_rtp = false;
+			extern int opt_process_pcap_type;
 			if(!sverb.disable_read_rtp) {
-				if(packetS->insert_packets) {
-					list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
-					for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
-						#if DEBUG_DTLS_QUEUE
-						cout << " * use dtls" << endl;
-						#endif
-						call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
-							       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
-					}
-				}
-				if(is_rtcp) {
-					rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
-				} else {
-					rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+				if(!(opt_process_pcap_type & _pp_prepare_rtcp_data)) {
+					if(packetS->insert_packets) {
+						list<packet_s_process_0*> *insert_packets = (list<packet_s_process_0*>*)packetS->insert_packets;
+						for(list<packet_s_process_0*>::iterator iter = insert_packets->begin(); iter != insert_packets->end(); iter++) {
+							#if DEBUG_DTLS_QUEUE
+							cout << " * use dtls" << endl;
+							#endif
+							call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+						}
+					}
+					if(is_rtcp) {
+						rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
+					} else {
+						rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+									       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
+					}
+				} else if(is_rtcp) {
+					extern bool opt_srtp_rtcp_decrypt;
+					bool srtcp = false;
+					if(call->existsSrtp() && opt_srtp_rtcp_decrypt) {
+						int index_call_ip_port_by_src = call->get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller, true);
+						if(index_call_ip_port_by_src >= 0 && call->isSrtpInIpPort(index_call_ip_port_by_src)) {
+							srtcp = true;
+						}
+					}
+					parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), call, packetS->saddr_(), packetS->daddr_(), srtcp);
 				}
 			}
 			if(rslt_read_rtp) {
@@ -7629,7 +7657,7 @@ inline int _handle_defrag(iphdr2 *header_ip,
 		delete queue;
 	};
 	
-	delete header_ip_orig;
+	delete [] header_ip_orig;
 	
 	return res;
 }
@@ -7696,7 +7724,8 @@ bool open_global_pcap_handle(const char *pcap, string *error) {
 }
 
 bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error) {
-	if(!pcap_destination || !*pcap_destination) {
+	if(!(process_pcap_type & _pp_prepare_rtcp_data) &&
+	   (!pcap_destination || !*pcap_destination)) {
 		string _error = "missing destination filename";
 		if(error) {
 			*error = _error;
@@ -7715,18 +7744,23 @@ bool process_pcap(const char *pcap_source, const char *pcap_destination, int pro
 		fprintf(stderr, "Couldn't open source pcap file '%s': %s\n", pcap_source, pcap_error.c_str());
 		return(false);
 	}
-	PcapDumper *destination = new PcapDumper;
-	if(!destination->open(tsf_na, pcap_destination, global_pcap_handle, global_pcap_dlink, &pcap_error)) {
-		if(error) {
-			*error = pcap_error;
+	PcapDumper *destination = NULL;
+	if(!(process_pcap_type & _pp_prepare_rtcp_data)) {
+		destination = new PcapDumper;
+		if(!destination->open(tsf_na, pcap_destination, global_pcap_handle, global_pcap_dlink, &pcap_error)) {
+			if(error) {
+				*error = pcap_error;
+			}
+			fprintf(stderr, "Couldn't open destination pcap file '%s': %s\n", pcap_source, pcap_error.c_str());
+			delete destination;
+			return(false);
 		}
-		fprintf(stderr, "Couldn't open destination pcap file '%s': %s\n", pcap_source, pcap_error.c_str());
-		delete destination;
-		return(false);
 	}
 	readdump_libpcap(global_pcap_handle, global_pcap_handle_index, global_pcap_dlink, destination, process_pcap_type);
-	destination->close();
-	delete destination;
+	if(destination) {
+		destination->close();
+		delete destination;
+	}
 	return(true);
 }
 
@@ -7735,8 +7769,14 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 		syslog(LOG_NOTICE, "DLT: %i", handle_dlt);
 	}
 
-	if(process_pcap_type & _pp_process_calls) {
+	if((process_pcap_type & _pp_process_calls) || (process_pcap_type & _pp_prepare_rtcp_data)) {
 		init_hash();
+	}
+	
+	if(process_pcap_type & _pp_prepare_rtcp_data) {
+		extern string opt_rtcp_params;
+		extern void parseRtcpParams(string &rtcp_params_string);
+		parseRtcpParams(opt_rtcp_params);
 	}
 
 	pcap_dumper_t *tmppcap = NULL;
@@ -7757,7 +7797,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 	u_int64_t packet_counter = 0;
 	unsigned long lastStatTimeMS = 0;
 	sHeaderPacket *header_packet = NULL;
-	int ppf_params = (process_pcap_type & _pp_process_calls) ? ppf_all :
+	int ppf_params = ((process_pcap_type & _pp_process_calls) || (process_pcap_type & _pp_prepare_rtcp_data)) ? ppf_all :
 			 (process_pcap_type & _pp_dedup) ? (ppf_dedup | ppf_calcMD5) :
 			 (process_pcap_type & _pp_anonymize_ip) ? ppf_na :
 			 ppf_na;
@@ -7933,6 +7973,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			}
 		}
 		
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		if((_extract_payload || _extract_rtp_payload) && 
 		   ppd.data && ppd.datalen) {
 			if(_extract_payload) {
@@ -7976,6 +8017,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 				}
 			}
 		}
+		#endif
 	}
 	
 	if(header_packet) {

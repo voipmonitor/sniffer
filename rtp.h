@@ -226,6 +226,20 @@ public:
 	inline void set_lost_(u_int32_t l) {
 		//
 	}
+	inline double lost_perc_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/(lost + received) * 100 : 100) :
+			0);
+	}
+	inline double lost_ratio_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/received : 1e10) :
+			0);
+	}
 	inline int first_codec_() {
 		return(codec);
 	}
@@ -758,6 +772,20 @@ public:
 	}
 	inline void set_lost_(u_int32_t l) {
 		stats.lost = l;
+	}
+	inline double lost_perc_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/(lost + received) * 100 : 100) :
+			0);
+	}
+	inline double lost_ratio_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/received : 1e10) :
+			0);
 	}
 	inline int first_codec_() {
 		return(first_codec);

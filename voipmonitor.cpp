@@ -507,6 +507,7 @@ regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
+int opt_redirect_response_300_timeout = 5 * 60;
 bool opt_ignore_rtp_after_bye_confirmed = false;
 bool opt_ignore_rtp_after_bye = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
@@ -1222,6 +1223,8 @@ bool opt_icmp_process_data = false;
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
+int opt_audiocodes_rtp = 1;
+int opt_audiocodes_rtcp = 1;
 
 bool opt_ipfix;
 bool opt_ipfix_set;
@@ -1300,6 +1303,7 @@ int opt_process_pcap_type = 0;
 char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+string opt_rtcp_params;
 
 char opt_curl_hook_wav[256] = "";
 
@@ -1311,6 +1315,7 @@ string extract_payload;
 string extract_rtp_payload;
 
 bool opt_all_configuration_options_in_gui = false;
+bool opt_all_unlink_log = false;
 
 
 #include <stdio.h>
@@ -7474,6 +7479,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42260) cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("redirect_response_300_timeout", &opt_redirect_response_300_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye", &opt_ignore_rtp_after_bye));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
@@ -7960,6 +7966,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtp",  &opt_audiocodes_rtp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
@@ -7982,13 +7992,20 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
 		subgroup("process pcap");
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("process_pcap_type", &opt_process_pcap_type))
+				->disableYes()
+				->addValues(("dedup:" + intToString(_pp_dedup) + "|" + 
+					     "anonymize_ip:" + intToString(_pp_anonymize_ip) + "|" +
+					     "rtcp_data:" + intToString(_pp_prepare_rtcp_data)).c_str()));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
 			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("rtcp_params", &opt_rtcp_params));
 	minorEnd();
 	
 	setDefaultValues();
@@ -8347,7 +8364,9 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
-	    {"process-pcap", 1, 0, 347},
+	    {"anonymize-pcap", 1, 0, 347},
+	    {"prepare_rtcp_data", 1, 0, 405},
+	    {"process_pcap", 1, 0, 406},
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
@@ -9014,6 +9033,13 @@ void get_command_line_arguments() {
 				opt_process_pcap_type = _pp_anonymize_ip;
 				is_gui_param = true;
 				break;
+			case 405:
+				strcpy_null_term(opt_process_pcap_fname, optarg);
+				opt_process_pcap_type = _pp_prepare_rtcp_data;
+				is_gui_param = true;
+				break;
+			case 406:
+				break;
 			case 342:
 				#if HAVE_LIBTCMALLOC_HEAPPROF
 				if(!heap_profiler_is_running) {
@@ -9281,7 +9307,7 @@ void set_context_config() {
 		opt_enable_webrtc_table = true;
 	}
 	
-	if(is_read_from_file_simple()) {
+	if(is_read_from_file_simple() || (opt_process_pcap_type & _pp_prepare_rtcp_data)) {
 		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
@@ -9306,6 +9332,20 @@ void set_context_config() {
 		opt_save_query_charts_remote_to_files = false;
 		opt_load_query_from_files = 0;
 		opt_t2_boost = false;
+		if(opt_process_pcap_type & _pp_prepare_rtcp_data) {
+			useIPv6 = true;
+			opt_nocdr = true;
+			opt_saveSIP = 0;
+			opt_saveRTP = 0;
+			opt_saveGRAPH = 0;
+			opt_saveRAW = 0;
+			opt_saveWAV = 0;
+			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+				preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
+			}
+			_parse_packet_global_process_packet.setStdParse();
+			calltable = new FILE_LINE(0) Calltable();
+		}
 	}
 	
 	if(is_read_from_file()) {
@@ -10848,9 +10888,7 @@ int eval_config(string inistr) {
 				if(posSep) {
 					*posSep = 0;
 				}
-				string custom_header = pos;
-				custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+				string custom_header = trim_str(pos);
 				string custom_header_field = "custom_header__" + custom_header;
 				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
 				if(i == 0) {
@@ -12113,6 +12151,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "bye_confirmed_timeout", NULL))) {
 		opt_bye_confirmed_timeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "redirect_response_300_timeout", NULL))) {
+		opt_redirect_response_300_timeout = atoi(value);
+	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);
 	}
@@ -12768,6 +12809,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
 		opt_tcp_port_audiocodes = atoi(value);
 	}
+	if((value = ini.GetValue("general", "audiocodes_rtp", NULL))) {
+		opt_audiocodes_rtp = !strcasecmp(value, "only") ? 2 :
+				     !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "audiocodes_rtcp", NULL))) {
+		opt_audiocodes_rtcp = !strcasecmp(value, "only") ? 2 :
+				      !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
 	
 	if((value = ini.GetValue("general", "kamailio_dstip", NULL))) {
 		opt_kamailio_dstip.setFromString(value);
@@ -12831,6 +12880,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "all_configuration_options_in_gui", NULL))) {
 		opt_all_configuration_options_in_gui = yesno(value);
+	}
+	if((value = ini.GetValue("general", "all_unlink_log", NULL))) {
+		opt_all_unlink_log = yesno(value);
 	}
 
 	/*

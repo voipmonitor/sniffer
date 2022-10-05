@@ -377,7 +377,7 @@ mkdir_r(std::string s, mode_t mode, unsigned uid, unsigned gid)
 	return mdret;
 }
 
-int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
+int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
 	if(!file_exists((char*)dir)) {
 		return(0);
 	}
@@ -396,25 +396,55 @@ int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
 				rmdir_r(dirWithSubdir.c_str(), enableSubdir);
 			}
 		} else {
-			unlink((string(dir) + "/" + de->d_name).c_str());
+			unlink((string(dir) + "/" + de->d_name).c_str(), file_src_code, line_src_code);
 		}
 	}
 	closedir(dp);
 	if(withoutRemoveRoot) {
 		return(0);
 	} else {
-		return(rmdir(dir));
+		return(rmdir(dir, file_src_code, line_src_code));
 	}
 }
 
-int rmdir_r(std::string dir, bool enableSubdir, bool withoutRemoveRoot) {
-	return(rmdir_r(dir.c_str(), enableSubdir, withoutRemoveRoot));
+int rmdir_r(std::string dir, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
+	return(rmdir_r(dir.c_str(), enableSubdir, withoutRemoveRoot, file_src_code, line_src_code));
 }
 
-int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemoveRoot) {
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
 	return(if_r ?
-		rmdir_r(dir, enableSubdir, withoutRemoveRoot) :
-		rmdir(dir.c_str()));
+		rmdir_r(dir, enableSubdir, withoutRemoveRoot, file_src_code, line_src_code) :
+		rmdir(dir.c_str(), file_src_code, line_src_code));
+}
+
+int unlink(const char *pathname, const char *file_src_code, int line_src_code) {
+	int rslt = unlink(pathname);
+	extern bool opt_all_unlink_log;
+	if(opt_all_unlink_log) {
+		ostringstream str;
+		str << "unlink: " << pathname
+		    << " rslt: " << rslt;
+		if(file_src_code) {
+			str << " code: " << file_src_code << ":" << line_src_code;
+		}
+		syslog(LOG_NOTICE, "%s", str.str().c_str());
+	}
+	return(rslt);
+}
+
+int rmdir(const char *path, const char *file_src_code, int line_src_code) {
+	int rslt = rmdir(path);
+	extern bool opt_all_unlink_log;
+	if(opt_all_unlink_log) {
+		ostringstream str;
+		str << "rmdir: " << path
+		    << " rslt: " << rslt;
+		if(file_src_code) {
+			str << " code: " << file_src_code << ":" << line_src_code;
+		}
+		syslog(LOG_NOTICE, "%s", str.str().c_str());
+	}
+	return(rslt);
 }
 
 int64_t cp_r(const char *src, const char *dst, bool move) {
