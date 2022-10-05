@@ -1610,7 +1610,8 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 			return(false);
 		}
 	} else {
-		if(opt_audiocodes_rtcp == 2) {
+		if(opt_audiocodes_rtcp == 2 ||
+		   (opt_audiocodes_rtcp == 3 && this->is_audiocodes)) {
 			return(false);
 		}
 	}
@@ -1666,7 +1667,8 @@ Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, boo
 			return(false);
 		}
 	} else {
-		if(opt_audiocodes_rtp == 2) {
+		if(opt_audiocodes_rtp == 2 ||
+		   (opt_audiocodes_rtp == 3 && this->is_audiocodes)) {
 			return(false);
 		}
 	}
