@@ -138,6 +138,8 @@ extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_sip_response_number_max_length;
 extern vector<string> opt_cdr_sip_response_reg_remove;
+extern int opt_cdr_reason_string_enable;
+extern vector<string> opt_cdr_reason_reg_remove;
 extern int opt_cdr_ua_enable;
 extern vector<string> opt_cdr_ua_reg_remove;
 extern vector<string> opt_cdr_ua_reg_whitelist;
@@ -6117,6 +6119,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	*/
 	
 	adjustUA();
+	adjustReason();
 	
 	if(opt_only_cdr_next) {
 		static u_int32_t last_id_cdr_next = 0;
@@ -7122,7 +7125,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 			}
 		}
-		if(existsColumns.cdr_reason) {
+		if(opt_cdr_reason_string_enable && existsColumns.cdr_reason) {
 			if(reason_sip_text.length()) {
 				if(useSetId()) {
 					cdr.add_cb_string(reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
@@ -7949,7 +7952,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 
 	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
-	if(existsColumns.cdr_reason) {
+	if(opt_cdr_reason_string_enable && existsColumns.cdr_reason) {
 		if(reason_sip_text.length()) {
 			reason_sip_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), true);
 		}
@@ -7957,13 +7960,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			reason_q850_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), true);
 		}
 	}
-	if(a_ua[0]) {
-		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
+	if(opt_cdr_ua_enable) {
+		if(a_ua[0]) {
+			a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
+		}
+		if(b_ua[0]) {
+			b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
+		}
 	}
-	if(b_ua[0]) {
-		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
-	}
-
+		
 	/*
 	cdr.add(caller_id, "caller_id", true);
 	cdr.add(called_id, "called_id", true);
@@ -9121,6 +9126,17 @@ void Call::adjustUA() {
 	}
 }
 
+void Call::adjustReason() {
+	if(opt_cdr_reason_reg_remove.size()) {
+		if(!reason_sip_text.empty()) {
+			::adjustReason(&reason_sip_text);
+		}
+		if(!reason_q850_text.empty()) {
+			::adjustReason(&reason_q850_text);
+		}
+	}
+}
+
 void Call::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
 	bool need_lock = !proxies;
 	if(need_lock) proxies_lock();
@@ -9423,6 +9439,59 @@ const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool
 				}
 			} else {
 				++pointer;
+			}
+		}
+	}
+	return(NULL);
+}
+
+void adjustReason(string *reason) {
+	bool adjustLength = false;
+	const char *new_reason = adjustReason((char*)reason->c_str(), &adjustLength);
+	if(new_reason) {
+		*reason = new_reason;
+	} else if(adjustLength) {
+		reason->resize(strlen(reason->c_str()));
+	}
+}
+
+const char *adjustReason(char *reason, bool *adjustLength) {
+	if(opt_cdr_reason_reg_remove.size()) {
+		bool adjust = false;
+		for(unsigned i = 0; i < opt_cdr_reason_reg_remove.size(); i++) {
+			vector<string> matches;
+			if(reg_match(reason, opt_cdr_reason_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+				for(unsigned j = 0; j < matches.size(); j++) {
+					char *str_pos = strstr(reason, matches[j].c_str());
+					if(str_pos) {
+						char reson_temp[1024];
+						strcpy_null_term(reson_temp, str_pos + matches[j].size());
+						strcpy(str_pos, reson_temp);
+						adjust = true;
+						if(adjustLength) {
+							*adjustLength = true;
+						}
+					}
+				}
+			}
+		}
+		if(adjust) {
+			int length = strlen(reason);
+			while(reason[length - 1] == ' ') {
+				reason[length - 1] = 0;
+				--length;
+			}
+			int start = 0;
+			while(reason[start] == ' ') {
+				++start;
+			}
+			if(start) {
+				char reson_temp[1024];
+				strcpy_null_term(reson_temp, reason + start);
+				strcpy(reason, reson_temp);
+			}
+			if(adjustLength) {
+				*adjustLength = true;
 			}
 		}
 	}

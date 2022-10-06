@@ -1862,6 +1862,7 @@ public:
 	void applyRtcpXrDataToRtp();
 	
 	void adjustUA();
+	void adjustReason();
 	
 	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
 
@@ -2492,6 +2493,8 @@ friend class RTPsecure;
 
 void adjustSipResponse(string *sipResponse);
 const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool *adjustLength = NULL);
+void adjustReason(string *reason);
+const char *adjustReason(char *reason, bool *adjustLength = NULL);
 void adjustUA(string *ua);
 const char *adjustUA(char *ua, unsigned ua_size, bool *adjustLength = NULL);
 
