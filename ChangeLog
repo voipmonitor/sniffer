@@ -1,3 +1,18 @@
+30.5 05.10.2022
+===============
+- adding parameter 'all_unlink_log' (NO/yes) for monitor all delete operations in spool [VS-1363]
+- create rtcp charts instead of tshark [VG-2536]
+- fix rtcp data - maxjitter cant be lower than avgjitter
+- adding cseq resolution to retransmission detection [VS-1367]
+- fix problem in SIP MESSAGE lastSipResponse if a 401 response is followed by a 200 response [VS-1360]
+- add parameter rtp_count_all_sequencegap_as_loss (NO/yes) [VG-2522]
+- fix audio sync if a stream that is embedded in a longer one contains significantly more packet loss [VS-1365]
+- add support for multiple tags in one custom header
+- let sniffer start even if it cannot change  mysql query set innodb_compression_algorithm [VS-1371]
+- fix redirect responses causes calls to hung in active calls for minutes - added new option  redirect_response_300_timeout with 300s default [VS-1370]
+- new config options audiocodes_rtp and audiocodes_rtcp [VS-1349]
+
+
 30.4 13.09.2022
 ===============
 - TCP reassembly optimization - excluding tcp fragments that start a stream and contain a sequence \r, \n and \0 characters [VS-1352]
