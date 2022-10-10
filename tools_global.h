@@ -347,7 +347,7 @@ struct string_null {
 			return(false);
 		}
 		for(unsigned i = 0; i < str.length(); i++) {
-			if(!::isprint(str[i])) {
+			if(!(::isprint(str[i]) || str[i] == '\r' || str[i] == '\n')) {
 				return(false);
 			}
 		}
@@ -370,14 +370,12 @@ struct string_null {
 				return;
 			} else if(!strncmp(in, "_B64_", 5)) {
 				unsigned l = strlen(in);
-				if(!strcmp(in + l - 2, "==")) {
-					char *buff = new char[l];
-					int length = base64decode((u_char*)buff, in + 5, l);
-					str = string(buff, length);
-					delete [] buff;
-					is_null = false;
-					return;
-				}
+				char *buff = new char[l];
+				int length = base64decode((u_char*)buff, in + 5, l);
+				str = string(buff, length);
+				delete [] buff;
+				is_null = false;
+				return;
 			} 
 		}
 		if(in) {
