@@ -1318,6 +1318,7 @@ string extract_rtp_payload;
 
 bool opt_all_configuration_options_in_gui = false;
 bool opt_all_unlink_log = false;
+bool opt_bt_sighandler_enable = true;
 
 
 #include <stdio.h>
@@ -3759,7 +3760,7 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	signal(SIGCHLD,sigchld_handler);
 #ifdef BACKTRACE
-	if((opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
+	if(opt_bt_sighandler_enable && (opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
 		struct sigaction sa;
 
 		sa.sa_sigaction = bt_sighandler;
@@ -7997,6 +7998,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("bt_sighandler", &opt_bt_sighandler_enable));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12909,6 +12911,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "all_unlink_log", NULL))) {
 		opt_all_unlink_log = yesno(value);
+	}
+	if((value = ini.GetValue("general", "bt_sighandler", NULL))) {
+		opt_bt_sighandler_enable = yesno(value);
 	}
 
 	/*
