@@ -456,6 +456,12 @@ string intToString(unsigned long long int i) {
 	return(outStr.str());
 }
 
+string intToStringHex(int i) {
+	ostringstream outStr;
+	outStr << hex << i;
+	return(outStr.str());
+}
+
 string floatToString(double d) {
 	ostringstream outStr;
 	outStr << fixed;

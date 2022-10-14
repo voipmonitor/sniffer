@@ -478,6 +478,7 @@ string intToString(unsigned short int i);
 string intToString(unsigned int i);
 string intToString(unsigned long int i);
 string intToString(unsigned long long int i);
+string intToStringHex(int i);
 string floatToString(double d);
 string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
