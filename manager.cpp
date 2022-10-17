@@ -428,6 +428,7 @@ int Mgmt_setverbparam(Mgmt_params *params);
 int Mgmt_cleanverbparams(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
+int Mgmt_memalloc_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 int Mgmt_get_sensor_information(Mgmt_params *params);
 int Mgmt_alloc_trim(Mgmt_params *params);
@@ -541,6 +542,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_cleanverbparams,
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
+	Mgmt_memalloc_test,
 	Mgmt_get_oldest_spooldir_date,
 	Mgmt_get_sensor_information,
 	Mgmt_alloc_trim,
@@ -4753,6 +4755,38 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 		*test = 0;
 	} else if(strstr(params->buf, "memcrash_test_6") != NULL) {
 		new FILE_LINE(0) char[1000000001];
+	}
+	return(0);
+}
+
+int Mgmt_memalloc_test(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"memalloc_alloc", ""},
+			{"memalloc_free", ""},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	static queue<char*> alloc_queue;
+	if(!strncmp(params->buf, "memalloc_alloc", 14)) {
+		unsigned size = atoi(params->buf + 15);
+		if(size > 0) {
+			char *block = new FILE_LINE(0) char[size];
+			if(block) {
+				memset(block, 0, size);
+				alloc_queue.push(block);
+			}
+		}
+	} else if(strstr(params->buf, "memalloc_free") != NULL) {
+		if(alloc_queue.size()) {
+			char *block = alloc_queue.front();
+			if(block) {
+				delete [] block;
+				alloc_queue.pop();
+			}
+		}
 	}
 	return(0);
 }

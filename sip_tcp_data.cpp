@@ -43,6 +43,9 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			continue;
 		}
 		for(list<d_u_int32_t>::iterator iter_sip_offset = reassemblyLink->getSipOffsets()->begin(); iter_sip_offset != reassemblyLink->getSipOffsets()->end(); iter_sip_offset++) {
+			if((*iter_sip_offset)[0] + (*iter_sip_offset)[1] > dataItem->getDatalen()) {
+				break;
+			}
 			cache_time = dataItem->getTimeMS();
 			string md5_data = GetDataMD5(dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1]);
 			Cache_id cache_id(ip_src, ip_dst, port_src, port_dst, dataItem->getAck(), dataItem->getSeq());

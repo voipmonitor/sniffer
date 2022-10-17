@@ -1682,7 +1682,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 											if(streams[streams.size() - 1]->ok_packets[0][0] == prevStream->ok_packets.back()[1]) {
 												if(reassembly->ignoreZeroData) {
 													TcpReassemblyStream_packet *packet = prevStream->getPacket(prevStream->ok_packets.back()[0], prevStream->ok_packets.back()[1]);
-													if(packet && packet->datalen && packet->data[0] != 0) {
+													if(packet && packet->datacaplen && packet->data[0] != 0) {
 														ok = true;
 													}
 												} else {
@@ -1692,7 +1692,7 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 											if(!ok) {
 												TcpReassemblyStream_packet *packet = streams[streams.size() - 1]->getPacket(streams[streams.size() - 1]->ok_packets[0][0], streams[streams.size() - 1]->ok_packets[0][1]);
 												extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response);
-												if(packet && !process_packet__parse_sip_method_ext((char*)packet->data, packet->datalen, true, NULL)) {
+												if(packet && !process_packet__parse_sip_method_ext((char*)packet->data, packet->datacaplen, true, NULL)) {
 													ok = true;
 												}
 											}
@@ -1778,14 +1778,14 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 									bool okBeginSip = false;
 									TcpReassemblyStream *lastStream = streams[checkOkStreams - 1];
 									TcpReassemblyStream_packet *packet = lastStream->getPacket(lastStream->ok_packets[0][0], lastStream->ok_packets[0][1]);
-									if(packet && packet->datalen) {
+									if(packet && packet->datacaplen) {
 										u_int32_t offset_packet = lastStream->getPacketOffset(lastStream->ok_packets[0][0]);
-										if(offset_packet < packet->datalen) {
+										if(offset_packet < packet->datacaplen) {
 											if(!offset_packet) {
 												okBeginSip = packet->flags.flags_bit.is_sip;
-											} else if(packet->datalen - offset_packet >= 11) {
+											} else if(packet->datacaplen - offset_packet >= 11) {
 												okBeginSip = check_sip20((char*)packet->data + offset_packet,
-															 packet->datalen - offset_packet,
+															 packet->datacaplen - offset_packet,
 															 NULL, true);
 											} else {
 												okBeginSip = check_sip20((char*)lastStream->complete_data.getData(), 
@@ -1797,18 +1797,18 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 									while(!okBeginSip && lastStream->ok_packets.size() > 1) {
 										lastStream->ok_packets.pop_front();
 										TcpReassemblyStream_packet *packet = lastStream->getPacket(lastStream->ok_packets[0][0], lastStream->ok_packets[0][1]);
-										if(packet && packet->datalen) {
+										if(packet && packet->datacaplen) {
 											u_int32_t offset_packet = lastStream->getPacketOffset(lastStream->ok_packets[0][0]);
-											if(offset_packet < packet->datalen) {
+											if(offset_packet < packet->datacaplen) {
 												bool needRefreshCompleteData = false;
 												if(!offset_packet) {
 													okBeginSip = packet->flags.flags_bit.is_sip;
 													if(okBeginSip) {
 														needRefreshCompleteData = true;
 													}
-												} else if(packet->datalen - offset_packet >= 11) {
+												} else if(packet->datacaplen - offset_packet >= 11) {
 													okBeginSip = check_sip20((char*)packet->data + offset_packet,
-																 packet->datalen - offset_packet,
+																 packet->datacaplen - offset_packet,
 																 NULL, true);
 													if(okBeginSip) {
 														needRefreshCompleteData = true;
@@ -1944,9 +1944,9 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 					   last_ok_seq_direction[stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST] < stream->ok_packets[0][1]) {
 						TcpReassemblyStream_packet *packet = stream->getPacket(stream->ok_packets[0][0], stream->ok_packets[0][1]);
 						u_int32_t offset = last_ok_seq_direction[stream->direction == TcpReassemblyStream::DIRECTION_TO_DEST] - stream->ok_packets[0][0];
-						if(packet && packet->datalen > offset) {
+						if(packet && packet->datacaplen > offset) {
 							possibleStartSipInLastOkSeqPos = check_sip20((char*)packet->data + offset, 
-												     packet->datalen - offset,
+												     packet->datacaplen - offset,
 												     NULL, true);
 						}
 					}
@@ -2052,8 +2052,8 @@ int TcpReassemblyLink::okQueue_simple_by_ack(u_int32_t seq, u_int32_t next_seq, 
 				if(reassembly->getType() == TcpReassembly::sip &&
 				   !okStreams && seq && !useSeq) {
 					TcpReassemblyStream_packet *packet = stream->getPacket(seq);
-					if(packet && packet->datalen > 0 && 
-					   check_sip20((char*)packet->data, packet->datalen, NULL, true)) {
+					if(packet && packet->datacaplen > 0 && 
+					   check_sip20((char*)packet->data, packet->datacaplen, NULL, true)) {
 						stream->ok_packets.clear();
 						stream->ok_packets.push_back(d_u_int32_t(packet->header_tcp.seq, packet->next_seq));
 						stream->clearCompleteData();
@@ -3433,11 +3433,17 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, int8_t strict_
 	case webrtc:
 		if(checkOkWebrtcHttpData(data, datalen) || 
 		   checkOkWebrtcData(data, datalen)) {
+			if(datalen_used) {
+				*datalen_used = datalen;
+			}
 			return(true);
 		}
 		break;
 	case ssl:
 		if(checkOkSslData(data, datalen)) {
+			if(datalen_used) {
+				*datalen_used = datalen;
+			}
 			return(true);
 		}
 		break;
@@ -3445,6 +3451,9 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, int8_t strict_
 		sip_offsets->clear();
 		if(check_websocket(data, datalen)) {
 			sip_offsets->push_back(d_u_int32_t(0, datalen));
+			if(datalen_used) {
+				*datalen_used = datalen;
+			}
 			return(true);
 		} else if(checkOkSipData(data, datalen, strict_mode, sip_offsets, datalen_used)) {
 			return(true);

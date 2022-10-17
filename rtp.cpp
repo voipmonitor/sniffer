@@ -1215,7 +1215,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			if(sverb.dtls && ssl_sessionkey_enable()) {
 				string log_str;
 				log_str += string("try call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
-				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(ssrc_index);
 				ssl_sessionkey_log(log_str);
 			}
 		}
@@ -1230,7 +1230,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				if(sverb.dtls && ssl_sessionkey_enable()) {
 					string log_str;
 					log_str += string("call decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
-					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+					log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(ssrc_index);
 					ssl_sessionkey_log(log_str);
 				}
 			}
@@ -1268,7 +1268,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			if(!owner->dtls->debug_flags[0]) {
 				string log_str;
 				log_str += string("error (potentialy missing srtp_decrypt instance) decrypt_rtp for call: ") + (owner ? owner->call_id : "unknown");
-				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString();
+				log_str += "; stream: " + saddr.getString() + ":" + sport.getString() + " -> " + daddr.getString() + ":" + dport.getString() + " ssrc_index " + intToString(ssrc_index);
 				ssl_sessionkey_log(log_str);
 				++owner->dtls->debug_flags[0];
 			}
