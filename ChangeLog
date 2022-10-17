@@ -1,3 +1,9 @@
+30.6 17.10.2022
+===============
+- new options cdr_reason_string_enable, cdr_reason_reg_remove [VS-137]
+- fix tcp reassembly crashes for long packets [VS-1173]
+
+
 30.5 05.10.2022
 ===============
 - adding parameter 'all_unlink_log' (NO/yes) for monitor all delete operations in spool [VS-1363]
