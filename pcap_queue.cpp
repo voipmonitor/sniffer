@@ -15,6 +15,7 @@
 #include <vector>
 #include <dirent.h>
 #include <sys/poll.h>
+#include <sys/resource.h>
 
 #include <snappy-c.h>
 #ifdef HAVE_LIBLZ4
@@ -42,6 +43,10 @@
 
 #ifndef FREEBSD
 #include <malloc.h>
+#endif
+
+#if HAVE_LIBTCMALLOC    
+#include <gperftools/malloc_extension.h>
 #endif
 
 
@@ -107,7 +112,7 @@ extern int opt_mysqlstore_max_threads_ipacc_base;
 extern int opt_mysqlstore_max_threads_ipacc_agreg2;
 extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
-extern bool opt_t2_boost_pb_detach_thread;
+extern int opt_t2_boost_pb_detach_thread;
 extern bool opt_t2_boost_pcap_dispatch;
 extern pcap_t *global_pcap_handle;
 extern u_int16_t global_pcap_handle_index;
@@ -139,6 +144,7 @@ extern int64_t opt_pb_read_from_file_time_adjustment;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
 extern bool opt_nonstop_read;
+extern bool opt_nonstop_read_quick;
 extern int opt_time_to_terminate;
 extern char opt_scanpcapdir[2048];
 extern int global_pcap_dlink;
@@ -263,6 +269,7 @@ extern MySqlStore *loadFromQFiles;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 extern PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+extern PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 extern unsigned int glob_ssl_calls;
 
@@ -473,6 +480,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		       sizeof(int8_t) * offsets_size_old);
 		memset((void*)(this->_sync_packets_lock + offsets_size_old), 0, 
 		       sizeof(int8_t) * (this->offsets_size - offsets_size_old));
+		delete [] _sync_packets_lock_old;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		volatile int8_t *_sync_packets_flag_old = _sync_packets_flag;
 		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
@@ -480,6 +488,7 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		       sizeof(int8_t) * offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 		memset((void*)(this->_sync_packets_flag + offsets_size_old * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH), 0, 
 		       sizeof(int8_t) * (this->offsets_size - offsets_size_old) * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		delete [] _sync_packets_flag_old;
 		#endif
 		#endif
 	}
@@ -1595,7 +1604,16 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		if(!this->isMirrorSender()) {
 			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
-			       << "[" << calls_counter;
+			       << "[";
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			if(separate_processing() == 2) {
+				outStr << calltable->calls_queue.size();
+			} else {
+				outStr << calls_counter;
+			}
+			#else
+			outStr << calls_counter;
+			#endif
 			extern volatile int storing_cdr_next_threads_count;
 			if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
 				outStr << "(s" << calls_for_store_counter << ")";
@@ -2167,6 +2185,10 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	if(!this->isMirrorSender() && opt_pcap_dump_tar) {
 		outStr << "tarQ[" << glob_tar_queued_files << "] ";
+		extern TarCopy *tarCopy;
+		if(tarCopy) {
+			outStr << "tarMq[" << tarCopy->queueLength() << "] ";
+		}
 		u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
 		if(tarBufferSize) {
 			outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
@@ -2314,6 +2336,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
 				}
 			}
+			if(pcapQueueQ_outThread_detach2) {
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(true);
+				if(detach_cpu >= 0) {
+					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
+				}
+			}
 			if(opt_ipaccount) {
 				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
 				if(ipacc_cpu >= 0) {
@@ -2330,7 +2358,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 				for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 					if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
-						double percFullQring;
+						double percFullQring = 0;
 						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, j, j == 0 ? &percFullQring : NULL);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
@@ -2391,7 +2419,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(opt_t2_boost) {
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-						double percFullQring;
+						double percFullQring = 0;
 						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, 0, &percFullQring);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
@@ -2546,7 +2574,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			outStrStat << num_threads_active << "t] ";
 			if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
 			   (heap_pb_used_perc > 10 && tRTPcpuMax >= 98)) {
-				for(int i = 0; i < (calls_counter > 1000 || heap_pb_used_perc > 10 ? 3 : 1); i++) {
+				for(int i = 0; i < (heap_pb_used_perc > 20 ? 3 : 1); i++) {
 					add_rtp_read_thread();
 				}
 			} else if(num_threads_active > 1 &&
@@ -2745,6 +2773,28 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			   << setprecision(0) << (double)hugepages_base/1024/1024
 			   << "]MB ";
 	}
+	#if HAVE_LIBTCMALLOC
+	outStrStat << "TCM[";
+	const char *tcm_status_types[][2] = {
+		{"generic.heap_size", "h"},
+		{"generic.current_allocated_bytes", "a"},
+		{"tcmalloc.pageheap_free_bytes", "f"},
+		{"tcmalloc.pageheap_unmapped_bytes", "u"},
+		{"tcmalloc.current_total_thread_cache_bytes", "tc"}
+	};
+	for(unsigned i = 0, j = 0; i < sizeof(tcm_status_types)/sizeof(tcm_status_types[0]); i++) {
+		size_t tcm_bytes = 0;
+		MallocExtension::instance()->GetNumericProperty(tcm_status_types[i][0], &tcm_bytes);
+		if(round((double)tcm_bytes/1024/1024) > 0) {
+			if(j) {
+				outStrStat << "/";
+			}
+			outStrStat << tcm_status_types[i][1] << ":" << setprecision(0) << (double)tcm_bytes/1024/1024;
+			++j;
+		}
+	}
+	outStrStat << "]MB ";
+	#endif
 	#ifdef HEAP_CHUNK_ENABLE
 	extern cHeap *heap_vm;
 	if(heap_vm) {
@@ -2849,6 +2899,11 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		}
 		outStr << endl;
 		outStr << pcapStatString_interface_rslt;
+		if(sverb.ssl_stats) {
+			outStr << endl;
+			outStr << ssl_stats_str();
+			ssl_stats_reset();
+		}
 		string outStr_str = outStr.str();
 		char *pointToBeginLine = (char*)outStr_str.c_str();
 		while(pointToBeginLine && *pointToBeginLine) {
@@ -2909,10 +2964,12 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					} else {
 						kill_reason = "timeout (define in gui)";
 					}
-					if(!log) {
-						log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+					if (!(iter->second->disable_timeout_warn_msg)) {
+						if(!log) {
+							log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+						}
+						log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
 					}
-					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
 					delete iter->second;
 					usersniffer_kill_reason[iter->first] = kill_reason;
 					usersniffer.erase(iter++);
@@ -3183,12 +3240,13 @@ void PcapQueue::processBeforeAddToPacketBuffer(pcap_pkthdr* header,u_char* packe
 	vmPort sport;
 	vmPort dport;
 	bool isTcp = false;
-	if (header_ip->get_protocol() == IPPROTO_UDP) {
+	u_int8_t ip_protocol = header_ip->get_protocol(header->caplen - offset);
+	if (ip_protocol == IPPROTO_UDP) {
 		udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
 		sport = header_udp->get_source();
 		dport = header_udp->get_dest();
-	} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+	} else if (ip_protocol == IPPROTO_TCP) {
 		tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
 		datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
 		sport = header_tcp->get_source();
@@ -3263,6 +3321,10 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 		filter_ip = NULL;
 	}
 	read_from_file_index = 0;
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	lastPcapTime_s = 0;
+	lastTimeErrorLogPcapTime_ms = 0;
+	#endif
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -3576,10 +3638,8 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				}
 			}
 			this->lastPacketTimeUS = packetTime;
-		} else {
-			if(heap_pb_used_perc > 5) {
-				USLEEP(50);
-			}
+		} else if(!opt_nonstop_read_quick && heap_pb_used_perc > 5) {
+			USLEEP(50);
 		}
 		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {
 			syslog(LOG_NOTICE,"packetbuffer - exceed limit of read packets, exiting");
@@ -3676,13 +3736,29 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 			syslog(LOG_NOTICE, "find oneshot libpcap buffer : %s", libpcap_buffer ? "success" : "failed");
 		}
 	}
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	if((lastPcapTime_s &&
+	    abs(lastPcapTime_s - (int64_t)((*header)->ts.tv_sec)) > 24 * 60 * 60) ||
+	   (*header)->ts.tv_sec == 0) {
+		u_int64_t actTimeMS = getTimeMS_rdtsc();
+		if(!lastTimeErrorLogPcapTime_ms ||
+		   actTimeMS > lastTimeErrorLogPcapTime_ms + 1000) {
+			cLogSensor::log(cLogSensor::error,
+					"bad pcap time from interface %s",
+					interfaceName.c_str());
+			lastTimeErrorLogPcapTime_ms = actTimeMS;
+		}
+		return(-12);
+	}
+	lastPcapTime_s = (*header)->ts.tv_sec;
+	#endif
 	if(checkProtocol || filter_ip) {
 		sCheckProtocolData _checkProtocolData;
 		if(!checkProtocolData) {
 			checkProtocolData = &_checkProtocolData;
 		}
 		if(!check_protocol(*header, *packet, checkProtocolData) ||
-		   (filter_ip && !check_filter_ip(*packet, checkProtocolData))) {
+		   !check_filter_ip(*header, *packet, checkProtocolData)) {
 			return(-11);
 		}
 	}
@@ -3690,19 +3766,74 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 }
 
 bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
-	return(parseEtherHeader(pcapLinklayerHeaderType, packet,
-				checkProtocolData->header_sll, checkProtocolData->header_eth, NULL,
-				checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan) &&
-	       (checkProtocolData->protocol == ETHERTYPE_IP ||
-		(VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
-	       (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
-		(VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
-	       ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len);
+	if(parseEtherHeader(pcapLinklayerHeaderType, packet,
+			    &checkProtocolData->header_eth, NULL,
+			    checkProtocolData->header_ip_offset, checkProtocolData->protocol, checkProtocolData->vlan)) {
+		if((checkProtocolData->protocol == ETHERTYPE_IP ||
+		    (VM_IPV6_B && checkProtocolData->protocol == ETHERTYPE_IPV6)) &&
+		   (((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 4 ||
+		    (VM_IPV6_B && ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->version == 6)) &&
+		   ((iphdr2*)(packet + checkProtocolData->header_ip_offset))->get_tot_len() + checkProtocolData->header_ip_offset <= header->len) {
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING
+			#if EXPERIMENTAL_SEPARATE_PROCESSSING_NEXT_01
+			if(separate_processing()) {
+				u_int header_ip_offset = checkProtocolData->header_ip_offset;
+				iphdr2 *header_ip = (iphdr2*)(packet + header_ip_offset);
+				u_int16_t frag_data = header_ip->get_frag_data();
+				if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+					return(true);
+				}
+				char *data = NULL;
+				int datalen = 0;
+				u_int8_t ip_protocol = header_ip->get_protocol(header->caplen - header_ip_offset);
+				if(ip_protocol == IPPROTO_UDP) {
+					udphdr2 *header_udp = (udphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_udp_data_len(header_ip, header_udp, &data, packet, header->caplen);
+				} else if(ip_protocol == IPPROTO_TCP) {
+					tcphdr2 *header_tcp = (tcphdr2*) ((char*)header_ip + header_ip->get_hdr_size());
+					datalen = get_tcp_data_len(header_ip, header_tcp, &data, packet, header->caplen);
+				} else {
+					return(true);
+				}
+				if(IS_RTP(data, datalen)) {
+					if(separate_processing() == 1) {
+						return(false);
+					}
+				} else {
+					if(separate_processing() == 2) {
+						return(false);
+					}
+				}
+			}
+			#endif
+			#endif
+			return(true);
+		} else if(checkProtocolData->header_ip_offset == 0xFFFF) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
-bool PcapQueue_readFromInterface_base::check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData) {
-	iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
-	return(filter_ip->checkIP(iphdr->get_saddr()) || filter_ip->checkIP(iphdr->get_daddr()));
+bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
+	if(filter_ip) {
+		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
+		if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
+			return(false);
+		}
+	}
+	extern bool opt_is_client_packetbuffer_sender;
+	if(opt_is_client_packetbuffer_sender) {
+		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
+		if(iphdr->get_daddr() == snifferClientOptions.host_ip &&
+		   iphdr->get_protocol(header->caplen - checkProtocolData->header_ip_offset) == IPPROTO_TCP) {
+			tcphdr2 *header_tcp = (tcphdr2*)((char*)iphdr + iphdr->get_hdr_size());
+			if((unsigned)header_tcp->get_dest() == snifferClientOptions.port) {
+				return(false);
+			}
+		}
+	}
+	return(true);
 }
 
 void PcapQueue_readFromInterface_base::restoreOneshotBuffer() {
@@ -3745,7 +3876,6 @@ inline int PcapQueue_readFromInterface_base::pcapProcess(sHeaderPacket **header_
 			     block_store, block_store_index,
 			     ppf,
 			     &ppd, pcapLinklayerHeaderType, pcapDumpHandle, getInterfaceName().c_str()));
-	return(0);
 }
 
 string PcapQueue_readFromInterface_base::pcapStatString_interface(int /*statPeriod*/) {
@@ -3886,7 +4016,9 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 		while(!is_terminating()) {
 			this->tryForcePush();
 			if(!opt_pb_read_from_file_max_packets) {
-				if(sleepCounter > 10 && sleepCounter <= 15) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 1 :
+				    sleepCounter > 10 && sleepCounter <= 15) {
 					calltable->cleanup_calls(true);
 					calltable->cleanup_registers(true);
 					calltable->cleanup_ss7(true);
@@ -3896,16 +4028,21 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 						registers.cleanup(false);
 					}
 				}
-				if(sleepCounter > 15) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 2 :
+				    sleepCounter > 15) {
 					calltable->destroyCallsIfPcapsClosed();
 					calltable->destroyRegistersIfPcapsClosed();
 				}
-				if(sleepCounter > 20) {
+				if(opt_nonstop_read_quick ?
+				    sleepCounter > 3 :
+				    sleepCounter > 20) {
 					if(flushAllTars()) {
 						 syslog(LOG_NOTICE, "tars flushed");
 					}
 				}
-				if(sleepCounter > 30 && opt_nonstop_read) {
+				if(opt_nonstop_read &&
+				   sleepCounter > (opt_nonstop_read_quick ? 4 : 30)) {
 					rss_purge();
 					syslog(LOG_NOTICE, "purge");
 					extern void reset_cleanup_variables();
@@ -4890,7 +5027,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			break;
 		case defrag: {
 			POP_FROM_PREV_THREAD;
-			bool okPush = true;;
+			bool okPush = true;
 			if(opt_udpfrag) {
 				res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 							NULL, 0,
@@ -5090,7 +5227,7 @@ void PcapQueue_readFromInterfaceThread::_dpdk_packet_completion(void *user, pcap
 void PcapQueue_readFromInterfaceThread::dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet) {
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData) ||
-		   (filter_ip && !check_filter_ip((u_char*)packet, &dd->checkProtocolData))) {
+		   !check_filter_ip((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
@@ -5400,6 +5537,10 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	pcap_block_store *block = NULL;
 	sCheckProtocolData checkProtocolData;
 	
+	#if EXPERIMENTAL_INTERFACE_DUPL
+	unsigned dupl_read_counter = 0;
+	#endif
+	
 	while(!(is_terminating() || this->threadDoTerminate)) {
 		switch(this->typeThread) {
 		case read: {
@@ -5421,14 +5562,28 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 					setOneshotBuffer(pcap_packet);
 				}
 			}
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			if(!(dupl_read_counter % 10)) {
+			#endif
+			
 			res = this->pcap_next_ex_iface(this->pcapHandle, &pcap_next_ex_header, &pcap_next_ex_packet,
 						       opt_pcap_queue_use_blocks_read_check, &checkProtocolData);
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			}
+			#endif
+			
 			if(res == -1) {
 				if(opt_pb_read_from_file[0]) {
 					this->push_block(block);
 					block = NULL;
 					terminatingAtEndOfReadPcap();
-					break;
+					if(opt_nonstop_read) {
+						continue;
+					} else {
+						break;
+					}
 				}
 				break;
 			} else if(res <= 0) {
@@ -5479,6 +5634,11 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			}
 			block->inc_h(pcap_header_plus2);
 			//cout << '.' << flush;
+			
+			#if EXPERIMENTAL_INTERFACE_DUPL
+			++dupl_read_counter;
+			#endif
+			
 			break;
 		}
 		default:
@@ -5520,7 +5680,7 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 	}
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
 		if(!check_protocol((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData) ||
-		   (filter_ip && !check_filter_ip((u_char*)packet, &dd->checkProtocolData))) {
+		   !check_filter_ip((pcap_pkthdr*)header, (u_char*)packet, &dd->checkProtocolData)) {
 			return;
 		}
 	}
@@ -7353,6 +7513,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	unsigned long usleepSumTime = 0;
 	unsigned long usleepSumTime_lastPush = 0;
 	sHeaderPacketPQout hp_out;
+	u_int64_t cleanupBlockStoreTrash_at_ms = 0;
 	//
 	while(!TERMINATING) {
 		if(DEBUG_SLEEP && access((this->pcapStoreQueue.fileStoreFolder + "/__/sleep").c_str(), F_OK ) != -1) {
@@ -7412,7 +7573,13 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							pti.blockStoreIndex = i;
 							pti.header = (*blockStore)[i].header;
 							pti.packet = (*blockStore)[i].packet;
-							pti.utime = getTimeUS(pti.header->header_fix_size.ts_tv_sec, pti.header->header_fix_size.ts_tv_usec);
+							pti.utime = getTimeUS(
+									      #if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+									      pti.header->header.ts.tv_sec, pti.header->header.ts.tv_usec
+									      #else
+									      pti.header->header_fix_size.ts_tv_sec, pti.header->header_fix_size.ts_tv_usec
+									      #endif
+									      );
 							pti.at = at;
 							map<u_int64_t, list<sPacketTimeInfo>* >::iterator iter = listPacketTimeInfo.find(pti.utime);
 							if(iter != listPacketTimeInfo.end()) {
@@ -7446,6 +7613,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								hp_out.sensor_id = pti.blockStore->sensor_id;
 								hp_out.sensor_ip = pti.blockStore->sensor_ip;
 								hp_out.block_store_locked = false;
+								hp_out.header_ip_last_offset = 0xFFFF;
 								this->processPacket(&hp_out, _hppq_out_state_NA);
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
@@ -7470,10 +7638,24 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					if(blockStore) {
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
-						blockInfo[blockInfoCount].utime_first = getTimeUS((*blockStore)[0].header->header_fix_size.ts_tv_sec, 
-												  (*blockStore)[0].header->header_fix_size.ts_tv_usec);
-						blockInfo[blockInfoCount].utime_last = getTimeUS((*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
-												 (*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec);
+						blockInfo[blockInfoCount].utime_first = getTimeUS(
+							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+							(*blockStore)[0].header->header.ts.tv_sec, 
+							(*blockStore)[0].header->header.ts.tv_usec
+							#else
+							(*blockStore)[0].header->header_fix_size.ts_tv_sec, 
+							(*blockStore)[0].header->header_fix_size.ts_tv_usec
+							#endif
+							);
+						blockInfo[blockInfoCount].utime_last = getTimeUS(
+							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+							(*blockStore)[blockStore->count - 1].header->header.ts.tv_sec, 
+							(*blockStore)[blockStore->count - 1].header->header.ts.tv_usec
+							#else
+							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
+							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec
+							#endif
+							);
 						blockInfo[blockInfoCount].at = at;
 						if(!blockInfo_utime_first ||
 						   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
@@ -7526,6 +7708,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.sensor_id = actBlockInfo->blockStore->sensor_id;
 						hp_out.sensor_ip = actBlockInfo->blockStore->sensor_ip;
 						hp_out.block_store_locked = false;
+						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out, _hppq_out_state_NA);
 						++actBlockInfo->count_processed;
 						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
@@ -7557,8 +7740,15 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								}
 							}
 						} else {
-							actBlockInfo->utime_first = getTimeUS((*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
-											      (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec);
+							actBlockInfo->utime_first = getTimeUS(
+								#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_sec,
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_usec
+								#else
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
+								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec
+								#endif
+								);
 							blockInfo_utime_first = minUtime;
 						}
 						usleepCounter = 0;
@@ -7580,6 +7770,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						hp_out.sensor_id = blockStore->sensor_id;
 						hp_out.sensor_ip = blockStore->sensor_ip;
 						hp_out.block_store_locked = false;
+						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out, _hppq_out_state_NA);
 					}
 					this->blockStoreTrashPush(blockStore);
@@ -7600,7 +7791,12 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		if(!(this->packetServerDirection != directionWrite &&
 		     opt_ipaccount)) {
 			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
-				this->cleanupBlockStoreTrash();
+				u_int64_t time_ms = getTimeMS_rdtsc();
+				if(!cleanupBlockStoreTrash_at_ms || 
+				   (time_ms > cleanupBlockStoreTrash_at_ms && time_ms - cleanupBlockStoreTrash_at_ms > 1000)) {
+					this->cleanupBlockStoreTrash();
+					cleanupBlockStoreTrash_at_ms = time_ms;
+				}
 			}
 		}
 	}
@@ -7669,10 +7865,17 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 			if(opt_ipaccount) {
 				for(size_t i = 0; i < block->count && !TERMINATING; i++) {
 					pcap_block_store::pcap_pkthdr_pcap headerPcap = (*block)[i];
+					#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+					ipaccount(headerPcap.header->header.ts.tv_sec,
+						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
+						  headerPcap.header->header.len - headerPcap.header->header_ip_offset,
+						  block->is_voip[i]);
+					#else
 					ipaccount(headerPcap.header->std ? headerPcap.header->header_std.ts.tv_sec : headerPcap.header->header_fix_size.ts_tv_sec,
 						  (iphdr2*)(headerPcap.packet + headerPcap.header->header_ip_offset),
 						  (headerPcap.header->std ? headerPcap.header->header_std.len : headerPcap.header->header_fix_size.len) - headerPcap.header->header_ip_offset,
 						  block->is_voip[i]);
+					#endif
 				}
 			}
 			buffersControl.sub__pb_trash_size(block->getUseAllSize());
@@ -8372,6 +8575,12 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(-1);
 	}
 	
+	if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost && pcapQueueQ_outThread_detach2 &&
+	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag || hp_state == _hppq_out_state_dedup)) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		return(-1);
+	}
+	 
 	/*
 	if((long)hp->block_store == 0x60e000022b00 &&
 	   hp->block_store_index == 1245) {
@@ -8418,14 +8627,16 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		this->_last_ts.tv_usec = header->ts.tv_usec;
 	}
 	
-	iphdr2 *header_ip_encaps = hp->header->header_ip_encaps_offset == 0xFFFF ?
-				   NULL :
-				   (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
-	iphdr2 *header_ip = hp->header->header_ip_offset == 0xFFFF ?
-			     NULL :
-			     (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+	iphdr2 *header_ip_encaps = hp->header->header_ip_encaps_offset != 0xFFFF ?
+				    (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset) : 
+				    NULL;
+	iphdr2 *header_ip = hp->header_ip_last_offset != 0xFFFF ?
+			     (iphdr2*)(hp->packet + hp->header_ip_last_offset) :
+			    hp->header->header_ip_offset != 0xFFFF ?
+			     (iphdr2*)(hp->packet + hp->header->header_ip_offset) :
+			     NULL;
 
-	if(header_ip) {
+	if(header_ip && hp->header_ip_last_offset == 0xFFFF) {
 		while(true) {
 			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
 								     hp->packet, hp->header->get_caplen());
@@ -8446,14 +8657,19 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	pflags.init();
 	vmPort sport;
 	vmPort dport;
+	u_int8_t header_ip_protocol = 0;
 	if(header_ip) {
-		if (header_ip->get_protocol() == IPPROTO_UDP) {
+		if(hp->header->get_caplen() <= hp->header->header_ip_offset) {
+			return(0);
+		}
+		header_ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
+		if(header_ip_protocol == IPPROTO_UDP) {
 			udphdr2 *header_udp = (udphdr2*)((char*) header_ip + header_ip->get_hdr_size());
 			datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, header->caplen);
 			sport = header_udp->get_source();
 			dport = header_udp->get_dest();
 			pflags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[sport] || ss7_rudp_portmatrix[dport]);
-		} else if (header_ip->get_protocol() == IPPROTO_TCP) {
+		} else if(header_ip_protocol == IPPROTO_TCP) {
 			tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 			datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, header->caplen);
 			pflags.tcp = 1;
@@ -8464,7 +8680,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			} else if(cFilters::saveMrcp() && IS_MRCP(data, datalen)) {
 				pflags.mrcp = 1;
 			}
-		} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
+		} else if(opt_enable_ss7 && header_ip_protocol == IPPROTO_SCTP) {
 			pflags.ss7 = 1;
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
@@ -8494,6 +8710,15 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(0);
 	}
 	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		bool is_rtp = datalen > 2 && IS_RTP(data, datalen);
+		if(separate_processing() == 1 ? is_rtp : !is_rtp) {
+			return(0);
+		}
+	}
+	#endif
+	
 	#if TRACE_INVITE_BYE
 	if(memmem(data, datalen, "INVITE sip", 10)) {
 		cout << "processPacket INVITE" << endl;
@@ -8516,7 +8741,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
 
-	if(header_ip && header_ip->get_protocol() == IPPROTO_TCP) {
+	if(header_ip && header_ip_protocol == IPPROTO_TCP) {
 		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
 		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
@@ -8550,7 +8775,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		extern bool ssl_client_random_portmatrix_set;
 		extern vector<vmIP> ssl_client_random_ip;
 		extern vector<vmIPmask> ssl_client_random_net;
-		if(header_ip && header_ip->get_protocol() == IPPROTO_UDP &&
+		if(header_ip && header_ip_protocol == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
 		   (!ssl_client_random_portmatrix_set || 
 		    ssl_client_random_portmatrix[dport]) &&
@@ -8561,6 +8786,18 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				return(0);
 			}
 		}
+		#if EXPERIMENTAL_T2_DETACH_X_MOD
+		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+			header_ip ? (u_char*)header_ip - hp->packet : 0,
+			header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
+			(u_char*)data - hp->packet,
+			datalen,
+			header_ip ? sport.getPort() : 0,
+			header_ip ? dport.getPort() : 0,
+			pflags,
+			hp,
+			this->getPcapHandleIndex(hp->dlt));
+		#else
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 			#if USE_PACKET_NUMBER
 			packet_counter_all,
@@ -8571,6 +8808,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			pflags, header_ip_encaps, header_ip,
 			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
+		#endif
 		return(1);
 	}
 	
@@ -8584,9 +8822,18 @@ void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 		pcapQueueQ_outThread_defrag->push_batch();
 	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push_batch();
-	} else if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+	} else if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push_batch();
+	} else 
+	#if EXPERIMENTAL_T2_DETACH_X_MOD
+	if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+	}
+	#else
+	if(preProcessPacket[PreProcessPacket::ppt_detach]) {
 		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
 	}
+	#endif
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
@@ -8697,6 +8944,11 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	}
 	this->initThreadOk = false;
 	this->terminatingThread = false;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	push_thread = 0;
+	last_race_log[0] = 0;
+	last_race_log[1] = 0;
+	#endif
 }
 
 PcapQueue_outputThread::~PcapQueue_outputThread() {
@@ -8728,16 +8980,26 @@ void PcapQueue_outputThread::stop() {
 }
 
 void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	static __thread unsigned _tid = 0;
+	if(!_tid) {
+		_tid = get_unix_tid();
+	}
+	if(!push_thread) {
+		push_thread = _tid;
+	} else if(push_thread != _tid) {
+		u_int64_t time = getTimeMS_rdtsc();
+		if(time > last_race_log[0] + 1000) {
+			syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameOutputThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+			last_race_log[0] = time;
+		}
+		push_thread = _tid;
+	}
+	#endif
 	if(hp && hp->block_store && !hp->block_store_locked) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
 	}
-
-	/*
-	this->processDefrag(hp);
-	return;
-	*/
-	
 	if(!qring_push_index) {
 		unsigned int usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
@@ -8766,6 +9028,20 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 }
 
 void PcapQueue_outputThread::push_batch() {
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	static __thread unsigned _tid = 0;
+	if(!_tid) {
+		_tid = get_unix_tid();
+	}
+	if(push_thread && push_thread != _tid) {
+		u_int64_t time = getTimeMS_rdtsc();
+		if(time > last_race_log[1] + 1000) {
+			syslog(LOG_ERR, "race in %s %s %i (%i != %i)", getNameOutputThread().c_str(), __FILE__, __LINE__, push_thread, _tid);
+			last_race_log[1] = time;
+		}
+		push_thread = _tid;
+	}
+	#endif
 	if(qring_push_index && qring_push_index_count) {
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;
@@ -8780,6 +9056,9 @@ void PcapQueue_outputThread::push_batch() {
 }
 
 void *PcapQueue_outputThread::outThreadFunction() {
+	if(typeOutputThread == detach) {
+		setpriority(PRIO_PROCESS, get_unix_tid(), -19);
+	}
 	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();
@@ -8801,6 +9080,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					break;
 				case dedup:
 					this->processDedup(&batch->batch[batch_index]);
+					break;
+				case detach2:
+					this->processDetach2(&batch->batch[batch_index]);
 					break;
 				}
 			}
@@ -8829,7 +9111,20 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						break;
 					}
 				case dedup:
-					preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+					if(pcapQueueQ_outThread_detach2) {
+						pcapQueueQ_outThread_detach2->push_batch();
+						break;
+					}
+				case detach2:
+					#if EXPERIMENTAL_T2_DETACH_X_MOD
+					if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+						preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+					}
+					#else
+					if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+						preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+					}
+					#endif
 					break;
 				}
 				usleepSumTime_lastPush = usleepSumTime;
@@ -8840,6 +9135,26 @@ void *PcapQueue_outputThread::outThreadFunction() {
 }
 
 void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
+	if(opt_t2_boost_pb_detach_thread == 2 &&
+	   hp->header->header_ip_offset != 0xFFFF && hp->header_ip_last_offset == 0xFFFF) {
+		hp->header_ip_last_offset = hp->header->header_ip_offset;
+		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header_ip_last_offset);
+		if(header_ip) {
+			while(true) {
+				int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header_ip_last_offset, 
+									     hp->packet, hp->header->get_caplen());
+				if(next_header_ip_offset == 0) {
+					break;
+				} else if(next_header_ip_offset < 0) {
+					hp->header_ip_last_offset = 0xFFFF;
+					break;
+				} else {
+					header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+					hp->header_ip_last_offset += next_header_ip_offset;
+				}
+			}
+		}
+	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach) == 0) {
 		hp->destroy_or_unlock_blockstore();
 	}
@@ -8850,63 +9165,61 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2) {
 		hp->header->header_ip_offset = ((pcap_pkthdr_plus2*)hp->header)->header_ip_encaps_offset;
 	} else {
-		sll_header *header_sll;
-		ether_header *header_eth;
 		u_int16_t header_ip_offset = 0;
 		u_int16_t protocol;
 		u_int16_t vlan;
 		parseEtherHeader(hp->dlt, hp->packet,
-				 header_sll, header_eth, NULL,
+				 NULL, NULL,
 				 header_ip_offset, protocol, vlan);
 		hp->header->header_ip_offset = header_ip_offset;
 	}
-	iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-	u_int16_t frag_data = header_ip->get_frag_data();
-	if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
-		if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
-			static u_int64_t lastTimeLogErrBadIpHeader = 0;
-			u_int64_t actTime = hp->header->get_time_ms();
-			if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
-				syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
-				lastTimeLogErrBadIpHeader = actTime;
-			}
-			hp->destroy_or_unlock_blockstore();
-			return;
-		}
-		// packet is fragmented
-		int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
-		if(rsltDefrag > 0) {
-			// packets are reassembled
-			header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-			hp->header->pid.flags |= FLAG_FRAGMENTED;
-			if(sverb.defrag) {
-				defrag_counter++;
-				cout << "*** DEFRAG 1 " << defrag_counter << endl;
-			}
-		} else {
-			if(rsltDefrag < 0) {
+	if(hp->header->header_ip_offset != 0xFFFF) {
+		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+		u_int16_t frag_data = header_ip->get_frag_data();
+		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
+			if(header_ip->get_tot_len() + hp->header->header_ip_offset > hp->header->get_caplen()) {
+				static u_int64_t lastTimeLogErrBadIpHeader = 0;
+				u_int64_t actTime = hp->header->get_time_ms();
+				if(actTime - 1000 > lastTimeLogErrBadIpHeader) {
+					syslog(LOG_ERR, "BAD FRAGMENTED HEADER_IP: bogus ip header length %i, caplen %i", header_ip->get_tot_len(), hp->header->get_caplen());
+					lastTimeLogErrBadIpHeader = actTime;
+				}
 				hp->destroy_or_unlock_blockstore();
+				return;
 			}
-			return;
+			// packet is fragmented
+			int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
+			if(rsltDefrag > 0) {
+				// packets are reassembled
+				header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
+				hp->header->pid.flags |= FLAG_FRAGMENTED;
+				if(sverb.defrag) {
+					defrag_counter++;
+					cout << "*** DEFRAG 1 " << defrag_counter << endl;
+				}
+			} else {
+				if(rsltDefrag < 0) {
+					hp->destroy_or_unlock_blockstore();
+				}
+				return;
+			}
 		}
-	}
-	unsigned headers_ip_counter = 0;
-	unsigned headers_ip_offset[20];
-	while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
-		headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
-		++headers_ip_counter;
-		int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
-							     hp->packet, hp->header->get_caplen());
-		if(next_header_ip_offset == 0) {
-			break;
-		} else if(next_header_ip_offset < 0) {
-			hp->destroy_or_unlock_blockstore();
-			return;
-		} else {
-			header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
-			hp->header->header_ip_offset += next_header_ip_offset;
-		}
-		if(header_ip->get_protocol() == IPPROTO_UDP) {
+		unsigned headers_ip_counter = 0;
+		unsigned headers_ip_offset[20];
+		while(headers_ip_counter < sizeof(headers_ip_offset) / sizeof(headers_ip_offset[0]) - 1) {
+			headers_ip_offset[headers_ip_counter] = hp->header->header_ip_offset;
+			++headers_ip_counter;
+			int next_header_ip_offset = findNextHeaderIp(header_ip, hp->header->header_ip_offset, 
+								     hp->packet, hp->header->get_caplen());
+			if(next_header_ip_offset == 0) {
+				break;
+			} else if(next_header_ip_offset < 0) {
+				hp->destroy_or_unlock_blockstore();
+				return;
+			} else {
+				header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
+				hp->header->header_ip_offset += next_header_ip_offset;
+			}
 			int frag_data = header_ip->get_frag_data();
 			if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 				// packet is fragmented
@@ -8956,13 +9269,14 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			char *data = NULL;
 			int datalen = 0;
-			if(header_ip->get_protocol() == IPPROTO_UDP) {
+			u_int8_t ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
+			if(ip_protocol == IPPROTO_UDP) {
 				udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
-			} else if(header_ip->get_protocol() == IPPROTO_TCP) {
+			} else if(ip_protocol == IPPROTO_TCP) {
 				tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
-			} else if (opt_enable_ss7 && header_ip->get_protocol() == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && ip_protocol == IPPROTO_SCTP) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
 			if(data && datalen) {
@@ -9001,6 +9315,12 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		memcpy(this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
 	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
+		hp->destroy_or_unlock_blockstore();
+	}
+}
+
+void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
+	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach2) == 0) {
 		hp->destroy_or_unlock_blockstore();
 	}
 }

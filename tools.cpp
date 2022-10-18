@@ -377,7 +377,7 @@ mkdir_r(std::string s, mode_t mode, unsigned uid, unsigned gid)
 	return mdret;
 }
 
-int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
+int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
 	if(!file_exists((char*)dir)) {
 		return(0);
 	}
@@ -396,28 +396,58 @@ int rmdir_r(const char *dir, bool enableSubdir, bool withoutRemoveRoot) {
 				rmdir_r(dirWithSubdir.c_str(), enableSubdir);
 			}
 		} else {
-			unlink((string(dir) + "/" + de->d_name).c_str());
+			unlink((string(dir) + "/" + de->d_name).c_str(), file_src_code, line_src_code);
 		}
 	}
 	closedir(dp);
 	if(withoutRemoveRoot) {
 		return(0);
 	} else {
-		return(rmdir(dir));
+		return(rmdir(dir, file_src_code, line_src_code));
 	}
 }
 
-int rmdir_r(std::string dir, bool enableSubdir, bool withoutRemoveRoot) {
-	return(rmdir_r(dir.c_str(), enableSubdir, withoutRemoveRoot));
+int rmdir_r(std::string dir, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
+	return(rmdir_r(dir.c_str(), enableSubdir, withoutRemoveRoot, file_src_code, line_src_code));
 }
 
-int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemoveRoot) {
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir, bool withoutRemoveRoot, const char *file_src_code, int line_src_code) {
 	return(if_r ?
-		rmdir_r(dir, enableSubdir, withoutRemoveRoot) :
-		rmdir(dir.c_str()));
+		rmdir_r(dir, enableSubdir, withoutRemoveRoot, file_src_code, line_src_code) :
+		rmdir(dir.c_str(), file_src_code, line_src_code));
 }
 
-unsigned long long cp_r(const char *src, const char *dst, bool move) {
+int unlink(const char *pathname, const char *file_src_code, int line_src_code) {
+	int rslt = unlink(pathname);
+	extern bool opt_all_unlink_log;
+	if(opt_all_unlink_log) {
+		ostringstream str;
+		str << "unlink: " << pathname
+		    << " rslt: " << rslt;
+		if(file_src_code) {
+			str << " code: " << file_src_code << ":" << line_src_code;
+		}
+		syslog(LOG_NOTICE, "%s", str.str().c_str());
+	}
+	return(rslt);
+}
+
+int rmdir(const char *path, const char *file_src_code, int line_src_code) {
+	int rslt = rmdir(path);
+	extern bool opt_all_unlink_log;
+	if(opt_all_unlink_log) {
+		ostringstream str;
+		str << "rmdir: " << path
+		    << " rslt: " << rslt;
+		if(file_src_code) {
+			str << " code: " << file_src_code << ":" << line_src_code;
+		}
+		syslog(LOG_NOTICE, "%s", str.str().c_str());
+	}
+	return(rslt);
+}
+
+int64_t cp_r(const char *src, const char *dst, bool move) {
 	if(!file_exists((char*)src)) {
 		return(0);
 	}
@@ -425,7 +455,7 @@ unsigned long long cp_r(const char *src, const char *dst, bool move) {
 	if (!dp) {
 		return(0);
 	}
-	unsigned long long bytestransfered = 0;
+	int64_t bytestransfered = 0;
 	dirent* de;
 	while (true) {
 		de = readdir(dp);
@@ -440,29 +470,45 @@ unsigned long long cp_r(const char *src, const char *dst, bool move) {
 				rmdir(srcWithSubdir.c_str());
 			}
 		} else {
-			copy_file((string(src) + "/" + de->d_name).c_str(), (string(dst) + "/" + de->d_name).c_str(), move);
+			int64_t _bytestransfered = copy_file((string(src) + "/" + de->d_name).c_str(), (string(dst) + "/" + de->d_name).c_str(), move);
+			if(_bytestransfered > 0) {
+				bytestransfered += _bytestransfered;
+			}
 		}
 	}
 	closedir(dp);
 	return(bytestransfered);
 }
 
-unsigned long long copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir) {
+int64_t copy_file(const char *src, const char *dst, bool move, bool auto_create_dst_dir, string *syserror) {
 	int read_fd = 0;
 	int write_fd = 0;
 	struct stat stat_buf;
 	int renamedebug = 0;
+	
+	if(syserror) {
+		*syserror = "";
+	}
 
 	//check if the file exists
 	if(!file_exists(src)) {
-		return(0);
+		syslog(LOG_ERR, "Missing source file [%s]\n", src);
+		return(_copyfile_src_missing);
 	}
 
 	/* Open the input file. */
 	read_fd = open (src, O_RDONLY);
 	if(read_fd == -1) {
-		syslog(LOG_ERR, "Cannot open file for reading [%s]\n", src);
-		return(0);
+		char buf[4092];
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for reading [%s] error[%s]\n", src, errstr);
+		if(syserror) {
+			*syserror = errstr;
+		}
+		return(_copyfile_src_open_failed);
 	}
 		
 	/* Stat the input file to obtain its size. */
@@ -494,25 +540,52 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 	}
 	if(write_fd == -1) {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, buf, src);
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "Cannot open file for writing [%s] (error:[%s]) leaving the source file [%s] undeleted\n", dst, errstr, src);
+		if(syserror) {
+			*syserror = errstr;
+		}
 		close(read_fd);
-		return(0);
+		return(_copyfile_dst_open_failed);
 	}
 #ifndef FREEBSD
 	fdatasync(write_fd);
 #endif
 	posix_fadvise(write_fd, 0, 0, POSIX_FADV_DONTNEED);
 	/* Blast the bytes from one file to the other. */
+	
+	int64_t bytestransfered = -1;
 #ifndef FREEBSD
 	off_t offset = 0;
-	int res = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
-	unsigned long long bytestransfered = stat_buf.st_size;
-#else
-	int res = -1;
-	unsigned long long bytestransfered = 0;
+	ssize_t sendfile_result = 0;
+	while(offset < stat_buf.st_size) {
+		sendfile_result = sendfile(write_fd, read_fd, &offset, stat_buf.st_size);
+		if(sendfile_result <= 0) {
+			break;
+		}
+	}
+	if(offset == stat_buf.st_size) {
+		bytestransfered = stat_buf.st_size;
+	} else if(sendfile_result < 0) {
+		char buf[4092];
+		const char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(!errstr || !errstr[0]) {
+			errstr = "unknown error";
+		}
+		syslog(LOG_ERR, "sendfile(copy_file) failed src[%s] dst[%s] error[%s]", src, dst, errstr);
+		if(syserror) {
+			*syserror = errstr;
+		}
+		close (read_fd);
+		close (write_fd);
+		return(_copyfile_sendfile_failed);
+	}
 #endif
-	if(res == -1) {
+	if(bytestransfered == -1) {
+		bytestransfered = 0;
 		if(renamedebug) {
 			syslog(LOG_ERR, "sendfile failed src[%s]", src);
 			
@@ -527,9 +600,18 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 			res = write(write_fd, &buf[0], result);
 			if(res == -1) {
 				char buf[4092];
-				strerror_r(errno, buf, 4092);
-				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, buf);
-				break;
+				const char *errstr = strerror_r(errno, buf, sizeof(buf));
+				if(!errstr || !errstr[0]) {
+					errstr = "unknown error";
+				}
+				syslog(LOG_ERR, "write failed src[%s] error[%s]", src, errstr);
+				if(syserror) {
+					*syserror = errstr;
+				}
+				bytestransfered = -1;
+				close (read_fd);
+				close (write_fd);
+				return(_copyfile_dst_write_failed);
 			}
 			bytestransfered += res;
 		}
@@ -542,6 +624,22 @@ As you can see we are calling fdatasync right before calling posix_fadvise, this
 		unlink(src);
 	}
 	return(bytestransfered);
+}
+
+string copy_file_err_type_str(int err_type) {
+	switch(err_type) {
+	case _copyfile_src_missing:
+		return("missing src file");
+	case _copyfile_src_open_failed:
+		return("failed open src file");
+	case _copyfile_dst_open_failed:
+		return("failed open dst file");
+	case _copyfile_sendfile_failed:
+		return("failed call sendfile");
+	case _copyfile_dst_write_failed:
+		return("failed write to dst file");
+	}
+	return("");
 }
 
 size_t _get_url_file_writer_function(void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -1386,7 +1484,7 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 bool incorrectCaplenDetected = false;
 
 void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
-		      u_char *data, unsigned int datalen,
+		      u_char *data, unsigned int datalen, u_int32_t forceDatalen,
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
 	extern int opt_convert_dlt_sll_to_en10;
@@ -1397,7 +1495,9 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		   actTime - 10000 > lastTimeDltSyslog) {
 			syslog(LOG_NOTICE, "warning - use dlt (%i) for pcap %s created for dlt (%i) - packet will not be saved%s",
 			       dlt, this->fileName.c_str(), this->dlt,
-			       !opt_convert_dlt_sll_to_en10 && ((dlt == DLT_LINUX_SLL && this->dlt == DLT_EN10MB) || (dlt == DLT_EN10MB && this->dlt == DLT_LINUX_SLL)) ?
+			       !opt_convert_dlt_sll_to_en10 && 
+			       (((dlt == DLT_LINUX_SLL || dlt == DLT_LINUX_SLL2) && this->dlt == DLT_EN10MB) || 
+				(dlt == DLT_EN10MB && (this->dlt == DLT_LINUX_SLL || this->dlt == DLT_LINUX_SLL2))) ?
 			        "; try configuration option convert_dlt_sll2en10 = yes" :
 				"");
 			lastTimeSyslog = actTime;
@@ -1432,26 +1532,29 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 					++packets_alloc_counter;
 				}
 				if((opt_virtualudppacket || forceVirtualUdp) && data && datalen) {
-					sll_header *header_sll = NULL;
-					ether_header *header_eth = NULL;
 					u_int16_t header_ip_offset = 0;
 					u_int16_t protocol = 0;
 					u_int16_t vlan = VLAN_UNSET;
 					if(parseEtherHeader(dlt, (u_char*)packet, 
-							    header_sll, header_eth, NULL,
+							    NULL, NULL,
 							    header_ip_offset, protocol, vlan)) {
 						unsigned iphdrSize = ((iphdr2*)(packet + header_ip_offset))->get_hdr_size();
-						if((header_ip_offset +
-						    iphdrSize +
-						    (istcp ? 
-						      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
-						      sizeof(udphdr2)) + 
-						    datalen) != header->caplen ||
+						unsigned hdrsSize = header_ip_offset +
+								    iphdrSize +
+								    (istcp ? 
+								      ((tcphdr2*)(packet + header_ip_offset + iphdrSize))->doff * 4 : 
+								      sizeof(udphdr2));
+						if(hdrsSize + datalen != header->caplen ||
+						   (forceDatalen && forceDatalen < datalen) ||
 						   forceVirtualUdp == 2) {
+							unsigned datalen_orig = datalen;
+							if(forceDatalen && forceDatalen < datalen) {
+								datalen = forceDatalen;
+							}
 							u_char *packet_mod;
 							pcap_pkthdr *header_mod;
 							createSimpleUdpDataPacket(header_ip_offset,  &header_mod, &packet_mod,
-										  (u_char*)packet, data, datalen,
+										  (u_char*)packet, data, datalen, datalen_orig,
 										  saddr, daddr, source, dest,
 										  ts && isSetTimeval(ts) ? ts->tv_sec : header->ts.tv_sec, 
 										  ts && isSetTimeval(ts) ? ts->tv_usec : header->ts.tv_usec);
@@ -1640,8 +1743,10 @@ void RtpGraphSaver::write(char *buffer, int length) {
 void RtpGraphSaver::close(bool updateFilesQueue) {
 	this->enableAutoOpen = false;
 	if(this->isOpen()) {
+		#if not EXPERIMENTAL_LITE_RTP_MOD
 		uint16_t packetization = uint16_t(this->rtp->packetization);
 		this->write((char*)&packetization, 2);
+		#endif
 		if(this->_asyncwrite == 0) {
 			this->handle->close();
 			delete this->handle;
@@ -2074,7 +2179,7 @@ bool RestartUpgrade::runUpgrade() {
 		}
 	}
 	unlink(binaryNameWithPath.c_str());
-	if(!copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true)) {
+	if(copy_file(binaryFilepathName.c_str(), binaryNameWithPath.c_str(), true) <= 0) {
 		this->errorString = "failed copy new binary to " + binaryNameWithPath;
 		rmdir_r(this->upgradeTempFileName.c_str());
 		if(verbosity > 0) {
@@ -2300,13 +2405,13 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			pexecCmd += "make install";
 		}
 		pexecCmd += ";'";
-		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600);
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true);
 		if(exitCode == 0) {
-			syslog(LOG_NOTICE, "runGitUpgrade command %s OK", cmd);
+			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
 		} else {
 			this->errorString = string(out) + "\n" + string(err);
-			syslog(LOG_NOTICE, "runGitUpgrade command %s FAILED: %s", cmd, this->errorString.c_str());
+			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) FAILED: %s", cmd, pexecCmd.c_str(), this->errorString.c_str());
 			return(false);
 		}
 	}
@@ -2393,8 +2498,12 @@ list<int> getPids(string app, string grep_search) {
 #endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
 	while(fgets(buffRslt, 512, cmd_pipe)) {
-		int pid = findPIDinPSline(buffRslt);
-		pids.push_back(pid);
+		if(!strcasestr(buffRslt, "<defunct>")) {
+			int pid = findPIDinPSline(buffRslt);
+			if(pid) {
+				pids.push_back(pid);
+			}
+		}
 	}
 	pclose(cmd_pipe);
 	return(pids);
@@ -2622,6 +2731,18 @@ char *strnchr(const char *haystack, char needle, size_t len)
                         return (char *)haystack;
 
                 haystack++;
+        }
+        return NULL;
+}
+
+char *strnrchr(const char *haystack, char needle, size_t len)
+{
+        int i;
+
+        for (i=(int)(len-1); i>=0; i--)
+        {
+                if (haystack[i] == needle)
+                        return (char *)(haystack + i);
         }
         return NULL;
 }
@@ -2919,12 +3040,21 @@ void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
 	}
 }
 
-void ListUA::addComb(string &ua, ListUA *negList) {
-	addComb(ua.c_str(), negList);
+void ListUA::addComb(string &ua, ListUA *negList,
+		     bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	addComb(ua.c_str(), negList,
+		enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListUA::addComb(const char *ua, ListUA *negList) {
-	vector<string>ua_elems = split(ua, split(" |,|;|\t|\r|\n", "|"), true);
+void ListUA::addComb(const char *ua, ListUA *negList,
+		     bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	if(!separators) {
+		separators = enableSpaceSeparator ? " |,|;|\t|\r|\n" : ",|;|\t|\r|\n";
+	}
+	if(!separatorsSeparator) {
+		separatorsSeparator = "|";
+	}
+	vector<string>ua_elems = split(ua, split(separators, separatorsSeparator), true);
 	for(size_t i = 0; i < ua_elems.size(); i++) {
 		if(ua_elems[i][0] == '!') {
 			if(negList) {
@@ -2936,12 +3066,21 @@ void ListUA::addComb(const char *ua, ListUA *negList) {
 	}
 }
 
-void ListCheckString::addComb(string &checkString, ListCheckString *negList) {
-	addComb(checkString.c_str(), negList);
+void ListCheckString::addComb(string &checkString, ListCheckString *negList,
+			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	addComb(checkString.c_str(), negList,
+		enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListCheckString::addComb(const char *checkString, ListCheckString *negList) {
-	vector<string>checkString_elems = split(checkString, split(" |,|;|\t|\r|\n", "|"), true);
+void ListCheckString::addComb(const char *checkString, ListCheckString *negList,
+			      bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	if(!separators) {
+		separators = enableSpaceSeparator ? " |,|;|\t|\r|\n" : ",|;|\t|\r|\n";
+	}
+	if(!separatorsSeparator) {
+		separatorsSeparator = "|";
+	}
+	vector<string>checkString_elems = split(checkString, split(separators, separatorsSeparator), true);
 	for(size_t i = 0; i < checkString_elems.size(); i++) {
 		if(checkString_elems[i][0] == '!') {
 			if(negList) {
@@ -3000,20 +3139,28 @@ ListUA_wb::ListUA_wb(bool autoLock)
    black(autoLock) {
 }
 
-void ListUA_wb::addWhite(string &ua) {
-	white.addComb(ua, &black);
+void ListUA_wb::addWhite(string &ua,
+			 bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	white.addComb(ua, &black,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListUA_wb::addWhite(const char *ua) {
-	white.addComb(ua, &black);
+void ListUA_wb::addWhite(const char *ua,
+			 bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	white.addComb(ua, &black,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListUA_wb::addBlack(string &ua) {
-	black.addComb(ua, &white);
+void ListUA_wb::addBlack(string &ua,
+			 bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	black.addComb(ua, &white,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListUA_wb::addBlack(const char *ua) {
-	black.addComb(ua, &white);
+void ListUA_wb::addBlack(const char *ua,
+			 bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	black.addComb(ua, &white,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
 ListCheckString_wb::ListCheckString_wb(bool autoLock)
@@ -3021,20 +3168,28 @@ ListCheckString_wb::ListCheckString_wb(bool autoLock)
    black(autoLock) {
 }
 
-void ListCheckString_wb::addWhite(string &checkString) {
-	white.addComb(checkString, &black);
+void ListCheckString_wb::addWhite(string &checkString,
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	white.addComb(checkString, &black,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListCheckString_wb::addWhite(const char *checkString) {
-	white.addComb(checkString, &black);
+void ListCheckString_wb::addWhite(const char *checkString,
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	white.addComb(checkString, &black,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListCheckString_wb::addBlack(string &checkString) {
-	black.addComb(checkString, &white);
+void ListCheckString_wb::addBlack(string &checkString,
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	black.addComb(checkString, &white,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
-void ListCheckString_wb::addBlack(const char *checkString) {
-	black.addComb(checkString, &white);
+void ListCheckString_wb::addBlack(const char *checkString,
+				  bool enableSpaceSeparator, const char *separators, const char *separatorsSeparator) {
+	black.addComb(checkString, &white,
+		      enableSpaceSeparator, separators, separatorsSeparator);
 }
 
 
@@ -3292,6 +3447,13 @@ void ParsePacket::setStdParse() {
 	
 	SIP_HEADERfilter::addNodes(this);
 	this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+	
+	extern bool opt_conference_processing;
+	if(opt_conference_processing) {
+		addNode("event:", typeNode_std);
+		addNode("subscription-state:", typeNode_std);
+		addNode("referred-by:", typeNode_std);
+	}
 }
 
 void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {
@@ -3451,14 +3613,17 @@ SafeAsyncQueue_base::SafeAsyncQueue_base() {
 		vm_pthread_create("async queue",
 				  &timer_thread, NULL, _SafeAsyncQueue_timerThread, NULL, __FILE__, __LINE__);
 	}
-	lock_list_saq();
-	list_saq.push_back(this);
-	unlock_list_saq();
 }
 
 SafeAsyncQueue_base::~SafeAsyncQueue_base() {
 	lock_list_saq();
 	list_saq.remove(this);
+	unlock_list_saq();
+}
+
+void SafeAsyncQueue_base::addToSaq() {
+	lock_list_saq();
+	list_saq.push_back(this);
 	unlock_list_saq();
 }
 
@@ -3479,25 +3644,22 @@ void SafeAsyncQueue_base::stopTimerThread(bool wait) {
 void SafeAsyncQueue_base::timerThread() {
 	runTimerThread = true;
 	while(!terminateTimerThread) {
-		USLEEP(100000);
+		USLEEP(1000);
+		u_int64_t time_ms = getTimeMS_rdtsc();
 		lock_list_saq();
 		list<SafeAsyncQueue_base*>::iterator iter;
 		for(iter = list_saq.begin(); iter != list_saq.end(); iter++) {
-			(*iter)->timerEv(timer_counter);
+			(*iter)->timerEv(time_ms);
 		}
 		unlock_list_saq();
-		++timer_counter;
 	}
 	runTimerThread = false;
 	timer_thread = 0;
-	timer_counter = 0;
 }
 
 list<SafeAsyncQueue_base*> SafeAsyncQueue_base::list_saq;
 
 pthread_t SafeAsyncQueue_base::timer_thread = 0;
-
-unsigned long long SafeAsyncQueue_base::timer_counter = 0;
 
 volatile int SafeAsyncQueue_base::_sync_list_saq = 0;
 
@@ -3557,6 +3719,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	}
 	this->readBufferBeginPos = 0;
 	this->eof = false;
+	this->_sync_write_lock = 0;
 }
 
 FileZipHandler::~FileZipHandler() {
@@ -3620,11 +3783,11 @@ void FileZipHandler::close() {
 				call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_close);
 			}
 			#endif
-			this->flushBuffer(true);
-			this->flushTarBuffer();
+			this->_flushBuffer(true);
+			this->_flushTarBuffer();
 		} else  {
 			if(this->okHandle() || this->useBufferLength) {
-				this->flushBuffer(true);
+				this->_flushBuffer(true);
 				if(this->okHandle()) {
 					::close(this->fh);
 					this->fh = 0;
@@ -3669,7 +3832,7 @@ bool FileZipHandler::is_eof() {
 	return(this->eof);
 }
 
-bool FileZipHandler::flushBuffer(bool force) {
+bool FileZipHandler::_flushBuffer(bool force) {
 	if(!this->buffer || !this->useBufferLength) {
 		#if DEBUG_ASYNC_TAR_WRITE
 		if(call) {
@@ -3692,12 +3855,12 @@ bool FileZipHandler::flushBuffer(bool force) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushbuffer_3);
 	}
 	#endif
-	bool rsltWrite = this->writeToFile(this->buffer, this->useBufferLength, force);
+	bool rsltWrite = this->_writeToFile(this->buffer, this->useBufferLength, force);
 	this->useBufferLength = 0;
 	return(rsltWrite);
 }
 
-void FileZipHandler::flushTarBuffer() {
+void FileZipHandler::_flushTarBuffer() {
 	#if DEBUG_ASYNC_TAR_WRITE
 	if(call) {
 		call->addPFlag(typeFile - 1 + indexFile, Call_abstract::_p_flag_fzh_flushtar_1);
@@ -3719,14 +3882,11 @@ void FileZipHandler::flushTarBuffer() {
 	this->tarBuffer = NULL;
 }
 
-bool FileZipHandler::writeToBuffer(char *data, int length) {
+bool FileZipHandler::_writeToBuffer(char *data, int length) {
 	if(!this->buffer) {
 		return(false);
 	}
-	if(this->useBufferLength && this->useBufferLength + length > this->bufferLength) {
-		flushBuffer();
-	}
-	if(length <= this->bufferLength) {
+	if(this->useBufferLength + length <= this->bufferLength) {
 		memcpy_heapsafe(this->buffer + this->useBufferLength, this->buffer,
 				data, NULL,
 				length,
@@ -3734,11 +3894,23 @@ bool FileZipHandler::writeToBuffer(char *data, int length) {
 		this->useBufferLength += length;
 		return(true);
 	} else {
-		return(this->writeToFile(data, length));
+		if(this->useBufferLength) {
+			_flushBuffer();
+		}
+		if(length <= this->bufferLength) {
+			memcpy_heapsafe(this->buffer, this->buffer,
+					data, NULL,
+					length,
+					__FILE__, __LINE__);
+			this->useBufferLength = length;
+			return(true);
+		} else {
+			return(this->_writeToFile(data, length));
+		}
 	}
 }
 
-bool FileZipHandler::writeToFile(char *data, int length, bool force) {
+bool FileZipHandler::_writeToFile(char *data, int length, bool force) {
 	if(!existsData) {
 		return(true);
 	}
@@ -3750,11 +3922,11 @@ bool FileZipHandler::writeToFile(char *data, int length, bool force) {
 		}
 		return(true);
 	} else {
-		return(this->_writeToFile(data, length, force));
+		return(this->_directWriteToFile(data, length, force));
 	}
 }
 
-bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
+bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {
 	if(!existsData) {
 		return(true);
 	}
@@ -3781,7 +3953,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 			return(true);
 		}
 		{
-		int rsltWrite = this->__writeToFile(data, length);
+		int rsltWrite = this->__directWriteToFile(data, length);
 		if(rsltWrite <= 0) {
 			this->setError();
 			return(false);
@@ -3815,7 +3987,7 @@ bool FileZipHandler::_writeToFile(char *data, int length, bool flush) {
 	return(false);
 }
 
-bool FileZipHandler::__writeToFile(char *data, int length) {
+bool FileZipHandler::__directWriteToFile(char *data, int length) {
 	if(!this->okHandle()) {
 		if(!this->error.empty() || !this->_open_write()) {
 			return(false);
@@ -4048,7 +4220,7 @@ bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompre
 		#endif
 		return(true);
 	}
-	if(this->__writeToFile(data, len) <= 0) {
+	if(this->__directWriteToFile(data, len) <= 0) {
 		this->setError();
 		return(false);
 	}
@@ -4225,9 +4397,12 @@ char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd) {
 }
 
 void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen, unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t time_sec, u_int32_t time_usec) {
+	if(!hdrs_datalen) {
+		hdrs_datalen = datalen;
+	}
 	unsigned iphdr_size = 
 		#if VM_IPV6
 		saddr.is_v6() ? 
@@ -4235,20 +4410,28 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		#endif
 		 sizeof(iphdr2);
 	u_int32_t packet_length = ether_header_length + iphdr_size + sizeof(udphdr2) + datalen;
+	u_int32_t packet_length_hdr = ether_header_length + iphdr_size + sizeof(udphdr2) + hdrs_datalen;
 	*packet = new FILE_LINE(38022) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
 		iphdr.nxt = IPPROTO_UDP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + hdrs_datalen);
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else  {
 	#endif
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4256,7 +4439,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr._protocol = IPPROTO_UDP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + datalen);
+		iphdr.set_tot_len(iphdr_size + sizeof(udphdr2) + hdrs_datalen);
 		iphdr._ttl = 50;
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	#if VM_IPV6
@@ -4266,7 +4449,7 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	memset(&udphdr, 0, sizeof(udphdr2));
 	udphdr.set_source(source);
 	udphdr.set_dest(dest);
-	udphdr.len = htons(sizeof(udphdr2) + datalen);
+	udphdr.len = htons(sizeof(udphdr2) + hdrs_datalen);
 	memcpy(*packet + ether_header_length + iphdr_size, &udphdr, sizeof(udphdr2));
 	memcpy(*packet + ether_header_length + iphdr_size + sizeof(udphdr2), data, datalen);
 	*header = new FILE_LINE(38023) pcap_pkthdr;
@@ -4274,14 +4457,17 @@ void createSimpleUdpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
 	(*header)->caplen = packet_length;
-	(*header)->len = packet_length;
+	(*header)->len = packet_length_hdr;
 }
 
 void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen, unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt) {
+	if(!hdrs_datalen) {
+		hdrs_datalen = datalen;
+	}
 	unsigned tcp_options_length = 12;
 	unsigned tcp_doff = (sizeof(tcphdr2) + tcp_options_length) / 4 + ((sizeof(tcphdr2) + tcp_options_length) % 4 ? 1 : 0);
 	unsigned iphdr_size = 
@@ -4291,20 +4477,28 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		#endif
 		 sizeof(iphdr2);
 	u_int32_t packet_length = ether_header_length + iphdr_size + tcp_doff * 4 + datalen;
+	u_int32_t packet_length_hdr = ether_header_length + iphdr_size + tcp_doff * 4 + hdrs_datalen;
 	*packet = new FILE_LINE(38024) u_char[packet_length];
 	memcpy(*packet, source_packet, ether_header_length);
+	ether_header *header_eth = (ether_header*)*packet;
 	#if VM_IPV6
 	if(saddr.is_v6()) {
+		if(header_eth->ether_type == htons(ETHERTYPE_IP)) {
+			header_eth->ether_type = htons(ETHERTYPE_IPV6);
+		}
 		ip6hdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 6;
 		iphdr.nxt = IPPROTO_TCP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + hdrs_datalen);
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	} else {
 	#endif
+		if(header_eth->ether_type == htons(ETHERTYPE_IPV6)) {
+			header_eth->ether_type = htons(ETHERTYPE_IP);
+		}
 		iphdr2 iphdr;
 		memset(&iphdr, 0, iphdr_size);
 		iphdr.version = 4;
@@ -4312,7 +4506,7 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 		iphdr._protocol = IPPROTO_TCP;
 		iphdr.set_saddr(saddr);
 		iphdr.set_daddr(daddr);
-		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + datalen);
+		iphdr.set_tot_len(iphdr_size + tcp_doff * 4 + hdrs_datalen);
 		iphdr._ttl = 50;
 		memcpy(*packet + ether_header_length, &iphdr, iphdr_size);
 	#if VM_IPV6
@@ -4324,8 +4518,12 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	tcphdr.set_dest(dest);
 	tcphdr.seq = htonl(seq);
 	tcphdr.ack_seq = htonl(ack_seq);
-	tcphdr.ack = 1;
 	tcphdr.doff = tcp_doff;
+	if(flags) {
+		tcphdr.flags = flags;
+	} else {
+		tcphdr.flags_bit.ack = 1;
+	}
 	tcphdr.window = htons(0x8000);
 	memcpy(*packet + ether_header_length + iphdr_size, &tcphdr, sizeof(tcphdr2));
 	memset(*packet + ether_header_length + iphdr_size + sizeof(tcphdr2), 0, tcp_options_length);
@@ -4339,19 +4537,17 @@ void createSimpleTcpDataPacket(u_int ether_header_length, pcap_pkthdr **header, 
 	(*header)->ts.tv_sec = time_sec;
 	(*header)->ts.tv_usec = time_usec;
 	(*header)->caplen = packet_length;
-	(*header)->len = packet_length;
+	(*header)->len = packet_length_hdr;
 	if(ether_header_length > sizeof(ether_header)) {
-		sll_header *header_sll;
-		ether_header *header_eth;
 		u_char *header_ppp_o_e = NULL;
 		u_int16_t header_ip_offset = 0;
 		u_int16_t protocol = 0;
 		u_int16_t vlan = VLAN_UNSET;
 		if(parseEtherHeader(dlt, (u_char*)*packet, 
-				    header_sll, header_eth, &header_ppp_o_e,
+				    NULL, &header_ppp_o_e,
 				    header_ip_offset, protocol, vlan) &&
 		   header_ppp_o_e) {
-			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + datalen + 2);
+			*(u_int16_t*)(header_ppp_o_e + 4) = htons(iphdr_size + tcp_doff * 4 + hdrs_datalen + 2);
 		}
 	}
 }
@@ -4399,20 +4595,21 @@ void convertAnonymousInPacket(sHeaderPacket *header_packet, pcapProcessData *ppd
 				if(payload_tcp_udp_length > ws.getHeaderLength()) {
 					bool allocData;
 					u_char *ws_data = ws.decodeData(&allocData, payload_tcp_udp_length);
-					if(!ws_data) {
+					if(ws_data) {
+						delete [] payload_tcp_udp;
+						payload_tcp_udp_length =  header_tcp != NULL ?
+									   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
+									       ws.getDataLength()) :
+									   ws.getDataLength();
+						payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
+						memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
+						payload_tcp_udp[payload_tcp_udp_length] = 0;
+						if(allocData) {
+							delete [] ws_data;
+						}
+					} else {
 						delete [] payload_tcp_udp;
 						payload_tcp_udp = NULL;
-					}
-					delete [] payload_tcp_udp;
-					payload_tcp_udp_length =  header_tcp != NULL ?
-								   min((u_int64_t)(header_tcp_udp_length - ws.getHeaderLength()),
-								       ws.getDataLength()) :
-								   ws.getDataLength();
-					payload_tcp_udp = new FILE_LINE(0)u_char[payload_tcp_udp_length + 1];
-					memcpy(payload_tcp_udp, ws_data, payload_tcp_udp_length);
-					payload_tcp_udp[payload_tcp_udp_length] = 0;
-					if(allocData) {
-						delete [] ws_data;
 					}
 				}
 			}
@@ -4791,19 +4988,19 @@ string _gunzip_s(const char *zipFilename, const char *unzipFilename) {
 			fclose(zip);
 		} else {
 			char buf[4092];
-			strerror_r(errno, buf, 4092);
+			char *errstr = strerror_r(errno, buf, sizeof(buf));
 			fclose(zip);
-			if(buf[0]) {
-				error = buf;
+			if(errstr && errstr[0]) {
+				error = errstr;
 			} else {
 				error = string("open output file ") + unzipFilename + " failed";
 			}
 		}
 	} else {
 		char buf[4092];
-		strerror_r(errno, buf, 4092);
-		if(buf[0]) {
-			error = buf;
+		char *errstr = strerror_r(errno, buf, sizeof(buf));
+		if(errstr && errstr[0]) {
+			error = errstr;
 		} else {
 			error = string("open inut file ") + zipFilename + " failed";
 		}
@@ -5003,13 +5200,17 @@ char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned d
 }
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
+	return(getbranch_xml(branch, str, strlen(str), rslt));
+}
+
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt) {
 	const char *pos = str;
 	while(pos) {
-		const char *_pos_next_1 = strcasestr(pos, (string("<") + branch + " ").c_str());
-		const char *_pos_next_2 = strcasestr(pos, (string("<") + branch + ">").c_str());
+		const char *_pos_next_1 = strncasestr(pos, (string("<") + branch + " ").c_str(), str_length - (pos - str));
+		const char *_pos_next_2 = strncasestr(pos, (string("<") + branch + ">").c_str(), str_length - (pos - str));
 		pos = _pos_next_1 && _pos_next_2 ? min(_pos_next_1, _pos_next_2) : max(_pos_next_1, _pos_next_2);
 		if(pos) {
-			const char *pos_end = strcasestr(pos, (string("</") + branch + ">").c_str());
+			const char *pos_end = strncasestr(pos, (string("</") + branch + ">").c_str(), str_length - (pos - str));
 			if(pos_end) {
 				rslt->push_back(string(pos, pos_end - pos + strlen(branch) + 3));
 				pos = pos_end + 1;
@@ -5022,10 +5223,14 @@ int getbranch_xml(const char *branch, const char *str, list<string> *rslt) {
 }
 
 string gettag_xml(const char *tag, const char *str) {
-	const char *begin = strcasestr(str, (string(tag) + "=\"").c_str());
+	return(gettag_xml(tag, str, strlen(str)));
+}
+
+string gettag_xml(const char *tag, const char *str, unsigned str_length) {
+	const char *begin = strncasestr(str, (string(tag) + "=\"").c_str(), str_length);
 	if(begin) {
 		begin += strlen(tag) + 2;
-		const char *end = strcasestr(begin, "\"");
+		const char *end = strncasestr(begin, "\"", str_length - (begin - str));
 		if(end) {
 			return(string(begin, end - begin));
 		}
@@ -5034,8 +5239,12 @@ string gettag_xml(const char *tag, const char *str) {
 }
 
 string getvalue_xml(const char *branch, const char *str) {
+	return(getvalue_xml(branch, str, strlen(str)));
+}
+
+string getvalue_xml(const char *branch, const char *str, unsigned str_length) {
 	list<string> rslt;
-	if(getbranch_xml(branch, str, &rslt)) {
+	if(getbranch_xml(branch, str, str_length, &rslt)) {
 		string branch = *rslt.begin();
 		size_t begin = branch.find('>');
 		if(begin != string::npos) {
@@ -5287,7 +5496,8 @@ u_int32_t octal_decimal(u_int32_t n) {
 }
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
-	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec) {
+	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec,
+	      bool closeAllFdAfterFork) {
 	if(exitCode) {
 		*exitCode = -1;
 	}
@@ -5303,7 +5513,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	int pipe_stderr[2];
 	pipe(pipe_stdout);
 	pipe(pipe_stderr);
-	int fork_rslt = vfork();
+	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
@@ -5311,6 +5521,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		dup2(pipe_stderr[1], 2);
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
+		if(closeAllFdAfterFork) {
+			close_all_fd();
+		}
 		if(execvp(exec_args[0], exec_args) == -1) {
 			char errmessage[1000];
 			snprintf(errmessage, sizeof(errmessage), "exec failed: %s", exec_args[0]);
@@ -6261,6 +6474,10 @@ cCsv::cCsv() {
 	firstRowContainFieldNames = false;
 }
 
+cCsv::~cCsv() {
+	table.clear();
+}
+
 void cCsv::setFirstRowContainFieldNames(bool firstRowContainFieldNames) {
 	this->firstRowContainFieldNames = firstRowContainFieldNames;
 }
@@ -6448,7 +6665,7 @@ cDbStrings::~cDbStrings() {
 	}
 }
 
-void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
+void cDbStrings::add(const char *begin, unsigned offset, unsigned length, bool needUnescape) {
 	if(size == capacity) {
 		sDbString *strings_new = new FILE_LINE(0) sDbString[capacity + capacity_inc];
 		if(strings) {
@@ -6458,13 +6675,24 @@ void cDbStrings::add(const char *begin, unsigned offset, unsigned length) {
 		strings = strings_new;
 		capacity += capacity_inc;
 	}
+	if(needUnescape) {
+		const char *_begin = begin + offset;
+		for(unsigned i = 0; i < length - 2; i++) {
+			if(_begin[i] == '\\' && _begin[i + 1] == '"' && _begin[i + 2] == ',') {
+				for(unsigned j = i; j < length - 1; j++) {
+					((char*)_begin)[j] = _begin[j + 1];
+				}
+				--length;
+			}
+		}
+	}
 	strings[size].begin = begin;
 	strings[size].offset = offset;
 	strings[size].length = length;
 	++size;
 }
 
-void cDbStrings::explodeCsv(const char *csv) {
+void cDbStrings::explodeCsv(const char *csv, bool header) {
 	unsigned lengthCsv = strlen(csv);
 	while(lengthCsv &&
 	      (csv[lengthCsv - 1] == '\r' || csv[lengthCsv - 1] == '\n')) {
@@ -6474,22 +6702,36 @@ void cDbStrings::explodeCsv(const char *csv) {
 	while(pos < lengthCsv) {
 		bool is_string = csv[pos] == '"';
 		const char *nextSep = strstr(csv + pos, is_string ? "\"," : ",");
-		if(is_string) {
-			while(nextSep && *(nextSep - 1) == '\\') {
+		bool needUnescape = false;
+		if(nextSep && is_string) {
+			while(nextSep) {
+				if(*(nextSep - 1) == '\\') {
+					needUnescape = true;
+				} else if(!header) {
+					unsigned posNextSep = nextSep - csv;
+					if((posNextSep < lengthCsv - 2 && 
+					    *(nextSep + 2) == ('0' + SqlDb_row::_ift_null)) ||
+					   (posNextSep < lengthCsv - 3 && 
+					    *(nextSep + 2) == '"' && *(nextSep + 4) == ':' && *(nextSep + 3) >= '0' && *(nextSep + 3) < ('0' + SqlDb_row::_ift_null))) {
+						break;
+					}
+				} else {
+					break;
+				}
 				nextSep = strstr(nextSep + 1, is_string ? "\"," : ",");
 			}
 		}
 		if(nextSep) {
 			unsigned nextSepPos = nextSep - csv;
 			if(is_string) {
-				add(csv, pos + 1, nextSepPos - pos - 1);
+				add(csv, pos + 1, nextSepPos - pos - 1, needUnescape);
 			} else {
 				add(csv, pos, nextSepPos - pos);
 			}
 			pos = nextSepPos + (is_string ? 2 : 1);
 		} else {
 			if(is_string) {
-				add(csv, pos + 1, lengthCsv - pos - 2);
+				add(csv, pos + 1, lengthCsv - pos - 2, needUnescape);
 			} else {
 				add(csv, pos, lengthCsv - pos);
 			}
@@ -6594,6 +6836,8 @@ string cDbStrings::implodeInsertValues(const char *table, cDbStrings *header, Sq
 			case SqlDb_row::_ift_sql:
 				if(strings[i].ai_id) {
 					rslt += intToString(strings[i].ai_id);
+				} else {
+					rslt += strings[i].str;
 				}
 				break;
 			default:
@@ -6626,7 +6870,7 @@ void cDbTableContent::addHeader(const char *source) {
 	strcpy(content, source);
 	header.content = content;
 	header.items = new FILE_LINE(0) cDbStrings(100);
-	header.items->explodeCsv(content);
+	header.items->explodeCsv(content, true);
 	header.items->setZeroTerm();
 	header.items->createMap(true);
 }
@@ -7061,6 +7305,28 @@ void hexdump(u_char *data, unsigned size) {
 		}
 		printf("|\n");
 	}
+}
+
+string hexdump_to_string(u_char *data, unsigned size) {
+	string rslt;
+	if(!data) {
+		size = 0;
+	}
+	unsigned i;
+	for(i = 0; i < size; i ++) {
+		char _rslt[10];
+		snprintf(_rslt, sizeof(_rslt), "%.2x ", data[i]&255);
+		rslt += _rslt;
+	}
+	return(rslt);
+}
+
+string hexdump_to_string_from_base64(const char *data) {
+	int dst_length;
+	u_char *dst = base64decode(data, &dst_length);
+	string rslt = hexdump_to_string(dst, dst_length);
+	delete [] dst;
+	return(rslt);
 }
 
 unsigned file_get_rows(const char *filename, vector<string> *rows) {
@@ -8461,11 +8727,16 @@ void rss_purge(bool force) {
 		} else {
 			extern int opt_memory_purge_if_release_gt;
 			extern u_int64_t all_ringbuffers_size;
-			size_t allocated_bytes = 0;
-			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &allocated_bytes);
+			size_t tcm_heap_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.heap_size", &tcm_heap_bytes);
+			size_t tcm_allocated_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty("generic.current_allocated_bytes", &tcm_allocated_bytes);
 			size_t rss = getRss();
-			int64_t release_size = rss - all_ringbuffers_size - allocated_bytes;
-			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10)) {
+			int64_t release_size = rss - all_ringbuffers_size - tcm_allocated_bytes;
+			if(release_size > (int64_t)MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			   (tcm_heap_bytes > tcm_allocated_bytes && 
+			    (tcm_heap_bytes - tcm_allocated_bytes > MIN(opt_memory_purge_if_release_gt * 1024 * 1024, getTotalMemory() / 10) ||
+			     tcm_heap_bytes > tcm_allocated_bytes * 1.5))) {
 				tcmalloc_need_purge = true;
 			}
 		}
@@ -8667,7 +8938,7 @@ long getSwapUsage(int pid) {
 
 pid_t findMysqlProcess(void) {
 	char buff[16];
-	FILE *cmd_pipe = popen("pgrep 'mysqld$'", "r");
+	FILE *cmd_pipe = popen("pgrep '(mysqld|mariadbd)$'", "r");
 	int retval = 0;
 	if(cmd_pipe) {
 		if (fgets(buff, sizeof(buff), cmd_pipe)) {
@@ -8783,3 +9054,147 @@ void cTimer::timerFce() {
 		usleep(min((int)(1000000 - time_us % 1000000), 10000));
 	}
 }
+
+
+cWsCalls::cWsCalls() {
+	csv = NULL;
+}
+
+cWsCalls::~cWsCalls() {
+	delete csv;
+}
+
+void cWsCalls::load(const char *filename) {
+	csv = new FILE_LINE(0) cCsv;
+	csv->setFirstRowContainFieldNames();
+	csv->load(filename);
+	//cout << csv.getRowsCount() << endl;
+	for(unsigned i = 1; i <= csv->getRowsCount(); i++) {
+		map<string, string> row;
+		csv->getRow(i, &row);
+		if(row["Call-ID"].empty()) {
+			continue;
+		}
+		if(row["Info"].substr(0, 7) != "Request" && row["Info"].substr(0, 6) != "Status") {
+			cout << " * bad csv row (err 1) with Call-ID: " << row["Call-ID"] 
+			     << " / " 
+			     << "Info: " << row["Info"] << endl;
+			continue;
+		}
+		vector<string> Call_ID;
+		vector<string> Request_Line;
+		vector<string> Status_Line;
+		vector<string> CSeq;
+		vector<string> Info;
+		if(row["Call-ID"].find(',') != string::npos) {
+			Call_ID = split(row["Call-ID"].c_str(), ",", true);
+			Request_Line = split(row["Request-Line"].c_str(), ",", true);
+			Status_Line = split(row["Status-Line"].c_str(), ",", true);
+			CSeq = split(row["CSeq"].c_str(), ",", true);
+			Info = split(row["Info"].c_str(), "|", true);
+		} else {
+			Call_ID.push_back(row["Call-ID"]);
+			Request_Line.push_back(row["Request-Line"]);
+			Status_Line.push_back(row["Status-Line"]);
+			CSeq.push_back(row["CSeq"]);
+			Info.push_back(row["Info"]);
+		}
+		if(!(Call_ID.size() == CSeq.size() &&
+		     Call_ID.size() == Info.size() &&
+		     Call_ID.size() == (!row["Request-Line"].empty() ? Request_Line.size() : Status_Line.size()))) {
+			cout << " * bad csv row (err 2) with Call-ID: " << row["Call-ID"] 
+			     << " / "
+			     << "Request-Line: " << row["Request-Line"] << " / "
+			     << "Status-Line: " << row["Status-Line"] << " / "
+			     << "CSeq: " << row["CSeq"] << " / "
+			     << "Info: " << row["Info"] << endl;
+			continue;
+		}
+		extern int process_packet__parse_sip_method_ext(char *data, unsigned int datalen, bool check_end_space, bool *sip_response);
+		//cout << row["Call-ID"] << endl;
+		//cout << row["Request-Line"] << endl;
+		//cout << row["Status-Line"] << endl;
+		for(unsigned i = 0; i < Call_ID.size(); i++) {
+			sCall *call;
+			map<string, sCall>::iterator iter = calls.find(Call_ID[i]);
+			if(iter != calls.end()) {
+				call = &iter->second;
+			} else {
+				call = &calls[Call_ID[i]];
+				call->callid = Call_ID[i];
+			}
+			sSip sip;
+			sip.info = Info[i];
+			sip.request = !row["Request-Line"].empty();
+			sip.str = !row["Request-Line"].empty() ? Request_Line[i] : Status_Line[i];
+			if(!process_packet__parse_sip_method_ext((char*)sip.str.c_str(), sip.str.length(), true, NULL)) {
+				cout << " * bad csv row (err 3) with Call-ID: " << row["Call-ID"] 
+				     << " / " 
+				     << "sip.str: " << sip.str << endl;
+				continue;
+			}
+			sip.cseq = CSeq[i];
+			sip.src = row["Source"];
+			sip.src_port = row["Source Port"];
+			sip.dst = row["Destination"];
+			sip.dst_port = row["Destination Port"];
+			bool dupl = false;
+			if(call->sip.size()) {
+				for(unsigned i = 0; i < call->sip.size(); i++) {
+					if(call->sip[i] == sip) {
+						dupl = true;
+						break;
+					}
+				}
+			}
+			if(!dupl) {
+				call->sip.push_back(sip);
+			}
+		}
+	}
+	cout << "wireshark csv load finished (" << calls.size() << " calls)" << endl;
+}
+
+void cWsCalls::setConfirm(const char *callid, bool request, const char *str, const char *cseq) {
+	map<string, sCall>::iterator iter = calls.find(callid);
+	if(iter != calls.end()) {
+		for(vector<sSip>::iterator iter2 = iter->second.sip.begin(); iter2 != iter->second.sip.end(); iter2++) {
+			if(!iter2->confirm &&
+			   iter2->request == request &&
+			   iter2->str == str &&
+			   iter2->cseq == cseq) {
+				iter2->confirm = true;
+				break;
+			}
+		}
+	}
+}
+
+string cWsCalls::printUncofirmed() {
+	ostringstream out;
+	unsigned counter = 0;
+	for(map<string, sCall>::iterator iter = calls.begin(); iter != calls.end(); iter++) {
+		if(!iter->second.isConfirmed()) {
+			out << (++counter) << "  - " << iter->first
+			    << endl;
+			for(unsigned i = 0; i < iter->second.sip.size(); i++) {
+				out << "   "
+				    << (iter->second.sip[i].confirm ? " " : "*")
+				    << " " << (i + 1) 
+				    << " " << iter->second.sip[i].str
+				    << " " << iter->second.sip[i].cseq
+				    << " (" << iter->second.sip[i].info << ")"
+				    << endl;
+				out << "     "
+				    << "     ( filter: "
+				    << "ip" << (iter->second.sip[i].src.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].src << " && "
+				    << "ip" << (iter->second.sip[i].dst.find(':') != string::npos ? "v6" : "") << ".addr == " << iter->second.sip[i].dst << " && "
+				    << "tcp.port == " << iter->second.sip[i].src_port << " && "
+				    << "tcp.port == " << iter->second.sip[i].dst_port << " )"
+				    << endl;
+			}
+		}
+	}
+	return(out.str());
+}
+

@@ -362,6 +362,7 @@ cSocket::cSocket(const char *name, bool autoClose) {
 	}
 	this->autoClose = autoClose;
 	port = 0;
+	udp = false;
 	ip.clear();
 	handle = -1;
 	enableWriteReconnect = false;
@@ -382,6 +383,10 @@ cSocket::~cSocket() {
 void cSocket::setHostPort(string host, u_int16_t port) {
 	this->host = host.find('/') != string::npos ? host.substr(0, host.find('/')) : host;
 	this->port = port;
+}
+
+void cSocket::setUdp(bool udp) {
+	this->udp = udp;
 }
 
 void cSocket::setXorKey(string xor_key) {
@@ -478,7 +483,7 @@ bool cSocket::listen() {
 			return(false);
 		}
 	}
-	if((handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP)) == -1) {
+	if((handle = socket_create(ip, !udp ? SOCK_STREAM : SOCK_DGRAM, !udp ? IPPROTO_TCP : IPPROTO_UDP)) == -1) {
 		setError("cannot create socket");
 		return(false);
 	}
@@ -495,14 +500,18 @@ bool cSocket::listen() {
 			setError("cannot bind to port [%d] - trying again after 5 seconds", port);
 			sleep(5);
 		}
-		if(terminate || CR_TERMINATE()) {
-			return(false);
-		}
-		rsltListen = ::listen(handle, 512);
-		if(rsltListen == -1) {
-			clearError();
-			setError("listen failed - trying again after 5 seconds");
-			sleep(5);
+		if(!udp) {
+			if(terminate || CR_TERMINATE()) {
+				return(false);
+			}
+			rsltListen = ::listen(handle, 512);
+			if(rsltListen == -1) {
+				clearError();
+				setError("listen failed - trying again after 5 seconds");
+				sleep(5);
+			}
+		} else {
+			break;
 		}
 	} while(rsltListen == -1);
 	clearError();
@@ -1109,7 +1118,8 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 	return(line);
 }
 
-void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout) {
+void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout,
+					    SimpleBuffer *rsltBuffer) {
 	string verb_str;
 	if(!timeout) {
 		timeout = timeouts.readblock;
@@ -1141,6 +1151,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 				this->decodeAesReadBuffer(buffer, len, &data_dec, &data_dec_len, false);
 				if(data_dec_len) {
 					dest->write(data_dec, data_dec_len);
+					if(rsltBuffer) {
+						rsltBuffer->add(data_dec, data_dec_len);
+					}
 				}
 				if(data_dec) {
 					delete [] data_dec;
@@ -1155,6 +1168,9 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 			this->decodeAesReadBuffer(NULL, 0, &data_dec, &data_dec_len, true);
 			if(data_dec_len) {
 				dest->write(data_dec, data_dec_len);
+				if(rsltBuffer) {
+					rsltBuffer->add(data_dec, data_dec_len);
+				}
 			}
 			if(data_dec) {
 				delete [] data_dec;
@@ -1192,7 +1208,9 @@ u_int32_t cSocketBlock::dataSum(u_char *data, size_t dataLen) {
 }
 
 
-cServer::cServer() {
+cServer::cServer(bool udp, bool simple_read) {
+	this->udp = udp;
+	this->simple_read = simple_read || udp;
 	for(unsigned i = 0; i < MAX_LISTEN_SOCKETS; i++) {
 		listen_socket[i] = NULL;
 		listen_thread[i] = 0;
@@ -1206,6 +1224,9 @@ cServer::~cServer() {
 bool cServer::listen_start(const char *name, string host, u_int16_t port, unsigned index) {
 	listen_socket[index] = new FILE_LINE(0) cSocketBlock(name);
 	listen_socket[index]->setHostPort(host, port);
+	if(udp) {
+		listen_socket[index]->setUdp(true);
+	}
 	if(!listen_socket[index]->listen()) {
 		delete listen_socket[index];
 		listen_socket[index] = NULL;
@@ -1245,34 +1266,58 @@ void *cServer::listen_process(void *arg) {
 }
 
 void cServer::listen_process(int index) {
-	cSocket *clientSocket;
-	while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
-		if(listen_socket[index]->await(&clientSocket)) {
-			#ifdef CLOUD_ROUTER_SERVER
-			extern cBlockIP blockIP;
-			if(blockIP.isBlocked(clientSocket->getIPL())) {
-				clientSocket->close();
-				delete clientSocket;
-			} else 
-			#endif
-			if(!CR_TERMINATE()) {
-				if(CR_VERBOSE().connect_info) {
-					ostringstream verbstr;
-					verbstr << "NEW CONNECTION FROM: " 
-						<< clientSocket->getIP() << " : " << clientSocket->getPort();
-					syslog(LOG_INFO, "%s", verbstr.str().c_str());
+	if(!udp) {
+		cSocket *clientSocket;
+		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
+			if(listen_socket[index]->await(&clientSocket)) {
+				#ifdef CLOUD_ROUTER_SERVER
+				extern cBlockIP blockIP;
+				if(blockIP.isBlocked(clientSocket->getIPL())) {
+					clientSocket->close();
+					delete clientSocket;
+				} else 
+				#endif
+				if(!CR_TERMINATE()) {
+					if(CR_VERBOSE().connect_info) {
+						ostringstream verbstr;
+						verbstr << "NEW CONNECTION FROM: " 
+							<< clientSocket->getIP() << " : " << clientSocket->getPort();
+						syslog(LOG_INFO, "%s", verbstr.str().c_str());
+					}
+					createConnection(clientSocket);
+				} else {
+					delete clientSocket;
 				}
-				createConnection(clientSocket);
-			} else {
-				delete clientSocket;
 			}
 		}
+	} else {
+		u_char *data = NULL;
+		size_t dataLen;
+		size_t dataLen_max = 0xFFFF;
+		if(simple_read) {
+			data = new FILE_LINE(0) u_char[dataLen_max];
+		}
+		while(!((listen_socket[index] && listen_socket[index]->isTerminate()) || CR_TERMINATE())) {
+			dataLen = dataLen_max;
+			if(!listen_socket[index]->read(data, &dataLen) && listen_socket[index]->isError()) {
+				break;
+			}
+			if(dataLen > 0) {
+				evData(data, dataLen);
+			} else {
+				USLEEP(1000);
+			}
+		}
+		delete [] data;
 	}
 }
 
 void cServer::createConnection(cSocket *socket) {
-	cServerConnection *connection = new FILE_LINE(0) cServerConnection(socket);
+	cServerConnection *connection = new FILE_LINE(0) cServerConnection(socket, simple_read);
 	connection->connection_start();
+}
+
+void cServer::evData(u_char */*data*/, size_t /*dataLen*/) {
 }
 
 void cServer::setStartVerbString(const char *startVerbString) {
@@ -1280,8 +1325,9 @@ void cServer::setStartVerbString(const char *startVerbString) {
 }
 
 
-cServerConnection::cServerConnection(cSocket *socket) {
+cServerConnection::cServerConnection(cSocket *socket, bool simple_read) {
 	this->socket = new FILE_LINE(0) cSocketBlock(NULL);
+	this->simple_read = simple_read;
 	*(cSocket*)this->socket = *socket;
 	delete socket;
 	begin_time_ms = getTimeMS();
@@ -1305,19 +1351,33 @@ void *cServerConnection::connection_process(void *arg) {
 }
 
 void cServerConnection::connection_process() {
+	u_char *data = NULL;
+	size_t dataLen;
+	size_t dataLen_max = 0xFFFF;
+	if(simple_read) {
+		data = new FILE_LINE(0) u_char[dataLen_max];
+	}
 	while(!((socket && socket->isTerminate()) || CR_TERMINATE())) {
-		u_char *data;
-		size_t dataLen;
-		data = socket->readBlock(&dataLen);
-		if(data) {
+		if(simple_read) {
+			dataLen = dataLen_max;
+			if(!socket->read(data, &dataLen) && socket->isError()) {
+				break;
+			}
+		} else {
+			data = socket->readBlock(&dataLen);
+		}
+		if(data && dataLen > 0) {
 			evData(data, dataLen);
 		} else {
 			USLEEP(1000);
 		}
 	}
+	if(simple_read) {
+		delete [] data;
+	}
 }
 
-void cServerConnection::evData(u_char *data, size_t dataLen) {
+void cServerConnection::evData(u_char */*data*/, size_t /*dataLen*/) {
 }
 
 void cServerConnection::setTerminateSocket() {

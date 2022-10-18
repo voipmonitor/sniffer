@@ -97,6 +97,8 @@
 #include "heap_chunk.h"
 #include "charts.h"
 #include "ipfix.h"
+#include "hep.h"
+#include "separate_processing.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -265,6 +267,7 @@ int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute 
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
 int opt_ringbuffer = 50;	// ring buffer in MB 
+bool opt_sip_message = true;
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
 int opt_sip_options = 0;
 int opt_sip_subscribe = 0;
@@ -379,6 +382,7 @@ int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 bool opt_nonstop_read = false;
+bool opt_nonstop_read_quick = false;
 int opt_time_to_terminate = 0;
 bool opt_receiver_check_id_sensor = true;
 int opt_dscp = 0;
@@ -405,13 +409,16 @@ int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
 unsigned int opt_preprocess_packets_qring_item_length = 0;
 unsigned int opt_preprocess_packets_qring_usleep = 10;
+unsigned int opt_preprocess_packets_qring_push_usleep = 10;
 bool opt_preprocess_packets_qring_force_push = true;
 unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
+unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
 int opt_destroy_calls_period = 2;
+int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
 int opt_enable_ss7 = 0;
 bool opt_ss7_use_sam_subsequent_number = true;
@@ -429,12 +436,24 @@ bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
 bool opt_ssl_ignore_error_invalid_mac = false;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
-int opt_ssl_tls_12_sessionkey_mode = 0;
+int opt_ssl_tls_12_sessionkey_mode = 1;
 bool opt_ssl_unlimited_reassembly_attempts = false;
 bool opt_ssl_destroy_tcp_link_on_rst = false;
 bool opt_ssl_destroy_ssl_session_on_rst = false;
 int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
+int opt_ssl_aead_try_seq_backward = 0;
+int opt_ssl_aead_try_seq_forward = 0;
+bool opt_ssl_enable_dtls_queue = true;
+int opt_ssl_dtls_queue_expiration_s = 10;
+int opt_ssl_dtls_queue_expiration_count = 20;
+bool opt_ssl_dtls_queue_keep = false;
+int opt_ssl_dtls_handshake_safe = false;
+int opt_ssl_dtls_rtp_local = false;
+bool opt_ssl_dtls_find_by_server_side = true;
+bool opt_ssl_dtls_find_by_client_side = false;
+int opt_ssl_dtls_boost = false;
+bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
@@ -459,6 +478,8 @@ bool opt_csv_store_format = false;
 bool opt_mysql_mysql_redirect_cdr_queue = false;
 int opt_cdr_sip_response_number_max_length = 0;
 vector<string> opt_cdr_sip_response_reg_remove;
+int opt_cdr_reason_string_enable = 1;
+vector<string> opt_cdr_reason_reg_remove;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
@@ -480,6 +501,7 @@ int opt_database_backup_insert_threads = 1;
 int opt_database_backup_pass_rows = 0;
 bool opt_database_backup_desc_dir = false;
 bool opt_database_backup_skip_register = false;
+bool opt_database_backup_check_src_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -487,10 +509,17 @@ regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
+int opt_redirect_response_300_timeout = 5 * 60;
 bool opt_ignore_rtp_after_bye_confirmed = false;
+bool opt_ignore_rtp_after_bye = false;
+bool opt_ignore_duration_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
+bool opt_ignore_rtp_after_response = false;
+vector<int> opt_ignore_rtp_after_response_list;
 int opt_saveaudio_reversestereo = 0;
+bool opt_saveaudio_adaptive_jitterbuffer = false;
+bool opt_saveaudio_resync_jitterbuffer = false;
 float opt_saveaudio_oggquality = 0.4;
 int opt_audioqueue_threads_max = 10;
 bool opt_saveaudio_answeronly = false;
@@ -615,11 +644,25 @@ bool opt_enable_content_type_application_csta_xml = false;
 bool opt_cdr_sipresp = false;
 bool opt_rtpmap_by_callerd = false;
 bool opt_rtpmap_combination = true;
+bool opt_rtpmap_indirect = true;
 int opt_jitter_forcemark_transit_threshold = 10;
 int opt_jitter_forcemark_delta_threshold = 500;
 bool opt_disable_rtp_warning = false;
 int opt_hash_modify_queue_length_ms = 0;
 bool opt_disable_process_sdp = false;
+
+bool opt_conference_processing = false;
+vector<string> opt_conference_uri;
+vector<string> opt_mo_mt_identification_prefix;
+int opt_separate_storage_ipv6_ipv4_address;
+int opt_cdr_flag_bit;
+vector<string> opt_srvcc_numbers;
+int opt_srvcc_compare_number_length = 9;
+bool srvcc_set;
+ListCheckString *srvcc_numbers;
+bool opt_srvcc_processing_only;
+bool opt_save_srvcc_cdr = true;
+bool opt_srvcc_correlation;
 
 char opt_php_path[1024];
 
@@ -684,6 +727,7 @@ bool opt_detect_alone_bye = false;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_partition_by_hours = 0;
+bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
@@ -709,6 +753,7 @@ CustomHeaders *custom_headers_sip_msg;
 NoHashMessageRules *no_hash_message_rules;
 bool opt_callernum_numberonly = true;
 int opt_custom_headers_last_value = 1;
+int opt_custom_headers_max_size = 0;
 bool opt_sql_time_utc = false;
 bool opt_socket_use_poll = true;
 bool opt_interrupts_counters = true;
@@ -890,11 +935,12 @@ unsigned int gthread_num = 0;
 int opt_pcapdump = 0;
 
 int opt_callend = 1; //if true, cdr.called is saved
+bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
-bool opt_t2_boost_pb_detach_thread = false;
+int opt_t2_boost_pb_detach_thread = 0;
 bool opt_t2_boost_pcap_dispatch = false;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
@@ -922,6 +968,11 @@ char opt_spooldir_group[100];
 unsigned opt_spooldir_group_id;
 char opt_cachedir[1024];
 
+int opt_tar_move = 0;
+string opt_tar_move_destination_path;
+string opt_tar_move_source_trim_path;
+int opt_tar_move_max_threads = 2;
+
 int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
@@ -946,6 +997,13 @@ unsigned storing_cdr_next_threads_count_last_change;
 int opt_storing_cdr_maximum_cdr_per_iteration = 50000;
 
 pthread_t storing_registers_thread;	// ID of worker storing CDR thread 
+
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+pthread_t cleanup_calls_separate_processing_thread;
+int cleanup_calls_separate_processing_tid;
+bool cleanup_calls_separate_processing_terminating;
+#endif
+
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
@@ -977,6 +1035,7 @@ vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
+bool opt_sip_only_tcp = false;
 map<vmIPport, string> ssl_ipport;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
@@ -987,9 +1046,12 @@ string ssl_client_random_tcp_host;
 int ssl_client_random_tcp_port;
 int ssl_client_random_maxwait_ms = 0;
 char ssl_master_secret_file[1024];
+bool ssl_client_random_keep = false;
+bool ssl_client_random_use = false;
 
 int opt_sdp_reverse_ipport = 0;
 bool opt_sdp_check_direction_ext = true;
+bool opt_rtp_count_all_sequencegap_as_loss = false;
 
 volatile unsigned int pcap_readit = 0;
 volatile unsigned int pcap_writeit = 0;
@@ -1092,6 +1154,7 @@ int opt_memory_purge_if_release_gt = 500;
 CleanSpool *cleanSpool[2] = { NULL, NULL };
 
 TarQueue *tarQueue[2] = { NULL, NULL };
+TarCopy *tarCopy;
 
 pthread_mutex_t terminate_packetbuffer_lock;
 
@@ -1120,8 +1183,13 @@ bool opt_load_query_from_files_inotify = true;
 
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
+int opt_sip_tcp_reassembly_stream_max_attempts = 200;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
+int opt_sip_tcp_reassembly_ext_link_timeout = 0;
+int opt_sip_tcp_reassembly_ext_quick_mod = 0;
+int opt_sip_tcp_reassembly_ext_complete_mod = 1;
+int opt_sip_tcp_reassembly_ext_usleep = 10;
 
 int opt_test = 0;
 char opt_test_arg[1024] = "";
@@ -1165,11 +1233,19 @@ bool opt_icmp_process_data = false;
 bool opt_audiocodes = false;
 unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
+int opt_audiocodes_rtp = 1;
+int opt_audiocodes_rtcp = 1;
 
 bool opt_ipfix;
 bool opt_ipfix_set;
 string opt_ipfix_bind_ip;
 unsigned opt_ipfix_bind_port;
+
+bool opt_hep;
+bool opt_hep_set;
+string opt_hep_bind_ip;
+unsigned opt_hep_bind_port;
+bool opt_hep_bind_udp;
 
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
@@ -1221,8 +1297,15 @@ int opt_client_server_sleep_ms_if_queue_is_full = 1000;
 int opt_livesniffer_timeout_s = 0;
 int opt_livesniffer_tablesize_max_mb = 0;
 
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+int opt_separate_processing = 0;
+#endif
+
 int opt_abort_if_rss_gt_gb = 0;
+int opt_abort_if_alloc_gt_gb = 0;
 int opt_next_server_connections = 0;
+
+string opt_coredump_filter = "0x7F";
 
 bool heap_profiler_is_running = false;
 
@@ -1230,8 +1313,20 @@ int opt_process_pcap_type = 0;
 char opt_pcap_destination[1024];
 cConfigItem_net_map::t_net_map opt_anonymize_ip_map;
 cConfigItem_domain_map::t_domain_map opt_anonymize_domain_map;
+string opt_rtcp_params;
 
 char opt_curl_hook_wav[256] = "";
+
+bool opt_is_client_packetbuffer_sender = false;
+
+cWsCalls *ws_calls;
+
+string extract_payload;
+string extract_rtp_payload;
+
+bool opt_all_configuration_options_in_gui = false;
+bool opt_all_unlink_log = false;
+bool opt_bt_sighandler_enable = true;
 
 
 #include <stdio.h>
@@ -1254,6 +1349,7 @@ void daemonizeOutput(string error);
 static void parse_command_line_arguments(int argc, char *argv[]);
 static void get_command_line_arguments();
 static void get_command_line_arguments_mysql();
+static void get_command_line_arguments_json_config();
 static void set_default_values();
 static void check_context_config();
 static void set_context_config_after_check_db_schema();
@@ -1479,7 +1575,8 @@ void *database_backup(void */*dummy*/) {
 					       &optMySSLBackup);
 		if(sqlDbSrc->connect()) {
 			SqlDb_mysql *sqlDbSrc_mysql = dynamic_cast<SqlDb_mysql*>(sqlDbSrc);
-			if(sqlDbSrc_mysql->checkSourceTables()) {
+			if(!opt_database_backup_check_src_tables ||
+			   sqlDbSrc_mysql->checkSourceTables()) {
 			 
 				if(!callCreateSchema) {
 					sqlDb->createSchema();
@@ -1521,7 +1618,8 @@ void *database_backup(void */*dummy*/) {
 				sqlDb_mysql->copyFromSourceTablesMain(sqlDbSrc_mysql, 
 								      opt_database_backup_pass_rows, 
 								      opt_database_backup_desc_dir, 
-								      opt_database_backup_skip_register);
+								      opt_database_backup_skip_register,
+								      !opt_database_backup_check_src_tables);
 			}
 		}
 		delete sqlDbSrc;
@@ -1698,7 +1796,10 @@ void *moving_cache( void */*dummy*/ ) {
 			strcpy_null_term(dst_c, (char*)dst.c_str());
 
 			if(verbosity > 2) syslog(LOG_ERR, "rename([%s] -> [%s])\n", src_c, dst_c);
-			cachedirtransfered += move_file(src_c, dst_c, true);
+			int64_t _cachedirtransfered = move_file(src_c, dst_c, true);
+			if(_cachedirtransfered > 0) {
+				cachedirtransfered += _cachedirtransfered;
+			}
 			//TODO: error handling
 			//perror ("The following error occurred");
 
@@ -2403,6 +2504,25 @@ void *storing_registers( void */*dummy*/ ) {
 	return NULL;
 }
 
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+void *cleanup_calls_separate_processing(void *) {
+	int period = opt_cleanup_calls_period;
+	while(!cleanup_calls_separate_processing_terminating) {
+		u_int64_t startTimeMS = getTimeMS_rdtsc();
+		if(separate_processing() == cSeparateProcessing::_rtp) {
+			calltable->cleanup_calls_separate_processing_rtp();
+		}
+		while(startTimeMS + period * 1000 > getTimeMS_rdtsc()) {
+			USLEEP(10000);
+			if(logBuffer) {
+				logBuffer->apply();
+			}
+		}
+	}
+	return(NULL);
+}
+#endif
+
 void stop_cloud_receiver() {
 	if(cloud_response_sender) {
 		cloud_response_sender->stop();
@@ -2968,6 +3088,7 @@ void resetTerminating() {
 	terminating_storing_cdr = 0;
 	terminating_storing_registers = 0;
 	terminated_call_cleanup = 0;
+	terminating_charts_cache = 0;
 	terminated_async = 0;
 	for(int i = 0; i < 2; i++) {
 		terminated_tar_flush_queue[i] = 0;
@@ -2984,6 +3105,7 @@ PcapQueue_readFromFifo *pcapQueueQ;
 PcapQueue_outputThread *pcapQueueQ_outThread_detach;
 PcapQueue_outputThread *pcapQueueQ_outThread_defrag;
 PcapQueue_outputThread *pcapQueueQ_outThread_dedup;
+PcapQueue_outputThread *pcapQueueQ_outThread_detach2;
 
 void set_global_vars();
 int main_init_read();
@@ -3091,6 +3213,10 @@ int main(int argc, char *argv[]) {
 		}
 		if(strstr(argv[i], "heapreserve")) {
 			HeapSafeCheck = _HeapSafeSafeReserve;
+		} else if(strstr(argv[i], "heapfillff")) {
+			HeapSafeCheck = _HeapSafeErrorFillFF;
+		} else if(strstr(argv[i], "heapfillrand")) {
+			HeapSafeCheck = _HeapSafeErrorFillRand;
 		} else if(strstr(argv[i], "heapsafe")) {
 			HeapSafeCheck = _HeapSafeErrorNotEnoughMemory |
 					_HeapSafeErrorBeginEnd |
@@ -3338,7 +3464,7 @@ int main(int argc, char *argv[]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
 			CONFIG.loadFromConfigFileOrDirectory("/etc/voipmonitor/conf.d/");
-			if(!useCmdLineConfig) {
+			if(!useCmdLineConfig && sverb.check_config) {
 				cConfigMap configMap1 = CONFIG.getConfigMap();
 				cConfigMap configMap2;
 				CONFIG.loadConfigMapConfigFileOrDirectory(&configMap2, configfile);
@@ -3363,6 +3489,7 @@ int main(int argc, char *argv[]) {
 	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
 		if(useNewCONFIG) {
 			get_command_line_arguments_mysql();
+			get_command_line_arguments_json_config();
 			CONFIG.beginTrackDiffValues();
 			CONFIG.setFromMysql(true);
 			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
@@ -3395,9 +3522,9 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
+	runAt = time(NULL);
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
-		runAt = time(NULL);
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -3641,7 +3768,7 @@ int main(int argc, char *argv[]) {
 	signal(SIGTERM,sigterm_handler);
 	signal(SIGCHLD,sigchld_handler);
 #ifdef BACKTRACE
-	if((opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
+	if(opt_bt_sighandler_enable && (opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
 		struct sigaction sa;
 
 		sa.sa_sigaction = bt_sighandler;
@@ -3723,6 +3850,16 @@ int main(int argc, char *argv[]) {
 		get_list_cores(opt_cpu_cores, cpu_cores);
 		pthread_t main_thread = pthread_self();
 		pthread_set_affinity(main_thread, &cpu_cores, NULL);
+	}
+	
+	if(!opt_coredump_filter.empty()) {
+		SimpleBuffer content;
+		string error;
+		content.clear();
+		content.add(opt_coredump_filter.c_str());
+		if(!file_put_contents(("/proc/" + intToString(getpid()) + "/coredump_filter").c_str(), &content, &error)) {
+			syslog(LOG_ERR, "%s", error.c_str());
+		}
 	}
 	
 	if(opt_rrd) {
@@ -4029,6 +4166,11 @@ int main(int argc, char *argv[]) {
 	
 	delete regfailedcache;
 	
+	if(ws_calls) {
+		cout << ws_calls->printUncofirmed();
+		delete ws_calls;
+	}
+	
 	if(sverb.memory_stat) {
 		cout << "memory stat at end" << endl;
 		printMemoryStat(true);
@@ -4052,7 +4194,7 @@ int main(int argc, char *argv[]) {
 	#endif
 	
 	termTimeCacheForThread();
-
+	
 	return(0);
 }
 
@@ -4262,6 +4404,15 @@ int main_init_read() {
 				tarQueue[i] = new FILE_LINE(42019) TarQueue(i);
 			}
 		}
+		if(opt_tar_move && !opt_tar_move_destination_path.empty() && !is_read_from_file_simple()) {
+			tarCopy = new FILE_LINE(0) TarCopy;
+			tarCopy->setDestination(opt_tar_move_destination_path);
+			tarCopy->setTrimSrcPath(opt_tar_move_source_trim_path);
+			tarCopy->setMove(opt_tar_move == 1);
+			tarCopy->setMaxThreads(opt_tar_move_max_threads);
+			tarCopy->addTarsFromSpool();
+			tarCopy->start_threads();
+		}
 	}
 	
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
@@ -4302,7 +4453,11 @@ int main_init_read() {
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender
-	if(!is_sender() && !is_client_packetbuffer_sender()) {
+	if(!is_sender() && !is_client_packetbuffer_sender()
+	   #if EXPERIMENTAL_SEPARATE_PROCESSSING
+	   && separate_processing() != cSeparateProcessing::_rtp
+	   #endif
+	   ) {
 		if(opt_storing_cdr_max_next_threads) {
 			storing_cdr_next_threads = new FILE_LINE(0) sStoringCdrNextThreads[opt_storing_cdr_max_next_threads];
 		}
@@ -4385,7 +4540,11 @@ int main_init_read() {
 		}
 		
 		//autostart for fork mode if t2cpu > 50%
-		if((!opt_fork || opt_t2_boost) &&
+		if(
+		   #if DEBUG_DTLS_QUEUE
+		   //false &&
+		   #endif
+		   (!opt_fork || opt_t2_boost) &&
 		   opt_enable_process_rtp_packet && enable_pcap_split &&
 		   is_enable_packetbuffer()) {
 			process_rtp_packets_distribute_threads_use = opt_enable_process_rtp_packet;
@@ -4474,14 +4633,35 @@ int main_init_read() {
 		tcpReassemblySipExt->setNeedValidateDataViaCheckData();
 		tcpReassemblySipExt->setSimpleByAck();
 		tcpReassemblySipExt->setIgnorePshInCheckOkData();
+		tcpReassemblySipExt->setSmartMaxSeq();
+		//tcpReassemblySipExt->setSmartMaxSeqByPsh();
+		tcpReassemblySipExt->setSkipZeroData();
 		sipTcpData = new FILE_LINE(42032) SipTcpData;
 		tcpReassemblySipExt->setDataCallback(sipTcpData);
-		tcpReassemblySipExt->setLinkTimeout(10);
 		tcpReassemblySipExt->setEnableWildLink();
-		tcpReassemblySipExt->setEnablePushLock();
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
-		tcpReassemblySipExt->setEnableExtCleanupStreams(25, 10);
+		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
+		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
+		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
+			if(!is_read_from_file()) {
+				tcpReassemblySipExt->setEnableExtCleanupStreams(opt_sip_tcp_reassembly_stream_max_attempts, 25);
+			}
+			tcpReassemblySipExt->setEnableLinkLock();
+			tcpReassemblySipExt->setEnableAutoCleanup(false);
+			tcpReassemblySipExt->setCleanupPeriod(10);
+		} else {
+			if(!is_read_from_file()) {
+				tcpReassemblySipExt->setEnableExtCleanupStreams(50, 25);
+			}
+			tcpReassemblySipExt->setEnablePushLock();
+		}
+		if(opt_sip_tcp_reassembly_ext_complete_mod) {
+			tcpReassemblySipExt->setCompleteMod(opt_sip_tcp_reassembly_ext_complete_mod);
+		}
+		if(sverb.tcpreassembly_sip_dumper) {
+			tcpReassemblySipExt->enableDumper(sverb.tcpreassembly_sip_dumper, sverb.tcpreassembly_sip_dumper_ports);
+		}
 	}
 	
 	if(sipSendSocket_ip_port) {
@@ -4501,7 +4681,23 @@ int main_init_read() {
 		IPFixServerStart(opt_ipfix_bind_ip.c_str(), opt_ipfix_bind_port);
 	}
 	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStart(opt_hep_bind_ip.c_str(), opt_hep_bind_port, opt_hep_bind_udp);
+	}
+	
 	clear_readend();
+	
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		separate_processing_init();
+		separate_processing_start();
+		if(separate_processing() == cSeparateProcessing::_rtp) {
+			cleanup_calls_separate_processing_terminating = false;
+			vm_pthread_create("cleanup calls separate processing (rtp)",
+					  &cleanup_calls_separate_processing_thread, NULL, cleanup_calls_separate_processing, NULL, __FILE__, __LINE__);
+		}
+	}
+	#endif
 
 	if(is_enable_packetbuffer()) {
 		PcapQueue_init();
@@ -4545,20 +4741,38 @@ int main_init_read() {
 		}
 		
 		if(opt_pcap_queue_use_blocks && !is_sender() && !is_client_packetbuffer_sender()) {
-			if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
-				pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
-				pcapQueueQ_outThread_detach->start();
-			}
-			if(opt_udpfrag) {
-				pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
-				pcapQueueQ_outThread_defrag->start();
-			}
-			if(opt_dup_check && 
-			   (is_receiver() || is_server() ?
-			     !opt_receiver_check_id_sensor :
-			     ifnamev.size() > 1)) {
-				pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
-				pcapQueueQ_outThread_dedup->start();
+			for(int pass = 0; pass < 2; pass++) {
+				if(opt_t2_boost_pb_detach_thread && opt_t2_boost) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_detach = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_detach->start();
+					}
+				}
+				if(opt_udpfrag) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_defrag = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::defrag, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_defrag->start();
+					}
+				}
+				if(opt_dup_check && 
+				   (is_receiver() || is_server() ?
+				     !opt_receiver_check_id_sensor :
+				     ifnamev.size() > 1)) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_dedup = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::dedup, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_dedup->start();
+					}
+				}
+				if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost) {
+					if(pass == 0) {
+						pcapQueueQ_outThread_detach2 = new FILE_LINE(0) PcapQueue_outputThread(PcapQueue_outputThread::detach2, pcapQueueQ);
+					} else {
+						pcapQueueQ_outThread_detach2->start();
+					}
+				}
 			}
 		}
 		
@@ -4585,9 +4799,8 @@ int main_init_read() {
 		}
 
 		while(!is_terminating()) {
-			long timeProcessStatMS = 0;
+			u_int64_t startTimeMS = getTimeMS_rdtsc();
 			if(_counter) {
-				u_int64_t startTimeMS = getTimeMS_rdtsc();
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
 				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
@@ -4599,10 +4812,6 @@ int main_init_read() {
 				}
 				if(tcpReassemblyWebrtc) {
 					tcpReassemblyWebrtc->setDoPrintContent();
-				}
-				u_int64_t endTimeMS = getTimeMS_rdtsc();
-				if(endTimeMS > startTimeMS) {
-					timeProcessStatMS = endTimeMS - startTimeMS;
 				}
 				if(!is_read_from_file() && !sverb.suppress_fork) {
 					if (!is_client_packetbuffer_sender()) {
@@ -4616,14 +4825,38 @@ int main_init_read() {
 						}
 					}
 				}
+				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
+				print_t2_queue_full_stat();
+				#endif
+				if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
+					extern void dtls_queue_cleanup();
+					dtls_queue_cleanup();
+				}
 			}
-			for(long i = 0; i < ((sverb.pcap_stat_period * 100) - timeProcessStatMS / 10) && !is_terminating(); i++) {
+			while(startTimeMS + sverb.pcap_stat_period * 1000 > getTimeMS_rdtsc()) {
 				USLEEP(10000);
 				if(logBuffer) {
 					logBuffer->apply();
 				}
 			}
 			++_counter;
+
+			#if DEBUG_PACKET_COUNT
+			extern volatile int __xc_inv;
+			extern volatile int __xc_sip;
+			extern volatile int __xc_nosip;
+			extern volatile int __xc_callsave;
+			extern volatile int __xc_reassembly[10];
+			cout << " ***" << endl 
+			     << " * invite: " << __xc_inv << endl
+			     << " * sip: " << __xc_sip << endl
+			     << " * nosip: " << __xc_nosip << endl
+			     << " * callsave: " << __xc_callsave << endl
+			     << " * reassembly: " << __xc_reassembly[0] << endl
+			     << " * reassembly: " << __xc_reassembly[1] << endl
+			     << " ***" << endl;
+			#endif
+			
 		}
 		
 		if(wdt && !hot_restarting) {
@@ -4654,6 +4887,20 @@ int main_init_read() {
 }
 
 void terminate_processpacket() {
+ 
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if(separate_processing()) {
+		separate_processing_stop();
+		separate_processing_term();
+		if(cleanup_calls_separate_processing_thread) {
+			cleanup_calls_separate_processing_terminating = true;
+			pthread_join(cleanup_calls_separate_processing_thread, NULL);
+			cleanup_calls_separate_processing_thread = 0;
+			cleanup_calls_separate_processing_terminating = false;
+		}
+	}
+	#endif
+ 
 	if(tcpReassemblyHttp) {
 		delete tcpReassemblyHttp;
 		tcpReassemblyHttp = NULL;
@@ -4827,6 +5074,10 @@ void main_term_read() {
 	if(opt_ipfix && !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port) {
 		IPFixServerStop();
 	}
+	
+	if(opt_hep && !opt_hep_bind_ip.empty() && opt_hep_bind_port) {
+		HEP_ServerStop();
+	}
 
 	terminate_processpacket();
 	
@@ -4885,6 +5136,10 @@ void main_term_read() {
 				delete tarQueue[i];
 				tarQueue[i] = NULL;
 			}
+			if(tarCopy) {
+				delete tarCopy;
+				tarCopy = NULL;
+			}
 		}
 		if(sverb.chunk_buffer > 1) { 
 			cout << "end destroy tar queue" << endl << flush;
@@ -4917,7 +5172,9 @@ void main_term_read() {
 	if(storing_registers_thread) {
 		terminating_storing_registers = 1;
 		pthread_join(storing_registers_thread, NULL);
+		storing_registers_thread = 0;
 	}
+	
 	if(useChartsCacheOrCdrStatProcessThreads()) {
 		calltable->processCallsInChartsCache_stop();
 	}
@@ -5228,6 +5485,9 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_dedup) {
 			pcapQueueQ_outThread_dedup->terminate();
 		}
+		if(pcapQueueQ_outThread_detach2) {
+			pcapQueueQ_outThread_detach2->terminate();
+		}
 		sleep(1);
 		
 		terminate_processpacket();
@@ -5247,6 +5507,10 @@ void terminate_packetbuffer() {
 		if(pcapQueueQ_outThread_dedup) {
 			delete pcapQueueQ_outThread_dedup;
 			pcapQueueQ_outThread_dedup = NULL;
+		}
+		if(pcapQueueQ_outThread_detach2) {
+			delete pcapQueueQ_outThread_detach2;
+			pcapQueueQ_outThread_detach2 = NULL;
 		}
 		if(pcapQueueQ) {
 			delete pcapQueueQ;
@@ -5804,7 +6068,7 @@ void test() {
 		#else
 		string rslt = sqlDb->getJsonResult();
 		cout << rslt <<  endl;
-		sqlDb->processResponseFromQueryBy(rslt.c_str(), 0);
+		sqlDb->processResponseFromQueryBy(rslt.c_str(), NULL, 0);
 		#endif
 		sqlDb->setCloudParameters("c", "c", "c");
 		
@@ -6214,14 +6478,11 @@ void test() {
 			opt_cleandatabase_register_state =
 			opt_cleandatabase_register_failed = 
 			opt_cleandatabase_register_time_info = 
-			opt_cleandatabase_sip_msg =
-			opt_cleandatabase_cdr_stat = 
-			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
+			opt_cleandatabase_sip_msg = atoi(opt_test_arg);
 		} else {
 			return;
 		}
 		dropMysqlPartitionsCdr();
-		dropMysqlPartitionsRtpStat();
 		break;
 	case 346:
 		if(atoi(opt_test_arg) > 0) {
@@ -6715,11 +6976,13 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))
+						->addValues("two:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_pcap_dispatch", &opt_t2_boost_pcap_dispatch));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_max_next_threads", &opt_storing_cdr_max_next_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("storing_cdr_maximum_cdr_per_iteration", &opt_storing_cdr_maximum_cdr_per_iteration));
@@ -6814,6 +7077,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_pass_rows", &opt_database_backup_pass_rows));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_desc_dir", &opt_database_backup_desc_dir));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_skip_register", &opt_database_backup_skip_register));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_check_src_tables", &opt_database_backup_check_src_tables));
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");
@@ -6924,6 +7188,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mirror_connect_maximum_time_diff_s", &opt_mirror_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_timeout_s", &opt_livesniffer_timeout_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("livesniffer_tablesize_max_mb", &opt_livesniffer_tablesize_max_mb));
+					#if EXPERIMENTAL_SEPARATE_PROCESSSING
+					expert();
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_processing", &opt_separate_processing))
+						->addValues("sip:1|rtp:2"));
+					#endif
 		subgroup("scaling");
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_interface_str);
 			addConfigItem((new FILE_LINE(42149) cConfigItem_yesno("threading_mod"))
@@ -6943,6 +7212,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42152) cConfigItem_integer("preprocess_packets_qring_length", &opt_preprocess_packets_qring_length));
 					addConfigItem(new FILE_LINE(42153) cConfigItem_integer("preprocess_packets_qring_item_length", &opt_preprocess_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42154) cConfigItem_integer("preprocess_packets_qring_usleep", &opt_preprocess_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("preprocess_packets_qring_push_usleep", &opt_preprocess_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(42155) cConfigItem_yesno("preprocess_packets_qring_force_push", &opt_preprocess_packets_qring_force_push));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
@@ -6959,9 +7229,12 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42158) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 					addConfigItem(new FILE_LINE(42159) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
+						->addValues("ext:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 			setDisableIfEnd();
 	group("manager");
@@ -7023,6 +7296,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("spooldir_group", opt_spooldir_group, sizeof(opt_spooldir_group)));
 				addConfigItem(new FILE_LINE(42189) cConfigItem_string("convertchar", opt_convert_char, sizeof(opt_convert_char)));
 				addConfigItem(new FILE_LINE(42190) cConfigItem_string("cachedir", opt_cachedir, sizeof(opt_cachedir)));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("tar_move", &opt_tar_move))
+					->addValues("move:1|m:1|copy:2|c:2"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tar_move_destination_path", &opt_tar_move_destination_path));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tar_move_source_trim_path", &opt_tar_move_source_trim_path));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_move_max_threads", &opt_tar_move_max_threads));
 					expert();
 					addConfigItem(new FILE_LINE(42191) cConfigItem_yesno("convert_dlt_sll2en10", &opt_convert_dlt_sll_to_en10));
 					addConfigItem(new FILE_LINE(42192) cConfigItem_yesno("dumpallpackets", &opt_pcapdump));
@@ -7108,6 +7386,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_afterconnect", &opt_saveaudio_afterconnect));
 				addConfigItem(new FILE_LINE(42226) cConfigItem_yesno("saveaudio_stereo", &opt_saveaudio_stereo));
 				addConfigItem(new FILE_LINE(42227) cConfigItem_yesno("saveaudio_reversestereo", &opt_saveaudio_reversestereo));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_adaptive_jitterbuffer", &opt_saveaudio_adaptive_jitterbuffer));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
 					expert();
@@ -7167,6 +7447,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_bind_port", &ssl_client_random_tcp_port));
 			addConfigItem((new FILE_LINE(0) cConfigItem_integer("ssl_sessionkey_maxwait_ms", &ssl_client_random_maxwait_ms))
 				->addAlias("ssl_sessionkey_udp_maxwait_ms"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_keep", &ssl_client_random_keep));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
@@ -7179,6 +7460,19 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_store_sessions", &opt_ssl_store_sessions))
 				->addValues("memory:1|persistent:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
+				->addValues("ext:2"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -7206,9 +7500,13 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42260) cConfigItem_integer("onewaytimeout", &opt_onewaytimeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("redirect_response_300_timeout", &opt_redirect_response_300_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye", &opt_ignore_rtp_after_bye));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_cancel_confirmed", &opt_ignore_rtp_after_cancel_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_auth_failed", &opt_ignore_rtp_after_auth_failed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_rtp_after_response", &opt_ignore_rtp_after_response_list));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("get_reason_from_bye_cancel", &opt_get_reason_from_bye_cancel));
 			addConfigItem(new FILE_LINE(42261) cConfigItem_yesno("nocdr", &opt_nocdr));
 			addConfigItem((new FILE_LINE(42262) cConfigItem_string("cdr_ignore_response", opt_nocdr_for_last_responses, sizeof(opt_nocdr_for_last_responses)))
@@ -7248,8 +7546,10 @@ void cConfig::addConfigItems() {
 				->setPrefixSuffix("\n", ":"));
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-message", &opt_sip_message));
 				advanced();
 				addConfigItem(new FILE_LINE(42277) cConfigItem_yesno("custom_headers_last_value", &opt_custom_headers_last_value));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("custom_headers_max_size", &opt_custom_headers_max_size));
 				addConfigItem(new FILE_LINE(42278) cConfigItem_yesno("remotepartyid", &opt_remotepartyid));
 				addConfigItem(new FILE_LINE(42279) cConfigItem_yesno("passertedidentity", &opt_passertedidentity));
 				addConfigItem(new FILE_LINE(42280) cConfigItem_yesno("ppreferredidentity", &opt_ppreferredidentity));
@@ -7259,6 +7559,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_sip_response_number_max_length", &opt_cdr_sip_response_number_max_length));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_sip_response_reg_remove", &opt_cdr_sip_response_reg_remove));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_reason_string_enable", &opt_cdr_reason_string_enable));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_reason_reg_remove", &opt_cdr_reason_reg_remove));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_whitelist", &opt_cdr_ua_reg_whitelist));
@@ -7277,6 +7579,18 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_process_sdp", &opt_disable_process_sdp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("conference_processing", &opt_conference_processing));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("mo_mt_identification_prefix", &opt_mo_mt_identification_prefix));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("separate_storage_ipv6_ipv4_address", &opt_separate_storage_ipv6_ipv4_address))
+						->addValues("confirmed:2|first:3|first_confirmed:4"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_flag_bit", &opt_cdr_flag_bit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("srvcc_numbers", &opt_srvcc_numbers));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("srvcc_compare_length", &opt_srvcc_compare_number_length));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_processing_only", &opt_srvcc_processing_only));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -7385,11 +7699,13 @@ void cConfig::addConfigItems() {
 					->addValues("keep_rtp_packets:2"));
 				addConfigItem(new FILE_LINE(42325) cConfigItem_yesno("rtpmap_by_callerd", &opt_rtpmap_by_callerd));
 				addConfigItem(new FILE_LINE(42326) cConfigItem_yesno("rtpmap_combination", &opt_rtpmap_combination));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtpmap_indirect", &opt_rtpmap_indirect));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_transit_threshold", &opt_jitter_forcemark_transit_threshold));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_delta_threshold", &opt_jitter_forcemark_delta_threshold));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
 		subgroup("NAT");
 			addConfigItem(new FILE_LINE(42328) cConfigItem_nat_aliases("natalias", &nat_aliases));
 			addConfigItem(new FILE_LINE(42329) cConfigItem_yesno("sdp_reverse_ipport", &opt_sdp_reverse_ipport));
@@ -7441,8 +7757,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42359) cConfigItem_yesno("ipaccount_sniffer_agregate", &opt_ipacc_sniffer_agregate));
 				addConfigItem(new FILE_LINE(42360) cConfigItem_yesno("ipaccount_agregate_only_customers_on_main_side", &opt_ipacc_agregate_only_customers_on_main_side));
 				addConfigItem(new FILE_LINE(42361) cConfigItem_yesno("ipaccount_agregate_only_customers_on_any_side", &opt_ipacc_agregate_only_customers_on_any_side));
-
-	minorGroupIfNotSetBegin();
 	group("ss7");
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ss7", &opt_enable_ss7));
@@ -7458,6 +7772,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
+
+	minorGroupIfNotSetBegin();
 	group("http");
 			advanced();
 			addConfigItem((new FILE_LINE(42362) cConfigItem_yesno("http", &opt_enable_http))
@@ -7528,6 +7844,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42404) cConfigItem_string("odbcdriver", odbc_driver, sizeof(odbc_driver)));
 					addConfigItem(new FILE_LINE(42405) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_partition_by_hours", &opt_cdr_partition_by_hours));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_force_primary_index_in_all_tables", &opt_cdr_force_primary_index_in_all_tables));
 					addConfigItem(new FILE_LINE(42406) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
 					addConfigItem(new FILE_LINE(42407) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
 					addConfigItem(new FILE_LINE(42408) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
@@ -7652,8 +7969,14 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_quick_mod", &opt_sip_tcp_reassembly_ext_quick_mod))
+					->addValues("ext:2|comb_ext:3"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_tcp_reassembly_ext_complete_mod", &opt_sip_tcp_reassembly_ext_complete_mod));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_usleep", &opt_sip_tcp_reassembly_ext_usleep));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("receiver_check_id_sensor", &opt_receiver_check_id_sensor));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("receive_packetbuffer_maximum_time_diff_s", &opt_receive_packetbuffer_maximum_time_diff_s));
 					expert();
@@ -7665,9 +7988,17 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("ipfix_bind_port",  &opt_ipfix_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep",  &opt_hep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtp",  &opt_audiocodes_rtp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
+						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
@@ -7686,14 +8017,25 @@ void cConfig::addConfigItems() {
 							     "enable:" + intToString(numa_balancing_set_enable) + "|" +
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("bt_sighandler", &opt_bt_sighandler_enable));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
 		subgroup("process pcap");
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("process_pcap_type", &opt_process_pcap_type))
+				->disableYes()
+				->addValues(("dedup:" + intToString(_pp_dedup) + "|" + 
+					     "anonymize_ip:" + intToString(_pp_anonymize_ip) + "|" +
+					     "rtcp_data:" + intToString(_pp_prepare_rtcp_data)).c_str()));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("pcap_destination", opt_pcap_destination, sizeof(opt_pcap_destination)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_net_map("anonymize_ip", &opt_anonymize_ip_map));
 			addConfigItem(new FILE_LINE(0) cConfigItem_domain_map("anonymize_sipdomain", &opt_anonymize_domain_map));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("rtcp_params", &opt_rtcp_params));
 	minorEnd();
 	
 	setDefaultValues();
@@ -7907,6 +8249,15 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			}
 		}
 	}
+	if(configItem->config_name == "cdr_reason_reg_remove") {
+		for(unsigned i = 0; i < opt_cdr_reason_reg_remove.size(); i++) {
+			if(!check_regexp(opt_cdr_reason_reg_remove[i].c_str())) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_reason_reg_remove", opt_cdr_reason_reg_remove[i].c_str());
+				opt_cdr_reason_reg_remove.erase(opt_cdr_reason_reg_remove.begin() + i);
+				--i;
+			}
+		}
+	}
 	if(configItem->config_name == "cdr_ua_reg_remove") {
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
 			if(!check_regexp(opt_cdr_ua_reg_remove[i].c_str())) {
@@ -8019,6 +8370,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"time-to-terminate", 1, 0, 323},
 	    {"continue-after-read", 0, 0, 302},
 	    {"nonstop-read", 0, 0, 335},
+	    {"nonstop-read-quick", 0, 0, 350},
 	    {"diff-days", 1, 0, 303},
 	    {"diff-secs", 1, 0, 349},
 	    {"time-adjustment", 1, 0, 343},
@@ -8052,11 +8404,16 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"json_config", 1, 0, 338},
 	    {"sip-msg-save", 0, 0, 339},
 	    {"dedup-pcap", 1, 0, 341},
-	    {"process-pcap", 1, 0, 347},
+	    {"anonymize-pcap", 1, 0, 347},
+	    {"prepare_rtcp_data", 1, 0, 405},
+	    {"process_pcap", 1, 0, 406},
 	    {"heap-profiler", 1, 0, 342},
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
+	    {"ws-calls", 1, 0, 402},
+	    {"extract_payload", 1, 0, 403},
+	    {"extract_rtp_payload", 1, 0, 404},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8104,16 +8461,25 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "disable_threads_rtp")		sverb.disable_threads_rtp = 1;
 	else if(verbParam == "packet_lost")			sverb.packet_lost = 1;
 	else if(verbParam == "rrd_info")			sverb.rrd_info = 1;
-	else if(verbParam == "http")				sverb.http = 1;
-	else if(verbParam == "webrtc")				sverb.webrtc = 1;
-	else if(verbParam == "ssl")				sverb.ssl = 1;
+	else if(verbParam == "tcpreassembly_http")		sverb.tcpreassembly_http = 1;
+	else if(verbParam == "tcpreassembly_webrtc")		sverb.tcpreassembly_webrtc = 1;
+	else if(verbParam == "tcpreassembly_ssl")		sverb.tcpreassembly_ssl = 1;
 	else if(verbParam == "tls")				sverb.tls = 1;
 	else if(verbParam == "ssl_sessionkey")			sverb.ssl_sessionkey = 1;
-	else if(verbParam == "sip")				sverb.sip = 1;
+	else if(verbParam.substr(0, 23) == "ssl_sessionkey_to_file=")
+								{ sverb.ssl_sessionkey_to_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 23) + 1]; strcpy(sverb.ssl_sessionkey_to_file, verbParam.c_str() + 23); }
+	else if(verbParam == "tcpreassembly_sip")		sverb.tcpreassembly_sip = 1;
+	else if(verbParam == "tcpreassembly_sip_cleanup")	sverb.tcpreassembly_sip_cleanup = 1;
+	else if(verbParam.substr(0, 25) == "tcpreassembly_sip_dumper=")
+								{ sverb.tcpreassembly_sip_dumper = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_sip_dumper, verbParam.c_str() + 25); }
+	else if(verbParam.substr(0, 31) == "tcpreassembly_sip_dumper_ports=")
+								{ sverb.tcpreassembly_sip_dumper_ports = new FILE_LINE(0) char[strlen(verbParam.c_str() + 31) + 1]; strcpy(sverb.tcpreassembly_sip_dumper_ports, verbParam.c_str() + 31); }
 	else if(verbParam.substr(0, 25) == "tcpreassembly_debug_file=")
 								{ sverb.tcpreassembly_debug_file = new FILE_LINE(0) char[strlen(verbParam.c_str() + 25) + 1]; strcpy(sverb.tcpreassembly_debug_file, verbParam.c_str() + 25); }
+	else if(verbParam == "tcpreassembly_ext")		sverb.tcpreassembly_ext = 1;
 	else if(verbParam == "ssldecode")			sverb.ssldecode = 1;
 	else if(verbParam == "ssldecode_debug")			sverb.ssldecode_debug = 1;
+	else if(verbParam == "ssl_stats")			sverb.ssl_stats = 1;
 	else if(verbParam == "sip_packets")			sverb.sip_packets = 1;
 	else if(verbParam == "set_ua")				sverb.set_ua = 1;
 	else if(verbParam == "dscp")				sverb.dscp = 1;
@@ -8194,6 +8560,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
+	else if(verbParam == "hep3")				sverb.hep3 = 1;
 	else if(verbParam == "cleanspool")			sverb.cleanspool = 1;
 	else if(verbParam == "cleanspool_disable_rm")		sverb.cleanspool_disable_rm = 1;
 	else if(verbParam == "t2_destroy_all")			sverb.t2_destroy_all = 1;
@@ -8217,6 +8584,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "screen_popup")			sverb.screen_popup = 1;
 	else if(verbParam == "screen_popup_syslog")		sverb.screen_popup_syslog = 1;
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
+	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
+	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
 	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
@@ -8238,6 +8607,8 @@ void parse_verb_param(string verbParam) {
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
 	else if(verbParam == "registers_save")			sverb.registers_save = 1;
+	else if(verbParam == "check_config")			sverb.check_config = 1;
+	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8246,6 +8617,7 @@ void parse_verb_param(string verbParam) {
 
 void get_command_line_arguments() {
 	get_command_line_arguments_mysql();
+	get_command_line_arguments_json_config();
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		int c = iter->first;
 		char *optarg = NULL;
@@ -8520,6 +8892,10 @@ void get_command_line_arguments() {
 			case 335:
 				opt_nonstop_read = true;
 				break;
+			case 350:
+				opt_nonstop_read = true;
+				opt_nonstop_read_quick = true;
+				break;
 			case 323:
 				opt_time_to_terminate = atoi(optarg);
 				break;
@@ -8558,6 +8934,7 @@ void get_command_line_arguments() {
 				break;
 			case 313:
 			case 346:
+			case 348:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
@@ -8673,20 +9050,6 @@ void get_command_line_arguments() {
 			case 337:
 				opt_t2_boost = true;
 				break;
-			case 338:
-				if(CONFIG.isSet()) {
-					CONFIG.setFromJson(optarg);
-				} else {
-					cConfig config;
-					config.addConfigItems();
-					config.setFromJson(optarg);
-				}
-				useCmdLineConfig = true;
-				if(!snifferServerOptions.host.empty() ||
-				   !snifferClientOptions.host.empty()) {
-					useNewCONFIG = true;
-				}
-				break;
 			case 339:
 				opt_sip_options = true;
 				opt_sip_subscribe = true;
@@ -8710,6 +9073,13 @@ void get_command_line_arguments() {
 				strcpy_null_term(opt_process_pcap_fname, optarg);
 				opt_process_pcap_type = _pp_anonymize_ip;
 				is_gui_param = true;
+				break;
+			case 405:
+				strcpy_null_term(opt_process_pcap_fname, optarg);
+				opt_process_pcap_type = _pp_prepare_rtcp_data;
+				is_gui_param = true;
+				break;
+			case 406:
 				break;
 			case 342:
 				#if HAVE_LIBTCMALLOC_HEAPPROF
@@ -8753,6 +9123,18 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
+			case 402:
+				if(!ws_calls) {
+					ws_calls = new FILE_LINE(0) cWsCalls();
+					ws_calls->load(optarg);
+				}
+				break;
+			case 403:
+				extract_payload = optarg;
+				break;
+			case 404:
+				extract_rtp_payload = optarg;
+				break;
 		}
 		if(optarg) {
 			delete [] optarg;
@@ -8765,6 +9147,13 @@ void get_command_line_arguments_mysql() {
 		switch(iter->first) {
 			case 'h':
 				strcpy_null_term(mysql_host, iter->second.c_str());
+				{
+					char *portSeparator = strrchr(mysql_host, ':');
+					if(portSeparator) {
+						*portSeparator = 0;
+						opt_mysql_port = atoi(portSeparator + 1);
+					}
+				}
 				break;
 			case 'O':
 				opt_mysql_port = atoi(iter->second.c_str());
@@ -8777,6 +9166,27 @@ void get_command_line_arguments_mysql() {
 				break;
 			case 'p':
 				strcpy_null_term(mysql_password, iter->second.c_str());
+				break;
+		}
+	}
+}
+
+void get_command_line_arguments_json_config() {
+	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
+		switch(iter->first) {
+			case 338:
+				if(CONFIG.isSet()) {
+					CONFIG.setFromJson(iter->second.c_str());
+				} else {
+					cConfig config;
+					config.addConfigItems();
+					config.setFromJson(iter->second.c_str());
+				}
+				useCmdLineConfig = true;
+				if(!snifferServerOptions.host.empty() ||
+				   !snifferClientOptions.host.empty()) {
+					useNewCONFIG = true;
+				}
 				break;
 		}
 	}
@@ -8938,7 +9348,7 @@ void set_context_config() {
 		opt_enable_webrtc_table = true;
 	}
 	
-	if(is_read_from_file_simple()) {
+	if(is_read_from_file_simple() || (opt_process_pcap_type & _pp_prepare_rtcp_data)) {
 		opt_cachedir[0] = 0;
 		opt_enable_preprocess_packet = 0;
 		opt_enable_process_rtp_packet = 0;
@@ -8963,6 +9373,20 @@ void set_context_config() {
 		opt_save_query_charts_remote_to_files = false;
 		opt_load_query_from_files = 0;
 		opt_t2_boost = false;
+		if(opt_process_pcap_type & _pp_prepare_rtcp_data) {
+			useIPv6 = true;
+			opt_nocdr = true;
+			opt_saveSIP = 0;
+			opt_saveRTP = 0;
+			opt_saveGRAPH = 0;
+			opt_saveRAW = 0;
+			opt_saveWAV = 0;
+			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+				preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
+			}
+			_parse_packet_global_process_packet.setStdParse();
+			calltable = new FILE_LINE(0) Calltable();
+		}
 	}
 	
 	if(is_read_from_file()) {
@@ -8983,8 +9407,8 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_sip) {
 			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
 		}
-		if(opt_pcap_dump_tar_compress_rtp) {
-			opt_pcap_dump_zip_rtp = FileZipHandler::compress_na;
+		if(opt_pcap_dump_zip_rtp != FileZipHandler::compress_na) {
+			opt_pcap_dump_tar_compress_rtp = 0;
 		}
 		if(opt_pcap_dump_tar_compress_graph) {
 			opt_gzipGRAPH = FileZipHandler::compress_na;
@@ -9055,19 +9479,33 @@ void set_context_config() {
 		if(!is_sender() && !is_client_packetbuffer_sender() && !opt_scanpcapdir[0]) {
 			opt_pcap_queue_use_blocks = 1;
 		}
+		#if DEBUG_DTLS_QUEUE
+		if(opt_process_rtp_packets_hash_next_thread < 1) {
+			opt_process_rtp_packets_hash_next_thread = 1;
+		}
+		#else
 		if(opt_process_rtp_packets_hash_next_thread < 2) {
 			opt_process_rtp_packets_hash_next_thread = 2;
 		}
+		#endif
 		opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
 		if(opt_preprocess_packets_qring_length <= 2000 &&
 		   opt_preprocess_packets_qring_item_length == 0) {
 			opt_preprocess_packets_qring_length = 3;
+			#if DEBUG_DTLS_QUEUE
+			opt_preprocess_packets_qring_item_length = 500;
+			#else 
 			opt_preprocess_packets_qring_item_length = 5000;
+			#endif
 		}
 		if(opt_process_rtp_packets_qring_length <= 2000 &&
 		   opt_process_rtp_packets_qring_item_length == 0) {
 			opt_process_rtp_packets_qring_length = 4;
+			#if DEBUG_DTLS_QUEUE
+			opt_process_rtp_packets_qring_item_length = 500;
+			#else
 			opt_process_rtp_packets_qring_item_length = 5000;
+			#endif
 		}
 	}
 	
@@ -9126,6 +9564,23 @@ void set_context_config() {
 		} else if(!ssl_client_random_maxwait_ms) {
 			ssl_client_random_maxwait_ms = 2000;
 		}
+	}
+	
+	ssl_client_random_use = ssl_client_random_enable || 
+				(!ssl_client_random_tcp_host.empty() && ssl_client_random_tcp_port) ||
+				ssl_master_secret_file[0];
+	
+	extern cDtls dtls_handshake_safe_links;
+	dtls_handshake_safe_links.setNeedLock(true);
+	
+	if(opt_ssl_dtls_boost) {
+		opt_ssl_dtls_queue_expiration_s = 30;
+		ssl_client_random_keep = true;
+		opt_ssl_dtls_queue_keep = true;
+		opt_ssl_dtls_handshake_safe = 2;
+		opt_ssl_dtls_rtp_local = true;
+		opt_ssl_dtls_find_by_server_side = true;
+		opt_ssl_dtls_find_by_client_side = true;
 	}
 	
 	if(opt_callidmerge_header[0] &&
@@ -9212,6 +9667,42 @@ void set_context_config() {
 	if(opt_ipfix && (is_sender() || is_client_packetbuffer_sender())) {
 		opt_ipfix = false;
 		syslog(LOG_ERR, "the ipfix option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	if(!(useNewCONFIG ? CONFIG.isSet("hep") : opt_hep_set)) {
+		opt_hep = !opt_hep_bind_ip.empty() && opt_hep_bind_port;
+	}
+	
+	if(opt_hep && (is_sender() || is_client_packetbuffer_sender())) {
+		opt_hep = false;
+		syslog(LOG_ERR, "the hep option is not supported on a client with packet buffer sending or in mirror sender mode");
+	}
+	
+	opt_is_client_packetbuffer_sender = is_client_packetbuffer_sender();
+	if(opt_is_client_packetbuffer_sender && opt_t2_boost && !opt_pcap_queue_use_blocks_read_check) {
+		opt_pcap_queue_use_blocks_read_check = 1;
+	}
+	
+	if(opt_ignore_rtp_after_response_list.size() > 1) {
+		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
+	}
+	opt_ignore_rtp_after_response = opt_ignore_rtp_after_response_list.size() > 0;
+	
+	extern void dtls_queue_set_expiration_s(unsigned expiration_s);
+	extern void dtls_queue_set_expiration_count(unsigned expiration_count);
+	dtls_queue_set_expiration_s(opt_ssl_dtls_queue_expiration_s);
+	dtls_queue_set_expiration_count(opt_ssl_dtls_queue_expiration_count);
+	
+	if(srvcc_numbers) {
+		delete srvcc_numbers;
+		srvcc_numbers = NULL;
+	}
+	srvcc_set = opt_srvcc_numbers.size();
+	if(srvcc_set) {
+		srvcc_numbers = new FILE_LINE(0) ListCheckString;
+		for(unsigned i = 0; i < opt_srvcc_numbers.size(); i++) {
+			srvcc_numbers->add(opt_srvcc_numbers[i].c_str());
+		}
 	}
 	
 }
@@ -9476,9 +9967,6 @@ bool check_complete_parameters() {
                         "      Save RTCP packets to pcap file.  You can enable SIP signalization + only\n"
                         "      RTCP packets and not RTP packets.\n"
                         "\n"
-                        " --sip-messages\n"
-                        "      Save REGISTER messages.\n"
-                        "\n"
                         " --sip-register\n"
                         "      Save SIP register requests to cdr.register table and to pcap file.\n"
                         "\n"
@@ -9604,6 +10092,20 @@ void parse_config_item(const char *config, nat_aliases_t *item) {
 	}
 }
 
+void parse_config_item(const char *config, vector<string> *item) {
+	vector<string> items = split(config, split2chars(";,"), true);
+	for(unsigned i = 0; i < items.size(); i++) {
+		item->push_back(items[i]);
+	}
+}
+
+void parse_config_item(const char *config, vector<int> *item) {
+	vector<string> items = split(config, split2chars(";,"), true);
+	for(unsigned i = 0; i < items.size(); i++) {
+		item->push_back(atoi(items[i].c_str()));
+	}
+}
+
 void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix) {
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
@@ -9692,6 +10194,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_sessionkey_maxwait_ms", NULL)) ||
 	   (value = ini.GetValue("general", "ssl_sessionkey_udp_maxwait_ms", NULL))) {
 		ssl_client_random_maxwait_ms = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_sessionkey_keep", NULL))) {
+		ssl_client_random_keep = yesno(value);
 	}
 	
 	// http ip
@@ -10109,8 +10614,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "allow-zerossrc", NULL))) {
 		opt_allow_zerossrc = yesno(value);
 	}
+	if((value = ini.GetValue("general", "sip-message", NULL))) {
+		opt_sip_message = yesno(value);
+	}
 	if((value = ini.GetValue("general", "sip-register", NULL))) {
-		opt_sip_register = !strcmp(value, "old") ? 2 : yesno(value);
+		opt_sip_register = !strcasecmp(value, "old") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-register-timeout", NULL))) {
 		opt_register_timeout = atoi(value);
@@ -10335,6 +10843,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "cdr_partition_by_hours", NULL))) {
 		opt_cdr_partition_by_hours = yesno(value);
 	}
+	if((value = ini.GetValue("general", "cdr_force_primary_index_in_all_tables", NULL))) {
+		opt_cdr_force_primary_index_in_all_tables = yesno(value);
+	}
 	if((value = ini.GetValue("general", "cdr_sipport", NULL))) {
 		opt_cdr_sipport = yesno(value);
 	}
@@ -10417,6 +10928,19 @@ int eval_config(string inistr) {
 			}
 		}
 	}
+	if((value = ini.GetValue("general", "cdr_reason_string_enable", NULL))) {
+		opt_cdr_reason_string_enable = yesno(value);
+	}
+	if (ini.GetAllValues("general", "cdr_reason_reg_remove", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			if(!check_regexp(i->pItem)) {
+				syslog(LOG_WARNING, "invalid regexp %s for cdr_reason_reg_remove", i->pItem);
+			} else {
+				opt_cdr_reason_reg_remove.push_back(i->pItem);
+			}
+		}
+	}
 	if((value = ini.GetValue("general", "cdr_ua_enable", NULL))) {
 		opt_cdr_ua_enable = yesno(value);
 	}
@@ -10451,9 +10975,7 @@ int eval_config(string inistr) {
 				if(posSep) {
 					*posSep = 0;
 				}
-				string custom_header = pos;
-				custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-				custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+				string custom_header = trim_str(pos);
 				string custom_header_field = "custom_header__" + custom_header;
 				std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
 				if(i == 0) {
@@ -10471,6 +10993,10 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "custom_headers_last_value", NULL))) {
 		opt_custom_headers_last_value = yesno(value);
 	}
+	if((value = ini.GetValue("general", "custom_headers_max_size", NULL))) {
+		opt_custom_headers_max_size = atoi(value);
+	}
+	
 	if((value = ini.GetValue("general", "savesip", NULL))) {
 		opt_saveSIP = yesno(value);
 	}
@@ -10709,6 +11235,27 @@ int eval_config(string inistr) {
 		strcpy_null_term(opt_cachedir, value);
 		spooldir_mkdir(opt_cachedir);
 	}
+	if((value = ini.GetValue("general", "tar_move", NULL))) {
+		switch(toupper(value[0])) {
+		case 'M':
+			opt_tar_move = 1;
+			break;
+		case 'C':
+			opt_tar_move = 2;
+			break;
+		default:
+			opt_tar_move = yesno(value);
+		}
+	}
+	if((value = ini.GetValue("general", "tar_move_destination_path", NULL))) {
+		opt_tar_move_destination_path = value;
+	}
+	if((value = ini.GetValue("general", "tar_move_source_trim_path", NULL))) {
+		opt_tar_move_source_trim_path = value;
+	}
+	if((value = ini.GetValue("general", "tar_move_max_threads", NULL))) {
+		opt_tar_move_max_threads = atoi(value);
+	}
 	if((value = ini.GetValue("general", "spooldir", NULL))) {
 		strcpy_null_term(opt_spooldir_main, value);
 	}
@@ -10838,7 +11385,7 @@ int eval_config(string inistr) {
 		opt_mysql_max_multiple_rows_insert = atoi(value);
 	}
 	if((value = ini.GetValue("general", "mysql_enable_new_store"))) {
-		opt_mysql_enable_new_store = strcmp(value, "per_query") ? yesno(value) : 2;
+		opt_mysql_enable_new_store = strcasecmp(value, "per_query") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "mysql_enable_set_id"))) {
 		opt_mysql_enable_set_id = yesno(value);
@@ -11004,6 +11551,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "database_backup_skip_register", NULL))) {
 		opt_database_backup_skip_register = yesno(value);
 	}
+	if((value = ini.GetValue("general", "database_backup_check_src_tables", NULL))) {
+		opt_database_backup_check_src_tables = yesno(value);
+	}
 	if((value = ini.GetValue("general", "get_customer_by_ip_sql_driver", NULL))) {
 		strcpy_null_term(get_customer_by_ip_sql_driver, value);
 	}
@@ -11132,6 +11682,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sqlcallend", NULL))) {
 		opt_callend = yesno(value);
 	}
+	if((value = ini.GetValue("general", "disable_cdr_fields_rtp", NULL))) {
+		opt_disable_cdr_fields_rtp = yesno(value);
+	}
 	if((value = ini.GetValue("general", "disable_cdr_indexes_rtp", NULL))) {
 		opt_disable_cdr_indexes_rtp = yesno(value);
 	}
@@ -11145,7 +11698,7 @@ int eval_config(string inistr) {
 		opt_t2_boost_call_threads = atoi(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pb_detach_thread", NULL))) {
-		opt_t2_boost_pb_detach_thread = atoi(value);
+		opt_t2_boost_pb_detach_thread = !strcasecmp(value, "two") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_pcap_dispatch", NULL))) {
 		opt_t2_boost_pcap_dispatch = atoi(value);
@@ -11265,13 +11818,16 @@ int eval_config(string inistr) {
 		opt_rtp_streams_max_in_call = atoi(value);
 	}
 	if((value = ini.GetValue("general", "rtp_check_both_sides_by_sdp", NULL))) {
-		opt_rtp_check_both_sides_by_sdp = strcmp(value, "keep_rtp_packets") ? yesno(value) : 2;
+		opt_rtp_check_both_sides_by_sdp = strcasecmp(value, "keep_rtp_packets") ? yesno(value) : 2;
 	}
 	if((value = ini.GetValue("general", "rtpmap_by_callerd", NULL))) {
 		opt_rtpmap_by_callerd = yesno(value);
 	}
 	if((value = ini.GetValue("general", "rtpmap_combination", NULL))) {
 		opt_rtpmap_combination = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtpmap_indirect", NULL))) {
+		opt_rtpmap_indirect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "jitter_forcemark_transit_threshold", NULL))) {
 		opt_jitter_forcemark_transit_threshold = atoi(value);
@@ -11284,6 +11840,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sdp_check_direction_ext", NULL))) {
 		opt_sdp_check_direction_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "rtp_count_all_sequencegap_as_loss", NULL))) {
+		opt_rtp_count_all_sequencegap_as_loss = yesno(value);
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
@@ -11451,6 +12010,13 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "livesniffer_tablesize_max_mb", NULL))) {
 		opt_livesniffer_tablesize_max_mb = atoi(value);
 	}
+	#if EXPERIMENTAL_SEPARATE_PROCESSSING
+	if((value = ini.GetValue("general", "separate_processing", NULL))) {
+		opt_separate_processing = !strcasecmp(value, "sip") ? 1 :
+					  !strcasecmp(value, "rtp") ? 2 :
+					  yesno(value);
+	}
+	#endif
 	if((value = ini.GetValue("general", "enable_preprocess_packet", NULL))) {
 		opt_enable_preprocess_packet = !strcmp(value, "auto") ? -1 :
 					       !strcmp(value, "extend") ? PreProcessPacket::ppt_end_base :
@@ -11559,6 +12125,42 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl_store_sessions_expiration_hours", NULL))) {
 		opt_ssl_store_sessions_expiration_hours = atoi(value);
 	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_backward", NULL))) {
+		opt_ssl_aead_try_seq_backward = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_aead_try_seq_forward", NULL))) {
+		opt_ssl_aead_try_seq_forward = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
+		opt_ssl_enable_dtls_queue = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_expiration", NULL))) {
+		opt_ssl_dtls_queue_expiration_s = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_max_packets", NULL))) {
+		opt_ssl_dtls_queue_expiration_count = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_queue_keep", NULL))) {
+		opt_ssl_dtls_queue_keep = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
+		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
+		opt_ssl_dtls_rtp_local = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
+		opt_ssl_dtls_find_by_server_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_find_by_client_side", NULL))) {
+		opt_ssl_dtls_find_by_client_side = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_dtls_boost", NULL))) {
+		opt_ssl_dtls_boost = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_enable_redirection_unencrypted_sip_content", NULL))) {
+		opt_ssl_enable_redirection_unencrypted_sip_content = yesno(value);
+	}
 	if((value = ini.GetValue("general", "tcpreassembly_http_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_http_log, value);
 	}
@@ -11636,14 +12238,29 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "bye_confirmed_timeout", NULL))) {
 		opt_bye_confirmed_timeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "redirect_response_300_timeout", NULL))) {
+		opt_redirect_response_300_timeout = atoi(value);
+	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignore_rtp_after_bye", NULL))) {
+		opt_ignore_rtp_after_bye = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ignore_duration_after_bye_confirmed", NULL))) {
+		opt_ignore_duration_after_bye_confirmed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_cancel_confirmed", NULL))) {
 		opt_ignore_rtp_after_cancel_confirmed = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_auth_failed", NULL))) {
 		opt_ignore_rtp_after_auth_failed = yesno(value);
+	}
+	if(ini.GetAllValues("general", "ignore_rtp_after_response", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_ignore_rtp_after_response_list);
+		}
 	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);
@@ -11668,6 +12285,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "saveaudio_reversestereo", NULL))) {
 		opt_saveaudio_reversestereo = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_adaptive_jitterbuffer", NULL))) {
+		opt_saveaudio_adaptive_jitterbuffer = yesno(value);
+	}
+	if((value = ini.GetValue("general", "saveaudio_resync_jitterbuffer", NULL))) {
+		opt_saveaudio_resync_jitterbuffer = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ogg_quality", NULL))) {
 		opt_saveaudio_oggquality = atof(value);
@@ -11976,6 +12599,52 @@ int eval_config(string inistr) {
 		opt_disable_process_sdp = yesno(value);
 	}
 	
+	if((value = ini.GetValue("general", "conference_processing", NULL))) {
+		opt_conference_processing = yesno(value);
+	}
+	if(ini.GetAllValues("general", "conference_uri", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			opt_conference_uri.push_back(i->pItem);
+		}
+	}
+	if(ini.GetAllValues("general", "mo_mt_identification_prefix", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_mo_mt_identification_prefix);
+		}
+	}
+	if((value = ini.GetValue("general", "separate_storage_ipv6_ipv4_address", NULL))) {
+		opt_separate_storage_ipv6_ipv4_address = !strcasecmp(value, "confirmed") ? 2 :
+							 !strcasecmp(value, "first") ? 3 :
+							 !strcasecmp(value, "first_confirmed") ? 4 :
+							 yesno(value);
+	}
+	if((value = ini.GetValue("general", "cdr_flag_bit", NULL))) {
+		opt_cdr_flag_bit = atoi(value);
+	}
+	if(ini.GetAllValues("general", "srvcc_numbers", values)) {
+		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
+		for (; i != values.end(); ++i) {
+			parse_config_item(i->pItem, &opt_srvcc_numbers);
+		}
+	}
+	if((value = ini.GetValue("general", "srvcc_compare_length", NULL))) {
+		opt_srvcc_compare_number_length = atoi(value);
+	}
+	if((value = ini.GetValue("general", "srvcc_processing_only", NULL))) {
+		opt_srvcc_processing_only = yesno(value);
+	}
+	if((value = ini.GetValue("general", "save_srvcc_cdr", NULL))) {
+		opt_save_srvcc_cdr = yesno(value);
+	}
+	if((value = ini.GetValue("general", "srvcc_correlation", NULL))) {
+		opt_srvcc_correlation = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_only_tcp", NULL))) {
+		opt_sip_only_tcp = yesno(value);
+	}
+	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {
 		opt_enable_jitterbuffer_asserts = yesno(value);
 	}
@@ -12034,6 +12703,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "preprocess_packets_qring_usleep", NULL))) {
 		opt_preprocess_packets_qring_usleep = atol(value);
 	}
+	if((value = ini.GetValue("general", "preprocess_packets_qring_push_usleep", NULL))) {
+		opt_preprocess_packets_qring_push_usleep = atol(value);
+	}
 	if((value = ini.GetValue("general", "preprocess_packets_qring_force_push", NULL))) {
 		opt_preprocess_packets_qring_force_push = yesno(value);
 	}
@@ -12046,6 +12718,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_usleep", NULL))) {
 		opt_process_rtp_packets_qring_usleep = atol(value);
 	}
+	if((value = ini.GetValue("general", "process_rtp_packets_qring_push_usleep", NULL))) {
+		opt_process_rtp_packets_qring_push_usleep = atol(value);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
 		opt_process_rtp_packets_qring_force_push = yesno(value);
 	}
@@ -12054,6 +12729,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
 		opt_destroy_calls_period = atoi(value);
+	}
+	if((value = ini.GetValue("general", "safe_cleanup_calls", NULL))) {
+		opt_safe_cleanup_calls = !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "destroy_calls_in_storing_cdr", NULL))) {
 		opt_destroy_calls_in_storing_cdr = yesno(value);
@@ -12141,11 +12819,27 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_timeout", NULL))) {
 		opt_sip_tcp_reassembly_stream_timeout = atoi(value);
 	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_stream_max_attempts", NULL))) {
+		opt_sip_tcp_reassembly_stream_max_attempts = atoi(value);
+	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_clean_period", NULL))) {
 		opt_sip_tcp_reassembly_clean_period = atoi(value);
 	}
 	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext", NULL))) {
 		opt_sip_tcp_reassembly_ext = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_link_timeout", NULL))) {
+		opt_sip_tcp_reassembly_ext_link_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_quick_mod", NULL))) {
+		opt_sip_tcp_reassembly_ext_quick_mod = !strcasecmp(value, "comb_ext") ? 3 :
+						       !strcasecmp(value, "ext") ? 2 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_complete_mod", NULL))) {
+		opt_sip_tcp_reassembly_ext_complete_mod = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip_tcp_reassembly_ext_usleep", NULL))) {
+		opt_sip_tcp_reassembly_ext_usleep = atol(value);
 	}
 	if((value = ini.GetValue("general", "receiver_check_id_sensor", NULL))) {
 		opt_receiver_check_id_sensor = yesno(value);
@@ -12179,6 +12873,20 @@ int eval_config(string inistr) {
 		opt_ipfix_bind_port = atoi(value);
 	}
 	
+	if((value = ini.GetValue("general", "hep", NULL))) {
+		opt_hep = yesno(value);
+		opt_hep_set = true;
+	}
+	if((value = ini.GetValue("general", "hep_bind_ip", NULL))) {
+		opt_hep_bind_ip = value;
+	}
+	if((value = ini.GetValue("general", "hep_bind_port", NULL))) {
+		opt_hep_bind_port = atoi(value);
+	}
+	if((value = ini.GetValue("general", "hep_bind_udp", NULL))) {
+		opt_hep_bind_udp = yesno(value);
+	}
+	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {
 		opt_audiocodes = yesno(value);
 	}
@@ -12187,6 +12895,14 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tcp_port_audiocodes", NULL))) {
 		opt_tcp_port_audiocodes = atoi(value);
+	}
+	if((value = ini.GetValue("general", "audiocodes_rtp", NULL))) {
+		opt_audiocodes_rtp = !strcasecmp(value, "only") ? 2 :
+				     !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
+	if((value = ini.GetValue("general", "audiocodes_rtcp", NULL))) {
+		opt_audiocodes_rtcp = !strcasecmp(value, "only") ? 2 :
+				      !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "kamailio_dstip", NULL))) {
@@ -12240,8 +12956,23 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "abort_if_rss_gt_gb", NULL))) {
 		opt_abort_if_rss_gt_gb = atoi(value);
 	}
+	if((value = ini.GetValue("general", "abort_if_alloc_gt_gb", NULL))) {
+		opt_abort_if_alloc_gt_gb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "coredump_filter", NULL))) {
+		opt_coredump_filter = value;
+	}
 	if((value = ini.GetValue("general", "curl_hook_wav", NULL))) {
 		strcpy_null_term(opt_curl_hook_wav, value);
+	}
+	if((value = ini.GetValue("general", "all_configuration_options_in_gui", NULL))) {
+		opt_all_configuration_options_in_gui = yesno(value);
+	}
+	if((value = ini.GetValue("general", "all_unlink_log", NULL))) {
+		opt_all_unlink_log = yesno(value);
+	}
+	if((value = ini.GetValue("general", "bt_sighandler", NULL))) {
+		opt_bt_sighandler_enable = yesno(value);
 	}
 
 	/*
@@ -12828,7 +13559,7 @@ bool init_lib_gcrypt() {
 
 
 #if HAVE_LIBSRTP
-#include <srtp/srtp.h>
+#include <srtp2/srtp.h>
 volatile int _init_lib_srtp_rslt = -1;
 volatile int _init_lib_srtp_sync = 0;
 bool init_lib_srtp() {

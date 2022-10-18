@@ -428,6 +428,7 @@ int Mgmt_setverbparam(Mgmt_params *params);
 int Mgmt_cleanverbparams(Mgmt_params *params);
 int Mgmt_set_pcap_stat_period(Mgmt_params *params);
 int Mgmt_memcrash_test(Mgmt_params *params);
+int Mgmt_memalloc_test(Mgmt_params *params);
 int Mgmt_get_oldest_spooldir_date(Mgmt_params *params);
 int Mgmt_get_sensor_information(Mgmt_params *params);
 int Mgmt_alloc_trim(Mgmt_params *params);
@@ -541,6 +542,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_cleanverbparams,
 	Mgmt_set_pcap_stat_period,
 	Mgmt_memcrash_test,
+	Mgmt_memalloc_test,
 	Mgmt_get_oldest_spooldir_date,
 	Mgmt_get_sensor_information,
 	Mgmt_alloc_trim,
@@ -1350,8 +1352,11 @@ void *manager_read_thread(void * arg) {
 
 void perror_syslog(const char *msg) {
 	char buf[1024];
-	strerror_r(errno, buf, 1024);
-	syslog(LOG_ERR, "%s:%s\n", msg, buf);
+	const char *errstr = strerror_r(errno, buf, sizeof(buf));
+	if(!errstr || !errstr[0]) {
+		errstr = "unknown error";
+	}
+	syslog(LOG_ERR, "%s:%s\n", msg, errstr);
 }
 
 
@@ -2926,8 +2931,12 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	}
 	string filter_sensor_id = jsonParameters.getValue("filter_sensor_id");
 	if(filter_sensor_id.length()) {
-		filter->sensor_id = atoi(filter_sensor_id.c_str());
-		filter->sensor_id_set = true;
+		vector<string> sensors_id = split(filter_sensor_id.c_str(), split(",|;| ", "|"), true);
+		for(unsigned i = 0; i < sensors_id.size(); i++) {
+			int sensor_id = atoi(sensors_id[i].c_str());
+			filter->sensor_id.insert(sensor_id > 0 ? sensor_id : 0);
+			filter->sensor_id_set = true;
+		}
 	}
 	string filter_ip = jsonParameters.getValue("filter_ip");
 	if(filter_ip.length()) {
@@ -2944,7 +2953,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(filter_port.length()) {
 		vector<string> port = split(filter_port.c_str(), split(",|;| ", "|"), true);
 		for(unsigned i = 0; i < port.size() && i < MAXLIVEFILTERS; i++) {
-			filter->lv_bothport[i].setPort(ntohs(atoi(port[i].c_str())));
+			filter->lv_bothport[i].setFromString(port[i].c_str());
 		}
 	}
 	string filter_number = jsonParameters.getValue("filter_number");
@@ -3008,6 +3017,8 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	if(timeout > 0) {
 		filter->timeout_s = timeout;
 	}
+	string disable_timeout_warn_msg = jsonParameters.getValue("disable_live_sniffer_timeout_warning");
+	filter->disable_timeout_warn_msg = disable_timeout_warn_msg == "true" ? true : false;
 	updateLivesnifferfilters();
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
@@ -4061,7 +4072,7 @@ int Mgmt_custipcache_vect_print(Mgmt_params *params) {
 int Mgmt_upgrade_restart(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
-			{"upgrade", "upgrades senso"},
+			{"upgrade", "upgrades sensor"},
 			{"restart", "restarts sensor"},
 			{NULL, NULL}
 		};
@@ -4724,6 +4735,7 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 			{"memcrash_test_3", ""},
 			{"memcrash_test_4", ""},
 			{"memcrash_test_5", ""},
+			{"memcrash_test_6", ""},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -4750,6 +4762,40 @@ int Mgmt_memcrash_test(Mgmt_params *params) {
 	} else if(strstr(params->buf, "memcrash_test_5") != NULL) {
 		char *test = NULL;
 		*test = 0;
+	} else if(strstr(params->buf, "memcrash_test_6") != NULL) {
+		new FILE_LINE(0) char[1000000001];
+	}
+	return(0);
+}
+
+int Mgmt_memalloc_test(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"memalloc_alloc", ""},
+			{"memalloc_free", ""},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	static queue<char*> alloc_queue;
+	if(!strncmp(params->buf, "memalloc_alloc", 14)) {
+		unsigned size = atoi(params->buf + 15);
+		if(size > 0) {
+			char *block = new FILE_LINE(0) char[size];
+			if(block) {
+				memset(block, 0, size);
+				alloc_queue.push(block);
+			}
+		}
+	} else if(strstr(params->buf, "memalloc_free") != NULL) {
+		if(alloc_queue.size()) {
+			char *block = alloc_queue.front();
+			if(block) {
+				delete [] block;
+				alloc_queue.pop();
+			}
+		}
 	}
 	return(0);
 }
@@ -4780,7 +4826,8 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 		"get_radius_ip_password",
 		"odbcpass",
 		"manager_sshpassword",
-		"server_password"
+		"server_password",
+		"cloud_token"
 	};
 	list<string> hidePasswordForOptions;
 	for(unsigned i = 0; i < sizeof(_hidePasswordForOptions) / sizeof(_hidePasswordForOptions[0]); i++) {
@@ -4845,7 +4892,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 			sqlDb->setDisableLogError();
 			extern int opt_id_sensor;
 			if(sqlDb->query("SELECT * FROM sensor_config WHERE id_sensor " + 
-					(opt_id_sensor > 0 ? intToString(opt_id_sensor) : "IS NULL"))) {
+					(opt_id_sensor > 0 ? "= " + intToString(opt_id_sensor) : "IS NULL"))) {
 				SqlDb_row row = sqlDb->fetchRow();
 				delete sqlDb;
 				if(row) {
@@ -5019,7 +5066,7 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 	} else if(string(type_information) == "cmd_file") {
 		extern string rundir;
 		extern string appname;
-		return(params->sendPexecOutput(("file " + rundir + "/" + appname).c_str()));
+		return(params->sendPexecOutput(("file " + binaryNameWithPath).c_str()));
 	} else if(string(type_information) == "cmd_ldd") {
 		return(params->sendPexecOutput(("ldd " + binaryNameWithPath).c_str()));
 	}

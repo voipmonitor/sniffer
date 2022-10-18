@@ -143,7 +143,7 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	return(flags);
 }
 
-void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags) {
+void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure) {
 	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
 	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
 	
@@ -192,8 +192,10 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & _FLAG_HIDEMSG)			*callFlags |= FLAG_HIDEMESSAGE;
 	if(filterFlags & _FLAG_SHOWMSG)			*callFlags &= ~FLAG_HIDEMESSAGE;
 	
+	if(!reconfigure) {
 	if(filterFlags & _FLAG_SPOOL_2_SET)		*callFlags |= FLAG_USE_SPOOL_2;
 	if(filterFlags & _FLAG_SPOOL_2_UNSET)		*callFlags &= ~FLAG_USE_SPOOL_2;
+	}
 
 	if(filterFlags & _FLAG_OPTIONS_DB)		*callFlags |= FLAG_SAVEOPTIONSDB;
 	if(filterFlags & _FLAG_NOOPTIONS_DB)		*callFlags &= ~FLAG_SAVEOPTIONSDB;
@@ -247,7 +249,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
   			  from filter_ip_sensors \
 			  where filter_ip_id = filter_ip.id) as sensors_id" :
 		       "") +
-		     " FROM filter_ip");
+		     " FROM filter_ip ORDER BY ip desc, mask desc");
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
 	SqlDb_row row;
@@ -281,7 +283,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	}
 };
 
-int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr) {
+int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -294,13 +296,13 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmI
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
 
-		unsigned long int origflags = *flags;
+		// unsigned long int origflags = *flags;
 
 		if((!node->network.isSet() && !node->mask) ||
 		   ((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
 		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
 
-			*flags = origflags;
+			// *flags = origflags;
 
 			if(node->mask < last_mask) {
 				continue;
@@ -308,7 +310,7 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmI
 
 			last_mask = node->mask;
 			
-			this->setCallFlagsFromFilterFlags(flags, node->flags);
+			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
 
 			found = 1;
 		}
@@ -326,11 +328,11 @@ void IPfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, saddr, daddr);
+		rslt = filter_active->_add_call_flags(flags, saddr, daddr, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -527,8 +529,44 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 
+	if (this->count == 0) {
+		// no filters, return 
+		return 0;
+	}
+	
+	unsigned found_length = 0;
+	u_int64_t found_flags = 0;
+	for(int src_dst = 1; src_dst <= 2; src_dst++) {
+		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
+		unsigned telnum_length = strlen(telnum);
+		t_node_tel *node = first_node;
+		for(unsigned int i = 0; i < telnum_length; i++) {
+			unsigned char checkChar = telnum[i];
+			if(checkChar == '%' && !strncmp(telnum + i, "%23", 3)) {
+				checkChar = '#';
+				i += 2;
+			}
+			if(!node->nodes[checkChar]) {
+				break;
+			}
+			node = node->nodes[checkChar];
+			if(node && node->payload &&
+			   (node->payload->direction == 0 ||
+			    node->payload->direction == src_dst) &&
+			   (i + 1) > found_length) {
+				found_length = i + 1;
+				found_flags = node->payload->flags;
+			}
+		}
+	}
+	if(found_length > 0) {
+		this->setCallFlagsFromFilterFlags(flags, found_flags, reconfigure);
+	}
+	return(found_length > 0);
+	
+	/* obsolete
 	int lastdirection = 0;
 	
 	if (this->count == 0) {
@@ -584,11 +622,12 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char 
 	}
 
         if(lastpayload) {
-		this->setCallFlagsFromFilterFlags(flags, lastpayload->flags);
+		this->setCallFlagsFromFilterFlags(flags, lastpayload->flags, reconfigure);
 		return 1;
         }
 
 	return 0;
+	*/
 }
 
 void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
@@ -608,11 +647,11 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, telnum_src, telnum_dst);
+		rslt = filter_active->_add_call_flags(flags, telnum_src, telnum_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -737,7 +776,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -749,7 +788,7 @@ DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *dom
 
 		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) || 
 			((node->direction == 0 or node->direction == 1) and (domain_src == node->domain))) {
-			this->setCallFlagsFromFilterFlags(flags, node->flags);
+			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
 			return 1;
 		}
 	}
@@ -766,7 +805,7 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
@@ -935,7 +974,7 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -952,7 +991,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			map<std::string, item_data>::iterator it_content = data->strict_prefix.lower_bound(content);
 			if(it_content != data->strict_prefix.end() &&
 			   it_content->first == content) {
-				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - strict (eq) : %s",  it_content->first.c_str());
 				}
@@ -963,7 +1002,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			}
 			if(it_content->second.prefix &&
 			   !strncmp(it_content->first.c_str(), content.c_str(), it_content->first.length())) {
-				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - prefix : %s",  it_content->first.c_str());
 				}
@@ -973,7 +1012,7 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 		if(data->regexp.size()) {
 			for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
 				if(reg_match(content.c_str(), it_content->first.c_str(), __FILE__, __LINE__)) {
-					this->setCallFlagsFromFilterFlags(flags, it_content->second.flags);
+					this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
 					if(sverb.capture_filter) {
 						syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - regexp : %s",  it_content->first.c_str());
 					}
@@ -1007,11 +1046,11 @@ void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(parseContents, flags);
+		rslt = filter_active->_add_call_flags(parseContents, flags, reconfigure);
 	}
 	unlock();
 	return(rslt);

@@ -19,7 +19,11 @@
 
 #include <glib.h>
 #include <wireshark/wsutil/privileges.h>
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 30605
+#include <wireshark/epan/register.h>
+#else
 #include <wireshark/register.h>
+#endif
 #include <wireshark/epan/epan.h>
 #include <wireshark/cfile.h>
 #include <wireshark/wiretap/wtap.h>
@@ -37,6 +41,15 @@
 #endif
 
 #include "heap_safe.h"
+
+
+#if !defined(DLT_LINUX_SLL2)
+#define DLT_LINUX_SLL2  276
+#endif
+
+#if !defined(WTAP_ENCAP_SLL2)
+#define WTAP_ENCAP_SLL2  210
+#endif
 
 
 using namespace std;
@@ -233,6 +246,7 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 	unsigned ws_dlt = dlt == DLT_MTP2 ? WTAP_ENCAP_MTP2 :
 			  dlt == DLT_MTP2_WITH_PHDR ? WTAP_ENCAP_MTP2_WITH_PHDR :
 			  dlt == DLT_LINUX_SLL ? WTAP_ENCAP_SLL :
+			  dlt == DLT_LINUX_SLL2 ? WTAP_ENCAP_SLL2 :
 			  WTAP_ENCAP_ETHERNET;
 	unsigned skip_hdr = dlt == DLT_MTP2_WITH_PHDR ? 4 : 0;
 	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 20605

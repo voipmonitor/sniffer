@@ -123,20 +123,20 @@ void cSipMsgFilter::setFilter(const char *filter) {
 	}
 	if(!filterData["ua_src"].empty() &&
 	   filterData["ua_src_dst_type"] == "0") {
-		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_src);
+		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_src, false);
 		filter1->addWhite(filterData["ua_src"].c_str());
-		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_dst);
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_dst, false);
 		filter2->addWhite(filterData["ua_src"].c_str());
 		addFilter(filter1, filter2);
 	} else {
 		cRecordFilterItems gItems(cRecordFilterItems::_and);
 		if(!filterData["ua_src"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_src);
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_src, false);
 			filter->addWhite(filterData["ua_src"].c_str());
 			gItems.addFilter(filter);
 		}
 		if(!filterData["ua_dst"].empty()) {
-			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_dst);
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, smf_ua_dst, false);
 			filter->addWhite(filterData["ua_dst"].c_str());
 			gItems.addFilter(filter);
 		}

@@ -20,15 +20,21 @@ struct sVerbose {
 	int disable_threads_rtp;
 	int packet_lost;
 	int rrd_info;
-	int http;
-	int webrtc;
-	int ssl;
+	int tcpreassembly_http;
+	int tcpreassembly_webrtc;
+	int tcpreassembly_ssl;
 	int tls;
 	int ssl_sessionkey;
-	int sip;
+	char *ssl_sessionkey_to_file;
+	int tcpreassembly_sip;
+	int tcpreassembly_sip_cleanup;
+	char *tcpreassembly_sip_dumper;
+	char *tcpreassembly_sip_dumper_ports;
 	char *tcpreassembly_debug_file;
+	int tcpreassembly_ext;
 	int ssldecode;
 	int ssldecode_debug;
+	int ssl_stats;
 	int sip_packets;
 	int set_ua;
 	int dscp;
@@ -94,6 +100,7 @@ struct sVerbose {
 	int heap_use_time;
 	int dtmf;
 	int dtls;
+	int hep3;
 	int cleanspool;
 	int cleanspool_disable_rm;
 	int t2_destroy_all;
@@ -116,6 +123,8 @@ struct sVerbose {
 	int screen_popup;
 	int screen_popup_syslog;
 	int cleanup_calls;
+	int cleanup_calls_log;
+	int cleanup_calls_stat;
 	int usleep_stats;
 	int charts_cache_only;
 	int charts_cache_filters_eval;
@@ -132,6 +141,8 @@ struct sVerbose {
 	int cdr_stat_interval_store;
 	int disable_unlink_qfile;
 	int registers_save;
+	int check_config;
+	int separate_processing;
 	int _debug1;
 	int _debug2;
 	int _debug3;
@@ -142,6 +153,11 @@ struct sVerbose {
 #define int_64_format_prefix ""
 #else
 #define int_64_format_prefix "l"
+#endif
+
+
+#if !defined(DLT_LINUX_SLL2)
+#define DLT_LINUX_SLL2  276
 #endif
 
 

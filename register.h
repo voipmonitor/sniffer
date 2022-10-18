@@ -162,7 +162,7 @@ public:
 	}
 	inline bool isEq(Call *call, Register *reg);
 	inline u_int64_t unshiftSystemTime_s(u_int64_t time_s) {
-		return(time_s - time_shift_ms / 1000);
+		return(time_s ? (time_s - time_shift_ms / 1000) : 0);
 	}
 	inline void setZombie() {
 		state_from_us = state_to_us;

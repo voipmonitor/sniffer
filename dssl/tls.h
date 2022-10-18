@@ -146,14 +146,7 @@ struct SslCipherSuite {
 
 struct SslDecoder {
     SslDecoder() {
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(this, 0, sizeof(*this));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)this, 0, sizeof(*this));
     }
     ~SslDecoder();
     const SslCipherSuite *cipher_suite;
@@ -169,19 +162,12 @@ struct SslDecoder {
     SslFlow *flow;
     */
     StringInfo app_traffic_secret;  /**< TLS 1.3 application traffic secret (if applicable), wmem file scope. */
-    gboolean restore_session;
+    gint enable_try_seq_attempts;
 };
 
 struct SslSession {
     SslSession() {
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(this, 0, sizeof(*this));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)this, 0, sizeof(*this));
     }
     gint cipher;
     gint compression;
@@ -211,14 +197,7 @@ struct SslSession {
 
 struct SslDecryptSession {
     SslDecryptSession() {
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic push
-	#pragma GCC diagnostic ignored "-Wclass-memaccess"
-	#endif
-	memset(this, 0, sizeof(*this));
-	#if __GNUC__ >= 8
-	#pragma GCC diagnostic pop
-	#endif
+	memset((void*)this, 0, sizeof(*this));
     }
     ~SslDecryptSession() {
 	if(server)

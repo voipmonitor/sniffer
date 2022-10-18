@@ -333,7 +333,7 @@ public:
 	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
 	int _queryByRemoteSocket(string query, unsigned int pass);
-	int processResponseFromQueryBy(const char *response, unsigned pass);
+	int processResponseFromQueryBy(const char *response, const char *query, unsigned pass);
 	int processResponseFromCsv(const char *response);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow() = 0;
@@ -346,9 +346,9 @@ public:
 	virtual string getCsvResult() { return(""); }
 	virtual string getJsonError() { return(""); }
 	virtual string getFieldsStr(list<SqlDb_field> *fields);
-	virtual string getCondStr(list<SqlDb_condField> *cond);
-	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
-	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0);
+	virtual string getCondStr(list<SqlDb_condField> *cond, bool forceLatin1 = false);
+	virtual string selectQuery(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0, bool forceLatin1 = false);
+	virtual string selectQuery(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0, bool forceLatin1 = false);
 	virtual string insertQuery(string table, SqlDb_row row, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false, SqlDb_row *row_on_duplicate = NULL);
 	virtual string insertOrUpdateQuery(string table, SqlDb_row row, SqlDb_row row_on_duplicate, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string insertQuery(string table, vector<SqlDb_row> *rows, bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
@@ -356,14 +356,15 @@ public:
 						       bool enableSqlStringInContent = false, bool escapeAll = false, bool insertIgnore = false);
 	virtual string updateQuery(string table, SqlDb_row row, const char *whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
 	virtual string updateQuery(string table, SqlDb_row row, SqlDb_row whereCond, bool enableSqlStringInContent = false, bool escapeAll = false);
-	virtual bool select(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0);
-	virtual bool select(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0);
+	virtual bool select(string table, list<SqlDb_field> *fields = NULL, list<SqlDb_condField> *cond = NULL, unsigned limit = 0, bool forceLatin1 = false);
+	virtual bool select(string table, const char *field, const char *condField = NULL, const char *condValue = NULL, unsigned limit = 0, bool forceLatin1 = false);
 	virtual int64_t insert(string table, SqlDb_row row);
 	virtual int64_t insert(string table, vector<SqlDb_row> *rows);
 	virtual bool update(string table, SqlDb_row row, const char *whereCond);
 	virtual bool update(string table, SqlDb_row row, SqlDb_row whereCond);
 	virtual int getIdOrInsert(string table, string idField, string uniqueField, SqlDb_row row, const char *uniqueField2 = NULL);
 	virtual int64_t getInsertId() = 0;
+	string getQueryRsltStringValue(string query, int indexRslt);
 	int64_t getQueryRsltIntValue(string query, int indexRslt, int64_t failedResult);
 	virtual bool existsDatabase() = 0;
 	virtual bool existsTable(const char *table) = 0;
@@ -385,6 +386,7 @@ public:
 	bool existsColumnInTypeCache(string table, string column) {
 		return(existsColumnInCache(table.c_str(), column.c_str()));
 	}
+	virtual bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0) = 0;
 	bool isIPv6Column(string table, string column, bool useCache = true);
 	bool isIPv4Column(string table, string column, bool useCache = true) {
 		return(!isIPv6Column(table, column, useCache));
@@ -649,6 +651,7 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	static bool existsColumnInTypeCache_static(const char *table, const char *column);
+	bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
@@ -687,6 +690,7 @@ public:
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
+	void checkColumns_cdr_conference(bool log = false);
 	void checkColumns_cdr_child(bool log = false);
 	void checkColumns_cdr_stat(bool log = false);
 	void checkColumns_ss7(bool log = false);
@@ -703,7 +707,8 @@ public:
 	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit = 0, bool descDir = false,
-				      bool skipRegister = false);
+				      bool skipRegister = false,
+				      bool skipMissingTables = false);
 	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				 const char *tableName, 
 				 unsigned long limit, bool descDir = false);
@@ -801,6 +806,7 @@ public:
 	bool existsColumn(const char *table, const char *column, string *type = NULL);
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	bool existsColumnInTypeCache(const char *table, const char *column);
+	bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0);
 	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
@@ -1193,6 +1199,7 @@ struct sExistsColumns {
 	bool cdr_child_tar_part_calldate_ms;
 	bool cdr_child_country_code_calldate_ms;
 	bool cdr_child_sdp_calldate_ms;
+	bool cdr_child_conference_calldate_ms;
 	bool cdr_child_txt_calldate_ms;
 	bool cdr_child_flags_calldate_ms;
 	bool cdr_callend_ms;
@@ -1226,9 +1233,17 @@ struct sExistsColumns {
 	bool cdr_price_customer_mult1000000;
 	bool cdr_price_customer_currency_id;
 	bool cdr_sipcallerdip_encaps;
+	bool cdr_sipcallerdip_v6;
 	bool cdr_next_calldate;
 	bool cdr_next_spool_index;
 	bool cdr_next_hold;
+	bool cdr_next_conference_flag;
+	bool cdr_next_conference_referred_by;
+	bool cdr_next_conference_referred_by_ok_time;
+	bool cdr_next_conference_referred_by_ok_time_ms;
+	bool cdr_next_leg_flag;
+	bool cdr_next_srvcc_call_id;
+	bool cdr_next_srvcc_flag;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;
@@ -1249,6 +1264,10 @@ struct sExistsColumns {
 	bool cdr_txt_calldate;
 	bool cdr_rtcp_loss_is_smallint_type;
 	bool cdr_vlan;
+	bool cdr_conference;
+	bool cdr_conference_calldate;
+	bool cdr_conference_connect_time_ms;
+	bool cdr_conference_disconnect_time_ms;
 	bool ss7_flags;
 	bool ss7_time_iam_ms;
 	bool ss7_time_acm_ms;

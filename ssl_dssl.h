@@ -214,6 +214,54 @@ public:
 	virtual void evData(u_char *data, size_t dataLen);
 };
 
+struct sSslDsslStatsItem_time {
+	sSslDsslStatsItem_time() {
+		reset();
+	}
+	void add_delay_from_act(u_int64_t time_us) {
+		u_int64_t act = getTimeMS_rdtsc();
+		if(act >= time_us / 1000) {
+			u_int64_t delay = act - time_us / 1000;
+			sum_ms += delay;
+			++count;
+			if(delay > max_ms) {
+				max_ms = delay;
+			}
+		}
+	}
+	u_int32_t avg_ms() {
+		if(count > 0) {
+			return(sum_ms / count);
+		}
+		return(0);
+	}
+	void reset() {
+		memset(this, 0, sizeof(*this));
+	}
+	string str();
+	u_int32_t max_ms;
+	u_int64_t sum_ms;
+	u_int32_t count;
+};
+
+struct sSslDsslStats {
+	void reset() {
+		delay_processData_begin.reset();
+		delay_processData_end.reset();
+		delay_keys_get_begin.reset();
+		delay_keys_get_end.reset();
+		delay_processPacket.reset();
+		delay_parseSdp.reset();
+	}
+	string str();
+	sSslDsslStatsItem_time delay_processData_begin;
+	sSslDsslStatsItem_time delay_processData_end;
+	sSslDsslStatsItem_time delay_keys_get_begin;
+	sSslDsslStatsItem_time delay_keys_get_end;
+	sSslDsslStatsItem_time delay_processPacket;
+	sSslDsslStatsItem_time delay_parseSdp;
+};
+
 
 #endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 
@@ -232,6 +280,14 @@ void clientRandomServerStop();
 
 bool find_master_secret(u_char *client_random, u_char *key, unsigned *key_length);
 void erase_client_random(u_char *client_random);
+
+string ssl_stats_str();
+void ssl_stats_reset();
+void ssl_stats_add_delay_processPacket(u_int64_t time_us);
+void ssl_stats_add_delay_parseSdp(u_int64_t time_us);
+
+bool ssl_sessionkey_enable();
+void ssl_sessionkey_log(string &str);
 
 
 #endif //SSL_DSSL_H

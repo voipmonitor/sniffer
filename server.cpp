@@ -144,6 +144,17 @@ sSnifferServerService sSnifferServerServices::getService(int32_t sensor_id, cons
 	return(service);
 }
 
+void sSnifferServerServices::stopServiceBySensorId(int32_t sensor_id) {
+	lock();
+	for(map<string, sSnifferServerService>::iterator iter = services.begin(); iter != services.end(); iter++) {
+		if(iter->second.sensor_id == sensor_id) {
+			iter->second.service_connection->doStop();
+			break;
+		}
+	}
+	unlock();
+}
+
 cSnifferServerConnection *sSnifferServerServices::getServiceConnection(int32_t sensor_id, const char *sensor_string) {
 	return(getService(sensor_id, sensor_string).service_connection);
 }
@@ -332,6 +343,7 @@ void cSnifferServer::terminateSocketInConnectionThreads() {
 cSnifferServerConnection::cSnifferServerConnection(cSocket *socket, cSnifferServer *server) 
  : cServerConnection(socket) {
 	_sync_tasks = 0;
+	stop = false;
 	terminate = false;
 	orphan = false;
 	typeConnection = _tc_na;
@@ -590,7 +602,7 @@ void cSnifferServerConnection::cp_service() {
 	while(!server->isTerminate() &&
 	      !terminate) {
 		u_int64_t time_us = getTimeUS();
-		if(!socket->checkHandleRead()) {
+		if(stop || !socket->checkHandleRead()) {
 			if(SS_VERBOSE().connect_info) {
 				ostringstream verbstr;
 				verbstr << "SNIFFER SERVICE STOP: "
@@ -723,6 +735,7 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 		delete this;
 		return;
 	}
+	sSnifferServerGuiTask task = snifferServerGuiTasks.getTask(gui_task_id);
 	int32_t sensor_id = snifferServerGuiTasks.getSensorId(gui_task_id);
 	string aes_ckey, aes_ivec;
 	snifferServerServices.getAesKeys(sensor_id, NULL, &aes_ckey, &aes_ivec);
@@ -734,7 +747,15 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 		return;
 	}
 	socket->set_aes_keys(aes_ckey, aes_ivec);
-	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length);
+	bool needStopServiceIfResponseOk = !strncasecmp(task.command.c_str(), "set_json_config", 15) || 
+					   !strncasecmp(task.command.c_str(), "hot_restart", 11);
+	SimpleBuffer rsltBuffer;
+	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length, 0,
+					 needStopServiceIfResponseOk ? &rsltBuffer : NULL);
+	if(needStopServiceIfResponseOk &&
+	   rsltBuffer.data_len() >= 2 && !strncasecmp(rsltBuffer, "ok", 2)) {
+		snifferServerServices.stopServiceBySensorId(sensor_id);
+	}
 	snifferServerGuiTasks.setTaskState(gui_task_id, sSnifferServerGuiTask::_complete);
 	delete this;
 }
@@ -1121,18 +1142,28 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 
 void cSnifferServerConnection::updateSensorState(int32_t sensor_id) {
 	SqlDb *sqlDb = createSqlObject();
-	sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
-	bool existsRowSensor = sqlDb->fetchRow();
-	if(existsRowSensor) {
-		SqlDb_row rowU;
-		rowU.add(socket->getIP(), "host");
-		sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
-	} else {
+	if(sqlDb->existsIndex("sensors", "id_sensor", 1)) {
 		SqlDb_row rowI;
 		rowI.add(sensor_id, "id_sensor");
 		rowI.add("auto insert id " + intToString(sensor_id), "name");
 		rowI.add(socket->getIP(), "host");
-		sqlDb->insert("sensors", rowI);
+		SqlDb_row rowU;
+		rowU.add(socket->getIP(), "host");
+		sqlDb->query(sqlDb->insertOrUpdateQuery("sensors", rowI, rowU));
+	} else {
+		sqlDb->query("select * from `sensors` where id_sensor=" + intToString(sensor_id));
+		bool existsRowSensor = sqlDb->fetchRow();
+		if(existsRowSensor) {
+			SqlDb_row rowU;
+			rowU.add(socket->getIP(), "host");
+			sqlDb->update("sensors", rowU, ("id_sensor=" + intToString(sensor_id)).c_str());
+		} else {
+			SqlDb_row rowI;
+			rowI.add(sensor_id, "id_sensor");
+			rowI.add("auto insert id " + intToString(sensor_id), "name");
+			rowI.add(socket->getIP(), "host");
+			sqlDb->insert("sensors", rowI);
+		}
 	}
 	delete sqlDb;
 }
@@ -1209,6 +1240,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 	if(!receive_socket) {
 		return(false);
 	}
+	this->client_options->host_ip = receive_socket->getIPL();
 	string connectCmd = "{\"type_connection\":\"service\"}\r\n";
 	if(!receive_socket->write(connectCmd)) {
 		if(!receive_socket->isError()) {

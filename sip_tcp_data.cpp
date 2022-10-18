@@ -14,6 +14,7 @@ extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 SipTcpData::SipTcpData() {
 	this->counterProcessData = 0;
 	this->last_cache_time_cleanup = 0;
+	this->_sync_cache = 0;
 }
 
 SipTcpData::~SipTcpData() {
@@ -42,9 +43,13 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			continue;
 		}
 		for(list<d_u_int32_t>::iterator iter_sip_offset = reassemblyLink->getSipOffsets()->begin(); iter_sip_offset != reassemblyLink->getSipOffsets()->end(); iter_sip_offset++) {
+			if((*iter_sip_offset)[0] + (*iter_sip_offset)[1] > dataItem->getDatalen()) {
+				break;
+			}
 			cache_time = dataItem->getTimeMS();
 			string md5_data = GetDataMD5(dataItem->getData() + (*iter_sip_offset)[0], (*iter_sip_offset)[1]);
 			Cache_id cache_id(ip_src, ip_dst, port_src, port_dst, dataItem->getAck(), dataItem->getSeq());
+			lock_cache();
 			map<Cache_id, Cache_data*>::iterator cache_iterator = cache.find(cache_id);
 			if(cache_iterator != cache.end()) {
 				Cache_data *cache_data = cache_iterator->second;
@@ -52,6 +57,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				if(cache_data_iterator != cache_data->data.end()) {
 					if(cache_data_iterator->second + 100 > (u_int64_t)cache_time) {
 						cache_data_iterator->second = cache_time;
+						unlock_cache();
 						continue;
 					}
 				} else {
@@ -62,9 +68,10 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 				cache_data->data[md5_data] = cache_time;
 				cache[cache_id] = cache_data;
 			}
+			unlock_cache();
 			if(debugStream) {
 				(*debugStream)
-					<< "###"
+					<< "### "
 					<< fixed
 					<< setw(15) << ip_src.getString()
 					<< " / "
@@ -79,6 +86,30 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					(*debugStream) << "  ack: " << setw(5) << ack;
 				}
 				(*debugStream) << endl;
+				string _data;
+				char  *_data_src = (char*)(dataItem->getData() + (*iter_sip_offset)[0]);
+				unsigned _datalen = (*iter_sip_offset)[1];
+				if(_datalen) {
+					char *__data = new FILE_LINE(0) char[_datalen + 1];
+					memcpy_heapsafe(__data, __data,
+							_data_src, NULL,
+							_datalen, 
+							__FILE__, __LINE__);
+					__data[_datalen] = 0;
+					_data = __data;
+					delete [] __data;
+					_data = _data.substr(0, 5000);
+					for(size_t i = 0; i < _data.length(); i++) {
+						if(_data[i] == 13 || _data[i] == 10) {
+							_data[i] = '\\';
+						}
+						if(_data[i] < 32) {
+							_data.resize(i);
+						}
+					}
+				}
+				(*debugStream)
+					<< "### " << _data << endl;
 			}
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
@@ -88,15 +119,42 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
 			u_char *_data = dataItem->getData() + (*iter_sip_offset)[0];
 			unsigned int _datalen = (*iter_sip_offset)[1];
-			while(_datalen >= 2 && _data[0] == '\r' && _data[1] == '\n') {
-				_data += 2;
-				_datalen -= 2;
+			while(_datalen >= 1 && (_data[0] == '\r' || _data[0] == '\n')) {
+				_data += 1;
+				_datalen -= 1;
 			}
 			if(_datalen > 0) {
+				#if DEBUG_PACKET_COUNT
+				extern void __ftcp_sip(const char *callid, const char *req, const char *stat);
+				extern char * gettag_ext(const void *ptr, unsigned long len, ParsePacket::ppContentsX *parseContents,
+							 const char *tag, unsigned long *gettaglen, unsigned long *limitLen);
+				unsigned long callid_length;
+				char *callid = gettag_ext(_data, _datalen, NULL,
+							  "\nCall-ID:", &callid_length, NULL);
+				unsigned long cseq_length;
+				char *cseq = gettag_ext(_data, _datalen, NULL,
+							"\nCSeq:", &cseq_length, NULL);
+				if(callid && cseq) {
+					const char *first_cr = strnchr((char*)_data, '\r', _datalen);
+					if(first_cr) {
+						string req_stat = string((char*)_data, (u_char*)first_cr - _data);
+						__ftcp_sip(string(callid, callid_length).c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? "" : req_stat.c_str(), 
+							   req_stat.substr(0, 3) == "SIP" ? req_stat.c_str() : "");
+						extern cWsCalls *ws_calls;
+						if(ws_calls) {
+							ws_calls->setConfirm(string(callid, callid_length).c_str(),
+									     req_stat.substr(0, 3) != "SIP",
+									     req_stat.c_str(),
+									     string(cseq, cseq_length).c_str());
+						}
+					}
+				}
+				#endif
 				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-							  ethHeader, _data, _datalen,
+							  ethHeader, _data, _datalen, 0,
 							  _ip_src, _ip_dst, _port_src, _port_dst,
-							  dataItem->getSeq(), dataItem->getAck(), 
+							  dataItem->getSeq(), dataItem->getAck(), 0,
 							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
 				unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
 				unsigned dataOffset = ethHeaderLength + 
@@ -107,9 +165,11 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					#if USE_PACKET_NUMBER
 					packetS->packet_number = 0;
 					#endif
+					#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 					packetS->_saddr = _ip_src;
-					packetS->_source = _port_src;
 					packetS->_daddr = _ip_dst; 
+					#endif
+					packetS->_source = _port_src;
 					packetS->_dest = _port_dst;
 					packetS->_datalen = _datalen; 
 					packetS->_datalen_set = 0; 
@@ -142,11 +202,17 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 								     packetS->pflags.mgcp);
 					packetS->init2();
 					((PreProcessPacket*)uData)->process_parseSipDataExt(&packetS, (packet_s_process*)uData2_last);
+					
+					#if DEBUG_PACKET_COUNT
+					extern volatile int __xc_reassembly[10];
+					__SYNC_INC(__xc_reassembly[1]);
+					#endif
+					
 				} else {
 					packet_flags pflags;
 					pflags.init();
 					pflags.tcp = 2;
-					preProcessPacket[PreProcessPacket::ppt_extend]->push_packet(
+					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
 							#if USE_PACKET_NUMBER
 							0, 
 							#endif
@@ -170,6 +236,7 @@ void SipTcpData::cleanupCache(u_int64_t cache_time) {
 		return;
 	}
 	if(cache_time > last_cache_time_cleanup + 10000) {
+		lock_cache();
 		map<Cache_id, Cache_data*>::iterator cache_iterator;
 		for(cache_iterator = cache.begin(); cache_iterator != cache.end(); ) {
 			Cache_data *cache_data = cache_iterator->second;
@@ -188,6 +255,7 @@ void SipTcpData::cleanupCache(u_int64_t cache_time) {
 				cache_iterator++;
 			}
 		}
+		unlock_cache();
 		last_cache_time_cleanup = cache_time;
 	}
 }
@@ -196,6 +264,16 @@ void SipTcpData::printContentSummary() {
 }
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets) {
-	return(TcpReassemblySip::checkSip(data, datalen, strict, offsets));
+int checkOkSipData(u_char *data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *offsets, u_int32_t *datalen_used) {
+	int _datalen_used;
+	int rslt = TcpReassemblySip::checkSip(data, datalen, strict_mode, offsets, &_datalen_used);
+	if(datalen_used) {
+		while(_datalen_used < (int)datalen &&
+		      (data[_datalen_used] == LF_CHAR ||
+		       data[_datalen_used] == CR_CHAR)) {
+			++_datalen_used;
+		}
+		*datalen_used = _datalen_used;
+	}
+	return(rslt);
 }

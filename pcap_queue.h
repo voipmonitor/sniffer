@@ -186,18 +186,20 @@ enum eHeaderPacketPQoutState {
 	_hppq_out_state_NA = 0,
 	_hppq_out_state_detach = 1,
 	_hppq_out_state_defrag = 2,
-	_hppq_out_state_dedup = 3
+	_hppq_out_state_dedup = 3,
+	_hppq_out_state_detach2 = 4
 };
 
 struct sHeaderPacketPQout {
 	pcap_pkthdr_plus *header;
 	u_char *packet;
 	pcap_block_store *block_store;
-	int block_store_index;
-	int dlt; 
-	int sensor_id; 
+	u_int32_t block_store_index;
+	u_int16_t dlt; 
+	int16_t sensor_id; 
 	vmIP sensor_ip;
 	bool block_store_locked;
+	u_int16_t header_ip_last_offset;
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
 			if(block_store_locked) {
@@ -379,14 +381,7 @@ friend void *_PcapQueue_writeThreadFunction(void *arg);
 
 struct pcapProcessData {
 	pcapProcessData() {
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic push
-		#pragma GCC diagnostic ignored "-Wclass-memaccess"
-		#endif
-		memset(this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
-		#if __GNUC__ >= 8
-		#pragma GCC diagnostic pop
-		#endif
+		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
 			this->prevmd5s = new FILE_LINE(16003) unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
@@ -399,7 +394,6 @@ struct pcapProcessData {
 		}
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
-	sll_header *header_sll;
 	ether_header *header_eth;
 	iphdr2 *header_ip;
 	tcphdr2 *header_tcp;
@@ -437,7 +431,7 @@ protected:
 	inline int pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 				      bool checkProtocol = false, sCheckProtocolData *checkProtocolData = NULL);
 	inline bool check_protocol(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
-	inline bool check_filter_ip(u_char* packet, sCheckProtocolData *checkProtocolData);
+	inline bool check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData);
 	void restoreOneshotBuffer();
 	inline int pcap_dispatch(pcap_t *pcapHandle);
 	inline int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
@@ -487,6 +481,10 @@ private:
 	u_int64_t packets_counter;
 	ListIP *filter_ip;
 	unsigned read_from_file_index;
+	#if EXPERIMENTAL_CHECK_PCAP_TIME
+	int64_t lastPcapTime_s;
+	u_int64_t lastTimeErrorLogPcapTime_ms;
+	#endif
 friend class PcapQueue_readFromInterfaceThread;
 };
 
@@ -984,7 +982,7 @@ protected:
 private:
 	void createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort);
 	void cleanupConnections(bool all = false);
-	inline int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
+	int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
 	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
@@ -1046,7 +1044,8 @@ public:
 	enum eTypeOutputThread {
 		detach,
 		defrag,
-		dedup
+		dedup,
+		detach2
 	};
 	struct sBatchHP {
 		sBatchHP(unsigned max_count) {
@@ -1076,6 +1075,7 @@ public:
 	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDefrag(sHeaderPacketPQout *hp);
 	inline void processDedup(sHeaderPacketPQout *hp);
+	inline void processDetach2(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
 		switch(typeOutputThread) {
 		case detach:
@@ -1084,6 +1084,8 @@ public:
 			return("defrag");
 		case dedup:
 			return("dedup");
+		case detach2:
+			return("detach2");
 		}
 		return("");
 	}
@@ -1109,6 +1111,10 @@ private:
 	u_char *dedup_buffer;
 	volatile bool initThreadOk;
 	volatile bool terminatingThread;
+	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
+	unsigned push_thread;
+	u_int64_t last_race_log[2];
+	#endif
 friend inline void *_PcapQueue_outputThread_outThreadFunction(void *arg);
 };
 

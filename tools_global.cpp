@@ -1,5 +1,6 @@
 #include <netdb.h>
 #include <json.h>
+#include <limits.h>
 #include <sstream>
 #include <syslog.h>
 #include <netinet/in.h>
@@ -23,6 +24,10 @@ void *vm_pthread_create_start_routine(void *arg) {
 	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
 	delete (vm_pthread_struct*)arg;
 	#ifdef CLOUD_ROUTER_CLIENT
+	if(sverb.thread_create) {
+		syslog(LOG_NOTICE, "start thread '%s' %i", 
+		       thread_data.description.c_str(), get_unix_tid());
+	}
 	threadMonitor.registerThread(thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
@@ -451,6 +456,12 @@ string intToString(unsigned long long int i) {
 	return(outStr.str());
 }
 
+string intToStringHex(int i) {
+	ostringstream outStr;
+	outStr << hex << i;
+	return(outStr.str());
+}
+
 string floatToString(double d) {
 	ostringstream outStr;
 	outStr << fixed;
@@ -637,6 +648,13 @@ int base64decode(unsigned char *dst, const char *src, int max)
         }
         /* Dont worry about left over bits, they're extra anyway */
         return cnt;
+}
+
+u_char *base64decode(const char *src, int *dst_length) {
+	int src_length = strlen(src);
+	unsigned char *dst = new FILE_LINE(0) u_char[src_length * 3];
+	*dst_length = base64decode(dst, src, src_length);
+	return(dst);
 }
 
 string base64_encode(const unsigned char *data, size_t input_length) {
@@ -828,6 +846,15 @@ std::vector<int> split2int(const std::string &s, char delim) {
 	elems.push_back(atoi(tmpelems.at(i).c_str()));
     }
     return elems;
+}
+
+std::vector<std::string> split2chars(const std::string &s) {
+	std::vector<std::string> elems;
+	string _s = trim_str(s);
+	for(unsigned i = 0; i < _s.length(); i++) {
+		elems.push_back(_s.substr(i, 1));
+	}
+	return(elems);
 }
 
 
@@ -1239,7 +1266,7 @@ void cLzo::init() {
 
 void cLzo::term() {
 	if(wrkmem) {
-		delete wrkmem;
+		delete [] wrkmem;
 		wrkmem = NULL;
 	}
 }

@@ -351,6 +351,13 @@ struct vmIP {
 			return(32);
 		#endif
 	}
+	inline u_int8_t v() const {
+		#if VM_IPV6
+			return(v6 ? 6 : 4);
+		#else
+			return(4);
+		#endif
+	}
 	inline bool is_net_mask(int bits) {
 		return(bits > 0 && bits < this->bits());
 	}
@@ -483,10 +490,13 @@ struct ip6hdr2 {
 	inline u_int8_t _get_protocol() {
 		return(get_ext_headers(NULL, 0, NULL));
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t get_protocol(unsigned max_len = 0) {
 		u_int8_t proto = _get_protocol();
 		if(proto == IPPROTO_ESP) {
-			proto = *(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1);
+			u_int32_t tot_len = get_tot_len();
+			if(!max_len || tot_len <= max_len) {
+				proto = *(u_int8_t*)((u_char*)this + tot_len - IPPROTO_ESP_FOOTER_SIZE + 1);
+			}
 		}
 		return(proto);
 	}
@@ -734,18 +744,20 @@ struct iphdr2 {
 		}
 		#endif
 	}
-	inline u_int8_t get_protocol() {
+	inline u_int8_t get_protocol(unsigned max_len = 0) {
 		#if VM_IPV6
 		if(version == 4) {
 		#endif
 			if(_protocol == IPPROTO_ESP) {
-				return(*(u_int8_t*)((u_char*)this + get_tot_len() - IPPROTO_ESP_FOOTER_SIZE + 1));
-			} else {
-				return(_protocol);
+				u_int32_t tot_len = get_tot_len();
+				if(!max_len || tot_len <= max_len) {
+					return(*(u_int8_t*)((u_char*)this + tot_len - IPPROTO_ESP_FOOTER_SIZE + 1));
+				}
 			}
+			return(_protocol);
 		#if VM_IPV6
 		} else {
-			return(((ip6hdr2*)this)->get_protocol());
+			return(((ip6hdr2*)this)->get_protocol(max_len));
 		}
 		#endif
 	}
@@ -954,30 +966,40 @@ struct tcphdr2{
 #  if __BYTE_ORDER == __LITTLE_ENDIAN
 	u_int16_t res1:4;
 	u_int16_t doff:4;
-	u_int16_t fin:1;
-	u_int16_t syn:1;
-	u_int16_t rst:1;
-	u_int16_t psh:1;
-	u_int16_t ack:1;
-	u_int16_t urg:1;
-	u_int16_t res2:2;
+	union {
+		struct {
+			u_int16_t fin:1;
+			u_int16_t syn:1;
+			u_int16_t rst:1;
+			u_int16_t psh:1;
+			u_int16_t ack:1;
+			u_int16_t urg:1;
+			u_int16_t res2:2;
+		} __attribute__((packed)) flags_bit;
+		u_int8_t flags;
+	};
 #  elif __BYTE_ORDER == __BIG_ENDIAN
 	u_int16_t doff:4;
 	u_int16_t res1:4;
-	u_int16_t res2:2;
-	u_int16_t urg:1;
-	u_int16_t ack:1;
-	u_int16_t psh:1;
-	u_int16_t rst:1;
-	u_int16_t syn:1;
-	u_int16_t fin:1;
+	union {
+		struct {
+			u_int16_t res2:2;
+			u_int16_t urg:1;
+			u_int16_t ack:1;
+			u_int16_t psh:1;
+			u_int16_t rst:1;
+			u_int16_t syn:1;
+			u_int16_t fin:1;
+		} __attribute__((packed)) flags_bit;
+		u_int8_t flags;
+	};
 #  else
 #   error "Adjust your <bits/endian.h> defines"
 #  endif
 	u_int16_t window;
 	u_int16_t check;
 	u_int16_t urg_ptr;
-};
+} __attribute__((packed));
 
 struct udphdr2 {
 	inline vmPort get_source() {
@@ -996,7 +1018,7 @@ struct udphdr2 {
         uint16_t        _dest;
         uint16_t        len;
         uint16_t        check;
-};
+} __attribute__((packed));
 
 
 struct vmIPport {
@@ -1007,8 +1029,8 @@ struct vmIPport {
 		this->port = port;
 	}
 	inline bool operator == (const vmIPport& other) const {
-		return(this->ip == other.ip &&
-		       this->port == other.port);
+		return(this->port == other.port &&
+		       this->ip == other.ip);
 	}
 	inline bool operator < (const vmIPport& other) const { 
 		return(this->ip < other.ip ||

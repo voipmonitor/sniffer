@@ -1306,9 +1306,11 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packet_s packetS;
 	packetS.header_pt = header;
 	packetS.packet = packet;
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	packetS._saddr = saddr;
-	packetS._source = source;
 	packetS._daddr = daddr;
+	#endif
+	packetS._source = source;
 	packetS._dest = dest;
 	packetS.pflags.init();
 	packetS.pflags.tcp = istcp;
@@ -1788,7 +1790,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, 
 					       NULL, NULL,
-					       NULL, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+					       NULL, NULL, NULL, NULL, NULL, 
+					       (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;
@@ -1992,7 +1995,8 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, 
 					       NULL, NULL,
-					       NULL, NULL, NULL, (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+					       NULL, NULL, NULL, NULL, NULL,
+					       (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
 		}
 		}
 		break;

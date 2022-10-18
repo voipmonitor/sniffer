@@ -715,8 +715,8 @@ void HttpPacketsDumper::dumpDataItem(eReqResp /*reqResp*/, string header, string
 		tcp_header.window = 0xFFFF;
 		tcp_header.seq = htonl(links[link_id].seq[linkDirectionIndex]);
 		tcp_header.ack_seq = htonl(links[link_id].seq[linkDirectionNegIndex]);
-		tcp_header.psh = lastPart;
-		tcp_header.ack = 1;
+		tcp_header.flags_bit.psh = lastPart;
+		tcp_header.flags_bit.ack = 1;
 		
 		links[link_id].seq[linkDirectionIndex] += dataLength;
 		

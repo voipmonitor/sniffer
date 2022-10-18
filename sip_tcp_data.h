@@ -48,13 +48,26 @@ public:
 	void cleanupCache(u_int64_t cache_time);
 	void printContentSummary();
 private:
+	void lock_cache() {
+		extern int opt_sip_tcp_reassembly_ext_usleep;
+		while(__sync_lock_test_and_set(&_sync_cache, 1)) {
+			if(opt_sip_tcp_reassembly_ext_usleep) {
+				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
+			}
+		}
+	}
+	void unlock_cache() {
+		__sync_lock_release(&_sync_cache);
+	}
+private:
 	unsigned int counterProcessData;
 	map<Cache_id, Cache_data*> cache;
 	u_int64_t last_cache_time_cleanup;
+	volatile int _sync_cache;
 };
 
 
-bool checkOkSipData(u_char *data, u_int32_t datalen, bool strict, list<d_u_int32_t> *offsets = NULL);
+int checkOkSipData(u_char *data, u_int32_t datalen, int8_t strict_mode, list<d_u_int32_t> *offsets = NULL, u_int32_t *datalen_used = NULL);
 
 
 #endif

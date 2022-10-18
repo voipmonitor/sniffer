@@ -1,3 +1,171 @@
+30.5 05.10.2022
+===============
+- adding parameter 'all_unlink_log' (NO/yes) for monitor all delete operations in spool [VS-1363]
+- create rtcp charts instead of tshark [VG-2536]
+- fix rtcp data - maxjitter cant be lower than avgjitter
+- adding cseq resolution to retransmission detection [VS-1367]
+- fix problem in SIP MESSAGE lastSipResponse if a 401 response is followed by a 200 response [VS-1360]
+- add parameter rtp_count_all_sequencegap_as_loss (NO/yes) [VG-2522]
+- fix audio sync if a stream that is embedded in a longer one contains significantly more packet loss [VS-1365]
+- add support for multiple tags in one custom header
+- let sniffer start even if it cannot change  mysql query set innodb_compression_algorithm [VS-1371]
+- fix redirect responses causes calls to hung in active calls for minutes - added new option  redirect_response_300_timeout with 300s default [VS-1370]
+- new config options audiocodes_rtp and audiocodes_rtcp [VS-1349]
+
+
+30.4 13.09.2022
+===============
+- TCP reassembly optimization - excluding tcp fragments that start a stream and contain a sequence \r, \n and \0 characters [VS-1352]
+- exclude tcp links from processing unless they contain at least one packet whose beginning looks like a sip
+- fix RTP sequence overlap in analyzer 
+- dtls/srtp fixes 
+- fix condition comparing minimum length of rtcp data block
+- fix problem with starting daemon mode without specifying a configuration file
+- new parameter rtp_count_all_sequencegap_as_loss (NO/yes)
+- fix audio decode desync when there is DTMF (broken since 2019) [VS-1359]
+- modify capture rules by telnum - specific prefixes has now priority over generic prefixes [VS-1310]
+- change capture rules by ip - larger networks are processed first now 
+
+
+30.3 05.08.2022
+===============
+- fix situation when dtls "server hello" overtakes "client hello"
+- dtls fixes
+- always use only first BYE-OK or CANCEL-OK sequence for call duration [VS-1351]
+
+
+30.2 14.7.2022
+==============
+- add support savertp=header for audiocodes [VS-1346]
+- fix result type in functions duration_active_us and connect_duration_active_us (from unsigned 32bit to unsigned 64bit) [VG-2496]
+- fix convert from wav to ogg for mono [VG-2499]
+- ignore in-dialog invite (if is it reverse via ip) for detect ip and proxy
+- fix memory leak in packetbuffer if dtls packets are assign to rtcp packet
+- adding ssl_dtls_queue_max_packets (default is 20) parameter to limit the number of packets per connection
+- fix RTP codec if codec was not in first invite 
+- search for both sdp ip types (v4 and v6) if ipv6 is enabled [VG-2498]
+- tcpreassembly - better distribution between threads
+- suppress warning 'limiting configuration value sip_tcp_reassembly_stream_max_attempts...' 
+- add option sip-message (YES/no) (SIP MESSAGE request can be now disabled) 
+- fix keylogger compilation [VS-1345]
+
+
+30.1 21.6.2022
+==============
+- added support for HEP encapsulation 
+- fix manager command set_json_config & hot_restart in client/server mode (force stop sniffer service in server)
+- fix apply destination_number_mode=2 for multibranch call [VS-1330]
+- fix issue with bad packet order when tls leg is waiting for a key [VS-1327]
+- add port resolution to invite and proxies list
+- fix problem with silencedetect and clippingdetect and multiple rtp streams in the same direction [VS-1328]
+- fix issue with livesniffer when multiple sensors are selected in client/server mode and using packetbuffer_sender mode [VG-2484]
+- fix sql condition for manager command 'get_sensor_information configuration_db' [VG-2464]
+- fix long pcap extraction from tar when tar_compress_rtp = yes [VS-1329]
+- fix ss7/isdn when t2_boost is enabled [VS-1334]
+- adding direction (request/response) resolution to cdr and message custom headers
+- fix inconsistency in 'do not add colon' option in custom headers
+- fix apply explode-separators in multiple-string configuration item
+- accept in call processing response 481 in cseq method prack
+- add expert tls options ssl_aead_try_seq_backward / ssl_aead_try_seq_forward [VS-1319]
+- do not overwrite called number when using the update_dstnum_onanswer=yes option if called is same as caller [VS-1336]
+- add option disable_cdr_fields_rtp (NO/yes) which excludes storing RTP metric columns 
+- TCP reassemble fixes - skip multiple CR/LF after sip data in checkOkSipData [VS-1339]
+- adding a registration port update in the registration table if subsequent registrations in the same group have different ports
+- fix initialization of fraud threads [VS-1341]
+- change default options for ssl_tls_12_sessionkey_mode = ws, ssl_dtls_queue = yes [VS-1338]
+- fix heap-buffer-overflow and potential crash if next ip-header is incorrect
+- redirecting data from ssl stream to sip processing if the data contains unencrypted valid sip content [VS-1331]
+- do server-side dtls-only comparison when searching for a dtls link [VS-1319]
+- fix find ipv6 ext header (if exists multiple ext headers)
+- fix potential packet buffer leak with very low traffic (and small packet buffer) if ssl=yes is set and if there are dtls packets
+- limiting packet storage to dtls queue to 'handshake' type only
+- limiting the use of dtls queue only if ssl_client_random is enabled
+- allow to disable live sniffer timeout warning [VG-2483]
+
+
+30.0 28.04.2022
+===============
+- TCP reassemble is now more robust with many fixes
+- new configuration option sip_tcp_reassembly_stream_max_attempts (default is 10)
+- change default value of parameter sip_tcp_reassembly_stream_max_attempts to 50
+- use packet time for cleanup calls in 'read from file' mode
+- fraud alerts optimization - each fraud alert has its own queue processing [VG-2458]
+- fix port filter in live sniffer [VS-1309]
+- adding queue for dtls packets - solves problem with decryption for some cases [VS-1242]
+- fix database configuration options - 'Configuration values in mysql have a higher weight than the values in the text configuration file' [VG-2422] 
+- fix ipdefrag for ESP protocol
+- fix potential crash in iphdr2::get_protocol if header contain ESP protocol
+- skip packets with invalid time
+- fix crash in parse_peername
+- fix parse phone number for cases - INVITE sip:1231234@[2231:1a1:3... [VS-1316]
+- fix potential race when splitting packets into reassembly threads
+- fix tar_move for long file (>=2GB) 
+- hide cloud_token when generating debug log [VG-2474]
+- -run-droppartitions-maxdays will not delete cdr_stat and rtp_stat
+- fix database backup if source database does not contain all tables - new option option database_backup_check_src_tables [VS-1315]
+- do not set default port 5060 if not required [VG-2472]
+- fix git self update (close all descriptors before upgrade) 
+- fix SIP hold/unhold detection 
+- rtp hashing optimisation 
+
+
+29.2 02.03.2022
+===============
+- general performance optimisations for traffic with 3 000 000 RTP packets / second 
+- add support for dlt DLT_LINUX_SLL2 [VS-1306]
+- fix crashes when pcap files are written in standalone pcap files - add lock to main write operations in FileZipHandler [VS-1278]
+- fix issue with IPPROTO_ESP
+- fix MGCP memory leaks [VS-1303]
+- disable reconfiguration of spooldir when processing capture rules on next invite [VS-1308]
+- fix race condition when t2_boost=no
+- fix some TLS decoding [VS-1242]
+- fix same configuration options across multiple configuration files [VS-1302]
+- fix TCP reassembly in case handshake is missing [VS-1300]
+
+
+29.1.4 27.01.2022
+=================
+- disable splitting UA header by space when searching (space was OR) [VG-2429]
+- fix memory leak when sniffer configuration from web GUI was changed and reloaded (since 28.6 version) [VS-1297]
+- fix possible crash when tar=no and savertp and savesip is yes [VS-1278]
+ 
+
+29.1.3 25.01.2022
+=================
+- fix ssl keylogger compliation [VS-1292]
+- fix rare crash [VS-1293]
+- fix issue in report logger [VG-2437]
+- support host:port in parameter --mysql-server [VG-2426]
+- fix rare case "RTP strem used in another call" [VS-1291]
+- in billing feature destination IP was taken from the first INVITE and not the one in case of multiple INVITEs [VG-2439]
+
+
+29.1.2 13.01.2022
+=================
+- fix 29.1.1 static builds crashing
+
+29.1.1 13.01.2022
+=================
+- fix rare crash 
+- speed optimisations in memory allocations
+- modify peername parsing if the peername contains multiple entries and the tag also contains domain (sip:+123;npdi;rn=+123@example.com;user=phone SIP/2.0)  [VS-1287] 
+
+
+29.1 20.12.2021
+===============
+- duration and connect duration is now counted up to confirmed BUY ignoring further RTP or other packets in a call. It can be changed by setting new option ignore_duration_after_bye_confirmed = no [VS-1266]
+- fix destination_number_mode=1 for some cases [VS-1264]
+- implemented moving closed tar files to another folder - new options tar_move* [VG-2359]
+- fix parsing t2_boost_pb_detach_thread
+- set thread to maximum priority when t2_boost_pb_detach_thread is enabled 
+- in case of multi call invite set SIP domain destination to the right one [VS-1268]
+- performance optimisation for dpdk 
+- custom_headers_max_size is now configurable [VS-1281]
+- fix utf parsing when reading pcap file - Illegal mix of collations [VS-1285]
+- fix unsafe timeout conditions in cleanup functions for client-server (fixes 29.0 version) [VS-1285]
+- fix mirroring: exclude sent packets to server from monitored traffic [VS-1286]
+
+
 29.0 16.11.2021
 ===============
 - experimental DPDK implementation documented here https://www.voipmonitor.org/doc/DPDK

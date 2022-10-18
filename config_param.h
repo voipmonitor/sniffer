@@ -58,11 +58,11 @@ public:
 	virtual bool enable_normalizeStringValuesForCmp() { return(false); }
 	virtual bool enableMultiValues() { return(false); }
 protected:
-	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false) = 0;
-	virtual bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false) = 0;
-	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/, bool enableClearBeforeFirstSet = false) { return(false); }
+	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
+	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
+	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/, bool /*enableInitBeforeSet*/ = true, bool /*enableClearBeforeFirstSet*/ = false) { return(false); }
 	string getValueFromConfigFile(CSimpleIniA *ini);
-	vector<string> getValuesFromConfigFile(CSimpleIniA *ini);
+	vector<string> getValuesFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true);
 	bool getValueFromMapValues(const char *str_value, int *rslt_value);
 	string getStringFromMapValues(int value);
 	void init();
@@ -130,8 +130,8 @@ public:
 	int64_t getValueInt() { return(getValue()); }
 	string normalizeStringValueForCmp(string value);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_bool = NULL;
 		param_int = NULL;
@@ -163,6 +163,7 @@ public:
 	cConfigItem_integer(const char *name, unsigned int *param);
 	cConfigItem_integer(const char *name, uint64_t *param);
 	cConfigItem_integer(const char *name, int64_t *param = NULL);
+	cConfigItem_integer(const char *name, vector<int> *param);
 	cConfigItem_integer *setMaximum(int maximum) {
 		this->maximum = maximum;
 		return(this);
@@ -193,8 +194,10 @@ public:
 	}
 	int64_t getValue();
 	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
 	int64_t getValueInt() { return(getValue()); }
 	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues();
 	int getMaximum() {
 		return(maximum);
 	}
@@ -208,13 +211,15 @@ public:
 		return(onlyMenu);
 	}
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_int = NULL;
 		param_uint = NULL;
 		param_int64 = NULL;
 		param_uint64 = NULL;
+		param_vect_int = NULL;
 	}
 	void initOther() {
 		maximum = 0;
@@ -224,12 +229,13 @@ protected:
 		yesValue = 0;
 		menuValue = false;
 		onlyMenu = false;
+		explodeSeparators = ";,";
 	}
 	void initVirtParam() {
 		param_virt = 0;
 	}
 	string getTypeName() {
-		return("integer");
+		return(param_vect_int ? "integer_list" : "integer");
 	}
 protected:
 	int *param_int;
@@ -237,6 +243,7 @@ protected:
 	int64_t *param_int64;
 	uint64_t *param_uint64;
 	int64_t param_virt;
+	vector<int> *param_vect_int;
 	int maximum;
 	int minimum;
 	int ifZeroOrNegative;
@@ -244,6 +251,7 @@ protected:
 	int yesValue;
 	bool menuValue;
 	bool onlyMenu;
+	string explodeSeparators;
 };
 
 class cConfigItem_float : public cConfigItem {
@@ -254,8 +262,8 @@ public:
 	string getValueStr(bool configFile = false);
 	string normalizeStringValueForCmp(string value);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_float = NULL;
 		param_double = NULL;
@@ -286,8 +294,8 @@ public:
 		this->suffix = suffix;
 		return(this);
 	}
-	cConfigItem_string *setExplodeSeparator(const char *explodeSeparator) {
-		this->explodeSeparator = explodeSeparator;
+	cConfigItem_string *setExplodeSeparators(const char *explodeSeparators) {
+		this->explodeSeparators = explodeSeparators;
 		return(this);
 	}
 	cConfigItem_string *setPassword() {
@@ -303,9 +311,9 @@ public:
 	       return(password);
 	}
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_str = NULL;
@@ -316,7 +324,7 @@ protected:
 	void initOther() {
 		prefix = "";
 		suffix = "";
-		explodeSeparator = ";";
+		explodeSeparators = ";,";
 		password = false;
 	}
 	void initVirtParam() {
@@ -333,7 +341,7 @@ protected:
 	vector<string> *param_vect_str;
 	string prefix;
 	string suffix;
-	string explodeSeparator;
+	string explodeSeparators;
 	bool password;
 };
 
@@ -343,8 +351,8 @@ public:
 	string getValueStr(bool configFile = false);
 	string normalizeStringValueForCmp(string value);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_from = NULL;
 		param_to = NULL;
@@ -369,9 +377,10 @@ public:
 	static unsigned setPortMatrix(const char *port_str, char *port_matrix, unsigned port_max = 65535);
 	static string getPortString(char *port_matrix, unsigned port_max = 65535);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	void initBeforeSet();
 	void clear();
 	void initParamPointers() {
 		param_port_matrix = NULL;
@@ -391,9 +400,9 @@ public:
 	list<string> getValueListStr();
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_adresses = NULL;
@@ -413,8 +422,8 @@ public:
 	vmIP getValue();
 	string getValueStr(bool configFile = false);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_ip = NULL;
 	}
@@ -431,8 +440,8 @@ public:
 	ip_port getValue();
 	string getValueStr(bool configFile = false);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initParamPointers() {
 		param_ip_port = NULL;
 	}
@@ -451,9 +460,9 @@ public:
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_ip_ports = NULL;
@@ -473,9 +482,9 @@ public:
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_ip_port_string_map = NULL;
@@ -495,9 +504,9 @@ public:
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_nat_aliases = NULL;
@@ -519,9 +528,9 @@ public:
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_net_map = NULL;
@@ -545,9 +554,9 @@ public:
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValuesStr(vector<string> list_value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_domain_map = NULL;
@@ -565,8 +574,8 @@ public:
 	string getValueStr(bool configFile = false);
 	string normalizeStringValueForCmp(string value);
 protected:
-	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet = false);
-	bool setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet = false);
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	void initBeforeSet();
 	void initParamPointers() {
 		param_custom_headers = NULL;
@@ -651,7 +660,7 @@ public:
 	void setDisableIfBegin(string disableIf);
 	void setDisableIfEnd();
 	bool loadFromConfigFileOrDirectory(const char *filename, bool silent = false);
-	bool loadFromConfigFile(const char *filename, string *error = NULL, bool silent = false);
+	bool loadFromConfigFile(const char *filename, string *error = NULL, bool silent = false, bool nextConfigFile = false);
 	bool loadConfigMapConfigFileOrDirectory(cConfigMap *configMap, const char *filename);
 	bool loadConfigMapFromConfigFile(cConfigMap *configMap, const char *filename);
 	void evSetConfigItem(cConfigItem *configItem);
@@ -691,7 +700,6 @@ private:
 	bool defaultMinor;
 	bool defaultMinorGroupIfNotSet;
 	string defaultDisableIf;
-	bool setFromMysqlOk;
 	list<sDiffValue> diffValues;
 	bool diffValuesTrack;
 };

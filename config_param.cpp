@@ -145,12 +145,14 @@ string cConfigItem::getValueFromConfigFile(CSimpleIniA *ini) {
 	return("");
 }
 
-vector<string> cConfigItem::getValuesFromConfigFile(CSimpleIniA *ini) {
+vector<string> cConfigItem::getValuesFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet) {
 	vector<string> list_values;
 	CSimpleIniA::TNamesDepend values;
 	if(ini->GetAllValues("general", config_name.c_str(), values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		for (; i != values.end(); ++i) {
 			list_values.push_back(i->pItem);
 		}
@@ -163,11 +165,17 @@ bool cConfigItem::getValueFromMapValues(const char *str_value, int *rslt_value) 
 	if(mapValues.size()) {
 		string _str_value = str_value;
 		std::transform(_str_value.begin(), _str_value.end(), _str_value.begin(), ::tolower);
+		unsigned find_length = 0;
 		for(list<sMapValue>::iterator iter = mapValues.begin(); iter != mapValues.end(); iter++) {
 			if(!strncmp(_str_value.c_str(), iter->str.c_str(), iter->str.length())) {
-				*rslt_value = iter->value;
-				return(true);
+				if(!find_length || iter->str.length() > find_length) {
+					*rslt_value = iter->value;
+					find_length = iter->str.length();
+				}
 			}
+		}
+		if(find_length > 0) {
+			return(true);
 		}
 	}
 	return(false);
@@ -245,8 +253,11 @@ string cConfigItem::getJson() {
 	json.add("group", group_name);
 	json.add("subgroup", subgroup_name);
 	json.add("level", level);
-	json.add("minor", minor);
-	json.add("minor_group_if_not_set", minorGroupIfNotSet);
+	extern bool opt_all_configuration_options_in_gui;
+	if(!opt_all_configuration_options_in_gui) {
+		json.add("minor", minor);
+		json.add("minor_group_if_not_set", minorGroupIfNotSet);
+	}
 	json.add("read_only", readOnly);
 	if(!disableIf.empty()) {
 		json.add("disable_if", disableIf);
@@ -364,11 +375,11 @@ string cConfigItem_yesno::normalizeStringValueForCmp(string value) {
 	}
 }
 
-bool cConfigItem_yesno::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_yesno::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 	
-bool cConfigItem_yesno::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_yesno::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -452,6 +463,12 @@ cConfigItem_integer::cConfigItem_integer(const char *name, uint64_t *param)
 	param_uint64 = param;
 }
 
+cConfigItem_integer::cConfigItem_integer(const char *name, vector<int> *param)
+ : cConfigItem(name) {
+	init();
+	param_vect_int = param;
+}
+
 int64_t cConfigItem_integer::getValue() {
 	if(param_int) {
 		return(*param_int);
@@ -468,7 +485,23 @@ int64_t cConfigItem_integer::getValue() {
 	return(0);
 }
 
-string cConfigItem_integer::getValueStr(bool /*configFile*/) {
+string cConfigItem_integer::getValueStr(bool configFile) {
+	if(param_vect_int) {
+		ostringstream outStr;
+		int counter = 0;
+		for(vector<int>::iterator iter = param_vect_int->begin(); iter != param_vect_int->end(); iter++) {
+			if(counter) {
+				if(configFile) {
+					outStr << endl << config_name << " = ";
+				} else {
+					outStr << explodeSeparators[0];
+				}
+			}
+			outStr << *iter;
+			++counter;
+		}
+		return(outStr.str());
+	}
 	int64_t val = 0;
 	if(param_int) {
 		val = *param_int;
@@ -499,22 +532,54 @@ string cConfigItem_integer::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
+list<string> cConfigItem_integer::getValueListStr() {
+	list<string> l;
+	if(param_vect_int) {
+		for(vector<int>::iterator iter = param_vect_int->begin(); iter != param_vect_int->end(); iter++) {
+			l.push_back(intToString(*iter));
+		}
+	} else {
+		l.push_back(getValueStr());
+	}
+	return(l);
+}
+
 string cConfigItem_integer::normalizeStringValueForCmp(string value) {
-	int _value;
-	if(getValueFromMapValues(value.c_str(), &_value)) {
-		return(intToString(_value));
+	if(param_vect_int && !explodeSeparators.empty()) {
+		vector<string> value_vect = split(value.c_str(), split2chars(explodeSeparators), true);
+		string rslt;
+		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
+			if(!rslt.empty()) {
+				rslt += explodeSeparators[0];
+			}
+			rslt += *iter;
+		}
+		return(rslt);
+	} else {
+		int _value;
+		if(getValueFromMapValues(value.c_str(), &_value)) {
+			return(intToString(_value));
+		}
+		if(value == "no") {
+			return("0");
+		}
+		return(value);
 	}
-	if(value == "no") {
-		return("0");
-	}
-	return(value);
 }
 
-bool cConfigItem_integer::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_integer::enableMultiValues() {
+	return(param_vect_int && !explodeSeparators.empty());
 }
 
-bool cConfigItem_integer::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_integer::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	if(param_vect_int) {
+		return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
+	} else {
+		return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
+	}
+}
+
+bool cConfigItem_integer::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -620,6 +685,39 @@ bool cConfigItem_integer::setParamFromValueStr(string value_str, bool enableClea
 			}
 			++ok;
 		}
+		if(param_vect_int && !explodeSeparators.empty()) {
+			if(enableInitBeforeSet) {
+				initBeforeSet();
+			}
+			*param_vect_int = split2int(value, split2chars(explodeSeparators), true);
+		}
+	}
+	return(ok > 0);
+}
+
+bool cConfigItem_integer::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	if(!param_vect_int) {
+		return(false);
+	}
+	if(list_values_str.empty()) {
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
+		return(false);
+	}
+	int ok = 0;
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
+	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
+		if(!ok && enableClearBeforeFirstSet) {
+			doClearBeforeFirstSet();
+		}
+		vector<int> _param_vect_int = split2int(iter->c_str(), split2chars(explodeSeparators), true);
+		for(unsigned i = 0; i < _param_vect_int.size(); i++) {
+			param_vect_int->push_back(_param_vect_int[i]);
+			++ok;
+		}
 	}
 	return(ok > 0);
 }
@@ -665,11 +763,11 @@ string cConfigItem_float::normalizeStringValueForCmp(string value) {
 	return(outStr.str());
 }
 
-bool cConfigItem_float::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_float::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_float::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_float::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -729,7 +827,7 @@ string cConfigItem_string::getValueStr(bool configFile) {
 				if(configFile) {
 					outStr << endl << config_name << " = ";
 				} else {
-					outStr << explodeSeparator;
+					outStr << explodeSeparators[0];
 				}
 			}
 			outStr << *iter;
@@ -764,12 +862,12 @@ list<string> cConfigItem_string::getValueListStr() {
 }
 
 string cConfigItem_string::normalizeStringValueForCmp(string value) {
-	if(param_vect_str && !explodeSeparator.empty()) {
-		vector<string> value_vect = split(value.c_str(), explodeSeparator.c_str(), true);
+	if(param_vect_str && !explodeSeparators.empty()) {
+		vector<string> value_vect = split(value.c_str(), split2chars(explodeSeparators), true);
 		string rslt;
 		for(vector<string>::iterator iter = value_vect.begin(); iter != value_vect.end(); iter++) {
 			if(!rslt.empty()) {
-				rslt += explodeSeparator;
+				rslt += explodeSeparators[0];
 			}
 			rslt += *iter;
 		}
@@ -786,18 +884,18 @@ string cConfigItem_string::normalizeStringValueForCmp(string value) {
 }
 
 bool cConfigItem_string::enableMultiValues() {
-	return(param_vect_str && !explodeSeparator.empty());
+	return(param_vect_str && !explodeSeparators.empty());
 }
 
-bool cConfigItem_string::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
+bool cConfigItem_string::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(param_vect_str) {
-		return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+		return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 	} else {
-		return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+		return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 	}
 }
 
-bool cConfigItem_string::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_string::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -830,30 +928,39 @@ bool cConfigItem_string::setParamFromValueStr(string value_str, bool enableClear
 			}
 			++ok;
 		}
-		if(param_vect_str && !explodeSeparator.empty()) {
-			initBeforeSet();
-			*param_vect_str = split(value, explodeSeparator.c_str());
+		if(param_vect_str && !explodeSeparators.empty()) {
+			if(enableInitBeforeSet) {
+				initBeforeSet();
+			}
+			*param_vect_str = split(value, split2chars(explodeSeparators), true);
 		}
 	}
 	return(ok > 0);
 }
 
-bool cConfigItem_string::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_string::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_vect_str) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		param_vect_str->push_back(*iter);
-		++ok;
+		vector<string> _param_vect_str = split(iter->c_str(), split2chars(explodeSeparators), true);
+		for(unsigned i = 0; i < _param_vect_str.size(); i++) {
+			param_vect_str->push_back(_param_vect_str[i]);
+			++ok;
+		}
 	}
 	return(ok > 0);
 }
@@ -885,11 +992,11 @@ string cConfigItem_hour_interval::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_hour_interval::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_hour_interval::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_hour_interval::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_hour_interval::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
 	if(!param_from || !param_to ||
 	   value_str.empty()) {
 		return(false);
@@ -1037,15 +1144,15 @@ string cConfigItem_ports::getPortString(char *port_matrix, unsigned port_max) {
 	return(rslt);
 }
 
-bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ports::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_ports::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_port_matrix) {
 		return(false);
 	}
@@ -1053,7 +1160,9 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
@@ -1061,6 +1170,10 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 		ok += setPortMatrix(iter->c_str(), param_port_matrix, this->port_max);
 	}
 	return(ok > 0);
+}
+
+void cConfigItem_ports::initBeforeSet() {
+	clear();
 }
 
 void cConfigItem_ports::clear() {
@@ -1129,24 +1242,28 @@ list<string> cConfigItem_hosts::getValueListStr() {
 	return(l);
 }
 
-bool cConfigItem_hosts::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_hosts::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_hosts::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_hosts::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_hosts::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_hosts::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_adresses && !param_nets) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vector<string> ip_mask = split(iter->c_str(), "/", true);
 		if(ip_mask.size() >= 1) {
@@ -1199,11 +1316,11 @@ string cConfigItem_ip::getValueStr(bool /*configFile*/) {
 	return(param_ip->getString());
 }
 
-bool cConfigItem_ip::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_ip::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_ip::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
 	if(value_str.empty()) {
 		return(false);
 	}
@@ -1233,11 +1350,11 @@ string cConfigItem_ip_port::getValueStr(bool /*configFile*/) {
 	return(outStr.str());
 }
 
-bool cConfigItem_ip_port::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_ip_port::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip_port::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_ip_port::setParamFromValueStr(string value_str, bool /*enableInitBeforeSet*/, bool enableClearBeforeFirstSet) {
 	if(!param_ip_port ||
 	   value_str.empty()) {
 		return(false);
@@ -1306,24 +1423,28 @@ string cConfigItem_ip_ports::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_ip_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_ip_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip_ports::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_ip_ports::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip_ports::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_ip_ports::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_ip_ports) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vmIP ip;
 		const char *port_str;
@@ -1400,24 +1521,28 @@ string cConfigItem_ip_port_str_map::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_ip_port_str_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_ip_port_str_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip_port_str_map::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_ip_port_str_map::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_ip_port_str_map::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_ip_port_string_map) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vmIP ip;
 		const char *port_str_str;
@@ -1495,24 +1620,28 @@ string cConfigItem_nat_aliases::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_nat_aliases::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_nat_aliases::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_nat_aliases::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_nat_aliases::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_nat_aliases::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_nat_aliases::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_nat_aliases) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vmIP ip_nat[2];
 		const char *ip_nat_2_str;
@@ -1587,24 +1716,28 @@ string cConfigItem_net_map::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_net_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_net_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_net_map::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_net_map::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_net_map::setParamFromValuesStr(vector<string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_net_map::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_net_map) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vmIPmask_order2 net[2];
 		const char *net_2_str;
@@ -1704,24 +1837,28 @@ string cConfigItem_domain_map::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
-bool cConfigItem_domain_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(getValuesFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_domain_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_domain_map::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
-	return(setParamFromValuesStr(split(value_str, ';'), enableClearBeforeFirstSet));
+bool cConfigItem_domain_map::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValuesStr(split(value_str, ';'), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_domain_map::setParamFromValuesStr(vector<std::string> list_values_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_domain_map::setParamFromValuesStr(vector<std::string> list_values_str, bool enableInitBeforeSet, bool /*enableClearBeforeFirstSet*/) {
 	if(!param_domain_map) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
-		initBeforeSet();
+		if(enableInitBeforeSet) {
+			initBeforeSet();
+		}
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	for(vector<std::string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		string str = std::string(iter->c_str());
 		size_t pos = str.find('=');
@@ -1776,17 +1913,19 @@ string cConfigItem_custom_headers::normalizeStringValueForCmp(string value) {
 	return(rslt);
 }
 
-bool cConfigItem_custom_headers::setParamFromConfigFile(CSimpleIniA *ini, bool enableClearBeforeFirstSet) {
-	return(setParamFromValueStr(getValueFromConfigFile(ini), enableClearBeforeFirstSet));
+bool cConfigItem_custom_headers::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
+	return(setParamFromValueStr(getValueFromConfigFile(ini), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
 
-bool cConfigItem_custom_headers::setParamFromValueStr(string value_str, bool enableClearBeforeFirstSet) {
+bool cConfigItem_custom_headers::setParamFromValueStr(string value_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	if(!param_custom_headers ||
 	   value_str.empty()) {
 		return(false);
 	}
 	int ok = 0;
-	initBeforeSet();
+	if(enableInitBeforeSet) {
+		initBeforeSet();
+	}
 	const char *value = value_str.c_str();
 	char *pos = (char*)value;
 	while(pos && *pos) {
@@ -1797,9 +1936,7 @@ bool cConfigItem_custom_headers::setParamFromValueStr(string value_str, bool ena
 		if(posSep) {
 			*posSep = 0;
 		}
-		string custom_header = pos;
-		custom_header.erase(custom_header.begin(), std::find_if(custom_header.begin(), custom_header.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-		custom_header.erase(std::find_if(custom_header.rbegin(), custom_header.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), custom_header.end());
+		string custom_header = trim_str(pos);
 		string custom_header_field = "custom_header__" + custom_header;
 		std::replace(custom_header_field.begin(), custom_header_field.end(), ' ', '_');
 		param_custom_headers->push_back(dstring(custom_header, custom_header_field));
@@ -1831,7 +1968,7 @@ string cConfigMap::cItem::valuesToStr() {
 	int counter = 0;
 	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
 		if(counter) {
-			outStr << "; ";
+			outStr << ";";
 		}
 		outStr << *iter;
 		++counter;
@@ -1960,7 +2097,6 @@ cConfig::cConfig() {
 	defaultLevel = cConfigItem::levelNormal;
 	defaultMinor = false;
 	defaultMinorGroupIfNotSet = false;
-	setFromMysqlOk = false;
 	diffValuesTrack = true;
 }
 
@@ -2060,7 +2196,7 @@ bool cConfig::loadFromConfigFileOrDirectory(const char *filename, bool silent) {
 				strcpy(filepathname, filename);
 				strcat(filepathname, "/");
 				strcat(filepathname, ent->d_name);
-				if(!loadFromConfigFile(filepathname, NULL, silent)) {
+				if(!loadFromConfigFile(filepathname, NULL, silent, true)) {
 					return(false);
 				}
 			}
@@ -2076,7 +2212,7 @@ bool cConfig::loadFromConfigFileOrDirectory(const char *filename, bool silent) {
 	return(true);
 }
 
-bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silent) {
+bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silent, bool nextConfigFile) {
 	if(error) {
 		*error = "";
 	}
@@ -2155,10 +2291,12 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silen
 	
 	lock();
 	for(map<string, cConfigItem*>::iterator iter = config_map.begin(); iter != config_map.end(); iter++) {
-		if(iter->second->setParamFromConfigFile(&ini, true)) {
+		if(iter->second->setParamFromConfigFile(&ini, !(nextConfigFile && iter->second->set_in_config))) {
+			iter->second->value_in_config = nextConfigFile && iter->second->set_in_config ?
+							 iter->second->getValueStr() :
+							 iter->second->getValueFromConfigFile(&ini);
 			iter->second->set = true;
 			iter->second->set_in_config = true;
-			iter->second->value_in_config = iter->second->getValueFromConfigFile(&ini);
 			evSetConfigItem(iter->second);
 		}
 	}
@@ -2366,6 +2504,17 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 		okNextData = true;
 	}
 	if(okNextData) {
+		bool setFromMysqlOk = false;
+		SqlDb *sqlDb = createSqlObject();
+		sqlDb->setSilentConnect();
+		if(sqlDb->connect()) {
+			sqlDb->setMaxQueryPass(1);
+			sqlDb->setDisableLogError();
+			if(sqlDb->existsTable("sensor_config")) {
+				setFromMysqlOk = true;
+			}
+		}
+		delete sqlDb;
 		JsonExport nextData;
 		nextData.add("setFromMysqlOk", setFromMysqlOk);
 		json.addJson("nextData", nextData.getJson());
@@ -2411,7 +2560,7 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 			if(iter_map != config_map.end()) {
 				if(set) {
 					string value = iter->second->size() == 1 ? (*iter->second)[0] : implode(*iter->second, ";");
-					if(iter_map->second->setParamFromValueStr(value, true)) {
+					if(iter_map->second->setParamFromValueStr(value, true, true)) {
 						iter_map->second->set = true;
 						iter_map->second->set_in_json = true;
 						iter_map->second->value_in_json = value;
@@ -2433,7 +2582,6 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 }
 
 void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
-	setFromMysqlOk = false;
 	SqlDb *sqlDb = createSqlObject();
 	if(checkConnect) {
 		sqlDb->setSilentConnect();
@@ -2464,7 +2612,7 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 						if(!row.isNull(column)) {
 							bool oldSet = iter_map->second->set;
 							string oldValueStr = iter_map->second->getValueStr();
-							if(iter_map->second->setParamFromValueStr(row[column], true)) {
+							if(iter_map->second->setParamFromValueStr(row[column], true, true)) {
 								if((!iter_map->second->naDefaultValueStr || oldSet) &&
 								   oldValueStr != row[column] && diffValuesTrack) {
 									sDiffValue diffValue;
@@ -2487,7 +2635,6 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 			}
 			unlock();
 		}
-		setFromMysqlOk = true;
 	}
 	delete sqlDb;
 }

@@ -220,7 +220,7 @@ inline u_int64_t getTimeUS(timeval &ts) {
 }
 
 inline u_int64_t getTimeUS(timeval *ts) {
-    return(ts->tv_sec * 1000000ull + ts->tv_usec);
+    return(ts ? ts->tv_sec * 1000000ull + ts->tv_usec : 0);
 }
 
 inline u_int64_t getTimeUS(const timeval &ts) {
@@ -320,6 +320,7 @@ void get_list_cores(string input, list<int> &list);
 
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
+u_char *base64decode(const char *src, int *dst_length);
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
 void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);
@@ -346,7 +347,7 @@ struct string_null {
 			return(false);
 		}
 		for(unsigned i = 0; i < str.length(); i++) {
-			if(!::isprint(str[i])) {
+			if(!(::isprint(str[i]) || str[i] == '\r' || str[i] == '\n')) {
 				return(false);
 			}
 		}
@@ -369,14 +370,12 @@ struct string_null {
 				return;
 			} else if(!strncmp(in, "_B64_", 5)) {
 				unsigned l = strlen(in);
-				if(!strcmp(in + l - 2, "==")) {
-					char *buff = new char[l];
-					int length = base64decode((u_char*)buff, in + 5, l);
-					str = string(buff, length);
-					delete [] buff;
-					is_null = false;
-					return;
-				}
+				char *buff = new char[l];
+				int length = base64decode((u_char*)buff, in + 5, l);
+				str = string(buff, length);
+				delete [] buff;
+				is_null = false;
+				return;
 			} 
 		}
 		if(in) {
@@ -479,6 +478,7 @@ string intToString(unsigned short int i);
 string intToString(unsigned int i);
 string intToString(unsigned long int i);
 string intToString(unsigned long long int i);
+string intToStringHex(int i);
 string floatToString(double d);
 string floatToString(double d, unsigned precision, bool adjustDec = false);
 string pointerToString(void *p);
@@ -554,6 +554,7 @@ std::vector<std::string> split(const char *s, const char *delim, bool enableTrim
 std::vector<std::string> split(const char *s, std::vector<std::string> delim, bool enableTrim = false, bool useEmptyItems = false, bool enableTrimString = true);
 std::vector<int> split2int(const std::string &s, char delim);
 std::vector<int> split2int(const std::string &s, std::vector<std::string> delim, bool enableTrim);
+std::vector<std::string> split2chars(const std::string &s);
 
 bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
@@ -978,6 +979,11 @@ struct sClientInfo {
 	int handler;
 	vmIP ip;
 };
+
+
+inline void vm_prefetch0(const volatile void *p) {
+	asm volatile ("prefetcht0 %[p]" : : [p] "m" (*(const volatile char *)p));
+}
 
 
 #endif

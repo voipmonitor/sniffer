@@ -114,7 +114,7 @@ protected:
 	void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
 	u_int64_t getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags);
-	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags);
+	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure = false);
 };
 
 class IPfilter : public filter_base {
@@ -139,9 +139,9 @@ public:
         IPfilter();
         ~IPfilter();
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr);
+	int _add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr);
+	static int add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -193,9 +193,9 @@ public:
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
-	int _add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst);
+	int _add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
         static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
-	static int add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst);
+	static int add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -239,9 +239,9 @@ public:
 	DOMAINfilter();
 	~DOMAINfilter();
 	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst);
+	int _add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst);
+	static int add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -293,10 +293,10 @@ public:
 	~SIP_HEADERfilter();
 	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
-	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags);
+	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
 	void _addNodes(ParsePacket *parsePacket);
-	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags);
+	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
 	static void addNodes(ParsePacket *parsePacket);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();

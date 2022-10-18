@@ -275,7 +275,7 @@ bool CleanSpool::cSpoolData::deleteHourCacheFile(sSpoolDataDirIndex index) {
 	}
 	if(index.isHour() && file_exists(data[index].path + '/'+ CACHE_NAME)) {
 		syslog(LOG_NOTICE, "cleanspool cache: delete %s", (data[index].path + '/'+ CACHE_NAME).c_str());
-		unlink((data[index].path + '/'+ CACHE_NAME).c_str());
+		unlink((data[index].path + '/'+ CACHE_NAME).c_str(), __FILE__, __LINE__);
 		list_delete_hour_cache_files.push_back(index);
 		return(true);
 	}
@@ -651,7 +651,7 @@ string CleanSpool::run_print_spool(int spoolIndex) {
 	return(rslt);
 }
 
-string CleanSpool::get_oldest_date(int spoolIndex) {
+string CleanSpool::get_oldest_date(int /*spoolIndex*/) {
 	string oldestDate;
 	for(int i = 0; i < 2; i++) {
 		if(isSetSpoolDir(i)) {
@@ -886,7 +886,7 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				}
 				u_int64_t start = getTimeMS();
 				char *fts_path[2] = { (char*)pathHour.c_str(), NULL };
-				FTS *tree = fts_open(fts_path, FTS_NOCHDIR, 0);
+				FTS *tree = fts_open(fts_path, FTS_COMFOLLOW | FTS_NOCHDIR, 0);
 				if(!tree) {
 					continue;
 				}
@@ -1341,7 +1341,7 @@ void CleanSpool::reindex_all(const char *reason) {
 		WHERE spool_index = " + getSpoolIndex_string() + " and \
 		      id_sensor = " + getIdSensor_string()),
 		STORE_PROC_ID_CLEANSPOOL, spoolIndex);
-	rmdir_r(getSpoolDir_string(tsf_main) + "/filesindex", true, true);
+	rmdir_r(getSpoolDir_string(tsf_main) + "/filesindex", true, true, __FILE__, __LINE__);
 	for(list<string>::iterator iter_date_dir = date_dirs.begin(); iter_date_dir != date_dirs.end(); iter_date_dir++) {
 		reindex_date(*iter_date_dir);
 	}
@@ -1362,7 +1362,7 @@ long long CleanSpool::reindex_date(string date) {
 		sumDaySize += reindex_date_hour(date, h);
 	}
 	if(!sumDaySize && !is_terminating()) {
-		rmdir(date.c_str());
+		rmdir(date.c_str(), __FILE__, __LINE__);
 	}
 	return(sumDaySize);
 }
@@ -1408,7 +1408,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 					snprintf(min, 3, "%02d", m);
 					string dhm = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour + '/' + min;
 					if(!fillMinutes[m]) {
-						rmdir_r(dhm);
+						rmdir_r(dhm, false, false, __FILE__, __LINE__);
 					}
 				}
 			}
@@ -1446,7 +1446,7 @@ long long CleanSpool::reindex_date_hour(string date, int h, bool readOnly, map<s
 				      id_sensor = " + getIdSensor_string()),
 				STORE_PROC_ID_CLEANSPOOL, spoolIndex);
 			for(int typeSpoolFile = tsf_sip; typeSpoolFile < tsf_all; ++typeSpoolFile) {
-				rmdir_r(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour);
+				rmdir_r(getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + date + '/' + hour, false, false, __FILE__, __LINE__);
 			}
 		}
 	}
@@ -1571,7 +1571,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 						break;
 					}
 				} else if(!readOnly) {
-					rmdir_r(spool_dhmt);
+					rmdir_r(spool_dhmt, false, false, __FILE__, __LINE__);
 				}
 			}
 		}
@@ -1579,7 +1579,7 @@ long long CleanSpool::reindex_date_hour_type(string date, int h, string type, bo
 	if(!readOnly) {
 		spool_fileindex_stream.close();
 		if(!sumsize) {
-			unlink(spool_fileindex.c_str());
+			unlink(spool_fileindex.c_str(), __FILE__, __LINE__);
 		}
 	}
 	return(sumsize);
@@ -1616,14 +1616,14 @@ void CleanSpool::unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, str
 					*posSizeSeparator = '\0';
 				}
 			}
-			unlink(this->findExistsSpoolDirFile(typeSpoolFile, buf).c_str());
+			unlink(this->findExistsSpoolDirFile(typeSpoolFile, buf).c_str(), __FILE__, __LINE__);
 			if(DISABLE_CLEANSPOOL) {
 				fclose(fd);
 				return;
 			}
 		}
 		fclose(fd);
-		unlink((getSpoolDir_string(tsf_main) + '/' + fname).c_str());
+		unlink((getSpoolDir_string(tsf_main) + '/' + fname).c_str(), __FILE__, __LINE__);
 	}
 }
 
@@ -1656,54 +1656,54 @@ void CleanSpool::unlink_dirs(string datehour, int sip, int reg, int skinny, int 
 		string dhm = dh + '/' + min;
 		if(sip) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_sip,'/' + dhm + "/SIP"),
-				   sip == 2);
+				   sip == 2, false, false, __FILE__, __LINE__);
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_sip,'/' + dhm + "/ALL"),
-				   sip == 2);
+				   sip == 2, false, false, __FILE__, __LINE__);
 		}
 		if(reg) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_reg,'/' + dhm + "/REG"),
-				   reg == 2);
+				   reg == 2, false, false, __FILE__, __LINE__);
 		}
 		if(skinny) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_skinny,'/' + dhm + "/SKINNY"),
-				   skinny == 2);
+				   skinny == 2, false, false, __FILE__, __LINE__);
 		}
 		if(mgcp) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_mgcp,'/' + dhm + "/MGCP"),
-				   mgcp == 2);
+				   mgcp == 2, false, false, __FILE__, __LINE__);
 		}
 		if(ss7) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_ss7,'/' + dhm + "/SS7"),
-				   ss7 == 2);
+				   ss7 == 2, false, false, __FILE__, __LINE__);
 		}
 		if(rtp) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_rtp, '/' + dhm + "/RTP"),
-				   rtp == 2);
+				   rtp == 2, false, false, __FILE__, __LINE__);
 		}
 		if(graph) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_graph, '/' + dhm + "/GRAPH"),
-				   graph == 2);
+				   graph == 2, false, false, __FILE__, __LINE__);
 		}
 		if(audio) {
 			rmdir_if_r(this->findExistsSpoolDirFile(tsf_audio, '/' + dhm + "/AUDIO"),
-				   audio == 2);
+				   audio == 2, false, false, __FILE__, __LINE__);
 		}
 		// remove minute
 		for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
-			if(rmdir((*iter_sd + '/' + dhm).c_str()) == 0) {
+			if(rmdir((*iter_sd + '/' + dhm).c_str(), __FILE__, __LINE__) == 0) {
 				syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), dhm.c_str());
 			}
 		}
 	}
 	// remove hour
 	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
-		if(rmdir((*iter_sd + '/' + dh).c_str()) == 0) {
+		if(rmdir((*iter_sd + '/' + dh).c_str(), __FILE__, __LINE__) == 0) {
 			syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), dh.c_str());
 		}
 	}
 	// remove day
 	for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
-		if(rmdir((*iter_sd + '/' + d).c_str()) == 0) {
+		if(rmdir((*iter_sd + '/' + d).c_str(), __FILE__, __LINE__) == 0) {
 			syslog(LOG_NOTICE, "cleanspool[%i]: unlink_dirs: remove %s/%s", spoolIndex, (*iter_sd).c_str(), d.c_str());
 		}
 	}
@@ -1722,7 +1722,7 @@ void CleanSpool::erase_dir(string dir, sSpoolDataDirIndex index, string callFrom
 			if(string(de->d_name) == ".." or string(de->d_name) == ".") continue;
 			if(!is_dir(de, dir.c_str())) {
 				if(!sverb.cleanspool_disable_rm) {
-					unlink((string(dir) + "/" + de->d_name).c_str());
+					unlink((string(dir) + "/" + de->d_name).c_str(), __FILE__, __LINE__);
 				}
 			}
 		}
@@ -1740,7 +1740,7 @@ void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
 	}
 	if(dir_is_empty(dir, true)) {
 		if(!sverb.cleanspool_disable_rm) {
-			rmdir_r(dir.c_str(), true);
+			rmdir_r(dir.c_str(), true, false, __FILE__, __LINE__);
 		}
 		string redukDir = dir;
 		string lastDir;
@@ -1749,7 +1749,7 @@ void CleanSpool::erase_dir_if_empty(string dir, string callFrom) {
 			if(redukDir.length() && lastDir.length()) {
 				if(dir_is_empty(redukDir.c_str())) {
 					if(!sverb.cleanspool_disable_rm) {
-						rmdir(redukDir.c_str());
+						rmdir(redukDir.c_str(), __FILE__, __LINE__);
 					}
 					spoolData.eraseDir(redukDir);
 					if(check_date_dir(lastDir.c_str())) {
@@ -2307,7 +2307,7 @@ void CleanSpool::clean_obsolete_dirs() {
 									if(row ?
 									    !atoi(row[string(getSpoolTypeFilesIndex((eTypeSpoolFile)typeSpoolFile, false)) + "size"].c_str()) :
 									    (unsigned int)numberOfDayToNow > maxDays[(int)typeSpoolFile]) {
-										rmdir_r(mintype_dir);
+										rmdir_r(mintype_dir, false, false, __FILE__, __LINE__);
 										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
 										removeMinTypeDir = true;
 									} else {
@@ -2320,7 +2320,7 @@ void CleanSpool::clean_obsolete_dirs() {
 									string mintype_sub_dir = min_sub_dir + '/' + getSpoolTypeDir((eTypeSpoolFile)typeSpoolFile);
 									string mintype_dir = getSpoolDir_string((eTypeSpoolFile)typeSpoolFile) + '/' + mintype_sub_dir;
 									if(file_exists(mintype_dir)) {
-										rmdir_r(mintype_dir);
+										rmdir_r(mintype_dir, false, false, __FILE__, __LINE__);
 										syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, mintype_dir.c_str());
 										removeMinTypeDir = true;
 									}
@@ -2331,7 +2331,7 @@ void CleanSpool::clean_obsolete_dirs() {
 								for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
 									string remove_dir = *iter_sd + '/' + min_sub_dir;
 									if(file_exists(remove_dir)) {
-										if(rmdir(remove_dir.c_str()) == 0) {
+										if(rmdir(remove_dir.c_str(), __FILE__, __LINE__) == 0) {
 											syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
 										} else {
 											removeMinDir = false;
@@ -2346,7 +2346,7 @@ void CleanSpool::clean_obsolete_dirs() {
 						for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
 							string remove_dir = *iter_sd + '/' + hour_sub_dir;
 							if(file_exists(remove_dir)) {
-								if(rmdir(remove_dir.c_str()) == 0) {
+								if(rmdir(remove_dir.c_str(), __FILE__, __LINE__) == 0) {
 									syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
 								} else {
 									removeHourDir = false;
@@ -2360,7 +2360,7 @@ void CleanSpool::clean_obsolete_dirs() {
 				for(list<string>::iterator iter_sd = spool_dirs.begin(); iter_sd != spool_dirs.end(); iter_sd++) {
 					string remove_dir = *iter_sd + '/' + day_sub_dir;
 					if(file_exists(remove_dir)) {
-						if(rmdir(remove_dir.c_str()) == 0) {
+						if(rmdir(remove_dir.c_str(), __FILE__, __LINE__) == 0) {
 							syslog(LOG_NOTICE, "cleanspool[%i]: clean obsolete dir %s", spoolIndex, remove_dir.c_str());
 						}
 					}

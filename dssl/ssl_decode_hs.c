@@ -100,7 +100,7 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	if( !sess->ssl_si->pkey && sess->get_keys_fce )
 	{
 		sess->get_keys_fce(sess->client_random, &sess->get_keys_rslt_data, sess);
-		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && sess->get_keys_rslt_data.client_random.key[0]) 
+		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && isSetKey(&sess->get_keys_rslt_data.client_random)) 
 		{
 			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random.key, sess->get_keys_rslt_data.client_random.length);
 		}
@@ -497,7 +497,7 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 	(due to a bug in Netscape implementation)
 	*/
 	
-	if( !sess->master_secret[0] )
+	if( !isSetMasterSecret(sess->master_secret) )
 	{
 		if( sess->version > SSL3_VERSION )
 		{
@@ -525,7 +525,7 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 		}
 	}
 	
-	if( sess->ssl_si->pkey && !sess->master_secret[0] )
+	if( sess->ssl_si->pkey && !isSetMasterSecret(sess->master_secret) )
 	{
 		pk = ssls_get_session_private_key( sess );
 
@@ -890,7 +890,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	
 	case SSL3_MT_SERVER_KEY_EXCHANGE:
 		/*at this point it is clear that the session is not decryptable due to ephemeral keys usage.*/
-		if( sess->master_secret[0] || 
+		if( isSetMasterSecret(sess->master_secret) || 
 		    (sess->get_keys_rslt_data.set && 
 		     (sess->version == TLS1_3_VERSION || 
 		     (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws))) )

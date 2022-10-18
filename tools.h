@@ -325,13 +325,26 @@ void set_mac();
 bool existsAnotherInstance();
 bool existsPidProcess(int pid);
 int mkdir_r(std::string, mode_t, unsigned uid = 0, unsigned gid = 0);
-int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
-int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false);
-int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false);
-unsigned long long cp_r(const char *src, const char *dst, bool move = false);
-inline unsigned long long mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
-unsigned long long copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false);
-inline unsigned long long move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
+int rmdir_r(const char *dir, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code =  NULL, int line_src_code = 0);
+int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code = NULL, int line_src_code = 0);
+int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code = NULL, int line_src_code = 0);
+int unlink(const char *pathname, const char *file_src_code, int line_src_code);
+int rmdir(const char *path, const char *file_src_code, int line_src_code);
+int64_t cp_r(const char *src, const char *dst, bool move = false);
+inline int64_t mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
+
+
+enum eCopyFileErrType {
+	_copyfile_src_missing = -1,
+	_copyfile_src_open_failed = -2,
+	_copyfile_dst_open_failed = -3,
+	_copyfile_sendfile_failed = -4,
+	_copyfile_dst_write_failed = -5
+};
+int64_t copy_file(const char *src, const char *dst, bool move = false, bool auto_create_dst_dir = false, string *syserror = NULL);
+inline int64_t move_file(const char *src, const char *dst, bool auto_create_dst_dir = false) { return(copy_file(src, dst, true, auto_create_dst_dir)); }
+string copy_file_err_type_str(int err_type);
+
 bool get_url_file(const char *url, const char *toFile, string *error = NULL);
 //uint64_t convert_srcmac_ll(ether_header *header_eth);
 void handleInterfaceOptions(void);
@@ -462,6 +475,7 @@ unsigned long getUptime();
 char *strnstr(const char *haystack, const char *needle, size_t len);
 char *strncasestr(const char *haystack, const char *needle, size_t len);
 char *strnchr(const char *haystack, char needle, size_t len);
+char *strnrchr(const char *haystack, char needle, size_t len);
 char *strncasechr(const char *haystack, char needle, size_t len);
 int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
 int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
@@ -602,18 +616,47 @@ public:
 		if(!isHeader && length) {
 			existsData = true;
 		}
-		return(this->buffer ?
-			this->writeToBuffer(data, length) :
-			this->writeToFile(data, length));
+		if(enableAsyncWrite && this->buffer &&
+		   this->useBufferLength + length > this->bufferLength) {
+			extern cBuffersControl buffersControl;
+			while(!buffersControl.check__asyncwrite__add(length) && !is_terminating()) {
+				USLEEP(1000);
+			}
+		}
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		lock_write();
+		#endif
+		bool rslt = this->buffer ?
+			     this->_writeToBuffer(data, length) :
+			     this->_writeToFile(data, length);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		unlock_write();
+		#endif
+		return(rslt);
+	}
+	bool directWriteToFile(char *data, int length, bool flush = false) {
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		lock_write();
+		#endif
+		bool rslt = _directWriteToFile(data, length, flush);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		unlock_write();
+		#endif
+		return(rslt);
+	}
+	bool flushBuffer(bool force = false) {
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		lock_write();
+		#endif
+		bool rslt = _flushBuffer(force);
+		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
+		unlock_write();
+		#endif
+		return(rslt);
 	}
 	bool read(unsigned length);
 	bool is_ok_decompress();
 	bool is_eof();
-	bool flushBuffer(bool force = false);
-	void flushTarBuffer();
-	bool writeToBuffer(char *data, int length);
-	bool writeToFile(char *data, int length, bool force = false);
-	bool _writeToFile(char *data, int length, bool flush = false);
 	bool _writeReady() {
 		if(tarBuffer) {
 			return(!tarBuffer->isFull());
@@ -621,7 +664,6 @@ public:
 			return(true);
 		}
 	}
-	bool __writeToFile(char *data, int length);
 	void initCompress();
 	void initDecompress();
 	void initTarbuffer(bool useFileZipHandlerCompress = false);
@@ -637,11 +679,23 @@ public:
 	bool getLineFromReadBuffer(string *line);
 	bool needTarPos();
 private:
+	bool _flushBuffer(bool force = false);
+	void _flushTarBuffer();
+	bool _writeToBuffer(char *data, int length);
+	bool _writeToFile(char *data, int length, bool force = false);
+	bool _directWriteToFile(char *data, int length, bool flush = false);
+	bool __directWriteToFile(char *data, int length);
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
 	eTypeCompress getTypeCompressDefault();
 	void addReadBuffer(char *data, u_int32_t len);
+	void lock_write() {
+		__SYNC_LOCK_USLEEP(_sync_write_lock, 10);
+	}
+	void unlock_write() {
+		__SYNC_UNLOCK(_sync_write_lock);
+	}
 public:
 	eMode mode;
 	eTypeSpoolFile typeSpoolFile;
@@ -657,7 +711,7 @@ public:
 	string error;
 	int bufferLength;
 	char *buffer;
-	int useBufferLength;
+	volatile int useBufferLength;
 	ChunkBuffer *tarBuffer;
 	bool tarBufferCreated;
 	bool enableAsyncWrite;
@@ -675,6 +729,8 @@ public:
 	deque<sReadBufferItem> readBuffer;
 	uint32_t readBufferBeginPos;
 	bool eof;
+private:
+	volatile int _sync_write_lock;
 };
 
 class PcapDumper {
@@ -707,7 +763,7 @@ public:
 		return(this->open(typeSpoolFile, fileName, NULL, dlt));
 	}
 	void dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets = false, 
-		  u_char *data = NULL, unsigned int datalen = 0,
+		  u_char *data = NULL, unsigned int datalen = 0, u_int32_t forceDatalen = 0,
 		  vmIP saddr = 0, vmIP daddr = 0, vmPort source = 0, vmPort dest = 0,
 		  bool istcp = false, u_int8_t forceVirtualUdp = false, timeval *ts = NULL);
 	void close(bool updateFilesQueue = true);
@@ -732,7 +788,7 @@ public:
 	static inline bool enable_convert_dlt_sll_to_en10(int dlt) {
 		extern int opt_convert_dlt_sll_to_en10;
 		extern pcap_t *global_pcap_handle_dead_EN10MB;
-		return(dlt == DLT_LINUX_SLL && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB);
+		return((dlt == DLT_LINUX_SLL || dlt == DLT_LINUX_SLL2) && opt_convert_dlt_sll_to_en10 && global_pcap_handle_dead_EN10MB);
 	}
 	static inline int convert_dlt_sll_to_en10(int dlt) {
 		return(enable_convert_dlt_sll_to_en10(dlt) ? DLT_EN10MB : dlt);
@@ -780,13 +836,13 @@ void __pcap_dump_close(pcap_dumper_t *p);
 void __pcap_dump_flush(pcap_dumper_t *p);
 char *__pcap_geterr(pcap_t *p, pcap_dumper_t *pd = NULL);
 void createSimpleUdpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen, unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
 			       u_int32_t time_sec, u_int32_t time_usec);
 void createSimpleTcpDataPacket(u_int header_ip_offset, pcap_pkthdr **header, u_char **packet,
-			       u_char *source_packet, u_char *data, unsigned int datalen,
+			       u_char *source_packet, u_char *data, unsigned int datalen,  unsigned int hdrs_datalen,
 			       vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-			       u_int32_t seq, u_int32_t ack_seq, 
+			       u_int32_t seq, u_int32_t ack_seq, u_int8_t flags,
 			       u_int32_t time_sec, u_int32_t time_usec, int dlt);
 void convertAnonymousInPacket(struct sHeaderPacket *header_packet, struct pcapProcessData *ppd, 
 			pcap_pkthdr **header, u_char **packet,
@@ -917,7 +973,7 @@ public:
 			delete [] data;
 		}
 		void process() {
-			((FileZipHandler*)handle)->_writeToFile(data, dataLength);
+			((FileZipHandler*)handle)->directWriteToFile(data, dataLength);
 		}
 		bool process_ready() {
 			return(((FileZipHandler*)handle)->_writeReady());
@@ -979,7 +1035,7 @@ public:
 			delete [] data;
 		}
 		void process() {
-			handle->_writeToFile(data, dataLength);
+			handle->directWriteToFile(data, dataLength);
 		}
 		bool process_ready() {
 			return(handle->_writeReady());
@@ -1134,10 +1190,6 @@ public:
 		}
 	}
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
-		extern cBuffersControl buffersControl;
-		while(!buffersControl.check__asyncwrite__add(item->dataLength) && !is_terminating()) {
-			USLEEP(1000);
-		}
 		lock(threadIndex);
 		if(!activeThread[threadIndex]) {
 			unlock(threadIndex);
@@ -1789,8 +1841,10 @@ public:
 		listUA.push_back(UA(ua));
 		if(autoLock) unlock();
 	}
-	void addComb(string &ua, ListUA *negList = NULL);
-	void addComb(const char *ua, ListUA *negList = NULL);
+	void addComb(string &ua, ListUA *negList = NULL,
+		     bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addComb(const char *ua, ListUA *negList = NULL,
+		     bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool checkUA(const char *check_ua) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -1837,8 +1891,10 @@ public:
 		listCheckString.push_back(CheckString(checkString));
 		if(autoLock) unlock();
 	}
-	void addComb(string &checkString, ListCheckString *negList = NULL);
-	void addComb(const char *checkString, ListCheckString *negList = NULL);
+	void addComb(string &checkString, ListCheckString *negList = NULL, 
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addComb(const char *checkString, ListCheckString *negList = NULL, 
+		     bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool check(const char *checkString) {
 		bool rslt =  false;
 		if(autoLock) lock();
@@ -1940,10 +1996,14 @@ private:
 class ListUA_wb {
 public:
 	ListUA_wb(bool autoLock = true);
-	void addWhite(string &ua);
-	void addWhite(const char *ua);
-	void addBlack(string &ua);
-	void addBlack(const char *ua);
+	void addWhite(string &ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addWhite(const char *ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(string &ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(const char *ua,
+		      bool enableSpaceSeparator = false, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool checkUA(const char *check_ua, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -1967,10 +2027,14 @@ private:
 class ListCheckString_wb {
 public:
 	ListCheckString_wb(bool autoLock = true);
-	void addWhite(string &checkString);
-	void addWhite(const char *checkString);
-	void addBlack(string &checkString);
-	void addBlack(const char *checkString);
+	void addWhite(string &checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addWhite(const char *checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(string &checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
+	void addBlack(const char *checkString, 
+		      bool enableSpaceSeparator = true, const char *separators = NULL, const char *separatorsSeparator = NULL);
 	bool check(const char *checkString, bool *findInBlackList = NULL) {
 		if(findInBlackList) {
 			*findInBlackList = false;
@@ -2184,11 +2248,12 @@ private:
 class SafeAsyncQueue_base {
 public:
 	SafeAsyncQueue_base();
-	~SafeAsyncQueue_base();
+	virtual ~SafeAsyncQueue_base();
 	static bool isRunTimerThread();
 	static void stopTimerThread(bool wait = false);
 protected:
-	virtual void timerEv(unsigned long long timerCounter) = 0;
+	void addToSaq();
+	virtual void timerEv(u_int64_t time_ms) = 0;
 private:
 	static void timerThread();
 	static void lock_list_saq() {
@@ -2200,7 +2265,6 @@ private:
 private:
 	static list<SafeAsyncQueue_base*> list_saq;
 	static pthread_t timer_thread;
-	static unsigned long long timer_counter;
 	static volatile int _sync_list_saq;
 	static bool runTimerThread;
 	static bool terminateTimerThread;
@@ -2210,7 +2274,7 @@ friend void *_SafeAsyncQueue_timerThread(void *arg);
 template<class type_queue_item>
 class SafeAsyncQueue : public SafeAsyncQueue_base {
 public:
-	SafeAsyncQueue(int shiftIntervalMult10S = 5);
+	SafeAsyncQueue(unsigned shiftInterval_ms = 500);
 	~SafeAsyncQueue();
 	void push(type_queue_item &item);
 	bool pop(type_queue_item *item, bool remove = true);
@@ -2218,7 +2282,7 @@ public:
 		return(size);
 	}
 protected:
-	void timerEv(unsigned long long timerCounter);
+	void timerEv(u_int64_t time_ms);
 private:
 	void shiftPush();
 	void incSize() {
@@ -2261,8 +2325,8 @@ private:
 	deque<type_queue_item> *push_queue;
 	deque<type_queue_item> *pop_queue;
 	deque<deque<type_queue_item>*> queueItems;
-	int shiftIntervalMult10S;
-	unsigned long long lastShiftTimerCounter;
+	unsigned shiftInterval_ms;
+	unsigned long long lastShiftTime_ms;
 	volatile u_int32_t size;
 	volatile int _sync_queue;
 	volatile int _sync_push_queue;
@@ -2271,16 +2335,17 @@ private:
 };
 
 template<class type_queue_item>
-SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(int shiftIntervalMult10S) {
+SafeAsyncQueue<type_queue_item>::SafeAsyncQueue(unsigned shiftInterval_ms) {
 	push_queue = NULL;
 	pop_queue = NULL;
-	this->shiftIntervalMult10S = shiftIntervalMult10S;
-	lastShiftTimerCounter = 0;
+	this->shiftInterval_ms = shiftInterval_ms;
+	lastShiftTime_ms = 0;
 	size = 0;
 	_sync_queue = 0;
 	_sync_push_queue = 0;
 	_sync_pop_queue = 0;
 	_sync_size = 0;
+	addToSaq();
 }
 
 template<class type_queue_item>
@@ -2344,10 +2409,10 @@ bool SafeAsyncQueue<type_queue_item>::pop(type_queue_item *item, bool remove) {
 }
 
 template<class type_queue_item>
-void SafeAsyncQueue<type_queue_item>::timerEv(unsigned long long timerCounter) {
-	if(timerCounter - lastShiftTimerCounter >= (unsigned)shiftIntervalMult10S) {
+void SafeAsyncQueue<type_queue_item>::timerEv(u_int64_t time_ms) {
+	if(time_ms >= lastShiftTime_ms + shiftInterval_ms) {
 		shiftPush();
-		lastShiftTimerCounter = timerCounter;
+		lastShiftTime_ms = time_ms;
 	}
 }
 
@@ -2389,8 +2454,11 @@ char * gettag_json(const char *data, const char *tag, string *dest);
 char * gettag_json(const char *data, const char *tag, unsigned *dest, unsigned dest_not_exists = 0);
 
 int getbranch_xml(const char *branch, const char *str, list<string> *rslt);
+int getbranch_xml(const char *branch, const char *str, unsigned str_length, list<string> *rslt);
 string gettag_xml(const char *tag, const char *str);
+string gettag_xml(const char *tag, const char *str, unsigned str_length);
 string getvalue_xml(const char *branch, const char *str);
+string getvalue_xml(const char *branch, const char *str, unsigned str_length);
 
 class SocketSimpleBufferWrite {
 public:
@@ -2781,7 +2849,9 @@ string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
 u_int32_t octal_decimal(u_int32_t n);
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1);
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, 
+	      int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1,
+	      bool closeAllFdAfterFork = false);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();
@@ -3456,6 +3526,7 @@ public:
 	};
 public:
 	cCsv();
+	~cCsv();
 	void setFirstRowContainFieldNames(bool firstRowContainFieldNames = true);
 	void setFieldSeparator(char fieldSeparator);
 	int load(const char *fileName, sTable *table = NULL);
@@ -3546,8 +3617,8 @@ class cDbStrings {
 public:
 	cDbStrings(unsigned capacity = 0, unsigned capacity_inc = 0);
 	~cDbStrings();
-	void add(const char *begin, unsigned offset, unsigned length);
-	void explodeCsv(const char *csv);
+	void add(const char *begin, unsigned offset, unsigned length, bool needUnescape = false);
+	void explodeCsv(const char *csv, bool header = false);
 	void setZeroTerm();
 	void setNextData();
 	void createMap(bool icase);
@@ -3592,7 +3663,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;
@@ -3604,7 +3675,7 @@ public:
 		}
 		void destroy() {
 			if(items) delete items;
-			if(content) delete content;
+			if(content) delete [] content;
 		}
 		cDbStrings *items;
 		const char *content;
@@ -3714,6 +3785,14 @@ inline void hexdump(const char *data, unsigned size) {
 	hexdump((u_char*)data, size);
 }
 
+string hexdump_to_string(u_char *data, unsigned size);
+inline string hexdump_to_string(const char *data, unsigned size) {
+	return(hexdump_to_string((u_char*)data, size));
+}
+inline string hexdump_to_string(SimpleBuffer *buffer) {
+	return(hexdump_to_string(buffer->data(), buffer->data_len()));
+}
+string hexdump_to_string_from_base64(const char *data);
 unsigned file_get_rows(const char *filename, vector<string> *rows);
 unsigned file_get_rows(string, vector<string> *rows);
 
@@ -4591,7 +4670,6 @@ inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
 	}
 }
 
-
 class cTimer {
 public:
 	enum eTypeTimer {
@@ -4616,6 +4694,53 @@ private:
 	u_int64_t last_time_us;
 	u_int32_t last_time_s;
 	u_int32_t last_time_m;
+};
+
+class cWsCalls {
+public:
+	struct sSip {
+		sSip() {
+			confirm = false;
+		}
+		bool request;
+		string info;
+		string str;
+		string cseq;
+		string src;
+		string src_port;
+		string dst;
+		string dst_port;
+		bool confirm;
+		friend bool operator == (const sSip &s1, const sSip &s2) {
+			return(s1.str == s2.str &&
+			       s1.cseq == s2.cseq &&
+			       s1.src == s2.src &&
+			       s1.src_port == s2.src_port &&
+			       s1.dst == s2.dst &&
+			       s1.dst_port == s2.dst_port);
+		}
+	};
+	struct sCall {
+		bool isConfirmed() {
+			for(unsigned i = 0; i < sip.size(); i++) {
+				if(!sip[i].confirm) {
+					return(false);
+				}
+			}
+			return(true);
+		}
+		string callid;
+		vector<sSip> sip;
+	};
+public:
+	cWsCalls();
+	~cWsCalls();
+	void load(const char *filename);
+	void setConfirm(const char *callid, bool request, const char *str, const char *cseq);
+	string printUncofirmed();
+public:
+	map<string, sCall> calls;
+	cCsv *csv;
 };
 
 

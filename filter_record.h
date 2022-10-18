@@ -97,21 +97,22 @@ private:
 
 class cRecordFilterItem_CheckString : public cRecordFilterItem_base {
 public:
-	cRecordFilterItem_CheckString(cRecordFilter *parent, unsigned recordFieldIndex)
+	cRecordFilterItem_CheckString(cRecordFilter *parent, unsigned recordFieldIndex, bool enableSpaceSeparator = true)
 	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+		this->enableSpaceSeparator = enableSpaceSeparator;
 	}
 	void addWhite(const char *checkString) {
-		checkStringData.addWhite(checkString);
+		checkStringData.addWhite(checkString, enableSpaceSeparator);
 	}
 	void addBlack(const char *checkString) {
-		checkStringData.addBlack(checkString);
+		checkStringData.addBlack(checkString, enableSpaceSeparator);
 	}
 	void addWhite(const char *table, const char *column, const char * id) {
 		addWhite(table, column, atol(id));
 	}
 	void addWhite(const char *table, const char *column, u_int32_t id) {
 		setCodebook(table, column);
-		checkStringData.addWhite(getCodebookValue(id).c_str());
+		checkStringData.addWhite(getCodebookValue(id).c_str(), enableSpaceSeparator);
 	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!getField_string(rec) ||
@@ -122,6 +123,7 @@ public:
 	}
 protected:
 	ListCheckString_wb checkStringData;
+	bool enableSpaceSeparator;
 };
 
 class cRecordFilterItem_bool : public cRecordFilterItem_base {

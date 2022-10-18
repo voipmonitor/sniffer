@@ -97,6 +97,7 @@ public:
 	cSqlDbCodebook(eTypeCodebook type, const char *name, 
 		       const char *table, const char *columnId, const char *columnStringValue, 
 		       unsigned limitTableRows = 0, bool caseSensitive = false);
+	~cSqlDbCodebook();
 	void setUData(void *u_data);
 	void addCond(const char *field, const char *value);
 	void setAutoLoadPeriod(unsigned autoLoadPeriod);
@@ -141,7 +142,7 @@ private:
 	void *u_data;
 	list<SqlDb_condField> cond;
 	unsigned autoLoadPeriod;
-	map<string, unsigned> data;
+	map<string, unsigned> *data;
 	bool loaded;
 	bool data_overflow;
 	volatile int _sync_data;

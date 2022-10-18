@@ -14,6 +14,7 @@
 using namespace std;
 
 extern int opt_enable_ssl;
+extern bool opt_ssl_enable_redirection_unencrypted_sip_content;
 
 extern int check_sip20(char *data, unsigned long len, ParsePacket::ppContentsX *parseContents, bool isTcp);
 
@@ -53,6 +54,42 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		vmIP _ip_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? ip_dst : ip_src;
 		vmPort _port_src = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_src : port_dst;
 		vmPort _port_dst = dataItem->getDirection() == TcpReassemblyDataItem::DIRECTION_TO_DEST ? port_dst : port_src;
+		if(opt_ssl_enable_redirection_unencrypted_sip_content) {
+			u_char *_data = dataItem->getData();
+			unsigned int _datalen = dataItem->getDatalen();
+			while(_datalen >= 1 && (_data[0] == '\r' || _data[0] == '\n')) {
+				_data += 1;
+				_datalen -= 1;
+			}
+			if(_datalen > 0 &&
+			   TcpReassemblySip::checkSip(_data, _datalen, TcpReassemblySip::_chssm_na)) {
+				pcap_pkthdr *tcpHeader;
+				u_char *tcpPacket;
+				createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
+							  ethHeader, _data, _datalen, 0,
+							  _ip_src, _ip_dst, _port_src, _port_dst,
+							  dataItem->getSeq(), dataItem->getAck(), 0,
+							  dataItem->getTime().tv_sec, dataItem->getTime().tv_usec, dlt);
+				unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
+				unsigned dataOffset = ethHeaderLength + 
+						      iphdrSize +
+						      ((tcphdr2*)(tcpPacket + ethHeaderLength + iphdrSize))->doff * 4;
+				packet_flags pflags;
+				pflags.init();
+				pflags.tcp = 2;
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+						#if USE_PACKET_NUMBER
+						0, 
+						#endif
+						_ip_src, _port_src, _ip_dst, _port_dst, 
+						_datalen, dataOffset,
+						handle_index, tcpHeader, tcpPacket, true, 
+						pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+						NULL, 0, dlt, sensor_id, sensor_ip, pid,
+						false);
+				continue;
+			}
+		}
 		if(reassemblyLink->checkDuplicitySeq(dataItem->getSeq())) {
 			if(debugStream) {
 				(*debugStream) << "SKIP SEQ " << dataItem->getSeq() << endl;
@@ -300,7 +337,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				  (dataLength < websocket_header_length((char*)data, dataLength) && check_websocket_first_byte(data, dataLength))) {
 				dataType = ReassemblyBuffer::_websocket_incomplete;
 			} else if(check_sip20((char*)data, dataLength, NULL, false)) {
-				if(TcpReassemblySip::_checkSip(data, dataLength, false)) {
+				if(TcpReassemblySip::_checkSip(data, dataLength, TcpReassemblySip::_chssm_na)) {
 					dataType = ReassemblyBuffer::_sip;
 				} else {
 					dataType = ReassemblyBuffer::_sip_incomplete;
@@ -360,9 +397,11 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			cWebSocketHeader ws(data, dataLength);
 			bool allocWsData;
 			u_char *ws_data = ws.decodeData(&allocWsData);
-			cout << string((char*)ws_data, ws.getDataLength()) << endl;
-			if(allocWsData) {
-				delete [] ws_data;
+			if(ws_data) {
+				cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				if(allocWsData) {
+					delete [] ws_data;
+				}
 			}
 		} else {
 			cout << string((char*)data, dataLength) << endl;
@@ -373,9 +412,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pcap_pkthdr *tcpHeader;
 		u_char *tcpPacket;
 		createSimpleTcpDataPacket(ethHeaderLength, &tcpHeader,  &tcpPacket,
-					  ethHeader, data, dataLength,
+					  ethHeader, data, dataLength, 0,
 					  ip_src, ip_dst, port_src, port_dst,
-					  seq, ack, 
+					  seq, ack, 0,
 					  time.tv_sec, time.tv_usec, dlt);
 		unsigned iphdrSize = ((iphdr2*)(tcpPacket + ethHeaderLength))->get_hdr_size();
 		unsigned dataOffset = ethHeaderLength + 
@@ -399,7 +438,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pcap_pkthdr *udpHeader;
 		u_char *udpPacket;
 		createSimpleUdpDataPacket(ethHeaderLength, &udpHeader,  &udpPacket,
-					  ethHeader, data, dataLength,
+					  ethHeader, data, dataLength, 0,
 					  ip_src, ip_dst, port_src, port_dst,
 					  time.tv_sec, time.tv_usec);
 		unsigned iphdrSize = ((iphdr2*)(udpPacket + ethHeaderLength))->get_hdr_size();
@@ -419,6 +458,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			pflags, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
+	}
+	if(sverb.ssl_stats) {
+		ssl_stats_add_delay_processPacket(getTimeUS(time));
 	}
 	if(ethHeaderAlloc) {
 		delete [] ethHeader;

@@ -997,3 +997,23 @@ void ssls_handshake_queue_free(DSSL_Session* sess)
 	}
 	
 }
+
+int isSetKey(struct DSSL_Session_get_keys_data_item *key) {
+	return(_isSetKey(key->key, key->length));
+}
+
+int isSetMasterSecret(u_char *master_secret) {
+	return(_isSetKey(master_secret, SSL3_MASTER_SECRET_SIZE));
+}
+
+int _isSetKey(u_char *key, unsigned length) {
+	if(length) {
+		unsigned i;
+		for(i = 0; i < length; i++) {
+			if(key[i]) {
+				return(1);
+			}
+		}
+	}
+	return(0);
+}

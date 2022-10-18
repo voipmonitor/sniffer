@@ -201,6 +201,100 @@ enum eRtpMarkType {
 /**
  * This class implements operations on RTP strem
  */
+
+#if EXPERIMENTAL_LITE_RTP_MOD
+
+class RTP {
+public:
+	inline void init(class Call *call) {
+		codec = -1;
+		received = 0;
+		skip = false;
+		had_audio = true;
+		tailedframes = 0;
+		call_owner = call;
+	}
+	inline unsigned received_() {
+		return(received);
+	}
+	inline void set_received_(u_int32_t r) {
+		received = r;
+	}
+	inline unsigned lost_() {
+		return(0);
+	}
+	inline void set_lost_(u_int32_t l) {
+		//
+	}
+	inline double lost_perc_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/(lost + received) * 100 : 100) :
+			0);
+	}
+	inline double lost_ratio_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/received : 1e10) :
+			0);
+	}
+	inline int first_codec_() {
+		return(codec);
+	}
+	inline void set_first_codec_(int c) {
+		codec = c;
+	}
+	inline bool ok_other_ip_side_by_sip_() {
+		return(false);
+	}
+	inline bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
+		return(this->sport == sport && this->dport == dport &&
+		       this->saddr == saddr && this->daddr == daddr);
+	}
+	inline bool eqAddrPort(RTP *rtp) {
+		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
+	}
+	inline bool allowed_for_ab() {
+		return(true);
+	}
+	static inline RTPFixedHeader* getHeader(void *data) { 
+		return reinterpret_cast<RTPFixedHeader*>(data); 
+	}
+	static inline const int getPayload(void *data) { 
+		return getHeader(data)->payload; 
+	}
+	static inline const bool isSetMarkerInHeader(void *data) { 
+		return getHeader(data)->marker;
+	};
+	static inline const bool isRTCP_enforce(void *data) { 
+		if(isSetMarkerInHeader(data)) {
+			int payload = getPayload(data);
+			return(payload >= FIRST_RTCP_CONFLICT_PAYLOAD_TYPE && payload <= LAST_RTCP_CONFLICT_PAYLOAD_TYPE);
+		}
+		return(false);
+	};
+public:
+	u_int16_t ssrc_index;
+	u_int32_t ssrc;
+	vmIP saddr;
+	vmIP daddr;
+	vmPort sport;
+	vmPort dport;
+	u_int8_t iscaller;
+	int32_t codec;
+	u_int64_t first_packet_time_us;
+	u_int64_t last_packet_time_us;
+	u_int32_t received;
+	bool skip;
+	bool had_audio;
+	u_int8_t tailedframes;
+	Call *call_owner;
+};
+
+#else
+
 class RTP {
        /* extension header */
 	typedef struct {
@@ -240,11 +334,11 @@ public:
 	u_int16_t avg_ptime;
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	FILE *gfileRAW;	 //!< file for storing RTP payload in RAW format
 	bool initRAW;
 	bool needInitRawForChannelRecord;
 	char *gfileRAW_buffer;
-	char gfilename[1024];	//!< file name of this file 
 	char basefilename[1024];
 	int rawiterator;	//!< iterator for raw file name 
 	struct ast_channel *channel_fix1;
@@ -252,6 +346,8 @@ public:
 	struct ast_channel *channel_adapt;
 	struct ast_channel *channel_record;
 	struct ast_frame *frame;
+	#endif
+	char gfilename[1024];	//!< file name of this file 
 	int lastframetype;		//!< last packet sequence number
 	char lastcng;		//!< last packet sequence number
 	u_int16_t seq;		//!< current sequence number
@@ -261,7 +357,6 @@ public:
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
 	int last_ts;		//!< last timestamp 
-	u_int64_t last_pcap_header_us;
 	bool pcap_header_ts_bad_time;
 	int packetization_iterator;	
 	int prev_payload;
@@ -273,6 +368,8 @@ public:
 	int frame_size;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
+	int rtpmap_call_index;
+	int rtpmap_other_side_call_index;
 	unsigned char* data;    //!< pointer to UDP payload
 	iphdr2 *header_ip;
 	int len;		//!< lenght of UDP payload
@@ -428,7 +525,7 @@ public:
 	*/
 	~RTP();
 	
-	void setSRtpDecrypt(class RTPsecure *srtp_decrypt);
+	void setSRtpDecrypt(class RTPsecure *srtp_decrypt, int index_call_ip_port, bool local = false);
 
 	/**
 	 * @brief simulate jitter buffer
@@ -453,7 +550,7 @@ public:
 	 *
 	*/
 	bool read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-		  int sensor_id, vmIP sensor_ip, char *ifname = NULL);
+		  int sensor_id, vmIP sensor_ip, char *ifname = NULL, bool *decrypt_ok = NULL, volatile int8_t *decrypt_sync = NULL);
 
 
 	/**
@@ -611,8 +708,8 @@ public:
 	inline void clearAudioBuff(class Call *call, ast_channel *channel);
 	
 	bool eqAddrPort(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
-		return(this->saddr == saddr && this->daddr == daddr &&
-		       this->sport == sport && this->dport == dport);
+		return(this->sport == sport && this->dport == dport &&
+		       this->saddr == saddr && this->daddr == daddr);
 	}
 	bool eqAddrPort(RTP *rtp) {
 		return(eqAddrPort(rtp->saddr, rtp->daddr, rtp->sport, rtp->dport));
@@ -664,6 +761,51 @@ public:
 		return(!is_video());
 	}
 
+	inline unsigned received_() {
+		return(stats.received);
+	}
+	inline void set_received_(u_int32_t r) {
+		stats.received = r;
+	}
+	inline unsigned lost_() {
+		return(stats.lost);
+	}
+	inline void set_lost_(u_int32_t l) {
+		stats.lost = l;
+	}
+	inline double lost_perc_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/(lost + received) * 100 : 100) :
+			0);
+	}
+	inline double lost_ratio_() {
+		unsigned lost = lost_();
+		unsigned received = received_();
+		return(lost ?
+			(received ? (double)lost/received : 1e10) :
+			0);
+	}
+	inline int first_codec_() {
+		return(first_codec);
+	}
+	inline void set_first_codec_(int c) {
+		first_codec = c;
+	}
+	inline bool ok_other_ip_side_by_sip_() {
+		return(ok_other_ip_side_by_sip);
+	}
+	
+	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
+	
+	bool is_unencrypted_payload(u_char *data, unsigned datalen);
+	
+	bool channel_is_adaptive(struct ast_channel *channel);
+	bool channel_record_is_adaptive() {
+		return(channel_is_adaptive(channel_record));
+	}
+	
 private: 
 	/*
 	* Per-source state information
@@ -685,6 +827,7 @@ private:
 	int sensor_id;
 	vmIP sensor_ip;
 	int index_call_ip_port;
+	int index_call_ip_port_other_side;
 	bool index_call_ip_port_by_dest;
 	
 	int _last_sensor_id;
@@ -695,6 +838,8 @@ private:
 	bool stopReadProcessing;
 	
 	class RTPsecure *srtp_decrypt;
+	bool srtp_decrypt_local;
+	int srtp_decrypt_index_call_ip_port;
 	
 	sRSA rsa;
 	
@@ -703,8 +848,16 @@ private:
 	bool energylevels_via_jb;
 	u_int32_t energylevels_counter;
 	
+	int call_ipport_n_orig;
+	unsigned decrypt_rtp_attempt[2];
+	unsigned decrypt_srtp_ok;
+	unsigned decrypt_srtp_failed;
+	bool probably_unencrypted_payload;
 friend class Call;
+friend class RTPsecure;
 };
+
+#endif // EXPERIMENTAL_LITE_RTP_MOD
 
 
 class RTPstat {

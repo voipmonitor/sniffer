@@ -174,22 +174,24 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 inline 
 #endif
 bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
-		      sll_header *&header_sll, ether_header *&header_eth, u_char **header_ppp_o_e,
+		      ether_header **header_eth, u_char **header_ppp_o_e,
 		      u_int16_t &header_ip_offset, u_int16_t &protocol, u_int16_t &vlan) {
 	vlan = VLAN_NOSET;
 	bool exists_vlan = false;
-	int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
-	u_int16_t ether_type;
 	switch(pcapLinklayerHeaderType) {
 		case DLT_LINUX_SLL:
-			header_sll = (sll_header*)packet;
-			if(htons(header_sll->sll_protocol) == 0x8100) {
+		case DLT_LINUX_SLL2:
+			{
+			u_int16_t _protocol = htons(pcapLinklayerHeaderType == DLT_LINUX_SLL ?
+						     ((sll_header*)packet)->sll_protocol :
+						     ((sll2_header*)packet)->sll2_protocol);
+			if(_protocol == 0x8100) {
 				// VLAN tag
 				header_ip_offset = 0;
 				exists_vlan = true;
 			} else {
 				header_ip_offset = 0;
-				protocol = htons(header_sll->sll_protocol);
+				protocol = _protocol;
 			}
 			if(exists_vlan) {
 				u_int16_t _protocol;
@@ -200,12 +202,17 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				} while(_protocol == 0x8100);
 				protocol = _protocol;
 			}
-			header_ip_offset += sizeof(sll_header);
+			header_ip_offset += pcapLinklayerHeaderType == DLT_LINUX_SLL ?
+					     sizeof(sll_header) : 
+					     sizeof(sll2_header);
+			}
 			break;
 		case DLT_ATM_RFC1483:
 		case DLT_EN10MB:
-			header_eth = (ether_header*)((char*)packet + link_header_offset);
-			ether_type = htons(header_eth->ether_type);
+			{
+			int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
+			ether_header *_header_eth = (ether_header*)((char*)packet + link_header_offset);
+			u_int16_t ether_type = htons(_header_eth->ether_type);
 			switch(ether_type) {
 			case 0x8100:
 				// VLAN tag
@@ -277,6 +284,10 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 				}
 			}
 			header_ip_offset += link_header_offset + sizeof(ether_header);
+			if(header_eth) {
+				*header_eth = _header_eth;
+			}
+			}
 			break;
 		case DLT_RAW:
 			header_ip_offset = 0;
@@ -312,15 +323,19 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
 	extern unsigned opt_tcp_port_audiocodes;
-	u_int8_t ip_protocol = header_ip->get_protocol();
+	if(caplen <= header_ip_offset) {
+		return(0);
+	}
+	u_int8_t ip_protocol = header_ip->get_protocol(caplen - header_ip_offset);
+	int rslt_offset = 0;
 	if(ip_protocol == IPPROTO_IPIP) {
 		// ip in ip protocol
-		return(header_ip->get_hdr_size());
+		rslt_offset = header_ip->get_hdr_size();
 	} else if(ip_protocol == IPPROTO_GRE) {
 		// gre protocol
 		iphdr2 *header_ip_next = convertHeaderIP_GRE(header_ip, caplen - header_ip_offset);
 		if(header_ip_next) {
-			return((u_char*)header_ip_next - (u_char*)header_ip);
+			rslt_offset = (u_char*)header_ip_next - (u_char*)header_ip;
 		} else {
 			return(-1);
 		}
@@ -347,7 +362,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		   htons(*(u_int16_t*)((unsigned char*)header_ip + ptp_offset + 2)) == 0x0021) {	// check ptp protocol IPv4 (0x0021)
 			next_header_ip_offset = ptp_offset + ptp_length;
 		}
-		return(next_header_ip_offset);
+		rslt_offset = next_header_ip_offset;
 	} else if(opt_udp_port_tzsp &&
 		  ip_protocol == IPPROTO_UDP &&									// TZSP
 		  ((unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_tzsp ||	// check destination port (default 0x9090)
@@ -371,7 +386,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 				next_header_ip_offset = tzsp_offset + tzsp_length + sizeof(ether_header);
 			}
 		}
-		return(next_header_ip_offset);
+		rslt_offset = next_header_ip_offset;
 	} else if(opt_udp_port_vxlan &&
 		  ip_protocol == IPPROTO_UDP &&									// VXLAN
 		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_vxlan &&	// check source port (default 0x9090)
@@ -388,7 +403,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 				next_header_ip_offset = _next_header_ip_offset;
 			}
 		}
-		return(next_header_ip_offset);
+		rslt_offset = next_header_ip_offset;
 	} else if(opt_audiocodes &&
 		  ((opt_udp_port_audiocodes &&
 		    ip_protocol == IPPROTO_UDP &&
@@ -419,7 +434,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 			if(flags) {
 				*flags |= FLAG_AUDIOCODES;
 			}
-			return(header_ip->get_hdr_size() + udp_tcp_header_length + audiocodes.header_length_total);
+			rslt_offset = header_ip->get_hdr_size() + udp_tcp_header_length + audiocodes.header_length_total;
 		}
 	} else if(opt_icmp_process_data &&
 		  ip_protocol == IPPROTO_ICMP) {
@@ -428,12 +443,18 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		if(header_ip->get_tot_len() > header_ip->get_hdr_size() + icmp_length + sizeof(iphdr2) &&
 		   *(u_char*)((unsigned char*)header_ip + header_ip->get_hdr_size()) == 3 &&
 		   ((iphdr2*)((unsigned char*)header_ip + header_ip->get_hdr_size() + icmp_length))->version_is_ok()) {
-			return(header_ip->get_hdr_size() + icmp_length);
+			rslt_offset = header_ip->get_hdr_size() + icmp_length;
 		} else {
 			return(-1);
 		}
 	}
-	return(0);
+	if(rslt_offset > 0) {
+		u_int8_t ipv = ((iphdr2*)((char*)header_ip + rslt_offset))->version;
+		if(!(ipv == 4 || (VM_IPV6_B && ipv == 6))) {
+			return(-1);
+		}
+	}
+	return(rslt_offset);
 }
 
 enum error_type {
@@ -463,54 +484,56 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip_encaps_offset = (*header_packet)->header_ip_encaps_offset;
 			ppd->header_ip_offset = (*header_packet)->header_ip_offset;
 			ppd->protocol = (*header_packet)->eth_protocol;
-			ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
 			ppd->pid = (*header_packet)->pid;
-		} else if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
-					   ppd->header_sll, ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
-			ppd->header_ip_encaps_offset = 0xFFFF;
-			(*header_packet)->detect_headers |= 0x01;
-			(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
-			(*header_packet)->header_ip_offset = ppd->header_ip_offset;
-			(*header_packet)->eth_protocol = ppd->protocol;
-			(*header_packet)->pid = ppd->pid;
-			(*header_packet)->pid.flags = 0;
-			if(!(ppd->protocol == ETHERTYPE_IP ||
-			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFF)) {
-				if(sverb.tcpreplay) {
-					if(ppd->protocol == 0) {
-						ppd->header_ip_offset += 2;
-						ppd->protocol = ETHERTYPE_IP;
+		} else {
+			ppd->pid.clear();
+			if(parseEtherHeader(pcapLinklayerHeaderType, HPP(*header_packet),
+					    &ppd->header_eth, NULL,
+					    ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+				ppd->header_ip_encaps_offset = 0xFFFF;
+				(*header_packet)->detect_headers |= 0x01;
+				(*header_packet)->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+				(*header_packet)->header_ip_offset = ppd->header_ip_offset;
+				(*header_packet)->eth_protocol = ppd->protocol;
+				(*header_packet)->pid = ppd->pid;
+				if(!(ppd->protocol == ETHERTYPE_IP ||
+				     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
+				     ppd->header_ip_offset == 0xFFFF)) {
+					if(sverb.tcpreplay) {
+						if(ppd->protocol == 0) {
+							ppd->header_ip_offset += 2;
+							ppd->protocol = ETHERTYPE_IP;
+						} else {
+							return(0);
+						}
 					} else {
+						pcapProcessEvalError(bad_eth_protocol, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 						return(0);
 					}
+				}
+				if(ppd->header_ip_offset == 0xFFFF) {
+					ppd->header_ip = NULL;
 				} else {
-					pcapProcessEvalError(bad_eth_protocol, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
+					ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+					if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+					     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
+						pcapProcessEvalError(bad_ip_version, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						return(0);
+					}
+					if((ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) && !sverb.process_rtp_header)  {
+						pcapProcessEvalError(bad_ip_length, *HPH(*header_packet), HPP(*header_packet),
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						return(0);
+					}
 				}
-			}
-			if(ppd->header_ip_offset == 0xFFFF) {
-				ppd->header_ip = NULL;
 			} else {
-				ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
-					pcapProcessEvalError(bad_ip_version, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
-				}
-				if((ppd->header_ip->get_tot_len() + ppd->header_ip_offset > HPH(*header_packet)->len) && !sverb.process_rtp_header)  {
-					pcapProcessEvalError(bad_ip_length, *HPH(*header_packet), HPP(*header_packet),
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					return(0);
-				}
+				pcapProcessEvalError(bad_datalink, *HPH(*header_packet), HPP(*header_packet),
+						     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+				return(0);
 			}
-		} else {
-			pcapProcessEvalError(bad_datalink, *HPH(*header_packet), HPP(*header_packet),
-					     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-			return(0);
 		}
 	} else {
 		pcap_header_plus2 = (pcap_pkthdr_plus2*)block_store->get_header(block_store_index);
@@ -519,60 +542,62 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			ppd->header_ip_encaps_offset = pcap_header_plus2->header_ip_encaps_offset;
 			ppd->header_ip_offset = pcap_header_plus2->header_ip_offset;
 			ppd->protocol = pcap_header_plus2->eth_protocol;
-			ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
+			ppd->header_ip = ppd->header_ip_offset == 0xFFFF ? NULL : (iphdr2*)(packet + ppd->header_ip_offset);
 			ppd->pid = pcap_header_plus2->pid;
-		} else if(parseEtherHeader(pcapLinklayerHeaderType, packet,
-					   ppd->header_sll, ppd->header_eth, NULL,
-					   ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
-			ppd->header_ip_encaps_offset = 0xFFFF;
-			pcap_header_plus2->detect_headers |= 0x01;
-			pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
-			pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
-			pcap_header_plus2->eth_protocol = ppd->protocol;
-			pcap_header_plus2->pid = ppd->pid;
-			pcap_header_plus2->pid.flags = 0;
-			if(!(ppd->protocol == ETHERTYPE_IP ||
-			     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
-			     ppd->header_ip_offset == 0xFFFF)) {
-				if(sverb.tcpreplay) {
-					if(ppd->protocol == 0) {
-						ppd->header_ip_offset += 2;
-						ppd->protocol = ETHERTYPE_IP;
+		} else {
+			ppd->pid.clear();
+			if(parseEtherHeader(pcapLinklayerHeaderType, packet,
+					    &ppd->header_eth, NULL,
+					    ppd->header_ip_offset, ppd->protocol, ppd->pid.vlan)) {
+				ppd->header_ip_encaps_offset = 0xFFFF;
+				pcap_header_plus2->detect_headers |= 0x01;
+				pcap_header_plus2->header_ip_encaps_offset = ppd->header_ip_encaps_offset;
+				pcap_header_plus2->header_ip_offset = ppd->header_ip_offset;
+				pcap_header_plus2->eth_protocol = ppd->protocol;
+				pcap_header_plus2->pid = ppd->pid;
+				if(!(ppd->protocol == ETHERTYPE_IP ||
+				     (VM_IPV6_B && ppd->protocol == ETHERTYPE_IPV6) ||
+				     ppd->header_ip_offset == 0xFFFF)) {
+					if(sverb.tcpreplay) {
+						if(ppd->protocol == 0) {
+							ppd->header_ip_offset += 2;
+							ppd->protocol = ETHERTYPE_IP;
+						} else {
+							pcap_header_plus2->ignore = true;
+							return(0);
+						}
 					} else {
+						pcapProcessEvalError(bad_eth_protocol, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
 						pcap_header_plus2->ignore = true;
 						return(0);
 					}
+				}
+				if(ppd->header_ip_offset == 0xFFFF) {
+					ppd->header_ip = NULL;
 				} else {
-					pcapProcessEvalError(bad_eth_protocol, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
+					ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
+					if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
+					     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
+						pcapProcessEvalError(bad_ip_version, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						pcap_header_plus2->ignore = true;
+						return(0);
+					}
+					if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > pcap_header_plus2->get_len()) {
+						pcapProcessEvalError(bad_ip_length, pcap_header_plus2, packet,
+								     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+						pcap_header_plus2->ignore = true;
+						return(0);
+					}
 				}
-			}
-			if(ppd->header_ip_offset == 0xFFFF) {
-				ppd->header_ip = NULL;
 			} else {
-				ppd->header_ip = (iphdr2*)(packet + ppd->header_ip_offset);
-				if(!(((iphdr2*)ppd->header_ip)->version == 4 ||
-				     (VM_IPV6_B && ((iphdr2*)ppd->header_ip)->version == 6))) {
-					pcapProcessEvalError(bad_ip_version, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
-				}
-				if(ppd->header_ip->get_tot_len() + ppd->header_ip_offset > pcap_header_plus2->get_len()) {
-					pcapProcessEvalError(bad_ip_length, pcap_header_plus2, packet,
-							     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-					pcap_header_plus2->ignore = true;
-					return(0);
-				}
+				pcapProcessEvalError(bad_datalink, pcap_header_plus2, packet,
+						     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
+				pcap_header_plus2->ignore = true;
+				return(0);
 			}
-		} else {
-			pcapProcessEvalError(bad_datalink, pcap_header_plus2, packet,
-					     ppd, pcapLinklayerHeaderType, pcapDumpHandle, interfaceName);
-			pcap_header_plus2->ignore = true;
-			return(0);
-		}
+	}
 	}
 	
 	int is_ip_frag = 0;
@@ -619,7 +644,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			headers_ip_offset[headers_ip_counter] = ppd->header_ip_offset;
 			++headers_ip_counter;
 			if(ppd->header_ip_encaps_offset == 0xFFFF &&
-			   (!opt_save_ip_from_encaps_ipheader_only_gre || ppd->header_ip->get_protocol() == IPPROTO_GRE)) {
+			   (!opt_save_ip_from_encaps_ipheader_only_gre || 
+			    ppd->header_ip->get_protocol((header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen()) - ppd->header_ip_offset) == IPPROTO_GRE)) {
 				ppd->header_ip_encaps_offset = ppd->header_ip_offset;
 			}
 			int next_header_ip_offset = findNextHeaderIp(ppd->header_ip, ppd->header_ip_offset,
@@ -639,45 +665,30 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					break;
 				}
 			} else {
-				iphdr2 *next_header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
-				if(next_header_ip->version == 4 || (VM_IPV6_B && next_header_ip->version == 6)) {
-					ppd->header_ip = next_header_ip;
-					ppd->header_ip_offset += next_header_ip_offset;
-				} else {
-					if(ppf & ppf_returnZeroInCheckData) {
-						//cout << "pcapProcess exit 0042" << endl;
-						if(pcap_header_plus2) {
-							pcap_header_plus2->ignore = true;
-						}
-						return(0);
-					} else {
-						break;
-					}
-				}
+				ppd->header_ip = (iphdr2*)((u_char*)ppd->header_ip + next_header_ip_offset);
+				ppd->header_ip_offset += next_header_ip_offset;
 			}
-			if(ppd->header_ip->get_protocol() == IPPROTO_UDP) {
-				u_int16_t frag_data = ppd->header_ip->get_frag_data();
-				if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
-					is_ip_frag = 1;
-					if((ppf & ppf_defrag) && opt_udpfrag) {
-						if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
-							ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
-							ppd->header_ip->clear_frag_data();
-							for(unsigned i = 0; i < headers_ip_counter; i++) {
-								iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
-								header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
-								header_ip_prev->clear_frag_data();
-							}
-							ppd->pid.flags |= FLAG_FRAGMENTED;
-							if(sverb.defrag) {
-								defrag_counter++;
-								cout << "*** DEFRAG 2 " << defrag_counter << endl;
-							}
-							is_ip_frag = 2;
-						} else {
-							//cout << "pcapProcess exit 003" << endl;
-							return(0);
+			u_int16_t frag_data = ppd->header_ip->get_frag_data();
+			if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
+				is_ip_frag = 1;
+				if((ppf & ppf_defrag) && opt_udpfrag) {
+					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
+						ppd->header_ip = (iphdr2*)(HPP(*header_packet) + ppd->header_ip_offset);
+						ppd->header_ip->clear_frag_data();
+						for(unsigned i = 0; i < headers_ip_counter; i++) {
+							iphdr2 *header_ip_prev = (iphdr2*)(HPP(*header_packet) + headers_ip_offset[i]);
+							header_ip_prev->set_tot_len(ppd->header_ip->get_tot_len() + (ppd->header_ip_offset - headers_ip_offset[i]));
+							header_ip_prev->clear_frag_data();
 						}
+						ppd->pid.flags |= FLAG_FRAGMENTED;
+						if(sverb.defrag) {
+							defrag_counter++;
+							cout << "*** DEFRAG 2 " << defrag_counter << endl;
+						}
+						is_ip_frag = 2;
+					} else {
+						//cout << "pcapProcess exit 003" << endl;
+						return(0);
 					}
 				}
 			}
@@ -713,13 +724,14 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		}
 		if(ppd->header_ip) {
 			ppd->header_udp = &ppd->header_udp_tmp;
-			if (ppd->header_ip->get_protocol() == IPPROTO_UDP) {
+			u_int8_t protocol = ppd->header_ip->get_protocol(caplen - ppd->header_ip_offset);
+			if (protocol == IPPROTO_UDP) {
 				// prepare packet pointers 
 				ppd->header_udp = (udphdr2*) ((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
 				ppd->datalen = get_udp_data_len(ppd->header_ip, ppd->header_udp, &ppd->data, packet, caplen);
 				ppd->flags.init();
 				ppd->flags.ss7 = opt_enable_ss7 && (ss7_rudp_portmatrix[ppd->header_udp->get_source()] || ss7_rudp_portmatrix[ppd->header_udp->get_dest()]);
-			} else if (ppd->header_ip->get_protocol() == IPPROTO_TCP) {
+			} else if (protocol == IPPROTO_TCP) {
 				ppd->flags.init();
 				ppd->flags.tcp = 1;
 				// prepare packet pointers 
@@ -754,7 +766,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 				ppd->header_udp->_source = ppd->header_tcp->_source;
 				ppd->header_udp->_dest = ppd->header_tcp->_dest;
-			} else if (opt_enable_ss7 && ppd->header_ip->get_protocol() == IPPROTO_SCTP) {
+			} else if (opt_enable_ss7 && protocol == IPPROTO_SCTP) {
 				ppd->flags.init();
 				ppd->flags.ss7 = 1;
 				ppd->datalen = get_sctp_data_len(ppd->header_ip, &ppd->data, packet, caplen);

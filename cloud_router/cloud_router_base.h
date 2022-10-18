@@ -46,8 +46,6 @@ struct sCloudRouterVerbose {
 		start_client = true;
 		connect_command = true;
 		connect_info = true;
-		socket_decode = false;
-		sql_query = false;
 		sql_error = true;
 	}
 	bool start_server;
@@ -55,10 +53,13 @@ struct sCloudRouterVerbose {
 	bool socket_connect;
 	bool connect_command;
 	bool connect_info;
+	bool connect_info_service;
 	bool create_thread;
 	bool socket_decode;
+	bool sql_connect;
 	bool sql_query;
 	bool sql_error;
+	bool sql_ignore_query;
 };
 
 
@@ -216,6 +217,61 @@ private:
 };
 
 
+class cCounterIP_per_interval {
+public:
+	struct sCountInterval {
+		sCountInterval() {
+			count = 0;
+			start_interval_ms = 0;
+		}
+		u_int32_t count;
+		u_int64_t start_interval_ms;
+	};
+public:
+	cCounterIP_per_interval(u_int64_t interval_ms = 10000) {
+		this->interval_ms = interval_ms;
+		_sync_lock = 0;
+	}
+	u_int32_t inc(vmIP ip) {
+		u_int32_t rslt = 0;
+		lock();
+		u_int64_t act_time_ms = getTimeMS_rdtsc();
+		map<vmIP, sCountInterval>::iterator iter = ip_counter.find(ip);
+		if(iter != ip_counter.end()) {
+			if(act_time_ms > iter->second.start_interval_ms + interval_ms) {
+				iter->second.count = 1;
+				iter->second.start_interval_ms = act_time_ms;
+				rslt = 1;
+			} else {
+				rslt = ++iter->second.count;
+			}
+		} else {
+			sCountInterval ci;
+			ci.count = 1;
+			ci.start_interval_ms = act_time_ms;
+			ip_counter[ip] = ci;
+			rslt = 1;
+		}
+		unlock();
+		return(rslt);
+	}
+private:
+        void lock() {
+                while(__sync_lock_test_and_set(&_sync_lock, 1)) {
+                        if(SYNC_LOCK_USLEEP) {
+                                usleep(SYNC_LOCK_USLEEP);
+                        }
+                }
+        }
+        void unlock() {
+                __sync_lock_release(&_sync_lock);
+        }
+private:
+	u_int64_t interval_ms;
+        map<vmIP, sCountInterval> ip_counter;
+        volatile int _sync_lock;};
+
+
 class cSocket {
 public:
 	enum eTypeEncode {
@@ -246,6 +302,7 @@ public:
 	cSocket(const char *name, bool autoClose = false);
 	virtual ~cSocket();
 	void setHostPort(string host, u_int16_t port);
+	void setUdp(bool udp);
 	void setXorKey(string xor_key);
 	bool connect(unsigned loopSleepS = 0);
 	bool listen();
@@ -335,6 +392,7 @@ protected:
 	bool autoClose;
 	string host;
 	u_int16_t port;
+	bool udp;
 	vmIP ip;
 	sTimeouts timeouts;
 	int handle;
@@ -361,7 +419,14 @@ public:
 		}
 		void init(const char *header_string) {
 			memset(this, 0, sizeof(sBlockHeader));
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic push
+			#pragma GCC diagnostic ignored "-Wstringop-truncation"
+			#endif
 			strncpy(header, get_header_string(header_string), sizeof(header));
+			#if __GNUC__ >= 8
+			#pragma GCC diagnostic pop
+			#endif
 		}
 		bool okHeader(const char *header_string) {
 			const char *_header_string = get_header_string(header_string);
@@ -469,7 +534,8 @@ public:
 		return(readBlock(str, typeCode, xor_key, quietEwouldblock, timeout));
 	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
-	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0);
+	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0,
+				      SimpleBuffer *rsltBuffer = NULL);
 	void generate_rsa_keys(unsigned keylen = 2048) {
 		rsa.generate_keys(keylen);
 	}
@@ -497,15 +563,18 @@ private:
 		unsigned index;
 	};
 public:
-	 cServer();
+	 cServer(bool udp = false, bool simple_read = false);
 	 virtual ~cServer();
 	 bool listen_start(const char *name, string host, u_int16_t port, unsigned index = 0);
 	 void listen_stop(unsigned index = 0);
 	 static void *listen_process(void *arg);
 	 void listen_process(int index);
 	 virtual void createConnection(cSocket *socket);
+	 virtual void evData(u_char *data, size_t dataLen);
 	 void setStartVerbString(const char *startVerbString);
 protected:
+	 bool udp;
+	 bool simple_read;
 	 cSocketBlock *listen_socket[MAX_LISTEN_SOCKETS];
 	 pthread_t listen_thread[MAX_LISTEN_SOCKETS];
 	 string startVerbString;
@@ -514,7 +583,7 @@ protected:
 
 class cServerConnection {
 public:
-	cServerConnection(cSocket *socket);
+	cServerConnection(cSocket *socket, bool simple_read = false);
 	virtual ~cServerConnection();
 	bool connection_start();
 	static void *connection_process(void *arg);
@@ -526,6 +595,7 @@ public:
 	}
 protected:
 	cSocketBlock *socket;
+	bool simple_read;
 	pthread_t thread;
 	u_int64_t begin_time_ms;
 };

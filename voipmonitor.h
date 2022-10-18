@@ -373,4 +373,12 @@ inline void inc_counter_user_packets(unsigned user_index) {
 }
 
 
+#if EXPERIMENTAL_SEPARATE_PROCESSSING
+inline int separate_processing() {
+	extern int opt_separate_processing;
+	return(opt_separate_processing);
+}
+#endif
+
+
 #endif //VOIPMONITOR_H
