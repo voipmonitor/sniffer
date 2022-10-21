@@ -1082,7 +1082,7 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 			}
 			outStr << iter_i->first;
 			map<u_int16_t, bool>::iterator iter_j = iter_i;
-			while(std::next(iter_j, 1) != param_ports->end() && std::next(iter_j, 1)->first == iter_j->first + 1) {
+			while(nextMapPortIterator(iter_j) != param_ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
 				iter_j++;
 			}
 			if(iter_j->first > iter_i->first) {
@@ -1115,7 +1115,7 @@ list<string> cConfigItem_ports::getValueListStr() {
 		map<u_int16_t, bool>::iterator iter_i;
 		for(iter_i = param_ports->begin(); iter_i != param_ports->end(); iter_i++) {
 			map<u_int16_t, bool>::iterator iter_j = iter_i;
-			while(std::next(iter_j, 1) != param_ports->end() && std::next(iter_j, 1)->first == iter_j->first + 1) {
+			while(nextMapPortIterator(iter_j) != param_ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
 				iter_j++;
 			}
 			if(iter_j->first > iter_i->first) {
@@ -1242,7 +1242,7 @@ string cConfigItem_ports::getPortString(map<u_int16_t, bool> *ports) {
 	map<u_int16_t, bool>::iterator iter_i;
 	for(iter_i = ports->begin(); iter_i != ports->end(); iter_i++) {
 		map<u_int16_t, bool>::iterator iter_j = iter_i;
-		while(std::next(iter_j, 1) != ports->end() && std::next(iter_j, 1)->first == iter_j->first + 1) {
+		while(nextMapPortIterator(iter_j) != ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
 			iter_j++;
 		}
 		if(!rslt.empty()) {

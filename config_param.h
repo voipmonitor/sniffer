@@ -392,6 +392,12 @@ protected:
 	string getTypeName() {
 		return("ports");
 	}
+private:
+	static map<u_int16_t, bool>::iterator nextMapPortIterator(map<u_int16_t, bool>::iterator &iter) {
+		map<u_int16_t, bool>::iterator iter_rslt = iter;
+		++iter_rslt;
+		return(iter_rslt);
+	}
 protected:
 	char *param_port_matrix;
 	map<u_int16_t, bool> *param_ports;
