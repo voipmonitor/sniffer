@@ -10413,6 +10413,20 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 
 void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern map<u_int16_t, bool> opt_audiocodes_sip_ports;
+	if(packetS->audiocodes &&
+	   opt_audiocodes_sip_ports.size() &&
+	   (opt_audiocodes_sip_ports.find(packetS->source_()) == opt_audiocodes_sip_ports.end() || !opt_audiocodes_sip_ports[packetS->source_()]) &&
+	   (opt_audiocodes_sip_ports.find(packetS->dest_()) == opt_audiocodes_sip_ports.end() || !opt_audiocodes_sip_ports[packetS->dest_()])) {
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+		return;
+	}
+	#endif
 	#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
 	extern vmIP opt_kamailio_dstip;
 	extern vmIP opt_kamailio_srcip;

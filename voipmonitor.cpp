@@ -1227,6 +1227,7 @@ unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
 int opt_audiocodes_rtp = 1;
 int opt_audiocodes_rtcp = 1;
+map<u_int16_t, bool> opt_audiocodes_sip_ports;
 
 bool opt_ipfix;
 bool opt_ipfix_set;
@@ -7975,6 +7976,7 @@ void cConfig::addConfigItems() {
 						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
 						->addValues("only:2|only_for_audiocodes_sip:3"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ports("audiocodes_sip_ports", &opt_audiocodes_sip_ports));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
@@ -10073,6 +10075,13 @@ void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matri
 	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
 	for (; i != values->end(); ++i) {
 		cConfigItem_ports::setPortMatrix(i->pItem, port_matrix, 65535);
+	}
+}
+
+void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, map<u_int16_t, bool> *ports) {
+	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
+	for (; i != values->end(); ++i) {
+		cConfigItem_ports::setPorts(i->pItem, ports, 65535);
 	}
 }
 
@@ -12844,6 +12853,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "audiocodes_rtcp", NULL))) {
 		opt_audiocodes_rtcp = !strcasecmp(value, "only") ? 2 :
 				      !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
+	if(ini.GetAllValues("general", "audiocodes_sip_ports", values)) {
+		parse_config_item_ports(&values, &opt_audiocodes_sip_ports);
 	}
 	
 	if((value = ini.GetValue("general", "kamailio_dstip", NULL))) {
