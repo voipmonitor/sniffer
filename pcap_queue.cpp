@@ -8781,7 +8781,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		    ssl_client_random_portmatrix[dport]) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
 		    check_ip_in(header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
-		   datalen && string_looks_like_client_random((u_char*)data, datalen)) {
+		   datalen) {
 			if(ssl_parse_client_random((u_char*)data, datalen)) {
 				return(0);
 			}
