@@ -411,7 +411,7 @@ void CleanSpool::check_filesindex() {
 }
 
 void CleanSpool::check_index_date(string date, SqlDb *sqlDb) {
-	for(int h = 0; h < 24 && !is_terminating(); h++) {
+	for(short int h = 0; h < 24 && !is_terminating(); h++) {
 		char hour[8];
 		snprintf(hour, sizeof(hour), "%02d", h);
 		string ymdh = string(date.substr(0,4)) + date.substr(5,2) + date.substr(8,2) + hour;

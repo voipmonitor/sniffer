@@ -1556,7 +1556,7 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 				}
 			}
 		}
-		if((*tableSize)[table] < 1000) {
+		if((*tableSize)[table] < 1000 && !sverb.suppress_auto_alter) {
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
 			unsigned okAlterCount = 0;

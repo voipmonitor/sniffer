@@ -8611,6 +8611,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "registers_save")			sverb.registers_save = 1;
 	else if(verbParam == "check_config")			sverb.check_config = 1;
 	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
+	else if(verbParam == "suppress_auto_alter")		sverb.suppress_auto_alter = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

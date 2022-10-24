@@ -981,7 +981,7 @@ string Register::getQueryStringForSaveEqNext(RegisterState *state) {
 			} else {
 				time_row.add(state->db_id, register_table_eq_next_id);
 			}
-			time_row.add(i + 1, "order");
+			time_row.add(state->next_states_saved + i + 1, "order");
 			if(state->state == rs_Failed ? existsColumns.register_failed_eq_next_created_at : existsColumns.register_state_eq_next_created_at) {
 				time_row.add_calldate(state->state_from_us, "created_at", state->state == rs_Failed ? existsColumns.register_failed_eq_next_created_at_ms : existsColumns.register_state_created_at_ms);
 			}
