@@ -2405,7 +2405,7 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			pexecCmd += "make install";
 		}
 		pexecCmd += ";'";
-		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true);
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true, true);
 		if(exitCode == 0) {
 			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
@@ -5497,7 +5497,7 @@ u_int32_t octal_decimal(u_int32_t n) {
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec,
-	      bool closeAllFdAfterFork) {
+	      bool closeAllFdAfterFork, bool needStdin) {
 	if(exitCode) {
 		*exitCode = -1;
 	}
@@ -5509,17 +5509,26 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		exec_args[i] = (char*)parseCmdLine[i].c_str();
 	}
 	exec_args[i] = NULL;
+	int pipe_stdin[2];
 	int pipe_stdout[2];
 	int pipe_stderr[2];
+	if(needStdin) {
+		pipe(pipe_stdin);
+	}
 	pipe(pipe_stdout);
 	pipe(pipe_stderr);
 	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
+		if(needStdin) {
+			close(pipe_stdin[0]);
+			dup2(pipe_stdin[1], 0);
+			close(pipe_stdin[1]);
+		}
 		close(pipe_stdout[0]);
-		close(pipe_stderr[0]);
 		dup2(pipe_stdout[1], 1);
-		dup2(pipe_stderr[1], 2);
 		close(pipe_stdout[1]);
+		close(pipe_stderr[0]);
+		dup2(pipe_stderr[1], 2);
 		close(pipe_stderr[1]);
 		if(closeAllFdAfterFork) {
 			close_all_fd();
@@ -5534,6 +5543,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		u_int64_t start_time = getTimeMS();
 		SimpleBuffer bufferStdout;
 		SimpleBuffer bufferStderr;
+		if(needStdin) {
+			close(pipe_stdin[1]);
+		}
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
 		while(true) {
@@ -5612,6 +5624,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 				kill(fork_rslt, 9);
 				break;
 			}
+		}
+		if(needStdin) {
+			close(pipe_stdin[0]);
 		}
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
@@ -8994,6 +9009,68 @@ void checkSwapUsage(void) {
 }
 
 
+cTimer::cTimer(void *data) {
+	this->data = data;
+	timer_thread = 0;
+}
+
+cTimer::~cTimer() {
+	stop();
+}
+
+void cTimer::start() {
+	if(timer_thread) {
+		return;
+	}
+	terminating = false;
+	vm_pthread_create("timer", &timer_thread, NULL, cTimer::_timerFce, this, __FILE__, __LINE__);
+}
+
+void cTimer::stop() {
+	if(timer_thread) {
+		terminating = true;
+		pthread_join(timer_thread, NULL);
+		timer_thread = 0;
+		terminating = false;
+	}
+}
+
+void *cTimer::_timerFce(void *arg) {
+	((cTimer*)arg)->timerFce();
+	return(NULL);
+}
+
+void cTimer::timerFce() {
+	last_time_us = 0;
+	last_time_s = 0;
+	last_time_m = 0;
+	while(!terminating) {
+		u_int64_t time_us = getTimeUS();
+		u_int32_t time_s = time_us / 1000000;
+		u_int32_t time_m = time_s / 60;
+		if(last_time_us) {
+			int typeChangeTime = 0;
+			if(time_s > last_time_s) {
+				typeChangeTime |= _tt_sec;
+				last_time_s = time_s;
+				if(time_m > last_time_m) {
+					typeChangeTime |= _tt_min;
+					last_time_m = time_m;
+				}
+			}
+			if(typeChangeTime) {
+				evTimer(time_s, typeChangeTime, data);
+			}
+		} else {
+			last_time_s = time_s;
+			last_time_m = time_m;
+		}
+		last_time_us = time_us;
+		usleep(min((int)(1000000 - time_us % 1000000), 10000));
+	}
+}
+
+
 cWsCalls::cWsCalls() {
 	csv = NULL;
 }
@@ -9135,3 +9212,4 @@ string cWsCalls::printUncofirmed() {
 	}
 	return(out.str());
 }
+

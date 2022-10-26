@@ -2851,7 +2851,7 @@ u_int32_t octal_decimal(u_int32_t n);
 
 bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, 
 	      int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1,
-	      bool closeAllFdAfterFork = false);
+	      bool closeAllFdAfterFork = false, bool needStdin = false);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();
@@ -4670,6 +4670,31 @@ inline cNodeData<NODE_DATA>::cNodeItem::~cNodeItem() {
 	}
 }
 
+class cTimer {
+public:
+	enum eTypeTimer {
+		_tt_sec = 1,
+		_tt_min = 2
+	};
+public:
+	cTimer(void *data);
+	~cTimer();
+	void start();
+	void stop();
+protected:
+	virtual void evTimer(u_int32_t time_s, int typeTimer, void *data) = 0;
+private:
+	static void *_timerFce(void *arg);
+	void timerFce();
+protected:
+	void *data;
+private:
+	pthread_t timer_thread;
+	bool terminating;
+	u_int64_t last_time_us;
+	u_int32_t last_time_s;
+	u_int32_t last_time_m;
+};
 
 class cWsCalls {
 public:

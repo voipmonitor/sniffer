@@ -763,6 +763,62 @@ void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPo
 	unlock_sessions();
 }
 
+bool cSslDsslSessions::keySet(const char *data, unsigned data_length) {
+	string type;
+	string client_random;
+	string key;
+	unsigned offset = 0;
+	for(unsigned i = 0; cSslDsslSessionKeys::session_key_types[i].str; i++) {
+		char *type_begin = strncasestr((char*)data, cSslDsslSessionKeys::session_key_types[i].str, data_length);
+		if(type_begin) {
+			type = cSslDsslSessionKeys::session_key_types[i].str;
+			offset = cSslDsslSessionKeys::session_key_types[i].length + (type_begin - data);
+			break;
+		}
+	}
+	if(offset && offset < data_length - 1 && data[offset] == ' ') {
+		++offset;
+		while(offset < data_length && isalnum(data[offset])) {
+			client_random += data[offset];
+			++offset;
+		}
+		if(client_random.length() == SSL3_RANDOM_SIZE * 2 && data[offset] == ' ') {
+			++offset;
+			while(offset < data_length && isalnum(data[offset])) {
+				key += data[offset];
+				++offset;
+			}
+			if(key.length() == SSL3_MASTER_SECRET_SIZE * 2 || key.length() == 32 * 2) {
+				return(keySet(type.c_str(), client_random.c_str(), key.c_str()));
+			}
+		}
+	}
+	return(false);
+}
+
+bool cSslDsslSessions::keySet(const char *type, const char *client_random, const char *key) {
+	unsigned client_random_length = strlen(client_random);
+	unsigned key_length = strlen(key);
+	if(client_random_length == SSL3_RANDOM_SIZE * 2 && 
+	   (key_length == SSL3_MASTER_SECRET_SIZE * 2 || key_length == 32 * 2)) {
+		u_char client_random_bin[SSL3_RANDOM_SIZE];
+		u_char key_bin[SSL3_MASTER_SECRET_SIZE];
+		unsigned key_bin_length = key_length / 2;
+		hexdecode(client_random_bin, client_random, SSL3_RANDOM_SIZE);
+		hexdecode(key_bin, key, key_length);
+		SslDsslSessions->keySet(type, client_random_bin, key_bin, key_bin_length);
+		if(ssl_sessionkey_enable()) {
+			string log_ssl_sessionkey =
+				string("set clientrandom with type ") + type +
+				"; clientrandom: " + hexdump_to_string(client_random_bin, SSL3_RANDOM_SIZE) +
+				"; key: " + hexdump_to_string(key_bin, key_bin_length);
+			ssl_sessionkey_log(log_ssl_sessionkey);
+		}
+		return(true);
+	}
+	return(false);
+}
+
 void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *key, unsigned key_length) {
 	this->session_keys.set(type, client_random, key, key_length);
 }
@@ -1007,35 +1063,16 @@ void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport) {
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 }
 
-bool string_looks_like_client_random(u_char *data, unsigned datalen) {
-	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
-	if(!datalen) {
-		return(false);
-	}
-	if(data[0] == '{' && data[datalen - 1] == '}') {
-		return(true);
-	}
-	for(unsigned i = 0; cSslDsslSessionKeys::session_key_types[i].str; i++) {
-		if(datalen > cSslDsslSessionKeys::session_key_types[i].length &&
-		   toupper(data[0]) == cSslDsslSessionKeys::session_key_types[i].str[0] &&
-		   !strncasecmp(cSslDsslSessionKeys::session_key_types[i].str, (char*)data, cSslDsslSessionKeys::session_key_types[i].length)) {
-			return(true);
-		}
-	}
-	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
-	return(false);
-}
-
 bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	if(!SslDsslSessions) {
 		return(false);
 	}
 	string data_s((char*)data, datalen);
-	string type;
-	string client_random;
-	string key;
 	if(isJsonObject(data_s)) {
+		string type;
+		string client_random;
+		string key;
 		JsonItem jsonData;
 		jsonData.parse(data_s.c_str());
 		if(jsonData.getItem("sessionid") && jsonData.getItem("mastersecret")) {
@@ -1047,30 +1084,9 @@ bool ssl_parse_client_random(u_char *data, unsigned datalen) {
 			client_random = jsonData.getValue("client_random");
 			key = jsonData.getValue("key");
 		}
+		return(SslDsslSessions->keySet(type.c_str(), client_random.c_str(), key.c_str()));
 	} else {
-		vector<string> parts = split(data_s.c_str(), " ", true);
-		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && 
-		   (parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2 || parts[2].length() == 32 * 2)) {
-			type = parts[0];
-			client_random = parts[1];
-			key = parts[2];
-		}
-	}
-	if(type.length()) {
-		u_char client_random_[SSL3_RANDOM_SIZE];
-		u_char key_[SSL3_MASTER_SECRET_SIZE];
-		unsigned key_length = key.length() / 2;
-		hexdecode(client_random_, client_random.c_str(), SSL3_RANDOM_SIZE);
-		hexdecode(key_, key.c_str(), key_length);
-		SslDsslSessions->keySet(type.c_str(), client_random_, key_, key_length);
-		if(ssl_sessionkey_enable()) {
-			string log_ssl_sessionkey =
-				string("set clientrandom with type ") + type +
-				"; clientrandom: " + hexdump_to_string(client_random_, SSL3_RANDOM_SIZE) +
-				"; key: " + hexdump_to_string(key_, key_length);
-			ssl_sessionkey_log(log_ssl_sessionkey);
-		}
-		return(true);
+		return(SslDsslSessions->keySet((const char*)data, datalen));
 	}
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS
 	return(false);
@@ -1092,23 +1108,7 @@ void ssl_parse_client_random(const char *fileName) {
 			buff[length - 1] = 0;
 			--length;
 		}
-		vector<string> parts = split(buff, " ", true);
-		if(parts.size() == 3 && parts[1].length() == SSL3_RANDOM_SIZE * 2 && 
-		   (parts[2].length() == SSL3_MASTER_SECRET_SIZE * 2 || parts[2].length() == 32 * 2)) {
-			u_char client_random[SSL3_RANDOM_SIZE];
-			u_char key[SSL3_MASTER_SECRET_SIZE];
-			unsigned key_length = parts[2].length() / 2;
-			hexdecode(client_random, parts[1].c_str(), SSL3_RANDOM_SIZE);
-			hexdecode(key, parts[2].c_str(), key_length);
-			SslDsslSessions->keySet(parts[0].c_str(), client_random, key, key_length);
-			if(ssl_sessionkey_enable()) {
-				string log_ssl_sessionkey =
-					string("set clientrandom with type ") + parts[0] +
-					"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE) +
-					"; key: " + hexdump_to_string(key, key_length);
-				ssl_sessionkey_log(log_ssl_sessionkey);
-			}
-		}
+		SslDsslSessions->keySet(buff, length);
 	}
 	fclose(file);
 	#endif //HAVE_OPENSSL101 && HAVE_LIBGNUTLS

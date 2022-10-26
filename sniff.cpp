@@ -3868,6 +3868,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 			Call *call = packetS->call ? packetS->call : packetS->call_created;
 			if(call) {
@@ -5388,6 +5390,8 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -5444,6 +5448,8 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -5499,7 +5505,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			}
 		}
 
-		if(call->regstate == 2 &&
+		if(call->regstate == rs_Failed &&
 		   (call->last_sip_method == RES403 || call->last_sip_method == RES404)) {
 			call->saveregister(packetS->getTimeval_pt());
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
@@ -5515,7 +5521,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		}
 		if(call->regcount > opt_register_max_registers && !call->reg200count && !call->reg401count_all) {
 			// to much register attempts without OK or 401 responses
-			call->regstate = 4;
+			call->regstate = rs_ManyRegMessages;
 			call->saveregister(packetS->getTimeval_pt());
 			call = new_invite_register(packetS, packetS->sip_method, packetS->get_callid());
 			if(call == NULL) {
@@ -5566,16 +5572,16 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		if(packetS->cseq.is_set() && packetS->cseq == call->registercseq) {
 			call->reg200count++;
 			// registration OK 
-			call->regstate = 1;
+			call->regstate = rs_OK;
 
 			// diff in ms
 			call->regrrddiff = 1000 * (packetS->getTime_s() - call->regrrdstart.tv_sec) + (packetS->getTime_us() - call->regrrdstart.tv_usec) / 1000;
 		} else {
 			// OK to unknown msg close the call
-			call->regstate = 3;
+			call->regstate = rs_UnknownMessageOK;
 		}
 		save_packet(call, packetS, _t_packet_sip);
-		if(call->regstate == 1 &&
+		if(call->regstate == rs_OK &&
 		   call->reg200count + call->reg401count_all < call->regcount) {
 			call->destroy_call_at = packetS->getTime_s() + opt_register_timeout;
 		} else {
@@ -5637,7 +5643,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		   packetS->sip_method == RES403 ||
 		   packetS->sip_method == RES404) {
 			// registration failed
-			call->regstate = 2;
+			call->regstate = rs_Failed;
 			save_packet(call, packetS, _t_packet_sip);
 			if(packetS->sip_method == RES401 ||
 			   (packetS->sip_method == RES403 && call->reg403count >= call->regcount_after_4xx) ||
@@ -5667,7 +5673,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	}
 	if(call->msgcount > opt_register_max_messages) {
 		// too many REGISTER messages within the same callid
-		call->regstate = 4;
+		call->regstate = rs_ManyRegMessages;
 		save_packet(call, packetS, _t_packet_sip);
 		call->saveregister(packetS->getTimeval_pt());
 		if(logPacketSipMethodCall_enable) {
@@ -5794,6 +5800,8 @@ void process_packet_sip_other(packet_s_process *packetS) {
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
 			<< " -> "
 			<< packetS->daddr_().getString() << ':' << packetS->dest_() 
+			<< " : "
+			<< sqlDateTimeString(packetS->header_pt->ts.tv_sec) << " / " << sqlDateTimeString(getTimeS())
 			<< endl;
 		}
 		cout << dump_data << endl;
@@ -10413,6 +10421,20 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 
 void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
+	extern map<u_int16_t, bool> opt_audiocodes_sip_ports;
+	if(packetS->audiocodes &&
+	   opt_audiocodes_sip_ports.size() &&
+	   (opt_audiocodes_sip_ports.find(packetS->source_()) == opt_audiocodes_sip_ports.end() || !opt_audiocodes_sip_ports[packetS->source_()]) &&
+	   (opt_audiocodes_sip_ports.find(packetS->dest_()) == opt_audiocodes_sip_ports.end() || !opt_audiocodes_sip_ports[packetS->dest_()])) {
+		if(packetS->next_action == _ppna_set) {
+			packetS->next_action = _ppna_destroy;
+		} else {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+		}
+		return;
+	}
+	#endif
 	#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
 	extern vmIP opt_kamailio_dstip;
 	extern vmIP opt_kamailio_srcip;

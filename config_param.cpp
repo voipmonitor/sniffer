@@ -1030,17 +1030,49 @@ cConfigItem_ports::cConfigItem_ports(const char* name, char *port_matrix)
  : cConfigItem(name) {
 	init();
 	param_port_matrix = port_matrix;
+	param_ports = NULL;
+	port_max = 65535;
+}
+
+cConfigItem_ports::cConfigItem_ports(const char* name, map<u_int16_t, bool> *ports)
+ : cConfigItem(name) {
+	init();
+	param_ports = ports;
+	param_port_matrix = NULL;
 	port_max = 65535;
 }
 
 string cConfigItem_ports::getValueStr(bool configFile) {
-	if(!param_port_matrix) {
+	if(!param_port_matrix &&
+	   (!param_ports || !param_ports->size())) {
 		return("");
 	}
 	ostringstream outStr;
 	int counter = 0;
-	for(unsigned i = 0; i <= port_max; i++) {
-		if(param_port_matrix[i]) {
+	if(param_port_matrix) {
+		for(unsigned i = 0; i <= port_max; i++) {
+			if(param_port_matrix[i]) {
+				if(counter) {
+					if(configFile) {
+						outStr << endl << config_name << " = ";
+					} else {
+						outStr << ';';
+					}
+				}
+				outStr << i;
+				unsigned j;
+				for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
+				if(j > i) {
+					outStr << '-' << j;
+					i = j;
+				}
+				++counter;
+			}
+		}
+	}
+	if(param_ports) {
+		map<u_int16_t, bool>::iterator iter_i;
+		for(iter_i = param_ports->begin(); iter_i != param_ports->end(); iter_i++) {
 			if(counter) {
 				if(configFile) {
 					outStr << endl << config_name << " = ";
@@ -1048,12 +1080,14 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 					outStr << ';';
 				}
 			}
-			outStr << i;
-			unsigned j;
-			for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
-			if(j > i) {
-				outStr << '-' << j;
-				i = j;
+			outStr << iter_i->first;
+			map<u_int16_t, bool>::iterator iter_j = iter_i;
+			while(nextMapPortIterator(iter_j) != param_ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
+				iter_j++;
+			}
+			if(iter_j->first > iter_i->first) {
+				outStr << '-' << iter_j->first;
+				iter_i = iter_j;
 			}
 			++counter;
 		}
@@ -1063,15 +1097,32 @@ string cConfigItem_ports::getValueStr(bool configFile) {
 
 list<string> cConfigItem_ports::getValueListStr() {
 	list<string> l;
-	for(unsigned i = 0; i <= port_max; i++) {
-		if(param_port_matrix[i]) {
-			unsigned j;
-			for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
-			if(j > i) {
-				l.push_back(intToString(i) + "-" + intToString(j));
-				i = j;
+	if(param_port_matrix) {
+		for(unsigned i = 0; i <= port_max; i++) {
+			if(param_port_matrix[i]) {
+				unsigned j;
+				for(j = i; j <= (port_max-1) && param_port_matrix[j+1]; j++);
+				if(j > i) {
+					l.push_back(intToString(i) + "-" + intToString(j));
+					i = j;
+				} else  {
+					l.push_back(intToString(i));
+				}
+			}
+		}
+	}
+	if(param_ports) {
+		map<u_int16_t, bool>::iterator iter_i;
+		for(iter_i = param_ports->begin(); iter_i != param_ports->end(); iter_i++) {
+			map<u_int16_t, bool>::iterator iter_j = iter_i;
+			while(nextMapPortIterator(iter_j) != param_ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
+				iter_j++;
+			}
+			if(iter_j->first > iter_i->first) {
+				l.push_back(intToString(iter_i->first) + "-" + intToString(iter_j->first));
+				iter_i = iter_j;
 			} else  {
-				l.push_back(intToString(i));
+				l.push_back(intToString(iter_i->first));
 			}
 		}
 	}
@@ -1079,43 +1130,85 @@ list<string> cConfigItem_ports::getValueListStr() {
 }
 
 string cConfigItem_ports::normalizeStringValueForCmp(string value) {
-	char *port_matrix = new char[this->port_max + 1];
-	cConfigItem_ports::setPortMatrix(value.c_str(), port_matrix, this->port_max);
-	string rslt = getPortString(port_matrix, this->port_max);
-	delete [] port_matrix;
-	return(rslt);
+	if(param_port_matrix) {
+		char *port_matrix = new char[this->port_max + 1];
+		cConfigItem_ports::setPortMatrix(value.c_str(), port_matrix, this->port_max);
+		string rslt = getPortString(port_matrix, this->port_max);
+		delete [] port_matrix;
+		return(rslt);
+	}
+	if(param_ports) {
+		map<u_int16_t, bool> ports;
+		cConfigItem_ports::setPorts(value.c_str(), &ports, this->port_max);
+		string rslt = getPortString(&ports);
+		return(rslt);
+	}
+	return("");
 }
 
 string cConfigItem_ports::normalizeStringValuesForCmp(list<string> values) {
-	char *port_matrix = new char[this->port_max + 1];
-	memset(port_matrix, 0, this->port_max + 1);
-	for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
-		cConfigItem_ports::setPortMatrix(iter->c_str(), port_matrix, this->port_max);
+	if(param_port_matrix) {
+		char *port_matrix = new char[this->port_max + 1];
+		memset(port_matrix, 0, this->port_max + 1);
+		for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+			cConfigItem_ports::setPortMatrix(iter->c_str(), port_matrix, this->port_max);
+		}
+		string rslt = getPortString(port_matrix, this->port_max);
+		delete [] port_matrix;
+		return(rslt);
 	}
-	string rslt = getPortString(port_matrix, this->port_max);
-	delete [] port_matrix;
-	return(rslt);
+	if(param_ports) {
+		map<u_int16_t, bool> ports;
+		for(list<string>::iterator iter = values.begin(); iter != values.end(); iter++) {
+			cConfigItem_ports::setPorts(iter->c_str(), &ports, this->port_max);
+		}
+		string rslt = getPortString(&ports);
+		return(rslt);
+	}
+	return("");
 }
 
 unsigned cConfigItem_ports::setPortMatrix(const char *port_str, char *port_matrix, unsigned port_max) {
+	return(_setPorts(port_str, port_matrix, NULL, port_max));
+}
+
+unsigned cConfigItem_ports::setPorts(const char *port_str, map<u_int16_t, bool> *ports, unsigned port_max) {
+	return(_setPorts(port_str, NULL, ports, port_max));
+}
+
+unsigned cConfigItem_ports::_setPorts(const char *port_str, char *port_matrix, map<u_int16_t, bool> *ports, unsigned port_max) {
 	unsigned set = 0;
 	vector<string> ports_str = split(port_str, split(",|;", "|"), true);
 	for(unsigned i = 0; i < ports_str.size(); i++) {
 		if(ports_str[i].find('-') == string::npos) {
-			unsigned j = atoi(ports_str[i].c_str());
-			if(j <= port_max) {
-				port_matrix[j] = 1;
-				++set;
+			unsigned port = atoi(ports_str[i].c_str());
+			if(port <= port_max) {
+				if(port_matrix) {
+					port_matrix[port] = 1;
+					++set;
+				}
+				if(ports) {
+					(*ports)[port] = true;
+					++set;
+				}
 			}
 		} else {
 			vector<string> ports_from_to = split(ports_str[i].c_str(), "-", true);
 			if(ports_from_to.size() >= 2) {
-				unsigned ports_from = atoi(ports_from_to[0].c_str());
-				unsigned ports_to = atoi(ports_from_to[1].c_str());
-				if(ports_from <= ports_to) {
-					for(unsigned j = ports_from; j <= ports_to && j <= port_max; j++) {
-						port_matrix[j] = 1;
-						++set;
+				unsigned port_from = atoi(ports_from_to[0].c_str());
+				unsigned port_to = atoi(ports_from_to[1].c_str());
+				if(port_from <= port_to) {
+					for(unsigned port = port_from; port <= port_to; port++) {
+						if(port <= port_max) {
+							if(port_matrix) {
+								port_matrix[port] = 1;
+								++set;
+							}
+							if(ports) {
+								(*ports)[port] = true;
+								++set;
+							}
+						}
 					}
 				}
 			}
@@ -1144,6 +1237,27 @@ string cConfigItem_ports::getPortString(char *port_matrix, unsigned port_max) {
 	return(rslt);
 }
 
+string cConfigItem_ports::getPortString(map<u_int16_t, bool> *ports) {
+	string rslt;
+	map<u_int16_t, bool>::iterator iter_i;
+	for(iter_i = ports->begin(); iter_i != ports->end(); iter_i++) {
+		map<u_int16_t, bool>::iterator iter_j = iter_i;
+		while(nextMapPortIterator(iter_j) != ports->end() && nextMapPortIterator(iter_j)->first == iter_j->first + 1) {
+			iter_j++;
+		}
+		if(!rslt.empty()) {
+			rslt += ',';
+		}
+		if(iter_j->first > iter_i->first) {
+			rslt += intToString(iter_i->first) + "-" + intToString(iter_j->first);
+			iter_i = iter_j;
+		} else  {
+			rslt += intToString(iter_i->first);
+		}
+	}
+	return(rslt);
+}
+
 bool cConfigItem_ports::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
@@ -1153,7 +1267,7 @@ bool cConfigItem_ports::setParamFromValueStr(string value_str, bool enableInitBe
 }
 
 bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
-	if(!param_port_matrix) {
+	if(!param_port_matrix && !param_ports) {
 		return(false);
 	}
 	if(list_values_str.empty()) {
@@ -1167,7 +1281,12 @@ bool cConfigItem_ports::setParamFromValuesStr(vector<string> list_values_str, bo
 		if(!ok && enableClearBeforeFirstSet) {
 			doClearBeforeFirstSet();
 		}
-		ok += setPortMatrix(iter->c_str(), param_port_matrix, this->port_max);
+		if(param_port_matrix) {
+			ok += setPortMatrix(iter->c_str(), param_port_matrix, this->port_max);
+		}
+		if(param_ports) {
+			ok += setPorts(iter->c_str(), param_ports, this->port_max);
+		}
 	}
 	return(ok > 0);
 }
@@ -1181,6 +1300,9 @@ void cConfigItem_ports::clear() {
 		for(unsigned i = 0; i <= this->port_max; i++) {
 			param_port_matrix[i] = 0;
 		}
+	}
+	if(param_ports) {
+		param_ports->clear();
 	}
 }
 

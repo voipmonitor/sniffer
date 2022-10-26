@@ -110,6 +110,8 @@ extern int opt_id_sensor_cleanspool;
 extern int rtptimeout;
 extern int sipwithoutrtptimeout;
 extern int absolute_timeout;
+extern int opt_bye_timeout;
+extern int opt_bye_confirmed_timeout;
 extern bool opt_ss7_use_sam_subsequent_number;
 extern int opt_ss7timeout_rlc;
 extern int opt_ss7timeout_rel;
@@ -1619,6 +1621,13 @@ Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_pack
 	}
 #endif
 
+	if((opt_bye_timeout <= 10 && this->destroy_call_at_bye &&
+	    packetS->getTime_s() > this->destroy_call_at_bye) ||
+	   (opt_bye_confirmed_timeout <= 10 && this->destroy_call_at_bye_confirmed &&
+	    packetS->getTime_s() > this->destroy_call_at_bye_confirmed)) {
+		return(false);
+	}
+
 	this->rtcp_exists = true;
 
 	RTPsecure *srtp_decrypt = NULL;
@@ -1675,6 +1684,13 @@ Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, boo
 		}
 	}
 #endif
+
+	if((opt_bye_timeout <= 10 && this->destroy_call_at_bye &&
+	    packetS->getTime_s() > this->destroy_call_at_bye) ||
+	   (opt_bye_confirmed_timeout <= 10 && this->destroy_call_at_bye_confirmed &&
+	    packetS->getTime_s() > this->destroy_call_at_bye_confirmed)) {
+		return(false);
+	}
  
 #if EXPERIMENTAL_LITE_RTP_MOD
  
@@ -8279,7 +8295,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 	
 	if(this->msgcount <= 1 or 
 	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404) {
-		this->regstate = 2;
+		this->regstate = rs_Failed;
 	}
 	
 	if(sqlStore->getSize(STORE_PROC_ID_REGISTER, -1) > opt_mysqlstore_limit_queue_register) {
@@ -12812,10 +12828,11 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 				if(opt_sip_register == 1) {
 					extern Registers registers;
 					if(reg->msgcount <= 1 || 
+					   !reg->lastSIPresponseNum ||
 					   reg->lastSIPresponseNum == 401 || reg->lastSIPresponseNum == 403 || reg->lastSIPresponseNum == 404) {
-						reg->regstate = 2;
+						reg->regstate = rs_Failed;
 					}
-					if(reg->regstate != 2 ||
+					if(reg->regstate != rs_Failed ||
 					   !opt_register_timeout_disable_save_failed) {
 						registers.add(reg);
 					}

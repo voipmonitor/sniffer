@@ -368,6 +368,7 @@ protected:
 class cConfigItem_ports : public cConfigItem {
 public:
 	cConfigItem_ports(const char* name, char *port_matrix);
+	cConfigItem_ports(const char* name, map<u_int16_t, bool> *ports);
 	string getValueStr(bool configFile = false);
 	list<string> getValueListStr();
 	string normalizeStringValueForCmp(string value);
@@ -375,7 +376,10 @@ public:
 	bool enable_normalizeStringValuesForCmp() { return(true); }
 	bool enableMultiValues() { return(true); }
 	static unsigned setPortMatrix(const char *port_str, char *port_matrix, unsigned port_max = 65535);
+	static unsigned setPorts(const char *port_str, map<u_int16_t, bool> *ports, unsigned port_max = 65535);
+	static unsigned _setPorts(const char *port_str, char *port_matrix, map<u_int16_t, bool> *ports, unsigned port_max = 65535);
 	static string getPortString(char *port_matrix, unsigned port_max = 65535);
+	static string getPortString(map<u_int16_t, bool> *ports);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
@@ -388,8 +392,15 @@ protected:
 	string getTypeName() {
 		return("ports");
 	}
+private:
+	static map<u_int16_t, bool>::iterator nextMapPortIterator(map<u_int16_t, bool>::iterator &iter) {
+		map<u_int16_t, bool>::iterator iter_rslt = iter;
+		++iter_rslt;
+		return(iter_rslt);
+	}
 protected:
 	char *param_port_matrix;
+	map<u_int16_t, bool> *param_ports;
 	unsigned port_max;
 };
 

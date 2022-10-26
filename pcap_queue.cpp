@@ -4025,7 +4025,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					extern int opt_sip_register;
 					if(opt_sip_register == 1) {
 						extern Registers registers;
-						registers.cleanup(true);
+						registers.cleanup(false);
 					}
 				}
 				if(opt_nonstop_read_quick ?
@@ -4049,6 +4049,13 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					reset_cleanup_variables();
 					syslog(LOG_NOTICE, "reset cleanup variables");
 					break;
+				}
+				if(sleepCounter > 300) {
+					extern int opt_sip_register;
+					if(opt_sip_register == 1) {
+						extern Registers registers;
+						registers.cleanup(true);
+					}
 				}
 			}
 			sleep(1);
@@ -8774,7 +8781,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		    ssl_client_random_portmatrix[dport]) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
 		    check_ip_in(header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
-		   datalen && string_looks_like_client_random((u_char*)data, datalen)) {
+		   datalen) {
 			if(ssl_parse_client_random((u_char*)data, datalen)) {
 				return(0);
 			}

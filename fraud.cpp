@@ -2398,7 +2398,16 @@ void FraudAlert_ccd::loadAlertVirt(SqlDb *sqlDb) {
 }
 
 
-FraudAlerts::FraudAlerts() {
+FraudTimer::FraudTimer(FraudAlerts *fraudAlerts) : cTimer(fraudAlerts) {
+}
+
+void FraudTimer::evTimer(u_int32_t time_s, int typeTimer, void *data) {
+	((FraudAlerts*)data)->evTimer(time_s, typeTimer);
+}
+
+
+FraudAlerts::FraudAlerts() 
+ : timer(this) {
 	useUserRestriction = false;
 	useUserRestriction_custom_headers = false;
 	_sync_alerts = 0;
@@ -2407,17 +2416,12 @@ FraudAlerts::FraudAlerts() {
 	lastTimeEventsIsFull = 0;
 	lastTimeRegistersIsFull = 0;
 	maxLengthAsyncQueue = 100000;
-	timer_thread = 0;
-	timer_thread_terminating = false;
-	timer_thread_last_time_us = 0;
-	timer_thread_last_time_s = 0;
-	timer_thread_last_time_m = 0;
 	initPopCallInfoThreads();
 	clearNeedEv();
 }
 
 FraudAlerts::~FraudAlerts() {
-	stopTimerThread();
+	stopTimer();
 	clear();
 }
 
@@ -2506,7 +2510,7 @@ void FraudAlerts::loadAlerts(bool lock, SqlDb *sqlDb) {
 	setNeedEv();
 	startPopCallInfoThreads();
 	if(lock) unlock_alerts();
-	craeteTimerThread(lock, true);
+	startTimer(lock, true);
 }
 
 void FraudAlerts::loadData(bool lock, SqlDb *sqlDb) {
@@ -3023,7 +3027,7 @@ void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Registe
 	registerInfo->from_domain = REG_CONV_STR(regState->from_domain == EQ_REG ? reg->from_domain : regState->from_domain);
 	registerInfo->digest_realm = REG_CONV_STR(regState->digest_realm == EQ_REG ? reg->digest_realm : regState->digest_realm);
 	registerInfo->ua = REG_CONV_STR(regState->ua == EQ_REG ? reg->ua : regState->ua);
-	registerInfo->at = regState->state_from_us;
+	registerInfo->at = regState->state_to_us;
 }
 
 void FraudAlerts::refresh() {
@@ -3034,10 +3038,7 @@ void FraudAlerts::refresh() {
 	unlock_alerts();
 }
 
-int FraudAlerts::craeteTimerThread(bool lock, bool ifNeed) {
-	if(timer_thread) {
-		return(-1);
-	}
+void FraudAlerts::startTimer(bool lock, bool ifNeed) {
 	if(ifNeed) {
 		bool need = false;;
 		if(lock) lock_alerts();
@@ -3048,62 +3049,24 @@ int FraudAlerts::craeteTimerThread(bool lock, bool ifNeed) {
 		}
 		if(lock) unlock_alerts();
 		if(!need) {
-			return(0);
+			return;
 		}
 	}
-	timer_thread_terminating = false;
-	vm_pthread_create("fraud timer", &timer_thread, NULL, FraudAlerts::_timerFce, this, __FILE__, __LINE__);
-	return(1);
+	timer.start();
 }
 
-void FraudAlerts::stopTimerThread() {
-	if(timer_thread) {
-		timer_thread_terminating = true;
-		pthread_join(timer_thread, NULL);
-		timer_thread = 0;
-		timer_thread_terminating = false;
-	}
+void FraudAlerts::stopTimer() {
+	timer.stop();
 }
 
-void *FraudAlerts::_timerFce(void *arg) {
-	((FraudAlerts*)arg)->timerFce();
-	return(NULL);
-}
-
-void FraudAlerts::timerFce() {
-	timer_thread_last_time_us = 0;
-	timer_thread_last_time_s = 0;
-	timer_thread_last_time_m = 0;
-	while(!timer_thread_terminating) {
-		u_int64_t time_us = getTimeUS();
-		u_int32_t time_s = time_us / 1000000;
-		u_int32_t time_m = time_s / 60;
-		if(timer_thread_last_time_us) {
-			int typeChangeTime = 0;
-			if(time_s > timer_thread_last_time_s) {
-				typeChangeTime |= FraudAlert::_tt_sec;
-				timer_thread_last_time_s = time_s;
-				if(time_m > timer_thread_last_time_m) {
-					typeChangeTime |= FraudAlert::_tt_min;
-					timer_thread_last_time_m = time_m;
-				}
-			}
-			if(typeChangeTime) {
-				lock_alerts();
-				for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
-					if((*iter)->needTimer() & typeChangeTime) {
-						(*iter)->evTimer(time_s);
-					}
-				}
-				unlock_alerts();
-			}
-		} else {
-			timer_thread_last_time_s = time_s;
-			timer_thread_last_time_m = time_m;
+void FraudAlerts::evTimer(u_int32_t time_s, int typeTimer) {
+	lock_alerts();
+	for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
+		if((*iter)->needTimer() & typeTimer) {
+			(*iter)->evTimer(time_s);
 		}
-		timer_thread_last_time_us = time_us;
-		usleep(min((int)(1000000 - time_us % 1000000), 10000));
 	}
+	unlock_alerts();
 }
 
 void FraudAlerts::clearNeedEv() {

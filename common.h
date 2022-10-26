@@ -140,8 +140,10 @@ struct sVerbose {
 	int cdr_stat_only;
 	int cdr_stat_interval_store;
 	int disable_unlink_qfile;
+	int registers_save;
 	int check_config;
 	int separate_processing;
+	int suppress_auto_alter;
 	int _debug1;
 	int _debug2;
 	int _debug3;

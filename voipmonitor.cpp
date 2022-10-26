@@ -557,6 +557,13 @@ bool opt_sip_register_state_compare_ua = false;
 bool opt_sip_register_state_compare_sipalg = false;
 bool opt_sip_register_state_compare_vlan = false;
 bool opt_sip_register_save_all = false;
+int opt_sip_register_state_timeout = 10 * 60;
+bool opt_sip_register_state_timeout_set = false;
+bool opt_sip_register_save_eq_states_time = false;
+int opt_sip_register_failed_max_details_per_minute = 1000;
+bool opt_sip_register_failed_max_details_per_minute_set = false;
+bool opt_sip_register_deferred_save = false;
+int opt_sip_register_advanced = 0;
 unsigned int opt_maxpoolsize = 0;
 unsigned int opt_maxpooldays = 0;
 unsigned int opt_maxpoolsipsize = 0;
@@ -702,6 +709,7 @@ int opt_cleandatabase_http_enum = 0;
 int opt_cleandatabase_webrtc = 0;
 int opt_cleandatabase_register_state = 0;
 int opt_cleandatabase_register_failed = 0;
+int opt_cleandatabase_register_time_info = 0;
 int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_cdr_stat = 71;
 int opt_cleandatabase_rtp_stat = 2;
@@ -1227,6 +1235,7 @@ unsigned opt_udp_port_audiocodes = 925;
 unsigned opt_tcp_port_audiocodes = 925;
 int opt_audiocodes_rtp = 1;
 int opt_audiocodes_rtcp = 1;
+map<u_int16_t, bool> opt_audiocodes_sip_ports;
 
 bool opt_ipfix;
 bool opt_ipfix_set;
@@ -4410,6 +4419,10 @@ int main_init_read() {
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		CountryDetectInit(sqlDbInit);
 		
+		if(opt_sip_register == 1) {
+			initRegisters();
+		}
+		
 		if(opt_enable_fraud) {
 			initFraud(sqlDbInit);
 		}
@@ -5080,6 +5093,10 @@ void main_term_read() {
 	}
 	
 	cFilters::freeActive();
+	
+	if(opt_sip_register == 1) {
+		termRegisters();
+	}
 	
 	if(opt_enable_fraud) {
 		termFraud();
@@ -6460,8 +6477,9 @@ void test() {
 			opt_cleandatabase_http_enum =
 			opt_cleandatabase_webrtc =
 			opt_cleandatabase_register_state =
-			opt_cleandatabase_sip_msg =
-			opt_cleandatabase_register_failed = atoi(opt_test_arg);
+			opt_cleandatabase_register_failed = 
+			opt_cleandatabase_register_time_info = 
+			opt_cleandatabase_sip_msg = atoi(opt_test_arg);
 		} else {
 			return;
 		}
@@ -7034,6 +7052,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42119) cConfigItem_integer("cleandatabase_webrtc", &opt_cleandatabase_webrtc));
 			addConfigItem(new FILE_LINE(42120) cConfigItem_integer("cleandatabase_register_state", &opt_cleandatabase_register_state));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_register_failed", &opt_cleandatabase_register_failed));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info", &opt_cleandatabase_register_time_info));
 			addConfigItem(new FILE_LINE(42121) cConfigItem_integer("cleandatabase_sip_msg", &opt_cleandatabase_sip_msg));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
@@ -7602,6 +7621,12 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-state-compare-vlan", &opt_sip_register_state_compare_vlan));
 					expert();
 					addConfigItem(new FILE_LINE(42295) cConfigItem_yesno("sip-register-save-all", &opt_sip_register_save_all));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-state-timeout", &opt_sip_register_state_timeout));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-save-eq-states-time", &opt_sip_register_save_eq_states_time));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip-register-failed-max-details-per-minute", &opt_sip_register_failed_max_details_per_minute));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-register-deferred-save", &opt_sip_register_deferred_save));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-register-advanced", &opt_sip_register_advanced))
+						->addValues("ext:2|extended:2"));
 		subgroup("OPTIONS / SUBSCRIBE / NOTIFY");
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("sip-options", &opt_sip_options))
 				->addValues("nodb:2"));
@@ -7975,6 +8000,7 @@ void cConfig::addConfigItems() {
 						->addValues("only:2|only_for_audiocodes_sip:3"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("audiocodes_rtcp",  &opt_audiocodes_rtcp))
 						->addValues("only:2|only_for_audiocodes_sip:3"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_ports("audiocodes_sip_ports", &opt_audiocodes_sip_ports));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_dstip",  &opt_kamailio_dstip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_ip("kamailio_srcip",  &opt_kamailio_srcip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("kamailio_port",  &opt_kamailio_port));
@@ -8035,8 +8061,9 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
-		opt_cleandatabase_sip_msg =
-		opt_cleandatabase_register_failed = configItem->getValueInt();
+		opt_cleandatabase_register_failed = 
+		opt_cleandatabase_register_time_info = 
+		opt_cleandatabase_sip_msg = configItem->getValueInt();
 	}
 	if(configItem->config_name == "cleandatabase_cdr") {
 		opt_cleandatabase_http_enum =
@@ -8581,8 +8608,10 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 24) == "cdr_stat_interval_store=")	
 								sverb.cdr_stat_interval_store = atoi(verbParam.c_str() + 24);
 	else if(verbParam == "disable_unlink_qfile")		sverb.disable_unlink_qfile = 1;
+	else if(verbParam == "registers_save")			sverb.registers_save = 1;
 	else if(verbParam == "check_config")			sverb.check_config = 1;
 	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
+	else if(verbParam == "suppress_auto_alter")		sverb.suppress_auto_alter = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9623,6 +9652,17 @@ void set_context_config() {
 		syslog(LOG_ERR, "option t2_boost_enable_call_find_threads is not suported with option call_id_alternative");
 	}
 	
+	if(opt_sip_register_advanced) {
+		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-state-timeout") : opt_sip_register_state_timeout_set)) {
+			opt_sip_register_state_timeout = opt_sip_register_advanced > 1 ? (2 * 60) : (5 * 60);
+		}
+		opt_sip_register_save_eq_states_time = true;
+		if(!(useNewCONFIG ? CONFIG.isSet("sip-register-failed-max-details-per-minute") : opt_sip_register_failed_max_details_per_minute_set)) {
+			opt_sip_register_failed_max_details_per_minute = 5000;
+		}
+		opt_sip_register_deferred_save = opt_sip_register_advanced > 1;
+	}
+	
 	if(!(useNewCONFIG ? CONFIG.isSet("ipfix") : opt_ipfix_set)) {
 		opt_ipfix = !opt_ipfix_bind_ip.empty() && opt_ipfix_bind_port;
 	}
@@ -10076,6 +10116,13 @@ void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matri
 	}
 }
 
+void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, map<u_int16_t, bool> *ports) {
+	CSimpleIni::TNamesDepend::const_iterator i = values->begin();
+	for (; i != values->end(); ++i) {
+		cConfigItem_ports::setPorts(i->pItem, ports, 65535);
+	}
+}
+
 void set_cdr_check_unique_callid_in_sensors_list() {
 	opt_cdr_check_unique_callid_in_sensors_list.clear();
 	if(!opt_cdr_check_unique_callid_in_sensors[0]) {
@@ -10383,8 +10430,9 @@ int eval_config(string inistr) {
 		opt_cleandatabase_http_enum =
 		opt_cleandatabase_webrtc =
 		opt_cleandatabase_register_state =
-		opt_cleandatabase_sip_msg =
-		opt_cleandatabase_register_failed = atoi(value);
+		opt_cleandatabase_register_failed =
+		opt_cleandatabase_register_time_info =
+		opt_cleandatabase_sip_msg = atoi(value);
 	}
 	if((value = ini.GetValue("general", "plcdisable", NULL))) {
 		opt_disableplc = yesno(value);
@@ -10435,6 +10483,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleandatabase_register_failed", NULL))) {
 		opt_cleandatabase_register_failed = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cleandatabase_register_time_info", NULL))) {
+		opt_cleandatabase_register_time_info = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase_sip_msg", NULL))) {
 		opt_cleandatabase_sip_msg = atoi(value);
@@ -10650,6 +10701,24 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip-register-save-all", NULL))) {
 		opt_sip_register_save_all = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-state-timeout", NULL))) {
+		opt_sip_register_state_timeout = atoi(value);
+		opt_sip_register_state_timeout_set = true;
+	}
+	if((value = ini.GetValue("general", "sip-register-save-eq-states-time"))) {
+		opt_sip_register_save_eq_states_time = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-failed-max-details-per-minute"))) {
+		opt_sip_register_failed_max_details_per_minute = atoi(value);
+		opt_sip_register_failed_max_details_per_minute_set = true;
+	}
+	if((value = ini.GetValue("general", "sip-register-deferred-save"))) {
+		opt_sip_register_deferred_save = yesno(value);
+	}
+	if((value = ini.GetValue("general", "sip-register-advanced"))) {
+		opt_sip_register_advanced = !strncasecmp(value, "ext", 3) ? 2 :
+					    yesno(value);
 	}
 	if((value = ini.GetValue("general", "sip-options", NULL))) {
 		opt_sip_options = !strcasecmp(value, "nodb") ? 2 :
@@ -12844,6 +12913,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "audiocodes_rtcp", NULL))) {
 		opt_audiocodes_rtcp = !strcasecmp(value, "only") ? 2 :
 				      !strcasecmp(value, "only_for_audiocodes_sip") ? 3 : yesno(value);
+	}
+	if(ini.GetAllValues("general", "audiocodes_sip_ports", values)) {
+		parse_config_item_ports(&values, &opt_audiocodes_sip_ports);
 	}
 	
 	if((value = ini.GetValue("general", "kamailio_dstip", NULL))) {
