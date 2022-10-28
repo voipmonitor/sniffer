@@ -1,3 +1,8 @@
+30.8 29.11.2022
+===============
+- added EVS codec support
+
+
 30.7 27.11.2022
 ===============
 - fix gitUpgrade configure [VG-2512]
