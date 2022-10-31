@@ -1,3 +1,16 @@
+30.8 29.11.2022
+===============
+- added EVS codec support
+
+
+30.7 27.11.2022
+===============
+- fix gitUpgrade configure [VG-2512]
+- fix tls decoding client_random keys [VS-1376]
+- stop processing RTP/RTCP if bye_timeout <= 10 [VS-1373]
+- new option audiocodes_sip_ports [VS-1349]
+
+
 30.6 17.10.2022
 ===============
 - new options cdr_reason_string_enable, cdr_reason_reg_remove [VS-137]

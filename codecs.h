@@ -56,6 +56,7 @@
 #define PAYLOAD_AAL2_G72624 356
 #define PAYLOAD_AAL2_G72632 357
 #define PAYLOAD_AAL2_G72640 358
+#define PAYLOAD_EVS 359
 #define PAYLOAD_TELEVENT 400
 
 #define PAYLOAD_VIDEO 10000
@@ -137,6 +138,8 @@ inline const char *codec2text(int codec) {
 	case PAYLOAD_AAL2_G72632:
 	case PAYLOAD_AAL2_G72640:
 		return "AAL2-G726";
+	case PAYLOAD_EVS:
+		return "EVS";
 	default:
 		return "UNKNOWN CODEC NUMBER";
 	}
