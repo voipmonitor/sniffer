@@ -9045,7 +9045,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			this->logNeedAlter("register_state",
 					   "register state",
 					   "ALTER TABLE register_state "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
 					   log, &tableSize, NULL);
 		}
 		bool registerFailedIdIsBig = true;
@@ -9062,7 +9062,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			this->logNeedAlter("register_failed",
 					   "register failed",
 					   "ALTER TABLE register_failed "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
 					   log, &tableSize, NULL);
 		}
 	}
