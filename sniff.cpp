@@ -2494,7 +2494,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->label[label_length] = 0;
 		}
 		
-		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
+		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp ||
+		   sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
 			s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
 			if(l > 0) {
 				char *cryptoContent = s;
@@ -2540,6 +2541,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					}
 				}
 				while(cryptoContent);
+				if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+					sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+				}
 			} else {
 				s = _gettag(sdp_media_text, sdp_media_text_len, "a=fingerprint:", &l);
 				if(l > 0) {
@@ -2547,6 +2551,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 						sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
 					}
 					*sdp_media_data_item->srtp_fingerprint =  string(s, l);
+					if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+						sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+					}
 				} else {
 					s = _gettag(sdp_text, sdp_media_start[0] - sdp_text, "a=fingerprint:", &l);
 					if(l > 0) {
@@ -2554,6 +2561,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 							sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
 						}
 						*sdp_media_data_item->srtp_fingerprint =  string(s, l);
+						if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+							sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+						}
 					}
 				}
 			}
