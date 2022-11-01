@@ -9032,6 +9032,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 	if(opt_sip_register == 1) {
 		bool registerStateIdIsBig = true;
+		bool registerStateIdIsAutoIncrement = true;
 		this->query("show columns from register_state like 'id'");
 		SqlDb_row register_state_struct_row = this->fetchRow();
 		if(register_state_struct_row) {
@@ -9040,8 +9041,13 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			if(idType.find("BIG") == string::npos) {
 				registerStateIdIsBig = false;
 			}
+			string extra = register_state_struct_row["extra"];
+			std::transform(extra.begin(), extra.end(), extra.begin(), ::toupper);
+			if(extra.find("AUTO_INCREMENT") == string::npos) {
+				registerStateIdIsAutoIncrement = false;
+			}
 		}
-		if(!registerStateIdIsBig) {
+		if(!registerStateIdIsBig || !registerStateIdIsAutoIncrement) {
 			this->logNeedAlter("register_state",
 					   "register state",
 					   "ALTER TABLE register_state "
@@ -9049,6 +9055,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 					   log, &tableSize, NULL);
 		}
 		bool registerFailedIdIsBig = true;
+		bool registerFailedIdIsAutoIncrement = true;
 		this->query("show columns from register_failed like 'id'");
 		SqlDb_row register_failed_struct_row = this->fetchRow();
 		if(register_failed_struct_row) {
@@ -9057,8 +9064,13 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			if(idType.find("BIG") == string::npos) {
 				registerFailedIdIsBig = false;
 			}
+			string extra = register_failed_struct_row["extra"];
+			std::transform(extra.begin(), extra.end(), extra.begin(), ::toupper);
+			if(extra.find("AUTO_INCREMENT") == string::npos) {
+				registerFailedIdIsAutoIncrement = false;
+			}
 		}
-		if(!registerFailedIdIsBig) {
+		if(!registerFailedIdIsBig || !registerFailedIdIsAutoIncrement) {
 			this->logNeedAlter("register_failed",
 					   "register failed",
 					   "ALTER TABLE register_failed "
