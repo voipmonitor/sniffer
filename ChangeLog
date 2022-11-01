@@ -1,9 +1,16 @@
-30.8 29.11.2022
+30.8.1 01.11.2022
+=================
+- fix SRTP decryption if media type in sdp does not indicate that it is srtp [VS-1377]
+- fix alter for register_state/failed (missing AUTO_INCREMENT) if id is 32-bit
+- change permissions for pid file from 0666 to 0600 [VS-1357]
+
+
+30.8 29.10.2022
 ===============
 - added EVS codec support
 
 
-30.7 27.11.2022
+30.7 27.10.2022
 ===============
 - fix gitUpgrade configure [VG-2512]
 - fix tls decoding client_random keys [VS-1376]

@@ -2712,7 +2712,9 @@ static void daemonize(void)
 
 		// write pid file to opt_pidfile
 		vmon_pid = getpid();
+		mode_t oldmask = umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		f = fopen(opt_pidfile, "w");
+		umask(oldmask);
 		if (f) {
 		       fprintf(f, "%ld\n", (long)vmon_pid);
 		       fclose(f);
