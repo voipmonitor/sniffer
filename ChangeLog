@@ -1,3 +1,9 @@
+30.8.2 04.11.2022
+=================
+- fix register_failed.flags check
+- fix issue with defragmentation vxlan packets - add set length of encapsulation udp header [VS-1378]
+
+
 30.8.1 01.11.2022
 =================
 - fix SRTP decryption if media type in sdp does not indicate that it is srtp [VS-1377]
