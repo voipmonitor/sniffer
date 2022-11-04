@@ -806,7 +806,7 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 			flags |= REG_ID_SIMPLE;
 		}
 		reg.add(state->next_states.size() + 1, "counter");
-		if(existsColumns.register_state_flags) {
+		if(existsColumns.register_failed_flags) {
 			if(state->is_sipalg_detected) {
 				flags |= REG_SIPALG_DETECTED;
 			}
