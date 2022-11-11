@@ -1461,7 +1461,7 @@ bool SqlDb::getDisableLogError() {
 }
 
 void SqlDb::setSilentConnect() {
-	this->silentConnect = true;;
+	this->silentConnect = true;
 }
 
 void SqlDb::cleanFields() {
@@ -1830,8 +1830,16 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 			}
 			snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
-			if(!this->existsDatabase() || !this->query(tmp)) {
+			bool disableLogErrorOld = false;
+			if(silentConnect) {
+				disableLogErrorOld = getDisableLogError();
+				setDisableLogError(true);
+			}
+			if(!this->query(tmp)) {
 				rslt = false;
+			}
+			if(silentConnect) {
+				setDisableLogError(disableLogErrorOld);
 			}
 			if(mainInit && !isCloud()) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
@@ -10578,8 +10586,8 @@ void cLogSensor::_save() {
 	sqlDb->setDisableLogError(true);
 	sqlDb->setEnableSqlStringInContent(true);
 	bool existsOkLogSensorTable = false;
-	if(!sqlStore && !isCloud() && !opt_nocdr) {
-		existsOkLogSensorTable = sqlDb->existsDatabase() && sqlDb->existsTable("log_sensor");
+	if(!sqlStore && !isCloud() && !opt_nocdr && sqlDb->connect()) {
+		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
 	}
 	string query_str;
 	sItem *firstItem = &(*items.begin());

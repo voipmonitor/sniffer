@@ -1,3 +1,11 @@
+30.8.3 11.11.2022
+=================
+- change a way how sniffer detects if database is missing with each new connection (fixes connection lags on large databases)  
+- disable load data from table sensor_config in cConfig::getJson if mysqlloadconfig=no
+- Document cdr_reason_reg_remove option plus fix a typo
+- Fix documetation typo and remove duplicit description of cdr_ua_reg_remove option
+
+
 30.8.2 04.11.2022
 =================
 - fix register_failed.flags check

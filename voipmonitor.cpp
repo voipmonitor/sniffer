@@ -1705,7 +1705,7 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 						opt_mysql_enable_new_store = true;
 					}
 				} else {
-					if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
+					if(!sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
 						connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
 						connectOk = -1;
 					} else {
