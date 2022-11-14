@@ -8717,6 +8717,15 @@ bool ReassemblyBuffer::existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort
 	return(false);
 }
 
+bool ReassemblyBuffer::existsStream(sStreamId *sid) {
+	if(streams.size()) {
+		if(streams.find(*sid) != streams.end()) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 void ReassemblyBuffer::cleanup(timeval time, list<sDataRslt> *dataRslt) {
 	if(minTimeInStreams && minTimeInStreams < getTimeUS(time) - 500000ull) {
 		minTimeInStreams = 0;

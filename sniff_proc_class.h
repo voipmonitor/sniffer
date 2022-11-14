@@ -361,6 +361,7 @@ public:
 			   u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 			   list<sDataRslt> *dataRslt);
 	bool existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
+	bool existsStream(sStreamId *sid);
 	void cleanup(timeval time, list<sDataRslt> *dataRslt);
 private:
 	sDataRslt complete(sStreamId *streamId, sData *b_data);

@@ -85,6 +85,7 @@ private:
 	unsigned int counterProcessData;
 	unsigned int counterDecryptData;
 	ReassemblyBuffer reassemblyBuffer;
+	map<sStreamId, string> incomplete_prev_rslt_decrypt;
 };
 
 
