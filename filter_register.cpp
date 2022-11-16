@@ -52,6 +52,25 @@ void cRegisterFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["sipcallerport"].empty() &&
+	   filterData["sipcallerdport_type"] == "0") {
+		cRecordFilterItem_Port *filter1 = new FILE_LINE(0) cRecordFilterItem_Port(this, rf_sipcallerport, atoi(filterData["sipcallerport"].c_str()));
+		cRecordFilterItem_Port *filter2 = new FILE_LINE(0) cRecordFilterItem_Port(this, rf_sipcalledport, atoi(filterData["sipcallerport"].c_str()));
+		addFilter(filter1, filter2);
+	} else {
+		cRecordFilterItems gItems(cRecordFilterItems::_and);
+		if(!filterData["sipcallerport"].empty()) {
+			cRecordFilterItem_Port *filter = new FILE_LINE(0) cRecordFilterItem_Port(this, rf_sipcallerport, atoi(filterData["sipcallerport"].c_str()));
+			gItems.addFilter(filter);
+		}
+		if(!filterData["sipcalledport"].empty()) {
+			cRecordFilterItem_Port *filter = new FILE_LINE(0) cRecordFilterItem_Port(this, rf_sipcalledport, atoi(filterData["sipcalledport"].c_str()));
+			gItems.addFilter(filter);
+		}
+		if(gItems.isSet()) {
+			addFilter(&gItems);
+		}
+	}
 	if(!filterData["sipcallerip_encaps"].empty() &&
 	   filterData["sipcallerdip_encaps_type"] == "0") {
 		cRecordFilterItem_IP *filter1 =  new FILE_LINE(0) cRecordFilterItem_IP(this, rf_sipcallerip_encaps);

@@ -6752,7 +6752,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") + 
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -6839,7 +6841,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") +
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -9121,6 +9125,22 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	this->checkNeedAlterAdd("register_state", "register_state digestrealm", true,
 				log, &tableSize, &existsColumns.register_state_digestrealm,
 				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcallerport", true,
+				log, &tableSize, &existsColumns.register_state_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcalledport", true,
+				log, &tableSize, &existsColumns.register_state_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcallerport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcalledport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,

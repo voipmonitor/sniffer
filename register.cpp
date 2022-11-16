@@ -818,6 +818,10 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		if (existsColumns.register_failed_digestrealm) {
 			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
+		if (existsColumns.register_failed_sipcalledport && existsColumns.register_failed_sipcallerport) {
+			reg.add(sipcalledport, "sipcalledport");
+			reg.add(sipcallerport, "sipcallerport");
+		}
 	} else {
 		if(registers.isEnabledIdAssignment(state)) {
 			state->db_id = registers.getNewRegisterStateId(state->id_sensor);
@@ -842,6 +846,10 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		}
 		if (existsColumns.register_state_digestrealm) {
 			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
+		}
+		if (existsColumns.register_state_sipcalledport && existsColumns.register_state_sipcallerport) {
+			reg.add(sipcalledport, "sipcalledport");
+			reg.add(sipcallerport, "sipcallerport");
 		}
 	}
 	if(state->id_sensor > -1) {

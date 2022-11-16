@@ -8494,6 +8494,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						if(a_ua[0]) {
 							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 						}
+						if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(), "sipcallerport");
+							reg.add(getSipcalledport(), "sipcalledport");
+						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 
@@ -8516,6 +8520,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						}
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
+						if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(), "sipcallerport");
+							reg.add(getSipcalledport(), "sipcalledport");
+						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 				} else {
@@ -8537,6 +8545,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					}
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
+					if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+						reg.add(getSipcallerport(), "sipcallerport");
+						reg.add(getSipcalledport(), "sipcalledport");
+					}
 					sqlDbSaveCall->insert("register_state", reg);
 				}
 
@@ -8566,6 +8578,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
+					reg.add(getSipcallerport(), "sipcallerport");
+					reg.add(getSipcalledport(), "sipcalledport");
 					//reg.add(srcmac, "src_mac");
 
 					if (existsColumns.register_rrd_count) {
@@ -8624,7 +8638,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_num), "contact_num");
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
-
+			if (existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+				reg.add(getSipcallerport(), "sipcallerport");
+				reg.add(getSipcalledport(), "sipcalledport");
+			}
 			//reg.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
 
@@ -8666,6 +8683,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
+					if (existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+						reg.add(getSipcallerport(), "sipcallerport");
+						reg.add(getSipcalledport(), "sipcalledport");
+					}
 					if(a_ua[0]) {
 						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
