@@ -2508,7 +2508,8 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 	}
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
-		   !this->isfax && !record_dtmf) {
+		   !(this->is_fax() && this->is_fax_packet(packetS)) && 
+		   !record_dtmf) {
 			if(packetS->isStun()) {
 				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
@@ -2524,10 +2525,16 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 				}
 			}
-		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
+		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
+			  (this->is_fax() && this->is_fax_packet(packetS)) || 
+			  record_dtmf) {
 			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 		}
 	}
+}
+
+bool Call::is_fax_packet(struct packet_s_process_0 *packetS) {
+	return(seenudptl ? packetS->isUdptlOkDataLen() : isfax);
 }
 
 void Call::stoprecording() {

@@ -5906,14 +5906,14 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							#if DEBUG_DTLS_QUEUE
 							cout << " * use dtls" << endl;
 							#endif
-							call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+							call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, (*iter)), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 						}
 					}
 					if(is_rtcp) {
 						rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 					} else {
-						rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+						rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS), 
 									       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 					}
 				} else if(is_rtcp) {
@@ -5995,7 +5995,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 					#endif
 					(*iter)->blockstore_addflag(123 /*pb lock flag*/);
 					add_to_rtp_thread_queue(call, *iter, 
-								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 								false, threadIndex);
 				}
 			}
@@ -6007,7 +6007,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 							preSyncRtp, threadIndex);
 			}
 		}
