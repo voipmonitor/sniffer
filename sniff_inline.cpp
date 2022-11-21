@@ -319,6 +319,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern unsigned opt_udp_port_l2tp;
 	extern unsigned opt_udp_port_tzsp;
 	extern unsigned opt_udp_port_vxlan;
+	extern unsigned opt_udp_port_hperm;
 	extern bool opt_icmp_process_data;
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
@@ -399,6 +400,22 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		   (htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IP ||
 		    (VM_IPV6_B && htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IPV6))) {
 			unsigned int _next_header_ip_offset = vxlan_offset + vxlan_length + sizeof(ether_header);
+			if(((iphdr2*)((char*)header_ip + _next_header_ip_offset))->version_is_ok()) {
+				next_header_ip_offset = _next_header_ip_offset;
+			}
+		}
+		rslt_offset = next_header_ip_offset;
+	} else if(opt_udp_port_hperm &&
+		  ip_protocol == IPPROTO_UDP &&									// HP ERM
+		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_hperm &&	// check source port (default 0x9090)
+		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) >
+							 (sizeof(udphdr2) + 10 + sizeof(ether_header) + sizeof(iphdr2))) {	// check minimal length
+		unsigned int hperm_length = 12;
+		unsigned int hperm_offset = header_ip->get_hdr_size() + sizeof(udphdr2);
+		unsigned int next_header_ip_offset = 0;
+		if (htons(((ether_header*)((char*)header_ip + hperm_offset + hperm_length))->ether_type) == ETHERTYPE_IP ||
+		    (VM_IPV6_B && htons(((ether_header*)((char*)header_ip + hperm_offset + hperm_length))->ether_type) == ETHERTYPE_IPV6)) {
+			unsigned int _next_header_ip_offset = hperm_offset + hperm_length + sizeof(ether_header);
 			if(((iphdr2*)((char*)header_ip + _next_header_ip_offset))->version_is_ok()) {
 				next_header_ip_offset = _next_header_ip_offset;
 			}
