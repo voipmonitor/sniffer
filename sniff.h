@@ -542,6 +542,9 @@ struct packet_s_plus_pointer : public packet_s {
 
 struct packet_s_process_rtp_call_info {
 	Call *call;
+	#if CALL_BRANCHES
+	CallBranch *c_branch;
+	#endif
 	int8_t iscaller;
 	bool is_rtcp;
 	s_sdp_flags sdp_flags;
@@ -1027,6 +1030,9 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 
 typedef struct {
 	Call *call;
+	#if CALL_BRANCHES
+	CallBranch *c_branch;
+	#endif
 	packet_s_process_0 *packet;
 	int8_t iscaller;
 	char find_by_dest;
@@ -1087,7 +1093,11 @@ public:
 	void term_qring();
 	void term_thread_buffer();
 	size_t qring_size();
+	#if not CALL_BRANCHES
 	inline void push(Call *call, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, int threadIndex = 0) {
+	#else
+	inline void push(Call *call, CallBranch *c_branch, packet_s_process_0 *packet, int iscaller, bool find_by_dest, int is_rtcp, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, int enable_save_packet, int threadIndex = 0) {
+	#endif
 		
 		/* destroy and quit - debug
 		void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet);
@@ -1156,6 +1166,9 @@ public:
 			}
 			rtp_packet_pcap_queue *rtpp_pq = &thread_buffer->batch[thread_buffer->count];
 			rtpp_pq->call = call;
+			#if CALL_BRANCHES
+			rtpp_pq->c_branch = c_branch;
+			#endif
 			rtpp_pq->packet = packet;
 			rtpp_pq->iscaller = iscaller;
 			rtpp_pq->find_by_dest = find_by_dest;
@@ -1192,6 +1205,9 @@ public:
 			}
 			rtp_packet_pcap_queue *rtpp_pq = &qring_active_push_item->batch[qring_push_index_count];
 			rtpp_pq->call = call;
+			#if CALL_BRANCHES
+			rtpp_pq->c_branch = c_branch;
+			#endif
 			rtpp_pq->packet = packet;
 			rtpp_pq->iscaller = iscaller;
 			rtpp_pq->find_by_dest = find_by_dest;

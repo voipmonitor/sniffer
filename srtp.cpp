@@ -68,13 +68,20 @@ bool RTPsecure::sCryptoConfig::keyDecode() {
 	return(true);
 }
 
+#if not CALL_BRANCHES
 RTPsecure::RTPsecure(eMode mode, Call *call, int index_ip_port, bool local) {
+#else
+RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_port, bool local) {
+#endif
 	#if HAVE_LIBSRTP
 		this->mode = mode;
 	#else
 		this->mode = mode_native;
 	#endif
 	this->call = call;
+	#if CALL_BRANCHES
+	this->c_branch = c_branch;
+	#endif
 	this->index_ip_port = index_ip_port;
 	this->local = local;
 	cryptoConfigCallSize = 0;
@@ -115,15 +122,27 @@ bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
 			}
 		}
 	}
+	#if not CALL_BRANCHES
 	if(index_ip_port >= 0 &&
 	   call->ip_port[index_ip_port].srtp_crypto_config_list &&
 	   cryptoConfigCallSize != call->ip_port[index_ip_port].srtp_crypto_config_list->size()) {
 		for(list<srtp_crypto_config>::iterator iter = call->ip_port[index_ip_port].srtp_crypto_config_list->begin();
 		    iter != call->ip_port[index_ip_port].srtp_crypto_config_list->end();
+	#else
+	if(index_ip_port >= 0 &&
+	   c_branch->ip_port[index_ip_port].srtp_crypto_config_list &&
+	   cryptoConfigCallSize != c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size()) {
+		for(list<srtp_crypto_config>::iterator iter = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->begin();
+		    iter != c_branch->ip_port[index_ip_port].srtp_crypto_config_list->end();
+	#endif
 		    iter++) {
 			this->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str(), iter->from_time_us);
 		}
+		#if not CALL_BRANCHES
 		cryptoConfigCallSize = call->ip_port[index_ip_port].srtp_crypto_config_list->size();
+		#else
+		cryptoConfigCallSize = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size();
+		#endif
 		return(true);
 	}
 	return(false);
@@ -222,10 +241,17 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 }
 
 bool RTPsecure::is_dtls() {
+	#if not CALL_BRANCHES
 	return(call->dtls_exists ||
 	       (index_ip_port >= 0 &&
 		(call->ip_port[index_ip_port].srtp && 
 		 (call->ip_port[index_ip_port].srtp_fingerprint || !call->ip_port[index_ip_port].srtp_crypto_config_list))));
+	#else
+	return(call->dtls_exists ||
+	       (index_ip_port >= 0 &&
+		(c_branch->ip_port[index_ip_port].srtp && 
+		 (c_branch->ip_port[index_ip_port].srtp_fingerprint || !c_branch->ip_port[index_ip_port].srtp_crypto_config_list))));
+	#endif
 }
 
 bool RTPsecure::decrypt_rtp(u_char *data, unsigned *data_len, u_char *payload, unsigned *payload_len, u_int64_t time_us,

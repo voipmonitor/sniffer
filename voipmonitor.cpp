@@ -802,6 +802,9 @@ char opt_fbasename_header[128] = "";
 char opt_match_header[128] = "";
 char opt_callidmerge_header[128] = "";
 char opt_callidmerge_secret[128] = "";
+#if CALL_BRANCHES
+bool opt_callidmerge_force_separate_branches = false;
+#endif
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -7545,6 +7548,9 @@ void cConfig::addConfigItems() {
 				->addAlias("match_header"));
 			addConfigItem((new FILE_LINE(42275) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
 				->setPrefixSuffix("\n", ":"));
+			#if CALL_BRANCHES
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callidmerge_force_separate_branches", &opt_callidmerge_force_separate_branches));
+			#endif
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-message", &opt_sip_message));
@@ -11174,6 +11180,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
 		strcpy_null_term(opt_callidmerge_secret, value);
 	}
+	#if CALL_BRANCHES
+	if((value = ini.GetValue("general", "callidmerge_force_separate_branches", NULL))) {
+		opt_callidmerge_force_separate_branches = yesno(value);
+	}
+	#endif
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = yesno(value);
 	}

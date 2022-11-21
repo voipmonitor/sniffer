@@ -1352,15 +1352,26 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 				    getTimeUS(header), saddr, source, 
 				    handle, dlt, sensor_id);
 	call->set_first_packet_time_us(getTimeUS(header));
+	#if not CALL_BRANCHES
 	call->setSipcallerip(saddr, vmIP(0), 0xFF, source);
 	call->setSipcalledip(daddr, vmIP(0), 0xFF, dest);
+	#else
+	CallBranch *c_branch = call->branch_main();
+	call->setSipcallerip(c_branch, saddr, vmIP(0), 0xFF, source);
+	call->setSipcalledip(c_branch, daddr, vmIP(0), 0xFF, dest);
+	#endif
 	call->flags = flags;
 	strcpy_null_term(call->fbasename, callidstr);
 	
 	// add saddr|daddr into map
 	d_item<vmIP> ip2;
+	#if not CALL_BRANCHES
 	ip2.items[0] = min(call->sipcallerip[0], call->sipcalledip[0]);
 	ip2.items[1] = max(call->sipcallerip[0], call->sipcalledip[0]);
+	#else
+	ip2.items[0] = min(c_branch->sipcallerip[0], c_branch->sipcalledip[0]);
+	ip2.items[1] = max(c_branch->sipcallerip[0], c_branch->sipcalledip[0]);
+	#endif
 	calltable->lock_skinny_maps();
 	calltable->skinny_ipTuples[ip2] = call;
 	calltable->unlock_skinny_maps();
@@ -1476,6 +1487,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 				call = new_skinny_channel(SKINNY_NEW, data, datalen, header, callid, saddr, daddr, source, dest, callid, strlen(callid),
 							  handle, dlt, sensor_id);
 				if(!call) return NULL;
+				#if not CALL_BRANCHES
 				call->oneway = 0;       // do not treat skinny as one-way 
 	
 				if(state == SKINNY_OFFHOOK) {
@@ -1486,10 +1498,24 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 					call->setSipcallerip(saddr, vmIP(0), 0xFF, source);
 					call->setSipcalledip(daddr, vmIP(0), 0xFF, dest);
 				}
+				#else
+				CallBranch *c_branch = call->branch_main();
+				c_branch->oneway = 0;       // do not treat skinny as one-way 
+	
+				if(state == SKINNY_OFFHOOK) {
+					call->setSipcallerip(c_branch, daddr, vmIP(0), 0xFF, dest);
+					call->setSipcalledip(c_branch, saddr, vmIP(0), 0xFF, source);
+					c_branch->sipcallerdip_reverse = true;
+				} else {
+					call->setSipcallerip(c_branch, saddr, vmIP(0), 0xFF, source);
+					call->setSipcalledip(c_branch, daddr, vmIP(0), 0xFF, dest);
+				}
+				#endif
 			} else {
 				return NULL;
 			}
 		}
+		#if not CALL_BRANCHES
 		switch(state) {
 		case SKINNY_OFFHOOK:
 			strcpy(call->lastSIPresponse, "OFF HOOK");
@@ -1548,6 +1574,67 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			strcpy(call->lastSIPresponse, "INVALID");
 			break;
 		}
+		#else
+		CallBranch *c_branch = call->branch_main();
+		switch(state) {
+		case SKINNY_OFFHOOK:
+			c_branch->lastSIPresponse = "OFF HOOK";
+			break;
+		case SKINNY_ONHOOK:
+			c_branch->lastSIPresponse = "ON HOOK";
+			call->destroy_call_at = header->ts.tv_sec + 5;
+			if(!is_read_from_file_by_pb()) {
+				call->removeFindTables(c_branch, true);
+			}
+			break;
+		case SKINNY_RINGOUT:
+			c_branch->lastSIPresponse = "RING OUT";
+			c_branch->lastSIPresponseNum = 183;
+			break;
+		case SKINNY_RINGIN:
+			c_branch->lastSIPresponse = "RING IN";
+			c_branch->lastSIPresponseNum = 183;
+			break;
+		case SKINNY_CONNECTED:
+			c_branch->lastSIPresponse = "CONNECTED";
+			c_branch->lastSIPresponseNum = 200;
+			if(!call->connect_time_us) {
+				call->connect_time_us = getTimeUS(header);
+			}
+			break;
+		case SKINNY_BUSY:
+			c_branch->lastSIPresponseNum = 486;
+			c_branch->lastSIPresponse = "BUSY";
+			break;
+		case SKINNY_CONGESTION:
+			c_branch->lastSIPresponseNum = 503;
+			c_branch->lastSIPresponse = "CONGESTION";
+			break;
+		case SKINNY_HOLD:
+			c_branch->lastSIPresponse = "HOLD";
+			break;
+		case SKINNY_CALLWAIT:
+			c_branch->lastSIPresponse = "CALLWAIT";
+			break;
+		case SKINNY_TRANSFER:
+			c_branch->lastSIPresponse = "TRANSFER";
+			break;
+		case SKINNY_PARK:
+			c_branch->lastSIPresponse = "PARK";
+			break;
+		case SKINNY_PROGRESS:
+			c_branch->lastSIPresponseNum = 100;
+			c_branch->lastSIPresponse = "PROGRESS";
+			break;
+		case SKINNY_CALLREMOTEMULTILINE:
+			c_branch->lastSIPresponse = "CALL REMOTE MULTILINE";
+			break;
+		case SKINNY_INVALID:
+			c_branch->lastSIPresponseNum = 603;
+			c_branch->lastSIPresponse = "INVALID";
+			break;
+		}
+		#endif
 		}
 		break;
 	case START_TONE_MESSAGE:
@@ -1575,9 +1662,16 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received CALL_INFO_MESSAGE ref %d\n", ref);
 		snprintf(callid, sizeof(callid), "%u", ref);
 		if ((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
+			#if not CALL_BRANCHES
 			memcpy(call->callername, req.data.callinfo.callingPartyName, sizeof(req.data.callinfo.callingPartyName));
 			memcpy(call->caller, req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
 			memcpy(call->called_final, req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
+			#else
+			CallBranch *c_branch = call->branch_main();
+			c_branch->callername = string(req.data.callinfo.callingPartyName, sizeof(req.data.callinfo.callingPartyName));
+			c_branch->caller = string(req.data.callinfo.callingParty, sizeof(req.data.callinfo.callingParty));
+			c_branch->called_final = string(req.data.callinfo.calledParty, sizeof(req.data.callinfo.calledParty));
+			#endif
 
 			u_int64_t _forcemark_time = getTimeUS(header);
 			call->forcemark_lock();
@@ -1680,6 +1774,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 				callingPartyName = strings[req.res == 22 ? 10 : 8];
 			}
 
+			#if not CALL_BRANCHES
 			if(callingParty) {
 				memcpy(call->caller, callingParty, MIN(sizeof(call->caller), strlen(callingParty) + 1));
 				call->caller[sizeof(call->caller) - 1] = 0;
@@ -1692,6 +1787,18 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 				memcpy(call->callername, callingPartyName, MIN(sizeof(call->callername), strlen(callingPartyName) + 1));
 				call->callername[sizeof(call->callername) - 1] = 0;
 			}
+			#else
+			CallBranch *c_branch = call->branch_main();
+			if(callingParty) {
+				c_branch->caller = callingParty;
+			}
+			if(calledParty) {
+				c_branch->called_final = calledParty;
+			}
+			if(callingPartyName) {
+				c_branch->callername = callingPartyName;
+			}
+			#endif
 		}
 		}
 		break;
@@ -1729,7 +1836,12 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received DIALED_NUMBER_MESSAGE ref %d num:[%s]\n", ref, req.data.dialednumber.dialedNumber);
 		snprintf(callid, sizeof(callid), "%u", ref);
 		if((call = calltable->find_by_call_id(callid, strlen(callid), NULL, 0))){
+			#if not CALL_BRANCHES
 			strcpy_null_term(call->called_final, req.data.dialednumber.dialedNumber);
+			#else
+			CallBranch *c_branch = call->branch_main();
+			c_branch->called_final = req.data.dialednumber.dialedNumber;
+			#endif
 		}
 		}
 		break;
@@ -1787,11 +1899,20 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 					rtpmap[0].codec = codec;
 				}
 			}
+			#if not CALL_BRANCHES
 			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, 
 					       NULL, NULL,
 					       NULL, NULL, NULL, NULL, NULL, 
 					       (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			#else
+			CallBranch *c_branch = call->branch_main();
+			call->add_ip_port_hash(c_branch,
+					       saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
+					       NULL, NULL, false, 
+					       NULL, NULL,
+					       (c_branch->sipcallerdip_reverse ? c_branch->sipcalledip[0] : c_branch->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			#endif
 		}
 		}
 		break;
@@ -1992,11 +2113,19 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 		SKINNY_DEBUG(DEBUG_PACKET, 3, "Received OPEN_RECEIVE_CHANNEL_MESSAGE partyId [%u] ipAddr[%u] port[%u]", pid, ipaddr, port);
 		if((call = calltable->find_by_skinny_partyid(pid)) or (call = calltable->find_by_skinny_ipTuples(saddr, daddr))){
 			RTPMAP rtpmap[MAX_RTPMAP];
+			#if not CALL_BRANCHES
 			call->add_ip_port_hash(saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
 					       NULL, NULL, false, 
 					       NULL, NULL,
 					       NULL, NULL, NULL, NULL, NULL,
 					       (call->sipcallerdip_reverse ? call->sipcalledip[0] : call->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			#else
+			call->add_ip_port_hash(call->branch_main(),
+					       saddr, ipv4_2_vmIP(ipaddr, true), ip_port_call_info::_ta_base, port, &header->ts, 
+					       NULL, NULL, false, 
+					       NULL, NULL,
+					       (call->branch_main()->sipcallerdip_reverse ? call->branch_main()->sipcalledip[0] : call->branch_main()->sipcallerip[0]) == saddr, rtpmap, s_sdp_flags());
+			#endif
 		}
 		}
 		break;

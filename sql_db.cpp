@@ -5986,6 +5986,108 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
+	
+	#if CALL_BRANCHES
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_next_branches` (\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
+			`cdr_ID` " + cdrIdType + " unsigned NOT NULL,") +
+			(opt_cdr_partition ?
+				"`calldate` " + column_type_datetime_child_ms() + " NOT NULL," :
+				"") +
+			"`caller` varchar(255) DEFAULT NULL,\
+			`caller_domain` varchar(255) DEFAULT NULL,\
+			`caller_reverse` varchar(255) DEFAULT NULL,\
+			`callername` varchar(255) DEFAULT NULL,\
+			`callername_reverse` varchar(255) DEFAULT NULL,\
+			`called` varchar(255) DEFAULT NULL,\
+			`called_domain` varchar(255) DEFAULT NULL,\
+			`called_reverse` varchar(255) DEFAULT NULL,\
+			`sipcallerip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			" + (opt_save_ip_from_encaps_ipheader ?
+			      string(
+			      "`sipcallerip_encaps` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledip_encaps` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerip_encaps_prot` tinyint unsigned DEFAULT NULL,\
+			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
+			      " :
+			      "") +
+			    (opt_separate_storage_ipv6_ipv4_address ?
+			      string(
+			      "`sipcallerip_v4` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcalledip_v4` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledport_v4` smallint unsigned DEFAULT NULL,\
+			       `sipcallerip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcallerport_v6` smallint unsigned DEFAULT NULL,\
+			       `sipcalledip_v6` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			       `sipcalledport_v6` smallint unsigned DEFAULT NULL,\
+			      " :
+			      "") +
+			"`proxyip_1` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`proxyip_2` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`proxyip_3` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
+			`whohanged` enum('caller','callee') DEFAULT NULL,\
+			`bye` tinyint unsigned DEFAULT NULL,\
+			`lastSIPresponse_id` mediumint unsigned DEFAULT NULL,\
+			`lastSIPresponseNum` smallint unsigned DEFAULT NULL,\
+			`reason_sip_cause` smallint unsigned DEFAULT NULL,\
+			`reason_sip_text_id` mediumint unsigned DEFAULT NULL,\
+			`reason_q850_cause` smallint unsigned DEFAULT NULL,\
+			`reason_q850_text_id` mediumint unsigned DEFAULT NULL,\
+			`a_ua_id` int unsigned DEFAULT NULL,\
+			`b_ua_id` int unsigned DEFAULT NULL,\
+			`call_id` varchar(255) DEFAULT NULL,\
+			`fbasename` varchar(255) DEFAULT NULL,\
+			`custom_header1` varchar(255) DEFAULT NULL,\
+			`match_header` VARCHAR(128) DEFAULT NULL,\
+		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
+		KEY (`cdr_ID`)," + 
+		(opt_cdr_partition ? 
+			"KEY (`calldate`)," :
+			"") +
+		"KEY `source` (`caller`),\
+		KEY `source_reverse` (`caller_reverse`),\
+		KEY `destination` (`called`),\
+		KEY `destination_reverse` (`called_reverse`),\
+		KEY `callername` (`callername`),\
+		KEY `callername_reverse` (`callername_reverse`),\
+		KEY `sipcallerip` (`sipcallerip`),\
+		KEY `sipcalledip` (`sipcalledip`),\
+		" + (opt_save_ip_from_encaps_ipheader ?
+		      "KEY `sipcallerip_encaps` (`sipcallerip_encaps`),\
+		       KEY `sipcalledip_encaps` (`sipcalledip_encaps`),\
+		      " :
+		      "") +
+		    (opt_separate_storage_ipv6_ipv4_address ?
+		      "KEY `sipcallerip_v4` (`sipcallerip_v4`),\
+		       KEY `sipcalledip_v4` (`sipcalledip_v4`),\
+		       KEY `sipcallerip_v6` (`sipcallerip_v6`),\
+		       KEY `sipcalledip_v6` (`sipcalledip_v6`),\
+		      " :
+		      "") +
+		"KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\
+		 KEY `call_id` (`call_id`),\
+		 KEY `fbasename` (`fbasename`)" +
+		(opt_cdr_partition ?
+			"" :
+			",CONSTRAINT `cdr_next_branches_ibfk_1` FOREIGN KEY (`cdr_ID`) REFERENCES `cdr` (`ID`) ON DELETE CASCADE ON UPDATE CASCADE") +
+	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	#endif
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
@@ -8308,6 +8410,9 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	
 	this->checkColumns_cdr(!checkColumnsSilentLog);
 	this->checkColumns_cdr_next(!checkColumnsSilentLog);
+	#if CALL_BRANCHES
+	this->checkColumns_cdr_next_branches(!checkColumnsSilentLog);
+	#endif
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
 	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
@@ -8713,6 +8818,38 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	}
 }
 
+#if CALL_BRANCHES
+void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
+	map<string, u_int64_t> tableSize;
+	existsColumns.cdr_next_branches = this->existsTable("cdr_next_branches");
+	this->checkNeedAlterAdd("cdr_next_branches", "store sip ports (next branches)", opt_cdr_sipport,
+				log, &tableSize, &existsColumns.cdr_next_branches_sipport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL AFTER `sipcallerip`", NULL_CHAR_PTR,
+				"sipcalledport", "smallint unsigned DEFAULT NULL AFTER `sipcalledip`", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr_next_branches", "SIP IP from first IP header (next branches)", opt_save_ip_from_encaps_ipheader,
+				log, &tableSize, &existsColumns.cdr_next_branches_sipcallerdip_encaps,
+				"sipcallerip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_encaps` (`sipcallerip_encaps`)",
+				"sipcalledip_encaps", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_encaps` (`sipcalledip_encaps`)",
+				"sipcallerip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	if(opt_separate_storage_ipv6_ipv4_address) {
+		this->checkNeedAlterAdd("cdr_next_branches", "separate storage IPv4 and IPv6 sip address (next branches)", opt_separate_storage_ipv6_ipv4_address,
+					log, &tableSize, &existsColumns.cdr_next_branches_sipcallerdip_v6,
+					"sipcallerip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v4` (`sipcallerip_v4`)",
+					"sipcallerport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcalledip_v4", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v4` (`sipcalledip_v4`)",
+					"sipcalledport_v4", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcallerip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcallerip_v6` (`sipcallerip_v6`)",
+					"sipcallerport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					"sipcalledip_v6", (string(VM_IPV6_TYPE_MYSQL_COLUMN) + " DEFAULT NULL").c_str(), "`sipcalledip_v6` (`sipcalledip_v6`)",
+					"sipcalledport_v6", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+	}
+}
+#endif
+
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr_rtp", "rtp destination port", opt_cdr_rtpport,
@@ -8782,6 +8919,11 @@ void SqlDb_mysql::checkColumns_cdr_conference(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
+	#if CALL_BRANCHES
+	if(existsColumns.cdr_next_branches) {
+		existsColumns.cdr_next_branches_calldate = this->existsColumn("cdr_next_branches", "calldate");
+	}
+	#endif
 	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
 	if(opt_save_energylevels) {
 		existsColumns.cdr_rtp_energylevels_calldate = this->existsColumn("cdr_rtp_energylevels", "calldate");
@@ -8802,6 +8944,11 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
+	#if CALL_BRANCHES
+	if(existsColumns.cdr_next_branches) {
+		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_branches_calldate_ms, "cdr_next_branches"));
+	}
+	#endif
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
 	if(opt_save_energylevels) {
 		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_energylevels_calldate_ms, "cdr_rtp_energylevels"));
@@ -9651,6 +9798,11 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
 			if(typeTables & tt_child) {
+				#if CALL_BRANCHES
+				if(existsColumns.cdr_next_branches) {
+					tables.push_back("cdr_next_branches");
+				}
+				#endif
 				tables.push_back("cdr_rtp");
 				if(opt_save_energylevels) {
 					tables.push_back("cdr_rtp_energylevels");
@@ -10102,6 +10254,11 @@ void dropMysqlPartitionsCdr() {
 	sqlDb->setDisableNextAttemptIfError();
 	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, 0, sqlDb);
+	#if CALL_BRANCHES
+	if(existsColumns.cdr_next_branches) {
+		_dropMysqlPartitions("cdr_next_branches", opt_cleandatabase_cdr, 0, sqlDb);
+	}
+	#endif
 	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, 0, sqlDb);
 	if(opt_save_energylevels) {
 		_dropMysqlPartitions("cdr_rtp_energylevels", opt_cleandatabase_cdr_rtp_energylevels ? opt_cleandatabase_cdr_rtp_energylevels : opt_cleandatabase_cdr, 0, sqlDb);

@@ -245,7 +245,7 @@ public:
 	inline void expire(bool need_lock_states = true);
 	inline void updateLastState(Call *call, RegisterStates *states);
 	inline void resetLastState(Call *call, RegisterStates *states);
-	inline void updateLastStateItem(char *callItem, char *registerItem, char **stateItem);
+	inline void updateLastStateItem(const char *callItem, const char *registerItem, char **stateItem);
 	inline bool eqLastState(Call *call, bool *exp_state);
 	inline void clean_all();
 	inline u_int8_t saveNewStateToDb(RegisterState *state);

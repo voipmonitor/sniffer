@@ -156,6 +156,7 @@ bool RegisterFailedId:: operator < (const RegisterFailedId& other) const {
 
 RegisterFailedCount::RegisterFailedCount(Call *call) {
 	id_sensor = call->useSensorId;
+	#if not CALL_BRANCHES
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
 	if(opt_save_ip_from_encaps_ipheader) {
@@ -163,6 +164,16 @@ RegisterFailedCount::RegisterFailedCount(Call *call) {
 		sipcalledip_encaps = call->sipcalledip_encaps;
 		sipcallerip_encaps_prot = call->sipcallerip_encaps_prot;
 		sipcalledip_encaps_prot = call->sipcalledip_encaps_prot;
+	#else
+	CallBranch *c_branch = call->branch_main();
+	sipcallerip = c_branch->sipcallerip[0];
+	sipcalledip = c_branch->sipcalledip[0];
+	if(opt_save_ip_from_encaps_ipheader) {
+		sipcallerip_encaps = c_branch->sipcallerip_encaps;
+		sipcalledip_encaps = c_branch->sipcalledip_encaps;
+		sipcallerip_encaps_prot = c_branch->sipcallerip_encaps_prot;
+		sipcalledip_encaps_prot = c_branch->sipcalledip_encaps_prot;
+	#endif
 	} else {
 		sipcallerip_encaps_prot = 0xFF;
 		sipcalledip_encaps_prot = 0xFF;
@@ -227,12 +238,22 @@ RegisterFailedInterval::~RegisterFailedInterval() {
 bool RegisterFailedInterval::add(Call *call) {
 	RegisterFailedId id;
 	id.id_sensor = call->useSensorId;
+	#if not CALL_BRANCHES
 	id.sipcallerip = call->sipcallerip[0];
 	id.sipcalledip = call->sipcalledip[0];
 	if(opt_save_ip_from_encaps_ipheader) {
 		id.sipcallerip_encaps = call->sipcallerip_encaps;
 		id.sipcalledip_encaps = call->sipcalledip_encaps;
 	}
+	#else
+	CallBranch *c_branch = call->branch_main();
+	id.sipcallerip = c_branch->sipcallerip[0];
+	id.sipcalledip = c_branch->sipcalledip[0];
+	if(opt_save_ip_from_encaps_ipheader) {
+		id.sipcallerip_encaps = c_branch->sipcallerip_encaps;
+		id.sipcalledip_encaps = c_branch->sipcalledip_encaps;
+	}
+	#endif
 	map<RegisterFailedId, RegisterFailedCount*>::iterator iter = failed_count.find(id);
 	u_int32_t count = 0;
 	if(iter == failed_count.end()) {
@@ -343,6 +364,7 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		time_shift_ms = call->time_shift_ms;
 		state = convRegisterState(call);
 		zombie = false;
+		#if not CALL_BRANCHES
 		contact_num = reg->contact_num && REG_EQ_STR(call->contact_num, reg->contact_num) ?
 			       EQ_REG :
 			       REG_NEW_STR(call->contact_num);
@@ -364,12 +386,41 @@ RegisterState::RegisterState(Call *call, Register *reg) {
 		ua = reg->ua && REG_EQ_STR(call->a_ua, reg->ua) ?
 		      EQ_REG :
 		      REG_NEW_STR(call->a_ua);
+		#else
+		CallBranch *c_branch = call->branch_main();
+		contact_num = reg->contact_num && REG_EQ_STR(c_branch->contact_num.c_str(), reg->contact_num) ?
+			       EQ_REG :
+			       REG_NEW_STR(c_branch->contact_num.c_str());
+		contact_domain = reg->contact_domain && REG_EQ_STR(c_branch->contact_domain.c_str(), reg->contact_domain) ?
+				  EQ_REG :
+				  REG_NEW_STR(c_branch->contact_domain.c_str());
+		from_num = reg->from_num && REG_EQ_STR(c_branch->caller.c_str(), reg->from_num) ?
+			    EQ_REG :
+			    REG_NEW_STR(c_branch->caller.c_str());
+		from_name = reg->from_name && REG_EQ_STR(c_branch->callername.c_str(), reg->from_name) ?
+			     EQ_REG :
+			     REG_NEW_STR(c_branch->callername.c_str());
+		from_domain = reg->from_domain && REG_EQ_STR(c_branch->caller_domain.c_str(), reg->from_domain) ?
+			       EQ_REG :
+			       REG_NEW_STR(c_branch->caller_domain.c_str());
+		digest_realm = reg->digest_realm && REG_EQ_STR(c_branch->digest_realm.c_str(), reg->digest_realm) ?
+				EQ_REG :
+				REG_NEW_STR(c_branch->digest_realm.c_str());
+		ua = reg->ua && REG_EQ_STR(c_branch->a_ua.c_str(), reg->ua) ?
+		      EQ_REG :
+		      REG_NEW_STR(c_branch->a_ua.c_str());
+		#endif
 		spool_index = call->getSpoolIndex();
 		fname = fname_last = call->fname_register;
-		expires = call->register_expires;
+		expires = call->reg.register_expires;
 		id_sensor = call->useSensorId;
+		#if not CALL_BRANCHES
 		is_sipalg_detected = call->is_sipalg_detected;
 		vlan = call->vlan;
+		#else
+		is_sipalg_detected = c_branch->is_sipalg_detected;
+		vlan = c_branch->vlan;
+		#endif
 	} else {
 		state_from_us = state_to_us = 0;
 		time_shift_ms = 0;
@@ -435,6 +486,7 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 	if(!opt_sip_register_state_compare_ua) cout << "skip ua" << endl;
 	else if(REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, call->a_ua)) cout << "ok ua" << endl;
 	*/
+	#if not CALL_BRANCHES
 	bool eq = state == convRegisterState(call) &&
 		  (!opt_sip_register_state_compare_contact_num || REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, call->contact_num)) &&
 		  (!opt_sip_register_state_compare_contact_domain || REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, call->contact_domain)) &&
@@ -446,6 +498,20 @@ bool RegisterState::isEq(Call *call, Register *reg, bool *exp_state) {
 		  (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == call->is_sipalg_detected)) &&
 		  (!opt_sip_register_state_compare_vlan || (vlan == call->vlan)) &&
 		  id_sensor == call->useSensorId;
+	#else
+	CallBranch *c_branch = call->branch_main();
+	bool eq = state == convRegisterState(call) &&
+		  (!opt_sip_register_state_compare_contact_num || REG_EQ_STR(contact_num == EQ_REG ? reg->contact_num : contact_num, c_branch->contact_num.c_str())) &&
+		  (!opt_sip_register_state_compare_contact_domain || REG_EQ_STR(contact_domain == EQ_REG ? reg->contact_domain : contact_domain, c_branch->contact_domain.c_str())) &&
+		  (!opt_sip_register_state_compare_from_num || REG_EQ_STR(from_num == EQ_REG ? reg->from_num : from_num, c_branch->caller.c_str())) &&
+		  (!opt_sip_register_state_compare_from_name || REG_EQ_STR(from_name == EQ_REG ? reg->from_name : from_name, c_branch->callername.c_str())) &&
+		  (!opt_sip_register_state_compare_from_domain || REG_EQ_STR(from_domain == EQ_REG ? reg->from_domain : from_domain, c_branch->caller_domain.c_str())) &&
+		  (!opt_sip_register_state_compare_digest_realm || REG_EQ_STR(digest_realm == EQ_REG ? reg->digest_realm : digest_realm, c_branch->digest_realm.c_str())) &&
+		  (!opt_sip_register_state_compare_ua || REG_EQ_STR(ua == EQ_REG ? reg->ua : ua, c_branch->a_ua.c_str())) &&
+		  (!opt_sip_register_state_compare_sipalg || (!opt_sipalg_detect || is_sipalg_detected == c_branch->is_sipalg_detected)) &&
+		  (!opt_sip_register_state_compare_vlan || (vlan == c_branch->vlan)) &&
+		  id_sensor == call->useSensorId;
+	#endif
 	if(exp_state) {
 		if(eq) {
 			*exp_state = opt_sip_register_state_timeout && 
@@ -506,6 +572,7 @@ Register::Register(Call *call) {
 	lock_id();
 	id = ++_id;
 	unlock_id();
+	#if not CALL_BRANCHES
 	sipcallerip = call->sipcallerip[0];
 	sipcalledip = call->sipcalledip[0];
 	if(opt_save_ip_from_encaps_ipheader) {
@@ -531,11 +598,39 @@ Register::Register(Call *call) {
 	digest_realm = REG_NEW_STR(call->digest_realm);
 	ua = REG_NEW_STR(call->a_ua);
 	vlan = call->vlan;
+	#else
+	CallBranch *c_branch = call->branch_main();
+	sipcallerip = c_branch->sipcallerip[0];
+	sipcalledip = c_branch->sipcalledip[0];
+	if(opt_save_ip_from_encaps_ipheader) {
+		sipcallerip_encaps = c_branch->sipcallerip_encaps;
+		sipcalledip_encaps = c_branch->sipcalledip_encaps;
+		sipcallerip_encaps_prot = c_branch->sipcallerip_encaps_prot;
+		sipcalledip_encaps_prot = c_branch->sipcalledip_encaps_prot;
+	} else {
+		sipcallerip_encaps_prot = 0xFF;
+		sipcalledip_encaps_prot = 0xFF;
+	}
+	sipcallerport = c_branch->sipcallerport[0];
+	sipcalledport = c_branch->sipcalledport[0];
+	char *tmp_str;
+	to_num = REG_NEW_STR(call->get_called(c_branch));
+	to_domain = REG_NEW_STR(call->get_called_domain(c_branch));
+	contact_num = REG_NEW_STR(c_branch->contact_num.c_str());
+	contact_domain = REG_NEW_STR(c_branch->contact_domain.c_str());
+	digest_username = REG_NEW_STR(c_branch->digest_username.c_str());
+	from_num = REG_NEW_STR(c_branch->caller.c_str());
+	from_name = REG_NEW_STR(c_branch->callername.c_str());
+	from_domain = REG_NEW_STR(c_branch->caller_domain.c_str());
+	digest_realm = REG_NEW_STR(c_branch->digest_realm.c_str());
+	ua = REG_NEW_STR(c_branch->a_ua.c_str());
+	vlan = c_branch->vlan;
+	#endif
 	rrd_sum = 0;
 	rrd_count = 0;
 	reg_call_id = call->call_id;
-	if(call->reg_tcp_seq) {
-		reg_tcp_seq = *call->reg_tcp_seq;
+	if(call->reg.reg_tcp_seq) {
+		reg_tcp_seq = *call->reg.reg_tcp_seq;
 	}
 	_sync_states = 0;
 }
@@ -556,6 +651,7 @@ Register::~Register() {
 
 void Register::update(Call *call) {
 	char *tmp_str;
+	#if not CALL_BRANCHES
 	if(!opt_sip_register_state_compare_contact_num &&
 	   !contact_num && call->contact_num[0]) {
 		contact_num = REG_NEW_STR(call->contact_num);
@@ -601,9 +697,57 @@ void Register::update(Call *call) {
 	sipcallerport = call->sipcallerport[0];
 	sipcalledport = call->sipcalledport[0];
 	vlan = call->vlan;
+	#else
+	CallBranch *c_branch = call->branch_main();
+	if(!opt_sip_register_state_compare_contact_num &&
+	   !contact_num && !c_branch->contact_num.empty()) {
+		contact_num = REG_NEW_STR(c_branch->contact_num.c_str());
+	}
+	if(!opt_sip_register_state_compare_contact_domain &&
+	   !contact_domain && !c_branch->contact_domain.empty()) {
+		contact_domain = REG_NEW_STR(c_branch->contact_domain.c_str());
+	}
+	if(!digest_username && !c_branch->digest_username.empty()) {
+		digest_username = REG_NEW_STR(c_branch->digest_username.c_str());
+	}
+	if(!opt_sip_register_state_compare_from_num &&
+	   !from_num && !c_branch->caller.empty()) {
+		from_num = REG_NEW_STR(c_branch->caller.c_str());
+	}
+	if(!opt_sip_register_state_compare_from_name &&
+	   !from_name && !c_branch->callername.empty()) {
+		from_name = REG_NEW_STR(c_branch->callername.c_str());
+	}
+	if(!opt_sip_register_state_compare_from_domain &&
+	   !from_domain && !c_branch->caller_domain.empty()) {
+		from_domain = REG_NEW_STR(c_branch->caller_domain.c_str());
+	}
+	if(!opt_sip_register_state_compare_digest_realm &&
+	   !digest_realm && !c_branch->digest_realm.empty()) {
+		digest_realm = REG_NEW_STR(c_branch->digest_realm.c_str());
+	}
+	if(!opt_sip_register_state_compare_ua &&
+	   !ua && !c_branch->a_ua.empty()) {
+		ua = REG_NEW_STR(c_branch->a_ua.c_str());
+	}
+	sipcallerip = c_branch->sipcallerip[0];
+	sipcalledip = c_branch->sipcalledip[0];
+	if(opt_save_ip_from_encaps_ipheader) {
+		sipcallerip_encaps = c_branch->sipcallerip_encaps;
+		sipcalledip_encaps = c_branch->sipcalledip_encaps;
+		sipcallerip_encaps_prot = c_branch->sipcallerip_encaps_prot;
+		sipcalledip_encaps_prot = c_branch->sipcalledip_encaps_prot;
+	} else {
+		sipcallerip_encaps_prot = 0xFF;
+		sipcalledip_encaps_prot = 0xFF;
+	}
+	sipcallerport = c_branch->sipcallerport[0];
+	sipcalledport = c_branch->sipcalledport[0];
+	vlan = c_branch->vlan;
+	#endif
 	reg_call_id = call->call_id;
-	if(call->reg_tcp_seq) {
-		reg_tcp_seq = *call->reg_tcp_seq;
+	if(call->reg.reg_tcp_seq) {
+		reg_tcp_seq = *call->reg.reg_tcp_seq;
 	} else {
 		reg_tcp_seq.clear();
 	}
@@ -636,8 +780,8 @@ void Register::addState(Call *call) {
 	}
 	if(!isFailed) {
 		RegisterState *state = states->last();
-		if(state->isOK() && call->regrrddiff > 0) {
-			rrd_sum += call->regrrddiff;
+		if(state->isOK() && call->reg.regrrddiff > 0) {
+			rrd_sum += call->reg.regrrddiff;
 			++rrd_count;
 		}
 		if(opt_enable_fraud && isFraudReady()) {
@@ -689,7 +833,8 @@ void Register::updateLastState(Call *call, RegisterStates *states) {
 		state->state_to_us = call->calltime_us();
 		state->time_shift_ms = call->time_shift_ms;
 		state->fname_last = call->fname_register;
-		state->expires = call->register_expires;
+		#if not CALL_BRANCHES
+		state->expires = call->reg.register_expires;
 		if(!opt_sip_register_state_compare_digest_realm && 
 		   !state->digest_realm && call->digest_realm[0] && this->digest_realm) {
 			state->digest_realm = EQ_REG;
@@ -718,6 +863,38 @@ void Register::updateLastState(Call *call, RegisterStates *states) {
 		if(call->is_sipalg_detected) {
 			state->is_sipalg_detected = true;
 		}
+		#else
+		CallBranch *c_branch = call->branch_main();
+		state->expires = call->reg.register_expires;
+		if(!opt_sip_register_state_compare_digest_realm && 
+		   !state->digest_realm && !c_branch->digest_realm.empty() && this->digest_realm) {
+			state->digest_realm = EQ_REG;
+		}
+		if(!opt_sip_register_state_compare_contact_num) {
+			this->updateLastStateItem(c_branch->contact_num.c_str(), this->contact_num, &state->contact_num);
+		}
+		if(!opt_sip_register_state_compare_contact_domain) {
+			this->updateLastStateItem(c_branch->contact_domain.c_str(), this->contact_domain, &state->contact_domain);
+		}
+		if(!opt_sip_register_state_compare_from_num) {
+			this->updateLastStateItem(c_branch->caller.c_str(), this->from_num, &state->from_num);
+		}
+		if(!opt_sip_register_state_compare_from_name) {
+			this->updateLastStateItem(c_branch->callername.c_str(), this->from_name, &state->from_name);
+		}
+		if(!opt_sip_register_state_compare_from_domain) {
+			this->updateLastStateItem(c_branch->caller_domain.c_str(), this->from_domain, &state->from_domain);
+		}
+		if(!opt_sip_register_state_compare_digest_realm) {
+			this->updateLastStateItem(c_branch->digest_realm.c_str(), this->digest_realm, &state->digest_realm);
+		}
+		if(!opt_sip_register_state_compare_ua) {
+			this->updateLastStateItem(c_branch->a_ua.c_str(), this->ua, &state->ua);
+		}
+		if(c_branch->is_sipalg_detected) {
+			state->is_sipalg_detected = true;
+		}
+		#endif
 		if(!state->zombie) {
 			state->next_states.push_back(RegisterState::NextState(call->calltime_us(), call->fname_register, call->useSensorId));
 		}
@@ -747,7 +924,7 @@ void Register::resetLastState(Call *call, RegisterStates *states) {
 	}
 }
 
-void Register::updateLastStateItem(char *callItem, char *registerItem, char **stateItem) {
+void Register::updateLastStateItem(const char *callItem, const char *registerItem, char **stateItem) {
 	if(callItem && callItem[0] && registerItem && registerItem[0] &&
 	   !REG_EQ_STR(*stateItem == EQ_REG ? registerItem : *stateItem, callItem)) {
 		char *tmp_str;
@@ -1724,12 +1901,22 @@ void Registers::evTimer(u_int32_t time_s, int typeTimer) {
 
 
 eRegisterState convRegisterState(Call *call) {
-	return(call->msgcount <= 1 ||
+	#if not CALL_BRANCHES
+	return(call->reg.msgcount <= 1 ||
 	       call->lastSIPresponseNum == 401 || call->lastSIPresponseNum == 403 || call->lastSIPresponseNum == 404 ?
 		rs_Failed :
-	       call->regstate == rs_OK && !call->register_expires ?
+	       call->reg.regstate == rs_OK && !call->reg.register_expires ?
 		rs_Unregister :
-		(eRegisterState)call->regstate);
+		(eRegisterState)call->reg.regstate);
+	#else
+	CallBranch *c_branch = call->branch_main();
+	return(call->reg.msgcount <= 1 ||
+	       c_branch->lastSIPresponseNum == 401 || c_branch->lastSIPresponseNum == 403 || c_branch->lastSIPresponseNum == 404 ?
+		rs_Failed :
+	       call->reg.regstate == rs_OK && !call->reg.register_expires ?
+		rs_Unregister :
+		(eRegisterState)call->reg.regstate);
+	#endif
 }
 
 eRegisterField convRegisterFieldToFieldId(const char *field) {

@@ -356,6 +356,7 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 				  eTypeSci typeSci, u_int64_t at,
 				  u_int16_t counter, sSciPacketInfo *packet_info) {
 	sci->callid = call->call_id;
+	#if not CALL_BRANCHES
 	sci->caller_number = call->caller;
 	sci->called_number_to = call->get_called_to();
 	sci->called_number_uri = call->get_called_uri();
@@ -367,6 +368,20 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call,
 	sci->called_domain_final = call->get_called_domain();
 	sci->caller_ip = call->getSipcallerip();
 	sci->called_ip = call->getSipcalledip();
+	#else
+	CallBranch *c_branch = call->branch_main();
+	sci->caller_number = c_branch->caller;
+	sci->called_number_to = call->get_called_to(c_branch);
+	sci->called_number_uri = call->get_called_uri(c_branch);
+	sci->called_number_final = call->get_called(c_branch);
+	sci->callername = c_branch->callername;
+	sci->caller_domain = c_branch->caller_domain;
+	sci->called_domain_to = call->get_called_domain_to(c_branch);
+	sci->called_domain_uri = call->get_called_domain_uri(c_branch);
+	sci->called_domain_final = call->get_called_domain(c_branch);
+	sci->caller_ip = call->getSipcallerip(c_branch);
+	sci->called_ip = call->getSipcalledip(c_branch);
+	#endif
 	sci->typeSci = typeSci;
 	sci->at = at;
 	sci->counter = counter;

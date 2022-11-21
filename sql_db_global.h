@@ -180,6 +180,11 @@ public:
 	void init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload = false);
 	unsigned getCbId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
 			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
+	unsigned getCbId(cSqlDbCodebook::eTypeCodebook type, string &stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
+			 string *insertQuery = NULL, SqlDb *sqlDb = NULL) {
+		return(getCbId(type, stringValue.c_str(), enableInsert, enableAutoLoad,
+			       insertQuery, sqlDb));
+	}
 	unsigned getCbId(const char *type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
 			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
 	u_int64_t getAiId(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);

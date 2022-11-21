@@ -18,7 +18,11 @@ public:
 		}
 		Call *call = (Call*)rec;
 		set<vmIP> proxies;
+		#if not CALL_BRANCHES
 		call->getProxies(&proxies, true, true);
+		#else
+		call->getProxies(((Call*)rec)->branch_main(), &proxies, true, true);
+		#endif
 		if(proxies.size()) {
 			for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 				bool _findInBlackList = false;
@@ -74,39 +78,87 @@ public:
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
+			#if not CALL_BRANCHES
 			return(!isLocalByPhoneNumber(((Call*)rec)->get_called()));
+			#else
+			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main())));
+			#endif
 		case cf_vlan:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->vlan);
+			#else
+			return(((Call*)rec)->branch_main()->vlan);
+			#endif
 		}
 		return(0);
 	}
 	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_callerip:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->getSipcallerip(true));
+			#else
+			return(((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true));
+			#endif
 		case cf_calledip:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->getSipcalledip(true, true));
+			#else
+			return(((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true));
+			#endif
 		case cf_callerip_encaps:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->getSipcallerip_encaps(true));
+			#else
+			return(((Call*)rec)->getSipcallerip_encaps(((Call*)rec)->branch_main(), true));
+			#endif
 		case cf_calledip_encaps:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->getSipcalledip_encaps(true, true));
+			#else
+			return(((Call*)rec)->getSipcalledip_encaps(((Call*)rec)->branch_main(), true, true));
+			#endif
 		}
 		return(0);
 	}
 	const char *getField_string(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_caller:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->caller);
+			#else
+			return(((Call*)rec)->branch_main()->caller.c_str());
+			#endif
 		case cf_called:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->get_called());
+			#else
+			return(((Call*)rec)->get_called(((Call*)rec)->branch_main()));
+			#endif
 		case cf_callerdomain:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->caller_domain);
+			#else
+			return(((Call*)rec)->branch_main()->caller_domain.c_str());
+			#endif
 		case cf_calleddomain:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->get_called_domain());
+			#else
+			return(((Call*)rec)->get_called_domain(((Call*)rec)->branch_main()));
+			#endif
 		case cf_calleragent:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->a_ua);
+			#else
+			return(((Call*)rec)->branch_main()->a_ua.c_str());
+			#endif
 		case cf_calledagent:
+			#if not CALL_BRANCHES
 			return(((Call*)rec)->b_ua);
+			#else
+			return(((Call*)rec)->branch_main()->b_ua.c_str());
+			#endif
 		case cf_callid:
 			return(((Call*)rec)->fbasename);
 		}
