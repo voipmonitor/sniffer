@@ -333,6 +333,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	typeBy = _typeBy_NA;
 	typeByIP = _typeByIP_NA;
 	typeChangeLocation = _typeLocation_NA;
+	changeIP = false;
 	intervalLength = 0;
 	intervalLimit = 0;
 	filterInternational = false;
@@ -503,6 +504,9 @@ bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_cu
 		typeChangeLocation = dbRow["fraud_type_change_location"] == "country" ? _typeLocation_country :
 				     dbRow["fraud_type_change_location"] == "continent" ? _typeLocation_continent :
 						_typeLocation_NA;
+	}
+	if(defChangeIP()) {
+		changeIP = atoi(dbRow["fraud_change_ip"].c_str());
 	}
 	if(defChangeLocationOk()) {
 		changeLocationOk = split(dbRow["fraud_change_location_ok"].c_str(), ",", true);
@@ -1691,29 +1695,31 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						      callInfo->caller_ip, this->onlyConnected ? callInfo->at_connect : callInfo->at_begin,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
-			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7009) FraudAlertInfo_chc(this);
-				alertInfo->set(callInfo->caller_number.c_str(),
-					       useDomain ? callInfo->caller_domain.c_str() : NULL,
-					       _typeLocation_country,
-					       callInfo->caller_ip,
-					       callInfo->country_code_caller_ip.c_str(),
-					       oldIp,
-					       oldCountry.c_str(),
-					       0);
-				this->evAlert(alertInfo);
-			}
-			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7010) FraudAlertInfo_chc(this);
-				alertInfo->set(callInfo->caller_number.c_str(),
-					       useDomain ? callInfo->caller_domain.c_str() : NULL,
-					       _typeLocation_continent,
-					       callInfo->caller_ip,
-					       callInfo->continent_code_caller_ip.c_str(),
-					       oldIp,
-					       oldContinent.c_str(),
-					       0);
-				this->evAlert(alertInfo);
+			if(!this->changeIP || callInfo->caller_ip != oldIp) {
+				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
+					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7009) FraudAlertInfo_chc(this);
+					alertInfo->set(callInfo->caller_number.c_str(),
+						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       _typeLocation_country,
+						       callInfo->caller_ip,
+						       callInfo->country_code_caller_ip.c_str(),
+						       oldIp,
+						       oldCountry.c_str(),
+						       0);
+					this->evAlert(alertInfo);
+				}
+				if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
+					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7010) FraudAlertInfo_chc(this);
+					alertInfo->set(callInfo->caller_number.c_str(),
+						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       _typeLocation_continent,
+						       callInfo->caller_ip,
+						       callInfo->continent_code_caller_ip.c_str(),
+						       oldIp,
+						       oldContinent.c_str(),
+						       0);
+					this->evAlert(alertInfo);
+				}
 			}
 		}
 	}
@@ -1752,29 +1758,31 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						      callInfo->caller_ip, callInfo->at_connect,
 						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
 						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
-			if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7011) FraudAlertInfo_chc(this);
-				alertInfo->set(callInfo->caller_number.c_str(),
-					       useDomain ? callInfo->caller_domain.c_str() : NULL,
-					       _typeLocation_country,
-					       callInfo->caller_ip,
-					       callInfo->country_code_caller_ip.c_str(),
-					       oldIp,
-					       oldCountry.c_str(),
-					       callInfo->called_ip);
-				this->evAlert(alertInfo);
-			}
-			if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
-				FraudAlertInfo_chc *alertInfo = new FILE_LINE(7012) FraudAlertInfo_chc(this);
-				alertInfo->set(callInfo->caller_number.c_str(),
-					       useDomain ? callInfo->caller_domain.c_str() : NULL,
-					       _typeLocation_continent,
-					       callInfo->caller_ip,
-					       callInfo->continent_code_caller_ip.c_str(),
-					       oldIp,
-					       oldContinent.c_str(),
-					       callInfo->called_ip);
-				this->evAlert(alertInfo);
+			if(!this->changeIP || callInfo->caller_ip != oldIp) {
+				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
+					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7011) FraudAlertInfo_chc(this);
+					alertInfo->set(callInfo->caller_number.c_str(),
+						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       _typeLocation_country,
+						       callInfo->caller_ip,
+						       callInfo->country_code_caller_ip.c_str(),
+						       oldIp,
+						       oldCountry.c_str(),
+						       callInfo->called_ip);
+					this->evAlert(alertInfo);
+				}
+				if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
+					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7012) FraudAlertInfo_chc(this);
+					alertInfo->set(callInfo->caller_number.c_str(),
+						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       _typeLocation_continent,
+						       callInfo->caller_ip,
+						       callInfo->continent_code_caller_ip.c_str(),
+						       oldIp,
+						       oldContinent.c_str(),
+						       callInfo->called_ip);
+					this->evAlert(alertInfo);
+				}
 			}
 		} 
 		}
