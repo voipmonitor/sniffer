@@ -1962,11 +1962,7 @@ void cCdrStat::add(sChartsCallData *call) {
 	if(call->type == sChartsCallData::_call) {
 		callbegin_us = call->call()->calltime_us();
 		callend_us = call->call()->callend_us();
-		#if not CALL_BRANCHES
-		ip_src = call->call()->getSipcallerip();
-		#else
 		ip_src = call->call()->getSipcallerip(call->call()->branch_main());
-		#endif
 	} else {
 		callbegin_us = call->tables_content()->getValue_int(Call::_t_cdr, "calldate");
 		callend_us = call->tables_content()->getValue_int(Call::_t_cdr, "callend");
@@ -2128,14 +2124,9 @@ volatile int cCdrStat::exists_column_sync;
 void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 	u.a[1] = 0;
 	if(call->type == sChartsCallData::_call) {
-		#if not CALL_BRANCHES
-		u.d.src = call->call()->sipcallerip[0].getIPv4();
-		u.d.dst = call->call()->sipcalledip_rslt.getIPv4();
-		#else
 		CallBranch *c_branch = call->call()->branch_main();
 		u.d.src = c_branch->sipcallerip[0].getIPv4();
 		u.d.dst = c_branch->sipcalledip_rslt.getIPv4();
-		#endif
 		unsigned proxies_counter = 0;
 		for(list<vmIPport>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
 			u.d.proxy[proxies_counter++] = iter->ip.getIPv4();
@@ -2160,14 +2151,9 @@ void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 	proxy[0].clear();
 	proxy[1].clear();
 	if(call->type == sChartsCallData::_call) {
-		#if not CALL_BRANCHES
-		src = call->call()->sipcallerip[0].getIPv6();
-		dst = call->call()->sipcalledip_rslt.getIPv6();
-		#else
 		CallBranch *c_branch = call->call()->branch_main();
 		src = c_branch->sipcallerip[0].getIPv6();
 		dst = c_branch->sipcalledip_rslt.getIPv6();
-		#endif
 		unsigned proxies_counter = 0;
 		for(list<vmIPport>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
 			proxy[proxies_counter++] = iter->ip;

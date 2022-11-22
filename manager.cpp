@@ -2542,18 +2542,6 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 			std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
 			for(size_t i = 0; i < vectCall.size(); i++) {
 				call = vectCall[i];
-				#if not CALL_BRANCHES
-				outStr.width(15);
-				outStr << call->caller << " -> ";
-				outStr.width(15);
-				outStr << call->get_called() << "  "
-					<< sqlDateTimeString(call->calltime_s()) << "  ";
-				outStr.width(6);
-				outStr << call->duration_s() << "s  "
-					<< sqlDateTimeString(call->destroy_call_at) << "  "
-					<< call->fbasename;
-				outStr << endl;
-				#else
 				CallBranch *c_branch = call->branch_main();
 				outStr.width(15);
 				outStr << c_branch->caller << " -> ";
@@ -2565,7 +2553,6 @@ int Mgmt_d_lc_for_destroy(Mgmt_params *params) {
 					<< sqlDateTimeString(call->destroy_call_at) << "  "
 					<< call->fbasename;
 				outStr << endl;
-				#endif
 			}
 		}
 		calltable->unlock_calls_queue();
@@ -2590,22 +2577,14 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 	if(opt_call_id_alternative[0]) {
 		for(list<Call*>::iterator callIT = calltable->calls_list.begin(); callIT != calltable->calls_list.end(); ++callIT) {
 			call = *callIT;
-			#if not CALL_BRANCHES
-			if(call->typeIsNot(REGISTER) && call->seenbye) {
-			#else
 			if(call->typeIsNot(REGISTER) && call->branch_main()->seenbye) {
-			#endif
 				vectCall.push_back(call);
 			}
 		}
 	} else {
 		for(map<string, Call*>::iterator callMAPIT = calltable->calls_listMAP.begin(); callMAPIT != calltable->calls_listMAP.end(); ++callMAPIT) {
 			call = callMAPIT->second;
-			#if not CALL_BRANCHES
-			if(call->typeIsNot(REGISTER) && call->seenbye) {
-			#else
 			if(call->typeIsNot(REGISTER) && call->branch_main()->seenbye) {
-			#endif
 				vectCall.push_back(call);
 			}
 		}
@@ -2614,18 +2593,6 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_destroy_call_at);
 		for(size_t i = 0; i < vectCall.size(); i++) {
 			call = vectCall[i];
-			#if not CALL_BRANCHES
-			outStr.width(15);
-			outStr << call->caller << " -> ";
-			outStr.width(15);
-			outStr << call->get_called() << "  "
-				<< sqlDateTimeString(call->calltime_s()) << "  ";
-			outStr.width(6);
-			outStr << call->duration_s() << "s  "
-				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
-				<< call->fbasename;
-			outStr << endl;
-			#else
 			CallBranch *c_branch = call->branch_main();
 			outStr.width(15);
 			outStr << c_branch->caller << " -> ";
@@ -2637,7 +2604,6 @@ int Mgmt_d_lc_bye(Mgmt_params *params) {
 				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  "
 				<< call->fbasename;
 			outStr << endl;
-			#endif
 		}
 	}
 	calltable->unlock_calls_listMAP();
@@ -2672,20 +2638,6 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 		std::sort(vectCall.begin(), vectCall.end(), cmpCallBy_first_packet_time);
 		for(size_t i = 0; i < vectCall.size(); i++) {
 			call = vectCall[i];
-			#if not CALL_BRANCHES
-			outStr.width(15);
-			outStr << call->caller << " -> ";
-			outStr.width(15);
-			outStr << call->get_called() << "  "
-				<< sqlDateTimeString(call->calltime_s()) << "  ";
-			outStr.width(6);
-			outStr << call->duration_s() << "s  "
-				<< (call->destroy_call_at ? sqlDateTimeString(call->destroy_call_at) : "    -  -     :  :  ")  << "  ";
-			outStr.width(3);
-			outStr << call->lastSIPresponseNum << "  "
-				<< call->fbasename;
-			outStr << endl;
-			#else
 			CallBranch *c_branch = call->branch_main();
 			outStr.width(15);
 			outStr << c_branch->caller << " -> ";
@@ -2699,7 +2651,6 @@ int Mgmt_d_lc_all(Mgmt_params *params) {
 			outStr << c_branch->lastSIPresponseNum << "  "
 				<< call->fbasename;
 			outStr << endl;
-			#endif
 		}
 	}
 	calltable->unlock_calls_listMAP();

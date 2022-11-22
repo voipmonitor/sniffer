@@ -211,6 +211,7 @@ extern bool opt_saveaudio_afterconnect;
 extern bool opt_saveaudio_from_rtp;
 extern int opt_skinny;
 extern int opt_enable_fraud;
+extern bool opt_call_branches;
 extern char opt_call_id_alternative[256];
 extern char opt_callidmerge_header[128];
 extern bool opt_sdp_check_direction_ext;
@@ -491,7 +492,6 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 	}
 }
 
-#if CALL_BRANCHES
 CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	this->call = call;
 	this->branch_id = branch_id;
@@ -568,8 +568,9 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	
 	_invite_list_lock = 0;
 	
+	updateDstnumOnAnswer = false;
+	updateDstnumFromMessage = false;
 }
-#endif
 
 /* constructor */
 Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, u_int64_t time_us) :
@@ -577,6 +578,12 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
  pcap(PcapDumper::na, this),
  pcapSip(PcapDumper::sip, this),
  pcapRtp(PcapDumper::rtp, this) {
+  
+	first_branch.call = this;
+	single_branch = opt_call_branches ? 1 : 2;
+	branch_main_id = 0;
+	_branches_lock = 0;
+  
 	//increaseTartimemap(time);
 	has_second_merged_leg = false;
 	isfax = NOFAX;
@@ -586,9 +593,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sip_fragmented = false;
 	rtp_fragmented = false;
 	last_callercodec = -1;
-	#if not CALL_BRANCHES
-	ipport_n = 0;
-	#endif
 	last_signal_packet_time_us = time_us;
 	last_rtp_packet_time_us = 0;
 	last_rtcp_packet_time_us = 0;
@@ -613,55 +617,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	}
 	_call_id_alternative_lock = 0;
 	
-	#if not CALL_BRANCHES
-	whohanged = -1;
-	#endif
-	
-	#if not CALL_BRANCHES
-	seeninvite = false;
-	seeninviteok = false;
-	seenmessage = false;
-	seenmessageok = false;
-	seenbye = false;
-	seenbye_time_usec = 0;
-	seenokbye = false;
-	seenokbye_time_usec = 0;
-	seenbye_and_ok = false;
-	seenbye_and_ok_permanent = false;
-	seenbye_and_ok_time_usec = 0;
-	seencancel_and_ok = false;
-	seencancel_and_ok_time_usec = 0;
-	seenauthfailed = false;
-	seenauthfailed_time_usec = 0;
-	ignore_rtp_after_response_time_usec = 0;
-	unconfirmed_bye = false;
-	seenRES2XX = false;
-	seenRES2XX_no_BYE = false;
-	seenRES18X = false;
-	caller[0] = '\0';
-	caller_domain[0] = '\0';
-	callername[0] = '\0';
-	called_to[0] = '\0';
-	called_uri[0] = '\0';
-	called_final[0] = '\0';
-	called_domain_to[0] = '\0';
-	called_domain_uri[0] = '\0';
-	called_domain_final[0] = '\0';
-	
-	contact_num[0] = '\0';
-	contact_domain[0] = '\0';
-	digest_username[0] = '\0';
-	digest_realm[0] = '\0';
-	
-	for(unsigned i = 0; i < (sizeof(byecseq) / sizeof(byecseq[0])); i++) {
-		byecseq[i].null();
-	}
-	invitecseq.null();
-	messagecseq.null();
-	cancelcseq.null();
-	updatecseq.null();
-	#endif
-	
 	sighup = false;
 	progress_time_us = 0;
 	first_rtp_time_us = 0;
@@ -672,37 +627,14 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	first_message_time_us = 0;
 	first_response_200_time_us = 0;
 	
-	#if not CALL_BRANCHES
-	a_ua[0] = '\0';
-	b_ua[0] = '\0';
-	#endif
-	
-	#if not CALL_BRANCHES
-	memset(rtpmap, 0, sizeof(rtpmap));
-	memset(rtpmap_used_flags, 0, sizeof(rtpmap_used_flags));
-	#endif
-	
 	rtp_cur[0] = NULL;
 	rtp_cur[1] = NULL;
 	rtp_prev[0] = NULL;
 	rtp_prev[1] = NULL;
 	
-	#if not CALL_BRANCHES
-	lastSIPresponse[0] = '\0';
-	lastSIPresponseNum = 0;
-	new_invite_after_lsr487 = false;
-	cancel_lsr487 = false;
-	reason_sip_cause = 0;
-	reason_q850_cause = 0;
-	#endif
-	
 	hold_status = false;
 	is_fas_detected = false;
 	is_zerossrc_detected = false;
-	
-	#if not CALL_BRANCHES
-	is_sipalg_detected = false;
-	#endif
 	
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
@@ -729,22 +661,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	lastactivecallerrtp = NULL;
 	lastactivecalledrtp = NULL;
 	
-	#if not CALL_BRANCHES
-	saddr.clear();
-	sport.clear();
-	daddr.clear();
-	dport.clear();
-	#endif
-	
 	destroy_call_at = 0;
 	destroy_call_at_bye = 0;
 	destroy_call_at_bye_confirmed = 0;
-	
-	#if not CALL_BRANCHES
-	custom_header1[0] = '\0';
-	match_header[0] = '\0';
-	#endif
-	
 	thread_num = 0;
 	thread_num_rd = 0;
 	setRtpThreadNum();
@@ -758,11 +677,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	save_energylevels = false;
 	rtppacketsinqueue = 0;
 	
-	#if not CALL_BRANCHES
-	end_call_rtp = 0;
-	end_call_hash_removed = 0;
-	#endif
-	
 	push_call_to_calls_queue = 0;
 	push_register_to_registers_queue = 0;
 	push_call_to_storing_cdr_queue = 0;
@@ -774,27 +688,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	voicemail = voicemail_na;
 	max_length_sip_data = 0;
 	max_length_sip_packet = 0;
-	
-	#if not CALL_BRANCHES
-	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		 sipcallerip[i].clear();
-		 sipcalledip[i].clear();
-		 sipcallerport[i].clear();
-		 sipcalledport[i].clear();
-	}
-	sipcalledip_mod.clear();
-	sipcalledport_mod.clear();
-	sipcallerip_encaps.clear();
-	sipcalledip_encaps.clear();
-	sipcallerip_encaps_prot = 0xFF;
-	sipcalledip_encaps_prot = 0xFF;
-	lastsipcallerip.clear();
-	sipcallerdip_reverse = false;
-	_invite_list_lock = 0;
-	invite_sdaddr_last_ts = 0;
-	invite_sdaddr_all_confirmed = -1;
-	invite_sdaddr_bad_order = false;
-	#endif
 	
 	skinny_partyid = 0;
 	pthread_mutex_init(&listening_worker_run_lock, NULL);
@@ -811,10 +704,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	
-	#if not CALL_BRANCHES
-	oneway = 1;
-	#endif
-	
 	absolute_timeout_exceeded = 0;
 	zombie_timeout_exceeded = 0;
 	bye_timeout_exceeded = 0;
@@ -828,12 +717,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	onCall_2XX_counter = 0;
 	onCall_18X_counter = 0;
 	onHangup_counter = 0;
-	
-	#if not CALL_BRANCHES
-	updateDstnumOnAnswer = false;
-	#endif
-	
-	updateDstnumFromMessage = false;
 	
 	force_close = false;
 	
@@ -849,18 +732,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	caller_clipping_8k = 0;
 	called_clipping_8k = 0;
 	
-	#if not CALL_BRANCHES
-	vlan = VLAN_UNSET;
-	#endif
-	
 	_mergecalls_lock = 0;
-	
-	#if CALL_BRANCHES
-	first_branch.call = this;
-	single_branch = 1;
-	branch_main_id = 0;
-	_branches_lock = 0;
-	#endif
 	
 	exists_srtp = false;
 	exists_srtp_crypto_config = false;
@@ -871,13 +743,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	log_srtp_callid = false;
 	
 	error_negative_payload_length = false;
-	
-	#if not CALL_BRANCHES
-	rtp_ip_port_counter = 0;
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	rtp_ip_port_counter_add = 0;
-	#endif
-	#endif
 	
 	hash_queue_counter = 0;
 	attemptsClose = 0;
@@ -962,38 +827,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 
 u_int64_t Call::counter_s = 0;
 
-#if not CALL_BRANCHES
-void
-Call::hashRemove(bool useHashQueueCounter) {
- 
-	#if EXPERIMENTAL_SEPARATE_PROCESSSING
-	if(separate_processing() == cSeparateProcessing::_rtp) {
-		for(set<vmIPport>::iterator iter = sp_rtp_ipport.begin(); iter != sp_rtp_ipport.end(); iter++) {
-			calltable->hashRemove(this, iter->ip, iter->port, false, true, useHashQueueCounter);
-			// TODO: evDestroyIpPortRtpStream ?
-		}
-		return;
-	}
-	#endif
- 
-	for(int i = 0; i < ipport_n; i++) {
-		calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port, false, true, useHashQueueCounter);
-		if(opt_rtcp) {
-			calltable->hashRemove(this, this->ip_port[i].addr, this->ip_port[i].port.inc(), true, true, useHashQueueCounter);
-		}
-		this->evDestroyIpPortRtpStream(i);
-	}
-	
-	if(!opt_hash_modify_queue_length_ms) {
-		int rest = calltable->hashRemove(this, useHashQueueCounter);
-		if(rest) {
-			syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, rest);
-		}
-	}
-}
-#else
-void
-Call::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
+void Call::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
     
 	if(!c_branch) {
 		hashRemove(&first_branch, useHashQueueCounter);
@@ -1032,10 +866,8 @@ Call::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 		}
 	}
 }
-#endif
 
-void
-Call::skinnyTablesRemove() {
+void Call::skinnyTablesRemove() {
 	if(opt_skinny) {
 		calltable->lock_skinny_maps();
 		if(skinny_partyid) {
@@ -1053,30 +885,7 @@ Call::skinnyTablesRemove() {
 	}
 }
 
-#if not CALL_BRANCHES
-void
-Call::removeFindTables(bool set_end_call, bool destroy) {
-	if(set_end_call) {
-		hash_add_lock();
-		this->end_call_rtp = 1;
-		if(!(opt_hash_modify_queue_length_ms && this->end_call_hash_removed)) {
-			this->hashRemove(true);
-			this->end_call_hash_removed = 1;
-		}
-		hash_add_unlock();
-	} else if(destroy) {
-		if(opt_hash_modify_queue_length_ms) {
-			calltable->hashRemoveForce(this);
-		}
-		this->hashRemove();
-	} else {
-		this->hashRemove(true);
-	}
-	this->skinnyTablesRemove();
-}
-#else
-void
-Call::removeFindTables(CallBranch *c_branch, bool set_end_call, bool destroy, bool callFromAllBranch) {
+void Call::removeFindTables(CallBranch *c_branch, bool set_end_call, bool destroy, bool callFromAllBranch) {
 	if(!c_branch) {
 		removeFindTables(&first_branch, set_end_call, destroy);
 		if(next_branches.size()) {
@@ -1111,26 +920,18 @@ Call::removeFindTables(CallBranch *c_branch, bool set_end_call, bool destroy, bo
 		this->skinnyTablesRemove();
 	}
 }
-#endif
 
-void
-Call::destroyCall() {
-	#if not CALL_BRANCHES
-	this->removeFindTables(false, true);
-	#else
+void Call::destroyCall() {
 	this->removeFindTables(NULL, false, true);
-	#endif
 	this->atFinish();
 	this->calls_counter_dec();
 }
 
-void
-Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long writeBytes) {
+void Call::addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, long long writeBytes) {
 	_addtofilesqueue(typeSpoolFile, file, dirnamesqlfiles(), writeBytes, getSpoolIndex());
 }
 
-void 
-Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
+void Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirnamesqlfiles, long long writeBytes, int spoolIndex) {
  
 	if(!opt_filesclean or opt_nocdr or file == "" or !isSqlDriver("mysql") or
 	   !CleanSpool::isSetCleanspool(spoolIndex) or
@@ -1195,11 +996,7 @@ Call::_addtofilesqueue(eTypeSpoolFile typeSpoolFile, string file, string dirname
 	}
 }
 
-#if not CALL_BRANCHES
-void Call::evStartRtpStream(int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
-#else
 void Call::evStartRtpStream(CallBranch */*c_branch*/, int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
-#endif
 	/*cout << "start rtp stream : "
 	     << saddr.getString() << ":" << sport << " -> " 
 	     << daddr.getString() << ":" << dport << endl;*/
@@ -1208,11 +1005,7 @@ void Call::evStartRtpStream(CallBranch */*c_branch*/, int /*index_ip_port*/, vmI
 	}
 }
 
-#if not CALL_BRANCHES
-void Call::evEndRtpStream(int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
-#else
- void Call::evEndRtpStream(CallBranch */*c_branch*/, int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
-#endif
+void Call::evEndRtpStream(CallBranch */*c_branch*/, int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
 	/*cout << "stop rtp stream : "
 	     << saddr.getString() << ":" << sport << " -> " 
 	     << daddr.getString() << ":" << dport << endl;*/
@@ -1221,13 +1014,11 @@ void Call::evEndRtpStream(int /*index_ip_port*/, vmIP saddr, vmPort sport, vmIP 
 	}
 }
 
-void
-Call::addtocachequeue(string file) {
+void Call::addtocachequeue(string file) {
 	_addtocachequeue(file);
 }
 
-void 
-Call::_addtocachequeue(string file) {
+void Call::_addtocachequeue(string file) {
 	int cachedir_length = strlen(opt_cachedir);
 	if(!strncmp(file.c_str(), opt_cachedir, cachedir_length)) {
 		while(file[cachedir_length] == '/') {
@@ -1240,8 +1031,7 @@ Call::_addtocachequeue(string file) {
 	calltable->unlock_files_queue();
 }
 
-void
-Call::setFlagForRemoveRTP() {
+void Call::setFlagForRemoveRTP() {
 	u_int64_t startTimeMS = getTimeMS_rdtsc();
 	while(rtppacketsinqueue > 0) {
 		if(!opt_t2_boost && rtp_threads) {
@@ -1261,8 +1051,7 @@ Call::setFlagForRemoveRTP() {
 	rtp_remove_flag = true;
 }
 
-void
-Call::_removeRTP() {
+void Call::_removeRTP() {
 	closeRawFiles();
 	if(!rtp_canceled) {
 		rtp_canceled = new FILE_LINE(0) list<RTP*>;
@@ -1401,11 +1190,9 @@ Call::~Call(){
 	
 	dtls_keys_clear();
 	
-	#if CALL_BRANCHES
 	for(unsigned i = 0; i < next_branches.size(); i++) {
 		delete next_branches[i];
 	}
-	#endif
 	
 }
 
@@ -1447,95 +1234,11 @@ Call::closeRawFiles() {
 	}
 }
 
-#if not CALL_BRANCHES
-/* add ip adress and port to this call */
-int
-Call::add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-		  char *sessid, char *sdp_label, 
-		  list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		  char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
-		  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
-	if(this->end_call_rtp) {
-		return(-1);
-	}
- 
-	if(verbosity >= 4) {
-		printf("call:[%p] ip:[%s] port:[%d] iscaller:[%d]\n", this, addr.getString().c_str(), port.getPort(), iscaller);
-	}
-
-	if(ipport_n > 0) {
-		if(this->refresh_data_ip_port(addr, port, ts, 
-					      srtp_crypto_config_list, srtp_fingerprint,
-					      iscaller, rtpmap, sdp_flags)) {
-			return 1;
-		}
-	}
-	
-	if(sverb.process_rtp) {
-		cout << "RTP - add_ip_port: " << addr.getString() << " / " << port << " " << iscaller_description(iscaller) << endl;
-	}
-
-	if(ipport_n == MAX_IP_PER_CALL){
-		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), addr.getString().c_str(), port.getPort());
-	}
-	// add ip and port
-	if(ipport_n >= MAX_IP_PER_CALL){
-		return -1;
-	}
-
-	this->ip_port[ipport_n].sip_src_addr = sip_src_addr;
-	this->ip_port[ipport_n].addr = addr;
-	this->ip_port[ipport_n].type_addr = type_addr;
-	this->ip_port[ipport_n].port = port;
-	this->ip_port[ipport_n].iscaller = iscaller;
-	this->ip_port[ipport_n].sdp_flags = sdp_flags;
-	if(sessid) {
-		this->ip_port[ipport_n].sessid = sessid;
-	}
-	if(sdp_label) {
-		this->ip_port[ipport_n].sdp_label = sdp_label;
-	}
-	if(sdp_flags.protocol == sdp_proto_srtp) {
-		this->ip_port[ipport_n].setSrtp();
-		this->exists_srtp = true;
-	}
-	if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
-		this->ip_port[ipport_n].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
-		this->exists_srtp_crypto_config = true;
-	}
-	if(srtp_fingerprint) {
-		this->ip_port[ipport_n].setSrtpFingerprint(srtp_fingerprint);
-		this->exists_srtp_fingerprint = true;
-	}
-	if(to) {
-		this->ip_port[ipport_n].to = to;
-	}
-	if(to_uri) {
-		this->ip_port[ipport_n].to_uri = to_uri;
-	}
-	if(domain_to) {
-		this->ip_port[ipport_n].domain_to = domain_to;
-	}
-	if(domain_to_uri) {
-		this->ip_port[ipport_n].domain_to_uri = domain_to_uri;
-	}
-	if(branch) {
-		this->ip_port[ipport_n].branch = branch;
-	}
-	nullIpPortInfoRtpStream(ipport_n);
-	
-	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
-		memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : ipport_n], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
-	}
-	
-	ipport_n++;
-	return 0;
-}
-#else
 int Call::add_ip_port(CallBranch *c_branch,
 		      vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 		      char *sessid, char *sdp_label, 
 		      list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+		      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
 		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(c_branch->end_call_rtp) {
 		return(-1);
@@ -1590,6 +1293,21 @@ int Call::add_ip_port(CallBranch *c_branch,
 		c_branch->ip_port[c_branch->ipport_n].setSrtpFingerprint(srtp_fingerprint);
 		this->exists_srtp_fingerprint = true;
 	}
+	if(to) {
+		c_branch->ip_port[c_branch->ipport_n].to = to;
+	}
+	if(to_uri) {
+		c_branch->ip_port[c_branch->ipport_n].to_uri = to_uri;
+	}
+	if(domain_to) {
+		c_branch->ip_port[c_branch->ipport_n].domain_to = domain_to;
+	}
+	if(domain_to_uri) {
+		c_branch->ip_port[c_branch->ipport_n].domain_to_uri = domain_to_uri;
+	}
+	if(branch) {
+		c_branch->ip_port[c_branch->ipport_n].branch = branch;
+	}
 	nullIpPortInfoRtpStream(c_branch, c_branch->ipport_n);
 	
 	if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
@@ -1599,101 +1317,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 	c_branch->ipport_n++;
 	return 0;
 }
-#endif
 
-#if not CALL_BRANCHES
-bool 
-Call::refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
-			   list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-			   int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].addr == addr && this->ip_port[i].port == port) {
-			// reinit rtpmap
-			if(!opt_rtpmap_by_callerd || iscaller_is_set(iscaller)) {
-				if(opt_rtpmap_combination) {
-					RTPMAP *rtpmap_src = rtpmap;
-					RTPMAP *rtpmap_dst = this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i];
-					for(int i_src = 0; i_src < MAX_RTPMAP - 1; i_src++) {
-						if(rtpmap_src[i_src].is_set()) {
-							int indexEqPayload = -1;
-							int indexZero = -1;
-							for(int i_dst = 0; i_dst < MAX_RTPMAP - 2; i_dst++) {
-								if(!rtpmap_dst[i_dst].is_set()) {
-									if(indexZero == -1) {
-										indexZero = i_dst;
-										break;
-									}
-								} else if(rtpmap_dst[i_dst].payload == rtpmap_src[i_src].payload) {
-									if(indexEqPayload == -1) {
-										indexEqPayload = i_dst;
-										break;
-									}
-								}
-							}
-							if(indexEqPayload >= 0) {
-								rtpmap_dst[indexEqPayload] = rtpmap_src[i_src];
-							} else if(indexZero >= 0) {
-								rtpmap_dst[indexZero] = rtpmap_src[i_src];
-								rtpmap_dst[indexZero + 1].clear();
-							}
-						}
-					}
-				} else {
-					memcpy(this->rtpmap[opt_rtpmap_by_callerd ? iscaller : i], rtpmap, MAX_RTPMAP * sizeof(RTPMAP));
-				}
-			}
-			// force mark bit for reinvite for both direction
-			u_int64_t _forcemark_time_us = getTimeUS(ts);
-			forcemark_lock();
-			forcemark_time.push_back(_forcemark_time_us);
-			if(sverb.forcemark) {
-				cout << "add forcemark: " << _forcemark_time_us 
-				     << " forcemarks size: " << forcemark_time.size() 
-				     << endl;
-			}
-			forcemark_unlock();
-			if(sdp_flags != this->ip_port[i].sdp_flags) {
-				if(this->ip_port[i].sdp_flags.is_image()) {
-					sdp_flags.media_type |= sdp_media_type_image;
-				}
-				this->ip_port[i].sdp_flags = sdp_flags;
-				calltable->lock_calls_hash();
-				node_call_rtp *n_call = calltable->hashfind_by_ip_port(addr, port, false);
-				if(n_call) {
-					#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
-					for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
-						if((*iter)->call == this) {
-							(*iter)->sdp_flags = sdp_flags;
-						}
-					}
-					#else
-					for(; n_call; n_call = n_call->next) {
-						if(n_call->call == this) {
-							n_call->sdp_flags = sdp_flags;
-						}
-					}
-					#endif
-				}
-				calltable->unlock_calls_hash();
-			}
-			if(sdp_flags.protocol == sdp_proto_srtp) {
-				this->ip_port[i].setSrtp();
-				this->exists_srtp = true;
-			}
-			if(srtp_crypto_config_list && srtp_crypto_config_list->size()) {
-				this->ip_port[i].setSrtpCryptoConfig(srtp_crypto_config_list, getTimeUS(ts));
-				this->exists_srtp_crypto_config = true;
-			}
-			if(srtp_fingerprint) {
-				this->ip_port[i].setSrtpFingerprint(srtp_fingerprint);
-				this->exists_srtp_fingerprint = true;
-			}
-			return true;
-		}
-	}
-	return false;
-}
-#else
 bool Call::refresh_data_ip_port(CallBranch *c_branch,
 				vmIP addr, vmPort port, struct timeval *ts, 
 				list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
@@ -1785,72 +1409,19 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 	}
 	return false;
 }
-#endif
 
-#if not CALL_BRANCHES
-void
-Call::add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
-		       char *sessid, char *sdp_label, bool multipleSdpMedia, 
-		       list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-		       char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
-		       int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
-	if(this->end_call_rtp) {
-		return;
-	}
-
-	if(sessid && !multipleSdpMedia) {
-		int sessidIndex = get_index_by_sessid_to(sessid, to, sip_src_addr, type_addr);
-		if(sessidIndex >= 0) {
-			if(this->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
-			   (this->ip_port[sessidIndex].addr != addr ||
-			    this->ip_port[sessidIndex].port != port ||
-			    this->ip_port[sessidIndex].iscaller != iscaller)) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port);
-				((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), this, iscaller, 0, sdp_flags);
-				if(opt_rtcp) {
-					((Calltable*)calltable)->hashRemove(this, ip_port[sessidIndex].addr, ip_port[sessidIndex].port.inc(), true);
-					if(!sdp_flags.rtcp_mux && !sdp_flags.is_application()) {
-						((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), this, iscaller, 1, sdp_flags);
-					}
-				}
-				//cout << "change ip/port for sessid " << sessid << " ip:" << addr.getString() << "/" << this->ip_port[sessidIndex].addr.getString() << " port:" << port << "/" <<  this->ip_port[sessidIndex].port << endl;
-				if(this->ip_port[sessidIndex].addr != addr ||
-				   this->ip_port[sessidIndex].port != port) {
-					evDestroyIpPortRtpStream(sessidIndex);
-					this->ip_port[sessidIndex].addr = addr;
-					this->ip_port[sessidIndex].port = port;
-				}
-				this->ip_port[sessidIndex].iscaller = iscaller;
-			}
-			this->refresh_data_ip_port(addr, port, ts, 
-						   srtp_crypto_config_list, srtp_fingerprint,
-						   iscaller, rtpmap, sdp_flags);
-			return;
-		}
-	}
-	if(this->add_ip_port(sip_src_addr, addr, type_addr, port, ts, 
-			     sessid, sdp_label, 
-			     srtp_crypto_config_list, srtp_fingerprint,
-			     to, to_uri, domain_to, domain_to_uri, branch, 
-			     iscaller, rtpmap, sdp_flags) != -1) {
-		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), this, iscaller, 0, sdp_flags);
-		if(opt_rtcp && !sdp_flags.rtcp_mux) {
-			((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), this, iscaller, 1, sdp_flags);
-		}
-	}
-}
-#else
 void Call::add_ip_port_hash(CallBranch *c_branch,
 			    vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			    char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			    list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
+			    char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
 			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
 	if(c_branch->end_call_rtp) {
 		return;
 	}
 
 	if(sessid && !multipleSdpMedia) {
-		int sessidIndex = get_index_by_sessid(c_branch, sessid, sip_src_addr, type_addr);
+		int sessidIndex = get_index_by_sessid_to(c_branch, sessid, to, sip_src_addr, type_addr);
 		if(sessidIndex >= 0) {
 			if(c_branch->ip_port[sessidIndex].sip_src_addr == sip_src_addr &&
 			   (c_branch->ip_port[sessidIndex].addr != addr ||
@@ -1882,6 +1453,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 	if(this->add_ip_port(c_branch, sip_src_addr, addr, type_addr, port, ts, 
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
+			     to, to_uri, domain_to, domain_to_uri, branch,
 			     iscaller, rtpmap, sdp_flags) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), c_branch, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
@@ -1890,27 +1462,11 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 	}
 }
 
-#endif
-
-#if not CALL_BRANCHES
-void 
-Call::cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].sip_src_addr == sip_src_addr &&
-		   !strcmp(this->ip_port[i].branch.c_str(), branch) &&
-		   !strcmp(this->ip_port[i].to.c_str(), to)) {
-			this->ip_port[i].canceled = true;
-			((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port);
-			if(opt_rtcp) {
-				((Calltable*)calltable)->hashRemove(this, ip_port[i].addr, ip_port[i].port.inc(), true);
-			}
-		}
-	}
-}
-#else
-void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, struct timeval *ts) {
+void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch, struct timeval *ts) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
-		if(c_branch->ip_port[i].sip_src_addr == sip_src_addr) {
+		if(c_branch->ip_port[i].sip_src_addr == sip_src_addr &&
+		   (!branch || !strcmp(c_branch->ip_port[i].branch.c_str(), branch)) &&
+		   (!to || !strcmp(c_branch->ip_port[i].to.c_str(), to))) {
 			c_branch->ip_port[i].canceled = true;
 			((Calltable*)calltable)->hashRemove(c_branch, c_branch->ip_port[i].addr, c_branch->ip_port[i].port);
 			if(opt_rtcp) {
@@ -1919,22 +1475,7 @@ void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, struct t
 		}
 	}
 }
-#endif
 
-#if not CALL_BRANCHES
-int
-Call::get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr, bool rtcp) {
-	for(int i = 0; i < ipport_n; i++) {
-		if((use_sip_src_addr ? this->ip_port[i].sip_src_addr : this->ip_port[i].addr) == addr &&
-		   this->ip_port[i].port == (rtcp && !this->ip_port[i].sdp_flags.rtcp_mux ? port.dec() : port)) {
-			// we have found it
-			return i;
-		}
-	}
-	// not found
-	return -1;
-}
-#else
 int Call::get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr, bool rtcp) {
 	if(!c_branch) {
 		int rslt = get_index_by_ip_port(&first_branch, addr, port, use_sip_src_addr, rtcp);
@@ -1963,27 +1504,11 @@ int Call::get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, boo
 	// not found
 	return -1;
 }
-#endif
 
-#if not CALL_BRANCHES
-int
-Call::get_index_by_sessid_to(char *sessid, char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(!strcmp(this->ip_port[i].sessid.c_str(), sessid) &&
-		   !strcmp(this->ip_port[i].to.c_str(), to) &&
-		   this->ip_port[i].sip_src_addr == sip_src_addr &&
-		   this->ip_port[i].type_addr == type_addr) {
-			// we have found it
-			return i;
-		}
-	}
-	// not found
-	return -1;
-}
-#else
-int Call::get_index_by_sessid(CallBranch *c_branch, char *sessid, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr) {
+int Call::get_index_by_sessid_to(CallBranch *c_branch, const char *sessid, const char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(!strcmp(c_branch->ip_port[i].sessid.c_str(), sessid) &&
+		   (!to || !strcmp(c_branch->ip_port[i].to.c_str(), to)) &&
 		   c_branch->ip_port[i].sip_src_addr == sip_src_addr &&
 		   c_branch->ip_port[i].type_addr == type_addr) {
 			// we have found it
@@ -1993,21 +1518,7 @@ int Call::get_index_by_sessid(CallBranch *c_branch, char *sessid, vmIP sip_src_a
 	// not found
 	return -1;
 }
-#endif
 
-#if not CALL_BRANCHES
-int 
-Call::get_index_by_iscaller(int iscaller) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(this->ip_port[i].iscaller == iscaller) {
-			// we have found it
-			return i;
-		}
-	}
-	// not found
-	return -1;
-}
-#else
 int Call::get_index_by_iscaller(CallBranch *c_branch, int iscaller) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->ip_port[i].iscaller == iscaller) {
@@ -2018,20 +1529,17 @@ int Call::get_index_by_iscaller(CallBranch *c_branch, int iscaller) {
 	// not found
 	return -1;
 }
-#endif
 
-#if not CALL_BRANCHES
-bool 
-Call::is_multiple_to_branch() {
-	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] == this->ip_port[i].sip_src_addr) {
-			for(int j = 0; j < ipport_n; j++) {
+bool Call::is_multiple_to_branch(CallBranch *c_branch) {
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr) {
+			for(int j = 0; j < c_branch->ipport_n; j++) {
 				if(j != i &&
-				   sipcallerip[0] == this->ip_port[j].sip_src_addr &&
-				   this->ip_port[i].to.length() && this->ip_port[j].to.length() &&
-				   this->ip_port[i].to != this->ip_port[j].to &&
-				   this->ip_port[i].branch.length() && this->ip_port[j].branch.length() &&
-				   this->ip_port[i].branch != this->ip_port[j].branch) {
+				   c_branch->sipcallerip[0] == c_branch->ip_port[j].sip_src_addr &&
+				   c_branch->ip_port[i].to.length() && c_branch->ip_port[j].to.length() &&
+				   c_branch->ip_port[i].to != c_branch->ip_port[j].to &&
+				   c_branch->ip_port[i].branch.length() && c_branch->ip_port[j].branch.length() &&
+				   c_branch->ip_port[i].branch != c_branch->ip_port[j].branch) {
 					return(true);
 				}
 			}
@@ -2040,27 +1548,26 @@ Call::is_multiple_to_branch() {
 	return(false);
 }
 
-bool
-Call::all_invite_is_multibranch(vmIP saddr, bool use_lock) {
-	if(use_lock) invite_list_lock();
-	if(invite_sdaddr.size() < 2) {
-		if(use_lock) invite_list_unlock();
+bool Call::all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_lock) {
+	if(use_lock) c_branch->invite_list_lock();
+	if(c_branch->invite_sdaddr.size() < 2) {
+		if(use_lock) c_branch->invite_list_unlock();
 		return(false);
 	}
 	vector<Call::sInviteSD_Addr>::iterator iter1;
 	vector<Call::sInviteSD_Addr>::iterator iter2;
 	unsigned int counter1 = 0;
 	unsigned int counter2 = 0;
-	for(iter1 = invite_sdaddr.begin(); iter1 != invite_sdaddr.end(); iter1++) {
+	for(iter1 = c_branch->invite_sdaddr.begin(); iter1 != c_branch->invite_sdaddr.end(); iter1++) {
 		if(iter1->saddr == saddr) {
 			++counter1;
 			counter2 = 0;
-			for(iter2 = invite_sdaddr.begin(); iter2 != invite_sdaddr.end(); iter2++) {
+			for(iter2 = c_branch->invite_sdaddr.begin(); iter2 != c_branch->invite_sdaddr.end(); iter2++) {
 				if(iter2->saddr == saddr) {
 					++counter2;
 					if(counter2 > counter1) {
 						if(iter1->called == iter2->called || iter1->branch == iter2->branch) {
-							if(use_lock) invite_list_unlock();
+							if(use_lock) c_branch->invite_list_unlock();
 							return(false);
 						}
 					}
@@ -2068,72 +1575,55 @@ Call::all_invite_is_multibranch(vmIP saddr, bool use_lock) {
 			}
 		}
 	}
-	if(use_lock) invite_list_unlock();
+	if(use_lock) c_branch->invite_list_unlock();
 	return(counter1 >= 1);
 }
 
-bool 
-Call::to_is_canceled(char *to) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
-		   !strcmp(this->ip_port[i].to.c_str(), to) &&
-		   this->ip_port[i].canceled) {
+bool Call::to_is_canceled(CallBranch *c_branch, const char *to) {
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
+		   !strcmp(c_branch->ip_port[i].to.c_str(), to) &&
+		   c_branch->ip_port[i].canceled) {
 			return(true);
 		}
 	}
 	return(false);
 }
 
-const char*
-Call::get_to_not_canceled(bool uri) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
-		   this->ip_port[i].to.length() &&
-		   !this->ip_port[i].canceled) {
-			return(uri && this->ip_port[i].to_uri.length() ?
-				this->ip_port[i].to_uri.c_str() :
-				this->ip_port[i].to.c_str());
+const char* Call::get_to_not_canceled(CallBranch *c_branch, bool uri) {
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
+		   c_branch->ip_port[i].to.length() &&
+		   !c_branch->ip_port[i].canceled) {
+			return(uri && c_branch->ip_port[i].to_uri.length() ?
+				c_branch->ip_port[i].to_uri.c_str() :
+				c_branch->ip_port[i].to.c_str());
 		}
 	}
 	return(NULL);
 }
 
-const char*
-Call::get_domain_to_not_canceled(bool uri) {
-	for(int i = 0; i < ipport_n; i++) {
-		if(sipcallerip[0] == this->ip_port[i].sip_src_addr &&
-		   this->ip_port[i].domain_to.length() &&
-		   !this->ip_port[i].canceled) {
-			return(uri && this->ip_port[i].domain_to_uri.length() ?
-				this->ip_port[i].domain_to_uri.c_str() :
-				this->ip_port[i].domain_to.c_str());
+const char* Call::get_domain_to_not_canceled(CallBranch *c_branch, bool uri) {
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(c_branch->sipcallerip[0] == c_branch->ip_port[i].sip_src_addr &&
+		   c_branch->ip_port[i].domain_to.length() &&
+		   !c_branch->ip_port[i].canceled) {
+			return(uri && c_branch->ip_port[i].domain_to_uri.length() ?
+				c_branch->ip_port[i].domain_to_uri.c_str() :
+				c_branch->ip_port[i].domain_to.c_str());
 		}
 	}
 	return(NULL);
 }
-#endif
 
 /* analyze rtcp packet */
-#if not CALL_BRANCHES
-bool
-Call::read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_packet) {
-#else
 bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, char enable_save_packet) {
-#endif
  
-	#if not CALL_BRANCHES
-	extern int opt_vlan_siprtpsame;
-	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
-	   packetS->pid.vlan != this->vlan) {
-		return(false);
-	}
-	#else
 	extern int opt_vlan_siprtpsame;
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(c_branch->vlan) &&
 	   packetS->pid.vlan != c_branch->vlan) {
 		return(false);
 	}
-	#endif
 
 #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 	extern int opt_audiocodes_rtcp;
@@ -2161,24 +1651,13 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 
 	RTPsecure *srtp_decrypt = NULL;
 	if(exists_srtp && opt_srtp_rtcp_decrypt) {
-		#if not CALL_BRANCHES
-		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller, true);
-		if(index_call_ip_port_by_src >= 0 && 
-		   this->ip_port[index_call_ip_port_by_src].srtp) {
-		#else
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller, true);
 		if(index_call_ip_port_by_src >= 0 && 
 		   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-		#endif
 			if(!rtp_secure_map[index_call_ip_port_by_src]) {
 				rtp_secure_map[index_call_ip_port_by_src] = 
-					#if not CALL_BRANCHES
-					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-								   this, index_call_ip_port_by_src);
-					#else
 					new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 								   this, c_branch, index_call_ip_port_by_src);
-					#endif
 				if(sverb.log_srtp_callid && !log_srtp_callid) {
 					syslog(LOG_INFO, "SRTCP exists in call %s", call_id.c_str());
 					log_srtp_callid = true;
@@ -2207,12 +1686,7 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 }
 
 /* analyze rtp packet */
-#if not CALL_BRANCHES
-bool
-Call::read_rtp(packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
-#else
 bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname) {
-#endif
  
 #if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 	extern int opt_audiocodes_rtp;
@@ -2261,16 +1735,6 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 	
 	if(!rtp_find && ssrc_n < MAX_SSRC_PER_CALL_FIX) {
 		if(iscaller < 0) {
-			#if not CALL_BRANCHES
-			if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
-			   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
-			   this->is_sipcaller(packetS->saddr_(), packetS->source_(), 0, 0) || 
-			   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), 0, 0)) {
-				iscaller = 1;
-			} else {
-				iscaller = 0;
-			}
-			#else
 			if(this->is_sipcaller(c_branch, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
 			   this->is_sipcalled(c_branch, packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
 			   this->is_sipcaller(c_branch, packetS->saddr_(), packetS->source_(), 0, 0) || 
@@ -2279,7 +1743,6 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			} else {
 				iscaller = 0;
 			}
-			#endif
 		}
 		rtp_find = &rtp_fix[ssrc_n];
 		rtp_find->init(this);
@@ -2299,23 +1762,6 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			int codec = -1;
 			if(rtp_header->payload >= 96 && rtp_header->payload <= 127) {
 				for(int pass = 0; pass < 2 && codec == -1; pass++) {
-					#if not CALL_BRANCHES
-					int index_call_ip_port = pass == 0 ? 
-								  // find side
-								  this->get_index_by_ip_port(find_by_dest ? packetS->daddr_() : packetS->saddr_(),
-											     find_by_dest ? packetS->dest_() : packetS->source_()) :
-								  // other side
-								  this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
-											     find_by_dest ? packetS->source_() : packetS->dest_());
-					if(index_call_ip_port >= 0 && isFillRtpMap(index_call_ip_port)) {
-						for(int i = 0; i < MAX_RTPMAP; i++) {
-							if(rtpmap[index_call_ip_port][i].is_set() && rtp_header->payload == rtpmap[index_call_ip_port][i].payload) {
-								codec = rtpmap[index_call_ip_port][i].codec;
-								break;
-							}
-						}
-					}
-					#else
 					int index_call_ip_port = pass == 0 ? 
 								  // find side
 								  this->get_index_by_ip_port(c_branch,
@@ -2333,7 +1779,6 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 							}
 						}
 					}
-					#endif
 				}
 			} else {
 				codec = rtp_header->payload;
@@ -2377,11 +1822,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 	bool record_dtmf = false;
 	bool disable_save = false;
 	unsigned datalen_orig = packetS->datalen_orig_();
-	#if not CALL_BRANCHES
-	bool rtp_read_rslt = _read_rtp(packetS, iscaller, sdp_flags, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
-	#else
 	bool rtp_read_rslt = _read_rtp(c_branch, packetS, iscaller, sdp_flags, find_by_dest, stream_in_multiple_calls, ifname, &record_dtmf, &disable_save);
-	#endif
 	if(!disable_save) {
 		_save_rtp(packetS, sdp_flags, enable_save_packet, record_dtmf, packetS->datalen_() != datalen_orig);
 	}
@@ -2396,27 +1837,10 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
 
-#if not CALL_BRANCHES
-bool
-Call::_read_rtp(packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
-#else
 bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
-#endif
  
 	removeRTP_ifSetFlag();
  
-	#if not CALL_BRANCHES
-	if(iscaller < 0) {
-		if(this->is_sipcaller(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
-		   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
-		   this->is_sipcaller(packetS->saddr_(), packetS->source_(), 0, 0) || 
-		   this->is_sipcalled(packetS->daddr_(), packetS->dest_(), 0, 0)) {
-			iscaller = 1;
-		} else {
-			iscaller = 0;
-		}
-	}
-	#else
 	if(iscaller < 0) {
 		if(this->is_sipcaller(c_branch, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()) || 
 		   this->is_sipcalled(c_branch, packetS->daddr_(), packetS->dest_(), packetS->saddr_(), packetS->source_()) ||
@@ -2427,7 +1851,6 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 			iscaller = 0;
 		}
 	}
-	#endif
 	
 	extern int opt_vlan_siprtpsame;
 	bool rtp_read_rslt = false;
@@ -2436,19 +1859,11 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 	*record_dtmf = false;
 	*disable_save = false;
 	
-	#if not CALL_BRANCHES
-	if(opt_vlan_siprtpsame && VLAN_IS_SET(this->vlan) &&
-	   packetS->pid.vlan != this->vlan) {
-		*disable_save = true;
-		return(false);
-	}
-	#else
 	if(opt_vlan_siprtpsame && VLAN_IS_SET(c_branch->vlan) &&
 	   packetS->pid.vlan != c_branch->vlan) {
 		*disable_save = true;
 		return(false);
 	}
-	#endif
 
 	if(first_rtp_time_us == 0) {
 		first_rtp_time_us = getTimeUS(packetS->header_pt);
@@ -2509,11 +1924,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 */
 
 			if (opt_saverfc2833 || !enable_save_dtmf_pcap(this)) { // DTMF in dynamic payload types (rfc4733)
-				#if not CALL_BRANCHES
-				RTPMAP *_rtpmap = rtp_i->get_rtpmap(this);
-				#else
 				RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, c_branch);
-				#endif
 				if(_rtpmap) {
 					for(int j = 0; j < MAX_RTPMAP; j++) {
 						if(_rtpmap[j].is_set() && _rtpmap[j].codec == PAYLOAD_TELEVENT && _rtpmap[j].payload == curpayload) {
@@ -2564,11 +1975,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					// check if the stream started with DTMF
 					if(rtp_i->payload2 >= 96 && rtp_i->payload2 <= 127) {
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2; pass_find_rtpmap++) {
-							#if not CALL_BRANCHES
-							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, pass_find_rtpmap);
-							#else
 							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, c_branch, pass_find_rtpmap);
-							#endif
 							if(_rtpmap) {
 								for(int j = 0; j < MAX_RTPMAP; j++) {
 									if(_rtpmap[j].is_set() && rtp_i->payload2 == _rtpmap[j].payload) {
@@ -2587,11 +1994,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					if(curpayload >= 96 && curpayload <= 127) {
 						bool found = false;
 						for(int pass_find_rtpmap = 0; pass_find_rtpmap < 2 && !found; pass_find_rtpmap++) {
-							#if not CALL_BRANCHES
-							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, pass_find_rtpmap);
-							#else
 							RTPMAP *_rtpmap = rtp_i->get_rtpmap(this, c_branch, pass_find_rtpmap);
-							#endif
 							if(_rtpmap) {
 								for(int j = 0; j < MAX_RTPMAP; j++) {
 									if(_rtpmap[j].is_set() && curpayload == _rtpmap[j].payload) {
@@ -2614,55 +2017,27 @@ read:
 						if(exists_srtp && 
 						   !rtp_i->srtp_decrypt &&
 						   rtp_i->find_by_dest &&
-						   #if not CALL_BRANCHES
-						   rtp_i->call_ipport_n_orig != ipport_n &&
-						   #else
 						   rtp_i->call_ipport_n_orig != c_branch->ipport_n &&
-						   #endif
 						   (opt_srtp_rtp_decrypt || 
 						    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 						    opt_saveRAW || opt_savewav_force)) {
-							#if not CALL_BRANCHES
-							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-							#else
 							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
-							#endif
 							if(opt_ssl_dtls_rtp_local) {
-								#if not CALL_BRANCHES
-								if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
-								   (rtp_i->index_call_ip_port >= 0 && this->ip_port[rtp_i->index_call_ip_port].srtp) ||
-								   (rtp_i->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
-								#else
 								if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
 								   (rtp_i->index_call_ip_port >= 0 && c_branch->ip_port[rtp_i->index_call_ip_port].srtp) ||
 								   (rtp_i->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
-								#endif
-									#if not CALL_BRANCHES
-									RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-															   this, index_call_ip_port_by_src, true);
-									#else
 									RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 															   this, c_branch, index_call_ip_port_by_src, true);
-									#endif
 									rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
 								}
 							} else {
 								if(index_call_ip_port_by_src >= 0 &&
-								   #if not CALL_BRANCHES
-								   this->ip_port[index_call_ip_port_by_src].srtp) {
-								   #else
 								   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-								   #endif
 									if(!rtp_secure_map[index_call_ip_port_by_src]) {
 										rtp_secure_map[index_call_ip_port_by_src] = 
-											#if not CALL_BRANCHES
-											new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-														   this, index_call_ip_port_by_src);
-											#else
 											new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 														   this, c_branch, index_call_ip_port_by_src);
-											#endif
 										if(sverb.log_srtp_callid && !log_srtp_callid) {
 											syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
 											log_srtp_callid = true;
@@ -2674,13 +2049,8 @@ read:
 						}
 
 						if(rtp_i->index_call_ip_port >= 0) {
-							#if not CALL_BRANCHES
-							evProcessRtpStream(rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
-									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
-							#else
 							evProcessRtpStream(c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
 									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
-							#endif
 						}
 						if(find_by_dest ?
 						    rtp_i->prev_sport.isSet() && rtp_i->prev_sport != packetS->source_() :
@@ -2700,12 +2070,8 @@ read:
 						}
 						u_int32_t datalen = packetS->datalen_();
 						bool decrypt_ok = packetS->flags.s.decrypt_ok;
-						#if not CALL_BRANCHES
-						if(rtp_i->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-						#else
 						if(rtp_i->read(c_branch,
 							       (u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-						#endif
 							       packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 							rtp_read_rslt = true;
 							if(stream_in_multiple_calls) {
@@ -2777,32 +2143,17 @@ read:
 		}
 		
 		bool confirm_both_sides_by_sdp = false;
-		#if not CALL_BRANCHES
-		int index_call_ip_port_find_side = this->get_index_by_ip_port(find_by_dest ? packetS->daddr_() : packetS->saddr_(),
-									      find_by_dest ? packetS->dest_() : packetS->source_());
-		int index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
-									       find_by_dest ? packetS->source_() : packetS->dest_());
-		#else
 		int index_call_ip_port_find_side = this->get_index_by_ip_port(c_branch, find_by_dest ? packetS->daddr_() : packetS->saddr_(),
 									      find_by_dest ? packetS->dest_() : packetS->source_());
 		int index_call_ip_port_other_side = this->get_index_by_ip_port(c_branch, find_by_dest ? packetS->saddr_() : packetS->daddr_(),
 									       find_by_dest ? packetS->source_() : packetS->dest_());
-		#endif
 		if(this->txt.size()) {
 			const char *sdp_label = NULL;
-			#if not CALL_BRANCHES
-			if(index_call_ip_port_find_side >= 0 && !this->ip_port[index_call_ip_port_find_side].sdp_label.empty()) {
-				sdp_label = this->ip_port[index_call_ip_port_find_side].sdp_label.c_str();
-			} else if(index_call_ip_port_other_side >= 0 && !this->ip_port[index_call_ip_port_other_side].sdp_label.empty()) {
-				sdp_label = this->ip_port[index_call_ip_port_other_side].sdp_label.c_str();
-			}
-			#else
 			if(index_call_ip_port_find_side >= 0 && !c_branch->ip_port[index_call_ip_port_find_side].sdp_label.empty()) {
 				sdp_label = c_branch->ip_port[index_call_ip_port_find_side].sdp_label.c_str();
 			} else if(index_call_ip_port_other_side >= 0 && !c_branch->ip_port[index_call_ip_port_other_side].sdp_label.empty()) {
 				sdp_label = c_branch->ip_port[index_call_ip_port_other_side].sdp_label.c_str();
 			}
-			#endif
 			if(sdp_label && *sdp_label) {
 				int _iscaller = this->detectCallerdByLabelInXml(sdp_label);
 				if(_iscaller >= 0) {
@@ -2819,16 +2170,10 @@ read:
 			     << endl;
 			*/
 			if(index_call_ip_port_other_side < 0) {
-				#if not CALL_BRANCHES
-				index_call_ip_port_other_side = this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(),
-											   find_by_dest ? packetS->source_() : packetS->dest_(),
-											   true);
-				#else
 				index_call_ip_port_other_side = this->get_index_by_ip_port(c_branch, 
 											   find_by_dest ? packetS->saddr_() : packetS->daddr_(),
 											   find_by_dest ? packetS->source_() : packetS->dest_(),
 											   true);
-				#endif
 			}
 			if(index_call_ip_port_other_side < 0 &&
 			   callerd_confirm_rtp_by_both_sides_sdp[iscaller_index(iscaller)]) {
@@ -2883,19 +2228,11 @@ read:
 		rtp_new->call_owner = this;
 		rtp_new->iscaller = iscaller;
 		rtp_new->find_by_dest = find_by_dest;
-		#if not CALL_BRANCHES
-		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
-						   (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
-						   this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
-						   (this->get_index_by_ip_port(find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
-						    this->checkKnownIP_inSipCallerdIP(find_by_dest ? packetS->daddr_() : packetS->saddr_()));
-		#else
 		rtp_new->ok_other_ip_side_by_sip = typeIs(MGCP) || 
 						   (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip) ||
 						   this->checkKnownIP_inSipCallerdIP(NULL, find_by_dest ? packetS->saddr_() : packetS->daddr_()) ||
 						   (this->get_index_by_ip_port(c_branch, find_by_dest ? packetS->saddr_() : packetS->daddr_(), find_by_dest ? packetS->source_() : packetS->dest_()) >= 0 &&
 						    this->checkKnownIP_inSipCallerdIP(NULL,find_by_dest ? packetS->daddr_() : packetS->saddr_()));
-		#endif
 		rtp_new->index_call_ip_port = index_call_ip_port_find_side;
 		rtp_new->index_call_ip_port_other_side = index_call_ip_port_other_side;
 		if(rtp_new->index_call_ip_port >= 0) {
@@ -2903,48 +2240,12 @@ read:
 		}
 		rtp_new->confirm_both_sides_by_sdp = confirm_both_sides_by_sdp;
 		rtp_new->sdp_flags = sdp_flags;
-		#if not CALL_BRANCHES
-		rtp_new->call_ipport_n_orig = ipport_n;
-		#else
 		rtp_new->call_ipport_n_orig = c_branch->ipport_n;
-		#endif
 		if(rtp_cur[iscaller]) {
 			rtp_prev[iscaller] = rtp_cur[iscaller];
 		}
 		rtp_cur[iscaller] = rtp_new; 
 		
-		#if not CALL_BRANCHES
-		if(exists_srtp && 
-		   (opt_srtp_rtp_decrypt || 
-		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
-		    opt_saveRAW || opt_savewav_force)) {
-			int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-			if(opt_ssl_dtls_rtp_local) {
-				if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
-				   (rtp_new->index_call_ip_port >= 0 && this->ip_port[rtp_new->index_call_ip_port].srtp) ||
-				   (rtp_new->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
-					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-											   this, index_call_ip_port_by_src, true);
-					rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
-				}
-			} else {
-				if(index_call_ip_port_by_src >= 0 &&
-				   this->ip_port[index_call_ip_port_by_src].srtp) {
-					if(!rtp_secure_map[index_call_ip_port_by_src]) {
-						rtp_secure_map[index_call_ip_port_by_src] = 
-							new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-										   this, index_call_ip_port_by_src);
-						if(sverb.log_srtp_callid && !log_srtp_callid) {
-							syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
-							log_srtp_callid = true;
-						}
-					}
-					rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
-				}
-			}
-		}
-		#else
 		if(exists_srtp && 
 		   (opt_srtp_rtp_decrypt || 
 		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
@@ -2955,13 +2256,8 @@ read:
 				if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
 				   (rtp_new->index_call_ip_port >= 0 && c_branch->ip_port[rtp_new->index_call_ip_port].srtp) ||
 				   (rtp_new->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
-					#if not CALL_BRANCHES
-					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-											   this, index_call_ip_port_by_src, true);
-					#else
 					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 											   this, c_branch, index_call_ip_port_by_src, true);
-					#endif
 					rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
 				}
 			} else {
@@ -2969,13 +2265,8 @@ read:
 				   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
 					if(!rtp_secure_map[index_call_ip_port_by_src]) {
 						rtp_secure_map[index_call_ip_port_by_src] = 
-							#if not CALL_BRANCHES
-							new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-										   this, index_call_ip_port_by_src);
-							#else
 							new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
 										   this, c_branch, index_call_ip_port_by_src);
-							#endif
 						if(sverb.log_srtp_callid && !log_srtp_callid) {
 							syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
 							log_srtp_callid = true;
@@ -2985,7 +2276,6 @@ read:
 				}
 			}
 		}
-		#endif
 		
 		if(opt_dscp) {
 			rtp_new->dscp = packetS->header_ip_()->get_tos() >> 2;
@@ -3010,51 +2300,6 @@ read:
 		rtp_new->basefilename[1023] = 0;
 		#endif
 
-		#if not CALL_BRANCHES
-		if(rtp_new->index_call_ip_port >= 0) {
-			evProcessRtpStream(rtp_new->index_call_ip_port, rtp_new->index_call_ip_port_by_dest, 
-					   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
-		}
-		if(opt_rtpmap_by_callerd) {
-			unsigned index_rtpmap = isFillRtpMap(iscaller) ? iscaller : !iscaller;
-			if(opt_rtpmap_indirect) {
-				rtp_new->rtpmap_call_index = index_rtpmap;
-			} else {
-				memcpy(rtp_new->rtpmap, rtpmap[index_rtpmap], MAX_RTPMAP * sizeof(RTPMAP));
-			}
-			rtpmap_used_flags[index_rtpmap] = true;
-		} else {
-			if(rtp_new->index_call_ip_port >= 0 && isFillRtpMap(rtp_new->index_call_ip_port)) {
-				if(opt_rtpmap_indirect) {
-					rtp_new->rtpmap_call_index = rtp_new->index_call_ip_port;
-				} else {
-					memcpy(rtp_new->rtpmap, rtpmap[rtp_new->index_call_ip_port], MAX_RTPMAP * sizeof(RTPMAP));
-				}
-				rtpmap_used_flags[rtp_new->index_call_ip_port] = true;
-				if(index_call_ip_port_other_side >= 0 && isFillRtpMap(index_call_ip_port_other_side)) {
-					if(opt_rtpmap_indirect) {
-						rtp_new->rtpmap_other_side_call_index = index_call_ip_port_other_side;
-					} else {
-						memcpy(rtp_new->rtpmap_other_side, rtpmap[index_call_ip_port_other_side], MAX_RTPMAP * sizeof(RTPMAP));
-					}
-					rtpmap_used_flags[index_call_ip_port_other_side] = true;
-				}
-			} else {
-				for(int j = 0; j < 2; j++) {
-					int index_ip_port_first_for_callerd = getFillRtpMapByCallerd(j ? !iscaller : iscaller);
-					if(index_ip_port_first_for_callerd >= 0) {
-						if(opt_rtpmap_indirect) {
-							rtp_new->rtpmap_call_index = index_ip_port_first_for_callerd;
-						} else {
-							memcpy(rtp_new->rtpmap, rtpmap[index_ip_port_first_for_callerd], MAX_RTPMAP * sizeof(RTPMAP));
-						}
-						rtpmap_used_flags[index_ip_port_first_for_callerd] = true;
-						break;
-					}
-				}
-			}
-		}
-		#else
 		if(rtp_new->index_call_ip_port >= 0) {
 			evProcessRtpStream(c_branch, rtp_new->index_call_ip_port, rtp_new->index_call_ip_port_by_dest, 
 					   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
@@ -3098,7 +2343,6 @@ read:
 				}
 			}
 		}
-		#endif
 
 		if(iscaller) {
 			lastactivecallerrtp = rtp_new;
@@ -3108,12 +2352,8 @@ read:
 		
 		u_int32_t datalen = packetS->datalen_();
 		bool decrypt_ok = packetS->flags.s.decrypt_ok;
-		#if not CALL_BRANCHES
-		if(rtp_new->read((u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-		#else
 		if(rtp_new->read(c_branch,
 				 (u_char*)packetS->data_(), packetS->header_ip_(), &datalen, packetS->header_pt, packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(),
-		#endif
 				 packetS->sensor_id_(), packetS->sensor_ip, ifname, &decrypt_ok, &packetS->decrypt_sync)) {
 			rtp_read_rslt = true;
 			if(stream_in_multiple_calls) {
@@ -3133,11 +2373,7 @@ read:
 
 		//set codec
 		if(curpayload >= 96 && curpayload <= 127) {
-			#if not CALL_BRANCHES
-			RTPMAP *_rtpmap = rtp_new->get_rtpmap(this);
-			#else
 			RTPMAP *_rtpmap = rtp_new->get_rtpmap(this, c_branch);
-			#endif
 			if(_rtpmap) {
 				for(int i = 0; i < MAX_RTPMAP; i++) {
 					if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
@@ -3157,11 +2393,7 @@ read:
 		} else {
 			rtp_new->codec = curpayload;
 			if(curpayload == PAYLOAD_ILBC) {
-				#if not CALL_BRANCHES
-				RTPMAP *_rtpmap = rtp_new->get_rtpmap(this);
-				#else
 				RTPMAP *_rtpmap = rtp_new->get_rtpmap(this, c_branch);
-				#endif
 				if(_rtpmap) {
 					for(int i = 0; i < MAX_RTPMAP; i++) {
 						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
@@ -4810,15 +4042,9 @@ bool Call::selectRtpStreams() {
 				}
 				// found another stream with the same SSRC 
 
-				#if not CALL_BRANCHES
-				if(owner->get_index_by_ip_port(A->daddr, A->dport) >= 0) {
-					//A.daddr is in SDP
-					if(owner->get_index_by_ip_port(B->daddr, B->dport) >= 0) {
-				#else
 				if(owner->get_index_by_ip_port(NULL, A->daddr, A->dport) >= 0) {
 					//A.daddr is in SDP
 					if(owner->get_index_by_ip_port(NULL, B->daddr, B->dport) >= 0) {
-				#endif
 						//B.daddr is also in SDP now we have to decide if A or B will be removed. Check if we remove B if there will be still B.dst in some other RTP stream 
 						bool test = false;
 						for(int l = 0; l < rtp_size(); i++) { RTP *rtp_l = rtp_stream_by_index(l);
@@ -4880,15 +4106,9 @@ bool Call::selectRtpStreams_bySipcallerip() {
 		rtp_i->skip = false;
 	}
 	unsigned countSelectStreams = 0;
-	#if CALL_BRANCHES
 	CallBranch *c_branch = branch_main();
-	#endif
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		#if not CALL_BRANCHES
-		if(rtp_i->saddr != this->sipcallerip[0] && rtp_i->daddr != this->sipcallerip[0]) {
-		#else
 		if(rtp_i->saddr != c_branch->sipcallerip[0] && rtp_i->daddr != c_branch->sipcallerip[0]) {
-		#endif
 			rtp_i->skip = true;
 		} else {
 			++countSelectStreams;
@@ -5151,151 +4371,67 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(connect_duration_active_s());
 		break;
 	case cf_caller:
-		#if not CALL_BRANCHES
-		rfield->set(caller);
-		#else
 		rfield->set(branch_main()->caller.c_str());
-		#endif
 		break;
 	case cf_called:
-		#if not CALL_BRANCHES
-		rfield->set(get_called());
-		#else
 		rfield->set(get_called(branch_main()));
-		#endif
 		break;
 	case cf_caller_country:
-		#if not CALL_BRANCHES
-		rfield->set(getCountryByPhoneNumber(caller, true).c_str());
-		#else
 		rfield->set(getCountryByPhoneNumber(branch_main()->caller.c_str(), true).c_str());
-		#endif
 		break;
 	case cf_called_country:
-		#if not CALL_BRANCHES
-		rfield->set(getCountryByPhoneNumber(get_called(), true).c_str());
-		#else
 		rfield->set(getCountryByPhoneNumber(get_called(branch_main()), true).c_str());
-		#endif
 		break;
 	case cf_caller_international:
-		#if not CALL_BRANCHES
-		rfield->set(!isLocalByPhoneNumber(caller));
-		#else
 		rfield->set(!isLocalByPhoneNumber(branch_main()->caller.c_str()));
-		#endif
 		break;
 	case cf_called_international:
-		#if not CALL_BRANCHES
-		rfield->set(!isLocalByPhoneNumber(get_called()));
-		#else
 		rfield->set(!isLocalByPhoneNumber(get_called(branch_main())));
-		#endif
 		break;
 	case cf_callername:
-		#if not CALL_BRANCHES
-		rfield->set(callername);
-		#else
 		rfield->set(branch_main()->callername.c_str());
-		#endif
 		break;
 	case cf_callerdomain:
-		#if not CALL_BRANCHES
-		rfield->set(caller_domain);
-		#else
 		rfield->set(branch_main()->caller_domain.c_str());
-		#endif
 		break;
 	case cf_calleddomain:
-		#if not CALL_BRANCHES
-		rfield->set(get_called_domain());
-		#else
 		rfield->set(get_called_domain(branch_main()));
-		#endif
 		break;
 	case cf_calleragent:
-		#if not CALL_BRANCHES
-		rfield->set(a_ua);
-		#else
 		rfield->set(branch_main()->a_ua.c_str());
-		#endif
 		break;
 	case cf_calledagent:
-		#if not CALL_BRANCHES
-		rfield->set(b_ua);
-		#else
 		rfield->set(branch_main()->b_ua.c_str());
-		#endif
 		break;
 	case cf_callerip:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcallerip(true), RecordArrayField::tf_ip_n4);
-		#else
 		rfield->set(getSipcallerip(branch_main(), true), RecordArrayField::tf_ip_n4);
-		#endif
 		break;
 	case cf_calledip:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcalledip(true, true), RecordArrayField::tf_ip_n4);
-		#else
 		rfield->set(getSipcalledip(branch_main(), true, true), RecordArrayField::tf_ip_n4);
-		#endif
 		break;
 	case cf_callerip_country:
-		#if not CALL_BRANCHES
-		rfield->set(getCountryByIP(getSipcallerip(true), true).c_str());
-		#else
 		rfield->set(getCountryByIP(getSipcallerip(branch_main(), true), true).c_str());
-		#endif
 		break;
 	case cf_calledip_country:
-		#if not CALL_BRANCHES
-		rfield->set(getCountryByIP(getSipcalledip(true, true), true).c_str());
-		#else
 		rfield->set(getCountryByIP(getSipcalledip(branch_main(), true, true), true).c_str());
-		#endif
 		break;
 	case cf_callerip_encaps:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcallerip_encaps(true), RecordArrayField::tf_ip_n4);
-		#else
 		rfield->set(getSipcallerip_encaps(branch_main(), true), RecordArrayField::tf_ip_n4);
-		#endif
 		break;
 	case cf_calledip_encaps:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcalledip_encaps(true, true), RecordArrayField::tf_ip_n4);
-		#else
 		rfield->set(getSipcalledip_encaps(branch_main(), true, true), RecordArrayField::tf_ip_n4);
-		#endif
 		break;
 	case cf_callerip_encaps_prot:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcallerip_encaps_prot(true));
-		#else
 		rfield->set(getSipcallerip_encaps_prot(branch_main(), true));
-		#endif
 		break;
 	case cf_calledip_encaps_prot:
-		#if not CALL_BRANCHES
-		rfield->set(getSipcalledip_encaps_prot(true, true));
-		#else
 		rfield->set(getSipcalledip_encaps_prot(branch_main(), true, true));
-		#endif
 		break;
 	case cf_sipproxies:
-		#if not CALL_BRANCHES
-		rfield->set(getProxies_str(true, true).c_str());
-		#else
 		rfield->set(getProxies_str(branch_main(), true, true).c_str());
-		#endif
 		break;
 	case cf_lastSIPresponseNum:
-		#if not CALL_BRANCHES
-		rfield->set(lastSIPresponseNum);
-		#else
 		rfield->set(branch_main()->lastSIPresponseNum);
-		#endif
 		break;
 	case cf_callercodec:
 		rfield->set(last_callercodec);
@@ -5307,11 +4443,7 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(useSensorId);
 		break;
 	case cf_vlan:
-		#if not CALL_BRANCHES
-		rfield->set(vlan);
-		#else
 		rfield->set(branch_main()->vlan);
-		#endif
 		break;
 	default:
 		break;
@@ -5903,25 +5035,15 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		v = 1;
 		break;
 	case _chartType_sipResp:
-		#if not CALL_BRANCHES
-		if(lastSIPresponseNum) {
-			v = lastSIPresponseNum;
-		#else
 		if(branch_main()->lastSIPresponseNum) {
 			v = branch_main()->lastSIPresponseNum;
-		#endif
 		} else {
 			setNull = true;
 		}
 		break;
 	case _chartType_sipResponse:
-		#if not CALL_BRANCHES
-		if(lastSIPresponse[0]) {
-			v_str = lastSIPresponse;
-		#else
 		if(!branch_main()->lastSIPresponse.empty()) {
 			v_str = branch_main()->lastSIPresponse;
-		#endif
 			if(chartsCache && chartsCache->maxLengthSipResponseText && v_str.length() > chartsCache->maxLengthSipResponseText) {
 				v_str.resize(chartsCache->maxLengthSipResponseText);
 			}
@@ -5931,11 +5053,7 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		break;
 	case _chartType_sipResponse_base:
 		{
-		#if not CALL_BRANCHES
-		int lsr = lastSIPresponseNum;
-		#else
 		int lsr = branch_main()->lastSIPresponseNum;
-		#endif
 		while(lsr >= 10) lsr /= 10;
 		v = lsr;
 		}
@@ -5948,32 +5066,16 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		}
 		break;
 	case _chartType_IP_src:
-		#if not CALL_BRANCHES
-		v_str = getSipcallerip().getString();
-		#else
 		v_str = getSipcallerip(branch_main()).getString();
-		#endif
 		break;
 	case _chartType_IP_dst:
-		#if not CALL_BRANCHES
-		v_str = sipcalledip_rslt.getString();
-		#else
 		v_str = branch_main()->sipcalledip_rslt.getString();
-		#endif
 		break;
 	case _chartType_domain_src:
-		#if not CALL_BRANCHES
-		v_str = caller_domain;
-		#else
 		v_str = branch_main()->caller_domain;
-		#endif
 		break;
 	case _chartType_domain_dst:
-		#if not CALL_BRANCHES
-		v_str = get_called_domain();
-		#else
 		v_str = get_called_domain(branch_main());
-		#endif
 		break;
 	case _chartType_price_customer:
 		if(price_customer > 0) {
@@ -6354,11 +5456,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 				break;
 			case _t_cdr_sipresp:
 				{
-				#if not CALL_BRANCHES
-				list<sSipResponse>::iterator iter = SIPresponse.begin();
-				#else
 				list<sSipResponse>::iterator iter = branch_main()->SIPresponse.begin();
-				#endif
 				for(unsigned i = 0; i < child_index; i++) {
 					++iter;
 				}
@@ -6371,11 +5469,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 				break;
 			case _t_cdr_siphistory:
 				{
-				#if not CALL_BRANCHES
-				list<sSipHistory>::iterator iter = SIPhistory.begin();
-				#else
 				list<sSipHistory>::iterator iter = branch_main()->SIPhistory.begin();
-				#endif
 				for(unsigned i = 0; i < child_index; i++) {
 					++iter;
 				}
@@ -6454,31 +5548,19 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 		return(true);
 	}
 	if(*column == "lastsipresponse") {
-		#if not CALL_BRANCHES
-		*value = cEvalFormula::sValue(lastSIPresponse);
-		#else
 		*value = cEvalFormula::sValue(branch_main()->lastSIPresponse);
-		#endif
 		if(ord) {
 			ord->u.s.column = 2;
 		}
 		return(true);
 	} else if(*column == "reason") {
-		#if not CALL_BRANCHES
-		*value = cEvalFormula::sValue(table->find("sip") != string::npos ? reason_sip_text : reason_q850_text);
-		#else
 		*value = cEvalFormula::sValue(table->find("sip") != string::npos ? branch_main()->reason_sip_text : branch_main()->reason_q850_text);
-		#endif
 		if(ord) {
 			ord->u.s.column = table->find("sip") != string::npos ? 3 : 4;
 		}
 		return(true);
 	} else if(*column == "ua") {
-		#if not CALL_BRANCHES
-		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? a_ua : b_ua);
-		#else
 		*value = cEvalFormula::sValue(table->find("a_ua") != string::npos ? branch_main()->a_ua : branch_main()->b_ua);
-		#endif
 		if(ord) {
 			ord->u.s.column = table->find("a_ua") != string::npos ? 5 : 6;
 		}
@@ -6651,17 +5733,9 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 		case _t_cdr_proxy:
 			return(proxies.size());
 		case _t_cdr_sipresp:
-			#if not CALL_BRANCHES
-			return(SIPresponse.size());
-			#else
 			return(branch_main()->SIPresponse.size());
-			#endif
 		case _t_cdr_siphistory:
-			#if not CALL_BRANCHES
-			return(SIPhistory.size());
-			#else
 			return(branch_main()->SIPhistory.size());
-			#endif
 		case _t_cdr_rtp:
 			return(rtp_rows_count);
 		case _t_cdr_sdp:
@@ -7040,17 +6114,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	__SYNC_INC(counter_calls_save_1);
 	
-	#if CALL_BRANCHES
 	CallBranch *c_branch = branch_main();
-	#endif
 	
-	#if not CALL_BRANCHES
-	if((flags & FLAG_SKIPCDR) ||
-	   (lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this))) {
-	#else
 	if((flags & FLAG_SKIPCDR) ||
 	   (c_branch->lastSIPresponseNum >= 0 && nocdr_rules.isSet() && nocdr_rules.check(this, c_branch))) {
-	#endif
 		return(0);
 	}
 	
@@ -7059,11 +6126,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			return(0);
 		}
 		if(srvcc_flag == _srvcc_na) {
-			#if not CALL_BRANCHES
-			srvcc_check_pre();
-			#else
 			srvcc_check_pre(c_branch);
-			#endif
 		}
 	}
 	
@@ -7097,13 +6160,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr_country_code.clear();
 	*/
 	
-	#if not CALL_BRANCHES
-	adjustUA();
-	adjustReason();
-	#else
 	adjustUA(c_branch);
 	adjustReason(c_branch);
-	#endif
 	
 	if(opt_only_cdr_next) {
 		static u_int32_t last_id_cdr_next = 0;
@@ -7164,21 +6222,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 	u_int64_t cdr_flags = opt_cdr_flag_bit ? ((u_int64_t)1 << opt_cdr_flag_bit) : 0;
-	#if not CALL_BRANCHES
-	if (this->unconfirmed_bye)
-	#else
 	if (c_branch->unconfirmed_bye)
-	#endif
 		cdr_flags |= CDR_UNCONFIRMED_BYE;
 	if (is_fas_detected)
 		cdr_flags |= CDR_FAS_DETECTED;
 	if (is_zerossrc_detected)
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
-	#if not CALL_BRANCHES
-	if (is_sipalg_detected)
-	#else
 	if (c_branch->is_sipalg_detected)
-	#endif
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	if(dtls_exists && opt_ssl_dtls_rtp_local) {
@@ -7202,13 +6252,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 	} else {
-		#if not CALL_BRANCHES
-		for(int i = 0; i < ipport_n; i++) {
-			if(ip_port[i].srtp) {
-		#else
 		for(int i = 0; i < c_branch->ipport_n; i++) {
 			if(c_branch->ip_port[i].srtp) {
-		#endif
 				bool stream_is_used =  false;
 				int srtp_decrypt_index_call_ip_port = -1;
 				for(int j = 0; j < rtp_size(); j++) {
@@ -7220,28 +6265,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 				if(stream_is_used &&
-				   #if not CALL_BRANCHES
-				   !(ip_port[i].srtp_crypto_config_list ||
-				   #else
 				   !(c_branch->ip_port[i].srtp_crypto_config_list ||
-				   #endif
 				     (rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i] && 
 				      rtp_secure_map[srtp_decrypt_index_call_ip_port >= 0 ? srtp_decrypt_index_call_ip_port : i]->isOK_decrypt_rtp()))) {
 					cdr_flags |= CDR_SRTP_WITHOUT_KEY;
 					if(sverb.dtls && ssl_sessionkey_enable()) {
 						string log_str;
 						log_str += string("set flag CDR_SRTP_WITHOUT_KEY for call: ") + call_id;
-						#if not CALL_BRANCHES
-						for(int k = 0; k < ipport_n; k++) {
-							log_str += "\nip_port " + intToString(k) + " " +
-								   ip_port[k].addr.getString() + ":" + ip_port[k].port.getString() + 
-								   "; exist srtp_crypto_config_list: " + (ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
-						#else
 						for(int k = 0; k < c_branch->ipport_n; k++) {
 							log_str += "\nip_port " + intToString(k) + " " +
 								   c_branch->ip_port[k].addr.getString() + ":" + c_branch->ip_port[k].port.getString() + 
 								   "; exist srtp_crypto_config_list: " + (c_branch->ip_port[k].srtp_crypto_config_list ? "Y" : "n") + 
-						#endif
 								   "; exist rtp_secure_map: " + (rtp_secure_map[k] ? "Y" : "n") + 
 								   (rtp_secure_map[k] ?
 								     string("; isOK_decrypt_rtp: ") + (rtp_secure_map[k]->isOK_decrypt_rtp() ? "Y" : "n") :
@@ -7299,89 +6333,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	set<vmIP> proxies_undup;
-	
-	#if not CALL_BRANCHES
-	bool set_sipcallerip = false;
-	bool set_sipcalledip = false;
-	bool set_proxies = false;
-	if(invite_sdaddr_bad_order) {
-		vmIP sipcallerip;
-		vmPort sipcallerport;
-		vmIP sipcallerip_encaps;
-		u_int8_t sipcallerip_encaps_prot;
-		sipcallerip = getSipcalleripFromInviteList(&sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false);
-		if(sipcallerip.isSet()) {
-			set_sipcallerip = true;
-			sipcallerip_rslt = sipcallerip;
-			sipcallerport_rslt = sipcallerport;
-			sipcallerip_encaps_rslt = sipcallerip_encaps;
-			sipcallerip_encaps_prot_rslt = sipcallerip_encaps_prot;
-		}
-		vmIP sipcalledip;
-		vmPort sipcalledport;
-		vmIP sipcalledip_encaps;
-		u_int8_t sipcalledip_encaps_prot;
-		list<vmIPport> proxies;
-		for(int i = 0; i < 2; i++) {
-			sipcalledip = getSipcalledipFromInviteList(&sipcalledport, &sipcalledip_encaps, &sipcalledip_encaps_prot, &proxies, i == 0);
-			if(sipcalledip.isSet()) {
-				set_sipcalledip = true;
-				sipcalledip_rslt = sipcalledip;
-				sipcalledport_rslt = sipcalledport;
-				sipcalledip_encaps_rslt = sipcalledip_encaps;
-				sipcalledip_encaps_prot_rslt = sipcalledip_encaps_prot;
-				vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
-				this->proxies_undup(&proxies_undup, &proxies, &proxy_exclude);
-				set_proxies = true;
-				break;
-			}
-		}
-	}
-	if(!set_sipcallerip) {
-		sipcallerip_rslt = getSipcallerip();
-		sipcallerip_encaps_rslt = getSipcallerip_encaps();
-		sipcallerip_encaps_prot_rslt = getSipcallerip_encaps_prot();
-		sipcallerport_rslt = getSipcallerport();
-	}
-	if(!set_sipcalledip && !isAllInviteConfirmed()) {
-		vmIP sipcalledip_confirmed;
-		vmIP sipcalledip_encaps_confirmed;
-		u_int8_t sipcalledip_encaps_prot_confirmed;
-		vmPort sipcalledport_confirmed;
-		list<vmIPport> proxies;
-		sipcalledip_confirmed = getSipcalledipFromInviteList(&sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed, &proxies, true);
-		if(sipcalledip_confirmed.isSet()) {
-			set_sipcalledip = true;
-			sipcalledip_rslt = getSipcalledip();
-			sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps();
-			sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot();
-			sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport();
-			vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
-			this->proxies_undup(&proxies_undup, &proxies, &proxy_exclude);
-			set_proxies = true;
-		}
-	}
-	if(!set_sipcalledip) {
-		sipcalledip_rslt = getSipcalledip();
-		sipcalledip_encaps_rslt = getSipcalledip_encaps();
-		sipcalledip_encaps_prot_rslt = getSipcalledip_encaps_prot();
-		sipcalledport_rslt = getSipcalledport();
-	}
-	
-	if(!set_proxies) {
-		vmIPport proxy_exclude(sipcalledip_rslt, sipcalledport_rslt);
-		this->proxies_undup(&proxies_undup, NULL, &proxy_exclude);
-	}
-	#else
 	prepareSipIpForSave(c_branch, &proxies_undup);
-	#endif
 
 	list<sSipResponse> SIPresponseUnique;
-	#if not CALL_BRANCHES
-	for(list<sSipResponse>::iterator iterSipresp = SIPresponse.begin(); iterSipresp != SIPresponse.end(); iterSipresp++) {
-	#else
 	for(list<Call::sSipResponse>::iterator iterSipresp = c_branch->SIPresponse.begin(); iterSipresp != c_branch->SIPresponse.end(); iterSipresp++) {
-	#endif
 		bool existsInUnique = false;
 		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
 			if(iterSiprespUnique->SIPresponseNum == iterSipresp->SIPresponseNum &&
@@ -7398,29 +6353,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_save_sdp_ipport) {
 		bool save_iscaller = false;
 		bool save_iscalled = false;
-		#if not CALL_BRANCHES
-		for(int i = ipport_n - 1; i >= 0; i--) {
-			if(ip_port[i].addr.isSet() &&
-			   ip_port[i].type_addr == ip_port_call_info::_ta_base &&
-			   (opt_save_sdp_ipport == 2 ||
-			    (ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
-				d_item2<vmIPport, bool> ipPortIscaller(vmIPport(ip_port[i].addr, ip_port[i].port), ip_port[i].iscaller);
-		#else
 		for(int i = c_branch->ipport_n - 1; i >= 0; i--) {
 			if(c_branch->ip_port[i].addr.isSet() &&
 			   c_branch->ip_port[i].type_addr == ip_port_call_info::_ta_base &&
 			   (opt_save_sdp_ipport == 2 ||
 			    (c_branch->ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
 				d_item2<vmIPport, bool> ipPortIscaller(vmIPport(c_branch->ip_port[i].addr, c_branch->ip_port[i].port), c_branch->ip_port[i].iscaller);
-		#endif
 				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), ipPortIscaller) == sdp_rows_list.end()) {
 					sdp_rows_list.push_back(ipPortIscaller);
 					if(opt_save_sdp_ipport == 1) {
-						#if not CALL_BRANCHES
-						if(ip_port[i].iscaller) {
-						#else
 						if(c_branch->ip_port[i].iscaller) {
-						#endif
 							save_iscaller = true;
 						} else {
 							save_iscalled = true;
@@ -7446,16 +6388,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(useSensorId, "id_sensor");
 	}
 
-	#if not CALL_BRANCHES
-	cdr.add(sqlEscapeString(caller), "caller");
-	cdr.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-	cdr.add(sqlEscapeString(get_called()), "called");
-	cdr.add(sqlEscapeString(reverseString(get_called()).c_str()), "called_reverse");
-	cdr.add(sqlEscapeString(caller_domain), "caller_domain");
-	cdr.add(sqlEscapeString(get_called_domain()), "called_domain");
-	cdr.add(sqlEscapeString(callername), "callername");
-	cdr.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
-	#else
 	cdr.add(sqlEscapeString(c_branch->caller), "caller");
 	cdr.add(sqlEscapeString(reverseString(c_branch->caller.c_str()).c_str()), "caller_reverse");
 	cdr.add(sqlEscapeString(get_called(c_branch)), "called");
@@ -7464,7 +6396,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(sqlEscapeString(get_called_domain(c_branch)), "called_domain");
 	cdr.add(sqlEscapeString(c_branch->callername), "callername");
 	cdr.add(sqlEscapeString(reverseString(c_branch->callername.c_str()).c_str()), "callername_reverse");
-	#endif
 	/*
 	cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
 	cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
@@ -7481,63 +6412,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		     dscp_c = 0,
 		     dscp_d = 0;
 	
-	#if not CALL_BRANCHES
-	cdr.add(sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
-	cdr.add(sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
-	if(existsColumns.cdr_sipport) {
-		cdr.add(sipcallerport_rslt.getPort(), "sipcallerport");
-		cdr.add(sipcalledport_rslt.getPort(), "sipcalledport");
-	}
-	if(existsColumns.cdr_sipcallerdip_encaps) {
-		cdr.add(sipcallerip_encaps_rslt, "sipcallerip_encaps", !sipcallerip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
-		cdr.add(sipcallerip_encaps_rslt.isSet() && sipcallerip_encaps_prot_rslt != 0xFF ? sipcallerip_encaps_prot_rslt : 0, 
-			"sipcallerip_encaps_prot", 
-			!sipcallerip_encaps_rslt.isSet() || sipcallerip_encaps_prot_rslt == 0xFF);
-		cdr.add(sipcalledip_encaps_rslt, "sipcalledip_encaps", !sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_table);
-		cdr.add(sipcalledip_encaps_rslt.isSet() && sipcalledip_encaps_prot_rslt != 0xFF ? sipcalledip_encaps_prot_rslt : 0, 
-			"sipcalledip_encaps_prot", 
-			!sipcalledip_encaps_rslt.isSet() || sipcalledip_encaps_prot_rslt == 0xFF);
-	}
-	
-	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_sipcallerdip_v6) {
-		vmIP ipv4[2], ipv6[2];
-		vmPort ipv4_port[2], ipv6_port[2];
-		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
-		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
-		ipv4[0] = getSipcalleripFromInviteList(&ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv4[1] = getSipcalledipFromInviteList(&ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
-		ipv6[0] = getSipcalleripFromInviteList(&ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
-		ipv6[1] = getSipcalledipFromInviteList(&ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
-		if(ipv4[0].isSet()) {
-			cdr.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_table);
-			cdr.add(ipv4_port[0].getPort(), "sipcallerport_v4");
-		} else {
-			cdr.add(0, "sipcallerip_v4", true);
-			cdr.add(0, "sipcallerport_v4", true);
-		}
-		if(ipv4[1].isSet()) {
-			cdr.add(ipv4[1], "sipcalledip_v4", false, sqlDbSaveCall, sql_cdr_table);
-			cdr.add(ipv4_port[1].getPort(), "sipcalledport_v4");
-		} else {
-			cdr.add(0, "sipcalledip_v4", true);
-			cdr.add(0, "sipcalledport_v4", true);
-		}
-		if(ipv6[0].isSet()) {
-			cdr.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, sql_cdr_table);
-			cdr.add(ipv6_port[0].getPort(), "sipcallerport_v6");
-		} else {
-			cdr.add(0, "sipcallerip_v6", true);
-			cdr.add(0, "sipcallerport_v6", true);
-		}
-		if(ipv6[1].isSet()) {
-			cdr.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, sql_cdr_table);
-			cdr.add(ipv6_port[1].getPort(), "sipcalledport_v6");
-		} else {
-			cdr.add(0, "sipcalledip_v6", true);
-			cdr.add(0, "sipcalledport_v6", true);
-		}
-	}
-	#else
 	cdr.add(c_branch->sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, sql_cdr_table);
 	cdr.add(c_branch->sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_table);
 	if(existsColumns.cdr_sipport) {
@@ -7593,7 +6467,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(0, "sipcalledport_v6", true);
 		}
 	}
-	#endif
 	
 	cdr.add_duration(duration_us(), "duration", existsColumns.cdr_duration_ms);
 	if(progress_time_us) {
@@ -7612,13 +6485,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(0, "connect_duration", true);
 	}
 	if(existsColumns.cdr_vlan) {
-		#if not CALL_BRANCHES
-		if(VLAN_IS_SET(vlan)) {
-			cdr.add(vlan, "vlan");
-		#else
 		if(VLAN_IS_SET(c_branch->vlan)) {
 			cdr.add(c_branch->vlan, "vlan");
-		#endif
 		} else {
 			cdr.add(0, "vlan", true);
 		}
@@ -7662,17 +6530,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	
-	#if not CALL_BRANCHES
-	cdr.add(lastSIPresponseNum, "lastSIPresponseNum");
-	if(existsColumns.cdr_reason) {
-		if(reason_sip_cause) {
-			cdr.add(reason_sip_cause, "reason_sip_cause");
-		}
-		if(reason_q850_cause) {
-			cdr.add(reason_q850_cause, "reason_q850_cause");
-		}
-	}
-	#else
 	cdr.add(c_branch->lastSIPresponseNum, "lastSIPresponseNum");
 	if(existsColumns.cdr_reason) {
 		if(c_branch->reason_sip_cause) {
@@ -7682,7 +6539,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			cdr.add(c_branch->reason_q850_cause, "reason_q850_cause");
 		}
 	}
-	#endif
 	
 	if(this->first_invite_time_us) {
 		if(existsColumns.cdr_response_time_100 && this->first_response_100_time_us) {
@@ -7708,44 +6564,23 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 107;
 	} else if(sipwithoutrtp_timeout_exceeded && !first_rtp_time_us) {
 		bye = 108;
-	#if not CALL_BRANCHES
-	} else if(oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
-	#else
 	} else if(c_branch->oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
-	#endif
 		bye = 101;
 	} else if(pcap_drop) {
 		bye = 100;
-	#if not CALL_BRANCHES
-	} else if(!seenRES2XX_no_BYE && !seenRES18X && seenbye) {
-	#else
 	} else if(!c_branch->seenRES2XX_no_BYE && !c_branch->seenRES18X && c_branch->seenbye) {
-	#endif
 		bye = 106;
 	} else {
-		#if not CALL_BRANCHES
-		bye = seeninviteok ? (seenbye ? (seenbye_and_ok ? 3 : 2) : 1) : 0;
-		#else
 		bye = c_branch->seeninviteok ? (c_branch->seenbye ? (c_branch->seenbye_and_ok ? 3 : 2) : 1) : 0;
-		#endif
 	}
 	cdr.add(bye, "bye");
 
-	#if not CALL_BRANCHES
-	if(strlen(match_header)) {
-		cdr_next.add(sqlEscapeString(match_header), "match_header");
-	}
-	if(strlen(custom_header1)) {
-		cdr_next.add(sqlEscapeString(custom_header1), "custom_header1");
-	}
-	#else
 	if(!c_branch->match_header.empty()) {
 		cdr_next.add(sqlEscapeString(c_branch->match_header), "match_header");
 	}
 	if(!c_branch->custom_header1.empty()) {
 		cdr_next.add(sqlEscapeString(c_branch->custom_header1), "custom_header1");
 	}
-	#endif
 	
 	/* obsolete
 	for(map<string, string>::iterator iCustHeadersIter = custom_headers.begin(); iCustHeadersIter != custom_headers.end(); iCustHeadersIter++) {
@@ -7801,34 +6636,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		custom_headers_cdr->prepareSaveRows(this, INVITE, NULL, 0, &cdr_next, cdr_next_ch, cdr_next_ch_name);
 	}
 
-	#if not CALL_BRANCHES
-	if(whohanged == 0 || whohanged == 1) {
-		cdr.add(whohanged ? 2/*"callee"*/ : 1/*"caller"*/, "whohanged");
-	}
-	#else
 	if(c_branch->whohanged == 0 || c_branch->whohanged == 1) {
 		cdr.add(c_branch->whohanged ? 2/*"callee"*/ : 1/*"caller"*/, "whohanged");
 	}
-	#endif
 	
 	if(get_customers_pn_query[0]) {
 		CustPhoneNumberCache *custPnCache = getCustPnCache();
 		if(custPnCache) {
 			cust_reseller cr;
-			#if not CALL_BRANCHES
-			cr = custPnCache->getCustomerByPhoneNumber(caller);
-			#else
 			cr = custPnCache->getCustomerByPhoneNumber(c_branch->caller.c_str());
-			#endif
 			if(cr.cust_id) {
 				cdr.add(cr.cust_id, "caller_customer_id");
 				cdr.add(cr.reseller_id, "caller_reseller_id");
 			}
-			#if not CALL_BRANCHES
-			cr = custPnCache->getCustomerByPhoneNumber(get_called());
-			#else
 			cr = custPnCache->getCustomerByPhoneNumber(get_called(c_branch));
-			#endif
 			if(cr.cust_id) {
 				cdr.add(cr.cust_id, "called_customer_id");
 				cdr.add(cr.reseller_id, "called_reseller_id");
@@ -8179,11 +7000,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(existsColumns.cdr_max_retransmission_invite) {
-		#if not CALL_BRANCHES
-		unsigned max_retrans = getMaxRetransmissionInvite();
-		#else
 		unsigned max_retrans = getMaxRetransmissionInvite(c_branch);
-		#endif
 		if(max_retrans > 0) {
 			cdr.add(max_retrans, "max_retransmission_invite");
 		}
@@ -8198,15 +7015,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		unsigned operator_id = 0;
 		unsigned customer_id = 0;
 		if(billing->billing(calltime_s(), connect_duration_s(),
-				    #if not CALL_BRANCHES
-				    getSipcallerip(), sipcalledip_rslt,
-				    caller, get_called(),
-				    caller_domain, get_called_domain(),
-				    #else
 				    getSipcallerip(c_branch), c_branch->sipcalledip_rslt,
 				    c_branch->caller.c_str(), get_called(c_branch),
 				    c_branch->caller_domain.c_str(), get_called_domain(c_branch),
-				    #endif
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
@@ -8228,15 +7039,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(operator_price > 0 || customer_price > 0) {
 				billing->saveAggregation(calltime_s(),
-							 #if not CALL_BRANCHES
-							 getSipcallerip(), sipcalledip_rslt,
-							 caller, get_called(),
-							 caller_domain, get_called_domain(),
-							 #else
 							 getSipcallerip(c_branch), c_branch->sipcalledip_rslt,
 							 c_branch->caller.c_str(), get_called(c_branch),
 							 c_branch->caller_domain.c_str(), get_called_domain(c_branch),
-							 #endif
 							 operator_price, customer_price,
 							 operator_currency_id, customer_currency_id,
 							 &billingAggregationsInserts);
@@ -8260,40 +7065,22 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(opt_cdr_country_code) {
 		CountryDetectApplyReload();
 		if(opt_cdr_country_code == 2) {
-			#if not CALL_BRANCHES
-			cdr_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
-			cdr_country_code.add(getCountryIdByIP(sipcalledip_rslt), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
-			#else
 			cdr_country_code.add(getCountryIdByIP(getSipcallerip(c_branch)), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryIdByIP(c_branch->sipcalledip_rslt), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryIdByPhoneNumber(c_branch->caller.c_str()), "caller_number_country_code");
 			cdr_country_code.add(getCountryIdByPhoneNumber(get_called(c_branch)), "called_number_country_code");
-			#endif
 		} else {
-			#if not CALL_BRANCHES
-			cdr_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
-			cdr_country_code.add(getCountryByIP(sipcalledip_rslt, true), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
-			#else
 			cdr_country_code.add(getCountryByIP(getSipcallerip(c_branch), true), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryByIP(c_branch->sipcalledip_rslt, true), "sipcalledip_country_code");
 			cdr_country_code.add(getCountryByPhoneNumber(c_branch->caller.c_str(), true), "caller_number_country_code");
 			cdr_country_code.add(getCountryByPhoneNumber(get_called(c_branch), true), "called_number_country_code");
-			#endif
 		}
 		if(existsColumns.cdr_country_code_calldate) {
 			cdr_country_code.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_country_code_calldate_ms);
 		}
 	}
 	
-	#if not CALL_BRANCHES
-	adjustSipResponse(lastSIPresponse, 0);
-	#else
 	adjustSipResponse(&c_branch->lastSIPresponse);
-	#endif
 	
 	if((useChartsCacheInProcessCall() && sverb.charts_cache_only) ||
 	   (useCdrStatInProcessCall() && sverb.cdr_stat_only)) {
@@ -8303,67 +7090,45 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		string lastSIPresponse =
-			#if not CALL_BRANCHES
-			this->lastSIPresponse
-			#else
-			c_branch->lastSIPresponse
-			#endif
-			;
-		
 		if(useSetId()) {
-			cdr.add_cb_string(lastSIPresponse, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
+			cdr.add_cb_string(c_branch->lastSIPresponse, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
 		} else {
-			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
+			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse, false, true);
 			if(_cb_id) {
 				cdr.add(_cb_id, "lastSIPresponse_id");
 			} else {
 				query_str += MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") + 
-					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")");
+					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(c_branch->lastSIPresponse) + ")");
 				cdr.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
 				//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 			}
 		}
 		if(opt_cdr_reason_string_enable && existsColumns.cdr_reason) {
-			string reason_sip_text =
-				#if not CALL_BRANCHES
-				this->reason_sip_text
-				#else
-				c_branch->reason_sip_text
-				#endif
-				;
-			string reason_q850_text =
-				#if not CALL_BRANCHES
-				this->reason_q850_text
-				#else
-				c_branch->reason_q850_text
-				#endif
-				;
-			if(!reason_sip_text.empty()) {
+			if(!c_branch->reason_sip_text.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
+					cdr.add_cb_string(c_branch->reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, c_branch->reason_sip_text.c_str(), false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_sip_text_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @r_sip_tid = ") + 
-							     "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")");
+							     "getIdOrInsertREASON(1," + sqlEscapeStringBorder(c_branch->reason_sip_text.c_str()) + ")");
 						cdr.add(MYSQL_VAR_PREFIX + "@r_sip_tid", "reason_sip_text_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertREASON(1," + sqlEscapeStringBorder(reason_sip_text.c_str()) + ")", "reason_sip_text_id");
 					}
 				}
 			}
-			if(!reason_q850_text.empty()) {
+			if(!c_branch->reason_q850_text.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(reason_q850_text, "reason_q850_text_id", cSqlDbCodebook::_cb_reason_q850);
+					cdr.add_cb_string(c_branch->reason_q850_text, "reason_q850_text_id", cSqlDbCodebook::_cb_reason_q850);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, c_branch->reason_q850_text.c_str(), false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "reason_q850_text_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @r_q850_tid = ") + 
-							     "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")");
+							     "getIdOrInsertREASON(2," + sqlEscapeStringBorder(c_branch->reason_q850_text.c_str()) + ")");
 						cdr.add(MYSQL_VAR_PREFIX + "@r_q850_tid", "reason_q850_text_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertREASON(2," + sqlEscapeStringBorder(reason_q850_text.c_str()) + ")", "reason_q850_text_id");
 					}
@@ -8371,45 +7136,31 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		if(opt_cdr_ua_enable) {
-			string a_ua =
-				#if not CALL_BRANCHES
-				this->a_ua
-				#else
-				c_branch->a_ua
-				#endif
-				;
-			string b_ua =
-				#if not CALL_BRANCHES
-				this->b_ua
-				#else
-				c_branch->b_ua
-				#endif
-				;
-			if(!a_ua.empty()) {
+			if(!c_branch->a_ua.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
+					cdr.add_cb_string(c_branch->a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "a_ua_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @uaA_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")");
+							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ")");
 						cdr.add(MYSQL_VAR_PREFIX + "@uaA_id", "a_ua_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 					}
 				}
 			}
-			if(!b_ua.empty()) {
+			if(!c_branch->b_ua.empty()) {
 				if(useSetId()) {
-					cdr.add_cb_string(b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
+					cdr.add_cb_string(c_branch->b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, false, true);
 					if(_cb_id) {
 						cdr.add(_cb_id, "b_ua_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @uaB_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")");
+							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->b_ua) + ")");
 						cdr.add(MYSQL_VAR_PREFIX + "@uaB_id", "b_ua_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 					}
@@ -8644,7 +7395,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		#if CALL_BRANCHES
 		if(is_multibranch() && existsColumns.cdr_next_branches) {
 			vector<CallBranch*> next_branches;
 			if(first_branch.branch_id != c_branch->branch_id) {
@@ -8896,7 +7646,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 			}
 		}
-		#endif
 
 		vector<SqlDb_row> rtp_rows;
 		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
@@ -9201,11 +7950,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		extern bool opt_cdr_sipresp;	
 		if(opt_cdr_sipresp) {
 			vector<SqlDb_row> sipresp_rows;
-			#if not CALL_BRANCHES
-			for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-			#else
 			for(list<Call::sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-			#endif
 				bool enableMultiInsert = true;
 				SqlDb_row sipresp;
 				sipresp.setIgnoreCheckExistsField();
@@ -9251,11 +7996,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		if(_save_sip_history) {
 			vector<SqlDb_row> siphist_rows;
-			#if not CALL_BRANCHES
-			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
-			#else
 			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
-			#endif
 				bool enableMultiInsert = true;
 				SqlDb_row siphist;
 				siphist.setIgnoreCheckExistsField();
@@ -9440,56 +8181,21 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
-	string lastSIPresponse =
-		#if not CALL_BRANCHES
-		this->lastSIPresponse
-		#else
-		c_branch->lastSIPresponse
-		#endif
-		;
-	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
+	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse, true);
 	if(opt_cdr_reason_string_enable && existsColumns.cdr_reason) {
-		string reason_sip_text =
-			#if not CALL_BRANCHES
-			this->reason_sip_text
-			#else
-			c_branch->reason_sip_text
-			#endif
-			;
-		string reason_q850_text =
-			#if not CALL_BRANCHES
-			this->reason_q850_text
-			#else
-			c_branch->reason_q850_text
-			#endif
-			;
-		if(reason_sip_text.length()) {
-			reason_sip_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, reason_sip_text.c_str(), true);
+		if(c_branch->reason_sip_text.length()) {
+			reason_sip_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, c_branch->reason_sip_text.c_str(), true);
 		}
-		if(reason_q850_text.length()) {
-			reason_q850_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, reason_q850_text.c_str(), true);
+		if(c_branch->reason_q850_text.length()) {
+			reason_q850_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, c_branch->reason_q850_text.c_str(), true);
 		}
 	}
 	if(opt_cdr_ua_enable) {
-		string a_ua =
-			#if not CALL_BRANCHES
-			this->a_ua
-			#else
-			c_branch->a_ua
-			#endif
-			;
-		string b_ua =
-			#if not CALL_BRANCHES
-			this->b_ua
-			#else
-			c_branch->b_ua
-			#endif
-			;
-		if(!a_ua.empty()) {
-			a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
+		if(!c_branch->a_ua.empty()) {
+			a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true);
 		}
-		if(!b_ua.empty()) {
-			b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
+		if(!c_branch->b_ua.empty()) {
+			b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, true);
 		}
 	}
 		
@@ -9681,11 +8387,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 		}
 		
-		#if not CALL_BRANCHES
-		for(list<sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-		#else
 		for(list<Call::sSipResponse>::iterator iterSiprespUnique = SIPresponseUnique.begin(); iterSiprespUnique != SIPresponseUnique.end(); iterSiprespUnique++) {
-		#endif
 			SqlDb_row sipresp;
 			sipresp.add(cdrID, "cdr_ID");
 			sipresp.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, iterSiprespUnique->SIPresponse.c_str(), true), "SIPresponse_id");
@@ -9697,11 +8399,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		if(_save_sip_history) {
-			#if not CALL_BRANCHES
-			for(list<sSipHistory>::iterator iterSiphistory = SIPhistory.begin(); iterSiphistory != SIPhistory.end(); iterSiphistory++) {
-			#else
 			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
-			#endif
 				SqlDb_row siphist;
 				siphist.add(cdrID, "cdr_ID");
 				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
@@ -9767,9 +8465,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 int
 Call::saveAloneByeToDb(bool enableBatchIfPossible) {
  
-	#if not CALL_BRANCHES
+	CallBranch *c_branch = branch_main();
  
-	if(lastSIPresponseNum != 481 ||
+	if(c_branch->lastSIPresponseNum != 481 ||
 	   !existsColumns.cdr_next_calldate ||
 	   !existsColumns.cdr_flags) {
 		return(0);
@@ -9804,12 +8502,6 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 	
 	return(0);
 	
-	#else
-	
-	return(0);
-	
-	#endif
-	
 }
 
 /* TODO: implement failover -> write INSERT into file */
@@ -9820,17 +8512,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		return(0);
 	}
 	
-	#if CALL_BRANCHES
 	CallBranch *c_branch = branch_main();
-	#endif
 	
 	if(this->reg.msgcount <= 1 or 
-	#if not CALL_BRANCHES
-	   this->lastSIPresponseNum == 401 or this->lastSIPresponseNum == 403 or this->lastSIPresponseNum == 404
-	#else
-	   c_branch->lastSIPresponseNum == 401 or c_branch->lastSIPresponseNum == 403 or c_branch->lastSIPresponseNum == 404
-	#endif
-	   ) {
+	   c_branch->lastSIPresponseNum == 401 or c_branch->lastSIPresponseNum == 403 or c_branch->lastSIPresponseNum == 404) {
 		this->reg.regstate = rs_Failed;
 	}
 	
@@ -9849,11 +8534,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 	
-	#if not CALL_BRANCHES
-	adjustUA();
-	#else
 	adjustUA(c_branch);
-	#endif
 
 	const char *register_table = "register";
 	
@@ -9925,25 +8606,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 		if(enableBatchIfPossible && isTypeDb("mysql")) {
 			//stored procedure is much faster and eliminates latency reducing uuuuuuuuuuuuu
 			query = "CALL PROCESS_SIP_REGISTER(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + ", " +
-				#if not CALL_BRANCHES
-				sqlEscapeStringBorder(caller) + "," +
-				sqlEscapeStringBorder(callername) + "," +
-				sqlEscapeStringBorder(caller_domain) + "," +
-				sqlEscapeStringBorder(get_called()) + "," +
-				sqlEscapeStringBorder(get_called_domain()) + ",'" +
-				getSipcallerip().getStringForMysqlIpColumn("register", "sipcallerip") + "','" +
-				getSipcalledip().getStringForMysqlIpColumn("register", "sipcalledip") + "'," +
-				sqlEscapeStringBorder(contact_num) + "," +
-				sqlEscapeStringBorder(contact_domain) + "," +
-				sqlEscapeStringBorder(digest_username) + "," +
-				sqlEscapeStringBorder(digest_realm) + ",'" +
-				intToString(reg.regstate) + "'," +
-				sqlEscapeStringBorder(sqlDateTimeString(calltime_s() + reg.register_expires).c_str()) + ",'" + //mexpires_at
-				intToString(reg.register_expires) + "', " +
-				sqlEscapeStringBorder(a_ua) + ", " +
-				sqlEscapeStringBorder(intToString(fname_register)) + ", " +
-				intToString(useSensorId);
-				#else
 				sqlEscapeStringBorder(c_branch->caller) + "," +
 				sqlEscapeStringBorder(c_branch->callername) + "," +
 				sqlEscapeStringBorder(c_branch->caller_domain) + "," +
@@ -9961,7 +8623,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 				sqlEscapeStringBorder(c_branch->a_ua) + ", " +
 				sqlEscapeStringBorder(intToString(fname_register)) + ", " +
 				intToString(useSensorId);
-				#endif
 				//srcmac ;
 			if (existsColumns.register_rrd_count) {
 				query = query + ", " + intToString(reg.regrrddiff) + ")";
@@ -9976,13 +8637,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
 					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
-					#if not CALL_BRANCHES
-					"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + " AND " +
-					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
-					#else
 					"WHERE to_num = " + sqlEscapeStringBorder(get_called(c_branch)) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain(c_branch)) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(c_branch->contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(c_branch->contact_domain) + 
-					#endif
 					      //" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " " +
 					"ORDER BY ID DESC"; // LIMIT 1 
 	//			if(verbosity > 2) cout << query << "\n";
@@ -9992,13 +8648,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					       "UNIX_TIMESTAMP(expires_at) AS expires_at, " +
 					       "_LC_[(UNIX_TIMESTAMP(expires_at) < UNIX_TIMESTAMP(" + sqlEscapeStringBorder(sqlDateTimeString(calltime_s())) + "))] AS expired " +
 					"FROM " + register_table + " " +
-					#if not CALL_BRANCHES
-					"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + " AND " +
-					      "contact_num = " + sqlEscapeStringBorder(contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(contact_domain) + 
-					#else
 					"WHERE to_num = " + sqlEscapeStringBorder(get_called(c_branch)) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain(c_branch)) + " AND " +
 					      "contact_num = " + sqlEscapeStringBorder(c_branch->contact_num) + " AND contact_domain = " + sqlEscapeStringBorder(c_branch->contact_domain) + 
-					#endif
 					"ORDER BY ID DESC";
 			}
 
@@ -10036,23 +8687,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						// the previous REGISTER expired, save to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
-						#if not CALL_BRANCHES
-						reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
-						reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
-						reg.add(sqlEscapeString(caller), "from_num");
-						reg.add(sqlEscapeString(get_called()), "to_num");
-						reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-						reg.add(sqlEscapeString(contact_num), "contact_num");
-						reg.add(sqlEscapeString(contact_domain), "contact_domain");
-						reg.add(sqlEscapeString(digest_username), "digestusername");
-						reg.add(this->reg.register_expires, "expires");
-						reg.add(5, "state");
-						reg.add(intToString(fname_register), "fname");
-						reg.add(useSensorId, "id_sensor");
-						if(a_ua[0]) {
-							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
-						}
-						#else
 						reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
 						reg.add(sqlEscapeString(c_branch->caller), "from_num");
@@ -10068,7 +8702,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						if(!c_branch->a_ua.empty()) {
 							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
 						}
-						#endif
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 
@@ -10076,21 +8709,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						// state changed or device unregistered, store to register_state
 						SqlDb_row reg;
 						reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
-						#if not CALL_BRANCHES
-						reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
-						reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
-						reg.add(sqlEscapeString(caller), "from_num");
-						reg.add(sqlEscapeString(get_called()), "to_num");
-						reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-						reg.add(sqlEscapeString(contact_num), "contact_num");
-						reg.add(sqlEscapeString(contact_domain), "contact_domain");
-						reg.add(sqlEscapeString(digest_username), "digestusername");
-						reg.add(this->reg.register_expires, "expires");
-						reg.add(this->reg.regstate, "state");
-						if(a_ua[0]) {
-							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
-						}
-						#else
 						reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
 						reg.add(sqlEscapeString(c_branch->caller), "from_num");
@@ -10104,7 +8722,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						if(!c_branch->a_ua.empty()) {
 							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
 						}
-						#endif
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
 						sqlDbSaveCall->insert("register_state", reg);
@@ -10113,21 +8730,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					// REGISTER message is new, store it to register_state
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
-					#if not CALL_BRANCHES
-					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_state");
-					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_state");
-					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(get_called()), "to_num");
-					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-					reg.add(sqlEscapeString(contact_num), "contact_num");
-					reg.add(sqlEscapeString(contact_domain), "contact_domain");
-					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(this->reg.register_expires, "expires");
-					reg.add(this->reg.regstate, "state");
-					if(a_ua[0]) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
-					}
-					#else
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
 					reg.add(sqlEscapeString(c_branch->caller), "from_num");
@@ -10141,7 +8743,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if(!c_branch->a_ua.empty()) {
 						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
 					}
-					#endif
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					sqlDbSaveCall->insert("register_state", reg);
@@ -10153,23 +8754,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "calldate");
-					#if not CALL_BRANCHES
-					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, register_table);
-					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, register_table);
-					//reg.add(sqlEscapeString(fbasename), "fbasename");
-					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(callername), "from_name");
-					reg.add(sqlEscapeString(caller_domain), "from_domain");
-					reg.add(sqlEscapeString(get_called()), "to_num");
-					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-					reg.add(sqlEscapeString(contact_num), "contact_num");
-					reg.add(sqlEscapeString(contact_domain), "contact_domain");
-					reg.add(sqlEscapeString(digest_username), "digestusername");
-					reg.add(sqlEscapeString(digest_realm), "digestrealm");
-					if(a_ua[0]) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
-					}
-					#else
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, register_table);
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, register_table);
 					//reg.add(sqlEscapeString(fbasename), "fbasename");
@@ -10185,7 +8769,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if(!c_branch->a_ua.empty()) {
 						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
 					}
-					#endif
 					reg.add(this->reg.register_expires, "expires");
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s() + this->reg.register_expires).c_str()), "expires_at");
 					reg.add(intToString(fname_register), "fname");
@@ -10214,20 +8797,11 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			stringstream ssipcallerip;
 			stringstream ssipcalledip;
-			#if not CALL_BRANCHES
-			ssipcallerip << getSipcallerip().getString();
-			ssipcalledip << getSipcalledip().getString();
-			#else
 			ssipcallerip << getSipcallerip(c_branch).getString();
 			ssipcalledip << getSipcalledip(c_branch).getString();
-			#endif
 
 			unsigned int count = 1;
-			#if not CALL_BRANCHES
-			int res = regfailedcache->check(getSipcallerip(), getSipcalledip(), calltime_s(), &count);
-			#else
 			int res = regfailedcache->check(getSipcallerip(c_branch), getSipcalledip(c_branch), calltime_s(), &count);
-			#endif
 			if(res) {
 				break;
 			}
@@ -10244,26 +8818,12 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 
 			string q2 = string(
 				"UPDATE register_failed SET created_at = '" + calldate_str + "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + " + cnt.str()) +
-				#if not CALL_BRANCHES
-				", to_num = " + sqlEscapeStringBorder(get_called()) + ", from_num = " + sqlEscapeStringBorder(get_called()) + ", digestusername = " + sqlEscapeStringBorder(digest_username) +
-				#else
 				", to_num = " + sqlEscapeStringBorder(get_called(c_branch)) + ", from_num = " + sqlEscapeStringBorder(get_called(c_branch)) + ", digestusername = " + sqlEscapeStringBorder(c_branch->digest_username) +
-				#endif
 				"WHERE sipcallerip = " + ssipcallerip.str() + " AND sipcalledip = " + ssipcalledip.str() + 
 				" AND created_at >= SUBTIME('" + calldate_str + "', '01:00:00')";
 
 			SqlDb_row reg;
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
-			#if not CALL_BRANCHES
-			reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
-			reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
-			reg.add(sqlEscapeString(caller), "from_num");
-			reg.add(sqlEscapeString(get_called()), "to_num");
-			reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-			reg.add(sqlEscapeString(contact_num), "contact_num");
-			reg.add(sqlEscapeString(contact_domain), "contact_domain");
-			reg.add(sqlEscapeString(digest_username), "digestusername");
-			#else
 			reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 			reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 			reg.add(sqlEscapeString(c_branch->caller), "from_num");
@@ -10272,7 +8832,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(c_branch->contact_num), "contact_num");
 			reg.add(sqlEscapeString(c_branch->contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
-			#endif
 
 			//reg.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
@@ -10281,11 +8840,7 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			if(useSensorId > -1) {
 				reg.add(useSensorId, "id_sensor");
 			}
-			#if not CALL_BRANCHES
-			string q3 = string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ");\n";
-			#else
 			string q3 = string("set @ua_id = ") +  "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ");\n";
-			#endif
 			q3 += sqlDbSaveCall->insertQuery("register_failed", reg);
 
 			string query = "SET @mcounter = (" + q1 + ");";
@@ -10296,43 +8851,21 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			string calldate_str = sqlDateTimeString(calltime_s());
 			query = string(
 				"SELECT counter FROM register_failed ") +
-				#if not CALL_BRANCHES
-				"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain()) + 
-					" AND digestusername = " + sqlEscapeStringBorder(digest_username) + " AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00')";
-				#else
 				"WHERE to_num = " + sqlEscapeStringBorder(get_called(c_branch)) + " AND to_domain = " + sqlEscapeStringBorder(get_called_domain(c_branch)) + 
 					" AND digestusername = " + sqlEscapeStringBorder(c_branch->digest_username) + " AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00')";
-				#endif
 			if(sqlDbSaveCall->query(query)) {
 				SqlDb_row rsltRow = sqlDbSaveCall->fetchRow();
 				if(rsltRow) {
 					// there is already failed register, update counter and do not insert
 					string query = string(
 						"UPDATE register_failed SET created_at = '" + calldate_str+ "', fname = " + sqlEscapeStringBorder(intToString(fname_register)) + ", counter = counter + 1 ") +
-						#if not CALL_BRANCHES
-						"WHERE to_num = " + sqlEscapeStringBorder(get_called()) + " AND digestusername = " + sqlEscapeStringBorder(digest_username) + 
-						#else
 						"WHERE to_num = " + sqlEscapeStringBorder(get_called(c_branch)) + " AND digestusername = " + sqlEscapeStringBorder(c_branch->digest_username) + 
-						#endif
 							" AND created_at >= SUBTIME('" + calldate_str+ "', '01:00:00');";
 					sqlDbSaveCall->query(query);
 				} else {
 					// this is new failed attempt within hour, insert
 					SqlDb_row reg;
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
-					#if not CALL_BRANCHES
-					reg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, "register_failed");
-					reg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, "register_failed");
-					reg.add(sqlEscapeString(caller), "from_num");
-					reg.add(sqlEscapeString(get_called()), "to_num");
-					reg.add(sqlEscapeString(get_called_domain()), "to_domain");
-					reg.add(sqlEscapeString(contact_num), "contact_num");
-					reg.add(sqlEscapeString(contact_domain), "contact_domain");
-					reg.add(sqlEscapeString(digest_username), "digestusername");
-					if(a_ua[0]) {
-						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
-					}
-					#else
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_failed");
 					reg.add(sqlEscapeString(c_branch->caller), "from_num");
@@ -10344,7 +8877,6 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					if(!c_branch->a_ua.empty()) {
 						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true), "ua_id");
 					}
-					#endif
 					reg.add(intToString(fname_register), "fname");
 					if(useSensorId > -1) {
 						reg.add(useSensorId, "id_sensor");
@@ -10380,20 +8912,14 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	this->proxies.push_back(2);
 	*/
 	
-	#if CALL_BRANCHES
 	CallBranch *c_branch = branch_main();
-	#endif
 	
 	if(!sqlDbSaveCall) {
 		sqlDbSaveCall = createSqlObject();
 		sqlDbSaveCall->setEnableSqlStringInContent(true);
 	}
 	
-	#if not CALL_BRANCHES
-	adjustUA();
-	#else
 	adjustUA(c_branch);
-	#endif
 	
 	string sql_message_table = "message";
 	string sql_message_proxy_table = "message_proxy";
@@ -10415,11 +8941,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		this->proxies_undup(&proxies_undup);
 		set<vmIP>::iterator iter_undup = proxies_undup.begin();
 		while (iter_undup != proxies_undup.end()) {
-			#if not CALL_BRANCHES
-			if(*iter_undup == getSipcalledip()) { ++iter_undup; continue; };
-			#else
 			if(*iter_undup == getSipcalledip(c_branch)) { ++iter_undup; continue; };
-			#endif
 			SqlDb_row messageproxy;
 			messageproxy.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "message_ID");
 			messageproxy.add_calldate(calltime_us(), "calldate", existsColumns.message_child_proxy_calldate_ms);
@@ -10433,18 +8955,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(useSensorId > -1) {
 		msg.add(useSensorId, "id_sensor");
 	}
-	#if not CALL_BRANCHES
-	msg.add(sqlEscapeString(caller), "caller");
-	msg.add(sqlEscapeString(reverseString(caller).c_str()), "caller_reverse");
-	msg.add(sqlEscapeString(get_called()), "called");
-	msg.add(sqlEscapeString(reverseString(get_called()).c_str()), "called_reverse");
-	msg.add(sqlEscapeString(caller_domain), "caller_domain");
-	msg.add(sqlEscapeString(get_called_domain()), "called_domain");
-	msg.add(sqlEscapeString(callername), "callername");
-	msg.add(sqlEscapeString(reverseString(callername).c_str()), "callername_reverse");
-	msg.add(getSipcallerip(), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
-	msg.add(getSipcalledip(), "sipcalledip", false, sqlDbSaveCall, sql_message_table.c_str());
-	#else
 	msg.add(sqlEscapeString(c_branch->caller), "caller");
 	msg.add(sqlEscapeString(reverseString(c_branch->caller.c_str()).c_str()), "caller_reverse");
 	msg.add(sqlEscapeString(get_called(c_branch)), "called");
@@ -10455,7 +8965,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	msg.add(sqlEscapeString(reverseString(c_branch->callername.c_str()).c_str()), "callername_reverse");
 	msg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, sql_message_table.c_str());
-	#endif
 	msg.add_calldate(calltime_us(), "calldate", existsColumns.message_calldate_ms);
 	if(!geoposition.empty()) {
 		msg.add(sqlEscapeString(geoposition), "GeoPosition");
@@ -10492,21 +9001,11 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		msg.add(content_length, "content_length");
 	}
 
-	#if not CALL_BRANCHES
-	if(existsColumns.message_vlan && VLAN_IS_SET(vlan)) {
-		msg.add(vlan, "vlan");
-	}
-	#else
 	if(existsColumns.message_vlan && VLAN_IS_SET(c_branch->vlan)) {
 		msg.add(c_branch->vlan, "vlan");
 	}
-	#endif
 
-	#if not CALL_BRANCHES
-	msg.add(lastSIPresponseNum, "lastSIPresponseNum");
-	#else
 	msg.add(c_branch->lastSIPresponseNum, "lastSIPresponseNum");
-	#endif
 	
 	if(existsColumns.message_response_time && this->first_message_time_us) {
 		if(this->first_response_200_time_us) {
@@ -10524,19 +9023,6 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	if(opt_message_country_code) {
 		CountryDetectApplyReload();
-		#if not CALL_BRANCHES
-		if(opt_message_country_code == 2) {
-			msg_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
-			msg_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
-		} else {
-			msg_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
-			msg_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
-		}
-		#else
 		if(opt_message_country_code == 2) {
 			msg_country_code.add(getCountryIdByIP(getSipcallerip(c_branch)), "sipcallerip_country_code");
 			msg_country_code.add(getCountryIdByIP(getSipcalledip(c_branch)), "sipcalledip_country_code");
@@ -10548,74 +9034,51 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			msg_country_code.add(getCountryByPhoneNumber(c_branch->caller.c_str(), true), "caller_number_country_code");
 			msg_country_code.add(getCountryByPhoneNumber(get_called(c_branch), true), "called_number_country_code");
 		}
-		#endif
 		msg_country_code.add_calldate(calltime_us(), "calldate", existsColumns.message_child_country_code_calldate_ms);
 	}
 	
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
 		
-		string lastSIPresponse =
-			#if not CALL_BRANCHES
-			this->lastSIPresponse
-			#else
-			c_branch->lastSIPresponse
-			#endif
-			;
-		
 		if(useSetId()) {
-			msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, lastSIPresponse), "lastSIPresponse_id");
+			msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse), "lastSIPresponse_id");
 		} else {
-			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, false, true);
+			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse, false, true);
 			if(_cb_id) {
 				msg.add(_cb_id, "lastSIPresponse_id");
 			} else {
 				query_str += MYSQL_ADD_QUERY_END(string("set @lSresp_id = ") + 
-					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")");
+					     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(c_branch->lastSIPresponse) + ")");
 				msg.add(MYSQL_VAR_PREFIX + "@lSresp_id", "lastSIPresponse_id");
 				//msg.add(MYSQL_VAR_PREFIX + "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(lastSIPresponse) + ")", "lastSIPresponse_id");
 			}
 		}
 		if(opt_cdr_ua_enable) {
-			string a_ua =
-				#if not CALL_BRANCHES
-				this->a_ua
-				#else
-				c_branch->a_ua
-				#endif
-				;
-			string b_ua =
-				#if not CALL_BRANCHES
-				this->b_ua
-				#else
-				c_branch->b_ua
-				#endif
-				;
-			if(!a_ua.empty()) {
+			if(!c_branch->a_ua.empty()) {
 				if(useSetId()) {
-					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, a_ua), "a_ua_id");
+					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->a_ua), "a_ua_id");
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "a_ua_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @uaA_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")");
+							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->a_ua) + ")");
 						msg.add(MYSQL_VAR_PREFIX + "@uaA_id", "a_ua_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "a_ua_id");
 					}
 				}
 			}
-			if(!b_ua.empty()) {
+			if(!c_branch->b_ua.empty()) {
 				if(useSetId()) {
-					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, b_ua), "b_ua_id");
+					msg.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, c_branch->b_ua), "b_ua_id");
 				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, false, true);
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, false, true);
 					if(_cb_id) {
 						msg.add(_cb_id, "b_ua_id");
 					} else {
 						query_str += MYSQL_ADD_QUERY_END(string("set @uaB_id = ") + 
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")");
+							     "getIdOrInsertUA(" + sqlEscapeStringBorder(c_branch->b_ua) + ")");
 						msg.add(MYSQL_VAR_PREFIX + "@uaB_id", "b_ua_id");
 						//cdr.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(b_ua) + ")", "b_ua_id");
 					}
@@ -10735,33 +9198,12 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 			a_ua_id = 0,
 			b_ua_id = 0;
 
-	string lastSIPresponse =
-		#if not CALL_BRANCHES
-		this->lastSIPresponse
-		#else
-		c_branch->lastSIPresponse
-		#endif
-		;
-	string a_ua =
-		#if not CALL_BRANCHES
-		this->a_ua
-		#else
-		c_branch->a_ua
-		#endif
-		;
-	string b_ua =
-		#if not CALL_BRANCHES
-		this->b_ua
-		#else
-		c_branch->b_ua
-		#endif
-		;
-	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, lastSIPresponse, true);
-	if(!a_ua.empty()) {
-		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true);
+	lastSIPresponse_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, c_branch->lastSIPresponse, true);
+	if(!c_branch->a_ua.empty()) {
+		a_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->a_ua, true);
 	}
-	if(!b_ua.empty()) {
-		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, b_ua, true);
+	if(!c_branch->b_ua.empty()) {
+		b_ua_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, c_branch->b_ua, true);
 	}
 	if(contenttype && contenttype[0]) {
 		msg.add(dbData->getCbId(cSqlDbCodebook::_cb_contenttype, contenttype, true), "id_contenttype");
@@ -10811,26 +9253,26 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 void
 Call::dump(){
  
-	#if not CALL_BRANCHES
+	CallBranch *c_branch = branch_main();
  
 	//print call_id
 	printf("cidl:%lu\n", call_id_len);
 	printf("-call dump %p---------------------------------\n", this);
 	printf("callid:%s\n", call_id.c_str());
 	printf("last packet time:%d\n", (int)get_last_packet_time_s());
-	printf("last SIP response [%d] [%s]\n", lastSIPresponseNum, lastSIPresponse);
+	printf("last SIP response [%d] [%s]\n", c_branch->lastSIPresponseNum, c_branch->lastSIPresponse.c_str());
 	
 	// print assigned IP:port 
-	if(ipport_n > 0) {
-		printf("ipport_n:%d\n", ipport_n);
-		for(int i = 0; i < ipport_n; i++) 
-			printf("addr: %s, port: %d\n", ip_port[i].addr.getString().c_str(), ip_port[i].port.getPort());
+	if(c_branch->ipport_n > 0) {
+		printf("ipport_n:%d\n", c_branch->ipport_n);
+		for(int i = 0; i < c_branch->ipport_n; i++) 
+			printf("addr: %s, port: %d\n", c_branch->ip_port[i].addr.getString().c_str(), c_branch->ip_port[i].port.getPort());
 	} else {
 		printf("no IP:port assigned\n");
 	}
-	if(seeninvite || seenmessage) {
-		printf("From:%s\n", caller);
-		printf("To:%s\n", get_called());
+	if(c_branch->seeninvite || c_branch->seenmessage) {
+		printf("From:%s\n", c_branch->caller.c_str());
+		printf("To:%s\n", get_called(c_branch));
 	}
 	printf("First packet: %d, Last packet: %d\n", (int)get_first_packet_time_s(), (int)get_last_packet_time_s());
 	if(rtp_size() > 0) {
@@ -10844,13 +9286,11 @@ Call::dump(){
 	}
 	printf("-end call dump  %p----------------------------\n", this);
 	
-	#endif
-	
 }
 
 void Call::atFinish() {
  
-	#if not CALL_BRANCHES
+	CallBranch *c_branch = branch_main();
  
 	if(!(typeIs(INVITE) || typeIs(MESSAGE))) {
 		return;
@@ -10873,13 +9313,11 @@ void Call::atFinish() {
 		find_and_replace(source, string("%callid%"), escapeShellArgument(this->fbasename));
 		find_and_replace(source, string("%dirname%"), escapeShellArgument(this->get_pathname(tsf_sip)));
 		find_and_replace(source, string("%calldate%"), escapeShellArgument(sqlDateTimeString(this->calltime_s())));
-		find_and_replace(source, string("%caller%"), escapeShellArgument(this->caller));
-		find_and_replace(source, string("%called%"), escapeShellArgument(this->get_called()));
+		find_and_replace(source, string("%caller%"), escapeShellArgument(c_branch->caller));
+		find_and_replace(source, string("%called%"), escapeShellArgument(this->get_called(c_branch)));
 		if(verbosity >= 2) printf("command: [%s]\n", source.c_str());
 		calltable->addSystemCommand(source.c_str());
 	}
-	
-	#endif
 	
 }
 
@@ -10925,29 +9363,6 @@ Call::applyRtcpXrDataToRtp() {
 	#endif
 }
 
-#if not CALL_BRANCHES
-void Call::adjustUA() {
-	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
-		if(a_ua[0]) {
-			::adjustUA(a_ua, sizeof(a_ua));
-		}
-		if(b_ua[0]) {
-			::adjustUA(b_ua, sizeof(b_ua));
-		}
-	}
-}
-
-void Call::adjustReason() {
-	if(opt_cdr_reason_reg_remove.size()) {
-		if(!reason_sip_text.empty()) {
-			::adjustReason(&reason_sip_text);
-		}
-		if(!reason_q850_text.empty()) {
-			::adjustReason(&reason_q850_text);
-		}
-	}
-}
-#else
 void Call::adjustUA(CallBranch *c_branch) {
 	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
 		if(!c_branch->a_ua.empty()) {
@@ -10969,7 +9384,6 @@ void Call::adjustReason(CallBranch *c_branch) {
 		}
 	}
 }
-#endif
 
 void Call::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
 	bool need_lock = !proxies;
@@ -11026,64 +9440,6 @@ void Call::disableListeningBuffers() {
 	pthread_mutex_unlock(&listening_worker_run_lock);
 }
 
-#if not CALL_BRANCHES
-vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
-					bool onlyConfirmed, bool /*onlyFirst*/, u_int8_t only_ipv) {
-	if(sport) {
-		sport->clear();
-	}
-	if(saddr_encaps) {
-		saddr_encaps->clear();
-	}
-	if(saddr_encaps_protocol) {
-		*saddr_encaps_protocol = 0xFF;
-	}
-	if(!(invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
-		return(vmIP(0));
-	}
-	invite_list_lock();
-	map<unsigned, unsigned> sort_indexes;
-	unsigned invite_sdaddr_order_size = invite_sdaddr_order.size();
-	if(invite_sdaddr_bad_order) {
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			sort_indexes[i] = i;
-		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
-				}
-			}
-		}
-	}
-	vmIP ip;
-	for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
-		unsigned _index = invite_sdaddr_bad_order ? sort_indexes[index] : index;
-		if(_index >= invite_sdaddr_order_size) {
-			continue;
-		}
-		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + invite_sdaddr_order[_index].order;
-		if((!onlyConfirmed || iter->confirmed) &&
-		   (!only_ipv || iter->saddr.v() == only_ipv)) { 
-			ip = iter->saddr;
-			if(sport) {
-				*sport = iter->sport;
-			}
-			if(saddr_encaps) {
-				*saddr_encaps = iter->saddr_first;
-			}
-			if(saddr_encaps_protocol) {
-				*saddr_encaps_protocol = iter->saddr_first_protocol;
-			}
-			break;
-		}
-	}
-	invite_list_unlock();
-	return(ip);
-}
-#else
 vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 					vmPort *sport, vmIP *saddr_encaps, u_int8_t *saddr_encaps_protocol, 
 					bool onlyConfirmed, bool /*onlyFirst*/, u_int8_t only_ipv) {
@@ -11141,100 +9497,7 @@ vmIP Call::getSipcalleripFromInviteList(CallBranch *c_branch,
 	c_branch->invite_list_unlock();
 	return(ip);
 }
-#endif
 
-#if not CALL_BRANCHES
-vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, 
-					bool onlyConfirmed, bool onlyFirst, u_int8_t only_ipv) {
-	if(dport) {
-		dport->clear();
-	}
-	if(daddr_encaps) {
-		daddr_encaps->clear();
-	}
-	if(daddr_encaps_protocol) {
-		*daddr_encaps_protocol = 0xFF;
-	}
-	if(proxies) {
-		proxies->clear();
-	}
-	if(!(invite_sdaddr_bad_order || onlyConfirmed || only_ipv)) {
-		return(vmIP(0));
-	}
-	invite_list_lock();
-	map<unsigned, unsigned> sort_indexes;
-	unsigned invite_sdaddr_order_size = invite_sdaddr_order.size();
-	if(invite_sdaddr_bad_order) {
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			sort_indexes[i] = i;
-		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
-				}
-			}
-		}
-	}
-	vmIP _saddr, _daddr;
-	vmPort _sport, _dport;
-	list<vmIPport> _proxies;
-	vector<Call::sInviteSD_Addr>::iterator iter_rslt = invite_sdaddr.end();
-	for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
-		unsigned _index = invite_sdaddr_bad_order ? sort_indexes[index] : index;
-		if(_index >= invite_sdaddr_order_size) {
-			continue;
-		}
-		vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin() + invite_sdaddr_order[_index].order;
-		if((!onlyConfirmed || iter->confirmed) &&
-		   (!only_ipv || iter->daddr.v() == only_ipv)) { 
-			if(!_saddr.isSet() && !_daddr.isSet()) {
-				_saddr = iter->saddr;
-				_sport = iter->sport;
-				_daddr = iter->daddr;
-				_dport = iter->dport;
-				iter_rslt = iter;
-				if(onlyFirst) {
-					break;
-				}
-			}
-			if((iter->sport != _sport || iter->saddr != _saddr) && 
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
-				_proxies.push_back(vmIPport(iter->saddr, iter->sport));
-			}
-			if((iter->dport != _sport || iter->daddr != _saddr) && 
-			   (iter->dport != _dport || iter->daddr != _daddr) && 
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
-				if(!(opt_sdp_check_direction_ext &&
-				     iter->saddr == _saddr && all_invite_is_multibranch(iter->saddr, false))) {
-					_proxies.push_back(vmIPport(_daddr, _dport));
-					_daddr = iter->daddr;
-					_dport = iter->dport;
-					iter_rslt = iter;
-				}
-			}
-		}
-	}
-	if(_daddr.isSet()) {
-		if(dport) {
-			*dport = _dport;
-		}
-		if(daddr_encaps) {
-			*daddr_encaps = iter_rslt->saddr_first;
-		}
-		if(daddr_encaps_protocol) {
-			*daddr_encaps_protocol = iter_rslt->daddr_first_protocol;
-		}
-		if(proxies) {
-			*proxies = _proxies;
-		}
-	}
-	invite_list_unlock();
-	return(_daddr);
-}
-#else
 vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 					vmPort *dport, vmIP *daddr_encaps, u_int8_t *daddr_encaps_protocol, list<vmIPport> *proxies, 
 					bool onlyConfirmed, bool onlyFirst, u_int8_t only_ipv) {
@@ -11299,8 +9562,9 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			if((iter->dport != _sport || iter->daddr != _saddr) && 
 			   (iter->dport != _dport || iter->daddr != _daddr) && 
 			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
-				if(!(opt_sdp_check_direction_ext &&
-				     iter->saddr == _saddr)) {
+				if(!(!opt_call_branches &&
+				     opt_sdp_check_direction_ext &&
+				     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
 					_proxies.push_back(vmIPport(_daddr, _dport));
 					_daddr = iter->daddr;
 					_dport = iter->dport;
@@ -11326,9 +9590,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 	c_branch->invite_list_unlock();
 	return(_daddr);
 }
-#endif
 
-#if CALL_BRANCHES
 void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 	bool set_sipcallerip = false;
 	bool set_sipcalledip = false;
@@ -11403,28 +9665,7 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		this->proxies_undup(proxies_undup, NULL, &proxy_exclude);
 	}
 }
-#endif
 
-#if not CALL_BRANCHES
-unsigned Call::getMaxRetransmissionInvite() {
-	unsigned max_retrans = 0;
-	invite_list_lock();
-	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
-		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_by_cseq.begin(); iter_c != iter->counter_by_cseq.end(); iter_c++) {
-			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
-				max_retrans = iter_c->second - 1;
-			}
-		}
-		for(map<u_int32_t, u_int32_t>::iterator iter_c = iter->counter_reverse_by_cseq.begin(); iter_c != iter->counter_reverse_by_cseq.end(); iter_c++) {
-			if(iter_c->second > 1 && (iter_c->second - 1) > max_retrans) {
-				max_retrans = iter_c->second - 1;
-			}
-		}
-	}
-	invite_list_unlock();
-	return(max_retrans);
-}
-#else
 unsigned Call::getMaxRetransmissionInvite(CallBranch *c_branch) {
 	unsigned max_retrans = 0;
 	c_branch->invite_list_lock();
@@ -11443,7 +9684,6 @@ unsigned Call::getMaxRetransmissionInvite(CallBranch *c_branch) {
 	c_branch->invite_list_unlock();
 	return(max_retrans);
 }
-#endif
 
 void adjustSipResponse(string *sipResponse) {
 	bool adjustLength = false;
@@ -12088,68 +10328,6 @@ Calltable::~Calltable() {
 };
 
 /* add node to hash. collisions are linked list of nodes*/
-#if not CALL_BRANCHES
-void
-Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
- 
-	if(sverb.hash_rtp) {
-		cout << "hashAdd: " 
-		     << call->call_id << " " << addr.getString() << ":" << port << " " 
-		     << (is_rtcp ? "rtcp " : "")
-		     << iscaller_description(iscaller) << " "
-		     << endl;
-	}
-	
-	#if EXPERIMENTAL_SEPARATE_PROCESSSING
-	if(separate_processing() == cSeparateProcessing::_sip) {
-		cSeparateProcessing::sDataRtpIpPort dataRtpIpPort;
-		memset((void*)&dataRtpIpPort, 0, sizeof(dataRtpIpPort));
-		dataRtpIpPort.add = true;
-		dataRtpIpPort.ip = addr;
-		dataRtpIpPort.port = port;
-		dataRtpIpPort.is_caller = iscaller;
-		dataRtpIpPort.is_rtcp = is_rtcp;
-		dataRtpIpPort.sdp_flags = sdp_flags;
-		sendRtpIpPort(call->call_id.c_str(), 
-			      call->first_packet_time_us, 
-			      call->flags,
-			      time_us,
-			      &dataRtpIpPort);
-		return;
-	}
-	#endif
- 
-	call->hash_add_lock();
-	if(call->end_call_rtp) {
-		call->hash_add_unlock();
-		return;
-	}
-	
-	if(opt_hash_modify_queue_length_ms) {
-		sHashModifyData hmd;
-		hmd.oper = hmo_add;
-		hmd.addr = addr;
-		hmd.port = port;
-		hmd.time_s = TIME_US_TO_S(time_us);
-		hmd.call = call;
-		hmd.iscaller = iscaller;
-		hmd.is_rtcp = is_rtcp;
-		hmd.ignore_rtcp_check = false;
-		hmd.sdp_flags = sdp_flags;
-		hmd.use_hash_queue_counter = true;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		++call->hash_queue_counter;
-		_applyHashModifyQueue(true);
-		unlock_hash_modify_queue();
-	} else {
-		_hashAdd(addr, port, TIME_US_TO_S(time_us), call, iscaller, is_rtcp, sdp_flags);
-	}
-	
-	call->hash_add_unlock();
-	
-}
-#else
 void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
 	if(sverb.hash_rtp) {
@@ -12209,7 +10387,6 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 	c_branch->call->hash_add_unlock();
 	
 }
-#endif
  
 #if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
 
@@ -12759,57 +10936,6 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 
 #else
 
-#if not CALL_BRANCHES
-inline node_call_rtp *insert_node_call(node_call_rtp *&begin, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
-	__SYNC_INC(call->rtp_ip_port_counter);
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	__SYNC_INC(call->rtp_ip_port_counter_add);
-	#endif
-	node_call_rtp *node_new = new FILE_LINE(0) node_call_rtp;
-	node_new->next = begin;
-	node_new->call = call;
-	node_new->iscaller = iscaller;
-	node_new->is_rtcp = is_rtcp;
-	node_new->sdp_flags = *sdp_flags;
-	begin = node_new;
-	return(node_new);
-}
-
-inline void replace_node_call(node_call_rtp *node, Call *call, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
-	__SYNC_INC(call->rtp_ip_port_counter);
-	__SYNC_DEC(node->call->rtp_ip_port_counter);
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	__SYNC_INC(call->rtp_ip_port_counter_add);
-	#endif
-	node->call = call;
-	node->iscaller = iscaller;
-	node->is_rtcp = is_rtcp;
-	node->sdp_flags = *sdp_flags;
-}
-
-inline node_call_rtp *delete_node_call(node_call_rtp *&begin, node_call_rtp *node, node_call_rtp *prev) {
-	node_call_rtp *next = node->next;
-	if(prev) {
-		prev->next = next;
-	} else {
-		begin = next;
-	}
-	__SYNC_DEC(node->call->rtp_ip_port_counter);
-	delete node;
-	return(next);
-}
-
-inline node_call_rtp_ip_port *delete_node(node_call_rtp_ip_port *&begin, node_call_rtp_ip_port *node, node_call_rtp_ip_port *prev) {
-	node_call_rtp_ip_port *next = node->next;
-	if(prev) {
-		prev->next = node->next;
-	} else {
-		begin = node->next;
-	}
-	delete node;
-	return(next);
-}
-#else
 inline node_call_rtp *insert_node_call(node_call_rtp *&begin, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
 	__SYNC_INC(c_branch->rtp_ip_port_counter);
 	#if CHECK_HASHTABLE_FOR_ALL_CALLS
@@ -12859,110 +10985,8 @@ inline node_call_rtp_ip_port *delete_node(node_call_rtp_ip_port *&begin, node_ca
 	delete node;
 	return(next);
 }
-#endif
 
-#if not CALL_BRANCHES
-void
-Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
- 
-	if(call->end_call_rtp) {
-		return;
-	}
-	
-	u_int32_t h;
-	node_call_rtp_ip_port *node = NULL;
-	node_call_rtp *node_call = NULL;
-
-	h = tuplehash(addr.getHashNumber(), port);
-	if (useLock) lock_calls_hash();
-	// check if there is not already call in hash 
-	for (node = calls_hash[h]; node != NULL; node = node->next) {
-		if ((node->port == port) && (node->addr == addr)) {
-			// there is already some call which is receiving packets to the same IP:port
-			// this can happen if the old call is waiting for hangup and is still in memory or two SIP different sessions shares the same call.
-			int found = 0;
-			int count = 0;
-			node_call_rtp *prev_node_call = NULL;
-			node_call = node->calls;
-			while(node_call != NULL) {
-				if(node_call->call->destroy_call_at != 0 &&
-				   (
-				    node_call->call->seenbye ||
-				    node_call->call->lastSIPresponseNum / 10 == 48 ||
-				    (time_s != 0 && time_s > node_call->call->destroy_call_at))) {
-					if(sverb.hash_rtp) {
-						cout << "remove call with destroy_call_at: " 
-						     << node_call->call->call_id << " " << addr.getString() << ":" << port.getString() << " " 
-						     << endl;
-					}
-					node_call = delete_node_call(node->calls, node_call, prev_node_call);
-					continue;
-				}
-				prev_node_call = node_call;
-				count++;
-				if(node_call->call == call) {
-					found = 1;
-					node_call->sdp_flags = sdp_flags;
-				}
-				node_call = node_call->next;
-			}
-			if(!found) {
-				if(opt_sdp_multiplication == 0 && count == 1 && node->calls && node->calls->call) {
-					replace_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
-				} else {
-					if(opt_sdp_multiplication > 0 && count >= opt_sdp_multiplication) {
-						// this port/ip combination is already in (opt_sdp_multiplication) calls - do not add to (opt_sdp_multiplication+1)th to not cause multiplication attack. 
-						if(!opt_disable_sdp_multiplication_warning && !call->syslog_sdp_multiplication) {
-							static u_int64_t lastTimeSyslog = 0;
-							u_int64_t actTime = getTimeMS();
-							if(actTime - 10 * 1000 > lastTimeSyslog) {
-								string call_ids;
-								node_call = node->calls;
-								while(node_call != NULL) {
-									if(!call_ids.empty()) {
-										call_ids += " ";
-									}
-									call_ids += string("[") + node_call->call->fbasename + "]";
-									node_call = node_call->next;
-								}
-								syslog(LOG_NOTICE, "call-id[%s] SDP: %s:%u is already in calls %s. Limit is %u to not cause multiplication DDOS. You can increase it sdp_multiplication = N\n", 
-								       call->fbasename, addr.getString().c_str(), (int)port,
-								       call_ids.c_str(),
-								       opt_sdp_multiplication);
-								call->syslog_sdp_multiplication = true;
-								lastTimeSyslog = actTime;
-							}
-						}
-						if (useLock) unlock_calls_hash();
-						return;
-					}
-				 
-					// the same ip/port is shared with some other call which is not yet in node - add it
-					insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
-				}
-			}
-			if (useLock) unlock_calls_hash();
-			return;
-		}
-	}
-
-	// addr / port combination not found - add it to hash at first position
-
-	node = new FILE_LINE(1009) node_call_rtp_ip_port;
-	node->addr = addr;
-	node->port = port;
-	node->next = calls_hash[h];
-	node->calls = NULL;
-	calls_hash[h] = node;
-	
-	insert_node_call(node->calls, call, iscaller, is_rtcp, &sdp_flags);
-	
-	if (useLock) unlock_calls_hash();
-	
-}
-#else
-void
-Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
+void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
  
 	if(c_branch->end_call_rtp) {
 		return;
@@ -12985,14 +11009,8 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branc
 			node_call = node->calls;
 			while(node_call != NULL) {
 				if(node_call->c_branch->call->destroy_call_at != 0 &&
-				   (
-				    #if not CALL_BRANCHES
-				    node_call->call->seenbye ||
-				    node_call->call->lastSIPresponseNum / 10 == 48 ||
-				    #else
-				    node_call->c_branch->seenbye ||
+				   (node_call->c_branch->seenbye ||
 				    node_call->c_branch->lastSIPresponseNum / 10 == 48 ||
-				    #endif
 				    (time_s != 0 && time_s > node_call->c_branch->call->destroy_call_at))) {
 					if(sverb.hash_rtp) {
 						cout << "remove call with destroy_call_at: " 
@@ -13064,74 +11082,14 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branc
 	if (useLock) unlock_calls_hash();
 	
 }
-#endif
 
 #endif
 
-#if not CALL_BRANCHES
-void 
-Calltable::_hashAddExt(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
-	_hashAdd(addr, port, time_s, call, iscaller, is_rtcp, sdp_flags, useLock);
-}
-#else
 void Calltable::_hashAddExt(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags sdp_flags, bool useLock) {
 	_hashAdd(addr, port, time_s, c_branch, iscaller, is_rtcp, sdp_flags, useLock);
 }
-#endif
 
 /* remove node from hash */
-#if not CALL_BRANCHES
-void
-Calltable::hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
- 
-	if(sverb.hash_rtp) {
-		cout << "hashRemove: " 
-		     << call->call_id << " " 
-		     << addr.getString() << ":" << port << " "
-		     << (rtcp ? "rtcp" : "") << " "
-		     << endl;
-	}
-	
-	#if EXPERIMENTAL_SEPARATE_PROCESSSING
-	if(separate_processing() == cSeparateProcessing::_sip) {
-		cSeparateProcessing::sDataRtpIpPort dataRtpIpPort;
-		memset((void*)&dataRtpIpPort, 0, sizeof(dataRtpIpPort));
-		dataRtpIpPort.add = false;
-		dataRtpIpPort.ip = addr;
-		dataRtpIpPort.port = port;
-		dataRtpIpPort.is_rtcp = rtcp;
-		dataRtpIpPort.ignore_rtcp_check = ignore_rtcp_check;
-		sendRtpIpPort(call->call_id.c_str(), 
-			      call->first_packet_time_us, 
-			      call->flags,
-			      0,
-			      &dataRtpIpPort);
-		return;
-	}
-	#endif
-	
-	if(opt_hash_modify_queue_length_ms) {
-		sHashModifyData hmd;
-		hmd.oper = hmo_remove;
-		hmd.addr = addr;
-		hmd.port = port;
-		hmd.call = call;
-		hmd.is_rtcp = rtcp;
-		hmd.ignore_rtcp_check = ignore_rtcp_check;
-		hmd.use_hash_queue_counter = useHashQueueCounter;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		if(useHashQueueCounter) {
-			++call->hash_queue_counter;
-		}
-		_applyHashModifyQueue(true);
-		unlock_hash_modify_queue();
-	} else {
-		_hashRemove(call, addr, port, rtcp, ignore_rtcp_check);
-	}
-	
-}
-#else
 void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
  
 	if(sverb.hash_rtp) {
@@ -13181,7 +11139,6 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 	}
 	
 }
-#endif
 
 #if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
 
@@ -13414,40 +11371,7 @@ Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool use_l
 
 #else
 
-#if not CALL_BRANCHES
-int
-Calltable::_hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
- 
-	int removeCounter = 0;
-	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
-	node_call_rtp *node_call = NULL, *prev_node_call = NULL;
-	int h = tuplehash(addr.getHashNumber(), port);
-	if (use_lock) lock_calls_hash();
-	for (node = calls_hash[h]; node != NULL; node = node->next) {
-		if (node->port == port && node->addr == addr) {
-			for (node_call = node->calls; node_call != NULL; node_call = node_call->next) {
-				// walk through all calls under the node and check if the call matches
-				if(node_call->call == call && (ignore_rtcp_check || !rtcp || (rtcp && (node_call->is_rtcp || !node_call->sdp_flags.rtcp_mux)))) {
-					delete_node_call(node->calls, node_call, prev_node_call);
-					++removeCounter;
-					break;
-				}
-				prev_node_call = node_call;
-			}
-			if(node->calls == NULL) {
-				delete_node(calls_hash[h], node, prev_node);
-			}
-			break;
-		}
-		prev_node = node;
-	}
-	if (use_lock) unlock_calls_hash();
-	return(removeCounter);
-
-}
-#else
-int
-Calltable::_hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
+int Calltable::_hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
  
 	int removeCounter = 0;
 	node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
@@ -13477,43 +11401,9 @@ Calltable::_hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, 
 	return(removeCounter);
 
 }
-#endif
 
 #endif
 
-#if not CALL_BRANCHES
-int
-Calltable::_hashRemoveExt(Call *call, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
-	return(_hashRemove(call, addr, port, rtcp, ignore_rtcp_check, use_lock));
-}
-
-int
-Calltable::hashRemove(Call *call, bool useHashQueueCounter) {
-
-	if(opt_hash_modify_queue_length_ms) {
-		sHashModifyData hmd;
-		hmd.oper = hmo_remove_call;
-		hmd.call = call;
-		hmd.use_hash_queue_counter = useHashQueueCounter;
-		lock_hash_modify_queue();
-		hash_modify_queue.push_back(hmd);
-		if(useHashQueueCounter) {
-			++call->hash_queue_counter;
-		}
-		_applyHashModifyQueue(true);
-		unlock_hash_modify_queue();
-		return(-1);
-	} else {
-		return(_hashRemove(call));
-	}
-
-}
-
-int
-Calltable::hashRemoveForce(Call *call) {
-	return(_hashRemove(call));
-}
-#else
 int Calltable::_hashRemoveExt(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool use_lock) {
 	return(_hashRemove(c_branch, addr, port, rtcp, ignore_rtcp_check, use_lock));
 }
@@ -13544,7 +11434,6 @@ int
 Calltable::hashRemoveForce(CallBranch *c_branch) {
 	return(_hashRemove(c_branch));
 }
-#endif
 
 #if NEW_RTP_FIND__NODES or NEW_RTP_FIND__NODES__LIST or NEW_RTP_FIND__PORT_NODES or NEW_RTP_FIND__MAP_LIST or HASH_RTP_FIND__LIST
   
@@ -13640,46 +11529,6 @@ Calltable::_hashRemove(Call *call, bool use_lock) {
 
 #else
 
-#if not CALL_BRANCHES
-int
-Calltable::_hashRemove(Call *call, bool use_lock) {
- 
-	int removeCounter = 0;
-	if (use_lock) lock_calls_hash();
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	if(call->rtp_ip_port_counter_add) {
-	#else
-	if(call->rtp_ip_port_counter) {
-	#endif
-		node_call_rtp_ip_port *node = NULL, *prev_node = NULL;
-		node_call_rtp *node_call = NULL, *prev_node_call = NULL;
-		for(int h = 0; h < MAXNODE; h++) {
-			prev_node = NULL;
-			for(node = calls_hash[h]; node != NULL;) {
-				prev_node_call = NULL;
-				for(node_call = node->calls; node_call != NULL;) {
-					if(node_call->call == call) {
-						node_call = delete_node_call(node->calls, node_call, prev_node_call);
-						++removeCounter;
-					} else {
-						prev_node_call = node_call;
-						node_call = node_call->next;
-					}
-				}
-				if(node->calls == NULL) {
-					node = delete_node(calls_hash[h], node, prev_node);
-				} else {
-					prev_node = node;
-					node = node->next;
-				}
-			}
-		}
-	}
-	if (use_lock) unlock_calls_hash();
-	return(removeCounter);
-	
-}
-#else
 int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
  
 	int removeCounter = 0;
@@ -13717,7 +11566,6 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 	return(removeCounter);
 	
 }
-#endif
 
 #endif
 
@@ -13726,39 +11574,6 @@ Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	_applyHashModifyQueue(setBegin, use_lock_calls_hash);
 }
 
-#if not CALL_BRANCHES
-void 
-Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
-	if(hash_modify_queue_begin_ms) {
-		if(getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
-			if (use_lock_calls_hash) lock_calls_hash();
-			for(list<sHashModifyData>::iterator iter = hash_modify_queue.begin(); iter != hash_modify_queue.end(); iter++) {
-				switch(iter->oper) {
-				case hmo_add:
-					_hashAdd(iter->addr, iter->port, iter->time_s, iter->call, iter->iscaller, iter->is_rtcp, iter->sdp_flags, false);
-					break;
-				case hmo_remove:
-					_hashRemove(iter->call, iter->addr, iter->port, iter->is_rtcp, iter->ignore_rtcp_check, false);
-					break;
-				case hmo_remove_call:
-					_hashRemove(iter->call, false);
-					break;
-				}
-				if(iter->use_hash_queue_counter) {
-					--iter->call->hash_queue_counter;
-				}
-			}
-			if (use_lock_calls_hash) unlock_calls_hash();
-			hash_modify_queue.clear();
-			hash_modify_queue_begin_ms = 0;
-		}
-	} else {
-		if(setBegin) {
-			hash_modify_queue_begin_ms = getTimeMS_rdtsc();
-		}
-	}
-}
-#else
 void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	if(hash_modify_queue_begin_ms) {
 		if(getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
@@ -13789,7 +11604,6 @@ void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 		}
 	}
 }
-#endif
 
 string Calltable::getHashStats() {
 	#if NEW_RTP_FIND__NODES || NEW_RTP_FIND__PORT_NODES || NEW_RTP_FIND__MAP_LIST || HASH_RTP_FIND__LIST
@@ -14208,15 +12022,6 @@ Calltable::destroyRegistersIfPcapsClosed() {
 
 void 
 Calltable::mgcpCleanupTransactions(Call *call) {
-	#if not CALL_BRANCHES
-	for(list<u_int32_t>::iterator iter_transactions = call->mgcp_transactions.begin(); iter_transactions != call->mgcp_transactions.end(); iter_transactions++) {
-		sStreamId2 streamId2(call->saddr, call->sport, call->daddr, call->dport, *iter_transactions, true);
-		map<sStreamId2, Call*>::iterator iter_streamid2 = calls_by_stream_id2_listMAP.find(streamId2);
-		if(iter_streamid2 != calls_by_stream_id2_listMAP.end()) {
-			calls_by_stream_id2_listMAP.erase(iter_streamid2);
-		}
-	}
-	#else
 	CallBranch *c_branch = call->branch_main();
 	for(list<u_int32_t>::iterator iter_transactions = call->mgcp_transactions.begin(); iter_transactions != call->mgcp_transactions.end(); iter_transactions++) {
 		sStreamId2 streamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, *iter_transactions, true);
@@ -14225,25 +12030,16 @@ Calltable::mgcpCleanupTransactions(Call *call) {
 			calls_by_stream_id2_listMAP.erase(iter_streamid2);
 		}
 	}
-	#endif
 }
 
 void 
 Calltable::mgcpCleanupStream(Call *call) {
-	#if not CALL_BRANCHES
-	sStreamId streamId(call->saddr, call->sport, call->daddr, call->dport, true);
-	map<sStreamId, Call*>::iterator iter_stream = calls_by_stream_listMAP.find(streamId);
-	if(iter_stream != calls_by_stream_listMAP.end() && iter_stream->second == call) {
-		calls_by_stream_listMAP.erase(streamId);
-	}
-	#else
 	CallBranch *c_branch = call->branch_main();
 	sStreamId streamId(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, true);
 	map<sStreamId, Call*>::iterator iter_stream = calls_by_stream_listMAP.find(streamId);
 	if(iter_stream != calls_by_stream_listMAP.end() && iter_stream->second == call) {
 		calls_by_stream_listMAP.erase(streamId);
 	}
-	#endif
 }
 
 string 
@@ -14392,18 +12188,12 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 						} else {
 							call = (*callMAPIT2).second;
 						}
-						#if CALL_BRANCHES
 						CallBranch *c_branch = call->branch_main();
-						#endif
 						extern int opt_blockcleanupcalls;
 						if(!(call->exclude_from_active_calls or
 						     call->attemptsClose or
 						     call->typeIs(REGISTER) or call->typeIsOnly(MESSAGE) or 
-						     #if not CALL_BRANCHES
-						     (call->seenbye and call->seenbye_and_ok) or
-						     #else
 						     (c_branch->seenbye and c_branch->seenbye_and_ok) or
-						     #endif
 						     (!opt_blockcleanupcalls &&
 						      ((call->destroy_call_at and call->destroy_call_at < now) or 
 						       (call->destroy_call_at_bye and call->destroy_call_at_bye < now) or 
@@ -14510,12 +12300,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 			if(needIpMap) {
-				#if not CALL_BRANCHES
-				vmIP sipcallerip = call->getSipcallerip(true);
-				#else
 				CallBranch *c_branch = call->branch_main();
 				vmIP sipcallerip = call->getSipcallerip(c_branch, true);
-				#endif
 				if(ip_src_map.find(sipcallerip) == ip_src_map.end()) {
 					ip_src_map[sipcallerip] = 1;
 				} else {
@@ -14523,11 +12309,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 				vmPort sipcalledport;
 				set<vmIP> proxies;
-				#if not CALL_BRANCHES
-				vmIP sipcalledip = call->getSipcalledip(true, true, NULL, &proxies);
-				#else
 				vmIP sipcalledip = call->getSipcalledip(c_branch, true, true, NULL, &proxies);
-				#endif
 				if(ip_dst_map.find(sipcalledip) == ip_dst_map.end()) {
 					ip_dst_map[sipcalledip] = 1;
 				} else {
@@ -14651,13 +12433,8 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 		newcall->useSensorId = sensorId;
 	}
 
-	#if not CALL_BRANCHES
-	newcall->saddr = saddr;
-	newcall->sport = port;
-	#else
 	newcall->first_branch.saddr = saddr;
 	newcall->first_branch.sport = port;
-	#endif
 	
 	//flags
 	set_global_flags(newcall->flags);
@@ -14723,19 +12500,11 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 	}
 	newcall->mgcp_callid = request->parameters.call_id;
 	
-	#if not CALL_BRANCHES
-	newcall->saddr = saddr;
-	newcall->sport = sport;
-	newcall->daddr = daddr;
-	newcall->dport = dport;
-	newcall->oneway = 0;
-	#else
 	newcall->first_branch.saddr = saddr;
 	newcall->first_branch.sport = sport;
 	newcall->first_branch.daddr = daddr;
 	newcall->first_branch.dport = dport;
 	newcall->first_branch.oneway = 0;
-	#endif
 	
 	//flags
 	set_global_flags(newcall->flags);
@@ -14916,9 +12685,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				} else {
 					call = (*callMAPIT2).second;
 				}
-				#if CALL_BRANCHES
 				CallBranch *c_branch = call->branch_main();
-				#endif
 				++stat.all;
 				u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
 							       packet_time_s :
@@ -14968,24 +12735,14 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						closeCall = true;
 						call->absolute_timeout_exceeded = true;
 						++stat.close_absolute_timeout;
-					#if not CALL_BRANCHES
-					} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
-						  !call->seenRES18X && !call->seenRES2XX && !call->first_rtp_time_us) {
-					#else
 					} else if(currTimeS_unshift > call->get_first_packet_time_s() + 300 &&
 						  !c_branch->seenRES18X && !c_branch->seenRES2XX && !call->first_rtp_time_us) {
-					#endif
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 						++stat.close_zombie_timeout;
 					}
-					#if not CALL_BRANCHES
-					if(!closeCall &&
-					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
-					#else
 					if(!closeCall &&
 					   (c_branch->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
-					#endif
 						/*
 						cout << " * " << currTimeS_unshift - call->get_last_packet_time_s() << endl
 						     << " * " << call->get_last_packet_time_us() - call->first_packet_time_us << endl
@@ -15053,18 +12810,10 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 							++stat.sp_arrived_rtp_streams;
 						}
 					} else {
-						#if not CALL_BRANCHES
-						call->removeFindTables(true);
-						#else
 						call->removeFindTables(NULL, true);
-						#endif
 					}
 					#else
-						#if not CALL_BRANCHES
-						call->removeFindTables(true);
-						#else
 						call->removeFindTables(NULL, true);
-						#endif
 					#endif
 					++call->attemptsClose;
 					if(!closeAll &&
@@ -15251,11 +13000,7 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 			call->sp_do_destroy_call_at = currTimeS;
 		}
 		if(closeCall) {
-			#if not CALL_BRANCHES
-			call->removeFindTables(true);
-			#else
 			call->removeFindTables(NULL, true);
-			#endif
 			if((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 			   call->rtppacketsinqueue > 0) {
 				closeCall = false;
@@ -15289,11 +13034,7 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 		if(currTimeS > call->sp_do_destroy_call_at + 10 &&
 		   !call->closePcaps() && !call->closeGraphs() &&
 		   call->isEmptyChunkBuffersCount()) {
-			#if not CALL_BRANCHES
-			call->removeFindTables(false, true);
-			#else
 			call->removeFindTables(NULL, false, true);
-			#endif
 			sendRtpStreams(call);
 			delete call;
 			lock_calls_queue();
@@ -15328,9 +13069,7 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 	lock_registers_listMAP();
 	for (map<string, Call*>::iterator registerMAPIT = registers_listMAP.begin(); registerMAPIT != registers_listMAP.end();) {
 		Call *reg = (*registerMAPIT).second;
-		#if CALL_BRANCHES
 		CallBranch *r_branch = reg->branch_main();
-		#endif
 		u_int32_t currTimeS_unshift = usePacketTime && packet_time_s ?
 					       packet_time_s :
 					       reg->unshiftSystemTime_s(currTimeS);
@@ -15353,31 +13092,16 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + absolute_timeout) {
 				closeReg = true;
 				reg->absolute_timeout_exceeded = true;
-			} 
-			#if not CALL_BRANCHES
-			  else if(currTimeS_unshift > reg->get_first_packet_time_s() + 300 &&
-				  !reg->seenRES18X && !reg->seenRES2XX)
-			#else
-			  else if(currTimeS_unshift > reg->get_first_packet_time_s() + 300 &&
-				  !r_branch->seenRES18X && !r_branch->seenRES2XX)
-			#endif
-			{
+			} else if(currTimeS_unshift > reg->get_first_packet_time_s() + 300 &&
+				  !r_branch->seenRES18X && !r_branch->seenRES2XX) {
 				closeReg = true;
 				reg->zombie_timeout_exceeded = true;
 			}
-			#if not CALL_BRANCHES
-			if(!closeReg &&
-			   (reg->oneway == 1 && currTimeS_unshift > reg->get_last_packet_time_s() + opt_onewaytimeout)) {
-				closeReg = true;
-				reg->oneway_timeout_exceeded = true;
-			}
-			#else
 			if(!closeReg &&
 			   (r_branch->oneway == 1 && currTimeS_unshift > reg->get_last_packet_time_s() + opt_onewaytimeout)) {
 				closeReg = true;
 				reg->oneway_timeout_exceeded = true;
 			}
-			#endif
 		}
 		if(closeReg) {
 			if(opt_safe_cleanup_calls && !opt_quick_save_cdr && !closeAll && closeReg) {
@@ -15416,19 +13140,11 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 				reg->push_register_to_registers_queue = 1;
 				if(opt_sip_register == 1) {
 					extern Registers registers;
-					#if not CALL_BRANCHES
-					if(reg->reg.msgcount <= 1 || 
-					   !reg->lastSIPresponseNum ||
-					   reg->lastSIPresponseNum == 401 || reg->lastSIPresponseNum == 403 || reg->lastSIPresponseNum == 404) {
-						reg->reg.regstate = rs_Failed;
-					}
-					#else
 					if(reg->reg.msgcount <= 1 || 
 					   !r_branch->lastSIPresponseNum ||
 					   r_branch->lastSIPresponseNum == 401 || r_branch->lastSIPresponseNum == 403 || r_branch->lastSIPresponseNum == 404) {
 						reg->reg.regstate = rs_Failed;
 					}
-					#endif
 					if(reg->reg.regstate != rs_Failed ||
 					   !opt_register_timeout_disable_save_failed) {
 						registers.add(reg);
@@ -15621,11 +13337,7 @@ void Call::saveregister(struct timeval *currtime) {
 	extern u_int64_t counter_registers_clean;
 	++counter_registers_clean;
 	
-	#if not CALL_BRANCHES
-	removeFindTables();
-	#else
 	removeFindTables(NULL);
-	#endif
 	
 	this->pcap.close();
 	this->pcapSip.close();
@@ -15752,13 +13464,12 @@ Call::handle_dscp(struct iphdr2 *header_ip, bool iscaller) {
 	}
 }
 
-#if not CALL_BRANCHES
-bool 
-Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
-			     vmIP saddr, vmIP daddr, 
-			     vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
-			     vmPort sport, vmPort dport,
-			     int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
+bool Call::check_is_caller_called(CallBranch *c_branch,
+				  const char *call_id, int sip_method, int cseq_method,
+				  vmIP saddr, vmIP daddr, 
+				  vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
+				  vmPort sport, vmPort dport,
+				  int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
 	*iscaller = 0;
 	bool _iscalled = 0;
 	string debug_str_set;
@@ -15784,33 +13495,33 @@ Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_metho
 		vmIP *sipcalledip;
 		vmPort *sipcallerport;
 		vmPort *sipcalledport;
-		if(isSetCallidMergeHeader()) {
+		if(isSetCallidMergeHeader(true)) {
 			if(call_id) {
-				sipcallerip = this->map_sipcallerdip[call_id].sipcallerip;
-				sipcalledip = this->map_sipcallerdip[call_id].sipcalledip;
-				sipcallerport = this->map_sipcallerdip[call_id].sipcallerport;
-				sipcalledport = this->map_sipcallerdip[call_id].sipcalledport;
+				sipcallerip = c_branch->map_sipcallerdip[call_id].sipcallerip;
+				sipcalledip = c_branch->map_sipcallerdip[call_id].sipcalledip;
+				sipcallerport = c_branch->map_sipcallerdip[call_id].sipcallerport;
+				sipcalledport = c_branch->map_sipcallerdip[call_id].sipcalledport;
 			} else {
-				sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
-				sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
-				sipcallerport = this->map_sipcallerdip.begin()->second.sipcallerport;
-				sipcalledport = this->map_sipcallerdip.begin()->second.sipcalledport;
+				sipcallerip = c_branch->map_sipcallerdip.begin()->second.sipcallerip;
+				sipcalledip = c_branch->map_sipcallerdip.begin()->second.sipcalledip;
+				sipcallerport = c_branch->map_sipcallerdip.begin()->second.sipcallerport;
+				sipcalledport = c_branch->map_sipcallerdip.begin()->second.sipcalledport;
 			}
 			if(!sipcallerip[0].isSet() && !sipcalledip[0].isSet()) {
 				sipcallerip[0] = saddr;
 				sipcalledip[0] = daddr;
-				sipcallerip_encaps = saddr_first;
-				sipcalledip_encaps = daddr_first;
-				sipcallerip_encaps_prot = first_protocol;
-				sipcalledip_encaps_prot = first_protocol;
+				c_branch->sipcallerip_encaps = saddr_first;
+				c_branch->sipcalledip_encaps = daddr_first;
+				c_branch->sipcallerip_encaps_prot = first_protocol;
+				c_branch->sipcalledip_encaps_prot = first_protocol;
 				sipcallerport[0] = sport;
 				sipcalledport[0] = dport;
 			}
 		} else {
-			sipcallerip = this->sipcallerip;
-			sipcalledip = this->sipcalledip;
-			sipcallerport = this->sipcallerport;
-			sipcalledport = this->sipcalledport;
+			sipcallerip = c_branch->sipcallerip;
+			sipcalledip = c_branch->sipcalledip;
+			sipcallerport = c_branch->sipcallerport;
+			sipcalledport = c_branch->sipcalledport;
 		}
 		int i;
 		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -15924,174 +13635,22 @@ Call::check_is_caller_called(const char *call_id, int sip_method, int cseq_metho
 		return(false);
 	}
 }
-#else
-bool 
-Call::check_is_caller_called(CallBranch *c_branch,
-			     const char *call_id, int sip_method, int cseq_method,
-			     vmIP saddr, vmIP daddr, 
-			     vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
-			     vmPort sport, vmPort dport,
-			     int *iscaller, int *iscalled, bool enableSetSipcallerdip) {
-	*iscaller = 0;
-	bool _iscalled = 0;
-	string debug_str_set;
-	string debug_str_cmp;
-	if(this->typeIsOnly(MESSAGE) || sip_method == MESSAGE || cseq_method == MESSAGE) {
-		if(sip_method == MESSAGE) {
-			_iscalled = 1;
-			debug_str_cmp = string(" / == MSG");
-		} else {
-			*iscaller = 1;
-			debug_str_cmp = string(" / != MSG");
-		}
-	} else if(this->typeIsOnly(REGISTER)) {
-		if(sip_method == REGISTER) {
-			_iscalled = 1;
-			debug_str_cmp = string(" / == REGISTER");
-		} else {
-			*iscaller = 1;
-			debug_str_cmp = string(" / != REGISTER");
-		}
+
+bool Call::is_sipcaller(CallBranch *c_branch, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
+	vmIP *sipcallerip;
+	vmIP *sipcalledip;
+	vmPort *sipcallerport;
+	vmPort *sipcalledport;
+	if(isSetCallidMergeHeader(true)) {
+		sipcallerip = c_branch->map_sipcallerdip.begin()->second.sipcallerip;
+		sipcalledip = c_branch->map_sipcallerdip.begin()->second.sipcalledip;
+		sipcallerport = c_branch->map_sipcallerdip.begin()->second.sipcallerport;
+		sipcalledport = c_branch->map_sipcallerdip.begin()->second.sipcalledport;
 	} else {
-		vmIP *sipcallerip;
-		vmIP *sipcalledip;
-		vmPort *sipcallerport;
-		vmPort *sipcalledport;
 		sipcallerip = c_branch->sipcallerip;
 		sipcalledip = c_branch->sipcalledip;
 		sipcallerport = c_branch->sipcallerport;
 		sipcalledport = c_branch->sipcalledport;
-		int i;
-		for(i = 0; i < MAX_SIPCALLERDIP; i++) {
-			if(enableSetSipcallerdip && i > 0 && !sipcallerip[i].isSet() && saddr.isSet() && daddr.isSet()) {
-				if(sip_method == INVITE) {
-					sipcallerip[i] = saddr;
-					sipcalledip[i] = daddr;
-					sipcallerport[i] = sport;
-					sipcalledport[i] = dport;
-					if(sverb.check_is_caller_called) {
-						debug_str_set += string(" / set sipcaller/dip[") + intToString(i) + "]: " + 
-								 saddr.getString() + ':' + sport.getString() + " -> " +
-								 daddr.getString() + ':' + dport.getString();
-					}
-				} else if(IS_SIP_RES18X(sip_method) || sip_method == RES2XX_INVITE)  {
-					sipcallerip[i] = daddr;
-					sipcalledip[i] = saddr;
-					sipcallerport[i] = dport;
-					sipcalledport[i] = sport;
-					if(sverb.check_is_caller_called) {
-						debug_str_set += string(" / set sipcaller/dip[") + intToString(i) + "]: " + 
-								 daddr.getString() + ':' + dport.getString() + " -> " + 
-								 saddr.getString() + ':' + sport.getString();
-					}
-				}
-			}
-			if(sipcallerip[i].isSet()) {
-				if((use_both_side_for_check_direction() ?
-				     sipcallerip[i] == saddr && sipcalledip[i] == daddr : 
-				     sipcallerip[i] == saddr) &&
-				   (sipcallerip[i] != sipcalledip[i] ||
-				    (use_both_side_for_check_direction() ?
-				      sipcallerport[i] == sport && sipcalledport[i] == dport :
-				      sipcallerport[i] == sport))) {
-					// SDP message is coming from the first IP address seen in first INVITE thus incoming stream to ip/port in this 
-					// SDP will be stream from called
-					_iscalled = 1;
-					if(sverb.check_is_caller_called) {
-						debug_str_cmp += string(" / cmp sipcallerip[") + intToString(i) + "] " + 
-								 (use_both_side_for_check_direction() ?
-								   "(sipcaller/dip) " + sipcallerip[i].getString() + ':' + sipcallerport[i].getString() + " -> " +
-								   sipcalledip[i].getString() + ':' + sipcalledport[i].getString() +
-								   " == " + 
-								   "(s/daddr) " + saddr.getString() + ':' + sport.getString() + " -> " + 
-								   daddr.getString() + ':' + dport.getString()
-								   :
-								   "(sipcallerip) " + sipcallerip[i].getString() + ':' + sipcallerport[i].getString() + 
-								   " == " + 
-								   "(saddr) " + saddr.getString() + ':' + sport.getString());
-					}
-					break;
-				} else {
-					// The IP address is different, check if the request matches one of the address from the first invite
-					if((use_both_side_for_check_direction() ?
-					     sipcallerip[i] == daddr && sipcalledip[i] == saddr :
-					     sipcallerip[i] == daddr) &&
-					   (sipcallerip[i] != sipcalledip[i] ||
-					    (use_both_side_for_check_direction() ?
-					      sipcallerport[i] == dport && sipcalledport[i] == sport :
-					      sipcallerport[i] == dport))) {
-						// SDP message is addressed to caller and announced IP/port in SDP will be from caller. Thus set called = 0;
-						*iscaller = 1;
-						if(sverb.check_is_caller_called) {
-							debug_str_cmp += string(" / cmp sipcallerip[") + intToString(i) + "] " + 
-									 (use_both_side_for_check_direction() ?
-									   "(sipcaller/dip) " + sipcallerip[i].getString() + ':' + sipcallerport[i].getString() + " -> " +
-									   sipcalledip[i].getString() + ':' + sipcalledport[i].getString() +
-									   " == " + 
-									   "(d/saddr) " + daddr.getString() + ':' + dport.getString() + " -> " + 
-									   saddr.getString() + ':' + sport.getString()
-									   :
-									   "(sipcallerip) " + sipcallerip[i].getString() + ':' + sipcallerport[i].getString() + 
-									   " == " + 
-									   "(daddr) " + daddr.getString() + ':' + dport.getString());
-						}
-						break;
-					}
-				}
-			} else {
-				break;
-			}
-		}
-		if(i == MAX_SIPCALLERDIP && !*iscaller && !_iscalled) {
-			*iscaller = 1;
-			if(sverb.check_is_caller_called) {
-				debug_str_cmp += " / last set";
-			}
-		}
-	}
-	if(sverb.check_is_caller_called) {
-		cout << "check_is_caller_called: " 
-		     << "call_id: " << call_id  << " "
-		     << "sip_method: " << sip_method << " "
-		     << saddr.getString() << " -> " << daddr.getString()
-		     << " = " << (*iscaller ? "CALLER" : (_iscalled ? "CALLED" : "UNDEFINED"))
-		     << debug_str_set
-		     << debug_str_cmp
-		     << endl;
-		
-	}
-	if(*iscaller || _iscalled) {
-		if(iscalled) {
-			*iscalled = _iscalled;
-		}
-		return(true);
-	} else {
-		*iscaller = -1;
-		if(iscalled) {
-			*iscalled = -1;
-		}
-		return(false);
-	}
-}
-#endif
-
-#if not CALL_BRANCHES
-bool 
-Call::is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
-	vmIP *sipcallerip;
-	vmIP *sipcalledip;
-	vmPort *sipcallerport;
-	vmPort *sipcalledport;
-	if(isSetCallidMergeHeader()) {
-		sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
-		sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
-		sipcallerport = this->map_sipcallerdip.begin()->second.sipcallerport;
-		sipcalledport = this->map_sipcallerdip.begin()->second.sipcalledport;
-	} else {
-		sipcallerip = this->sipcallerip;
-		sipcalledip = this->sipcalledip;
-		sipcallerport = this->sipcallerport;
-		sipcalledport = this->sipcalledport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		if((use_both_side_for_check_direction() && daddr.isSet() ?
@@ -16106,49 +13665,22 @@ Call::is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
 	}
 	return(false);
 }
-#else
-bool 
-Call::is_sipcaller(CallBranch *c_branch, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
-	vmIP *sipcallerip;
-	vmIP *sipcalledip;
-	vmPort *sipcallerport;
-	vmPort *sipcalledport;
-	sipcallerip = c_branch->sipcallerip;
-	sipcalledip = c_branch->sipcalledip;
-	sipcallerport = c_branch->sipcallerport;
-	sipcalledport = c_branch->sipcalledport;
-	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if((use_both_side_for_check_direction() && daddr.isSet() ?
-		     saddr == sipcallerip[i] && daddr == sipcalledip[i] :
-		     saddr == sipcallerip[i]) &&
-		   (sipcallerip[i] != sipcalledip[i] ||
-		    (use_both_side_for_check_direction() && dport.isSet() ?
-		      sport == sipcallerport[i] && dport == sipcalledport[i] :
-		      sport == sipcallerport[i]))) {
-			return(true);
-		}
-	}
-	return(false);
-}
-#endif
 
-#if not CALL_BRANCHES
-bool 
-Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
+bool Call::is_sipcalled(CallBranch *c_branch, vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 	vmIP *sipcallerip;
 	vmIP *sipcalledip;
 	vmPort *sipcallerport;
 	vmPort *sipcalledport;
 	if(isSetCallidMergeHeader()) {
-		sipcallerip = this->map_sipcallerdip.begin()->second.sipcallerip;
-		sipcalledip = this->map_sipcallerdip.begin()->second.sipcalledip;
-		sipcallerport = this->map_sipcallerdip.begin()->second.sipcallerport;
-		sipcalledport = this->map_sipcallerdip.begin()->second.sipcalledport;
+		sipcallerip = c_branch->map_sipcallerdip.begin()->second.sipcallerip;
+		sipcalledip = c_branch->map_sipcallerdip.begin()->second.sipcalledip;
+		sipcallerport = c_branch->map_sipcallerdip.begin()->second.sipcallerport;
+		sipcalledport = c_branch->map_sipcallerdip.begin()->second.sipcalledport;
 	} else {
-		sipcallerip = this->sipcallerip;
-		sipcalledip = this->sipcalledip;
-		sipcallerport = this->sipcallerport;
-		sipcalledport = this->sipcalledport;
+		sipcallerip = c_branch->sipcallerip;
+		sipcalledip = c_branch->sipcalledip;
+		sipcallerport = c_branch->sipcallerport;
+		sipcalledport = c_branch->sipcalledport;
 	}
 	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
 		if((use_both_side_for_check_direction() && saddr.isSet() ?
@@ -16163,31 +13695,6 @@ Call::is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
 	}
 	return(false);
 }
-#else
-bool
-Call::is_sipcalled(CallBranch *c_branch, vmIP daddr, vmPort dport, vmIP saddr, vmPort sport) {
-	vmIP *sipcallerip;
-	vmIP *sipcalledip;
-	vmPort *sipcallerport;
-	vmPort *sipcalledport;
-	sipcallerip = c_branch->sipcallerip;
-	sipcalledip = c_branch->sipcalledip;
-	sipcallerport = c_branch->sipcallerport;
-	sipcalledport = c_branch->sipcalledport;
-	for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-		if((use_both_side_for_check_direction() && saddr.isSet() ?
-		     daddr == sipcalledip[i] && saddr == sipcallerip[i] :
-		     daddr == sipcalledip[i]) &&
-		   (sipcallerip[i] != sipcalledip[i] ||
-		    (use_both_side_for_check_direction() && sport.isSet() ?
-		      dport == sipcalledport[i] && sport == sipcallerport[i] :
-		      dport == sipcalledport[i]))) {
-			return(true);
-		}
-	}
-	return(false);
-}
-#endif
 
 Call::eMoMtLegFlag Call::momt_get() {
 	if(opt_mo_mt_identification_prefix.size()) {
@@ -16203,17 +13710,6 @@ Call::eMoMtLegFlag Call::momt_get() {
 	return(_momt_na);
 }
 
-#if not CALL_BRANCHES
-void Call::srvcc_check_post() {
-	if(!srvcc_set || !srvcc_numbers) {
-		return;
-	}
-	if(srvcc_numbers->check(get_called())) {
-		srvcc_flag = _srvcc_post;
-		calltable->srvcc_calls.set(caller, call_id.c_str(), first_packet_time_us);
-	}
-}
-#else
 void Call::srvcc_check_post(CallBranch *c_branch) {
 	if(!srvcc_set || !srvcc_numbers) {
 		return;
@@ -16223,29 +13719,7 @@ void Call::srvcc_check_post(CallBranch *c_branch) {
 		calltable->srvcc_calls.set(c_branch->caller.c_str(), call_id.c_str(), first_packet_time_us);
 	}
 }
-#endif
 
-#if not CALL_BRANCHES
-void Call::srvcc_check_pre() {
-	if(!srvcc_set || !opt_srvcc_correlation || srvcc_flag == _srvcc_post) {
-		return;
-	}
-	u_int64_t last_time_us = get_last_time_us();
-	eMoMtLegFlag momt_leg = momt_get();
-	string call_id;
-	if(momt_leg == _momt_na || momt_leg == _momt_mo) {
-		call_id = calltable->srvcc_calls.get(caller, first_packet_time_us, last_time_us);
-	}
-	if(call_id.empty() &&
-	   (momt_leg == _momt_na || momt_leg == _momt_mt)) {
-		call_id = calltable->srvcc_calls.get(get_called(), first_packet_time_us, last_time_us);
-	}
-	if(!call_id.empty()) {
-		srvcc_flag = _srvcc_pre;
-		srvcc_call_id = call_id;
-	}
-}
-#else
 void Call::srvcc_check_pre(CallBranch *c_branch) {
 	if(!srvcc_set || !opt_srvcc_correlation || srvcc_flag == _srvcc_post) {
 		return;
@@ -16265,8 +13739,6 @@ void Call::srvcc_check_pre(CallBranch *c_branch) {
 		srvcc_call_id = call_id;
 	}
 }
-#endif
-
 
 void Call::dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item) {
 	dtls_keys_lock();
@@ -16567,11 +14039,7 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 					break;
 				case max_retransmission_invite:
 					if(call) {
-						#if not CALL_BRANCHES
-						unsigned max_retrans = call->getMaxRetransmissionInvite();
-						#else
 						unsigned max_retrans = call->getMaxRetransmissionInvite(call->branch_main());
-						#endif
 						if(max_retrans > 0) {
 							content = intToString(max_retrans);
 						}
@@ -17313,35 +14781,6 @@ NoStoreCdrRule::~NoStoreCdrRule() {
 	}
 }
 
-#if not CALL_BRANCHES
-bool NoStoreCdrRule::check(Call *call) {
-	bool ok = matchResponseCode(lastResponseNum, lastResponseNumLength, call->lastSIPresponseNum);
- 	if(ok && ip.isSet()) {
-		if(!check_ip(call->getSipcallerip(), ip, ip_mask_length) &&
-		   !check_ip(call->getSipcalledip(), ip, ip_mask_length) &&
-		   !check_ip(call->getSipcalledip(true, true), ip, ip_mask_length)) {
-			ok = false;
-		}
-	}
-	if(ok && number.length()) {
-		if(!check_number(call->caller) &&
-		   !check_number(call->get_called())) {
-			ok = false;
-		}
-	}
-	if(ok && name.length()) {
-		if(!check_name(call->callername)) {
-			ok = false;
-		}
-	}
-	if(ok && lsr.length()) {
-		if(!check_lsr(call->lastSIPresponse)) {
-			ok = false;
-		}
-	}
-	return(ok);
-}
-#else
 bool NoStoreCdrRule::check(Call *call, CallBranch *c_branch) {
 	bool ok = matchResponseCode(lastResponseNum, lastResponseNumLength, c_branch->lastSIPresponseNum);
  	if(ok && ip.isSet()) {
@@ -17369,7 +14808,6 @@ bool NoStoreCdrRule::check(Call *call, CallBranch *c_branch) {
 	}
 	return(ok);
 }
-#endif
 
 void NoStoreCdrRule::set(const char *pattern) {
 	while(*pattern == ' ') {
@@ -17467,16 +14905,6 @@ NoStoreCdrRules::~NoStoreCdrRules() {
 	}
 }
 
-#if not CALL_BRANCHES
-bool NoStoreCdrRules::check(Call *call) {
-	for(list<NoStoreCdrRule*>::iterator iter = rules.begin(); iter != rules.end(); iter++) {
-		if((*iter)->check(call)) {
-			return(true);
-		}
-	}
-	return(false);
-}
-#else
 bool NoStoreCdrRules::check(Call *call, CallBranch *c_branch) {
 	for(list<NoStoreCdrRule*>::iterator iter = rules.begin(); iter != rules.end(); iter++) {
 		if((*iter)->check(call, c_branch)) {
@@ -17485,7 +14913,6 @@ bool NoStoreCdrRules::check(Call *call, CallBranch *c_branch) {
 	}
 	return(false);
 }
-#endif
 
 void NoStoreCdrRules::set(const char *pattern) {
 	NoStoreCdrRule *rule = new FILE_LINE(0) NoStoreCdrRule; 

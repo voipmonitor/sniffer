@@ -5987,7 +5987,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 	""));
 	
-	#if CALL_BRANCHES
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_next_branches` (\
 			" + (opt_cdr_force_primary_index_in_all_tables ? "`ID` " + cdrIdType + " unsigned NOT NULL AUTO_INCREMENT," : "") + "\
@@ -6087,7 +6086,6 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(calldate)(\
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
-	#endif
 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cdr_rtp` (\
@@ -8410,9 +8408,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	
 	this->checkColumns_cdr(!checkColumnsSilentLog);
 	this->checkColumns_cdr_next(!checkColumnsSilentLog);
-	#if CALL_BRANCHES
 	this->checkColumns_cdr_next_branches(!checkColumnsSilentLog);
-	#endif
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
 	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
@@ -8818,7 +8814,6 @@ void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	}
 }
 
-#if CALL_BRANCHES
 void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
 	map<string, u_int64_t> tableSize;
 	existsColumns.cdr_next_branches = this->existsTable("cdr_next_branches");
@@ -8848,7 +8843,6 @@ void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
 					NULL_CHAR_PTR);
 	}
 }
-#endif
 
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	map<string, u_int64_t> tableSize;
@@ -8919,11 +8913,9 @@ void SqlDb_mysql::checkColumns_cdr_conference(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	existsColumns.cdr_next_calldate = this->existsColumn("cdr_next", "calldate");
-	#if CALL_BRANCHES
 	if(existsColumns.cdr_next_branches) {
 		existsColumns.cdr_next_branches_calldate = this->existsColumn("cdr_next_branches", "calldate");
 	}
-	#endif
 	existsColumns.cdr_rtp_calldate = this->existsColumn("cdr_rtp", "calldate");
 	if(opt_save_energylevels) {
 		existsColumns.cdr_rtp_energylevels_calldate = this->existsColumn("cdr_rtp_energylevels", "calldate");
@@ -8944,11 +8936,9 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	vector<sTableCalldateMsIndik> childTablesCalldateMsIndik;
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_calldate_ms, "cdr_next"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_proxy_calldate_ms, "cdr_proxy"));
-	#if CALL_BRANCHES
 	if(existsColumns.cdr_next_branches) {
 		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_next_branches_calldate_ms, "cdr_next_branches"));
 	}
-	#endif
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_calldate_ms, "cdr_rtp"));
 	if(opt_save_energylevels) {
 		childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_rtp_energylevels_calldate_ms, "cdr_rtp_energylevels"));
@@ -9798,11 +9788,9 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		}
 		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
 			if(typeTables & tt_child) {
-				#if CALL_BRANCHES
 				if(existsColumns.cdr_next_branches) {
 					tables.push_back("cdr_next_branches");
 				}
-				#endif
 				tables.push_back("cdr_rtp");
 				if(opt_save_energylevels) {
 					tables.push_back("cdr_rtp_energylevels");
@@ -10254,11 +10242,9 @@ void dropMysqlPartitionsCdr() {
 	sqlDb->setDisableNextAttemptIfError();
 	_dropMysqlPartitions("cdr", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_next", opt_cleandatabase_cdr, 0, sqlDb);
-	#if CALL_BRANCHES
 	if(existsColumns.cdr_next_branches) {
 		_dropMysqlPartitions("cdr_next_branches", opt_cleandatabase_cdr, 0, sqlDb);
 	}
-	#endif
 	_dropMysqlPartitions("cdr_rtp", opt_cleandatabase_cdr, 0, sqlDb);
 	if(opt_save_energylevels) {
 		_dropMysqlPartitions("cdr_rtp_energylevels", opt_cleandatabase_cdr_rtp_energylevels ? opt_cleandatabase_cdr_rtp_energylevels : opt_cleandatabase_cdr, 0, sqlDb);

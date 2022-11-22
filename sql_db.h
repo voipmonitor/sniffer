@@ -691,9 +691,7 @@ public:
 	void updateSensorState();
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
-	#if CALL_BRANCHES
 	void checkColumns_cdr_next_branches(bool log = false);
-	#endif
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_conference(bool log = false);
@@ -1197,9 +1195,7 @@ struct sExistsColumns {
 	bool cdr_calldate_ms;
 	bool cdr_child_next_calldate_ms;
 	bool cdr_child_proxy_calldate_ms;
-	#if CALL_BRANCHES
 	bool cdr_child_next_branches_calldate_ms;
-	#endif
 	bool cdr_child_rtp_calldate_ms;
 	bool cdr_child_rtp_energylevels_calldate_ms;
 	bool cdr_child_dtmf_calldate_ms;
@@ -1253,13 +1249,11 @@ struct sExistsColumns {
 	bool cdr_next_leg_flag;
 	bool cdr_next_srvcc_call_id;
 	bool cdr_next_srvcc_flag;
-	#if CALL_BRANCHES
 	bool cdr_next_branches;
 	bool cdr_next_branches_calldate;
 	bool cdr_next_branches_sipport;
 	bool cdr_next_branches_sipcallerdip_encaps;
 	bool cdr_next_branches_sipcallerdip_v6;
-	#endif
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;

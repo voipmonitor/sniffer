@@ -116,11 +116,7 @@ public:
 		#endif
 	};
 public:
-	#if not CALL_BRANCHES
-	RTPsecure(eMode mode, class Call *call, int index_ip_port, bool local = false);
-	#else
 	RTPsecure(eMode mode, class Call *call, class CallBranch *c_branch, int index_ip_port, bool local = false);
-	#endif
 	~RTPsecure();
 	bool setCryptoConfig(u_int64_t time_us);
 	bool addCryptoConfig(unsigned tag, const char *suite, const char *sdes, u_int64_t from_time_us);
@@ -203,9 +199,7 @@ private:
 private:
 	eMode mode;
 	Call *call;
-	#if CALL_BRANCHES
 	CallBranch *c_branch;
-	#endif
 	int index_ip_port;
 	bool local;
 	vector<sCryptoConfig> cryptoConfigVector;
