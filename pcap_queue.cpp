@@ -9239,6 +9239,14 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 								udphdr->len = htons(header_ip_prev->get_tot_len() - header_ip_prev->get_hdr_size());
 							}
 						}
+						extern unsigned opt_udp_port_hperm;
+						if(opt_udp_port_hperm &&
+						   header_ip_prev->get_protocol() == IPPROTO_UDP) {
+							udphdr2 *udphdr = (udphdr2*)((char*)header_ip_prev + header_ip_prev->get_hdr_size());
+							if((unsigned)udphdr->get_dest() == opt_udp_port_hperm) {
+								udphdr->len = htons(header_ip_prev->get_tot_len() - header_ip_prev->get_hdr_size());
+							}
+						}
 					}
 					hp->header->pid.flags |= FLAG_FRAGMENTED;
 					if(sverb.defrag) {
