@@ -2190,6 +2190,8 @@ int mimeSubtypeToInt(char *mimeSubtype) {
 	       return PAYLOAD_AAL2_G72632;
        else if(strcasecmp(mimeSubtype,"AAL2-G726-40") == 0)
 	       return PAYLOAD_AAL2_G72640;
+       else if(strcasecmp(mimeSubtype,"EVS") == 0)
+	       return PAYLOAD_EVS;
        else
 	       return 0;
 }
@@ -2529,7 +2531,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->label[label_length] = 0;
 		}
 		
-		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
+		if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp ||
+		   sdp_media_data_item->sdp_flags.protocol == sdp_proto_srtp) {
 			s = _gettag(sdp_media_text, sdp_media_text_len, "a=crypto:", &l);
 			if(l > 0) {
 				char *cryptoContent = s;
@@ -2575,6 +2578,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 					}
 				}
 				while(cryptoContent);
+				if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+					sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+				}
 			} else {
 				s = _gettag(sdp_media_text, sdp_media_text_len, "a=fingerprint:", &l);
 				if(l > 0) {
@@ -2582,6 +2588,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 						sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
 					}
 					*sdp_media_data_item->srtp_fingerprint =  string(s, l);
+					if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+						sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+					}
 				} else {
 					s = _gettag(sdp_text, sdp_media_start[0] - sdp_text, "a=fingerprint:", &l);
 					if(l > 0) {
@@ -2589,6 +2598,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 							sdp_media_data_item->srtp_fingerprint = new FILE_LINE(0) string;
 						}
 						*sdp_media_data_item->srtp_fingerprint =  string(s, l);
+						if(sdp_media_data_item->sdp_flags.protocol == sdp_proto_rtp) {
+							sdp_media_data_item->sdp_flags.protocol = sdp_proto_srtp;
+						}
 					}
 				}
 			}
@@ -6080,14 +6092,14 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							#if DEBUG_DTLS_QUEUE
 							cout << " * use dtls" << endl;
 							#endif
-							call->read_rtp(c_branch, *iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+							call->read_rtp(c_branch, *iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, (*iter)), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 						}
 					}
 					if(is_rtcp) {
 						rslt_read_rtp = call->read_rtcp(c_branch, packetS, iscaller, enable_save_rtcp(call));
 					} else {
-						rslt_read_rtp = call->read_rtp(c_branch, packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+						rslt_read_rtp = call->read_rtp(c_branch, packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS), 
 									       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 					}
 				} else if(is_rtcp) {
@@ -6170,7 +6182,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 					#endif
 					(*iter)->blockstore_addflag(123 /*pb lock flag*/);
 					add_to_rtp_thread_queue(c_branch, *iter, 
-								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 								false, threadIndex);
 				}
 			}
@@ -6182,7 +6194,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(c_branch, packetS,
-							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -8892,6 +8904,15 @@ bool ReassemblyBuffer::existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort
 	if(streams.size()) {
 		sStreamId id(saddr, sport, daddr, dport);
 		if(streams.find(id) != streams.end()) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+bool ReassemblyBuffer::existsStream(sStreamId *sid) {
+	if(streams.size()) {
+		if(streams.find(*sid) != streams.end()) {
 			return(true);
 		}
 	}

@@ -1317,6 +1317,10 @@ struct sExistsColumns {
 	bool register_failed_sipcallerdip_encaps;
 	bool register_state_digestrealm;
 	bool register_failed_digestrealm;
+	bool register_state_sipcallerport;
+	bool register_failed_sipcallerport;
+	bool register_state_sipcalledport;
+	bool register_failed_sipcalledport;
 	bool sip_msg_time_ms;
 	bool sip_msg_request_time_ms;
 	bool sip_msg_response_time_ms;

@@ -1280,6 +1280,11 @@ public:
 		return(!c_branch->called_domain_uri.empty() ? c_branch->called_domain_uri.c_str() : c_branch->called_domain_to.c_str());
 	}
 	
+	inline bool is_fax() {
+		return(isfax || (seenudptl && exists_udptl_data));
+	}
+	inline bool is_fax_packet(struct packet_s_process_0 *packetS);
+	
 	bool sighup;			//!< true if call is saving during sighup
 	
 	RTP *lastcallerrtp;		//!< last RTP stream from caller

@@ -16,6 +16,7 @@
 
 
 extern int verbosity;
+extern int opt_mysqlloadconfig;
 
 
 cConfigItem::cConfigItem(const char *name) {
@@ -2625,7 +2626,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 	} else {
 		okNextData = true;
 	}
-	if(okNextData) {
+	if(okNextData && opt_mysqlloadconfig) {
 		bool setFromMysqlOk = false;
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->setSilentConnect();

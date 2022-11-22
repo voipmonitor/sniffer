@@ -1461,7 +1461,7 @@ bool SqlDb::getDisableLogError() {
 }
 
 void SqlDb::setSilentConnect() {
-	this->silentConnect = true;;
+	this->silentConnect = true;
 }
 
 void SqlDb::cleanFields() {
@@ -1830,8 +1830,16 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 				}
 			}
 			snprintf(tmp, sizeof(tmp), "USE `%s`", this->conn_database.c_str());
-			if(!this->existsDatabase() || !this->query(tmp)) {
+			bool disableLogErrorOld = false;
+			if(silentConnect) {
+				disableLogErrorOld = getDisableLogError();
+				setDisableLogError(true);
+			}
+			if(!this->query(tmp)) {
 				rslt = false;
+			}
+			if(silentConnect) {
+				setDisableLogError(disableLogErrorOld);
 			}
 			if(mainInit && !isCloud()) {
 				this->query("SHOW VARIABLES LIKE \"version\"");
@@ -6844,7 +6852,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") + 
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -6931,7 +6941,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") +
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -9169,6 +9181,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	}
 	if(opt_sip_register == 1) {
 		bool registerStateIdIsBig = true;
+		bool registerStateIdIsAutoIncrement = true;
 		this->query("show columns from register_state like 'id'");
 		SqlDb_row register_state_struct_row = this->fetchRow();
 		if(register_state_struct_row) {
@@ -9177,15 +9190,21 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			if(idType.find("BIG") == string::npos) {
 				registerStateIdIsBig = false;
 			}
+			string extra = register_state_struct_row["extra"];
+			std::transform(extra.begin(), extra.end(), extra.begin(), ::toupper);
+			if(extra.find("AUTO_INCREMENT") == string::npos) {
+				registerStateIdIsAutoIncrement = false;
+			}
 		}
-		if(!registerStateIdIsBig) {
+		if(!registerStateIdIsBig || !registerStateIdIsAutoIncrement) {
 			this->logNeedAlter("register_state",
 					   "register state",
 					   "ALTER TABLE register_state "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
 					   log, &tableSize, NULL);
 		}
 		bool registerFailedIdIsBig = true;
+		bool registerFailedIdIsAutoIncrement = true;
 		this->query("show columns from register_failed like 'id'");
 		SqlDb_row register_failed_struct_row = this->fetchRow();
 		if(register_failed_struct_row) {
@@ -9194,12 +9213,17 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 			if(idType.find("BIG") == string::npos) {
 				registerFailedIdIsBig = false;
 			}
+			string extra = register_failed_struct_row["extra"];
+			std::transform(extra.begin(), extra.end(), extra.begin(), ::toupper);
+			if(extra.find("AUTO_INCREMENT") == string::npos) {
+				registerFailedIdIsAutoIncrement = false;
+			}
 		}
-		if(!registerFailedIdIsBig) {
+		if(!registerFailedIdIsBig || !registerFailedIdIsAutoIncrement) {
 			this->logNeedAlter("register_failed",
 					   "register failed",
 					   "ALTER TABLE register_failed "
-					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL;",
+					   "CHANGE COLUMN `ID` `ID` bigint unsigned NOT NULL AUTO_INCREMENT;",
 					   log, &tableSize, NULL);
 		}
 	}
@@ -9238,6 +9262,22 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	this->checkNeedAlterAdd("register_state", "register_state digestrealm", true,
 				log, &tableSize, &existsColumns.register_state_digestrealm,
 				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcallerport", true,
+				log, &tableSize, &existsColumns.register_state_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcalledport", true,
+				log, &tableSize, &existsColumns.register_state_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcallerport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcalledport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,
@@ -10709,8 +10749,8 @@ void cLogSensor::_save() {
 	sqlDb->setDisableLogError(true);
 	sqlDb->setEnableSqlStringInContent(true);
 	bool existsOkLogSensorTable = false;
-	if(!sqlStore && !isCloud() && !opt_nocdr) {
-		existsOkLogSensorTable = sqlDb->existsDatabase() && sqlDb->existsTable("log_sensor");
+	if(!sqlStore && !isCloud() && !opt_nocdr && sqlDb->connect()) {
+		existsOkLogSensorTable = sqlDb->existsTable("log_sensor");
 	}
 	string query_str;
 	sItem *firstItem = &(*items.begin());

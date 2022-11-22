@@ -1224,6 +1224,7 @@ bool updateSchema = false;
 unsigned opt_udp_port_l2tp = 1701;
 unsigned opt_udp_port_tzsp = 0x9090;
 unsigned opt_udp_port_vxlan = 4789;
+unsigned opt_udp_port_hperm = 7932;
 
 unsigned opt_tcp_port_mgcp_gateway = 2427;
 unsigned opt_udp_port_mgcp_gateway = 2427;
@@ -1707,7 +1708,7 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 						opt_mysql_enable_new_store = true;
 					}
 				} else {
-					if(!sqlDb->existsDatabase() || !sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
+					if(!sqlDb->existsTable("cdr") || sqlDb->emptyTable("cdr")) {
 						connectErrorString = "! mysql version 8 is not supported because it contains critical bug #92023 (https://bugs.mysql.com/bug.php?id=92023)";
 						connectOk = -1;
 					} else {
@@ -2714,7 +2715,9 @@ static void daemonize(void)
 
 		// write pid file to opt_pidfile
 		vmon_pid = getpid();
+		mode_t oldmask = umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 		f = fopen(opt_pidfile, "w");
+		umask(oldmask);
 		if (f) {
 		       fprintf(f, "%ld\n", (long)vmon_pid);
 		       fclose(f);
@@ -7989,6 +7992,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_hperm",  &opt_udp_port_hperm));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
@@ -12877,7 +12881,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "udp_port_vxlan", NULL))) {
 		opt_udp_port_vxlan = atoi(value);
 	}
-	
+	if((value = ini.GetValue("general", "udp_port_hperm", NULL))) {
+		opt_udp_port_hperm = atoi(value);
+	}
 	if((value = ini.GetValue("general", "icmp_process_data", NULL))) {
 		opt_icmp_process_data = yesno(value);
 	}

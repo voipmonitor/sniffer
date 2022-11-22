@@ -213,6 +213,7 @@ int get_ticks_bycodec(int codec) {
 		return 48;
 		break;
 	case PAYLOAD_AMRWB:
+	case PAYLOAD_EVS:
 		return 16;
 		break;
 	default:
@@ -758,6 +759,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		case PAYLOAD_OPUS16:
 		case PAYLOAD_G722116:
 		case PAYLOAD_AMRWB:
+		case PAYLOAD_EVS:
 			frame->ts = getTimestamp() / 16;
 			//frame->len = packetization / 2;
 			break;
@@ -809,7 +811,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	int mylen = MIN((unsigned int)len, header_ip->get_tot_len() - header_ip->get_hdr_size() - sizeof(udphdr2));
 
 	if(save_audio || energylevels || mos_lqo ||
-	   (codec == PAYLOAD_G729 || codec == PAYLOAD_G723 || codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB)) {
+	   (codec == PAYLOAD_G729 || codec == PAYLOAD_G723 || codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB || codec == PAYLOAD_EVS)) {
 		/* get RTP payload header and datalen */
 		payload_data = data + sizeof(RTPFixedHeader);
 		payload_len = mylen - sizeof(RTPFixedHeader);
@@ -869,7 +871,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 			frame->frametype = AST_FRAME_DTMF;
 			frame->marker = 1;
 		}
-		if((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and payload_len <= 7) {
+		if((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB or codec == PAYLOAD_EVS) and payload_len <= 7) {
 			frame->frametype = AST_FRAME_DTMF;
 			frame->marker = 1;
 		}
@@ -1672,6 +1674,7 @@ bool RTP::read(CallBranch *c_branch,
 			case PAYLOAD_VXOPUS16:
 			case PAYLOAD_G722116:
 			case PAYLOAD_AMRWB:
+			case PAYLOAD_EVS:
 				samplerate = 16000;
 				break;
 			case PAYLOAD_SILK24:
@@ -1818,7 +1821,7 @@ bool RTP::read(CallBranch *c_branch,
 			   typical sitation is for 60ms packetization and 30ms SID packetization */
 			payload_data = data + sizeof(RTPFixedHeader);
 			sid = (unsigned char)payload_data[0] & 2;
-		} else if(curpayload == PAYLOAD_AMR or curpayload == PAYLOAD_AMRWB) {
+		} else if(curpayload == PAYLOAD_AMR or curpayload == PAYLOAD_AMRWB or curpayload == PAYLOAD_EVS) {
 			if(payload_len == 7) {
 				sid = 1;
 			}
@@ -2113,7 +2116,7 @@ bool RTP::read(CallBranch *c_branch,
 				}
 			} else if(curpayload == PAYLOAD_GSM) {
 				curpacketization = payload_len / 33 * 20;
-			} else if(codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB) {
+			} else if(codec == PAYLOAD_AMR || codec == PAYLOAD_AMRWB || codec == PAYLOAD_EVS) {
 				if(payload_len > 7) {
 					//printf("curpac[%u]\n", curpacketization);
 					curpacketization = (getTimestamp() - last_ts) / (codec == PAYLOAD_AMR ? 8 : 16);
@@ -2465,7 +2468,7 @@ RTP::update_stats() {
 
 
 		// store mark bit in graph file
-		if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB) and (payload_len <= 7))) 
+		if((getMarker() or ((codec == PAYLOAD_AMR or codec == PAYLOAD_AMRWB  or codec == PAYLOAD_EVS) and (payload_len <= 7)))
 		    and owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 
 			uint32_t diff = (uint32_t)tsdiff2;

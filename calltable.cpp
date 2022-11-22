@@ -2531,7 +2531,8 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 	}
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
-		   !this->isfax && !record_dtmf) {
+		   !(this->is_fax() && this->is_fax_packet(packetS)) && 
+		   !record_dtmf) {
 			if(packetS->isStun()) {
 				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
@@ -2547,10 +2548,16 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 				}
 			}
-		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
+		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
+			  (this->is_fax() && this->is_fax_packet(packetS)) || 
+			  record_dtmf) {
 			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 		}
 	}
+}
+
+bool Call::is_fax_packet(struct packet_s_process_0 *packetS) {
+	return(seenudptl ? packetS->isUdptlOkDataLen() : isfax);
 }
 
 void Call::stoprecording() {
@@ -3356,6 +3363,7 @@ Call::convertRawToWav() {
 				samplerate = 32000;
 				break;
 			case PAYLOAD_AMRWB:
+			case PAYLOAD_EVS:
 				samplerate = 16000;
 				break;
 		}
@@ -3910,6 +3918,18 @@ Call::convertRawToWav() {
 				cmd[cmd_len] = 0;
 				samplerate = 8000;
 				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
+				system(cmd);
+				break;
+			case PAYLOAD_EVS:
+				if(opt_keycheck[0] != '\0') {
+					snprintf(cmd, cmd_len, "vmcodecs %s evs \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
+				} else {
+					snprintf(cmd, cmd_len, "voipmonitor-evs \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
+					cout << cmd << "\n";
+				}
+				cmd[cmd_len] = 0;
+				samplerate = 16000;
+				if(verbosity > 1) syslog(LOG_ERR, "Converting EVS[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
 				system(cmd);
 				break;
 			default:
@@ -8689,6 +8709,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(sqlEscapeString(sqlDateTimeString(expires_at).c_str()), "created_at");
 						reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
+						if(existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(c_branch), "sipcallerport");
+							reg.add(getSipcalledport(c_branch), "sipcalledport");
+						}
 						reg.add(sqlEscapeString(c_branch->caller), "from_num");
 						reg.add(sqlEscapeString(get_called(c_branch)), "to_num");
 						reg.add(sqlEscapeString(get_called_domain(c_branch)), "to_domain");
@@ -8711,6 +8735,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 						reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 						reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
+						if(existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(c_branch), "sipcallerport");
+							reg.add(getSipcalledport(c_branch), "sipcalledport");
+						}
 						reg.add(sqlEscapeString(c_branch->caller), "from_num");
 						reg.add(sqlEscapeString(get_called(c_branch)), "to_num");
 						reg.add(sqlEscapeString(get_called_domain(c_branch)), "to_domain");
@@ -8732,6 +8760,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_state");
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_state");
+					if(existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+						reg.add(getSipcallerport(c_branch), "sipcallerport");
+						reg.add(getSipcalledport(c_branch), "sipcalledport");
+					}
 					reg.add(sqlEscapeString(c_branch->caller), "from_num");
 					reg.add(sqlEscapeString(get_called(c_branch)), "to_num");
 					reg.add(sqlEscapeString(get_called_domain(c_branch)), "to_domain");
@@ -8756,6 +8788,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "calldate");
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, register_table);
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, register_table);
+					reg.add(getSipcallerport(c_branch), "sipcallerport");
+					reg.add(getSipcalledport(c_branch), "sipcalledport");
 					//reg.add(sqlEscapeString(fbasename), "fbasename");
 					reg.add(sqlEscapeString(c_branch->caller), "from_num");
 					reg.add(sqlEscapeString(c_branch->callername), "from_name");
@@ -8826,13 +8860,16 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 			reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 			reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_failed");
+			if(existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+				reg.add(getSipcallerport(c_branch), "sipcallerport");
+				reg.add(getSipcalledport(c_branch), "sipcalledport");
+			}
 			reg.add(sqlEscapeString(c_branch->caller), "from_num");
 			reg.add(sqlEscapeString(get_called(c_branch)), "to_num");
 			reg.add(sqlEscapeString(get_called_domain(c_branch)), "to_domain");
 			reg.add(sqlEscapeString(c_branch->contact_num), "contact_num");
 			reg.add(sqlEscapeString(c_branch->contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(c_branch->digest_username), "digestusername");
-
 			//reg.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
 
@@ -8868,6 +8905,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(sqlDateTimeString(calltime_s()).c_str()), "created_at");
 					reg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, "register_failed");
 					reg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, "register_failed");
+					if(existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+						reg.add(getSipcallerport(c_branch), "sipcallerport");
+						reg.add(getSipcalledport(c_branch), "sipcalledport");
+					}
 					reg.add(sqlEscapeString(c_branch->caller), "from_num");
 					reg.add(sqlEscapeString(get_called(c_branch)), "to_num");
 					reg.add(sqlEscapeString(get_called_domain(c_branch)), "to_domain");

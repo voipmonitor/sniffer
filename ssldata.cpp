@@ -291,6 +291,13 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			}
 		}
 		*/
+		if(rslt_decrypt.size() == 1 && rslt_decrypt[0].length() == 1) {
+			sStreamId sid(_ip_src, _port_src, _ip_dst, _port_dst);
+			if(!reassemblyBuffer.existsStream(&sid)) {
+				incomplete_prev_rslt_decrypt[sid] = rslt_decrypt[0];
+				continue;
+			}
+		}
 		for(size_t i = 0; i < rslt_decrypt.size(); i++) {
 			if(debugStream) {
 				string out(rslt_decrypt[i], 0,100);
@@ -306,12 +313,23 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				continue;
 			}
 			string dataComb;
-			bool dataCombUse = false;
+			int dataCombUse = 0;
 			if(i < rslt_decrypt.size() - 1 && rslt_decrypt[i].length() == 1) {
 				dataComb = rslt_decrypt[i] + rslt_decrypt[i + 1];
 				if(check_sip20((char*)dataComb.c_str(), dataComb.length(), NULL, true) ||
 				   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na)) {
 					dataCombUse = true;
+				}
+			} else if(i == 0 && incomplete_prev_rslt_decrypt.size()) {
+				sStreamId sid(_ip_src, _port_src, _ip_dst, _port_dst);
+				map<sStreamId, string>::iterator iter = incomplete_prev_rslt_decrypt.find(sid);
+				if(iter != incomplete_prev_rslt_decrypt.end()) {
+					dataComb = iter->second + rslt_decrypt[0];
+					if(check_sip20((char*)dataComb.c_str(), dataComb.length(), NULL, true) ||
+					   check_websocket((char*)dataComb.c_str(), dataComb.length(), cWebSocketHeader::_chdst_na)) {
+						dataCombUse = 2;
+					}
+					incomplete_prev_rslt_decrypt.erase(iter);
 				}
 			}
 			u_char *data = NULL;
@@ -320,7 +338,9 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 			if(dataCombUse) {
 				data = (u_char*)dataComb.c_str();
 				dataLength = dataComb.size();
-				++i;
+				if(dataCombUse != 2) {
+					++i;
+				}
 			} else {
 				data = (u_char*)rslt_decrypt[i].c_str();
 				dataLength = rslt_decrypt[i].size();
