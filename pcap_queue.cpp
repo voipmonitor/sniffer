@@ -6863,6 +6863,7 @@ PcapQueue_readFromFifo::PcapQueue_readFromFifo(const char *nameQueue, const char
 	this->socketServerThreadHandle = 0;
 	this->cleanupBlockStoreTrash_counter = 0;
 	this->blockStoreTrash_sync = 0;
+	this->blockStorePool_sync = 0;
 	this->socketHostIP.clear();
 	this->socketHandle = 0;
 	this->clientSocket = NULL;
