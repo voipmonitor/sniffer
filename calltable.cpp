@@ -7467,6 +7467,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 							    !n_branch->sipcalledip_encaps_rslt.isSet() || n_branch->sipcalledip_encaps_prot_rslt == 0xFF);
 				}
 				
+				if(opt_cdr_country_code) {
+					if(opt_cdr_country_code == 2) {
+						next_branch_row.add(getCountryIdByIP(getSipcallerip(n_branch)), "sipcallerip_country_code");
+						next_branch_row.add(getCountryIdByIP(n_branch->sipcalledip_rslt), "sipcalledip_country_code");
+						next_branch_row.add(getCountryIdByPhoneNumber(n_branch->caller.c_str()), "caller_number_country_code");
+						next_branch_row.add(getCountryIdByPhoneNumber(get_called(n_branch)), "called_number_country_code");
+					} else {
+						next_branch_row.add(getCountryByIP(getSipcallerip(n_branch), true), "sipcallerip_country_code");
+						next_branch_row.add(getCountryByIP(n_branch->sipcalledip_rslt, true), "sipcalledip_country_code");
+						next_branch_row.add(getCountryByPhoneNumber(n_branch->caller.c_str(), true), "caller_number_country_code");
+						next_branch_row.add(getCountryByPhoneNumber(get_called(n_branch), true), "called_number_country_code");
+					}
+				}
+				
 				unsigned proxies_index = 0;
 				for(set<vmIP>::iterator iter = n_branch_proxies_undup.begin(); iter != n_branch_proxies_undup.end(); iter++) {
 					++proxies_index;
@@ -13712,7 +13726,7 @@ bool Call::is_sipcalled(CallBranch *c_branch, vmIP daddr, vmPort dport, vmIP sad
 	vmIP *sipcalledip;
 	vmPort *sipcallerport;
 	vmPort *sipcalledport;
-	if(isSetCallidMergeHeader()) {
+	if(isSetCallidMergeHeader(true)) {
 		sipcallerip = c_branch->map_sipcallerdip.begin()->second.sipcallerip;
 		sipcalledip = c_branch->map_sipcallerdip.begin()->second.sipcalledip;
 		sipcallerport = c_branch->map_sipcallerdip.begin()->second.sipcallerport;

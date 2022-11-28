@@ -6034,6 +6034,17 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledport_v6` smallint unsigned DEFAULT NULL,\
 			      " :
 			      "") +
+			(opt_cdr_country_code == 2 ?
+				"`sipcallerip_country_code` smallint,\
+				`sipcalledip_country_code` smallint,\
+				`caller_number_country_code` smallint,\
+				`called_number_country_code` smallint," :
+			(opt_cdr_country_code == 1 ?
+				"`sipcallerip_country_code` varchar(5),\
+				`sipcalledip_country_code` varchar(5),\
+				`caller_number_country_code` varchar(5),\
+				`called_number_country_code` varchar(5)," :
+				"")) +
 			"`proxyip_1` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`proxyip_2` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`proxyip_3` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
@@ -6074,6 +6085,13 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		       KEY `sipcalledip_v4` (`sipcalledip_v4`),\
 		       KEY `sipcallerip_v6` (`sipcallerip_v6`),\
 		       KEY `sipcalledip_v6` (`sipcalledip_v6`),\
+		      " :
+		      "") +
+		    (opt_cdr_country_code ?
+		      "KEY(`sipcallerip_country_code`),\
+		       KEY(`sipcalledip_country_code`),\
+		       KEY(`caller_number_country_code`),\
+		       KEY(`called_number_country_code`),\
 		      " :
 		      "") +
 		"KEY `lastSIPresponseNum` (`lastSIPresponseNum`),\

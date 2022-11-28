@@ -4095,10 +4095,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			find_and_replace(dump_data, LF_STR, LF_STR_ESC);
 		}
 		if(!sverb.dump_sip_without_counter) {
+			cout << " * SIP "
 			#if USE_PACKET_NUMBER
-			cout << packetS->packet_number
+			<< packetS->packet_number
 			#else
-			cout << (++glob_packet_number)
+			<< (++glob_packet_number)
 			#endif
 			<< " "
 			<< packetS->saddr_().getString() << ':' << packetS->source_() 
@@ -5169,7 +5170,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   (packetS->dest_() != call->getSipcalledport(c_branch) || packetS->daddr_() != call->getSipcalledip(c_branch)) && 
 			   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
 				if(!(opt_sdp_check_direction_ext &&
-				     packetS->saddr_() == call->getSipcallerip(c_branch)) && call->all_invite_is_multibranch(c_branch, packetS->saddr_())) {
+				     packetS->saddr_() == call->getSipcallerip(c_branch) && call->all_invite_is_multibranch(c_branch, packetS->saddr_()))) {
 					call->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
 					call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				}
