@@ -140,7 +140,8 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 			vlanoffset = 0;
 			protocol = header_eth->ether_type;
 		}
-		if(protocol == 8) {
+		if(htons(protocol) == ETHERTYPE_IP || 
+		   (VM_IPV6_B && htons(protocol) == ETHERTYPE_IPV6)) {
 			header_ip = (iphdr2*)((char*)header_eth + sizeof(ether_header) + vlanoffset);
 		} else {
 			return(NULL);
