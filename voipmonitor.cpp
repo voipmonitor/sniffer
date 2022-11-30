@@ -1716,6 +1716,12 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 					}
 				}
 			}
+			if(opt_save_energylevels &&
+			   sqlDb->getDbName() == "mysql" &&
+			   sqlDb->getDbVersion() < 50601) {
+				cLogSensor::log(cLogSensor::critical, "The save-energylevels option is supported for mysql since version 5.6.1. Please update mysql if you require this option enabled.");
+				opt_save_energylevels = false;
+			}
 			if(connectOk > 0) {
 				if(isSqlDriver("mysql")) {
 					sql_noerror = 1;
