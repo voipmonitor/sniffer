@@ -6148,6 +6148,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		packetS->blockstore_addflag(22 /*pb lock flag*/);
 		return(false);
 	}
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 	if(packetS->audiocodes) {
 		if(packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTP &&
 		   packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTCP &&
@@ -6157,6 +6158,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			return(false);
 		}
 	}
+	#endif
 	#endif
 	if(processRtpPacketHash) {
 		packetS->blockstore_addflag(23 /*pb lock flag*/);
