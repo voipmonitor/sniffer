@@ -62,6 +62,10 @@ unsigned int setCallFlags(unsigned long int flags,
 typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
 
 
+extern bool opt_audiocodes;
+extern bool opt_kamailio;
+
+
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
 #define SLL_ADDRLEN       8               /* length of address field */
 struct sll_header {
@@ -186,12 +190,12 @@ struct packet_s {
 				vmIP(0));
 		}
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(audiocodes->packet_source_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(kamailio_subst->saddr);
 		}
 		#endif
@@ -204,19 +208,21 @@ struct packet_s {
 			vmIP(0));
 		#endif
 	}
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *saddr_pt_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(&audiocodes->packet_source_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(&kamailio_subst->saddr);
 		}
 		#endif
 		return(&_saddr);
 	}
+	#endif
 	inline vmIP daddr_(bool encaps = false) {
 		if(encaps) {
 			iphdr2 *header_ip = header_ip_(true);
@@ -225,12 +231,12 @@ struct packet_s {
 				vmIP(0));
 		}
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(audiocodes->packet_dest_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(kamailio_subst->daddr);
 		}
 		#endif
@@ -243,27 +249,29 @@ struct packet_s {
 			vmIP(0));
 		#endif
 	}
+	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *daddr_pt_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(&audiocodes->packet_dest_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(&kamailio_subst->daddr);
 		}
 		#endif
 		return(&_daddr);
 	}
+	#endif
 	inline vmPort source_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(audiocodes->packet_source_port);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(kamailio_subst->source);
 		}
 		#endif
@@ -271,12 +279,12 @@ struct packet_s {
 	}
 	inline vmPort dest_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(audiocodes->packet_dest_port);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			return(kamailio_subst->dest);
 		}
 		#endif
@@ -293,7 +301,7 @@ struct packet_s {
 	}
 	inline u_int32_t datalen_orig_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(_datalen - audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
 		}
 		#endif
@@ -306,7 +314,7 @@ struct packet_s {
 	}
 	inline u_int32_t dataoffset_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			return(_dataoffset + 
 			       audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
 		}
@@ -413,13 +421,13 @@ struct packet_s {
 	}
 	inline void term() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(audiocodes) {
+		if(opt_audiocodes && audiocodes) {
 			delete audiocodes;
 			audiocodes = NULL;
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(kamailio_subst) {
+		if(opt_kamailio && kamailio_subst) {
 			delete kamailio_subst;
 			kamailio_subst = NULL;
 		}

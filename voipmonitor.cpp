@@ -306,6 +306,7 @@ volatile int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int opt_dup_check_ipheader_ignore_ttl = 1;
+int opt_dup_check_udpheader_ignore_checksum = 1;
 int opt_fax_dup_seq_check = 0;
 int opt_fax_create_udptl_streams = 0;
 int rtptimeout = 300;
@@ -1251,6 +1252,7 @@ string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
 
+bool opt_kamailio;
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
 unsigned opt_kamailio_port;
@@ -1716,6 +1718,12 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 						opt_mysql_enable_new_store = false;
 					}
 				}
+			}
+			if(opt_save_energylevels &&
+			   sqlDb->getDbName() == "mysql" &&
+			   sqlDb->getDbVersion() < 50601) {
+				cLogSensor::log(cLogSensor::critical, "The save-energylevels option is supported for mysql since version 5.6.1. Please update mysql if you require this option enabled.");
+				opt_save_energylevels = false;
 			}
 			if(connectOk > 0) {
 				if(isSqlDriver("mysql")) {
@@ -7435,6 +7443,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42249) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader_ignore_ttl", &opt_dup_check_ipheader_ignore_ttl));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_udpheader_ignore_checksum", &opt_dup_check_udpheader_ignore_checksum));
 				addConfigItem(new FILE_LINE(42250) cConfigItem_string("tcpreassembly_http_log", opt_tcpreassembly_http_log, sizeof(opt_tcpreassembly_http_log)));
 				addConfigItem(new FILE_LINE(42251) cConfigItem_string("tcpreassembly_webrtc_log", opt_tcpreassembly_webrtc_log, sizeof(opt_tcpreassembly_webrtc_log)));
 				addConfigItem(new FILE_LINE(42252) cConfigItem_string("tcpreassembly_ssl_log", opt_tcpreassembly_ssl_log, sizeof(opt_tcpreassembly_ssl_log)));
@@ -9078,6 +9087,7 @@ void get_command_line_arguments() {
 				opt_dup_check = 1;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
+				opt_dup_check_udpheader_ignore_checksum = 1;
 				is_gui_param = true;
 				break;
 			case 347:
@@ -9716,6 +9726,8 @@ void set_context_config() {
 		}
 	}
 	
+	opt_kamailio = opt_kamailio_dstip.isSet();
+
 }
 
 void check_context_config() {
@@ -10784,6 +10796,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader_ignore_ttl", NULL))) {
 		opt_dup_check_ipheader_ignore_ttl = yesno(value);
+	}
+	if((value = ini.GetValue("general", "deduplicate_udpheader_ignore_checksum", NULL))) {
+		opt_dup_check_udpheader_ignore_checksum = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dscp", NULL))) {
 		opt_dscp = yesno(value);

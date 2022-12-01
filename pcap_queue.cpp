@@ -9286,12 +9286,14 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
 			char *data = NULL;
 			int datalen = 0;
+			udphdr2 *header_udp = NULL;
+			tcphdr2 *header_tcp = NULL;
 			u_int8_t ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
 			if(ip_protocol == IPPROTO_UDP) {
-				udphdr2 *header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+				header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
 			} else if(ip_protocol == IPPROTO_TCP) {
-				tcphdr2 *header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
+				header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
 				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
 			} else if (opt_enable_ss7 && ip_protocol == IPPROTO_SCTP) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
@@ -9308,10 +9310,18 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 						header_ip->set_ttl(0);
 						header_ip->set_check(0);
 					}
+					u_int16_t header_udp_checksum_orig;
+					if(opt_dup_check_udpheader_ignore_checksum && ip_protocol == IPPROTO_UDP) {
+						header_udp_checksum_orig = header_udp->check;
+						header_udp->check = 0;
+					}
 					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
 					if(opt_dup_check_ipheader_ignore_ttl) {
 						header_ip->set_ttl(header_ip_ttl_orig);
 						header_ip->set_check(header_ip_check_orig);
+					}
+					if(opt_dup_check_udpheader_ignore_checksum && ip_protocol == IPPROTO_UDP) {
+						header_udp->check = header_udp_checksum_orig;
 					}
 				} else {
 					MD5_Update(&md5_ctx, data, datalen);

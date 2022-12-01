@@ -819,6 +819,8 @@ int pcap_dpdk_stats(sDpdk *dpdk, pcap_stat *ps, string *str_out) {
 		#endif
 		*str_out = outStr.str();
 	}
+	dpdk->prev_stats = dpdk->curr_stats;
+	dpdk->prev_ts_us = get_timestamp_us(dpdk);
 	return 0;
 }
 
