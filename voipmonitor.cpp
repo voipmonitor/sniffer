@@ -1250,6 +1250,7 @@ string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
 
+bool opt_kamailio;
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
 unsigned opt_kamailio_port;
@@ -9721,6 +9722,8 @@ void set_context_config() {
 		}
 	}
 	
+	opt_kamailio = opt_kamailio_dstip.isSet();
+
 }
 
 void check_context_config() {

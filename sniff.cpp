@@ -9410,8 +9410,20 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 						packet_s_process *packetS = batch->batch[batch_index];
-						unsigned int thread_index = (unsigned int)(min(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
-											   max(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
+						u_int32_t saddr_hash_number = 
+							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+								packetS->saddr_pt_()->getHashNumber();
+							#else
+								packetS->saddr_().getHashNumber();
+							#endif
+						u_int32_t daddr_hash_number = 
+							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+								packetS->daddr_pt_()->getHashNumber();
+							#else
+								packetS->daddr_().getHashNumber();
+							#endif
+						unsigned int thread_index = (unsigned int)(min(saddr_hash_number, daddr_hash_number) *
+											   max(saddr_hash_number, daddr_hash_number) *
 											   min(packetS->source_(), packetS->dest_()) * 
 											   max(packetS->source_(), packetS->dest_()));
 						thread_index += ~(thread_index << 15);
@@ -10462,7 +10474,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	extern vmIP opt_kamailio_dstip;
 	extern vmIP opt_kamailio_srcip;
 	extern unsigned opt_kamailio_port;
-	if(opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
+	if(opt_kamailio && opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
 	   (!opt_kamailio_srcip.isSet() || opt_kamailio_srcip == packetS->saddr_()) &&
 	   (!opt_kamailio_port || opt_kamailio_port == packetS->dest_().port)) {
 		unsigned long from_ip_l;
