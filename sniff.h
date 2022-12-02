@@ -94,6 +94,11 @@ struct sll2_header {
 #define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)data == 0x16)
 #define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
 
+
+#define if_likely(x) __builtin_expect(!!(x), 1)
+#define if_unlikely(x) __builtin_expect(!!(x), 0)
+
+
 enum e_packet_type {
 	_t_packet_sip = 1,
 	_t_packet_rtp,
@@ -190,12 +195,12 @@ struct packet_s {
 				vmIP(0));
 		}
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(audiocodes->packet_source_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(kamailio_subst->saddr);
 		}
 		#endif
@@ -211,12 +216,12 @@ struct packet_s {
 	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *saddr_pt_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(&audiocodes->packet_source_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(&kamailio_subst->saddr);
 		}
 		#endif
@@ -231,12 +236,12 @@ struct packet_s {
 				vmIP(0));
 		}
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(audiocodes->packet_dest_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(kamailio_subst->daddr);
 		}
 		#endif
@@ -252,12 +257,12 @@ struct packet_s {
 	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 	inline vmIP *daddr_pt_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(&audiocodes->packet_dest_ip);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(&kamailio_subst->daddr);
 		}
 		#endif
@@ -266,12 +271,12 @@ struct packet_s {
 	#endif
 	inline vmPort source_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(audiocodes->packet_source_port);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(kamailio_subst->source);
 		}
 		#endif
@@ -279,12 +284,12 @@ struct packet_s {
 	}
 	inline vmPort dest_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(audiocodes->packet_dest_port);
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			return(kamailio_subst->dest);
 		}
 		#endif
@@ -301,7 +306,7 @@ struct packet_s {
 	}
 	inline u_int32_t datalen_orig_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(_datalen - audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
 		}
 		#endif
@@ -314,7 +319,7 @@ struct packet_s {
 	}
 	inline u_int32_t dataoffset_() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			return(_dataoffset + 
 			       audiocodes->get_data_offset((u_char*)(packet + _dataoffset)));
 		}
@@ -421,13 +426,13 @@ struct packet_s {
 	}
 	inline void term() {
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
-		if(opt_audiocodes && audiocodes) {
+		if(if_unlikely(opt_audiocodes && audiocodes)) {
 			delete audiocodes;
 			audiocodes = NULL;
 		}
 		#endif
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
-		if(opt_kamailio && kamailio_subst) {
+		if(if_unlikely(opt_kamailio && kamailio_subst)) {
 			delete kamailio_subst;
 			kamailio_subst = NULL;
 		}

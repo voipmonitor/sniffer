@@ -161,6 +161,102 @@ void get_list_cores(string input, list<int> &list) {
 }
 
 
+cCpuCoreInfo::cCpuCoreInfo() {
+	load();
+}
+
+void cCpuCoreInfo::load() {
+	map_cpu_core_info.clear();
+	FILE *cmd_pipe;
+	cmd_pipe = popen("lscpu -p", "r");
+	if(cmd_pipe) {
+		vector<string> columns;
+		char bufRslt[512];
+		while(fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+			int length = strlen(bufRslt);
+			while(length > 0 && bufRslt[length - 1] == '\n') {
+				bufRslt[length - 1] = 0;
+				--length;
+			}
+			if(bufRslt[0] == '#') {
+				if(!strncasecmp(bufRslt, "# CPU", 5)) {
+					columns = split(bufRslt + 2, ',');
+				}
+			} else if(isdigit(bufRslt[0])) {
+				vector<string> row;
+				row = split(bufRslt, ',');
+				sCpuCoreInfo ci;
+				bool setCpu = false;
+				for(unsigned i = 0; i < min(columns.size(), row.size()); i++) {
+					int columnValue = atoi(row[i].c_str());
+					if(!strcasecmp(columns[i].c_str(), "cpu")) {
+						ci.CPU = columnValue;
+						setCpu = true;
+					} else if(!strcasecmp(columns[i].c_str(), "core")) {
+						ci.Core = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "socket")) {
+						ci.Socket = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "node")) {
+						ci.Node = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l1d")) {
+						ci.L1d = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l1i")) {
+						ci.L1i = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l2")) {
+						ci.L2 = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l3")) {
+						ci.L3 = columnValue;
+					}
+				}
+				if(setCpu) {
+					map_cpu_core_info[ci.CPU] = ci;
+				}
+			}
+		}
+		pclose(cmd_pipe);
+	}
+}
+
+bool cCpuCoreInfo::ok_loaded() {
+	return(map_cpu_core_info.size() > 0);
+}
+
+cCpuCoreInfo::sCpuCoreInfo *cCpuCoreInfo::get(int cpu) {
+	map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.find(cpu); 
+	if(iter != map_cpu_core_info.end()) {
+		return(&iter->second);
+	}
+	return(NULL);
+}
+
+bool cCpuCoreInfo::getHT_cpus(int cpu, vector<int> *ht_cpus) {
+	sCpuCoreInfo *cpu_core_info = get(cpu);
+	if(!cpu_core_info) {
+		return(false);
+	}
+	for(map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.begin(); iter != map_cpu_core_info.end(); iter++) {
+		if(cpu_core_info->Core == iter->second.Core &&
+		   cpu_core_info->Socket == iter->second.Socket) {
+			ht_cpus->push_back(iter->second.CPU);
+		}
+	}
+	return(ht_cpus->size() > 0);
+}
+
+int cCpuCoreInfo::getHT_index(int cpu) {
+	vector<int> ht_cpus;
+	if(!getHT_cpus(cpu, &ht_cpus)) {
+		return(-1);
+	}
+	for(unsigned i = 0; i < ht_cpus.size(); i++) {
+		if(ht_cpus[i] == cpu) {
+			return(i);
+		}
+	}
+	return(-1);
+}
+
+
 JsonItem::JsonItem(string name, string value, bool null) {
 	this->name = name;
 	this->value = value;

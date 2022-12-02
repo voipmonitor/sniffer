@@ -1920,6 +1920,75 @@ void dpdk_memcpy(void *dst, void *src, size_t size) {
 	rte_memcpy(dst, src, size);
 }
 
+void dpdk_check_configuration() {
+	if(!opt_dpdk_cpu_cores.empty() ||
+	   !opt_dpdk_cpu_cores_map.empty()) {
+		return;
+	}
+	map<int, bool> cores;
+	if(!opt_dpdk_read_thread_lcore.empty()) {
+		vector<string> read_cores_str = split(opt_dpdk_read_thread_lcore.c_str(), ",", true);
+		for(unsigned i = 0; i < read_cores_str.size(); i++) {
+			cores[atoi(read_cores_str[i].c_str())] = true;
+		}
+	}
+	if(!opt_dpdk_worker_thread_lcore.empty()) {
+		vector<string> worker_cores_str = split(opt_dpdk_worker_thread_lcore.c_str(), ",", true);
+		for(unsigned i = 0; i < worker_cores_str.size(); i++) {
+			cores[atoi(worker_cores_str[i].c_str())] = true;
+		}
+	}
+	if(!opt_dpdk_worker2_thread_lcore.empty()) {
+		vector<string> worker2_cores_str = split(opt_dpdk_worker2_thread_lcore.c_str(), ",", true);
+		for(unsigned i = 0; i < worker2_cores_str.size(); i++) {
+			cores[atoi(worker2_cores_str[i].c_str())] = true;
+		}
+	}
+	if(cores.size() > 1) {
+		cCpuCoreInfo cpu_core_info;
+		if(cpu_core_info.ok_loaded()) {
+			cCpuCoreInfo::sCpuCoreInfo *first_core = NULL;
+			int first_ht_index = -1;
+			int counter = 0;
+			bool bad_combination_ht = false;
+			bool bad_combination_socket = false;
+			bool bad_combination_node = false;
+			for(map<int, bool>::iterator iter = cores.begin(); iter != cores.end(); iter++) {
+				cCpuCoreInfo::sCpuCoreInfo *core = cpu_core_info.get(iter->first);
+				int ht_index = cpu_core_info.getHT_index(iter->first);
+				if(ht_index < 0 || !core) {
+					syslog(LOG_ERR, "DPDK error: unable to find information on core %i", iter->first);
+					continue;
+				}
+				if(counter == 0) {
+					first_core = core;
+					first_ht_index = ht_index;
+				} else {
+					if(core->Socket != first_core->Socket) {
+						bad_combination_socket = true;
+					}
+					if(core->Node != first_core->Node) {
+						bad_combination_node = true;
+					}
+					if(ht_index != first_ht_index) {
+						bad_combination_ht = true;
+					}
+				}
+				++counter;
+			}
+			if(bad_combination_ht) {
+				syslog(LOG_WARNING, "DPDK warning: You have chosen combinations of real and HT CPU cores. This may cause performance limitations.");
+			}
+			if(bad_combination_socket) {
+				syslog(LOG_WARNING, "DPDK warning: You have chosen combinations of CPU cores from different sockets. This may cause performance limitations.");
+			}
+			if(bad_combination_node) {
+				syslog(LOG_WARNING, "DPDK warning: You have chosen combinations of CPU cores from different nodes. This may cause performance limitations.");
+			}
+		}
+	}
+}
+
 
 #else //HAVE_LIBDPDK
 
@@ -1995,6 +2064,9 @@ void dpdk_mbuf_free(void *mbuf) {
 
 void dpdk_memcpy(void *dst, void *src, size_t size) {
 	memcpy(dst, src, size);
+}
+
+void dpdk_check_configuration() {
 }
 
 

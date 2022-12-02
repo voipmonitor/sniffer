@@ -403,7 +403,7 @@ int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 int process_rtp_packets_distribute_threads_use = 0;
 int opt_pre_process_packets_next_thread = 0;
-int opt_pre_process_packets_next_thread_max = 1;
+int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -9731,6 +9731,11 @@ void check_context_config() {
 		if(opt_enable_ss7) {
 			cLogSensor::log(cLogSensor::error, "option ss7 need voipmonitor with wireshark module");
 		}
+	#endif
+	#if HAVE_LIBDPDK
+	if(opt_use_dpdk) {
+		dpdk_check_configuration();
+	}
 	#endif
 }
 

@@ -86,5 +86,7 @@ u_char *dpdk_mbuf_to_packet(void *mbuf);
 void dpdk_mbuf_free(void *mbuf);
 void dpdk_memcpy(void *dst, void *src, size_t size);
 
+void dpdk_check_configuration();
+
 
 #endif //DPDK_H

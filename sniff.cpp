@@ -9909,15 +9909,18 @@ void PreProcessPacket::addNextThread() {
 	    this->typePreProcessThread == ppt_detach || 
 	    this->typePreProcessThread == ppt_sip) &&
 	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
-		for(int j = 0; j < 2; j++) {
-			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+		int add_threads = this->next_threads == 0 && min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS) > 1 ? 2 : 1;
+		for(int add_thread = 0; add_thread < add_threads; add_thread++) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+			}
+			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+			arg->preProcessPacket = this;
+			arg->next_thread_id = this->next_threads + 1;
+			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+					  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+			++this->next_threads;
 		}
-		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-		arg->preProcessPacket = this;
-		arg->next_thread_id = this->next_threads + 1;
-		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
-				  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-		++this->next_threads;
 	}
 }
 

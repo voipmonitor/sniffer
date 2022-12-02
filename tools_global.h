@@ -318,6 +318,33 @@ void get_list_cores(string input, vector<int> &list);
 void get_list_cores(string input, list<int> &list);
 
 
+class cCpuCoreInfo {
+public:
+	struct sCpuCoreInfo {
+		sCpuCoreInfo() {
+			memset(this, 0, sizeof(*this));
+		}
+		int CPU;
+		int Core;
+		int Socket;
+		int Node;
+		int L1d;
+		int L1i;
+		int L2;
+		int L3;
+	};
+public:
+	cCpuCoreInfo();
+	void load();
+	bool ok_loaded();
+	sCpuCoreInfo *get(int cpu);
+	bool getHT_cpus(int cpu, vector<int> *ht_cpus);
+	int getHT_index(int cpu);
+private:
+	map<int, sCpuCoreInfo> map_cpu_core_info;
+};
+
+
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 u_char *base64decode(const char *src, int *dst_length);
