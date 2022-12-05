@@ -345,6 +345,9 @@ private:
 };
 
 
+int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice);
+
+
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 u_char *base64decode(const char *src, int *dst_length);

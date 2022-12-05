@@ -80,13 +80,14 @@ void dpdk_terminating(sDpdk *dpdk);
 double rte_read_thread_cpu_usage(sDpdk *dpdk);
 double rte_worker_thread_cpu_usage(sDpdk *dpdk);
 double rte_worker2_thread_cpu_usage(sDpdk *dpdk);
-string get_dpdk_cpu_cores(bool without_main);
+string get_dpdk_cpu_cores(bool without_main, bool detect_ht);
 
 u_char *dpdk_mbuf_to_packet(void *mbuf);
 void dpdk_mbuf_free(void *mbuf);
 void dpdk_memcpy(void *dst, void *src, size_t size);
 
 void dpdk_check_configuration();
+void dpdk_check_affinity();
 
 
 #endif //DPDK_H

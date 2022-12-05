@@ -910,6 +910,9 @@ int opt_dpdk_memory_channels = 4;
 string opt_dpdk_pci_device;
 int opt_dpdk_force_max_simd_bitwidth = 0;
 string opt_cpu_cores;
+bool opt_thread_affinity_ht = true;
+bool opt_other_thread_affinity_check = true;
+bool opt_other_thread_affinity_set = false;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -4844,6 +4847,9 @@ int main_init_read() {
 					extern void dtls_queue_cleanup();
 					dtls_queue_cleanup();
 				}
+				if(opt_use_dpdk && (opt_other_thread_affinity_check || opt_other_thread_affinity_set)) {
+					dpdk_check_affinity();
+				}
 			}
 			while(startTimeMS + sverb.pcap_stat_period * 1000 > getTimeMS_rdtsc()) {
 				USLEEP(10000);
@@ -7163,6 +7169,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("thread_affinity", &opt_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("thread_affinity_ht", &opt_thread_affinity_ht));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -10436,6 +10445,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "thread_affinity", NULL))) {
 		opt_cpu_cores = value;
+	}
+	if((value = ini.GetValue("general", "thread_affinity_ht", NULL))) {
+		opt_thread_affinity_ht = yesno(value);
+	}
+	if((value = ini.GetValue("general", "other_thread_affinity_check", NULL))) {
+		opt_other_thread_affinity_check = yesno(value);
+	}
+	if((value = ini.GetValue("general", "other_thread_affinity_set", NULL))) {
+		opt_other_thread_affinity_set = yesno(value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
