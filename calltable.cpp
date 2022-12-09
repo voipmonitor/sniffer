@@ -1191,7 +1191,7 @@ Call::closeRawFiles() {
 		if(!rtp_i) {
 			continue;
 		}
-		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS and not EXPERIMENTAL_LITE_RTP_MOD
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
 			if(!rtp_i->channel_record_is_adaptive()) {
@@ -6583,6 +6583,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+	if(existsColumns.cdr_next_digest_username && digest_username[0]) {
+		cdr_next.add(digest_username, "digest_username");
+	}
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
@@ -7076,6 +7079,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    getSipcallerip(), sipcalledip_rslt,
 				    caller, get_called(),
 				    caller_domain, get_called_domain(),
+				    digest_username,
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
@@ -13586,7 +13590,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 						      specialType == "max_length_sip_packet" ? max_length_sip_packet :
 						      specialType == "gsm_dcs" ? gsm_dcs :
 						      specialType == "gsm_voicemail" ? gsm_voicemail : 
-						      specialType == "max_retransmission_invite" ? max_retransmission_invite : st_na;
+						      specialType == "digest_username" ? digest_username : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				if(ch_data.specialType == st_na) {
@@ -13773,6 +13777,11 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 						if(max_retrans > 0) {
 							content = intToString(max_retrans);
 						}
+					}
+					break;
+				case digest_username:
+					if(call->digest_username[0]) {
+						content = call->digest_username;
 					}
 					break;
 				case st_na:

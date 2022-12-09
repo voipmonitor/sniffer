@@ -3480,7 +3480,8 @@ public:
 		max_length_sip_packet,
 		gsm_dcs,
 		gsm_voicemail,
-		max_retransmission_invite
+		max_retransmission_invite,
+		digest_username
 	};
 	enum eReqRespDirection {
 		dir_na,

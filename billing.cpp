@@ -101,17 +101,25 @@ void cBillingAssignment::loadCond(SqlDb *sqlDb) {
 			list_number.add(row["number"].c_str(), !atoi(row["fixed"].c_str()));
 		}
 	}
+	if(typeAssignment == _billing_ta_customer) {
+		if(sqlDb->existsTable("billing_customer_assignment_digest_usernames")) {
+			sqlDb->query("select * \
+				      from billing_customer_assignment_digest_usernames \
+				      where id_customer_assignment = " + intToString(id));
+			SqlDb_rows rows;
+			sqlDb->fetchRows(&rows);
+			SqlDb_row row;
+			while((row = rows.fetchRow())) {
+				vector<string> digest_usernames = split(row["digest_usernames"].c_str(), split(",|;| |\t|\r|\n", "|"), true);
+				for(unsigned i = 0; i < digest_usernames.size(); i++) {
+					list_digest_username.add(digest_usernames[i].c_str());
+				}
+			}
+		}
+	}
 	if(_createSqlObject) {
 		delete sqlDb;
 	}
-}
-
-bool cBillingAssignment::checkIP(vmIP ip) {
-	return(list_ip.checkIP(ip));
-}
-
-bool cBillingAssignment::checkNumber(const char *number) {
-	return(list_number.checkNumber(number));
 }
 
 
@@ -167,6 +175,9 @@ void cBillingAssignments::load(SqlDb *sqlDb) {
 	for(map<unsigned, cBillingAssignment*>::iterator iter = customers.begin(); iter != customers.end();) {
 		if(iter->second->isSensorOk(sqlDb)) {
 			iter->second->loadCond(sqlDb);
+			if(!iter->second->list_digest_username.is_empty()) {
+				customers_rule_digest_username_exists = true;
+			}
 			iter++;
 		} else {
 			delete iter->second;
@@ -183,6 +194,7 @@ void cBillingAssignments::clear(bool useLock) {
 	if(useLock) {
 		lock();
 	}
+	customers_rule_digest_username_exists = false;
 	for(map<unsigned, cBillingAssignment*>::iterator iter = operators.begin(); iter != operators.end(); iter++) {
 		delete iter->second;
 	}
@@ -196,48 +208,147 @@ void cBillingAssignments::clear(bool useLock) {
 	}
 }
 
-unsigned cBillingAssignments::findBillingRuleIdForIP(vmIP ip, eBilingTypeAssignment typeAssignment,
+unsigned cBillingAssignments::findBillingRuleId(vmIP ip, const char *number, const char *digest_username,
+						eBilingTypeAssignment typeAssignment, 
+						unsigned *assignment_id, int *type_assign,
+						CountryPrefixes *countryPrefixes) {
+	unsigned rslt_billing_rule_id = 0;
+	unsigned rslt_assignment_id = 0;
+	bool check_digest_username = typeAssignment == _billing_ta_customer && digest_username && customers_rule_digest_username_exists;
+	int ok_weight_ip = 30;
+	int ok_weight_number = 20;
+	int ok_weight_digest_username_unset = 1;
+	int ok_weight_digest_username_set = 100;
+	int rslt_ok_weight = 0;
+	int rslt_type_assign = _type_assign_na;
+	lock();
+	map<unsigned, cBillingAssignment*> *assignments = typeAssignment == _billing_ta_operator ? &operators : &customers;
+	for(map<unsigned, cBillingAssignment*>::iterator iter = assignments->begin(); iter != assignments->end(); iter++) {
+		string number_check;
+		if(countryPrefixes && !iter->second->list_number.is_empty()) {
+			number_check = iter->second->checkInternational.numberNormalized(number, countryPrefixes);
+		} else {
+			number_check = number;
+		}
+		int ok_weight = 0;
+		int type_assign = _type_assign_na;
+		if(!iter->second->list_ip.is_empty() && iter->second->checkIP(ip)) {
+			ok_weight += ok_weight_ip;
+			type_assign |= _type_assign_ip;
+		}
+		if(!iter->second->list_number.is_empty() && iter->second->checkNumber(number_check.c_str())) {
+			ok_weight += ok_weight_number;
+			type_assign |= _type_assign_number;
+		}
+		if(check_digest_username) {
+			if(!iter->second->list_digest_username.is_empty()) {
+				if((ok_weight > 0 || (iter->second->list_ip.is_empty() && iter->second->list_number.is_empty())) && 
+				   *digest_username && iter->second->checkDigestUsername(digest_username)) {
+					ok_weight += ok_weight_digest_username_set;
+					type_assign |= _type_assign_digest_username_set;
+				} else {
+					ok_weight = 0;
+				}
+			} else {
+				if((ok_weight > 0 || (iter->second->list_ip.is_empty() && iter->second->list_number.is_empty())) && 
+				   !*digest_username) {
+					ok_weight += ok_weight_digest_username_unset;
+					type_assign |= _type_assign_digest_username_unset;
+				}
+			}
+		}
+		if(ok_weight > rslt_ok_weight) {
+			rslt_billing_rule_id = iter->second->billing_rule_id;
+			rslt_assignment_id = iter->first;
+			rslt_ok_weight = ok_weight;
+			rslt_type_assign = type_assign;
+			if(ok_weight == ok_weight_ip + ok_weight_number + (check_digest_username ? ok_weight_digest_username_set : 0)) {
+				break;
+			}
+		}
+	}
+	unlock();
+	if(rslt_billing_rule_id) {
+		*assignment_id = rslt_assignment_id;
+		*type_assign = rslt_type_assign;
+	}
+	return(rslt_billing_rule_id);
+}
+
+#if not SUPPRESS_OBSOLETE_FIND_BILLING_RULE_ID
+unsigned cBillingAssignments::findBillingRuleIdForIP(vmIP ip, const char *digest_username,
+						     eBilingTypeAssignment typeAssignment,
 						     unsigned *assignment_id) {
-	unsigned rslt = 0;
-	*assignment_id = 0;
+	unsigned rslt_billing_rule_id = 0;
+	unsigned rslt_assignment_id = 0;
+	bool check_digest_username = typeAssignment == _billing_ta_customer && digest_username && customers_rule_digest_username_exists;
 	lock();
 	map<unsigned, cBillingAssignment*> *assignments = typeAssignment == _billing_ta_operator ? &operators : &customers;
 	for(map<unsigned, cBillingAssignment*>::iterator iter = assignments->begin(); iter != assignments->end(); iter++) {
 		if(iter->second->checkIP(ip)) {
-			rslt = iter->second->billing_rule_id;
-			*assignment_id = iter->first;
-			break;
+			rslt_billing_rule_id = iter->second->billing_rule_id;
+			rslt_assignment_id = iter->first;
+			if(!check_digest_username) {
+				break;
+			}
+			if((!*digest_username && iter->second->list_digest_username.is_empty()) ||
+			   (*digest_username && iter->second->checkDigestUsername(digest_username))) {
+				break;
+			}
 		}
 	}
 	unlock();
-	return(rslt);
+	if(rslt_billing_rule_id) {
+		*assignment_id = rslt_assignment_id;
+	}
+	return(rslt_billing_rule_id);
 }
 
-unsigned cBillingAssignments::findBillingRuleIdForNumber(const char *number, eBilingTypeAssignment typeAssignment,
+unsigned cBillingAssignments::findBillingRuleIdForNumber(const char *number, const char *digest_username,
+							 eBilingTypeAssignment typeAssignment,
 							 unsigned *assignment_id, CountryPrefixes *countryPrefixes) {
-	unsigned rslt = 0;
-	*assignment_id = 0;
+	unsigned rslt_billing_rule_id = 0;
+	unsigned rslt_assignment_id = 0;
+	bool check_digest_username = typeAssignment == _billing_ta_customer && digest_username && customers_rule_digest_username_exists;
 	lock();
 	map<unsigned, cBillingAssignment*> *assignments = typeAssignment == _billing_ta_operator ? &operators : &customers;
 	for(map<unsigned, cBillingAssignment*>::iterator iter = assignments->begin(); iter != assignments->end(); iter++) {
 		if(countryPrefixes) {
 			string numberNormalized = iter->second->checkInternational.numberNormalized(number, countryPrefixes);
 			if(iter->second->checkNumber(numberNormalized.c_str())) {
-				rslt = iter->second->billing_rule_id;
-				*assignment_id = iter->first;
+				rslt_billing_rule_id = iter->second->billing_rule_id;
+				rslt_assignment_id = iter->first;
+				if(!check_digest_username) {
+					break;
+				}
+				if((!*digest_username && iter->second->list_digest_username.is_empty()) ||
+				   (*digest_username && iter->second->checkDigestUsername(digest_username))) {
+					break;
+				}
 				break;
 			}
 		} else {
-			if(iter->second->checkNumber(number)) {
-				rslt = iter->second->billing_rule_id;
-				*assignment_id = iter->first;
+			if(iter->second->checkNumber(number, false)) {
+				rslt_billing_rule_id = iter->second->billing_rule_id;
+				rslt_assignment_id = iter->first;
+				if(!check_digest_username) {
+					break;
+				}
+				if((!*digest_username && iter->second->list_digest_username.is_empty()) ||
+				   (*digest_username && iter->second->checkDigestUsername(digest_username, false))) {
+					break;
+				}
 				break;
 			}
 		}
 	}
 	unlock();
-	return(rslt);
+	if(rslt_billing_rule_id) {
+		*assignment_id = rslt_assignment_id;
+	}
+	return(rslt_billing_rule_id);
 }
+#endif
 
 
 cBillingExclude::cBillingExclude(bool agregation) {
@@ -1141,6 +1252,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		       vmIP ip_src, vmIP ip_dst,
 		       const char *number_src, const char *number_dst,
 		       const char *domain_src, const char *domain_dst,
+		       const char *digest_username,
 		       double *operator_price, double *customer_price,
 		       unsigned *operator_currency_id, unsigned *customer_currency_id,
 		       unsigned *operator_id, unsigned *customer_id,
@@ -1173,32 +1285,55 @@ bool cBilling::billing(time_t time, unsigned duration,
 				*operator_id = 0;
 			}
 		} else {
-			*operator_id = assignments->findBillingRuleIdForIP(ip_dst, _billing_ta_operator,
-									   &operator_assignment_id);
+			int type_assign = cBillingAssignments::_type_assign_na;
+			*operator_id = assignments->findBillingRuleId(ip_dst, number_dst, NULL, 
+								      _billing_ta_operator,
+								      &operator_assignment_id, &type_assign,
+								      countryPrefixes);
 			if(*operator_id) {
 				if(operator_debug) {
-					operator_debug->push_back(string("assigned operator for called ip ") + 
-								  "'" + (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING) + "': " + 
+					operator_debug->push_back(string("assigned operator for") + 
+								  (type_assign & cBillingAssignments::_type_assign_ip ?
+								    string(" called ip '") + (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING) + "'": "") +
+								  (type_assign & cBillingAssignments::_type_assign_number ?
+								    string(" called number '") + (*number_dst ? number_dst : UNSET_STRING) + "'": "") +
+								  ": " + 
 								  "'" + assignments->operators[operator_assignment_id]->name + "'");
 					operator_debug->push_back("billing table '" + rules->rules[*operator_id]->name + "' selected");
 				}
-			} else {
-				*operator_id = assignments->findBillingRuleIdForNumber(number_dst, _billing_ta_operator,
-										       &operator_assignment_id, countryPrefixes);
-				if(*operator_id && operator_debug) {
-					operator_debug->push_back(string("assigned operator for called number ") + 
-								  "'" + (*number_dst ? number_dst : UNSET_STRING) + "': " + 
-								  "'" + assignments->operators[operator_assignment_id]->name + "'");
-					operator_debug->push_back("billing table '" + rules->rules[*operator_id]->name + "' selected");
+			} 
+			#if not SUPPRESS_OBSOLETE_FIND_BILLING_RULE_ID
+			else {
+				*operator_id = assignments->findBillingRuleIdForIP(ip_dst, NULL, 
+										   _billing_ta_operator,
+										   &operator_assignment_id);
+				if(*operator_id) {
+					if(operator_debug) {
+						operator_debug->push_back(string("assigned operator for called ip ") + 
+									  "'" + (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING) + "': " + 
+									  "'" + assignments->operators[operator_assignment_id]->name + "'");
+						operator_debug->push_back("billing table '" + rules->rules[*operator_id]->name + "' selected");
+					}
+				} else {
+					*operator_id = assignments->findBillingRuleIdForNumber(number_dst, NULL,
+											       _billing_ta_operator,
+											       &operator_assignment_id, countryPrefixes);
+					if(*operator_id && operator_debug) {
+						operator_debug->push_back(string("assigned operator for called number ") + 
+									  "'" + (*number_dst ? number_dst : UNSET_STRING) + "': " + 
+									  "'" + assignments->operators[operator_assignment_id]->name + "'");
+						operator_debug->push_back("billing table '" + rules->rules[*operator_id]->name + "' selected");
+					}
 				}
 			}
+			#endif
 			if(!*operator_id) {
 				if(operator_debug) {
 					operator_debug->push_back(string("called ip ") + 
 								  "'" + (ip_dst.isSet() ? ip_dst.getString() : UNSET_STRING) + "'" + 
-								  " and called number " + 
-								  "'" + (*number_dst ? number_dst : UNSET_STRING) + "' " +
-								  "does not match with any operator in assign table");
+								  ", called number " + 
+								  "'" + (*number_dst ? number_dst : UNSET_STRING) + "'" +
+								  " does not match with any operator in assign table");
 				}
 			}
 		}
@@ -1209,32 +1344,63 @@ bool cBilling::billing(time_t time, unsigned duration,
 				*customer_id = 0;
 			}
 		} else {
-			*customer_id = assignments->findBillingRuleIdForIP(ip_src, _billing_ta_customer,
-									   &customer_assignment_id);
+			int type_assign = cBillingAssignments::_type_assign_na;
+			*customer_id = assignments->findBillingRuleId(ip_src, number_src, digest_username, 
+								      _billing_ta_customer,
+								      &customer_assignment_id, &type_assign,
+								      countryPrefixes);
 			if(*customer_id) {
 				if(customer_debug) {
-					customer_debug->push_back(string("assigned customer for caller ip ") + 
-								  "'" + (ip_src.isSet() ? ip_src.getString() : UNSET_STRING) + "': " + 
+					customer_debug->push_back(string("assigned customer for") + 
+								  (type_assign & cBillingAssignments::_type_assign_ip ?
+								    string(" caller ip '") + (ip_src.isSet() ? ip_src.getString() : UNSET_STRING) + "'" : "") + 
+								  (type_assign & cBillingAssignments::_type_assign_number ?
+								    string(" caller number '") + (*number_src ? number_src : UNSET_STRING) + "'" : "") + 
+								  (type_assign & cBillingAssignments::_type_assign_digest_username_unset ?
+								    string(" digest username 'unset'") : "") + 
+								  (type_assign & cBillingAssignments::_type_assign_digest_username_set ?
+								    string(" digest username '") + digest_username + "'" : "") + 
+								  ": " + 
 								  "'" + assignments->customers[customer_assignment_id]->name + "'");
 					customer_debug->push_back("billing table '" + rules->rules[*customer_id]->name + "' selected");
 				}
-			} else {
-				*customer_id = assignments->findBillingRuleIdForNumber(number_src, _billing_ta_customer,
-										       &customer_assignment_id, countryPrefixes);
-				if(*customer_id && customer_debug) {
-					customer_debug->push_back(string("assigned customer for caller number ") + 
-								  "'" + (*number_src ? number_src : UNSET_STRING) + "': " + 
-								  "'" + assignments->customers[customer_assignment_id]->name + "'");
-					customer_debug->push_back("billing table '" + rules->rules[*customer_id]->name + "' selected");
+			} 
+			#if not SUPPRESS_OBSOLETE_FIND_BILLING_RULE_ID
+			else {
+				*customer_id = assignments->findBillingRuleIdForIP(ip_src, digest_username, 
+										   _billing_ta_customer,
+										   &customer_assignment_id);
+				if(*customer_id) {
+					if(customer_debug) {
+						customer_debug->push_back(string("assigned customer for caller ip ") + 
+									  "'" + (ip_src.isSet() ? ip_src.getString() : UNSET_STRING) + "': " + 
+									  "'" + assignments->customers[customer_assignment_id]->name + "'");
+						customer_debug->push_back("billing table '" + rules->rules[*customer_id]->name + "' selected");
+					}
+				} else {
+					*customer_id = assignments->findBillingRuleIdForNumber(number_src, digest_username, 
+											       _billing_ta_customer,
+											       &customer_assignment_id, countryPrefixes);
+					if(*customer_id && customer_debug) {
+						customer_debug->push_back(string("assigned customer for caller number ") + 
+									  "'" + (*number_src ? number_src : UNSET_STRING) + "': " + 
+									  "'" + assignments->customers[customer_assignment_id]->name + "'");
+						customer_debug->push_back("billing table '" + rules->rules[*customer_id]->name + "' selected");
+					}
 				}
 			}
+			#endif
 			if(!*customer_id) {
 				if(customer_debug) {
 					customer_debug->push_back(string("caller ip ") + 
 								  "'" + (ip_src.isSet() ? ip_src.getString() : UNSET_STRING) + "'" +
-								  " and caller number " + 
-								  "'" + (*number_src ? number_src : UNSET_STRING) + "' " + 
-								  "does not match with any customer in assign table");
+								  ", caller number " + 
+								  "'" + (*number_src ? number_src : UNSET_STRING) + "'" + 
+								  (digest_username && *digest_username ?
+								    string(", digest_username ") + 
+								    "'" + digest_username + "'" :
+								    "") +
+								  " does not match with any customer in assign table");
 				}
 				*customer_id = rules->getDefaultCustomerBillingId();
 				if(*customer_id && customer_debug) {
@@ -1455,10 +1621,12 @@ string cBilling::test(string calls_string, bool json_rslt) {
 				string number_dst = jsonCall->getValue("number_dst");
 				string domain_src = jsonCall->getValue("domain_src");
 				string domain_dst = jsonCall->getValue("domain_dst");
+				string digest_username = jsonCall->getValue("digest_username");
 				string rslt = test(id.c_str(), time.c_str(), duration.c_str(),
 						   ip_src.c_str(), ip_dst.c_str(),
 						   number_src.c_str(), number_dst.c_str(),
 						   domain_src.c_str(), domain_dst.c_str(),
+						   digest_username.c_str(),
 						   sensor_id.c_str(),
 						   NULL, NULL,
 						   json_rslt);
@@ -1481,11 +1649,13 @@ string cBilling::test(string calls_string, bool json_rslt) {
 					const char *verify_customer_price =  call.size() >= 8 ? call[7].c_str() : NULL;
 					const char *domain_src = call.size() >= 9 ? call[8].c_str() : NULL;
 					const char *domain_dst = call.size() >= 10 ? call[9].c_str() : NULL;
-					const char *sensor_id = call.size() >= 11 ? call[10].c_str() : NULL;
+					const char *digest_username = call.size() >= 11 ? call[10].c_str() : NULL;
+					const char *sensor_id = call.size() >= 12 ? call[11].c_str() : NULL;
 					string rslt = test(NULL, time, duration,
 							   ip_src, ip_dst,
 							   number_src, number_dst,
 							   domain_src, domain_dst,
+							   digest_username,
 							   sensor_id,
 							   verify_operator_price, verify_customer_price,
 							   json_rslt);
@@ -1528,6 +1698,7 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 		      const char *ip_src, const char *ip_dst,
 		      const char *number_src, const char *number_dst,
 		      const char *domain_src, const char *domain_dst,
+		      const char *digest_username,
 		      const char *sensor_id,
 		      const char *verify_operator_price, const char *verify_customer_price,
 		      bool json_rslt) {
@@ -1542,6 +1713,7 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 		 str_2_vmIP(ip_src), str_2_vmIP(ip_dst),
 		 number_src, number_dst,
 		 domain_src, domain_dst,
+		 digest_username,
 		 &operator_price, &customer_price,
 		 &operator_currency_id, &customer_currency_id,
 		 &operator_id, &customer_id, 
@@ -1620,11 +1792,11 @@ string cBilling::test(const char *id, const char *time, const char *duration,
 	return("");
 }
 
-void cBilling::revaluationBilling(list<u_int64_t> *ids,
+void cBilling::revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 				  unsigned force_operator_id, unsigned force_customer_id,
 				  bool use_exclude_rules) {
 	SqlDb *sqlDb = createSqlObject();
-	string queryStr = "select * from cdr where id in(" + implode(ids, ",") + ")";
+	string queryStr = select_cdr + " where id in(" + implode(ids, ",") + ")";
 	sqlDb->query(queryStr);
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
@@ -1652,6 +1824,7 @@ void cBilling::revaluationBilling(SqlDb_rows *rows, SqlDb *sqlDb,
 		string number_dst = row["called"];
 		string domain_src = row["caller_domain"];
 		string domain_dst = row["called_domain"];
+		string digest_username = row["digest_username"];
 		bool extPrecisionOperator = row.getIndexField("price_operator_mult1000000") >= 0;
 		bool extPrecisionCustomer = row.getIndexField("price_customer_mult1000000") >= 0;
 		double operator_price_old = 0;
@@ -1686,6 +1859,7 @@ void cBilling::revaluationBilling(SqlDb_rows *rows, SqlDb *sqlDb,
 			   ip_src, ip_dst,
 			   number_src.c_str(), number_dst.c_str(),
 			   domain_src.c_str(), domain_dst.c_str(),
+			   digest_username.c_str(),
 			   &operator_price, &customer_price,
 			   &operator_currency_id, &customer_currency_id,
 			   &operator_id, &customer_id,
@@ -1799,6 +1973,7 @@ void refreshBilling() {
 void revaluationBilling(const char *params) {
 	JsonItem jsonData;
 	jsonData.parse(params);
+	string select_cdr = jsonData.getValue("select_cdr");
 	JsonItem *json_ids = jsonData.getItem("ids");
 	if(!json_ids || !json_ids->getLocalCount()) {
 		return;
@@ -1819,17 +1994,17 @@ void revaluationBilling(const char *params) {
 	unsigned force_operator_id = atol(jsonData.getValue("operator").c_str());
 	unsigned force_customer_id = atol(jsonData.getValue("customer").c_str());
 	bool use_exclude_rules = atoi(jsonData.getValue("use_exclude_rules").c_str()) > 0;
-	revaluationBilling(&ids,
+	revaluationBilling(select_cdr, &ids,
 			   force_operator_id, force_customer_id,
 			   use_exclude_rules);
 }
 
-void revaluationBilling(list<u_int64_t> *ids,
+void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 			unsigned force_operator_id, unsigned force_customer_id,
 			bool use_exclude_rules) {
 	map<int, SqlDb_rows*> sensor_rows;
 	SqlDb *sqlDb = createSqlObject();
-	string queryStr = "select * from cdr where id in(" + implode(ids, ",") + ")";
+	string queryStr = select_cdr + " where id in(" + implode(ids, ",") + ")";
 	sqlDb->query(queryStr);
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
@@ -1852,8 +2027,3 @@ void revaluationBilling(list<u_int64_t> *ids,
 	}
 	delete sqlDb;
 }
-
-/*
-		SqlDb *sqlDb = createSqlObject();
-		initBilling(sqlDb);
-*/

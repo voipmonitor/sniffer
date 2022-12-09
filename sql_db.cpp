@@ -5918,6 +5918,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				"") + 
 			"`custom_header1` varchar(255) DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
+			`digest_username` varchar(255) DEFAULT NULL,\
 			`match_header` VARCHAR(128) DEFAULT NULL,\
 			`GeoPosition` varchar(255) DEFAULT NULL, \
 			`hold` varchar(1024) DEFAULT NULL, \
@@ -5938,6 +5939,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
 		"KEY `fbasename` (`fbasename`),\
+		 KEY `digestusername` (`digestusername`),\
 		 KEY `match_header` (`match_header`)" + 
 		(opt_conference_processing ?
 			",KEY `conference_referred_by` (`conference_referred_by`)" :
@@ -8662,6 +8664,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("cdr_next", "cdr digest username (can be used by custom header)", true,
+				log, &tableSize, &existsColumns.cdr_next_digest_username,
+				"digest_username", "varchar(255) DEFAULT NULL", "digest_username (digest_username)",
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_next", "cdr spool index", true,
 				log, &tableSize, &existsColumns.cdr_next_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,

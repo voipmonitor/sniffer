@@ -4292,6 +4292,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
+		for(int pass_authorization = 0; pass_authorization < 2; pass_authorization++) {
+			s = gettag_sip(packetS, pass_authorization == 0 ? "\nAuthorization:" : "\nProxy-Authorization:", &l);
+			if(s) {
+				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
+				break;
+			}
+		}
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
 			sSciPacketInfo *packet_info = NULL;

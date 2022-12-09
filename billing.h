@@ -7,6 +7,9 @@
 #include "country_detect.h"
 
 
+#define SUPPRESS_OBSOLETE_FIND_BILLING_RULE_ID true
+
+
 enum eBilingSide {
 	_billing_side_src,
 	_billing_side_dst
@@ -32,8 +35,15 @@ public:
 	void load(SqlDb_row *row, SqlDb *sqlDb = NULL);
 	bool isSensorOk(SqlDb *sqlDb = NULL);
 	void loadCond(SqlDb *sqlDb = NULL);
-	bool checkIP(vmIP ip);
-	bool checkNumber(const char *number);
+	bool checkIP(vmIP ip) {
+		return(list_ip.checkIP(ip));
+	}
+	bool checkNumber(const char *number) {
+		return(list_number.checkNumber(number));
+	}
+	bool checkDigestUsername(const char *digest_username) {
+		return(list_digest_username.check(digest_username));
+	}
 private:
 	eBilingTypeAssignment typeAssignment;
 	unsigned id;
@@ -43,20 +53,37 @@ private:
 	CheckInternational checkInternational;
 	ListIP list_ip;
 	ListPhoneNumber list_number;
+	ListCheckString list_digest_username;
 friend class cBillingAssignments;
 friend class cBilling;
 };
 
 class cBillingAssignments {
 public:
+	enum eTypeAssign {
+		_type_assign_na = 0,
+		_type_assign_ip = 1 << 0,
+		_type_assign_number = 1 << 1,
+		_type_assign_digest_username_unset = 1 << 2,
+		_type_assign_digest_username_set = 1 << 3
+	};
+public:
 	cBillingAssignments();
 	~cBillingAssignments();
 	void load(SqlDb *sqlDb = NULL);
 	void clear(bool useLock = true);
-	unsigned findBillingRuleIdForIP(vmIP ip, eBilingTypeAssignment typeAssignment,
+	unsigned findBillingRuleId(vmIP ip, const char *number, const char *digest_username,
+				   eBilingTypeAssignment typeAssignment, 
+				   unsigned *assignment_id, int *type_assign,
+				   CountryPrefixes *countryPrefixes);
+	#if not SUPPRESS_OBSOLETE_FIND_BILLING_RULE_ID
+	unsigned findBillingRuleIdForIP(vmIP ip, const char *digest_username,
+					eBilingTypeAssignment typeAssignment,
 					unsigned *assignment_id);
-	unsigned findBillingRuleIdForNumber(const char *number, eBilingTypeAssignment typeAssignment, 
+	unsigned findBillingRuleIdForNumber(const char *number, const char *digest_username,
+					    eBilingTypeAssignment typeAssignment, 
 					    unsigned *assignment_id, CountryPrefixes *countryPrefixes);
+	#endif
 private:
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
@@ -67,6 +94,7 @@ private:
 private:
 	map<unsigned, cBillingAssignment*> operators;
 	map<unsigned, cBillingAssignment*> customers;
+	bool customers_rule_digest_username_exists;
 	volatile int _sync;
 friend class cBilling;
 };
@@ -315,6 +343,7 @@ public:
 		     vmIP ip_src, vmIP ip_dst,
 		     const char *number_src, const char *number_dst,
 		     const char *domain_src, const char *domain_dst,
+		     const char *digest_username,
 		     double *operator_price, double *customer_price,
 		     unsigned *operator_currency_id, unsigned *customer_currency_id,
 		     unsigned *operator_id, unsigned *customer_id,
@@ -338,10 +367,11 @@ public:
 		    const char *ip_src, const char *ip_dst,
 		    const char *number_src, const char *number_dst,
 		    const char *domain_src, const char *domain_dst,
+		    const char *digest_username,
 		    const char *sensor_id,
 		    const char *verify_operator_price, const char *verify_customer_price,
 		    bool json_rslt);
-	void revaluationBilling(list<u_int64_t> *ids,
+	void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 				unsigned force_operator_id = 0, unsigned force_customer_id = 0,
 				bool use_exclude_rules = true);
 	void revaluationBilling(SqlDb_rows *rows, SqlDb *sqlDb,
@@ -375,7 +405,7 @@ void termBilling();
 void refreshBilling();
 
 void revaluationBilling(const char *params);
-void revaluationBilling(list<u_int64_t> *ids,
+void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 			unsigned force_operator_id = 0, unsigned force_customer_id = 0,
 			bool use_exclude_rules = true);
 
