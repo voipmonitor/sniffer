@@ -1808,131 +1808,139 @@ void cBilling::revaluationBilling(SqlDb_rows *rows, SqlDb *sqlDb,
 				  unsigned force_operator_id, unsigned force_customer_id,
 				  bool use_exclude_rules) {
 	SqlDb_row row;
-	string timezone = getGuiTimezone();
 	while((row = rows->fetchRow())) {
-		cout << "revaluation cdr.id: " << row["ID"] << endl;
-		double connect_duration = atof(row["connect_duration"].c_str());
-		if(!connect_duration) {
-			continue;
+		revaluationBilling(row, sqlDb,
+				   force_operator_id, force_customer_id,
+				   use_exclude_rules);
+	}
+}
+
+void cBilling::revaluationBilling(SqlDb_row &row, SqlDb *sqlDb,
+				  unsigned force_operator_id, unsigned force_customer_id,
+				  bool use_exclude_rules) {
+	string timezone = getGuiTimezone();
+	cout << "revaluation cdr.id: " << row["ID"] << endl;
+	double connect_duration = atof(row["connect_duration"].c_str());
+	if(!connect_duration) {
+		return;
+	}
+	u_int32_t calldate_s = mktime(row["calldate"].c_str(), timezone.c_str());
+	vmIP ip_src;
+	vmIP ip_dst;
+	ip_src.setIP(&row, "sipcallerip");
+	ip_dst.setIP(&row, "sipcalledip");
+	string number_src = row["caller"];
+	string number_dst = row["called"];
+	string domain_src = row["caller_domain"];
+	string domain_dst = row["called_domain"];
+	string digest_username = row["digest_username"];
+	bool extPrecisionOperator = row.getIndexField("price_operator_mult1000000") >= 0;
+	bool extPrecisionCustomer = row.getIndexField("price_customer_mult1000000") >= 0;
+	double operator_price_old = 0;
+	double customer_price_old = 0;
+	bool operator_price_old_set = false;
+	bool customer_price_old_set = false;
+	unsigned operator_currency_id_old = 0;
+	unsigned customer_currency_id_old = 0;
+	string priceOperatorField = extPrecisionOperator ? "price_operator_mult1000000" : "price_operator_mult100";
+	string priceCustomerField = extPrecisionCustomer ? "price_customer_mult1000000" : "price_customer_mult100";
+	double priceOperatorMult = extPrecisionOperator ? 1e6 : 1e2;
+	double priceCustomerMult = extPrecisionCustomer ? 1e6 : 1e2;
+	if(!row.isNull(priceOperatorField)) {
+		operator_price_old_set = true;
+		operator_price_old = atoll(row[priceOperatorField].c_str()) / priceOperatorMult;
+	}
+	operator_currency_id_old = atol(row["price_operator_currency_id"].c_str());
+	if(!row.isNull(priceCustomerField)) {
+		customer_price_old_set = true;
+		customer_price_old = atoll(row[priceCustomerField].c_str()) / priceCustomerMult;
+	}
+	customer_currency_id_old = atol(row["price_customer_currency_id"].c_str());
+	double operator_price = 0;
+	double customer_price = 0;
+	bool operator_price_set = false;
+	bool customer_price_set = false;
+	unsigned operator_currency_id = 0;
+	unsigned customer_currency_id = 0;
+	unsigned operator_id = 0;
+	unsigned customer_id = 0;
+	if(billing(calldate_s, connect_duration,
+		   ip_src, ip_dst,
+		   number_src.c_str(), number_dst.c_str(),
+		   domain_src.c_str(), domain_dst.c_str(),
+		   digest_username.c_str(),
+		   &operator_price, &customer_price,
+		   &operator_currency_id, &customer_currency_id,
+		   &operator_id, &customer_id,
+		   force_operator_id, force_customer_id,
+		   use_exclude_rules)) {
+		if(operator_id) {
+			operator_price_set = true;
 		}
-		u_int32_t calldate_s = mktime(row["calldate"].c_str(), timezone.c_str());
-		vmIP ip_src;
-		vmIP ip_dst;
-		ip_src.setIP(&row, "sipcallerip");
-		ip_dst.setIP(&row, "sipcalledip");
-		string number_src = row["caller"];
-		string number_dst = row["called"];
-		string domain_src = row["caller_domain"];
-		string domain_dst = row["called_domain"];
-		string digest_username = row["digest_username"];
-		bool extPrecisionOperator = row.getIndexField("price_operator_mult1000000") >= 0;
-		bool extPrecisionCustomer = row.getIndexField("price_customer_mult1000000") >= 0;
-		double operator_price_old = 0;
-		double customer_price_old = 0;
-		bool operator_price_old_set = false;
-		bool customer_price_old_set = false;
-		unsigned operator_currency_id_old = 0;
-		unsigned customer_currency_id_old = 0;
-		string priceOperatorField = extPrecisionOperator ? "price_operator_mult1000000" : "price_operator_mult100";
-		string priceCustomerField = extPrecisionCustomer ? "price_customer_mult1000000" : "price_customer_mult100";
-		double priceOperatorMult = extPrecisionOperator ? 1e6 : 1e2;
-		double priceCustomerMult = extPrecisionCustomer ? 1e6 : 1e2;
-		if(!row.isNull(priceOperatorField)) {
-			operator_price_old_set = true;
-			operator_price_old = atoll(row[priceOperatorField].c_str()) / priceOperatorMult;
+		if(customer_id) {
+			customer_price_set = true;
 		}
-		operator_currency_id_old = atol(row["price_operator_currency_id"].c_str());
-		if(!row.isNull(priceCustomerField)) {
-			customer_price_old_set = true;
-			customer_price_old = atoll(row[priceCustomerField].c_str()) / priceCustomerMult;
-		}
-		customer_currency_id_old = atol(row["price_customer_currency_id"].c_str());
-		double operator_price = 0;
-		double customer_price = 0;
-		bool operator_price_set = false;
-		bool customer_price_set = false;
-		unsigned operator_currency_id = 0;
-		unsigned customer_currency_id = 0;
-		unsigned operator_id = 0;
-		unsigned customer_id = 0;
-		if(billing(calldate_s, connect_duration,
-			   ip_src, ip_dst,
-			   number_src.c_str(), number_dst.c_str(),
-			   domain_src.c_str(), domain_dst.c_str(),
-			   digest_username.c_str(),
-			   &operator_price, &customer_price,
-			   &operator_currency_id, &customer_currency_id,
-			   &operator_id, &customer_id,
-			   force_operator_id, force_customer_id,
-			   use_exclude_rules)) {
-			if(operator_id) {
-				operator_price_set = true;
-			}
-			if(customer_id) {
-				customer_price_set = true;
-			}
-		}
+	}
+	if(operator_price_set != operator_price_old_set ||
+	   fabs(operator_price - operator_price_old) > 5e-7 ||
+	   operator_currency_id != operator_currency_id_old ||
+	   customer_price_set != customer_price_old_set ||
+	   fabs(customer_price - customer_price_old) > 5e-7 ||
+	   customer_currency_id != customer_currency_id_old) {
+		bool set = false;
+		SqlDb_row row_update;
 		if(operator_price_set != operator_price_old_set ||
-		   fabs(operator_price - operator_price_old) > 5e-7 ||
-		   operator_currency_id != operator_currency_id_old ||
-		   customer_price_set != customer_price_old_set ||
-		   fabs(customer_price - customer_price_old) > 5e-7 ||
+		   fabs(operator_price - operator_price_old_set) > 1e-7 ||
+		   operator_currency_id != operator_currency_id_old) {
+			if(operator_price_set) {
+				row_update.add(round(operator_price * priceOperatorMult), priceOperatorField);
+				row_update.add(operator_currency_id, "price_operator_currency_id", true);
+				set = true;
+			} else {
+				row_update.add(0, priceOperatorField, true);
+				row_update.add(0, "price_operator_currency_id", true);
+				set = true;
+			}
+		}
+		if(customer_price_set != customer_price_old_set ||
+		   fabs(customer_price - customer_price_old_set) > 1e-7 ||
 		   customer_currency_id != customer_currency_id_old) {
-			bool set = false;
-			SqlDb_row row_update;
-			if(operator_price_set != operator_price_old_set ||
-			   fabs(operator_price - operator_price_old_set) > 1e-7 ||
-			   operator_currency_id != operator_currency_id_old) {
-				if(operator_price_set) {
-					row_update.add(round(operator_price * priceOperatorMult), priceOperatorField);
-					row_update.add(operator_currency_id, "price_operator_currency_id", true);
-					set = true;
-				} else {
-					row_update.add(0, priceOperatorField, true);
-					row_update.add(0, "price_operator_currency_id", true);
-					set = true;
-				}
+			if(customer_price_set) {
+				row_update.add(round(customer_price * priceCustomerMult), priceCustomerField);
+				row_update.add(customer_currency_id, "price_customer_currency_id", true);
+				set = true;
+			} else {
+				row_update.add(0, priceCustomerField, true);
+				row_update.add(0, "price_customer_currency_id", true);
+				set = true;
 			}
-			if(customer_price_set != customer_price_old_set ||
-			   fabs(customer_price - customer_price_old_set) > 1e-7 ||
-			   customer_currency_id != customer_currency_id_old) {
-				if(customer_price_set) {
-					row_update.add(round(customer_price * priceCustomerMult), priceCustomerField);
-					row_update.add(customer_currency_id, "price_customer_currency_id", true);
-					set = true;
-				} else {
-					row_update.add(0, priceCustomerField, true);
-					row_update.add(0, "price_customer_currency_id", true);
-					set = true;
-				}
-			}
-			if(set) {
-				SqlDb_row row_cond;
-				row_cond.add(row["id"], "id");
-				sqlDb->update("cdr", row_update, row_cond);
-				if(fabs(operator_price - operator_price_old) > 5e-7 ||
-				   fabs(customer_price - customer_price_old) > 5e-7) {
-					list<string> aggregation_inserts;
-					saveAggregation(calldate_s,
-							ip_src, ip_dst,
-							number_src.c_str(), number_dst.c_str(),
-							domain_src.c_str(), domain_dst.c_str(),
-							operator_price - operator_price_old,
-							customer_price - customer_price_old,
-							operator_currency_id,
-							customer_currency_id,
-							&aggregation_inserts);
-					if(aggregation_inserts.size()) {
-						bool disableLogErrorOld = sqlDb->getDisableLogError();
-						unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
-						sqlDb->setDisableLogError(true);
-						sqlDb->setMaxQueryPass(1);
-						for(list<string>::iterator iter = aggregation_inserts.begin(); iter != aggregation_inserts.end(); iter++) {
-							sqlDb->query(*iter);
-						}
-						sqlDb->setMaxQueryPass(maxQueryPassOld);
-						sqlDb->setDisableLogError(disableLogErrorOld);
+		}
+		if(set) {
+			SqlDb_row row_cond;
+			row_cond.add(row["id"], "id");
+			sqlDb->update("cdr", row_update, row_cond);
+			if(fabs(operator_price - operator_price_old) > 5e-7 ||
+			   fabs(customer_price - customer_price_old) > 5e-7) {
+				list<string> aggregation_inserts;
+				saveAggregation(calldate_s,
+						ip_src, ip_dst,
+						number_src.c_str(), number_dst.c_str(),
+						domain_src.c_str(), domain_dst.c_str(),
+						operator_price - operator_price_old,
+						customer_price - customer_price_old,
+						operator_currency_id,
+						customer_currency_id,
+						&aggregation_inserts);
+				if(aggregation_inserts.size()) {
+					bool disableLogErrorOld = sqlDb->getDisableLogError();
+					unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
+					sqlDb->setDisableLogError(true);
+					sqlDb->setMaxQueryPass(1);
+					for(list<string>::iterator iter = aggregation_inserts.begin(); iter != aggregation_inserts.end(); iter++) {
+						sqlDb->query(*iter);
 					}
+					sqlDb->setMaxQueryPass(maxQueryPassOld);
+					sqlDb->setDisableLogError(disableLogErrorOld);
 				}
 			}
 		}
@@ -1974,29 +1982,36 @@ void revaluationBilling(const char *params) {
 	JsonItem jsonData;
 	jsonData.parse(params);
 	string select_cdr = jsonData.getValue("select_cdr");
-	JsonItem *json_ids = jsonData.getItem("ids");
-	if(!json_ids || !json_ids->getLocalCount()) {
-		return;
-	}
-	list<u_int64_t> ids;
-	for(unsigned i = 0; i < json_ids->getLocalCount(); i++) {
-		JsonItem *json_id = json_ids->getLocalItem(i);
-		if(json_id) {
-			u_int64_t id = atoll(json_id->getLocalValue().c_str());
-			if(id) {
-				ids.push_back(id);
-			}
-		}
-	}
-	if(!ids.size()) {
-		return;
-	}
 	unsigned force_operator_id = atol(jsonData.getValue("operator").c_str());
 	unsigned force_customer_id = atol(jsonData.getValue("customer").c_str());
 	bool use_exclude_rules = atoi(jsonData.getValue("use_exclude_rules").c_str()) > 0;
-	revaluationBilling(select_cdr, &ids,
-			   force_operator_id, force_customer_id,
-			   use_exclude_rules);
+	string loop =jsonData.getValue("loop");
+	if(is_true(loop.c_str())) {
+		revaluationBillingLoop(select_cdr,
+				       force_operator_id, force_customer_id,
+				       use_exclude_rules);
+	} else {
+		JsonItem *json_ids = jsonData.getItem("ids");
+		if(!json_ids || !json_ids->getLocalCount()) {
+			return;
+		}
+		list<u_int64_t> ids;
+		for(unsigned i = 0; i < json_ids->getLocalCount(); i++) {
+			JsonItem *json_id = json_ids->getLocalItem(i);
+			if(json_id) {
+				u_int64_t id = atoll(json_id->getLocalValue().c_str());
+				if(id) {
+					ids.push_back(id);
+				}
+			}
+		}
+		if(!ids.size()) {
+			return;
+		}
+		revaluationBilling(select_cdr, &ids,
+				   force_operator_id, force_customer_id,
+				   use_exclude_rules);
+	}
 }
 
 void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
@@ -2024,6 +2039,47 @@ void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 		billing->load(sqlDb);
 		billing->revaluationBilling(iter->second, sqlDb, force_operator_id, force_customer_id, use_exclude_rules);
 		delete billing;
+	}
+	delete sqlDb;
+}
+
+void revaluationBillingLoop(string select_cdr,
+			    unsigned force_operator_id, unsigned force_customer_id,
+			    bool use_exclude_rules) {
+	cout << "ready\n" << flush;
+	SqlDb *sqlDb = createSqlObject();
+	map<int, cBilling*> billing_sensor;
+	char gets_buffer[1000*20];
+	while(fgets(gets_buffer, sizeof(gets_buffer) - 1, stdin)) {
+		int gets_buffer_length = strlen(gets_buffer);
+		while(gets_buffer[gets_buffer_length - 1] == '\n') {
+			gets_buffer[gets_buffer_length - 1] = 0;
+			--gets_buffer_length;
+		}
+		if(!strncmp(gets_buffer, "ids:", 4)) {
+			vector<int> ids = split2int(gets_buffer + 4, ',');
+			if(ids.size()) {
+				string queryStr = select_cdr + " where id in(" + implode(ids, ",") + ")";
+				sqlDb->query(queryStr);
+				SqlDb_rows rows;
+				sqlDb->fetchRows(&rows);
+				SqlDb_row row;
+				while((row = rows.fetchRow())) {
+					int id_sensor = row.isNull("id_sensor") ? -1 : atoi(row["id_sensor"].c_str());
+					if(!billing_sensor[id_sensor]) {
+						billing_sensor[id_sensor] = new FILE_LINE(0) cBilling();
+						billing_sensor[id_sensor]->load(sqlDb);
+					}
+					billing_sensor[id_sensor]->revaluationBilling(row, sqlDb, force_operator_id, force_customer_id, use_exclude_rules);
+				}
+			}
+		} else if(!strncmp(gets_buffer, "end", 3)) {
+			break;
+		}
+		cout << "ready\n" << flush;
+	}
+	for(map<int, cBilling*>::iterator iter = billing_sensor.begin(); iter != billing_sensor.end(); iter++) {
+		delete iter->second;
 	}
 	delete sqlDb;
 }

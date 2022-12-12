@@ -250,6 +250,17 @@ string implode(vector<string> vect, const char *sep) {
 	return(rslt);
 }
 
+string implode(vector<int> vect, const char *sep) {
+	string rslt;
+	for(unsigned i = 0; i < vect.size(); i++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += intToString(vect[i]);
+	}
+	return(rslt);
+}
+
 string implode(list<u_int64_t> *items, const char *sep) {
 	string rslt;
 	unsigned i = 0;
@@ -5717,6 +5728,13 @@ string ascii_str(string str) {
 
 int yesno(const char *arg) {
 	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
+		return 1;
+	else
+		return 0;
+}
+
+int is_true(const char *arg) {
+	if(!strcasecmp(arg, "true") or atoi(arg) > 0) 
 		return 1;
 	else
 		return 0;

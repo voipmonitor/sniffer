@@ -305,6 +305,7 @@ vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
 string implode(vector<string> vect, const char *sep);
+string implode(vector<int> vect, const char *sep);
 string implode(list<u_int64_t> *items, const char *sep);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
@@ -2858,6 +2859,7 @@ u_int64_t getTotalMemory();
 
 string ascii_str(string str);
 int yesno(const char *arg);
+int is_true(const char *arg);
 
 class SensorsMap {
 public:
