@@ -3119,7 +3119,7 @@ struct s_vmcodecs_callback {
 };
 
 void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, void *data) {
-	cout << "*** " << str << "###" << endl;
+	//cout << "*** " << str << "###" << endl;
 	if(!((s_vmcodecs_callback*)data)->detect_keycheck) {
 		char *keycheck_pos = strstr((char*)*out, "keycheck:");
 		if(keycheck_pos) {
