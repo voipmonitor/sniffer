@@ -5559,7 +5559,8 @@ void test_search_country_by_number() {
 	CountryPrefixes *cp = new FILE_LINE(42041) CountryPrefixes();
 	cp->load();
 	vector<string> countries;
-	cout << cp->getCountry("00039123456789", &countries, NULL, ci) << endl;
+	vmIP ip;
+	cout << cp->getCountry("00039123456789", ip, &countries, NULL, ci) << endl;
 	for(size_t i = 0; i < countries.size(); i++) {
 		cout << countries[i] << endl;
 	}
@@ -6532,11 +6533,19 @@ void test() {
 	case 311:
 		{
 		CountryDetectInit();
-		vector<string> numbers = split(opt_test_arg, ';');
-		for(unsigned i = 0; i < numbers.size(); i++) {
-			cout << "number:           " << numbers[i] << endl;
-			cout << "country:          " << getCountryByPhoneNumber(numbers[i].c_str()) << endl;
-			cout << "is international: " << (isLocalByPhoneNumber(numbers[i].c_str()) ? "N" : "Y") << endl;
+		vector<string> numbersIps = split(opt_test_arg, ';');
+		vmIP testIp;
+		for(unsigned i = 0; i < numbersIps.size(); i++) {
+			vector<string> nip = split(numbersIps[i], '@');
+			if (nip.size() == 2) {
+				testIp.setFromString(nip[1].c_str());
+			}
+			cout << "number:           " << nip[0] << endl;
+			if (testIp.isSet()) {
+				cout << "IP:               " << testIp.getString() << endl;
+			}
+			cout << "country:          " << getCountryByPhoneNumber(nip[0].c_str(), testIp) << endl;
+			cout << "is international: " << (isLocalByPhoneNumber(nip[0].c_str(), testIp) ? "N" : "Y") << endl;
 			cout << "---" << endl;
 		}
 		}

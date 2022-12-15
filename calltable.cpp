@@ -4283,16 +4283,16 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(get_called());
 		break;
 	case cf_caller_country:
-		rfield->set(getCountryByPhoneNumber(caller, true).c_str());
+		rfield->set(getCountryByPhoneNumber(caller, getSipcallerip(true), true).c_str());
 		break;
 	case cf_called_country:
-		rfield->set(getCountryByPhoneNumber(get_called(), true).c_str());
+		rfield->set(getCountryByPhoneNumber(get_called(), getSipcalledip(true, true), true).c_str());
 		break;
 	case cf_caller_international:
-		rfield->set(!isLocalByPhoneNumber(caller));
+		rfield->set(!isLocalByPhoneNumber(caller, getSipcallerip(true)));
 		break;
 	case cf_called_international:
-		rfield->set(!isLocalByPhoneNumber(get_called()));
+		rfield->set(!isLocalByPhoneNumber(get_called(), getSipcalledip(true, true)));
 		break;
 	case cf_callername:
 		rfield->set(callername);
@@ -7039,13 +7039,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(opt_cdr_country_code == 2) {
 			cdr_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryIdByIP(sipcalledip_rslt), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(caller, getSipcallerip()), "caller_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(get_called(), sipcalledip_rslt), "called_number_country_code");
 		} else {
 			cdr_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryByIP(sipcalledip_rslt, true), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(caller, getSipcallerip() , true), "caller_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(get_called(), sipcalledip_rslt, true), "called_number_country_code");
 		}
 		if(existsColumns.cdr_country_code_calldate) {
 			cdr_country_code.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_country_code_calldate_ms);
@@ -8757,13 +8757,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(opt_message_country_code == 2) {
 			msg_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			msg_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(caller, getSipcallerip()), "caller_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(get_called(), getSipcalledip()), "called_number_country_code");
 		} else {
 			msg_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			msg_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(caller, getSipcallerip(), true), "caller_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(get_called(), getSipcalledip(), true), "called_number_country_code");
 		}
 		msg_country_code.add_calldate(calltime_us(), "calldate", existsColumns.message_child_country_code_calldate_ms);
 	}
@@ -9780,12 +9780,12 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		}
 		ss7.add(sqlEscapeString(called_number), "called_number");
 		ss7.add(sqlEscapeString(reverseString(called_number.c_str())), "called_number_reverse");
-		ss7.add(getCountryByPhoneNumber(called_number.c_str(), true), "called_number_country_code");
+		ss7.add(getCountryByPhoneNumber(called_number.c_str(), iam_dst_ip, true), "called_number_country_code");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
 		ss7.add(sqlEscapeString(iam_data.e164_calling_party_number_digits), "caller_number");
 		ss7.add(sqlEscapeString(reverseString(iam_data.e164_calling_party_number_digits.c_str())), "caller_number_reverse");
-		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), true), "caller_number_country_code");
+		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), iam_src_ip, true), "caller_number_country_code");
 	}
 	if(isset_unsigned(rel_cause_indicator)) {
 		ss7.add(rel_cause_indicator, "rel_cause_indicator");

@@ -226,7 +226,7 @@ unsigned cBillingAssignments::findBillingRuleId(vmIP ip, const char *number, con
 	for(map<unsigned, cBillingAssignment*>::iterator iter = assignments->begin(); iter != assignments->end(); iter++) {
 		string number_check;
 		if(countryPrefixes && !iter->second->list_number.is_empty()) {
-			number_check = iter->second->checkInternational.numberNormalized(number, countryPrefixes);
+			number_check = iter->second->checkInternational.numberNormalized(number, ip, countryPrefixes);
 		} else {
 			number_check = number;
 		}
@@ -304,7 +304,7 @@ unsigned cBillingAssignments::findBillingRuleIdForIP(vmIP ip, const char *digest
 	return(rslt_billing_rule_id);
 }
 
-unsigned cBillingAssignments::findBillingRuleIdForNumber(const char *number, const char *digest_username,
+unsigned cBillingAssignments::findBillingRuleIdForNumber(const char *number, vmIP ip, const char *digest_username,
 							 eBilingTypeAssignment typeAssignment,
 							 unsigned *assignment_id, CountryPrefixes *countryPrefixes) {
 	unsigned rslt_billing_rule_id = 0;
@@ -314,7 +314,7 @@ unsigned cBillingAssignments::findBillingRuleIdForNumber(const char *number, con
 	map<unsigned, cBillingAssignment*> *assignments = typeAssignment == _billing_ta_operator ? &operators : &customers;
 	for(map<unsigned, cBillingAssignment*>::iterator iter = assignments->begin(); iter != assignments->end(); iter++) {
 		if(countryPrefixes) {
-			string numberNormalized = iter->second->checkInternational.numberNormalized(number, countryPrefixes);
+			string numberNormalized = iter->second->checkInternational.numberNormalized(number, ip, countryPrefixes);
 			if(iter->second->checkNumber(numberNormalized.c_str())) {
 				rslt_billing_rule_id = iter->second->billing_rule_id;
 				rslt_assignment_id = iter->first;
@@ -1267,8 +1267,8 @@ bool cBilling::billing(time_t time, unsigned duration,
 	*operator_id = 0;
 	*customer_id = 0;
 	lock();
-	string number_src_normalized = checkInternational->numberNormalized(number_src, countryPrefixes);
-	string number_dst_normalized = checkInternational->numberNormalized(number_dst, countryPrefixes);
+	string number_src_normalized = checkInternational->numberNormalized(number_src, ip_src, countryPrefixes);
+	string number_dst_normalized = checkInternational->numberNormalized(number_dst, ip_dst, countryPrefixes);
 	if(!use_exclude_rules ||
 	   (!exclude->checkIP(ip_src, _billing_side_src) &&
 	    !exclude->checkIP(ip_dst, _billing_side_dst) &&
@@ -1315,7 +1315,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 						operator_debug->push_back("billing table '" + rules->rules[*operator_id]->name + "' selected");
 					}
 				} else {
-					*operator_id = assignments->findBillingRuleIdForNumber(number_dst, NULL,
+					*operator_id = assignments->findBillingRuleIdForNumber(number_dst, ip_dst, NULL,
 											       _billing_ta_operator,
 											       &operator_assignment_id, countryPrefixes);
 					if(*operator_id && operator_debug) {
@@ -1378,7 +1378,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 						customer_debug->push_back("billing table '" + rules->rules[*customer_id]->name + "' selected");
 					}
 				} else {
-					*customer_id = assignments->findBillingRuleIdForNumber(number_src, digest_username, 
+					*customer_id = assignments->findBillingRuleIdForNumber(number_src, ip_src, digest_username,
 											       _billing_ta_customer,
 											       &customer_assignment_id, countryPrefixes);
 					if(*customer_id && customer_debug) {
@@ -1411,7 +1411,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		if(*operator_id) {
 			rslt = true;
 			string number_dst_normalized_billing = operator_assignment_id ?
-								assignments->operators[operator_assignment_id]->checkInternational.numberNormalized(number_dst, countryPrefixes) :
+								assignments->operators[operator_assignment_id]->checkInternational.numberNormalized(number_dst, ip_dst, countryPrefixes) :
 								number_dst_normalized;
 			if(operator_debug) {
 				if(number_dst_normalized_billing != number_dst) {
@@ -1425,7 +1425,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 			CheckInternational *_checkInternational = operator_assignment_id ?
 								   &assignments->operators[operator_assignment_id]->checkInternational :
 								   checkInternational;
-			bool isLocalNumber = countryPrefixes->isLocal(number_dst, _checkInternational);
+			bool isLocalNumber = countryPrefixes->isLocal(number_dst, ip_dst, _checkInternational);
 			if(operator_debug) {
 				operator_debug->push_back("called number '" + (*number_dst ? number_dst : UNSET_STRING) + "' " + 
 							  "detected as: " + (isLocalNumber ? "local" : "international"));
@@ -1438,7 +1438,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 		if(*customer_id) {
 			rslt = true;
 			string number_dst_normalized_billing = customer_assignment_id ?
-								assignments->customers[customer_assignment_id]->checkInternational.numberNormalized(number_dst, countryPrefixes) :
+								assignments->customers[customer_assignment_id]->checkInternational.numberNormalized(number_dst, ip_dst, countryPrefixes) :
 								number_dst_normalized;
 			if(customer_debug) {
 				if(number_dst_normalized_billing != number_dst) {
@@ -1452,7 +1452,7 @@ bool cBilling::billing(time_t time, unsigned duration,
 			CheckInternational *_checkInternational = customer_assignment_id ?
 								   &assignments->customers[customer_assignment_id]->checkInternational :
 								   checkInternational;
-			bool isLocalNumber = countryPrefixes->isLocal(number_dst, _checkInternational);
+			bool isLocalNumber = countryPrefixes->isLocal(number_dst, ip_dst, _checkInternational);
 			if(customer_debug) {
 				customer_debug->push_back("called number '" + (*number_dst ? number_dst : UNSET_STRING) + "' " + 
 							  "detected as: " + (isLocalNumber ? "local" : "international"));
@@ -1482,8 +1482,8 @@ bool cBilling::saveAggregation(time_t time,
 		unlock();
 		return(false);
 	}
-	string number_src_normalized = checkInternational->numberNormalized(number_src, countryPrefixes);
-	string number_dst_normalized = checkInternational->numberNormalized(number_dst, countryPrefixes);
+	string number_src_normalized = checkInternational->numberNormalized(number_src, ip_src, countryPrefixes);
+	string number_dst_normalized = checkInternational->numberNormalized(number_dst, ip_dst, countryPrefixes);
 	if(agreg_exclude->checkIP(ip_src, _billing_side_src) ||
 	   agreg_exclude->checkIP(ip_dst, _billing_side_dst) ||
 	   agreg_exclude->checkNumber(number_src_normalized.c_str(), _billing_side_src) ||

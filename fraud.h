@@ -1245,7 +1245,7 @@ private:
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
 	void completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call);
-	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational);
+	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, vmIP ip, CheckInternational *checkInternational);
 	void completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
 	void completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
 	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call);

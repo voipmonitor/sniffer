@@ -80,7 +80,7 @@ public:
 	unsigned findBillingRuleIdForIP(vmIP ip, const char *digest_username,
 					eBilingTypeAssignment typeAssignment,
 					unsigned *assignment_id);
-	unsigned findBillingRuleIdForNumber(const char *number, const char *digest_username,
+	unsigned findBillingRuleIdForNumber(const char *number, vmIP ip, const char *digest_username,
 					    eBilingTypeAssignment typeAssignment, 
 					    unsigned *assignment_id, CountryPrefixes *countryPrefixes);
 	#endif
