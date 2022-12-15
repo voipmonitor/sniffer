@@ -3291,7 +3291,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
 			this->remote_socket->setHostPort(_snifferClientOptions->host, _snifferClientOptions->port);
 			if(!this->remote_socket->connect()) {
-				syslog(LOG_ERR, "send store query error: %s", "failed connect to cloud router");
+				syslog(LOG_ERR, "send store query error: %s", isCloud() ? "failed connect to cloud router" : "failed connect to server");
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"store\"}\r\n";

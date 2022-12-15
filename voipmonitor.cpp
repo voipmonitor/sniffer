@@ -355,6 +355,8 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
+bool opt_keycheck_remote = false;
+char opt_vmcodecs_path[1024] = "";
 bool opt_cdr_stat_values = true;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
@@ -7976,6 +7978,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("keycheck_remote", &opt_keycheck_remote));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
@@ -11898,6 +11902,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
+	}
+	if((value = ini.GetValue("general", "keycheck_remote", NULL))) {
+		opt_keycheck_remote = yesno(value);
+	}
+	if((value = ini.GetValue("general", "vmcodecs_path", NULL))) {
+		strcpy_null_term(opt_revaluation_params, value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
 		opt_cdr_stat_values = yesno(value);

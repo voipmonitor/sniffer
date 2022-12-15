@@ -281,7 +281,8 @@ public:
 		_tc_query,
 		_tc_store,
 		_tc_packetbuffer_block,
-		_tc_manager_command
+		_tc_manager_command,
+		_tc_keycheck
 	};
 public:
 	cSnifferServerConnection(cSocket *socket, cSnifferServer *server);
@@ -310,6 +311,7 @@ protected:
 	bool cp_store_check();
 	void cp_packetbuffer_block();
 	void cp_manager_command(string command);
+	void cp_keycheck();
 private:
 	bool rsaAesInit(bool writeRsltOK = true);
 	eTypeConnection convTypeConnection(string typeConnection);
