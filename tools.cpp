@@ -2479,13 +2479,20 @@ int findPIDinPSline (char *line) {
 	return(atoi(line));
 }
 
-bool binaryFilePresence(const char *cmd, const char *searchstr) {
-	FILE *cmd_pipe = popen(cmd, "r");
+bool binaryFileExists(const char *cmd) {
+	FILE *cmd_pipe = popen((string("which ") + cmd + " 2>&1").c_str(), "r");
 	char buffRslt[512];
-
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);
-	return(strstr(buffRslt, searchstr) ? false : true);
+	return(strstr(buffRslt, "which:") ? false : true);
+}
+
+bool binaryFilePresence(const char *cmd, const char *not_exist_searchstr) {
+	FILE *cmd_pipe = popen(cmd, "r");
+	char buffRslt[512];
+	fgets(buffRslt, 512, cmd_pipe);
+	pclose(cmd_pipe);
+	return(strstr(buffRslt, not_exist_searchstr) ? false : true);
 }
 
 bool isBashPresent(void) {

@@ -321,6 +321,7 @@ bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
 bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
 bool is_dir(dirent *de, const char *path);
 bool isPSrightVersion(void);
+bool binaryFileExists(const char *cmd);
 bool isBashPresent(void);
 void set_mac();
 bool existsAnotherInstance();

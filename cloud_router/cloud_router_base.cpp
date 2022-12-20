@@ -956,7 +956,7 @@ bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEnco
 	((sBlockHeader*)block)->sum = data_sum;
 	memcpy(block + sizeof(sBlockHeader), data, dataLen);
 	if(xor_key_data) {
-		delete xor_key_data;
+		delete [] xor_key_data;
 	}
 	if(rsa_data) {
 		delete [] rsa_data;

@@ -8115,8 +8115,8 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
 			this->clientSocket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			if(!this->clientSocket->connect()) {
-				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to cloud router");
-				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to cloud router";
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to server");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to server";
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"packetbuffer block\"}\r\n";

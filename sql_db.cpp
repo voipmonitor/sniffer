@@ -660,7 +660,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			}
 			if(!this->remote_socket->connect()) {
-				setLastError(0, isCloud() ? "failed connect to cloud router" : "failed connect to server", true);
+				setLastError(0, string("failed connect to ") + (isCloud() ? "cloud router" : "server"), true);
 				continue;
 			}
 			string cmd = isCloud() ?
@@ -697,7 +697,8 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			string connectResponse;
 			if(!this->remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
 				if(!this->remote_socket->isError() && connectResponse != "OK") {
-					setLastError(0, "failed response from cloud router - " + connectResponse, true);
+					setLastError(0, string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+							" - " + connectResponse, true);
 					delete this->remote_socket;
 					this->remote_socket = NULL;
 					continue;
@@ -3291,7 +3292,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
 			this->remote_socket->setHostPort(_snifferClientOptions->host, _snifferClientOptions->port);
 			if(!this->remote_socket->connect()) {
-				syslog(LOG_ERR, "send store query error: %s", isCloud() ? "failed connect to cloud router" : "failed connect to server");
+				syslog(LOG_ERR, "send store query error: %s", (string("failed connect to ") + (isCloud() ? "cloud router" : "server")).c_str());
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"store\"}\r\n";
@@ -3344,7 +3345,8 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			if(!connectOK) {
 				if(!this->remote_socket->isError()) {
 					syslog(LOG_ERR, "send store query error: %s", 
-					       ("failed response from cloud router - " + (connectError.empty() ? "unknown error" : connectError)).c_str());
+					       (string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+						" - " + (connectError.empty() ? "unknown error" : connectError)).c_str());
 					delete this->remote_socket;
 					this->remote_socket = NULL;
 					break;

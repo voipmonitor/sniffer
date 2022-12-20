@@ -3762,16 +3762,24 @@ Call::convertRawToWav() {
 					break;
 				default:
 					string cmd;
-					bool keycheck_remote = snifferClientOptions.isEnable() &&
-							       (!strcasecmp(opt_keycheck, "remote") || opt_keycheck_remote);
-					if(opt_keycheck[0] != '\0' || keycheck_remote) {
-						if(opt_vmcodecs_path[0]) {
-							cmd = opt_vmcodecs_path;
-							if(opt_vmcodecs_path[strlen(opt_vmcodecs_path) - 1] != '/') {
-								cmd += '/';
-							}
+					string vmcodecs_cmd;
+					if(opt_vmcodecs_path[0]) {
+						vmcodecs_cmd = opt_vmcodecs_path;
+						if(opt_vmcodecs_path[strlen(opt_vmcodecs_path) - 1] != '/') {
+							vmcodecs_cmd += '/';
 						}
-						cmd += string("vmcodecs ") + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
+					}
+					vmcodecs_cmd += "vmcodecs";
+					bool keycheck_remote = false;
+					if(isCloud() || snifferClientOptions.isEnable()) {
+						if(!strcasecmp(opt_keycheck, "remote") || opt_keycheck_remote) {
+							keycheck_remote = true;
+						} else {
+							keycheck_remote = opt_vmcodecs_path[0] ? file_exists(vmcodecs_cmd.c_str()) : binaryFileExists(vmcodecs_cmd.c_str());
+						}
+					}
+					if(opt_keycheck[0] != '\0' || keycheck_remote) {
+						cmd += vmcodecs_cmd + " " + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
 					} else {
 						cmd = string("voipmonitor-") + codec_decoder_name + " ";
 					}
@@ -14795,7 +14803,7 @@ string cDestroyCallsInfo::find(string fbasename, int index) {
 
 
 bool remote_keycheck(string input, string *output, string *error) {
-	if(snifferClientOptions.isEnable()) {
+	if(isCloud() || snifferClientOptions.isEnable()) {
 		static cSocketBlock *remote_socket = NULL;
 		static volatile int sync = 0;
 		__SYNC_LOCK_USLEEP(sync, 100);
@@ -14811,7 +14819,13 @@ bool remote_keycheck(string input, string *output, string *error) {
 			}
 			if(!remote_socket) {
 				remote_socket = new FILE_LINE(0) cSocketBlock("keycheck", true);
-				remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+				if(isCloud()) {
+					extern char cloud_host[256];
+					extern unsigned cloud_router_port;
+					remote_socket->setHostPort(cloud_host, cloud_router_port);
+				} else {
+					remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+				}
 				if(!remote_socket->connect()) {
 					last_error = "failed connect to server";
 					continue;
@@ -14832,7 +14846,12 @@ bool remote_keycheck(string input, string *output, string *error) {
 				remote_socket->set_rsa_pub_key(rsa_key);
 				remote_socket->generate_aes_keys();
 				JsonExport json_keys;
-				json_keys.add("password", snifferServerClientOptions.password);
+				if(isCloud()) {
+					extern char cloud_token[256];
+					json_keys.add("token", cloud_token);
+				} else {
+					json_keys.add("password", snifferServerClientOptions.password);
+				}
 				string aes_ckey, aes_ivec;
 				remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
 				json_keys.add("aes_ckey", aes_ckey);
@@ -14844,7 +14863,8 @@ bool remote_keycheck(string input, string *output, string *error) {
 				string connectResponse;
 				if(!remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
 					if(!remote_socket->isError() && connectResponse != "OK") {
-						last_error = "failed response from cloud router - " + connectResponse;
+						last_error = string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+							     " - " + connectResponse;
 						delete remote_socket;
 						remote_socket = NULL;
 						continue;
