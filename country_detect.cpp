@@ -279,6 +279,7 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
+	bool existsIpsColumns = sqlDb->existsColumn("customer_country_prefix", "ips");
 	for(int pass = 0; pass < 2; pass++) {
 		bool okTable = false;
 		if(pass == 0) {
@@ -289,8 +290,12 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 				SqlDb_row row;
 				if((row = sqlDb->fetchRow()) &&
 				   atoi(row["override_country_prefixes"].c_str())) {
+					string ipsGroupCols = existsIpsColumns ?
+						",(select group_concat(cb_ip_groups.ip) from customer_country_prefix_sensors_groups \
+						   left join cb_ip_groups on customer_country_prefix_sensors_groups.ip_group_id = cb_ip_groups.id \
+						   where customer_country_prefix_sensors_id = customer_country_prefix_sensors.id and type = 'ip_src') as ips_group " : "";
 					okTable = true;
-					sqlDb->query("select * \
+					sqlDb->query("select *" + ipsGroupCols + " \
 						      from customer_country_prefix_sensors \
 						      where advanced_mode and \
 							    sensor_id = " + row["id"]);
@@ -300,8 +305,12 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 			if(sqlDb->existsTable("customer_country_prefix") &&
 			   !sqlDb->emptyTable("customer_country_prefix") &&
 			   sqlDb->existsColumn("customer_country_prefix", "advanced_mode")) {
+				string ipsGroupCols = existsIpsColumns ?
+					",(select group_concat(cb_ip_groups.ip) from customer_country_prefix_groups \
+					   left join cb_ip_groups on customer_country_prefix_groups.ip_group_id = cb_ip_groups.id \
+					   where customer_country_prefix_id = customer_country_prefix.id and type = 'ip_src') as ips_group " : "";
 				okTable = true;
-				sqlDb->query("select * \
+				sqlDb->query("select *" + ipsGroupCols + " \
 					      from customer_country_prefix \
 					      where advanced_mode");
 			}
@@ -333,6 +342,12 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 				}
 				if(row["trim_prefix_length"].length()) {
 					recAdv->trim_prefix_length = atoi(row["trim_prefix_length"].c_str());
+				}
+				if (row["ips"].length()) {
+					recAdv->ipFilter.addWhite(row["ips"].c_str());
+				}
+				if (row["ips_group"].length()) {
+					recAdv->ipFilter.addWhite(row["ips_group"].c_str());
 				}
 				recAdv->is_international = row["international_local"] == "international";
 				recAdv->country_code = row["country_code"];
@@ -372,18 +387,25 @@ void CheckInternational::clearCustomerPrefixAdv() {
 	customer_data_advanced.clear();
 }
 
-bool CheckInternational::processCustomerDataAdvanced(const char *number, 
+bool CheckInternational::processCustomerDataAdvanced(const char *number, vmIP ip,
 						     bool *isInternational, string *country, string *numberWithoutPrefix) {
 	if(!this->customer_data_advanced.size()) {
 		return(false);
 	}
 	for(unsigned i = 0; i < this->customer_data_advanced.size(); i++) {
 		CountryPrefix_recAdv *recAdv = this->customer_data_advanced[i];
+		bool tmpFlag = false;
 		int number_length = strlen(number);
 		if(recAdv->number_regexp_cond &&
 		   recAdv->number_regexp_cond->match(number) &&
 		   (recAdv->number_length_from == -1 || number_length >= recAdv->number_length_from) &&
-		   (recAdv->number_length_to == -1 || number_length <= recAdv->number_length_to)) {
+		   (recAdv->number_length_to == -1 || number_length <= recAdv->number_length_to) &&
+		   (!ip.isSet() || recAdv->ipFilter.is_empty() || (!recAdv->ipFilter.is_empty() && recAdv->ipFilter.checkIP(ip)))) {
+			tmpFlag = true;
+		} else if (!recAdv->ipFilter.is_empty() && recAdv->ipFilter.checkIP(ip)) {
+			tmpFlag = true;
+		}
+		if (tmpFlag) {
 			if(isInternational) {
 				*isInternational = recAdv->is_international;
 			}
@@ -475,10 +497,10 @@ bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefix
 	return(false);
 }
 
-string CheckInternational::numberNormalized(const char *number, CountryPrefixes *countryPrefixes) {
+string CheckInternational::numberNormalized(const char *number, vmIP ip, CountryPrefixes *countryPrefixes) {
 	if(countryPrefixes->loadOK) {
 		string numberNormalized;
-		countryPrefixes->getCountry(number, NULL, NULL,
+		countryPrefixes->getCountry(number, ip, NULL, NULL,
 					    this, &numberNormalized);
 		return(numberNormalized);
 	} else {
@@ -515,9 +537,12 @@ bool CountryPrefixes::load(SqlDb *sqlDb) {
 		data.push_back(CountryPrefix_rec(
 			row["prefix"].c_str(),
 			row["country_code"].c_str(),
-			row["descr"].c_str()));
+			row["descr"].c_str(),
+			NULL,
+			NULL));
 	}
 	std::sort(data.begin(), data.end());
+	bool existsIpsColumns = sqlDb->existsColumn("customer_country_prefix", "ips");
 	for(int pass = 0; pass < 2; pass++) {
 		bool okTable = false;
 		if(pass == 0) {
@@ -528,8 +553,12 @@ bool CountryPrefixes::load(SqlDb *sqlDb) {
 				SqlDb_row row;
 				if((row = sqlDb->fetchRow()) &&
 				   atoi(row["override_country_prefixes"].c_str())) {
+					string ipsGroupCols = existsIpsColumns ?
+						",(select group_concat(cb_ip_groups.ip) from customer_country_prefix_sensors_groups \
+						   left join cb_ip_groups on customer_country_prefix_sensors_groups.ip_group_id = cb_ip_groups.id \
+						   where customer_country_prefix_sensors_id = customer_country_prefix_sensors.id and type = 'ip_src') as ips_group " : "";
 					okTable = true;
-					sqlDb->query("select * \
+					sqlDb->query("select *" + ipsGroupCols + " \
 						      from customer_country_prefix_sensors \
 						      where advanced_mode is null or not advanced_mode and \
 							    sensor_id = " + row["id"] + " \
@@ -541,12 +570,16 @@ bool CountryPrefixes::load(SqlDb *sqlDb) {
 			   !sqlDb->emptyTable("customer_country_prefix")) {
 				okTable = true;
 				bool existsColumnAdvancedMode = sqlDb->existsColumn("customer_country_prefix", "advanced_mode");
+				string ipsGroupCols = existsIpsColumns ?
+					",(select group_concat(cb_ip_groups.ip) from customer_country_prefix_groups \
+					   left join cb_ip_groups on customer_country_prefix_groups.ip_group_id = cb_ip_groups.id \
+					   where customer_country_prefix_id = customer_country_prefix.id and type = 'ip_src') as ips_group " : "";
 				sqlDb->query(existsColumnAdvancedMode ?
-					      "select * \
+					      "select *" + ipsGroupCols + " \
 					       from customer_country_prefix \
 					       where advanced_mode is null or not advanced_mode \
 					       order by prefix" :
-					      "select * \
+					      "select *" + ipsGroupCols + " \
 					       from customer_country_prefix \
 					       order by prefix");
 			}
@@ -559,7 +592,9 @@ bool CountryPrefixes::load(SqlDb *sqlDb) {
 				customer_data_simple.push_back(CountryPrefix_rec(
 					row["prefix"].c_str(),
 					row["country_code"].c_str(),
-					row["descr"].c_str()));
+					row["descr"].c_str(),
+					row["ips"].c_str(),
+					row["ips_group"].c_str()));
 			}
 			std::sort(customer_data_simple.begin(), customer_data_simple.end());
 			break;
@@ -576,7 +611,7 @@ void CountryPrefixes::clear() {
 	customer_data_simple.clear();
 }
 
-string CountryPrefixes::getCountry(const char *number, vector<string> *countries, string *country_prefix,
+string CountryPrefixes::getCountry(const char *number, vmIP ip, vector<string> *countries, string *country_prefix,
 				   CheckInternational *checkInternational, string *rsltNumberNormalized) {
 	if(countries) {
 		countries->clear();
@@ -591,7 +626,7 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 	bool _isInternational;
 	string _country;
 	string _numberWithoutPrefix;
-	if(checkInternational->processCustomerDataAdvanced(numberOrig.c_str(), 
+	if(checkInternational->processCustomerDataAdvanced(numberOrig.c_str(), ip,
 							    &_isInternational, &_country,  &_numberWithoutPrefix)) {
 		if(rsltNumberNormalized) {
 			*rsltNumberNormalized = _numberWithoutPrefix;
@@ -603,7 +638,7 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 			return(_country);
 		}
 		if(_isInternational) {
-			string country = this->_getCountry(_numberWithoutPrefix.c_str(), countries, country_prefix);
+			string country = this->_getCountry(_numberWithoutPrefix.c_str(), ip, countries, country_prefix);
 			return(country);
 		} else {
 			string local_country = checkInternational->getLocalCountry();
@@ -642,7 +677,7 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 			if(numberNormalizedNapa[0] != '1') {
 				numberNormalizedNapa = "1" + numberNormalizedNapa;
 			}
-			string country = this->_getCountry(numberNormalizedNapa.c_str(), countries, country_prefix);
+			string country = this->_getCountry(numberNormalizedNapa.c_str(), ip, countries, country_prefix);
 			if((!countries || countries->size() == 1) && countryIsNapa(country) &&
 			   (country == "US" || country == "CA" ? okLengthForUS_CA : okLengthForOther)) {
 				if(rsltNumberNormalized) {
@@ -666,14 +701,14 @@ string CountryPrefixes::getCountry(const char *number, vector<string> *countries
 		}
 		return(local_country);
 	}
-	string country = this->_getCountry(numberNormalized.c_str(), countries, country_prefix);
+	string country = this->_getCountry(numberNormalized.c_str(), ip, countries, country_prefix);
 	if(rsltNumberNormalized) {
 		*rsltNumberNormalized = numberNormalized;
 	}
 	return(country);
 }
 
-string CountryPrefixes::_getCountry(const char *number, vector<string> *countries, string *country_prefix) {
+string CountryPrefixes::_getCountry(const char *number, vmIP ip, vector<string> *countries, string *country_prefix) {
 	if(countries) {
 		countries->clear();
 	}
@@ -733,7 +768,23 @@ string CountryPrefixes::_getCountry(const char *number, vector<string> *countrie
 						}
 					}
 				}
-				return(rslt);
+				if (!findRecIt->ipFilter.is_empty()) {
+					if (ip.isSet() && findRecIt->ipFilter.checkIP(ip)) {
+						return(rslt);
+					}
+				} else {
+					return(rslt);
+				}
+			}
+		}
+		if (pass == 0 && ip.isSet()) {
+			for (vector<CountryPrefix_rec>::iterator it = this->customer_data_simple.begin(); it != this->customer_data_simple.end(); it++) {
+				if (!it->ipFilter.is_empty() && it->ipFilter.checkIP(ip)) {
+					if (countries) {
+						countries->push_back(it->country_code);
+					}
+					return(it->country_code);
+				}
 			}
 		}
 	}
@@ -833,21 +884,21 @@ void CountryDetect::load(SqlDb *sqlDb) {
 	checkInternational->load(sqlDb);
 }
 
-string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber) {
+string CountryDetect::getCountryByPhoneNumber(const char *phoneNumber, vmIP ip) {
 	string rslt;
 	lock();
 	if(countryPrefixes->loadOK) {
-		rslt = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+		rslt = countryPrefixes->getCountry(phoneNumber, ip, NULL, NULL, checkInternational);
 	}
 	unlock();
 	return(rslt);
 }
 
-unsigned CountryDetect::getCountryIdByPhoneNumber(const char *phoneNumber) {
+unsigned CountryDetect::getCountryIdByPhoneNumber(const char *phoneNumber, vmIP ip) {
 	unsigned rslt = 0;
 	lock();
 	if(countryPrefixes->loadOK) {
-		string rslt_str = countryPrefixes->getCountry(phoneNumber, NULL, NULL, checkInternational);
+		string rslt_str = countryPrefixes->getCountry(phoneNumber, ip, NULL, NULL, checkInternational);
 		if(!rslt_str.empty()) {
 			rslt = countryCodes->getIdCountry(rslt_str.c_str());
 		}
@@ -856,11 +907,11 @@ unsigned CountryDetect::getCountryIdByPhoneNumber(const char *phoneNumber) {
 	return(rslt);
 }
 
-bool CountryDetect::isLocalByPhoneNumber(const char *phoneNumber) {
+bool CountryDetect::isLocalByPhoneNumber(const char *phoneNumber, vmIP ip) {
 	bool rslt = false;
 	lock();
 	if(countryPrefixes->loadOK) {
-		rslt = countryPrefixes->isLocal(phoneNumber, checkInternational);
+		rslt = countryPrefixes->isLocal(phoneNumber, ip, checkInternational);
 	}
 	unlock();
 	return(rslt);
@@ -978,9 +1029,9 @@ void CountryDetectTerm() {
 	}
 }
 
-string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal) {
+string getCountryByPhoneNumber(const char *phoneNumber, vmIP ip, bool suppressStringLocal) {
 	if(countryDetect) {
-		string country = countryDetect->getCountryByPhoneNumber(phoneNumber);
+		string country = countryDetect->getCountryByPhoneNumber(phoneNumber, ip);
 		if(suppressStringLocal && country == "local") {
 			country = "";
 		}
@@ -989,16 +1040,16 @@ string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal
 	return("");
 }
 
-unsigned getCountryIdByPhoneNumber(const char *phoneNumber) {
+unsigned getCountryIdByPhoneNumber(const char *phoneNumber, vmIP ip) {
 	if(countryDetect) {
-		return(countryDetect->getCountryIdByPhoneNumber(phoneNumber));
+		return(countryDetect->getCountryIdByPhoneNumber(phoneNumber, ip));
 	}
 	return(0);
 }
 
-bool isLocalByPhoneNumber(const char *phoneNumber) {
+bool isLocalByPhoneNumber(const char *phoneNumber, vmIP ip) {
 	if(countryDetect) {
-		return(countryDetect->isLocalByPhoneNumber(phoneNumber));
+		return(countryDetect->isLocalByPhoneNumber(phoneNumber, ip));
 	}
 	return(false);
 }
