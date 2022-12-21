@@ -3137,11 +3137,12 @@ void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, vo
 				write(fd, "error\n", 6);
 			}
 		}
-	} else if(strstr((char*)*out, "OK")) {
+	}
+	if(strcasestr((char*)*out, "OK license")) {
 		((s_vmcodecs_callback*)data)->ok = true;
-	} else if(strstr((char*)*out, "Invalid")) {
+	} else if(strcasestr((char*)*out, "Invalid")) {
 		((s_vmcodecs_callback*)data)->invalid = true;
-	} else if(strstr((char*)*out, "Error")) {
+	} else if(strcasestr((char*)*out, "Error")) {
 		((s_vmcodecs_callback*)data)->error = true;
 	}
 }
@@ -3813,10 +3814,12 @@ Call::convertRawToWav() {
 									error = "error when checking license";
 								}
 								syslog(LOG_ERR, "vmcodecs: error[%s] - try next after 5s", error.c_str());
-								sleep(5);
+								for(int i = 0; i < 5 && !is_terminating(); i++) {
+									sleep(1);
+								}
 							}
 						}
-						while(callback_data.error);
+						while(callback_data.error && !is_terminating());
 					} else {
 						system(cmd.c_str());
 					}
