@@ -11916,7 +11916,7 @@ int eval_config(string inistr) {
 		opt_keycheck_remote = yesno(value);
 	}
 	if((value = ini.GetValue("general", "vmcodecs_path", NULL))) {
-		strcpy_null_term(opt_revaluation_params, value);
+		strcpy_null_term(opt_vmcodecs_path, value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
 		opt_cdr_stat_values = yesno(value);
