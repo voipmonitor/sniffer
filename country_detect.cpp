@@ -753,34 +753,46 @@ string CountryPrefixes::_getCountry(const char *number, vmIP ip, vector<string> 
 			}
 			if(okFind &&
 			   !strncmp(findRecIt->number.c_str(), number, findRecIt->number.length())) {
-				string rslt = findRecIt->country_code;
-				string rsltNumber = findRecIt->number;
-				if(country_prefix) {
-					*country_prefix = findRecIt->number;
-				}
-				if(countries) {
-					countries->push_back(rslt);
-					while(findRecIt != data->begin()) {
-						--findRecIt;
-						if(rsltNumber == findRecIt->number) {
-							countries->push_back(findRecIt->country_code);
-						} else {
-							break;
-						}
-					}
-				}
+				string rslt, rsltNumber;
 				if (!findRecIt->ipFilter.is_empty()) {
 					if (ip.isSet() && findRecIt->ipFilter.checkIP(ip)) {
-						return(rslt);
+						rslt = findRecIt->country_code;
+						rsltNumber = findRecIt->number;
 					}
 				} else {
+					rslt = findRecIt->country_code;
+					rsltNumber = findRecIt->number;
+				}
+				if (!rslt.empty()) {
+					if(country_prefix) {
+						*country_prefix = findRecIt->number;
+					}
+					if(countries) {
+						countries->push_back(rslt);
+						while(findRecIt != data->begin()) {
+							--findRecIt;
+							if(rsltNumber == findRecIt->number) {
+								if (!findRecIt->ipFilter.is_empty()) {
+									if (ip.isSet() && findRecIt->ipFilter.checkIP(ip)) {
+										countries->push_back(findRecIt->country_code);
+									} else {
+										break;
+									}
+								} else {
+									countries->push_back(findRecIt->country_code);
+								}
+							} else {
+								break;
+							}
+						}
+					}
 					return(rslt);
 				}
 			}
 		}
 		if (pass == 0 && ip.isSet()) {
 			for (vector<CountryPrefix_rec>::iterator it = this->customer_data_simple.begin(); it != this->customer_data_simple.end(); it++) {
-				if (!it->ipFilter.is_empty() && it->ipFilter.checkIP(ip)) {
+				if (it->number.empty() && !it->ipFilter.is_empty() && it->ipFilter.checkIP(ip)) {
 					if (countries) {
 						countries->push_back(it->country_code);
 					}
