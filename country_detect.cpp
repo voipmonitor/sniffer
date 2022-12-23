@@ -279,13 +279,13 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 		sqlDb = createSqlObject();
 		_createSqlObject = true;
 	}
-	bool existsIpsColumns = sqlDb->existsColumn("customer_country_prefix", "ips");
 	for(int pass = 0; pass < 2; pass++) {
 		bool okTable = false;
 		if(pass == 0) {
 			if(opt_id_sensor > 0 &&
 			   sqlDb->existsTable("sensors") &&
 			   sqlDb->existsTable("customer_country_prefix_sensors")) {
+				bool existsIpsColumns = sqlDb->existsColumn("customer_country_prefix_sensors", "ips");
 				sqlDb->query("select * from sensors where id_sensor = " + intToString(opt_id_sensor));
 				SqlDb_row row;
 				if((row = sqlDb->fetchRow()) &&
@@ -305,6 +305,7 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 			if(sqlDb->existsTable("customer_country_prefix") &&
 			   !sqlDb->emptyTable("customer_country_prefix") &&
 			   sqlDb->existsColumn("customer_country_prefix", "advanced_mode")) {
+				bool existsIpsColumns = sqlDb->existsColumn("customer_country_prefix", "ips");
 				string ipsGroupCols = existsIpsColumns ?
 					",(select group_concat(cb_ip_groups.ip) from customer_country_prefix_groups \
 					   left join cb_ip_groups on customer_country_prefix_groups.ip_group_id = cb_ip_groups.id \

@@ -5941,7 +5941,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
 		"KEY `fbasename` (`fbasename`),\
-		 KEY `digestusername` (`digestusername`),\
+		 KEY `digest_username` (`digest_username`),\
 		 KEY `match_header` (`match_header`)" + 
 		(opt_conference_processing ?
 			",KEY `conference_referred_by` (`conference_referred_by`)" :
