@@ -83,6 +83,16 @@ public:
 	void addWhite(const char *ip) {
 		ipData.addWhite(ip);
 	}
+	void addWhite(const char *table, const char *column, const char * idstr) {
+		vector<string> ids = split(idstr, ',');
+		for(unsigned i = 0; i < ids.size(); i++) {
+			addWhite(table, column, atol(ids[i].c_str()));
+		}
+	}
+	void addWhite(const char *table, const char *column, u_int32_t id) {
+		setCodebook(table, column);
+		ipData.addWhite(getCodebookValue(id).c_str());
+	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!ipData.checkIP(getField_ip(rec), findInBlackList)) {
 			return(false);
