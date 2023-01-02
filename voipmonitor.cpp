@@ -1043,6 +1043,8 @@ vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
 bool opt_sip_only_tcp = false;
 map<vmIPport, string> ssl_ipport;
+map<vmIPmask_port, string> ssl_netport;
+bool opt_ssl_ipport_reverse_enable;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
@@ -7470,7 +7472,8 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
 			->addValues("old:10|only:2"));
-		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
+		addConfigItem(new FILE_LINE(0) cConfigItem_net_port_str_map("ssl_ipport", &ssl_ipport, &ssl_netport));
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ipport_reverse_enable", &opt_ssl_ipport_reverse_enable));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
@@ -10069,23 +10072,51 @@ bool check_complete_parameters() {
 
 // OBSOLETE
 
-void parse_config_item(const char *config, map<vmIPport, string> *item) {
+void parse_config_item(const char *config, map<vmIPport, string> *item_ip, map<vmIPmask_port, string> *item_net) {
 	vmIP ip;
-	const char *port_str_str;
-	if(ip.setFromString(config, &port_str_str)) {
-		while(*port_str_str == ' ' || *port_str_str == '\t' || *port_str_str == ':') {
-			++port_str_str;
+	const char *after_ip_str;
+	if(ip.setFromString(config, &after_ip_str)) {
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
 		}
-		vector<string> port_str_array = split(port_str_str, " ", true);
-		if(port_str_array.size() >= 1) {
-			unsigned port = atoi(port_str_array[0].c_str());
-			string str;
-			if(port_str_array.size() >= 2) {
-				str = port_str_array[1];
+		u_int16_t mask = 0;
+		if(*after_ip_str == '/') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
 			}
-			if(ip.isSet() && port) {
-				(*item)[vmIPport(ip, port)] = str;
-				// cout << ip.getString() << " : " << port << " " << str << endl;
+			if(isdigit(*after_ip_str)) {
+				mask = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		unsigned port = 0;
+		if(*after_ip_str == ':') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
+			}
+			if(isdigit(*after_ip_str)) {
+				port = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		string str;
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
+		}
+		if(*after_ip_str) {
+			str = trim_str(after_ip_str);
+		}
+		if(ip.isSet() && port > 0) {
+			if(!mask) {
+				(*item_ip)[vmIPport(ip, port)] = str;
+			} else {
+				(*item_net)[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
 			}
 		}
 	}
@@ -10219,7 +10250,7 @@ int eval_config(string inistr) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
 		for (; i != values.end(); ++i) {
-			parse_config_item(i->pItem, &ssl_ipport);
+			parse_config_item(i->pItem, &ssl_ipport, &ssl_netport);
 		}
 	}
 	
@@ -12160,6 +12191,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl", NULL))) {
 		opt_enable_ssl = !strcmp(value, "old") ? 10 : 
 				 strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "ssl_ipport_reverse_enable", NULL))) {
+		opt_ssl_ipport_reverse_enable = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
 		opt_ssl_link_timeout = atol(value);

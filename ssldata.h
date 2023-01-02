@@ -92,7 +92,7 @@ private:
 bool checkOkSslData(u_char *data, u_int32_t datalen);
 u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen);
 bool checkOkSslHeader(u_char *data, u_int32_t datalen);
-bool isSslIpPort(vmIP ip, vmPort port);
+int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 
 
 #endif

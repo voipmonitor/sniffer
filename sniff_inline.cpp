@@ -31,7 +31,7 @@
 #endif
 
 
-extern bool isSslIpPort(vmIP ip, vmPort port);
+extern int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 
 
 extern int opt_udpfrag;
@@ -758,12 +758,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
 				if ((sipportmatrix[ppd->header_tcp->get_source()] || sipportmatrix[ppd->header_tcp->get_dest()]) ||
 				    (opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()]) &&
-				     (tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(ppd->header_ip->get_daddr()))) ||
+				     tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr(), ppd->header_ip->get_daddr())) ||
 				    (opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()]) &&
-				     (tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_daddr()))) ||
+				     tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr(), ppd->header_ip->get_daddr())) ||
 				    (opt_enable_ssl && 
-				     (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) ||
-				      isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) ||
+				     isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())) ||
 				    (opt_skinny && (skinnyportmatrix[ppd->header_tcp->get_source()] || skinnyportmatrix[ppd->header_tcp->get_dest()])) ||
 				    (opt_mgcp && 
 				     ((unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_gateway || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_gateway ||
@@ -836,7 +835,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
 		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
 		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->flags.tcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
+		   !(ppd->flags.tcp && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;

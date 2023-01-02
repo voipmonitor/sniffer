@@ -1109,6 +1109,12 @@ struct vmIPmask : vmIPmask_ {
 	inline bool operator < (const vmIPmask& other) const { 
 		return(this->ip != other.ip ? this->ip < other.ip : this->mask < other.mask); 
 	}
+	inline bool operator > (const vmIPmask& other) const { 
+		return(this->ip != other.ip ? this->ip > other.ip : this->mask > other.mask); 
+	}
+	inline bool operator == (const vmIPmask& other) const { 
+		return(this->ip == other.ip && this->mask == other.mask); 
+	}
 };
 
 struct vmIPmask_order2 : vmIPmask_ {
@@ -1123,6 +1129,32 @@ struct vmIPmask_order2 : vmIPmask_ {
 	inline bool operator < (const vmIPmask_order2& other) const { 
 		return(this->mask != other.mask ? this->mask < other.mask : this->ip < other.ip); 
 	}
+};
+
+struct vmIPmask_port {
+	inline vmIPmask_port() {
+	}
+	inline vmIPmask_port(vmIPmask ip_mask, vmPort port) {
+		this->ip_mask = ip_mask;
+		this->port = port;
+	}
+	inline bool operator == (const vmIPmask_port& other) const {
+		return(this->port == other.port &&
+		       this->ip_mask == other.ip_mask);
+	}
+	inline bool operator < (const vmIPmask_port& other) const { 
+		return(this->ip_mask < other.ip_mask ||
+		       (this->ip_mask == other.ip_mask && this->port < other.port));
+	}
+	inline bool operator > (const vmIPmask_port& other) const { 
+		return(this->ip_mask > other.ip_mask ||
+		       (this->ip_mask == other.ip_mask && this->port > other.port));
+	}
+	std::string getString(bool ipv6_in_brackets = false) {
+		return(ip_mask.getString(ipv6_in_brackets) + ":" + port.getString());
+	}
+	vmIPmask ip_mask;
+	vmPort port;
 };
 
 

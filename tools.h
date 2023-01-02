@@ -516,6 +516,9 @@ int log10int(long int v);
 
 bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty);
 bool check_ip(vmIP ip, vmIP net, unsigned mask_length);
+bool check_ip(vmIP ip, vmIPmask net) {
+	return(check_ip(ip, net.ip, net.mask));
+}
 inline bool ip_is_localhost(vmIP ip) { return(ip.isLocalhost()); }
 string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);

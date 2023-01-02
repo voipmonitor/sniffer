@@ -41,7 +41,7 @@ public:
 		_se_load_key_failed
 	};
 public:
-	cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password = "");
+	cSslDsslSession(vmIP ips, vmPort ports, string keyfile, string password = "");
 	~cSslDsslSession();
 	void setClientIpPort(vmIP ipc, vmPort portc);
 	void init();
@@ -65,8 +65,8 @@ private:
 	bool restore_session_data(const char *data);
 	void store_session(class cSslDsslSessions *sessions, struct timeval ts);
 private:
-	vmIP ip;
-	vmPort port;
+	vmIP ips;
+	vmPort ports;
 	string keyfile;
 	string password;
 	vmIP ipc;
@@ -170,7 +170,7 @@ public:
 	void keyErase(u_char *client_random);
 	void keysCleanup();
 private:
-	cSslDsslSession *addSession(vmIP ip, vmPort port);
+	cSslDsslSession *addSession(vmIP ips, vmPort ports, string keyfile);
 	NM_PacketDir checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 	void init();
 	void term();

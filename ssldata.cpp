@@ -23,6 +23,8 @@ extern void decrypt_ssl(vector<string> *rslt_decrypt, char *data, unsigned int d
 #endif
 
 extern map<vmIPport, string> ssl_ipport;
+extern map<vmIPmask_port, string> ssl_netport;
+extern bool opt_ssl_ipport_reverse_enable;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 
 
@@ -525,7 +527,100 @@ bool checkOkSslHeader(u_char *data, u_int32_t datalen) {
 }
 
 
-bool isSslIpPort(vmIP ip, vmPort port) {
-	map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
-	return(iter != ssl_ipport.end());
+int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	if(ssl_ipport.size()) {
+		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
+			return(1);
+		}
+		if(ssl_ipport.find(vmIPport(sip, sport)) != ssl_ipport.end()) {
+			return(2);
+		}
+		if(opt_ssl_ipport_reverse_enable) {
+			if(ssl_ipport.find(vmIPport(sip, dport)) != ssl_ipport.end()) {
+				return(1);
+			}
+			if(ssl_ipport.find(vmIPport(dip, sport)) != ssl_ipport.end()) {
+				return(2);
+			}
+		}
+	}
+	if(ssl_netport.size()) {
+		for(map<vmIPmask_port, string>::iterator iter = ssl_netport.begin(); iter != ssl_netport.end(); iter++) {
+			if(dport == iter->first.port) {
+				if(check_ip(dip, iter->first.ip_mask) ||
+				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					return(1);
+				}
+			} else if(sport == iter->first.port) {
+				if(check_ip(sip, iter->first.ip_mask) ||
+				   (opt_ssl_ipport_reverse_enable && check_ip(dip, iter->first.ip_mask))) {
+					return(2);
+				}
+			}
+		}
+	}
+	return(0);
+}
+
+int isSslIpPort_server_side(vmIP sip, vmPort /*sport*/, vmIP dip, vmPort dport) {
+	if(ssl_ipport.size()) {
+		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
+			return(1);
+		}
+		if(opt_ssl_ipport_reverse_enable) {
+			if(ssl_ipport.find(vmIPport(sip, dport)) != ssl_ipport.end()) {
+				return(1);
+			}
+		}
+	}
+	if(ssl_netport.size()) {
+		for(map<vmIPmask_port, string>::iterator iter = ssl_netport.begin(); iter != ssl_netport.end(); iter++) {
+			if(dport == iter->first.port) {
+				if(check_ip(dip, iter->first.ip_mask) ||
+				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					return(1);
+				}
+			}
+		}
+	}
+	return(0);
+}
+
+string sslIpPort_get_keyfile(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	if(ssl_ipport.size()) {
+		map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(dip, dport));
+		if(iter != ssl_ipport.end()) {
+			return(iter->second);
+		}
+		iter = ssl_ipport.find(vmIPport(sip, sport));
+		if(iter != ssl_ipport.end()) {
+			return(iter->second);
+		}
+		if(opt_ssl_ipport_reverse_enable) {
+			iter = ssl_ipport.find(vmIPport(sip, dport));
+			if(iter != ssl_ipport.end()) {
+				return(iter->second);
+			}
+			iter = ssl_ipport.find(vmIPport(dip, sport));
+			if(iter != ssl_ipport.end()) {
+				return(iter->second);
+			}
+		}
+	}
+	if(ssl_netport.size()) {
+		for(map<vmIPmask_port, string>::iterator iter = ssl_netport.begin(); iter != ssl_netport.end(); iter++) {
+			if(dport == iter->first.port) {
+				if(check_ip(dip, iter->first.ip_mask) ||
+				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					return(iter->second);
+				}
+			} else if(sport == iter->first.port) {
+				if(check_ip(sip, iter->first.ip_mask) ||
+				   (opt_ssl_ipport_reverse_enable && check_ip(dip, iter->first.ip_mask))) {
+					return(iter->second);
+				}
+			}
+		}
+	}
+	return("");
 }

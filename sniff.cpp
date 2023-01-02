@@ -7959,8 +7959,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			if(opt_enable_ssl && 
 			   ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_TCP &&
-			   (isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source()) ||
-			    isSslIpPort(ppd.header_ip->get_daddr(), ppd.header_udp->get_dest()))) {
+			   isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source(), ppd.header_ip->get_daddr(), ppd.header_udp->get_dest())) {
 				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
 							   NULL, 0, false,
 							   0, handle_dlt, opt_id_sensor, 0, ppd.pid);

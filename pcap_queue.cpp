@@ -8744,20 +8744,19 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 
 	if(header_ip && header_ip_protocol == IPPROTO_TCP) {
 		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
-		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
+		   tcpReassemblyHttp->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_webrtc && (webrtcportmatrix[sport] || webrtcportmatrix[dport]) &&
-			  (tcpReassemblyWebrtc->check_ip(header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(header_ip->get_daddr()))) {
+			  tcpReassemblyWebrtc->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_ssl && 
-			  (isSslIpPort(header_ip->get_saddr(), sport) ||
-			   isSslIpPort(header_ip->get_daddr(), dport))) {
+			  isSslIpPort(header_ip->get_saddr(), sport, header_ip->get_daddr(), dport)) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
