@@ -78,7 +78,8 @@ bool cSslDsslSession::initServer() {
 		eServerErrors _server_error = _se_na;
 		u_int64_t actTime = getTimeMS();
 		bool enableSyslog = actTime - 1000 > lastTimeSyslog;
-		for(unsigned i = 0; i < keyfiles.size(); i++) {
+		unsigned i;
+		for(i = 0; i < keyfiles.size(); i++) {
 			FILE* file_keyfile = fopen(keyfiles[i].c_str(), "r");
 			if(!file_keyfile) {
 				_server_error = _se_keyfile_not_exists;
@@ -113,7 +114,8 @@ bool cSslDsslSession::initServer() {
 		this->server_info->pkeys = new FILE_LINE(0) EVP_PKEY*[pkeys.size()];
 		this->server_info->pkeys_count = pkeys.size();
 		this->server_info->pkeys_index_ok = 0;
-		for(unsigned i = 0; i < pkeys.size(); i++) {
+		unsigned i;
+		for(i = 0; i < pkeys.size(); i++) {
 			this->server_info->pkeys[i] = pkeys[i];
 		}
 	} else {
@@ -147,7 +149,8 @@ bool cSslDsslSession::initSession() {
 void cSslDsslSession::termServer() {
 	if(server_info) {
 		if(server_info->pkeys) {
-			for(unsigned i = 0; i < server_info->pkeys_count; i++) {
+			unsigned i;
+			for(i = 0; i < server_info->pkeys_count; i++) {
 				EVP_PKEY_free(server_info->pkeys[i]);
 			}
 			delete [] server_info->pkeys;
@@ -196,7 +199,8 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 				return;
 			}
 		}
-		for(unsigned pass = 1; pass <= (init || reinit ? 1 : 2); pass++) {
+		unsigned pass;
+		for(pass = 1; pass <= (init || reinit ? 1 : 2); pass++) {
 			if(pass == 2) {
 				if(this->isClientHello(data, datalen, dir)) {
 					this->term();
@@ -423,7 +427,8 @@ cSslDsslSessionKeys::sSessionKeyType cSslDsslSessionKeys::session_key_types[] = 
 cSslDsslSessionKeys::cSslDsslSessionKeys() {
 	_sync_map = 0;
 	last_cleanup_at = 0;
-	for(unsigned i = 0; session_key_types[i].str; i++) {
+	unsigned i;
+	for(i = 0; session_key_types[i].str; i++) {
 		session_key_types[i].length = strlen(session_key_types[i].str);
 	}
 }
@@ -644,7 +649,8 @@ void cSslDsslSessionKeys::clear() {
 }
 
 cSslDsslSessionKeys::eSessionKeyType cSslDsslSessionKeys::strToEnumType(const char *type) {
-	for(unsigned i = 0; session_key_types[i].str; i++) {
+	unsigned i;
+	for(i = 0; session_key_types[i].str; i++) {
 		if(!strcasecmp(session_key_types[i].str, type)) {
 			return(session_key_types[i].type);
 		}
@@ -653,7 +659,8 @@ cSslDsslSessionKeys::eSessionKeyType cSslDsslSessionKeys::strToEnumType(const ch
 }
 
 const char *cSslDsslSessionKeys::enumToStrType(eSessionKeyType type) {
-	for(unsigned i = 0; session_key_types[i].str; i++) {
+	unsigned i;
+	for(i = 0; session_key_types[i].str; i++) {
 		if(session_key_types[i].type ==  type) {
 			return(session_key_types[i].str);
 		}
@@ -800,7 +807,8 @@ bool cSslDsslSessions::keySet(const char *data, unsigned data_length) {
 	string client_random;
 	string key;
 	unsigned offset = 0;
-	for(unsigned i = 0; cSslDsslSessionKeys::session_key_types[i].str; i++) {
+	unsigned i;
+	for(i = 0; cSslDsslSessionKeys::session_key_types[i].str; i++) {
 		char *type_begin = strncasestr((char*)data, cSslDsslSessionKeys::session_key_types[i].str, data_length);
 		if(type_begin) {
 			type = cSslDsslSessionKeys::session_key_types[i].str;

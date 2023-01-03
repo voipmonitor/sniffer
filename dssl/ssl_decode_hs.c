@@ -648,7 +648,8 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 		if( rc == DSSL_RC_OK )
 		{
 			sess->ssl_si->pkeys_index_ok = 0;
-			for(uint8_t pkeys_index = 0; pkeys_index < sess->ssl_si->pkeys_count; pkeys_index++)
+			uint8_t pkeys_index;
+			for(pkeys_index = 0; pkeys_index < sess->ssl_si->pkeys_count; pkeys_index++)
 			{
 				if( X509_check_private_key(x, sess->ssl_si->pkeys[pkeys_index]) )
 				{
