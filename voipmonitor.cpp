@@ -8451,6 +8451,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
+	    {"hep-client-emulation", 1, 0, 407},
 	    {"ws-calls", 1, 0, 402},
 	    {"extract_payload", 1, 0, 403},
 	    {"extract_rtp_payload", 1, 0, 404},
@@ -9161,6 +9162,24 @@ void get_command_line_arguments() {
 					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
 					u_int64_t destination_port = atoi(parameters[4].c_str());
 					IPFix_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port);
+				}
+				exit(0);
+				}
+				break;
+			case 407:
+				{
+				vector<string> parameters = explode(optarg, ';');
+				if(parameters.size() >= 5) {
+					string pcap = parameters[0];
+					vmIP client_ip = str_2_vmIP(parameters[1].c_str()); 
+					vmIP server_ip = str_2_vmIP(parameters[2].c_str()); 
+					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
+					u_int64_t destination_port = atoi(parameters[4].c_str());
+					bool udp = false;
+					if(parameters.size() >= 6) {
+						udp = !strcasecmp(parameters[5].c_str(), "udp");
+					}
+					HEP_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port, udp);
 				}
 				exit(0);
 				}
