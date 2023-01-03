@@ -3376,7 +3376,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	if((debug_limit_counter && debug_counter > debug_limit_counter) ||
 	   !(type == ssl || 
 	     type == sip ||
-	     this->check_ip(header_ip->get_saddr()) || this->check_ip(header_ip->get_daddr()))) {
+	     this->check_ip(header_ip->get_saddr(), header_ip->get_daddr()))) {
 		if(block_store && block_store_locked) {
 			block_store->unlock_packet(block_store_index);
 		}
@@ -3642,7 +3642,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 	} else {
 		if(!this->enableCrazySequence &&
 		   header_tcp.flags_bit.syn && !header_tcp.flags_bit.ack) {
-			if(this->check_port(header_tcp.get_dest(), header_ip->get_daddr())) {
+			if(this->check_dest_ip_port(header_ip->get_saddr(), header_tcp.get_source(), header_ip->get_daddr(), header_tcp.get_dest())) {
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					(*_debug_stream) <<
 						fixed
@@ -3662,7 +3662,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				create_new_link = true;
 			}
 		} else if(!this->enableCrazySequence && this->enableWildLink) {
-			if(!(type == ssl && !this->check_port(header_tcp.get_dest(), header_ip->get_daddr()))) {
+			if(!(type == ssl && !this->check_dest_ip_port(header_ip->get_saddr(), header_tcp.get_source(), header_ip->get_daddr(), header_tcp.get_dest()))) {
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					(*_debug_stream)
 						<< fixed

@@ -14,6 +14,9 @@
 #include "tools_global.h"
 
 
+extern int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
+extern int isSslIpPort_server_side(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
+
 extern int opt_tcpreassembly_thread;
 
 
@@ -1082,29 +1085,26 @@ public:
 	void preparePacketPstatData();
 	double getPacketCpuUsagePerc(bool preparePstatData = false);
 	string getCpuUsagePerc();
-	bool check_ip(vmIP ip, vmPort port = 0) {
+	bool check_ip(vmIP sip, vmIP dip, vmPort sport = 0, vmPort dport = 0) {
 		if(type == http || type == webrtc) {
 			extern vector<vmIP> httpip;
 			extern vector<vmIPmask> httpnet;
 			extern vector<vmIP> webrtcip;
 			extern vector<vmIPmask> webrtcnet;
-			return(check_ip_in(ip, (type == http ? &httpip : &webrtcip), (type == http ? &httpnet : &webrtcnet), true));
+			return(check_ip_in(sip, (type == http ? &httpip : &webrtcip), (type == http ? &httpnet : &webrtcnet), true) ||
+			       check_ip_in(dip, (type == http ? &httpip : &webrtcip), (type == http ? &httpnet : &webrtcnet), true));
 		} else if(type == ssl) {
-			extern map<vmIPport, string> ssl_ipport;
-			map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
-			return(iter != ssl_ipport.end());
+			return(isSslIpPort(sip, sport, dip, dport));
 		}
 		return(false);
 	}
-	bool check_port(vmPort port, vmIP ip = 0) {
+	bool check_dest_ip_port(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 		if(type == http || type == webrtc) {
 			extern char *httpportmatrix;
 			extern char *webrtcportmatrix;
-			return(type == http ? httpportmatrix[port] : webrtcportmatrix[port]);
+			return(type == http ? httpportmatrix[dport] : webrtcportmatrix[dport]);
 		} else if(type == ssl) {
-			extern map<vmIPport, string> ssl_ipport;
-			map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(ip, port));
-			return(iter != ssl_ipport.end());
+			return(isSslIpPort_server_side(sip, sport, dip, dport));
 		}
 		return(false);
 	}

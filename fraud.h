@@ -478,6 +478,7 @@ protected:
 	virtual bool defByIP() { return(false); }
 	virtual bool defTypeBy() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
+	virtual bool defChangeIP() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
 	virtual bool defDestPrefixes() { return(false); }
@@ -509,6 +510,7 @@ protected:
 	eTypeBy typeBy;
 	eTypeByIP typeByIP;
 	eTypeLocation typeChangeLocation;
+	bool changeIP;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
 	vector<string> destPrefixes;
@@ -871,6 +873,7 @@ protected:
 	bool defUseDomain() { return(true); }
 	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
+	bool defChangeIP() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 	bool defOnlyConnected() { return(true); }
 };
@@ -887,6 +890,7 @@ protected:
 	bool defUseDomain() { return(true); }
 	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
+	bool defChangeIP() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 };
 
@@ -1241,7 +1245,7 @@ private:
 	void completeCallInfo(sFraudCallInfo *callInfo, Call *call, 
 			      sFraudCallInfo::eTypeCallInfo typeCallInfo, u_int64_t at);
 	void completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call *call);
-	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational);
+	void completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, vmIP ip, CheckInternational *checkInternational);
 	void completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational);
 	void completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational);
 	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call);

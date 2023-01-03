@@ -1127,21 +1127,8 @@ void CleanSpool::cleanThread() {
 }
 
 void CleanSpool::cleanThreadProcess() {
-	if(!opt_cleanspool_use_files) {
-		updateSpoolDataDir();
-	}
-	if(opt_cleanspool_use_files &&
-	   (do_convert_filesindex_flag ||
-	    !check_exists_act_records_in_files() ||
-	    !check_exists_act_files_in_filesindex())) {
-		const char *reason = do_convert_filesindex_flag ? 
-				      (do_convert_filesindex_reason ? do_convert_filesindex_reason : "set do_convert_filesindex_flag") :
-				      "call from clean_spooldir - not exists act records in files and act files in filesindex";
-		do_convert_filesindex_flag = false;
-		do_convert_filesindex_reason = NULL;
-		reindex_all(reason);
-	}
 	bool timeOk = false;
+	bool updatedSpoolData = false;
 	if(opt_other.cleanspool_enable_run_hour_from >= 0 &&
 	   opt_other.cleanspool_enable_run_hour_to >= 0) {
 		time_t now;
@@ -1160,6 +1147,10 @@ void CleanSpool::cleanThreadProcess() {
 		}
 	} else {
 		timeOk = true;
+	}
+	if(timeOk) {
+		updateSpoolDataForCleanThreadProcess();
+		updatedSpoolData = true;
 	}
 	bool criticalLowSpace = false;
 	long int maxpoolsize = 0;
@@ -1208,6 +1199,10 @@ void CleanSpool::cleanThreadProcess() {
 				}
 				delete sqlDb;
 			} else {
+				if(!updatedSpoolData) {
+					updateSpoolDataForCleanThreadProcess();
+					updatedSpoolData = true;
+				}
 				usedSizeGB = (double)spoolData.getSumSize() / (1024 * 1024 * 1024);
 			}
 			maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_other.autocleanspoolminpercent / 100, (double)opt_other.autocleanmingb)) * 1024;
@@ -1249,6 +1244,23 @@ void CleanSpool::cleanThreadProcess() {
 		clean_spooldir_run();
 		maxpoolsize_set = 0;
 		critical_low_space = false;
+	}
+}
+
+void CleanSpool::updateSpoolDataForCleanThreadProcess() {
+	if(!opt_cleanspool_use_files) {
+		updateSpoolDataDir();
+	}
+	if(opt_cleanspool_use_files &&
+	   (do_convert_filesindex_flag ||
+	    !check_exists_act_records_in_files() ||
+	    !check_exists_act_files_in_filesindex())) {
+		const char *reason = do_convert_filesindex_flag ? 
+				      (do_convert_filesindex_reason ? do_convert_filesindex_reason : "set do_convert_filesindex_flag") :
+				      "call from clean_spooldir - not exists act records in files and act files in filesindex";
+		do_convert_filesindex_flag = false;
+		do_convert_filesindex_reason = NULL;
+		reindex_all(reason);
 	}
 }
 

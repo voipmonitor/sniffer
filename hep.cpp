@@ -77,9 +77,9 @@ unsigned cHEP_ProcessData::processHeps(u_char *data, size_t dataLen) {
 
 void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 	sHEP_Data hepData;
-	processChunks(data+ 6, dataLen - 6, &hepData);
+	processChunks(data + 6, dataLen - 6, &hepData);
 	if(sverb.hep3) {
-		cout << " *** " << endl
+		cout << " * HEP3 * " << endl
 		     << hepData.dump() << endl;
 	}
 	if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
@@ -91,11 +91,25 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 		ether_header header_eth;
 		memset(&header_eth, 0, sizeof(header_eth));
 		header_eth.ether_type = htons(ETHERTYPE_IP);
+		string payload_str;
+		u_char *payload_data = hepData.captured_packet_payload.data();
+		unsigned payload_len = hepData.captured_packet_payload.data_len();
+		if(hepData.protocol_type == _hep_prot_SIP && 
+		   payload_len > 0 && payload_data[0] == '{' && payload_data[payload_len - 1] == '}') {
+			JsonItem jsonData;
+			jsonData.parse((char*)payload_data);
+			string payload_value = jsonData.getValue("payload");
+			if(!payload_value.empty()) {
+				payload_str = payload_value;
+				payload_data = (u_char*)payload_str.c_str();
+				payload_len = payload_str.length();
+			}
+		}
 		if(hepData.ip_protocol_id == IPPROTO_TCP) {
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
 			createSimpleTcpDataPacket(sizeof(header_eth), &tcpHeader,  &tcpPacket,
-						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(), 0,
+						  (u_char*)&header_eth, payload_data, payload_len, 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  0, 0, (hepData.set_flags & (1ull << _hep_chunk_tcp_flag)) ? hepData.tcp_flag : 0,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds, global_pcap_dlink);
@@ -113,7 +127,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				0, 
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
-				hepData.captured_packet_payload.data_len(), dataOffset,
+				payload_len, dataOffset,
 				global_pcap_handle_index, tcpHeader, tcpPacket, true, 
 				pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
 				NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
@@ -122,7 +136,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 			pcap_pkthdr *udpHeader;
 			u_char *udpPacket;
 			createSimpleUdpDataPacket(sizeof(header_eth), &udpHeader,  &udpPacket,
-						  (u_char*)&header_eth, hepData.captured_packet_payload.data(), hepData.captured_packet_payload.data_len(), 0,
+						  (u_char*)&header_eth, payload_data, payload_len, 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  hepData.timestamp_seconds, hepData.timestamp_microseconds);
 			unsigned iphdrSize = ((iphdr2*)(udpPacket + sizeof(header_eth)))->get_hdr_size();
@@ -138,7 +152,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				0,
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
-				hepData.captured_packet_payload.data_len(), dataOffset,
+				payload_len, dataOffset,
 				global_pcap_handle_index, udpHeader, udpPacket, true, 
 				pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
 				NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
@@ -163,7 +177,7 @@ void cHEP_ProcessData::processChunks(u_char *data, size_t dataLen, sHEP_Data *he
 	unsigned offset = 0;
 	while(offset < dataLen - 6) {
 		unsigned chunk_length = chunkLength(data + offset, dataLen - offset);
-		if(chunk_length > dataLen - offset) {
+		if(!chunk_length || chunk_length > dataLen - offset) {
 			break;
 		}
 		processChunk(data + offset, chunk_length, hepData);
@@ -471,13 +485,21 @@ cHEP_Server::cHEP_Server(bool udp)
 cHEP_Server::~cHEP_Server() {
 }
 
+void cHEP_Server::createConnection(cSocket *socket) {
+	if(is_terminating()) {
+		return;
+	}
+	cHEP_Connection *connection = new FILE_LINE(0) cHEP_Connection(socket);
+	connection->connection_start();
+}
+
 void cHEP_Server::evData(u_char *data, size_t dataLen) {
 	processData(data, dataLen);
 }
 
 
-cHEP_Connection::cHEP_Connection(cSocket *socket, bool simple_read) 
- : cServerConnection(socket, simple_read) {
+cHEP_Connection::cHEP_Connection(cSocket *socket) 
+ : cServerConnection(socket, true) {
 }
 
 cHEP_Connection::~cHEP_Connection() {
@@ -485,6 +507,11 @@ cHEP_Connection::~cHEP_Connection() {
 
 void cHEP_Connection::evData(u_char *data, size_t dataLen) {
 	processData(data, dataLen);
+}
+
+void cHEP_Connection::connection_process() {
+	cServerConnection::connection_process();
+	delete this;
 }
 
 
@@ -502,4 +529,74 @@ void HEP_ServerStop() {
 		delete HEP_Server;
 		HEP_Server = NULL;
 	}
+}
+
+
+void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port, bool udp) {
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_t *handle;
+	if(!(handle = pcap_open_offline_zip(pcap, errbuf))) {
+		fprintf(stderr, "Couldn't open pcap file '%s': %s\n", pcap, errbuf);
+		return;
+	}
+	int dlink = pcap_datalink(handle);
+	pcap_pkthdr *pcap_next_ex_header;
+	const u_char *pcap_next_ex_packet;
+	sHeaderPacket *header_packet = NULL;
+	pcapProcessData ppd;
+	int res;
+	cSocket socket("x");
+	if(udp) {
+		socket.setUdp(true);
+	}
+	socket.setHostPort(destination_ip.getString(), destination_port);
+	if(!socket.connect()) {
+		return;
+	} else {
+		cout << "ok connect" << endl;
+	}
+	while((res = pcap_next_ex(handle, &pcap_next_ex_header, &pcap_next_ex_packet)) > 0) {
+		if(header_packet && header_packet->packet_alloc_size != 0xFFFF) {
+			DESTROY_HP(&header_packet);
+		}
+		if(header_packet) {
+			header_packet->clearPcapProcessData();
+		} else {
+			header_packet = CREATE_HP(0xFFFF);
+		}
+		memcpy_heapsafe(HPH(header_packet), header_packet,
+				pcap_next_ex_header, NULL,
+				sizeof(pcap_pkthdr));
+		memcpy_heapsafe(HPP(header_packet), header_packet,
+				pcap_next_ex_packet, NULL,
+				pcap_next_ex_header->caplen);
+		ppd.header_udp = NULL;
+		ppd.header_tcp = NULL;
+		ppd.datalen = 0;
+		pcapProcess(&header_packet, -1,
+			    NULL, 0,
+			    ppf_all,
+			    &ppd, dlink, NULL, NULL);
+		u_int32_t caplen = HPH(header_packet)->caplen;
+		u_char *packet = HPP(header_packet);
+		if(ppd.header_ip->get_protocol() == IPPROTO_UDP) {
+			ppd.header_udp = (udphdr2*)((char*)ppd.header_ip + ppd.header_ip->get_hdr_size());
+			ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, pcap_next_ex_header->caplen);
+		} else if(ppd.header_ip->get_protocol() == IPPROTO_TCP) {
+			ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + ppd.header_ip->get_hdr_size());
+			ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);
+		}
+		if(ppd.datalen) {
+			if(ppd.header_ip->get_saddr() == client_ip && ppd.header_ip->get_daddr() == server_ip) {
+				cout << " -> " << flush;
+				if(socket.write((u_char*)ppd.data, ppd.datalen)) {
+					cout << "ok write " << ppd.datalen << endl;
+				}
+			}
+		}
+	}
+	if(header_packet) {
+		DESTROY_HP(&header_packet);
+	}
+	pcap_close(handle);
 }

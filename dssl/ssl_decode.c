@@ -116,7 +116,9 @@ static int ssl_decrypt_record( dssl_decoder_stack* stack, u_char* data, uint32_t
 	rc = ssls_get_decrypt_buffer( stack->sess, &buf, buf_len );
 	if( rc != DSSL_RC_OK ) return rc;
 
-	if( stack->sess->tls_session && (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION) )
+	if( stack->sess->tls_session && 
+	    (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION || 
+	     ((stack->sess->version == TLS1_1_VERSION || stack->sess->version == TLS1_VERSION) && stack->sess->tls_12_sessionkey_via_ws)) )
 	{
 		if( record_type == SSL3_RT_HANDSHAKE )
 		{
@@ -308,7 +310,9 @@ int ssl3_record_layer_decoder( void* decoder_stack, NM_PacketDir dir,
 
 	if( rc == DSSL_RC_OK && 
 	    (stack->cipher || 
-	     (stack->sess->tls_session && (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION))) )
+	     (stack->sess->tls_session && 
+	      (stack->sess->version == TLS1_3_VERSION || stack->sess->version == TLS1_2_VERSION || 
+	       ((stack->sess->version == TLS1_1_VERSION || stack->sess->version == TLS1_VERSION) && stack->sess->tls_12_sessionkey_via_ws)))) )
 	{
 		rc = ssl_decrypt_record( stack, data, recLen, &data, &recLen, &decrypt_buffer_aquired, record_type, record_version, dir != ePacketDirFromClient );
 		if( rc == DSSL_RC_TLS_OK )

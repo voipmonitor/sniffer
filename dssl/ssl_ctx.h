@@ -35,7 +35,9 @@ struct DSSL_ServerInfo_
 {
 	struct in_addr	server_ip;
 	uint16_t		port;
-	EVP_PKEY*		pkey;
+	EVP_PKEY**		pkeys;
+	uint8_t			pkeys_count;
+	uint8_t			pkeys_index_ok;
 };
 
 

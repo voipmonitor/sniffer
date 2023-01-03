@@ -232,6 +232,7 @@ private:
 	static void *cleanThread(void *cleanSpool);
 	void cleanThread();
 	void cleanThreadProcess();
+	void updateSpoolDataForCleanThreadProcess();
 	bool check_exists_act_records_in_files();
 	bool check_exists_act_files_in_filesindex();
 	void reindex_all(const char *reason);

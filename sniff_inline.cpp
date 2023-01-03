@@ -31,7 +31,7 @@
 #endif
 
 
-extern bool isSslIpPort(vmIP ip, vmPort port);
+extern int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 
 
 extern int opt_udpfrag;
@@ -45,6 +45,7 @@ extern unsigned opt_udp_port_mgcp_callagent;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern int opt_dup_check_ipheader_ignore_ttl;
+extern int opt_dup_check_udpheader_ignore_checksum;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
@@ -140,7 +141,8 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 			vlanoffset = 0;
 			protocol = header_eth->ether_type;
 		}
-		if(protocol == 8) {
+		if(htons(protocol) == ETHERTYPE_IP || 
+		   (VM_IPV6_B && htons(protocol) == ETHERTYPE_IPV6)) {
 			header_ip = (iphdr2*)((char*)header_eth + sizeof(ether_header) + vlanoffset);
 		} else {
 			return(NULL);
@@ -319,6 +321,7 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 	extern unsigned opt_udp_port_l2tp;
 	extern unsigned opt_udp_port_tzsp;
 	extern unsigned opt_udp_port_vxlan;
+	extern unsigned opt_udp_port_hperm;
 	extern bool opt_icmp_process_data;
 	extern bool opt_audiocodes;
 	extern unsigned opt_udp_port_audiocodes;
@@ -399,6 +402,22 @@ int findNextHeaderIp(iphdr2 *header_ip, unsigned header_ip_offset, u_char *packe
 		   (htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IP ||
 		    (VM_IPV6_B && htons(((ether_header*)((char*)header_ip + vxlan_offset + vxlan_length))->ether_type) == ETHERTYPE_IPV6))) {
 			unsigned int _next_header_ip_offset = vxlan_offset + vxlan_length + sizeof(ether_header);
+			if(((iphdr2*)((char*)header_ip + _next_header_ip_offset))->version_is_ok()) {
+				next_header_ip_offset = _next_header_ip_offset;
+			}
+		}
+		rslt_offset = next_header_ip_offset;
+	} else if(opt_udp_port_hperm &&
+		  ip_protocol == IPPROTO_UDP &&									// HP ERM
+		  (unsigned)((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->get_dest() == opt_udp_port_hperm &&	// check source port (default 0x9090)
+		  htons(((udphdr2*)((char*)header_ip + header_ip->get_hdr_size()))->len) >
+							 (sizeof(udphdr2) + 10 + sizeof(ether_header) + sizeof(iphdr2))) {	// check minimal length
+		unsigned int hperm_length = 12;
+		unsigned int hperm_offset = header_ip->get_hdr_size() + sizeof(udphdr2);
+		unsigned int next_header_ip_offset = 0;
+		if (htons(((ether_header*)((char*)header_ip + hperm_offset + hperm_length))->ether_type) == ETHERTYPE_IP ||
+		    (VM_IPV6_B && htons(((ether_header*)((char*)header_ip + hperm_offset + hperm_length))->ether_type) == ETHERTYPE_IPV6)) {
+			unsigned int _next_header_ip_offset = hperm_offset + hperm_length + sizeof(ether_header);
 			if(((iphdr2*)((char*)header_ip + _next_header_ip_offset))->version_is_ok()) {
 				next_header_ip_offset = _next_header_ip_offset;
 			}
@@ -739,12 +758,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				ppd->datalen = get_tcp_data_len(ppd->header_ip, ppd->header_tcp, &ppd->data, packet, caplen);
 				if ((sipportmatrix[ppd->header_tcp->get_source()] || sipportmatrix[ppd->header_tcp->get_dest()]) ||
 				    (opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()]) &&
-				     (tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(ppd->header_ip->get_daddr()))) ||
+				     tcpReassemblyHttp->check_ip(ppd->header_ip->get_saddr(), ppd->header_ip->get_daddr())) ||
 				    (opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()]) &&
-				     (tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_daddr()))) ||
+				     tcpReassemblyWebrtc->check_ip(ppd->header_ip->get_saddr(), ppd->header_ip->get_daddr())) ||
 				    (opt_enable_ssl && 
-				     (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) ||
-				      isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) ||
+				     isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())) ||
 				    (opt_skinny && (skinnyportmatrix[ppd->header_tcp->get_source()] || skinnyportmatrix[ppd->header_tcp->get_dest()])) ||
 				    (opt_mgcp && 
 				     ((unsigned)ppd->header_tcp->get_source() == opt_tcp_port_mgcp_gateway || (unsigned)ppd->header_tcp->get_dest() == opt_tcp_port_mgcp_gateway ||
@@ -788,7 +806,12 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				}
 				return(0);
 			}
-			ppd->traillen = (int)(caplen - ((u_char*)ppd->header_ip - packet)) - ppd->header_ip->get_tot_len();
+			if(caplen > ((u_char*)ppd->header_ip - packet) &&
+			   (caplen - ((u_char*)ppd->header_ip - packet)) > ppd->header_ip->get_tot_len()) {
+				ppd->traillen = (caplen - ((u_char*)ppd->header_ip - packet)) - ppd->header_ip->get_tot_len();
+			} else {
+				ppd->traillen = 0;
+			}
 		} else if(opt_enable_ss7) {
 			ppd->flags.init();
 			ppd->flags.ss7 = 1;
@@ -812,7 +835,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
 		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
 		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
-		   !(ppd->flags.tcp && opt_enable_ssl && (isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source()) || isSslIpPort(ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest())))) {
+		   !(ppd->flags.tcp && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
 			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;
@@ -826,6 +849,20 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->header_ip->set_ttl(0);
 					ppd->header_ip->set_check(0);
 					header_ip_set_orig = true;
+				}
+				bool header_udp_set_orig = false;
+				u_int16_t header_udp_checksum_orig;
+				udphdr2 *header_udp = NULL; 
+				if(opt_dup_check_udpheader_ignore_checksum &&
+				   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
+				    opt_dup_check_ipheader)) {
+					u_int8_t protocol = ppd->header_ip->get_protocol((header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen()) - ppd->header_ip_offset);
+					if(protocol == IPPROTO_UDP) {
+						header_udp = (udphdr2*)((char*) ppd->header_ip + ppd->header_ip->get_hdr_size());
+						header_udp_checksum_orig = header_udp->check;
+						header_udp->check = 0;
+						header_udp_set_orig = true;
+					}
 				}
 				MD5_Init(&ppd->ctx);
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
@@ -842,6 +879,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if(header_ip_set_orig) {
 					ppd->header_ip->set_ttl(header_ip_ttl_orig);
 					ppd->header_ip->set_check(header_ip_check_orig);
+				}
+				if(header_udp_set_orig) {
+					header_udp->check = header_udp_checksum_orig;
 				}
 				#ifdef DEDUP_DEBUG
 				cout << " " << MD5_String((unsigned char*)_md5);

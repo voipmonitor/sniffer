@@ -250,6 +250,17 @@ string implode(vector<string> vect, const char *sep) {
 	return(rslt);
 }
 
+string implode(vector<int> vect, const char *sep) {
+	string rslt;
+	for(unsigned i = 0; i < vect.size(); i++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += intToString(vect[i]);
+	}
+	return(rslt);
+}
+
 string implode(list<u_int64_t> *items, const char *sep) {
 	string rslt;
 	unsigned i = 0;
@@ -2405,7 +2416,9 @@ bool RestartUpgrade::runGitUpgrade(const char *cmd) {
 			pexecCmd += "make install";
 		}
 		pexecCmd += ";'";
-		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 600, 600, true, true);
+		vm_pexec(pexecCmd.c_str(), &out, &err, &exitCode, 
+			 600, 600 * 1000, 10, 
+			 true, true);
 		if(exitCode == 0) {
 			syslog(LOG_NOTICE, "runGitUpgrade command %s (%s) OK", cmd, pexecCmd.c_str());
 			return(true);
@@ -2466,13 +2479,20 @@ int findPIDinPSline (char *line) {
 	return(atoi(line));
 }
 
-bool binaryFilePresence(const char *cmd, const char *searchstr) {
-	FILE *cmd_pipe = popen(cmd, "r");
+bool binaryFileExists(const char *cmd) {
+	FILE *cmd_pipe = popen((string("which ") + cmd + " 2>&1").c_str(), "r");
 	char buffRslt[512];
-
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);
-	return(strstr(buffRslt, searchstr) ? false : true);
+	return(strstr(buffRslt, "which:") ? false : true);
+}
+
+bool binaryFilePresence(const char *cmd, const char *not_exist_searchstr) {
+	FILE *cmd_pipe = popen(cmd, "r");
+	char buffRslt[512];
+	fgets(buffRslt, 512, cmd_pipe);
+	pclose(cmd_pipe);
+	return(strstr(buffRslt, not_exist_searchstr) ? false : true);
 }
 
 bool isBashPresent(void) {
@@ -5495,9 +5515,10 @@ u_int32_t octal_decimal(u_int32_t n) {
 	return decimal;
 }
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
-	      int *exitCode, unsigned timeout_sec, unsigned timout_select_sec,
-	      bool closeAllFdAfterFork, bool needStdin) {
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *exitCode, 
+	      unsigned timeout_sec, unsigned timout_select_msec, unsigned usleep_msec,
+	      bool closeAllFdAfterFork, bool needStdin,
+	      exec_callback_fce exec_callback, void *exec_callback_data) {
 	if(exitCode) {
 		*exitCode = -1;
 	}
@@ -5520,9 +5541,9 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 	int fork_rslt = closeAllFdAfterFork ? fork() : vfork();
 	if(fork_rslt == 0) {
 		if(needStdin) {
-			close(pipe_stdin[0]);
-			dup2(pipe_stdin[1], 0);
 			close(pipe_stdin[1]);
+			dup2(pipe_stdin[0], 0);
+			close(pipe_stdin[0]);
 		}
 		close(pipe_stdout[0]);
 		dup2(pipe_stdout[1], 1);
@@ -5544,10 +5565,11 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 		SimpleBuffer bufferStdout;
 		SimpleBuffer bufferStderr;
 		if(needStdin) {
-			close(pipe_stdin[1]);
+			close(pipe_stdin[0]);
 		}
 		close(pipe_stdout[1]);
 		close(pipe_stderr[1]);
+		bool breakAfterNextRead = false;
 		while(true) {
 			#if 0 //suppress select & FD_SET
 				fd_set readfds;
@@ -5584,7 +5606,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 				fds[0].events = POLLIN;
 				fds[1].fd = pipe_stderr[0];
 				fds[1].events = POLLIN;
-				int rsltPool = poll(fds, 2, timout_select_sec * 1000);
+				int rsltPool = poll(fds, 2, timout_select_msec);
 				if(rsltPool < 0) {
 					break;
 				}
@@ -5595,6 +5617,12 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 					if(fds[0].revents) {
 						if((readStdoutLength = read(pipe_stdout[0], buffer, sizeof(buffer))) > 0) {
 							bufferStdout.add(buffer, readStdoutLength);
+							if(readStdoutLength) {
+								//cout << readStdoutLength << " " << string(buffer, readStdoutLength) << endl;
+								if(exec_callback) {
+									exec_callback(&bufferStdout, string(buffer, readStdoutLength), pipe_stdin[1], exec_callback_data);
+								}
+							}
 						}
 					}
 					if(fds[1].revents) {
@@ -5603,21 +5631,45 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 						}
 					}
 				}
+				if(breakAfterNextRead) {
+					break;
+				}
 			#endif
 			if(readStderrLength) {
 				if(bufferStderr.size() && reg_match((char*)bufferStderr, "^exec failed", __FILE__, __LINE__)) {
 					break;
 				}
 			} else if(!readStdoutLength) {
+				/*
+				bool defunct = false;
+				if(existsPid(fork_rslt, &defunct)) {
+					if(defunct) {
+						int status;
+						waitpid(fork_rslt, &status, WNOHANG);
+						if(exitCode) {
+							*exitCode = WEXITSTATUS(status);
+						}
+						cout << "exit " << *exitCode << endl;
+					} else {
+						usleep(10000);
+					}
+				} else {
+					break;
+				}
+				*/
 				bool isChildPidExit(unsigned pid);
 				int getChildPidExitCode(unsigned pid);
 				if(isChildPidExit(fork_rslt)) {
 					if(exitCode) {
 						*exitCode = getChildPidExitCode(fork_rslt);
 					}
-					break;
+					if(exec_callback) {
+						breakAfterNextRead = true;
+					} else {
+						break;
+					}
 				} else {
-					USLEEP(10000);
+					USLEEP(usleep_msec * 1000);
 				}
 			}
 			if(timeout_sec && (getTimeMS() - start_time) > timeout_sec * 1000) {
@@ -5626,7 +5678,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err,
 			}
 		}
 		if(needStdin) {
-			close(pipe_stdin[0]);
+			close(pipe_stdin[1]);
 		}
 		close(pipe_stdout[0]);
 		close(pipe_stderr[0]);
@@ -5717,6 +5769,13 @@ string ascii_str(string str) {
 
 int yesno(const char *arg) {
 	if(arg[0] == 'y' or arg[0] == 'Y' or arg[0] == '1') 
+		return 1;
+	else
+		return 0;
+}
+
+int is_true(const char *arg) {
+	if(!strcasecmp(arg, "true") or atoi(arg) > 0) 
 		return 1;
 	else
 		return 0;

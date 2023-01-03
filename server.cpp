@@ -400,6 +400,9 @@ void cSnifferServerConnection::connection_process() {
 	case _tc_manager_command:
 		cp_manager_command(jsonData.getValue("command"));
 		break;
+	case _tc_keycheck:
+		cp_keycheck();
+		break;
 	default:
 		delete this;
 		return;
@@ -1059,6 +1062,30 @@ void cSnifferServerConnection::cp_manager_command(string command) {
 	delete this;
 }
 
+void cSnifferServerConnection::cp_keycheck() {
+	if(!rsaAesInit()) {
+		delete this;
+		return;
+	}
+	unsigned counter = 0;
+	string input;
+	while(!server->isTerminate() &&
+	      socket->readBlock(&input, cSocket::_te_aes, "", counter > 0)) {
+		if(is_readend()) {
+			break;
+		}
+		extern int remote_keycheck(string input, string *output, string *error);
+		string output;
+		string error;
+		if(remote_keycheck(input, &output, &error)) {
+			socket->writeBlock(output, cSocket::_te_aes);
+		} else {
+			socket->writeBlock("error: " + error, cSocket::_te_aes);
+		}
+	}
+	delete this;
+}
+
 bool cSnifferServerConnection::rsaAesInit(bool writeRsltOK) {
 	socket->generate_rsa_keys();
 	JsonExport json_rsa_key;
@@ -1135,6 +1162,8 @@ cSnifferServerConnection::eTypeConnection cSnifferServerConnection::convTypeConn
 		return(_tc_packetbuffer_block);
 	} else if(typeConnection == "manager_command") {
 		return(_tc_manager_command);
+	} else if(typeConnection == "keycheck") {
+		return(_tc_keycheck);
 	} else {
 		return(_tc_na);
 	}
@@ -1179,6 +1208,7 @@ string cSnifferServerConnection::getTypeConnectionStr() {
 	case _tc_store: return("store");
 	case _tc_packetbuffer_block: return("packetbuffer_block");
 	case _tc_manager_command: return("manager_command");
+	case _tc_keycheck: return("keycheck");
 	}
 	return("");
 }

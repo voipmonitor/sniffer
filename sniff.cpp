@@ -4292,6 +4292,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", call->invitecseq.number);
 		}
+		for(int pass_authorization = 0; pass_authorization < 2; pass_authorization++) {
+			s = gettag_sip(packetS, pass_authorization == 0 ? "\nAuthorization:" : "\nProxy-Authorization:", &l);
+			if(s) {
+				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", call->digest_username, sizeof(call->digest_username));
+				break;
+			}
+		}
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
 			sSciPacketInfo *packet_info = NULL;
@@ -5906,14 +5913,14 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							#if DEBUG_DTLS_QUEUE
 							cout << " * use dtls" << endl;
 							#endif
-							call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+							call->read_rtp(*iter, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, (*iter)), 
 								       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 						}
 					}
 					if(is_rtcp) {
 						rslt_read_rtp = call->read_rtcp(packetS, iscaller, enable_save_rtcp(call));
 					} else {
-						rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags), 
+						rslt_read_rtp = call->read_rtp(packetS, iscaller, call_info->find_by_dest, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS), 
 									       packetS->block_store && packetS->block_store->ifname[0] ? packetS->block_store->ifname : NULL);
 					}
 				} else if(is_rtcp) {
@@ -5995,7 +6002,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 					#endif
 					(*iter)->blockstore_addflag(123 /*pb lock flag*/);
 					add_to_rtp_thread_queue(call, *iter, 
-								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+								iscaller, call_info->find_by_dest, false, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 								false, threadIndex);
 				}
 			}
@@ -6007,7 +6014,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			} else {
 				packetS->blockstore_addflag(57 /*pb lock flag*/);
 				add_to_rtp_thread_queue(call, packetS, 
-							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags),
+							iscaller, call_info->find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_rtp_media(call, sdp_flags, packetS),
 							preSyncRtp, threadIndex);
 			}
 		}
@@ -6148,6 +6155,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		packetS->blockstore_addflag(22 /*pb lock flag*/);
 		return(false);
 	}
+	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 	if(packetS->audiocodes) {
 		if(packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTP &&
 		   packetS->audiocodes->media_type != sAudiocodes::ac_mt_RTCP &&
@@ -6157,6 +6165,7 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 			return(false);
 		}
 	}
+	#endif
 	#endif
 	if(processRtpPacketHash) {
 		packetS->blockstore_addflag(23 /*pb lock flag*/);
@@ -7950,8 +7959,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			if(opt_enable_ssl && 
 			   ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_TCP &&
-			   (isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source()) ||
-			    isSslIpPort(ppd.header_ip->get_daddr(), ppd.header_udp->get_dest()))) {
+			   isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source(), ppd.header_ip->get_daddr(), ppd.header_udp->get_dest())) {
 				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
 							   NULL, 0, false,
 							   0, handle_dlt, opt_id_sensor, 0, ppd.pid);
@@ -8717,6 +8725,15 @@ bool ReassemblyBuffer::existsStream(vmIP saddr, vmPort sport, vmIP daddr, vmPort
 	return(false);
 }
 
+bool ReassemblyBuffer::existsStream(sStreamId *sid) {
+	if(streams.size()) {
+		if(streams.find(*sid) != streams.end()) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 void ReassemblyBuffer::cleanup(timeval time, list<sDataRslt> *dataRslt) {
 	if(minTimeInStreams && minTimeInStreams < getTimeUS(time) - 500000ull) {
 		minTimeInStreams = 0;
@@ -9399,10 +9416,24 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 						packet_s_process *packetS = batch->batch[batch_index];
-						unsigned int thread_index = (unsigned int)(min(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
-											   max(packetS->saddr_().getHashNumber(), packetS->daddr_().getHashNumber()) *
-											   min(packetS->source_(), packetS->dest_()) * 
-											   max(packetS->source_(), packetS->dest_()));
+						u_int32_t _saddr_hash_number = 
+							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+								packetS->saddr_pt_()->getHashNumber();
+							#else
+								packetS->saddr_().getHashNumber();
+							#endif
+						u_int32_t _daddr_hash_number = 
+							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
+								packetS->daddr_pt_()->getHashNumber();
+							#else
+								packetS->daddr_().getHashNumber();
+							#endif
+						u_int16_t _source = packetS->source_();
+						u_int16_t _dest = packetS->dest_();
+						unsigned int thread_index = (unsigned int)(min(_saddr_hash_number, _daddr_hash_number) *
+											   max(_saddr_hash_number, _daddr_hash_number) *
+											   min(_source, _dest) * 
+											   max(_source, _dest));
 						thread_index += ~(thread_index << 15);
 						thread_index ^=  (thread_index >> 10);
 						thread_index +=  (thread_index << 3);
@@ -9884,15 +9915,18 @@ void PreProcessPacket::addNextThread() {
 	    this->typePreProcessThread == ppt_detach || 
 	    this->typePreProcessThread == ppt_sip) &&
 	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
-		for(int j = 0; j < 2; j++) {
-			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+		int add_threads = this->next_threads == 0 && min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS) > 1 ? 2 : 1;
+		for(int add_thread = 0; add_thread < add_threads; add_thread++) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+			}
+			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+			arg->preProcessPacket = this;
+			arg->next_thread_id = this->next_threads + 1;
+			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+					  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+			++this->next_threads;
 		}
-		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-		arg->preProcessPacket = this;
-		arg->next_thread_id = this->next_threads + 1;
-		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
-				  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-		++this->next_threads;
 	}
 }
 
@@ -10451,7 +10485,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 	extern vmIP opt_kamailio_dstip;
 	extern vmIP opt_kamailio_srcip;
 	extern unsigned opt_kamailio_port;
-	if(opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
+	if(opt_kamailio && opt_kamailio_dstip.isSet() && opt_kamailio_dstip == packetS->daddr_() &&
 	   (!opt_kamailio_srcip.isSet() || opt_kamailio_srcip == packetS->saddr_()) &&
 	   (!opt_kamailio_port || opt_kamailio_port == packetS->dest_().port)) {
 		unsigned long from_ip_l;

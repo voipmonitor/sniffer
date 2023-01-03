@@ -306,6 +306,7 @@ volatile int readend = 0;
 int opt_dup_check = 0;
 int opt_dup_check_ipheader = 1;
 int opt_dup_check_ipheader_ignore_ttl = 1;
+int opt_dup_check_udpheader_ignore_checksum = 1;
 int opt_fax_dup_seq_check = 0;
 int opt_fax_create_udptl_streams = 0;
 int rtptimeout = 300;
@@ -354,6 +355,8 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
+bool opt_keycheck_remote = false;
+char opt_vmcodecs_path[1024] = "";
 bool opt_cdr_stat_values = true;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
@@ -402,7 +405,7 @@ int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 int process_rtp_packets_distribute_threads_use = 0;
 int opt_pre_process_packets_next_thread = 0;
-int opt_pre_process_packets_next_thread_max = 1;
+int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
@@ -909,6 +912,9 @@ int opt_dpdk_memory_channels = 4;
 string opt_dpdk_pci_device;
 int opt_dpdk_force_max_simd_bitwidth = 0;
 string opt_cpu_cores;
+bool opt_thread_affinity_ht = true;
+bool opt_other_thread_affinity_check = true;
+bool opt_other_thread_affinity_set = false;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -1037,6 +1043,8 @@ vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
 bool opt_sip_only_tcp = false;
 map<vmIPport, string> ssl_ipport;
+map<vmIPmask_port, string> ssl_netport;
+bool opt_ssl_ipport_reverse_enable;
 bool ssl_client_random_enable = false;
 char *ssl_client_random_portmatrix;
 bool ssl_client_random_portmatrix_set = false;
@@ -1222,6 +1230,7 @@ bool updateSchema = false;
 unsigned opt_udp_port_l2tp = 1701;
 unsigned opt_udp_port_tzsp = 0x9090;
 unsigned opt_udp_port_vxlan = 4789;
+unsigned opt_udp_port_hperm = 7932;
 
 unsigned opt_tcp_port_mgcp_gateway = 2427;
 unsigned opt_udp_port_mgcp_gateway = 2427;
@@ -1248,6 +1257,7 @@ string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
 
+bool opt_kamailio;
 vmIP opt_kamailio_dstip;
 vmIP opt_kamailio_srcip;
 unsigned opt_kamailio_port;
@@ -1713,6 +1723,12 @@ int SqlInitSchema(string *rsltConnectErrorString = NULL) {
 						opt_mysql_enable_new_store = false;
 					}
 				}
+			}
+			if(opt_save_energylevels &&
+			   sqlDb->getDbName() == "mysql" &&
+			   sqlDb->getDbVersion() < 50601) {
+				cLogSensor::log(cLogSensor::critical, "The save-energylevels option is supported for mysql since version 5.6.1. Please update mysql if you require this option enabled.");
+				opt_save_energylevels = false;
 			}
 			if(connectOk > 0) {
 				if(isSqlDriver("mysql")) {
@@ -4835,6 +4851,9 @@ int main_init_read() {
 					extern void dtls_queue_cleanup();
 					dtls_queue_cleanup();
 				}
+				if(opt_use_dpdk && (opt_other_thread_affinity_check || opt_other_thread_affinity_set)) {
+					dpdk_check_affinity();
+				}
 			}
 			while(startTimeMS + sverb.pcap_stat_period * 1000 > getTimeMS_rdtsc()) {
 				USLEEP(10000);
@@ -5542,7 +5561,8 @@ void test_search_country_by_number() {
 	CountryPrefixes *cp = new FILE_LINE(42041) CountryPrefixes();
 	cp->load();
 	vector<string> countries;
-	cout << cp->getCountry("00039123456789", &countries, NULL, ci) << endl;
+	vmIP ip;
+	cout << cp->getCountry("00039123456789", ip, &countries, NULL, ci) << endl;
 	for(size_t i = 0; i < countries.size(); i++) {
 		cout << countries[i] << endl;
 	}
@@ -6515,11 +6535,19 @@ void test() {
 	case 311:
 		{
 		CountryDetectInit();
-		vector<string> numbers = split(opt_test_arg, ';');
-		for(unsigned i = 0; i < numbers.size(); i++) {
-			cout << "number:           " << numbers[i] << endl;
-			cout << "country:          " << getCountryByPhoneNumber(numbers[i].c_str()) << endl;
-			cout << "is international: " << (isLocalByPhoneNumber(numbers[i].c_str()) ? "N" : "Y") << endl;
+		vector<string> numbersIps = split(opt_test_arg, ';');
+		vmIP testIp;
+		for(unsigned i = 0; i < numbersIps.size(); i++) {
+			vector<string> nip = split(numbersIps[i], '@');
+			if (nip.size() == 2) {
+				testIp.setFromString(nip[1].c_str());
+			}
+			cout << "number:           " << nip[0] << endl;
+			if (testIp.isSet()) {
+				cout << "IP:               " << testIp.getString() << endl;
+			}
+			cout << "country:          " << getCountryByPhoneNumber(nip[0].c_str(), testIp) << endl;
+			cout << "is international: " << (isLocalByPhoneNumber(nip[0].c_str(), testIp) ? "N" : "Y") << endl;
 			cout << "---" << endl;
 		}
 		}
@@ -7154,6 +7182,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_pci_device", &opt_dpdk_pci_device));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_force_max_simd_bitwidth", &opt_dpdk_force_max_simd_bitwidth));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("thread_affinity", &opt_cpu_cores));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("thread_affinity_ht", &opt_thread_affinity_ht));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -7432,6 +7463,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42249) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader_ignore_ttl", &opt_dup_check_ipheader_ignore_ttl));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_udpheader_ignore_checksum", &opt_dup_check_udpheader_ignore_checksum));
 				addConfigItem(new FILE_LINE(42250) cConfigItem_string("tcpreassembly_http_log", opt_tcpreassembly_http_log, sizeof(opt_tcpreassembly_http_log)));
 				addConfigItem(new FILE_LINE(42251) cConfigItem_string("tcpreassembly_webrtc_log", opt_tcpreassembly_webrtc_log, sizeof(opt_tcpreassembly_webrtc_log)));
 				addConfigItem(new FILE_LINE(42252) cConfigItem_string("tcpreassembly_ssl_log", opt_tcpreassembly_ssl_log, sizeof(opt_tcpreassembly_ssl_log)));
@@ -7440,7 +7472,8 @@ void cConfig::addConfigItems() {
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
 			->addValues("old:10|only:2"));
-		addConfigItem(new FILE_LINE(42255) cConfigItem_ip_port_str_map("ssl_ipport", &ssl_ipport));
+		addConfigItem(new FILE_LINE(0) cConfigItem_net_port_str_map("ssl_ipport", &ssl_ipport, &ssl_netport));
+		addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ipport_reverse_enable", &opt_ssl_ipport_reverse_enable));
 		addConfigItem(new FILE_LINE(42256) cConfigItem_integer("ssl_link_timeout", &opt_ssl_link_timeout));
 			advanced();
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_udp", &ssl_client_random_enable));
@@ -7957,6 +7990,8 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("keycheck_remote", &opt_keycheck_remote));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
@@ -7987,6 +8022,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_l2tp",  &opt_udp_port_l2tp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_tzsp",  &opt_udp_port_tzsp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_vxlan",  &opt_udp_port_vxlan));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_hperm",  &opt_udp_port_hperm));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("icmp_process_data",  &opt_icmp_process_data));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipfix",  &opt_ipfix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("ipfix_bind_ip",  &opt_ipfix_bind_ip));
@@ -8415,6 +8451,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"revaluation", 1, 0, 344},
 	    {"eval-formula", 1, 0, 345},
 	    {"ipfix-client-emulation", 1, 0, 401},
+	    {"hep-client-emulation", 1, 0, 407},
 	    {"ws-calls", 1, 0, 402},
 	    {"extract_payload", 1, 0, 403},
 	    {"extract_rtp_payload", 1, 0, 404},
@@ -9072,6 +9109,7 @@ void get_command_line_arguments() {
 				opt_dup_check = 1;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
+				opt_dup_check_udpheader_ignore_checksum = 1;
 				is_gui_param = true;
 				break;
 			case 347:
@@ -9124,6 +9162,24 @@ void get_command_line_arguments() {
 					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
 					u_int64_t destination_port = atoi(parameters[4].c_str());
 					IPFix_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port);
+				}
+				exit(0);
+				}
+				break;
+			case 407:
+				{
+				vector<string> parameters = explode(optarg, ';');
+				if(parameters.size() >= 5) {
+					string pcap = parameters[0];
+					vmIP client_ip = str_2_vmIP(parameters[1].c_str()); 
+					vmIP server_ip = str_2_vmIP(parameters[2].c_str()); 
+					vmIP destination_ip = str_2_vmIP(parameters[3].c_str()); 
+					u_int64_t destination_port = atoi(parameters[4].c_str());
+					bool udp = false;
+					if(parameters.size() >= 6) {
+						udp = !strcasecmp(parameters[5].c_str(), "udp");
+					}
+					HEP_client_emulation(pcap.c_str(), client_ip, server_ip, destination_ip, destination_port, udp);
 				}
 				exit(0);
 				}
@@ -9710,6 +9766,8 @@ void set_context_config() {
 		}
 	}
 	
+	opt_kamailio = opt_kamailio_dstip.isSet();
+
 }
 
 void check_context_config() {
@@ -9717,6 +9775,11 @@ void check_context_config() {
 		if(opt_enable_ss7) {
 			cLogSensor::log(cLogSensor::error, "option ss7 need voipmonitor with wireshark module");
 		}
+	#endif
+	#if HAVE_LIBDPDK
+	if(opt_use_dpdk) {
+		dpdk_check_configuration();
+	}
 	#endif
 }
 
@@ -10028,23 +10091,51 @@ bool check_complete_parameters() {
 
 // OBSOLETE
 
-void parse_config_item(const char *config, map<vmIPport, string> *item) {
+void parse_config_item(const char *config, map<vmIPport, string> *item_ip, map<vmIPmask_port, string> *item_net) {
 	vmIP ip;
-	const char *port_str_str;
-	if(ip.setFromString(config, &port_str_str)) {
-		while(*port_str_str == ' ' || *port_str_str == '\t' || *port_str_str == ':') {
-			++port_str_str;
+	const char *after_ip_str;
+	if(ip.setFromString(config, &after_ip_str)) {
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
 		}
-		vector<string> port_str_array = split(port_str_str, " ", true);
-		if(port_str_array.size() >= 1) {
-			unsigned port = atoi(port_str_array[0].c_str());
-			string str;
-			if(port_str_array.size() >= 2) {
-				str = port_str_array[1];
+		u_int16_t mask = 0;
+		if(*after_ip_str == '/') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
 			}
-			if(ip.isSet() && port) {
-				(*item)[vmIPport(ip, port)] = str;
-				// cout << ip.getString() << " : " << port << " " << str << endl;
+			if(isdigit(*after_ip_str)) {
+				mask = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		unsigned port = 0;
+		if(*after_ip_str == ':') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
+			}
+			if(isdigit(*after_ip_str)) {
+				port = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		string str;
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
+		}
+		if(*after_ip_str) {
+			str = trim_str(after_ip_str);
+		}
+		if(ip.isSet() && port > 0) {
+			if(!mask) {
+				(*item_ip)[vmIPport(ip, port)] = str;
+			} else {
+				(*item_net)[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
 			}
 		}
 	}
@@ -10178,7 +10269,7 @@ int eval_config(string inistr) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		// reset default port 
 		for (; i != values.end(); ++i) {
-			parse_config_item(i->pItem, &ssl_ipport);
+			parse_config_item(i->pItem, &ssl_ipport, &ssl_netport);
 		}
 	}
 	
@@ -10417,6 +10508,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "thread_affinity", NULL))) {
 		opt_cpu_cores = value;
+	}
+	if((value = ini.GetValue("general", "thread_affinity_ht", NULL))) {
+		opt_thread_affinity_ht = yesno(value);
+	}
+	if((value = ini.GetValue("general", "other_thread_affinity_check", NULL))) {
+		opt_other_thread_affinity_check = yesno(value);
+	}
+	if((value = ini.GetValue("general", "other_thread_affinity_set", NULL))) {
+		opt_other_thread_affinity_set = yesno(value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
@@ -10778,6 +10878,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader_ignore_ttl", NULL))) {
 		opt_dup_check_ipheader_ignore_ttl = yesno(value);
+	}
+	if((value = ini.GetValue("general", "deduplicate_udpheader_ignore_checksum", NULL))) {
+		opt_dup_check_udpheader_ignore_checksum = yesno(value);
 	}
 	if((value = ini.GetValue("general", "dscp", NULL))) {
 		opt_dscp = yesno(value);
@@ -11859,6 +11962,12 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
 	}
+	if((value = ini.GetValue("general", "keycheck_remote", NULL))) {
+		opt_keycheck_remote = yesno(value);
+	}
+	if((value = ini.GetValue("general", "vmcodecs_path", NULL))) {
+		strcpy_null_term(opt_vmcodecs_path, value);
+	}
 	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
 		opt_cdr_stat_values = yesno(value);
 	}
@@ -12101,6 +12210,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "ssl", NULL))) {
 		opt_enable_ssl = !strcmp(value, "old") ? 10 : 
 				 strcmp(value, "only") ? yesno(value) : 2;
+	}
+	if((value = ini.GetValue("general", "ssl_ipport_reverse_enable", NULL))) {
+		opt_ssl_ipport_reverse_enable = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_link_timeout", NULL))) {
 		opt_ssl_link_timeout = atol(value);
@@ -12869,7 +12981,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "udp_port_vxlan", NULL))) {
 		opt_udp_port_vxlan = atoi(value);
 	}
-	
+	if((value = ini.GetValue("general", "udp_port_hperm", NULL))) {
+		opt_udp_port_hperm = atoi(value);
+	}
 	if((value = ini.GetValue("general", "icmp_process_data", NULL))) {
 		opt_icmp_process_data = yesno(value);
 	}

@@ -559,7 +559,7 @@ tls_hash(StringInfo *secret, StringInfo *seed, gint md,
 
     ptr  = out->data();
     left = out_len;
-
+    
     ssl_print_string("tls_hash: hash secret", secret);
     ssl_print_string("tls_hash: hash seed", seed);
     /* A(0) = seed */
@@ -592,6 +592,56 @@ tls_hash(StringInfo *secret, StringInfo *seed, gint md,
     out->set_data_len(out_len);
 
     ssl_print_string("hash out", out);
+}
+
+static gboolean
+tls_prf(StringInfo* secret, const gchar *usage,
+        StringInfo* rnd1, StringInfo* rnd2, StringInfo* out, guint out_len)
+{
+    StringInfo  seed, sha_out, md5_out;
+    guint8     *ptr;
+    StringInfo  s1, s2;
+    guint       i,s_l;
+    size_t      usage_len, rnd2_len;
+    gboolean    success = FALSE;
+    usage_len = strlen(usage);
+    rnd2_len = rnd2 ? rnd2->data_len() : 0;
+
+    /* initalize buffer for sha, md5 random seed*/
+    sha_out.set_data_len(MAX(out_len, 20));
+    md5_out.set_data_len(MAX(out_len, 16));
+    seed.set_data_len(usage_len+rnd1->data_len()+rnd2_len);
+
+    ptr=seed.data();
+    memcpy(ptr,usage,usage_len);
+    ptr+=usage_len;
+    memcpy(ptr,rnd1->data(),rnd1->data_len());
+    if (rnd2_len > 0) {
+        ptr+=rnd1->data_len();
+        memcpy(ptr,rnd2->data(),rnd2->data_len());
+        /*ptr+=rnd2->data_len;*/
+    }
+
+    /* initalize buffer for client/server seeds*/
+    s_l=secret->data_len()/2 + secret->data_len()%2;
+    s1.set_data_len(s_l);
+    s2.set_data_len(s_l);
+
+    memcpy(s1.data(),secret->data(),s_l);
+    memcpy(s2.data(),secret->data() + (secret->data_len() - s_l),s_l);
+
+    ssl_debug_printf("tls_prf: tls_hash(md5 secret_len %d seed_len %d )\n", s1.data_len(), seed.data_len());
+    
+    tls_hash(&s1, &seed, ssl_get_digest_by_name("MD5"), &md5_out, out_len);
+    tls_hash(&s2, &seed, ssl_get_digest_by_name("SHA1"), &sha_out, out_len);
+    
+    for (i = 0; i < out_len; i++)
+        out->data()[i] = md5_out.data()[i] ^ sha_out.data()[i];
+    /* success, now store the new meaningful data length */
+    out->set_data_len(out_len);
+    success = TRUE;
+
+    return success;
 }
 
 static gboolean
@@ -628,7 +678,7 @@ prf(SslDecryptSession *ssl, StringInfo *secret, const gchar *usage,
     case TLSV1DOT1_VERSION:
     case DTLSV1DOT0_VERSION:
     case DTLSV1DOT0_OPENSSL_VERSION:
-        //return tls_prf(secret, usage, rnd1, rnd2, out, out_len);
+        return tls_prf(secret, usage, rnd1, rnd2, out, out_len);
         return FALSE;
 
     default: /* TLSv1.2 */
@@ -2052,7 +2102,7 @@ u_int8_t tls_12_generate_keys(void* dssl_sess, u_int8_t restore_session) {
     }
     SslDecryptSession *ssl_ds;
     ssl_ds = new SslDecryptSession;
-    ssl_ds->session.version = TLSV1DOT2_VERSION;
+    ssl_ds->session.version = ((DSSL_Session*)dssl_sess)->version ? ((DSSL_Session*)dssl_sess)->version : TLSV1DOT2_VERSION;
     ssl_ds->session.cipher = ((DSSL_Session*)dssl_sess)->cipher_suite;
     ((DSSL_Session*)dssl_sess)->tls_session = ssl_ds;
     for(const SslCipherSuite *c = cipher_suites; c->number != -1; c++) {

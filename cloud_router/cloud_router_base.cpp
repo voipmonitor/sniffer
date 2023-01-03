@@ -420,7 +420,7 @@ bool cSocket::connect(unsigned loopSleepS) {
 			ip = ips[i];
 			int pass_call_socket_create = 0;
 			do {
-				handle = socket_create(ip, SOCK_STREAM, IPPROTO_TCP);
+				handle = socket_create(ip, !udp ? SOCK_STREAM : SOCK_DGRAM, !udp ? IPPROTO_TCP : IPPROTO_UDP);
 				++pass_call_socket_create;
 			} while(handle == 0 && pass_call_socket_create < 5);
 			if(handle == -1) {
@@ -442,11 +442,13 @@ bool cSocket::connect(unsigned loopSleepS) {
 			}
 		}
 		if(ok_connect) {
-			int on = 1;
-			setsockopt(handle, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(int));
-			int flags = fcntl(handle, F_GETFL, 0);
-			if(flags >= 0) {
-				fcntl(handle, F_SETFL, flags | O_NONBLOCK);
+			if(!udp) {
+				int on = 1;
+				setsockopt(handle, IPPROTO_TCP, TCP_NODELAY, &on, sizeof(int));
+				int flags = fcntl(handle, F_GETFL, 0);
+				if(flags >= 0) {
+					fcntl(handle, F_SETFL, flags | O_NONBLOCK);
+				}
 			}
 			if(CR_VERBOSE().socket_connect) {
 				ostringstream verbstr;
@@ -956,7 +958,7 @@ bool cSocketBlock::writeBlock(u_char *data, size_t dataLen, eTypeEncode typeEnco
 	((sBlockHeader*)block)->sum = data_sum;
 	memcpy(block + sizeof(sBlockHeader), data, dataLen);
 	if(xor_key_data) {
-		delete xor_key_data;
+		delete [] xor_key_data;
 	}
 	if(rsa_data) {
 		delete [] rsa_data;

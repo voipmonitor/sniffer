@@ -31,10 +31,16 @@ void DSSL_ServerInfoFree( DSSL_ServerInfo* si )
 {
 	if( si == NULL ) return;
 
-	if( si->pkey != NULL )
+	if( si->pkeys != NULL )
 	{
-		EVP_PKEY_free( si->pkey );
-		si->pkey = NULL;
+		int i;
+		for(i = 0; i < si->pkeys_count; i++) {
+			EVP_PKEY_free( si->pkeys[i] );
+		}
+		free(si->pkeys);
+		si->pkeys = NULL;
+		si->pkeys_count = 0;
+		si->pkeys_index_ok = 0;
 	}
 
 	free( si );
@@ -234,7 +240,9 @@ int DSSL_EnvAddMissingKeyServer( DSSL_Env* env, const struct in_addr server_ip, 
 	memset( server, 0, sizeof(DSSL_ServerInfo));
 	server->port = port;
 	server->server_ip = server_ip;
-	server->pkey = NULL;
+	server->pkeys = NULL;
+	server->pkeys_count = 0;
+	server->pkeys_index_ok = 0;
 
 
 	return DSSL_EnvAddMissingKeyServerInfo( env, server );
@@ -255,7 +263,11 @@ int DSSL_EnvSetServerInfoWithKey( DSSL_Env* env, const struct in_addr* ip_addres
 
 	memcpy( &server->server_ip,  ip_address, sizeof(server->server_ip) ) ;
 	server->port = port;
-	server->pkey = pkey;
+
+	server->pkeys = (EVP_PKEY**) calloc( 1, sizeof( EVP_PKEY* ) );
+	server->pkeys_count = 1;
+	server->pkeys_index_ok = 0;
+	server->pkeys[0] = pkey;
 
 	rc = DSSL_EnvAddServer( env, server );
 

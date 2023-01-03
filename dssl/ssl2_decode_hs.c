@@ -295,7 +295,10 @@ static int ssl2_decode_client_master_key(  DSSL_Session* sess, u_char* data, uin
 
 		if( clearKeyLen ) { memcpy( sess->master_secret, pClearKey, clearKeyLen ); }
 
-		pk = ssls_get_session_private_key( sess );
+		if( sess->ssl_si->pkeys && sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+		{
+			pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
+		}
 		
 		/* if SSL server key is not found, try to find a matching one from the key pool */
 		if(pk == NULL) 
@@ -312,7 +315,17 @@ static int ssl2_decode_client_master_key(  DSSL_Session* sess, u_char* data, uin
 				if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
 				{
 					/* ssls_register_ssl_key clones the key, query the key back */
-					/* pk = ssls_get_session_private_key( sess ); */
+					if( sess->ssl_si->pkeys )
+					{
+						if( sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+						{
+							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
+						}
+						else if( sess->ssl_si->pkeys_index_ok == 0 && sess->ssl_si->pkeys_count == 1)
+						{
+							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok ];
+						}
+					}
 				}
 				else
 				{

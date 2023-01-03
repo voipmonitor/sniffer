@@ -1089,6 +1089,10 @@ public:
 			return(called_domain_uri[0] ? called_domain_uri : called_domain_to);
 		}
 	}
+	inline bool is_fax() {
+		return(isfax || (seenudptl && exists_udptl_data));
+	}
+	inline bool is_fax_packet(struct packet_s_process_0 *packetS);
 	map<string, sCalledInviteBranchItem> called_invite_branch_map;
 	char contact_num[64];		//!< 
 	char contact_domain[128];	//!< 
@@ -3476,7 +3480,8 @@ public:
 		max_length_sip_packet,
 		gsm_dcs,
 		gsm_voicemail,
-		max_retransmission_invite
+		max_retransmission_invite,
+		digest_username
 	};
 	enum eReqRespDirection {
 		dir_na,

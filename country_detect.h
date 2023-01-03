@@ -76,6 +76,7 @@ public:
 		bool is_international;
 		string country_code;
 		string descr;
+		ListIP_wb ipFilter;
 	};
 public:
 	CheckInternational();
@@ -112,7 +113,7 @@ public:
 			!strcmp(opt_local_country_code, countryCode) :
 			false);
 	}
-	bool processCustomerDataAdvanced(const char *number, 
+	bool processCustomerDataAdvanced(const char *number, vmIP ip,
 					 bool *isInternational, string *country, string *numberWithoutPrefix = NULL);
 	bool skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool recurse,
 			  string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL,
@@ -128,7 +129,7 @@ public:
 		return(this->skipPrefixes(number, &skipPrefixes_string, &skipPrefixes_regexp, true,
 					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes));
 	}
-	string numberNormalized(const char *number, class CountryPrefixes *countryPrefixes);
+	string numberNormalized(const char *number, vmIP ip, class CountryPrefixes *countryPrefixes);
 private:
 	vector<string> internationalPrefixes_string;
 	vector<cRegExp*> internationalPrefixes_regexp;
@@ -146,7 +147,8 @@ friend class CountryPrefixes;
 class CountryPrefixes : public CountryDetect_base_table {
 public:
 	struct CountryPrefix_rec {
-		CountryPrefix_rec(const char *number = NULL, const char *country_code = NULL, const char *descr  = NULL) {
+		CountryPrefix_rec(const char *number = NULL, const char *country_code = NULL, const char *descr  = NULL,
+				  const char *ips = NULL, const char *ips_group = NULL) {
 			if(number) {
 				this->number = number;
 			}
@@ -156,6 +158,12 @@ public:
 			if(descr) {
 				this->descr = descr;
 			}
+			if (ips) {
+				this->ipFilter.addWhite(ips);
+			}
+			if (ips_group) {
+				this->ipFilter.addWhite(ips_group);
+			}
 		}
 		bool operator < (const CountryPrefix_rec& other) const { 
 			return(this->number < other.number); 
@@ -163,19 +171,20 @@ public:
 		string number;
 		string country_code;
 		string descr;
+		ListIP_wb ipFilter;
 	};
 public:
 	CountryPrefixes();
 	~CountryPrefixes();
 	bool load(SqlDb *sqlDb = NULL);
 	void clear();
-	string getCountry(const char *number, vector<string> *countries, string *country_prefix,
+	string getCountry(const char *number, vmIP ip, vector<string> *countries, string *country_prefix,
 			  CheckInternational *checkInternational, string *rsltNumberNormalized = NULL);
-	string _getCountry(const char *number, vector<string> *countries, string *country_prefix);
-	bool isLocal(const char *number,
+	string _getCountry(const char *number, vmIP ip, vector<string> *countries, string *country_prefix);
+	bool isLocal(const char *number, vmIP ip,
 		     CheckInternational *checkInternational) {
 		vector<string> countries;
-		getCountry(number, &countries, NULL, checkInternational);
+		getCountry(number, ip, &countries, NULL, checkInternational);
 		for(size_t i = 0; i < countries.size(); i++) {
 			if(checkInternational->countryCodeIsLocal(countries[i].c_str())) {
 				return(true); 
@@ -297,9 +306,9 @@ public:
 	CountryDetect();
 	~CountryDetect();
 	void load(SqlDb *sqlDb = NULL);
-	string getCountryByPhoneNumber(const char *phoneNumber);
-	unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
-	bool isLocalByPhoneNumber(const char *phoneNumber);
+	string getCountryByPhoneNumber(const char *phoneNumber, vmIP ip);
+	unsigned getCountryIdByPhoneNumber(const char *phoneNumber, vmIP ip);
+	bool isLocalByPhoneNumber(const char *phoneNumber, vmIP ip);
 	string getCountryByIP(vmIP ip);
 	unsigned getCountryIdByIP(vmIP ip);
 	bool isLocalByIP(vmIP ip);
@@ -335,9 +344,9 @@ private:
 
 void CountryDetectInit(SqlDb *sqlDb = NULL);
 void CountryDetectTerm();
-string getCountryByPhoneNumber(const char *phoneNumber, bool suppressStringLocal = false);
-unsigned getCountryIdByPhoneNumber(const char *phoneNumber);
-bool isLocalByPhoneNumber(const char *phoneNumber);
+string getCountryByPhoneNumber(const char *phoneNumber, vmIP ip, bool suppressStringLocal = false);
+unsigned getCountryIdByPhoneNumber(const char *phoneNumber, vmIP ip);
+bool isLocalByPhoneNumber(const char *phoneNumber, vmIP ip);
 string getCountryByIP(vmIP ip, bool suppressStringLocal = false);
 unsigned getCountryIdByIP(vmIP ip);
 string getContinentByCountry(const char *country);

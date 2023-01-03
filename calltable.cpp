@@ -123,6 +123,8 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 extern char opt_keycheck[1024];
+extern bool opt_keycheck_remote;
+extern char opt_vmcodecs_path[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
 extern char opt_silencedtmfseq[16];
@@ -247,6 +249,8 @@ extern int terminating_charts_cache;
 extern volatile int terminating;
 
 extern sSnifferClientOptions snifferClientOptions;
+extern sSnifferServerOptions snifferServerOptions;
+extern sSnifferServerClientOptions snifferServerClientOptions;
 
 extern char opt_curl_hook_wav[256];
 
@@ -1191,7 +1195,7 @@ Call::closeRawFiles() {
 		if(!rtp_i) {
 			continue;
 		}
-		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS and not EXPERIMENTAL_LITE_RTP_MOD
 		// close RAW files
 		if(rtp_i->gfileRAW || rtp_i->initRAW) {
 			if(!rtp_i->channel_record_is_adaptive()) {
@@ -2508,7 +2512,8 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 	}
 	if(enable_save_packet) {
 		if((this->silencerecording || (this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO_HEADER : FLAG_SAVERTPHEADER))) && 
-		   !this->isfax && !record_dtmf) {
+		   !(this->is_fax() && this->is_fax_packet(packetS)) && 
+		   !record_dtmf) {
 			if(packetS->isStun()) {
 				save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 			} else if(packetS->datalen_() >= RTP_FIXED_HEADERLEN &&
@@ -2524,10 +2529,16 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 					save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 				}
 			}
-		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || this->isfax || record_dtmf) {
+		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
+			  (this->is_fax() && this->is_fax_packet(packetS)) || 
+			  record_dtmf) {
 			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
 		}
 	}
+}
+
+bool Call::is_fax_packet(struct packet_s_process_0 *packetS) {
+	return(seenudptl ? packetS->isUdptlOkDataLen() : isfax);
 }
 
 void Call::stoprecording() {
@@ -3097,14 +3108,50 @@ cWavMix::cWav *cWavMix::getWavNoMix(bool withoutEndSilence) {
 	return(wav_max_length_samples);
 }
 
+struct s_vmcodecs_callback {
+	inline void init() {
+		memset(this, 0, sizeof(*this));
+	}
+	bool detect_keycheck;
+	bool ok;
+	bool invalid;
+	bool error;
+};
+
+void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, void *data) {
+	//cout << "*** " << str << "###" << endl;
+	if(!((s_vmcodecs_callback*)data)->detect_keycheck) {
+		char *keycheck_pos = strstr((char*)*out, "keycheck:");
+		if(keycheck_pos) {
+			((s_vmcodecs_callback*)data)->detect_keycheck = 1;
+			string output;
+			string error;
+			bool remote_keycheck(string input, string *output, string *error);
+			bool rslt_keycheck =  remote_keycheck(keycheck_pos + 9, &output, &error);
+			//cout << " *** keycheck output: " << output << endl;
+			//cout << " *** keycheck error: " << error << endl;
+			if(rslt_keycheck) {
+				write(fd, output.c_str(), output.length());
+				write(fd, "\n", 1);
+			} else {
+				write(fd, "error\n", 6);
+			}
+		}
+	}
+	if(strcasestr((char*)*out, "OK license")) {
+		((s_vmcodecs_callback*)data)->ok = true;
+	} else if(strcasestr((char*)*out, "Invalid")) {
+		((s_vmcodecs_callback*)data)->invalid = true;
+	} else if(strcasestr((char*)*out, "Error")) {
+		((s_vmcodecs_callback*)data)->error = true;
+	}
+}
 
 int
 Call::convertRawToWav() {
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
  
-	char cmd[4092];
-	int cmd_len = sizeof(cmd) - 1;
 	char wav0[1024] = "";
 	char wav1[1024] = "";
 	char out[1024];
@@ -3533,380 +3580,253 @@ Call::convertRawToWav() {
 			if(wavMix) {
 				unlink(wav);
 			}
+			string codec_decoder_name;
+			int codec_decoder_samplerate = 0;
 			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
-				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMA to WAV ssrc[%x] wav[%s] index[%u]\n", rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index);
-				convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
+				codec_decoder_name = "pcma";
 				samplerate = max(8000, maxsamplerate);
 				break;
 			case PAYLOAD_PCMU:
-				if(verbosity > 1) syslog(LOG_ERR, "Converting PCMU to WAV ssrc[%x] wav[%s] index[%u]\n", rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index);
-				convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
+				codec_decoder_name = "pcmu";
 				samplerate = max(8000, maxsamplerate);
 				break;
 		/* following decoders are not included in free version. Please contact support@voipmonitor.org */
 			case PAYLOAD_G722:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g722 \"%s\" \"%s\" 64000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g722 \"%s\" \"%s\" 64000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "g722";
+				codec_decoder_samplerate = 64000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.722 to WAV.\n");
-				if(verbosity > 2) syslog(LOG_ERR, "Converting G.722 to WAV. %s\n", cmd);
-				system(cmd);
 				break;
 			case PAYLOAD_G7221:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "siren";
+				codec_decoder_samplerate = 16000;
 				samplerate = 32000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221 to WAV.\n");
-				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
-				system(cmd);
 				break;
 			case PAYLOAD_G722116:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "siren";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221 to WAV.\n");
-				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
-				system(cmd);
 				break;
 			case PAYLOAD_G722132:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s siren \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-siren \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "siren";
+				codec_decoder_samplerate = 32000;
 				samplerate = 32000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.7221c to WAV.\n");
-				if(verbosity > 2) syslog(LOG_ERR, "Converting G.7221 to WAV. %s\n", cmd);
-				system(cmd);
 				break;
 			case PAYLOAD_GSM:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s gsm \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-gsm \"%s\" \"%s\"", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting GSM to WAV.\n");
+				codec_decoder_name = "gsm";
 				samplerate = 8000;
-				system(cmd);
 				break;
 			case PAYLOAD_G729:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g729 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g729 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.729 to WAV.\n");
+				codec_decoder_name = "g729";
 				samplerate = 8000;
-				system(cmd);
 				break;
 			case PAYLOAD_G723:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g723 \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g723 \"%s\" \"%s\"", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.723 to WAV.\n");
+				codec_decoder_name = "g723";
 				samplerate = 8000;
-				system(cmd);
 				break;
 			case PAYLOAD_ILBC:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s ilbc \"%s\" \"%s\" %d", opt_keycheck, rawf->filename.c_str(), wav, frame_size ? frame_size : 30);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-ilbc \"%s\" \"%s\" %d", rawf->filename.c_str(), wav, frame_size ? frame_size : 30);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting iLBC to WAV.\n");
+				codec_decoder_name = "ilbc";
+				codec_decoder_samplerate = frame_size ? frame_size : 30;
 				samplerate = 8000;
-				system(cmd);
 				break;
 			case PAYLOAD_SPEEX:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s speex \"%s\" \"%s\"", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-speex \"%s\" \"%s\"", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting speex to WAV.\n");
+				codec_decoder_name = "speex";
 				samplerate = 8000;
-				system(cmd);
 				break;
 			case PAYLOAD_SILK8:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "silk";
+				codec_decoder_samplerate = 8000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK8 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_SILK12:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "silk";
+				codec_decoder_samplerate = 12000;
 				samplerate = 12000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK12 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_SILK16:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "silk";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_SILK24:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s silk \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-silk \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting SILK16 to WAV.\n");
+				codec_decoder_name = "silk";
+				codec_decoder_samplerate = 24000;
 				samplerate = 24000;
-				system(cmd);
 				break;
 			case PAYLOAD_ISAC16:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "isac";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC16 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_ISAC32:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s isac \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-isac \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "isac";
+				codec_decoder_samplerate = 32000;
 				samplerate = 32000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting ISAC32 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_OPUS8:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "opus";
+				codec_decoder_samplerate = 8000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS8 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_OPUS12:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 12000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 12000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "opus";
+				codec_decoder_samplerate = 12000;
 				samplerate = 12000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS12 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_OPUS16:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "opus";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS16 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_OPUS24:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "opus";
+				codec_decoder_samplerate = 24000;
 				samplerate = 24000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS24 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_OPUS48:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s opus \"%s\" \"%s\" 48000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-opus \"%s\" \"%s\" 48000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "opus";
+				codec_decoder_samplerate = 48000;
 				samplerate = 48000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting OPUS48 to WAV.\n");
-				system(cmd);
 				break;
 			case PAYLOAD_AMR:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s amrnb \"%s\" \"%s\" 8000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-amrnb \"%s\" \"%s\" 8000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "amrnb";
+				codec_decoder_samplerate = 8000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRNB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_AMRWB:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s amrwb \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-amrwb \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "amrwb";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AMRWB[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_G72616:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "g726";
+				codec_decoder_samplerate = 16000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-16[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_G72624:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "g726";
+				codec_decoder_samplerate = 24000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-24[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_G72632:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "g726";
+				codec_decoder_samplerate = 32000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-32[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_G72640:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s g726 \"%s\" \"%s\" 40000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-g726 \"%s\" \"%s\" 40000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "g726";
+				codec_decoder_samplerate = 40000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_AAL2_G72616:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "aal2g726";
+				codec_decoder_samplerate = 16000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-16[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_AAL2_G72624:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 24000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 24000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "aal2g726";
+				codec_decoder_samplerate = 24000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-24[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_AAL2_G72632:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 32000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 32000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "aal2g726";
+				codec_decoder_samplerate = 32000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-32[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_AAL2_G72640:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s aal2g726 \"%s\" \"%s\" 40000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-aal2g726 \"%s\" \"%s\" 40000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "aal2g726";
+				codec_decoder_samplerate = 40000;
 				samplerate = 8000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting AAL2 G.726-40[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			case PAYLOAD_EVS:
-				if(opt_keycheck[0] != '\0') {
-					snprintf(cmd, cmd_len, "vmcodecs %s evs \"%s\" \"%s\" 16000", opt_keycheck, rawf->filename.c_str(), wav);
-				} else {
-					snprintf(cmd, cmd_len, "voipmonitor-evs \"%s\" \"%s\" 16000", rawf->filename.c_str(), wav);
-					cout << cmd << "\n";
-				}
-				cmd[cmd_len] = 0;
+				codec_decoder_name = "evs";
+				codec_decoder_samplerate = 16000;
 				samplerate = 16000;
-				if(verbosity > 1) syslog(LOG_ERR, "Converting EVS[%s] to WAV[%s].\n", rawf->filename.c_str(), wav);
-				system(cmd);
 				break;
 			default:
 				if (++unknown_codec_counter > 2) {
 					syslog(LOG_ERR, "Call [%s] has more than 2 parts with the unsupported codec [%s][%d].\n", rawf->filename.c_str(), codec2text(rawf->codec), rawf->codec);
 				}
 			}
+			
+			if(!codec_decoder_name.empty()) {
+				if(verbosity > 1) {
+					syslog(LOG_NOTICE, "Converting %s to WAV ssrc[%x] wav[%s] index[%u]\n", 
+					       codec2text(rawf->codec), rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index);
+				}
+				switch(rawf->codec) {
+				case PAYLOAD_PCMA:
+					convertALAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
+					break;
+				case PAYLOAD_PCMU:
+					convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
+					break;
+				default:
+					string cmd;
+					string vmcodecs_cmd;
+					if(opt_vmcodecs_path[0]) {
+						vmcodecs_cmd = opt_vmcodecs_path;
+						if(opt_vmcodecs_path[strlen(opt_vmcodecs_path) - 1] != '/') {
+							vmcodecs_cmd += '/';
+						}
+					}
+					vmcodecs_cmd += "vmcodecs";
+					bool keycheck_remote = false;
+					if(isCloud() || snifferClientOptions.isEnable()) {
+						if(!strcasecmp(opt_keycheck, "remote") || opt_keycheck_remote) {
+							keycheck_remote = true;
+						} else {
+							keycheck_remote = opt_vmcodecs_path[0] ? file_exists(vmcodecs_cmd.c_str()) : binaryFileExists(vmcodecs_cmd.c_str());
+						}
+					}
+					if(opt_keycheck[0] != '\0' || keycheck_remote) {
+						cmd += vmcodecs_cmd + " " + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
+					} else {
+						cmd = string("voipmonitor-") + codec_decoder_name + " ";
+					}
+					cmd += "\"" + rawf->filename + "\" \"" + wav + "\"";
+					if(codec_decoder_samplerate > 0) {
+						cmd += " " + intToString(codec_decoder_samplerate);
+					}
+					if(keycheck_remote) {
+						cmd += " r";
+					}
+					if(verbosity > 2) {
+						syslog(LOG_NOTICE, "Converting %s to WAV ssrc[%x] wav[%s] index[%u] cmd[%s]\n", 
+						       codec2text(rawf->codec), rtp_stream_by_index(rawf->ssrc_index)->ssrc, wav, rawf->ssrc_index,
+						       cmd.c_str());
+					}
+					if(keycheck_remote) {
+						SimpleBuffer out, err;
+						int exitCode;
+						s_vmcodecs_callback callback_data;
+						do {
+							callback_data.init();
+							vm_pexec(cmd.c_str(), &out, &err, &exitCode, 
+								 2 * 60, 1, 1,
+								 true, true,
+								 convertRawToWav_vmcodecs_callback, &callback_data);
+							if(callback_data.invalid) {
+								syslog(LOG_ERR, "vmcodecs: invalid license");
+							} else if(callback_data.error) {
+								string error = (char*)err;
+								if(error.empty()) {
+									error = "error when checking license";
+								}
+								syslog(LOG_ERR, "vmcodecs: error[%s] - try next after 5s", error.c_str());
+								for(int i = 0; i < 5 && !is_terminating(); i++) {
+									sleep(1);
+								}
+							}
+						}
+						while(callback_data.error && !is_terminating());
+					} else {
+						system(cmd.c_str());
+					}
+					break;
+				}
+			}
+			
 			if(!sverb.noaudiounlink) unlink(rawf->filename.c_str());
 			
 			if(wavMix && file_exists(wav)) {
@@ -4366,16 +4286,16 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(get_called());
 		break;
 	case cf_caller_country:
-		rfield->set(getCountryByPhoneNumber(caller, true).c_str());
+		rfield->set(getCountryByPhoneNumber(caller, getSipcallerip(true), true).c_str());
 		break;
 	case cf_called_country:
-		rfield->set(getCountryByPhoneNumber(get_called(), true).c_str());
+		rfield->set(getCountryByPhoneNumber(get_called(), getSipcalledip(true, true), true).c_str());
 		break;
 	case cf_caller_international:
-		rfield->set(!isLocalByPhoneNumber(caller));
+		rfield->set(!isLocalByPhoneNumber(caller, getSipcallerip(true)));
 		break;
 	case cf_called_international:
-		rfield->set(!isLocalByPhoneNumber(get_called()));
+		rfield->set(!isLocalByPhoneNumber(get_called(), getSipcalledip(true, true)));
 		break;
 	case cf_callername:
 		rfield->set(callername);
@@ -6576,6 +6496,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
+	if(existsColumns.cdr_next_digest_username && digest_username[0]) {
+		cdr_next.add(digest_username, "digest_username");
+	}
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
 	}
@@ -7069,6 +6992,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				    getSipcallerip(), sipcalledip_rslt,
 				    caller, get_called(),
 				    caller_domain, get_called_domain(),
+				    digest_username,
 				    &operator_price, &customer_price,
 				    &operator_currency_id, &customer_currency_id,
 				    &operator_id, &customer_id)) {
@@ -7118,13 +7042,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(opt_cdr_country_code == 2) {
 			cdr_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryIdByIP(sipcalledip_rslt), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			cdr_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(caller, getSipcallerip()), "caller_number_country_code");
+			cdr_country_code.add(getCountryIdByPhoneNumber(get_called(), sipcalledip_rslt), "called_number_country_code");
 		} else {
 			cdr_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			cdr_country_code.add(getCountryByIP(sipcalledip_rslt, true), "sipcalledip_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			cdr_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(caller, getSipcallerip() , true), "caller_number_country_code");
+			cdr_country_code.add(getCountryByPhoneNumber(get_called(), sipcalledip_rslt, true), "called_number_country_code");
 		}
 		if(existsColumns.cdr_country_code_calldate) {
 			cdr_country_code.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_country_code_calldate_ms);
@@ -8494,6 +8418,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						if(a_ua[0]) {
 							reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 						}
+						if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(), "sipcallerport");
+							reg.add(getSipcalledport(), "sipcalledport");
+						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 
@@ -8516,6 +8444,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 						}
 						reg.add(intToString(fname_register), "fname");
 						reg.add(useSensorId, "id_sensor");
+						if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+							reg.add(getSipcallerport(), "sipcallerport");
+							reg.add(getSipcalledport(), "sipcalledport");
+						}
 						sqlDbSaveCall->insert("register_state", reg);
 					}
 				} else {
@@ -8537,6 +8469,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					}
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
+					if (existsColumns.register_state_sipcallerport && existsColumns.register_state_sipcalledport) {
+						reg.add(getSipcallerport(), "sipcallerport");
+						reg.add(getSipcalledport(), "sipcalledport");
+					}
 					sqlDbSaveCall->insert("register_state", reg);
 				}
 
@@ -8566,6 +8502,8 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(intToString(fname_register), "fname");
 					reg.add(useSensorId, "id_sensor");
 					reg.add(regstate, "state");
+					reg.add(getSipcallerport(), "sipcallerport");
+					reg.add(getSipcalledport(), "sipcalledport");
 					//reg.add(srcmac, "src_mac");
 
 					if (existsColumns.register_rrd_count) {
@@ -8624,7 +8562,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 			reg.add(sqlEscapeString(contact_num), "contact_num");
 			reg.add(sqlEscapeString(contact_domain), "contact_domain");
 			reg.add(sqlEscapeString(digest_username), "digestusername");
-
+			if (existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+				reg.add(getSipcallerport(), "sipcallerport");
+				reg.add(getSipcalledport(), "sipcalledport");
+			}
 			//reg.add(MYSQL_VAR_PREFIX + "getIdOrInsertUA(" + sqlEscapeStringBorder(a_ua) + ")", "ua_id");
 			reg.add(MYSQL_VAR_PREFIX + "@ua_id", "ua_id");
 
@@ -8666,6 +8607,10 @@ Call::saveRegisterToDb(bool enableBatchIfPossible) {
 					reg.add(sqlEscapeString(contact_num), "contact_num");
 					reg.add(sqlEscapeString(contact_domain), "contact_domain");
 					reg.add(sqlEscapeString(digest_username), "digestusername");
+					if (existsColumns.register_failed_sipcallerport && existsColumns.register_failed_sipcalledport) {
+						reg.add(getSipcallerport(), "sipcallerport");
+						reg.add(getSipcalledport(), "sipcalledport");
+					}
 					if(a_ua[0]) {
 						reg.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, a_ua, true), "ua_id");
 					}
@@ -8815,13 +8760,13 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 		if(opt_message_country_code == 2) {
 			msg_country_code.add(getCountryIdByIP(getSipcallerip()), "sipcallerip_country_code");
 			msg_country_code.add(getCountryIdByIP(getSipcalledip()), "sipcalledip_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(caller), "caller_number_country_code");
-			msg_country_code.add(getCountryIdByPhoneNumber(get_called()), "called_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(caller, getSipcallerip()), "caller_number_country_code");
+			msg_country_code.add(getCountryIdByPhoneNumber(get_called(), getSipcalledip()), "called_number_country_code");
 		} else {
 			msg_country_code.add(getCountryByIP(getSipcallerip(), true), "sipcallerip_country_code");
 			msg_country_code.add(getCountryByIP(getSipcalledip(), true), "sipcalledip_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(caller, true), "caller_number_country_code");
-			msg_country_code.add(getCountryByPhoneNumber(get_called(), true), "called_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(caller, getSipcallerip(), true), "caller_number_country_code");
+			msg_country_code.add(getCountryByPhoneNumber(get_called(), getSipcalledip(), true), "called_number_country_code");
 		}
 		msg_country_code.add_calldate(calltime_us(), "calldate", existsColumns.message_child_country_code_calldate_ms);
 	}
@@ -9838,12 +9783,12 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		}
 		ss7.add(sqlEscapeString(called_number), "called_number");
 		ss7.add(sqlEscapeString(reverseString(called_number.c_str())), "called_number_reverse");
-		ss7.add(getCountryByPhoneNumber(called_number.c_str(), true), "called_number_country_code");
+		ss7.add(getCountryByPhoneNumber(called_number.c_str(), iam_dst_ip, true), "called_number_country_code");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
 		ss7.add(sqlEscapeString(iam_data.e164_calling_party_number_digits), "caller_number");
 		ss7.add(sqlEscapeString(reverseString(iam_data.e164_calling_party_number_digits.c_str())), "caller_number_reverse");
-		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), true), "caller_number_country_code");
+		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), iam_src_ip, true), "caller_number_country_code");
 	}
 	if(isset_unsigned(rel_cause_indicator)) {
 		ss7.add(rel_cause_indicator, "rel_cause_indicator");
@@ -13558,7 +13503,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 						      specialType == "max_length_sip_packet" ? max_length_sip_packet :
 						      specialType == "gsm_dcs" ? gsm_dcs :
 						      specialType == "gsm_voicemail" ? gsm_voicemail : 
-						      specialType == "max_retransmission_invite" ? max_retransmission_invite : st_na;
+						      specialType == "digest_username" ? digest_username : st_na;
 				ch_data.db_id = atoi(row["id"].c_str());
 				ch_data.type = row.getIndexField("type") < 0 || row.isNull("type") ? "fixed" : row["type"];
 				if(ch_data.specialType == st_na) {
@@ -13745,6 +13690,11 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 						if(max_retrans > 0) {
 							content = intToString(max_retrans);
 						}
+					}
+					break;
+				case digest_username:
+					if(call->digest_username[0]) {
+						content = call->digest_username;
 					}
 					break;
 				case st_na:
@@ -14853,3 +14803,130 @@ string cDestroyCallsInfo::find(string fbasename, int index) {
 	return(outStr.str());
 }
 #endif
+
+
+bool remote_keycheck(string input, string *output, string *error) {
+	if(isCloud() || snifferClientOptions.isEnable()) {
+		static cSocketBlock *remote_socket = NULL;
+		static volatile int sync = 0;
+		__SYNC_LOCK_USLEEP(sync, 100);
+		string last_error;
+		unsigned max_pass = 10;
+		for(unsigned pass = 0; pass < max_pass; pass++) {
+			last_error = "";
+			if(pass > max_pass / 2) {
+				if(remote_socket) {
+					delete remote_socket;
+					remote_socket = NULL;
+				}
+			}
+			if(!remote_socket) {
+				remote_socket = new FILE_LINE(0) cSocketBlock("keycheck", true);
+				if(isCloud()) {
+					extern char cloud_host[256];
+					extern unsigned cloud_router_port;
+					remote_socket->setHostPort(cloud_host, cloud_router_port);
+				} else {
+					remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
+				}
+				if(!remote_socket->connect()) {
+					last_error = "failed connect to server";
+					continue;
+				}
+				string cmd = "{\"type_connection\":\"keycheck\"}\r\n";
+				if(!remote_socket->write(cmd)) {
+					last_error = "failed send command";
+					continue;
+				}
+				string rsltRsaKey;
+				if(!remote_socket->readBlock(&rsltRsaKey) || rsltRsaKey.find("key") == string::npos) {
+					last_error = "failed read rsa key";
+					continue;
+				}
+				JsonItem jsonRsaKey;
+				jsonRsaKey.parse(rsltRsaKey);
+				string rsa_key = jsonRsaKey.getValue("rsa_key");
+				remote_socket->set_rsa_pub_key(rsa_key);
+				remote_socket->generate_aes_keys();
+				JsonExport json_keys;
+				if(isCloud()) {
+					extern char cloud_token[256];
+					json_keys.add("token", cloud_token);
+				} else {
+					json_keys.add("password", snifferServerClientOptions.password);
+				}
+				string aes_ckey, aes_ivec;
+				remote_socket->get_aes_keys(&aes_ckey, &aes_ivec);
+				json_keys.add("aes_ckey", aes_ckey);
+				json_keys.add("aes_ivec", aes_ivec);
+				if(!remote_socket->writeBlock(json_keys.getJson(), cSocket::_te_rsa)) {
+					last_error = "failed send token & aes keys";
+					continue;
+				}
+				string connectResponse;
+				if(!remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
+					if(!remote_socket->isError() && connectResponse != "OK") {
+						last_error = string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+							     " - " + connectResponse;
+						delete remote_socket;
+						remote_socket = NULL;
+						continue;
+					} else {
+						last_error = "failed read ok";
+						continue;
+					}
+				}
+			}
+			if(!remote_socket->writeBlock(input, cSocket::_te_aes)) {
+				last_error = "failed send keycheck request";
+				continue;
+			}
+			if(!remote_socket->readBlock(output, cSocket::_te_aes) || output->empty()) {
+				last_error = "failed read keycheck response";
+				continue;
+			}
+			break;
+		}
+		__SYNC_UNLOCK(sync);
+		if(!last_error.empty()) {
+			*output = "error: " + last_error;
+			*error = last_error;
+			return(false);
+		} else if(output->substr(0, 7) == "error: ") {
+			*error = output->substr(7);
+			return(false);
+		} else {
+			return(true);
+		}
+	} else if(snifferServerOptions.isEnable()) {
+		bool php_keycheck(string keycheck, string input, string *output, string *error);
+		bool rslt = php_keycheck(opt_keycheck, input, output, error);
+		return(rslt);
+	}
+	return(true);
+}
+
+bool php_keycheck(string keycheck, string input, string *output, string *error) {
+	size_t pos_endl = input.find("\n");
+	if(pos_endl != string::npos) {
+		input.resize(pos_endl);
+	}
+	string cmd = "php " + keycheck + " \"" + input + "\"";
+	FILE *fp = popen(cmd.c_str(), "r");
+	if(fp == NULL) {
+		*error = "failed to run command [" +  ("php " + keycheck) + "]";
+		return(false);
+	}
+	int counterLines = 0;
+	char bufline[1024];
+	while(fgets(bufline, sizeof(bufline) - 1, fp)) {
+		*output += bufline;
+		++counterLines;
+	}
+	pclose(fp);
+	if(counterLines == 0) {
+		*error = "error when checking license";
+		return(false);
+	}
+	return(true);
+}

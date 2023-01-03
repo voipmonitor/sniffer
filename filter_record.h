@@ -29,6 +29,7 @@ public:
 	virtual double getField_float(void *rec);
 	virtual const char *getField_string(void *rec);
 	virtual bool getField_bool(void *rec);
+	virtual vmPort getField_port(void *rec);
 public:
 	cRecordFilter *parent;
 	unsigned recordFieldIndex;
@@ -82,6 +83,16 @@ public:
 	void addWhite(const char *ip) {
 		ipData.addWhite(ip);
 	}
+	void addWhite(const char *table, const char *column, const char * idstr) {
+		vector<string> ids = split(idstr, ',');
+		for(unsigned i = 0; i < ids.size(); i++) {
+			addWhite(table, column, atol(ids[i].c_str()));
+		}
+	}
+	void addWhite(const char *table, const char *column, u_int32_t id) {
+		setCodebook(table, column);
+		ipData.addWhite(getCodebookValue(id).c_str());
+	}
 	bool check(void *rec, bool *findInBlackList = NULL) {
 		if(!ipData.checkIP(getField_ip(rec), findInBlackList)) {
 			return(false);
@@ -124,6 +135,20 @@ public:
 protected:
 	ListCheckString_wb checkStringData;
 	bool enableSpaceSeparator;
+};
+
+class cRecordFilterItem_Port : public cRecordFilterItem_base {
+public:
+	cRecordFilterItem_Port(cRecordFilter *parent, unsigned recordFieldIndex, int port)
+	 : cRecordFilterItem_base(parent, recordFieldIndex) {
+		this->portData = port;
+	}
+	bool check(void *rec, bool */*findInBlackList*/ = NULL) {
+		return(getField_port(rec).getPort() == portData);
+	}
+
+private:
+	int portData;
 };
 
 class cRecordFilterItem_bool : public cRecordFilterItem_base {
@@ -349,6 +374,11 @@ public:
 			((RecordArray*)rec)->fields[recordFieldIndex].get_bool() :
 			0);
 	}
+	virtual vmPort getField_port(void *rec, unsigned recordFieldIndex) {
+		return(useRecordArray ?
+			((RecordArray*)rec)->fields[recordFieldIndex].get_port() :
+			vmPort(0));
+	}
 public:
 	eCond cond;
 	bool useRecordArray;
@@ -363,6 +393,9 @@ vmIP cRecordFilterItem_base::getField_ip(void *rec) {
 }
 double cRecordFilterItem_base::getField_float(void *rec) {
 	return(parent->getField_float(rec, recordFieldIndex));
+}
+vmPort cRecordFilterItem_base::getField_port(void *rec) {
+	return(parent->getField_port(rec, recordFieldIndex));
 }
 bool cRecordFilterItem_base::getField_bool(void *rec) {
 	return(parent->getField_bool(rec, recordFieldIndex));

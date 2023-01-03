@@ -3273,7 +3273,7 @@ int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP) {
 }
 
 int calculate_mos_fromrtp(RTP *rtp, int jittertype, int lastinterval) {
-	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
+	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS and not EXPERIMENTAL_LITE_RTP_MOD
 	double burstr, lossr;
 	switch(jittertype) {
 	case 1: 

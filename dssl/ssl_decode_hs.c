@@ -97,7 +97,7 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	data+= 32;
 	DEBUG_TRACE_BUF("client_random", sess->client_random, 32);
 	
-	if( !sess->ssl_si->pkey && sess->get_keys_fce )
+	if( !sess->ssl_si->pkeys && sess->get_keys_fce )
 	{
 		sess->get_keys_fce(sess->client_random, &sess->get_keys_rslt_data, sess);
 		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && isSetKey(&sess->get_keys_rslt_data.client_random)) 
@@ -334,7 +334,8 @@ static int ssl3_decode_server_hello( dssl_decoder_stack* stack, DSSL_Session* se
 				return DSSL_E_TLS_GENERATE_KEYS;
 			}
 		}
-		else if( sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws && sess->get_keys_rslt_data.set )
+		else if( (sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && 
+			 sess->tls_12_sessionkey_via_ws && sess->get_keys_rslt_data.set )
 		{
 			if( tls_12_generate_keys(sess, 0) )
 			{
@@ -525,9 +526,12 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 		}
 	}
 	
-	if( sess->ssl_si->pkey && !isSetMasterSecret(sess->master_secret) )
+	if( sess->ssl_si->pkeys && !isSetMasterSecret(sess->master_secret) )
 	{
-		pk = ssls_get_session_private_key( sess );
+		if( sess->ssl_si->pkeys && sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+		{
+			pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
+		}
 
 		/* if SSL server key is not found, try to find a matching one from the key pool */
 		if(pk == NULL) 
@@ -541,7 +545,17 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 				if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
 				{
 					/* ssls_register_ssl_key clones the key, query the key back */
-					pk = ssls_get_session_private_key( sess );
+					if( sess->ssl_si->pkeys )
+					{
+						if( sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+						{
+							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
+						}
+						else if( sess->ssl_si->pkeys_index_ok == 0 && sess->ssl_si->pkeys_count == 1)
+						{
+							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok ];
+						}
+					}
 				}
 				else
 				{
@@ -611,7 +625,7 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 	/* TBD: skip server certificate check if SSL key has not yet been mapped for this server */
 	if( !sess->ssl_si ) return DSSL_RC_OK;
 
-	if( !sess->ssl_si->pkey && !sess->master_secret[0]) return NM_ERROR( DSSL_E_UNINITIALIZED_ARGUMENT );
+	if( !sess->ssl_si->pkeys && !sess->master_secret[0]) return NM_ERROR( DSSL_E_UNINITIALIZED_ARGUMENT );
 
 	if( len < 3 ) return NM_ERROR( DSSL_E_SSL_INVALID_RECORD_LENGTH );
 	
@@ -623,7 +637,7 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 	data+=3;
 	if( llen > len ) return NM_ERROR( DSSL_E_SSL_INVALID_CERTIFICATE_LENGTH );
 
-	if( sess->ssl_si->pkey && !sess->master_secret[0] )
+	if( sess->ssl_si->pkeys && !sess->master_secret[0] )
 	{
 		x = d2i_X509( NULL, (const u_char**)&data, llen );
 		if( !x ) 
@@ -631,9 +645,22 @@ static int ssl3_decode_server_certificate( DSSL_Session* sess, u_char* data, uin
 			rc = NM_ERROR( DSSL_E_SSL_BAD_CERTIFICATE );
 		}
 
-		if( rc == DSSL_RC_OK && !X509_check_private_key(x, ssls_get_session_private_key( sess )) )
+		if( rc == DSSL_RC_OK )
 		{
-			rc = NM_ERROR( DSSL_E_SSL_CERTIFICATE_KEY_MISMATCH );
+			sess->ssl_si->pkeys_index_ok = 0;
+			uint8_t pkeys_index;
+			for(pkeys_index = 0; pkeys_index < sess->ssl_si->pkeys_count; pkeys_index++)
+			{
+				if( X509_check_private_key(x, sess->ssl_si->pkeys[pkeys_index]) )
+				{
+					sess->ssl_si->pkeys_index_ok = pkeys_index + 1;
+					break;
+				}
+				else if( pkeys_index == sess->ssl_si->pkeys_count - 1 )
+				{
+					rc = NM_ERROR( DSSL_E_SSL_CERTIFICATE_KEY_MISMATCH );
+				}
+			}
 		}
 
 		if( x ) X509_free( x );
@@ -670,7 +697,7 @@ int ssl3_init_handshake_digests( DSSL_Session* sess )
 		{
 			if( sess->get_keys_rslt_data.set && 
 			    (sess->version == TLS1_3_VERSION || 
-			    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
+			     ((sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && sess->tls_12_sessionkey_via_ws)) )
 			{
 				return DSSL_RC_OK;
 			}
@@ -717,7 +744,7 @@ int ssl3_update_handshake_digests( DSSL_Session* sess, u_char* data, uint32_t le
 			{
 				if( sess->get_keys_rslt_data.set && 
 				    (sess->version == TLS1_3_VERSION || 
-				    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
+				     ((sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && sess->tls_12_sessionkey_via_ws)) )
 				{
 					return DSSL_RC_OK;
 				}
@@ -845,7 +872,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	case SSL3_MT_CERTIFICATE:
 		if( sess->get_keys_rslt_data.set && 
 		    (sess->version == TLS1_3_VERSION || 
-		    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
+		     ((sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && sess->tls_12_sessionkey_via_ws)) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		}
@@ -866,7 +893,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 	case SSL3_MT_CLIENT_KEY_EXCHANGE:
 		if( sess->get_keys_rslt_data.set && 
 		    (sess->version == TLS1_3_VERSION || 
-		    (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws)) )
+		     ((sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && sess->tls_12_sessionkey_via_ws)) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		} 
@@ -893,7 +920,7 @@ int ssl3_decode_handshake_record( dssl_decoder_stack* stack, NM_PacketDir dir,
 		if( isSetMasterSecret(sess->master_secret) || 
 		    (sess->get_keys_rslt_data.set && 
 		     (sess->version == TLS1_3_VERSION || 
-		     (sess->version == TLS1_2_VERSION && sess->tls_12_sessionkey_via_ws))) )
+		      ((sess->version == TLS1_2_VERSION || sess->version == TLS1_1_VERSION || sess->version == TLS1_VERSION) && sess->tls_12_sessionkey_via_ws))) )
 		{
 			rc = ssl3_decode_dummy( sess, data, recLen );
 		}

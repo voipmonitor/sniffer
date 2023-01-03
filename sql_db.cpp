@@ -660,7 +660,7 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 				this->remote_socket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			}
 			if(!this->remote_socket->connect()) {
-				setLastError(0, isCloud() ? "failed connect to cloud router" : "failed connect to server", true);
+				setLastError(0, string("failed connect to ") + (isCloud() ? "cloud router" : "server"), true);
 				continue;
 			}
 			string cmd = isCloud() ?
@@ -697,7 +697,8 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			string connectResponse;
 			if(!this->remote_socket->readBlock(&connectResponse) || connectResponse != "OK") {
 				if(!this->remote_socket->isError() && connectResponse != "OK") {
-					setLastError(0, "failed response from cloud router - " + connectResponse, true);
+					setLastError(0, string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+							" - " + connectResponse, true);
 					delete this->remote_socket;
 					this->remote_socket = NULL;
 					continue;
@@ -3291,7 +3292,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			this->remote_socket = new FILE_LINE(0) cSocketBlock("sql store", true);
 			this->remote_socket->setHostPort(_snifferClientOptions->host, _snifferClientOptions->port);
 			if(!this->remote_socket->connect()) {
-				syslog(LOG_ERR, "send store query error: %s", "failed connect to cloud router");
+				syslog(LOG_ERR, "send store query error: %s", (string("failed connect to ") + (isCloud() ? "cloud router" : "server")).c_str());
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"store\"}\r\n";
@@ -3344,7 +3345,8 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 			if(!connectOK) {
 				if(!this->remote_socket->isError()) {
 					syslog(LOG_ERR, "send store query error: %s", 
-					       ("failed response from cloud router - " + (connectError.empty() ? "unknown error" : connectError)).c_str());
+					       (string("failed response from ") + (isCloud() ? "cloud router" : "server") + 
+						" - " + (connectError.empty() ? "unknown error" : connectError)).c_str());
 					delete this->remote_socket;
 					this->remote_socket = NULL;
 					break;
@@ -5918,6 +5920,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				"") + 
 			"`custom_header1` varchar(255) DEFAULT NULL,\
 			`fbasename` varchar(255) DEFAULT NULL,\
+			`digest_username` varchar(255) DEFAULT NULL,\
 			`match_header` VARCHAR(128) DEFAULT NULL,\
 			`GeoPosition` varchar(255) DEFAULT NULL, \
 			`hold` varchar(1024) DEFAULT NULL, \
@@ -5938,6 +5941,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"PRIMARY KEY (`cdr_ID`, `calldate`)," :
 			"PRIMARY KEY (`cdr_ID`),") +
 		"KEY `fbasename` (`fbasename`),\
+		 KEY `digest_username` (`digest_username`),\
 		 KEY `match_header` (`match_header`)" + 
 		(opt_conference_processing ?
 			",KEY `conference_referred_by` (`conference_referred_by`)" :
@@ -6752,7 +6756,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") + 
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -6839,7 +6845,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			       `sipcalledip_encaps_prot` tinyint unsigned DEFAULT NULL,\
 			      " :
 			      "") +
-			"`from_num` varchar(255) NULL DEFAULT NULL,\
+			"`sipcallerport` smallint unsigned DEFAULT NULL,\
+			`sipcalledport` smallint unsigned DEFAULT NULL,\
+			`from_num` varchar(255) NULL DEFAULT NULL,\
 			`to_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_num` varchar(255) NULL DEFAULT NULL,\
 			`contact_domain` varchar(255) NULL DEFAULT NULL,\
@@ -8658,6 +8666,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_next(bool log) {
 	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("cdr_next", "cdr digest username (can be used by custom header)", true,
+				log, &tableSize, &existsColumns.cdr_next_digest_username,
+				"digest_username", "varchar(255) DEFAULT NULL", "digest_username (digest_username)",
+				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_next", "cdr spool index", true,
 				log, &tableSize, &existsColumns.cdr_next_spool_index,
 				"spool_index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
@@ -9121,6 +9133,22 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 	this->checkNeedAlterAdd("register_state", "register_state digestrealm", true,
 				log, &tableSize, &existsColumns.register_state_digestrealm,
 				"digestrealm", "varchar(255) DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcallerport", true,
+				log, &tableSize, &existsColumns.register_state_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_state", "register_state sipcalledport", true,
+				log, &tableSize, &existsColumns.register_state_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcallerport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcallerport,
+				"sipcallerport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("register_failed", "register_failed sipcalledport", true,
+				log, &tableSize, &existsColumns.register_failed_sipcalledport,
+				"sipcalledport", "smallint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("register_failed", "register_failed spool index", true,
 				log, &tableSize, &existsColumns.register_failed_spool_index,
