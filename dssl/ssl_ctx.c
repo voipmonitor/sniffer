@@ -33,7 +33,8 @@ void DSSL_ServerInfoFree( DSSL_ServerInfo* si )
 
 	if( si->pkeys != NULL )
 	{
-		for(int i = 0; i < si->pkeys_count; i++) {
+		int i;
+		for(i = 0; i < si->pkeys_count; i++) {
 			EVP_PKEY_free( si->pkeys[i] );
 		}
 		free(si->pkeys);
