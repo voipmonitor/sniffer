@@ -1,3 +1,8 @@
+31.0.1 04.01.2022
+=================
+- fix crash in ssl
+
+
 31.0 03.01.2022
 ===============
 - performance optimizations in t2-s thread
