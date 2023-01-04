@@ -10138,12 +10138,19 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			pushed = true;
 		}
 		if(!pushed) {
-			if((packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
-			   (packetS->is_subscribe() && !opt_sip_subscribe && !livesnifferfilterUseSipTypes.u_subscribe) ||
-			   (packetS->is_notify() && !opt_sip_notify && !livesnifferfilterUseSipTypes.u_notify)) {
-				PACKET_S_PROCESS_DESTROY(&packetS);
+			bool is_options = packetS->is_options();
+			bool is_subscribe = packetS->is_subscribe();
+			bool is_notify = packetS->is_notify();
+			if(is_options || is_subscribe || is_notify) {
+				if((is_options && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
+				   (is_subscribe && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
+				   (is_notify && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
+					preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			} else {
-				preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+				PACKET_S_PROCESS_DESTROY(&packetS);
 			}
 		}
 	} else if(packetS->typeContentIsSkinny()) {
