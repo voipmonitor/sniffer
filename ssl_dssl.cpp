@@ -98,7 +98,9 @@ bool cSslDsslSession::initServer() {
 				}
 				continue;
 			}
-			pkeys.push_back(pkey);
+			if(pkey) {
+				pkeys.push_back(pkey);
+			}
 			fclose(file_keyfile);
 		}
 		if(!pkeys.size()) {
