@@ -287,6 +287,8 @@ extern bool srvcc_set;
 extern bool opt_srvcc_processing_only;
 extern bool opt_ssl_dtls_queue_keep;
 extern int opt_ssl_dtls_handshake_safe;
+extern unsigned opt_max_sip_packets_in_call;
+extern unsigned opt_max_invite_packets_in_call;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -3935,6 +3937,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	call->updateTimeShift(getTimeUS(packetS->header_pt));
+	++call->sip_packets_counter;
+	if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
+		return;
+	}
 	
 	if(processing_limitations.suppressRtpAllProcessing()) {
 		call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
@@ -3989,6 +3995,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
+		++call->invite_packets_counter;
+		if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
+			return;
+		}
 		call->invite_list_lock();
 		int inviteSdaddrCounter = 0;
 		for(vector<Call::sInviteSD_Addr>::iterator iter = call->invite_sdaddr.begin(); iter != call->invite_sdaddr.end(); iter++) {

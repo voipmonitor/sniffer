@@ -1042,6 +1042,8 @@ vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
 bool opt_sip_only_tcp = false;
+unsigned opt_max_sip_packets_in_call = 20000;
+unsigned opt_max_invite_packets_in_call = 10000;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
@@ -7627,6 +7629,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_sip_packets_in_call", &opt_max_sip_packets_in_call));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_invite_packets_in_call", &opt_max_invite_packets_in_call));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -12767,6 +12771,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_only_tcp", NULL))) {
 		opt_sip_only_tcp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "max_sip_packets_in_call", NULL))) {
+		opt_max_sip_packets_in_call = atoi(value);
+	}
+	if((value = ini.GetValue("general", "max_invite_packets_in_call", NULL))) {
+		opt_max_invite_packets_in_call = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

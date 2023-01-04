@@ -116,6 +116,8 @@ extern bool opt_ss7_use_sam_subsequent_number;
 extern int opt_ss7timeout_rlc;
 extern int opt_ss7timeout_rel;
 extern int opt_ss7timeout;
+extern unsigned opt_max_sip_packets_in_call;
+extern unsigned opt_max_invite_packets_in_call;
 extern unsigned int gthread_num;
 extern volatile int num_threads_active;
 extern int opt_printinsertid;
@@ -716,6 +718,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtp_timeout_exceeded = 0;
 	sipwithoutrtp_timeout_exceeded = 0;
 	oneway_timeout_exceeded = 0;
+	max_sip_packets_exceeded = 0;
+	max_invite_packets_exceeded = 0;
 	force_terminate = 0;
 	pcap_drop = 0;
 	
@@ -835,6 +839,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sp_stop_rtp_processing_at = 0;
 	sp_do_destroy_call_at = 0;
 	#endif
+	
+	sip_packets_counter = 0;
+	invite_packets_counter = 0;
 	
 }
 
@@ -6540,6 +6547,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 107;
 	} else if(sipwithoutrtp_timeout_exceeded && !first_rtp_time_us) {
 		bye = 108;
+	} else if(max_sip_packets_exceeded || max_invite_packets_exceeded) {
+		bye = 109;
 	} else if(oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
 		bye = 101;
 	} else if(pcap_drop) {
@@ -12189,6 +12198,8 @@ struct sCleanupCallsStat {
 			if(close_absolute_timeout) str << "close_absolute_timeout " << close_absolute_timeout << endl;
 			if(close_zombie_timeout) str << "close_zombie_timeout " << close_zombie_timeout << endl;
 			if(close_oneway_timeout) str << "close_oneway_timeout " << close_oneway_timeout << endl;
+			if(close_max_sip_packets) str << "close_max_sip_packets " << close_max_sip_packets << endl;
+			if(close_max_invite_packets) str << "close_max_invite_packets " << close_max_invite_packets << endl;
 			if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
 			if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
 			if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
@@ -12214,6 +12225,8 @@ struct sCleanupCallsStat {
 	u_int32_t close_absolute_timeout;
 	u_int32_t close_zombie_timeout;
 	u_int32_t close_oneway_timeout;
+	u_int32_t close_max_sip_packets;
+	u_int32_t close_max_invite_packets;
 	u_int32_t in_preprocess_issue;
 	u_int32_t sp_sent_close_call;
 	u_int32_t sp_arrived_rtp_streams;
@@ -12386,6 +12399,14 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 						++stat.close_zombie_timeout;
+					} else if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
+						closeCall = true;
+						call->max_sip_packets_exceeded = true;
+						++stat.close_max_sip_packets;
+					} else if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
+						closeCall = true;
+						call->max_invite_packets_exceeded = true;
+						++stat.close_max_invite_packets;
 					}
 					if(!closeCall &&
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
