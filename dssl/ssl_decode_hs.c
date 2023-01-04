@@ -532,41 +532,48 @@ int ssl3_decode_client_key_exchange( DSSL_Session* sess, u_char* data, uint32_t 
 		{
 			pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
 		}
-
+		
 		/* if SSL server key is not found, try to find a matching one from the key pool */
-		if(pk == NULL) 
+		if(pk == NULL && sess->last_packet) 
 		{
-			_ASSERT( sess->last_packet);
-			pk = ssls_try_ssl_keys( sess, data, len );
-
-			/* if a matching key found, register it with the server IP:port */
-			if(pk != NULL)
+			// _ASSERT( sess->last_packet);
+			
+			if(sess->env && sess->env->key_count)
 			{
-				if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
+				pk = ssls_try_ssl_keys( sess, data, len );
+
+				/* if a matching key found, register it with the server IP:port */
+				if(pk != NULL && sess->last_packet->ip_header)
 				{
-					/* ssls_register_ssl_key clones the key, query the key back */
-					if( sess->ssl_si->pkeys )
+					if( ssls_register_ssl_key( sess, pk ) == DSSL_RC_OK)
 					{
-						if( sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+						/* ssls_register_ssl_key clones the key, query the key back */
+						if( sess->ssl_si->pkeys )
 						{
-							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
-						}
-						else if( sess->ssl_si->pkeys_index_ok == 0 && sess->ssl_si->pkeys_count == 1)
-						{
-							pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok ];
+							if( sess->ssl_si->pkeys_index_ok > 0 && sess->ssl_si->pkeys_index_ok <= sess->ssl_si->pkeys_count)
+							{
+								pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok - 1 ];
+							}
+							else if( sess->ssl_si->pkeys_index_ok == 0 && sess->ssl_si->pkeys_count == 1)
+							{
+								pk = sess->ssl_si->pkeys[ sess->ssl_si->pkeys_index_ok ];
+							}
 						}
 					}
-				}
-				else
-				{
-					pk = NULL;
+					else
+					{
+						pk = NULL;
+					}
 				}
 			}
 		}
 
 		if(!pk) 
 		{
-			ssls_register_missing_key_server( sess );
+			if(sess->last_packet && sess->last_packet->ip_header)
+			{
+				ssls_register_missing_key_server( sess );
+			}
 			return NM_ERROR( DSSL_E_SSL_SERVER_KEY_UNKNOWN );
 		}
 
