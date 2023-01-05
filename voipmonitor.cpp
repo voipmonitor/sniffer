@@ -222,7 +222,9 @@ bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
+bool opt_srtp_rtp_local_instances = true;
 int opt_use_libsrtp = 0;
+bool opt_check_diff_ssrc_on_same_ip_port = true;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
@@ -452,7 +454,6 @@ int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
 int opt_ssl_dtls_handshake_safe = false;
-int opt_ssl_dtls_rtp_local = false;
 bool opt_ssl_dtls_find_by_server_side = true;
 bool opt_ssl_dtls_find_by_client_side = false;
 int opt_ssl_dtls_boost = false;
@@ -7387,7 +7388,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
@@ -7396,6 +7396,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42215) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
 					addConfigItem(new FILE_LINE(42217) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_local_instances", &opt_srtp_rtp_local_instances));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("check_diff_ssrc_on_same_ip_port", &opt_check_diff_ssrc_on_same_ip_port));
 		subgroup("GRAPH");
 			addConfigItem((new FILE_LINE(42218) cConfigItem_yesno("savegraph"))
 				->addValues("plain:1|p:1|gzip:2|g:2")
@@ -7507,7 +7510,6 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
 				->addValues("ext:2"));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
@@ -9643,7 +9645,7 @@ void set_context_config() {
 		ssl_client_random_keep = true;
 		opt_ssl_dtls_queue_keep = true;
 		opt_ssl_dtls_handshake_safe = 2;
-		opt_ssl_dtls_rtp_local = true;
+		opt_srtp_rtp_local_instances = true;
 		opt_ssl_dtls_find_by_server_side = true;
 		opt_ssl_dtls_find_by_client_side = true;
 	}
@@ -11255,8 +11257,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "srtp_rtcp", NULL))) {
 		opt_srtp_rtcp_decrypt= yesno(value);
 	}
+	if((value = ini.GetValue("general", "srtp_rtp_local_instances", NULL))) {
+		opt_srtp_rtp_local_instances = yesno(value);
+	}
 	if((value = ini.GetValue("general", "libsrtp", NULL))) {
 		opt_use_libsrtp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "check_diff_ssrc_on_same_ip_port", NULL))) {
+		opt_check_diff_ssrc_on_same_ip_port = yesno(value);
 	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
 		opt_norecord_header = yesno(value);
@@ -12273,9 +12281,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
 		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
-	}
-	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
-		opt_ssl_dtls_rtp_local = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
 		opt_ssl_dtls_find_by_server_side = yesno(value);

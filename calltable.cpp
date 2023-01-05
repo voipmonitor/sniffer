@@ -272,7 +272,7 @@ extern bool opt_save_srvcc_cdr;
 extern bool opt_srvcc_correlation;
 extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
-extern bool opt_ssl_dtls_rtp_local;
+extern bool opt_srtp_rtp_local_instances;
 
 
 sCallField callFields[] = {
@@ -2014,7 +2014,7 @@ read:
 						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 						    opt_saveRAW || opt_savewav_force)) {
 							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-							if(opt_ssl_dtls_rtp_local) {
+							if(opt_srtp_rtp_local_instances) {
 								if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
 								   (rtp_i->index_call_ip_port >= 0 && this->ip_port[rtp_i->index_call_ip_port].srtp) ||
 								   (rtp_i->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
@@ -2241,7 +2241,7 @@ read:
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-			if(opt_ssl_dtls_rtp_local) {
+			if(opt_srtp_rtp_local_instances) {
 				if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
 				   (rtp_new->index_call_ip_port >= 0 && this->ip_port[rtp_new->index_call_ip_port].srtp) ||
 				   (rtp_new->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
@@ -6144,7 +6144,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
-	if(dtls_exists && opt_ssl_dtls_rtp_local) {
+	if(opt_srtp_rtp_local_instances) {
 		for(int i = 0; i < rtp_size(); i++) {
 			RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i->srtp_decrypt && !rtp_i->probably_unencrypted_payload && 
@@ -6161,6 +6161,24 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					ssl_sessionkey_log(log_str);
 				} else {
 					break;
+				}
+			} else if(exists_srtp && exists_srtp_crypto_config) {
+				bool exists_srtp_in_stream = false;
+				bool exists_srtp_crypto_config_in_stream = false;
+				for(int i = 0; i < 2; i++) {
+					int _index_call_ip_port = i == 0 ? rtp_i->index_call_ip_port : rtp_i->index_call_ip_port_other_side;
+					if(_index_call_ip_port >= 0 && ip_port[_index_call_ip_port].srtp) {
+						exists_srtp_in_stream = true;
+						if(ip_port[_index_call_ip_port].srtp_crypto_config_list) {
+							exists_srtp_crypto_config_in_stream = true;
+						}
+					}
+				}
+				if(exists_srtp_in_stream && !exists_srtp_crypto_config_in_stream) {
+					cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+					if(!(sverb.dtls && ssl_sessionkey_enable())) {
+						break;
+					}
 				}
 			}
 		}

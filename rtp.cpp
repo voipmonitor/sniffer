@@ -83,6 +83,7 @@ extern bool opt_save_energylevels_check_seq;
 extern bool opt_save_energylevels_via_jb;
 extern char opt_energylevelheader[128];
 extern bool opt_rtp_count_all_sequencegap_as_loss;
+extern bool opt_check_diff_ssrc_on_same_ip_port;
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -1445,8 +1446,10 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			owner->lastactivecallerrtp :
 			owner->lastactivecalledrtp;
 		#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-		diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
-				       lastrtp and this->eqAddrPort(lastrtp);
+		if(opt_check_diff_ssrc_on_same_ip_port) {
+			diffSsrcInEqAddrPort = lastssrc and *lastssrc != ssrc and 
+					       lastrtp and this->eqAddrPort(lastrtp);
+		}
 		#endif
 	}
 	
@@ -1476,7 +1479,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	// if packet has Mark bit OR last frame was not dtmf and current frame is voice and last ssrc is different then current ssrc packet AND (last RTP saddr == current RTP saddr)  - reset
 	if(getMarker() or
-	   (!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort)) {
+	   (diffSsrcInEqAddrPort and !(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT))) {
 		if(sverb.graph) printf("rtp[%p] mark[%u] lastframetype[%u] codec[%u] lastssrc[%x] ssrc[%x] iscaller[%u] lastframetype[%u][%u] codec[%u]\n", this, getMarker(), lastframetype, codec, (lastssrc ? *lastssrc : 0), ssrc, iscaller, lastframetype, AST_FRAME_DTMF, codec);
 
 		resetgraph = true;
