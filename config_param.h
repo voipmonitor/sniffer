@@ -507,6 +507,29 @@ protected:
 	map<vmIPport, string> *param_ip_port_string_map;
 };
 
+class cConfigItem_net_port_str_map : public cConfigItem {
+public:
+	cConfigItem_net_port_str_map(const char* name, map<vmIPport, string> *ip_port_string_map, map<vmIPmask_port, string> *net_port_string_map);
+	string getValueStr(bool configFile = false);
+	list<string> getValueListStr();
+	string normalizeStringValueForCmp(string value);
+	bool enableMultiValues() { return(true); }
+protected:
+	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	bool setParamFromValuesStr(vector<string> list_value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
+	void initBeforeSet();
+	void initParamPointers() {
+		param_ip_port_string_map = NULL;
+	}
+	string getTypeName() {
+		return("net_port_str_list");
+	}
+protected:
+	map<vmIPport, string> *param_ip_port_string_map;
+	map<vmIPmask_port, string> *param_net_port_string_map;
+};
+
 class cConfigItem_nat_aliases : public cConfigItem {
 public:
 	cConfigItem_nat_aliases(const char* name, nat_aliases_t *nat_aliases);

@@ -184,7 +184,6 @@ int DSSL_SessionProcessData( DSSL_Session* sess, NM_PacketDir dir, u_char* data,
 /* TODO: move to ssl_session_priv.h */
 /* Internal routines */
 
-EVP_PKEY* ssls_get_session_private_key( DSSL_Session* sess );
 int ssls_decode_master_secret( DSSL_Session* sess );
 int ssls_generate_keys( DSSL_Session* sess );
 int ssls2_generate_keys( DSSL_Session* sess, u_char* keyArg, uint32_t keyArgLen );

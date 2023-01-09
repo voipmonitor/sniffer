@@ -1389,6 +1389,8 @@ public:
 	char rtp_timeout_exceeded;
 	char sipwithoutrtp_timeout_exceeded;
 	char oneway_timeout_exceeded;
+	char max_sip_packets_exceeded;
+	char max_invite_packets_exceeded;
 	char force_terminate;
 	char pcap_drop;
 	
@@ -2664,6 +2666,8 @@ public:
 	volatile u_int32_t sp_do_destroy_call_at;
 	set<vmIPport> sp_rtp_ipport;
 	#endif
+	unsigned sip_packets_counter;
+	unsigned invite_packets_counter;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -3670,7 +3674,8 @@ public:
 		max_length_sip_packet,
 		gsm_dcs,
 		gsm_voicemail,
-		max_retransmission_invite
+		max_retransmission_invite,
+		digest_username
 	};
 	enum eReqRespDirection {
 		dir_na,

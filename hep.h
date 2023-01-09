@@ -138,19 +138,23 @@ class cHEP_Server : public cServer, public cHEP_ProcessData {
 public:
 	cHEP_Server(bool udp);
 	virtual ~cHEP_Server();
+	void createConnection(cSocket *socket);
 	void evData(u_char *data, size_t dataLen);
 };
 
 class cHEP_Connection : public cServerConnection, public cHEP_ProcessData {
 public:
-	cHEP_Connection(cSocket *socket, bool simple_read);
+	cHEP_Connection(cSocket *socket);
 	virtual ~cHEP_Connection();
 	void evData(u_char *data, size_t dataLen);
+	void connection_process();
 };
 
 
 void HEP_ServerStart(const char *host, int port, bool udp);
 void HEP_ServerStop();
+
+void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP destination_ip, vmPort destination_port, bool udp);
 
 
 #endif //HEP_H

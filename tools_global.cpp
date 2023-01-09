@@ -74,8 +74,9 @@ int vm_pthread_create(const char *thread_description,
 		get_list_cores(opt_cpu_cores, cpu_cores);
 		pthread_set_affinity(*thread, &cpu_cores, NULL);
 	} else if(opt_use_dpdk) {
-		extern string get_dpdk_cpu_cores(bool without_main) ;
-		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true);
+		extern string get_dpdk_cpu_cores(bool without_main, bool detect_ht);
+		extern bool opt_thread_affinity_ht;
+		string dpdk_cpu_cores_str = get_dpdk_cpu_cores(true, opt_thread_affinity_ht);
 		if(!dpdk_cpu_cores_str.empty()) {
 			vector<int> cpu_cores;
 			get_list_cores("all", cpu_cores);
@@ -158,6 +159,212 @@ void get_list_cores(string input, list<int> &list) {
 	for(unsigned i = 0; i < _list.size(); i++) {
 		list.push_back(_list[i]);
 	}
+}
+
+
+cCpuCoreInfo::cCpuCoreInfo() {
+	load();
+}
+
+void cCpuCoreInfo::load() {
+	map_cpu_core_info.clear();
+	FILE *cmd_pipe;
+	cmd_pipe = popen("lscpu -p", "r");
+	if(cmd_pipe) {
+		vector<string> columns;
+		char bufRslt[512];
+		while(fgets(bufRslt, sizeof(bufRslt), cmd_pipe)) {
+			int length = strlen(bufRslt);
+			while(length > 0 && bufRslt[length - 1] == '\n') {
+				bufRslt[length - 1] = 0;
+				--length;
+			}
+			if(bufRslt[0] == '#') {
+				if(!strncasecmp(bufRslt, "# CPU", 5)) {
+					columns = split(bufRslt + 2, ',');
+				}
+			} else if(isdigit(bufRslt[0])) {
+				vector<string> row;
+				row = split(bufRslt, ',');
+				sCpuCoreInfo ci;
+				bool setCpu = false;
+				for(unsigned i = 0; i < min(columns.size(), row.size()); i++) {
+					int columnValue = atoi(row[i].c_str());
+					if(!strcasecmp(columns[i].c_str(), "cpu")) {
+						ci.CPU = columnValue;
+						setCpu = true;
+					} else if(!strcasecmp(columns[i].c_str(), "core")) {
+						ci.Core = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "socket")) {
+						ci.Socket = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "node")) {
+						ci.Node = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l1d")) {
+						ci.L1d = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l1i")) {
+						ci.L1i = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l2")) {
+						ci.L2 = columnValue;
+					} else if(!strcasecmp(columns[i].c_str(), "l3")) {
+						ci.L3 = columnValue;
+					}
+				}
+				if(setCpu) {
+					map_cpu_core_info[ci.CPU] = ci;
+				}
+			}
+		}
+		pclose(cmd_pipe);
+	}
+}
+
+bool cCpuCoreInfo::ok_loaded() {
+	return(map_cpu_core_info.size() > 0);
+}
+
+cCpuCoreInfo::sCpuCoreInfo *cCpuCoreInfo::get(int cpu) {
+	map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.find(cpu); 
+	if(iter != map_cpu_core_info.end()) {
+		return(&iter->second);
+	}
+	return(NULL);
+}
+
+bool cCpuCoreInfo::getHT_cpus(int cpu, vector<int> *ht_cpus) {
+	sCpuCoreInfo *cpu_core_info = get(cpu);
+	if(!cpu_core_info) {
+		return(false);
+	}
+	for(map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.begin(); iter != map_cpu_core_info.end(); iter++) {
+		if(cpu_core_info->Core == iter->second.Core &&
+		   cpu_core_info->Socket == iter->second.Socket) {
+			ht_cpus->push_back(iter->second.CPU);
+		}
+	}
+	return(ht_cpus->size() > 0);
+}
+
+int cCpuCoreInfo::getHT_index(int cpu) {
+	vector<int> ht_cpus;
+	if(!getHT_cpus(cpu, &ht_cpus)) {
+		return(-1);
+	}
+	for(unsigned i = 0; i < ht_cpus.size(); i++) {
+		if(ht_cpus[i] == cpu) {
+			return(i);
+		}
+	}
+	return(-1);
+}
+
+
+int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice) {
+	int main_pid = getpid();
+	vector<int> other_processes;
+	FILE *cmd_pipe = popen("ps -ax -o pid,tid,cmd", "r");
+	if(cmd_pipe) {
+		char buffRslt[512];
+		while(fgets(buffRslt, 512, cmd_pipe)) {
+			int buffRsltLength = strlen(buffRslt);
+			while(buffRsltLength > 0 && buffRslt[buffRsltLength - 1] == '\n') {
+				buffRslt[buffRsltLength - 1] = 0;
+				--buffRsltLength;
+			}
+			if(buffRsltLength > 0) {
+				int beginDigitOffsets[2] = { -1, -1 };
+				for(int i = 0, j = 0; i < buffRsltLength; i++) {
+					if(isdigit(buffRslt[i])) {
+						beginDigitOffsets[j++] = i;
+						if(j == 2) {
+							break;
+						}
+						while(i < buffRsltLength - 1 && isdigit(buffRslt[i + 1])) {
+							++i;
+						}
+					}
+				}
+				if(beginDigitOffsets[1] > 0) {
+					int beginCmdOffset = beginDigitOffsets[1];
+					while(beginCmdOffset < buffRsltLength && isdigit(buffRslt[beginCmdOffset])) {
+						++beginCmdOffset;
+					}
+					while(beginCmdOffset < buffRsltLength && (buffRslt[beginCmdOffset] == ' ' || buffRslt[beginCmdOffset] == '\t')) {
+						++beginCmdOffset;
+					}
+					int pid = atoi(buffRslt + beginDigitOffsets[0]);
+					if(pid > 1 && pid != main_pid && buffRslt[beginCmdOffset] != '[') {
+						int tid = atoi(buffRslt + beginDigitOffsets[1]);
+						other_processes.push_back(tid);
+					}
+				}
+			}
+		}
+		pclose(cmd_pipe);
+	} else {
+		return(-1);
+	}
+	int conflict_processes_count = 0;
+	int conflict_processes_ok_set_count = 0;
+	if(other_processes.size()) {
+		for(unsigned i = 0; i < other_processes.size(); i++) {
+			cpu_set_t cpuset;
+			CPU_ZERO(&cpuset);
+			if(!sched_getaffinity(other_processes[i], sizeof(cpu_set_t), &cpuset)) {
+				map<int, bool> affinity;
+				for(int i = 0; i < CPU_COUNT(&cpuset); i++) {
+					if(CPU_ISSET(i, &cpuset)) {
+						affinity[i] = true;
+					}
+				}
+				if(affinity.size() > 1) {
+					bool conflict = false;
+					for(unsigned i = 0; i < excluded_cpus->size(); i++) {
+						if(affinity[(*excluded_cpus)[i]]) {
+							conflict = true;
+							if(!only_check) {
+								affinity[(*excluded_cpus)[i]] = false;
+							}
+						}
+					}
+					if(conflict) {
+						++conflict_processes_count;
+						if(!only_check) {
+							CPU_ZERO(&cpuset);
+							for(map<int, bool>::iterator iter = affinity.begin(); iter != affinity.end(); iter++) {
+								if(iter->second) {
+									CPU_SET(iter->first, &cpuset);
+								}
+							}
+							if(!sched_setaffinity(other_processes[i], sizeof(cpu_set_t), &cpuset)) {
+								++conflict_processes_ok_set_count;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if(log && conflict_processes_count) {
+		ostringstream ostr;
+		if(log_prefix) {
+			ostr << log_prefix;
+		}
+		ostr << conflict_processes_count << " other processes seem to have conflicting cpu affinity settings";
+		if(conflict_processes_ok_set_count) {
+			ostr << "; " << conflict_processes_ok_set_count << " of them have had cpu affinity adjusted";
+		}
+		if(isolcpus_advice) {
+			ostr << "; we recommend setting the kernel parameter isolcpus=";
+			for(unsigned i = 0; i < excluded_cpus->size(); i++) {
+				if(i > 0) ostr << ",";
+				ostr << (*excluded_cpus)[i];
+			}
+		}
+		syslog(LOG_WARNING, "%s", ostr.str().c_str());
+	}
+	return(only_check ? 
+		conflict_processes_count == 0 :
+		conflict_processes_count == 0 || conflict_processes_ok_set_count == conflict_processes_count);
 }
 
 

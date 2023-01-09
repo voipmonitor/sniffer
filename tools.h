@@ -305,6 +305,7 @@ vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
 string implode(vector<string> vect, const char *sep);
+string implode(vector<int> vect, const char *sep);
 string implode(list<u_int64_t> *items, const char *sep);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
@@ -320,6 +321,7 @@ bool is_dir(char * fileName) { return(is_dir((const char*)fileName)); }
 bool is_dir(string fileName) { return(is_dir(fileName.c_str())); }
 bool is_dir(dirent *de, const char *path);
 bool isPSrightVersion(void);
+bool binaryFileExists(const char *cmd);
 bool isBashPresent(void);
 void set_mac();
 bool existsAnotherInstance();
@@ -514,6 +516,9 @@ int log10int(long int v);
 
 bool check_ip_in(vmIP ip, vector<vmIP> *vect_ip, vector<vmIPmask> *vect_net, bool trueIfVectEmpty);
 bool check_ip(vmIP ip, vmIP net, unsigned mask_length);
+bool check_ip(vmIP ip, vmIPmask net) {
+	return(check_ip(ip, net.ip, net.mask));
+}
 inline bool ip_is_localhost(vmIP ip) { return(ip.isLocalhost()); }
 string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);
@@ -2849,15 +2854,18 @@ string getGuiTimezone(class SqlDb *sqlDb = NULL);
 
 u_int32_t octal_decimal(u_int32_t n);
 
-bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, 
-	      int *exitCode = NULL, unsigned timeout_sec = 10, unsigned timout_select_sec = 1,
-	      bool closeAllFdAfterFork = false, bool needStdin = false);
+typedef void (*exec_callback_fce)(SimpleBuffer *out, string str, int fd, void *data);
+bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err = NULL, int *exitCode = NULL, 
+	      unsigned timeout_sec = 10, unsigned timout_select_msec = 1 * 1000, unsigned usleep_msec = 10,
+	      bool closeAllFdAfterFork = false, bool needStdin = false,
+	      exec_callback_fce exec_callback = NULL, void *exec_callback_data = NULL);
 std::vector<std::string> parse_cmd_line(const char *cmdLine);
 
 u_int64_t getTotalMemory();
 
 string ascii_str(string str);
 int yesno(const char *arg);
+int is_true(const char *arg);
 
 class SensorsMap {
 public:

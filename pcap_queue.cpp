@@ -1882,6 +1882,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
 							id_main == STORE_PROC_ID_CLEANSPOOL ? "Cl" :
 							id_main == STORE_PROC_ID_HTTP ? "H" :
+							id_main == STORE_PROC_ID_OTHER ? "O" :
 							("i" + intToString(id_main) + "_");
 						outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
 						first = false;
@@ -6587,7 +6588,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			sum += ti_cpu;
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[";
 			outStrStat << setprecision(1) << this->readThreads[i]->getTraffic(divide) << "Mb/s";
-			outStrStat << ';' << setprecision(1) << ti_cpu;
+			outStrStat << ";main:" << setprecision(1) << ti_cpu;
 			if(sverb.qring_stat) {
 				double qringFillingPerc = this->readThreads[i]->getQringFillingPerc();
 				if(qringFillingPerc > 0) {
@@ -6613,7 +6614,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->dpdkWorkerThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/dpdk_worker:" << setprecision(1) << tid_cpu;
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_read_thread == _dpdk_trt_rte) {
@@ -6621,7 +6622,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = rte_read_thread_cpu_usage(this->readThreads[i]->dpdkHandle);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/dpdk_rte_read:" << setprecision(1) << tid_cpu;
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_worker_thread == _dpdk_twt_rte) {
@@ -6629,7 +6630,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = rte_worker_thread_cpu_usage(this->readThreads[i]->dpdkHandle);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/dpdk_rte_worker:" << setprecision(1) << tid_cpu;
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_worker2_thread == _dpdk_tw2t_rte) {
@@ -6637,7 +6638,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = rte_worker2_thread_cpu_usage(this->readThreads[i]->dpdkHandle);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/dpdk_rte_worker2:" << setprecision(1) << tid_cpu;
 				}
 			}
 			if(this->readThreads[i]->detachThread) {
@@ -6645,7 +6646,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->detachThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/detach:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->detachThread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6673,7 +6674,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->pcapProcessThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/pcap_process:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->pcapProcessThread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6687,7 +6688,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/defrag:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->defragThread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6701,7 +6702,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/md1:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->md1Thread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6715,7 +6716,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/md2:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->md2Thread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6729,7 +6730,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/dedup:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->dedupThread->getQringFillingPerc();
 						if(qringFillingPerc > 0) {
@@ -6743,7 +6744,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				double tid_cpu = this->readThreads[i]->serviceThread->getCpuUsagePerc(true);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
-					outStrStat << "%/" << setprecision(1) << tid_cpu;
+					outStrStat << "%/service:" << setprecision(1) << tid_cpu;
 					if(sverb.qring_stat) {
 						double qringFillingPerc = this->readThreads[i]->serviceThread->getQringFillingPerc();
 						if(qringFillingPerc> 0) {
@@ -8115,8 +8116,8 @@ bool PcapQueue_readFromFifo::socketWritePcapBlockBySnifferClient(pcap_block_stor
 			this->clientSocket = new FILE_LINE(0) cSocketBlock("packetbuffer block", true);
 			this->clientSocket->setHostPort(snifferClientOptions.host, snifferClientOptions.port);
 			if(!this->clientSocket->connect()) {
-				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to cloud router");
-				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to cloud router";
+				syslog(LOG_ERR, "send packetbuffer block error: %s", "failed connect to server");
+				pcapQueueQ->externalError = "send packetbuffer block error: failed connect to server";
 				continue;
 			}
 			string cmd = "{\"type_connection\":\"packetbuffer block\"}\r\n";
@@ -8744,20 +8745,19 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 
 	if(header_ip && header_ip_protocol == IPPROTO_TCP) {
 		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
-		   (tcpReassemblyHttp->check_ip(header_ip->get_saddr()) || tcpReassemblyHttp->check_ip(header_ip->get_daddr()))) {
+		   tcpReassemblyHttp->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_webrtc && (webrtcportmatrix[sport] || webrtcportmatrix[dport]) &&
-			  (tcpReassemblyWebrtc->check_ip(header_ip->get_saddr()) || tcpReassemblyWebrtc->check_ip(header_ip->get_daddr()))) {
+			  tcpReassemblyWebrtc->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_enable_ssl && 
-			  (isSslIpPort(header_ip->get_saddr(), sport) ||
-			   isSslIpPort(header_ip->get_daddr(), dport))) {
+			  isSslIpPort(header_ip->get_saddr(), sport, header_ip->get_daddr(), dport)) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);

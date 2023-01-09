@@ -11,10 +11,12 @@
 #if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 
 
+extern int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
+extern string sslIpPort_get_keyfile(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
+
 static void jsonAddKey(JsonExport *json, const char *name, DSSL_Session_get_keys_data_item *key);
 static void jsonGetKey(JsonItem *json, const char *name, DSSL_Session_get_keys_data_item *key);
 
-extern map<vmIPport, string> ssl_ipport;
 extern int opt_ssl_store_sessions;
 extern int opt_ssl_store_sessions_expiration_hours;
 extern MySqlStore *sqlStore;
@@ -28,9 +30,9 @@ static DSSL_Env *SslDsslEnv;
 static sSslDsslStats stats;
 
 
-cSslDsslSession::cSslDsslSession(vmIP ip, vmPort port, string keyfile, string password) {
-	this->ip = ip;
-	this->port = port;
+cSslDsslSession::cSslDsslSession(vmIP ips, vmPort ports, string keyfile, string password) {
+	this->ips = ips;
+	this->ports = ports;
 	this->keyfile = keyfile;
 	this->password = password;
 	ipc.clear();
@@ -70,34 +72,57 @@ void cSslDsslSession::term() {
 }
 
 bool cSslDsslSession::initServer() {
-	EVP_PKEY *pkey = NULL;
+	vector<EVP_PKEY*> pkeys;
 	if(keyfile.length()) {
-		FILE* file_keyfile = fopen(keyfile.c_str(), "r");
-		if(!file_keyfile) {
-			server_error = _se_keyfile_not_exists;
-			u_int64_t actTime = getTimeMS();
-			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "ssl - missing keyfile %s", keyfile.c_str());
-				lastTimeSyslog = actTime;
+		vector<string> keyfiles = split(keyfile.c_str(), split(",", '|'), true);
+		eServerErrors _server_error = _se_na;
+		u_int64_t actTime = getTimeMS();
+		bool enableSyslog = actTime - 1000 > lastTimeSyslog;
+		for(unsigned i = 0; i < keyfiles.size(); i++) {
+			FILE* file_keyfile = fopen(keyfiles[i].c_str(), "r");
+			if(!file_keyfile) {
+				_server_error = _se_keyfile_not_exists;
+				if(enableSyslog) {
+					syslog(LOG_NOTICE, "ssl - missing keyfile %s", keyfiles[i].c_str());
+					lastTimeSyslog = actTime;
+				}
+				continue;
 			}
-			return(false);
-		}
-		if(!PEM_read_PrivateKey(file_keyfile, &pkey, cSslDsslSession::password_calback_direct, (void*)password.c_str())) {
+			EVP_PKEY* pkey = NULL;
+			if(!PEM_read_PrivateKey(file_keyfile, &pkey, cSslDsslSession::password_calback_direct, (void*)password.c_str())) {
+				fclose(file_keyfile);
+				_server_error = _se_load_key_failed;
+				if(enableSyslog) {
+					syslog(LOG_NOTICE, "ssl - failed read keyfile %s", keyfiles[i].c_str());
+					lastTimeSyslog = actTime;
+				}
+				continue;
+			}
+			if(pkey) {
+				pkeys.push_back(pkey);
+			}
 			fclose(file_keyfile);
-			server_error = _se_load_key_failed;
-			u_int64_t actTime = getTimeMS();
-			if(actTime - 1000 > lastTimeSyslog) {
-				syslog(LOG_NOTICE, "ssl - failed read keyfile %s", keyfile.c_str());
-				lastTimeSyslog = actTime;
-			}
+		}
+		if(!pkeys.size()) {
+			server_error = _server_error;
 			return(false);
 		}
-		fclose(file_keyfile);
 	}
 	this->server_info = new FILE_LINE(0) DSSL_ServerInfo;
-	this->server_info->server_ip = *(in_addr*)&ip;
-	this->server_info->port = port.getPort();
-	this->server_info->pkey = pkey;
+	this->server_info->server_ip = *(in_addr*)&ips;
+	this->server_info->port = ports.getPort();
+	if(pkeys.size()) {
+		this->server_info->pkeys = new FILE_LINE(0) EVP_PKEY*[pkeys.size()];
+		this->server_info->pkeys_count = pkeys.size();
+		this->server_info->pkeys_index_ok = 0;
+		for(unsigned i = 0; i < pkeys.size(); i++) {
+			this->server_info->pkeys[i] = pkeys[i];
+		}
+	} else {
+		this->server_info->pkeys = NULL;
+		this->server_info->pkeys_count = 0;
+		this->server_info->pkeys_index_ok = 0;
+	}
 	server_error = _se_ok;
 	return(true);
 }
@@ -123,8 +148,15 @@ bool cSslDsslSession::initSession() {
 
 void cSslDsslSession::termServer() {
 	if(server_info) {
-		EVP_PKEY_free(server_info->pkey);
-		server_info->pkey = NULL;
+		if(server_info->pkeys) {
+			for(unsigned i = 0; i < server_info->pkeys_count; i++) {
+				EVP_PKEY_free(server_info->pkeys[i]);
+			}
+			delete [] server_info->pkeys;
+			server_info->pkeys = NULL;
+			server_info->pkeys_count = 0;
+			server_info->pkeys_index_ok = 0;
+		}
 		delete server_info;
 		server_info = NULL;
 	}
@@ -207,9 +239,9 @@ bool cSslDsslSession::isClientHello(char *data, unsigned int datalen, NM_PacketD
 }
 
 NM_PacketDir cSslDsslSession::getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
-	return(dip == ip && dport == port ?
+	return(dip == this->ips && dport == this->ports ?
 		ePacketDirFromClient :
-	       sip == ip && sport == port ?
+	       sip == this->ips && sport == this->ports ?
 		ePacketDirFromServer :
 		ePacketDirInvalid);
 }
@@ -229,8 +261,8 @@ void cSslDsslSession::errorCallback(void* user_data, int error_code) {
 			       error_code,
 			       me->ipc.getString().c_str(),
 			       me->portc.getPort(),
-			       me->ip.getString().c_str(),
-			       me->port.getPort());
+			       me->ips.getString().c_str(),
+			       me->ports.getPort());
 		}
 		me->process_error = true;
 	}
@@ -345,8 +377,8 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 		string session_data = get_session_data(ts);
 		SqlDb_row session_row_insert;
 		session_row_insert.add(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor, "id_sensor");
-		session_row_insert.add(ip, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
-		session_row_insert.add(port.getPort(), "serverport");
+		session_row_insert.add(ips, "serverip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
+		session_row_insert.add(ports.getPort(), "serverport");
 		session_row_insert.add(ipc, "clientip", false, sessions->sqlDb, sessions->storeSessionsTableName().c_str());
 		session_row_insert.add(portc.getPort(), "clientport");
 		session_row_insert.add(sqlDateTimeString(ts.tv_sec), "stored_at");
@@ -695,7 +727,8 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		}
 		NM_ERROR_ENABLE_LOG;
 		if(init_client_hello) {
-			session = addSession(server_addr, server_port);
+			string keyfile = sslIpPort_get_keyfile(client_addr, client_port, server_addr, server_port);
+			session = addSession(server_addr, server_port, keyfile);
 			session->setClientIpPort(client_addr, client_port);
 			sessions[sid] = session;
 			lock_sessions_db();
@@ -714,7 +747,8 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 		}
 		unlock_sessions_db();
 		if(!session_data.data.empty()) {
-			session = addSession(server_addr, server_port);
+			string keyfile = sslIpPort_get_keyfile(client_addr, client_port, server_addr, server_port);
+			session = addSession(server_addr, server_port, keyfile);
 			session->setClientIpPort(client_addr, client_port);
 			if(session->restore_session_data(session_data.data.c_str())) {
 				sessions[sid] = session;
@@ -842,22 +876,16 @@ void cSslDsslSessions::keysCleanup() {
 	this->session_keys.cleanup();
 }
 
-cSslDsslSession *cSslDsslSessions::addSession(vmIP ip, vmPort port) {
-	cSslDsslSession *session = new FILE_LINE(0) cSslDsslSession(ip, port, ssl_ipport[vmIPport(ip, port)]);
+cSslDsslSession *cSslDsslSessions::addSession(vmIP ips, vmPort ports, string keyfile) {
+	cSslDsslSession *session = new FILE_LINE(0) cSslDsslSession(ips, ports, keyfile);
 	return(session);
 }
 
 NM_PacketDir cSslDsslSessions::checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
-	map<vmIPport, string>::iterator iter_ssl_ipport;
-	iter_ssl_ipport = ssl_ipport.find(vmIPport(dip, dport));
-	if(iter_ssl_ipport != ssl_ipport.end()) {
-		return(ePacketDirFromClient);
-	}
-	iter_ssl_ipport = ssl_ipport.find(vmIPport(sip, sport));
-	if(iter_ssl_ipport != ssl_ipport.end()) {
-		return(ePacketDirFromServer);
-	}
-	return(ePacketDirInvalid);
+	int rslt = isSslIpPort(sip, sport, dip, dport);
+	return(rslt == 1 ? ePacketDirFromClient :
+	       rslt == 2 ? ePacketDirFromServer :
+			   ePacketDirInvalid);
 }
 
 void cSslDsslSessions::init() {

@@ -2961,7 +2961,7 @@ void FraudAlerts::completeRtpStreamInfo(sFraudRtpStreamInfo *rtpStreamInfo, Call
 	rtpStreamInfo->callid = call->call_id;
 }
 
-void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, CheckInternational *checkInternational) {
+void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, vmIP ip, CheckInternational *checkInternational) {
 	for(int i = 0; i < 2; i++) {
 		string *number = i == 0 ? &numberInfo->caller_number : &numberInfo->called_number;
 		string *rslt_country_code = i == 0 ? &numberInfo->country_code_caller_number : &numberInfo->country_code_called_number;
@@ -2970,7 +2970,7 @@ void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, 
 		string *rslt_continent2_code = i == 0 ? &numberInfo->continent2_code_caller_number : &numberInfo->continent2_code_called_number;
 		string *rslt_country_prefix = i == 0 ? &numberInfo->country_prefix_caller : &numberInfo->country_prefix_called;
 		vector<string> countries;
-		if(countryPrefixes->getCountry(number->c_str(), &countries, rslt_country_prefix, checkInternational) != "" &&
+		if(countryPrefixes->getCountry(number->c_str(), ip, &countries, rslt_country_prefix, checkInternational) != "" &&
 		   countries.size()) {
 			*rslt_country_code = countries[0];
 			*rslt_continent_code = countryCodes->getContinent(countries[0].c_str());
@@ -2980,11 +2980,11 @@ void FraudAlerts::completeNumberInfo_country_code(sFraudNumberInfo *numberInfo, 
 			}
 		}
 	}
-	numberInfo->local_called_number = countryPrefixes->isLocal(numberInfo->called_number.c_str(), checkInternational);
+	numberInfo->local_called_number = countryPrefixes->isLocal(numberInfo->called_number.c_str(), ip, checkInternational);
 }
 
 void FraudAlerts::completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckInternational *checkInternational) {
-	this->completeNumberInfo_country_code(callInfo, checkInternational);
+	this->completeNumberInfo_country_code(callInfo, callInfo->called_ip, checkInternational);
 	for(int i = 0; i < 2; i++) {
 		vmIP *ip = i == 0 ? &callInfo->caller_ip : &callInfo->called_ip;
 		string *rslt_country_code = i == 0 ? &callInfo->country_code_caller_ip : &callInfo->country_code_called_ip;
@@ -3005,7 +3005,7 @@ void FraudAlerts::completeCallInfoAfterPop(sFraudCallInfo *callInfo, CheckIntern
 void FraudAlerts::completeRtpStreamInfoAfterPop(sFraudRtpStreamInfo *rtpStreamInfo, CheckInternational *checkInternational) {
 	rtpStreamInfo->rtp_src_ip_group = this->groupsIP.getGroupId(rtpStreamInfo->rtp_src_ip);
 	rtpStreamInfo->rtp_dst_ip_group = this->groupsIP.getGroupId(rtpStreamInfo->rtp_dst_ip);
-	this->completeNumberInfo_country_code(rtpStreamInfo, checkInternational);
+	this->completeNumberInfo_country_code(rtpStreamInfo, rtpStreamInfo->rtp_dst_ip , checkInternational);
 }
 
 void FraudAlerts::completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call) {

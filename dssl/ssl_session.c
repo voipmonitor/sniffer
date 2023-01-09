@@ -162,12 +162,6 @@ int DSSL_SessionProcessData( DSSL_Session* sess, NM_PacketDir dir, u_char* data,
 }
 
 
-EVP_PKEY* ssls_get_session_private_key( DSSL_Session* sess )
-{
-	if( sess->ssl_si == NULL ) return NULL;
-	return sess->ssl_si->pkey;
-}
-
 /* convert SSL v2 CHALLENGE to SSL v3+ CLIENT_RANDOM */
 static void ssls_convert_v2challenge(DSSL_Session* sess)
 {

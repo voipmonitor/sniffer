@@ -4390,6 +4390,10 @@ int Mgmt_sipports(Mgmt_params *params) {
 	for(map<vmIPport, string>::iterator it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		outStrSipPorts << it->first.port << ',';
 	}
+	extern map<vmIPmask_port, string> ssl_netport;
+	for(map<vmIPmask_port, string>::iterator it = ssl_netport.begin(); it != ssl_netport.end(); it++) {
+		outStrSipPorts << it->first.port << ',';
+	}
 	outStrSipPorts << endl;
 	string strSipPorts = outStrSipPorts.str();
 	return(params->sendString(&strSipPorts));

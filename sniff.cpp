@@ -289,6 +289,8 @@ extern bool srvcc_set;
 extern bool opt_srvcc_processing_only;
 extern bool opt_ssl_dtls_queue_keep;
 extern int opt_ssl_dtls_handshake_safe;
+extern unsigned opt_max_sip_packets_in_call;
+extern unsigned opt_max_invite_packets_in_call;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -4115,6 +4117,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	call->updateTimeShift(getTimeUS(packetS->header_pt));
+	++call->sip_packets_counter;
+	if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
+		return;
+	}
 	
 	if(processing_limitations.suppressRtpAllProcessing()) {
 		call->suppress_rtp_proc_due_to_insufficient_hw_performance = true;
@@ -4169,6 +4175,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	}
 	
 	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
+		++call->invite_packets_counter;
+		if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
+			return;
+		}
 		int inviteSdaddrCounter = 0;
 		c_branch->invite_list_lock();
 		for(vector<Call::sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
@@ -4486,6 +4496,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if(verbosity > 2)
 				syslog(LOG_NOTICE, "Seen INVITE, CSeq: %u\n", c_branch->invitecseq.number);
+		}
+		for(int pass_authorization = 0; pass_authorization < 2; pass_authorization++) {
+			s = gettag_sip(packetS, pass_authorization == 0 ? "\nAuthorization:" : "\nProxy-Authorization:", &l);
+			if(s) {
+				get_value_stringkeyval(s, packetS->datalen_() - (s - packetS->data_()), "username=\"", &c_branch->digest_username);
+				break;
+			}
 		}
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
@@ -8146,8 +8163,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			unsigned dataoffset = (u_char*)ppd.data - HPP(header_packet);
 			if(opt_enable_ssl && 
 			   ppd.header_ip && ppd.header_ip->get_protocol() == IPPROTO_TCP &&
-			   (isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source()) ||
-			    isSslIpPort(ppd.header_ip->get_daddr(), ppd.header_udp->get_dest()))) {
+			   isSslIpPort(ppd.header_ip->get_saddr(), ppd.header_udp->get_source(), ppd.header_ip->get_daddr(), ppd.header_udp->get_dest())) {
 				tcpReassemblySsl->push_tcp(header, (iphdr2*)(packet + ppd.header_ip_offset), packet, true,
 							   NULL, 0, false,
 							   0, handle_dlt, opt_id_sensor, 0, ppd.pid);
@@ -9604,22 +9620,24 @@ void *PreProcessPacket::outThreadFunction() {
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 						packet_s_process *packetS = batch->batch[batch_index];
-						u_int32_t saddr_hash_number = 
+						u_int32_t _saddr_hash_number = 
 							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 								packetS->saddr_pt_()->getHashNumber();
 							#else
 								packetS->saddr_().getHashNumber();
 							#endif
-						u_int32_t daddr_hash_number = 
+						u_int32_t _daddr_hash_number = 
 							#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 								packetS->daddr_pt_()->getHashNumber();
 							#else
 								packetS->daddr_().getHashNumber();
 							#endif
-						unsigned int thread_index = (unsigned int)(min(saddr_hash_number, daddr_hash_number) *
-											   max(saddr_hash_number, daddr_hash_number) *
-											   min(packetS->source_(), packetS->dest_()) * 
-											   max(packetS->source_(), packetS->dest_()));
+						u_int16_t _source = packetS->source_();
+						u_int16_t _dest = packetS->dest_();
+						unsigned int thread_index = (unsigned int)(min(_saddr_hash_number, _daddr_hash_number) *
+											   max(_saddr_hash_number, _daddr_hash_number) *
+											   min(_source, _dest) * 
+											   max(_source, _dest));
 						thread_index += ~(thread_index << 15);
 						thread_index ^=  (thread_index >> 10);
 						thread_index +=  (thread_index << 3);
@@ -10101,15 +10119,18 @@ void PreProcessPacket::addNextThread() {
 	    this->typePreProcessThread == ppt_detach || 
 	    this->typePreProcessThread == ppt_sip) &&
 	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
-		for(int j = 0; j < 2; j++) {
-			sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+		int add_threads = this->next_threads == 0 && min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS) > 1 ? 2 : 1;
+		for(int add_thread = 0; add_thread < add_threads; add_thread++) {
+			for(int j = 0; j < 2; j++) {
+				sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
+			}
+			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+			arg->preProcessPacket = this;
+			arg->next_thread_id = this->next_threads + 1;
+			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+					  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+			++this->next_threads;
 		}
-		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-		arg->preProcessPacket = this;
-		arg->next_thread_id = this->next_threads + 1;
-		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
-				  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-		++this->next_threads;
 	}
 }
 
@@ -10321,12 +10342,19 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 			pushed = true;
 		}
 		if(!pushed) {
-			if((packetS->is_options() && !opt_sip_options && !livesnifferfilterUseSipTypes.u_options) ||
-			   (packetS->is_subscribe() && !opt_sip_subscribe && !livesnifferfilterUseSipTypes.u_subscribe) ||
-			   (packetS->is_notify() && !opt_sip_notify && !livesnifferfilterUseSipTypes.u_notify)) {
-				PACKET_S_PROCESS_DESTROY(&packetS);
+			bool is_options = packetS->is_options();
+			bool is_subscribe = packetS->is_subscribe();
+			bool is_notify = packetS->is_notify();
+			if(is_options || is_subscribe || is_notify) {
+				if((is_options && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
+				   (is_subscribe && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
+				   (is_notify && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
+					preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			} else {
-				preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+				PACKET_S_PROCESS_DESTROY(&packetS);
 			}
 		}
 	} else if(packetS->typeContentIsSkinny()) {

@@ -1,3 +1,35 @@
+31.0.2 04.01.2022
+=================
+- optimization of condition in PreProcessPacket::process_SIP_EXTEND
+
+31.0.1 04.01.2022
+=================
+- fix crash in ssl
+
+
+31.0 03.01.2022
+===============
+- performance optimizations in t2-s thread
+- add tls 1.0 and 1.1 decryption support (only with keys from kyelogger) [VS-1326]
+- enable netmask in ssl_ipport parameter, enable multiple keys in ssl_ipport parameter (comma separator), enable reverse ip:port detection for ssl_ipport (if set parameter ssl_ipport_reverse_enable = yes)
+- add port columns to the register_state/register_failed tables. Support for filtering register port [VS-1232]
+- fix issue with combination of parameters savertp, saveudptl [VS-1381]
+- added support for HP_ERM encapsulation [VS-1192]
+- run updateSpoolDataDir function only in specified time interval or if insufficient free disk space is evaluated [VS-1385]
+- add 'Only if IP changed' field to 'change cdr/register country' alerts [VS-1386]
+- fix GRE IPV6 [VS-1389]
+- UDP defrag fixes: with negative traillen value, add option to ignore udp checksum (deduplicate_udpheader_ignore_checksum - enabled by default) [VS-1391]
+- DPDK changes/fixes: -fix indication of current traffic speed, variable initialization bug, check cpu core assignment for dpdk threads  [VS-1388]
+- disable save-energylevels option when mysql < 5.6.1 (missing function from_base64) [VS-1393]
+- store digest_username from proxy authorization to cdr [VS-1054]
+- speed up billing recalculation 
+- vmcodecs can be now used in server/client and cloud mode [VS-1395]
+- add rules to set country code using ip dst/src address filters [VS-876]
+- fix creating new database (cb_group* tables have to be created before other tables) [VS-1400]
+- add IP Groups into register filtering [VG-2457]
+- hep - adding json payload parsing for hep/sip, adding hep-client-emulation parameter for hep testing [VS-1401]
+
+
 30.8.3 11.11.2022
 =================
 - change a way how sniffer detects if database is missing with each new connection (fixes connection lags on large databases)  

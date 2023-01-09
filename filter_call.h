@@ -74,7 +74,7 @@ public:
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
-			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main())));
+			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true)));
 		case cf_vlan:
 			return(((Call*)rec)->branch_main()->vlan);
 		}
