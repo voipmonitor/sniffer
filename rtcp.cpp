@@ -219,35 +219,84 @@ struct sPrepareRtcpDataParams {
 sPrepareRtcpDataParams *prepare_rtcp_data_params;
 
 
-static inline RTP *find_rtp(Call *call, u_int32_t ssrc, vmIP ip_src, vmIP ip_dst, int *rtp_find_type) {
+static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_src, vmIP ip_dst, int *rtp_find_type) {
 	RTP *rtp = NULL;
 	*rtp_find_type = -1;
-	for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
-		for(int i = 0; i < call->rtp_size(); i++) { 
+	if(ssrc) {
+		for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
+			for(int i = 0; i < call->rtp_size(); i++) { 
+				RTP *rtp_i = call->rtp_stream_by_index(i);
+				if(rtp_i->ssrc == ssrc &&
+				   ((find_pass == 0 && 
+				     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
+				      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
+				    find_pass == 1)) {
+					rtp = rtp_i;
+					*rtp_find_type = find_pass;
+				}
+			}
+		}
+	}
+	if(!rtp && ssrc_sender) {
+		for(int i = 0; i < call->rtp_size() && !rtp; i++) { 
 			RTP *rtp_i = call->rtp_stream_by_index(i);
-			if(rtp_i->ssrc == ssrc &&
-			   ((find_pass == 0 && 
-			     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
-			      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
-			    find_pass == 1)) {
-				rtp = rtp_i;
-				*rtp_find_type = find_pass;
+			if(rtp_i->ssrc == ssrc_sender &&
+			   rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) {
+				RTP *_rtp = NULL;
+				int c = 0;
+				for(int j = 0; j < call->rtp_size(); j++) { 
+					if(j != i) {
+						RTP *rtp_j = call->rtp_stream_by_index(j);
+						if(rtp_j->saddr == ip_dst && rtp_j->daddr == ip_src) {
+							_rtp = rtp_j;
+							++c;
+						}
+					}
+				}
+				if(c == 1) {
+					rtp = _rtp;
+					*rtp_find_type = 2;
+				}
+				break;
 			}
 		}
 	}
 	return(rtp);
 }
 
-static inline int find_rtp_index(u_int32_t ssrc, vmIP ip_src, vmIP ip_dst) {
+static inline int find_rtp_index(u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_src, vmIP ip_dst) {
 	int stream_index = -1;
-	for(int find_pass = 0; find_pass < 2 && stream_index == -1; find_pass++) {
-		for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
-			if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc &&
-			   ((find_pass == 0 && 
-			     ((prepare_rtcp_data_params->rtp_streams[i].saddr == ip_src && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_dst) ||
-			      (prepare_rtcp_data_params->rtp_streams[i].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_src))) ||
-			    find_pass == 1)) {
-				stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
+	if(ssrc) {
+		for(int find_pass = 0; find_pass < 2 && stream_index == -1; find_pass++) {
+			for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
+				if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc &&
+				   ((find_pass == 0 && 
+				     ((prepare_rtcp_data_params->rtp_streams[i].saddr == ip_src && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_dst) ||
+				      (prepare_rtcp_data_params->rtp_streams[i].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_src))) ||
+				    find_pass == 1)) {
+					stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
+				}
+			}
+		}
+	}
+	if(stream_index < 0 && ssrc_sender) {
+		for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size() && stream_index < 0; i++) { 
+			if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc_sender &&
+			   prepare_rtcp_data_params->rtp_streams[i].saddr == ip_src && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_dst) {
+				int _stream_index = -1;
+				int c = 0;
+				for(unsigned j = 0; j < prepare_rtcp_data_params->rtp_streams.size(); j++) { 
+					if(j != i) {
+						if(prepare_rtcp_data_params->rtp_streams[j].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[j].daddr == ip_src) {
+							_stream_index = prepare_rtcp_data_params->rtp_streams[j].index;
+							++c;
+						}
+					}
+				}
+				if(c == 1) {
+					stream_index = _stream_index;
+				}
+				break;
 			}
 		}
 	}
@@ -343,7 +392,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 
 		if(!prepare_rtcp_data_params) {
 			int rtp_find_type;
-			RTP *rtp = find_rtp(call, reportblock.ssrc, ip_src, ip_dst, &rtp_find_type);
+			RTP *rtp = find_rtp(call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
 				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
 				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
@@ -409,7 +458,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 				}
 			}
 		} else {
-			int stream_index = find_rtp_index(reportblock.ssrc, ip_src, ip_dst);
+			int stream_index = find_rtp_index(reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst);
 			if(stream_index >= 0) {
 				cout << "rtcp,"
 				     << stream_index << ","
@@ -479,7 +528,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 		if(!prepare_rtcp_data_params) {
 
 			int rtp_find_type;
-			RTP *rtp = find_rtp(call, reportblock.ssrc, ip_src, ip_dst, &rtp_find_type);
+			RTP *rtp = find_rtp(call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
 				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
 				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
@@ -533,7 +582,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 				}
 			}
 		} else {
-			int stream_index = find_rtp_index(reportblock.ssrc, ip_src, ip_dst);
+			int stream_index = find_rtp_index(reportblock.ssrc, 0, ip_src, ip_dst);
 			if(stream_index >= 0) {
 				cout << "rtcp,"
 				     << stream_index << ","
