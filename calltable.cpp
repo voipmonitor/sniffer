@@ -7639,9 +7639,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					}
 				}
 				
-				next_branch_row.add(sqlEscapeString(n_branch->call_id), "call_id");
-				if(!n_branch->fbasename.empty() && n_branch->fbasename != n_branch->call_id) {
-					next_branch_row.add(sqlEscapeString(n_branch->fbasename), "fbasename");
+				next_branch_row.add(sqlEscapeString(n_branch->branch_call_id), "call_id");
+				if(!n_branch->branch_fbasename.empty() && n_branch->branch_fbasename != n_branch->branch_call_id) {
+					next_branch_row.add(sqlEscapeString(n_branch->branch_fbasename), "fbasename");
 				} else {
 					next_branch_row.add_null("fbasename");
 				}

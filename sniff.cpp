@@ -3540,9 +3540,9 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 	
 	CallBranch *c_branch = &call->first_branch;
-	c_branch->call_id = call->call_id;
-	c_branch->fbasename = call->fbasename;
-	string branch_to_key = (opt_callidmerge_force_separate_branches ? c_branch->call_id + ':' : "") +
+	c_branch->branch_call_id = call->call_id;
+	c_branch->branch_fbasename = call->fbasename;
+	string branch_to_key = (opt_callidmerge_force_separate_branches ? c_branch->branch_call_id + ':' : "") +
 			       data_callerd.branch_to_key();
 	call->branches_to_map[branch_to_key] = 0;
 	if(!data_callerd.caller_tag.empty()) {
@@ -4055,19 +4055,19 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->branches_to_map[branch_to_key] = c_branch_id;
 				call->branches_tag_map[from_tag] = c_branch_id;
 				call->single_branch = 0;
-				c_branch->call_id = packetS->get_callid();
+				c_branch->branch_call_id = packetS->get_callid();
 				bool use_fbasename_header = false;
 				if(opt_fbasename_header[0]) {
 					char *s;
 					unsigned long l;
 					s = gettag_sip(packetS, opt_fbasename_header, &l);
 					if(s && l > 0) {
-						c_branch->fbasename = string(s, MIN(l, MAX_FNAME - 1));
+						c_branch->branch_fbasename = string(s, MIN(l, MAX_FNAME - 1));
 						use_fbasename_header = true;
 					}
 				}
 				if(!use_fbasename_header) {
-					c_branch->fbasename = c_branch->call_id;
+					c_branch->branch_fbasename = c_branch->branch_call_id;
 				}
 			}
 		}

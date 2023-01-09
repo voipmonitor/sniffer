@@ -529,8 +529,8 @@ public:
 
 	Call *call;
 	unsigned branch_id;
-	string call_id;
-	string fbasename;
+	string branch_call_id;
+	string branch_fbasename;
 
 	vector<sInviteSD_Addr> invite_sdaddr;
 	vector<sInviteSD_Addr> rinvite_sdaddr;
