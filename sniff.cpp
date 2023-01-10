@@ -1573,15 +1573,16 @@ inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned
 	return(NULL);
 }
  
-inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
+inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_len,
 			   int parse_type, const char *parse_type_param,
-			   char *rslt, unsigned int rslt_max_len, 
+			   const char **rslt_str, unsigned int *rslt_str_length, 
 			   eParsePeernameTagType /*tagType*/, eParsePeernameDestType destType) {
 	int peer_sip_tags_index;
 	const char *sip_tag = get_peername_begin_sip_tag(peername_tag, peername_tag_len, &peer_sip_tags_index);
 	if(!sip_tag) {
-		if(rslt) {
-			*rslt = 0;
+		if(rslt_str) {
+			*rslt_str = NULL;
+			*rslt_str_length = 0;
 		}
 		return(false);
 	}
@@ -1752,17 +1753,56 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 	}
 	if(ok) {
 		if(end >= begin && end - begin + 1 <= peername_tag_len) {
-			if(rslt) {
+			if(rslt_str) {
+				*rslt_str = begin;
+				*rslt_str_length = end - begin + 1;
+				/*
 				memcpy(rslt, begin, MIN(end - begin + 1, rslt_max_len));
 				rslt[MIN(end - begin + 1, rslt_max_len - 1)] = '\0';
+				*/
 			}
 			return(true);
 		}
 	}
-	if(rslt) {
-		*rslt = 0;
+	if(rslt_str) {
+		*rslt_str = NULL;
+		*rslt_str_length = 0;
 	}
 	return(parse_type == _exists_param ? ok_exists : false);
+}
+
+inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
+			   int parse_type, const char *parse_type_param,
+			   char *rslt_str, unsigned int rslt_str_max_length, 
+			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	const char *_rslt_str;
+	unsigned _rslt_str_length;
+	bool _rslt = _parse_peername(peername_tag, peername_tag_len,
+				     parse_type, parse_type_param,
+				     rslt_str ? &_rslt_str : NULL, &_rslt_str_length, 
+				     tagType, destType);
+	if(_rslt && _rslt_str && rslt_str) {
+		unsigned rslt_str_length = MIN(_rslt_str_length, rslt_str_max_length - 1);
+		memcpy(rslt_str, _rslt_str, rslt_str_length);
+		rslt_str[rslt_str_length] = '\0';
+	}
+	return(_rslt);
+}
+
+inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_len,
+			   int parse_type, const char *parse_type_param,
+			   string *rslt_str, 
+			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	const char *_rslt_str;
+	unsigned _rslt_str_length;
+	bool _rslt = _parse_peername(peername_tag, peername_tag_len,
+				     parse_type, parse_type_param,
+				     rslt_str ? &_rslt_str : NULL, &_rslt_str_length, 
+				     tagType, destType);
+	if(_rslt && _rslt_str && rslt_str) {
+		rslt_str->assign(_rslt_str, _rslt_str_length);
+	}
+	return(_rslt);
 }
 
 inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
@@ -1783,50 +1823,59 @@ inline int get_sip_peername(packet_s_process *packetS, const char *tag, const ch
 inline int get_sip_peername(packet_s_process *packetS, const char *tag, const char *tag2, 
 			    string *peername, 
 			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	char _peername[1024];
-	int rslt = get_sip_peername(packetS, tag, tag2,  _peername, sizeof(_peername), tagType, destType);
-	if(!rslt) {
-		*peername = _peername;
-	}
-	return(rslt);
-}
-
-inline int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
-			    char *peername, unsigned int peername_len,
-			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	unsigned long peername_tag_len;
 	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
 	if(!peername_tag_len) {
-		*peername = 0;
+		peername->clear();
 		return(1);
 	}
 	return(parse_peername(peername_tag, peername_tag_len,
-			      _peercname, NULL,
-			      peername, peername_len,
+			      _peername, NULL,
+			      peername,
 			      tagType, destType) ? 0 : 1);
 }
 
 inline int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
-			    string *peername,
+			    char *peercnam, unsigned int peercnam_len,
 			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	char _peername[1024];
-	int rslt = get_sip_peercnam(packetS, tag, tag2,  _peername, sizeof(_peername), tagType, destType);
-	if(!rslt) {
-		*peername = _peername;
+	unsigned long peercnam_tag_len;
+	char *peername_tag = gettag_sip(packetS, tag, tag2, &peercnam_tag_len);
+	if(!peercnam_tag_len) {
+		*peercnam = 0;
+		return(1);
 	}
-	return(rslt);
+	return(parse_peername(peername_tag, peercnam_tag_len,
+			      _peercname, NULL,
+			      peercnam, peercnam_len,
+			      tagType, destType) ? 0 : 1);
+}
+
+inline int get_sip_peercnam(packet_s_process *packetS, const char *tag, const char *tag2, 
+			    string *peercnam,
+			    eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+ 
+	unsigned long peercnam_tag_len;
+	char *peercnam_tag = gettag_sip(packetS, tag, tag2, &peercnam_tag_len);
+	if(!peercnam_tag_len) {
+		peercnam->clear();
+		return(1);
+	}
+	return(parse_peername(peercnam_tag, peercnam_tag_len,
+			      _peercname, NULL,
+			      peercnam,
+			      tagType, destType) ? 0 : 1);
 }
 
 inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
 			  char *domain, unsigned int domain_len,
 			  eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	unsigned long peername_tag_len;
-	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
-	if(!peername_tag_len) {
+	unsigned long domain_tag_len;
+	char *domain_tag = gettag_sip(packetS, tag, tag2, &domain_tag_len);
+	if(!domain_tag_len) {
 		*domain = 0;
 		return(1);
 	}
-	return(parse_peername(peername_tag, peername_tag_len,
+	return(parse_peername(domain_tag, domain_tag_len,
 			      _domain, NULL,
 			      domain, domain_len,
 			      tagType, destType) ? 0 : 1);
@@ -1835,38 +1884,46 @@ inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char
 inline int get_sip_domain(packet_s_process *packetS, const char *tag, const char *tag2,
 			  string *domain,
 			  eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	char _domain[1024];
-	int rslt = get_sip_domain(packetS, tag, tag2,  _domain, sizeof(_domain), tagType, destType);
-	if(!rslt) {
-		*domain = _domain;
-	}
-	return(rslt);
-}
-
-inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const char *tag2,
-			   char *tag_content, unsigned int tag_content_len,
-			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	unsigned long peername_tag_len;
-	char *peername_tag = gettag_sip(packetS, tag, tag2, &peername_tag_len);
-	if(!peername_tag_len) {
-		*tag_content = 0;
+	unsigned long domain_tag_len;
+	char *domain_tag = gettag_sip(packetS, tag, tag2, &domain_tag_len);
+	if(!domain_tag_len) {
+		domain->clear();
 		return(1);
 	}
-	return(parse_peername(peername_tag, peername_tag_len,
-			      _tag, NULL,
-			      tag_content, tag_content_len,
+	return(parse_peername(domain_tag, domain_tag_len,
+			      _domain, NULL,
+			      domain,
 			      tagType, destType) ? 0 : 1);
 }
 
 inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const char *tag2,
-			   string *tag_content,
+			   char *peertag_content, unsigned int peertag_content_len,
 			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	char _tag_content[1024];
-	int rslt = get_sip_peertag(packetS, tag, tag2,  _tag_content, sizeof(_tag_content), tagType, destType);
-	if(!rslt) {
-		*tag_content = _tag_content;
+	unsigned long peertag_tag_len;
+	char *peertag_tag = gettag_sip(packetS, tag, tag2, &peertag_tag_len);
+	if(!peertag_tag_len) {
+		*peertag_content = 0;
+		return(1);
 	}
-	return(rslt);
+	return(parse_peername(peertag_tag, peertag_tag_len,
+			      _tag, NULL,
+			      peertag_content, peertag_content_len,
+			      tagType, destType) ? 0 : 1);
+}
+
+inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const char *tag2,
+			   string *peertag_content,
+			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	unsigned long peertag_tag_len;
+	char *peertag_tag = gettag_sip(packetS, tag, tag2, &peertag_tag_len);
+	if(!peertag_tag_len) {
+		peertag_content->clear();
+		return(1);
+	}
+	return(parse_peername(peertag_tag, peertag_tag_len,
+			      _tag, NULL,
+			      peertag_content,
+			      tagType, destType) ? 0 : 1);
 }
 
 inline bool exists_sip_param(packet_s_process *packetS, const char *tag, const char *tag2, const char *param) {
@@ -2693,31 +2750,18 @@ int get_expires_from_contact(packet_s_process *packetS, const char *from, int *e
 	}
 }
 
-int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, char *value, unsigned int len) {
-	unsigned long r, tag_len;
+int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, string *value) {
+	unsigned long tag_len, r;
 	char *tmp = gettag(data, data_len, NULL,
 			   key, &tag_len);
-	if(!tag_len) {
-		goto fail_exit;
+	if(tag_len && 
+	   (r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) != 0) {
+		value->assign(tmp, r - (unsigned long)tmp);
+		return 0;
+	} else {
+		value->clear();
+		return 1;
 	}
-	if ((r = (unsigned long)memmem(tmp, tag_len, "\"", 1)) == 0){
-		goto fail_exit;
-	}
-	memcpy(value, (void*)tmp, MIN(r - (unsigned long)tmp, len));
-	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
-	return 0;
-fail_exit:
-	strcpy(value, "");
-	return 1;
-}
-
-inline int get_value_stringkeyval(const char *data, unsigned int data_len, const char *key, string *value) {
-	char _value[1024];
-	int rslt = get_value_stringkeyval(data, data_len, key, _value, sizeof(_value));
-	if(!rslt) {
-		*value = _value;
-	}
-	return(rslt);
 }
 
 inline void add_to_rtp_thread_queue(CallBranch *c_branch, packet_s_process_0 *packetS,
