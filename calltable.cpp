@@ -3805,6 +3805,7 @@ Call::convertRawToWav() {
 										}
 									}
 								}
+								delete vmCodecs;
 							}
 							__SYNC_UNLOCK(vmcodecs_path_sync);
 							if(!vmcodecs_path_static_ok) {

@@ -2516,7 +2516,7 @@ int VmCodecs::getVersion(string path) {
 		return(-1);
 	}
 	int rslt = -1;
-	FILE *cmd_pipe = popen((path + (path.empty() ? "" : "/") + "vmcodecs --version").c_str(), "r");
+	FILE *cmd_pipe = popen((path + (path.empty() ? "" : "/") + "vmcodecs --version 2>&1").c_str(), "r");
 	if(cmd_pipe) {
 		char buffRslt[512] = "";
 		if(fgets(buffRslt, 512, cmd_pipe)) {
