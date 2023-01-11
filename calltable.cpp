@@ -125,7 +125,6 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 extern char opt_keycheck[1024];
-extern bool opt_keycheck_remote;
 extern char opt_vmcodecs_path[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
@@ -3117,12 +3116,16 @@ cWavMix::cWav *cWavMix::getWavNoMix(bool withoutEndSilence) {
 
 struct s_vmcodecs_callback {
 	inline void init() {
-		memset(this, 0, sizeof(*this));
+		detect_keycheck = false;
+		ok = false;
+		invalid = false;
+		error = false;
 	}
 	bool detect_keycheck;
 	bool ok;
 	bool invalid;
 	bool error;
+	string error_str;
 };
 
 void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, void *data) {
@@ -3141,6 +3144,7 @@ void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, vo
 				write(fd, output.c_str(), output.length());
 				write(fd, "\n", 1);
 			} else {
+				((s_vmcodecs_callback*)data)->error_str = error;
 				write(fd, "error\n", 6);
 			}
 		}
@@ -3769,23 +3773,60 @@ Call::convertRawToWav() {
 					convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 					break;
 				default:
-					string cmd;
+					static string vmcodecs_path_static;
+					static bool vmcodecs_path_static_ok = false;
+					static volatile int vmcodecs_path_sync = 0;
+					string vmcodecs_path;
+					bool keycheck_remote = false;
+					if(isCloud() || snifferClientOptions.isEnable()) {
+						if(opt_vmcodecs_path[0] && file_exists((string(opt_vmcodecs_path) + "/vmcodecs").c_str()) ) {
+							vmcodecs_path = opt_vmcodecs_path;
+						} else {
+							__SYNC_LOCK_USLEEP(vmcodecs_path_sync, 100);
+							if(vmcodecs_path_static_ok) {
+								vmcodecs_path = vmcodecs_path_static;
+							} else {
+								VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
+								string vmcodecs_find_path;
+								if(vmCodecs->findVersionOK(&vmcodecs_find_path)) {
+									vmcodecs_path_static = vmcodecs_path = vmcodecs_find_path;
+									vmcodecs_path_static_ok = true;
+								} else {
+									for(int pass = 0; pass < 5; pass++) {
+										if(vmCodecs->download(&vmcodecs_find_path)) {
+											vmcodecs_path_static = vmcodecs_path = vmcodecs_find_path;
+											vmcodecs_path_static_ok = true;
+											break;
+										} else if(pass < 4) {
+											syslog(LOG_ERR, "vmcodecs download faild - try next after 5s");
+											for(int i = 0; i < 5 && !is_terminating(); i++) {
+												sleep(1);
+											}
+										}
+									}
+								}
+							}
+							__SYNC_UNLOCK(vmcodecs_path_sync);
+							if(!vmcodecs_path_static_ok) {
+								syslog(LOG_ERR, "missing vmcodecs - skip convert audio for %s", call_id.c_str());
+								break;
+							}
+						}
+						keycheck_remote = true;
+					} else {
+						if(opt_vmcodecs_path[0]) {
+							vmcodecs_path = opt_vmcodecs_path;
+						}
+					}
 					string vmcodecs_cmd;
-					if(opt_vmcodecs_path[0]) {
-						vmcodecs_cmd = opt_vmcodecs_path;
-						if(opt_vmcodecs_path[strlen(opt_vmcodecs_path) - 1] != '/') {
+					if(!vmcodecs_path.empty()) {
+						vmcodecs_cmd = vmcodecs_path;
+						if(vmcodecs_cmd[vmcodecs_cmd.length() - 1] != '/') {
 							vmcodecs_cmd += '/';
 						}
 					}
 					vmcodecs_cmd += "vmcodecs";
-					bool keycheck_remote = false;
-					if(isCloud() || snifferClientOptions.isEnable()) {
-						if(!strcasecmp(opt_keycheck, "remote") || opt_keycheck_remote) {
-							keycheck_remote = true;
-						} else {
-							keycheck_remote = opt_vmcodecs_path[0] ? file_exists(vmcodecs_cmd.c_str()) : binaryFileExists(vmcodecs_cmd.c_str());
-						}
-					}
+					string cmd;
 					if(opt_keycheck[0] != '\0' || keycheck_remote) {
 						cmd += vmcodecs_cmd + " " + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
 					} else {
@@ -3819,6 +3860,9 @@ Call::convertRawToWav() {
 								string error = (char*)err;
 								if(error.empty()) {
 									error = "error when checking license";
+									if(!callback_data.error_str.empty()) {
+										error += " : " + callback_data.error_str;
+									}
 								}
 								syslog(LOG_ERR, "vmcodecs: error[%s] - try next after 5s", error.c_str());
 								for(int i = 0; i < 5 && !is_terminating(); i++) {
@@ -14946,6 +14990,14 @@ bool remote_keycheck(string input, string *output, string *error) {
 }
 
 bool php_keycheck(string keycheck, string input, string *output, string *error) {
+	if(keycheck.empty()) {
+		*error = string("undefined keycheck") + (is_server() ? " on server side" : "");
+		return(false);
+	}
+	if(!file_exists(keycheck)) {
+		*error = string("missing '") + keycheck + "'" + (is_server() ? " on server side" : "");
+		return(false);
+	}
 	size_t pos_endl = input.find("\n");
 	if(pos_endl != string::npos) {
 		input.resize(pos_endl);

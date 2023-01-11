@@ -65,5 +65,7 @@
 
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
 
+#define VMCODECS_MIN_VERSION 2001
+
 
 #endif //VOIPMONITOR_DEFINE_H

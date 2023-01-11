@@ -357,7 +357,6 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
-bool opt_keycheck_remote = false;
 char opt_vmcodecs_path[1024] = "";
 bool opt_cdr_stat_values = true;
 bool opt_cdr_stat_sources = false;
@@ -1275,6 +1274,7 @@ string cmdline;
 string rundir;
 string appname;
 string binaryNameWithPath;
+string binaryPath;
 string configfilename;
 
 char opt_crash_bt_filename[100];
@@ -3302,6 +3302,10 @@ int main(int argc, char *argv[]) {
 		binaryNameWithPath = std::string(exebuff);
 	} else {
 		binaryNameWithPath = "/usr/local/sbin/voipmonitor";
+	}
+	size_t last_separator = binaryNameWithPath.rfind('/');
+	if(last_separator != string::npos) {
+		binaryPath = binaryNameWithPath.substr(0, last_separator);
 	}
 	
 	char _rundir[256];
@@ -6017,6 +6021,18 @@ void test() {
 	case 1: {
 	 
 		{
+		VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
+		string path;
+		cout << vmCodecs->findVersionOK(&path) << endl;
+		cout << path << endl;
+		cout << "***" << endl;
+		cout << vmCodecs->download(&path) << endl;
+		cout << path << endl;
+		cout << "***" << endl;
+		delete vmCodecs;
+		}
+	 
+		{
 		char ip_str[1000];
 		while(fgets(ip_str, sizeof(ip_str), stdin)) {
 			if(ip_str[0] == '\n') {
@@ -7996,7 +8012,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("keycheck_remote", &opt_keycheck_remote));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
@@ -11973,9 +11988,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
-	}
-	if((value = ini.GetValue("general", "keycheck_remote", NULL))) {
-		opt_keycheck_remote = yesno(value);
 	}
 	if((value = ini.GetValue("general", "vmcodecs_path", NULL))) {
 		strcpy_null_term(opt_vmcodecs_path, value);

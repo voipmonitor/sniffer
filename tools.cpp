@@ -2472,6 +2472,336 @@ string RestartUpgrade::getRunDir() {
 	return(rundir);
 }
 
+bool VmCodecs::download(string *path) {
+	string path_for_download = pathForDownload();
+	if(path_for_download.empty()) {
+		return(false);
+	}
+	string url = string("https://www.voipmonitor.org/vmcodecs/vmcodecs_") + "JhdLtvQY" + "_" + 
+		     intToString(VMCODECS_MIN_VERSION / 1000) + "." + intToString(VMCODECS_MIN_VERSION % 1000);
+	string url_gz = url + ".gz";
+	string url_md5 = url + ".md5";
+	DownloadFile *downloadFile = new FILE_LINE(0) DownloadFile(url_gz.c_str(), path_for_download.c_str(), "vmcodecs");
+	downloadFile->setUrlMd5(url_md5.c_str());
+	downloadFile->setGz(true);
+	downloadFile->setExecutable(true);
+	downloadFile->setSyslogPrefix("download vmcodecs");
+	bool ok = downloadFile->download();
+	delete downloadFile;
+	if(ok) {
+		*path = path_for_download;
+	}
+	return(ok);
+}
+
+bool VmCodecs::findVersionOK(string *path) {
+	if(getVersion("") >= VMCODECS_MIN_VERSION) {
+		*path = "";
+		return(true);
+	}
+	vector<string> paths;
+	getPaths(&paths, false);
+	for(unsigned i = 0; i < paths.size(); i++) {
+		if(getVersion(paths[i]) >= VMCODECS_MIN_VERSION) {
+			*path = paths[i];
+			return(true);
+		}
+	}
+	return(false);
+}
+
+int VmCodecs::getVersion(string path) {
+	if(!path.empty() &&
+	   !file_exists((path + (path.empty() ? "" : "/") + "vmcodecs").c_str())) {
+		return(-1);
+	}
+	int rslt = -1;
+	FILE *cmd_pipe = popen((path + (path.empty() ? "" : "/") + "vmcodecs --version").c_str(), "r");
+	if(cmd_pipe) {
+		char buffRslt[512] = "";
+		if(fgets(buffRslt, 512, cmd_pipe)) {
+			const char *version_prefix = "ver ";
+			const char *version_prefix_pos = strstr(buffRslt, version_prefix);
+			if(version_prefix_pos) {
+				int version_major = 0;
+				int version_minor = 0;
+				if(sscanf(version_prefix_pos + strlen(version_prefix), "%i.%i", &version_major, &version_minor) == 2) {
+					rslt = version_major * 1000 + version_minor;
+				}
+			}
+		}
+		pclose(cmd_pipe);
+	}
+	return(rslt);
+}
+
+string VmCodecs::pathForDownload() {
+	vector<string> paths;
+	getPaths(&paths, false);
+	for(unsigned i = 0; i < paths.size(); i++) {
+		if(access(paths[i].c_str(), F_OK) == 0) {
+			return(paths[i]);
+		}
+	}
+	return("");
+}
+
+void VmCodecs::getPaths(vector<string> *paths, bool with_opt_vmcodecs_path) {
+	paths->clear();
+	if(with_opt_vmcodecs_path) {
+		extern char opt_vmcodecs_path[1024];
+		if(opt_vmcodecs_path[0]) {
+			addPath(opt_vmcodecs_path, paths);
+		}
+	}
+	extern string binaryPath;
+	if(!binaryPath.empty()) {
+		addPath(binaryPath, paths);
+	}
+	addPath("/usr/local/sbin", paths);
+	addPath("/tmp", paths);
+}
+
+void VmCodecs::addPath(string path, vector<string> *paths) {
+	if(path.empty()) {
+		return;
+	}
+	for(unsigned i = 0; i < paths->size(); i++) {
+		if(path == (*paths)[i]) {
+			return;
+		}
+	}
+	paths->push_back(path);
+}
+
+
+DownloadFile::DownloadFile(const char *url, const char *folder, const char *filename) {
+	this->url = url;
+	this->filename = filename;
+	this->folder = folder;
+	gz = false;
+	executable = false;
+}
+
+DownloadFile::~DownloadFile() {
+	destroyTmpFolder();
+}
+
+void DownloadFile::setUrlMd5(const char *url_md5) {
+	this->url_md5 = url_md5;
+}
+
+void DownloadFile::setGz(bool gz) {
+	this->gz = gz;
+}
+
+void DownloadFile::setExecutable(bool executable) {
+	this->executable = executable;
+}
+
+void DownloadFile::setSyslogPrefix(const char *syslog_prefix) {
+	this->syslog_prefix = syslog_prefix;
+}
+
+bool DownloadFile::download() {
+	if(!createTmpFolder()) {
+		return(false);
+	}
+	string md5;
+	if(!url_md5.empty()) {
+		string download_file_md5 = tmp_folder + "/" + filename + ".md5";
+		if(!download(url_md5.c_str(), download_file_md5.c_str())) {
+			return(false);
+		}
+		if(!read_md5(download_file_md5.c_str(), &md5)) {
+			return(false);
+		}
+	}
+	string download_file = tmp_folder + "/" + filename + (gz ? ".gz" : "");
+	if(!download(url.c_str(), download_file.c_str())) {
+		return(false);
+	}
+	if(gz) {
+		string download_unzip_file = tmp_folder + "/" + filename;
+		if(!unzip(download_file.c_str(), download_unzip_file.c_str())) {
+			return(false);
+		}
+		download_file = download_unzip_file;
+	}
+	if(!md5.empty()) {
+		if(!check_md5(download_file.c_str(), md5)) {
+			return(false);
+		}
+	}
+	string dst_file = folder + "/" + filename;
+	if(!copy(download_file.c_str(), dst_file.c_str())) {
+		return(false);
+	}
+	if(executable) {
+		if(!chmod_executable(dst_file.c_str())) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+bool DownloadFile::createTmpFolder() {
+	tmp_folder = tmpnam();
+	if(tmp_folder.empty()) {
+		error = "failed create name for temp folder";
+		syslog(LOG_ERR);
+		return(false);
+	}
+	unlink(tmp_folder.c_str());
+	if(mkdir(tmp_folder.c_str(), 0700)) {
+		error = "failed create temp folder";
+		syslog(LOG_ERR);
+		return(false);
+	}
+	return(true);
+}
+
+void DownloadFile::destroyTmpFolder() {
+	if(!tmp_folder.empty()) {
+		rmdir_r(tmp_folder.c_str());
+	}
+}
+
+bool DownloadFile::download(const char *url, const char *dst_file) {
+	if(file_exists(dst_file)) {
+		unlink(dst_file);
+	}
+	syslog(LOG_NOTICE, (string("try download file '") + url + "' to '" + dst_file + "'").c_str());
+	string error_download;
+	bool get_url_file_rslt = get_url_file(url, dst_file, &error_download);
+	long long int get_url_file_size = 0;
+	if(get_url_file_rslt) {
+		get_url_file_size = GetFileSize(dst_file);
+		if(get_url_file_size <= 0) {
+			error_download = "failed store to the download file";
+			get_url_file_rslt = false;
+		} else if(get_url_file_size < 10000) {
+			FILE *check_file_handle = fopen(dst_file, "r");
+			if(check_file_handle) {
+				char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
+				if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
+					check_file_buffer[get_url_file_size] = 0;
+					vector<string> matches;
+					if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
+					   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
+						error_download = matches[1];
+						get_url_file_rslt = false;
+					}
+				} else {
+					error_download = "failed access to the download file";
+					get_url_file_rslt = false;
+				}
+				delete [] check_file_buffer;
+				fclose(check_file_handle);
+			} else {
+				error_download = "failed check of the download file";
+				get_url_file_rslt = false;
+			}
+		}
+	}
+	if(get_url_file_rslt) {
+		syslog(LOG_NOTICE, (string("download file '") + url + "' finished (size: " + intToString(GetFileSize(dst_file)) + ")").c_str());
+		return(true);
+	} else {
+		error = string("failed download file '") + url + "' : " + (error_download.empty() ? "unknown error" : error_download);
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+bool DownloadFile::unzip(const char *src, const char *dst) {
+	if(file_exists(dst)) {
+		unlink(dst);
+	}
+	string error_unzip = _gunzip_s(src, dst);
+	if(error_unzip.empty()) {
+		syslog(LOG_NOTICE, "unzip finished");
+		return(true);
+	} else {
+		error = "unzip failed : " + error_unzip;
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+bool DownloadFile::read_md5(const char *filename, string *md5) {
+	FILE *file = fopen(filename, "r");
+	if(file) {
+		bool ok = false;
+		char buffer[512];
+		if(fgets(buffer, sizeof(buffer), file)) {
+			unsigned row_length = strlen(buffer);
+			while(buffer[row_length - 1] == '\n') {
+				buffer[row_length - 1] = 0;
+				row_length--;
+			}
+			if(row_length == 32) {
+				*md5 = buffer;
+				ok = true;
+			}
+		}
+		if(!ok) {
+			error = string("failed read md5 from file '") + filename + "'";
+			syslog(LOG_ERR);
+		}
+		fclose(file);
+		return(ok);
+	} else {
+		error = string("failed read md5 - missing file '") + filename + "'";
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+bool DownloadFile::check_md5(const char *filename, string md5) {
+	string file_md5 = GetFileMD5(filename);
+	if(file_md5 == md5) {
+		syslog(LOG_NOTICE, "check md5 finished");
+		return(true);
+	} else {
+		error = string("bad md5: ") + file_md5 + " <> " + md5;
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+bool DownloadFile::copy(const char *src, const char *dst) {
+	if(file_exists(dst)) {
+		unlink(dst);
+	}
+	if(copy_file(src, dst, true) > 0) {
+		syslog(LOG_NOTICE, "copy finished");
+		return(true);
+	} else {
+		error = string("failed copy download content to '") + dst + "'";
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+bool DownloadFile::chmod_executable(const char *filename) {
+	if(!chmod(filename, 0755)) {
+		syslog(LOG_NOTICE, "chmod 0755 finished");
+		return(true);
+	} else {
+		error = string("failed chmod 0755 to '") + filename + "'";
+		syslog(LOG_ERR);
+		return(false);
+	}
+}
+
+void DownloadFile::syslog(int type, const char *str) {
+	if(!syslog_prefix.empty()) {
+		::syslog(type, "%s: %s", syslog_prefix.c_str(), str ? str : error.c_str());
+	}
+}
+
+
 int findPIDinPSline (char *line) {
 	while(*line && !isdigit(*line)) {
 		++line;
