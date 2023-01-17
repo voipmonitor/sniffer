@@ -1,3 +1,12 @@
+31.1 17.01.2022
+===============
+- fix proper source/destination main RTP stream selection for some corner cases - (broken since 2022-05-01)
+- do not ignore RTCP if the report block contains NULL SSRC [VS-1405]
+- set ssl_ignore_error_invalid_mac to yes (decryption will work if mac does not fit) [VS-1398]
+- new parameters max_sip_packets_in_call (default is 20000) and max_invite_packets_in_call (default is 10000) which limits the number of packets in a call to prevent OOM [VS-1322]
+- new parameter check_diff_ssrc_on_same_ip_port (default yes) [VS-1403]
+
+
 31.0.2 04.01.2022
 =================
 - optimization of condition in PreProcessPacket::process_SIP_EXTEND
