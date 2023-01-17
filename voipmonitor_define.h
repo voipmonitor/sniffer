@@ -2,7 +2,7 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "31.0.2"
+#define RTPSENSOR_VERSION "31.1"
 #define NAT
 
 #define FORMAT_WAV	1
@@ -64,6 +64,8 @@
 #define PCAP_QUEUE_PCAP_HEADER_FORCE_STD false
 
 #define CAST_OBJ_TO_VOID(obj) ((void*)(obj))
+
+#define VMCODECS_MIN_VERSION 2001
 
 
 #endif //VOIPMONITOR_DEFINE_H

@@ -1300,6 +1300,8 @@ public:
 	char rtp_timeout_exceeded;
 	char sipwithoutrtp_timeout_exceeded;
 	char oneway_timeout_exceeded;
+	char max_sip_packets_exceeded;
+	char max_invite_packets_exceeded;
 	char force_terminate;
 	char pcap_drop;
 	vmIP lastsrcip;
@@ -2474,6 +2476,8 @@ public:
 	volatile u_int32_t sp_do_destroy_call_at;
 	set<vmIPport> sp_rtp_ipport;
 	#endif
+	unsigned sip_packets_counter;
+	unsigned invite_packets_counter;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;

@@ -356,7 +356,7 @@ public:
 	u_int16_t channel_record_seq_ringbuffer_pos;
 	int packetization;	//!< packetization in millisenocds
 	int last_packetization;	//!< last packetization in millisenocds
-	int last_ts;		//!< last timestamp 
+	u_int32_t last_ts;	//!< last timestamp 
 	bool pcap_header_ts_bad_time;
 	int packetization_iterator;	
 	int prev_payload;

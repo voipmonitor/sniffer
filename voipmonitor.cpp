@@ -222,7 +222,9 @@ bool opt_srtp_rtp_decrypt = false;
 bool opt_srtp_rtp_dtls_decrypt = true;
 bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
+bool opt_srtp_rtp_local_instances = true;
 int opt_use_libsrtp = 0;
+bool opt_check_diff_ssrc_on_same_ip_port = true;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
 int opt_saveudptl = 0;		// if = 1 all UDPTL packets will be saved (T.38 fax)
 int opt_rtpip_find_endpoints = 1;
@@ -355,7 +357,6 @@ int opt_rtpfromsdp_onlysip_skinny = 1;
 int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
-bool opt_keycheck_remote = false;
 char opt_vmcodecs_path[1024] = "";
 bool opt_cdr_stat_values = true;
 bool opt_cdr_stat_sources = false;
@@ -437,7 +438,7 @@ int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
-bool opt_ssl_ignore_error_invalid_mac = false;
+bool opt_ssl_ignore_error_invalid_mac = true;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
 int opt_ssl_tls_12_sessionkey_mode = 1;
 bool opt_ssl_unlimited_reassembly_attempts = false;
@@ -452,7 +453,6 @@ int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
 int opt_ssl_dtls_handshake_safe = false;
-int opt_ssl_dtls_rtp_local = false;
 bool opt_ssl_dtls_find_by_server_side = true;
 bool opt_ssl_dtls_find_by_client_side = false;
 int opt_ssl_dtls_boost = false;
@@ -1042,6 +1042,8 @@ vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
 vector<vmIPmask> webrtcnet;
 bool opt_sip_only_tcp = false;
+unsigned opt_max_sip_packets_in_call = 20000;
+unsigned opt_max_invite_packets_in_call = 10000;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
@@ -1272,6 +1274,7 @@ string cmdline;
 string rundir;
 string appname;
 string binaryNameWithPath;
+string binaryPath;
 string configfilename;
 
 char opt_crash_bt_filename[100];
@@ -3299,6 +3302,10 @@ int main(int argc, char *argv[]) {
 		binaryNameWithPath = std::string(exebuff);
 	} else {
 		binaryNameWithPath = "/usr/local/sbin/voipmonitor";
+	}
+	size_t last_separator = binaryNameWithPath.rfind('/');
+	if(last_separator != string::npos) {
+		binaryPath = binaryNameWithPath.substr(0, last_separator);
 	}
 	
 	char _rundir[256];
@@ -6014,6 +6021,18 @@ void test() {
 	case 1: {
 	 
 		{
+		VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
+		string path;
+		cout << vmCodecs->findVersionOK(&path) << endl;
+		cout << path << endl;
+		cout << "***" << endl;
+		cout << vmCodecs->download(&path) << endl;
+		cout << path << endl;
+		cout << "***" << endl;
+		delete vmCodecs;
+		}
+	 
+		{
 		char ip_str[1000];
 		while(fgets(ip_str, sizeof(ip_str), stdin)) {
 			if(ip_str[0] == '\n') {
@@ -7385,7 +7404,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtls", &opt_srtp_rtp_dtls_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
-				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
@@ -7394,6 +7412,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42215) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
 					addConfigItem(new FILE_LINE(42217) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_local_instances", &opt_srtp_rtp_local_instances));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("libsrtp", &opt_use_libsrtp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("check_diff_ssrc_on_same_ip_port", &opt_check_diff_ssrc_on_same_ip_port));
 		subgroup("GRAPH");
 			addConfigItem((new FILE_LINE(42218) cConfigItem_yesno("savegraph"))
 				->addValues("plain:1|p:1|gzip:2|g:2")
@@ -7505,7 +7526,6 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
 				->addValues("ext:2"));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_rtp_local", &opt_ssl_dtls_rtp_local));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
@@ -7627,6 +7647,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_srvcc_cdr", &opt_save_srvcc_cdr));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srvcc_correlation", &opt_srvcc_correlation));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_sip_packets_in_call", &opt_max_sip_packets_in_call));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_invite_packets_in_call", &opt_max_invite_packets_in_call));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -7990,7 +8012,6 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("keycheck_remote", &opt_keycheck_remote));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
@@ -9639,7 +9660,7 @@ void set_context_config() {
 		ssl_client_random_keep = true;
 		opt_ssl_dtls_queue_keep = true;
 		opt_ssl_dtls_handshake_safe = 2;
-		opt_ssl_dtls_rtp_local = true;
+		opt_srtp_rtp_local_instances = true;
 		opt_ssl_dtls_find_by_server_side = true;
 		opt_ssl_dtls_find_by_client_side = true;
 	}
@@ -11251,8 +11272,14 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "srtp_rtcp", NULL))) {
 		opt_srtp_rtcp_decrypt= yesno(value);
 	}
+	if((value = ini.GetValue("general", "srtp_rtp_local_instances", NULL))) {
+		opt_srtp_rtp_local_instances = yesno(value);
+	}
 	if((value = ini.GetValue("general", "libsrtp", NULL))) {
 		opt_use_libsrtp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "check_diff_ssrc_on_same_ip_port", NULL))) {
+		opt_check_diff_ssrc_on_same_ip_port = yesno(value);
 	}
 	if((value = ini.GetValue("general", "norecord-header", NULL))) {
 		opt_norecord_header = yesno(value);
@@ -11962,9 +11989,6 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "keycheck", NULL))) {
 		strcpy_null_term(opt_keycheck, value);
 	}
-	if((value = ini.GetValue("general", "keycheck_remote", NULL))) {
-		opt_keycheck_remote = yesno(value);
-	}
 	if((value = ini.GetValue("general", "vmcodecs_path", NULL))) {
 		strcpy_null_term(opt_vmcodecs_path, value);
 	}
@@ -12269,9 +12293,6 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
 		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
-	}
-	if((value = ini.GetValue("general", "ssl_dtls_rtp_local", NULL))) {
-		opt_ssl_dtls_rtp_local = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
 		opt_ssl_dtls_find_by_server_side = yesno(value);
@@ -12767,6 +12788,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sip_only_tcp", NULL))) {
 		opt_sip_only_tcp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "max_sip_packets_in_call", NULL))) {
+		opt_max_sip_packets_in_call = atoi(value);
+	}
+	if((value = ini.GetValue("general", "max_invite_packets_in_call", NULL))) {
+		opt_max_invite_packets_in_call = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {

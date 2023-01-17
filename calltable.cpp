@@ -116,6 +116,8 @@ extern bool opt_ss7_use_sam_subsequent_number;
 extern int opt_ss7timeout_rlc;
 extern int opt_ss7timeout_rel;
 extern int opt_ss7timeout;
+extern unsigned opt_max_sip_packets_in_call;
+extern unsigned opt_max_invite_packets_in_call;
 extern unsigned int gthread_num;
 extern volatile int num_threads_active;
 extern int opt_printinsertid;
@@ -123,7 +125,6 @@ extern int opt_cdronlyanswered;
 extern int opt_cdronlyrtp;
 extern int opt_newdir;
 extern char opt_keycheck[1024];
-extern bool opt_keycheck_remote;
 extern char opt_vmcodecs_path[1024];
 extern char opt_convert_char[256];
 extern int opt_norecord_dtmf;
@@ -270,7 +271,7 @@ extern bool opt_save_srvcc_cdr;
 extern bool opt_srvcc_correlation;
 extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
-extern bool opt_ssl_dtls_rtp_local;
+extern bool opt_srtp_rtp_local_instances;
 
 
 sCallField callFields[] = {
@@ -716,6 +717,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtp_timeout_exceeded = 0;
 	sipwithoutrtp_timeout_exceeded = 0;
 	oneway_timeout_exceeded = 0;
+	max_sip_packets_exceeded = 0;
+	max_invite_packets_exceeded = 0;
 	force_terminate = 0;
 	pcap_drop = 0;
 	
@@ -835,6 +838,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sp_stop_rtp_processing_at = 0;
 	sp_do_destroy_call_at = 0;
 	#endif
+	
+	sip_packets_counter = 0;
+	invite_packets_counter = 0;
 	
 }
 
@@ -2007,7 +2013,7 @@ read:
 						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 						    opt_saveRAW || opt_savewav_force)) {
 							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-							if(opt_ssl_dtls_rtp_local) {
+							if(opt_srtp_rtp_local_instances) {
 								if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
 								   (rtp_i->index_call_ip_port >= 0 && this->ip_port[rtp_i->index_call_ip_port].srtp) ||
 								   (rtp_i->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
@@ -2234,7 +2240,7 @@ read:
 		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
 		    opt_saveRAW || opt_savewav_force)) {
 			int index_call_ip_port_by_src = get_index_by_ip_port_by_src(packetS->saddr_(), packetS->source_(), iscaller);
-			if(opt_ssl_dtls_rtp_local) {
+			if(opt_srtp_rtp_local_instances) {
 				if((index_call_ip_port_by_src >= 0 && this->ip_port[index_call_ip_port_by_src].srtp) ||
 				   (rtp_new->index_call_ip_port >= 0 && this->ip_port[rtp_new->index_call_ip_port].srtp) ||
 				   (rtp_new->index_call_ip_port_other_side >= 0 && this->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
@@ -3110,12 +3116,16 @@ cWavMix::cWav *cWavMix::getWavNoMix(bool withoutEndSilence) {
 
 struct s_vmcodecs_callback {
 	inline void init() {
-		memset(this, 0, sizeof(*this));
+		detect_keycheck = false;
+		ok = false;
+		invalid = false;
+		error = false;
 	}
 	bool detect_keycheck;
 	bool ok;
 	bool invalid;
 	bool error;
+	string error_str;
 };
 
 void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, void *data) {
@@ -3134,6 +3144,7 @@ void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, vo
 				write(fd, output.c_str(), output.length());
 				write(fd, "\n", 1);
 			} else {
+				((s_vmcodecs_callback*)data)->error_str = error;
 				write(fd, "error\n", 6);
 			}
 		}
@@ -3762,23 +3773,61 @@ Call::convertRawToWav() {
 					convertULAW2WAV(rawf->filename.c_str(), wav, maxsamplerate);
 					break;
 				default:
-					string cmd;
+					static string vmcodecs_path_static;
+					static bool vmcodecs_path_static_ok = false;
+					static volatile int vmcodecs_path_sync = 0;
+					string vmcodecs_path;
+					bool keycheck_remote = false;
+					if(isCloud() || snifferClientOptions.isEnable()) {
+						if(opt_vmcodecs_path[0] && file_exists((string(opt_vmcodecs_path) + "/vmcodecs").c_str()) ) {
+							vmcodecs_path = opt_vmcodecs_path;
+						} else {
+							__SYNC_LOCK_USLEEP(vmcodecs_path_sync, 100);
+							if(vmcodecs_path_static_ok) {
+								vmcodecs_path = vmcodecs_path_static;
+							} else {
+								VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
+								string vmcodecs_find_path;
+								if(vmCodecs->findVersionOK(&vmcodecs_find_path)) {
+									vmcodecs_path_static = vmcodecs_path = vmcodecs_find_path;
+									vmcodecs_path_static_ok = true;
+								} else {
+									for(int pass = 0; pass < 5; pass++) {
+										if(vmCodecs->download(&vmcodecs_find_path)) {
+											vmcodecs_path_static = vmcodecs_path = vmcodecs_find_path;
+											vmcodecs_path_static_ok = true;
+											break;
+										} else if(pass < 4) {
+											syslog(LOG_ERR, "vmcodecs download faild - try next after 5s");
+											for(int i = 0; i < 5 && !is_terminating(); i++) {
+												sleep(1);
+											}
+										}
+									}
+								}
+								delete vmCodecs;
+							}
+							__SYNC_UNLOCK(vmcodecs_path_sync);
+							if(!vmcodecs_path_static_ok) {
+								syslog(LOG_ERR, "missing vmcodecs - skip convert audio for %s", call_id.c_str());
+								break;
+							}
+						}
+						keycheck_remote = true;
+					} else {
+						if(opt_vmcodecs_path[0]) {
+							vmcodecs_path = opt_vmcodecs_path;
+						}
+					}
 					string vmcodecs_cmd;
-					if(opt_vmcodecs_path[0]) {
-						vmcodecs_cmd = opt_vmcodecs_path;
-						if(opt_vmcodecs_path[strlen(opt_vmcodecs_path) - 1] != '/') {
+					if(!vmcodecs_path.empty()) {
+						vmcodecs_cmd = vmcodecs_path;
+						if(vmcodecs_cmd[vmcodecs_cmd.length() - 1] != '/') {
 							vmcodecs_cmd += '/';
 						}
 					}
 					vmcodecs_cmd += "vmcodecs";
-					bool keycheck_remote = false;
-					if(isCloud() || snifferClientOptions.isEnable()) {
-						if(!strcasecmp(opt_keycheck, "remote") || opt_keycheck_remote) {
-							keycheck_remote = true;
-						} else {
-							keycheck_remote = opt_vmcodecs_path[0] ? file_exists(vmcodecs_cmd.c_str()) : binaryFileExists(vmcodecs_cmd.c_str());
-						}
-					}
+					string cmd;
 					if(opt_keycheck[0] != '\0' || keycheck_remote) {
 						cmd += vmcodecs_cmd + " " + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
 					} else {
@@ -3812,6 +3861,9 @@ Call::convertRawToWav() {
 								string error = (char*)err;
 								if(error.empty()) {
 									error = "error when checking license";
+									if(!callback_data.error_str.empty()) {
+										error += " : " + callback_data.error_str;
+									}
 								}
 								syslog(LOG_ERR, "vmcodecs: error[%s] - try next after 5s", error.c_str());
 								for(int i = 0; i < 5 && !is_terminating(); i++) {
@@ -5813,12 +5865,12 @@ void Call::selectRtpAB() {
 		}
 		rtp_size_reduct = j;
 		// bubble sort
-		for(int k = 0; k < rtp_size_reduct; k++) {
-			for(int j = k + 1; j < rtp_size_reduct; j++) {
-				if((rtp_stream_by_index(indexes[k])->received_() + rtp_stream_by_index(indexes[k])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
-					int kTmp = indexes[k];
-					indexes[k] = indexes[j];
-					indexes[j] = kTmp;
+		for(int i = 0; i < rtp_size_reduct - 1; i++) {
+			for(int j = 0; j < rtp_size_reduct - i - 1; j++) {
+				if((rtp_stream_by_index(indexes[j + 1])->received_() + rtp_stream_by_index(indexes[j + 1])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
+					int tmp = indexes[j];
+					indexes[j] = indexes[j + 1];
+					indexes[j + 1] = tmp;
 				}
 			}
 		}
@@ -5908,25 +5960,32 @@ void Call::selectRtpAB() {
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = typeIs(MGCP) ||
 					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
-		if(!pass_rtpab_simple && typeIs(INVITE) && rtp_size_reduct >= 2 &&
-		   (rtp_stream_by_index(indexes[0])->iscaller + rtp_stream_by_index(indexes[1])->iscaller) == 1 &&
-		   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
+		if(!pass_rtpab_simple && typeIs(INVITE) && rtp_size_reduct >= 2) {
 			if(rtp_size_reduct == 2) {
-				pass_rtpab_simple = true;
+				if((rtp_stream_by_index(indexes[0])->iscaller + rtp_stream_by_index(indexes[1])->iscaller) == 1 &&
+				   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
+					pass_rtpab_simple = true;
+				}
 			} else {
-				unsigned callerStreams = 0;
-				unsigned calledStreams = 0;
-				map<unsigned, unsigned> callerReceivedPackets;
-				map<unsigned, unsigned> calledReceivedPackets;
+				vector<RTP*> callerStreams;
+				vector<RTP*> calledStreams;
 				for(int k = 0; k < rtp_size_reduct; k++) {
 					if(rtp_stream_by_index(indexes[k])->iscaller) {
-						callerReceivedPackets[callerStreams++] = rtp_stream_by_index(indexes[k])->received_();
+						callerStreams.push_back(rtp_stream_by_index(indexes[k]));
 					} else {
-						calledReceivedPackets[calledStreams++] = rtp_stream_by_index(indexes[k])->received_();
+						calledStreams.push_back(rtp_stream_by_index(indexes[k]));
 					}
 				}
-				if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
-				   (!calledReceivedPackets[1] || (calledReceivedPackets[0] / calledReceivedPackets[1]) > 5)) {
+				if((!callerStreams.size() ||
+				    (callerStreams[0]->first_codec_() >= 0 &&
+				     (callerStreams.size() < 2 || 
+				      callerStreams[1]->received_() == 0 || 
+				      (callerStreams[0]->received_() / callerStreams[1]->received_()) > 5))) &&
+				   (!calledStreams.size() ||
+				    (calledStreams[0]->first_codec_() >= 0 &&
+				     (calledStreams.size() < 2 || 
+				      calledStreams[1]->received_() == 0 ||
+				      (calledStreams[0]->received_() / calledStreams[1]->received_()) > 5)))) {
 					pass_rtpab_simple = true;
 				}
 			}
@@ -5947,6 +6006,8 @@ void Call::selectRtpAB() {
 						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip << " " 
 						     << " payload: " << rtp_stream_by_index(indexes[k])->first_codec << " "
 						     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[k])->rtcp_xr.counter_mos << " "
+						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip_() << " "
+						     << " first_codec: " <<rtp_stream_by_index(indexes[k])->first_codec_() << " "
 						     #endif
 						     << endl;
 					}
@@ -6137,7 +6198,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	if (is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
-	if(dtls_exists && opt_ssl_dtls_rtp_local) {
+	if(opt_srtp_rtp_local_instances) {
 		for(int i = 0; i < rtp_size(); i++) {
 			RTP *rtp_i = rtp_stream_by_index(i);
 			if(rtp_i->srtp_decrypt && !rtp_i->probably_unencrypted_payload && 
@@ -6154,6 +6215,24 @@ Call::saveToDb(bool enableBatchIfPossible) {
 					ssl_sessionkey_log(log_str);
 				} else {
 					break;
+				}
+			} else if(exists_srtp && exists_srtp_crypto_config) {
+				bool exists_srtp_in_stream = false;
+				bool exists_srtp_crypto_config_in_stream = false;
+				for(int i = 0; i < 2; i++) {
+					int _index_call_ip_port = i == 0 ? rtp_i->index_call_ip_port : rtp_i->index_call_ip_port_other_side;
+					if(_index_call_ip_port >= 0 && ip_port[_index_call_ip_port].srtp) {
+						exists_srtp_in_stream = true;
+						if(ip_port[_index_call_ip_port].srtp_crypto_config_list) {
+							exists_srtp_crypto_config_in_stream = true;
+						}
+					}
+				}
+				if(exists_srtp_in_stream && !exists_srtp_crypto_config_in_stream) {
+					cdr_flags |= CDR_SRTP_WITHOUT_KEY;
+					if(!(sverb.dtls && ssl_sessionkey_enable())) {
+						break;
+					}
 				}
 			}
 		}
@@ -6540,6 +6619,8 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		bye = 107;
 	} else if(sipwithoutrtp_timeout_exceeded && !first_rtp_time_us) {
 		bye = 108;
+	} else if(max_sip_packets_exceeded || max_invite_packets_exceeded) {
+		bye = 109;
 	} else if(oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
 		bye = 101;
 	} else if(pcap_drop) {
@@ -9187,12 +9268,12 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
 			sort_indexes[i] = i;
 		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
+		for(unsigned i = 0; i < invite_sdaddr_order_size - 1; i++) {
+			for(unsigned j = 0; j < invite_sdaddr_order_size - i - 1; j++) {
+				if(invite_sdaddr_order[sort_indexes[j]].ts > invite_sdaddr_order[sort_indexes[j + 1]].ts) {
+					unsigned tmp = sort_indexes[j];
+					sort_indexes[j] = sort_indexes[j + 1];
+					sort_indexes[j + 1] = tmp;
 				}
 			}
 		}
@@ -9247,12 +9328,12 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
 			sort_indexes[i] = i;
 		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
+		for(unsigned i = 0; i < invite_sdaddr_order_size - 1; i++) {
+			for(unsigned j = 0; j < invite_sdaddr_order_size - i  - 1; j++) {
+				if(invite_sdaddr_order[sort_indexes[j]].ts > invite_sdaddr_order[sort_indexes[j + 1]].ts) {
+					unsigned tmp = sort_indexes[j];
+					sort_indexes[j] = sort_indexes[j + 1];
+					sort_indexes[j + 1] = tmp;
 				}
 			}
 		}
@@ -12189,6 +12270,8 @@ struct sCleanupCallsStat {
 			if(close_absolute_timeout) str << "close_absolute_timeout " << close_absolute_timeout << endl;
 			if(close_zombie_timeout) str << "close_zombie_timeout " << close_zombie_timeout << endl;
 			if(close_oneway_timeout) str << "close_oneway_timeout " << close_oneway_timeout << endl;
+			if(close_max_sip_packets) str << "close_max_sip_packets " << close_max_sip_packets << endl;
+			if(close_max_invite_packets) str << "close_max_invite_packets " << close_max_invite_packets << endl;
 			if(in_preprocess_issue) str << "in_preprocess_issue " << in_preprocess_issue << endl;
 			if(sp_sent_close_call) str << "sp_sent_close_call " << sp_sent_close_call << endl;
 			if(sp_arrived_rtp_streams) str << "sp_arrived_rtp_streams " << sp_arrived_rtp_streams << endl;
@@ -12214,6 +12297,8 @@ struct sCleanupCallsStat {
 	u_int32_t close_absolute_timeout;
 	u_int32_t close_zombie_timeout;
 	u_int32_t close_oneway_timeout;
+	u_int32_t close_max_sip_packets;
+	u_int32_t close_max_invite_packets;
 	u_int32_t in_preprocess_issue;
 	u_int32_t sp_sent_close_call;
 	u_int32_t sp_arrived_rtp_streams;
@@ -12386,6 +12471,14 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 						closeCall = true;
 						call->zombie_timeout_exceeded = true;
 						++stat.close_zombie_timeout;
+					} else if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
+						closeCall = true;
+						call->max_sip_packets_exceeded = true;
+						++stat.close_max_sip_packets;
+					} else if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
+						closeCall = true;
+						call->max_invite_packets_exceeded = true;
+						++stat.close_max_invite_packets;
 					}
 					if(!closeCall &&
 					   (call->oneway == 1 && currTimeS_unshift > call->get_last_packet_time_s() + opt_onewaytimeout)) {
@@ -14907,6 +15000,14 @@ bool remote_keycheck(string input, string *output, string *error) {
 }
 
 bool php_keycheck(string keycheck, string input, string *output, string *error) {
+	if(keycheck.empty()) {
+		*error = string("undefined keycheck") + (is_server() ? " on server side" : "");
+		return(false);
+	}
+	if(!file_exists(keycheck)) {
+		*error = string("missing '") + keycheck + "'" + (is_server() ? " on server side" : "");
+		return(false);
+	}
 	size_t pos_endl = input.find("\n");
 	if(pos_endl != string::npos) {
 		input.resize(pos_endl);

@@ -1296,6 +1296,49 @@ private:
 	bool _arm;
 };
 
+class VmCodecs {
+public:
+	bool download(string *path);
+	bool findVersionOK(string *path);
+private:
+	int getVersion(string path);
+	string pathForDownload();
+	void getPaths(vector<string> *paths, bool with_opt_vmcodecs_path);
+	void addPath(string path, vector<string> *paths);
+};
+
+class DownloadFile {
+public:
+	DownloadFile(const char *url, const char *folder, const char *filename);
+	~DownloadFile();
+	void setUrlMd5(const char *url_md5);
+	void setGz(bool gz);
+	void setExecutable(bool executable);
+	void setSyslogPrefix(const char *syslog_prefix);
+	bool download();
+	bool createTmpFolder();
+	void destroyTmpFolder();
+	bool download(const char *url, const char *dst_file);
+	bool unzip(const char *src, const char *dst);
+	bool read_md5(const char *filename, string *md5);
+	bool check_md5(const char *filename, string md5);
+	bool copy(const char *src, const char *dst);
+	bool chmod_executable(const char *filename);
+private:
+	void syslog(int type, const char *str = NULL);
+private:
+	string url;
+	string url_md5;
+	string folder;
+	string filename;
+	bool gz;
+	bool executable;
+	string syslog_prefix;
+	string tmp_folder;
+	string error;
+	
+};
+
 class WDT {
 public:
 	WDT();

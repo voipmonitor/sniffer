@@ -1882,6 +1882,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
 							id_main == STORE_PROC_ID_CLEANSPOOL ? "Cl" :
 							id_main == STORE_PROC_ID_HTTP ? "H" :
+							id_main == STORE_PROC_ID_OTHER ? "O" :
 							("i" + intToString(id_main) + "_");
 						outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
 						first = false;
