@@ -5865,12 +5865,12 @@ void Call::selectRtpAB() {
 		}
 		rtp_size_reduct = j;
 		// bubble sort
-		for(int k = 0; k < rtp_size_reduct; k++) {
-			for(int j = k + 1; j < rtp_size_reduct; j++) {
-				if((rtp_stream_by_index(indexes[k])->received_() + rtp_stream_by_index(indexes[k])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
-					int kTmp = indexes[k];
-					indexes[k] = indexes[j];
-					indexes[j] = kTmp;
+		for(int i = 0; i < rtp_size_reduct - 1; i++) {
+			for(int j = 0; j < rtp_size_reduct - i - 1; j++) {
+				if((rtp_stream_by_index(indexes[j + 1])->received_() + rtp_stream_by_index(indexes[j + 1])->lost_()) > (rtp_stream_by_index(indexes[j])->received_() + rtp_stream_by_index(indexes[j])->lost_())) {
+					int tmp = indexes[j];
+					indexes[j] = indexes[j + 1];
+					indexes[j + 1] = tmp;
 				}
 			}
 		}
@@ -5960,25 +5960,32 @@ void Call::selectRtpAB() {
 		bool rtpab_ok[2] = {false, false};
 		bool pass_rtpab_simple = typeIs(MGCP) ||
 					 (typeIs(SKINNY_NEW) ? opt_rtpfromsdp_onlysip_skinny : opt_rtpfromsdp_onlysip);
-		if(!pass_rtpab_simple && typeIs(INVITE) && rtp_size_reduct >= 2 &&
-		   (rtp_stream_by_index(indexes[0])->iscaller + rtp_stream_by_index(indexes[1])->iscaller) == 1 &&
-		   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
+		if(!pass_rtpab_simple && typeIs(INVITE) && rtp_size_reduct >= 2) {
 			if(rtp_size_reduct == 2) {
-				pass_rtpab_simple = true;
+				if((rtp_stream_by_index(indexes[0])->iscaller + rtp_stream_by_index(indexes[1])->iscaller) == 1 &&
+				   rtp_stream_by_index(indexes[0])->first_codec_() >= 0 && rtp_stream_by_index(indexes[1])->first_codec_() >= 0) {
+					pass_rtpab_simple = true;
+				}
 			} else {
-				unsigned callerStreams = 0;
-				unsigned calledStreams = 0;
-				map<unsigned, unsigned> callerReceivedPackets;
-				map<unsigned, unsigned> calledReceivedPackets;
+				vector<RTP*> callerStreams;
+				vector<RTP*> calledStreams;
 				for(int k = 0; k < rtp_size_reduct; k++) {
 					if(rtp_stream_by_index(indexes[k])->iscaller) {
-						callerReceivedPackets[callerStreams++] = rtp_stream_by_index(indexes[k])->received_();
+						callerStreams.push_back(rtp_stream_by_index(indexes[k]));
 					} else {
-						calledReceivedPackets[calledStreams++] = rtp_stream_by_index(indexes[k])->received_();
+						calledStreams.push_back(rtp_stream_by_index(indexes[k]));
 					}
 				}
-				if((!callerReceivedPackets[1] || (callerReceivedPackets[0] / callerReceivedPackets[1]) > 5) &&
-				   (!calledReceivedPackets[1] || (calledReceivedPackets[0] / calledReceivedPackets[1]) > 5)) {
+				if((!callerStreams.size() ||
+				    (callerStreams[0]->first_codec_() >= 0 &&
+				     (callerStreams.size() < 2 || 
+				      callerStreams[1]->received_() == 0 || 
+				      (callerStreams[0]->received_() / callerStreams[1]->received_()) > 5))) &&
+				   (!calledStreams.size() ||
+				    (calledStreams[0]->first_codec_() >= 0 &&
+				     (calledStreams.size() < 2 || 
+				      calledStreams[1]->received_() == 0 ||
+				      (calledStreams[0]->received_() / calledStreams[1]->received_()) > 5)))) {
 					pass_rtpab_simple = true;
 				}
 			}
@@ -5999,6 +6006,8 @@ void Call::selectRtpAB() {
 						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip << " " 
 						     << " payload: " << rtp_stream_by_index(indexes[k])->first_codec << " "
 						     << " rtcp.counter_mos: " << rtp_stream_by_index(indexes[k])->rtcp_xr.counter_mos << " "
+						     << " ok_other_ip_side_by_sip: " << rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip_() << " "
+						     << " first_codec: " <<rtp_stream_by_index(indexes[k])->first_codec_() << " "
 						     #endif
 						     << endl;
 					}
@@ -9259,12 +9268,12 @@ vmIP Call::getSipcalleripFromInviteList(vmPort *sport, vmIP *saddr_encaps, u_int
 		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
 			sort_indexes[i] = i;
 		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
+		for(unsigned i = 0; i < invite_sdaddr_order_size - 1; i++) {
+			for(unsigned j = 0; j < invite_sdaddr_order_size - i - 1; j++) {
+				if(invite_sdaddr_order[sort_indexes[j]].ts > invite_sdaddr_order[sort_indexes[j + 1]].ts) {
+					unsigned tmp = sort_indexes[j];
+					sort_indexes[j] = sort_indexes[j + 1];
+					sort_indexes[j + 1] = tmp;
 				}
 			}
 		}
@@ -9319,12 +9328,12 @@ vmIP Call::getSipcalledipFromInviteList(vmPort *dport, vmIP *daddr_encaps, u_int
 		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
 			sort_indexes[i] = i;
 		}
-		for(unsigned i = 0; i < invite_sdaddr_order_size; i++) {
-			for(unsigned j = i + 1; j < invite_sdaddr_order_size; j++) {
-				if(invite_sdaddr_order[sort_indexes[i]].ts > invite_sdaddr_order[sort_indexes[j]].ts) {
-					unsigned tmp = sort_indexes[i];
-					sort_indexes[i] = sort_indexes[j];
-					sort_indexes[j] = tmp;
+		for(unsigned i = 0; i < invite_sdaddr_order_size - 1; i++) {
+			for(unsigned j = 0; j < invite_sdaddr_order_size - i  - 1; j++) {
+				if(invite_sdaddr_order[sort_indexes[j]].ts > invite_sdaddr_order[sort_indexes[j + 1]].ts) {
+					unsigned tmp = sort_indexes[j];
+					sort_indexes[j] = sort_indexes[j + 1];
+					sort_indexes[j + 1] = tmp;
 				}
 			}
 		}
