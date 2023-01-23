@@ -8805,6 +8805,7 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 				packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
 				packetS->blockstore_addflag(125 /*pb lock flag*/);
 				PACKET_S_PROCESS_DESTROY(&packetS);
+				__SYNC_DEC(packets_counter);
 			}
 			delete link;
 			links.erase(iter_link++);
@@ -8823,6 +8824,7 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 					packetS->blockstore_addflag(126 /*pb lock flag*/);
 					PACKET_S_PROCESS_DESTROY(&packetS);
 					link->queue.pop_front();
+					__SYNC_DEC(packets_counter);
 					destroy_packet = true;
 				}
 				if(destroy_packet) {
@@ -8846,6 +8848,7 @@ void link_packets_queue::destroyAll() {
 		for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 			packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
 			PACKET_S_PROCESS_DESTROY(&packetS);
+			__SYNC_DEC(packets_counter);
 		}
 		delete link;
 	}

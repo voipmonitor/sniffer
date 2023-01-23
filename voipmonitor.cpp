@@ -1317,6 +1317,10 @@ int opt_separate_processing = 0;
 
 int opt_abort_if_rss_gt_gb = 0;
 int opt_abort_if_alloc_gt_gb = 0;
+bool opt_abort_if_heap_full = false;
+bool opt_exit_if_heap_full = false;
+bool opt_abort_if_heap_full_and_t2cpu_is_low = true;
+bool opt_exit_if_heap_full_and_t2cpu_is_low = false;
 int opt_next_server_connections = 0;
 
 string opt_coredump_filter = "0x7F";
@@ -8079,6 +8083,10 @@ void cConfig::addConfigItems() {
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("abort_if_heap_full", &opt_abort_if_heap_full));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("exit_if_heap_full", &opt_exit_if_heap_full));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("abort_if_heap_full_and_t2cpu_is_low", &opt_abort_if_heap_full_and_t2cpu_is_low));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("exit_if_heap_full_and_t2cpu_is_low", &opt_exit_if_heap_full_and_t2cpu_is_low));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
@@ -8619,6 +8627,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "timezones")			sverb.timezones = 1;
 	else if(verbParam == "tcpreplay")			sverb.tcpreplay = 1;
 	else if(verbParam == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+	else if(verbParam == "exit_if_heap_full")		sverb.exit_if_heap_full = 1;
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
@@ -13114,6 +13123,18 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "abort_if_alloc_gt_gb", NULL))) {
 		opt_abort_if_alloc_gt_gb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "abort_if_heap_full", NULL))) {
+		opt_abort_if_heap_full = yesno(value);
+	}
+	if((value = ini.GetValue("general", "exit_if_heap_full", NULL))) {
+		opt_exit_if_heap_full = yesno(value);
+	}
+	if((value = ini.GetValue("general", "abort_if_heap_full_and_t2cpu_is_low", NULL))) {
+		opt_abort_if_heap_full_and_t2cpu_is_low = yesno(value);
+	}
+	if((value = ini.GetValue("general", "exit_if_heap_full_and_t2cpu_is_low", NULL))) {
+		opt_exit_if_heap_full_and_t2cpu_is_low = yesno(value);
 	}
 	if((value = ini.GetValue("general", "coredump_filter", NULL))) {
 		opt_coredump_filter = value;

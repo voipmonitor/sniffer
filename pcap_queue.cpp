@@ -263,6 +263,7 @@ static double heap_pb_used_perc = 0;
 static double heap_pb_trash_perc = 0;
 static double heap_pb_pool_perc = 0;
 static unsigned heapFullCounter = 0;
+static unsigned heapFullIfT2cpuIsLowCounter = 0;
 
 extern MySqlStore *sqlStore;
 extern MySqlStore *loadFromQFiles;
@@ -2288,6 +2289,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		lapTimeDescr.push_back("t1");
 	}
 	double t2cpu = this->getCpuUsagePerc(writeThread, true);
+	double sum_t2cpu = 0;
 	if(t2cpu >= 0) {
 		if(isMirrorSender()) {
 			outStrStat << "t2CPU[" << t2cpu;
@@ -2353,7 +2355,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			double call_t2cpu_preprocess_packet_out_thread = -2;
 			double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
 			int count_t2cpu = 1;
-			double sum_t2cpu = t2cpu;
+			sum_t2cpu = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
@@ -2363,7 +2365,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, j, j == 0 ? &percFullQring : NULL);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							outStrStat << "/" 
-								   << preProcessPacket[i]->getShortcatTypeThread()
+								   << preProcessPacket[i]->getShortcatTypeThread() << ":"
 								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 							if(sverb.qring_stat) {
 								double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
@@ -2617,6 +2619,18 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
 				lapTimeDescr.push_back("tssl");
+			}
+		}
+		extern link_packets_queue dtls_queue;
+		u_int32_t dtls_queue_links = dtls_queue.countLinks();
+		u_int32_t dtls_queue_packets = dtls_queue.countPackets();
+		if(dtls_queue_links > 0 || dtls_queue_packets > 0) {
+			outStrStat << "dtls[l:" << dtls_queue_links 
+				   << "/p:" << dtls_queue_packets
+				   << "] ";
+			if(sverb.log_profiler) {
+				lapTime.push_back(getTimeMS_rdtsc());
+				lapTimeDescr.push_back("dtls");
 			}
 		}
 		if(tcpReassemblySipExt) {
@@ -3003,14 +3017,42 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		rrd_update();
 	}
 	
-	if(sverb.abort_if_heap_full) {
+	extern bool opt_abort_if_heap_full;
+	extern bool opt_exit_if_heap_full;
+	if(opt_abort_if_heap_full || opt_exit_if_heap_full ||
+	   sverb.abort_if_heap_full || sverb.exit_if_heap_full) {
 		if(packetbuffer_memory_is_full || heap_pb_perc > 98) {
 			if(++heapFullCounter > 10) {
-				syslog(LOG_ERR, "HEAP FULL - ABORT!");
-				exit(2);
+				syslog(LOG_ERR, "HEAP FULL - %s!", opt_exit_if_heap_full || sverb.exit_if_heap_full ? "EXIT" : "ABORT");
+				if(opt_exit_if_heap_full || sverb.exit_if_heap_full) {
+					extern WDT *wdt;
+					wdt = NULL;
+					exit(2);
+				} else {
+					abort();
+				}
 			}
 		} else {
 			heapFullCounter = 0;
+		}
+	}
+	
+	extern bool opt_abort_if_heap_full_and_t2cpu_is_low;
+	extern bool opt_exit_if_heap_full_and_t2cpu_is_low;
+	if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
+		if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
+			if(++heapFullIfT2cpuIsLowCounter > 10) {
+				syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
+				if(opt_exit_if_heap_full_and_t2cpu_is_low) {
+					extern WDT *wdt;
+					wdt = NULL;
+					exit(2);
+				} else {
+					abort();
+				}
+			}
+		} else {
+			heapFullIfT2cpuIsLowCounter = 0;
 		}
 	}
 	
