@@ -9,6 +9,7 @@
 
 struct sVerbose {
 	int graph;
+	int graph_mos;
 	int process_rtp;
 	int read_rtp;
 	int hash_rtp;

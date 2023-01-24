@@ -1221,7 +1221,7 @@ Call::closeRawFiles() {
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp_i->graph.isOpen()) {
-				if(!rtp_i->mos_processed or (rtp_i->last_mos_time + 1 < rtp_i->_last_ts.tv_sec)) {
+				if(!rtp_i->mos_processed or (rtp_i->last_save_mos_graph_ms + 1000 < TIME_US_TO_MS(rtp_i->last_packet_time_us))) {
 					rtp_i->save_mos_graph(true);
 				}
 				rtp_i->graph.close();

@@ -396,7 +396,7 @@ public:
 	char ignore;
 	uint8_t dscp;
 	bool skip;
-	unsigned int last_mos_time;
+	u_int64_t last_save_mos_graph_ms;
 	uint8_t	mosf1_min;
 	uint8_t	mosf2_min;
 	uint8_t	mosAD_min;
@@ -405,7 +405,7 @@ public:
 	float	mosf2_avg;
 	float	mosAD_avg;
 	float	mosSilence_avg;
-	uint32_t	mos_counter;
+	uint64_t mos_time_ms;
 	char save_mos_graph_wait;
 	timeval _last_ts;
 	timeval last_voice_frame_ts;
