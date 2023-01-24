@@ -7483,7 +7483,8 @@ void cConfig::addConfigItems() {
 		setDisableIfEnd();
 	group("IP protocol");
 		addConfigItem(new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check));
-		addConfigItem(new FILE_LINE(42247) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader));
+		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader))
+				->addValues("ip_only:2"));
 		addConfigItem(new FILE_LINE(42248) cConfigItem_yesno("udpfrag", &opt_udpfrag));
 		addConfigItem(new FILE_LINE(42249) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
@@ -10904,7 +10905,7 @@ int eval_config(string inistr) {
 		opt_dup_check = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
-		opt_dup_check_ipheader = yesno(value);
+		opt_dup_check_ipheader = !strcasecmp(value, "ip_only") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader_ignore_ttl", NULL))) {
 		opt_dup_check_ipheader_ignore_ttl = yesno(value);

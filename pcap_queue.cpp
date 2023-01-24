@@ -9344,25 +9344,41 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				MD5_CTX md5_ctx;
 				MD5_Init(&md5_ctx);
 				if(opt_dup_check_ipheader) {
+					bool header_ip_set_orig = false;
 					u_int8_t header_ip_ttl_orig = 0;
-					u_int8_t header_ip_check_orig = 0;
-					if(opt_dup_check_ipheader_ignore_ttl) {
+					u_int16_t header_ip_check_orig = 0;
+					if(opt_dup_check_ipheader_ignore_ttl && opt_dup_check_ipheader == 1) {
 						header_ip_ttl_orig = header_ip->get_ttl();
 						header_ip_check_orig = header_ip->get_check();
 						header_ip->set_ttl(0);
 						header_ip->set_check(0);
+						header_ip_set_orig = true;
 					}
+					bool header_udp_set_orig = false;
 					u_int16_t header_udp_checksum_orig;
 					if(opt_dup_check_udpheader_ignore_checksum && ip_protocol == IPPROTO_UDP) {
 						header_udp_checksum_orig = header_udp->check;
 						header_udp->check = 0;
+						header_udp_set_orig = true;
 					}
-					MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
-					if(opt_dup_check_ipheader_ignore_ttl) {
+					if(opt_dup_check_ipheader == 1) {
+						MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
+					} else if(opt_dup_check_ipheader == 2) {
+						u_int16_t header_ip_size = header_ip->get_hdr_size();
+						u_char *data_md5 = (u_char*)header_ip;
+						unsigned data_md5_size = MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len());
+						if(data_md5_size > header_ip_size) {
+							data_md5 += header_ip_size;
+							data_md5_size -= header_ip_size;
+						}
+						MD5_Update(&md5_ctx, data_md5 , data_md5_size);
+						header_ip->md5_update_ip(&md5_ctx);
+					}
+					if(header_ip_set_orig) {
 						header_ip->set_ttl(header_ip_ttl_orig);
 						header_ip->set_check(header_ip_check_orig);
 					}
-					if(opt_dup_check_udpheader_ignore_checksum && ip_protocol == IPPROTO_UDP) {
+					if(header_udp_set_orig) {
 						header_udp->check = header_udp_checksum_orig;
 					}
 				} else {
