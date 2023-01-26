@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <sys/resource.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "pstat.h"
 #include "tools_global.h"

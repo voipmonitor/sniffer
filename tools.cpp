@@ -9117,7 +9117,7 @@ unsigned RTPSENSOR_VERSION_INT() {
 
 
 void rss_purge(bool force) {
-	#ifndef FREEBSD
+	#ifdef __GLIBC__
 		malloc_trim(0);
 		if(sverb.malloc_trim) {
 			syslog(LOG_NOTICE, "malloc trim");

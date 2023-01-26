@@ -35,10 +35,6 @@
 #include "endian.h"
 #include "md5.h"
 
-
-#ifdef FREEBSD
-#define	__in6_u	__u6_addr
-#endif
 #define IP_STR_MAX_LENGTH 50
     
 #define IPPROTO_ESP_HEADER_SIZE 8
@@ -82,7 +78,7 @@ struct vmIP {
 			case 16:
 				memcpy((u_char*)&ip.v6 + (sizeof(ip.v6) - data_ip_length), data_ip, data_ip_length);
 				for(unsigned i = 0; i < 4; i++) {
-					 ip.v6.__in6_u.__u6_addr32[i] = ntohl(ip.v6.__in6_u.__u6_addr32[i]);
+					 ip.v6.s6_addr32[i] = ntohl(ip.v6.s6_addr32[i]);
 				}
 				v6 = true;
 				break;
@@ -109,7 +105,7 @@ struct vmIP {
 		this->ip.v6 = ip;
 		if(ntoh) {
 			for(unsigned i = 0; i < 4; i++) {
-				this->ip.v6.__in6_u.__u6_addr32[i] = ntohl(this->ip.v6.__in6_u.__u6_addr32[i]);
+				this->ip.v6.s6_addr32[i] = ntohl(this->ip.v6.s6_addr32[i]);
 			}
 		}
 		v6 = true;
@@ -125,7 +121,7 @@ struct vmIP {
 		if(hton) {
 			in6_addr _ip = this->ip.v6;
 			for(unsigned i = 0; i < 4; i++) {
-				_ip.__in6_u.__u6_addr32[i] = htonl(_ip.__in6_u.__u6_addr32[i]);
+				_ip.s6_addr32[i] = htonl(_ip.s6_addr32[i]);
 			}
 			return(_ip);
 		} else {
@@ -145,14 +141,14 @@ struct vmIP {
 			return((ip.v4.n >> 8) == 0x7F0000);
 		#if VM_IPV6
 		} else {
-			return((ip.v6.__in6_u.__u6_addr32[0] == 0 &&
-				ip.v6.__in6_u.__u6_addr32[1] == 0 &&
-				ip.v6.__in6_u.__u6_addr32[2] == 0 &&
-				ip.v6.__in6_u.__u6_addr32[3] == 1) ||
-			       (ip.v6.__in6_u.__u6_addr32[0] == 0 &&
-				ip.v6.__in6_u.__u6_addr32[1] == 0 &&
-				ip.v6.__in6_u.__u6_addr32[2] == 0xFFFF &&
-				(ip.v6.__in6_u.__u6_addr32[3] >> 8) == 0x7F0000));
+			return((ip.v6.s6_addr32[0] == 0 &&
+				ip.v6.s6_addr32[1] == 0 &&
+				ip.v6.s6_addr32[2] == 0 &&
+				ip.v6.s6_addr32[3] == 1) ||
+			       (ip.v6.s6_addr32[0] == 0 &&
+				ip.v6.s6_addr32[1] == 0 &&
+				ip.v6.s6_addr32[2] == 0xFFFF &&
+				(ip.v6.s6_addr32[3] >> 8) == 0x7F0000));
 		}
 		#endif
 	}
@@ -199,20 +195,20 @@ struct vmIP {
 			return(ip.v4.n != 0);
 		#if VM_IPV6
 		} else {
-			return(ip.v6.__in6_u.__u6_addr32[0] != 0 ||
-			       ip.v6.__in6_u.__u6_addr32[1] != 0 ||
-			       ip.v6.__in6_u.__u6_addr32[2] != 0 ||
-			       ip.v6.__in6_u.__u6_addr32[3] != 0);
+			return(ip.v6.s6_addr32[0] != 0 ||
+			       ip.v6.s6_addr32[1] != 0 ||
+			       ip.v6.s6_addr32[2] != 0 ||
+			       ip.v6.s6_addr32[3] != 0);
 		}
 		#endif
 	}
 	inline void clear(u_int32_t set = 0) {
 		#if VM_IPV6
 		v6 = false;
-		ip.v6.__in6_u.__u6_addr32[0] = set;
-		ip.v6.__in6_u.__u6_addr32[1] = set;
-		ip.v6.__in6_u.__u6_addr32[2] = set;
-		ip.v6.__in6_u.__u6_addr32[3] = set;
+		ip.v6.s6_addr32[0] = set;
+		ip.v6.s6_addr32[1] = set;
+		ip.v6.s6_addr32[2] = set;
+		ip.v6.s6_addr32[3] = set;
 		#else
 		ip.v4.n = set;
 		#endif
@@ -226,7 +222,7 @@ struct vmIP {
 		#if VM_IPV6
 		} else {
 			for(unsigned i = 0; i < 4; i++) {
-				ip.ip.v6.__in6_u.__u6_addr32[i] &= mask.ip.v6.__in6_u.__u6_addr32[i];
+				ip.ip.v6.s6_addr32[i] &= mask.ip.v6.s6_addr32[i];
 			}
 		}
 		#endif
@@ -241,7 +237,7 @@ struct vmIP {
 		#if VM_IPV6
 		} else {
 			for(unsigned i = 0; i < 4; i++) {
-				ip.ip.v6.__in6_u.__u6_addr32[i] |= mask.ip.v6.__in6_u.__u6_addr32[i];
+				ip.ip.v6.s6_addr32[i] |= mask.ip.v6.s6_addr32[i];
 			}
 		}
 		#endif
@@ -269,11 +265,11 @@ struct vmIP {
 			for(unsigned i = 0; i < 4; i++) {
 				int _mask = mask - i * 32;
 				if(mask == 0 || _mask <= 0) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = 0;
+					ip.ip.v6.s6_addr32[i] = 0;
 				} else if(_mask >= 32) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)-1;
+					ip.ip.v6.s6_addr32[i] = (u_int32_t)-1;
 				} else {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = ((u_int32_t)-1 << (32 - _mask)) & (u_int32_t)-1;
+					ip.ip.v6.s6_addr32[i] = ((u_int32_t)-1 << (32 - _mask)) & (u_int32_t)-1;
 				}
 			}
 		}
@@ -299,11 +295,11 @@ struct vmIP {
 			for(unsigned i = 0; i < 4; i++) {
 				int _mask = mask - i * 32;
 				if(mask == 0 || _mask <= 0) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)-1;
+					ip.ip.v6.s6_addr32[i] = (u_int32_t)-1;
 				} else if(_mask >= 32) {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = 0;
+					ip.ip.v6.s6_addr32[i] = 0;
 				} else {
-					ip.ip.v6.__in6_u.__u6_addr32[i] = (u_int32_t)(pow(2, 32 -_mask) - 1);
+					ip.ip.v6.s6_addr32[i] = (u_int32_t)(pow(2, 32 -_mask) - 1);
 				}
 			}
 		}
@@ -323,7 +319,7 @@ struct vmIP {
 			return(ip.v4.n);
 		#if VM_IPV6
 		} else {
-			return(ip.v6.__in6_u.__u6_addr32[3]);
+			return(ip.v6.s6_addr32[3]);
 		}
 		#endif
 	}
@@ -400,27 +396,27 @@ struct ip6hdr2 {
 	inline vmIP get_saddr() {
 		in6_addr __saddr = _saddr;
 		for(unsigned i = 0; i < 4; i++) {
-			__saddr.__in6_u.__u6_addr32[i] = ntohl(__saddr.__in6_u.__u6_addr32[i]);
+			__saddr.s6_addr32[i] = ntohl(__saddr.s6_addr32[i]);
 		}
 		return(__saddr);
 	}
 	inline vmIP get_daddr() {
 		in6_addr __daddr = _daddr;
 		for(unsigned i = 0; i < 4; i++) {
-			__daddr.__in6_u.__u6_addr32[i] = ntohl(__daddr.__in6_u.__u6_addr32[i]);
+			__daddr.s6_addr32[i] = ntohl(__daddr.s6_addr32[i]);
 		}
 		return(__daddr);
 	}
 	inline void set_saddr(vmIP &ip) {
 		_saddr = ip.getIPv6();
 		for(unsigned i = 0; i < 4; i++) {
-			_saddr.__in6_u.__u6_addr32[i] = htonl(_saddr.__in6_u.__u6_addr32[i]);
+			_saddr.s6_addr32[i] = htonl(_saddr.s6_addr32[i]);
 		}
 	}
 	inline void set_daddr(vmIP &ip) {
 		_daddr = ip.getIPv6();
 		for(unsigned i = 0; i < 4; i++) {
-			_daddr.__in6_u.__u6_addr32[i] = htonl(_daddr.__in6_u.__u6_addr32[i]);
+			_daddr.s6_addr32[i] = htonl(_daddr.s6_addr32[i]);
 		}
 	}
 	static inline bool is_ext_header(u_int8_t header_id) {
