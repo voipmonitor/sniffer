@@ -825,7 +825,12 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 
 	#ifdef DEDUP_DEBUG
 	static long counter = 0;
-	cout << "packet " << (++counter) << " " << HPH(*header_packet)->ts.tv_sec << "." << setw(6) << setfill('0') << HPH(*header_packet)->ts.tv_usec;
+	cout << "packet " << (++counter) << " ";
+	if(header_packet) {
+		cout << HPH(*header_packet)->ts.tv_sec << "." << setw(6) << setfill('0') << HPH(*header_packet)->ts.tv_usec;
+	} else {
+		cout << pcap_header_plus2->get_tv_sec() << "." << setw(6) << setfill('0') << pcap_header_plus2->get_tv_usec();
+	}
 	#endif
 	if(((ppf & ppf_calcMD5) || (ppf & ppf_dedup)) && ppd->header_ip) {
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
@@ -840,10 +845,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;
 				u_int8_t header_ip_ttl_orig;
-				u_int8_t header_ip_check_orig;
+				u_int16_t header_ip_check_orig;
 				if(opt_dup_check_ipheader_ignore_ttl &&
 				   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
-				    opt_dup_check_ipheader)) {
+				    opt_dup_check_ipheader == 1)) {
 					header_ip_ttl_orig = ppd->header_ip->get_ttl();
 					header_ip_check_orig = ppd->header_ip->get_check();
 					ppd->header_ip->set_ttl(0);
@@ -868,8 +873,18 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
 					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len()));
-				} else if(opt_dup_check_ipheader) {
+				} else if(opt_dup_check_ipheader == 1) {
 					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len()));
+				} else if(opt_dup_check_ipheader == 2) {
+					u_int16_t header_ip_size = ppd->header_ip->get_hdr_size();
+					u_char *data_md5 = (u_char*)ppd->header_ip;
+					unsigned data_md5_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
+					if(data_md5_size > header_ip_size) {
+						data_md5 += header_ip_size;
+						data_md5_size -= header_ip_size;
+					}
+					MD5_Update(&ppd->ctx, data_md5 , data_md5_size);
+					ppd->header_ip->md5_update_ip(&ppd->ctx);
 				} else {
 					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 					// will be matched regardless on IP 

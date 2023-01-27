@@ -935,6 +935,7 @@ public:
 		cleanup_interval_ms = 5000;
 		expiration_link_ms = 10000;
 		expiration_link_count = 20;
+		packets_counter = 0;
 	}
 	~link_packets_queue() {
 		destroyAll();
@@ -961,6 +962,7 @@ public:
 			link->first_time_ms = time_ms;
 		}
 		link->queue.push_back(packetS);
+		__SYNC_INC(packets_counter);
 		link->last_time_ms = time_ms;
 		if(!link->first_time_ms) {
 			link->first_time_ms = time_ms;
@@ -985,6 +987,8 @@ public:
 				packetS->insert_packet((packet_s_process_0*)(*iter));
 				if(keep) {
 					((packet_s_process_0*)(*iter))->set_reuse_counter();
+				} else {
+					__SYNC_DEC(packets_counter);
 				}
 				((packet_s_process_0*)(*iter))->blockstore_addflag(122 /*pb lock flag*/);
 				#if DEBUG_DTLS_QUEUE
@@ -998,12 +1002,18 @@ public:
 		}
 	}
 	inline bool existsContent() {
-		return(links.size());
+		return(links.size() > 0);
 	}
 	inline bool existsLink(packet_s *packetS) {
 		s_link_id id;
 		createId(&id, packetS);
 		return(links.find(id) != links.end());
+	}
+	inline u_int32_t countLinks() {
+		return(links.size());
+	}
+	inline u_int64_t countPackets() {
+		return(packets_counter);
 	}
 	void cleanup();
 	void _cleanup(u_int64_t time_ms);
@@ -1033,6 +1043,7 @@ private:
 	unsigned cleanup_interval_ms;
 	unsigned expiration_link_ms;
 	unsigned expiration_link_count;
+	volatile u_int64_t packets_counter;
 };
 
 

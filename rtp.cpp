@@ -273,7 +273,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	mosf2_avg = 0;
 	mosAD_avg = 0;
 	mosSilence_avg = 0;
-	mos_counter = 0;
+	mos_time_ms = 0;
 	resetgraph = false;
 	jitter = 0;
 	last_stat_lost = 0;
@@ -334,9 +334,9 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	channel_record->rtp_stream = this;
 	#endif
 	
-	last_mos_time = 0;
+	last_save_mos_graph_ms = 0;
 	mos_processed = false;
-	save_mos_graph_wait = false;
+	save_mos_graph_wait = 0;
 
 	last_voice_frame_ts.tv_sec = 0;
 	last_voice_frame_ts.tv_usec = 0;
@@ -452,6 +452,8 @@ RTP::save_mos_graph(bool delimiter) {
 		this->graph.write((char*)&graph_mos, 4);
 	}
 
+	u_int64_t new_mos_time_ms = TIME_US_TO_MS(last_packet_time_us - first_packet_time_us);
+	u_int64_t diff_mos_time_ms = mos_time_ms ? new_mos_time_ms - mos_time_ms : 0;
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	if(opt_jitterbuffer_f1 and channel_fix1) {
 		last_interval_mosf1 = calculate_mos_fromrtp(this, 1, 1);
@@ -464,8 +466,18 @@ RTP::save_mos_graph(bool delimiter) {
 		if(mosf1_min > last_interval_mosf1) {
 			mosf1_min = last_interval_mosf1;
 		}
-		mosf1_avg = ((mosf1_avg * mos_counter) + last_interval_mosf1) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf1_avg[%f] mosf1[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf1_avg, last_interval_mosf1);
+		if(mos_time_ms && new_mos_time_ms) {
+			mosf1_avg = ((mosf1_avg * mos_time_ms) + (last_interval_mosf1 * diff_mos_time_ms)) / new_mos_time_ms;
+		} else {
+			mosf1_avg = last_interval_mosf1;
+		}
+		if(sverb.graph_mos) {
+			cout << "MOS F1"
+			     << " saddr: " << saddr.getString().c_str() << " ssrc: " << hex << ssrc << dec
+			     << " act_time: " << (double)new_mos_time_ms / 1000 << "s " << " old_time: " << (double)mos_time_ms / 1000 << "s" << " diff_time: " << (double)diff_mos_time_ms / 1000 << "s"
+			     << " last_mos: " << (int)last_interval_mosf1 << " avg_mos: " << mosf1_avg
+			     << endl;
+		}
 	} else 
 	#endif
 	{
@@ -488,8 +500,18 @@ RTP::save_mos_graph(bool delimiter) {
 		if(mosf2_min > last_interval_mosf2) {
 			mosf2_min = last_interval_mosf2;
 		}
-		mosf2_avg = ((mosf2_avg * mos_counter) + last_interval_mosf2) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosf2_avg[%f] mosf2[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosf2_avg, last_interval_mosf2);
+		if(mos_time_ms && new_mos_time_ms) {
+			mosf2_avg = ((mosf2_avg * mos_time_ms) + (last_interval_mosf2 * diff_mos_time_ms)) / new_mos_time_ms;
+		} else {
+			mosf2_avg = last_interval_mosf2;
+		}
+		if(sverb.graph_mos) {
+			cout << "MOS F2"
+			     << " saddr: " << saddr.getString().c_str() << " ssrc: " << hex << ssrc << dec
+			     << " act_time: " << (double)new_mos_time_ms / 1000 << "s " << " old_time: " << (double)mos_time_ms / 1000 << "s" << " diff_time: " << (double)diff_mos_time_ms / 1000 << "s"
+			     << " last_mos: " << (int)last_interval_mosf2 << " avg_mos: " << mosf2_avg
+			     << endl;
+		}
 	} else 
 	#endif
 	{
@@ -512,8 +534,18 @@ RTP::save_mos_graph(bool delimiter) {
 		if(mosAD_min > last_interval_mosAD) {
 			mosAD_min = last_interval_mosAD;
 		}
-		mosAD_avg = ((mosAD_avg * mos_counter) + last_interval_mosAD) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosAD_avg[%f] mosAD[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosAD_avg, last_interval_mosAD);
+		if(mos_time_ms && new_mos_time_ms) {
+			mosAD_avg = ((mosAD_avg * mos_time_ms) + (last_interval_mosAD * diff_mos_time_ms)) / new_mos_time_ms;
+		} else {
+			mosAD_avg = last_interval_mosAD;
+		}
+		if(sverb.graph_mos) {
+			cout << "MOS AD"
+			     << " saddr: " << saddr.getString().c_str() << " ssrc: " << hex << ssrc << dec
+			     << " act_time: " << (double)new_mos_time_ms / 1000 << "s " << " old_time: " << (double)mos_time_ms / 1000 << "s" << " diff_time: " << (double)diff_mos_time_ms / 1000 << "s"
+			     << " last_mos: " << (int)last_interval_mosAD << " avg_mos: " << mosAD_avg
+			     << endl;
+		}
 	} else 
 	#endif
 	{
@@ -538,8 +570,18 @@ RTP::save_mos_graph(bool delimiter) {
 			mosSilence_min = last_interval_mosSilence;
 			//printf("[%p] min[%u] %p DSP[%p]\n", this, mosSilence_min, &mosSilence_min, DSP);
 		}
-		mosSilence_avg = ((mosSilence_avg * mos_counter) + last_interval_mosSilence) / (mos_counter + 1);
-//		if(sverb.graph) printf("rtp[%p] saddr[%s] ts[%u] ssrc[%x] mosSilence_avg[%f] mosSilence[%u]\n", this, saddr.getString().c_str(), header->ts.tv_sec, ssrc, mosSilence_avg, last_interval_mosSilence);
+		if(mos_time_ms && new_mos_time_ms) {
+			mosSilence_avg = ((mosSilence_avg * mos_time_ms) + (last_interval_mosSilence * diff_mos_time_ms)) / new_mos_time_ms;
+		} else {
+			mosSilence_avg = last_interval_mosSilence;
+		}
+		if(sverb.graph_mos) {
+			cout << "MOS SL"
+			     << " saddr: " << saddr.getString().c_str() << " ssrc: " << hex << ssrc << dec
+			     << " act_time: " << (double)new_mos_time_ms / 1000 << "s " << " old_time: " << (double)mos_time_ms / 1000 << "s" << " diff_time: " << (double)diff_mos_time_ms / 1000 << "s"
+			     << " last_mos: " << (int)last_interval_mosSilence << " avg_mos: " << mosSilence_avg
+			     << endl;
+		}
 	} else {
 		last_interval_mosSilence = 45;
 		mosSilence_min = 45;
@@ -561,7 +603,8 @@ RTP::save_mos_graph(bool delimiter) {
 			this->graph.write((char*)&graph_delimiter, 4);
 		}
 	}
-	mos_counter++;
+	
+	mos_time_ms = new_mos_time_ms;
 
 	if(sverb.graph) {
 		printf("rtp[%p] saddr[%s] ssrc[%x] time[%u] seq[%u] \nMOS F1 cur[%d] min[%d] avg[%f]\nMOS F2 cur[%d] min[%d] avg[%f]\nMOS AD cur[%d] min[%d] avg[%f]\n ------\n", 
@@ -1063,9 +1106,6 @@ bool RTP::read(CallBranch *c_branch,
 		had_audio = true;
 	}
 
-	if(last_mos_time == 0) { 
-		last_mos_time = header->ts.tv_sec;
-	}
 	if(sverb.ssrc and getSSRC() != sverb.ssrc) return(false);
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
@@ -2333,21 +2373,21 @@ bool RTP::read(CallBranch *c_branch,
 	avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
 
 	// write MOS to .graph every 10 seconds and reset jitter last mos interval
-	if((last_mos_time + 10 < header->ts.tv_sec) or save_mos_graph_wait) {
+	if(!last_save_mos_graph_ms) {
+		last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
+	} else if(last_save_mos_graph_ms + 10000 < TIME_US_TO_MS(last_packet_time_us) || save_mos_graph_wait > 0) {
 		mos_processed = true;
-		if(save_mos_graph_wait > 1) {
-			save_mos_graph_wait--;
+		if(!save_mos_graph_wait) {
+			save_mos_graph_wait = 20; // wait 10 packets
+			last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
 		} else {
-			if(!save_mos_graph_wait and ((header->ts.tv_sec - last_mos_time) > 10)) {
-				//wait few frames - there was loss generated so the jitter can settle 
-				save_mos_graph_wait = 20; // wait 10 packets
-			} else {
-				save_mos_graph_wait = false;
+			save_mos_graph_wait--;
+			if(!save_mos_graph_wait) {
 				save_mos_graph(false);
-				last_mos_time = header->ts.tv_sec;
 			}
 		}
 	}
+
 	resetgraph = false;
 
 	if(forcemark_by_owner_set) {

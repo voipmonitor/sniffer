@@ -7214,13 +7214,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`country_code` varchar(5),\
 			`continent_code` varchar(5),\
+			`ua` varchar(512),\
 			`at` bigint unsigned,\
 			`old_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`old_country_code` varchar(5),\
 			`old_continent_code` varchar(5),\
+			`old_ua` varchar(512),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `number_ip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + ";");
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `cache_number_domain_location` (\
 			`number` varchar(30) NOT NULL,\
@@ -7229,13 +7231,15 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`country_code` varchar(5),\
 			`continent_code` varchar(5),\
+			`ua` varchar(512),\
 			`at` bigint unsigned,\
 			`old_ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
 			`old_country_code` varchar(5),\
 			`old_continent_code` varchar(5),\
+			`old_ua` varchar(512),\
 			`old_at` bigint unsigned,\
 		PRIMARY KEY (`number`, `domain`, `number_ip`)\
-	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + ";");
 	this->createTable("fraud_alert_info");
 	}
 	
@@ -9378,7 +9382,7 @@ void SqlDb_mysql::checkColumns_sip_msg(bool log) {
 				NULL_CHAR_PTR);
 }
 
-void SqlDb_mysql::checkColumns_other(bool /*log*/) {
+void SqlDb_mysql::checkColumns_other(bool log) {
 	if(!this->existsColumn("files", "spool_index")) {
 		this->query(
 			"ALTER TABLE `files`\
@@ -9405,6 +9409,19 @@ void SqlDb_mysql::checkColumns_other(bool /*log*/) {
 		string ssl_sessions_table = opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" : "ssl_sessions";
 		string ssl_sessions_id_type = this->getTypeColumn(ssl_sessions_table.c_str(), "id_sensor", true);
 		existsColumns.ssl_sessions_id_sensor_is_unsigned = ssl_sessions_id_type.find("unsigned") != string::npos;
+	}
+	if(opt_enable_fraud) {
+		map<string, u_int64_t> tableSize;
+		this->checkNeedAlterAdd("cache_number_location", "ua column", true,
+					log, &tableSize, &existsColumns.cache_number_location_ua,
+					"ua", "varchar(512)", NULL_CHAR_PTR,
+					"old_ua", "varchar(512)", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
+		this->checkNeedAlterAdd("cache_number_domain_location", "ua column", true,
+					log, &tableSize, &existsColumns.cache_number_domain_location_ua,
+					"ua", "varchar(512)", NULL_CHAR_PTR,
+					"old_ua", "varchar(512)", NULL_CHAR_PTR,
+					NULL_CHAR_PTR);
 	}
 }
 

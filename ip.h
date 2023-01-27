@@ -33,6 +33,7 @@
 #include <stdlib.h>
 
 #include "endian.h"
+#include "md5.h"
 
 
 #ifdef FREEBSD
@@ -537,6 +538,10 @@ struct ip6hdr2 {
 		u_int16_t offset = get_ext_header_offset(header_id);
 		return(offset == (u_int16_t)-1 ? NULL : (u_char*)this + offset);
 	}
+	inline void md5_update_ip(MD5_CTX *ctx) {
+		MD5_Update(ctx, &_saddr , sizeof(_saddr));
+		MD5_Update(ctx, &_daddr , sizeof(_daddr));
+	}
 	#if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned tc1:4;
 	unsigned version:4;
@@ -855,6 +860,18 @@ struct iphdr2 {
 			memset(iphdr, 0, sizeof(*iphdr));
 			iphdr->version = 6;
 			return((iphdr2*)iphdr);
+		}
+		#endif
+	}
+	inline void md5_update_ip(MD5_CTX *ctx) {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			MD5_Update(ctx, &_saddr , sizeof(_saddr));
+			MD5_Update(ctx, &_daddr , sizeof(_daddr));
+		#if VM_IPV6
+		} else {
+			((ip6hdr2*)this)->md5_update_ip(ctx);
 		}
 		#endif
 	}

@@ -13,6 +13,7 @@ extern int opt_enable_fraud;
 extern int opt_nocdr;
 extern MySqlStore *sqlStore;
 extern CountryDetect *countryDetect;
+extern sExistsColumns existsColumns;
 
 FraudAlerts *fraudAlerts = NULL;
 volatile int _fraudAlerts_ready = 0;
@@ -98,8 +99,8 @@ CacheNumber_location::~CacheNumber_location() {
 bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const char *domain,
 				       vmIP ip, u_int64_t at,
 				       bool *diffCountry, bool *diffContinent,
-				       vmIP *oldIp, string *oldCountry, string *oldContinent,
-				       const char *ip_country, const char *ip_continent) {
+				       vmIP *oldIp, string *oldCountry, string *oldContinent, string *oldUa,
+				       const char *ip_country, const char *ip_continent, const char *ua) {
 	if(!last_cleanup_at) {
 		last_cleanup_at = at;
 	}
@@ -150,6 +151,7 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 		ipRec.ip = ip;
 		ipRec.country_code = country_code;
 		ipRec.continent_code = continent_code;
+		ipRec.ua = ua;
 		ipRec.at = at;
 		ipRec.fresh_at = at;
 		cache[numberIp] = ipRec;
@@ -168,6 +170,9 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 			if(oldCountry) {
 				*oldCountry = iterCache->second.country_code;
 			}
+			if(oldUa) {
+				*oldUa = iterCache->second.ua;
+			}
 		}
 		if(continent_code != iterCache->second.continent_code) {
 			if(diffContinent) {
@@ -179,14 +184,19 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 			if(oldContinent) {
 				*oldContinent = iterCache->second.continent_code;
 			}
+			if(oldUa) {
+				*oldUa = iterCache->second.ua;
+			}
 		}
 		iterCache->second.old_ip = iterCache->second.ip;
 		iterCache->second.old_country_code = iterCache->second.country_code;
 		iterCache->second.old_continent_code = iterCache->second.continent_code;
+		iterCache->second.old_ua = iterCache->second.ua;
 		iterCache->second.old_at = iterCache->second.at;
 		iterCache->second.ip = ip;
 		iterCache->second.country_code = country_code;
 		iterCache->second.continent_code = continent_code;
+		iterCache->second.ua = ua;
 		iterCache->second.at = at;
 		iterCache->second.fresh_at = at;
 		this->saveNumber(number, number_ip, domain, &cache[numberIp], true);
@@ -207,6 +217,9 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 			if(oldCountry) {
 				*oldCountry = iterCache->second.old_country_code;
 			}
+			if(oldUa) {
+				*oldUa = iterCache->second.old_ua;
+			}
 		}
 		if(iterCache->second.continent_code != iterCache->second.old_continent_code) {
 			if(diffContinent) {
@@ -217,6 +230,9 @@ bool CacheNumber_location::checkNumber(const char *number, vmIP number_ip, const
 			}
 			if(oldContinent) {
 				*oldContinent = iterCache->second.old_continent_code;
+			}
+			if(oldUa) {
+				*oldUa = iterCache->second.old_ua;
 			}
 		}
 		return(false);
@@ -243,6 +259,10 @@ bool CacheNumber_location::loadNumber(const char *number, vmIP number_ip, const 
 		ipRec.old_ip.setIP(&row, "old_ip");
 		ipRec.old_country_code = row["old_country_code"];
 		ipRec.old_continent_code = row["old_continent_code"];
+		if(domain ? existsColumns.cache_number_domain_location_ua : existsColumns.cache_number_location_ua) {
+			ipRec.ua = row["ua"];
+			ipRec.old_ua = row["old_ua"];
+		}
 		ipRec.old_at = atoll(row["old_at"].c_str());
 		ipRec.fresh_at = at;
 		cache[sNumber(number, number_ip, domain)] = ipRec;
@@ -260,6 +280,10 @@ void CacheNumber_location::saveNumber(const char *number, vmIP number_ip, const 
 	row.add(ipRec->old_ip, "old_ip", false, sqlDb, getTable(domain).c_str());
 	row.add(ipRec->old_country_code, "old_country_code");
 	row.add(ipRec->old_continent_code, "old_continent_code");
+	if(domain ? existsColumns.cache_number_domain_location_ua : existsColumns.cache_number_location_ua) {
+		row.add(ipRec->ua, "ua");
+		row.add(ipRec->old_ua, "old_ua");
+	}
 	row.add(ipRec->old_at, "old_at");
 	if(update) {
 		SqlDb_row cond;
@@ -507,6 +531,9 @@ bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_cu
 	}
 	if(defChangeIP()) {
 		changeIP = atoi(dbRow["fraud_change_ip"].c_str());
+	}
+	if(defChangeUA()) {
+		changeUA = atoi(dbRow["fraud_change_ua"].c_str());
 	}
 	if(defChangeLocationOk()) {
 		changeLocationOk = split(dbRow["fraud_change_location_ok"].c_str(), ",", true);
@@ -1628,16 +1655,20 @@ void FraudAlertInfo_chc::set(const char *number,
 			     FraudAlert::eTypeLocation typeLocation,
 			     vmIP ip,
 			     const char *location_code,
+			     const char *ua,
 			     vmIP ip_old,
 			     const char *location_code_old,
+			     const char *ua_old,
 			     vmIP ip_dst) {
 	this->number = number;
 	if(domain) this->domain = domain;
 	this->typeLocation = typeLocation;
 	this->ip = ip;
 	this->location_code = location_code;
+	this->ua = ua;
 	this->ip_old = ip_old;
 	this->location_code_old = location_code_old;
+	this->ua_old = ua_old;
 	this->ip_dst = ip_dst;
 }
 
@@ -1656,12 +1687,18 @@ string FraudAlertInfo_chc::getJson() {
 		 typeLocation == FraudAlert::_typeLocation_country ?
 		  countryCodes->getNameCountry(location_code.c_str()) :
 		  countryCodes->getNameContinent(location_code.c_str()));
+	if(!ua.empty()) {
+		json.add("ua", ua);
+	}
 	json.add("ip_old", ip_old.getString());
 	json.add("location_code_old", location_code_old);
 	json.add("location_name_old",
 		 typeLocation == FraudAlert::_typeLocation_country ?
 		  countryCodes->getNameCountry(location_code_old.c_str()) :
 		  countryCodes->getNameContinent(location_code_old.c_str()));
+	if(!ua_old.empty()) {
+		json.add("ua_old", ua_old);
+	}
 	if(ip_dst.isSet()) {
 		json.add("ip_dst", ip_dst.getString());
 	}
@@ -1690,12 +1727,14 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 		vmIP oldIp;
 		string oldCountry;
 		string oldContinent;
+		string oldUa;
 		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip,
 						      useDomain ? callInfo->caller_domain.c_str() : NULL,
 						      callInfo->caller_ip, this->onlyConnected ? callInfo->at_connect : callInfo->at_begin,
-						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
-						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
-			if(!this->changeIP || callInfo->caller_ip != oldIp) {
+						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent, &oldUa,
+						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str(), callInfo->a_ua.c_str())) {
+			if((!this->changeIP || callInfo->caller_ip != oldIp) &&
+			   (!this->changeUA || callInfo->a_ua != oldUa)) {
 				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7009) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
@@ -1703,8 +1742,10 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						       _typeLocation_country,
 						       callInfo->caller_ip,
 						       callInfo->country_code_caller_ip.c_str(),
+						       callInfo->a_ua.c_str(),
 						       oldIp,
 						       oldCountry.c_str(),
+						       oldUa.c_str(),
 						       0);
 					this->evAlert(alertInfo);
 				}
@@ -1715,8 +1756,10 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						       _typeLocation_continent,
 						       callInfo->caller_ip,
 						       callInfo->continent_code_caller_ip.c_str(),
+						       callInfo->a_ua.c_str(),
 						       oldIp,
 						       oldContinent.c_str(),
+						       oldUa.c_str(),
 						       0);
 					this->evAlert(alertInfo);
 				}
@@ -1753,12 +1796,14 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 		vmIP oldIp;
 		string oldCountry;
 		string oldContinent;
+		string oldUa;
 		if(!cacheNumber_location->checkNumber(callInfo->caller_number.c_str(), callInfo->called_ip, 
 						      useDomain ? callInfo->caller_domain.c_str() : NULL,
 						      callInfo->caller_ip, callInfo->at_connect,
-						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent,
-						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str())) {
-			if(!this->changeIP || callInfo->caller_ip != oldIp) {
+						      &diffCountry, &diffContinent, &oldIp, &oldCountry, &oldContinent, &oldUa,
+						      callInfo->country_code_caller_ip.c_str(), callInfo->continent_code_caller_ip.c_str(), callInfo->a_ua.c_str())) {
+			if((!this->changeIP || callInfo->caller_ip != oldIp) &&
+			   (!this->changeUA || callInfo->a_ua != oldUa)) {
 				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7011) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
@@ -1766,8 +1811,10 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						       _typeLocation_country,
 						       callInfo->caller_ip,
 						       callInfo->country_code_caller_ip.c_str(),
+						       callInfo->a_ua.c_str(),
 						       oldIp,
 						       oldCountry.c_str(),
+						       oldUa.c_str(),
 						       callInfo->called_ip);
 					this->evAlert(alertInfo);
 				}
@@ -1778,8 +1825,10 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						       _typeLocation_continent,
 						       callInfo->caller_ip,
 						       callInfo->continent_code_caller_ip.c_str(),
+						       callInfo->a_ua.c_str(),
 						       oldIp,
 						       oldContinent.c_str(),
+						       oldUa.c_str(),
 						       callInfo->called_ip);
 					this->evAlert(alertInfo);
 				}
@@ -2928,6 +2977,7 @@ void FraudAlerts::completeCallInfo(sFraudCallInfo *callInfo, Call *call,
 	callInfo->called_ip = c_branch->sipcalledip[0];
 	callInfo->caller_domain = c_branch->caller_domain;
 	callInfo->called_domain = call->get_called_domain(c_branch);
+	callInfo->a_ua = c_branch->a_ua;
 	callInfo->vlan = c_branch->vlan;
 	if(useUserRestriction_custom_headers) {
 		extern CustomHeaders *custom_headers_cdr;

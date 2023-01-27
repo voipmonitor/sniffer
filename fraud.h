@@ -153,10 +153,12 @@ public:
 		vmIP ip;
 		string country_code;
 		string continent_code;
+		string ua;
 		u_int64_t at;
 		vmIP old_ip;
 		string old_country_code;
 		string old_continent_code;
+		string old_ua;
 		u_int64_t old_at;
 		u_int64_t fresh_at;
 	};
@@ -165,8 +167,8 @@ public:
 	bool checkNumber(const char *number, vmIP number_ip, const char *domain,
 			 vmIP ip, u_int64_t at,
 			 bool *diffCountry = NULL, bool *diffContinent = NULL,
-			 vmIP *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL,
-			 const char *ip_country = NULL, const char *ip_continent = NULL);
+			 vmIP *oldIp = NULL, string *oldCountry = NULL, string *oldContinent = NULL, string *oldUa = NULL,
+			 const char *ip_country = NULL, const char *ip_continent = NULL, const char *ua = NULL);
 	bool loadNumber(const char *number, vmIP number_ip, const char *domain, u_int64_t at);
 	void saveNumber(const char *number, vmIP number_ip, const char *domain, sIpRec *ipRec, bool update = false);
 	void cleanup(u_int64_t at);
@@ -237,6 +239,7 @@ struct sFraudCallInfo : public sFraudNumberInfo {
 	bool local_called_ip;
 	string caller_domain;
 	string called_domain;
+	string a_ua;
 	u_int16_t vlan;
 	map<string, string> *custom_headers;
 	u_int64_t at_begin;
@@ -479,6 +482,7 @@ protected:
 	virtual bool defTypeBy() { return(false); }
 	virtual bool defTypeChangeLocation() { return(false); }
 	virtual bool defChangeIP() { return(false); }
+	virtual bool defChangeUA() { return(false); }
 	virtual bool defChangeLocationOk() { return(false); }
 	virtual bool defDestLocation() { return(false); }
 	virtual bool defDestPrefixes() { return(false); }
@@ -511,6 +515,7 @@ protected:
 	eTypeByIP typeByIP;
 	eTypeLocation typeChangeLocation;
 	bool changeIP;
+	bool changeUA;
 	vector<string> changeLocationOk;
 	vector<string> destLocation;
 	vector<string> destPrefixes;
@@ -846,8 +851,10 @@ public:
 		 FraudAlert::eTypeLocation typeLocation,
 		 vmIP ip,
 		 const char *location_code,
+		 const char *ua,
 		 vmIP ip_old,
 		 const char *location_code_old,
+		 const char *ua_old,
 		 vmIP ip_dst);
 	string getJson();
 private:
@@ -859,6 +866,8 @@ private:
 	vmIP ip_dst;
 	string location_code;
 	string location_code_old;
+	string ua;
+	string ua_old;
 };
 
 class FraudAlert_chc : public FraudAlert {
@@ -874,6 +883,7 @@ protected:
 	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeIP() { return(true); }
+	bool defChangeUA() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 	bool defOnlyConnected() { return(true); }
 };
@@ -891,6 +901,7 @@ protected:
 	bool defFilterDomain() { return(true); }
 	bool defTypeChangeLocation() { return(true); }
 	bool defChangeIP() { return(true); }
+	bool defChangeUA() { return(true); }
 	bool defChangeLocationOk() { return(true); }
 };
 
