@@ -56,6 +56,7 @@ extern struct sVerbose sverb;
 /*! \brief On and Off plc*/
 extern int opt_disableplc ;
 extern int opt_fix_packetization_in_create_audio;
+extern int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than;
 
 /*! Internal jb flags */
 enum {
@@ -603,7 +604,7 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 			 * and also if there was dtmf last time
 			 * */
 			if( !(((f->seqno - chan->last_seqno) == 1) && (abs(f->ts - chan->last_ms) > (chan->packetization)))
-				&& !f->marker && chan->last_loss_burst > 0 && chan->last_loss_burst < 1024
+				&& !f->marker && chan->last_loss_burst > 0 && chan->last_loss_burst < opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than
 				&& f->lastframetype == AST_FRAME_VOICE // if the lastframetype was no frame voice(for example dtmf), do not count packet loss 
 				//&& !(chan->codec == PAYLOAD_AMR && f->datalen2 <= 7) // if AMR frame is VAD frame do not count interpolated frames
 			//	&& !(chan->codec == PAYLOAD_G729 && f->datalen2 <= 12) // if g729 frame is CNG frame do not count interpolated frames

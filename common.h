@@ -9,6 +9,7 @@
 
 struct sVerbose {
 	int graph;
+	int graph_mos;
 	int process_rtp;
 	int read_rtp;
 	int hash_rtp;
@@ -97,6 +98,7 @@ struct sVerbose {
 	int timezones;
 	int tcpreplay;
 	int abort_if_heap_full;
+	int exit_if_heap_full;
 	int heap_use_time;
 	int dtmf;
 	int dtls;

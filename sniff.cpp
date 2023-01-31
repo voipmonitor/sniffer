@@ -7442,6 +7442,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 	
 	if(header_packet) {
 		*header_packet = CREATE_HP(totallen);
+		sPacketInfoData pid;
 		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 			ip_frag_s *node = it->second;
 			if(i == 0) {
@@ -7457,6 +7458,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 						HPP(node->header_packet) + node->header_ip_offset, node->header_packet,
 						node->len);
 				len += node->len;
+				pid = node->header_packet->pid;
 			} else {
 				if(len < totallen) {
 					unsigned cpy_len = min((unsigned)(node->len - node->iphdr_len), totallen - len);
@@ -7473,6 +7475,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 						sizeof(struct pcap_pkthdr));
 				HPH(*header_packet)->len = totallen;
 				HPH(*header_packet)->caplen = totallen;
+				(*header_packet)->pid = pid;
 			}
 			ipfrag_delete_node(node, pushToStack_queue_index);
 			i++;
@@ -7484,6 +7487,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 		header_packet_pqout->block_store_index = 0;
 		header_packet_pqout->block_store_locked = false;
 		header_packet_pqout->header_ip_last_offset = 0xFFFF;
+		sPacketInfoData pid;
 		for (ip_frag_queue_it_t it = queue->begin(); it != queue->end(); ++it) {
 			ip_frag_s *node = it->second;
 			if(i == 0) {
@@ -7505,6 +7509,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 						 ((sHeaderPacketPQout*)node->header_packet_pqout)->packet,
 						node->len);
 				len += node->len;
+				pid = ((sHeaderPacketPQout*)node->header_packet_pqout)->header->pid;
 			} else {
 				// for rest of a packets append only data 
 				if(len < totallen) {
@@ -7528,6 +7533,7 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 						sizeof(pcap_pkthdr_plus));
 				header_packet_pqout->header->set_len(totallen);
 				header_packet_pqout->header->set_caplen(totallen);
+				header_packet_pqout->header->pid = pid;
 			}
 			ipfrag_delete_node(node, 0);
 			i++;
@@ -8805,6 +8811,7 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 				packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
 				packetS->blockstore_addflag(125 /*pb lock flag*/);
 				PACKET_S_PROCESS_DESTROY(&packetS);
+				__SYNC_DEC(packets_counter);
 			}
 			delete link;
 			links.erase(iter_link++);
@@ -8823,6 +8830,7 @@ void link_packets_queue::_cleanup(u_int64_t time_ms) {
 					packetS->blockstore_addflag(126 /*pb lock flag*/);
 					PACKET_S_PROCESS_DESTROY(&packetS);
 					link->queue.pop_front();
+					__SYNC_DEC(packets_counter);
 					destroy_packet = true;
 				}
 				if(destroy_packet) {
@@ -8846,6 +8854,7 @@ void link_packets_queue::destroyAll() {
 		for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 			packet_s_process_0 *packetS = (packet_s_process_0*)*iter;
 			PACKET_S_PROCESS_DESTROY(&packetS);
+			__SYNC_DEC(packets_counter);
 		}
 		delete link;
 	}

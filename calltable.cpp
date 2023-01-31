@@ -1221,7 +1221,7 @@ Call::closeRawFiles() {
 		// close GRAPH files
 		if(opt_saveGRAPH || (flags & FLAG_SAVEGRAPH)) {
 			if(rtp_i->graph.isOpen()) {
-				if(!rtp_i->mos_processed or (rtp_i->last_mos_time + 1 < rtp_i->_last_ts.tv_sec)) {
+				if(!rtp_i->mos_processed or (rtp_i->last_save_mos_graph_ms + 1000 < TIME_US_TO_MS(rtp_i->last_packet_time_us))) {
 					rtp_i->save_mos_graph(true);
 				}
 				rtp_i->graph.close();
@@ -6576,7 +6576,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
 	if(existsColumns.cdr_next_digest_username && digest_username[0]) {
-		cdr_next.add(digest_username, "digest_username");
+		cdr_next.add(sqlEscapeString(digest_username), "digest_username");
 	}
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
@@ -6714,11 +6714,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 	if(a_mos_lqo != -1 && existsColumns.cdr_mos_lqo) {
 		int mos = a_mos_lqo * 10;
-		cdr.add(mos, "a_mos_lqo_mult10");
+		cdr.add(LIMIT_TINYINT_UNSIGNED(mos), "a_mos_lqo_mult10");
 	}
 	if(b_mos_lqo != -1 && existsColumns.cdr_mos_lqo) {
 		int mos = b_mos_lqo * 10;
-		cdr.add(mos, "b_mos_lqo_mult10");
+		cdr.add(LIMIT_TINYINT_UNSIGNED(mos), "b_mos_lqo_mult10");
 	}
 	
 	selectRtpAB();
@@ -6746,20 +6746,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(!opt_disable_cdr_fields_rtp) {
 			if(opt_silencedetect && existsColumns.cdr_silencedetect) {
 				if(caller_silence > 0 or caller_noise > 0) {
-					cdr.add(caller_silence * 100 / (caller_silence + caller_noise), "caller_silence");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(caller_silence * 100 / (caller_silence + caller_noise)), "caller_silence");
 				}
 				if(called_silence > 0 or called_noise > 0) {
-					cdr.add(called_silence * 100 / (called_silence + called_noise), "called_silence");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(called_silence * 100 / (called_silence + called_noise)), "called_silence");
 				}
-				cdr.add(caller_lastsilence / 1000, "caller_silence_end");
-				cdr.add(called_lastsilence / 1000, "called_silence_end");
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(caller_lastsilence / 1000), "caller_silence_end");
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(called_lastsilence / 1000), "called_silence_end");
 			}
 			if(opt_clippingdetect && existsColumns.cdr_clippingdetect) {
 				if(caller_clipping_8k) {
-					cdr.add(MIN(USHRT_MAX, round(caller_clipping_8k / 3)), "caller_clipping_div3");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(round(caller_clipping_8k / 3)), "caller_clipping_div3");
 				}
 				if(called_clipping_8k) {
-					cdr.add(MIN(USHRT_MAX, round(called_clipping_8k / 3)), "called_clipping_div3");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(round(called_clipping_8k / 3)), "called_clipping_div3");
 				}
 			}
 		}
@@ -6789,20 +6789,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 			string c = i == 0 ? "a" : "b";
 			
-			cdr.add(rtpab[i]->ssrc_index, c+"_index");
+			cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->ssrc_index), c+"_index");
 			
-			cdr.add(rtpab[i]->received_() + (rtpab[i]->first_codec_() >= 0 ? 2 : 0), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->received_() + (rtpab[i]->first_codec_() >= 0 ? 2 : 0)), c+"_received"); // received is always 2 packet less compared to wireshark (add it here)
 			lost[i] = rtpab[i]->lost_();
-			cdr.add(lost[i], c+"_lost");
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(lost[i]), c+"_lost");
 			packet_loss_perc_mult1000[i] = (int)round((double)rtpab[i]->lost_() / 
 									(rtpab[i]->received_() + 2 + rtpab[i]->lost_()) * 100 * 1000);
 			
 			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(!opt_disable_cdr_fields_rtp) {
-				cdr.add(packet_loss_perc_mult1000[i], c+"_packet_loss_perc_mult1000");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(packet_loss_perc_mult1000[i]), c+"_packet_loss_perc_mult1000");
 				jitter_mult10[i] = ceil(rtpab[i]->stats.avgjitter * 10);
-				cdr.add(jitter_mult10[i], c+"_avgjitter_mult10");
-				cdr.add(int(ceil(rtpab[i]->stats.maxjitter)), c+"_maxjitter");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(jitter_mult10[i]), c+"_avgjitter_mult10");
+				cdr.add(LIMIT_SMALLINT_UNSIGNED(int(ceil(rtpab[i]->stats.maxjitter))), c+"_maxjitter");
 			}
 			#endif
 			
@@ -6819,16 +6819,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				for(int j = 1; j < 11; j++) {
 					char str_j[3];
 					snprintf(str_j, sizeof(str_j), "%d", j);
-					cdr.add(rtpab[i]->stats.slost[j], c+"_sl"+str_j);
+					cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.slost[j]), c+"_sl"+str_j);
 				}
 				// build a_d50 - b_d300 fileds
-				cdr.add(rtpab[i]->stats.d50, c+"_d50");
-				cdr.add(rtpab[i]->stats.d70, c+"_d70");
-				cdr.add(rtpab[i]->stats.d90, c+"_d90");
-				cdr.add(rtpab[i]->stats.d120, c+"_d120");
-				cdr.add(rtpab[i]->stats.d150, c+"_d150");
-				cdr.add(rtpab[i]->stats.d200, c+"_d200");
-				cdr.add(rtpab[i]->stats.d300, c+"_d300");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d50), c+"_d50");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d70), c+"_d70");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d90), c+"_d90");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d120), c+"_d120");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d150), c+"_d150");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d200), c+"_d200");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->stats.d300), c+"_d300");
 				delay_sum[i] = rtpab[i]->stats.d50 * 60 + 
 						rtpab[i]->stats.d70 * 80 + 
 						rtpab[i]->stats.d90 * 105 + 
@@ -6844,9 +6844,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						rtpab[i]->stats.d200 + 
 						rtpab[i]->stats.d300;
 				delay_avg_mult100[i] = (delay_cnt[i] != 0  ? (int)round((double)delay_sum[i] / delay_cnt[i] * 100) : 0);
-				cdr.add(delay_sum[i], c+"_delay_sum");
-				cdr.add(delay_cnt[i], c+"_delay_cnt");
-				cdr.add(delay_avg_mult100[i], c+"_delay_avg_mult100");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(delay_sum[i]), c+"_delay_sum");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(delay_cnt[i]), c+"_delay_cnt");
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(delay_avg_mult100[i]), c+"_delay_avg_mult100");
 			}
 			#endif
 			
@@ -6861,11 +6861,11 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				//int mos_f1_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 				if(rtpab[i]->mosf1_avg > 0) {
 					int mos_f1_mult10 = (int)rtpab[i]->mosf1_avg;
-					cdr.add(mos_f1_mult10, c+"_mos_f1_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_f1_mult10), c+"_mos_f1_mult10");
 					mos_min_mult10[i] = mos_f1_mult10;
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosf1_min > 0 && rtpab[i]->mosf1_min != (uint8_t)-1) {
-					cdr.add(rtpab[i]->mosf1_min, c+"_mos_f1_min_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf1_min), c+"_mos_f1_min_mult10");
 				}
 
 				// calculate MOS score for fixed 200ms 
@@ -6873,13 +6873,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				//int mos_f2_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 				if(rtpab[i]->mosf2_avg > 0) {
 					int mos_f2_mult10 = (int)round(rtpab[i]->mosf2_avg);
-					cdr.add(mos_f2_mult10, c+"_mos_f2_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_f2_mult10), c+"_mos_f2_mult10");
 					if(mos_min_mult10[i] < 0 || mos_f2_mult10 < mos_min_mult10[i]) {
 						mos_min_mult10[i] = mos_f2_mult10;
 					}
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosf2_min > 0 && rtpab[i]->mosf2_min != (uint8_t)-1) {
-					cdr.add(rtpab[i]->mosf2_min, c+"_mos_f2_min_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosf2_min), c+"_mos_f2_min_mult10");
 				}
 
 				// calculate MOS score for adaptive 500ms 
@@ -6887,33 +6887,33 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				//int mos_adapt_mult10 = (int)round(calculate_mos(lossr, burstr, rtpab[i]->first_codec, rtpab[i]->stats.received) * 10);
 				if(rtpab[i]->mosAD_avg > 0) {
 					int mos_adapt_mult10 = (int)round(rtpab[i]->mosAD_avg);
-					cdr.add(mos_adapt_mult10, c+"_mos_adapt_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_adapt_mult10), c+"_mos_adapt_mult10");
 					if(mos_min_mult10[i] < 0 || mos_adapt_mult10 < mos_min_mult10[i]) {
 						mos_min_mult10[i] = mos_adapt_mult10;
 					}
 				}
 				if(existsColumns.cdr_mos_min && rtpab[i]->mosAD_min > 0 && rtpab[i]->mosAD_min != (uint8_t)-1) {
-					cdr.add(rtpab[i]->mosAD_min, c+"_mos_adapt_min_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosAD_min), c+"_mos_adapt_min_mult10");
 				}
 
 				// silence MOS 
 				if(existsColumns.cdr_mos_silence and rtpab[i]->mosSilence_min != (uint8_t)-1) {
 					int mos_silence_mult10 = (int)round(rtpab[i]->mosSilence_avg);
 					if(mos_silence_mult10 > 0) {
-						cdr.add(mos_silence_mult10, c+"_mos_silence_mult10");
+						cdr.add(LIMIT_TINYINT_UNSIGNED(mos_silence_mult10), c+"_mos_silence_mult10");
 					}
 					if(rtpab[i]->mosSilence_min > 0) {
-						cdr.add(rtpab[i]->mosSilence_min, c+"_mos_silence_min_mult10");
+						cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->mosSilence_min), c+"_mos_silence_min_mult10");
 					}
 				}
 
 				// XR MOS 
 				if(existsColumns.cdr_mos_xr and rtpab[i]->rtcp_xr.counter_mos > 0) {
 					if(rtpab[i]->rtcp_xr.minmos > 0) {
-						cdr.add(rtpab[i]->rtcp_xr.minmos, c+"_mos_xr_min_mult10");
+						cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->rtcp_xr.minmos), c+"_mos_xr_min_mult10");
 					}
 					if(rtpab[i]->rtcp_xr.avgmos > 0) {
-						cdr.add(rtpab[i]->rtcp_xr.avgmos, c+"_mos_xr_mult10");
+						cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->rtcp_xr.avgmos), c+"_mos_xr_mult10");
 					}
 				}
 
@@ -6922,39 +6922,38 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 				
 				if(mos_min_mult10[i] >= 0) {
-					cdr.add(mos_min_mult10[i], c+"_mos_min_mult10");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(mos_min_mult10[i]), c+"_mos_min_mult10");
 				}
 
 				if(rtpab[i]->rtcp.counter) {
-					if ((rtpab[i]->rtcp.loss > 0xFFFF || rtpab[i]->rtcp.loss < 0) && existsColumns.cdr_rtcp_loss_is_smallint_type) {
-						cdr.add(0xFFFF, c+"_rtcp_loss");
-					} else {
-						cdr.add(rtpab[i]->rtcp.loss, c+"_rtcp_loss");
-					}
-					cdr.add(rtpab[i]->rtcp.maxfr, c+"_rtcp_maxfr");
+					cdr.add(existsColumns.cdr_rtcp_loss_is_smallint_type ?
+						 LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.loss) :
+						 LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->rtcp.loss),
+						c+"_rtcp_loss");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.maxfr), c+"_rtcp_maxfr");
 					rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
-					cdr.add(rtcp_avgfr_mult10[i], c+"_rtcp_avgfr_mult10");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgfr_mult10[i]), c+"_rtcp_avgfr_mult10");
 					/* max jitter (interarrival jitter) may be 32bit unsigned int, so use MIN for sure (we use smallint unsigned) */
 					int rtcp_maxjitter = (int)round((double)rtpab[i]->rtcp.maxjitter / get_ticks_bycodec(rtpab[i]->first_codec));
 					rtcp_avgjitter_mult10[i] = (int)round(rtpab[i]->rtcp.avgjitter / get_ticks_bycodec(rtpab[i]->first_codec) * 10);
 					if(rtcp_maxjitter * 10 < rtcp_avgjitter_mult10[i]) {
 						++rtcp_maxjitter;
 					}
-					cdr.add(MIN(0xFFFF, rtcp_maxjitter), c+"_rtcp_maxjitter");
-					cdr.add(rtcp_avgjitter_mult10[i], c+"_rtcp_avgjitter_mult10");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_maxjitter), c+"_rtcp_maxjitter");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgjitter_mult10[i]), c+"_rtcp_avgjitter_mult10");
 					if (existsColumns.cdr_rtcp_fraclost_pktcount)
 						cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
 				}
 				if(existsColumns.cdr_rtp_ptime) {
-					cdr.add(rtpab[i]->avg_ptime, c+"_rtp_ptime");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->avg_ptime), c+"_rtp_ptime");
 				}
 				if(existsColumns.cdr_rtcp_rtd && rtpab[i]->rtcp.rtd_count) {
-					cdr.add(rtpab[i]->rtcp.rtd_max * 10000 / 65536, c+"_rtcp_maxrtd_mult10");
-					cdr.add(rtpab[i]->rtcp.rtd_sum * 10000 / 65536 / rtpab[i]->rtcp.rtd_count, c+"_rtcp_avgrtd_mult10");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_max * 10000 / 65536), c+"_rtcp_maxrtd_mult10");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_sum * 10000 / 65536 / rtpab[i]->rtcp.rtd_count), c+"_rtcp_avgrtd_mult10");
 				}
 				if(existsColumns.cdr_rtcp_rtd_w && rtpab[i]->rtcp.rtd_w_count) {
-					cdr.add(rtpab[i]->rtcp.rtd_w_max, c+"_rtcp_maxrtd_w");
-					cdr.add(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count, c+"_rtcp_avgrtd_w");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_w_max), c+"_rtcp_maxrtd_w");
+					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_w_sum / rtpab[i]->rtcp.rtd_w_count), c+"_rtcp_avgrtd_w");
 				}
 			}
 			#endif
@@ -6973,13 +6972,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		if(!opt_disable_cdr_fields_rtp) {
 			if(jitter_mult10[0] >= 0 || jitter_mult10[1] >= 0) {
-				cdr.add(max(jitter_mult10[0], jitter_mult10[1]), 
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(jitter_mult10[0], jitter_mult10[1])), 
 					"jitter_mult10");
 			}
 			if(mos_min_mult10[0] >= 0 || mos_min_mult10[1] >= 0) {
-				cdr.add(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
-						min(mos_min_mult10[0], mos_min_mult10[1]) :
-						(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1]),
+				cdr.add(LIMIT_TINYINT_UNSIGNED(mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
+								min(mos_min_mult10[0], mos_min_mult10[1]) :
+								(mos_min_mult10[0] >= 0 ? mos_min_mult10[0] : mos_min_mult10[1])),
 					"mos_min_mult10");
 				/* DEBUG
 				unsigned mos = mos_min_mult10[0] >= 0 && mos_min_mult10[1] >= 0 ?
@@ -6995,7 +6994,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				*/
 			}
 			if(packet_loss_perc_mult1000[0] >= 0 || packet_loss_perc_mult1000[1] >= 0) {
-				cdr.add(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]), 
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1])), 
 					"packet_loss_perc_mult1000");
 				/* DEBUG
 				unsigned pl = max(packet_loss_perc_mult1000[0], packet_loss_perc_mult1000[1]);
@@ -7009,31 +7008,31 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				*/
 			}
 			if(delay_sum[0] >= 0 || delay_sum[1] >= 0) {
-				cdr.add(max(delay_sum[0], delay_sum[1]), 
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(delay_sum[0], delay_sum[1])), 
 					"delay_sum");
 			}
 			if(delay_cnt[0] >= 0 || delay_cnt[1] >= 0) {
-				cdr.add(max(delay_cnt[0], delay_cnt[1]), 
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(delay_cnt[0], delay_cnt[1])), 
 					"delay_cnt");
 			}
 			if(delay_avg_mult100[0] >= 0 || delay_avg_mult100[1] >= 0) {
-				cdr.add(max(delay_avg_mult100[0], delay_avg_mult100[1]), 
+				cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(delay_avg_mult100[0], delay_avg_mult100[1])), 
 					"delay_avg_mult100");
 			}
 			if(rtcp_avgfr_mult10[0] >= 0 || rtcp_avgfr_mult10[1] >= 0) {
-				cdr.add((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
-					(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0),
+				cdr.add(LIMIT_SMALLINT_UNSIGNED((rtcp_avgfr_mult10[0] >= 0 ? rtcp_avgfr_mult10[0] : 0) + 
+								(rtcp_avgfr_mult10[1] >= 0 ? rtcp_avgfr_mult10[1] : 0)),
 					"rtcp_avgfr_mult10");
 			}
 			if(rtcp_avgjitter_mult10[0] >= 0 || rtcp_avgjitter_mult10[1] >= 0) {
-				cdr.add((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
-					(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0),
+				cdr.add(LIMIT_SMALLINT_UNSIGNED((rtcp_avgjitter_mult10[0] >= 0 ? rtcp_avgjitter_mult10[0] : 0) + 
+								(rtcp_avgjitter_mult10[1] >= 0 ? rtcp_avgjitter_mult10[1] : 0)),
 					"rtcp_avgjitter_mult10");
 			}
 		}
 		
 		if(lost[0] >= 0 || lost[1] >= 0) {
-			cdr.add(max(lost[0], lost[1]), 
+			cdr.add(LIMIT_MEDIUMINT_UNSIGNED(max(lost[0], lost[1])), 
 				"lost");
 		}
 
@@ -7477,13 +7476,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
 			if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
-				rtps.add(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0), "received");
+				rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0)), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
-			rtps.add(rtp_i->lost_(), "loss");
+			rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->lost_()), "loss");
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
+			rtps.add(LIMIT_SMALLINT_UNSIGNED((unsigned int)(rtp_i->stats.maxjitter * 10)), "maxjitter_mult10");
 			#endif
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {
@@ -8061,13 +8060,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			rtps.add(rtp_i->ssrc, "ssrc");
 			if(rtp_i->received_() > 0 || rtp_i->first_codec_() < 0) {
-				rtps.add(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0), "received");
+				rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->received_() + (rtp_i->first_codec_() >= 0 ? 2 : 0)), "received");
 			} else {
 				rtps.add(0, "received", true);
 			}
-			rtps.add(rtp_i->lost_(), "loss");
+			rtps.add(LIMIT_MEDIUMINT_UNSIGNED(rtp_i->lost_()), "loss");
 			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rtps.add((unsigned int)(rtp_i->stats.maxjitter * 10), "maxjitter_mult10");
+			rtps.add(LIMIT_SMALLINT_UNSIGNED((unsigned int)(rtp_i->stats.maxjitter * 10)), "maxjitter_mult10");
 			#endif
 			rtps.add(diff, "firsttime");
 			if(existsColumns.cdr_rtp_index) {

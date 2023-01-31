@@ -27,6 +27,10 @@
 #define LIMIT_DAY_PARTITIONS 3
 #define LIMIT_DAY_PARTITIONS_INIT 2
 
+#define LIMIT_TINYINT_UNSIGNED(value) 	(MIN(0xFF, (unsigned)value))
+#define LIMIT_SMALLINT_UNSIGNED(value) 	(MIN(0xFFFF, (unsigned)value))
+#define LIMIT_MEDIUMINT_UNSIGNED(value)	(MIN(0xFFFFFF, (unsigned)value))
+
 
 using namespace std;
 
@@ -1317,6 +1321,8 @@ struct sExistsColumns {
 	bool sip_msg_response_time_ms;
 	bool sip_msg_vlan;
 	bool ssl_sessions_id_sensor_is_unsigned;
+	bool cache_number_location_ua;
+	bool cache_number_domain_location_ua;
 };
 
 struct sTableCalldateMsIndik {

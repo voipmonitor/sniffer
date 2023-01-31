@@ -508,6 +508,7 @@ bool opt_database_backup_check_src_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
+int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 5000;
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
@@ -1317,6 +1318,10 @@ int opt_separate_processing = 0;
 
 int opt_abort_if_rss_gt_gb = 0;
 int opt_abort_if_alloc_gt_gb = 0;
+bool opt_abort_if_heap_full = false;
+bool opt_exit_if_heap_full = false;
+bool opt_abort_if_heap_full_and_t2cpu_is_low = true;
+bool opt_exit_if_heap_full_and_t2cpu_is_low = false;
 int opt_next_server_connections = 0;
 
 string opt_coredump_filter = "0x7F";
@@ -7479,7 +7484,8 @@ void cConfig::addConfigItems() {
 		setDisableIfEnd();
 	group("IP protocol");
 		addConfigItem(new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check));
-		addConfigItem(new FILE_LINE(42247) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader));
+		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader))
+				->addValues("ip_only:2"));
 		addConfigItem(new FILE_LINE(42248) cConfigItem_yesno("udpfrag", &opt_udpfrag));
 		addConfigItem(new FILE_LINE(42249) cConfigItem_yesno("dscp", &opt_dscp));
 				expert();
@@ -7773,6 +7779,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42332) cConfigItem_string("mos_lqo_bin", opt_mos_lqo_bin, sizeof(opt_mos_lqo_bin)));
 			addConfigItem(new FILE_LINE(42333) cConfigItem_string("mos_lqo_ref", opt_mos_lqo_ref, sizeof(opt_mos_lqo_ref)));
 			addConfigItem(new FILE_LINE(42334) cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_mos_degradation_for_contiguous_packet_loss_greater_than", &opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than));
 		subgroup("FAX");
 			addConfigItem(new FILE_LINE(42335) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
 		subgroup("jitterbufer");
@@ -8079,6 +8086,10 @@ void cConfig::addConfigItems() {
 							     "disable:" + intToString(numa_balancing_set_disable)).c_str()));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_rss_gt_gb", &opt_abort_if_rss_gt_gb));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("abort_if_alloc_gt_gb", &opt_abort_if_alloc_gt_gb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("abort_if_heap_full", &opt_abort_if_heap_full));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("exit_if_heap_full", &opt_exit_if_heap_full));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("abort_if_heap_full_and_t2cpu_is_low", &opt_abort_if_heap_full_and_t2cpu_is_low));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("exit_if_heap_full_and_t2cpu_is_low", &opt_exit_if_heap_full_and_t2cpu_is_low));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("next_server_connections", &opt_next_server_connections));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("coredump_filter", &opt_coredump_filter));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
@@ -8513,6 +8524,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 void parse_verb_param(string verbParam) {
 	if(verbParam == "process_rtp")				sverb.process_rtp = 1;
 	else if(verbParam == "graph")				sverb.graph = 1;
+	else if(verbParam == "graph_mos")			sverb.graph_mos = 1;
 	else if(verbParam == "read_rtp")			sverb.read_rtp = 1;
 	else if(verbParam == "hash_rtp")			sverb.hash_rtp = 1;
 	else if(verbParam == "rtp_set_base_seq")		sverb.rtp_set_base_seq = 1;
@@ -8619,6 +8631,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "timezones")			sverb.timezones = 1;
 	else if(verbParam == "tcpreplay")			sverb.tcpreplay = 1;
 	else if(verbParam == "abort_if_heap_full")		sverb.abort_if_heap_full = 1;
+	else if(verbParam == "exit_if_heap_full")		sverb.exit_if_heap_full = 1;
 	else if(verbParam == "heap_use_time")			sverb.heap_use_time = 1;
 	else if(verbParam == "dtmf")				sverb.dtmf = 1;
 	else if(verbParam == "dtls")				sverb.dtls = 1;
@@ -10895,7 +10908,7 @@ int eval_config(string inistr) {
 		opt_dup_check = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
-		opt_dup_check_ipheader = yesno(value);
+		opt_dup_check_ipheader = !strcasecmp(value, "ip_only") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader_ignore_ttl", NULL))) {
 		opt_dup_check_ipheader_ignore_ttl = yesno(value);
@@ -12371,6 +12384,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mos_lqo_ref16", NULL))) {
 		strcpy_null_term(opt_mos_lqo_ref16, value);
 	}
+	if((value = ini.GetValue("general", "ignore_mos_degradation_for_contiguous_packet_loss_greater_than", NULL))) {
+		opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = atoi(value);
+	}
 	if((value = ini.GetValue("general", "php_path", NULL))) {
 		strcpy_null_term(opt_php_path, value);
 	}
@@ -13114,6 +13130,18 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "abort_if_alloc_gt_gb", NULL))) {
 		opt_abort_if_alloc_gt_gb = atoi(value);
+	}
+	if((value = ini.GetValue("general", "abort_if_heap_full", NULL))) {
+		opt_abort_if_heap_full = yesno(value);
+	}
+	if((value = ini.GetValue("general", "exit_if_heap_full", NULL))) {
+		opt_exit_if_heap_full = yesno(value);
+	}
+	if((value = ini.GetValue("general", "abort_if_heap_full_and_t2cpu_is_low", NULL))) {
+		opt_abort_if_heap_full_and_t2cpu_is_low = yesno(value);
+	}
+	if((value = ini.GetValue("general", "exit_if_heap_full_and_t2cpu_is_low", NULL))) {
+		opt_exit_if_heap_full_and_t2cpu_is_low = yesno(value);
 	}
 	if((value = ini.GetValue("general", "coredump_filter", NULL))) {
 		opt_coredump_filter = value;
