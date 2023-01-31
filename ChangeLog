@@ -1,4 +1,14 @@
-31.1 17.01.2022
+31.2 31.01.2023
+===============
+- better CPU load debug log in syslog [VS-1409] [VS-1410] [VS-1411]
+- proper column limit in cdr rtcp (preventing INSERT when STRICT is enabled) [VS-1408]
+- add 'ip_only' option for deduplicate_ipheader configuration value; if enabled, only ip addresses from the ip header are counted in md5 [VS-1391]
+- add useragent in change cdr country and change register country alerts [VG-2569]
+- keep packet flags in defragmentation (fixes audiocodes mirroring) [VS-1403]
+- fix average mos interval calculations when packet loss is sonsecutive over 10 seconds intervals [VS-1412]
+
+
+31.1 17.01.2023
 ===============
 - fix proper source/destination main RTP stream selection for some corner cases - (broken since 2022-05-01)
 - do not ignore RTCP if the report block contains NULL SSRC [VS-1405]
@@ -7,9 +17,10 @@
 - new parameter check_diff_ssrc_on_same_ip_port (default yes) [VS-1403]
 
 
-31.0.2 04.01.2022
+31.0.2 04.01.2023
 =================
 - optimization of condition in PreProcessPacket::process_SIP_EXTEND
+
 
 31.0.1 04.01.2022
 =================
