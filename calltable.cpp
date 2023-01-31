@@ -6576,7 +6576,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
 	if(existsColumns.cdr_next_digest_username && digest_username[0]) {
-		cdr_next.add(digest_username, "digest_username");
+		cdr_next.add(sqlEscapeString(digest_username), "digest_username");
 	}
 	if(!geoposition.empty()) {
 		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
