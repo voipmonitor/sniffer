@@ -235,6 +235,12 @@ inline string sqlEscapeString(const char *inputStr, int length = 0, const char *
 inline string sqlEscapeString(string inputStr, const char *typeDb = NULL) {
 	return sqlEscapeString(inputStr.c_str(), 0, typeDb);
 }
+inline string sqlEscapeString_limit(string inputStr, unsigned limitLength, const char *typeDb = NULL) {
+	return sqlEscapeString(limitLength > 0 && inputStr.length() > limitLength ?
+				inputStr.substr(0, limitLength).c_str() :
+				inputStr.c_str(),
+			       0, typeDb);
+}
 
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL);
 string sqlEscapeStringBorder(const char *inputStr, char borderChar = '\'', const char *typeDb = NULL);

@@ -1847,6 +1847,42 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
 
+void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP *rtp, int iscaller, bool new_rtp) {
+	if((new_rtp ||
+	    (!rtp->srtp_decrypt &&
+	     rtp->find_by_dest &&
+	     rtp->call_ipport_n_orig != c_branch->ipport_n)) &&
+	   (opt_srtp_rtp_decrypt || 
+	    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
+	    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
+	    opt_saveRAW || opt_savewav_force)) {
+		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
+		if(opt_srtp_rtp_local_instances) {
+			if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
+			   (rtp->index_call_ip_port >= 0 && c_branch->ip_port[rtp->index_call_ip_port].srtp) ||
+			   (rtp->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp->index_call_ip_port_other_side].srtp)) {
+				RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+										   this, c_branch, index_call_ip_port_by_src, true);
+				rtp->setSRtpDecrypt(rtp_secure, -1, true);
+			}
+		} else {
+			if(index_call_ip_port_by_src >= 0 &&
+			   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
+				if(!rtp_secure_map[index_call_ip_port_by_src]) {
+					rtp_secure_map[index_call_ip_port_by_src] = 
+						new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
+									   this, c_branch, index_call_ip_port_by_src);
+					if(sverb.log_srtp_callid && !log_srtp_callid) {
+						syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
+						log_srtp_callid = true;
+					}
+				}
+				rtp->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
+			}
+		}
+	}
+}
+
 bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save) {
  
 	removeRTP_ifSetFlag();
@@ -2024,40 +2060,10 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 					if(rtp_i->codec == PAYLOAD_TELEVENT) {
 read:
 
-						if(exists_srtp && 
-						   !rtp_i->srtp_decrypt &&
-						   rtp_i->find_by_dest &&
-						   rtp_i->call_ipport_n_orig != c_branch->ipport_n &&
-						   (opt_srtp_rtp_decrypt || 
-						    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-						    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
-						    opt_saveRAW || opt_savewav_force)) {
-							int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
-							if(opt_srtp_rtp_local_instances) {
-								if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
-								   (rtp_i->index_call_ip_port >= 0 && c_branch->ip_port[rtp_i->index_call_ip_port].srtp) ||
-								   (rtp_i->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp_i->index_call_ip_port_other_side].srtp)) {
-									RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-															   this, c_branch, index_call_ip_port_by_src, true);
-									rtp_i->setSRtpDecrypt(rtp_secure, -1, true);
-								}
-							} else {
-								if(index_call_ip_port_by_src >= 0 &&
-								   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-									if(!rtp_secure_map[index_call_ip_port_by_src]) {
-										rtp_secure_map[index_call_ip_port_by_src] = 
-											new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-														   this, c_branch, index_call_ip_port_by_src);
-										if(sverb.log_srtp_callid && !log_srtp_callid) {
-											syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
-											log_srtp_callid = true;
-										}
-									}
-									rtp_i->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
-								}
-							}
+						if(exists_srtp) {
+							_read_rtp_srtp(c_branch, packetS, rtp_i, iscaller, false);
 						}
-
+						
 						if(rtp_i->index_call_ip_port >= 0) {
 							evProcessRtpStream(c_branch, rtp_i->index_call_ip_port, rtp_i->index_call_ip_port_by_dest,
 									   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->header_pt->ts.tv_sec);
@@ -2256,35 +2262,8 @@ read:
 		}
 		rtp_cur[iscaller] = rtp_new; 
 		
-		if(exists_srtp && 
-		   (opt_srtp_rtp_decrypt || 
-		    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-		    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
-		    opt_saveRAW || opt_savewav_force)) {
-			int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
-			if(opt_srtp_rtp_local_instances) {
-				if((index_call_ip_port_by_src >= 0 && c_branch->ip_port[index_call_ip_port_by_src].srtp) ||
-				   (rtp_new->index_call_ip_port >= 0 && c_branch->ip_port[rtp_new->index_call_ip_port].srtp) ||
-				   (rtp_new->index_call_ip_port_other_side >= 0 && c_branch->ip_port[rtp_new->index_call_ip_port_other_side].srtp)) {
-					RTPsecure *rtp_secure = new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-											   this, c_branch, index_call_ip_port_by_src, true);
-					rtp_new->setSRtpDecrypt(rtp_secure, -1, true);
-				}
-			} else {
-				if(index_call_ip_port_by_src >= 0 &&
-				   c_branch->ip_port[index_call_ip_port_by_src].srtp) {
-					if(!rtp_secure_map[index_call_ip_port_by_src]) {
-						rtp_secure_map[index_call_ip_port_by_src] = 
-							new FILE_LINE(0) RTPsecure(opt_use_libsrtp ? RTPsecure::mode_libsrtp : RTPsecure::mode_native,
-										   this, c_branch, index_call_ip_port_by_src);
-						if(sverb.log_srtp_callid && !log_srtp_callid) {
-							syslog(LOG_INFO, "SRTP exists in call %s", call_id.c_str());
-							log_srtp_callid = true;
-						}
-					}
-					rtp_new->setSRtpDecrypt(rtp_secure_map[index_call_ip_port_by_src], index_call_ip_port_by_src);
-				}
-			}
+		if(exists_srtp) {
+			_read_rtp_srtp(c_branch, packetS, rtp_new, iscaller, true);
 		}
 		
 		if(opt_dscp) {
@@ -6400,14 +6379,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr.add(useSensorId, "id_sensor");
 	}
 
-	cdr.add(sqlEscapeString(c_branch->caller), "caller");
-	cdr.add(sqlEscapeString(reverseString(c_branch->caller.c_str()).c_str()), "caller_reverse");
-	cdr.add(sqlEscapeString(get_called(c_branch)), "called");
-	cdr.add(sqlEscapeString(reverseString(get_called(c_branch)).c_str()), "called_reverse");
-	cdr.add(sqlEscapeString(c_branch->caller_domain), "caller_domain");
-	cdr.add(sqlEscapeString(get_called_domain(c_branch)), "called_domain");
-	cdr.add(sqlEscapeString(c_branch->callername), "callername");
-	cdr.add(sqlEscapeString(reverseString(c_branch->callername.c_str()).c_str()), "callername_reverse");
+	cdr.add(sqlEscapeString_limit(c_branch->caller, 255), "caller");
+	cdr.add(sqlEscapeString_limit(reverseString(c_branch->caller.c_str()).c_str(), 255), "caller_reverse");
+	cdr.add(sqlEscapeString_limit(get_called(c_branch), 255), "called");
+	cdr.add(sqlEscapeString_limit(reverseString(get_called(c_branch)).c_str(), 255), "called_reverse");
+	cdr.add(sqlEscapeString_limit(c_branch->caller_domain, 255), "caller_domain");
+	cdr.add(sqlEscapeString_limit(get_called_domain(c_branch), 255), "called_domain");
+	cdr.add(sqlEscapeString_limit(c_branch->callername, 255), "callername");
+	cdr.add(sqlEscapeString_limit(reverseString(c_branch->callername.c_str()).c_str(), 255), "callername_reverse");
 	/*
 	cdr_phone_number_caller.add(sqlEscapeString(caller), "number");
 	cdr_phone_number_caller.add(sqlEscapeString(reverseString(caller).c_str()), "number_reverse");
@@ -6534,14 +6513,14 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	cdr_next.add(sqlEscapeString(fbasename), "fbasename");
 	if(existsColumns.cdr_next_digest_username && !c_branch->digest_username.empty()) {
-		cdr_next.add(c_branch->digest_username, "digest_username");
+		cdr_next.add(sqlEscapeString_limit(c_branch->digest_username, 255), "digest_username");
 	}
 	if(!geoposition.empty()) {
-		cdr_next.add(sqlEscapeString(geoposition), "GeoPosition");
+		cdr_next.add(sqlEscapeString_limit(geoposition, 255), "GeoPosition");
 	}
 	if(existsColumns.cdr_next_hold && !hold_times.empty()) {
 		hold_times.erase(hold_times.end() - 1);
-		cdr_next.add(hold_times, "hold");
+		cdr_next.add(sqlEscapeString_limit(hold_times, 1024), "hold");
 	}
 	cdr.add(sighup ? 1 : 0, "sighup");
 	
@@ -6593,10 +6572,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	cdr.add(bye, "bye");
 
 	if(!c_branch->match_header.empty()) {
-		cdr_next.add(sqlEscapeString(c_branch->match_header), "match_header");
+		cdr_next.add(sqlEscapeString_limit(c_branch->match_header, 128), "match_header");
 	}
 	if(!c_branch->custom_header1.empty()) {
-		cdr_next.add(sqlEscapeString(c_branch->custom_header1), "custom_header1");
+		cdr_next.add(sqlEscapeString_limit(c_branch->custom_header1, 255), "custom_header1");
 	}
 	
 	/* obsolete
@@ -7424,239 +7403,9 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			vector<SqlDb_row> next_branches_rows;
 			for(unsigned i = 0; i < next_branches.size(); i++) {
-				SqlDb_row next_branch_row;
 				CallBranch *n_branch = next_branches[i];
-				string n_branch_var_suffix = "_nb_" + intToString(i + 1);
-				
-				adjustSipResponse(&n_branch->lastSIPresponse);
-				adjustUA(n_branch);
-				adjustReason(n_branch);
-				
-				set<vmIP> n_branch_proxies_undup;
-				prepareSipIpForSave(n_branch, &n_branch_proxies_undup);
-				
-				next_branch_row.setIgnoreCheckExistsField();
-				next_branch_row.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-				
-				next_branch_row.add(sqlEscapeString(n_branch->caller), "caller");
-				next_branch_row.add(sqlEscapeString(reverseString(n_branch->caller.c_str()).c_str()), "caller_reverse");
-				next_branch_row.add(sqlEscapeString(get_called(n_branch)), "called");
-				next_branch_row.add(sqlEscapeString(reverseString(get_called(n_branch)).c_str()), "called_reverse");
-				next_branch_row.add(sqlEscapeString(n_branch->caller_domain), "caller_domain");
-				next_branch_row.add(sqlEscapeString(get_called_domain(n_branch)), "called_domain");
-				next_branch_row.add(sqlEscapeString(n_branch->callername), "callername");
-				next_branch_row.add(sqlEscapeString(reverseString(n_branch->callername.c_str()).c_str()), "callername_reverse");
-				
-				next_branch_row.add(n_branch->sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-				next_branch_row.add(n_branch->sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-				if(existsColumns.cdr_next_branches_sipport) {
-					next_branch_row.add(n_branch->sipcallerport_rslt.getPort(), "sipcallerport");
-					next_branch_row.add(n_branch->sipcalledport_rslt.getPort(), "sipcalledport");
-				}
-				if(existsColumns.cdr_next_branches_sipcallerdip_encaps) {
-					next_branch_row.add(n_branch->sipcallerip_encaps_rslt, "sipcallerip_encaps", !n_branch->sipcallerip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-					next_branch_row.add(n_branch->sipcallerip_encaps_rslt.isSet() && n_branch->sipcallerip_encaps_prot_rslt != 0xFF ? n_branch->sipcallerip_encaps_prot_rslt : 0, 
-							    "sipcallerip_encaps_prot", 
-							    !n_branch->sipcallerip_encaps_rslt.isSet() || n_branch->sipcallerip_encaps_prot_rslt == 0xFF);
-					next_branch_row.add(n_branch->sipcalledip_encaps_rslt, "sipcalledip_encaps", !n_branch->sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-					next_branch_row.add(n_branch->sipcalledip_encaps_rslt.isSet() && n_branch->sipcalledip_encaps_prot_rslt != 0xFF ? n_branch->sipcalledip_encaps_prot_rslt : 0, 
-							    "sipcalledip_encaps_prot", 
-							    !n_branch->sipcalledip_encaps_rslt.isSet() || n_branch->sipcalledip_encaps_prot_rslt == 0xFF);
-				}
-				
-				if(opt_cdr_country_code) {
-					if(opt_cdr_country_code == 2) {
-						next_branch_row.add(getCountryIdByIP(getSipcallerip(n_branch)), "sipcallerip_country_code");
-						next_branch_row.add(getCountryIdByIP(n_branch->sipcalledip_rslt), "sipcalledip_country_code");
-						next_branch_row.add(getCountryIdByPhoneNumber(n_branch->caller.c_str(), getSipcallerip(n_branch)), "caller_number_country_code");
-						next_branch_row.add(getCountryIdByPhoneNumber(get_called(n_branch), n_branch->sipcalledip_rslt), "called_number_country_code");
-					} else {
-						next_branch_row.add(getCountryByIP(getSipcallerip(n_branch), true), "sipcallerip_country_code");
-						next_branch_row.add(getCountryByIP(n_branch->sipcalledip_rslt, true), "sipcalledip_country_code");
-						next_branch_row.add(getCountryByPhoneNumber(n_branch->caller.c_str(), getSipcallerip(n_branch), true), "caller_number_country_code");
-						next_branch_row.add(getCountryByPhoneNumber(get_called(n_branch), n_branch->sipcalledip_rslt, true), "called_number_country_code");
-					}
-				}
-				
-				unsigned proxies_index = 0;
-				for(set<vmIP>::iterator iter = n_branch_proxies_undup.begin(); iter != n_branch_proxies_undup.end(); iter++) {
-					++proxies_index;
-					next_branch_row.add(*iter, ("proxyip_" + intToString(proxies_index)).c_str(), true, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-				}
-				while(proxies_index < 3) {
-					++proxies_index;
-					next_branch_row.add(0, ("proxyip_" + intToString(proxies_index)).c_str(), true, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-				}
-				
-				if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_next_branches_sipcallerdip_v6) {
-					vmIP ipv4[2], ipv6[2];
-					vmPort ipv4_port[2], ipv6_port[2];
-					bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
-					bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
-					ipv4[0] = getSipcalleripFromInviteList(n_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
-					ipv4[1] = getSipcalledipFromInviteList(n_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
-					ipv6[0] = getSipcalleripFromInviteList(n_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
-					ipv6[1] = getSipcalledipFromInviteList(n_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
-					if(ipv4[0].isSet()) {
-						next_branch_row.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-						next_branch_row.add(ipv4_port[0].getPort(), "sipcallerport_v4");
-					} else {
-						next_branch_row.add(0, "sipcallerip_v4", true);
-						next_branch_row.add(0, "sipcallerport_v4", true);
-					}
-					if(ipv4[1].isSet()) {
-						next_branch_row.add(ipv4[1], "sipcalledip_v4", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-						next_branch_row.add(ipv4_port[1].getPort(), "sipcalledport_v4");
-					} else {
-						next_branch_row.add(0, "sipcalledip_v4", true);
-						next_branch_row.add(0, "sipcalledport_v4", true);
-					}
-					if(ipv6[0].isSet()) {
-						next_branch_row.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-						next_branch_row.add(ipv6_port[0].getPort(), "sipcallerport_v6");
-					} else {
-						next_branch_row.add(0, "sipcallerip_v6", true);
-						next_branch_row.add(0, "sipcallerport_v6", true);
-					}
-					if(ipv6[1].isSet()) {
-						next_branch_row.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, sql_cdr_next_branches_table.c_str());
-						next_branch_row.add(ipv6_port[1].getPort(), "sipcalledport_v6");
-					} else {
-						next_branch_row.add(0, "sipcalledip_v6", true);
-						next_branch_row.add(0, "sipcalledport_v6", true);
-					}
-				}
-				
-				if(n_branch->whohanged == 0 || n_branch->whohanged == 1) {
-					next_branch_row.add(n_branch->whohanged ? 2/*"callee"*/ : 1/*"caller"*/, "whohanged");
-				}
-				
-				int bye = -1;
-				if(n_branch->oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
-					bye = 101;
-				} else if(!n_branch->seenRES2XX_no_BYE && !n_branch->seenRES18X && n_branch->seenbye) {
-					bye = 106;
-				} else {
-					bye = n_branch->seeninviteok ? (n_branch->seenbye ? (n_branch->seenbye_and_ok ? 3 : 2) : 1) : 0;
-				}
-				if(bye > 0) {
-					next_branch_row.add(bye, "bye");
-				} else {
-					next_branch_row.add(0, "bye", true);
-				}
-				
-				next_branch_row.add(n_branch->lastSIPresponseNum, "lastSIPresponseNum");
-				if(n_branch->reason_sip_cause) {
-					next_branch_row.add(n_branch->reason_sip_cause, "reason_sip_cause");
-				}
-				if(n_branch->reason_q850_cause) {
-					next_branch_row.add(n_branch->reason_q850_cause, "reason_q850_cause");
-				}
-				
-				if(useSetId()) {
-					next_branch_row.add_cb_string(n_branch->lastSIPresponse, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
-				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, n_branch->lastSIPresponse, false, true);
-					if(_cb_id) {
-						next_branch_row.add(_cb_id, "lastSIPresponse_id");
-					} else {
-						query_str += MYSQL_ADD_QUERY_END("set @lSresp_id" + n_branch_var_suffix + " = " + 
-							     "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(n_branch->lastSIPresponse) + ")");
-						next_branch_row.add(MYSQL_VAR_PREFIX + "@lSresp_id" + n_branch_var_suffix, "lastSIPresponse_id");
-					}
-				}
-				
-				if(opt_cdr_reason_string_enable) {
-					if(!n_branch->reason_sip_text.empty()) {
-						if(useSetId()) {
-							next_branch_row.add_cb_string(n_branch->reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
-						} else {
-							unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, n_branch->reason_sip_text.c_str(), false, true);
-							if(_cb_id) {
-								next_branch_row.add(_cb_id, "reason_sip_text_id");
-							} else {
-								query_str += MYSQL_ADD_QUERY_END("set @r_sip_tid" + n_branch_var_suffix + " = " + 
-									     "getIdOrInsertREASON(1," + sqlEscapeStringBorder(n_branch->reason_sip_text.c_str()) + ")");
-								next_branch_row.add(MYSQL_VAR_PREFIX + "@r_sip_tid" + n_branch_var_suffix, "reason_sip_text_id");
-							}
-						}
-					} else {
-						next_branch_row.add_null("reason_sip_text_id");
-					}
-					if(!n_branch->reason_q850_text.empty()) {
-						if(useSetId()) {
-							next_branch_row.add_cb_string(n_branch->reason_q850_text, "reason_q850_text_id", cSqlDbCodebook::_cb_reason_q850);
-						} else {
-							unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, n_branch->reason_q850_text.c_str(), false, true);
-							if(_cb_id) {
-								next_branch_row.add(_cb_id, "reason_q850_text_id");
-							} else {
-								query_str += MYSQL_ADD_QUERY_END("set @r_q850_tid" + n_branch_var_suffix + " = " + 
-									     "getIdOrInsertREASON(2," + sqlEscapeStringBorder(n_branch->reason_q850_text.c_str()) + ")");
-								next_branch_row.add(MYSQL_VAR_PREFIX + "@r_q850_tid" + n_branch_var_suffix, "reason_q850_text_id");
-							}
-						}
-					} else {
-						next_branch_row.add_null("reason_q850_text_id");
-					}
-				}
-				
-				if(opt_cdr_ua_enable) {
-					if(!n_branch->a_ua.empty()) {
-						if(useSetId()) {
-							next_branch_row.add_cb_string(n_branch->a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
-						} else {
-							unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua, false, true);
-							if(_cb_id) {
-								next_branch_row.add(_cb_id, "a_ua_id");
-							} else {
-								query_str += MYSQL_ADD_QUERY_END("set @uaA_id" + n_branch_var_suffix + " = " + 
-									     "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->a_ua) + ")");
-								next_branch_row.add(MYSQL_VAR_PREFIX + "@uaA_id" + n_branch_var_suffix, "a_ua_id");
-							}
-						}
-					} else {
-						next_branch_row.add_null("a_ua_id");
-					}
-					if(!n_branch->b_ua.empty()) {
-						if(useSetId()) {
-							next_branch_row.add_cb_string(n_branch->b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
-						} else {
-							unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua, false, true);
-							if(_cb_id) {
-								next_branch_row.add(_cb_id, "b_ua_id");
-							} else {
-								query_str += MYSQL_ADD_QUERY_END("set @uaB_id" + n_branch_var_suffix + " = " + 
-									     "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->b_ua) + ")");
-								next_branch_row.add(MYSQL_VAR_PREFIX + "@uaB_id" + n_branch_var_suffix, "b_ua_id");
-							}
-						}
-					} else {
-						next_branch_row.add_null("b_ua_id");
-					}
-				}
-				
-				next_branch_row.add(sqlEscapeString(n_branch->branch_call_id), "call_id");
-				if(!n_branch->branch_fbasename.empty() && n_branch->branch_fbasename != n_branch->branch_call_id) {
-					next_branch_row.add(sqlEscapeString(n_branch->branch_fbasename), "fbasename");
-				} else {
-					next_branch_row.add_null("fbasename");
-				}
-				
-				if(!n_branch->match_header.empty()) {
-					next_branch_row.add(sqlEscapeString(n_branch->match_header), "match_header");
-				} else {
-					next_branch_row.add_null("match_header");
-				}
-				if(!n_branch->custom_header1.empty()) {
-					next_branch_row.add(sqlEscapeString(n_branch->custom_header1), "custom_header1");
-				} else {
-					next_branch_row.add_null("custom_header1");
-				}
-				
-				if(existsColumns.cdr_next_branches_calldate) {
-					next_branch_row.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_branches_calldate_ms);
-				}
+				SqlDb_row next_branch_row;
+				prepareDbRow_cdr_next_branches(next_branch_row, n_branch, i, sql_cdr_next_branches_table, true, &query_str);
 				if(opt_mysql_enable_multiple_rows_insert) {
 					next_branches_rows.push_back(next_branch_row);
 				} else {
@@ -8264,6 +8013,25 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				sqlDbSaveCall->insert(sql_cdr_proxy_table, cdrproxy);
 			}
 		}
+		
+		if(is_multibranch() && existsColumns.cdr_next_branches) {
+			vector<CallBranch*> next_branches;
+			if(first_branch.branch_id != c_branch->branch_id) {
+				next_branches.push_back(&first_branch);
+			}
+			for(unsigned i = 0; i < this->next_branches.size(); i++) {
+				if(this->next_branches[i]->branch_id != c_branch->branch_id) {
+					next_branches.push_back(this->next_branches[i]);
+				}
+			}
+			vector<SqlDb_row> next_branches_rows;
+			for(unsigned i = 0; i < next_branches.size(); i++) {
+				CallBranch *n_branch = next_branches[i];
+				SqlDb_row next_branch_row;
+				prepareDbRow_cdr_next_branches(next_branch_row, n_branch, i, sql_cdr_next_branches_table, false, NULL);
+				sqlDbSaveCall->insert(sql_cdr_next_branches_table, next_branch_row);
+			}
+		}
 
 		for(unsigned ir = 0; ir < rtp_rows_count; ir++) {
 			int i = rtp_rows_indexes[ir];
@@ -8491,6 +8259,262 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	return(cdrID <= 0);
 	
+}
+
+void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch *n_branch, int indexRow, string &table, bool batch, string *query_str) {
+	string n_branch_var_suffix = "_nb_" + intToString(indexRow + 1);
+	
+	adjustSipResponse(&n_branch->lastSIPresponse);
+	adjustUA(n_branch);
+	adjustReason(n_branch);
+	
+	set<vmIP> n_branch_proxies_undup;
+	prepareSipIpForSave(n_branch, &n_branch_proxies_undup);
+	
+	if(batch) {
+		next_branch_row.setIgnoreCheckExistsField();
+		next_branch_row.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
+	}
+	
+	next_branch_row.add(sqlEscapeString_limit(n_branch->caller, 255), "caller");
+	next_branch_row.add(sqlEscapeString_limit(reverseString(n_branch->caller.c_str()).c_str(), 255), "caller_reverse");
+	next_branch_row.add(sqlEscapeString_limit(get_called(n_branch), 255), "called");
+	next_branch_row.add(sqlEscapeString_limit(reverseString(get_called(n_branch)).c_str(), 255), "called_reverse");
+	next_branch_row.add(sqlEscapeString_limit(n_branch->caller_domain, 255), "caller_domain");
+	next_branch_row.add(sqlEscapeString_limit(get_called_domain(n_branch), 255), "called_domain");
+	next_branch_row.add(sqlEscapeString_limit(n_branch->callername, 255), "callername");
+	next_branch_row.add(sqlEscapeString_limit(reverseString(n_branch->callername.c_str()).c_str(), 255), "callername_reverse");
+	
+	next_branch_row.add(n_branch->sipcallerip_rslt, "sipcallerip", false, sqlDbSaveCall, table.c_str());
+	next_branch_row.add(n_branch->sipcalledip_rslt, "sipcalledip", false, sqlDbSaveCall, table.c_str());
+	if(existsColumns.cdr_next_branches_sipport) {
+		next_branch_row.add(n_branch->sipcallerport_rslt.getPort(), "sipcallerport");
+		next_branch_row.add(n_branch->sipcalledport_rslt.getPort(), "sipcalledport");
+	}
+	if(existsColumns.cdr_next_branches_sipcallerdip_encaps) {
+		next_branch_row.add(n_branch->sipcallerip_encaps_rslt, "sipcallerip_encaps", !n_branch->sipcallerip_encaps_rslt.isSet(), sqlDbSaveCall, table.c_str());
+		next_branch_row.add(n_branch->sipcallerip_encaps_rslt.isSet() && n_branch->sipcallerip_encaps_prot_rslt != 0xFF ? n_branch->sipcallerip_encaps_prot_rslt : 0, 
+				    "sipcallerip_encaps_prot", 
+				    !n_branch->sipcallerip_encaps_rslt.isSet() || n_branch->sipcallerip_encaps_prot_rslt == 0xFF);
+		next_branch_row.add(n_branch->sipcalledip_encaps_rslt, "sipcalledip_encaps", !n_branch->sipcalledip_encaps_rslt.isSet(), sqlDbSaveCall, table.c_str());
+		next_branch_row.add(n_branch->sipcalledip_encaps_rslt.isSet() && n_branch->sipcalledip_encaps_prot_rslt != 0xFF ? n_branch->sipcalledip_encaps_prot_rslt : 0, 
+				    "sipcalledip_encaps_prot", 
+				    !n_branch->sipcalledip_encaps_rslt.isSet() || n_branch->sipcalledip_encaps_prot_rslt == 0xFF);
+	}
+	
+	if(opt_cdr_country_code) {
+		if(opt_cdr_country_code == 2) {
+			next_branch_row.add(getCountryIdByIP(getSipcallerip(n_branch)), "sipcallerip_country_code");
+			next_branch_row.add(getCountryIdByIP(n_branch->sipcalledip_rslt), "sipcalledip_country_code");
+			next_branch_row.add(getCountryIdByPhoneNumber(n_branch->caller.c_str(), getSipcallerip(n_branch)), "caller_number_country_code");
+			next_branch_row.add(getCountryIdByPhoneNumber(get_called(n_branch), n_branch->sipcalledip_rslt), "called_number_country_code");
+		} else {
+			next_branch_row.add(getCountryByIP(getSipcallerip(n_branch), true), "sipcallerip_country_code");
+			next_branch_row.add(getCountryByIP(n_branch->sipcalledip_rslt, true), "sipcalledip_country_code");
+			next_branch_row.add(getCountryByPhoneNumber(n_branch->caller.c_str(), getSipcallerip(n_branch), true), "caller_number_country_code");
+			next_branch_row.add(getCountryByPhoneNumber(get_called(n_branch), n_branch->sipcalledip_rslt, true), "called_number_country_code");
+		}
+	}
+	
+	unsigned proxies_index = 0;
+	for(set<vmIP>::iterator iter = n_branch_proxies_undup.begin(); iter != n_branch_proxies_undup.end(); iter++) {
+		++proxies_index;
+		next_branch_row.add(*iter, ("proxyip_" + intToString(proxies_index)).c_str(), true, sqlDbSaveCall, table.c_str());
+	}
+	while(proxies_index < 3) {
+		++proxies_index;
+		next_branch_row.add(0, ("proxyip_" + intToString(proxies_index)).c_str(), true, sqlDbSaveCall, table.c_str());
+	}
+	
+	if(opt_separate_storage_ipv6_ipv4_address && existsColumns.cdr_next_branches_sipcallerdip_v6) {
+		vmIP ipv4[2], ipv6[2];
+		vmPort ipv4_port[2], ipv6_port[2];
+		bool onlyConfirmed = opt_separate_storage_ipv6_ipv4_address == 2 || opt_separate_storage_ipv6_ipv4_address == 4;
+		bool onlyFirst = opt_separate_storage_ipv6_ipv4_address == 3 || opt_separate_storage_ipv6_ipv4_address == 4;
+		ipv4[0] = getSipcalleripFromInviteList(n_branch, &ipv4_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv4[1] = getSipcalledipFromInviteList(n_branch, &ipv4_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 4);
+		ipv6[0] = getSipcalleripFromInviteList(n_branch, &ipv6_port[0], NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		ipv6[1] = getSipcalledipFromInviteList(n_branch, &ipv6_port[1], NULL, NULL, NULL, onlyConfirmed, onlyFirst, 6);
+		if(ipv4[0].isSet()) {
+			next_branch_row.add(ipv4[0], "sipcallerip_v4", false, sqlDbSaveCall, table.c_str());
+			next_branch_row.add(ipv4_port[0].getPort(), "sipcallerport_v4");
+		} else {
+			next_branch_row.add(0, "sipcallerip_v4", true);
+			next_branch_row.add(0, "sipcallerport_v4", true);
+		}
+		if(ipv4[1].isSet()) {
+			next_branch_row.add(ipv4[1], "sipcalledip_v4", false, sqlDbSaveCall, table.c_str());
+			next_branch_row.add(ipv4_port[1].getPort(), "sipcalledport_v4");
+		} else {
+			next_branch_row.add(0, "sipcalledip_v4", true);
+			next_branch_row.add(0, "sipcalledport_v4", true);
+		}
+		if(ipv6[0].isSet()) {
+			next_branch_row.add(ipv6[0], "sipcallerip_v6", false, sqlDbSaveCall, table.c_str());
+			next_branch_row.add(ipv6_port[0].getPort(), "sipcallerport_v6");
+		} else {
+			next_branch_row.add(0, "sipcallerip_v6", true);
+			next_branch_row.add(0, "sipcallerport_v6", true);
+		}
+		if(ipv6[1].isSet()) {
+			next_branch_row.add(ipv6[1], "sipcalledip_v6", false, sqlDbSaveCall, table.c_str());
+			next_branch_row.add(ipv6_port[1].getPort(), "sipcalledport_v6");
+		} else {
+			next_branch_row.add(0, "sipcalledip_v6", true);
+			next_branch_row.add(0, "sipcalledport_v6", true);
+		}
+	}
+
+	if(n_branch->whohanged == 0 || n_branch->whohanged == 1) {
+		next_branch_row.add(n_branch->whohanged ? 2/*"callee"*/ : 1/*"caller"*/, "whohanged");
+	}
+	
+	int bye = -1;
+	if(n_branch->oneway && typeIsNot(SKINNY_NEW) && typeIsNot(MGCP)) {
+		bye = 101;
+	} else if(!n_branch->seenRES2XX_no_BYE && !n_branch->seenRES18X && n_branch->seenbye) {
+		bye = 106;
+	} else {
+		bye = n_branch->seeninviteok ? (n_branch->seenbye ? (n_branch->seenbye_and_ok ? 3 : 2) : 1) : 0;
+	}
+	if(bye > 0) {
+		next_branch_row.add(bye, "bye");
+	} else {
+		next_branch_row.add(0, "bye", true);
+	}
+	
+	next_branch_row.add(n_branch->lastSIPresponseNum, "lastSIPresponseNum");
+	if(n_branch->reason_sip_cause) {
+		next_branch_row.add(n_branch->reason_sip_cause, "reason_sip_cause");
+	}
+	if(n_branch->reason_q850_cause) {
+		next_branch_row.add(n_branch->reason_q850_cause, "reason_q850_cause");
+	}
+	
+	if(batch) {
+		if(useSetId()) {
+			next_branch_row.add_cb_string(n_branch->lastSIPresponse, "lastSIPresponse_id", cSqlDbCodebook::_cb_sip_response);
+		} else {
+			unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_sip_response, n_branch->lastSIPresponse, false, true);
+			if(_cb_id) {
+				next_branch_row.add(_cb_id, "lastSIPresponse_id");
+			} else {
+				*query_str += MYSQL_ADD_QUERY_END("set @lSresp_id" + n_branch_var_suffix + " = " + 
+					      "getIdOrInsertSIPRES(" + sqlEscapeStringBorder(n_branch->lastSIPresponse) + ")");
+				next_branch_row.add(MYSQL_VAR_PREFIX + "@lSresp_id" + n_branch_var_suffix, "lastSIPresponse_id");
+			}
+		}
+	} else {
+		next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_response, n_branch->lastSIPresponse, true), "lastSIPresponse_id");
+	}
+		
+	if(opt_cdr_reason_string_enable) {
+		if(!n_branch->reason_sip_text.empty()) {
+			if(batch) {
+				if(useSetId()) {
+					next_branch_row.add_cb_string(n_branch->reason_sip_text, "reason_sip_text_id", cSqlDbCodebook::_cb_reason_sip);
+				} else {
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, n_branch->reason_sip_text.c_str(), false, true);
+					if(_cb_id) {
+						next_branch_row.add(_cb_id, "reason_sip_text_id");
+					} else {
+						*query_str += MYSQL_ADD_QUERY_END("set @r_sip_tid" + n_branch_var_suffix + " = " + 
+							      "getIdOrInsertREASON(1," + sqlEscapeStringBorder(n_branch->reason_sip_text.c_str()) + ")");
+						next_branch_row.add(MYSQL_VAR_PREFIX + "@r_sip_tid" + n_branch_var_suffix, "reason_sip_text_id");
+					}
+				}
+			} else {
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_reason_sip, n_branch->reason_sip_text.c_str(), true), "reason_sip_text_id");
+			}
+		} else {
+			next_branch_row.add_null("reason_sip_text_id");
+		}
+		if(!n_branch->reason_q850_text.empty()) {
+			if(batch) {
+				if(useSetId()) {
+					next_branch_row.add_cb_string(n_branch->reason_q850_text, "reason_q850_text_id", cSqlDbCodebook::_cb_reason_q850);
+				} else {
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, n_branch->reason_q850_text.c_str(), false, true);
+					if(_cb_id) {
+						next_branch_row.add(_cb_id, "reason_q850_text_id");
+					} else {
+						*query_str += MYSQL_ADD_QUERY_END("set @r_q850_tid" + n_branch_var_suffix + " = " + 
+							      "getIdOrInsertREASON(2," + sqlEscapeStringBorder(n_branch->reason_q850_text.c_str()) + ")");
+						next_branch_row.add(MYSQL_VAR_PREFIX + "@r_q850_tid" + n_branch_var_suffix, "reason_q850_text_id");
+					}
+				}
+			} else {
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_reason_q850, n_branch->reason_q850_text.c_str(), true), "reason_q850_text_id");
+			}
+		} else {
+			next_branch_row.add_null("reason_q850_text_id");
+		}
+	}
+	
+	if(opt_cdr_ua_enable) {
+		if(!n_branch->a_ua.empty()) {
+			if(batch) {
+				if(useSetId()) {
+					next_branch_row.add_cb_string(n_branch->a_ua, "a_ua_id", cSqlDbCodebook::_cb_ua);
+				} else {
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua, false, true);
+					if(_cb_id) {
+						next_branch_row.add(_cb_id, "a_ua_id");
+					} else {
+						*query_str += MYSQL_ADD_QUERY_END("set @uaA_id" + n_branch_var_suffix + " = " + 
+							      "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->a_ua) + ")");
+						next_branch_row.add(MYSQL_VAR_PREFIX + "@uaA_id" + n_branch_var_suffix, "a_ua_id");
+					}
+				}
+			} else {
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->a_ua, true), "a_ua_id");
+			}
+		} else {
+			next_branch_row.add_null("a_ua_id");
+		}
+		if(!n_branch->b_ua.empty()) {
+			if(batch) {
+				if(useSetId()) {
+					next_branch_row.add_cb_string(n_branch->b_ua, "b_ua_id", cSqlDbCodebook::_cb_ua);
+				} else {
+					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua, false, true);
+					if(_cb_id) {
+						next_branch_row.add(_cb_id, "b_ua_id");
+					} else {
+						*query_str += MYSQL_ADD_QUERY_END("set @uaB_id" + n_branch_var_suffix + " = " + 
+							      "getIdOrInsertUA(" + sqlEscapeStringBorder(n_branch->b_ua) + ")");
+						next_branch_row.add(MYSQL_VAR_PREFIX + "@uaB_id" + n_branch_var_suffix, "b_ua_id");
+					}
+				}
+			} else {
+				next_branch_row.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, n_branch->b_ua, true), "b_ua_id");
+			}
+		} else {
+			next_branch_row.add_null("b_ua_id");
+		}
+	}
+	 
+	next_branch_row.add(sqlEscapeString(n_branch->branch_call_id), "call_id");
+	if(!n_branch->branch_fbasename.empty() && n_branch->branch_fbasename != n_branch->branch_call_id) {
+		next_branch_row.add(sqlEscapeString_limit(n_branch->branch_fbasename, 255), "fbasename");
+	} else {
+		next_branch_row.add_null("fbasename");
+	}
+	
+	if(!n_branch->match_header.empty()) {
+		next_branch_row.add(sqlEscapeString_limit(n_branch->match_header, 128), "match_header");
+	} else {
+		next_branch_row.add_null("match_header");
+	}
+	if(!n_branch->custom_header1.empty()) {
+		next_branch_row.add(sqlEscapeString_limit(n_branch->custom_header1, 255), "custom_header1");
+	} else {
+		next_branch_row.add_null("custom_header1");
+	}
+	
+	if(existsColumns.cdr_next_branches_calldate) {
+		next_branch_row.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_next_branches_calldate_ms);
+	}
 }
 
 int
@@ -9007,14 +9031,14 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	if(useSensorId > -1) {
 		msg.add(useSensorId, "id_sensor");
 	}
-	msg.add(sqlEscapeString(c_branch->caller), "caller");
-	msg.add(sqlEscapeString(reverseString(c_branch->caller.c_str()).c_str()), "caller_reverse");
-	msg.add(sqlEscapeString(get_called(c_branch)), "called");
-	msg.add(sqlEscapeString(reverseString(get_called(c_branch)).c_str()), "called_reverse");
-	msg.add(sqlEscapeString(c_branch->caller_domain), "caller_domain");
-	msg.add(sqlEscapeString(get_called_domain(c_branch)), "called_domain");
-	msg.add(sqlEscapeString(c_branch->callername), "callername");
-	msg.add(sqlEscapeString(reverseString(c_branch->callername.c_str()).c_str()), "callername_reverse");
+	msg.add(sqlEscapeString_limit(c_branch->caller, 255), "caller");
+	msg.add(sqlEscapeString_limit(reverseString(c_branch->caller.c_str()).c_str(), 255), "caller_reverse");
+	msg.add(sqlEscapeString_limit(get_called(c_branch), 255), "called");
+	msg.add(sqlEscapeString_limit(reverseString(get_called(c_branch)).c_str(), 255), "called_reverse");
+	msg.add(sqlEscapeString_limit(c_branch->caller_domain, 255), "caller_domain");
+	msg.add(sqlEscapeString_limit(get_called_domain(c_branch), 255), "called_domain");
+	msg.add(sqlEscapeString_limit(c_branch->callername, 255), "callername");
+	msg.add(sqlEscapeString_limit(reverseString(c_branch->callername.c_str()).c_str(), 255), "callername_reverse");
 	msg.add(getSipcallerip(c_branch), "sipcallerip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add(getSipcalledip(c_branch), "sipcalledip", false, sqlDbSaveCall, sql_message_table.c_str());
 	msg.add_calldate(calltime_us(), "calldate", existsColumns.message_calldate_ms);
@@ -9745,6 +9769,9 @@ void adjustSipResponse(string *sipResponse) {
 	} else if(adjustLength) {
 		sipResponse->resize(strlen(sipResponse->c_str()));
 	}
+	if(sipResponse->length() > 255) {
+		sipResponse->resize(255);
+	}
 }
 
 const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool *adjustLength) {
@@ -9831,6 +9858,9 @@ void adjustReason(string *reason) {
 	} else if(adjustLength) {
 		reason->resize(strlen(reason->c_str()));
 	}
+	if(reason->length() > 255) {
+		reason->resize(255);
+	}
 }
 
 const char *adjustReason(char *reason, bool *adjustLength) {
@@ -9883,6 +9913,9 @@ void adjustUA(string *ua) {
 		*ua = new_ua;
 	} else if(adjustLength) {
 		ua->resize(strlen(ua->c_str()));
+	}
+	if(ua->length() > 512) {
+		ua->resize(512);
 	}
 }
 
@@ -10185,13 +10218,13 @@ int Ss7::saveToDb(bool enableBatchIfPossible) {
 		if(opt_ss7_use_sam_subsequent_number && !sam_data.isup_subsequent_number.empty()) {
 			called_number += sam_data.isup_subsequent_number;
 		}
-		ss7.add(sqlEscapeString(called_number), "called_number");
-		ss7.add(sqlEscapeString(reverseString(called_number.c_str())), "called_number_reverse");
+		ss7.add(sqlEscapeString_limit(called_number, 255), "called_number");
+		ss7.add(sqlEscapeString_limit(reverseString(called_number.c_str()), 255), "called_number_reverse");
 		ss7.add(getCountryByPhoneNumber(called_number.c_str(), iam_dst_ip, true), "called_number_country_code");
 	}
 	if(!iam_data.e164_calling_party_number_digits.empty()) {
-		ss7.add(sqlEscapeString(iam_data.e164_calling_party_number_digits), "caller_number");
-		ss7.add(sqlEscapeString(reverseString(iam_data.e164_calling_party_number_digits.c_str())), "caller_number_reverse");
+		ss7.add(sqlEscapeString_limit(iam_data.e164_calling_party_number_digits, 255), "caller_number");
+		ss7.add(sqlEscapeString_limit(reverseString(iam_data.e164_calling_party_number_digits.c_str()), 255), "caller_number_reverse");
 		ss7.add(getCountryByPhoneNumber(iam_data.e164_calling_party_number_digits.c_str(), iam_src_ip, true), "caller_number_country_code");
 	}
 	if(isset_unsigned(rel_cause_indicator)) {

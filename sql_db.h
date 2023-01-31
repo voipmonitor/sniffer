@@ -129,6 +129,24 @@ public:
 		row.push_back(SqlDb_rowField(content, fieldName, null, 0, 0, ift));
 		return(&row[row.size() - 1]);
 	}
+	SqlDb_rowField *add(string content, unsigned limitLength ,string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
+		if(!ignoreCheckExistsField && fieldName != "") {
+			for(size_t i = 0; i < row.size(); i++) {
+				if(row[i].fieldName == fieldName) {
+					row[i] = SqlDb_rowField(limitLength > 0 && content.length() > limitLength ? 
+								 content.substr(limitLength) : 
+								 content,
+								fieldName, null, 0, 0, ift);
+					return(&row[i]);
+				}
+			}
+		}
+		row.push_back(SqlDb_rowField(limitLength > 0 && content.length() > limitLength ? 
+					      content.substr(limitLength) : 
+					      content,
+					     fieldName, null, 0, 0, ift));
+		return(&row[row.size() - 1]);
+	}
 	SqlDb_rowField *add(int content, string fieldName, bool null = false) {
 		SqlDb_rowField *f;
 		if(!content && null) {

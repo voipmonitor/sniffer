@@ -157,6 +157,9 @@ extern int opt_last_dest_number;
 extern int opt_dup_check;
 extern int opt_dup_check_ipheader;
 extern bool opt_call_branches;
+extern bool opt_call_branches_find_by_called_number;
+extern bool opt_call_branches_find_by_called_domain;
+extern bool opt_call_branches_find_smart;
 extern char opt_call_id_alternative[256];
 extern vector<string> opt_call_id_alternative_v;
 extern char opt_fbasename_header[128];
@@ -3060,14 +3063,46 @@ struct s_detect_callerd {
 	inline string &called_domain() {
 		return(!called_domain_uri.empty() && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
 	}
-	string branch_to_key() {
-		return((!called_to.empty() ? 
-			 called_to : 
-			 called_uri) + 
-		       '@' +
-		       (!called_domain_to.empty() ? 
-			 called_domain_to : 
-			 called_domain_uri));
+	inline string branch_to_key() {
+		return((opt_call_branches_find_by_called_number ?
+			 ((opt_destination_number_mode == 2 && !called_uri.empty()) || called_to.empty() ?
+			  called_uri :
+			  called_to) :
+			 "") + 
+		       (opt_call_branches_find_by_called_number && opt_call_branches_find_by_called_domain ?
+			 "@" :
+			 "") +
+		       (opt_call_branches_find_by_called_domain ?
+			 ((opt_destination_number_mode == 2 && !called_domain_uri.empty()) || called_domain_to.empty() ?
+			   called_domain_uri :
+			   called_domain_to) :
+			 ""));
+	}
+	inline bool __smart_cmp_called_number(string &number_short, string &number_long) {
+		return(number_short.length() >= max(number_long.length() / 2, (size_t)3) && 
+		       number_long.find(number_short) != string::npos);
+	}
+	inline bool _smart_cmp_called_number(string &number1, string &number2) {
+		return(!number1.empty() && !number2.empty() &&
+		       (number1 == number2 ||
+			(number1.length() < number2.length() ?
+			  __smart_cmp_called_number(number1, number2) :
+			  __smart_cmp_called_number(number2, number1))));
+	}
+	inline bool smart_cmp_called_number(CallBranch *c_branch) {
+		return(_smart_cmp_called_number(this->called_to, c_branch->called_to) ||
+		       _smart_cmp_called_number(this->called_uri, c_branch->called_uri) ||
+		       _smart_cmp_called_number(this->called_to, c_branch->called_uri) ||
+		       _smart_cmp_called_number(this->called_uri, c_branch->called_to));
+	}
+	inline bool _smart_cmp_called_domain(string &domain1, string &domain2) {
+		return(!domain1.empty() && domain1 == domain2);
+	}
+	inline bool smart_cmp_called_domain(CallBranch *c_branch) {
+		return(_smart_cmp_called_domain(this->called_domain_to, c_branch->called_domain_to) ||
+		       _smart_cmp_called_domain(this->called_domain_uri, c_branch->called_domain_uri) ||
+		       _smart_cmp_called_domain(this->called_domain_to, c_branch->called_domain_uri) ||
+		       _smart_cmp_called_domain(this->called_domain_uri, c_branch->called_domain_to));
 	}
 	string caller;
 	string called_to;
@@ -3171,8 +3206,13 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 
 	// called number
 	
+	bool parse_from_uri = opt_destination_number_mode == 2 || 
+			      isSendCallInfoReady() || 
+			      opt_conference_processing || 
+			      (opt_call_branches && opt_call_branches_find_smart);
+	
 	get_sip_peername(packetS, "\nTo:", "\nt:", &data->called_to, ppntt_to, ppndt_called);
-	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady() || opt_conference_processing)) {
+	if(sip_method == INVITE && parse_from_uri) {
 		get_sip_peername(packetS, "INVITE ", NULL, &data->called_uri, ppntt_invite, ppndt_called);
 	}
 	
@@ -3197,7 +3237,7 @@ inline void detect_callerd(packet_s_process *packetS, int sip_method, s_detect_c
 	// called domain 
 	
 	get_sip_domain(packetS, "\nTo:", "\nt:", &data->called_domain_to, ppntt_to, ppndt_called_domain);
-	if(sip_method == INVITE && (opt_destination_number_mode == 2 || isSendCallInfoReady() || opt_conference_processing)) {
+	if(sip_method == INVITE && parse_from_uri) {
 		get_sip_domain(packetS, "INVITE ", NULL, &data->called_domain_uri, ppntt_invite, ppndt_called_domain);
 	}
 	
@@ -4051,7 +4091,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		int c_branch_id = -1;
 		int c_branch_id_by_from_tag = -1;
 		int c_branch_id_by_to_tag = -1;
-		//int c_branch_id_by_to_key = -1;
 		
 		string from_tag;
 		string to_tag;
@@ -4083,16 +4122,34 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			s_detect_callerd data_callerd;
 			detect_callerd(packetS, packetS->sip_method, &data_callerd);
 			string branch_to_key = (opt_callidmerge_force_separate_branches ? string(packetS->get_callid()) + ':' : "") +
-					       data_callerd.branch_to_key();;
+					       data_callerd.branch_to_key();
 			map<string, int>::iterator iter = call->branches_to_map.find(branch_to_key);
 			if(iter != call->branches_to_map.end()) {
 				c_branch_id = iter->second;
-				//c_branch_id_by_to_key = iter->second;
 				c_branch = c_branch_id > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
+			} else if(opt_call_branches_find_smart) {
+				for(map<string, int>::iterator iter = call->branches_to_map.begin(); iter != call->branches_to_map.end(); iter++) {
+					CallBranch *comp_branch = iter->second > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
+					if((!opt_call_branches_find_by_called_number ||
+					    data_callerd.smart_cmp_called_number(comp_branch)) &&
+					   (!opt_call_branches_find_by_called_domain ||
+					    data_callerd.smart_cmp_called_domain(comp_branch))) {
+						c_branch_id = iter->second;
+						c_branch = comp_branch;
+						break;
+					}
+				}
 			}
 			if(c_branch_id < 0 &&
 			   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) &&
 			   !from_tag.empty() && to_tag.empty()) {
+				if(sverb.call_branches) {
+					cout << " * new branch:" 
+					     << " call_id: " << call->call_id 
+					     << " exists_to: " << call->branches_to_map.begin()->first
+					     << " new_to: " << branch_to_key
+					     << endl;
+				}
 				c_branch_id = call->next_branches.size() + 1;
 				c_branch_id_by_from_tag = c_branch_id;
 				c_branch = new FILE_LINE(0) CallBranch(call, c_branch_id);
@@ -4555,7 +4612,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				packet_info = new FILE_LINE(0) sSciPacketInfo;
 				fillSciPacketInfo(packetS, INVITE, packet_info);
 			}
-			sendCallInfoEvCall(call, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
+			sendCallInfoEvCall(c_branch, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
 			if(packet_info) {
 				delete packet_info;
 			}
@@ -4701,7 +4758,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				packet_info = new FILE_LINE(0) sSciPacketInfo;
 				fillSciPacketInfo(packetS, INVITE, packet_info);
 			}
-			sendCallInfoEvCall(call, sci_hangup, packetS->getTimeval(), call->onHangup_counter, packet_info);
+			sendCallInfoEvCall(c_branch, sci_hangup, packetS->getTimeval(), call->onHangup_counter, packet_info);
 			if(packet_info) {
 				delete packet_info;
 			}
@@ -5033,7 +5090,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 							packet_info = new FILE_LINE(0) sSciPacketInfo;
 							fillSciPacketInfo(packetS, INVITE, packet_info);
 						}
-						sendCallInfoEvCall(call, sci_200, packetS->getTimeval(), call->onCall_2XX_counter, packet_info);
+						sendCallInfoEvCall(c_branch, sci_200, packetS->getTimeval(), call->onCall_2XX_counter, packet_info);
 						if(packet_info) {
 							delete packet_info;
 						}
@@ -5113,7 +5170,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					packet_info = new FILE_LINE(0) sSciPacketInfo;
 					fillSciPacketInfo(packetS, INVITE, packet_info);
 				}
-				sendCallInfoEvCall(call, sci_18X, packetS->getTimeval(), call->onCall_18X_counter, packet_info);
+				sendCallInfoEvCall(c_branch, sci_18X, packetS->getTimeval(), call->onCall_18X_counter, packet_info);
 				if(packet_info) {
 					delete packet_info;
 				}
@@ -5666,7 +5723,7 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 void process_packet_sip_register(packet_s_process *packetS) {
  
 	Call *call = NULL;
-	CallBranch *c_branch;
+	CallBranch *c_branch = NULL;
 	char *s;
 	unsigned long l;
 	bool goto_endsip = false;

@@ -6,6 +6,7 @@ public:
 	cBuffersControl() {
 		max_buffer_mem = 0;
 		max_buffer_mem_orig = 0;
+		max_buffer_mem_mb_info = 0;
 		pb_used_size = 0;
 		pb_trash_size = 0;
 		pb_pool_size = 0;
@@ -13,14 +14,19 @@ public:
 		pb_trash_minTime = -1;
 		pb_trash_maxTime = -1;
 	}
-	void setMaxBufferMem(u_int64_t max_buffer_mem, bool orig = false) {
+	void setMaxBufferMem(u_int64_t max_buffer_mem, bool orig = false, bool set_max_buffer_mem_mb_info = false) {
 		this->max_buffer_mem = max_buffer_mem;
 		if(orig) {
 			this->max_buffer_mem_orig = max_buffer_mem;
 		}
+		if(set_max_buffer_mem_mb_info) {
+			this->max_buffer_mem_mb_info = max_buffer_mem / (1024 * 1024);
+		}
 	}
-	u_int64_t getMaxBufferMem() {
-		return(this->max_buffer_mem);
+	u_int64_t getMaxBufferMem(bool mb_info = false) {
+		return(mb_info ?
+			(this->max_buffer_mem_mb_info ? this->max_buffer_mem_mb_info : (this->max_buffer_mem / (1024 * 1024))) :
+			this->max_buffer_mem);
 	}
 	void restoreMaxBufferMemFromOrig() {
 		this->max_buffer_mem = this->max_buffer_mem_orig;
@@ -144,6 +150,7 @@ public:
 private:
 	u_int64_t max_buffer_mem;
 	u_int64_t max_buffer_mem_orig;
+	u_int64_t max_buffer_mem_mb_info;
 	volatile u_int64_t pb_used_size;
 	volatile u_int64_t pb_trash_size;
 	volatile u_int64_t pb_pool_size;

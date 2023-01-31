@@ -797,12 +797,17 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		reg.add(sipcallerip_encaps_prot, "sipcallerip_encaps_prot", sipcallerip_encaps_prot == 0xFF);
 		reg.add(sipcalledip_encaps_prot, "sipcalledip_encaps_prot", sipcalledip_encaps_prot == 0xFF);
 	}
-	reg.add(sqlEscapeString(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num)), "from_num");
-	reg.add(sqlEscapeString(REG_CONV_STR(to_num)), "to_num");
-	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num)), "contact_num");
-	reg.add(sqlEscapeString(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain)), "contact_domain");
-	reg.add(sqlEscapeString(REG_CONV_STR(to_domain)), "to_domain");
-	reg.add(sqlEscapeString(REG_CONV_STR(digest_username)), "digestusername");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->from_num == EQ_REG ? from_num : state->from_num), 255), "from_num");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(to_num), 255), "to_num");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->contact_num == EQ_REG ? contact_num : state->contact_num), 255), "contact_num");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(state->contact_domain == EQ_REG ? contact_domain : state->contact_domain), 255), "contact_domain");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(to_domain), 255), "to_domain");
+	reg.add(sqlEscapeString_limit(REG_CONV_STR(digest_username), 255), "digestusername");
+	if(state->state == rs_Failed ?
+	    existsColumns.register_failed_digestrealm :
+	    existsColumns.register_state_digestrealm) {
+		reg.add(sqlEscapeString_limit(REG_CONV_STR(digest_realm), 255), "digestrealm");
+	}
 	reg.add(state->fname, "fname");
 	if(state->state == rs_Failed) {
 		if(registers.isEnabledIdAssignment(state)) {
@@ -821,9 +826,6 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		}
 		if(existsColumns.register_failed_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
-		}
-		if (existsColumns.register_failed_digestrealm) {
-			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 		if (existsColumns.register_failed_sipcalledport && existsColumns.register_failed_sipcallerport) {
 			reg.add(sipcalledport, "sipcalledport");
@@ -850,9 +852,6 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		}
 		if(existsColumns.register_state_vlan && VLAN_IS_SET(vlan)) {
 			reg.add(vlan, "vlan");
-		}
-		if (existsColumns.register_state_digestrealm) {
-			reg.add(sqlEscapeString(REG_CONV_STR(digest_realm)), "digestrealm");
 		}
 		if (existsColumns.register_state_sipcalledport && existsColumns.register_state_sipcallerport) {
 			reg.add(sipcalledport, "sipcalledport");

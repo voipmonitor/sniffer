@@ -143,6 +143,7 @@ extern int opt_pb_read_from_file_acttime_diff_secs;
 extern int64_t opt_pb_read_from_file_time_adjustment;
 extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
+extern bool opt_suppress_cleanup_after_read;
 extern bool opt_nonstop_read;
 extern bool opt_nonstop_read_quick;
 extern int opt_time_to_terminate;
@@ -4055,54 +4056,67 @@ string PcapQueue_readFromInterface_base::getInterfaceName(bool simple) {
 
 void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 	if(opt_continue_after_read || opt_nonstop_read) {
-		unsigned sleepCounter = 0;
-		while(!is_terminating()) {
-			this->tryForcePush();
-			if(!opt_pb_read_from_file_max_packets) {
-				if(opt_nonstop_read_quick ?
-				    sleepCounter > 1 :
-				    sleepCounter > 10 && sleepCounter <= 15) {
-					calltable->cleanup_calls(true);
-					calltable->cleanup_registers(true);
-					calltable->cleanup_ss7(true);
-					extern int opt_sip_register;
-					if(opt_sip_register == 1) {
-						extern Registers registers;
-						registers.cleanup(false);
+		if(!opt_suppress_cleanup_after_read) {
+			unsigned sleepCounter = 0;
+			while(!is_terminating()) {
+				this->tryForcePush();
+				if(!opt_pb_read_from_file_max_packets) {
+					if(buffersControl.getPerc_pb_used() > 0.1) {
+						syslog(LOG_NOTICE, "wait for processing packetbuffer (%.1lf%%)", buffersControl.getPerc_pb_used());
+						sleep(1);
+						continue;
+					}
+					if(opt_nonstop_read_quick ?
+					    sleepCounter > 1 :
+					    sleepCounter > 10 && sleepCounter <= 15) {
+						calltable->cleanup_calls(true);
+						calltable->cleanup_registers(true);
+						calltable->cleanup_ss7(true);
+						extern int opt_sip_register;
+						if(opt_sip_register == 1) {
+							extern Registers registers;
+							registers.cleanup(false);
+						}
+					}
+					if(opt_nonstop_read_quick ?
+					    sleepCounter > 2 :
+					    sleepCounter > 15) {
+						calltable->destroyCallsIfPcapsClosed();
+						calltable->destroyRegistersIfPcapsClosed();
+					}
+					if(opt_nonstop_read_quick ?
+					    sleepCounter > 3 :
+					    sleepCounter > 20) {
+						if(flushAllTars()) {
+							 syslog(LOG_NOTICE, "tars flushed");
+						}
+					}
+					if(opt_nonstop_read &&
+					   sleepCounter > (opt_nonstop_read_quick ? 4 : 30)) {
+						rss_purge();
+						syslog(LOG_NOTICE, "purge");
+						extern void reset_cleanup_variables();
+						reset_cleanup_variables();
+						syslog(LOG_NOTICE, "reset cleanup variables");
+						break;
+					}
+					if(sleepCounter > 300) {
+						extern int opt_sip_register;
+						if(opt_sip_register == 1) {
+							extern Registers registers;
+							registers.cleanup(true);
+						}
 					}
 				}
-				if(opt_nonstop_read_quick ?
-				    sleepCounter > 2 :
-				    sleepCounter > 15) {
-					calltable->destroyCallsIfPcapsClosed();
-					calltable->destroyRegistersIfPcapsClosed();
-				}
-				if(opt_nonstop_read_quick ?
-				    sleepCounter > 3 :
-				    sleepCounter > 20) {
-					if(flushAllTars()) {
-						 syslog(LOG_NOTICE, "tars flushed");
-					}
-				}
-				if(opt_nonstop_read &&
-				   sleepCounter > (opt_nonstop_read_quick ? 4 : 30)) {
-					rss_purge();
-					syslog(LOG_NOTICE, "purge");
-					extern void reset_cleanup_variables();
-					reset_cleanup_variables();
-					syslog(LOG_NOTICE, "reset cleanup variables");
-					break;
-				}
-				if(sleepCounter > 300) {
-					extern int opt_sip_register;
-					if(opt_sip_register == 1) {
-						extern Registers registers;
-						registers.cleanup(true);
-					}
+				sleep(1);
+				++sleepCounter;
+			}
+		} else {
+			if(!opt_nonstop_read) {
+				while(!is_terminating()) {
+					sleep(1);
 				}
 			}
-			sleep(1);
-			++sleepCounter;
 		}
 	} else {
 		while(buffersControl.getPerc_pb_used() > 0.1) {
