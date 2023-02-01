@@ -1,3 +1,8 @@
+31.2.1  01.02.2023
+==================
+- fix crash in srtp [VS-1415]
+
+
 31.2 31.01.2023
 ===============
 - better CPU load debug log in syslog [VS-1409] [VS-1410] [VS-1411]
