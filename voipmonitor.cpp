@@ -508,7 +508,7 @@ bool opt_database_backup_check_src_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
-int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 5000;
+int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 1024;
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
