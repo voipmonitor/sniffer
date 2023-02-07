@@ -1,3 +1,8 @@
+31.2.2  07.02.2023
+==================
+-  change default value for ignore_mos_degradation_for_contiguous_packet_loss_greater_than back to 1024 (there are still many calls which get low MOS score due to transfered RTP eselwhere which is treated as packet loss)
+
+
 31.2.1  01.02.2023
 ==================
 - fix crash in srtp [VS-1415]
