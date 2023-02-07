@@ -27,9 +27,9 @@
 #define LIMIT_DAY_PARTITIONS 3
 #define LIMIT_DAY_PARTITIONS_INIT 2
 
-#define LIMIT_TINYINT_UNSIGNED(value) 	(MIN(0xFF, (unsigned)(value)))
-#define LIMIT_SMALLINT_UNSIGNED(value) 	(MIN(0xFFFF, (unsigned)(value)))
-#define LIMIT_MEDIUMINT_UNSIGNED(value)	(MIN(0xFFFFFF, (unsigned)(value)))
+#define LIMIT_TINYINT_UNSIGNED(value) 	(min(0xFFu, (unsigned)(value)))
+#define LIMIT_SMALLINT_UNSIGNED(value) 	(min(0xFFFFu, (unsigned)(value)))
+#define LIMIT_MEDIUMINT_UNSIGNED(value)	(min(0xFFFFFFu, (unsigned)(value)))
 
 
 using namespace std;
