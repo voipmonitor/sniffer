@@ -1,3 +1,8 @@
+31.2.3  07.02.2023
+==================
+- fix MOS score is 0 in case there is only one RTP stream (broken since 31.2) - fix DB: update cdr set mos_min_mult10 = b_mos_min_mult10 where a_mos_min_mult10 is null and b_mos_min_mult10 is not null and mos_min_mult10 = 0 and calldate >= date(now()); truncate chart_cache;
+
+
 31.2.2  07.02.2023
 ==================
 -  change default value for ignore_mos_degradation_for_contiguous_packet_loss_greater_than back to 1024 (there are still many calls which get low MOS score due to transfered RTP eselwhere which is treated as packet loss)
