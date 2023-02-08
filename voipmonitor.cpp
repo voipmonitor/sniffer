@@ -916,6 +916,7 @@ string opt_cpu_cores;
 bool opt_thread_affinity_ht = true;
 bool opt_other_thread_affinity_check = true;
 bool opt_other_thread_affinity_set = false;
+int opt_dpdk_timer_reset_interval = 60;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -7209,6 +7210,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("thread_affinity_ht", &opt_thread_affinity_ht));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -10551,6 +10553,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "other_thread_affinity_set", NULL))) {
 		opt_other_thread_affinity_set = yesno(value);
+	}
+	if((value = ini.GetValue("general", "dpdk_timer_reset_interval", NULL))) {
+		opt_dpdk_timer_reset_interval = atoi(value);
 	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
