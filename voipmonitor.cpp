@@ -358,7 +358,7 @@ int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 char opt_vmcodecs_path[1024] = "";
-bool opt_cdr_stat_values = true;
+int opt_cdr_stat_values = 1;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
 bool opt_charts_cache = false;
@@ -8024,7 +8024,8 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values))
+				->addValues("source:1|s:1|destination:2|d:2|both:3|b:3"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
@@ -12013,7 +12014,10 @@ int eval_config(string inistr) {
 		strcpy_null_term(opt_vmcodecs_path, value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
-		opt_cdr_stat_values = yesno(value);
+		opt_cdr_stat_values = !strcasecmp(value, "source") || toupper(value[0]) == 'S' ? 1 :
+				      !strcasecmp(value, "destination") || toupper(value[0]) == 'D' ? 2 :
+				      !strcasecmp(value, "both") || toupper(value[0]) == 'B' ? 3 :
+				      yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat_sources", NULL))) {
 		opt_cdr_stat_sources = yesno(value);

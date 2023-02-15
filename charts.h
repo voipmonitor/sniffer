@@ -200,7 +200,7 @@ public:
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 	string getChartData(class cChartInterval *interval);
-	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb);
+	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, bool by_dst);
 	void lock_data() { __SYNC_LOCK(sync_data); }
 	void unlock_data() { __SYNC_UNLOCK(sync_data); }
 private:
@@ -267,23 +267,24 @@ public:
 	cChartInterval(eChartTypeUse typeUse);
 	~cChartInterval();
 	void setInterval(u_int32_t timeFrom, u_int32_t timeTo);
-	void setInterval(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src);
+	void setInterval(u_int32_t timeFrom, u_int32_t timeTo, vmIP &ip_src, vmIP &ip_dst);
 	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to,
 		 map<class cChartFilter*, bool> *filters_map);
 	void add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
 		 u_int32_t calldate_from, u_int32_t calldate_to,
-		 vmIP &ip_src);
+		 vmIP &ip_src, vmIP &ip_dst);
 	void store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb);
 	void init();
-	void init(vmIP &ip_src);
+	void init(vmIP &ip_src, vmIP &ip_dst);
 	void clear();
 private:
 	eChartTypeUse typeUse;
 	u_int32_t timeFrom;
 	u_int32_t timeTo;
 	map<cChartSeriesId, cChartIntervalSeriesData*> seriesData;
-	map<vmIP, sSeriesDataCdrStat*> seriesDataCdrStat;
+	map<vmIP, sSeriesDataCdrStat*> seriesDataCdrStat_src;
+	map<vmIP, sSeriesDataCdrStat*> seriesDataCdrStat_dst;
 	u_int32_t created_at_real;
 	u_int32_t last_use_at_real;
 	u_int32_t last_store_at;
@@ -464,6 +465,14 @@ public:
 	static bool exists_columns_check(const char *column);
 	static void exists_columns_clear();
 	static void exists_columns_add(const char *column);
+	static inline bool enableBySrc() {
+		extern int opt_cdr_stat_values;
+		return(opt_cdr_stat_values == 1 || opt_cdr_stat_values == 3);
+	}
+	static inline bool enableByDst() {
+		extern int opt_cdr_stat_values;
+		return(opt_cdr_stat_values == 2 || opt_cdr_stat_values == 3);
+	}
 private:
 	eTypeStore typeStore;
 	vector<cChartSeries*> series;
