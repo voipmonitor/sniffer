@@ -149,10 +149,10 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 	time.tv_usec = time_us % 1000000ull;
 	*/
 	//
-	extern int global_pcap_dlink;
-	extern u_int16_t global_pcap_handle_index;
 	extern int opt_id_sensor;
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+	int dlink = PcapDumper::get_global_pcap_dlink();
+	int pcap_handle_index = PcapDumper::get_global_handle_index();
 	ether_header header_eth;
 	memset(&header_eth, 0, sizeof(header_eth));
 	header_eth.ether_type = htons(ETHERTYPE_IP);
@@ -163,7 +163,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 					  (u_char*)&header_eth, (u_char*)data.c_str(), data.length(), 0,
 					  src.ip, dst.ip, src.port, dst.port,
 					  0, 0, 0,
-					  time.tv_sec, time.tv_usec, global_pcap_dlink);
+					  time.tv_sec, time.tv_usec, dlink);
 		unsigned iphdrSize = ((iphdr2*)(tcpPacket + sizeof(header_eth)))->get_hdr_size();
 		unsigned dataOffset = sizeof(header_eth) + 
 				      iphdrSize +
@@ -180,9 +180,9 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 			#endif
 			src.ip, src.port, dst.ip, dst.port, 
 			data.length(), dataOffset,
-			global_pcap_handle_index, tcpHeader, tcpPacket, true, 
+			pcap_handle_index, tcpHeader, tcpPacket, true, 
 			pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
-			NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
+			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 			false);
 	} else {
 		pcap_pkthdr *udpHeader;
@@ -206,9 +206,9 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 			#endif
 			src.ip, src.port, dst.ip, dst.port, 
 			data.length(), dataOffset,
-			global_pcap_handle_index, udpHeader, udpPacket, true, 
+			pcap_handle_index, udpHeader, udpPacket, true, 
 			pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
-			NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
+			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 			false);
 	}
 }

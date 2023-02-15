@@ -84,13 +84,13 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 	}
 	if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
 	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP)) {
-		extern int global_pcap_dlink;
-		extern u_int16_t global_pcap_handle_index;
 		extern int opt_id_sensor;
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		int dlink = PcapDumper::get_global_pcap_dlink();
+		int pcap_handle_index = PcapDumper::get_global_handle_index();
 		ether_header header_eth;
 		memset(&header_eth, 0, sizeof(header_eth));
-		header_eth.ether_type = htons(ETHERTYPE_IP);
+		header_eth.ether_type = htons(hepData.ip_protocol_family == PF_INET6 ? ETHERTYPE_IPV6 : ETHERTYPE_IP);
 		string payload_str;
 		u_char *payload_data = hepData.captured_packet_payload.data();
 		unsigned payload_len = hepData.captured_packet_payload.data_len();
@@ -112,7 +112,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 						  (u_char*)&header_eth, payload_data, payload_len, 0,
 						  hepData.ip_source_address, hepData.ip_destination_address, hepData.protocol_source_port, hepData.protocol_destination_port,
 						  0, 0, (hepData.set_flags & (1ull << _hep_chunk_tcp_flag)) ? hepData.tcp_flag : 0,
-						  hepData.timestamp_seconds, hepData.timestamp_microseconds, global_pcap_dlink);
+						  hepData.timestamp_seconds, hepData.timestamp_microseconds, dlink);
 			unsigned iphdrSize = ((iphdr2*)(tcpPacket + sizeof(header_eth)))->get_hdr_size();
 			unsigned dataOffset = sizeof(header_eth) + 
 					      iphdrSize +
@@ -128,9 +128,9 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
 				payload_len, dataOffset,
-				global_pcap_handle_index, tcpHeader, tcpPacket, true, 
+				pcap_handle_index, tcpHeader, tcpPacket, true, 
 				pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
-				NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);
 		} else if(hepData.ip_protocol_id == IPPROTO_UDP) {
 			pcap_pkthdr *udpHeader;
@@ -153,9 +153,9 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
 				payload_len, dataOffset,
-				global_pcap_handle_index, udpHeader, udpPacket, true, 
+				pcap_handle_index, udpHeader, udpPacket, true, 
 				pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
-				NULL, 0, global_pcap_dlink, opt_id_sensor, vmIP(), pid,
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);
 		}
 	}

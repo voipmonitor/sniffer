@@ -1072,6 +1072,7 @@ int global_livesniffer = 0;
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
 u_int16_t global_pcap_handle_index = 0;
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
+u_int16_t global_pcap_handle_index_dead_EN10MB = 0;
 
 rtp_read_thread *rtp_threads;
 
@@ -4355,6 +4356,7 @@ int main_init_read() {
 	
 	if(opt_convert_dlt_sll_to_en10) {
 		global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
+		global_pcap_handle_index_dead_EN10MB = register_pcap_handle(global_pcap_handle_dead_EN10MB);
 	}
 
 	vmChdir();
