@@ -86,8 +86,8 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP)) {
 		extern int opt_id_sensor;
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-		int dlink = PcapDumper::get_global_pcap_dlink();
-		int pcap_handle_index = PcapDumper::get_global_handle_index();
+		int dlink = PcapDumper::get_global_pcap_dlink_en10();
+		int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 		ether_header header_eth;
 		memset(&header_eth, 0, sizeof(header_eth));
 		header_eth.ether_type = htons(hepData.ip_protocol_family == PF_INET6 ? ETHERTYPE_IPV6 : ETHERTYPE_IP);

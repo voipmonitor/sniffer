@@ -151,8 +151,8 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 	//
 	extern int opt_id_sensor;
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-	int dlink = PcapDumper::get_global_pcap_dlink();
-	int pcap_handle_index = PcapDumper::get_global_handle_index();
+	int dlink = PcapDumper::get_global_pcap_dlink_en10();
+	int pcap_handle_index = PcapDumper::get_global_handle_index_en10();
 	ether_header header_eth;
 	memset(&header_eth, 0, sizeof(header_eth));
 	header_eth.ether_type = htons(ETHERTYPE_IP);

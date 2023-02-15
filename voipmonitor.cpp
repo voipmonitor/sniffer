@@ -4354,7 +4354,7 @@ int main_init_read() {
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
-	if(opt_convert_dlt_sll_to_en10) {
+	if(opt_convert_dlt_sll_to_en10 || opt_ipfix || opt_hep) {
 		global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
 		global_pcap_handle_index_dead_EN10MB = register_pcap_handle(global_pcap_handle_dead_EN10MB);
 	}
