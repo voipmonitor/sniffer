@@ -9,6 +9,8 @@
 #include <pcap.h>
 
 
+extern bool opt_hep_kamailio_protocol_id_fix;
+
 static cHEP_Server *HEP_Server;
 
 
@@ -201,6 +203,9 @@ void cHEP_ProcessData::processChunk(u_char *data, size_t dataLen, sHEP_Data *hep
 	case _hep_chunk_ip_protocol_id:
 		if(payloadLen == 1) {
 			hepData->ip_protocol_id = *(u_int8_t*)payload;
+			if(hepData->ip_protocol_id == IPPROTO_IDP && opt_hep_kamailio_protocol_id_fix) {
+				hepData->ip_protocol_id = IPPROTO_UDP;
+			}
 			ok = true;
 		}
 		break;
