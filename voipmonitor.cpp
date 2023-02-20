@@ -1261,7 +1261,7 @@ bool opt_hep_set;
 string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
-bool opt_hep_kamailio_protocol_id_fix;
+bool opt_hep_kamailio_protocol_id_fix = true;
 
 bool opt_kamailio;
 vmIP opt_kamailio_dstip;
