@@ -1,3 +1,11 @@
+31.3  20.02.2023
+================
+- fix issue with hep/ipfix with interface=any [VS-1401]
+- add workaround for wrong protocol set by kamailio (default yes) [VS-1414]
+- add support for saving cdr trends by destination ip [VG-2570]
+- add configuration parameter dpdk_timer_reset_interval for set interval for reset dpdk timer (default is 60s) [VS-1416]
+
+
 31.2.3  07.02.2023
 ==================
 - fix MOS score is 0 in case there is only one RTP stream (broken since 31.2) - fix DB: update cdr set mos_min_mult10 = b_mos_min_mult10 where a_mos_min_mult10 is null and b_mos_min_mult10 is not null and mos_min_mult10 = 0 and calldate >= date(now()); truncate chart_cache;
