@@ -7189,6 +7189,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"ws-calls", 1, 0, _param_ws_calls},
 	    {"extract_payload", 1, 0, _param_extract_payload},
 	    {"extract_rtp_payload", 1, 0, _param_extract_rtp_payload},
+	    {"load-rtp-pcap", 1, 0, _param_load_rtp_pcap},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -7938,6 +7939,12 @@ void get_command_line_arguments() {
 				break;
 			case _param_extract_rtp_payload:
 				extract_rtp_payload = optarg;
+				break;
+			case _param_load_rtp_pcap:
+				opt_test = c;
+				if(optarg) {
+					strcpy_null_term(opt_test_arg, optarg);
+				}
 				break;
 		}
 		if(optarg) {
