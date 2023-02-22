@@ -802,10 +802,10 @@ int RTPsecure::do_ctr_crypt (gcry_cipher_hd_t cipher, u_char *ctr, u_char *data,
 		data += d.quot * ctrlen;
 		memcpy(dummy, data, d.rem);
 		memset(dummy + d.rem, 0, ctrlen - d.rem);
-		if(gcry_cipher_decrypt(cipher, dummy, ctrlen, data, ctrlen)) {
+		if(gcry_cipher_decrypt(cipher, dummy, ctrlen, NULL, 0)) {
 			return -1;
 		}
-		memcpy (data, dummy, d.rem);
+		memcpy(data, dummy, d.rem);
 	}
 	return(0);
 }

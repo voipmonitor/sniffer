@@ -44,7 +44,7 @@ extern bool opt_cdr_sipport;
 extern bool opt_last_rtp_from_end;
 extern bool opt_cdr_rtpport;
 extern bool opt_cdr_rtpsrcport;
-extern bool opt_cdr_stat_values;
+extern int opt_cdr_stat_values;
 extern bool opt_cdr_stat_sources;
 extern int opt_create_old_partitions;
 extern bool opt_disable_partition_operations;
@@ -6488,12 +6488,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		""));
 	
 	if(opt_cdr_stat_values) {
+	for(int src_dst = 0; src_dst < 2; src_dst++) {
+	if(src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) {
 	vector<dstring> cdr_stat_fields;
 	string cdr_stat_fields_str = cCdrStat::metrics_db_fields(&cdr_stat_fields);
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_stat_values` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_stat_values") + (src_dst == 1 ? "_dst" : "") + "` (\
 			`from_time` datetime,\
-			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`addr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
 			`updated_at` datetime,\
@@ -6508,12 +6510,14 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
 				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
 		""));
-	}
+	}}}
 	if(opt_cdr_stat_sources) {
+	for(int src_dst = 0; src_dst < 2; src_dst++) {
+	if(src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) {
 	this->query(string(
-	"CREATE TABLE IF NOT EXISTS `cdr_stat_sources` (\
+	"CREATE TABLE IF NOT EXISTS `cdr_stat_sources") + (src_dst == 1 ? "_dst" : "") + "` (\
 			`from_time` datetime,\
-			`addr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
+			`addr` " + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
 			`series` int unsigned NOT NULL,\
 			`sensor_id` int,\
 			`created_at` datetime,\
@@ -6531,7 +6535,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			string(" PARTITION BY RANGE COLUMNS(`from_time`)(\
 				 PARTITION ") + partMonthName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)") :
 		""));	 
-	}
+	}}}
 	
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `rtp_stat` (\

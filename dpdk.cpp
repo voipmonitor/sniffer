@@ -53,6 +53,7 @@ extern int opt_dpdk_ring_size;
 extern int opt_dpdk_mempool_cache_size;
 extern int opt_dpdk_batch_read;
 extern int opt_dpdk_mbufs_in_packetbuffer;
+extern int opt_dpdk_timer_reset_interval;
 
 
 #define MAXIMUM_SNAPLEN		262144
@@ -1327,9 +1328,14 @@ static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t len, struc
 static inline u_int64_t get_timestamp_us(sDpdk *dpdk) {
 	dpdk_ts_helper *ts_helper = &dpdk->ts_helper;
 	uint64_t cycles = rte_get_timer_cycles() - ts_helper->start_cycles;
+	uint64_t shift_s = cycles / ts_helper->hz;
+	if(shift_s >= (unsigned)opt_dpdk_timer_reset_interval) {
+		dpdk_init_timer(dpdk);
+		return(dpdk->ts_helper.start_time);
+	}
 	return(ts_helper->start_time +
-	       cycles / ts_helper->hz * 1000000 + 
-	       (cycles % ts_helper->hz) * 1000000 / ts_helper->hz);
+	       shift_s * 1000000ull + 
+	       (cycles % ts_helper->hz) * 1000000ull / ts_helper->hz);
 }
 
 

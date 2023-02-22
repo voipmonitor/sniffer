@@ -358,7 +358,7 @@ int opt_rtp_streams_max_in_call = 1000;
 int opt_rtp_check_both_sides_by_sdp = 0;
 char opt_keycheck[1024] = "";
 char opt_vmcodecs_path[1024] = "";
-bool opt_cdr_stat_values = true;
+int opt_cdr_stat_values = 1;
 bool opt_cdr_stat_sources = false;
 int opt_cdr_stat_interval = 15;
 bool opt_charts_cache = false;
@@ -509,7 +509,7 @@ bool opt_database_backup_check_src_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
-int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 5000;
+int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 1024;
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
@@ -923,6 +923,7 @@ string opt_cpu_cores;
 bool opt_thread_affinity_ht = true;
 bool opt_other_thread_affinity_check = true;
 bool opt_other_thread_affinity_set = false;
+int opt_dpdk_timer_reset_interval = 60;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -1078,6 +1079,7 @@ int global_livesniffer = 0;
 pcap_t *global_pcap_handle = NULL;		// pcap handler 
 u_int16_t global_pcap_handle_index = 0;
 pcap_t *global_pcap_handle_dead_EN10MB = NULL;
+u_int16_t global_pcap_handle_index_dead_EN10MB = 0;
 
 rtp_read_thread *rtp_threads;
 
@@ -1266,6 +1268,7 @@ bool opt_hep_set;
 string opt_hep_bind_ip;
 unsigned opt_hep_bind_port;
 bool opt_hep_bind_udp;
+bool opt_hep_kamailio_protocol_id_fix = true;
 
 bool opt_kamailio;
 vmIP opt_kamailio_dstip;
@@ -4362,8 +4365,9 @@ int main_init_read() {
 		global_pcap_handle_index = register_pcap_handle(global_pcap_handle);
 	}
 	
-	if(opt_convert_dlt_sll_to_en10) {
+	if(opt_convert_dlt_sll_to_en10 || opt_ipfix || opt_hep) {
 		global_pcap_handle_dead_EN10MB = pcap_open_dead(DLT_EN10MB, 65535);
+		global_pcap_handle_index_dead_EN10MB = register_pcap_handle(global_pcap_handle_dead_EN10MB);
 	}
 
 	vmChdir();
@@ -5903,6 +5907,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("thread_affinity_ht", &opt_thread_affinity_ht));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
@@ -6721,7 +6726,8 @@ void cConfig::addConfigItems() {
 		subgroup("other");
 			addConfigItem(new FILE_LINE(42459) cConfigItem_string("keycheck", opt_keycheck, sizeof(opt_keycheck)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("vmcodecs_path", opt_vmcodecs_path, sizeof(opt_vmcodecs_path)));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("cdr_stat", &opt_cdr_stat_values))
+				->addValues("source:1|s:1|destination:2|d:2|both:3|b:3"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_stat_sources", &opt_cdr_stat_sources));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_stat_interval", &opt_cdr_stat_interval));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("charts_cache", &opt_charts_cache));
@@ -6760,6 +6766,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("hep_bind_ip",  &opt_hep_bind_ip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hep_bind_port",  &opt_hep_bind_port));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_bind_udp",  &opt_hep_bind_udp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hep_kamailio_protocol_id_fix", &opt_hep_kamailio_protocol_id_fix));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audiocodes",  &opt_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("udp_port_audiocodes",  &opt_udp_port_audiocodes));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tcp_port_audiocodes",  &opt_tcp_port_audiocodes));
@@ -9274,6 +9281,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "other_thread_affinity_set", NULL))) {
 		opt_other_thread_affinity_set = yesno(value);
 	}
+	if((value = ini.GetValue("general", "dpdk_timer_reset_interval", NULL))) {
+		opt_dpdk_timer_reset_interval = atoi(value);
+	}
 	if (ini.GetAllValues("general", "interface_ip_filter", values)) {
 		CSimpleIni::TNamesDepend::const_iterator i = values.begin();
 		for (; i != values.end(); ++i) {
@@ -10743,7 +10753,10 @@ int eval_config(string inistr) {
 		strcpy_null_term(opt_vmcodecs_path, value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat", NULL))) {
-		opt_cdr_stat_values = yesno(value);
+		opt_cdr_stat_values = !strcasecmp(value, "source") || toupper(value[0]) == 'S' ? 1 :
+				      !strcasecmp(value, "destination") || toupper(value[0]) == 'D' ? 2 :
+				      !strcasecmp(value, "both") || toupper(value[0]) == 'B' ? 3 :
+				      yesno(value);
 	}
 	if((value = ini.GetValue("general", "cdr_stat_sources", NULL))) {
 		opt_cdr_stat_sources = yesno(value);
@@ -11791,6 +11804,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "hep_bind_udp", NULL))) {
 		opt_hep_bind_udp = yesno(value);
+	}
+	if((value = ini.GetValue("general", "hep_kamailio_protocol_id_fix", NULL))) {
+		opt_hep_kamailio_protocol_id_fix = yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "audiocodes", NULL))) {

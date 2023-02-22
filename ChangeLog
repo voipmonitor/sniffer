@@ -1,4 +1,37 @@
-31.1 17.01.2022
+31.3  20.02.2023
+================
+- fix issue with hep/ipfix with interface=any [VS-1401]
+- add workaround for wrong protocol set by kamailio (default yes) [VS-1414]
+- add support for saving cdr trends by destination ip [VG-2570]
+- add configuration parameter dpdk_timer_reset_interval for set interval for reset dpdk timer (default is 60s) [VS-1416]
+
+
+31.2.3  07.02.2023
+==================
+- fix MOS score is 0 in case there is only one RTP stream (broken since 31.2) - fix DB: update cdr set mos_min_mult10 = b_mos_min_mult10 where a_mos_min_mult10 is null and b_mos_min_mult10 is not null and mos_min_mult10 = 0 and calldate >= date(now()); truncate chart_cache;
+
+
+31.2.2  07.02.2023
+==================
+-  change default value for ignore_mos_degradation_for_contiguous_packet_loss_greater_than back to 1024 (there are still many calls which get low MOS score due to transfered RTP eselwhere which is treated as packet loss)
+
+
+31.2.1  01.02.2023
+==================
+- fix crash in srtp [VS-1415]
+
+
+31.2 31.01.2023
+===============
+- better CPU load debug log in syslog [VS-1409] [VS-1410] [VS-1411]
+- proper column limit in cdr rtcp (preventing INSERT when STRICT is enabled) [VS-1408]
+- add 'ip_only' option for deduplicate_ipheader configuration value; if enabled, only ip addresses from the ip header are counted in md5 [VS-1391]
+- add useragent in change cdr country and change register country alerts [VG-2569]
+- keep packet flags in defragmentation (fixes audiocodes mirroring) [VS-1403]
+- fix average mos interval calculations when packet loss is sonsecutive over 10 seconds intervals [VS-1412]
+
+
+31.1 17.01.2023
 ===============
 - fix proper source/destination main RTP stream selection for some corner cases - (broken since 2022-05-01)
 - do not ignore RTCP if the report block contains NULL SSRC [VS-1405]
@@ -7,9 +40,10 @@
 - new parameter check_diff_ssrc_on_same_ip_port (default yes) [VS-1403]
 
 
-31.0.2 04.01.2022
+31.0.2 04.01.2023
 =================
 - optimization of condition in PreProcessPacket::process_SIP_EXTEND
+
 
 31.0.1 04.01.2022
 =================

@@ -798,6 +798,35 @@ public:
 	static inline int convert_dlt_sll_to_en10(int dlt) {
 		return(enable_convert_dlt_sll_to_en10(dlt) ? DLT_EN10MB : dlt);
 	}
+	static inline int get_global_pcap_dlink() {
+		extern int global_pcap_dlink;
+		return(convert_dlt_sll_to_en10(global_pcap_dlink));
+	}
+	static inline int get_global_handle_index() {
+		extern int global_pcap_dlink;
+		extern u_int16_t global_pcap_handle_index;
+		extern u_int16_t global_pcap_handle_index_dead_EN10MB;
+		return(enable_convert_dlt_sll_to_en10(global_pcap_dlink) ? global_pcap_handle_index_dead_EN10MB : global_pcap_handle_index);
+	}
+	static inline int get_global_pcap_dlink_en10() {
+		extern int global_pcap_dlink;
+		extern pcap_t *global_pcap_handle_dead_EN10MB;
+		if(global_pcap_dlink != DLT_EN10MB &&
+		   global_pcap_handle_dead_EN10MB) {
+			return(DLT_EN10MB);
+		}
+		return(get_global_pcap_dlink());
+	}
+	static inline int get_global_handle_index_en10() {
+		extern int global_pcap_dlink;
+		extern pcap_t *global_pcap_handle_dead_EN10MB;
+		extern u_int16_t global_pcap_handle_index_dead_EN10MB;
+		if(global_pcap_dlink != DLT_EN10MB &&
+		   global_pcap_handle_dead_EN10MB) {
+			return(global_pcap_handle_index_dead_EN10MB);
+		}
+		return(get_global_handle_index());
+	}
 	static inline void packet_convert_dlt_sll_to_en10(const u_char *packet_src, u_char *packet_dest, 
 							  const pcap_pkthdr *header_src, pcap_pkthdr *header_dest,
 							  u_int32_t packet_dst_maxlen = 0) {
