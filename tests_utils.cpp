@@ -3,6 +3,7 @@
 #include "http.h"
 #include "config_param.h"
 #include "cleanspool.h"
+#include "sniff_proc_class.h"
 #include "voipmonitor.h"
 
 
@@ -610,6 +611,69 @@ void setAllocNumb() {
 			fclose(file_out);
 		}
 	}
+}
+
+void load_rtp_pcap(const char *pcap) {
+ 
+	extern Calltable *calltable;
+	calltable = new FILE_LINE(0) Calltable;
+ 
+	extern bool opt_read_from_file;
+	opt_read_from_file = true;
+	
+	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+	for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+		preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
+	}
+ 
+	Call *call = new FILE_LINE(0) Call(INVITE, (char*)"1234", 4, NULL, 0);
+	
+	s_sdp_flags sdp_flags;
+	sdp_flags.protocol = sdp_proto_srtp;
+	
+	const char *key = "\026\217\315\300A\253\353\355\377\062\f\377\345r\307\027\000\000\000\032\204V\307\177\000\000\000\200\327\025\000";
+	unsigned key_length = 32;
+	const char *salt = "j\223\\\a\341\246\363\fM\222A\251;\260";
+	unsigned salt_length = 14;
+	
+	char key_salt[1000];
+	unsigned key_salt_length = key_length + salt_length;
+	memcpy(key_salt, key, key_length);
+	memcpy(key_salt + key_length, salt, salt_length);
+	
+	size_t sdes_length;
+	char *sdes = base64_encode((u_char*)key_salt, key_salt_length, &sdes_length);
+	
+	srtp_crypto_config srtp_cc;
+	srtp_cc.tag = 0;
+	srtp_cc.suite = "AES_CM_128_HMAC_SHA1_80";
+	srtp_cc.key = sdes; // Fo/NwEGr6+3/Mgz/5XLHF2qTXAfhpvMMTZJBqTuw
+	srtp_cc.key = "Fo/NwEGr6+3/Mgz/5XLHF2qTXAfhpvMMTZJBqTuw";
+	srtp_cc.from_time_us = 0;
+	
+	list<srtp_crypto_config> srtp_crypto_config_list;
+	srtp_crypto_config_list.push_back(srtp_cc);
+	
+	RTPMAP rtpmap[MAX_RTPMAP];
+	memset((void*)rtpmap, 0, sizeof(rtpmap));
+	
+	call->add_ip_port_hash(call->branch_main(), 
+			       str_2_vmIP("127.0.0.1"), str_2_vmIP("136.144.57.173"), ip_port_call_info::_ta_base, 28104, 0,
+			       (char*)"", (char*)"", false,
+			       &srtp_crypto_config_list, NULL,
+			       (char*)"", (char*)"", (char*)"", (char*)"", (char*)"",
+			       1, rtpmap, sdp_flags);
+	
+	string error;
+	if(!open_global_pcap_handle(pcap, &error)) {
+		return;
+	}
+	
+	extern pcap_t *global_pcap_handle;
+	extern u_int16_t global_pcap_handle_index;
+	readdump_libpcap(global_pcap_handle, global_pcap_handle_index, pcap_datalink(global_pcap_handle), NULL,
+			 (is_read_from_file() ? _pp_read_file : 0) | _pp_process_calls);
+	 
 }
 
 
@@ -1244,6 +1308,9 @@ void test() {
 		billing.load();
 		cout << billing.test(opt_test_arg, opt_test == _param_test_billing_json) << endl;
 		}
+		break;
+	case _param_load_rtp_pcap:
+		load_rtp_pcap(opt_test_arg);
 		break;
 	}
  

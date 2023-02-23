@@ -4084,7 +4084,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		goto endsip;
 	}
 	
-	if(call->single_branch == 2) {
+	if(opt_call_branches == 0) {
 		c_branch = &call->first_branch;
 	} else {
 	
@@ -4157,7 +4157,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				call->next_branches.push_back(c_branch);
 				call->branches_to_map[branch_to_key] = c_branch_id;
 				call->branches_tag_map[from_tag] = c_branch_id;
-				call->single_branch = 0;
 				c_branch->branch_call_id = packetS->get_callid();
 				bool use_fbasename_header = false;
 				if(opt_fbasename_header[0]) {

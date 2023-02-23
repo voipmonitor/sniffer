@@ -585,7 +585,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
  pcapRtp(PcapDumper::rtp, this) {
   
 	first_branch.call = this;
-	single_branch = opt_call_branches ? 1 : 2;
 	branch_main_id = 0;
 	_branches_lock = 0;
   
