@@ -114,11 +114,11 @@ public:
 	void clear(bool lock = true);
 	void refresh();
 	void stopPopCallInfoThread(bool wait = false);
-	void evCall(class Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info);
+	void evCall(class CallBranch *c_branch, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info);
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();
-	void getSciFromCall(sSciInfo *sciInfo, Call *call, 
+	void getSciFromCall(sSciInfo *sciInfo, CallBranch *c_branch, 
 			    eTypeSci typeSci, u_int64_t at,
 			    u_int16_t counter, sSciPacketInfo *packet_info);
 	void lock() {
@@ -149,7 +149,7 @@ inline bool useAdditionalPacketInformationInSendCallInfo() {
 	return(_sendCallInfo_useAdditionalPacketInformation);
 }
 void refreshSendCallInfo();
-void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter, sSciPacketInfo *packet_info);
+void sendCallInfoEvCall(CallBranch *c_branch, eTypeSci typeSci, struct timeval tv, u_int16_t counter, sSciPacketInfo *packet_info);
 bool isExistsSendCallInfo(SqlDb *sqlDb = NULL);
 
 

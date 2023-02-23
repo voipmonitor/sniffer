@@ -180,6 +180,11 @@ public:
 	void init(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb, bool reload = false);
 	unsigned getCbId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
 			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
+	unsigned getCbId(cSqlDbCodebook::eTypeCodebook type, string &stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
+			 string *insertQuery = NULL, SqlDb *sqlDb = NULL) {
+		return(getCbId(type, stringValue.c_str(), enableInsert, enableAutoLoad,
+			       insertQuery, sqlDb));
+	}
 	unsigned getCbId(const char *type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad =  false,
 			 string *insertQuery = NULL, SqlDb *sqlDb = NULL);
 	u_int64_t getAiId(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);
@@ -229,6 +234,12 @@ inline string sqlEscapeString(const char *inputStr, int length = 0, const char *
 }
 inline string sqlEscapeString(string inputStr, const char *typeDb = NULL) {
 	return sqlEscapeString(inputStr.c_str(), 0, typeDb);
+}
+inline string sqlEscapeString_limit(string inputStr, unsigned limitLength, const char *typeDb = NULL) {
+	return sqlEscapeString(limitLength > 0 && inputStr.length() > limitLength ?
+				inputStr.substr(0, limitLength).c_str() :
+				inputStr.c_str(),
+			       0, typeDb);
 }
 
 string sqlEscapeStringBorder(string inputStr, char borderChar = '\'', const char *typeDb = NULL);

@@ -122,7 +122,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		}
 		vector<string> rslt_decrypt;
 		bool ok_first_ssl_header = false;
-		u_char *ssl_data;
+		u_char *ssl_data = NULL;
 		u_int32_t ssl_datalen;
 		bool alloc_ssl_data = false;
 		bool exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());

@@ -212,7 +212,7 @@ struct s_sdp_flags : public s_sdp_flags_base {
 };
 
 struct call_rtp {
-	class Call *call;
+	class CallBranch *c_branch;
 	int8_t iscaller;
 	u_int16_t is_rtcp;
 	s_sdp_flags sdp_flags;
@@ -373,6 +373,298 @@ struct ip_port_call_info {
 	bool canceled;
 };
 
+struct sCseq {
+	inline void null() {
+		method = -1;
+		number = 0;
+	}
+	inline bool is_set() {
+		return(method > 0);
+	}
+	inline const bool operator == (const sCseq &cseq_other) {
+		return(this->method == cseq_other.method &&
+		       this->number == cseq_other.number);
+	}
+	inline const bool operator != (const sCseq &cseq_other) {
+		return(this->method != cseq_other.method ||
+		       this->number != cseq_other.number);
+	}
+	int method;
+	u_int32_t number;
+};
+
+class CallStructs {
+public:
+	struct sInviteSD_Addr {
+		sInviteSD_Addr() {
+			confirmed = false;
+			counter = 0;
+			counter_reverse = 0;
+		}
+		vmIP saddr;
+		vmIP daddr;
+		vmIP saddr_first;
+		vmIP daddr_first;
+		u_int8_t saddr_first_protocol;
+		u_int8_t daddr_first_protocol;
+		vmPort sport;
+		vmPort dport;
+		bool confirmed;
+		unsigned counter;
+		unsigned counter_reverse;
+		map<u_int32_t, u_int32_t> counter_by_cseq;
+		map<u_int32_t, u_int32_t> counter_reverse_by_cseq;
+		string caller;
+		string called;
+		string called_invite;
+		string branch;
+	};
+	struct sInviteSD_OrderItem {
+		inline sInviteSD_OrderItem(unsigned order, u_int64_t ts) {
+			this->order = order;
+			this->ts = ts;
+		}
+		unsigned order;
+		u_int64_t ts;
+	};
+	struct sSipResponse {
+		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
+			if(SIPresponse) {
+				this->SIPresponse = SIPresponse;
+			}
+			this->SIPresponseNum = SIPresponseNum;
+		}
+		string SIPresponse;
+		int SIPresponseNum;
+	};
+	struct sSipHistory {
+		sSipHistory(u_int64_t time_us = 0,
+			    const char *SIPrequest = NULL,
+			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
+			this->time_us = time_us;
+			if(SIPrequest && SIPrequest[0]) {
+				this->SIPrequest = SIPrequest;
+			}
+			if(SIPresponse && SIPresponse[0]) {
+				this->SIPresponse = SIPresponse;
+			}
+			this->SIPresponseNum = SIPresponseNum;
+		}
+		u_int64_t time_us;
+		string SIPrequest;
+		string SIPresponse;
+		int SIPresponseNum;
+	};
+	struct sSipcalleRD_IP {
+		sSipcalleRD_IP() {
+			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
+				sipcallerip[i].clear();
+				sipcalledip[i].clear();
+				sipcalledip_mod.clear();
+				sipcallerport[i].clear();
+				sipcalledport[i].clear();
+				sipcalledport_mod.clear();
+			}
+		}
+		vmIP sipcallerip[MAX_SIPCALLERDIP];
+		vmIP sipcalledip[MAX_SIPCALLERDIP];
+		vmIP sipcalledip_mod;
+		vmPort sipcallerport[MAX_SIPCALLERDIP];
+		vmPort sipcalledport[MAX_SIPCALLERDIP];
+		vmPort sipcalledport_mod;
+	};
+	struct sMergeLegInfo {
+		sMergeLegInfo() {
+			seenbye = false;
+			seenbye_time_usec = 0;
+			seenokbye = false;
+			seenokbye_time_usec = 0;
+			seenbye_and_ok = false;
+			seenbye_and_ok_time_usec = 0;
+			seencancel = false;
+			seencancel_time_usec = 0;
+			seencancel_and_ok = false;
+			seencancel_and_ok_time_usec = 0;
+			seenauthfailed = false;
+			seenauthfailed_time_usec = 0;
+		}
+		bool seenbye;
+		u_int64_t seenbye_time_usec;
+		bool seenokbye;
+		u_int64_t seenokbye_time_usec;
+		bool seenbye_and_ok;
+		u_int64_t seenbye_and_ok_time_usec;
+		bool seencancel;
+		u_int64_t seencancel_time_usec;
+		bool seencancel_and_ok;
+		u_int64_t seencancel_and_ok_time_usec;
+		bool seenauthfailed;
+		u_int64_t seenauthfailed_time_usec;
+	};
+	struct sCalledInviteBranchItem {
+		string to;
+		string to_uri;
+		string domain_to;
+		string domain_to_uri;
+	};
+};
+
+class CallBranch : public CallStructs {
+public:
+	CallBranch(Call *call = NULL, unsigned branch_id = 0);
+	inline void invite_list_lock() {
+		__SYNC_LOCK(_invite_list_lock);
+	}
+	inline void invite_list_unlock() {
+		__SYNC_UNLOCK(_invite_list_lock);
+	}
+	inline bool is_closed() {
+		return(seenbye ||
+		       seencancel ||
+		       ignore_rtp_after_response_time_usec ||
+		       (lastSIPresponseNum / 100 == 4 && !(lastSIPresponseNum == 401 || lastSIPresponseNum == 407 || lastSIPresponseNum == 491)) ||
+		       lastSIPresponseNum / 100 == 5 ||
+		       lastSIPresponseNum / 100 == 6);
+	}
+public:
+
+	Call *call;
+	unsigned branch_id;
+	string branch_call_id;
+	string branch_fbasename;
+
+	vector<sInviteSD_Addr> invite_sdaddr;
+	vector<sInviteSD_Addr> rinvite_sdaddr;
+	vector<sInviteSD_OrderItem> invite_sdaddr_order;
+	u_int64_t invite_sdaddr_last_ts;
+	int8_t invite_sdaddr_all_confirmed;
+	bool invite_sdaddr_bad_order;
+	
+	vmIP saddr;
+	vmPort sport;
+	vmIP daddr;
+	vmPort dport;
+	
+	sCseq invitecseq;
+	list<sCseq> invitecseq_next;
+	deque<sCseq> invitecseq_in_dialog;
+	sCseq byecseq[2];
+	sCseq messagecseq;
+	sCseq cancelcseq;		
+	sCseq updatecseq;
+	
+	string callername;
+	string caller;
+	string caller_domain;
+	string called_to;
+	string called_uri;
+	string called_final;
+	string called_domain_to;
+	string called_domain_uri;
+	string called_domain_final;
+	string caller_tag;
+	string called_tag_to;
+	
+	string contact_num;
+	string contact_domain;
+	string digest_username;
+	string digest_realm;
+	
+	string custom_header1;
+	string match_header;
+ 
+	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
+	vmIP sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
+	vmIP sipcalledip_mod;
+	vmIP sipcallerip_encaps;
+	vmIP sipcalledip_encaps;
+	u_int8_t sipcallerip_encaps_prot;
+	u_int8_t sipcalledip_encaps_prot;
+	vmIP sipcallerip_rslt;
+	vmIP sipcalledip_rslt;
+	vmIP sipcallerip_encaps_rslt;
+	vmIP sipcalledip_encaps_rslt;
+	u_int8_t sipcallerip_encaps_prot_rslt;
+	u_int8_t sipcalledip_encaps_prot_rslt;
+	vmPort sipcallerport[MAX_SIPCALLERDIP];
+	vmPort sipcalledport[MAX_SIPCALLERDIP];
+	vmPort sipcalledport_mod;
+	vmPort sipcallerport_rslt;
+	vmPort sipcalledport_rslt;
+	bool sipcallerdip_reverse;
+	
+	int whohanged;
+	char oneway;
+	vmIP lastsrcip;
+	vmIP lastdstip;
+	vmIP lastsipcallerip;
+	vmPort lastsrcport;
+	
+	map<string, sSipcalleRD_IP> map_sipcallerdip;
+	map<string, sCalledInviteBranchItem> called_invite_branch_map;
+
+	string lastSIPresponse;
+	int lastSIPresponseNum;
+	list<sSipResponse> SIPresponse;
+	list<sSipHistory> SIPhistory;
+	bool new_invite_after_lsr487;
+	bool cancel_lsr487;
+	
+	int reason_sip_cause;
+	string reason_sip_text;
+	int reason_q850_cause;
+	string reason_q850_text;
+	
+	string a_ua;
+	string b_ua;
+	
+	bool seeninvite;
+	bool seeninviteok;
+	bool seenmessage;
+	bool seenmessageok;
+	bool seenbye;
+	u_int64_t seenbye_time_usec;
+	bool seenokbye;
+	u_int64_t seenokbye_time_usec;
+	bool seenbye_and_ok;
+	bool seenbye_and_ok_permanent;
+	u_int64_t seenbye_and_ok_time_usec;
+	bool seencancel;
+	u_int64_t seencancel_time_usec;
+	bool seencancel_and_ok;
+	u_int64_t seencancel_and_ok_time_usec;
+	bool seenauthfailed;
+	u_int64_t seenauthfailed_time_usec;
+	u_int64_t ignore_rtp_after_response_time_usec;
+	bool unconfirmed_bye;
+	bool seenRES2XX;
+	bool seenRES2XX_no_BYE;
+	bool seenRES18X;
+	
+	u_int16_t vlan;
+	bool is_sipalg_detected;
+	
+	ip_port_call_info ip_port[MAX_IP_PER_CALL];
+	int ipport_n;
+
+	volatile int end_call_rtp;
+	volatile int end_call_hash_removed;
+	
+	RTPMAP rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP];
+	bool rtpmap_used_flags[MAX_IP_PER_CALL];
+	
+	volatile int rtp_ip_port_counter;
+	#if CHECK_HASHTABLE_FOR_ALL_CALLS
+	volatile int rtp_ip_port_counter_add;
+	#endif
+	
+	volatile int _invite_list_lock;
+
+	bool updateDstnumOnAnswer;
+	bool updateDstnumFromMessage;
+	
+};
+
 struct raws_t {
 	int ssrc_index;
 	int rawiterator;
@@ -440,26 +732,6 @@ enum eCallField {
 struct sCallField {
 	eCallField fieldType;
 	const char *fieldName;
-};
-
-struct sCseq {
-	inline void null() {
-		method = -1;
-		number = 0;
-	}
-	inline bool is_set() {
-		return(method > 0);
-	}
-	inline const bool operator == (const sCseq &cseq_other) {
-		return(this->method == cseq_other.method &&
-		       this->number == cseq_other.number);
-	}
-	inline const bool operator != (const sCseq &cseq_other) {
-		return(this->method != cseq_other.method ||
-		       this->number != cseq_other.number);
-	}
-	int method;
-	u_int32_t number;
 };
 
 #define P_FLAGS_IMAX 10
@@ -689,7 +961,7 @@ struct sChartsCacheCallData {
 /**
   * This class implements operations on call
 */
-class Call : public Call_abstract {
+class Call : public CallStructs, public Call_abstract {
 public:
 	enum eTable {
 		_t_cdr = 1,
@@ -706,114 +978,6 @@ public:
 	enum eStoreFlags {
 		_sf_db = 1,
 		_sf_charts_cache = 2
-	};
-	struct sSipcalleRD_IP {
-		sSipcalleRD_IP() {
-			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
-				sipcallerip[i].clear();
-				sipcalledip[i].clear();
-				sipcalledip_mod.clear();
-				sipcallerport[i].clear();
-				sipcalledport[i].clear();
-				sipcalledport_mod.clear();
-			}
-		}
-		vmIP sipcallerip[MAX_SIPCALLERDIP];
-		vmIP sipcalledip[MAX_SIPCALLERDIP];
-		vmIP sipcalledip_mod;
-		vmPort sipcallerport[MAX_SIPCALLERDIP];
-		vmPort sipcalledport[MAX_SIPCALLERDIP];
-		vmPort sipcalledport_mod;
-	};
-	struct sMergeLegInfo {
-		sMergeLegInfo() {
-			seenbye = false;
-			seenbye_time_usec = 0;
-			seenokbye = false;
-			seenokbye_time_usec = 0;
-			seenbye_and_ok = false;
-			seenbye_and_ok_time_usec = 0;
-			seencancel_and_ok = false;
-			seencancel_and_ok_time_usec = 0;
-			seenauthfailed = false;
-			seenauthfailed_time_usec = 0;
-		}
-		bool seenbye;
-		u_int64_t seenbye_time_usec;
-		bool seenokbye;
-		u_int64_t seenokbye_time_usec;
-		bool seenbye_and_ok;
-		u_int64_t seenbye_and_ok_time_usec;
-		bool seencancel_and_ok;
-		u_int64_t seencancel_and_ok_time_usec;
-		bool seenauthfailed;
-		u_int64_t seenauthfailed_time_usec;
-	};
-	struct sInviteSD_Addr {
-		sInviteSD_Addr() {
-			confirmed = false;
-			counter = 0;
-			counter_reverse = 0;
-		}
-		vmIP saddr;
-		vmIP daddr;
-		vmIP saddr_first;
-		vmIP daddr_first;
-		u_int8_t saddr_first_protocol;
-		u_int8_t daddr_first_protocol;
-		vmPort sport;
-		vmPort dport;
-		bool confirmed;
-		unsigned counter;
-		unsigned counter_reverse;
-		map<u_int32_t, u_int32_t> counter_by_cseq;
-		map<u_int32_t, u_int32_t> counter_reverse_by_cseq;
-		string caller;
-		string called;
-		string called_invite;
-		string branch;
-	};
-	struct sInviteSD_OrderItem {
-		inline sInviteSD_OrderItem(unsigned order, u_int64_t ts) {
-			this->order = order;
-			this->ts = ts;
-		}
-		unsigned order;
-		u_int64_t ts;
-	};
-	struct sCalledInviteBranchItem {
-		string to;
-		string to_uri;
-		string domain_to;
-		string domain_to_uri;
-	};
-	struct sSipResponse {
-		sSipResponse(const char *SIPresponse = NULL, int SIPresponseNum = 0) {
-			if(SIPresponse) {
-				this->SIPresponse = SIPresponse;
-			}
-			this->SIPresponseNum = SIPresponseNum;
-		}
-		string SIPresponse;
-		int SIPresponseNum;
-	};
-	struct sSipHistory {
-		sSipHistory(u_int64_t time_us = 0,
-			    const char *SIPrequest = NULL,
-			    const char *SIPresponse = NULL, int SIPresponseNum = 0) {
-			this->time_us = time_us;
-			if(SIPrequest && SIPrequest[0]) {
-				this->SIPrequest = SIPrequest;
-			}
-			if(SIPresponse && SIPresponse[0]) {
-				this->SIPresponse = SIPresponse;
-			}
-			this->SIPresponseNum = SIPresponseNum;
-		}
-		u_int64_t time_us;
-		string SIPrequest;
-		string SIPresponse;
-		int SIPresponseNum;
 	};
 	struct sRtcpXrDataItem {
 		timeval tv;
@@ -884,6 +1048,44 @@ public:
 		int last_seq;
 		u_int32_t last_ssrc;
 		u_int64_t last_ssrc_time_ms;
+	};
+	struct sReg {
+		sReg() {
+			registercseq.null();
+			msgcount = 0;
+			regcount = 0;
+			regcount_after_4xx = 0;
+			reg401count = 0;
+			reg401count_all = 0;
+			reg403count = 0;
+			reg404count = 0;
+			reg200count = 0;
+			regstate = 0;
+			regresponse = false;
+			regrrddiff = -1;
+			//regsrcmac = 0;
+			reg_tcp_seq = NULL;
+			last_sip_method = 0;
+			register_expires = -1;
+		}
+		sCseq registercseq;
+		int msgcount;
+		int regcount;
+		int regcount_after_4xx;
+		int reg401count;
+		int reg401count_all;
+		list<d_item2<vmIP, u_int16_t> > reg401count_sipcallerip_vlan;
+		int reg403count;
+		int reg404count;
+		int reg200count;
+		int regstate;
+		bool regresponse;
+		int register_expires;
+		timeval regrrdstart;		// time of first REGISTER
+		int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
+		//uint64_t regsrcmac;		// mac if ether layer present in REGISTER
+		list<u_int32_t> *reg_tcp_seq;
+		int last_sip_method;
 	};
 	enum eTxtType {
 		txt_type_na,
@@ -979,171 +1181,118 @@ public:
 	string call_id;	//!< call-id from SIP session
 	map<string, bool> *call_id_alternative;
 	volatile int _call_id_alternative_lock;
-	char callername[256];		//!< callerid name from SIP header
-	char caller[256];		//!< From: xxx 
-	char caller_domain[256];	//!< From: xxx 
-	char called_to[256];		//!< To: xxx
-	char called_uri[256];
-	char called_final[256];
-	inline const char *get_called() {
+	
+	inline const char *get_called(CallBranch *c_branch) {
 		extern int opt_destination_number_mode;
-		if(is_multiple_to_branch()) {
-			if(called_final[0]) {
-				if(to_is_canceled(called_final)) {
-					const char *rslt = opt_destination_number_mode == 2 ? get_to_uri_not_canceled() : get_to_not_canceled();
+		if(is_multiple_to_branch(c_branch)) {
+			if(!c_branch->called_final.empty()) {
+				if(to_is_canceled(c_branch, c_branch->called_final.c_str())) {
+					const char *rslt = opt_destination_number_mode == 2 ? get_to_uri_not_canceled(c_branch) : get_to_not_canceled(c_branch);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(called_final);
+				return(c_branch->called_final.c_str());
 			} else {
 				if(opt_destination_number_mode == 2) {
-					const char *rslt = get_called_uri(true);
+					const char *rslt = get_called_uri(c_branch, true);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(get_called_to(true));
+				return(get_called_to(c_branch, true));
 			}
-		} else {
-			return(called_final[0] ? called_final :
-			       called_uri[0] && opt_destination_number_mode == 2 ? called_uri : called_to);
 		}
+		return(!c_branch->called_final.empty() ? c_branch->called_final.c_str() :
+		       !c_branch->called_uri.empty() && opt_destination_number_mode == 2 ? c_branch->called_uri.c_str() : c_branch->called_to.c_str());
 	}
-	inline const char *get_called_to(int8_t _is_multiple_to_branch = -1) {
-		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
-			if(to_is_canceled(called_to)) {
-				const char *rslt = get_to_not_canceled();
+	inline const char *get_called_to(CallBranch *c_branch, int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch(c_branch)) {
+			if(to_is_canceled(c_branch, c_branch->called_to.c_str())) {
+				const char *rslt = get_to_not_canceled(c_branch);
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
 			}
 		}
-		return(called_to);
+		return(c_branch->called_to.c_str());
 	}
-	inline const char *get_called_uri(int8_t _is_multiple_to_branch = -1) {
-		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
-			if(to_is_canceled(called_to)) {
-				const char *rslt = get_to_uri_not_canceled();
+	inline const char *get_called_uri(CallBranch *c_branch, int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch(c_branch)) {
+			if(to_is_canceled(c_branch, c_branch->called_to.c_str())) {
+				const char *rslt = get_to_uri_not_canceled(c_branch);
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
-			} else if(called_uri[0]) {
-				return(called_uri);
+			} else if(!c_branch->called_uri.empty()) {
+				return(c_branch->called_uri.c_str());
 			}
-			return(get_called_to());
-		} else {
-			return(called_uri[0] ? called_uri : called_to);
+			return(get_called_to(c_branch));
 		}
+		return(!c_branch->called_uri.empty() ? c_branch->called_uri.c_str() : c_branch->called_to.c_str());
 	}
-	char called_domain_to[256];	//!< To: xxx
-	char called_domain_uri[256];
-	char called_domain_final[256];
-	inline const char *get_called_domain() {
+	inline const char *get_called_domain(CallBranch *c_branch) {
 		extern int opt_destination_number_mode;
-		if(is_multiple_to_branch()) {
-			if(called_final[0]) {
-				if(to_is_canceled(called_final)) {
-					const char *rslt = opt_destination_number_mode == 2 ? get_domain_to_uri_not_canceled() : get_domain_to_not_canceled();
+		if(is_multiple_to_branch(c_branch)) {
+			if(!c_branch->called_final.empty()) {
+				if(to_is_canceled(c_branch, c_branch->called_final.c_str())) {
+					const char *rslt = opt_destination_number_mode == 2 ? get_domain_to_uri_not_canceled(c_branch) : get_domain_to_not_canceled(c_branch);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(called_domain_final);
+				return(c_branch->called_domain_final.c_str());
 			} else {
 				if(opt_destination_number_mode == 2) {
-					const char *rslt = get_called_domain_uri(true);
+					const char *rslt = get_called_domain_uri(c_branch, true);
 					if(rslt && rslt[0]) {
 						return(rslt);
 					}
 				}
-				return(get_called_domain_to(true));
+				return(get_called_domain_to(c_branch, true));
 			}
-		} else {
-			return(called_domain_final[0] ? called_domain_final :
-			       called_domain_uri[0] && opt_destination_number_mode == 2 ? called_domain_uri : called_domain_to);
 		}
+		return(!c_branch->called_domain_final.empty() ? c_branch->called_domain_final.c_str() :
+		       !c_branch->called_domain_uri.empty() && opt_destination_number_mode == 2 ? c_branch->called_domain_uri.c_str() : c_branch->called_domain_to.c_str());
 	}
-	inline const char *get_called_domain_to(int8_t _is_multiple_to_branch = -1) {
-		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
-			if(to_is_canceled(called_to)) {
-				const char *rslt = get_domain_to_not_canceled();
+	inline const char *get_called_domain_to(CallBranch *c_branch, int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch(c_branch)) {
+			if(to_is_canceled(c_branch, c_branch->called_to.c_str())) {
+				const char *rslt = get_domain_to_not_canceled(c_branch);
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
 			}
 		}
-		return(called_domain_to);
+		return(c_branch->called_domain_to.c_str());
 	}
-	inline const char *get_called_domain_uri(int8_t _is_multiple_to_branch = -1) {
-		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch()) {
-			if(to_is_canceled(called_to)) {
-				const char *rslt = get_domain_to_uri_not_canceled();
+	inline const char *get_called_domain_uri(CallBranch *c_branch, int8_t _is_multiple_to_branch = -1) {
+		if(_is_multiple_to_branch >= 0 ? _is_multiple_to_branch : is_multiple_to_branch(c_branch)) {
+			if(to_is_canceled(c_branch, c_branch->called_to.c_str())) {
+				const char *rslt = get_domain_to_uri_not_canceled(c_branch);
 				if(rslt && rslt[0]) {
 					return(rslt);
 				}
-			} else if(called_domain_uri[0]) {
-				return(called_domain_uri);
+			} else if(!c_branch->called_domain_uri.empty()) {
+				return(c_branch->called_domain_uri.c_str());
 			}
-			return(get_called_domain_to());
-		} else {
-			return(called_domain_uri[0] ? called_domain_uri : called_domain_to);
+			return(get_called_domain_to(c_branch));
 		}
+		return(!c_branch->called_domain_uri.empty() ? c_branch->called_domain_uri.c_str() : c_branch->called_domain_to.c_str());
 	}
+	
 	inline bool is_fax() {
 		return(isfax || (seenudptl && exists_udptl_data));
 	}
 	inline bool is_fax_packet(struct packet_s_process_0 *packetS);
-	map<string, sCalledInviteBranchItem> called_invite_branch_map;
-	char contact_num[64];		//!< 
-	char contact_domain[128];	//!< 
-	char digest_username[64];	//!< 
-	char digest_realm[64];		//!< 
-	int register_expires;	
-	sCseq byecseq[2];		
-	sCseq invitecseq;		
-	list<sCseq> invitecseq_next;
-	deque<sCseq> invitecseq_in_dialog;
-	sCseq messagecseq;
-	sCseq registercseq;
-	sCseq cancelcseq;		
-	sCseq updatecseq;		
-	char custom_header1[256];	//!< Custom SIP header
-	char match_header[128];	//!< Custom SIP header
-	bool seeninvite;		//!< true if we see SIP INVITE within the Call
-	bool seeninviteok;			//!< true if we see SIP INVITE within the Call
-	bool seenmessage;
-	bool seenmessageok;
-	bool seenbye;			//!< true if we see SIP BYE within the Call
-	u_int64_t seenbye_time_usec;
-	bool seenokbye;
-	u_int64_t seenokbye_time_usec;
-	bool seenbye_and_ok;		//!< true if we see SIP OK TO BYE within the Call
-	bool seenbye_and_ok_permanent;
-	u_int64_t seenbye_and_ok_time_usec;
-	bool seencancel_and_ok;		//!< true if we see SIP OK TO CANCEL within the Call
-	u_int64_t seencancel_and_ok_time_usec;
-	bool seenauthfailed;
-	u_int64_t seenauthfailed_time_usec;
-	u_int64_t ignore_rtp_after_response_time_usec;
-	bool unconfirmed_bye;
-	bool seenRES2XX;
-	bool seenRES2XX_no_BYE;
-	bool seenRES18X;
+	
 	bool sighup;			//!< true if call is saving during sighup
-	char a_ua[1024];		//!< caller user agent 
-	char b_ua[1024];		//!< callee user agent 
-	RTPMAP rtpmap[MAX_IP_PER_CALL][MAX_RTPMAP]; //!< rtpmap for every rtp stream
-	bool rtpmap_used_flags[MAX_IP_PER_CALL];
+	
 	RTP *lastcallerrtp;		//!< last RTP stream from caller
 	RTP *lastcalledrtp;		//!< last RTP stream from called
 	RTP *lastactivecallerrtp;
 	RTP *lastactivecalledrtp;
-	vmIP saddr;		//!< source IP address of first INVITE
-	vmPort sport;		//!< source port of first INVITE
-	vmIP daddr;
-	vmPort dport;
-	int whohanged;			//!< who hanged up. 0 -> caller, 1-> callee, -1 -> unknown
+	
 	int recordstopped;		//!< flag holding if call was stopped to avoid double free
 	int dtmfflag;			//!< used for holding dtmf states 
 	unsigned int dtmfflag2[2];	//!< used for holding dtmf states 
@@ -1153,32 +1302,15 @@ public:
 	bool hold_status;		//!< hold status var
 	bool is_fas_detected;		//!< detected FAS (False Answer Supervision)
 	bool is_zerossrc_detected;	//!< detected zero SSRC
-	bool is_sipalg_detected;	//!< detected sip-alg
-
+	
 	int silencerecording;
 	int recordingpausedby182;
 	bool save_energylevels;
-	int msgcount;
 	
-	int regcount;
-	int regcount_after_4xx;
-	int reg401count;
-	int reg401count_all;
-	list<d_item2<vmIP, u_int16_t> > reg401count_sipcallerip_vlan;
-	int reg403count;
-	int reg404count;
-	int reg200count;
-	int regstate;
-	bool regresponse;
-	timeval regrrdstart;		// time of first REGISTER
-	int regrrddiff;			// RRD diff time REGISTER<->OK in [ms]- RFC6076
-	//uint64_t regsrcmac;		// mac if ether layer present in REGISTER
-	list<u_int32_t> *reg_tcp_seq;
+	sReg reg;
 	
-	int last_sip_method;
 	volatile int rtppacketsinqueue;
-	volatile int end_call_rtp;
-	volatile int end_call_hash_removed;
+	
 	volatile int push_call_to_calls_queue;
 	volatile int push_register_to_registers_queue;
 	volatile int push_call_to_storing_cdr_queue;
@@ -1225,48 +1357,6 @@ public:
 	void *rtp_cur[2];		//!< last RTP structure in direction 0 and 1 (iscaller = 1)
 	void *rtp_prev[2];		//!< previouse RTP structure in direction 0 and 1 (iscaller = 1)
 
-	vmIP sipcallerip[MAX_SIPCALLERDIP];	//!< SIP signalling source IP address
-	vmIP sipcalledip[MAX_SIPCALLERDIP];	//!< SIP signalling destination IP address
-	vmIP sipcalledip_mod;
-	vmIP sipcallerip_encaps;
-	vmIP sipcalledip_encaps;
-	u_int8_t sipcallerip_encaps_prot;
-	u_int8_t sipcalledip_encaps_prot;
-	vmIP sipcallerip_rslt;
-	vmIP sipcalledip_rslt;
-	vmIP sipcallerip_encaps_rslt;
-	vmIP sipcalledip_encaps_rslt;
-	u_int8_t sipcallerip_encaps_prot_rslt;
-	u_int8_t sipcalledip_encaps_prot_rslt;
-	vmPort sipcallerport[MAX_SIPCALLERDIP];
-	vmPort sipcalledport[MAX_SIPCALLERDIP];
-	vmPort sipcalledport_mod;
-	vmPort sipcallerport_rslt;
-	vmPort sipcalledport_rslt;
-	map<string, sSipcalleRD_IP> map_sipcallerdip;
-	vmIP lastsipcallerip;
-	bool sipcallerdip_reverse;
-	
-	volatile int _invite_list_lock;
-	vector<sInviteSD_Addr> invite_sdaddr;
-	vector<sInviteSD_Addr> rinvite_sdaddr;
-	vector<sInviteSD_OrderItem> invite_sdaddr_order;
-	u_int64_t invite_sdaddr_last_ts;
-	int8_t invite_sdaddr_all_confirmed;
-	bool invite_sdaddr_bad_order;
-
-	char lastSIPresponse[128];
-	int lastSIPresponseNum;
-	list<sSipResponse> SIPresponse;
-	list<sSipHistory> SIPhistory;
-	bool new_invite_after_lsr487;
-	bool cancel_lsr487;
-	
-	int reason_sip_cause;
-	string reason_sip_text;
-	int reason_q850_cause;
-	string reason_q850_text;
-
 	char *contenttype;
 	char *message;
 	char *message_info;
@@ -1294,7 +1384,6 @@ public:
 	int thread_num;
 	int thread_num_rd;
 
-	char oneway;
 	char absolute_timeout_exceeded;
 	char zombie_timeout_exceeded;
 	char bye_timeout_exceeded;
@@ -1305,14 +1394,9 @@ public:
 	char max_invite_packets_exceeded;
 	char force_terminate;
 	char pcap_drop;
-	vmIP lastsrcip;
-	vmIP lastdstip;
-	vmPort lastsrcport;
-
+	
 	void *listening_worker_args;
 	
-	int ipport_n;				//!< last index of addr and port array 
-
 	RTP *lastraw[2];
 
 	string geoposition;
@@ -1332,9 +1416,6 @@ public:
 	u_int16_t onCall_18X_counter;
 	u_int16_t onHangup_counter;
 	
-	bool updateDstnumOnAnswer;
-	bool updateDstnumFromMessage;
-	
 	bool force_close;
 
 	unsigned int caller_silence;
@@ -1347,8 +1428,6 @@ public:
 	unsigned int caller_clipping_8k;
 	unsigned int called_clipping_8k;
 	
-	u_int16_t vlan;
-
 	unsigned int lastcallerssrc;
 	unsigned int lastcalledssrc;
 
@@ -1417,30 +1496,30 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
-	inline int get_index_by_ip_port_by_src(vmIP addr, vmPort port, int iscaller, bool rtcp = false) {
-		int index_call_ip_port_by_src = get_index_by_ip_port(addr, port, false, rtcp);
+	int get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
+	inline int get_index_by_ip_port_by_src(CallBranch *c_branch, vmIP addr, vmPort port, int iscaller, bool rtcp = false) {
+		int index_call_ip_port_by_src = get_index_by_ip_port(c_branch, addr, port, false, rtcp);
 		if(index_call_ip_port_by_src < 0) {
-			index_call_ip_port_by_src = get_index_by_ip_port(addr, port, true, rtcp);
+			index_call_ip_port_by_src = get_index_by_ip_port(c_branch, addr, port, true, rtcp);
 		}
 		if(index_call_ip_port_by_src < 0 && iscaller_is_set(iscaller)) {
-			index_call_ip_port_by_src = get_index_by_iscaller(iscaller_inv_index(iscaller));
+			index_call_ip_port_by_src = get_index_by_iscaller(c_branch, iscaller_inv_index(iscaller));
 		}
 		return(index_call_ip_port_by_src);
 	}
-	int get_index_by_sessid_to(char *sessid, char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
-	int get_index_by_iscaller(int iscaller);
+	int get_index_by_sessid_to(CallBranch *c_branch, const char *sessid, const char *to, vmIP sip_src_addr, ip_port_call_info::eTypeAddr type_addr);
+	int get_index_by_iscaller(CallBranch *c_branch, int iscaller);
 	
-	bool is_multiple_to_branch();
-	bool all_invite_is_multibranch(vmIP saddr, bool use_lock = true);
-	bool to_is_canceled(char *to);
-	const char *get_to_not_canceled(bool uri = false);
-	const char *get_to_uri_not_canceled() {
-		return(get_to_not_canceled(true));
+	bool is_multiple_to_branch(CallBranch *c_branch);
+	bool all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_lock = true);
+	bool to_is_canceled(CallBranch *c_branch, const char *to);
+	const char *get_to_not_canceled(CallBranch *c_branch, bool uri = false);
+	const char *get_to_uri_not_canceled(CallBranch *c_branch) {
+		return(get_to_not_canceled(c_branch, true));
 	}
-	const char *get_domain_to_not_canceled(bool uri = false);
-	const char *get_domain_to_uri_not_canceled() {
-		return(get_domain_to_not_canceled(true));
+	const char *get_domain_to_not_canceled(CallBranch *c_branch, bool uri = false);
+	const char *get_domain_to_uri_not_canceled(CallBranch *c_branch) {
+		return(get_domain_to_not_canceled(c_branch, true));
 	}
 
 	/**
@@ -1457,8 +1536,9 @@ public:
 	 * Used for reading RTP packet 
 	 * 
 	*/
-	bool read_rtp(struct packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname = NULL);
-	inline bool _read_rtp(packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
+	bool read_rtp(CallBranch *c_branch, struct packet_s_process_0 *packetS, int iscaller, bool find_by_dest, bool stream_in_multiple_calls, s_sdp_flags_base sdp_flags, char enable_save_packet, char *ifname = NULL);
+	inline void _read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP *rtp, int iscaller, bool new_rtp);
+	inline bool _read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, s_sdp_flags_base sdp_flags, bool find_by_dest, bool stream_in_multiple_calls, char *ifname, bool *record_dtmf, bool *disable_save);
 	inline void _save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char enable_save_packet, bool record_dtmf, u_int8_t forceVirtualUdp = false);
 
 	/**
@@ -1467,7 +1547,7 @@ public:
 	 * Used for reading RTCP packet 
 	 * 
 	*/
-	bool read_rtcp(packet_s_process_0 *packetS, int iscaller, char enable_save_packet);
+	bool read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscaller, char enable_save_packet);
 	
 	void read_dtls(packet_s_process_0 *packetS);
 
@@ -1481,23 +1561,24 @@ public:
 	 * 
 	 * @return return 0 on success, 1 if IP and port is duplicated and -1 on failure
 	*/
-	int add_ip_port(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
+	
+	int add_ip_port(CallBranch *c_branch,
+			vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			char *sessid, char *sdp_label, 
 			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-			char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
+			char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
 			int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
-	
-	bool refresh_data_ip_port(vmIP addr, vmPort port, struct timeval *ts, 
+	bool refresh_data_ip_port(CallBranch *c_branch,
+				  vmIP addr, vmPort port, struct timeval *ts, 
 				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 				  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
-	
-	void add_ip_port_hash(vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
+	void add_ip_port_hash(CallBranch *c_branch,
+			      vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 			      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
 			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
-
-	void cancel_ip_port_hash(vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
+	void cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
 	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  
@@ -1550,13 +1631,20 @@ public:
 	void set_first_packet_time_us(u_int64_t time_us) { first_packet_time_us = time_us; };
 
 	u_int64_t get_last_time_us() {
-		extern bool opt_ignore_duration_after_bye_confirmed;
-		return(typeIs(MGCP) ? 
-			last_mgcp_connect_packet_time_us : 
-			(opt_ignore_duration_after_bye_confirmed && this->seenbye_and_ok_time_usec && this->seenbye_and_ok_time_usec > first_packet_time_us ? 
-			  this->seenbye_and_ok_time_usec :
-			  get_last_packet_time_us()));
+		if(typeIs(MGCP)) {
+			return(last_mgcp_connect_packet_time_us);
+		} else {
+			extern bool opt_ignore_duration_after_bye_confirmed;
+			if(opt_ignore_duration_after_bye_confirmed) {
+				CallBranch *c_branch = this->branch_main();
+				if(c_branch->seenbye_and_ok_time_usec && c_branch->seenbye_and_ok_time_usec > first_packet_time_us) {
+					return(c_branch->seenbye_and_ok_time_usec);
+				}
+			}
+		}
+		return(get_last_packet_time_us());
 	}
+	
 	u_int32_t get_last_time_s() { return TIME_US_TO_S(get_last_time_us()); }
 	
 	/**
@@ -1577,6 +1665,7 @@ public:
 	 *
 	*/
 	int saveToDb(bool enableBatchIfPossible = true);
+	void prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch *n_branch, int indexRow, string &table, bool batch, string *query_str);
 	int saveAloneByeToDb(bool enableBatchIfPossible = true);
 
 	/**
@@ -1615,11 +1704,11 @@ public:
 	 * @brief remove call from hash table
 	 *
 	*/
-	void hashRemove(bool useHashQueueCounter = false);
+	void hashRemove(CallBranch *c_branch, bool useHashQueueCounter = false);
 	
 	void skinnyTablesRemove();
-	
-	void removeFindTables(bool set_end_call = false, bool destroy = false);
+
+	void removeFindTables(CallBranch *c_branch, bool set_end_call = false, bool destroy = false, bool callFromAllBranch = false);
 	
 	void destroyCall();
 
@@ -1652,46 +1741,47 @@ public:
 	 *
 	*/
 
-	void evProcessRtpStream(int index_ip_port, bool by_dest, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
-		if(index_ip_port < ipport_n) {
-			if(!ip_port[index_ip_port].rtp[by_dest].saddr.isSet()) {
-				ip_port[index_ip_port].rtp[by_dest].saddr = saddr;
-				ip_port[index_ip_port].rtp[by_dest].sport = sport;
-				ip_port[index_ip_port].rtp[by_dest].daddr = daddr;
-				ip_port[index_ip_port].rtp[by_dest].dport = dport;
-				this->evStartRtpStream(index_ip_port, saddr, sport, daddr, dport, time);
+	void evProcessRtpStream(CallBranch *c_branch, int index_ip_port, bool by_dest, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time) {
+		if(index_ip_port < c_branch->ipport_n) {
+			if(!c_branch->ip_port[index_ip_port].rtp[by_dest].saddr.isSet()) {
+				c_branch->ip_port[index_ip_port].rtp[by_dest].saddr = saddr;
+				c_branch->ip_port[index_ip_port].rtp[by_dest].sport = sport;
+				c_branch->ip_port[index_ip_port].rtp[by_dest].daddr = daddr;
+				c_branch->ip_port[index_ip_port].rtp[by_dest].dport = dport;
+				this->evStartRtpStream(c_branch, index_ip_port, saddr, sport, daddr, dport, time);
 			}
-			ip_port[index_ip_port].rtp[by_dest].last_packet_time = time;
+			c_branch->ip_port[index_ip_port].rtp[by_dest].last_packet_time = time;
 		}
 	}
-	void evDestroyIpPortRtpStream(int index_ip_port) {
-		if(index_ip_port < ipport_n) {
+	void evDestroyIpPortRtpStream(CallBranch *c_branch, int index_ip_port) {
+		if(index_ip_port < c_branch->ipport_n) {
 			for(int i = 0; i < 2; i++) {
-				if(ip_port[index_ip_port].rtp[i].saddr.isSet()) {
-					this->evEndRtpStream(index_ip_port, 
-							     ip_port[index_ip_port].rtp[i].saddr,
-							     ip_port[index_ip_port].rtp[i].sport,
-							     ip_port[index_ip_port].rtp[i].daddr,
-							     ip_port[index_ip_port].rtp[i].dport,
-							     ip_port[index_ip_port].rtp[i].last_packet_time);
+				if(c_branch->ip_port[index_ip_port].rtp[i].saddr.isSet()) {
+					this->evEndRtpStream(c_branch, index_ip_port, 
+							     c_branch->ip_port[index_ip_port].rtp[i].saddr,
+							     c_branch->ip_port[index_ip_port].rtp[i].sport,
+							     c_branch->ip_port[index_ip_port].rtp[i].daddr,
+							     c_branch->ip_port[index_ip_port].rtp[i].dport,
+							     c_branch->ip_port[index_ip_port].rtp[i].last_packet_time);
 				}
 			}
-			this->nullIpPortInfoRtpStream(index_ip_port);
+			this->nullIpPortInfoRtpStream(c_branch, index_ip_port);
 		}
 	}
-	void nullIpPortInfoRtpStream(int index_ip_port) {
-		if(index_ip_port < ipport_n) {
+	void nullIpPortInfoRtpStream(CallBranch *c_branch, int index_ip_port) {
+		if(index_ip_port < c_branch->ipport_n) {
 			for(int i = 0; i < 2; i++) {
-				ip_port[index_ip_port].rtp[i].saddr.clear();
-				ip_port[index_ip_port].rtp[i].sport.clear();
-				ip_port[index_ip_port].rtp[i].daddr.clear();
-				ip_port[index_ip_port].rtp[i].dport.clear();
-				ip_port[index_ip_port].rtp[i].last_packet_time = 0;
+				c_branch->ip_port[index_ip_port].rtp[i].saddr.clear();
+				c_branch->ip_port[index_ip_port].rtp[i].sport.clear();
+				c_branch->ip_port[index_ip_port].rtp[i].daddr.clear();
+				c_branch->ip_port[index_ip_port].rtp[i].dport.clear();
+				c_branch->ip_port[index_ip_port].rtp[i].last_packet_time = 0;
 			}
 		}
 	}
-	void evStartRtpStream(int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
-	void evEndRtpStream(int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
+	
+	void evStartRtpStream(CallBranch *c_branch, int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
+	void evEndRtpStream(CallBranch *c_branch, int index_ip_port, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport, time_t time);
 	
 	void addtocachequeue(string file);
 	static void _addtocachequeue(string file);
@@ -1705,50 +1795,53 @@ public:
 	
 	void handle_dscp(struct iphdr2 *header_ip, bool iscaller);
 	
-	bool check_is_caller_called(const char *call_id, int sip_method, int cseq_method,
+	bool check_is_caller_called(CallBranch *c_branch,
+				    const char *call_id, int sip_method, int cseq_method,
 				    vmIP saddr, vmIP daddr, 
 				    vmIP saddr_first, vmIP daddr_first, u_int8_t first_protocol,
 				    vmPort sport, vmPort dport,  
 				    int *iscaller, int *iscalled = NULL, bool enableSetSipcallerdip = false);
-	bool is_sipcaller(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
-	bool is_sipcalled(vmIP daddr, vmPort dport, vmIP saddr, vmPort sport);
+	
+	bool is_sipcaller(CallBranch *c_branch, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport);
+	bool is_sipcalled(CallBranch *c_branch, vmIP daddr, vmPort dport, vmIP saddr, vmPort sport);
+	
 	bool use_both_side_for_check_direction() {
 		extern bool opt_both_side_for_check_direction;
 		return(opt_both_side_for_check_direction);
 	}
-	void check_reset_oneway(vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
-		if(oneway &&
-		   (lastsrcip != saddr ||
-		    (lastsrcip == lastdstip &&
-		     lastsrcport != sport))) {
-			invite_list_lock();
-			for(vector<sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+	
+	void check_reset_oneway(CallBranch *c_branch, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport) {
+		if(c_branch->oneway &&
+		   (c_branch->lastsrcip != saddr ||
+		    (c_branch->lastsrcip == c_branch->lastdstip &&
+		     c_branch->lastsrcport != sport))) {
+			c_branch->invite_list_lock();
+			for(vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
 				if(sport == iter->sport && dport == iter->dport &&
 				   saddr == iter->saddr && daddr == iter->daddr) {
-					invite_list_unlock();
+					c_branch->invite_list_unlock();
 					return;
 				}
 			}
-			invite_list_unlock();
-			oneway = 0;
+			c_branch->invite_list_unlock();
+			c_branch->oneway = 0;
 		}
 	}
 
 	void dump();
 
-	bool isFillRtpMap(int index) {
+	bool isFillRtpMap(CallBranch *c_branch, int index) {
 		for(int i = 0; i < MAX_RTPMAP; i++) {
-			if(rtpmap[index][i].is_set()) {
+			if(c_branch->rtpmap[index][i].is_set()) {
 				return(true);
 			}
 		}
 		return(false);
 	}
-
-	int getFillRtpMapByCallerd(bool iscaller) {
-		for(int i = ipport_n - 1; i >= 0; i--) {
-			if(ip_port[i].iscaller == iscaller &&
-			   isFillRtpMap(i)) {
+	int getFillRtpMapByCallerd(CallBranch *c_branch, bool iscaller) {
+		for(int i = c_branch->ipport_n - 1; i >= 0; i--) {
+			if(c_branch->ip_port[i].iscaller == iscaller &&
+			   isFillRtpMap(c_branch, i)) {
 				return(i);
 			}
 		}
@@ -1835,31 +1928,45 @@ public:
 		__sync_lock_release(&this->_proxies_lock);
 	}
 	
-	void invite_list_lock() {
-		while(__sync_lock_test_and_set(&this->_invite_list_lock, 1));
-	}
-	void invite_list_unlock() {
-		__sync_lock_release(&this->_invite_list_lock);
-	}
-	
-	bool is_enable_set_destroy_call_at_for_call(sCseq *cseq, int merged) {
-		return((!cseq || !this->invitecseq_in_dialog.size() || find(this->invitecseq_in_dialog.begin(),this->invitecseq_in_dialog.end(), *cseq) == this->invitecseq_in_dialog.end()) &&
+	bool is_enable_set_destroy_call_at_for_call(CallBranch *c_branch, sCseq *cseq, int merged) {
+		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
 		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
 	}
 	
-	void shift_destroy_call_at(u_int32_t time_s, int lastSIPresponseNum = 0) {
+	bool is_closed_other_branches(CallBranch *c_branch) {
+		if(is_multibranch()) {
+			if(first_branch.branch_id != c_branch->branch_id &&
+			   !first_branch.is_closed()) {
+				return(false);
+			}
+			bool ok = true;
+			branches_lock();
+			for(unsigned i = 0; i < next_branches.size(); i++) {
+				if(next_branches[i]->branch_id != c_branch->branch_id &&
+				   !next_branches[i]->is_closed()) {
+					ok = false;
+					break;
+				}
+			}
+			branches_unlock();
+			return(ok);
+		}
+		return(true);
+	}
+	
+	void shift_destroy_call_at(CallBranch *c_branch, u_int32_t time_s, int lastSIPresponseNum = 0) {
 		extern int opt_quick_save_cdr;
 		if(this->destroy_call_at > 0) {
 			extern int opt_register_timeout;
 			time_t new_destroy_call_at = 
 				typeIs(REGISTER) ?
 					time_s + opt_register_timeout :
-					(this->seenbye_and_ok ?
+					(c_branch->seenbye_and_ok ?
 						time_s + (opt_quick_save_cdr == 2 ? 0 :
 							 (opt_quick_save_cdr ? 1 : 5)) :
-					 this->seenbye ?
+					 c_branch->seenbye ?
 						time_s + 60 :
-						time_s + (lastSIPresponseNum == 487 || this->lastSIPresponseNum == 487 ? 15 : 5));
+						time_s + (lastSIPresponseNum == 487 || c_branch->lastSIPresponseNum == 487 ? 15 : 5));
 			if(new_destroy_call_at > this->destroy_call_at) {
 				this->destroy_call_at = new_destroy_call_at;
 			}
@@ -1868,8 +1975,8 @@ public:
 	
 	void applyRtcpXrDataToRtp();
 	
-	void adjustUA();
-	void adjustReason();
+	void adjustUA(CallBranch *c_branch);
+	void adjustReason(CallBranch *c_branch);
 	
 	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
 
@@ -1891,38 +1998,54 @@ public:
 	void destroyListeningBuffers();
 	void disableListeningBuffers();
 	
-	bool checkKnownIP_inSipCallerdIP(vmIP ip) {
+	bool checkKnownIP_inSipCallerdIP(CallBranch *c_branch, vmIP ip) {
+		if(!c_branch) {
+			if(checkKnownIP_inSipCallerdIP(&first_branch, ip)) {
+				return(true);
+			}
+			bool rslt = false;
+			if(next_branches.size()) {
+				for(unsigned i = 0; i < next_branches.size(); i++) {
+					if(checkKnownIP_inSipCallerdIP(next_branches[i], ip)) {
+						rslt = true;
+						break;
+					}
+				}
+			}
+			return(rslt);
+		}
 		for(int i = 0; i < MAX_SIPCALLERDIP; i++) {
-			if(ip == sipcallerip[i] ||
-			   ip == sipcalledip[i]) {
+			if(ip == c_branch->sipcallerip[i] ||
+			   ip == c_branch->sipcalledip[i]) {
 				return(true);
 			}
 		}
 		return(false);
 	}
 	
-	bool isAllInviteConfirmed() {
-		if(invite_sdaddr_all_confirmed == -1) {
+	bool isAllInviteConfirmed(CallBranch *c_branch) {
+		if(c_branch->invite_sdaddr_all_confirmed == -1) {
 			bool all_confirmed = true;
-			invite_list_lock();
-			for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+			c_branch->invite_list_lock();
+			for(vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin(); iter != c_branch->invite_sdaddr.end(); iter++) {
 				if(!iter->confirmed) {
 					all_confirmed = false;
 					break;
 				}
 			}
-			invite_sdaddr_all_confirmed = all_confirmed;
-			invite_list_unlock();
+			c_branch->invite_sdaddr_all_confirmed = all_confirmed;
+			c_branch->invite_list_unlock();
 		}
-		return(invite_sdaddr_all_confirmed);
+		return(c_branch->invite_sdaddr_all_confirmed);
 	}
 	
-	vmIP getSipcalleripFromInviteList(vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
+	vmIP getSipcalleripFromInviteList(CallBranch *c_branch, vmPort *sport = NULL, vmIP *saddr_encaps = NULL, u_int8_t *saddr_encaps_protocol = NULL, 
 					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
-	vmIP getSipcalledipFromInviteList(vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 
+	vmIP getSipcalledipFromInviteList(CallBranch *c_branch, vmPort *dport = NULL, vmIP *daddr_encaps = NULL, u_int8_t *daddr_encaps_protocol = NULL, list<vmIPport> *proxies = NULL, 
 					  bool onlyConfirmed = false, bool onlyFirst = false, u_int8_t only_ipv = 0);
+	void prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup);
 	
-	unsigned getMaxRetransmissionInvite();
+	unsigned getMaxRetransmissionInvite(CallBranch *c_branch);
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
@@ -1960,10 +2083,13 @@ public:
 	bool existsConcurenceInSelectedRtpStream(int caller, unsigned tolerance_ms);
 	bool existsBothDirectionsInSelectedRtpStream();
 	
-	bool isSetCallidMergeHeader() {
+	bool isSetCallidMergeHeader(bool checkForceSeparateBranches = false) {
 		extern char opt_callidmerge_header[128];
+		extern bool opt_call_branches;
+		extern bool opt_callidmerge_force_separate_branches;
 		return((typeIs(INVITE) || typeIs(MESSAGE)) &&
-		       opt_callidmerge_header[0] != '\0');
+		       opt_callidmerge_header[0] != '\0' &&
+		       !(checkForceSeparateBranches && opt_call_branches && opt_callidmerge_force_separate_branches));
 	}
 	void removeCallIdMap();
 	void removeMergeCalls();
@@ -1974,78 +2100,78 @@ public:
 		__sync_lock_release(&this->_mergecalls_lock);
 	}
 	
-	inline void setSipcallerip(vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
-		sipcallerip[0] = ip;
-		sipcallerip_encaps = ip_encaps;
-		sipcallerip_encaps_prot = ip_encaps_prot;
-		sipcallerport[0] = port;
-		if(isSetCallidMergeHeader() &&
+	inline void setSipcallerip(CallBranch *c_branch, vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
+		c_branch->sipcallerip[0] = ip;
+		c_branch->sipcallerip_encaps = ip_encaps;
+		c_branch->sipcallerip_encaps_prot = ip_encaps_prot;
+		c_branch->sipcallerport[0] = port;
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
-			map_sipcallerdip[call_id].sipcallerip[0] = ip;
-			map_sipcallerdip[call_id].sipcallerport[0] = port;
+			c_branch->map_sipcallerdip[call_id].sipcallerip[0] = ip;
+			c_branch->map_sipcallerdip[call_id].sipcallerport[0] = port;
 		}
 	}
-	inline void setSipcalledip(vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
-		if(sipcalledip[0].isSet()) {
-			sipcalledip_mod = ip;
-			sipcalledport_mod = port;
+	inline void setSipcalledip(CallBranch *c_branch, vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
+		if(c_branch->sipcalledip[0].isSet()) {
+			c_branch->sipcalledip_mod = ip;
+			c_branch->sipcalledport_mod = port;
 		} else {
-			sipcalledip[0] = ip;
-			sipcalledport[0] = port;
+			c_branch->sipcalledip[0] = ip;
+			c_branch->sipcalledport[0] = port;
 		}
-		sipcalledip_encaps = ip_encaps;
-		sipcalledip_encaps_prot = ip_encaps_prot;
-		if(isSetCallidMergeHeader() &&
+		c_branch->sipcalledip_encaps = ip_encaps;
+		c_branch->sipcalledip_encaps_prot = ip_encaps_prot;
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
-			if(map_sipcallerdip[call_id].sipcalledip[0].isSet()) {
-				map_sipcallerdip[call_id].sipcalledip_mod = ip;
-				map_sipcallerdip[call_id].sipcalledport_mod = port;
+			if(c_branch->map_sipcallerdip[call_id].sipcalledip[0].isSet()) {
+				c_branch->map_sipcallerdip[call_id].sipcalledip_mod = ip;
+				c_branch->map_sipcallerdip[call_id].sipcalledport_mod = port;
 			} else {
-				map_sipcallerdip[call_id].sipcalledip[0] = ip;
-				map_sipcallerdip[call_id].sipcalledport[0] = port;
+				c_branch->map_sipcallerdip[call_id].sipcalledip[0] = ip;
+				c_branch->map_sipcallerdip[call_id].sipcalledport[0] = port;
 			}
 		}
 	}
-	vmIP getSipcallerip(bool correction_via_invite_list_if_need = false) {
-		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
-			vmIP sipcallerip_correction = getSipcalleripFromInviteList();
+	vmIP getSipcallerip(CallBranch *c_branch, bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order) {
+			vmIP sipcallerip_correction = getSipcalleripFromInviteList(c_branch);
 			if(sipcallerip_correction.isSet()) {
 				return(sipcallerip_correction);
 			}
 		}
-		return(sipcallerip[0]);
+		return(c_branch->sipcallerip[0]);
 	}
-	vmIP getSipcallerip_encaps(bool correction_via_invite_list_if_need = false) {
-		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+	vmIP getSipcallerip_encaps(CallBranch *c_branch, bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order) {
 			vmIP sipcallerip_encaps_correction;
 			u_int8_t sipcallerip_encaps_prot_correction;
-			getSipcalleripFromInviteList(NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
+			getSipcalleripFromInviteList(c_branch, NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
 			if(sipcallerip_encaps_correction.isSet()) {
 				return(sipcallerip_encaps_correction);
 			}
 		}
-		return(sipcallerip_encaps);
+		return(c_branch->sipcallerip_encaps);
 	}
-	u_int8_t getSipcallerip_encaps_prot(bool correction_via_invite_list_if_need = false) {
-		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+	u_int8_t getSipcallerip_encaps_prot(CallBranch *c_branch, bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order) {
 			vmIP sipcallerip_encaps_correction;
 			u_int8_t sipcallerip_encaps_prot_correction;
-			getSipcalleripFromInviteList(NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
+			getSipcalleripFromInviteList(c_branch, NULL, &sipcallerip_encaps_correction, &sipcallerip_encaps_prot_correction);
 			if(sipcallerip_encaps_correction.isSet()) {
 				return(sipcallerip_encaps_prot_correction);
 			}
 		}
-		return(sipcallerip_encaps_prot);
+		return(c_branch->sipcallerip_encaps_prot);
 	}
-	vmIP getSipcalledip(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false, vmPort *port = NULL, std::set<vmIP> *proxies = NULL) {
-		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
-		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+	vmIP getSipcalledip(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false, vmPort *port = NULL, std::set<vmIP> *proxies = NULL) {
+		bool need_correction = correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed(c_branch);
 		if(need_correction || need_confirmed) {
 			vmPort sipcalledport_correction;
 			list<vmIPport> proxies_correction;
 			vmIP sipcalledip_correction;
 			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
-				sipcalledip_correction = getSipcalledipFromInviteList(&sipcalledport_correction, NULL, NULL, proxies ? &proxies_correction : NULL, need_confirmed && i == 0);
+				sipcalledip_correction = getSipcalledipFromInviteList(c_branch, &sipcalledport_correction, NULL, NULL, proxies ? &proxies_correction : NULL, need_confirmed && i == 0);
 				if(sipcalledip_correction.isSet()) {
 					if(port) {
 						*port = sipcalledport_correction;
@@ -2059,76 +2185,76 @@ public:
 			}
 		}
 		if(port) {
-			*port = sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0];
+			*port = c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0];
 		}
 		if(proxies && this->proxies.size()) {
-			vmIPport proxy_exclude(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0], 
-					       sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
+			vmIPport proxy_exclude(c_branch->sipcalledip_mod.isSet() ? c_branch->sipcalledip_mod : c_branch->sipcalledip[0], 
+					       c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0]);
 			proxies_undup(proxies, NULL, &proxy_exclude);
 		}
-		return(sipcalledip_mod.isSet() ? sipcalledip_mod : sipcalledip[0]);
+		return(c_branch->sipcalledip_mod.isSet() ? c_branch->sipcalledip_mod : c_branch->sipcalledip[0]);
 	}
-	vmIP getSipcalledip_encaps(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
-		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
-		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+	vmIP getSipcalledip_encaps(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed(c_branch);
 		if(need_correction || need_confirmed) {
 			vmIP sipcalledip_encaps_correction;
 			u_int8_t sipcalledip_encaps_prot_correction;
 			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
-				getSipcalledipFromInviteList(NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
+				getSipcalledipFromInviteList(c_branch, NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
 				if(sipcalledip_encaps_correction.isSet()) {
 					return(sipcalledip_encaps_correction);
 				}
 			}
 		}
-		return(sipcalledip_encaps);
+		return(c_branch->sipcalledip_encaps);
 	}
-	u_int8_t getSipcalledip_encaps_prot(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
-		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
-		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+	u_int8_t getSipcalledip_encaps_prot(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed(c_branch);
 		if(need_correction || need_confirmed) {
 			vmIP sipcalledip_encaps_correction;
 			u_int8_t sipcalledip_encaps_prot_correction;
 			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
-				getSipcalledipFromInviteList(NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
+				getSipcalledipFromInviteList(c_branch, NULL, &sipcalledip_encaps_correction, &sipcalledip_encaps_prot_correction, NULL, need_confirmed && i == 0);
 				if(sipcalledip_encaps_correction.isSet()) {
 					return(sipcalledip_encaps_prot_correction);
 				}
 			}
 		}
-		return(sipcalledip_encaps_prot);
+		return(c_branch->sipcalledip_encaps_prot);
 	}
-	vmPort getSipcallerport(bool correction_via_invite_list_if_need = false) {
-		if(correction_via_invite_list_if_need && invite_sdaddr_bad_order) {
+	vmPort getSipcallerport(CallBranch *c_branch, bool correction_via_invite_list_if_need = false) {
+		if(correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order) {
 			vmPort sipcallerport_correction;
-			getSipcalleripFromInviteList(&sipcallerport_correction);
+			getSipcalleripFromInviteList(c_branch, &sipcallerport_correction);
 			if(sipcallerport_correction.isSet()) {
 				return(sipcallerport_correction);
 			}
 		}
-		return(sipcallerport[0]);
+		return(c_branch->sipcallerport[0]);
 	}
-	vmPort getSipcalledport(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
-		bool need_correction = correction_via_invite_list_if_need && invite_sdaddr_bad_order;
-		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed();
+	vmPort getSipcalledport(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		bool need_correction = correction_via_invite_list_if_need && c_branch->invite_sdaddr_bad_order;
+		bool need_confirmed = confirm_via_invite_list && !isAllInviteConfirmed(c_branch);
 		if(need_correction || need_confirmed) {
 			vmPort sipcalledport_correction;
 			for(int i = 0; i < (need_correction && need_confirmed ? 2 : 1); i++) {
-				getSipcalledipFromInviteList(&sipcalledport_correction, NULL, NULL, NULL, need_confirmed && i == 0);
+				getSipcalledipFromInviteList(c_branch, &sipcalledport_correction, NULL, NULL, NULL, need_confirmed && i == 0);
 				if(sipcalledport_correction.isSet()) {
 					return(sipcalledport_correction);
 				}
 			}
 		}
-		return(sipcalledport_mod.isSet() ? sipcalledport_mod : sipcalledport[0]);
+		return(c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0]);
 	}
-	void getProxies(std::set<vmIP> *proxies = NULL, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
-		getSipcalledip(correction_via_invite_list_if_need, confirm_via_invite_list, NULL, proxies);
+	void getProxies(CallBranch *c_branch, std::set<vmIP> *proxies = NULL, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+		getSipcalledip(c_branch, correction_via_invite_list_if_need, confirm_via_invite_list, NULL, proxies);
 	}
-	string getProxies_str(bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
+	string getProxies_str(CallBranch *c_branch, bool correction_via_invite_list_if_need = false, bool confirm_via_invite_list = false) {
 		string rslt;
 		std::set<vmIP> proxies;
-		getProxies(&proxies, correction_via_invite_list_if_need, confirm_via_invite_list);
+		getProxies(c_branch, &proxies, correction_via_invite_list_if_need, confirm_via_invite_list);
 		for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 			if(!rslt.empty()) {
 				rslt += ",";
@@ -2137,12 +2263,13 @@ public:
 		}
 		return(rslt);
 	}
-	void setSeenBye(bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
-		this->seenbye = seenbye;
-		if(!this->seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
-			this->seenbye_time_usec = seenbye_time_usec;
+	
+	void setSeenBye(CallBranch *c_branch, bool seenbye, u_int64_t seenbye_time_usec, const char *call_id) {
+		c_branch->seenbye = seenbye;
+		if(!c_branch->seenbye_time_usec || (!seenbye && !seenbye_time_usec)) {
+			c_branch->seenbye_time_usec = seenbye_time_usec;
 		}
-		if(isSetCallidMergeHeader() &&
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
@@ -2154,12 +2281,12 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	void setSeenOkBye(bool seenokbye, u_int64_t seenokbye_time_usec, const char *call_id) {
-		this->seenokbye = seenokbye;
-		if(!this->seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
-			this->seenokbye_time_usec = seenokbye_time_usec;
+	void setSeenOkBye(CallBranch *c_branch, bool seenokbye, u_int64_t seenokbye_time_usec, const char *call_id) {
+		c_branch->seenokbye = seenokbye;
+		if(!c_branch->seenokbye_time_usec || (!seenokbye && !seenokbye_time_usec)) {
+			c_branch->seenokbye_time_usec = seenokbye_time_usec;
 		}
-		if(isSetCallidMergeHeader() &&
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
@@ -2171,15 +2298,15 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	void setSeenByeAndOk(bool seenbye_and_ok, u_int64_t seenbye_and_ok_time_usec, const char *call_id) {
-		this->seenbye_and_ok = seenbye_and_ok;
+	void setSeenByeAndOk(CallBranch *c_branch, bool seenbye_and_ok, u_int64_t seenbye_and_ok_time_usec, const char *call_id) {
+		c_branch->seenbye_and_ok = seenbye_and_ok;
 		if(seenbye_and_ok) {
-			this->seenbye_and_ok_permanent = true;
+			c_branch->seenbye_and_ok_permanent = true;
 		}
-		if(!this->seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
-			this->seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
+		if(!c_branch->seenbye_and_ok_time_usec || (!seenbye_and_ok && !seenbye_and_ok_time_usec)) {
+			c_branch->seenbye_and_ok_time_usec = seenbye_and_ok_time_usec;
 		}
-		if(isSetCallidMergeHeader() &&
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
@@ -2191,12 +2318,29 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	void setSeenCancelAndOk(bool seencancel_and_ok, u_int64_t seencancel_and_ok_time_usec, const char *call_id) {
-		this->seencancel_and_ok = seencancel_and_ok;
-		if(!this->seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
-			this->seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
+	void setSeenCancel(CallBranch *c_branch, bool seencancel, u_int64_t seencancel_time_usec, const char *call_id) {
+		c_branch->seencancel = seencancel;
+		if(!c_branch->seencancel_time_usec || (!seencancel && !seencancel_time_usec)) {
+			c_branch->seencancel_time_usec = seencancel_time_usec;
 		}
-		if(isSetCallidMergeHeader() &&
+		if(isSetCallidMergeHeader(true) &&
+		   call_id && *call_id) {
+			mergecalls_lock();
+			if(mergecalls.find(call_id) != mergecalls.end()) {
+				mergecalls[call_id].seencancel = seencancel;
+				if(!mergecalls[call_id].seencancel_time_usec || (!seencancel && !seencancel_time_usec)) {
+					mergecalls[call_id].seencancel_time_usec = seencancel_time_usec;
+				}
+			}
+			mergecalls_unlock();
+		}
+	}
+	void setSeenCancelAndOk(CallBranch *c_branch, bool seencancel_and_ok, u_int64_t seencancel_and_ok_time_usec, const char *call_id) {
+		c_branch->seencancel_and_ok = seencancel_and_ok;
+		if(!c_branch->seencancel_and_ok_time_usec || (!seencancel_and_ok && !seencancel_and_ok_time_usec)) {
+			c_branch->seencancel_and_ok_time_usec = seencancel_and_ok_time_usec;
+		}
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
@@ -2207,13 +2351,14 @@ public:
 			}
 			mergecalls_unlock();
 		}
+
 	}
-	void setSeenAuthFailed(bool seenauthfailed, u_int64_t seenauthfailed_time_usec, const char *call_id) {
-		this->seenauthfailed = seenauthfailed;
-		if(!this->seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
-			this->seenauthfailed_time_usec = seenauthfailed_time_usec;
+	void setSeenAuthFailed(CallBranch *c_branch, bool seenauthfailed, u_int64_t seenauthfailed_time_usec, const char *call_id) {
+		c_branch->seenauthfailed = seenauthfailed;
+		if(!c_branch->seenauthfailed_time_usec || (!seenauthfailed && !seenauthfailed_time_usec)) {
+			c_branch->seenauthfailed_time_usec = seenauthfailed_time_usec;
 		}
-		if(isSetCallidMergeHeader() &&
+		if(isSetCallidMergeHeader(true) &&
 		   call_id && *call_id) {
 			mergecalls_lock();
 			if(mergecalls.find(call_id) != mergecalls.end()) {
@@ -2225,8 +2370,8 @@ public:
 			mergecalls_unlock();
 		}
 	}
-	u_int64_t getSeenByeTimeUS() {
-		if(isSetCallidMergeHeader()) {
+	u_int64_t getSeenByeTimeUS(CallBranch *c_branch) {
+		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenbye_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -2241,10 +2386,10 @@ public:
 			mergecalls_unlock();
 			return(seenbye_time_usec);
 		}
-		return(seenbye ? seenbye_time_usec : 0);
+		return(c_branch->seenbye ? c_branch->seenbye_time_usec : 0);
 	}
-	u_int64_t getSeenByeAndOkTimeUS() {
-		if(isSetCallidMergeHeader()) {
+	u_int64_t getSeenByeAndOkTimeUS(CallBranch *c_branch) {
+		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenbye_and_ok_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -2259,10 +2404,28 @@ public:
 			mergecalls_unlock();
 			return(seenbye_and_ok_time_usec);
 		}
-		return(seenbye_and_ok ? seenbye_and_ok_time_usec : 0);
+		return(c_branch->seenbye_and_ok ? c_branch->seenbye_and_ok_time_usec : 0);
 	}
-	u_int64_t getSeenCancelAndOkTimeUS() {
-		if(isSetCallidMergeHeader()) {
+	u_int64_t getSeenCancelTimeUS(CallBranch *c_branch) {
+		if(isSetCallidMergeHeader(true)) {
+			u_int64_t seencancel_time_usec = 0;
+			mergecalls_lock();
+			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
+				if(!it->second.seencancel || !it->second.seencancel_time_usec) {
+					mergecalls_unlock();
+					return(0);
+				}
+				if(seencancel_time_usec < it->second.seencancel_time_usec) {
+					seencancel_time_usec = it->second.seencancel_time_usec;
+				}
+			}
+			mergecalls_unlock();
+			return(seencancel_time_usec);
+		}
+		return(c_branch->seencancel ? c_branch->seencancel_time_usec : 0);
+	}
+	u_int64_t getSeenCancelAndOkTimeUS(CallBranch *c_branch) {
+		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seencancel_and_ok_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -2277,10 +2440,10 @@ public:
 			mergecalls_unlock();
 			return(seencancel_and_ok_time_usec);
 		}
-		return(seencancel_and_ok ? seencancel_and_ok_time_usec : 0);
+		return(c_branch->seencancel_and_ok ? c_branch->seencancel_and_ok_time_usec : 0);
 	}
-	u_int64_t getSeenAuthFailedTimeUS() {
-		if(isSetCallidMergeHeader()) {
+	u_int64_t getSeenAuthFailedTimeUS(CallBranch *c_branch) {
+		if(isSetCallidMergeHeader(true)) {
 			u_int64_t seenauthfailed_time_usec = 0;
 			mergecalls_lock();
 			for(map<string, sMergeLegInfo>::iterator it = mergecalls.begin(); it != mergecalls.end(); ++it) {
@@ -2295,28 +2458,28 @@ public:
 			mergecalls_unlock();
 			return(seenauthfailed_time_usec);
 		}
-		return(seenauthfailed ? seenauthfailed_time_usec : 0);
+		return(c_branch->seenauthfailed ? c_branch->seenauthfailed_time_usec : 0);
 	}
-	int setByeCseq(sCseq *cseq) {
+	int setByeCseq(CallBranch *c_branch, sCseq *cseq) {
 		unsigned index;
-		unsigned size_byecseq = sizeof(byecseq) / sizeof(byecseq[0]);
+		unsigned size_byecseq = sizeof(c_branch->byecseq) / sizeof(c_branch->byecseq[0]);
 		for(index = 0; index < size_byecseq; index++) {
-			if(!byecseq[index].is_set()) {
+			if(!c_branch->byecseq[index].is_set()) {
 				break;
-			} else if(byecseq[index] == *cseq) {
+			} else if(c_branch->byecseq[index] == *cseq) {
 				return(index);
 			}
 		}
 		if(index == size_byecseq) {
 			index = size_byecseq - 1;
 		}
-		byecseq[index] = *cseq;
+		c_branch->byecseq[index] = *cseq;
 		return(index);
 	}
-	int existsByeCseq(sCseq *cseq) {
-		for(unsigned index = 0; index < (sizeof(byecseq) / sizeof(byecseq[0])); index++) {
-			if(byecseq[index].is_set() &&
-			   byecseq[index] == *cseq) {
+	int existsByeCseq(CallBranch *c_branch, sCseq *cseq) {
+		for(unsigned index = 0; index < (sizeof(c_branch->byecseq) / sizeof(c_branch->byecseq[0])); index++) {
+			if(c_branch->byecseq[index].is_set() &&
+			   c_branch->byecseq[index] == *cseq) {
 				return(index + 1);
 			}
 		}
@@ -2363,16 +2526,17 @@ public:
 	
 	void addRegTcpSeq(u_int32_t seq) {
 		if(seq) {
-			if(!reg_tcp_seq) {
-				reg_tcp_seq = new list<u_int32_t>;
+			if(!reg.reg_tcp_seq) {
+				reg.reg_tcp_seq = new list<u_int32_t>;
 			}
-			reg_tcp_seq->push_back(seq);
+			reg.reg_tcp_seq->push_back(seq);
 		}
 	}
 	
 	eMoMtLegFlag momt_get();
-	void srvcc_check_post();
-	void srvcc_check_pre();
+	
+	void srvcc_check_post(CallBranch *c_branch);
+	void srvcc_check_pre(CallBranch *c_branch);
 	
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	inline void add_rtp_stream(RTP *rtp) {
@@ -2419,8 +2583,8 @@ public:
 	inline bool existsSrtpFingerprint() {
 		return(exists_srtp_fingerprint);
 	}
-	inline bool isSrtpInIpPort(int indexIpPort) {
-		return(ip_port[indexIpPort].srtp);
+	inline bool isSrtpInIpPort(CallBranch *c_branch, int indexIpPort) {
+		return(c_branch->ip_port[indexIpPort].srtp);
 	}
 	
 	void dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item);
@@ -2430,8 +2594,40 @@ public:
 	void dtls_keys_lock();
 	void dtls_keys_unlock();
 
+public:	
+	CallBranch first_branch;
+	int8_t single_branch;
+	vector<CallBranch*> next_branches;
+	map<string, int> branches_to_map;
+	map<string, int> branches_tag_map;
+	volatile unsigned branch_main_id;
+	volatile int _branches_lock;
+	inline bool is_multibranch() {
+		return(next_branches.size() > 0);
+	}
+	inline CallBranch *branch_main() {
+		return(branch(branch_main_id));
+	}
+	inline CallBranch *branch(unsigned branch_id) {
+		if(branch_id == 0) {
+			return(&first_branch);
+		} else {
+			CallBranch *branch;
+			branches_lock();
+			branch = next_branches[branch_id - 1];
+			branches_unlock();
+			return(branch);
+		}
+	}
+	void branches_lock() {
+		__SYNC_LOCK(_branches_lock);
+	}
+	void branches_unlock() {
+		__SYNC_UNLOCK(_branches_lock);
+	}
+	
 private:
-	ip_port_call_info ip_port[MAX_IP_PER_CALL];
+	
 	bool callerd_confirm_rtp_by_both_sides_sdp[2];
 	bool exists_srtp;
 	bool exists_srtp_crypto_config;
@@ -2446,10 +2642,6 @@ private:
 public:
 	list<vmPort> sdp_ip0_ports[2];
 	bool error_negative_payload_length;
-	volatile int rtp_ip_port_counter;
-	#if CHECK_HASHTABLE_FOR_ALL_CALLS
-	volatile int rtp_ip_port_counter_add;
-	#endif
 	#if NEW_RTP_FIND__NODES
 	list<vmIPport> rtp_ip_port_list;
 	#endif
@@ -2724,7 +2916,7 @@ private:
 		vmIP addr;
 		vmPort port;
 		u_int32_t time_s;
-		Call* call;
+		CallBranch *c_branch;
 		int8_t iscaller;
 		int8_t is_rtcp;
 		int8_t ignore_rtcp_check;
@@ -3152,9 +3344,9 @@ public:
 	 * @brief add call to hash table
 	 *
 	*/
-	void hashAdd(vmIP addr, vmPort port, u_int64_t time_us, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
-	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
-	void _hashAddExt(vmIP addr, vmPort port, long int time_s, Call* call, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
+	void hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags);
+	inline void _hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
+	void _hashAddExt(vmIP addr, vmPort port, long int time_s, CallBranch *c_branch, int iscaller, int isrtcp, s_sdp_flags sdp_flags, bool use_lock = true);
 
 	/**
 	 * @brief find call
@@ -3283,7 +3475,7 @@ public:
 		}
 		return rslt;
 	}
-	inline bool check_call_in_hashfind_by_ip_port(Call *call, vmIP addr, vmPort port, bool lock = true) {
+	inline bool check_call_in_hashfind_by_ip_port(Call *call, CallBranch *c_branch, vmIP addr, vmPort port, bool lock = true) {
 		bool rslt = false;
 		if(lock) {
 			lock_calls_hash();
@@ -3300,7 +3492,7 @@ public:
 			#else
 			if(n_call) {
 				for(; n_call; n_call = n_call->next) {
-					if(n_call->call == call) {
+					if(n_call->c_branch == c_branch) {
 						rslt = true;
 						break;
 					}
@@ -3313,7 +3505,7 @@ public:
 		}
 		return rslt;
 	}
-	inline s_sdp_flags *get_sdp_flags_in_hashfind_by_ip_port(Call *call, vmIP addr, vmPort port, bool lock = true) {
+	inline s_sdp_flags *get_sdp_flags_in_hashfind_by_ip_port(Call *call, CallBranch *c_branch, vmIP addr, vmPort port, bool lock = true) {
 		s_sdp_flags *sdp_flags = NULL;
 		if(lock) {
 			lock_calls_hash();
@@ -3330,7 +3522,7 @@ public:
 			#else
 			if(n_call) {
 				for(; n_call; n_call = n_call->next) {
-					if(n_call->call == call) {
+					if(n_call->c_branch == c_branch) {
 						sdp_flags = &n_call->sdp_flags;
 						break;
 					}
@@ -3348,12 +3540,12 @@ public:
 	 * @brief remove call from hash
 	 *
 	*/
-	void hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
-	inline int _hashRemove(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
-	int _hashRemoveExt(Call *call, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
-	int hashRemove(Call *call, bool useHashQueueCounter = true);
-	int hashRemoveForce(Call *call);
-	inline int _hashRemove(Call *call, bool use_lock = true);
+	void hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool useHashQueueCounter = true);
+	inline int _hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
+	int _hashRemoveExt(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp = false, bool ignore_rtcp_check = false, bool use_lock = true);
+	int hashRemove(CallBranch *c_branch, bool useHashQueueCounter = true);
+	int hashRemoveForce(CallBranch *c_branch);
+	inline int _hashRemove(CallBranch *c_branch, bool use_lock = true);
 	void applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
 	inline void _applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash = true);
 	string getHashStats();
@@ -3650,7 +3842,7 @@ class NoStoreCdrRule {
 public:
 	NoStoreCdrRule();
 	~NoStoreCdrRule();
-	bool check(Call *call);
+	bool check(Call *call, CallBranch *c_branch);
 	void set(const char*);
 	bool isSet();
 private:
@@ -3676,7 +3868,7 @@ private:
 class NoStoreCdrRules {
 public:
 	~NoStoreCdrRules();
-	bool check(Call *call);
+	bool check(Call *call, CallBranch *c_branch);
 	void set(const char*);
 	bool isSet();
 private:

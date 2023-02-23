@@ -17,7 +17,7 @@
 using namespace std;
 
 
-extern void process_sdp(Call *call, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
+extern void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, char *from, unsigned sdplen,
 			char *callidstr, char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch);
 extern void detect_to_extern(packet_s_process *packetS, char *to, unsigned to_length, bool *detected);
 extern void detect_domain_to_extern(packet_s_process *packetS, char *domain_to, unsigned domain_to_length, bool *detected);
@@ -180,13 +180,13 @@ void *handle_mgcp(packet_s_process *packetS) {
 							break;
 						}
 					}
-					call->removeFindTables(NULL, true);
+					callMAPIT->second->removeFindTables(NULL, false, true);
 					calltable->unlock_calls_listMAP();
 				} else {
 					calltable->lock_calls_listMAP();
 					map<sStreamId, Call*>::iterator callMAPIT = calltable->calls_by_stream_listMAP.find(sStreamId(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), true));
 					if(callMAPIT != calltable->calls_by_stream_listMAP.end()) {
-						callMAPIT->second->removeFindTables(NULL, true);
+						callMAPIT->second->removeFindTables(NULL, false, true);
 					}
 					calltable->unlock_calls_listMAP();
 				}
@@ -201,9 +201,10 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call = calltable->add_mgcp(&request, getTimeUS(packetS->header_pt), packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
 				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
-				strcpy_null_term(call->called_final, request.endpoint.c_str());
-				call->setSipcallerip(packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
-				call->setSipcalledip(packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_());
+				CallBranch *c_branch = call->branch_main();
+				c_branch->called_final = request.endpoint;
+				call->setSipcallerip(c_branch, packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
+				call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_());
 				call->flags = flags;
 				strcpy_null_term(call->fbasename, request.call_id().c_str());
 				if(enable_save_sip_rtp_audio(call)) {
@@ -237,7 +238,8 @@ void *handle_mgcp(packet_s_process *packetS) {
 				}
 			} else if(call) {
 				calltable->lock_calls_listMAP();
-				calltable->calls_by_stream_id2_listMAP[sStreamId2(call->saddr, call->sport, call->daddr, call->dport, request.transaction_id, true)] = call;
+				CallBranch *c_branch = call->branch_main();
+				calltable->calls_by_stream_id2_listMAP[sStreamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, request.transaction_id, true)] = call;
 				call->mgcp_transactions.push_back(request.transaction_id);
 				calltable->unlock_calls_listMAP();
 			}
@@ -245,7 +247,8 @@ void *handle_mgcp(packet_s_process *packetS) {
 			call = calltable->find_by_stream(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 			if(call) {
 				calltable->lock_calls_listMAP();
-				calltable->calls_by_stream_id2_listMAP[sStreamId2(call->saddr, call->sport, call->daddr, call->dport, request.transaction_id, true)] = call;
+				CallBranch *c_branch = call->branch_main();
+				calltable->calls_by_stream_id2_listMAP[sStreamId2(c_branch->saddr, c_branch->sport, c_branch->daddr, c_branch->dport, request.transaction_id, true)] = call;
 				call->mgcp_transactions.push_back(request.transaction_id);
 				calltable->unlock_calls_listMAP();
 			}
@@ -273,12 +276,13 @@ void *handle_mgcp(packet_s_process *packetS) {
 		if(is_request && request_type == _mgcp_DLCX) {
 			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
 		} else {
-			call->shift_destroy_call_at(packetS->getTime_s());
+			call->shift_destroy_call_at(call->branch_main(), packetS->getTime_s());
 		}
 		if(is_response) {
-			if(call->lastSIPresponseNum == 0 || call->lastSIPresponseNum < 300) {
-				call->lastSIPresponseNum = response_code;
-				strcpy_null_term(call->lastSIPresponse, response.response.c_str());
+			CallBranch *c_branch = call->branch_main();
+			if(c_branch->lastSIPresponseNum == 0 || c_branch->lastSIPresponseNum < 300) {
+				c_branch->lastSIPresponseNum = response_code;
+				c_branch->lastSIPresponse = response.response;
 			}
 		}
 		if(sdp) {
@@ -286,7 +290,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				cout << "SDP: " << endl << string((char*)sdp + sdp_separator_length, packetS->datalen_() - mgcp_header_len - sdp_separator_length) << endl;
 			}
 			int iscaller;
-			call->check_is_caller_called(NULL, MGCP, 0, 
+			call->check_is_caller_called(call->branch_main(), NULL, MGCP, 0, 
 						     packetS->saddr_(), packetS->daddr_(), 
 						     packetS->saddr_(true), packetS->daddr_(true), packetS->header_ip_protocol(true),
 						     packetS->source_(), packetS->dest_(), 
@@ -297,7 +301,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 			detect_to_extern(packetS, to, sizeof(to), NULL);
 			detect_domain_to_extern(packetS, domain, sizeof(domain), NULL);
 			detect_branch_extern(packetS, branch, sizeof(branch), NULL);
-			process_sdp(call, packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
+			process_sdp(call, call->branch_main(), packetS, iscaller, (char*)(sdp + sdp_separator_length), 0,
 				    (char*)call->call_id.c_str(), to, NULL, domain, NULL, branch);
 		}
 		if(!call->connect_time_us && is_request) {

@@ -385,6 +385,7 @@ int opt_pb_read_from_file_acttime_diff_secs = 0;
 int64_t opt_pb_read_from_file_time_adjustment = 0;
 unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
+bool opt_suppress_cleanup_after_read = false;
 bool opt_nonstop_read = false;
 bool opt_nonstop_read_quick = false;
 int opt_time_to_terminate = 0;
@@ -800,12 +801,18 @@ int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
 int opt_skiprtpdata = 0;
 
+bool opt_call_branches = false;
+bool opt_call_branches_find_by_called_number = true;
+bool opt_call_branches_find_by_called_domain = false;
+bool opt_call_branches_find_smart = true;
+
 char opt_call_id_alternative[256] = "";
 vector<string> opt_call_id_alternative_v;
 char opt_fbasename_header[128] = "";
 char opt_match_header[128] = "";
 char opt_callidmerge_header[128] = "";
 char opt_callidmerge_secret[128] = "";
+bool opt_callidmerge_force_separate_branches = false;
 
 char odbc_dsn[256] = "voipmonitor";
 char odbc_user[256];
@@ -1377,6 +1384,7 @@ static void check_context_config();
 static void set_context_config_after_check_db_schema();
 static void create_spool_dirs();
 static bool check_complete_parameters();
+static void final_parameters();
 static void parse_opt_nocdr_for_last_responses();
 static void set_cdr_check_unique_callid_in_sensors_list();
 
@@ -3556,6 +3564,8 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 	
+	final_parameters();
+	
 	runAt = time(NULL);
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
 		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
@@ -5558,1322 +5568,6 @@ void terminate_packetbuffer() {
 }
 
 
-#include "rqueue.h"
-#include "fraud.h"
-#include <regex.h>
-
-struct XX {
-	XX(int a = 0, int b = 0) {
-		this->a = a;
-		this->b = b;
-	}
-	int a;
-	int b;
-};
-
-void test_search_country_by_number() {
-	CheckInternational *ci = new FILE_LINE(42040) CheckInternational();
-	ci->setInternationalMinLength(9, false);
-	CountryPrefixes *cp = new FILE_LINE(42041) CountryPrefixes();
-	cp->load();
-	vector<string> countries;
-	vmIP ip;
-	cout << cp->getCountry("00039123456789", ip, &countries, NULL, ci) << endl;
-	for(size_t i = 0; i < countries.size(); i++) {
-		cout << countries[i] << endl;
-	}
-	delete cp;
-	delete ci;
-	cout << "-" << endl;
-}
-
-void test_geoip() {
-	GeoIP_country *ipc = new FILE_LINE(42042) GeoIP_country();
-	ipc->load();
-	cout << ipc->getCountry(str_2_vmIP("152.251.11.109")) << endl;
-	delete ipc;
-}
-
-void test_filebuffer() {
-	int maxFiles = 1000;
-	int bufferLength = 8000;
-	FILE *file[maxFiles];
-	char *fbuffer[maxFiles];
-	
-	for(int i = 0; i < maxFiles; i++) {
-		char filename[100];
-		snprintf(filename, sizeof(filename), "/dev/shm/test/%i", i);
-		file[i] = fopen(filename, "w");
-		
-		setbuf(file[i], NULL);
-		
-		fbuffer[i] = new FILE_LINE(42043) char[bufferLength];
-		
-	}
-	
-	printf("%d\n", BUFSIZ);
-	
-	char writebuffer[1000];
-	memset(writebuffer, 1, 1000);
-	
-	for(int i = 0; i < maxFiles; i++) {
-		fwrite(writebuffer, 1000, 1, file[i]);
-		fclose(file[i]);
-		char filename[100];
-		snprintf(filename, sizeof(filename), "/dev/shm/test/%i", i);
-		file[i] = fopen(filename, "a");
-		
-		fflush(file[i]);
-		setvbuf(file[i], fbuffer[i], _IOFBF, bufferLength);
-	}
-	
-	struct timeval tv;
-	struct timezone tz;
-	gettimeofday(&tv, &tz);
-	
-	cout << "---" << endl;
-	u_int64_t _start = getTimeUS(tv);
-	
-	
-	for(int p = 0; p < 5; p++)
-	for(int i = 0; i < maxFiles; i++) {
-		fwrite(writebuffer, 1000, 1, file[i]);
-	}
-	
-	cout << "---" << endl;
-	gettimeofday(&tv, &tz);
-	u_int64_t _end = getTimeUS(tv);
-	cout << (_end - _start) << endl;
-}
-
-void test_safeasyncqueue() {
-	SafeAsyncQueue<XX> testSAQ;
-	XX xx(1,2);
-	testSAQ.push(xx);
-	XX yy;
-	sleep(1);
-	if(testSAQ.pop(&yy)) {
-		cout << "y" << endl;
-		cout << yy.a << "/" << yy.b << endl;
-	} else {
-		cout << "n" << endl;
-	}
-}
-
-void test_parsepacket() {
-	char *str = (char*)"INVITE sip:800123456@sip.odorik.cz SIP/2.0\r\nVia: SIP/2.0/UDP 192.168.1.12:5061;rport;branch=z9hG4bK354557323\r\nFrom: <sip:706912@sip.odorik.cz>;tag=1645803335\r\nTo: <sip:800123456@sip.odorik.cz>\r\nCall-ID: 1781060762\r\nCSeq: 20 INVITE\r\nContact: <sip:jumbox@93.91.52.46>\r\nContent-Type: application/sdp\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, SUBSCRIBE, INFO\r\nMax-Forwards: 70\r\nUser-Agent: Linphone/3.6.1 (eXosip2/3.6.0)\r\nSubject: Phone call\r\nContent-Length: 453\r\n\r\nv=0\r\no=706912 1477 2440 IN IP4 93.91.52.46\r\ns=Talk\r\nc=IN IP4 93.91.52.46\r\nt=0 0\r\nm=audio 7078 RTP/AVP 125 112 111 110 96 3 0 8 101\r\na=rtpmap:125 opus/48000\r\na=fmtp:125 useinbandfec=1; usedtx=1\r\na=rtpmap:112 speex/32000\r\na=fmtp:112 vbr=on\r\na=rtpmap:111 speex/16000\r\na=fmtp:111 vbr=on\r\na=rtpmap:110 speex/8000\r\na=fmtp:110 vbr=on\r\na=rtpmap:96 GSM/11025\r\na=rtpmap:101 telephone-event/8000\r\na=fmtp:101 0-11\r\nm=video 9078 RTP/AVP 103\r\na=rtpmap:103 VP8/90000\r\n\177\026\221V";
-	ParsePacket pp;
-	pp.setStdParse();
-	ParsePacket::ppContentsX contents;
-	pp.parseData(str, strlen(str), &contents);
-	pp.debugData(&contents);
-}
-	
-void test_parsepacket2() {
- 
-        ParsePacket pp;
-	pp.addNode("test1", ParsePacket::typeNode_std);
-	pp.addNode("test2", ParsePacket::typeNode_std);
-	pp.addNode("test3", ParsePacket::typeNode_std);
-	
-	char *str = (char*)"test1abc\ntEst2def\ntest3ghi";
-	
-	ParsePacket::ppContentsX contents;
-	pp.parseData(str, strlen(str), &contents);
-	
-	cout << "test1: " << contents.getContentString("test1") << endl;
-	cout << "test2: " << contents.getContentString("test2") << endl;
-	cout << "test3: " << contents.getContentString("test3") << endl;
-	
-	pp.debugData(&contents);
-}
-
-void test_reg() {
-	cout << reg_match("123456789", "456", __FILE__, __LINE__) << endl;
-	cout << reg_replace("123456789", "(.*)(456)(.*)", "$1-$2-$3", __FILE__, __LINE__) << endl;
-}
-
-void test_escape() {
-	char checkbuff[2] = " ";
-	for(int i = 0; i < 256; i++) {
-		checkbuff[0] = i;
-		string escapePacket1 = sqlEscapeString(checkbuff, 1);
-		string escapePacket2 = _sqlEscapeString(checkbuff, 1, "mysql");
-		if(escapePacket1 != escapePacket2) {
-			cout << i << endl;
-			cout << escapePacket1 << endl;
-			cout << escapePacket2 << endl;
-			break;
-		}
-	}
-}
-
-void test_alloc_speed() {
-	extern unsigned int HeapSafeCheck;
-	uint32_t ii = 1000000;
-	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
-	for(int p = 0; p < 10; p++) {
-		char **pointers = new FILE_LINE(42044) char*[ii];
-		for(u_int32_t i = 0; i < ii; i++) {
-			pointers[i] = new FILE_LINE(42045) char[1000];
-		}
-		for(u_int32_t i = 0; i < ii; i++) {
-			delete [] pointers[i];
-		}
-		delete [] pointers;
-	}
-}
-
-void test_alloc_speed_malloc() {
-	extern unsigned int HeapSafeCheck;
-	uint32_t ii = 1000000;
-	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
-	for(int p = 0; p < 10; p++) {
-		char **pointers = new FILE_LINE(42046) char*[ii];
-		for(u_int32_t i = 0; i < ii; i++) {
-			pointers[i] = (char*)malloc(1000);
-		}
-		for(u_int32_t i = 0; i < ii; i++) {
-			free(pointers[i]);
-		}
-		delete [] pointers;
-	}
-}
-
-#ifdef HAVE_LIBTCMALLOC
-#if HAVE_LIBTCMALLOC
-extern "C" {
-void* tc_malloc(size_t size);
-void tc_free(void*);
-}
-void test_alloc_speed_tc() {
-	extern unsigned int HeapSafeCheck;
-	uint32_t ii = 1000000;
-	cout << "HeapSafeCheck: " << HeapSafeCheck << endl;
-	for(int p = 0; p < 10; p++) {
-		char **pointers = new FILE_LINE(42047) char*[ii];
-		for(u_int32_t i = 0; i < ii; i++) {
-			pointers[i] = (char*)tc_malloc(1000);
-		}
-		for(u_int32_t i = 0; i < ii; i++) {
-			tc_free(pointers[i]);
-		}
-		delete [] pointers;
-	}
-}
-#endif
-#endif
-
-void test_untar() {
-	Tar tar;
-	tar.tar_open("/var/spool/voipmonitor_local/2015-01-30/19/26/SIP/sip_2015-01-30-19-26.tar", O_RDONLY);
-	tar.tar_read("1309960312.pcap", 659493, "cdr");
-}
-
-void test_http_dumper() {
-	HttpPacketsDumper dumper;
-	dumper.setPcapName("/tmp/testhttp.pcap");
-	//dumper.setTemplatePcapName();
-	string timestamp_from = "2013-09-22 15:48:51";
-	string timestamp_to = "2013-09-24 01:48:51";
-	string ids = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20";
-	dumper.dumpData(timestamp_from.c_str(), timestamp_to.c_str(), ids.c_str());
-}
-
-void test_pexec() {
-	const char *cmdLine = "rrdtool graph - -w 582 -h 232 -a PNG --start \"now-3606s\" --end \"now-6s\" --font DEFAULT:0:Courier --title \"CPU usage\" --watermark \"`date`\" --disable-rrdtool-tag --vertical-label \"percent[%]\" --lower-limit 0 --units-exponent 0 --full-size-mode -c BACK#e9e9e9 -c SHADEA#e9e9e9 -c SHADEB#e9e9e9 DEF:t0=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t0:MAX DEF:t1=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t1:MAX DEF:t2=/var/spool/voipmonitor_local/rrd/db-tCPU.rrd:tCPU-t2:MAX LINE1:t0#0000FF:\"t0 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t0:LAST:\"Cur\\: %5.2lf\" GPRINT:t0:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t0:MAX:\"Max\\: %5.2lf\" GPRINT:t0:MIN:\"Min\\: %5.2lf\\r\" LINE1:t1#00FF00:\"t1 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t1:LAST:\"Cur\\: %5.2lf\" GPRINT:t1:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t1:MAX:\"Max\\: %5.2lf\" GPRINT:t1:MIN:\"Min\\: %5.2lf\\r\" LINE1:t2#FF0000:\"t2 CPU Usage %\\l\" COMMENT:\"\\u\" GPRINT:t2:LAST:\"Cur\\: %5.2lf\" GPRINT:t2:AVERAGE:\"Avg\\: %5.2lf\" GPRINT:t2:MAX:\"Max\\: %5.2lf\" GPRINT:t2:MIN:\"Min\\: %5.2lf\\r\"";
-	//cmdLine = "sh -c 'cd /;make;'";
-	
-	SimpleBuffer out;
-	SimpleBuffer err;
-	int exitCode;
-	cout << "vm_pexec rslt:" << vm_pexec(cmdLine, &out, &err, &exitCode) << endl;
-	cout << "OUT SIZE:" << out.size() << endl;
-	cout << "OUT:" << (char*)out << endl;
-	cout << "ERR SIZE:" << err.size() << endl;
-	cout << "ERR:" << (char*)err << endl;
-	cout << "exit code:" << exitCode << endl;
-}
-
-bool save_packet(const char *binaryPacketFile, const char *rsltPcapFile, int length, time_t sec, suseconds_t usec) {
-	FILE *file = fopen(binaryPacketFile, "rb");
-	u_char *packet = new FILE_LINE(42048) u_char[length];
-	if(file) {
-		fread(packet, length, 1, file);
-		fclose(file);
-	} else {
-		cerr << "failed open file: " << binaryPacketFile << endl;
-		delete [] packet;
-		return(false);
-	}
-	pcap_pkthdr header;
-	memset(&header, 0, sizeof(header));
-	header.caplen = length;
-	header.len = length;
-	header.ts.tv_sec = sec;
-	header.ts.tv_usec = usec;
-	PcapDumper *dumper = new FILE_LINE(42049) PcapDumper(PcapDumper::na, NULL);
-	dumper->setEnableAsyncWrite(false);
-	dumper->setTypeCompress(FileZipHandler::compress_na);
-	bool rslt;
-	if(dumper->open(tsf_na, rsltPcapFile, 1)) {
-		dumper->dump(&header, packet, 1, true);
-		rslt = true;
-	} else {
-		cerr << "failed write file: " << rsltPcapFile << endl;
-		rslt = false;
-	}
-	delete dumper;
-	delete [] packet;
-	return(rslt);
-}
-
-class cTestCompress : public CompressStream {
-public:
-	cTestCompress(CompressStream::eTypeCompress typeCompress)
-	 : CompressStream(typeCompress, 1024 * 8, 0) {
-	}
-	bool compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/ = false) {
-		fwrite(data, 1, len, fileO);
-		return(true);
-	}
-	bool decompress_ev(char *data, u_int32_t len) { 
-		fwrite(data, 1, len, fileO);
-		return(true); 
-	}
-	void testCompress() {
-		fileI = fopen("/tmp/tc1.pcap", "rb");
-		if(!fileI) {
-			return;
-		}
-		fileO = fopen("/tmp/tc1_c.pcap", "wb");
-		if(!fileO) {
-			return;
-		}
-		char buff[5000];
-		size_t readSize;
-		while((readSize = fread(buff, 1, sizeof(buff), fileI))) {
-			this->compress(buff, readSize, false, this);
-		}
-		fclose(fileI);
-		fclose(fileO);
-	}
-	void testDecompress() {
-		fileI = fopen("/tmp/tc1_c.pcap", "rb");
-		if(!fileI) {
-			return;
-		}
-		fileO = fopen("/tmp/tc1_d.pcap", "wb");
-		if(!fileO) {
-			return;
-		}
-		char buff[5000];
-		size_t readSize;
-		while((readSize = fread(buff, 1, sizeof(buff), fileI))) {
-			this->decompress(buff, readSize, readSize * 10, false, this);
-		}
-		fclose(fileI);
-		fclose(fileO);
-	}
-private:
-	FILE *fileI;
-	FILE *fileO;
-};
-
-void test_time_cache() {
-	cout << "-----------------" << endl;
-	time_t now;
-	time(&now);
-	for(int i = 0; i <= 4 * 60 * 6; i++) {
-		cout << "-- " << i << endl;
-		cout << "local " << time_r_str(&now, "local") << endl;
-		cout << "gmt   " << time_r_str(&now, "GMT") << endl;
-		cout << "EST   " << time_r_str(&now, "EST") << endl;
-		cout << "NY    " << time_r_str(&now, "America/New_York") << endl;
-		cout << "LA    " << time_r_str(&now, "America/Los_Angeles") << endl;
-		cout << "NF    " << time_r_str(&now, "Canada/Newfoundland") << endl;
-		now += 10;
-	}
-	cout << "-----------------" << endl;
-}
-
-void test_ip_groups() {
-	/*
-	GroupsIP gip;
-	gip.load();
-	GroupIP *gr = gip.getGroup("192.168.3.5");
-	if(gr) {
-		cout << gr->getDescr() << endl;
-	}
-	*/
-}
-
-void test_filezip_handler() {
-	FileZipHandler *fzh = new FILE_LINE(42051) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
-	fzh->open(tsf_na, "/home/jumbox/Plocha/test.gz");
-	for(int i = 0; i < 1000; i++) {
-		char buff[1000];
-		snprintf(buff, sizeof(buff), "abcd %80s %i\n", "x", i + 1);
-		fzh->write(buff, strlen(buff));
-	}
-	fzh->write((char*)"eof", 3);
-	fzh->close();
-	delete fzh;
-	fzh = new FILE_LINE(42052) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
-	fzh->open(tsf_na, "/home/jumbox/Plocha/test.gz");
-	while(!fzh->is_eof() && fzh->is_ok_decompress() && fzh->read(2)) {
-		string line;
-		while(fzh->getLineFromReadBuffer(&line)) {
-			cout << line;
-		}
-	}
-	cout << "|" << endl;
-	delete fzh;
-}
-
-void *_test_thread(void *) {
-	int threadId = get_unix_tid();
-	u_int64_t time_ms_last = 0;
-	while(!terminating) {
-		u_int64_t time_ms = getTimeMS_rdtsc();
-		if(time_ms > time_ms_last + 2000) {
-			pstat_data stat[2];
-			if(stat[0].cpu_total_time) {
-				stat[1] = stat[0];
-			}
-			pstat_get_data(threadId, stat);
-			double ucpu_usage, scpu_usage;
-			if(stat[0].cpu_total_time && stat[1].cpu_total_time) {
-				pstat_calc_cpu_usage_pct(
-					&stat[0], &stat[1],
-					&ucpu_usage, &scpu_usage);
-				double rslt = ucpu_usage + scpu_usage;
-				cout << rslt << endl;
-			}
-			time_ms_last = time_ms;
-		}
-	}
-	return(NULL);
-}
-
-void test_thread() {
-	pthread_t test_thread_handle;
-	vm_pthread_create("test_thread",
-			  &test_thread_handle, NULL, _test_thread, NULL, __FILE__, __LINE__);
-	while(!terminating) {
-		USLEEP(10000);
-	}
-}
-
-static void setAllocNumb();
-
-void test() {
- 
-	switch(opt_test) {
-	 
-	case 21 : {
-		for(int pass = 0; pass < 1000; pass++) {
-		cTestCompress *testCompress = new FILE_LINE(42053) cTestCompress(CompressStream::lzo);
-		testCompress->testCompress();
-		//testCompress->testDecompress();
-		delete testCompress;
-		}
-	} break;
-	case 22 : {
-		for(int pass = 0; pass < 1000; pass++) {
-		cTestCompress *testCompress = new FILE_LINE(42054) cTestCompress(CompressStream::snappy);
-		testCompress->testCompress();
-		//testCompress->testDecompress();
-		delete testCompress;
-		}
-	} break;
-	case 23 : {
-		for(int pass = 0; pass < 1000; pass++) {
-		cTestCompress *testCompress = new FILE_LINE(42055) cTestCompress(CompressStream::gzip);
-		testCompress->setZipLevel(1);
-		testCompress->testCompress();
-		//testCompress->testDecompress();
-		delete testCompress;
-		}
-	} break;
-	
-	case 31: {
-	 
-		if(opt_callidmerge_secret[0] != '\0') {
-			// header is encoded - decode it 
-		 
-			char *s2 = new FILE_LINE(42056) char[1024];
-			strcpy(s2, opt_test_str + 2);
-			int l2 = strlen(s2);
-			unsigned char buf[1024];
-		 
-			char c;
-			c = s2[l2];
-			s2[l2] = '\0';
-			int enclen = base64decode(buf, (const char*)s2, l2);
-			static int keysize = strlen(opt_callidmerge_secret);
-			s2[l2] = c;
-			for(int i = 0; i < enclen; i++) {
-				buf[i] = buf[i] ^ opt_callidmerge_secret[i % keysize];
-			}
-			// s2 is now decrypted call-id
-			s2 = (char*)buf;
-			l2 = enclen;
-			cout << string(s2, l2) << endl;
-			
-		} else {
-			cout << "missing callidmerge_secret" << endl;
-		}
-		
-	} break;
-	 
-	case 1: {
-	 
-		{
-		VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
-		string path;
-		cout << vmCodecs->findVersionOK(&path) << endl;
-		cout << path << endl;
-		cout << "***" << endl;
-		cout << vmCodecs->download(&path) << endl;
-		cout << path << endl;
-		cout << "***" << endl;
-		delete vmCodecs;
-		}
-	 
-		{
-		char ip_str[1000];
-		while(fgets(ip_str, sizeof(ip_str), stdin)) {
-			if(ip_str[0] == '\n') {
-				break;
-			}
-			cout << " v: " << string_is_look_like_ip(ip_str) << endl;
-			vmIP ip;
-			ip.setFromString(ip_str, NULL);
-			vmIP ipc = cConfigItem_net_map::convIP(ip, &opt_anonymize_ip_map);
-			cout << " c: " << ipc.getString() << endl;
-		}
-		}
-		break;
-	 
-		{
-		 
-		string csv = "abc,,\"\",\"def\",\"ghi\"";
-		cDbStrings strings;
-		strings.explodeCsv(csv.c_str());
-		strings.setZeroTerm();
-		strings.print();
-		cout << "---" << endl;
-		 
-		}
-		break;
-	 
-		{
-		 
-		unsigned int usleepSumTime = 0;
-		unsigned int usleepCounter = 0;
-		
-		unsigned _last = 0;
-		unsigned useconds = 100;
-		while(!terminating) {
-			unsigned _act = USLEEP_C(useconds, usleepCounter);
-			if(_act != _last) {
-				cout << usleepSumTime << " / " << usleepCounter << " / " << _act << " / " << (_act / useconds) << endl;
-				_last = _act;
-			}
-			usleepSumTime += _act; 
-			++usleepCounter;
-		}
-		break;
-		 
-		}
-	 
-		cEvalFormula f(cEvalFormula::_est_na, true);
-		f.e("3*(2 * 3 + 4 * 5 + (2+8))");
-		f.e("'abcd' like '%bc%' and 'abcd' like 'abc%' and 'abcd' like '%bcd'");
-		break;
-	 
-		IP ipt("192.168.0.0");
-	 
-		SqlDb *sqlDb0 = createSqlObject();
-		sqlDb0->query("select ip from test_ip");
-		SqlDb_row row0;
-		while((row0 = sqlDb0->fetchRow())) {
-			vmIP ip;
-			ip.setIP(&row0, "ip");
-			cout << ip.getString() << endl;
-		}
-		delete sqlDb0;
-	 
-		cResolver res;
-		vmIP ip = res.resolve("www.seznam.cz", NULL, 300/*, cResolver::_typeResolve_system_host*/);
-		cout << ip.getString() << endl;
-		break;
-	 
-		SqlDb *sqlDb = createSqlObject();
-		sqlDb->query("select * from geoipv6_country limit 10");
-		#if 0
-		string rslt = sqlDb->getCsvResult();
-		cout << rslt <<  endl;
-		sqlDb->processResponseFromCsv(rslt.c_str());
-		#else
-		string rslt = sqlDb->getJsonResult();
-		cout << rslt <<  endl;
-		sqlDb->processResponseFromQueryBy(rslt.c_str(), NULL, 0);
-		#endif
-		sqlDb->setCloudParameters("c", "c", "c");
-		
-		cout << "---" << endl;
-		
-		SqlDb_row row;
-		while((row = sqlDb->fetchRow())) {
-			vmIP ip_from;
-			ip_from.setIP(&row, "ip_from");
-			vmIP ip_to;
-			ip_to.setIP(&row, "ip_to");
-			cout << ip_from.getString() << " / "
-			     << ip_to.getString() << " / "
-			     << row["country"] << endl;
-		}
-		
-		cout << "---" << endl;
-		
-		//cout << sqlDb->getJsonResult() <<  endl;
-		delete sqlDb;
-		break;
-	 
-		dns_lookup_common_hostnames();
-
-		cout << str_2_vmIP("192.168.0.0").broadcast(16).getString() << endl;
-		cout << str_2_vmIP("192.168.1.1").isLocalIP() << endl;
-		cout << str_2_vmIP("127.0.0.1").isLocalhost() << endl;
-	 
-		/*
-		cGzip gzip;
-		u_char *cbuffer;
-		size_t cbufferLength;
-		string str;
-		for(unsigned i = 0; i < 1000; i++) {
-			str += "abcdefgh";
-		}
-		gzip.compressString(str, &cbuffer, &cbufferLength);
-		if(gzip.isCompress(cbuffer, cbufferLength)) {
-			string str2 = gzip.decompressString(cbuffer, cbufferLength);
-			cout << str2 << endl;
-		}
-		break;
-		
-		cBilling billing;
-		billing.load();
-		
-		string calldate = "2017-01-17 08:00";
-		unsigned duration = 9 * 60 * 60;
-		string ip_src = "192.168.101.10";
-		string ip_dst = "192.168.101.151";
-		string number_src = "+4121353333";
-		string number_dst = "+41792926527";
-		
-		double operator_price; 
-		double customer_price;
-		unsigned operator_currency_id;
-		unsigned customer_currency_id;
-		unsigned operator_id;
-		unsigned customer_id;
-		
-		time_t calldate_time = stringToTime(calldate.c_str());
-		
-		tm calldate_tm = time_r(&calldate_time);
-		tm next1 = getNextBeginDate(calldate_tm);
-		tm next2 = dateTimeAdd(next1, 24 * 60 * 60);
-		
-		billing.billing(calldate_time , duration,
-				str_2_vmIP(ip_src.c_str()), str_2_vmIP(ip_dst.c_str()),
-				number_src.c_str(), number_dst.c_str(),
-				"", "",
-				&operator_price, &customer_price,
-				&operator_currency_id, &customer_currency_id,
-				&operator_id, &customer_id);
-				
-		break;
-		
-		for(unsigned y = 2017; y <= 2019; y++) {
-			tm easter = getEasterMondayDate(y);
-			cout << sqlDateString(easter) << endl;
-		}
-		break;
-	 
-		SqlDb *sqlDb = createSqlObject();
-		string query = "select * from geoip_country order by ip_from";
-		cout << query << endl;
-		sqlDb->query(query);
-		string rsltQuery = sqlDb->getJsonResult();
-		cout << rsltQuery << endl;
-		break;
-	 
-		test_thread();
-		break;
-	 
-		extern void testPN();
-		testPN();
-		break;
-	 
-		cCsv *csv = new cCsv();
-		csv->setFirstRowContainFieldNames();
-		csv->load("/home/jumbox/Plocha/table.csv");
-		cout << "---" << endl;
-		csv->dump();
-		cout << "---" << endl;
-		cout << csv->getRowsCount() << endl;
-		cout << "---" << endl;
-		map<string, string> row;
-		csv->getRow(1, &row);
-		for(map<string, string>::iterator iter = row.begin(); iter != row.end(); iter++) {
-			cout << iter->first << " : " << iter->second << endl;
-		}
-		cout << "---" << endl;
-		csv->getRow(csv->getRowsCount(), &row);
-		for(map<string, string>::iterator iter = row.begin(); iter != row.end(); iter++) {
-			cout << iter->first << " : " << iter->second << endl;
-		}
-		cout << "---" << endl;
-		break;
-	 
-		cout << _sqlEscapeString("abc'\"\\\n\rdef", 0, NULL) << endl;
-		char buff[100];
-		_sqlEscapeString("abc'\"\\\n\rdef", 0, buff, NULL);
-		cout << buff << endl;
-		break;
-	 
-		FifoBuffer fb;
-		fb.setMinItemBufferLength(100);
-		fb.setMaxItemBufferLength(1000);
-		
-		char *x = new char[1000000];
-		for(int i = 0; i < 10000; i++) {
-			fb.add((u_char*)x, 1500);
-		}
-		delete [] x;
-		
-		cout << "***: " << fb.size_get() << endl;
-		
-		u_int32_t sum_get_size = 0;
-		while(true) {
-			u_int32_t get_length = 600;
-			u_char *get = fb.get(&get_length);
-			if(get) {
-				sum_get_size += get_length;
-				delete [] get;
-			} else {
-				break;
-			}
-		}
-		cout << "***: " << sum_get_size << endl;
-		
-		fb.free();
-		
-		break;
-	 
-		test_filezip_handler();
-		break;
-	 
-		cout << getSystemTimezone() << endl;
-		cout << getSystemTimezone(1) << endl;
-		cout << getSystemTimezone(2) << endl;
-		cout << getSystemTimezone(3) << endl;
-	 
-		//test_time_cache();
-		//test_parsepacket();
-		break;
-	 
-		//test_search_country_by_number();
-	 
-		map<int, string> testmap;
-		testmap[1] = "aaa";
-		testmap[2] = "bbb";
-		
-		map<int, string>::iterator iter = testmap.begin();
-		
-		cout << testmap[1] << testmap[2] << iter->second << endl;
-	 
-		test_geoip();
-		cout << "---------" << endl;
-		*/
-		
-	} break;
-	case 2: {
-	 
-		for(int i = 0; i < 10; i++) {
-			sleep(1);
-			cout << "." << flush;
-		}
-		cout << endl;
-		SqlDb *sqlDb = createSqlObject();
-		sqlDb->connect();
-		for(int i = 0; i < 10; i++) {
-			sleep(1);
-			cout << "." << flush;
-		}
-		cout << endl;
-		sqlDb->query("drop procedure if exists __insert_test");
-	 
-	} break;
-	case 3: {
-		char *pointToSepOptTest = strchr(opt_test_str, '/');
-		if(pointToSepOptTest) {
-			initFraud();
-			extern GeoIP_country *geoIP_country;
-			cout << geoIP_country->getCountry(pointToSepOptTest + 1) << endl;
-		}
-	} break;
-	case 4: {
-		vm_atomic<string> astr(string("000"));
-		cout << astr << endl;
-		astr = string("abc");
-		cout << astr << endl;
-		astr = "def";
-		cout << astr << endl;
-		
-		vm_atomic<string> astr2 = astr;
-		cout << astr2 << endl;
-		astr2 = astr;
-		cout << astr2 << endl;
-		
-	} break;
-	case 5:
-		{
-		extern void testPN();
-		testPN();
-		}
-		break;
-	case 51:
-		test_alloc_speed();
-		break;
-	case 52:
-		test_alloc_speed_malloc();
-		break;
-	case 53:
-		#if HAVE_LIBTCMALLOC
-		test_alloc_speed_tc();
-		#else
-		cout << "tcmalloc not exists" << endl;
-		#endif
-		break;
-	case 6:
-		test_untar();
-		break;
-	case 7: 
-		test_http_dumper(); 
-		break;
-	case 8: 
-		test_pexec();
-		break;
-	case 9: {
-		vector<string> param;
-		char *pointToSepOptTest = strchr(opt_test_str, '/');
-		if(pointToSepOptTest) {
-			param = split(pointToSepOptTest + 1, ',');
-		}
-		if(param.size() < 5) {
-			cout << "missing parameters" << endl
-			     << "example: -X9/packet.bin,packet.pcap,214,4655546,54565" << endl
-			     << "description: -X9/binary source,output pcap file,length,sec,usec" << endl;
-		} else {
-			save_packet(param[0].c_str(), param[1].c_str(), atoi(param[2].c_str()),
-				    atoi(param[3].c_str()), atoi(param[4].c_str()));
-		}
-		} 
-		break;
-	case 88:
-		setAllocNumb();
-		return;
-	case 90:
-		{
-		vector<string> param;
-		char *pointToSepOptTest = strchr(opt_test_str, '/');
-		if(pointToSepOptTest) {
-			param = split(pointToSepOptTest + 1, ',');
-		}
-		if(param.size() < 1) {
-			cout << "missing parameters" << endl
-			     << "example: -X90/coredump,outfile" << endl;
-		} else {
-			parse_heapsafeplus_coredump(param[0].c_str(), param.size() > 1 ? param[1].c_str() : NULL);
-		}
-		}
-		break;
-	case 95:
-		vmChdir();
-		CleanSpool::run_check_filesindex();
-		set_terminating();
-		break;
-	case 96:
-		{
-		union {
-			uint32_t i;
-			char c[4];
-		} e = { 0x01000000 };
-		cout << "real endian : " << (e.c[0] ? "big" : "little") << endl;
-		cout << "endian by cmp __BYTE_ORDER == __BIG_ENDIAN : ";
-		#if __BYTE_ORDER == __BIG_ENDIAN
-			cout << "big" << endl;
-		#else
-			cout << "little" << endl;
-		#endif
-		#ifdef __BYTE_ORDER
-			cout << "__BYTE_ORDER value (1234 is little, 4321 is big) : " << __BYTE_ORDER << endl;
-		#else
-			cout << "undefined __BYTE_ORDER" << endl;
-		#endif
-		#ifdef BYTE_ORDER
-			cout << "BYTE_ORDER value (1234 is little, 4321 is big) : " << BYTE_ORDER << endl;
-		#else
-			cout << "undefined BYTE_ORDER" << endl;
-		#endif
-		}
-		break;
-	case 98:
-		{
-		RestartUpgrade restart(true, 
-				       "8.4RC15",
-				       "http://www.voipmonitor.org/senzor/download/8.4RC15",
-				       "cf9c2b266204be6cef845003e713e6df",
-				       "58e8ae1668b596cec20fd38aa7a83e23");
-		restart.runUpgrade();
-		cout << restart.getRsltString();
-		}
-		return;
-	case 99:
-		for(int i = 0; i < 2; i++) {
-			if(isSetSpoolDir(i) &&
-			   CleanSpool::isSetCleanspoolParameters(i)) {
-				cleanSpool[i] = new FILE_LINE(42058) CleanSpool(i);
-			}
-		}
-		CleanSpool::run_check_spooldir_filesindex();
-		return;
-		
-	case 11: 
-		{
-		cConfig config;
-		config.addConfigItems();
-		config.loadFromConfigFile(configfile);
-		cout << "***" << endl;
-		cout << config.getContentConfig(true); 
-		cout << "***" << endl;
-		string jsonStr = config.getJson(true); 
-		cout << jsonStr << endl;
-		cout << "***" << endl;
-		config.setFromJson(jsonStr.c_str(), true);
-		cout << "***" << endl;
-		config.putToMysql();
-		}
-		break;
-		
-	case 304:
-	case 305:
-	case 312:
-	case 317:
-	case 306:
-		{
-		if(opt_test == 312) {
-			if(atoi(opt_test_arg) > 0) {
-				opt_maxpoolsize = 0;
-				opt_maxpooldays = atoi(opt_test_arg);
-				opt_maxpoolsipsize = 0;
-				opt_maxpoolsipdays = 0;
-				opt_maxpoolrtpsize = 0;
-				opt_maxpoolrtpdays = 0;
-				opt_maxpoolgraphsize = 0;
-				opt_maxpoolgraphdays = 0;
-				opt_maxpoolaudiosize = 0;
-				opt_maxpoolaudiodays = 0;
-			} else {
-				return;
-			}
-		}
-		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
-							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router, &optMySsl);
-		for(int i = 0; i < 2; i++) {
-			if(isSetSpoolDir(i) &&
-			   CleanSpool::isSetCleanspoolParameters(i)) {
-				cleanSpool[i] = new FILE_LINE(42060) CleanSpool(i);
-			}
-		}
-		switch(opt_test) {
-		case 304:
-			CleanSpool::run_reindex_all("");
-			break;
-		case 305:
-		case 312:
-			CleanSpool::run_cleanProcess();
-			break;
-		case 306:
-			CleanSpool::run_clean_obsolete();
-			break;
-		case 317:
-			CleanSpool::run_test_load(opt_test_arg);
-			break;
-		}
-		set_terminating();
-		sqlStore->setEnableTerminatingIfEmpty(0, 0, true);
-		sqlStore->setEnableTerminatingIfSqlError(0, 0, true);
-		delete sqlStore;
-		sqlStore = NULL;
-		}
-		break;
-	case 313:
-		if(atoi(opt_test_arg) > 0) {
-			opt_cleandatabase_cdr =
-			opt_cleandatabase_http_enum =
-			opt_cleandatabase_webrtc =
-			opt_cleandatabase_register_state =
-			opt_cleandatabase_register_failed = 
-			opt_cleandatabase_register_time_info = 
-			opt_cleandatabase_sip_msg = atoi(opt_test_arg);
-		} else {
-			return;
-		}
-		dropMysqlPartitionsCdr();
-		break;
-	case 346:
-		if(atoi(opt_test_arg) > 0) {
-			opt_cleandatabase_rtp_stat = atoi(opt_test_arg);
-		} else {
-			return;
-		}
-		dropMysqlPartitionsRtpStat();
-		break;
-	case 348:
-		if(atoi(opt_test_arg) > 0) {
-			opt_cleandatabase_cdr_stat = atoi(opt_test_arg);
-		} else {
-			return;
-		}
-		dropMysqlPartitionsCdrStat();
-		break;
-	case 310:
-		{
-		Call *call = new FILE_LINE(0) Call(0, (char*)"conv-raw-info", 0, NULL, 0);
-		call->type_base = INVITE;
-		call->force_spool_path = opt_test_arg;
-		sverb.noaudiounlink = true;
-		call->convertRawToWav();
-		}
-		break;
-	case 311:
-		{
-		CountryDetectInit();
-		vector<string> numbersIps = split(opt_test_arg, ';');
-		vmIP testIp;
-		for(unsigned i = 0; i < numbersIps.size(); i++) {
-			vector<string> nip = split(numbersIps[i], '@');
-			if (nip.size() == 2) {
-				testIp.setFromString(nip[1].c_str());
-			}
-			cout << "number:           " << nip[0] << endl;
-			if (testIp.isSet()) {
-				cout << "IP:               " << testIp.getString() << endl;
-			}
-			cout << "country:          " << getCountryByPhoneNumber(nip[0].c_str(), testIp) << endl;
-			cout << "is international: " << (isLocalByPhoneNumber(nip[0].c_str(), testIp) ? "N" : "Y") << endl;
-			cout << "---" << endl;
-		}
-		}
-		break;
-	case 322:
-		{
-		CountryDetectInit();
-		vector<string> ips = split(opt_test_arg, ';');
-		for(unsigned i = 0; i < ips.size(); i++) {
-			cout << "ip:      " << ips[i] << endl;
-			cout << "country: " << getCountryByIP(str_2_vmIP(ips[i].c_str())) << endl;
-			cout << "---" << endl;
-		}
-		}
-		break;
-	case 320:
-	case 340:
-		{
-		cBilling billing;
-		billing.load();
-		cout << billing.test(opt_test_arg, opt_test == 340) << endl;
-		}
-		break;
-	}
- 
-	/*
-	sqlDb->disconnect();
-	sqlDb->connect();
-	
-	for(int pass = 0; pass < 3000; pass++) {
-		cout << "pass " << (pass + 1) << endl;
-		sqlDb->query("select * from cdr order by ID DESC");
-		SqlDb_row row;
-		row = sqlDb->fetchRow();
-		cout << row["ID"] << " : " << row["calldate"] << endl;
-		sleep(1);
-	}
-	*/
-	
-	/*
-	if(opt_test >= 11 && opt_test <= 13) {
-		rqueue<int> test;
-		switch(opt_test) {
-		case 11:
-			test.push(1);
-			test._test();
-			break;
-		case 12:
-			test._testPerf(true);
-			break;
-		case 13:
-			test._testPerf(false);
-			break;
-		}
-		return;
-	}
-	*/
-
-	/*
-	int pipeFh[2];
-	pipe(pipeFh);
-	cout << pipeFh[0] << " / " << pipeFh[1] << endl;
-	
-	cout << "write" << endl;
-	cout << "writed " << write(pipeFh[1], "1234" , 4) << endl;
-	
-	cout << "read" << endl;
-	char buff[10];
-	memset(buff, 0, 10);
-	cout << "readed " << read(pipeFh[0], buff , 4) << endl;
-	cout << buff;
-	
-	return;
-	*/
-	
-	/*
-	char filePathName[100];
-	snprintf(filePathName, sizeof(filePathName), "/__test/store_%010u", 1);
-	cout << filePathName << endl;
-	remove(filePathName);
-	int fileHandleWrite = open(filePathName, O_WRONLY | O_CREAT, 0666);
-	cout << "write handle: " << fileHandleWrite << endl;
-	//write(fileHandleWrite, "1234", 4);
-	//close(fileHandleWrite);
-	
-	int fileHandleRead = open(filePathName, O_RDONLY);
-	cout << "read handle: " << fileHandleRead << endl;
-	cout << errno << endl;
-	return;
-	*/
-
-	/*
-	int port = 9001;
-	
-	PcapQueue_readFromInterface *pcapQueue0;
-	PcapQueue_readFromFifo *pcapQueue1;
-	PcapQueue_readFromFifo *pcapQueue2;
-	
-	if(opt_test == 1 || opt_test == 3) {
-		pcapQueue0 = new FILE_LINE(42061) PcapQueue_readFromInterface("thread0");
-		pcapQueue0->setInterfaceName(ifname);
-		//pcapQueue0->setFifoFileForWrite("/tmp/vm_fifo0");
-		//pcapQueue0->setFifoWriteHandle(pipeFh[1]);
-		pcapQueue0->setEnableAutoTerminate(false);
-		
-		pcapQueue1 = new FILE_LINE(42062) PcapQueue_readFromFifo("thread1", "/__test");
-		//pcapQueue1->setFifoFileForRead("/tmp/vm_fifo0");
-		pcapQueue1->setInstancePcapHandle(pcapQueue0);
-		//pcapQueue1->setFifoReadHandle(pipeFh[0]);
-		pcapQueue1->setEnableAutoTerminate(false);
-		//pcapQueue1->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionWrite);
-		
-		pcapQueue0->start();
-		pcapQueue1->start();
-	}
-	if(opt_test == 2 || opt_test == 3) {
-		pcapQueue2 = new FILE_LINE(42063) PcapQueue_readFromFifo("server", "/__test/2");
-		pcapQueue2->setEnableAutoTerminate(false);
-		pcapQueue2->setPacketServer("127.0.0.1", port, PcapQueue_readFromFifo::directionRead);
-		
-		pcapQueue2->start();
-	}
-	
-	while(!is_terminating()) {
-		if(opt_test == 1 || opt_test == 3) {
-			pcapQueue1->pcapStat();
-		}
-		if(opt_test == 2 || opt_test == 3) {
-			pcapQueue2->pcapStat();
-		}
-		sleep(1);
-	}
-	
-	if(opt_test == 1 || opt_test == 3) {
-		pcapQueue0->terminate();
-		sleep(1);
-		pcapQueue1->terminate();
-		sleep(1);
-		
-		delete pcapQueue0;
-		delete pcapQueue1;
-	}
-	if(opt_test == 2 || opt_test == 3) {
-		pcapQueue2->terminate();
-		sleep(1);
-		
-		delete pcapQueue2;
-	}
-	return;
-	*/
-	
-	/*
-	sqlDb->disconnect();
-	sqlDb->connect();
-	
-	sqlDb->query("select * from cdr order by ID DESC limit 2");
-	SqlDb_row row1;
-	while((row1 = sqlDb->fetchRow())) {
-		cout << row1["ID"] << " : " << row1["calldate"] << endl;
-	}
-	
-	return;
-	*/
-
-	/*
-	cout << "db major version: " << sqlDb->getDbMajorVersion() << endl
-	     << "db minor version: " << sqlDb->getDbMinorVersion() << endl
-	     << "db minor version: " << sqlDb->getDbMinorVersion(1) << endl;
-	*/
-	
-	/*
-	initIpacc();
-	extern CustPhoneNumberCache *custPnCache;
-	cust_reseller cr;
-	cr = custPnCache->getCustomerByPhoneNumber("0352307212");
-	cout << cr.cust_id << " - " << cr.reseller_id << endl;
-	*/
-	
-	/*
-	extern CustIpCache *custIpCache;
-	custIpCache->fetchAllIpQueryFromDb();
-	*/
-	
-	/*
-	for(int i = 1; i <= 10; i++) {
-	sqlStore->lock(i);
-	sqlStore->query("insert into _test set test = 1", i);
-	sqlStore->query("insert into _test set test = 2", i);
-	sqlStore->query("insert into _test set test = 3", i);
-	sqlStore->query("insert into _test set test = 4", i);
-	sqlStore->unlock(i);
-	}
-	set_terminating();
-	//sleep(2);
-	*/
-	
-	/*
-	octects_live_t a;
-	a.setFilter(string("192.168.1.2,192.168.1.1").c_str());
-	cout << (a.isIpInFilter(inet_addr("192.168.1.1")) ? "find" : "----") << endl;
-	cout << (a.isIpInFilter(inet_addr("192.168.1.3")) ? "find" : "----") << endl;
-	cout << (a.isIpInFilter(inet_addr("192.168.1.2")) ? "find" : "----") << endl;
-	cout << (a.isIpInFilter(inet_addr("192.168.1.3")) ? "find" : "----") << endl;
-	*/
-	
-	/*
-	extern void ipacc_add_octets(time_t timestamp, unsigned int saddr, unsigned int daddr, int port, int proto, int packetlen, int voippacket);
-	extern void ipacc_save(unsigned int interval_time_limit = 0);
-
-	//for(int i = 0; i < 100000; i++) {
-	//	ipacc_add_octets(1, rand()%5000, rand()%5000, rand()%4, rand()%3, rand(), rand()%100);
-	//}
-	
-	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
-	ipacc_add_octets(1, 1, 2, 3, 4, 5, 6);
-	
-	ipacc_save();
-	
-	freeMemIpacc();
-	*/
-	
-	/*
-	CustIpCache *custIpCache = new FILE_LINE(42064) CustIpCache;
-	custIpCache->setConnectParams(
-		get_customer_by_ip_sql_driver, 
-		get_customer_by_ip_odbc_dsn, 
-		get_customer_by_ip_odbc_user, 
-		get_customer_by_ip_odbc_password, 
-		get_customer_by_ip_odbc_driver);
-	custIpCache->setQueryes(
-		get_customer_by_ip_query, 
-		get_customers_ip_query);
-	
-	unsigned int cust_id = custIpCache->getCustByIp(inet_addr("192.168.1.241"));
-	cout << cust_id << endl;
-	
-	return;
-	
-	cout << endl << endl;
-	for(int i = 0; i < 20; i++) {
-		cout << "iter:" << (i+1) << endl;
-		unsigned int cust_id = custIpCache->getCustByIp(inet_addr("1.2.3.4"));
-		cout << cust_id << endl;
-		cust_id = custIpCache->getCustByIp(inet_addr("2.3.4.5"));
-		cout << cust_id << endl;
-		sleep(1);
-	}
-	
-	return;
-	*/
-	
-	/*
-	ipfilter = new FILE_LINE(42065) IPfilter;
-	ipfilter->load();
-	ipfilter->dump();
-
-	telnumfilter = new FILE_LINE(42066) TELNUMfilter;
-	telnumfilter->load();
-	telnumfilter->dump();
-	*/
-	
-	/*
-	sqlDb->query("select _LC_[UNIX_TIMESTAMP('1970-01-01') = 0] as eee;");
-	SqlDb_row row = sqlDb->fetchRow();
-	cout << row["eee"] << endl;
-	*/
-	
-	/*
-	// výmaz - příprava
-	sqlDb->query("delete from cdr_sip_response where id > 0");
-	cout << sqlDb->getLastErrorString() << endl;
-	
-	// čtení
-	SqlDb_row row1;
-	sqlDb->query("select * from cdr order by ID DESC");
-	while((row1 = sqlDb->fetchRow())) {
-		cout << row1["ID"] << " : " << row1["calldate"] << endl;
-	}
-	cout << sqlDb->getLastErrorString() << endl;
-	
-	// zápis
-	SqlDb_row row2;
-	row2.add("122 wrrrrrrrr", "lastSIPresponse");
-	cout << sqlDb->insert("cdr_sip_response", row2) << endl;
-
-	// unique zápis
-	SqlDb_row row3;
-	row3.add("123 wrrrrrrrr", "lastSIPresponse");
-	cout << sqlDb->getIdOrInsert("cdr_sip_response", "id", "lastSIPresponse", row3) << endl;
-	
-	cout << sqlDb->getLastErrorString() << endl;
-	cout << endl << "--------------" << endl;
-	*/
-	
-	//exit(0);
-}
-
-
 #ifndef FREEBSD
 extern unsigned int HeapSafeCheck;
 extern "C"{
@@ -7602,6 +6296,12 @@ void cConfig::addConfigItems() {
 				->setClearBeforeFirstSet());
 			addConfigItem(new FILE_LINE(42271) cConfigItem_yesno("cdr_sipport", &opt_cdr_sipport));
 			addConfigItem(new FILE_LINE(42272) cConfigItem_yesno("domainport", &opt_domainport));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches", &opt_call_branches));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_by_called_number", &opt_call_branches_find_by_called_number));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_by_called_domain", &opt_call_branches_find_by_called_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("call_branches_find_smart", &opt_call_branches_find_smart));
+			normal();
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("call_id_alternative", opt_call_id_alternative, sizeof(opt_call_id_alternative)));
 			addConfigItem((new FILE_LINE(42273) cConfigItem_string("fbasenameheader", opt_fbasename_header, sizeof(opt_fbasename_header)))
 				->setPrefixSuffix("\n", ":")
@@ -7611,6 +6311,7 @@ void cConfig::addConfigItems() {
 				->addAlias("match_header"));
 			addConfigItem((new FILE_LINE(42275) cConfigItem_string("callidmerge_header", opt_callidmerge_header, sizeof(opt_callidmerge_header)))
 				->setPrefixSuffix("\n", ":"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callidmerge_force_separate_branches", &opt_callidmerge_force_separate_branches));
 			addConfigItem(new FILE_LINE(42276) cConfigItem_string("callidmerge_secret", opt_callidmerge_secret, sizeof(opt_callidmerge_secret)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("callernum_numberonly", &opt_callernum_numberonly));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-message", &opt_sip_message));
@@ -8296,7 +6997,7 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		sipSendSocket_ip_port.set_port(configItem->getValueInt());
 	}
 	if(configItem->config_name == "max_buffer_mem") {
-		buffersControl.setMaxBufferMem(configItem->getValueInt() * 1024 * 1024, true);
+		buffersControl.setMaxBufferMem(configItem->getValueInt() * 1024 * 1024, true, true);
 	}
 	if(configItem->config_name == "query_cache") {
 		if(configItem->getValueInt()) {
@@ -8398,7 +7099,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"rtp-threads", 1, 0, 'e'},
 	    {"rtpthread-buffer", 1, 0, 'E'},
 	    {"config-file", 1, 0, '7'},
-    	    {"cmp-config", 1, 0, 334},
+    	    {"cmp-config", 1, 0, _param_cmp_config},
 	    {"manager-port", 1, 0, '8'},
 	    {"pcap-command", 1, 0, 'a'},
 	    {"norecord-header", 0, 0, 'N'},
@@ -8406,10 +7107,10 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"rtp-nosig", 0, 0, 'I'},
 	    {"cachedir", 1, 0, 'C'},
 	    {"id-sensor", 1, 0, 's'},
-	    {"sensor-string", 1, 0, 324},
+	    {"sensor-string", 1, 0, _param_sensor_string},
 	    {"ipaccount", 0, 0, 'x'},
 	    {"pcapscan-dir", 1, 0, '0'},
-	    {"pcapscan-method", 1, 0, 900},
+	    {"pcapscan-method", 1, 0, _param_pcapscan_method},
 	    {"keycheck", 1, 0, 'Z'},
 	    {"pcapfilter", 1, 0, 'f'},
 	    {"plc-disable", 0, 0, 'l'},
@@ -8423,77 +7124,78 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"test", 1, 0, 'X'},
 	    {"allsipports", 0, 0, 'y'},
 	    {"sipports", 1, 0, 'Y'},
-	    {"skinny", 0, 0, 200},
-	    {"skinnyports", 1, 0, 199},
-	    {"mgcp", 0, 0, 314},
-	    {"ignorertcpjitter", 1, 0, 198},
-	    {"natalias", 1, 0, 315},
-	    {"mono", 0, 0, 201},
-	    {"big-jitter-resync-threshold", 0, 0, 213},
-	    {"untar-gui", 1, 0, 202},
-	    {"unlzo-gui", 1, 0, 205},
-	    {"waveform-gui", 1, 0, 206},
-	    {"spectrogram-gui", 1, 0, 207},
-	    {"audio-convert", 1, 0, 331},
-	    {"rtp-streams-analysis", 1, 0, 332},
-	    {"saveaudio-from-rtp", 0, 0, 333},
-	    {"update-schema", 0, 0, 208},
-	    {"new-config", 0, 0, 203},
-	    {"print-config-struct", 0, 0, 204},
-	    {"print-config-file", 0, 0, 211},
-	    {"print-config-file-default", 0, 0, 212},
-	    {"check-regexp", 1, 0, 209},
-	    {"test-regexp", 1, 0, 321},
-	    {"read-pcap", 1, 0, 210},
-	    {"max-packets", 1, 0, 301},
-	    {"time-to-terminate", 1, 0, 323},
-	    {"continue-after-read", 0, 0, 302},
-	    {"nonstop-read", 0, 0, 335},
-	    {"nonstop-read-quick", 0, 0, 350},
-	    {"diff-days", 1, 0, 303},
-	    {"diff-secs", 1, 0, 349},
-	    {"time-adjustment", 1, 0, 343},
-	    {"reindex-all", 0, 0, 304},
-	    {"run-cleanspool", 0, 0, 305},
-	    {"run-cleanspool-maxdays", 1, 0, 312},
-	    {"test-cleanspool-load", 1, 0, 317},
+	    {"skinny", 0, 0, _param_skinny},
+	    {"skinnyports", 1, 0, _param_skinnyports},
+	    {"mgcp", 0, 0, _param_mgcp},
+	    {"ignorertcpjitter", 1, 0, _param_ignorertcpjitter},
+	    {"natalias", 1, 0, _param_natalias},
+	    {"mono", 0, 0, _param_mono},
+	    {"big-jitter-resync-threshold", 0, 0, _param_big_jitter_resync_threshold},
+	    {"untar-gui", 1, 0, _param_untar_gui},
+	    {"unlzo-gui", 1, 0, _param_unlzo_gui},
+	    {"waveform-gui", 1, 0, _param_waveform_gui},
+	    {"spectrogram-gui", 1, 0, _param_spectrogram_gui},
+	    {"audio-convert", 1, 0, _param_audio_convert},
+	    {"rtp-streams-analysis", 1, 0, _param_rtp_streams_analysis},
+	    {"saveaudio-from-rtp", 0, 0, _param_saveaudio_from_rtp},
+	    {"update-schema", 0, 0, _param_update_schema},
+	    {"new-config", 0, 0, _param_new_config},
+	    {"print-config-struct", 0, 0, _param_print_config_struct},
+	    {"print-config-file", 0, 0, _param_print_config_file},
+	    {"print-config-file-default", 0, 0, _param_print_config_file_default},
+	    {"check-regexp", 1, 0, _param_check_regexp},
+	    {"test-regexp", 1, 0, _param_test_regexp},
+	    {"read-pcap", 1, 0, _param_read_pcap},
+	    {"max-packets", 1, 0, _param_max_packets},
+	    {"time-to-terminate", 1, 0, _param_time_to_terminate},
+	    {"continue-after-read", 0, 0, _param_continue_after_read},
+	    {"suppress-cleanup-after-read", 0, 0, _param_suppress_cleanup_after_read},
+	    {"nonstop-read", 0, 0, _param_nonstop_read},
+	    {"nonstop-read-quick", 0, 0, _param_nonstop_read_quick},
+	    {"diff-days", 1, 0, _param_diff_days},
+	    {"diff-secs", 1, 0, _param_diff_secs},
+	    {"time-adjustment", 1, 0, _param_time_adjustment},
+	    {"reindex-all", 0, 0, _param_reindex_all},
+	    {"run-cleanspool", 0, 0, _param_run_cleanspool},
+	    {"run-cleanspool-maxdays", 1, 0, _param_run_cleanspool_maxdays},
+	    {"test-cleanspool-load", 1, 0, _param_test_cleanspool_load},
 	    {"run-droppartitions-maxdays", 1, 0, 313},
 	    {"run-droppartitions-rtp_stat-maxdays", 1, 0, 346},
 	    {"run-droppartitions-cdr_stat-maxdays", 1, 0, 348},
-	    {"clean-obsolete", 0, 0, 306},
-	    {"check-db", 0, 0, 307},
-	    {"fax-deduplicate", 0, 0, 308},
-	    {"create-udptl-streams", 0, 0, 309},
-	    {"conv-raw-info", 1, 0, 310},
-	    {"find-country-for-number", 1, 0, 311},
-	    {"find-country-for-ip", 1, 0, 322},
-	    {"test-billing", 1, 0, 320},
-	    {"test-billing-json", 1, 0, 340},
-	    {"watchdog", 1, 0, 316},
-	    {"cloud-db", 0, 0, 318},
-	    {"cloud-host", 1, 0, 325},
-	    {"cloud-token", 1, 0, 326},
-	    {"cloud-port", 1, 0, 327},
-	    {"server-host", 1, 0, 328},
-	    {"server-port", 1, 0, 329},
-	    {"server-pass", 1, 0, 330},
-	    {"disable-dbupgradecheck", 0, 0, 319},
-	    {"ssl-master-secret-file", 1, 0, 336},
-	    {"t2_boost", 0, 0, 337},
-	    {"json_config", 1, 0, 338},
-	    {"sip-msg-save", 0, 0, 339},
-	    {"dedup-pcap", 1, 0, 341},
-	    {"anonymize-pcap", 1, 0, 347},
-	    {"prepare_rtcp_data", 1, 0, 405},
-	    {"process_pcap", 1, 0, 406},
-	    {"heap-profiler", 1, 0, 342},
-	    {"revaluation", 1, 0, 344},
-	    {"eval-formula", 1, 0, 345},
-	    {"ipfix-client-emulation", 1, 0, 401},
-	    {"hep-client-emulation", 1, 0, 407},
-	    {"ws-calls", 1, 0, 402},
-	    {"extract_payload", 1, 0, 403},
-	    {"extract_rtp_payload", 1, 0, 404},
+	    {"clean-obsolete", 0, 0, _param_clean_obsolete},
+	    {"check-db", 0, 0, _param_check_db},
+	    {"fax-deduplicate", 0, 0, _param_fax_deduplicate},
+	    {"create-udptl-streams", 0, 0, _param_create_udptl_streams},
+	    {"conv-raw-info", 1, 0, _param_conv_raw_info},
+	    {"find-country-for-number", 1, 0, _param_find_country_for_number},
+	    {"find-country-for-ip", 1, 0, _param_find_country_for_ip},
+	    {"test-billing", 1, 0, _param_test_billing},
+	    {"test-billing-json", 1, 0, _param_test_billing_json},
+	    {"watchdog", 1, 0, _param_watchdog},
+	    {"cloud-db", 0, 0, _param_cloud_db},
+	    {"cloud-host", 1, 0, _param_cloud_host},
+	    {"cloud-token", 1, 0, _param_cloud_token},
+	    {"cloud-port", 1, 0, _param_cloud_port},
+	    {"server-host", 1, 0, _param_server_host},
+	    {"server-port", 1, 0, _param_server_port},
+	    {"server-pass", 1, 0, _param_server_pass},
+	    {"disable-dbupgradecheck", 0, 0, _param_disable_dbupgradecheck},
+	    {"ssl-master-secret-file", 1, 0, _param_ssl_master_secret_file},
+	    {"t2_boost", 0, 0, _param_t2_boost},
+	    {"json_config", 1, 0, _param_json_config},
+	    {"sip-msg-save", 0, 0, _param_sip_msg_save},
+	    {"dedup-pcap", 1, 0, _param_dedup_pcap},
+	    {"anonymize-pcap", 1, 0, _param_anonymize_pcap},
+	    {"prepare_rtcp_data", 1, 0, _param_prepare_rtcp_data},
+	    {"process_pcap", 1, 0, _param_process_pcap},
+	    {"heap-profiler", 1, 0, _param_heap_profiler},
+	    {"revaluation", 1, 0, _param_revaluation},
+	    {"eval-formula", 1, 0, _param_eval_formula},
+	    {"ipfix-client-emulation", 1, 0, _param_ipfix_client_emulation},
+	    {"hep-client-emulation", 1, 0, _param_hep_client_emulation},
+	    {"ws-calls", 1, 0, _param_ws_calls},
+	    {"extract_payload", 1, 0, _param_extract_payload},
+	    {"extract_rtp_payload", 1, 0, _param_extract_rtp_payload},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8692,6 +7394,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "check_config")			sverb.check_config = 1;
 	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
 	else if(verbParam == "suppress_auto_alter")		sverb.suppress_auto_alter = 1;
+	else if(verbParam == "call_branches")			sverb.call_branches = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -8714,13 +7417,13 @@ void get_command_line_arguments() {
 				printf ("option %s\n", long_options[option_index].name);
 				break;
 			*/
-			case 198:
+			case _param_ignorertcpjitter:
 				opt_ignoreRTCPjitter = atoi(optarg);
 				break;
-			case 199:
+			case _param_skinnyports:
 				cConfigItem_ports::setPortMatrix(optarg, skinnyportmatrix, 65535);
 				break;
-			case 315:
+			case _param_natalias:
 				{
 					vector<string> nataliases = explode(optarg, ',');
 					for (size_t iter = 0; iter < nataliases.size(); iter++) {
@@ -8733,90 +7436,90 @@ void get_command_line_arguments() {
 						}
 					}
 				}
-			case 200:
+			case _param_skinny:
 				opt_skinny = 1;
 				break;
-			case 201:
+			case _param_mono:
 				opt_saveaudio_stereo = 0;
 				break;
-			case 213:
+			case _param_big_jitter_resync_threshold:
 				opt_saveaudio_big_jitter_resync_threshold = true;
 				break;
-			case 314:
+			case _param_mgcp:
 				opt_mgcp = 1;
 				break;
-			case 202:
+			case _param_untar_gui:
 				if(!opt_untar_gui_params) {
 					opt_untar_gui_params = new FILE_LINE(42468) char[strlen(optarg) + 1];
 					strcpy(opt_untar_gui_params, optarg);
 				}
 				break;
-			case 205:
+			case _param_unlzo_gui:
 				if(!opt_unlzo_gui_params) {
 					opt_unlzo_gui_params = new FILE_LINE(42469) char[strlen(optarg) + 1];
 					strcpy(opt_unlzo_gui_params, optarg);
 				}
 				break;
-			case 206:
+			case _param_waveform_gui:
 				if(!opt_waveform_gui_params) {
 					opt_waveform_gui_params =  new FILE_LINE(42470) char[strlen(optarg) + 1];
 					strcpy(opt_waveform_gui_params, optarg);
 				}
 				break;
-			case 207:
+			case _param_spectrogram_gui:
 				if(!opt_spectrogram_gui_params) {
 					opt_spectrogram_gui_params =  new FILE_LINE(42471) char[strlen(optarg) + 1];
 					strcpy(opt_spectrogram_gui_params, optarg);
 				}
 				break;
-			case 331:
+			case _param_audio_convert:
 				if(!opt_audioconvert_params) {
 					opt_audioconvert_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_audioconvert_params, optarg);
 				}
 				break;
-			case 332:
+			case _param_rtp_streams_analysis:
 				if(!opt_rtp_stream_analysis_params) {
 					opt_rtp_stream_analysis_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_rtp_stream_analysis_params, optarg);
 				}
 				break;
-			case 333:
+			case _param_saveaudio_from_rtp:
 				opt_saveaudio_from_first_invite = false;
 				opt_saveaudio_afterconnect = false;
 				opt_saveaudio_from_rtp = true;
 				break;
-			case 208:
+			case _param_update_schema:
 				updateSchema = true;
 				break;
-			case 209:
+			case _param_check_regexp:
 				if(!opt_check_regexp_gui_params) {
 					opt_check_regexp_gui_params = new FILE_LINE(42472) char[strlen(optarg) + 1];
 					strcpy(opt_check_regexp_gui_params, optarg);
 				}
 				break;
-			case 321:
+			case _param_test_regexp:
 				if(!opt_test_regexp_gui_params) {
 					opt_test_regexp_gui_params = new FILE_LINE(42472) char[strlen(optarg) + 1];
 					strcpy(opt_test_regexp_gui_params, optarg);
 				}
 				break;
-			case 210:
+			case _param_read_pcap:
 				if(!opt_read_pcap_gui_params) {
 					opt_read_pcap_gui_params = new FILE_LINE(42473) char[strlen(optarg) + 1];
 					strcpy(opt_read_pcap_gui_params, optarg);
 				}
 				break;
-			case 203:
+			case _param_new_config:
 				useNewCONFIG = true;
 				break;
-			case 204:
+			case _param_print_config_struct:
 				printConfigStruct = true;
 				break;
-			case 211:
+			case _param_print_config_file:
 				printConfigFile = true;
 				break;
-			case 212:
+			case _param_print_config_file_default:
 				printConfigFile = true;
 				printConfigFile_default = true;
 				break;
@@ -8848,7 +7551,7 @@ void get_command_line_arguments() {
 			case 's':
 				opt_id_sensor = atoi(optarg);
 				break;
-			case 324:
+			case _param_sensor_string:
 				strcpy_null_term(opt_sensor_string, optarg);
 				break;
 			case 'Z':
@@ -8858,7 +7561,7 @@ void get_command_line_arguments() {
 				strcpy_null_term(opt_scanpcapdir, optarg);
 				break;
 #ifndef FREEBSD
-			case 900: // pcapscan-method
+			case _param_pcapscan_method:
 				opt_scanpcapmethod = (optarg[0] == 'r') ? IN_MOVED_TO : IN_CLOSE_WRITE;
 				break;
 #endif
@@ -8905,7 +7608,7 @@ void get_command_line_arguments() {
 			case '7':
 				strcpy_null_term(configfile, optarg);
 				break;
-			case 334:
+			case _param_cmp_config:
 				if(!opt_cmp_config_params) {
 					opt_cmp_config_params = new FILE_LINE(42473) char[strlen(optarg) + 1];
 					strcpy(opt_cmp_config_params, optarg);
@@ -8966,108 +7669,111 @@ void get_command_line_arguments() {
 					opt_enable_process_rtp_packet = 0;
 				}
 				break;
-			case 301:
+			case _param_max_packets:
 				opt_pb_read_from_file_max_packets = atol(optarg);
 				break;
-			case 302:
+			case _param_continue_after_read:
 				opt_continue_after_read = true;
 				break;
-			case 335:
+			case _param_suppress_cleanup_after_read:
+				opt_suppress_cleanup_after_read = true;
+				break;
+			case _param_nonstop_read:
 				opt_nonstop_read = true;
 				break;
-			case 350:
+			case _param_nonstop_read_quick:
 				opt_nonstop_read = true;
 				opt_nonstop_read_quick = true;
 				break;
-			case 323:
+			case _param_time_to_terminate:
 				opt_time_to_terminate = atoi(optarg);
 				break;
-			case 303:
+			case _param_diff_days:
 				{
 				cEvalFormula f(cEvalFormula::_est_na);
 				cEvalFormula::sValue v = f.e(optarg);
 				opt_pb_read_from_file_acttime_diff_days = v.getInteger();
 				}
 				break;
-			case 349:
+			case _param_diff_secs:
 				{
 				cEvalFormula f(cEvalFormula::_est_na);
 				cEvalFormula::sValue v = f.e(optarg);
 				opt_pb_read_from_file_acttime_diff_secs = v.getInteger();
 				}
 				break;
-			case 343:
+			case _param_time_adjustment:
 				{
 				cEvalFormula f(cEvalFormula::_est_na);
 				cEvalFormula::sValue v = f.e(optarg);
 				opt_pb_read_from_file_time_adjustment = v.getInteger();
 				}
 				break;
-			case 304:
-			case 305:
-			case 312:
-			case 317:
-			case 306:
+			case _param_reindex_all:
+			case _param_run_cleanspool:
+			case _param_run_cleanspool_maxdays:
+			case _param_test_cleanspool_load:
+			case _param_clean_obsolete:
 				if(is_enable_cleanspool(true)) {
 					opt_test = c;
-					if(c == 312 || c == 317) {
+					if(c == _param_run_cleanspool_maxdays || c == _param_test_cleanspool_load) {
 						strcpy_null_term(opt_test_arg, optarg);
 					}
 				}
 				break;
-			case 313:
-			case 346:
-			case 348:
+			case _param_run_droppartitions_maxdays:
+			case _param_run_droppartitions_rtp_stat_maxdays:
+			case _param_run_droppartitions_cdr_stat_maxdays:
 				opt_test = c;
 				strcpy_null_term(opt_test_arg, optarg);
 				is_gui_param = true;
 				break;
-			case 307:
+			case _param_check_db:
 				opt_check_db = true;
 				break;
-			case 308:
+			case _param_fax_deduplicate:
 				opt_fax_dup_seq_check = 1;
 				break;
-			case 309:
+			case _param_create_udptl_streams:
 				opt_fax_create_udptl_streams = 1;
 				break;
-			case 310:
-			case 311:
-			case 320:
-			case 322:
-			case 340:
+			case _param_conv_raw_info:
+			case _param_find_country_for_number:
+			case _param_find_country_for_ip:
+			case _param_test_billing:
+			case _param_test_billing_json:
 				opt_test = c;
 				if(optarg) {
 					strcpy_null_term(opt_test_arg, optarg);
 				}
 				break;
-			case 316:
+			case _param_watchdog:
 				enable_wdt = yesno(optarg);
 				break;
-			case 318:
+			case _param_cloud_db:
 				cloud_db = true;
 				break;
-			case 325:
+			case _param_cloud_host:
 				strcpy_null_term(cloud_host, optarg);
 				break;
-			case 326:
+			case _param_cloud_token:
 				strcpy_null_term(cloud_token, optarg);
 				break;
-			case 327:
+			case _param_cloud_port:
 				cloud_router_port = atoi(optarg);
 				break;
-			case 328:
+			case _param_server_host:
 				snifferClientOptions.host = optarg;
 				break;
-			case 329:
+			case _param_server_port:
 				snifferClientOptions.port = atoi(optarg);
 				break;
-			case 330:
+			case _param_server_pass:
 				if(optarg) {
 					snifferServerClientOptions.password = optarg;
 				}
 				break;
-			case 319:
+			case _param_disable_dbupgradecheck:
 				opt_disable_dbupgradecheck = true;
 				break;
 			case 'c':
@@ -9127,13 +7833,13 @@ void get_command_line_arguments() {
 					opt_test = 1;
 				}
 				break;
-			case 336:
+			case _param_ssl_master_secret_file:
 				strcpy_null_term(ssl_master_secret_file, optarg);
 				break;
-			case 337:
+			case _param_t2_boost:
 				opt_t2_boost = true;
 				break;
-			case 339:
+			case _param_sip_msg_save:
 				opt_sip_options = true;
 				opt_sip_subscribe = true;
 				opt_sip_notify = true;
@@ -9141,7 +7847,7 @@ void get_command_line_arguments() {
 				opt_save_sip_subscribe = true;
 				opt_save_sip_notify = true;
 				break;
-			case 341:
+			case _param_dedup_pcap:
 				if(sscanf(optarg, "%s %s", opt_process_pcap_fname, opt_pcap_destination) != 2) {
 					cerr << "dedup pcap: bad arguments" << endl;
 					exit(1);
@@ -9153,19 +7859,22 @@ void get_command_line_arguments() {
 				opt_dup_check_udpheader_ignore_checksum = 1;
 				is_gui_param = true;
 				break;
-			case 347:
+			case _param_anonymize_pcap:
 				strcpy_null_term(opt_process_pcap_fname, optarg);
 				opt_process_pcap_type = _pp_anonymize_ip;
 				is_gui_param = true;
 				break;
-			case 405:
+			case _param_prepare_rtcp_data:
 				strcpy_null_term(opt_process_pcap_fname, optarg);
 				opt_process_pcap_type = _pp_prepare_rtcp_data;
 				is_gui_param = true;
 				break;
-			case 406:
+			case _param_process_pcap:
+				strcpy_null_term(opt_process_pcap_fname, optarg);
+				opt_process_pcap_type = _pp_read_file;
+				is_gui_param = true;
 				break;
-			case 342:
+			case _param_heap_profiler:
 				#if HAVE_LIBTCMALLOC_HEAPPROF
 				if(!heap_profiler_is_running) {
 					HeapProfilerStart(optarg && *optarg ? optarg : "voipmonitor.hprof");
@@ -9175,13 +7884,13 @@ void get_command_line_arguments() {
 				syslog(LOG_NOTICE, "heap profiler need build with tcmalloc (with heap profiler)");
 				#endif
 				break;
-			case 344:
+			case _param_revaluation:
 				if(!opt_revaluation_params) {
 					opt_revaluation_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_revaluation_params, optarg);
 				}
 				break;
-			case 345:
+			case _param_eval_formula:
 				{
 				cEvalFormula f(cEvalFormula::_est_na, true);
 				cEvalFormula::sSplitOperands *filter_s = new FILE_LINE(0) cEvalFormula::sSplitOperands(0);
@@ -9193,7 +7902,7 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
-			case 401:
+			case _param_ipfix_client_emulation:
 				{
 				vector<string> parameters = explode(optarg, ';');
 				if(parameters.size() >= 5) {
@@ -9207,7 +7916,7 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
-			case 407:
+			case _param_hep_client_emulation:
 				{
 				vector<string> parameters = explode(optarg, ';');
 				if(parameters.size() >= 5) {
@@ -9225,16 +7934,16 @@ void get_command_line_arguments() {
 				exit(0);
 				}
 				break;
-			case 402:
+			case _param_ws_calls:
 				if(!ws_calls) {
 					ws_calls = new FILE_LINE(0) cWsCalls();
 					ws_calls->load(optarg);
 				}
 				break;
-			case 403:
+			case _param_extract_payload:
 				extract_payload = optarg;
 				break;
-			case 404:
+			case _param_extract_rtp_payload:
 				extract_rtp_payload = optarg;
 				break;
 		}
@@ -9276,7 +7985,7 @@ void get_command_line_arguments_mysql() {
 void get_command_line_arguments_json_config() {
 	for(map<int, string>::iterator iter = command_line_data.begin(); iter != command_line_data.end(); iter++) {
 		switch(iter->first) {
-			case 338:
+			case _param_json_config:
 				if(CONFIG.isSet()) {
 					CONFIG.setFromJson(iter->second.c_str());
 				} else {
@@ -9388,7 +8097,7 @@ void set_context_config() {
 			if(buffersControl.getMaxBufferMem()) {
 				u_int64_t totalMemory = getTotalMemory();
 				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
-					buffersControl.setMaxBufferMem(totalMemory / 2);
+					buffersControl.setMaxBufferMem(totalMemory / 2, false, true);
 					syslog(LOG_NOTICE, "set buffer memory limit to %" int_64_format_prefix "lu", totalMemory / 2);
 				} else if(pass) {
 					break;
@@ -9429,12 +8138,12 @@ void set_context_config() {
 			// set new buffer size via opt_pcap_queue_bypass_max_size
 			if(buffersControl.getMaxBufferMem()) {
 				if(buffersControl.getMaxBufferMem() < opt_pcap_queue_bypass_max_size * 2) {
-					buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2);
+					buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2, false, true);
 				} else {
 					buffersControl.setMaxBufferMem(buffersControl.getMaxBufferMem() - opt_pcap_queue_bypass_max_size);
 				}
 			} else {
-				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull);
+				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull, false, true);
 			}
 		}
 	}
@@ -9808,7 +8517,6 @@ void set_context_config() {
 	}
 	
 	opt_kamailio = opt_kamailio_dstip.isSet();
-
 }
 
 void check_context_config() {
@@ -10127,6 +8835,13 @@ bool check_complete_parameters() {
 		return false;
 	}
 	return true;
+}
+
+void final_parameters() {
+	u_int64_t max_buffer_mem_mb = buffersControl.getMaxBufferMem(true);
+	if(max_buffer_mem_mb > 0) {
+		syslog(LOG_NOTICE, "max_buffer_mem: %" int_64_format_prefix "lu MB", max_buffer_mem_mb);
+	}
 }
 
 
@@ -11310,6 +10025,18 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "norecord-dtmf", NULL))) {
 		opt_norecord_dtmf = yesno(value);
 	}
+	if((value = ini.GetValue("general", "call_branches", NULL))) {
+		opt_call_branches = yesno(value);
+	}
+	if((value = ini.GetValue("general", "call_branches_find_by_called_number", NULL))) {
+		opt_call_branches_find_by_called_number = yesno(value);
+	}
+	if((value = ini.GetValue("general", "call_branches_find_by_called_domain", NULL))) {
+		opt_call_branches_find_by_called_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "call_branches_find_smart", NULL))) {
+		opt_call_branches_find_smart = yesno(value);
+	}
 	if((value = ini.GetValue("general", "call_id_alternative", NULL))) {
 		strcpy_null_term(opt_call_id_alternative, value);
 	}
@@ -11328,6 +10055,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "callidmerge_secret", NULL))) {
 		strcpy_null_term(opt_callidmerge_secret, value);
+	}
+	if((value = ini.GetValue("general", "callidmerge_force_separate_branches", NULL))) {
+		opt_callidmerge_force_separate_branches = yesno(value);
 	}
 	if((value = ini.GetValue("general", "domainport", NULL))) {
 		opt_domainport = yesno(value);
@@ -12934,7 +11664,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
-		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true);
+		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true, true);
 	}
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
@@ -13466,162 +12196,6 @@ void fifobuff_add(void *fifo_buff, const char *data, unsigned int datalen) {
 	((FifoBuffer*)fifo_buff)->add((u_char*)data, datalen);
 	//cout << "fifo * " << ((FifoBuffer*)fifo_buff)->size_get() << " / time [ms] : " << getTimeMS() << endl;
 }
-}
-
-void setAllocNumb() {
-	// ./voipmonitor -k -v1 -c -X88
-	vector<sFileLine> fileLines;
-	DIR* dp = opendir(".");
-	if(!dp) {
-		return;
-	}
-	vector<string> files;
-	dirent* de;
-	do {
-		de = readdir(dp);
-		if(de && string(de->d_name) != ".." && string(de->d_name) != ".") {
-			if(reg_match(de->d_name, ".*\\.cpp", __FILE__, __LINE__) ||
-			   reg_match(de->d_name, ".*\\.h", __FILE__, __LINE__)) {
-				files.push_back(de->d_name);
-			}
-		}
-	} while(de);
-	closedir(dp);
-	std::sort(files.begin(), files.end());
-	unsigned fileNumber = 1;
-	for(unsigned file_i = 0; file_i < files.size(); file_i++) {
-		/*
-		if(files[file_i] != "filter_mysql.cpp") {
-			continue;
-		}
-		fileNumber = 4;
-		*/
-		bool exists = false;
-		bool mod = false;
-		FILE *file_in = fopen(files[file_i].c_str(), "r");
-		if(file_in) {
-			char line[1000000];
-			vector<string> lines;
-			while(fgets(line, sizeof(line), file_in)) {
-				lines.push_back(line);
-			}
-			fclose(file_in);
-			/*
-			bool fileNumberOk = true;
-			unsigned allocNumberMax = 0;
-			for(int pass = 0; pass < 2; pass++) {
-				for(unsigned line_i = 0; line_i < lines.size(); line_i++) {
-					if(!fileNumberOk) {
-						allocNumberMax = 0;
-					}
-					strcpy(line, lines[line_i].c_str());
-					if(reg_match(line, "FILE_LINE\\([0-9]+\\)")) {
-						exists = true;
-						string repl;
-						do {
-							repl = reg_replace(line, "(FILE_LINE\\([0-9]+\\))", "$1");
-							if(!repl.empty()) {
-								char *pos = strstr(line, repl.c_str());
-								unsigned fileAllocNumberOld = atol(pos + 10);
-								if(pass == 0) {
-									if(fileAllocNumberOld) {
-										if(fileAllocNumberOld / 1000 != fileNumber) {
-											fileNumberOk = false;
-											break;
-										}
-										allocNumberMax = max(allocNumberMax, fileAllocNumberOld % 1000);
-									}
-									*pos = '_';
-								} else {
-									unsigned fileAllocNumberNew;
-									sFileLine fileLine;
-									strcpy(fileLine.file, files[file_i].c_str());
-									fileLine.line = line_i + 1;
-									if(!fileNumberOk || !fileAllocNumberOld) {
-										fileAllocNumberNew = fileNumber * 1000 + (++allocNumberMax);
-									} else {
-										fileAllocNumberNew = fileAllocNumberOld;
-									}
-									char line_mod[1000000];
-									strncpy(line_mod, line, pos - line);
-									line_mod[pos - line] = 0;
-									strcat(line_mod, ("FILE_X_LINE(" + intToString(fileAllocNumberNew) + ")").c_str());
-									strcat(line_mod, line + (pos - line) + repl.size());
-									strcpy(line, line_mod);
-									fileLine.alloc_number = fileAllocNumberNew;
-									fileLines.push_back(fileLine);
-								}
-							}
-						} while(!repl.empty());
-						if(pass == 1) {
-							string line_new = find_and_replace(line, "FILE_X_LINE" , "FILE_LINE").c_str();
-							if(line_new != lines[line_i]) {
-								lines[line_i] = line_new;
-								mod = true;
-							}
-						}
-					}
-				}
-			}
-			*/
-			unsigned allocNumber = 0;
-			for(unsigned line_i = 0; line_i < lines.size(); line_i++) {
-				strcpy(line, lines[line_i].c_str());
-				if(reg_match(line, "FILE_LINE\\([0-9]+\\)")) {
-					exists = true;
-					string repl;
-					do {
-						repl = reg_replace(line, "(FILE_LINE\\([0-9]+\\))", "$1");
-						if(!repl.empty()) {
-							char *pos = strstr(line, repl.c_str());
-							sFileLine fileLine;
-							strcpy(fileLine.file, files[file_i].c_str());
-							fileLine.line = line_i + 1;
-							unsigned fileAllocNumberNew = fileNumber * 1000 + (++allocNumber);
-							char line_mod[1000000];
-							strncpy(line_mod, line, pos - line);
-							line_mod[pos - line] = 0;
-							strcat(line_mod, ("FILE_X_LINE(" + intToString(fileAllocNumberNew) + ")").c_str());
-							strcat(line_mod, line + (pos - line) + repl.size());
-							strcpy(line, line_mod);
-							fileLine.alloc_number = fileAllocNumberNew;
-							fileLines.push_back(fileLine);
-						}
-					} while(!repl.empty());
-					string line_new = find_and_replace(line, "FILE_X_LINE" , "FILE_LINE").c_str();
-					if(line_new != lines[line_i]) {
-						lines[line_i] = line_new;
-						mod = true;
-					}
-				}
-			}
-			if(mod) {
-				string modFileName = files[file_i] + "_new";
-				FILE *file_out = fopen(modFileName.c_str(), "w");
-				if(file_out) {
-					for(unsigned line_i = 0; line_i < lines.size(); line_i++) {
-						fputs(lines[line_i].c_str(), file_out);
-					}
-					fclose(file_out);
-					cout << "MOD: " << files[file_i] << endl;
-					unlink(files[file_i].c_str());
-					rename(modFileName.c_str(), files[file_i].c_str());
-				}
-			}
-		}
-		if(exists) {
-			++fileNumber;
-		}
-	}
-	if(fileLines.size()) {
-		FILE *file_out = fopen("alloc_file_lines", "w");
-		if(file_out) {
-			for(unsigned i = 0; i < fileLines.size(); i++) {
-				fprintf(file_out, "{ \"%s\", %u, %u },\n", fileLines[i].file, fileLines[i].line, fileLines[i].alloc_number);
-			}
-			fclose(file_out);
-		}
-	}
 }
 
 eTypeSpoolFile getTypeSpoolFile(const char *filePathName) {

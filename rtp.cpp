@@ -1083,9 +1083,9 @@ RTP::process_dtmf_rfc2833() {
 }
 
 /* read rtp packet */
-bool
-RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
-	  int sensor_id, vmIP sensor_ip, char *ifname, bool *decrypt_ok, volatile int8_t *decrypt_sync) {
+bool RTP::read(CallBranch *c_branch,
+	       unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+	       int sensor_id, vmIP sensor_ip, char *ifname, bool *decrypt_ok, volatile int8_t *decrypt_sync) {
  
 	if(this->stopReadProcessing) {
 		return(false);
@@ -1178,7 +1178,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 	this->last_packet_time_us = pcap_header_us;
 
 	if(owner && !is_read_from_file_simple()) {
-		u_int64_t seenbye_and_ok_time_usec = owner->getSeenByeAndOkTimeUS();
+		u_int64_t seenbye_and_ok_time_usec = owner->getSeenByeAndOkTimeUS(c_branch);
 		if(seenbye_and_ok_time_usec && getTimeUS(header) > seenbye_and_ok_time_usec) {
 			return(false);
 		}
@@ -1364,7 +1364,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		if(curpayload >= 96 && curpayload <= 127) {
 			/* for dynamic payload we look into rtpmap */
 			int found = 0;
-			RTPMAP *_rtpmap = get_rtpmap(owner);
+			RTPMAP *_rtpmap = get_rtpmap(owner, c_branch);
 			if(_rtpmap) {
 				for(int i = 0; i < MAX_RTPMAP; i++) {
 					if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
@@ -1376,7 +1376,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 				}
 			}
 			if(!found) {
-				_rtpmap = get_rtpmap(owner, true);
+				_rtpmap = get_rtpmap(owner, c_branch, true);
 				if(_rtpmap) {
 					for(int i = 0; i < MAX_RTPMAP; i++) {
 						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
@@ -1390,11 +1390,11 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 			}
 			if(!found && owner) {
 				for(int i = 0; i < MAX_IP_PER_CALL && !found; i++) {
-					if(!owner->rtpmap_used_flags[i]) {
+					if(!c_branch->rtpmap_used_flags[i]) {
 						for(int j = 0; j < MAX_RTPMAP; j++) {
-							if(owner->rtpmap[i][j].is_set() && curpayload == owner->rtpmap[i][j].payload) {
-								codec = owner->rtpmap[i][j].codec;
-								frame_size = owner->rtpmap[i][j].frame_size;
+							if(c_branch->rtpmap[i][j].is_set() && curpayload == c_branch->rtpmap[i][j].payload) {
+								codec = c_branch->rtpmap[i][j].codec;
+								frame_size = c_branch->rtpmap[i][j].frame_size;
 								found = 1;
 								break;
 							}
@@ -1409,7 +1409,7 @@ RTP::read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkt
 		} else {
 			codec = curpayload;
 			if(codec == PAYLOAD_ILBC) {
-				RTPMAP *_rtpmap = get_rtpmap(owner);
+				RTPMAP *_rtpmap = get_rtpmap(owner, c_branch);
 				if(_rtpmap) {
 					for(int i = 0; i < MAX_RTPMAP; i++) {
 						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
@@ -3070,13 +3070,13 @@ void RTP::addEnergyLevel(void *data, int datalen, int codec) {
 	}
 }
 
-RTPMAP *RTP::get_rtpmap(Call *call, bool other_side) {
+RTPMAP *RTP::get_rtpmap(Call *call, CallBranch *c_branch, bool other_side) {
 	extern bool opt_rtpmap_indirect;
 	if(opt_rtpmap_indirect) {
 		if(call) {
 			int rtpmap_call_index = other_side ? this->rtpmap_other_side_call_index : this->rtpmap_call_index;
 			if(rtpmap_call_index >= 0) {
-				return(call->rtpmap[rtpmap_call_index]);
+				return(c_branch->rtpmap[rtpmap_call_index]);
 			}
 		}
 		return(NULL);

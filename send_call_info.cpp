@@ -317,9 +317,9 @@ void SendCallInfo::stopPopCallInfoThread(bool wait) {
 	}
 }
 
-void SendCallInfo::evCall(Call *call, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info) {
+void SendCallInfo::evCall(CallBranch *c_branch, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info) {
 	sSciInfo sci;
-	this->getSciFromCall(&sci, call, typeSci, at, counter, packet_info);
+	this->getSciFromCall(&sci, c_branch, typeSci, at, counter, packet_info);
 	sciQueue.push(sci);
 }
 
@@ -352,21 +352,22 @@ void SendCallInfo::popCallInfoThread() {
 	runPopCallInfoThread = false;
 }
 
-void SendCallInfo::getSciFromCall(sSciInfo *sci, Call *call, 
+void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch, 
 				  eTypeSci typeSci, u_int64_t at,
 				  u_int16_t counter, sSciPacketInfo *packet_info) {
+	Call *call = c_branch->call;
 	sci->callid = call->call_id;
-	sci->caller_number = call->caller;
-	sci->called_number_to = call->get_called_to();
-	sci->called_number_uri = call->get_called_uri();
-	sci->called_number_final = call->get_called();
-	sci->callername = call->callername;
-	sci->caller_domain = call->caller_domain;
-	sci->called_domain_to = call->get_called_domain_to();
-	sci->called_domain_uri = call->get_called_domain_uri();
-	sci->called_domain_final = call->get_called_domain();
-	sci->caller_ip = call->getSipcallerip();
-	sci->called_ip = call->getSipcalledip();
+	sci->caller_number = c_branch->caller;
+	sci->called_number_to = call->get_called_to(c_branch);
+	sci->called_number_uri = call->get_called_uri(c_branch);
+	sci->called_number_final = call->get_called(c_branch);
+	sci->callername = c_branch->callername;
+	sci->caller_domain = c_branch->caller_domain;
+	sci->called_domain_to = call->get_called_domain_to(c_branch);
+	sci->called_domain_uri = call->get_called_domain_uri(c_branch);
+	sci->called_domain_final = call->get_called_domain(c_branch);
+	sci->caller_ip = call->getSipcallerip(c_branch);
+	sci->called_ip = call->getSipcalledip(c_branch);
 	sci->typeSci = typeSci;
 	sci->at = at;
 	sci->counter = counter;
@@ -418,10 +419,10 @@ void refreshSendCallInfo() {
 	}
 }
 
-void sendCallInfoEvCall(Call *call, eTypeSci typeSci, struct timeval tv, u_int16_t counter, sSciPacketInfo *packet_info) {
+void sendCallInfoEvCall(CallBranch *c_branch, eTypeSci typeSci, struct timeval tv, u_int16_t counter, sSciPacketInfo *packet_info) {
 	if(sendCallInfo && _sendCallInfo_ready) {
 		sendCallInfo_lock();
-		sendCallInfo->evCall(call, typeSci, getTimeUS(tv), counter, packet_info);
+		sendCallInfo->evCall(c_branch, typeSci, getTimeUS(tv), counter, packet_info);
 		sendCallInfo_unlock();
 	}
 }

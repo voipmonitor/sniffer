@@ -549,9 +549,9 @@ public:
 	 * @param saddr source IP adress of the packet
 	 *
 	*/
-	bool read(unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
+	bool read(class CallBranch *c_branch,
+		  unsigned char* data, iphdr2 *header_ip, unsigned *len, struct pcap_pkthdr *header, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport,
 		  int sensor_id, vmIP sensor_ip, char *ifname = NULL, bool *decrypt_ok = NULL, volatile int8_t *decrypt_sync = NULL);
-
 
 	/**
 	 * @brief fill RTP packet into structures
@@ -797,7 +797,7 @@ public:
 		return(ok_other_ip_side_by_sip);
 	}
 	
-	RTPMAP *get_rtpmap(class Call *call, bool other_side = false);
+	RTPMAP *get_rtpmap(class Call *call, class CallBranch *c_branch, bool other_side = false);
 	
 	bool is_unencrypted_payload(u_char *data, unsigned datalen);
 	

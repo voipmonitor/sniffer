@@ -129,6 +129,24 @@ public:
 		row.push_back(SqlDb_rowField(content, fieldName, null, 0, 0, ift));
 		return(&row[row.size() - 1]);
 	}
+	SqlDb_rowField *add(string content, unsigned limitLength ,string fieldName = "", bool null = false, eInternalFieldType ift = _ift_string) {
+		if(!ignoreCheckExistsField && fieldName != "") {
+			for(size_t i = 0; i < row.size(); i++) {
+				if(row[i].fieldName == fieldName) {
+					row[i] = SqlDb_rowField(limitLength > 0 && content.length() > limitLength ? 
+								 content.substr(limitLength) : 
+								 content,
+								fieldName, null, 0, 0, ift);
+					return(&row[i]);
+				}
+			}
+		}
+		row.push_back(SqlDb_rowField(limitLength > 0 && content.length() > limitLength ? 
+					      content.substr(limitLength) : 
+					      content,
+					     fieldName, null, 0, 0, ift));
+		return(&row[row.size() - 1]);
+	}
 	SqlDb_rowField *add(int content, string fieldName, bool null = false) {
 		SqlDb_rowField *f;
 		if(!content && null) {
@@ -215,6 +233,9 @@ public:
 	void add_duration(u_int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, u_int64_t limit = 0);
 	void add_duration(int64_t duration_us, string fieldName, bool use_ms, bool round_s = false, int64_t limit = 0);
 	void add_cb_string(string content, string fieldName, int cb_type);
+	void add_null(string fieldName) {
+		row.push_back(SqlDb_rowField(NULL, fieldName));
+	}
 	int getIndexField(string fieldName) {
 		for(size_t i = 0; i < row.size(); i++) {
 			if(!strcasecmp(row[i].fieldName.c_str(), fieldName.c_str())) {
@@ -692,6 +713,7 @@ public:
 	void updateSensorState();
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
+	void checkColumns_cdr_next_branches(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_conference(bool log = false);
@@ -1195,6 +1217,7 @@ struct sExistsColumns {
 	bool cdr_calldate_ms;
 	bool cdr_child_next_calldate_ms;
 	bool cdr_child_proxy_calldate_ms;
+	bool cdr_child_next_branches_calldate_ms;
 	bool cdr_child_rtp_calldate_ms;
 	bool cdr_child_rtp_energylevels_calldate_ms;
 	bool cdr_child_dtmf_calldate_ms;
@@ -1249,6 +1272,11 @@ struct sExistsColumns {
 	bool cdr_next_leg_flag;
 	bool cdr_next_srvcc_call_id;
 	bool cdr_next_srvcc_flag;
+	bool cdr_next_branches;
+	bool cdr_next_branches_calldate;
+	bool cdr_next_branches_sipport;
+	bool cdr_next_branches_sipcallerdip_encaps;
+	bool cdr_next_branches_sipcallerdip_v6;
 	bool cdr_rtp_calldate;
 	bool cdr_rtp_energylevels_calldate;
 	bool cdr_rtp_sport;

@@ -18,7 +18,7 @@ public:
 		}
 		Call *call = (Call*)rec;
 		set<vmIP> proxies;
-		call->getProxies(&proxies, true, true);
+		call->getProxies(((Call*)rec)->branch_main(), &proxies, true, true);
 		if(proxies.size()) {
 			for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); iter++) {
 				bool _findInBlackList = false;
@@ -74,39 +74,39 @@ public:
 		case cf_connect_duration:
 			return(((Call*)rec)->connect_duration_active_s());
 		case cf_called_international:
-			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(), ((Call*)rec)->getSipcalledip(true, true)));
+			return(!isLocalByPhoneNumber(((Call*)rec)->get_called(((Call*)rec)->branch_main()), ((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true)));
 		case cf_vlan:
-			return(((Call*)rec)->vlan);
+			return(((Call*)rec)->branch_main()->vlan);
 		}
 		return(0);
 	}
 	vmIP getField_ip(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_callerip:
-			return(((Call*)rec)->getSipcallerip(true));
+			return(((Call*)rec)->getSipcallerip(((Call*)rec)->branch_main(), true));
 		case cf_calledip:
-			return(((Call*)rec)->getSipcalledip(true, true));
+			return(((Call*)rec)->getSipcalledip(((Call*)rec)->branch_main(), true, true));
 		case cf_callerip_encaps:
-			return(((Call*)rec)->getSipcallerip_encaps(true));
+			return(((Call*)rec)->getSipcallerip_encaps(((Call*)rec)->branch_main(), true));
 		case cf_calledip_encaps:
-			return(((Call*)rec)->getSipcalledip_encaps(true, true));
+			return(((Call*)rec)->getSipcalledip_encaps(((Call*)rec)->branch_main(), true, true));
 		}
 		return(0);
 	}
 	const char *getField_string(void *rec, unsigned registerFieldIndex) {
 		switch(registerFieldIndex) {
 		case cf_caller:
-			return(((Call*)rec)->caller);
+			return(((Call*)rec)->branch_main()->caller.c_str());
 		case cf_called:
-			return(((Call*)rec)->get_called());
+			return(((Call*)rec)->get_called(((Call*)rec)->branch_main()));
 		case cf_callerdomain:
-			return(((Call*)rec)->caller_domain);
+			return(((Call*)rec)->branch_main()->caller_domain.c_str());
 		case cf_calleddomain:
-			return(((Call*)rec)->get_called_domain());
+			return(((Call*)rec)->get_called_domain(((Call*)rec)->branch_main()));
 		case cf_calleragent:
-			return(((Call*)rec)->a_ua);
+			return(((Call*)rec)->branch_main()->a_ua.c_str());
 		case cf_calledagent:
-			return(((Call*)rec)->b_ua);
+			return(((Call*)rec)->branch_main()->b_ua.c_str());
 		case cf_callid:
 			return(((Call*)rec)->fbasename);
 		}
