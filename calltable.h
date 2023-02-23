@@ -2596,7 +2596,6 @@ public:
 
 public:	
 	CallBranch first_branch;
-	int8_t single_branch;
 	vector<CallBranch*> next_branches;
 	map<string, int> branches_to_map;
 	map<string, int> branches_tag_map;
