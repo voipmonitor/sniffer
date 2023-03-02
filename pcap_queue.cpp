@@ -1253,13 +1253,14 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 		} else {
 			fileStore = this->fileStore[this->fileStore.size() - 1];
 		}
-		this->unlock_fileStore();
 		if(!fileStore->push(blockStore)) {
 			if(deleteBlockStoreIfFail) {
 				delete blockStore;
 			}
+			this->unlock_fileStore();
 			return(false);
 		}
+		this->unlock_fileStore();
 	} else {
 		if(locked_fileStore) {
 			this->unlock_fileStore();
