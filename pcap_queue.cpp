@@ -101,6 +101,7 @@ extern char opt_mirrorip_dst[20];
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
+extern bool opt_enable_diameter;
 extern int opt_fork;
 extern int opt_id_sensor;
 extern char opt_name_sensor[256];
@@ -119,6 +120,7 @@ extern u_int16_t global_pcap_handle_index;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
+extern char *diameter_tcp_portmatrix;
 extern MirrorIP *mirrorip;
 extern char user_filter[10*2048];
 extern Calltable *calltable;
@@ -135,6 +137,7 @@ extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
 extern TcpReassembly *tcpReassemblySipExt;
+extern TcpReassembly *tcpReassemblyDiameter;
 extern char opt_pb_read_from_file[256];
 extern double opt_pb_read_from_file_speed;
 extern int opt_pb_read_from_file_acttime;
@@ -2396,6 +2399,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 								last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
@@ -2406,6 +2410,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 								last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 							}
@@ -8819,7 +8824,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
 			return(1);
 		} else if(opt_ipaccount &&
-			  !(sipportmatrix[sport] || sipportmatrix[dport])) {
+			  !(sipportmatrix[sport] || sipportmatrix[dport]) &&
+			  !(opt_enable_diameter && (diameter_tcp_portmatrix[sport] || diameter_tcp_portmatrix[dport]))) {
 			return(0);
 		}
 	}

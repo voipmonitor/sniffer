@@ -940,7 +940,8 @@ public:
 		http,
 		webrtc,
 		ssl,
-		sip
+		sip,
+		diameter
 	};
 	struct sPacket {
 		pcap_pkthdr *header; 

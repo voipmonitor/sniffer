@@ -383,6 +383,7 @@ public:
 		ppt_pp_call,
 		ppt_pp_register,
 		ppt_pp_sip_other,
+		ppt_pp_diameter,
 		ppt_pp_rtp,
 		ppt_pp_other,
 		ppt_end_base,
@@ -532,8 +533,11 @@ public:
 				int blockstore_lock = 1) {
 		extern int opt_t2_boost;
 		extern int opt_skinny;
+		extern bool opt_enable_diameter;
 		extern char *sipportmatrix;
 		extern char *skinnyportmatrix;
+		extern char *diameter_tcp_portmatrix;
+		extern char *diameter_udp_portmatrix;
 		extern int opt_mgcp;
 		extern unsigned opt_tcp_port_mgcp_gateway;
 		extern unsigned opt_udp_port_mgcp_gateway;
@@ -546,6 +550,10 @@ public:
 				 (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
 				((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
 				 (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
+		pflags.diameter = opt_enable_diameter && 
+				  (pflags.tcp ?
+				    diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
+				    diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]);
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		extern unsigned opt_udp_port_audiocodes;
@@ -568,7 +576,8 @@ public:
 					 (pflags.ssl ||
 					  sipportmatrix[source] || sipportmatrix[dest] ||
 					  pflags.skinny ||
-					  pflags.mgcp))
+					  pflags.mgcp ||
+					  pflags.diameter))
 					#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 					||
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
@@ -895,6 +904,9 @@ public:
 					case ppt_pp_sip_other:
 						this->process_SIP_OTHER(_packetS);
 						break;
+					case ppt_pp_diameter:
+						this->process_DIAMETER(_packetS);
+						break;
 					case ppt_pp_rtp:
 						this->process_RTP(_packetS);
 						break;
@@ -935,6 +947,9 @@ public:
 				break;
 			case ppt_pp_sip_other:
 				this->process_SIP_OTHER(packetS);
+				break;
+			case ppt_pp_diameter:
+				this->process_DIAMETER(packetS);
 				break;
 			case ppt_pp_rtp:
 				this->process_RTP(packetS);
@@ -1234,6 +1249,8 @@ public:
 			return("register");
 		case ppt_pp_sip_other:
 			return("sip other");
+		case ppt_pp_diameter:
+			return("diameter");
 		case ppt_pp_rtp:
 			return("rtp");
 		case ppt_pp_other:
@@ -1265,6 +1282,8 @@ public:
 			return("g");
 		case ppt_pp_sip_other:
 			return("so");
+		case ppt_pp_diameter:
+			return("dm");
 		case ppt_pp_rtp:
 			return("r");
 		case ppt_pp_other:
@@ -1275,6 +1294,7 @@ public:
 		return("");
 	}
 	static packet_s_process *clonePacketS(u_char *newData, unsigned newDataLength, packet_s_process *packetS);
+	static packet_s_process *clonePacketS(packet_s_process *packetS);
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
 		       this->nextThreadId[next_thread_index]);
@@ -1306,6 +1326,10 @@ private:
 					      (unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
 					     ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
 					      (unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent));
+		pflags.diameter = opt_enable_diameter && 
+				  (pflags.tcp ?
+				    diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
+				    diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]);
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		extern unsigned opt_udp_port_audiocodes;
@@ -1473,6 +1497,7 @@ private:
 	void process_CallFindX(packet_s_process *packetS);
 	void process_REGISTER(packet_s_process *packetS);
 	void process_SIP_OTHER(packet_s_process *packetS);
+	void process_DIAMETER(packet_s_process *packetS);
 	void process_RTP(packet_s_process_0 *packetS);
 	void process_OTHER(packet_s_stack *packetS);
 	void process_parseSipDataExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
@@ -1485,6 +1510,8 @@ private:
 	inline void process_skinny(packet_s_process **packetS_ref);
 	inline void process_mgcp(packet_s_process **packetS_ref);
 	inline void process_websocket(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
+	void process_diameterExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
+	inline void process_diameter(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
@@ -1565,6 +1592,7 @@ friend inline void *_PreProcessPacket_outThreadFunction(void *arg);
 friend inline void *_PreProcessPacket_nextThreadFunction(void *arg);
 friend class TcpReassemblySip;
 friend class SipTcpData;
+friend class DiameterTcpData;
 };
 
 inline packet_s_process *PACKET_S_PROCESS_SIP_CREATE() {

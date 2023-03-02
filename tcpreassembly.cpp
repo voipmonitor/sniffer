@@ -9,6 +9,7 @@
 #include "webrtc.h"
 #include "ssldata.h"
 #include "sip_tcp_data.h"
+#include "diameter.h"
 #include "sql_db.h"
 #include "tools.h"
 #include "sniff_inline.h"
@@ -28,6 +29,7 @@ extern char opt_tcpreassembly_http_log[1024];
 extern char opt_tcpreassembly_webrtc_log[1024];
 extern char opt_tcpreassembly_ssl_log[1024];
 extern char opt_tcpreassembly_sip_log[1024];
+extern char opt_tcpreassembly_diameter_log[1024];
 extern char opt_pb_read_from_file[256];
 extern int verbosity;
 
@@ -581,6 +583,7 @@ bool TcpReassemblyStream::saveCompleteData(bool check, TcpReassemblyStream *prev
 			case TcpReassembly::webrtc:
 			case TcpReassembly::ssl:
 			case TcpReassembly::sip:
+			case TcpReassembly::diameter:
 				{
 				deque<s_index_item> data_index;
 				data = this->complete(&datalen, &data_index, &time, &seq, check);
@@ -3038,6 +3041,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	case webrtc: log = opt_tcpreassembly_webrtc_log; break;
 	case ssl: log = opt_tcpreassembly_ssl_log; break;
 	case sip: log = opt_tcpreassembly_sip_log; break;
+	case diameter: log = opt_tcpreassembly_diameter_log; break;
 	}
 	if(log && *log) {
 		this->log = fopen(log, "at");
@@ -3376,6 +3380,7 @@ void TcpReassembly::push_tcp(pcap_pkthdr *header, iphdr2 *header_ip, u_char *pac
 	if((debug_limit_counter && debug_counter > debug_limit_counter) ||
 	   !(type == ssl || 
 	     type == sip ||
+	     type == diameter ||
 	     this->check_ip(header_ip->get_saddr(), header_ip->get_daddr()))) {
 		if(block_store && block_store_locked) {
 			block_store->unlock_packet(block_store_index);
@@ -3456,6 +3461,14 @@ bool TcpReassembly::checkOkData(u_char * data, u_int32_t datalen, int8_t strict_
 			}
 			return(true);
 		} else if(checkOkSipData(data, datalen, strict_mode, sip_offsets, datalen_used)) {
+			return(true);
+		}
+		break;
+	case diameter:
+		if(checkOkDiameter(data, datalen)) {
+			if(datalen_used) {
+				*datalen_used = datalen;
+			}
 			return(true);
 		}
 		break;

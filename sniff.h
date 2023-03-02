@@ -106,7 +106,8 @@ enum e_packet_type {
 	_t_packet_dtls,
 	_t_packet_mrcp,
 	_t_packet_skinny,
-	_t_packet_mgcp
+	_t_packet_mgcp,
+	_t_packet_diameter
 };
 
 enum e_packet_s_type {
@@ -124,6 +125,7 @@ struct packet_flags {
 	u_int8_t ssl : 1;
 	u_int8_t skinny : 1;
 	u_int8_t mgcp: 1;
+	u_int8_t diameter: 1;
 	inline void init() {
 		for(unsigned i = 0; i < sizeof(*this); i++) {
 			((u_char*)this)[i] = 0;
@@ -600,7 +602,8 @@ enum packet_s_process_type_content {
 	_pptc_na = 0,
 	_pptc_sip = 1,
 	_pptc_skinny = 2,
-	_pptc_mgcp = 3
+	_pptc_mgcp = 3,
+	_pptc_diameter = 4
 };
 
 enum packet_s_process_next_action {
@@ -736,6 +739,9 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline bool typeContentIsMgcp() {
 		return(type_content == _pptc_mgcp);
+	}
+	inline bool typeContentIsDiameter() {
+		return(type_content == _pptc_diameter);
 	}
 	inline void insert_packet(packet_s_process_0 *packet) {
 		if(!insert_packets) {

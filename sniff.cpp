@@ -74,6 +74,7 @@ and insert them into Call class.
 #include "send_call_info.h"
 #include "ssl_dssl.h"
 #include "websocket.h"
+#include "diameter.h"
 #include "options.h"
 #include "sniff_inline.h"
 #include "config_param.h"
@@ -221,6 +222,7 @@ extern int opt_skipdefault;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern TcpReassembly *tcpReassemblySsl;
+extern TcpReassembly *tcpReassemblyDiameter;
 extern char ifname[1024];
 extern int opt_sdp_reverse_ipport;
 extern bool opt_sdp_check_direction_ext;
@@ -380,6 +382,7 @@ unsigned long process_packet__last_cleanup_calls__count_sip_cancel_confirmed;
 
 link_packets_queue dtls_queue;
 cDtls dtls_handshake_safe_links;
+cDiameterPacketStack diameter_packet_stack;
 
 
 #if EXPERIMENTAL_T2_QUEUE_FULL_STAT
@@ -963,6 +966,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 			case _t_packet_sip:
 			case _t_packet_skinny:
 			case _t_packet_mgcp:
+			case _t_packet_diameter:
 				if(call->getPcapSip()->isOpen()){
 					if(type == _t_packet_sip) {
 						call->getPcapSip()->dump(header, packet, packetS->dlt, false, 
@@ -1540,7 +1544,8 @@ enum peername_sip_tags_type {
 	_domain = 3,
 	_tag = 4,
 	_param = 5,
-	_exists_param = 6
+	_exists_param = 6,
+	_sip = 7
 };
 
 static struct {
@@ -1753,6 +1758,19 @@ inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_
 				ok = true;
 			}
 		}
+	} else if(parse_type == _sip) {
+		begin = sip_tag;
+		for(end = begin; end < peername_tag + peername_tag_len; end++) {
+			if(*end == ';' || *end == '>' || *end == '"' || *end == ' ') {
+				--end;
+				ok = true;
+				break;
+			}
+		}
+		if(!ok && begin < end) {
+			--end;
+			ok = true;
+		}
 	}
 	if(ok) {
 		if(end >= begin && end - begin + 1 <= peername_tag_len) {
@@ -1929,6 +1947,36 @@ inline int get_sip_peertag(packet_s_process *packetS, const char *tag, const cha
 			      tagType, destType) ? 0 : 1);
 }
 
+inline int get_sip_sip(packet_s_process *packetS, const char *tag, const char *tag2,
+		       char *sip_content, unsigned int sip_content_len,
+		       eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	unsigned long peertag_tag_len;
+	char *peertag_tag = gettag_sip(packetS, tag, tag2, &peertag_tag_len);
+	if(!peertag_tag_len) {
+		*sip_content = 0;
+		return(1);
+	}
+	return(parse_peername(peertag_tag, peertag_tag_len,
+			      _sip, NULL,
+			      sip_content, sip_content_len,
+			      tagType, destType) ? 0 : 1);
+}
+
+inline int get_sip_sip(packet_s_process *packetS, const char *tag, const char *tag2,
+		       string *sip_content,
+		       eParsePeernameTagType tagType, eParsePeernameDestType destType) {
+	unsigned long peertag_tag_len;
+	char *peertag_tag = gettag_sip(packetS, tag, tag2, &peertag_tag_len);
+	if(!peertag_tag_len) {
+		sip_content->clear();
+		return(1);
+	}
+	return(parse_peername(peertag_tag, peertag_tag_len,
+			      _sip, NULL,
+			      sip_content,
+			      tagType, destType) ? 0 : 1);
+}
+
 inline bool exists_sip_param(packet_s_process *packetS, const char *tag, const char *tag2, const char *param) {
 	unsigned long content_len;
 	char *content = gettag_sip(packetS, tag, tag2, &content_len);
@@ -1989,7 +2037,11 @@ void testPN() {
 			       rslt, rslt_len,
 			       ppntt_undefined, ppndt_undefined);
 		cout << "tag: " << rslt << endl;
-		
+		parse_peername(e[i], strlen(e[i]),
+			       _sip, NULL,
+			       rslt, rslt_len,
+			       ppntt_undefined, ppndt_undefined);
+		cout << "sip: " << rslt << endl;
 		
 	}
 }
@@ -3696,6 +3748,19 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 		}
 	}
 	
+	if(opt_enable_diameter) {
+		string sip_uri;
+		string sip_to;
+		get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
+		get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
+		if(!sip_uri.empty()) {
+			call->setDiameterToSip(sip_uri.c_str());
+		}
+		if(!sip_to.empty() && sip_to != sip_uri) {
+			call->setDiameterToSip(sip_to.c_str());
+		}
+	}
+	
 	if(sip_method == INVITE) {
 		if(opt_conference_processing) {
 			string uri = data_callerd.called_uri[0] && data_callerd.called_domain_uri[0] ?
@@ -4374,6 +4439,18 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			c_branch->invite_sdaddr_last_ts = packet_time_us;
 		}
 		c_branch->invite_list_unlock();
+		if(opt_enable_diameter && call->invite_packets_counter > 1) {
+			string sip_uri;
+			string sip_to;
+			get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
+			get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
+			if(!sip_uri.empty()) {
+				call->setDiameterToSip(sip_uri.c_str());
+			}
+			if(!sip_to.empty() && sip_to != sip_uri) {
+				call->setDiameterToSip(sip_to.c_str());
+			}
+		}
 	}
 
 	call->check_reset_oneway(c_branch, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
@@ -5678,6 +5755,22 @@ endsip:
 			, packetS->sip_method, lastSIPresponseNum, packetS->getTimeval(), 
 			packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 			c_branch, logPacketSipMethodCallDescr);
+	}
+}
+
+void process_packet_diameter(packet_s_process *packetS) {
+	cDiameter diameter((u_char*)packetS->data_(), packetS->datalen_());
+	if(sverb.diameter) {
+		cDiameterAvpDataItems dataItems;
+		diameter.parse(&dataItems);
+		dataItems.print();
+	}
+	string publicIdentity;
+	if(diameter.isRequest()) {
+		publicIdentity = diameter.getPublicIdentity();
+	}
+	if(!diameter_packet_stack.add(packetS, diameter.isRequest(), diameter.hop_by_hop_id(), publicIdentity.c_str(), packetS->getTimeUS())) {
+		PACKET_S_PROCESS_DESTROY(&packetS);
 	}
 }
 
@@ -9874,6 +9967,7 @@ void *PreProcessPacket::outThreadFunction() {
 								preProcessPacket[ppt_pp_call]->push_batch();
 								preProcessPacket[ppt_pp_register]->push_batch();
 								preProcessPacket[ppt_pp_sip_other]->push_batch();
+								preProcessPacket[ppt_pp_diameter]->push_batch();
 								#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 								if(!opt_t2_boost) {
 									preProcessPacket[ppt_pp_rtp]->push_batch();
@@ -9895,6 +9989,9 @@ void *PreProcessPacket::outThreadFunction() {
 							break;
 						case ppt_pp_sip_other:
 							this->process_SIP_OTHER(packetS);
+							break;
+						case ppt_pp_diameter:
+							this->process_DIAMETER(packetS);
 							break;
 						case ppt_pp_rtp:
 							this->process_RTP(packetS);
@@ -9960,6 +10057,7 @@ void *PreProcessPacket::outThreadFunction() {
 					preProcessPacket[ppt_pp_call]->push_batch();
 					preProcessPacket[ppt_pp_register]->push_batch();
 					preProcessPacket[ppt_pp_sip_other]->push_batch();
+					preProcessPacket[ppt_pp_diameter]->push_batch();
 					#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 					if(!opt_t2_boost) {
 						preProcessPacket[ppt_pp_rtp]->push_batch();
@@ -9997,6 +10095,8 @@ void *PreProcessPacket::outThreadFunction() {
 					_process_packet__cleanup_registers(NULL);
 					break;
 				case ppt_pp_sip_other:
+					break;
+				case ppt_pp_diameter:
 					break;
 				case ppt_pp_rtp:
 					if(processRtpPacketHash) {
@@ -10096,6 +10196,9 @@ void PreProcessPacket::push_batch_nothread() {
 		if(!preProcessPacket[ppt_pp_sip_other]->outThreadState) {
 			preProcessPacket[ppt_pp_sip_other]->push_batch();
 		}
+		if(!preProcessPacket[ppt_pp_diameter]->outThreadState) {
+			preProcessPacket[ppt_pp_diameter]->push_batch();
+		}
 		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		if(!opt_t2_boost) {
 			if(!preProcessPacket[ppt_pp_rtp]->outThreadState) {
@@ -10138,6 +10241,8 @@ void PreProcessPacket::push_batch_nothread() {
 		_process_packet__cleanup_registers(NULL);
 		break;
 	case ppt_pp_sip_other:
+		break;
+	case ppt_pp_diameter:
 		break;
 	case ppt_pp_rtp:
 		if(processRtpPacketHash) {
@@ -10263,6 +10368,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	#endif
 	bool isSip = false;
 	bool isMgcp = false;
+	bool isDiameter = false;
 	bool rtp = false;
 	bool other = false;
 	packetS->blockstore_addflag(11 /*pb lock flag*/);
@@ -10280,6 +10386,9 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		} else if(packetS->pflags.mgcp && check_mgcp(packetS->data_(), packetS->datalen_())) {
 			//packetS->blockstore_addflag(12 /*pb lock flag*/);
 			isMgcp = true;
+		} else if(packetS->pflags.diameter && check_diameter((u_char*)packetS->data_(), packetS->datalen_())) {
+			//packetS->blockstore_addflag(12 /*pb lock flag*/);
+			isDiameter = true;
 		}
 		if(packetS->pflags.tcp) {
 			extern int opt_sip_tcp_reassembly_ext_quick_mod;
@@ -10290,6 +10399,18 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 			} else if(packetS->pflags.mgcp && isMgcp) {
 				// call process_mgcp before tcp reassembly - TODO !
 				this->process_mgcp(&packetS);
+			} else if(packetS->pflags.diameter) {
+				tcpReassemblyDiameter->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
+								packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
+								packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip, packetS->pid,
+								this, packetS, isDiameter);
+				packetS->_packet_alloc = false;
+				packetS->_blockstore_lock = false;
+				if(packetS->next_action == _ppna_set) {
+					packetS->next_action = _ppna_destroy;
+				} else {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+				}
 			} else if(no_sip_reassembly() || packetS->pflags.ssl || packetS->pflags.tcp == 2) {
 				if(isSip) {
 					this->process_parseSipData(&packetS, NULL);
@@ -10354,6 +10475,8 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 		} else if(isMgcp) {
 			//packetS->blockstore_addflag(14 /*pb lock flag*/);
 			this->process_mgcp(&packetS);
+		} else if(isDiameter) {
+			this->process_diameter(&packetS);
 		} else {
 			packetS->blockstore_addflag(15 /*pb lock flag*/);
 			rtp = true;
@@ -10472,6 +10595,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	} else if(packetS->typeContentIsMgcp()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
+	} else if(packetS->typeContentIsDiameter()) {
+		preProcessPacket[ppt_pp_diameter]->push_packet(packetS);
 	} else if(!opt_t2_boost) {
 		packetS->blockstore_addflag(103 /*pb lock flag*/);
 		#if not EXPERIMENTAL_T2_DIRECT_RTP_PUSH
@@ -10591,6 +10716,13 @@ void PreProcessPacket::process_SIP_OTHER(packet_s_process *packetS) {
 		process_packet_sip_other(packetS);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 2);
+}
+
+void PreProcessPacket::process_DIAMETER(packet_s_process *packetS) {
+	if(packetS->typeContentIsDiameter()) {
+		process_packet_diameter(clonePacketS(packetS));
+	}
+	PACKET_S_PROCESS_DESTROY(&packetS);
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
@@ -11001,6 +11133,25 @@ void PreProcessPacket::process_websocket(packet_s_process **packetS_ref, packet_
 	#endif
 }
 
+void PreProcessPacket::process_diameterExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig) {
+	if(packetS_orig && packetS_orig->next_action) {
+		packetS_orig->register_child_packet(*packetS_ref);
+		(*packetS_ref)->next_action = _ppna_set;
+	}
+	this->process_diameter(packetS_ref);
+}
+
+void PreProcessPacket::process_diameter(packet_s_process **packetS_ref) {
+	packet_s_process *packetS = *packetS_ref;
+	packetS->type_content = _pptc_diameter;
+	++counter_sip_packets[1];
+	if(packetS->next_action == _ppna_set) {
+		packetS->next_action = _ppna_push_to_extend;
+	} else {
+		preProcessPacket[ppt_extend]->push_packet(packetS);
+	}
+}
+
 bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 	packet_s_process *packetS = *packetS_ref;
 	bool exists_callid = false;
@@ -11149,6 +11300,20 @@ packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDa
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	//newPacketS->header_ip = newHeaderIpInNewPacket;
+	newPacketS->_packet_alloc = true;
+	return(newPacketS);
+}
+
+packet_s_process *PreProcessPacket::clonePacketS(packet_s_process *packetS) {
+	packet_s_process *newPacketS = PACKET_S_PROCESS_SIP_CREATE();
+	*newPacketS = *packetS;
+	newPacketS->blockstore_clear();
+	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
+	*new_header = *newPacketS->header_pt;
+	u_char *new_packet = new FILE_LINE(0) u_char[new_header->caplen];
+	memcpy(new_packet, newPacketS->packet, new_header->caplen);
+	newPacketS->header_pt = new_header;
+	newPacketS->packet = new_packet;
 	newPacketS->_packet_alloc = true;
 	return(newPacketS);
 }

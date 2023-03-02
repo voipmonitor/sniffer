@@ -73,6 +73,7 @@
 #include "webrtc.h"
 #include "ssldata.h"
 #include "sip_tcp_data.h"
+#include "diameter.h"
 #include "ip_frag.h"
 #include "cleanspool.h"
 #include "regcache.h"
@@ -432,6 +433,7 @@ int opt_ss7timeout_rlc = 10;
 int opt_ss7timeout_rel = 60;
 int opt_ss7timeout = 3600;
 vector<string> opt_ws_params;
+bool opt_enable_diameter;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -463,6 +465,7 @@ char opt_tcpreassembly_http_log[1024];
 char opt_tcpreassembly_webrtc_log[1024];
 char opt_tcpreassembly_ssl_log[1024];
 char opt_tcpreassembly_sip_log[1024];
+char opt_tcpreassembly_diameter_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 unsigned int opt_mysql_connect_timeout = 60;
@@ -1046,6 +1049,8 @@ char *skinnyportmatrix;		// matrix of skinny ports to monitor
 char *ipaccountportmatrix;
 char *ss7portmatrix;
 char *ss7_rudp_portmatrix;
+char *diameter_tcp_portmatrix;
+char *diameter_udp_portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -1114,10 +1119,12 @@ TcpReassembly *tcpReassemblyHttp;
 TcpReassembly *tcpReassemblyWebrtc;
 TcpReassembly *tcpReassemblySsl;
 TcpReassembly *tcpReassemblySipExt;
+TcpReassembly *tcpReassemblyDiameter;
 HttpData *httpData;
 WebrtcData *webrtcData;
 SslData *sslData;
 SipTcpData *sipTcpData;
+DiameterTcpData *diameterTcpData;
 
 vm_atomic<string> storingCdrLastWriteAt;
 vm_atomic<string> storingRegisterLastWriteAt;
@@ -3383,6 +3390,10 @@ int main(int argc, char *argv[]) {
 	memset(ss7portmatrix, 0, 65537);
 	ss7_rudp_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ss7_rudp_portmatrix, 0, 65537);
+	diameter_tcp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(diameter_tcp_portmatrix, 0, 65537);
+	diameter_udp_portmatrix = new FILE_LINE(0) char[65537];
+	memset(diameter_udp_portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -4206,6 +4217,8 @@ int main(int argc, char *argv[]) {
 	delete [] ipaccountportmatrix;
 	delete [] ss7portmatrix;
 	delete [] ss7_rudp_portmatrix;
+	delete [] diameter_tcp_portmatrix;
+	delete [] diameter_udp_portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -4556,9 +4569,12 @@ int main_init_read() {
 		}
 		if(is_enable_packetbuffer()) {
 			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
-				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other) ||
+				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && 
+				    i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other &&
+				    i != PreProcessPacket::PreProcessPacket::ppt_pp_diameter) ||
 				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg())) {
+				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg()) ||
+				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_diameter && opt_enable_diameter)) {
 					preProcessPacket[i]->startOutThread();
 				}
 			}
@@ -4708,6 +4724,27 @@ int main_init_read() {
 			tcpReassemblySipExt->enableDumper(sverb.tcpreassembly_sip_dumper, sverb.tcpreassembly_sip_dumper_ports);
 		}
 	}
+	if(opt_enable_diameter) {
+		bool setDiameterTcpPorts = false;
+		for(int i = 0; i < 65537; i++) {
+			if(diameter_tcp_portmatrix[i]) {
+				setDiameterTcpPorts = true;
+			}
+		}
+		if(setDiameterTcpPorts) {
+			tcpReassemblyDiameter = new FILE_LINE(0) TcpReassembly(TcpReassembly::diameter);
+			tcpReassemblyDiameter->setEnableIgnorePairReqResp();
+			tcpReassemblyDiameter->setEnableDestroyStreamsInComplete();
+			tcpReassemblyDiameter->setEnableAllCompleteAfterZerodataAck();
+			tcpReassemblyDiameter->setIgnorePshInCheckOkData();
+			tcpReassemblyDiameter->setEnableValidateLastQueueDataViaCheckData();
+			// tcpReassemblyDiameter->setUnlimitedReassemblyAttempts();
+			tcpReassemblyDiameter->setEnableWildLink();
+			tcpReassemblyDiameter->setIgnoreTcpHandshake();
+			diameterTcpData = new FILE_LINE(0) DiameterTcpData;
+			tcpReassemblyDiameter->setDataCallback(diameterTcpData);
+		}
+	}
 	
 	if(sipSendSocket_ip_port) {
 		sipSendSocket = new FILE_LINE(42033) SocketSimpleBufferWrite("send sip", sipSendSocket_ip_port, opt_sip_send_udp);
@@ -4759,6 +4796,9 @@ int main_init_read() {
 			}
 			if(tcpReassemblySipExt) {
 				tcpReassemblySipExt->setIgnoreTerminating(true);
+			}
+			if(tcpReassemblyDiameter) {
+				tcpReassemblyDiameter->setIgnoreTerminating(true);
 			}
 		}
 	
@@ -4989,6 +5029,14 @@ void terminate_processpacket() {
 	if(sipTcpData) {
 		delete sipTcpData;
 		sipTcpData = NULL;
+	}
+	if(tcpReassemblyDiameter) {
+		delete tcpReassemblyDiameter;
+		tcpReassemblyDiameter = NULL;
+	}
+	if(diameterTcpData) {
+		delete diameterTcpData;
+		diameterTcpData = NULL;
 	}
 	
 	if(processRtpPacketHash) {
@@ -5518,6 +5566,9 @@ void terminate_packetbuffer() {
 			}
 			if(tcpReassemblySipExt) {
 				tcpReassemblySipExt->setIgnoreTerminating(false);
+			}
+			if(tcpReassemblyDiameter) {
+				tcpReassemblyDiameter->setIgnoreTerminating(false);
 			}
 			sleep(2);
 		}
@@ -6194,6 +6245,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42251) cConfigItem_string("tcpreassembly_webrtc_log", opt_tcpreassembly_webrtc_log, sizeof(opt_tcpreassembly_webrtc_log)));
 				addConfigItem(new FILE_LINE(42252) cConfigItem_string("tcpreassembly_ssl_log", opt_tcpreassembly_ssl_log, sizeof(opt_tcpreassembly_ssl_log)));
 				addConfigItem(new FILE_LINE(42253) cConfigItem_string("tcpreassembly_sip_log", opt_tcpreassembly_sip_log, sizeof(opt_tcpreassembly_sip_log)));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("tcpreassembly_diameter_log", opt_tcpreassembly_diameter_log, sizeof(opt_tcpreassembly_diameter_log)));
 	group("SSL");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		addConfigItem((new FILE_LINE(42254) cConfigItem_yesno("ssl", &opt_enable_ssl))
@@ -6543,6 +6595,11 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_rel_timeout", &opt_ss7timeout_rel));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("ss7_timeout", &opt_ss7timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("ws_param", &opt_ws_params));
+	group("diameter");
+			advanced();
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter", &opt_enable_diameter));
+			addConfigItem(new FILE_LINE(0) cConfigItem_ports("diameter_tcp_ports", diameter_tcp_portmatrix));
+			addConfigItem(new FILE_LINE(0) cConfigItem_ports("diameter_udp_ports", diameter_udp_portmatrix));
 
 	minorGroupIfNotSetBegin();
 	group("http");
@@ -7396,6 +7453,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
 	else if(verbParam == "suppress_auto_alter")		sverb.suppress_auto_alter = 1;
 	else if(verbParam == "call_branches")			sverb.call_branches = 1;
+	else if(verbParam == "diameter")			sverb.diameter = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -10984,6 +11042,15 @@ int eval_config(string inistr) {
 			opt_ws_params.push_back(i->pItem);
 		}
 	}
+	if((value = ini.GetValue("general", "diameter", NULL))) {
+		opt_enable_diameter = yesno(value);
+	}
+	if(ini.GetAllValues("general", "diameter_tcp_ports", values)) {
+		parse_config_item_ports(&values, diameter_tcp_portmatrix);
+	}
+	if(ini.GetAllValues("general", "diameter_udp_ports", values)) {
+		parse_config_item_ports(&values, diameter_udp_portmatrix);
+	}
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {
 		opt_enable_http = strcmp(value, "only") ? yesno(value) : 2;
@@ -11080,6 +11147,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "tcpreassembly_sip_log", NULL))) {
 		strcpy_null_term(opt_tcpreassembly_sip_log, value);
+	}
+	if((value = ini.GetValue("general", "tcpreassembly_diameter_log", NULL))) {
+		strcpy_null_term(opt_tcpreassembly_diameter_log, value);
 	}
 	
 	if((value = ini.GetValue("general", "convert_dlt_sll2en10", NULL))) {

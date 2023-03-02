@@ -64,6 +64,7 @@
 #include "server.h"
 #include "separate_processing.h"
 #include "ssl_dssl.h"
+#include "diameter.h"
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -10309,6 +10310,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;
 	_sync_lock_calls_mergeMAP = 0;
+	_sync_lock_calls_diameter_to_sip_listMAP = 0;
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	_sync_lock_conference_calls_map = 0;
 	#endif
@@ -13017,6 +13019,9 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		if(verbosity && verbosityE > 1) {
 			syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", call->call_id.c_str());
 		}
+		if(opt_enable_diameter) {
+			call->moveDiameterPacketsToPcap();
+		}
 		// Close RTP dump file ASAP to save file handles
 		if((closeAll && is_terminating()) ||
 		   (useCallX() && preProcessPacketCallX && preProcessPacketCallX[0]->isActiveOutThread())) {
@@ -13215,12 +13220,14 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 			if(verbosity && verbosityE > 1) {
 				syslog(LOG_NOTICE, "Calltable::cleanup - callid %s", reg->call_id.c_str());
 			}
+			if(opt_enable_diameter) {
+				reg->moveDiameterPacketsToPcap();
+			}
 			// Close RTP dump file ASAP to save file handles
 			if(closeAll && is_terminating()) {
 				reg->getPcap()->close();
 				reg->getPcapSip()->close();
 			}
-
 			if(closeAll) {
 				/* we are saving calls because of terminating SIGTERM and we dont know 
 				 * if the call ends successfully or not. So we dont want to confuse monitoring
@@ -13432,9 +13439,10 @@ void Call::saveregister(struct timeval *currtime) {
 	((Calltable*)calltable)->unlock_registers_listMAP();
 	extern u_int64_t counter_registers_clean;
 	++counter_registers_clean;
-	
 	removeFindTables(NULL);
-	
+	if(opt_enable_diameter) {
+		moveDiameterPacketsToPcap();
+	}
 	this->pcap.close();
 	this->pcapSip.close();
 	/* move call to queue for mysql processing */
@@ -13886,6 +13894,47 @@ void Call::dtls_keys_lock() {
 
 void Call::dtls_keys_unlock() {
 	__SYNC_UNLOCK(dtls_keys_sync);
+}
+
+void Call::setDiameterToSip(const char *to_sip) {
+	calltable->lock_calls_diameter_to_sip_listMAP();
+	diameter_to_sip[to_sip] = true;
+	calltable->calls_diameter_to_sip_listMAP[to_sip] = this;
+	calltable->unlock_calls_diameter_to_sip_listMAP();
+}
+
+void Call::getDiameterToSip(list<string> *to_sip) {
+	for(map<string, bool>::iterator iter = diameter_to_sip.begin(); iter != diameter_to_sip.end(); iter++) {
+		to_sip->push_back(iter->first);
+	}
+}
+
+void Call::clearDiameterToSip() {
+	calltable->lock_calls_diameter_to_sip_listMAP();
+	for(map<string, bool>::iterator iter = diameter_to_sip.begin(); iter != diameter_to_sip.end(); iter++) {
+		map<string, Call*>::iterator iter_c = calltable->calls_diameter_to_sip_listMAP.find(iter->first);
+		if(iter_c != calltable->calls_diameter_to_sip_listMAP.end()) {
+			calltable->calls_diameter_to_sip_listMAP.erase(iter_c);
+		}
+	}
+	calltable->unlock_calls_diameter_to_sip_listMAP();
+}
+
+void Call::moveDiameterPacketsToPcap() {
+	list<string> to_sip;
+	getDiameterToSip(&to_sip);
+	if(to_sip.size()) {
+		extern cDiameterPacketStack diameter_packet_stack;
+		cDiameterPacketStack::cQueuePackets packets;
+		if(diameter_packet_stack.retrieve(&to_sip, &packets) && packets.packets.size()) {
+			for(list<cDiameterPacketStack::sPacket>::iterator iter = packets.packets.begin(); iter != packets.packets.end(); iter++) {
+				packet_s_process *packetS = (packet_s_process*)iter->packet;
+				save_packet(this, packetS, _t_packet_diameter);
+			}
+			packets.destroy_packets();
+		}
+	}
+	clearDiameterToSip();
 }
 
 

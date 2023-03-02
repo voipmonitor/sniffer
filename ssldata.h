@@ -1,7 +1,6 @@
 #ifndef SSLDATA_H
 #define SSLDATA_H
 
-//#include "pcap_queue_block.h"
 #include "tcpreassembly.h"
 #include "sniff_proc_class.h"
 

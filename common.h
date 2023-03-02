@@ -147,6 +147,7 @@ struct sVerbose {
 	int separate_processing;
 	int suppress_auto_alter;
 	int call_branches;
+	int diameter;
 	int _debug1;
 	int _debug2;
 	int _debug3;
