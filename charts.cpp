@@ -938,7 +938,7 @@ string cChartIntervalSeriesData::getChartData(cChartInterval *interval) {
 	return(chart_data);
 }
 
-void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, bool by_dst) {
+void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, int src_dst) {
 	if(!counter_add) {
 		return;
 	}
@@ -947,7 +947,7 @@ void cChartIntervalSeriesData::store(cChartInterval *interval, vmIP *ip, SqlDb *
 	   chart_data == last_chart_data) {
 		return;
 	}
-	string table_name = typeUse == _chartTypeUse_chartCache ? "chart_sniffer_series_cache" : (!by_dst ? "cdr_stat_sources" : "cdr_stat_sources_dst");
+	string table_name = typeUse == _chartTypeUse_chartCache ? "chart_sniffer_series_cache" : ("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst));
 	string data_column_name = typeUse == _chartTypeUse_chartCache ? "chart_data" : "data";
 	last_chart_data = chart_data;
 	SqlDb_row cache_row;
@@ -1035,8 +1035,7 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 	bool update = false;
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 		vmIP *ip = src_dst == 0 ? &ip_src : &ip_dst;
-		if((src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) &&
-		   ip->isSet()) {
+		if(cCdrStat::enableBySrcDst(src_dst) && ip->isSet()) {
 			map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? &seriesDataCdrStat_src : &seriesDataCdrStat_dst;
 			map<vmIP, sSeriesDataCdrStat*>::iterator iter_ip = seriesDataCdrStat->find(*ip);
 			if(iter_ip != seriesDataCdrStat->end()) {
@@ -1080,12 +1079,12 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 	} else if(typeUse == _chartTypeUse_cdrStat) {
 		if(counter_add) {
 			for(int src_dst = 0; src_dst < 2; src_dst++) {
-				if(src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) {
+				if(cCdrStat::enableBySrcDst(src_dst)) {
 					map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? &seriesDataCdrStat_src : &seriesDataCdrStat_dst;
 					if(opt_cdr_stat_sources) {
 						for(map<vmIP, sSeriesDataCdrStat*>::iterator iter_ip = seriesDataCdrStat->begin(); iter_ip != seriesDataCdrStat->end(); iter_ip++) {
 							for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
-								iter_series->second->store(this, (vmIP*)&iter_ip->first, sqlDb, src_dst == 1);
+								iter_series->second->store(this, (vmIP*)&iter_ip->first, sqlDb, src_dst);
 							}
 						}
 					}
@@ -1109,7 +1108,7 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 									}
 								}
 								if(countFieldValuesNotNull) {
-									string table_name = src_dst == 0 ? "cdr_stat_values" : "cdr_stat_values_dst";
+									string table_name = "cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst);
 									SqlDb_row cdr_stat_row;
 									cdr_stat_row.add(sqlDateTimeString(timeFrom), "from_time");
 									cdr_stat_row.add(iter_ip->first, "addr", false, sqlDb, table_name.c_str());
@@ -1120,13 +1119,13 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 										cdr_stat_row.add(iter_ip->second->count, "count_all");
 										cdr_stat_row.add(iter_ip->second->count_connected, "count_connected");
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
-											if(cCdrStat::exists_columns_check(iter->field.c_str())) {
+											if(cCdrStat::exists_columns_check(iter->field.c_str(), src_dst)) {
 												cdr_stat_row.add(iter->value, iter->field, iter->null);
 											}
 										}
 										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
 											if(!iter_series->second->series->sourceDataName.empty() &&
-											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str())) {
+											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), src_dst)) {
 												string chart_data = iter_series->second->getChartData(this);
 												if(!chart_data.empty()) {
 													cdr_stat_row.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
@@ -1140,13 +1139,13 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 										cdr_stat_row_update.add(iter_ip->second->count, "count_all");
 										cdr_stat_row_update.add(iter_ip->second->count_connected, "count_connected");
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
-											if(cCdrStat::exists_columns_check(iter->field.c_str())) {
+											if(cCdrStat::exists_columns_check(iter->field.c_str(), src_dst)) {
 												cdr_stat_row_update.add(iter->value, iter->field, iter->null);
 											}
 										}
 										for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_series = iter_ip->second->data.begin(); iter_series != iter_ip->second->data.end(); iter_series++) {
 											if(!iter_series->second->series->sourceDataName.empty() &&
-											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str())) {
+											   cCdrStat::exists_columns_check((iter_series->second->series->sourceDataName + "_source_data").c_str(), src_dst)) {
 												string chart_data = iter_series->second->getChartData(this);
 												if(!chart_data.empty()) {
 													cdr_stat_row_update.add(chart_data, iter_series->second->series->sourceDataName + "_source_data");
@@ -1189,8 +1188,7 @@ void cChartInterval::init(vmIP &ip_src, vmIP &ip_dst) {
 	if(typeUse == _chartTypeUse_cdrStat) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			vmIP *ip = src_dst == 0 ? &ip_src : &ip_dst;
-			if((src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) &&
-			   ip->isSet()) {
+			if(cCdrStat::enableBySrcDst(src_dst) && ip->isSet()) {
 				map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? &seriesDataCdrStat_src : &seriesDataCdrStat_dst;
 				map<vmIP, sSeriesDataCdrStat*>::iterator iter = seriesDataCdrStat->find(*ip);
 				if(iter == seriesDataCdrStat->end()) {
@@ -1214,7 +1212,7 @@ void cChartInterval::clear() {
 		seriesData.clear();
 	} else if(typeUse == _chartTypeUse_cdrStat) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
-			if(src_dst == 0 ? cCdrStat::enableBySrc() : cCdrStat::enableByDst()) {
+			if(cCdrStat::enableBySrcDst(src_dst)) {
 				map<vmIP, sSeriesDataCdrStat*> *seriesDataCdrStat = src_dst == 0 ? &seriesDataCdrStat_src : &seriesDataCdrStat_dst;
 				for(map<vmIP, sSeriesDataCdrStat*>::iterator iter = seriesDataCdrStat->begin(); iter != seriesDataCdrStat->end(); iter++) {
 					for(map<u_int16_t, cChartIntervalSeriesData*>::iterator iter_2 = iter->second->data.begin(); iter_2 != iter->second->data.end(); iter_2++) {
@@ -2129,31 +2127,31 @@ string cCdrStat::metrics_db_fields(vector<dstring> *fields) {
 	return(fields_str);
 }
 
-bool cCdrStat::exists_columns_check(const char *column) {
+bool cCdrStat::exists_columns_check(const char *column, int src_dst) {
 	bool exists = false;
 	__SYNC_LOCK(exists_column_sync);
-	map<string, bool>::iterator iter = exists_columns.find(column);
-	if(iter != exists_columns.end()) {
+	map<string, bool>::iterator iter = exists_columns[src_dst].find(column);
+	if(iter != exists_columns[src_dst].end()) {
 		exists = iter->second;
 	}
 	__SYNC_UNLOCK(exists_column_sync);
 	return(exists);
 }
 
-void cCdrStat::exists_columns_clear() {
+void cCdrStat::exists_columns_clear(int src_dst) {
 	__SYNC_LOCK(exists_column_sync);
-	exists_columns.clear();
+	exists_columns[src_dst].clear();
 	__SYNC_UNLOCK(exists_column_sync);
 }
 
-void cCdrStat::exists_columns_add(const char *column) {
+void cCdrStat::exists_columns_add(const char *column, int src_dst) {
 	__SYNC_LOCK(exists_column_sync);
-	exists_columns[column] = true;
+	exists_columns[src_dst][column] = true;
 	__SYNC_UNLOCK(exists_column_sync);
 }
 
 
-map<string, bool> cCdrStat::exists_columns;
+map<string, bool> cCdrStat::exists_columns[2];
 volatile int cCdrStat::exists_column_sync;
 
 
