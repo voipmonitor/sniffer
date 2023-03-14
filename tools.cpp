@@ -823,7 +823,8 @@ bool get_curl_response(const char *url, SimpleBuffer *response, s_get_curl_respo
 			}
 			build_url_params = true;
 		}
-		string url_host_IP = cResolver::resolve_str(url_host, 0, cResolver::_typeResolve_system_host); 
+		string url_host_IP = cResolver::resolve_str(url_host, 0, 
+							    is_read_from_file_by_pb() ? cResolver::_typeResolve_default : cResolver::_typeResolve_system_host); 
 		string url_new;
 		if(!url_host_IP.empty()) {
 			headers = curl_slist_append(headers, ("Host: " + url_host).c_str());
@@ -3280,9 +3281,22 @@ void ListIP::add(vector<vmIP> *ip) {
 	}
 }
 
-void ListIP::add(vector<vmIPmask> *net) {
+void ListIP::add(vector<vmIPmask> *net, int limit_host_bits_for_convert_to_ips) {
 	for(unsigned i = 0; i < net->size(); i++) {
-		add((*net)[i].ip, (*net)[i].mask);
+		if(limit_host_bits_for_convert_to_ips > 0 &&
+		   (*net)[i].host_bits() <= limit_host_bits_for_convert_to_ips) {
+			add_hosts(&(*net)[i]);
+		} else {
+			add((*net)[i].ip, (*net)[i].mask);
+		}
+	}
+}
+
+void ListIP::add_hosts(vmIPmask *net) {
+	list<vmIP> list_ip;
+	net->ip_list(&list_ip);
+	for(list<vmIP>::iterator iter = list_ip.begin(); iter != list_ip.end(); iter++) {
+		add(*iter);
 	}
 }
 

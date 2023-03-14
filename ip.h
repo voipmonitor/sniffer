@@ -31,6 +31,7 @@
 #include <iomanip>
 #include <string.h>
 #include <stdlib.h>
+#include <list>
 
 #include "endian.h"
 #include "md5.h"
@@ -215,6 +216,22 @@ struct vmIP {
 		ip.v6.__in6_u.__u6_addr32[3] = set;
 		#else
 		ip.v4.n = set;
+		#endif
+	}
+	inline void _inc() {
+		#if VM_IPV6
+		if(!v6) {
+		#endif
+			++this->ip.v4.n;
+		#if VM_IPV6
+		} else {
+			for(int i = 3; i >= 0; i--) {
+				++this->ip.v6.__in6_u.__u6_addr32[i];
+				if(this->ip.v6.__in6_u.__u6_addr32[i] != 0) {
+					break;
+				}
+			}
+		}
 		#endif
 	}
 	inline vmIP _and(vmIP mask) {
@@ -1122,6 +1139,38 @@ struct vmIPmask : vmIPmask_ {
 	vmIPmask(vmIP ip, u_int16_t mask) {
 		this->ip = ip;
 		this->mask = mask;
+	}
+	vmIP network() {
+		return(ip.network(mask));
+	}
+	vmIP broadcast() {
+		return(ip.broadcast(mask));
+	}
+	void ip_list(std::list<vmIP> *ips) {
+		vmIP network = this->network();
+		vmIP broadcast = this->broadcast();
+		vmIP ip_from = network;
+		vmIP ip_to = broadcast;
+		vmIP ip = ip_from;
+		unsigned size = ip_list_size();
+		for(unsigned i = 0; i < size; i++) {
+			ips->push_back(ip);
+			if(ip == ip_to) {
+				break;
+			}
+			ip._inc();
+		}
+	}
+	unsigned ip_list_size() {
+		if(mask == ip.bits()) {
+			return(1);
+		} else if(mask < ip.bits()) {
+			return(pow(2, ip.bits() - mask));
+		}
+		return(0);
+	}
+	u_int8_t host_bits() {
+		return(mask <= ip.bits() ? ip.bits() - mask : 0);
 	}
 	inline bool operator < (const vmIPmask& other) const { 
 		return(this->ip != other.ip ? this->ip < other.ip : this->mask < other.mask); 
