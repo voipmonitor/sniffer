@@ -3182,6 +3182,7 @@ MySqlStore_process::MySqlStore_process(int id_main, int id_2, MySqlStore *parent
 	this->concatLimit = concatLimit;
 	this->enableTransaction = false;
 	this->enableFixDeadlock = false;
+	this->queryBuffLimit = 0;
 	this->lastQueryTime = 0;
 	this->queryCounter = 0;
 	this->sqlDb = new FILE_LINE(29003) SqlDb_mysql();
@@ -3511,7 +3512,7 @@ void MySqlStore_process::store() {
 					}
 				}
 			} else if(id_main == STORE_PROC_ID_CDR_REDIRECT) {
-				while(partitionsServiceIsInProgress || sCreatePartitions::in_progress) {
+				while((partitionsServiceIsInProgress || sCreatePartitions::in_progress) && !is_terminating()) {
 					usleep(100000);
 				}
 				unsigned queries_max = 10;
@@ -3844,6 +3845,10 @@ void MySqlStore_process::setEnableFixDeadlock(bool enableFixDeadlock) {
 	this->enableFixDeadlock = enableFixDeadlock;
 }
 
+void MySqlStore_process::setQueryBuffLimit(int queryBuffLimit) {
+	this->queryBuffLimit = queryBuffLimit;
+}
+
 void MySqlStore_process::waitForTerminate() {
 	if(this->thread) {
 		while(!this->terminated) {
@@ -3856,6 +3861,14 @@ void MySqlStore_process::waitForTerminate() {
 			USLEEP(100000);
 		}
 		this->thread = (pthread_t)NULL;
+	}
+}
+
+void MySqlStore_process::waitForFullQueue() {
+	if(this->queryBuffLimit > 0) {
+		while(this->query_buff.size() > this->queryBuffLimit && !is_terminating()) {
+			usleep(1000);
+		}
 	}
 }
 
@@ -4070,6 +4083,7 @@ void MySqlStore::query_lock(list<string> *query_str, int id_main, int id_2, int 
 		}
 	} else {
 		MySqlStore_process* process = this->find(id_main, id_2);
+		process->waitForFullQueue();
 		process->lock();
 		unsigned counter = 0;
 		for(list<string>::iterator iter = query_str->begin(); iter != query_str->end(); iter++) {
@@ -4604,6 +4618,14 @@ void MySqlStore::setEnableFixDeadlock(int id_main, int id_2, bool enableFixDeadl
 	}
 	MySqlStore_process* process = this->find(id_main, id_2);
 	process->setEnableFixDeadlock(enableFixDeadlock);
+}
+
+void MySqlStore::setQueryBuffLimit(int id_main, int id_2, int queryBuffLimit) {
+	if(qfileConfigEnable(id_main)) {
+		return;
+	}
+	MySqlStore_process* process = this->find(id_main, id_2);
+	process->setQueryBuffLimit(queryBuffLimit);
 }
 
 void MySqlStore::setDefaultConcatLimit(int defaultConcatLimit) {

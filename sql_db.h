@@ -900,6 +900,7 @@ public:
 	int getConcatLimit();
 	void setEnableTransaction(bool enableTransaction = true);
 	void setEnableFixDeadlock(bool enableFixDeadlock = true);
+	void setQueryBuffLimit(int queryBuffLimit);
 	int getIdMain() {
 		return(this->id_main);
 	}
@@ -910,6 +911,7 @@ public:
 		return(this->query_buff.size());
 	}
 	void waitForTerminate();
+	void waitForFullQueue();
 private:
 	string getInsertFuncName();
 private:
@@ -919,6 +921,7 @@ private:
 	int concatLimit;
 	bool enableTransaction;
 	bool enableFixDeadlock;
+	int queryBuffLimit;
 	pthread_t thread;
 	volatile u_int64_t threadRunningCounter;
 	u_int64_t lastThreadRunningCounterCheck;
@@ -1106,6 +1109,7 @@ public:
 	int getConcatLimit(int id_main, int id_2);
 	void setEnableTransaction(int id_main, int id_2, bool enableTransaction = true);
 	void setEnableFixDeadlock(int id_main, int id_2, bool enableFixDeadlock = true);
+	void setQueryBuffLimit(int id_main, int id_2, int queryBuffLimit);
 	MySqlStore_process *find(int id_main, int id_2, MySqlStore *store = NULL);
 	MySqlStore_process *check(int id_main, int id_2);
 	size_t getAllSize(bool lock = true, bool redirect = false);

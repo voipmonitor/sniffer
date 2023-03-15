@@ -5451,25 +5451,40 @@ void main_init_sqlstore() {
 					sqlStore->setConcatLimit(STORE_PROC_ID_CDR, i, opt_mysqlstore_concat_limit_cdr);
 					if(opt_mysql_mysql_redirect_cdr_queue) {
 						sqlStore->setConcatLimit(STORE_PROC_ID_CDR_REDIRECT, i, opt_mysqlstore_concat_limit_cdr);
+						if(loadFromQFiles) {
+							loadFromQFiles->setConcatLimit(STORE_PROC_ID_CDR_REDIRECT, i, opt_mysqlstore_concat_limit_cdr);
+						}
 					}
 				}
 				if(i) {
 					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR, i);
 					if(opt_mysql_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_CDR_REDIRECT, i);
+						if(loadFromQFiles) {
+							loadFromQFiles->setEnableAutoDisconnect(STORE_PROC_ID_CDR_REDIRECT, i);
+						}
 					}
 				}
 				if(opt_mysql_enable_transactions_cdr) {
 					sqlStore->setEnableTransaction(STORE_PROC_ID_CDR, i);
 					if(opt_mysql_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableTransaction(STORE_PROC_ID_CDR_REDIRECT, i);
+						if(loadFromQFiles) {
+							loadFromQFiles->setEnableTransaction(STORE_PROC_ID_CDR_REDIRECT, i);
+						}
 					}
 				}
 				if(opt_cdr_check_duplicity_callid_in_next_pass_insert) {
 					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR, i);
 					if(opt_mysql_mysql_redirect_cdr_queue) {
 						sqlStore->setEnableFixDeadlock(STORE_PROC_ID_CDR_REDIRECT, i);
+						if(loadFromQFiles) {
+							loadFromQFiles->setEnableFixDeadlock(STORE_PROC_ID_CDR_REDIRECT, i);
+						}
 					}
+				}
+				if(loadFromQFiles) {
+					loadFromQFiles->setQueryBuffLimit(STORE_PROC_ID_CDR_REDIRECT, i, 10000);
 				}
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
