@@ -200,7 +200,7 @@ public:
 		 u_int32_t calldate_from, u_int32_t calldate_to);
 	double getValue(eChartValueType typeValue = _chartValueType_na, bool *null = NULL);
 	string getChartData(class cChartInterval *interval);
-	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, bool by_dst);
+	void store(class cChartInterval *interval, vmIP *ip, SqlDb *sqlDb, int src_dst);
 	void lock_data() { __SYNC_LOCK(sync_data); }
 	void unlock_data() { __SYNC_UNLOCK(sync_data); }
 private:
@@ -462,9 +462,12 @@ public:
 	void lock_intervals() { __SYNC_LOCK(sync_intervals); }
 	void unlock_intervals() { __SYNC_UNLOCK(sync_intervals); }
 	static string metrics_db_fields(vector<dstring> *fields = NULL);
-	static bool exists_columns_check(const char *column);
-	static void exists_columns_clear();
-	static void exists_columns_add(const char *column);
+	static bool exists_columns_check(const char *column, int src_dst);
+	static void exists_columns_clear(int src_dst);
+	static void exists_columns_add(const char *column, int src_dst);
+	static inline bool enableBySrcDst(int src_dst) {
+		return(src_dst == 0 ? enableBySrc() : enableByDst());
+	}
 	static inline bool enableBySrc() {
 		extern int opt_cdr_stat_values;
 		return(opt_cdr_stat_values == 1 || opt_cdr_stat_values == 3);
@@ -472,6 +475,12 @@ public:
 	static inline bool enableByDst() {
 		extern int opt_cdr_stat_values;
 		return(opt_cdr_stat_values == 2 || opt_cdr_stat_values == 3);
+	}
+	static string tableNameSuffix(int src_dst) {
+		return(src_dst == 0 ? "" : dstTableNameSuffix());
+	}
+	static string dstTableNameSuffix() {
+		return("_dst");
 	}
 private:
 	eTypeStore typeStore;
@@ -490,7 +499,7 @@ private:
 	u_int32_t last_cleanup_at;
 	u_int32_t last_cleanup_at_real;
 	volatile int sync_intervals;
-	static map<string, bool> exists_columns;
+	static map<string, bool> exists_columns[2];
 	static volatile int exists_column_sync;
 friend class cChartDataItem;
 friend class cChartInterval;

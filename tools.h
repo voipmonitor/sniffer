@@ -1391,9 +1391,9 @@ std::string pexec(char*, int *exitCode = NULL);
 
 class IP {
 public:
-	IP(vmIP ip, uint mask_length = 0) {
+	IP(vmIP ip, int mask_length = -1) {
 		this->ip = ip;
-		this->mask_length = mask_length;
+		this->mask_length = mask_length == -1 ? 0 : mask_length;
 		if(mask_length > 0 && mask_length < ip.bits()) {
 			this->ip = this->ip.network(mask_length);
 		}
@@ -1670,7 +1670,7 @@ public:
 		_listIP_sorted = 0;
 		_listNet_sorted = 0;
 	}
-	void add(vmIP ip, uint mask_length = 32) {
+	void add(vmIP ip, int mask_length = -1) {
 		if(autoLock) lock();
 		IP _ip(ip, mask_length);
 		if(!_ip.isNet()) {
@@ -1693,7 +1693,8 @@ public:
 	void addComb(string &ip, ListIP *negList = NULL);
 	void addComb(const char *ip, ListIP *negList = NULL);
 	void add(vector<vmIP> *ip);
-	void add(vector<vmIPmask> *net);
+	void add(vector<vmIPmask> *net, int limit_host_bits_for_convert_to_ips = 0);
+	void add_hosts(vmIPmask *net);
 	bool checkIP(vmIP check_ip) {
 		bool rslt =  false;
 		if(autoLock) lock();

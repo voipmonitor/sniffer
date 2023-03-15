@@ -3365,7 +3365,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 			filter_ip->add(&if_filter_ip);
 		}
 		if(if_filter_net.size()) {
-			filter_ip->add(&if_filter_net);
+			filter_ip->add(&if_filter_net, 6);
 		}
 	} else {
 		filter_ip = NULL;
