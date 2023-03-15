@@ -1,3 +1,12 @@
+31.4  15.03.2023
+================
+- add new cdr flag for safe spool directory [VG-1804]
+- add parameter load-rtp-pcap for debugging rtp/srtp packet
+- support for diameter protocol storing into pcap [VS-1420]
+- fix race condition in mirror/server mode if packetbuffer disk cache is enabled [VS-1422]
+- speed optimization for the interface_ip_filter parameter
+
+
 31.3  20.02.2023
 ================
 - fix issue with hep/ipfix with interface=any [VS-1401]
