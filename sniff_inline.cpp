@@ -116,19 +116,47 @@ inline
 iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 	gre_hdr *grehdr = (gre_hdr*)((char*)header_ip + header_ip->get_hdr_size());
 	u_int16_t grehdr_protocol = ntohs(grehdr->protocol);
-	if(grehdr->version == 0 && (grehdr_protocol == 0x6558 || grehdr_protocol == 0x88BE)) {
+	if(grehdr->version == 0 && (grehdr_protocol == 0x6558 || grehdr_protocol == 0x88BE || grehdr_protocol == 0x22EB)) {
 		// 0x6558 - GRE          - header size 8 bytes
 		// 0x88BE - GRE & ERSPAN - headers size 4 bytes (GRE ERSPAN) 
 		//                         + 4 (if seq - sequence number) 
 		//                         + 4 (if key - key) 
 		//                         + 8 (if seq - Encapsulated Remote Switch Packet ANalysis)
-		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + header_ip->get_hdr_size() + 
-						  (grehdr_protocol == 0x6558 ? 8 :
-						   grehdr_protocol == 0x88BE ? (4 + 
-										(grehdr->seq ? 4 : 0) + 
-										(grehdr->key ? 4 : 0) + 
-										(grehdr->seq ? 8 : 0)) :
-									       8));
+		unsigned header_eth_offset = 0;
+		bool erspan_2_3 = false;
+		switch(grehdr_protocol) {
+		case 0x6558:
+			header_eth_offset = 8;
+			break;
+		case 0x88BE:
+			header_eth_offset = 4 + 
+					    (grehdr->seq ? 4 : 0) + 
+					    (grehdr->key ? 4 : 0);
+			if(grehdr->seq) {
+				erspan_2_3 = true;
+			}
+			break;
+		case 0x22EB:
+			header_eth_offset = 4 + 
+					    (grehdr->seq ? 4 : 0) + 
+					    (grehdr->key ? 4 : 0);
+			erspan_2_3 = true;
+			break;
+		default:
+			header_eth_offset = 8;
+		}
+		if(erspan_2_3) {
+			u_char *erspan_pointer = (u_char*)((char*)header_ip + header_ip->get_hdr_size() + header_eth_offset);
+			u_int8_t erspan_version = (*(u_int8_t*)erspan_pointer >> 4) & 0x0F;
+			header_eth_offset += erspan_version == 2 ? 12 : 8;
+			if(erspan_version == 2) {
+				u_int8_t erspan_subheader = *(u_int8_t*)(erspan_pointer + 11) & 0x01;
+				if(erspan_subheader) {
+					header_eth_offset += 8;
+				}
+			}
+		}
+		struct ether_header *header_eth = (struct ether_header *)((char*)header_ip + header_ip->get_hdr_size() + header_eth_offset);
 		unsigned int vlanoffset;
 		u_int16_t protocol = 0;
 		if(header_eth->ether_type == 129) {
