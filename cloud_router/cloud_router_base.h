@@ -17,7 +17,9 @@
 #include "../config.h"
 #else
 #include "tools_global.h"
+#ifndef HAVE_WOLFSSL
 #define HAVE_OPENSSL
+#endif
 #endif
 
 #ifdef HAVE_OPENSSL

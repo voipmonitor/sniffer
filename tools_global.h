@@ -1017,11 +1017,11 @@ inline void vm_prefetch0(const volatile void *p) {
 }
 
 
-u_int16_t bitmaskshift_16(u_int16_t val, u_int16_t mask) {
+inline u_int16_t bitmaskshift_16(u_int16_t val, u_int16_t mask) {
 	return((ntohs(val) & mask) >> __builtin_ctzll(mask)); 
 }
 
-u_int32_t bitmaskshift_32(u_int32_t val, u_int16_t mask) {
+inline u_int32_t bitmaskshift_32(u_int32_t val, u_int16_t mask) {
 	return((ntohl(val) & mask) >> __builtin_ctzll(mask)); 
 }
 

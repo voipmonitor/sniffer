@@ -2,8 +2,34 @@
 #define _GNU_SOURCE // for RTLD_NEXT
 #endif
 
-#include <dlfcn.h>
+
+#ifndef HAVE_WOLFSSL
+
 #include <openssl/ssl.h>
+
+#ifndef LIBSSL_SONAME
+#define LIBSSL_SONAME "libssl.so"
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+#define ONLY_KEYLOG_CALLBACK 1
+#endif
+
+#else
+
+#include <wolfssl/ssl.h>
+typedef WOLFSSL SSL;
+typedef WOLFSSL_CTX SSL_CTX;
+typedef WOLFSSL_SESSION SSL_SESSION;
+#define SSL_MAX_MASTER_KEY_LENGTH WOLFSSL_MAX_MASTER_KEY_LENGTH
+#define SSL3_RANDOM_SIZE 32
+#define LIBSSL_SONAME "libwolfssl.so"
+//#define ONLY_KEYLOG_CALLBACK 1
+
+#endif
+
+
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -16,18 +42,8 @@
 
 #ifdef SSLKEYLOG_TCP
 #include "cloud_router_base.h"
-#else
-
 #endif
 
-
-#ifndef OPENSSL_SONAME
-#define OPENSSL_SONAME "libssl.so"
-#endif
-
-#if OPENSSL_VERSION_NUMBER >= 0x10101000L
-#define ONLY_OPENSSL_111_SUPPORT 1
-#endif
 
 #define WRITE_THREAD 1
 
@@ -143,11 +159,13 @@ struct sMasterKey {
 				master_key_length = SSL_SESSION_get_master_key_orig(session, master_key, SSL_MAX_MASTER_KEY_LENGTH);
 				//debug_printf("\n %lx - %i - %i", session, master_key_length, master_key[10]);
 			} else {
+				#ifndef HAVE_WOLFSSL
 				#if OPENSSL_VERSION_NUMBER < 0x10100000L
 				if(session->master_key_length > 0) {
 					master_key_length = session->master_key_length;
 					memcpy(master_key, session->master_key, session->master_key_length);
 				}
+				#endif
 				#endif
 			}
 		}
@@ -157,10 +175,12 @@ struct sMasterKey {
 		if(SSL_get_client_random_orig) {
 			SSL_get_client_random_orig(ssl, client_random, SSL3_RANDOM_SIZE);
 		} else {
+			#ifndef HAVE_WOLFSSL
 			#if OPENSSL_VERSION_NUMBER < 0x10100000L
 			if(ssl->s3) {
 				memcpy(client_random, ssl->s3->client_random, SSL3_RANDOM_SIZE);
 			}
+			#endif
 			#endif
 		}
 		strcpy(complete_key, "CLIENT_RANDOM ");
@@ -473,26 +493,43 @@ static void write_keylog_to_dest(const char *key) {
 }
 
 static void *lookup_symbol(const char *sym, const char *lib_soname) {
-	void *func = dlsym(RTLD_NEXT, sym);
+	char sym_mod[256] = "";
+	#ifdef HAVE_WOLFSSL
+	strcpy(sym_mod, "wolf");
+	#endif
+	strcat(sym_mod, sym);
+	void *func = dlsym(RTLD_NEXT, sym_mod);
 	if(!func) {
 		void *handle = dlopen(lib_soname, RTLD_LAZY);
 		if(handle) {
-			func = dlsym(handle, sym);
+			func = dlsym(handle, sym_mod);
 			dlclose(handle);
 		}
 	}
 	return(func);
 }
 
-SSL *SSL_new(SSL_CTX *ctx) {
+SSL *
+#ifndef HAVE_WOLFSSL
+SSL_new
+#else
+wolfSSL_new
+#endif
+(SSL_CTX *ctx) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		SSL_CTX_set_keylog_callback_orig(ctx, write_keylog);
 	}
 	return SSL_new_orig(ctx);
 }
 
-#if not(defined(ONLY_OPENSSL_111_SUPPORT)) or not(ONLY_OPENSSL_111_SUPPORT)
-int SSL_connect(SSL *ssl) {
+#if not ONLY_KEYLOG_CALLBACK
+int 
+#ifndef HAVE_WOLFSSL
+SSL_connect
+#else
+wolfSSL_connect
+#endif
+(SSL *ssl) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_connect_orig(ssl));
 	}
@@ -509,7 +546,13 @@ int SSL_connect(SSL *ssl) {
 	return(rslt);
 }
 
-int SSL_do_handshake(SSL *ssl) {
+int 
+#ifndef HAVE_WOLFSSL
+SSL_do_handshake
+#else
+wolfSSL_do_handshake
+#endif
+(SSL *ssl) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_do_handshake_orig(ssl));
 	}
@@ -526,7 +569,13 @@ int SSL_do_handshake(SSL *ssl) {
 	return(rslt);
 }
 
-int SSL_accept(SSL *ssl) {
+int 
+#ifndef HAVE_WOLFSSL
+SSL_accept
+#else
+wolfSSL_accept
+#endif
+(SSL *ssl) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_accept_orig(ssl));
 	}
@@ -543,7 +592,13 @@ int SSL_accept(SSL *ssl) {
 	return(rslt);
 }
 
-int SSL_read(SSL *ssl, void *buf, int num) {
+int 
+#ifndef HAVE_WOLFSSL
+SSL_read
+#else
+wolfSSL_read
+#endif
+(SSL *ssl, void *buf, int num) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_read_orig(ssl, buf, num));
 	}
@@ -560,7 +615,13 @@ int SSL_read(SSL *ssl, void *buf, int num) {
 	return(rslt);
 }
 
-int SSL_write(SSL *ssl, const void *buf, int num) {
+int 
+#ifndef HAVE_WOLFSSL
+SSL_write
+#else
+wolfSSL_write
+#endif
+(SSL *ssl, const void *buf, int num) {
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_write_orig(ssl, buf, num));
 	}
@@ -579,52 +640,52 @@ int SSL_write(SSL *ssl, const void *buf, int num) {
 #endif
 
 __attribute__((constructor)) static void setup(void) {
-	SSL_new_orig = (SSL_new_type)lookup_symbol("SSL_new", OPENSSL_SONAME);
+	SSL_new_orig = (SSL_new_type)lookup_symbol("SSL_new", LIBSSL_SONAME);
 	if(SSL_new_orig) {
 		debug_printf("OK detect pointer to function SSL_new : 0x%lx", SSL_new_orig);
 	} else {
 		debug_printf("FAILED detect pointer to function SSL_new - abort!");
 		abort();
 	}
-	SSL_CTX_set_keylog_callback_orig = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", OPENSSL_SONAME);
+	SSL_CTX_set_keylog_callback_orig = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", LIBSSL_SONAME);
 	if(SSL_CTX_set_keylog_callback_orig) {
 		debug_printf("OK detect pointer to function SSL_CTX_set_keylog_callback : 0x%lx", SSL_CTX_set_keylog_callback_orig);
 	}
-	#if ONLY_OPENSSL_111_SUPPORT
+	#if ONLY_KEYLOG_CALLBACK
 	if(!SSL_CTX_set_keylog_callback_orig) {
 		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - abort!");
 		abort();
 	}
 	#else
-	SSL_connect_orig = (SSL_connect_type)lookup_symbol("SSL_connect", OPENSSL_SONAME);
+	SSL_connect_orig = (SSL_connect_type)lookup_symbol("SSL_connect", LIBSSL_SONAME);
 	if(SSL_connect_orig) {
 		debug_printf("OK detect pointer to function SSL_connect : 0x%lx", SSL_connect_orig);
 	}
-	SSL_do_handshake_orig = (SSL_do_handshake_type)lookup_symbol("SSL_do_handshake", OPENSSL_SONAME);
+	SSL_do_handshake_orig = (SSL_do_handshake_type)lookup_symbol("SSL_do_handshake", LIBSSL_SONAME);
 	if(SSL_do_handshake_orig) {
 		debug_printf("OK detect pointer to function SSL_do_handshake : 0x%lx", SSL_do_handshake_orig);
 	}
-	SSL_accept_orig = (SSL_accept_type)lookup_symbol("SSL_accept", OPENSSL_SONAME);
+	SSL_accept_orig = (SSL_accept_type)lookup_symbol("SSL_accept", LIBSSL_SONAME);
 	if(SSL_accept_orig) {
 		debug_printf("OK detect pointer to function SSL_accept : 0x%lx", SSL_accept_orig);
 	}
-	SSL_read_orig = (SSL_read_type)lookup_symbol("SSL_read", OPENSSL_SONAME);
+	SSL_read_orig = (SSL_read_type)lookup_symbol("SSL_read", LIBSSL_SONAME);
 	if(SSL_read_orig) {
 		debug_printf("OK detect pointer to function SSL_read : 0x%lx", SSL_read_orig);
 	}
-	SSL_write_orig = (SSL_write_type)lookup_symbol("SSL_write", OPENSSL_SONAME);
+	SSL_write_orig = (SSL_write_type)lookup_symbol("SSL_write", LIBSSL_SONAME);
 	if(SSL_write_orig) {
 		debug_printf("OK detect pointer to function SSL_write : 0x%lx", SSL_write_orig);
 	}
-	SSL_get_session_orig = (SSL_get_session_type)lookup_symbol("SSL_get_session", OPENSSL_SONAME);
+	SSL_get_session_orig = (SSL_get_session_type)lookup_symbol("SSL_get_session", LIBSSL_SONAME);
 	if(SSL_get_session_orig) {
 		debug_printf("OK detect pointer to function SSL_get_session : 0x%lx", SSL_get_session_orig);
 	}
-	SSL_get_client_random_orig = (SSL_get_client_random_type)lookup_symbol("SSL_get_client_random", OPENSSL_SONAME);
+	SSL_get_client_random_orig = (SSL_get_client_random_type)lookup_symbol("SSL_get_client_random", LIBSSL_SONAME);
 	if(SSL_get_client_random_orig) {
 		debug_printf("OK detect pointer to function SSL_get_client_random : 0x%lx", SSL_get_client_random_orig);
 	}
-	SSL_SESSION_get_master_key_orig = (SSL_SESSION_get_master_key_type)lookup_symbol("SSL_SESSION_get_master_key", OPENSSL_SONAME);
+	SSL_SESSION_get_master_key_orig = (SSL_SESSION_get_master_key_type)lookup_symbol("SSL_SESSION_get_master_key", LIBSSL_SONAME);
 	if(SSL_SESSION_get_master_key_orig) {
 		debug_printf("OK detect pointer to function SSL_SESSION_get_master_key : 0x%lx", SSL_SESSION_get_master_key_orig);
 	}
