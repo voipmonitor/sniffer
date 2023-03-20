@@ -591,6 +591,7 @@ bool check_regexp(const char *pattern);
 int reg_match(const char *string, const char *pattern, const char *file = NULL, int line = 0);
 int reg_match(const char *str, const char *pattern, vector<string> *matches, bool ignoreCase, const char *file = NULL, int line = 0);
 string reg_replace(const char *string, const char *pattern, const char *replace, const char *file = NULL, int line = 0);
+bool reg_pattern_contain_subresult(const char *pattern);
 
 class cRegExp {
 public:

@@ -14243,13 +14243,25 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 								}
 							}
 							if(!iter2->second.regularExpression.empty()) {
-								string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
-								if(customHeader.empty()) {
-									delete [] customHeaderContent;
-									continue;
+								if(reg_pattern_contain_subresult(iter2->second.regularExpression.c_str())) {
+									string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+									if(customHeader.empty()) {
+										delete [] customHeaderContent;
+										continue;
+									} else {
+										dstring content(iter2->second.header[i], customHeader);
+										this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+									}
 								} else {
-									dstring content(iter2->second.header[i], customHeader);
-									this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+									vector<string> matches;
+									int rslt_match = reg_match(customHeaderBegin, iter2->second.regularExpression.c_str(), &matches, false);
+									if(rslt_match > 0 && matches.size() > 0) {
+										dstring content(iter2->second.header[i], matches[0]);
+										this->setCustomHeaderContent(call, type, ch_content, iter->first, iter2->first, &content, iter2->second.useLastValue);
+									} else {
+										delete [] customHeaderContent;
+										continue;
+									}
 								}
 							} else {
 								dstring content(iter2->second.header[i], customHeaderBegin);

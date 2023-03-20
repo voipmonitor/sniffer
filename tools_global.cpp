@@ -1178,6 +1178,27 @@ string reg_replace(const char *str, const char *pattern, const char *replace, co
 	return("");
 }
 
+bool reg_pattern_contain_subresult(const char *pattern) {
+	const char *begin = NULL;
+	while((begin = strchr(begin ? begin + 1 : pattern, '(')) != NULL) {
+		if(begin == pattern || *(begin - 1) != '\\') {
+			break;
+		}
+	}
+	if(begin) {
+		const char *end = NULL;
+		while((end = strchr(end ? end + 1 : begin + 1, ')')) != NULL) {
+			if(end == pattern || *(end - 1) != '\\') {
+				break;
+			}
+		}
+		if(begin && end && begin && end > begin) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
 
 cRegExp::cRegExp(const char *pattern, eFlags flags,
 		 const char *file, int line) {
