@@ -180,7 +180,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 							break;
 						}
 					}
-					callMAPIT->second->removeFindTables(NULL, false, true);
+					call->removeFindTables(NULL, false, true);
 					calltable->unlock_calls_listMAP();
 				} else {
 					calltable->lock_calls_listMAP();
