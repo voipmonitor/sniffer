@@ -1,3 +1,13 @@
+31.5  21.03.2023
+================
+- implemented fast b-tree ip filter for the interface_ip_filter configuration option [VS-1428]
+- simplification of entering regular expressions for custom headers - a simple expression without parentheses (subresult) serves as a simple match [VS-1427]
+- add support for erspan type III
+- add support for wolfssl keylogger [VS-1426]
+- add redirect queue limit if set mysql_redirect_cdr_queue=yes
+- fix crash in mgcp [VS-1429]
+
+
 31.4  15.03.2023
 ================
 - add new cdr flag for safe spool directory [VG-1804]
