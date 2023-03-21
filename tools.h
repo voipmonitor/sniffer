@@ -1680,6 +1680,9 @@ public:
 		}
 		if(autoLock) unlock();
 	}
+	void add(vmIPmask ip) {
+		add(ip.ip, ip.mask);
+	}
 	void add(const char *ip) {
 		if(autoLock) lock();
 		IP _ip(ip);

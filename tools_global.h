@@ -1027,4 +1027,95 @@ inline u_int32_t bitmaskshift_32(u_int32_t val, u_int16_t mask) {
 }
 
 
+template <class type_data>
+class cBTree {
+public:
+	class cBTreeNode {
+	public:
+		inline cBTreeNode() {
+			nodes = NULL;
+			data = NULL;
+		}
+		~cBTreeNode() {
+			if(nodes) {
+				for(unsigned i = 0; i < 256; i++) {
+					if(nodes[i]) {
+						delete nodes[i];
+					}
+				}
+				delete [] nodes;
+			}
+			if(data) {
+				delete data;
+			}
+		}
+		inline void add(u_char *key, unsigned key_length, type_data *data) {
+			if(key_length > 0) {
+				if(!nodes) {
+					nodes = new FILE_LINE(0) cBTreeNode*[256];
+					memset(nodes, 0, sizeof(cBTreeNode*) * 256);
+				}
+				if(!nodes[key[0]]) {
+					nodes[key[0]] = new FILE_LINE(0) cBTreeNode();
+				}
+				nodes[key[0]]->add(key + 1, key_length - 1, data);
+			} else {
+				if(!this->data) {
+					this->data = new type_data;
+				}
+				*this->data = *data;
+			}
+		}
+		inline type_data *get(u_char *key, unsigned key_length) {
+			if(key_length > 0) {
+				if(nodes && nodes[key[0]]) {
+					return(nodes[key[0]]->get(key + 1, key_length - 1));
+				} else {
+					return(NULL);
+				}
+			} else {
+				return(data);
+			}
+		}
+	public:
+		cBTreeNode **nodes;
+		type_data *data;
+	};
+public:
+	inline void add(u_char *key, unsigned key_length, type_data data) {
+		root.add(key, key_length, &data);
+	}
+	inline void add(u_char *key, unsigned key_length, type_data *data) {
+		root.add(key, key_length, data);
+	}
+	inline type_data *get(u_char *key, unsigned key_length) {
+		return(root.get(key, key_length));
+	}
+	inline bool check(u_char *key, unsigned key_length) {
+		return(root.get(key, key_length) != NULL);
+	}
+private:
+	cBTreeNode root;
+};
+
+
+class cQuickIPfilter {
+public:
+	inline void add(vmIP ip) {
+		filter.add(ip.getPointerToIP_u_char(), ip.bytes(), true);
+	}
+	inline void add(vmIP *ip) {
+		filter.add(ip->getPointerToIP_u_char(), ip->bytes(), true);
+	}
+	inline bool check(vmIP ip) {
+		return(filter.check(ip.getPointerToIP_u_char(), ip.bytes()));
+	}
+	inline bool check(vmIP *ip) {
+		return(filter.check(ip->getPointerToIP_u_char(), ip->bytes()));
+	}
+public:
+	cBTree<bool> filter;
+};
+
+
 #endif

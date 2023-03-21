@@ -3359,16 +3359,36 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	packets_counter = 0;
 	extern vector<vmIP> if_filter_ip;
 	extern vector<vmIPmask> if_filter_net;
+	filter_ip = false;
+	filter_ip_q = NULL;
+	filter_ip_net = NULL;
 	if(if_filter_ip.size() || if_filter_net.size()) {
-		filter_ip = new FILE_LINE(0) ListIP;
+		filter_ip = true;
 		if(if_filter_ip.size()) {
-			filter_ip->add(&if_filter_ip);
+			filter_ip_q = new FILE_LINE(0) cQuickIPfilter;
+			for(unsigned i = 0; i < if_filter_ip.size(); i++) {
+				filter_ip_q->add(&if_filter_ip[i]);
+			}
 		}
 		if(if_filter_net.size()) {
-			filter_ip->add(&if_filter_net, 6);
+			for(unsigned i = 0; i < if_filter_net.size(); i++) {
+				if(if_filter_net[i].host_bits() <= 8) {
+					if(!filter_ip_q) {
+						filter_ip_q = new FILE_LINE(0) cQuickIPfilter;
+					}
+					list<vmIP> list_ip;
+					if_filter_net[i].ip_list(&list_ip);
+					for(list<vmIP>::iterator iter = list_ip.begin(); iter != list_ip.end(); iter++) {
+						filter_ip_q->add(&*iter);
+					}
+				} else {
+					if(!filter_ip_net) {
+						filter_ip_net = new FILE_LINE(0) ListIP;
+					}
+					filter_ip_net->add(if_filter_net[i]);
+				}
+			}
 		}
-	} else {
-		filter_ip = NULL;
 	}
 	read_from_file_index = 0;
 	#if EXPERIMENTAL_CHECK_PCAP_TIME
@@ -3389,8 +3409,11 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(this->dpdkHandle) {
 		destroy_dpdk_handle(this->dpdkHandle);
 	}
-	if(filter_ip) {
-		delete filter_ip;
+	if(filter_ip_q) {
+		delete filter_ip_q;
+	}
+	if(filter_ip_net) {
+		delete filter_ip_net;
 	}
 }
 
@@ -3868,7 +3891,18 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_char* packet, sCheckProtocolData *checkProtocolData) {
 	if(filter_ip) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
-		if(!filter_ip->checkIP(iphdr->get_saddr()) && !filter_ip->checkIP(iphdr->get_daddr())) {
+		bool ip_ok = false;
+		if(filter_ip_q) {
+			if(filter_ip_q->check(iphdr->get_saddr()) || filter_ip_q->check(iphdr->get_daddr())) {
+				ip_ok = true;
+			}
+		}
+		if(!ip_ok && filter_ip_net) {
+			if(filter_ip_net->checkIP(iphdr->get_saddr()) || filter_ip_net->checkIP(iphdr->get_daddr())) {
+				ip_ok = true;
+			}
+		}
+		if(!ip_ok) {
 			return(false);
 		}
 	}

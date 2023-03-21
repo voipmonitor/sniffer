@@ -355,6 +355,17 @@ struct vmIP {
 		}
 		#endif
 	}
+	inline u_char *getPointerToIP_u_char() {
+		#if VM_IPV6
+		if(!v6) {
+		#endif
+			return((u_char*)&ip.v4.n);
+		#if VM_IPV6
+		} else {
+			return((u_char*)&ip.v6.__in6_u.__u6_addr8);
+		}
+		#endif
+	}
 	inline bool is_v6() {
 		#if VM_IPV6
 			return(v6);
@@ -367,6 +378,13 @@ struct vmIP {
 			return(v6 ? 128 : 32);
 		#else
 			return(32);
+		#endif
+	}
+	inline u_int8_t bytes() const {
+		#if VM_IPV6
+			return(v6 ? 16 : 4);
+		#else
+			return(4);
 		#endif
 	}
 	inline u_int8_t v() const {
