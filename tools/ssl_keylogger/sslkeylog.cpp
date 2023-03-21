@@ -32,6 +32,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
