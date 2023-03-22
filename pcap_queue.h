@@ -480,8 +480,8 @@ private:
 	u_char *libpcap_buffer_old;
 	u_int64_t packets_counter;
 	bool filter_ip;
-	cQuickIPfilter *filter_ip_q;
-	ListIP *filter_ip_net;
+	cQuickIPfilter *filter_ip_quick;
+	ListIP *filter_ip_std;
 	unsigned read_from_file_index;
 	#if EXPERIMENTAL_CHECK_PCAP_TIME
 	int64_t lastPcapTime_s;

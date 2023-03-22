@@ -888,6 +888,7 @@ char ifname[1024];	// Specifies the name of the network device to use for
 vector<string> ifnamev;
 vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
+bool opt_if_filter_ip_quick = true;
 bool opt_ifaces_optimize = true;
 bool opt_use_dpdk = false;
 int opt_dpdk_init = 1;
@@ -5912,6 +5913,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42132) cConfigItem_string("interface", ifname, sizeof(ifname)));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_hosts("interface_ip_filter", &if_filter_ip, &if_filter_net));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interface_ip_filter_quick", &opt_if_filter_ip_quick));
+				advanced();
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
@@ -9365,6 +9369,9 @@ int eval_config(string inistr) {
 		if(if_filter_ip.size() > 1) {
 			std::sort(if_filter_ip.begin(), if_filter_ip.end());
 		}
+	}
+	if((value = ini.GetValue("general", "interface_ip_filter_quick", NULL))) {
+		opt_if_filter_ip_quick = yesno(value);
 	}
 	if((value = ini.GetValue("general", "cleandatabase", NULL))) {
 		opt_cleandatabase_cdr =

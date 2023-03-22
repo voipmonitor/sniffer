@@ -3359,34 +3359,46 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	packets_counter = 0;
 	extern vector<vmIP> if_filter_ip;
 	extern vector<vmIPmask> if_filter_net;
+	extern bool opt_if_filter_ip_quick;
 	filter_ip = false;
-	filter_ip_q = NULL;
-	filter_ip_net = NULL;
+	filter_ip_quick = NULL;
+	filter_ip_std = NULL;
 	if(if_filter_ip.size() || if_filter_net.size()) {
 		filter_ip = true;
-		if(if_filter_ip.size()) {
-			filter_ip_q = new FILE_LINE(0) cQuickIPfilter;
-			for(unsigned i = 0; i < if_filter_ip.size(); i++) {
-				filter_ip_q->add(&if_filter_ip[i]);
-			}
-		}
-		if(if_filter_net.size()) {
-			for(unsigned i = 0; i < if_filter_net.size(); i++) {
-				if(if_filter_net[i].host_bits() <= 8) {
-					if(!filter_ip_q) {
-						filter_ip_q = new FILE_LINE(0) cQuickIPfilter;
-					}
-					list<vmIP> list_ip;
-					if_filter_net[i].ip_list(&list_ip);
-					for(list<vmIP>::iterator iter = list_ip.begin(); iter != list_ip.end(); iter++) {
-						filter_ip_q->add(&*iter);
-					}
-				} else {
-					if(!filter_ip_net) {
-						filter_ip_net = new FILE_LINE(0) ListIP;
-					}
-					filter_ip_net->add(if_filter_net[i]);
+		int limit_host_bits_for_convert_to_ips = 8;
+		if(opt_if_filter_ip_quick) {
+			if(if_filter_ip.size()) {
+				filter_ip_quick = new FILE_LINE(0) cQuickIPfilter;
+				for(unsigned i = 0; i < if_filter_ip.size(); i++) {
+					filter_ip_quick->add(&if_filter_ip[i]);
 				}
+			}
+			if(if_filter_net.size()) {
+				for(unsigned i = 0; i < if_filter_net.size(); i++) {
+					if(if_filter_net[i].host_bits() <= limit_host_bits_for_convert_to_ips) {
+						if(!filter_ip_quick) {
+							filter_ip_quick = new FILE_LINE(0) cQuickIPfilter;
+						}
+						list<vmIP> list_ip;
+						if_filter_net[i].ip_list(&list_ip);
+						for(list<vmIP>::iterator iter = list_ip.begin(); iter != list_ip.end(); iter++) {
+							filter_ip_quick->add(&*iter);
+						}
+					} else {
+						if(!filter_ip_std) {
+							filter_ip_std = new FILE_LINE(0) ListIP;
+						}
+						filter_ip_std->add(if_filter_net[i]);
+					}
+				}
+			}
+		} else {
+			filter_ip_std = new FILE_LINE(0) ListIP;
+			if(if_filter_ip.size()) {
+				filter_ip_std->add(&if_filter_ip);
+			}
+			if(if_filter_net.size()) {
+				filter_ip_std->add(&if_filter_net, limit_host_bits_for_convert_to_ips);
 			}
 		}
 	}
@@ -3409,11 +3421,11 @@ PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
 	if(this->dpdkHandle) {
 		destroy_dpdk_handle(this->dpdkHandle);
 	}
-	if(filter_ip_q) {
-		delete filter_ip_q;
+	if(filter_ip_quick) {
+		delete filter_ip_quick;
 	}
-	if(filter_ip_net) {
-		delete filter_ip_net;
+	if(filter_ip_std) {
+		delete filter_ip_std;
 	}
 }
 
@@ -3892,13 +3904,13 @@ bool PcapQueue_readFromInterface_base::check_filter_ip(pcap_pkthdr* header, u_ch
 	if(filter_ip) {
 		iphdr2 *iphdr = (iphdr2*)(packet + checkProtocolData->header_ip_offset);
 		bool ip_ok = false;
-		if(filter_ip_q) {
-			if(filter_ip_q->check(iphdr->get_saddr()) || filter_ip_q->check(iphdr->get_daddr())) {
+		if(filter_ip_quick) {
+			if(filter_ip_quick->check(iphdr->get_saddr()) || filter_ip_quick->check(iphdr->get_daddr())) {
 				ip_ok = true;
 			}
 		}
-		if(!ip_ok && filter_ip_net) {
-			if(filter_ip_net->checkIP(iphdr->get_saddr()) || filter_ip_net->checkIP(iphdr->get_daddr())) {
+		if(!ip_ok && filter_ip_std) {
+			if(filter_ip_std->checkIP(iphdr->get_saddr()) || filter_ip_std->checkIP(iphdr->get_daddr())) {
 				ip_ok = true;
 			}
 		}
