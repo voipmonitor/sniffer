@@ -6003,6 +6003,15 @@ PcapQueue_readFromInterface::PcapQueue_readFromInterface(const char *nameQueue)
 }
 
 PcapQueue_readFromInterface::~PcapQueue_readFromInterface() {
+	unsigned counter = 0;
+	while(!this->threadTerminated && counter < 50) {
+		USLEEP(100000);
+		++counter;
+	}
+	if(!this->threadTerminated) {
+		syslog(LOG_NOTICE, "cancel read thread (%s)", interfaceName.c_str());
+		pthread_cancel(this->threadHandle);
+	}
 	pthread_join(this->threadHandle, NULL);
 	if(this->writeThreadHandle) {
 		pthread_join(this->writeThreadHandle, NULL);
