@@ -122,26 +122,30 @@ cDiameterAvp::cDiameterAvp(u_char *data, unsigned datalen) {
 
 void cDiameterAvp::parse(cDiameterAvpDataItems *dataItems) {
 	if(isGroup()) {
-		u_char *group_payload = this->payload();
 		u_int32_t group_payload_len = this->payload_len();
-		u_int32_t offset = 0;
-		while(offset < group_payload_len && (group_payload_len - offset) > sizeof(cDiameterAvp::sHeader)) {
-			cDiameterAvp avp(group_payload + offset, group_payload_len - offset);
-			if(avp.lengthIsOk()) {
-				avp.parse(dataItems);
-				offset += avp.real_length();
-			} else {
-				break;
+		if(group_payload_len > 0) {
+			u_char *group_payload = this->payload();
+			u_int32_t offset = 0;
+			while(offset < group_payload_len && (group_payload_len - offset) > sizeof(cDiameterAvp::sHeader)) {
+				cDiameterAvp avp(group_payload + offset, group_payload_len - offset);
+				if(avp.lengthIsOk()) {
+					avp.parse(dataItems);
+					offset += avp.real_length();
+				} else {
+					break;
+				}
 			}
 		}
 	} else {
-		u_char *payload = this->payload();
 		u_int32_t payload_len = this->payload_len();
-		cDiameterAvpDataItem *dataItem = new FILE_LINE(0) cDiameterAvpDataItem;
-		dataItem->code = code(); 
-		dataItem->length = payload_len;
-		dataItem->payload = new FILE_LINE(0) SimpleBuffer(payload, payload_len);
-		dataItems->push(dataItem);
+		if(payload_len > 0) {
+			u_char *payload = this->payload();
+			cDiameterAvpDataItem *dataItem = new FILE_LINE(0) cDiameterAvpDataItem;
+			dataItem->code = code(); 
+			dataItem->length = payload_len;
+			dataItem->payload = new FILE_LINE(0) SimpleBuffer(payload, payload_len);
+			dataItems->push(dataItem);
+		}
 	}
 }
 
@@ -179,7 +183,9 @@ u_char *cDiameterAvp::payload() {
 }
 
 u_int32_t cDiameterAvp::payload_len() {
-	return(length() - header_length());
+	u_int32_t length = this->length();
+	u_int32_t header_length = this->header_length();
+	return(length > header_length ? length - header_length : 0);
 }
 
 bool cDiameterAvp::isGroup() {
@@ -426,7 +432,7 @@ void cDiameterPacketStack::cleanup(u_int64_t time_us) {
 					destroy = true;
 				}
 			}
-		} else if(age_s > absolute_timeout + 120) {
+		} else if(age_s > (unsigned)absolute_timeout + 120) {
 			destroy = true;
 		}
 		if(destroy) {
