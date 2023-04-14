@@ -2559,6 +2559,20 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	unsigned sdp_media_counter = 0;
 	for(unsigned sdp_media_i = 0; sdp_media_i < sdp_media_start_count; sdp_media_i++) {
 	 
+		switch(sdp_media_type[sdp_media_i]) {
+		case sdp_media_type_audio:
+			call->sdp_exists_media_type_audio = true;
+			break;
+		case sdp_media_type_image:
+			call->sdp_exists_media_type_image = true;
+			break;
+		case sdp_media_type_video:
+			call->sdp_exists_media_type_video = true;
+			break;
+		default:
+			break;
+		}
+	 
 		if(sdp_media_type[sdp_media_i] == sdp_media_type_video && !processing_rtp_video(call)) {
 			continue;
 		}
