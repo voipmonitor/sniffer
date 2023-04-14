@@ -93,6 +93,10 @@ public:
 public:
 	cDiameter(u_char *data, unsigned datalen);
 	string getPublicIdentity(cDiameterAvpDataItems *dataItems = NULL);
+	string getSessionId(cDiameterAvpDataItems *dataItems = NULL);
+	string getCallingPartyAddress(cDiameterAvpDataItems *dataItems = NULL);
+	string getValue(unsigned code, cDiameterAvpDataItems *dataItems = NULL);
+	int getValues(unsigned code, list<string> *values, cDiameterAvpDataItems *dataItems = NULL);
 	void parse(cDiameterAvpDataItems *dataItems);
 	u_int8_t version();
 	u_int32_t length();
@@ -114,17 +118,50 @@ private:
 
 class cDiameterPacketStack {
 public:
+	enum eTypeRetrieve {
+		_tr_from,
+		_tr_to
+	};
 	struct sPacket {
 		void *packet;
 		bool is_request;
 		u_int32_t hbh_id;
 		u_int64_t time_us;
 		void destroy_packet();
+		unsigned age_s(u_int64_t time_us) {
+			return(this->time_us < time_us ?
+				TIME_US_TO_S(time_us - this->time_us) :
+				0);
+		}
 		bool operator == (const sPacket& other) const { 
 			return(this->time_us == other.time_us); 
 		}
 		bool operator < (const sPacket& other) const { 
 			return(this->time_us < other.time_us); 
+		}
+	};
+	struct sQueuePacketsId {
+		string public_identity;
+		string session_id;
+		string calling_party_address;
+		void set(cDiameterAvpDataItems *dataItems);
+		string print(void *packets) const;
+		bool isSet() {
+			return(!public_identity.empty() ||
+			       !session_id.empty() ||
+			       !calling_party_address.empty());
+		}
+		bool operator == (const sQueuePacketsId& other) const { 
+			return(this->public_identity == other.public_identity &&
+			       this->session_id == other.session_id &&
+			       this->calling_party_address == other.calling_party_address); 
+		}
+		bool operator < (const sQueuePacketsId& other) const { 
+			return(this->public_identity < other.public_identity ? true : 
+			       this->public_identity > other.public_identity ? false :
+			       this->session_id < other.session_id ? true : 
+			       this->session_id > other.session_id ? false :
+			       this->calling_party_address < other.calling_party_address); 
 		}
 	};
 	class cQueuePackets {
@@ -133,21 +170,28 @@ public:
 		void add(void *packet, bool is_request, u_int32_t hbh_id, u_int64_t time_us);
 		unsigned age_s(u_int64_t time_us);
 		void destroy_packets();
+		string hbh_str();
 	public:
-		string public_identity;
+		sQueuePacketsId id;
 		list<sPacket> packets;
-		bool confirmed;
 	};
 public:
 	cDiameterPacketStack();
 	~cDiameterPacketStack();
-	bool add(void *packet, bool is_request, u_int32_t hbh_id, const char *public_identity, u_int64_t time_us);
-	bool retrieve(const char *public_identity, list<sPacket> *packets);
-	bool retrieve(list<string> *public_identity, list<sPacket> *packets);
-	bool retrieve(list<string> *public_identity, cQueuePackets *packets);
+	bool add(void *packet, bool is_request, u_int32_t hbh_id, sQueuePacketsId *queue_packets_id, u_int64_t time_us);
+	bool retrieve(eTypeRetrieve type_retrieve, const char *identity, list<sPacket> *packets, u_int64_t from_time, u_int64_t to_time);
+	bool retrieve(eTypeRetrieve type_retrieve, list<string> *identity, list<sPacket> *packets, u_int64_t from_time, u_int64_t to_time);
+	bool retrieve(eTypeRetrieve type_retrieve, list<string> *identity, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
+	bool retrieve_from_sip(list<string> *from_sip, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
+	bool retrieve_to_sip(list<string> *to_sip, cQueuePackets *packets, u_int64_t from_time, u_int64_t to_time);
 	void cleanup(u_int64_t time_us = 0);
+	string print_packets_stack();
 private:
-	bool confirm_public_identity(const char *public_identity);
+	bool check_used(const sQueuePacketsId *queue_packets_id);
+	void addFindIndexes(cQueuePackets *queue_packets);
+	void addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index);
+	void eraseFindIndexes(cQueuePackets *queue_packets);
+	void eraseFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index);
 private:
 	void lock() {
 		__SYNC_LOCK(_sync_lock);
@@ -156,8 +200,10 @@ private:
 		__SYNC_UNLOCK(_sync_lock);
 	}
 public:
-	map<string, cQueuePackets*> packet_stack;
-	map<u_int32_t, string> hbh_id_to_public_identity;
+	map<sQueuePacketsId, cQueuePackets*> packet_stack;
+	map<string, list<cQueuePackets*>> packet_stack_by_from;
+	map<string, list<cQueuePackets*>> packet_stack_by_to;
+	map<u_int32_t, cQueuePackets*> hbh_id_to_queue_packets_id;
 	unsigned age_expiration_s;
 	unsigned cleanup_period_s;
 	unsigned last_cleanup_s;

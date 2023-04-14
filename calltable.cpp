@@ -10310,6 +10310,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;
 	_sync_lock_calls_mergeMAP = 0;
+	_sync_lock_calls_diameter_from_sip_listMAP = 0;
 	_sync_lock_calls_diameter_to_sip_listMAP = 0;
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	_sync_lock_conference_calls_map = 0;
@@ -12069,14 +12070,20 @@ void
 Calltable::destroyCallsIfPcapsClosed() {
 	this->lock_calls_deletequeue();
 	if(this->calls_deletequeue.size() > 0) {
+		u_int32_t currTimeS = getTimeS_rdtsc();
 		size_t size = this->calls_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
-			if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
-				call->destroyCall();
-				delete call;
-				this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
-				--size;
+			if(currTimeS > call->stopProcessingAt_s &&
+			   currTimeS - call->stopProcessingAt_s >= (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+				if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
+					call->destroyCall();
+					delete call;
+					this->calls_deletequeue.erase(this->calls_deletequeue.begin() + i);
+					--size;
+				} else {
+					i++;
+				}
 			} else {
 				i++;
 			}
@@ -12089,15 +12096,30 @@ void
 Calltable::destroyRegistersIfPcapsClosed() {
 	this->lock_registers_deletequeue();
 	if(this->registers_deletequeue.size() > 0) {
+		u_int32_t currTimeS = getTimeS_rdtsc();
 		size_t size = this->registers_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *reg = this->registers_deletequeue[i];
-			if(reg->isPcapsClose() && reg->isEmptyChunkBuffersCount()) {
-				reg->atFinish();
-				reg->registers_counter_dec();
-				delete reg;
-				this->registers_deletequeue.erase(this->registers_deletequeue.begin() + i);
-				--size;
+			if(currTimeS > reg->stopProcessingAt_s &&
+			   currTimeS - reg->stopProcessingAt_s >= (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+				if(!reg->isPcapsClose()) {
+					if(opt_enable_diameter) {
+						reg->moveDiameterPacketsToPcap();
+					}
+					reg->closePcaps();
+					i++;
+				} else if(reg->isEmptyChunkBuffersCount()) {
+					if(opt_enable_diameter) {
+						reg->moveDiameterPacketsToPcap(false);
+					}
+					reg->atFinish();
+					reg->registers_counter_dec();
+					delete reg;
+					this->registers_deletequeue.erase(this->registers_deletequeue.begin() + i);
+					--size;
+				} else {
+					i++;
+				}
 			} else {
 				i++;
 			}
@@ -13440,11 +13462,14 @@ void Call::saveregister(struct timeval *currtime) {
 	extern u_int64_t counter_registers_clean;
 	++counter_registers_clean;
 	removeFindTables(NULL);
+	stopProcessing = true;
+	stopProcessingAt_s = getTimeS_rdtsc();
 	if(opt_enable_diameter) {
 		moveDiameterPacketsToPcap();
+	} else {
+		this->pcap.close();
+		this->pcapSip.close();
 	}
-	this->pcap.close();
-	this->pcapSip.close();
 	/* move call to queue for mysql processing */
 	if(push_register_to_registers_queue) {
 		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());
@@ -13896,17 +13921,55 @@ void Call::dtls_keys_unlock() {
 	__SYNC_UNLOCK(dtls_keys_sync);
 }
 
+void Call::setDiameterFromSip(const char *from_sip) {
+	extern bool opt_diameter_ignore_domain;
+	if(opt_diameter_ignore_domain) {
+		char *pointerToDomainSeparator = (char*)strchr(from_sip, '@');
+		if(pointerToDomainSeparator && pointerToDomainSeparator > from_sip) {
+			*pointerToDomainSeparator = 0;
+		}
+	}
+	calltable->lock_calls_diameter_from_sip_listMAP();
+	diameter_from_sip[from_sip] = true;
+	calltable->calls_diameter_from_sip_listMAP[from_sip] = this;
+	calltable->unlock_calls_diameter_from_sip_listMAP();
+}
+
 void Call::setDiameterToSip(const char *to_sip) {
+	extern bool opt_diameter_ignore_domain;
+	if(opt_diameter_ignore_domain) {
+		char *pointerToDomainSeparator = (char*)strchr(to_sip, '@');
+		if(pointerToDomainSeparator && pointerToDomainSeparator > to_sip) {
+			*pointerToDomainSeparator = 0;
+		}
+	}
 	calltable->lock_calls_diameter_to_sip_listMAP();
 	diameter_to_sip[to_sip] = true;
 	calltable->calls_diameter_to_sip_listMAP[to_sip] = this;
 	calltable->unlock_calls_diameter_to_sip_listMAP();
 }
 
+void Call::getDiameterFromSip(list<string> *from_sip) {
+	for(map<string, bool>::iterator iter = diameter_from_sip.begin(); iter != diameter_from_sip.end(); iter++) {
+		from_sip->push_back(iter->first);
+	}
+}
+
 void Call::getDiameterToSip(list<string> *to_sip) {
 	for(map<string, bool>::iterator iter = diameter_to_sip.begin(); iter != diameter_to_sip.end(); iter++) {
 		to_sip->push_back(iter->first);
 	}
+}
+
+void Call::clearDiameterFromSip() {
+	calltable->lock_calls_diameter_from_sip_listMAP();
+	for(map<string, bool>::iterator iter = diameter_from_sip.begin(); iter != diameter_from_sip.end(); iter++) {
+		map<string, Call*>::iterator iter_c = calltable->calls_diameter_from_sip_listMAP.find(iter->first);
+		if(iter_c != calltable->calls_diameter_from_sip_listMAP.end()) {
+			calltable->calls_diameter_from_sip_listMAP.erase(iter_c);
+		}
+	}
+	calltable->unlock_calls_diameter_from_sip_listMAP();
 }
 
 void Call::clearDiameterToSip() {
@@ -13920,21 +13983,58 @@ void Call::clearDiameterToSip() {
 	calltable->unlock_calls_diameter_to_sip_listMAP();
 }
 
-void Call::moveDiameterPacketsToPcap() {
+void Call::moveDiameterPacketsToPcap(bool enableSave) {
+	bool use_retrieve_from_sip = false;
+	bool use_retrieve_to_sip = false;
+	string retrieve_from_sip_hbh_str;
+	string retrieve_to_sip_hbh_str;
+	list<string> from_sip;
+	getDiameterFromSip(&from_sip);
+	if(from_sip.size()) {
+		extern cDiameterPacketStack diameter_packet_stack;
+		cDiameterPacketStack::cQueuePackets packets;
+		if(diameter_packet_stack.retrieve_from_sip(&from_sip, &packets, first_packet_time_us, get_last_packet_time_us()) && packets.packets.size()) {
+			if(sverb.diameter_assign) {
+				retrieve_from_sip_hbh_str = packets.hbh_str();
+			}
+			for(list<cDiameterPacketStack::sPacket>::iterator iter = packets.packets.begin(); iter != packets.packets.end(); iter++) {
+				if(enableSave) {
+					packet_s_process *packetS = (packet_s_process*)iter->packet;
+					save_packet(this, packetS, _t_packet_diameter);
+				}
+			}
+			packets.destroy_packets();
+			use_retrieve_from_sip = true;
+		}
+	}
 	list<string> to_sip;
 	getDiameterToSip(&to_sip);
 	if(to_sip.size()) {
 		extern cDiameterPacketStack diameter_packet_stack;
 		cDiameterPacketStack::cQueuePackets packets;
-		if(diameter_packet_stack.retrieve(&to_sip, &packets) && packets.packets.size()) {
+		if(diameter_packet_stack.retrieve_to_sip(&to_sip, &packets, first_packet_time_us, get_last_packet_time_us()) && packets.packets.size()) {
+			if(sverb.diameter_assign) {
+				retrieve_to_sip_hbh_str = packets.hbh_str();
+			}
 			for(list<cDiameterPacketStack::sPacket>::iterator iter = packets.packets.begin(); iter != packets.packets.end(); iter++) {
-				packet_s_process *packetS = (packet_s_process*)iter->packet;
-				save_packet(this, packetS, _t_packet_diameter);
+				if(enableSave) {
+					packet_s_process *packetS = (packet_s_process*)iter->packet;
+					save_packet(this, packetS, _t_packet_diameter);
+				}
 			}
 			packets.destroy_packets();
+			use_retrieve_to_sip = true;
 		}
 	}
+	clearDiameterFromSip();
 	clearDiameterToSip();
+	if(sverb.diameter_assign &&
+	   (use_retrieve_from_sip || use_retrieve_to_sip)) {
+		cout << "diameters in call " << call_id << " " 
+		     << (use_retrieve_from_sip ? "FROM " + retrieve_from_sip_hbh_str + " " : "")
+		     <<	(use_retrieve_to_sip ? "TO " + retrieve_to_sip_hbh_str + " " : "")
+		     << endl;
+	}
 }
 
 

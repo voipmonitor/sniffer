@@ -50,6 +50,7 @@
 #include "server.h"
 #include "filter_mysql.h"
 #include "charts.h"
+#include "diameter.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -438,6 +439,7 @@ int Mgmt_hashtable_stats(Mgmt_params *params);
 int Mgmt_usleep_stats(Mgmt_params *params);
 int Mgmt_charts_cache(Mgmt_params *params);
 int Mgmt_packetbuffer_log(Mgmt_params *params);
+int Mgmt_diameter_packets_stack(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -552,6 +554,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_usleep_stats,
 	Mgmt_charts_cache,
 	Mgmt_packetbuffer_log,
+	Mgmt_diameter_packets_stack,
 	NULL
 };
 
@@ -4730,6 +4733,27 @@ int Mgmt_packetbuffer_log(Mgmt_params *params) {
 		} else {
 			return(params->sendString("missing parameters: filter dest_file\n"));
 		}
+	}
+	return(0);
+}
+
+int Mgmt_diameter_packets_stack(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"diameter_packets_stack", "diameter_packets_stack"},
+			{"diameter_cleanup", "diameter_cleanup"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "diameter_packets_stack") != NULL) {
+		extern cDiameterPacketStack diameter_packet_stack;
+		return(params->sendString(diameter_packet_stack.print_packets_stack()));
+	} else if(strstr(params->buf, "diameter_cleanup") != NULL) {
+		extern cDiameterPacketStack diameter_packet_stack;
+		diameter_packet_stack.cleanup(getTimeUS());
+		return(0);
 	}
 	return(0);
 }

@@ -3751,13 +3751,18 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	if(opt_enable_diameter) {
 		string sip_uri;
 		string sip_to;
+		string sip_from;
 		get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
 		get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
+		get_sip_sip(packetS, "\nFrom:", "\nf:", &sip_from, ppntt_from, ppndt_caller);
 		if(!sip_uri.empty()) {
 			call->setDiameterToSip(sip_uri.c_str());
 		}
 		if(!sip_to.empty() && sip_to != sip_uri) {
 			call->setDiameterToSip(sip_to.c_str());
+		}
+		if(!sip_from.empty()) {
+			call->setDiameterFromSip(sip_from.c_str());
 		}
 	}
 	
@@ -4442,13 +4447,18 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(opt_enable_diameter && call->invite_packets_counter > 1) {
 			string sip_uri;
 			string sip_to;
+			string sip_from;
 			get_sip_sip(packetS, "INVITE ", NULL, &sip_uri, ppntt_invite, ppndt_called);
 			get_sip_sip(packetS, "\nTo:", "\nt:", &sip_to, ppntt_to, ppndt_called);
+			get_sip_sip(packetS, "\nFrom:", "\nf:", &sip_from, ppntt_from, ppndt_caller);
 			if(!sip_uri.empty()) {
 				call->setDiameterToSip(sip_uri.c_str());
 			}
 			if(!sip_to.empty() && sip_to != sip_uri) {
 				call->setDiameterToSip(sip_to.c_str());
+			}
+			if(!sip_from.empty()) {
+				call->setDiameterFromSip(sip_from.c_str());
 			}
 		}
 	}
@@ -5760,16 +5770,29 @@ endsip:
 
 void process_packet_diameter(packet_s_process *packetS) {
 	cDiameter diameter((u_char*)packetS->data_(), packetS->datalen_());
-	if(sverb.diameter) {
-		cDiameterAvpDataItems dataItems;
-		diameter.parse(&dataItems);
+	if(!diameter.lengthIsOk()) {
+		PACKET_S_PROCESS_DESTROY(&packetS);
+		return;
+	}
+	cDiameterAvpDataItems dataItems;
+	diameter.parse(&dataItems);
+	if(sverb.diameter_dump) {
+		cout << "======" << endl;
+		cout << "public identity: " << diameter.getPublicIdentity(&dataItems) << endl;
+		cout << "session id: " << diameter.getSessionId(&dataItems) << endl;
+		cout << "calling party address: " << diameter.getCallingPartyAddress(&dataItems) << endl;
+		cout << "------" << endl;
 		dataItems.print();
 	}
-	string publicIdentity;
+	cDiameterPacketStack::sQueuePacketsId queue_packets_id;
 	if(diameter.isRequest()) {
-		publicIdentity = diameter.getPublicIdentity();
+		queue_packets_id.set(&dataItems);
+		if(!queue_packets_id.isSet()) {
+			PACKET_S_PROCESS_DESTROY(&packetS);
+			return;
+		}
 	}
-	if(!diameter_packet_stack.add(packetS, diameter.isRequest(), diameter.hop_by_hop_id(), publicIdentity.c_str(), packetS->getTimeUS())) {
+	if(!diameter_packet_stack.add(packetS, diameter.isRequest(), diameter.hop_by_hop_id(), &queue_packets_id, packetS->getTimeUS())) {
 		PACKET_S_PROCESS_DESTROY(&packetS);
 	}
 }

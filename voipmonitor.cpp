@@ -434,6 +434,8 @@ int opt_ss7timeout_rel = 60;
 int opt_ss7timeout = 3600;
 vector<string> opt_ws_params;
 bool opt_enable_diameter;
+bool opt_diameter_ignore_domain;
+int opt_diameter_time_overlap = 10;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -4739,6 +4741,7 @@ int main_init_read() {
 			tcpReassemblyDiameter->setEnableAllCompleteAfterZerodataAck();
 			tcpReassemblyDiameter->setIgnorePshInCheckOkData();
 			tcpReassemblyDiameter->setEnableValidateLastQueueDataViaCheckData();
+			tcpReassemblyDiameter->setNeedValidateDataViaCheckData();
 			// tcpReassemblyDiameter->setUnlimitedReassemblyAttempts();
 			tcpReassemblyDiameter->setEnableWildLink();
 			tcpReassemblyDiameter->setIgnoreTcpHandshake();
@@ -6619,6 +6622,9 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter", &opt_enable_diameter));
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("diameter_tcp_ports", diameter_tcp_portmatrix));
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("diameter_udp_ports", diameter_udp_portmatrix));
+				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_ignore_domain", &opt_diameter_ignore_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("diameter_time_overlap", &opt_diameter_time_overlap));
 
 	minorGroupIfNotSetBegin();
 	group("http");
@@ -7472,7 +7478,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "separate_processing")		sverb.separate_processing = 1;
 	else if(verbParam == "suppress_auto_alter")		sverb.suppress_auto_alter = 1;
 	else if(verbParam == "call_branches")			sverb.call_branches = 1;
-	else if(verbParam == "diameter")			sverb.diameter = 1;
+	else if(verbParam == "diameter_dump")			sverb.diameter_dump = 1;
+	else if(verbParam == "diameter_assign")			sverb.diameter_assign = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -11072,6 +11079,12 @@ int eval_config(string inistr) {
 	}
 	if(ini.GetAllValues("general", "diameter_udp_ports", values)) {
 		parse_config_item_ports(&values, diameter_udp_portmatrix);
+	}
+	if((value = ini.GetValue("general", "diameter_ignore_domain", NULL))) {
+		opt_diameter_ignore_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "diameter_time_overlap", NULL))) {
+		opt_diameter_time_overlap = atoi(value);
 	}
 	if((value = ini.GetValue("general", "tcpreassembly", NULL)) ||
 	   (value = ini.GetValue("general", "http", NULL))) {
