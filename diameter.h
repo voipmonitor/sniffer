@@ -189,9 +189,9 @@ public:
 private:
 	bool check_used(const sQueuePacketsId *queue_packets_id);
 	void addFindIndexes(cQueuePackets *queue_packets);
-	void addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index);
+	void addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*> > *dia_map, const char *index);
 	void eraseFindIndexes(cQueuePackets *queue_packets);
-	void eraseFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index);
+	void eraseFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*> > *dia_map, const char *index);
 private:
 	void lock() {
 		__SYNC_LOCK(_sync_lock);
@@ -201,8 +201,8 @@ private:
 	}
 public:
 	map<sQueuePacketsId, cQueuePackets*> packet_stack;
-	map<string, list<cQueuePackets*>> packet_stack_by_from;
-	map<string, list<cQueuePackets*>> packet_stack_by_to;
+	map<string, list<cQueuePackets*> > packet_stack_by_from;
+	map<string, list<cQueuePackets*> > packet_stack_by_to;
 	map<u_int32_t, cQueuePackets*> hbh_id_to_queue_packets_id;
 	unsigned age_expiration_s;
 	unsigned cleanup_period_s;

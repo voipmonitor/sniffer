@@ -519,7 +519,7 @@ bool cDiameterPacketStack::retrieve(eTypeRetrieve type_retrieve, const char *ide
 	bool rslt = false;
 	lock();
 	list<cQueuePackets*> qpl;
-	map<string, list<cQueuePackets*>>::iterator iter;
+	map<string, list<cQueuePackets*> >::iterator iter;
 	if(type_retrieve == _tr_from) {
 		if((iter = packet_stack_by_from.find(identity)) != packet_stack_by_from.end()) {
 			qpl = iter->second;
@@ -649,14 +649,14 @@ string cDiameterPacketStack::print_packets_stack() {
 	if(packet_stack_by_from.size()) {
 		out_str << " * packet_stack_by_from size: " << packet_stack_by_from.size() << endl;
 		int counter = 0;
-		for(map<string, list<cQueuePackets*>>::iterator iter = packet_stack_by_from.begin(); iter != packet_stack_by_from.end(); iter++) {
+		for(map<string, list<cQueuePackets*> >::iterator iter = packet_stack_by_from.begin(); iter != packet_stack_by_from.end(); iter++) {
 			out_str << " - " << (++counter) << " " << iter->first << endl;
 		}
 	}
 	if(packet_stack_by_to.size()) {
 		out_str << " * packet_stack_by_to size: " << packet_stack_by_to.size() << endl;
 		int counter = 0;
-		for(map<string, list<cQueuePackets*>>::iterator iter = packet_stack_by_to.begin(); iter != packet_stack_by_to.end(); iter++) {
+		for(map<string, list<cQueuePackets*> >::iterator iter = packet_stack_by_to.begin(); iter != packet_stack_by_to.end(); iter++) {
 			out_str << " - " << (++counter) << " " << iter->first << endl;
 		}
 	}
@@ -691,7 +691,7 @@ void cDiameterPacketStack::addFindIndexes(cQueuePackets *queue_packets) {
 	}
 }
 
-void cDiameterPacketStack::addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index) {
+void cDiameterPacketStack::addFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*> > *dia_map, const char *index) {
 	if(std::find((*dia_map)[index].begin(), (*dia_map)[index].end(), queue_packets) == (*dia_map)[index].end()) {
 		(*dia_map)[index].push_back(queue_packets);
 	}
@@ -711,7 +711,7 @@ void cDiameterPacketStack::eraseFindIndexes(cQueuePackets *queue_packets) {
 	}
 }
 
-void cDiameterPacketStack::eraseFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*>> *dia_map, const char *index) {
+void cDiameterPacketStack::eraseFindIndex(cQueuePackets *queue_packets, map<string, list<cQueuePackets*> > *dia_map, const char *index) {
 	for(list<cQueuePackets*>::iterator iter = (*dia_map)[index].begin(); iter != (*dia_map)[index].end(); iter++) {
 		if(*iter == queue_packets) {
 			(*dia_map)[index].erase(iter);
