@@ -1034,20 +1034,32 @@ long long GetDU(long long fileSize, eTypeSpoolFile typeSpoolFile, int spool_inde
 	return(fileSize);
 }
 
-long long GetFreeDiskSpace(const char* absoluteFilePath, bool percent_mult_100) {
+long long GetFreeDiskSpace(const char* absoluteFilePath) {
 	struct statvfs buf;
 	if(!statvfs(absoluteFilePath, &buf)) {
-		unsigned long long blksize, blocks, freeblks, disk_size, free;
+		unsigned long long blksize, freeblks, free;
 		blksize = buf.f_bsize;
-		blocks = buf.f_blocks;
-		freeblks = buf.f_bfree;
-
-		disk_size = blocks*blksize;
+		freeblks = buf.f_bavail;
 		free = freeblks*blksize;
+		return free;
+	} else {
+		return -1;
+	}
+}
 
-		return percent_mult_100 ?
-			(long long)((double)free / disk_size * 10000) :
-			free;
+double GetFreeDiskSpace_GB(const char* absoluteFilePath) {
+	struct statvfs buf;
+	if(!statvfs(absoluteFilePath, &buf)) {
+		return (double)buf.f_bavail * buf.f_bsize / (1024 * 1024 * 1024);
+	} else {
+		return -1;
+	}
+}
+
+double GetFreeDiskSpace_perc(const char* absoluteFilePath) {
+	struct statvfs buf;
+	if(!statvfs(absoluteFilePath, &buf) && buf.f_blocks > 0) {
+		return (double)buf.f_bavail / buf.f_blocks * 100;
 	} else {
 		return -1;
 	}
@@ -1059,10 +1071,17 @@ long long GetTotalDiskSpace(const char* absoluteFilePath) {
 		unsigned long long blksize, blocks, disk_size;
 		blksize = buf.f_bsize;
 		blocks = buf.f_blocks;
-
 		disk_size = blocks*blksize;
-
 		return disk_size;
+	} else {
+		return -1;
+	}
+}
+
+double GetTotalDiskSpace_GB(const char* absoluteFilePath) {
+	struct statvfs buf;
+	if(!statvfs(absoluteFilePath, &buf)) {
+		return((double)buf.f_blocks * buf.f_bsize / (1024 * 1024 * 1024));
 	} else {
 		return -1;
 	}

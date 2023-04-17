@@ -1158,9 +1158,9 @@ void CleanSpool::cleanThreadProcess() {
 	   (!opt_dirs.rtp.length() || opt_dirs.rtp == opt_dirs.main) && 
 	   (!opt_dirs.graph.length() || opt_dirs.graph == opt_dirs.main) && 
 	   (!opt_dirs.audio.length() || opt_dirs.audio == opt_dirs.main)) {
-		double totalSpaceGB = (double)GetTotalDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
-		double freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(tsf_main), true) / 100;
-		double freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
+		double totalSpaceGB = GetTotalDiskSpace_GB(getSpoolDir(tsf_main));
+		double freeSpacePercent = GetFreeDiskSpace_perc(getSpoolDir(tsf_main));
+		double freeSpaceGB = GetFreeDiskSpace_GB(getSpoolDir(tsf_main));
 		int _minPercentForAutoReindex = 1;
 		int _minGbForAutoReindex = 5;
 		if(freeSpacePercent < _minPercentForAutoReindex && 
@@ -1172,8 +1172,8 @@ void CleanSpool::cleanThreadProcess() {
 				syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing reloadSpoolDataDir", spoolIndex);
 				reloadSpoolDataDir(false, true);
 			}
-			freeSpacePercent = (double)GetFreeDiskSpace(getSpoolDir(tsf_main), true) / 100;
-			freeSpaceGB = (double)GetFreeDiskSpace(getSpoolDir(tsf_main)) / (1024 * 1024 * 1024);
+			freeSpacePercent = GetFreeDiskSpace_perc(getSpoolDir(tsf_main));
+			freeSpaceGB = GetFreeDiskSpace_GB(getSpoolDir(tsf_main));
 			criticalLowSpace = true;
 		}
 		if(freeSpacePercent < opt_other.autocleanspoolminpercent ||

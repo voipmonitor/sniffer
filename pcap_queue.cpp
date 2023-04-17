@@ -8962,7 +8962,7 @@ void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
 	u_int64_t actTimeMS = getTimeMS();
 	if(!lastCheckFreeSizeCachedir_timeMS ||
 	   actTimeMS - lastCheckFreeSizeCachedir_timeMS > 2000) {
-		double freeSpacePerc = (double)GetFreeDiskSpace(opt_cachedir, true) / 100;
+		double freeSpacePerc = GetFreeDiskSpace_perc(opt_cachedir);
 		if(freeSpacePerc >= 0 && freeSpacePerc <= 5) {
 			syslog(freeSpacePerc <= 1 ? LOG_ERR : LOG_NOTICE,
 			       "%s low disk free space in cachedir (%s) - %lliMB",
