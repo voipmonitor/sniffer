@@ -397,6 +397,7 @@ public:
 	uint8_t dscp;
 	bool skip;
 	u_int64_t last_save_mos_graph_ms;
+	u_int64_t last_call_save_mos_graph_ms;
 	uint8_t	mosf1_min;
 	uint8_t	mosf2_min;
 	uint8_t	mosAD_min;
@@ -411,7 +412,6 @@ public:
 	timeval last_voice_frame_ts;
 	uint32_t last_voice_frame_timestamp;
 	bool	resetgraph;
-	bool	mos_processed;
 	double	jitter;
 	uint32_t last_stat_lost;
 	uint32_t last_stat_received;

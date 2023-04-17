@@ -335,7 +335,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	#endif
 	
 	last_save_mos_graph_ms = 0;
-	mos_processed = false;
+	last_call_save_mos_graph_ms = 0;
 	save_mos_graph_wait = 0;
 
 	last_voice_frame_ts.tv_sec = 0;
@@ -2376,7 +2376,6 @@ bool RTP::read(CallBranch *c_branch,
 	if(!last_save_mos_graph_ms) {
 		last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
 	} else if(last_save_mos_graph_ms + 10000 < TIME_US_TO_MS(last_packet_time_us) || save_mos_graph_wait > 0) {
-		mos_processed = true;
 		if(!save_mos_graph_wait) {
 			save_mos_graph_wait = 20; // wait 10 packets
 			last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
@@ -2384,6 +2383,7 @@ bool RTP::read(CallBranch *c_branch,
 			save_mos_graph_wait--;
 			if(!save_mos_graph_wait) {
 				save_mos_graph(false);
+				last_call_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
 			}
 		}
 	}
