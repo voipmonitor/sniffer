@@ -2373,11 +2373,10 @@ bool RTP::read(CallBranch *c_branch,
 	avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
 
 	// write MOS to .graph every 10 seconds and reset jitter last mos interval
-	if(!last_save_mos_graph_ms) {
-		last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
-	} else if(last_save_mos_graph_ms + 10000 < TIME_US_TO_MS(last_packet_time_us) || save_mos_graph_wait > 0) {
+	if((last_save_mos_graph_ms ? last_save_mos_graph_ms : TIME_US_TO_MS(first_packet_time_us)) + 10000 < TIME_US_TO_MS(last_packet_time_us) || 
+	   save_mos_graph_wait > 0) {
 		if(!save_mos_graph_wait) {
-			save_mos_graph_wait = 20; // wait 10 packets
+			save_mos_graph_wait = 20; // After a packet loss, it may happen that the mos discovery period hits the first packets after the loss and the jitterbuffer is not yet aware of the mos degradation due to the loss. Therefore there is a pause of 20 packets.
 			last_save_mos_graph_ms = TIME_US_TO_MS(last_packet_time_us);
 		} else {
 			save_mos_graph_wait--;
