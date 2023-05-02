@@ -597,6 +597,7 @@ unsigned int opt_maxpoolaudiodays_2 = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
+int autocleaning_log_count = 0;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
