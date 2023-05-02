@@ -3963,8 +3963,8 @@ $as_echo "$ac_cv_lib_png_main" >&6; }
 if test "x$ac_cv_lib_png_main" = xyes; then :
   HAVE_LIBPNG=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" >&5
-$as_echo "$as_me: WARNING: Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel" >&2;}
+  { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: Unable to find libpng library. apt-get install libpng-dev | yum install libpng-devel" >&5
+$as_echo "$as_me: WARNING: Unable to find libpng library. apt-get install libpng-dev | yum install libpng-devel" >&2;}
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lfftw3" >&5
@@ -4005,7 +4005,7 @@ $as_echo "$as_me: WARNING: Unable to find libfftw3 library. apt-get install libf
 fi
 
 if test "x$LIBJSON_NAME" = "x"; then
-	as_fn_error $? "Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
+	as_fn_error $? "Unable to find json(-c) library. apt-get install libjson-c-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig" "$LINENO" 5
 else
 	LIBJSON_NAME="$LIBJSON_NAME"
 

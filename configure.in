@@ -9,12 +9,16 @@ AC_CONFIG_HEADERS([config.h])
 # test platform
 PLATFORM=`uname`
 
+AC_CANONICAL_SYSTEM
+AC_CANONICAL_HOST
+
+AC_MSG_ERROR($build_cpu)
+
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
-
 
 AC_CHECK_PROG([PKGCONFIG], [pkg-config], [pkg-config], [no])
 
@@ -78,10 +82,10 @@ fi
 
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
-AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng12-dev | yum install libpng-devel]))
+AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng-dev | yum install libpng-devel]))
 AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFT=1, AC_MSG_WARN([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
 if test "x$LIBJSON_NAME" = "x"; then
-	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson0-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
+	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson-c-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
 else
 	AC_SUBST([LIBJSON_NAME],["$LIBJSON_NAME"])
 fi
