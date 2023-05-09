@@ -8447,6 +8447,7 @@ void set_context_config() {
 	if(isCloud()) {
 		opt_cdr_check_duplicity_callid_in_next_pass_insert = true;
 		opt_message_check_duplicity_callid_in_next_pass_insert = true;
+		opt_ssl_store_sessions = 2;
 	}
 	
 	#ifndef HAVE_OPENSSL101
