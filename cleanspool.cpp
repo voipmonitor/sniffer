@@ -1154,6 +1154,7 @@ void CleanSpool::cleanThreadProcess() {
 	}
 	bool criticalLowSpace = false;
 	long int maxpoolsize = 0;
+	extern int autocleaning_log_count;
 	if((opt_other.autocleanspoolminpercent || opt_other.autocleanmingb) &&
 	   (!opt_dirs.rtp.length() || opt_dirs.rtp == opt_dirs.main) && 
 	   (!opt_dirs.graph.length() || opt_dirs.graph == opt_dirs.main) && 
@@ -1220,17 +1221,24 @@ void CleanSpool::cleanThreadProcess() {
 					"maxpoolsize set to value",
 				       maxpoolsize);
 			} else {
-				char criticalLowSpoolSpace_str[1024];
-				snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
-					 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB",
-					 spoolIndex,
-					 getSpoolDir(tsf_main),
-					 usedSizeGB,
-					 freeSpaceGB);
-				cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
+				if(!autocleaning_log_count) {
+					char criticalLowSpoolSpace_str[1024];
+					snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
+						 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
+						 spoolIndex,
+						 getSpoolDir(tsf_main),
+						 usedSizeGB,
+						 freeSpaceGB);
+					cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
+				}
+				if(autocleaning_log_count++ >= 12) {
+					autocleaning_log_count = 0;
+				}
 				maxpoolsize = 0;
 			}
 			criticalLowSpace = true;
+		} else {
+			autocleaning_log_count = 0;
 		}
 	}
 	if((timeOk && !suspended) || criticalLowSpace) {

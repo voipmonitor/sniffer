@@ -597,6 +597,7 @@ unsigned int opt_maxpoolaudiodays_2 = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
+int autocleaning_log_count = 0;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
@@ -8446,6 +8447,7 @@ void set_context_config() {
 	if(isCloud()) {
 		opt_cdr_check_duplicity_callid_in_next_pass_insert = true;
 		opt_message_check_duplicity_callid_in_next_pass_insert = true;
+		opt_ssl_store_sessions = 2;
 	}
 	
 	#ifndef HAVE_OPENSSL101

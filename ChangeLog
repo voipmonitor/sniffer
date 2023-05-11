@@ -1,3 +1,14 @@
+31.6  20.04.2023
+================
+- new option interface_ip_filter_quick - default enabled [VS-1428]
+- force termination of read thread if it does not respond during a sniffer termination/restart
+- diameter - fix potential overflow in payload length detection [VS-1420]
+- diameter - diameter_time_overlap, diameter_ignore_domain [VS-142]
+- fix saving cdr flags of sdp media data type [VG-2607]
+- fix free spool space detection - use f_bavail instead of f_bfree [VG-2598]
+- fix mos intervals for rare cases [VS-1187]
+
+
 31.5  21.03.2023
 ================
 - implemented fast b-tree ip filter for the interface_ip_filter configuration option [VS-1428]
