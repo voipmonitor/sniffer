@@ -126,7 +126,9 @@ iphdr2 *convertHeaderIP_GRE(iphdr2 *header_ip, unsigned max_len) {
 		bool erspan_2_3 = false;
 		switch(grehdr_protocol) {
 		case 0x6558:
-			header_eth_offset = 8;
+			header_eth_offset = 4 + 
+					    (grehdr->seq ? 4 : 0) + 
+					    (grehdr->key ? 4 : 0);
 			break;
 		case 0x88BE:
 			header_eth_offset = 4 + 
