@@ -3498,6 +3498,16 @@ Call::convertRawToWav() {
 					}
 					continue;
 				}
+				if(!rawl.rtp->stats.received) {
+					if(!sverb.noaudiounlink) unlink(raw_pathfilename.c_str());
+					if(verbosity > 1 || sverb.wavmix) {
+						syslog(LOG_NOTICE, "ignoring stream ssrc_index[%i]; call [%s] stream[%s] ssrc[%x] [skip becose zero received packets]", 
+						       ssrc_index,
+						       fbasename, raw_pathfilename.c_str(), 
+						       rawl.rtp->ssrc);
+					}
+					continue;
+				}
 				if(iter > 0) {
 					if(!force_convert_raw_to_wav &&
 					   (last_rtp &&
