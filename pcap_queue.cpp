@@ -2836,7 +2836,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		static u_int64_t oldCountersTlb;
 		if(oldCountersTlb) {
 			unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
-			outStrStat << "TLB[" << tlb << "] ";
+			outStrStat << (tlb > 10000 ? "*" : "") << "TLB[" << tlb << "] ";
 			static unsigned counter_high_tlb = 0;
 			if(tlb >= 500) {
 				++counter_high_tlb;
