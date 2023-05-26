@@ -1552,7 +1552,7 @@ cChartSeries::cChartSeries(eCdrStatType cdrStatType, const char *chart_type, con
 	if(def.subType == _chartSubType_acd_asr &&
 	   (def.chartType == _chartType_ner || def.chartType == _chartType_ner_avg)) {
 		JsonItem ner_lsr_filter_config;
-		ner_lsr_filter_config.parse("{\"w\":[\"603\"],\"ws\":[\"2\",\"3\",\"4\"],\"b\":null,\"bs\":null}");
+		ner_lsr_filter_config.parse("{\"w\":[\"600\",\"603\",\"604\",\"607\",\"608\"],\"ws\":[\"2\",\"3\",\"4\"],\"b\":null,\"bs\":null}");
 		ner_lsr_filter = new FILE_LINE(0) cChartNerLsrFilter;
 		ner_lsr_filter->parseData(&ner_lsr_filter_config);
 	} else {
