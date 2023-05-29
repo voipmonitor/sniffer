@@ -4885,9 +4885,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 								       (opt_quick_save_cdr ? 1 : 10));
 		}
 		
-		detect_to(packetS, to, sizeof(to), &to_detected);
-		detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-		call->cancel_ip_port_hash(c_branch, packetS->saddr_(), to, branch, packetS->getTimeval_pt());
+		if(opt_call_branches || call->is_multiple_to_branch(c_branch)) { 
+			detect_to(packetS, to, sizeof(to), &to_detected);
+			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
+			call->cancel_ip_port_hash(c_branch, packetS->saddr_(), to, branch, packetS->getTimeval_pt());
+		}
 		
 		//check and save CSeq for later to compare with OK 
 		if(packetS->cseq.is_set()) {
@@ -5290,7 +5292,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					#endif
 				}
 			}
-			if(IS_SIP_RES4XX(packetS->sip_method)) {
+			if(IS_SIP_RES4XX(packetS->sip_method) && packetS->sip_method != 401 && packetS->sip_method != 407 &&
+			   (opt_call_branches || call->is_multiple_to_branch(c_branch))) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
 				call->cancel_ip_port_hash(c_branch, packetS->daddr_(), to, branch, packetS->getTimeval_pt());
