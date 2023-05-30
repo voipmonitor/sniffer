@@ -249,11 +249,15 @@ public:
 		sSeriesDataCdrStat() {
 			count = 0;
 			count_connected = 0;
+			for(unsigned i = 0; i < sizeof(count_lsr_3_6) / sizeof(count_lsr_3_6[0]); i++) {
+				count_lsr_3_6[i] = 0;
+			}
 			store_counter = 0;
 			counter_add = 0;
 		}
 		unsigned count;
 		unsigned count_connected;
+		unsigned count_lsr_3_6[4];
 		map<u_int16_t, cChartIntervalSeriesData*> data;
 		u_int32_t store_counter;
 		volatile u_int32_t counter_add;

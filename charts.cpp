@@ -1045,11 +1045,19 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 						if(call->call()->connect_time_us) {
 							++iter_ip->second->count_connected;
 						}
+						int lsr = call->call()->branch_main()->lastSIPresponseNum;
+						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
+							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
+						}
 					} else {
 						bool connect_duration_null;
 						call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
 						if(!connect_duration_null) {
 							++iter_ip->second->count_connected;
+						}
+						int lsr = call->tables_content()->getValue_int(Call::_t_cdr, "lastSIPresponseNum");
+						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
+							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
 						}
 					}
 				}
@@ -1118,6 +1126,12 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 									if(!iter_ip->second->store_counter) {
 										cdr_stat_row.add(iter_ip->second->count, "count_all");
 										cdr_stat_row.add(iter_ip->second->count_connected, "count_connected");
+										for(unsigned i = 0; i < sizeof(iter_ip->second->count_lsr_3_6) / sizeof(iter_ip->second->count_lsr_3_6[0]); i++) {
+											string field_name = "count_lsr_" + intToString(3 + i);
+											if(cCdrStat::exists_columns_check(field_name.c_str(), src_dst)) {
+												cdr_stat_row.add(iter_ip->second->count_lsr_3_6[i], field_name);
+											}
+										}
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
 											if(cCdrStat::exists_columns_check(iter->field.c_str(), src_dst)) {
 												cdr_stat_row.add(iter->value, iter->field, iter->null);
@@ -1138,6 +1152,12 @@ void cChartInterval::store(u_int32_t act_time, u_int32_t real_time, SqlDb *sqlDb
 										SqlDb_row cdr_stat_row_update;
 										cdr_stat_row_update.add(iter_ip->second->count, "count_all");
 										cdr_stat_row_update.add(iter_ip->second->count_connected, "count_connected");
+										for(unsigned i = 0; i < sizeof(iter_ip->second->count_lsr_3_6) / sizeof(iter_ip->second->count_lsr_3_6[0]); i++) {
+											string field_name = "count_lsr_" + intToString(3 + i);
+											if(cCdrStat::exists_columns_check(field_name.c_str(), src_dst)) {
+												cdr_stat_row_update.add(iter_ip->second->count_lsr_3_6[i], field_name);
+											}
+										}
 										for(list<sFieldValue>::iterator iter = fieldValues.begin(); iter != fieldValues.end(); iter++) {
 											if(cCdrStat::exists_columns_check(iter->field.c_str(), src_dst)) {
 												cdr_stat_row_update.add(iter->value, iter->field, iter->null);
@@ -2105,6 +2125,10 @@ string cCdrStat::metrics_db_fields(vector<dstring> *fields) {
 	init_series(&series);
 	fields->push_back(dstring("count_all", "int unsigned"));
 	fields->push_back(dstring("count_connected", "int unsigned"));
+	fields->push_back(dstring("count_lsr_3", "int unsigned"));
+	fields->push_back(dstring("count_lsr_4", "int unsigned"));
+	fields->push_back(dstring("count_lsr_5", "int unsigned"));
+	fields->push_back(dstring("count_lsr_6", "int unsigned"));
 	for(unsigned i = 0; i < metrics.size(); i++) {
 		fields->push_back(dstring(metrics[i].field,
 					  metrics[i].type_stat == _cdrStatType_count ||
