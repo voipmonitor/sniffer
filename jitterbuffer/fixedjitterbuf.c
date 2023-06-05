@@ -326,16 +326,16 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 	
 #if RESYNCH_V0
 	
-	int tolerance = audio_decode ? 200 : 0; // for audio decode add 200ms more
+	int tolerance = jb->chan->audio_decode ? 200 : 0; // for audio decode add 200ms more
 	if (delivery > jb->next_delivery + jb->delay + jb->conf.resync_threshold + tolerance) {
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
 		if(debug) fprintf(stdout, "put: delivery[%lu] > jb->next_delivery[%lu] + jb->delay[%lu] + jb->conf.resync_threshold[%lu]\n", delivery, jb->next_delivery, jb->delay, jb->conf.resync_threshold);
-		return resynch_jb(jb, data, ms, ts, now, audio_decode);
+		return resynch_jb(jb, data, ms, ts, now);
 	} else if(marker) {
 		if(debug) fprintf(stdout, "call resync_jb for marker\n");
 		jb->force_resynch = 1;
-		return resynch_jb(jb, data, ms, ts, now, audio_decode);
+		return resynch_jb(jb, data, ms, ts, now);
 	}
 	
 #elif RESYNCH_V1
