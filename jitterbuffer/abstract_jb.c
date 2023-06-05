@@ -50,6 +50,8 @@
 
 #define JB_LONGMAX 2147483647L  
 
+#define ONLY_RAW 0
+
 
 extern struct sVerbose sverb;
 
@@ -392,7 +394,9 @@ void jb_fixed_flush_deliver(struct ast_channel *chan)
 			stmp = (short int)f->datalen;
 			if(CODEC_LEN && (chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR || chan->codec == PAYLOAD_AMRWB || chan->codec == PAYLOAD_EVS)) {
 				if(chan->rawstream) {
+					#if ONLY_RAW == 0
 					fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
+					#endif
 				}
 			}
 			if(chan->rawstream)
@@ -431,6 +435,7 @@ void save_empty_frame(struct ast_channel *chan) {
 		   chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR ||
 		   chan->codec == PAYLOAD_AMRWB || chan->codec == PAYLOAD_EVS) {
 			if(chan->codec == PAYLOAD_G723) {
+				#if ONLY_RAW == 0
 				short int zero = 0;
 				for(i = 1; (i * 30) <= chan->packetization; i++) {
 					if(chan->rawstream)
@@ -439,6 +444,7 @@ void save_empty_frame(struct ast_channel *chan) {
 						fifobuff_add(chan->audiobuf,(const char*)(&zero), sizeof(short int));
 					//test_raw("empty frame", (const char*)(&zero), sizeof(short int));
 				}
+				#endif
 			} else if(chan->codec == PAYLOAD_G729) {
 				short int zero = 0;
 				for(i = 1; (i * 10) <= chan->packetization; i++) {
@@ -559,9 +565,11 @@ static void jb_get_and_deliver(struct ast_channel *chan, struct timeval *mynow)
 				//write frame to file
 				stmp = (short int)f->datalen;
 				if(chan->codec == PAYLOAD_G72218 || chan->codec == PAYLOAD_G722112 || chan->codec == PAYLOAD_G722116 || chan->codec == PAYLOAD_G722124 || chan->codec == PAYLOAD_G722132 || chan->codec == PAYLOAD_G722148 || chan->codec == PAYLOAD_OPUS8 || chan->codec == PAYLOAD_OPUS12 || chan->codec == PAYLOAD_OPUS16 || chan->codec == PAYLOAD_OPUS24 || chan->codec == PAYLOAD_OPUS48 || chan->codec == PAYLOAD_ISAC16 || chan->codec == PAYLOAD_ISAC32 || chan->codec == PAYLOAD_SILK || chan->codec == PAYLOAD_SILK8 || chan->codec == PAYLOAD_SILK12 || chan->codec == PAYLOAD_SILK16 || chan->codec == PAYLOAD_SILK24 || chan->codec == PAYLOAD_SPEEX || chan->codec == PAYLOAD_G723 || chan->codec == PAYLOAD_G729 || chan->codec == PAYLOAD_GSM || chan->codec == PAYLOAD_AMR || chan->codec == PAYLOAD_AMRWB || chan->codec == PAYLOAD_EVS) {
+					#if ONLY_RAW == 0
 					if(chan->rawstream) {
 						fwrite(&stmp, 1, sizeof(short int), chan->rawstream);   // write packet len
 					}
+					#endif
 				}
 				if(chan->rawstream)
 					fwrite(f->data, 1, f->datalen, chan->rawstream);
