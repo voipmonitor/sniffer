@@ -515,6 +515,7 @@ char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
 int opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = 1024;
+int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap = 1000;
 regcache *regfailedcache;
 int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
@@ -6563,6 +6564,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42333) cConfigItem_string("mos_lqo_ref", opt_mos_lqo_ref, sizeof(opt_mos_lqo_ref)));
 			addConfigItem(new FILE_LINE(42334) cConfigItem_string("mos_lqo_ref16", opt_mos_lqo_ref16, sizeof(opt_mos_lqo_ref16)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_mos_degradation_for_contiguous_packet_loss_greater_than", &opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ignore_mos_degradation_in_rtp_pause_without_seq_gap", &opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap));
 		subgroup("FAX");
 			addConfigItem(new FILE_LINE(42335) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
 		subgroup("jitterbufer");
@@ -11245,6 +11247,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ignore_mos_degradation_for_contiguous_packet_loss_greater_than", NULL))) {
 		opt_ignore_mos_degradation_for_contiguous_packet_loss_greater_than = atoi(value);
+	}
+	if((value = ini.GetValue("general", "ignore_mos_degradation_in_rtp_pause_without_seq_gap", NULL))) {
+		opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap = atoi(value);
 	}
 	if((value = ini.GetValue("general", "php_path", NULL))) {
 		strcpy_null_term(opt_php_path, value);

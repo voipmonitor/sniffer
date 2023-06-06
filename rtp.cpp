@@ -84,6 +84,7 @@ extern bool opt_save_energylevels_via_jb;
 extern char opt_energylevelheader[128];
 extern bool opt_rtp_count_all_sequencegap_as_loss;
 extern bool opt_check_diff_ssrc_on_same_ip_port;
+extern int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap;
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -788,12 +789,14 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 	}
 	struct timeval tsdiff;
 	frame->len = packetization;
+	u_int32_t _last_ts = last_ts;
 	switch(codec) {
 		case PAYLOAD_VXOPUS12:
 		case PAYLOAD_XOPUS12:
 		case PAYLOAD_OPUS12:
 		case PAYLOAD_G722112:
 			frame->ts = getTimestamp() / 12;
+			_last_ts /= 12;
 			//frame->len = packetization * 2 / 3;
 			break;
 		case PAYLOAD_ISAC16:
@@ -805,6 +808,7 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		case PAYLOAD_AMRWB:
 		case PAYLOAD_EVS:
 			frame->ts = getTimestamp() / 16;
+			_last_ts /= 16;
 			//frame->len = packetization / 2;
 			break;
 		case PAYLOAD_SILK24:
@@ -813,21 +817,25 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		case PAYLOAD_OPUS24:
 		case PAYLOAD_G722124:
 			frame->ts = getTimestamp() / 24;
+			_last_ts /= 24;
 			//frame->len = packetization / 3;
 			break;
 		case PAYLOAD_ISAC32:
 		case PAYLOAD_G722132:
 			frame->ts = getTimestamp() / 32;
+			_last_ts /= 32;
 			//frame->len = packetization / 4;
 			break;
 		case PAYLOAD_VXOPUS48:
 		case PAYLOAD_XOPUS48:
 		case PAYLOAD_OPUS48:
 			frame->ts = getTimestamp() / 48;
+			_last_ts /= 48;
 			//frame->len = packetization / 6;
 			break;
 		default: 
 			frame->ts = getTimestamp() / 8;
+			_last_ts /= 8;
 			//frame->len = packetization;
 	}
 	frame->marker = getMarker();
@@ -1003,6 +1011,13 @@ RTP::jitterbuffer(struct ast_channel *channel, bool save_audio, bool energylevel
 		}
 	}
 	
+	if(opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
+	   msdiff >= opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap &&
+	   frame->seqno == ROT_SEQ(last_seq + 1) &&
+	   frame->ts > _last_ts && frame->ts - _last_ts == packetization) {
+		frame->marker = 1;
+	}
+
 	// fetch packet from jitterbuffer every 20 ms regardless on packet loss or delay
 	while( msdiff >= packetization )  {
 		if(frame->marker or lastframetype == AST_FRAME_DTMF) {
