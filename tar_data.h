@@ -41,6 +41,9 @@ struct data_tar : public data_tar_time {
 	int typeSpoolFile;
 	std::string filename;
 	void set(int typeSpoolFile, class Call_abstract *call, const char *fileName);
+	inline std::string getTypeTimeString() {
+		return("T" + intToString(typeSpoolFile) +  ":" + getTimeString());
+	}
 };
 
 

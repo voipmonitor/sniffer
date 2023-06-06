@@ -520,6 +520,7 @@ int opt_onewaytimeout = 15;
 int opt_bye_timeout = 20 * 60;
 int opt_bye_confirmed_timeout = 10 * 60;
 int opt_redirect_response_300_timeout = 5 * 60;
+int opt_response_default_timeout = 5;
 bool opt_ignore_rtp_after_bye_confirmed = false;
 bool opt_ignore_rtp_after_bye = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
@@ -6337,6 +6338,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_timeout", &opt_bye_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("bye_confirmed_timeout", &opt_bye_confirmed_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("redirect_response_300_timeout", &opt_redirect_response_300_timeout));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer("response_default_timeout", &opt_response_default_timeout));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye_confirmed", &opt_ignore_rtp_after_bye_confirmed));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_rtp_after_bye", &opt_ignore_rtp_after_bye));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ignore_duration_after_bye_confirmed", &opt_ignore_duration_after_bye_confirmed));
@@ -11258,6 +11260,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "redirect_response_300_timeout", NULL))) {
 		opt_redirect_response_300_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "response_default_timeout", NULL))) {
+		opt_response_default_timeout = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ignore_rtp_after_bye_confirmed", NULL))) {
 		opt_ignore_rtp_after_bye_confirmed = yesno(value);

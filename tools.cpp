@@ -4118,7 +4118,7 @@ FileZipHandler::~FileZipHandler() {
 	}
 	if(this->tar && !this->tarBufferCreated) {
 		if(this->tar_data.year) {
-			tarQueue[this->tar - 1]->decreaseTartimemap(&this->tar_data);
+			tarQueue[this->tar - 1]->decreaseTartimemap(&this->tar_data, this->fileName.c_str());
 			if(sverb.tar > 2) {
 				syslog(LOG_NOTICE, "tartimemap decrease2: %s %s",
 				       this->fileName.c_str(), this->tar_data.getTimeString().c_str());
@@ -4141,7 +4141,7 @@ bool FileZipHandler::open(eTypeSpoolFile typeSpoolFile, const char *fileName,
 	if(this->tar) {
 		if(this->call) {
 			this->tar_data.set(typeSpoolFile, this->call, this->fileName.c_str());
-			tarQueue[this->tar - 1]->increaseTartimemap(&this->tar_data);
+			tarQueue[this->tar - 1]->increaseTartimemap(&this->tar_data, this->fileName.c_str());
 		}
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "FileZipHandler open: %s %s", 

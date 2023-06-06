@@ -1460,7 +1460,7 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	#endif
 	
 	if(isClosed && !lenForProceed) {
-		tarQueue->decreaseTartimemap(data);
+		tarQueue->decreaseTartimemap(data, data->buffer->getName_c_str());
 		if(sverb.tar > 2 && tar) {
 			syslog(LOG_NOTICE, "tartimemap decrease1: %s %s %s", 
 			       tar->pathname.c_str(),
@@ -1501,15 +1501,13 @@ TarQueue::cleanTars(int terminate_pass) {
 	for(tars_it = tars.begin(); tars_it != tars.end();) {
 		// walk through all tars
 		Tar *tar = tars_it->second;
-		pthread_mutex_lock(&tartimemaplock);
 		// find the tar in tartimemap 
 		if(!tar->_sync_lock &&
-		   (tartimemap.find(tar->time) == tartimemap.end()) && 
+		   !checkTartimemap(&tar->time) &&
 		   (terminate_pass ||
 		    getTimeS_rdtsc() > (tar->created_at + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
 		    getTimeS() > (tar->created_at + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
-			pthread_mutex_unlock(&tartimemaplock);
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());
 			}
@@ -1531,7 +1529,6 @@ TarQueue::cleanTars(int terminate_pass) {
 			unlock_okTarPointers();
 			tars.erase(tars_it++);
 		} else {
-			pthread_mutex_unlock(&tartimemaplock);
 			tars_it++;
 		}
 	}
@@ -1758,40 +1755,153 @@ list<string> TarQueue::listOpenTars() {
 	return(listTars);
 }
 
-void TarQueue::decreaseTartimemap(data_tar_time *time){
+list<string> TarQueue::listTartimemap(bool pcapsContent) {
+	list<string> listTartimemap;
+	pthread_mutex_lock(&tartimemaplock);
+	#if TAR_TIMEMAP_BY_FILENAME
+	map<string, tartimemap_item*>::iterator tartimemap_it;
+	for(tartimemap_it = tartimemap.begin(); tartimemap_it != tartimemap.end(); tartimemap_it++) {
+		if(pcapsContent) {
+			listTartimemap.push_back("*** " + tartimemap_it->first);
+			tartimemap_item *pcaps_counter = tartimemap_it->second;
+			for(map<string, int>::iterator it_pcaps = pcaps_counter->pcaps.begin(); it_pcaps != pcaps_counter->pcaps.end(); it_pcaps++) {
+				listTartimemap.push_back(it_pcaps->first);
+			}
+		} else {
+			listTartimemap.push_back(tartimemap_it->first);
+		}
+	}
+	#else
+	map<data_tar_time, int>::iterator tartimemap_it;
+	for(tartimemap_it = tartimemap.begin(); tartimemap_it != tartimemap.end(); tartimemap_it++) {
+		data_tar_time t_data = tartimemap_it->first;
+		listTartimemap.push_back(t_data.getTimeString());
+	}
+	#endif
+	pthread_mutex_unlock(&tartimemaplock);
+	return(listTartimemap);
+}
+
+void TarQueue::decreaseTartimemap(data_tar *t_data, const char *pcap) {
 	// decrease tartimemap
 	pthread_mutex_lock(&tartimemaplock);
-	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*time);
+	#if TAR_TIMEMAP_BY_FILENAME
+	map<string, tartimemap_item*>::iterator tartimemap_it = tartimemap.find(t_data->getTypeTimeString());
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_item *pcaps_counter = tartimemap_it->second;
+		pcaps_counter->counter--;
+		map<string, int>::iterator it_pcaps = pcaps_counter->pcaps.find(pcap);
+		if(it_pcaps != pcaps_counter->pcaps.end()) {
+			it_pcaps->second--;
+			if(it_pcaps->second == 0) {
+				pcaps_counter->pcaps.erase(it_pcaps);
+			}
+		} else {
+			if(sverb.tar > 2 || verbosity > 0) {
+				 syslog(LOG_NOTICE, "tartimemap decrease %s - failed remove pcap %s",
+					t_data->getTypeTimeString().c_str(),
+					pcap);
+			}
+		}
+		/*
+		if(pcaps_counter->counter != pcaps_counter->pcaps.size()) {
+			if(sverb.tar > 2 || verbosity > 0) {
+				 syslog(LOG_NOTICE, "tartimemap decrease %s - inconsistence counters",
+					t_data->getTypeTimeString().c_str());
+			}
+		}
+		*/
+		if(pcaps_counter->counter == 0) {
+			delete tartimemap_it->second;
+			tartimemap.erase(tartimemap_it);
+		}
+	} else {
+		if(sverb.tar > 2 || verbosity > 0) {
+			 syslog(LOG_NOTICE, "tartimemap decrease %s - redundant decrease", 
+				t_data->getTypeTimeString().c_str());
+		}
+	}
+	#else
+	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*t_data);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second--;
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap decrease to: %s %i", 
-			       time->getTimeString().c_str(), tartimemap_it->second);
+			       t_data->getTimeString().c_str(), tartimemap_it->second);
 		}
 		if(tartimemap_it->second == 0){
 			tartimemap.erase(tartimemap_it);
 		}
 	}
+	#endif
 	pthread_mutex_unlock(&tartimemaplock);
 }
 
-void TarQueue::increaseTartimemap(data_tar_time *time){
+void TarQueue::increaseTartimemap(data_tar *t_data, const char *pcap) {
 	pthread_mutex_lock(&tartimemaplock);
-	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*time);
+	#if TAR_TIMEMAP_BY_FILENAME
+	map<string, tartimemap_item*>::iterator tartimemap_it = tartimemap.find(t_data->getTypeTimeString());
+	if(tartimemap_it != tartimemap.end()) {
+		tartimemap_item *pcaps_counter = tartimemap_it->second;
+		pcaps_counter->counter++;
+		map<string, int>::iterator it_pcaps = pcaps_counter->pcaps.find(pcap);
+		if(it_pcaps != pcaps_counter->pcaps.end()) {
+			it_pcaps->second++;
+			if(sverb.tar > 2 || verbosity > 0) {
+				 syslog(LOG_NOTICE, "tartimemap increase %s - duplicity pcap %s",
+					t_data->getTypeTimeString().c_str(),
+					pcap);
+			}
+		} else {
+			pcaps_counter->pcaps[pcap] = 1;
+		}
+		/*
+		if(pcaps_counter->counter != pcaps_counter->pcaps.size()) {
+			if(sverb.tar > 2 || verbosity > 0) {
+				 syslog(LOG_NOTICE, "tartimemap increase %s - inconsistence counters", 
+					t_data->getTypeTimeString().c_str());
+			}
+		}
+		*/
+	} else {
+		tartimemap_item *pcaps_counter = new tartimemap_item();
+		pcaps_counter->counter = 1;
+		pcaps_counter->pcaps[pcap] = 1;
+		tartimemap[t_data->getTypeTimeString()] = pcaps_counter;
+	}
+	#else
+	map<data_tar_time, int>::iterator tartimemap_it = tartimemap.find(*t_data);
 	if(tartimemap_it != tartimemap.end()) {
 		tartimemap_it->second++;
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap increase to: %s %i", 
-			       time->getTimeString().c_str(), tartimemap_it->second);
+			       t_data->getTimeString().c_str(), tartimemap_it->second);
 		}
 	} else {
-		tartimemap[*time] = 1;
+		tartimemap[*t_data] = 1;
 		if(sverb.tar > 2) {
 			syslog(LOG_NOTICE, "tartimemap increase set: %s %i", 
-			       time->getTimeString().c_str(), 1);
+			       t_data->getTimeString().c_str(), 1);
 		}
 	}
+	#endif
 	pthread_mutex_unlock(&tartimemaplock);
+}
+
+bool TarQueue::checkTartimemap(data_tar *t_data) {
+	bool exists = false;
+	pthread_mutex_lock(&tartimemaplock);
+	#if TAR_TIMEMAP_BY_FILENAME
+	if(tartimemap.find(t_data->getTypeTimeString()) != tartimemap.end()) {
+		exists = true;
+	}
+	#else
+	if(tartimemap.find(*t_data) != tartimemap.end()) {
+		exists = true;
+	}
+	#endif
+	pthread_mutex_unlock(&tartimemaplock);
+	return(exists);
 }
 
 void *TarQueueThread(void *_tarQueue) {

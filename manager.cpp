@@ -2257,15 +2257,25 @@ int Mgmt_printspool(Mgmt_params *params) {
 
 int Mgmt_listopentars(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("listopentars", "print lists of open tars");
+		commandAndHelp ch[] = {
+			{"listopentars", "print lists of open tars"},
+			{"listtartimemap", "print lists of tartimemap"},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
 	string rslt;
 	extern TarQueue *tarQueue[2];
 	for(int i = 0; i < 2; i++) {
 		if(tarQueue[i]) {
-			list<string> tars = tarQueue[i]->listOpenTars();
-			for(list<string>::iterator iter = tars.begin(); iter != tars.end(); iter++) {
+			list<string> rslt_list;
+			if(strstr(params->buf, "listopentars")) {
+				rslt_list = tarQueue[i]->listOpenTars();
+			} else if(strstr(params->buf, "listtartimemap")) {
+				rslt_list = tarQueue[i]->listTartimemap(true);
+			}
+			for(list<string>::iterator iter = rslt_list.begin(); iter != rslt_list.end(); iter++) {
 				rslt += *iter + "\n";
 			}
 		}

@@ -273,6 +273,7 @@ unsigned int glob_ssl_calls = 0;
 extern int opt_bye_timeout;
 extern int opt_bye_confirmed_timeout;
 extern int opt_redirect_response_300_timeout;
+extern int opt_response_default_timeout;
 extern bool opt_ignore_rtp_after_bye_confirmed;
 extern bool opt_ignore_rtp_after_bye;
 extern bool opt_ignore_rtp_after_cancel_confirmed;
@@ -5314,7 +5315,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : 5);
+					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout);
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;

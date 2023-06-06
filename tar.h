@@ -115,7 +115,7 @@ public:
 	string sensorName;
 	volatile int writing;
 
-	data_tar_time time;
+	data_tar time;
 	unsigned int created_at;
 	int thread_id;
 	
@@ -442,10 +442,12 @@ public:
 	unsigned flushAllTars();
 	u_int64_t sumSizeOpenTars();
 	list<string> listOpenTars();
+	list<string> listTartimemap(bool pcapsContent = false);
 	void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
 	void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
-	void decreaseTartimemap(data_tar_time *time);
-	void increaseTartimemap(data_tar_time *time);
+	void decreaseTartimemap(data_tar *t_data, const char *pcap);
+	void increaseTartimemap(data_tar *t_data, const char *pcap);
+	bool checkTartimemap(data_tar *t_data);
 	int getSpoolIndex() {
 		return(spoolIndex);
 	}
@@ -462,7 +464,15 @@ private:
 	map<string, Tar*> tars; //queue for all, sip, rtp, graph
 	map<void*, unsigned int> okTarPointers;
 	volatile int _sync_okTarPointers;
+	#if TAR_TIMEMAP_BY_FILENAME
+	struct tartimemap_item {
+		map<string, int> pcaps;
+		int counter;
+	};
+	map<string, tartimemap_item*> tartimemap;
+	#else
 	map<data_tar_time, int> tartimemap;
+	#endif
 	pthread_mutex_t tartimemaplock;
 };
 
