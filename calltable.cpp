@@ -9659,6 +9659,40 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			}
 		}
 	}
+	if(!_daddr.isSet()) {
+		_saddr.clear(); _daddr.clear();
+		_sport.clear(); _dport.clear();
+		_proxies.clear();
+		vector<sInviteSD_Addr>::iterator iter_rslt = c_branch->invite_sdaddr.end();
+		for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
+			unsigned _index = c_branch->invite_sdaddr_bad_order ? sort_indexes[index] : index;
+			if(_index >= invite_sdaddr_order_size) {
+				continue;
+			}
+			vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
+			if((!only_ipv || iter->daddr.v() == only_ipv)) { 
+				if(!_saddr.isSet() && !_daddr.isSet()) {
+					_saddr = iter->saddr;
+					_sport = iter->sport;
+					_daddr = iter->daddr;
+					_dport = iter->dport;
+					iter_rslt = iter;
+					if(onlyFirst) {
+						break;
+					}
+					continue;
+				}
+				if((iter->sport != _sport || iter->saddr != _saddr) &&
+				   iter->sport == _dport && iter->saddr == _daddr &&
+				   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
+					_proxies.push_back(vmIPport(iter->saddr, iter->sport));
+					_daddr = iter->daddr;
+					_dport = iter->dport;
+					iter_rslt = iter;
+				}
+			}
+		}
+	}
 	if(_daddr.isSet()) {
 		if(dport) {
 			*dport = _dport;
@@ -9713,6 +9747,20 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 				set_proxies = true;
 				break;
 			}
+		}
+	}
+	if(!set_sipcallerip && !isAllInviteConfirmed(c_branch)) {
+		vmIP sipcallerip;
+		vmPort sipcallerport;
+		vmIP sipcallerip_encaps;
+		u_int8_t sipcallerip_encaps_prot;
+		sipcallerip = getSipcalleripFromInviteList(c_branch, &sipcallerport, &sipcallerip_encaps, &sipcallerip_encaps_prot, false);
+		if(sipcallerip.isSet()) {
+			set_sipcallerip = true;
+			c_branch->sipcallerip_rslt = sipcallerip;
+			c_branch->sipcallerport_rslt = sipcallerport;
+			c_branch->sipcallerip_encaps_rslt = sipcallerip_encaps;
+			c_branch->sipcallerip_encaps_prot_rslt = sipcallerip_encaps_prot;
 		}
 	}
 	if(!set_sipcallerip) {
