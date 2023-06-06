@@ -1,3 +1,18 @@
+31.7  06.06.2023
+================
+- limit autocleanpool logs to the sensor log once per hour to prevent spamming of the sensor log [VS-1392]
+- always use the persistent mode for the ssl store sessions in the [VS-1107]
+- mark high TLB in log file [VS-1056]
+- use base64 format to store packets in live sniffer for all types of configurations [VS-1443]
+- do not count some 4XX to NER 
+- add 3XX,4XX,5XX,6XX counters to the stats
+- new parameter  ignore_mos_degradation_in_rtp_pause_without_seq_gap with default value 1000ms prevents low MOS score when RTP stream has GAP with valid RTP timestamp continuation but without SEQ gap. This was previously marked as packet loss due to some older asterisk behaviour. Now those calls will not lower MOS score if the gap is >= 1 second. 
+- fix proxy detection for some cases [VS-1450]
+- fix broken RTP reading when 401 was received (broken since new multibranch) [VS-1446]
+- fix GRE header length detection [VS-1438]
+- fix one way audio wav generation for some case [VG-2612]
+
+
 31.6  20.04.2023
 ================
 - new option interface_ip_filter_quick - default enabled [VS-1428]
