@@ -221,19 +221,14 @@ sPrepareRtcpDataParams *prepare_rtcp_data_params;
 
 static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_src, vmIP ip_dst, int *rtp_find_type) {
 	RTP *rtp = NULL;
-	*rtp_find_type = -1;
+	*rtp_find_type = 0;
 	if(ssrc) {
-		for(int find_pass = 0; find_pass < 2 && !rtp; find_pass++) {
-			for(int i = 0; i < call->rtp_size(); i++) { 
-				RTP *rtp_i = call->rtp_stream_by_index(i);
-				if(rtp_i->ssrc == ssrc &&
-				   ((find_pass == 0 && 
-				     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
-				      (rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src))) ||
-				    find_pass == 1)) {
-					rtp = rtp_i;
-					*rtp_find_type = find_pass;
-				}
+		for(int i = 0; i < call->rtp_size(); i++) { 
+			RTP *rtp_i = call->rtp_stream_by_index(i);
+			if(rtp_i->ssrc == ssrc &&
+			   rtp_i->saddr == ip_dst && rtp_i->daddr == ip_src) {
+				rtp = rtp_i;
+				*rtp_find_type = 1;
 			}
 		}
 	}
@@ -261,21 +256,25 @@ static inline RTP *find_rtp(Call *call, u_int32_t ssrc, u_int32_t ssrc_sender, v
 			}
 		}
 	}
+	if(!rtp) {
+		for(int i = 0; i < call->rtp_size(); i++) { 
+			RTP *rtp_i = call->rtp_stream_by_index(i);
+			if(rtp_i->ssrc == ssrc) {
+				rtp = rtp_i;
+				*rtp_find_type = 3;
+			}
+		}
+	}
 	return(rtp);
 }
 
 static inline int find_rtp_index(u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_src, vmIP ip_dst) {
 	int stream_index = -1;
 	if(ssrc) {
-		for(int find_pass = 0; find_pass < 2 && stream_index == -1; find_pass++) {
-			for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
-				if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc &&
-				   ((find_pass == 0 && 
-				     ((prepare_rtcp_data_params->rtp_streams[i].saddr == ip_src && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_dst) ||
-				      (prepare_rtcp_data_params->rtp_streams[i].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_src))) ||
-				    find_pass == 1)) {
-					stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
-				}
+		for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
+			if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc &&
+			   prepare_rtcp_data_params->rtp_streams[i].saddr == ip_dst && prepare_rtcp_data_params->rtp_streams[i].daddr == ip_src) {
+				stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
 			}
 		}
 	}
@@ -297,6 +296,13 @@ static inline int find_rtp_index(u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_
 					stream_index = _stream_index;
 				}
 				break;
+			}
+		}
+	}
+	if(stream_index < 0) {
+		for(unsigned i = 0; i < prepare_rtcp_data_params->rtp_streams.size(); i++) { 
+			if(prepare_rtcp_data_params->rtp_streams[i].ssrc == ssrc) {
+				stream_index = prepare_rtcp_data_params->rtp_streams[i].index;
 			}
 		}
 	}
