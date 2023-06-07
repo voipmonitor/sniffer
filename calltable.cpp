@@ -9663,7 +9663,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 		_saddr.clear(); _daddr.clear();
 		_sport.clear(); _dport.clear();
 		_proxies.clear();
-		vector<sInviteSD_Addr>::iterator iter_rslt = c_branch->invite_sdaddr.end();
+		iter_rslt = c_branch->invite_sdaddr.end();
 		for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
 			unsigned _index = c_branch->invite_sdaddr_bad_order ? sort_indexes[index] : index;
 			if(_index >= invite_sdaddr_order_size) {
