@@ -1,3 +1,14 @@
+31.7.2  08.06.2023
+=================
+- fix caching_sha2_password issue
+
+
+31.7.1  07.06.2023
+=================
+- fix 31.7
+- modify the assignment of the rtp stream to the rtcp packet [VS-1451]
+
+
 31.7  06.06.2023
 ================
 - limit autocleanpool logs to the sensor log once per hour to prevent spamming of the sensor log [VS-1392]
