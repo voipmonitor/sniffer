@@ -907,6 +907,50 @@ private:
 };
 
 
+struct sStreamAnalysisData {
+	~sStreamAnalysisData() {
+		clear();
+	}
+	struct sStreamAnalysisRow {
+		sStreamAnalysisRow() {
+			memset(this, 0, sizeof(*this));
+		}
+		u_int32_t counter;
+		u_int64_t time_real_us;
+		u_int64_t time_rtp_us;
+		u_int16_t seq;
+		int64_t delta_real_us;
+		int64_t delta_rtp_us;
+		int64_t transit;
+		int64_t skew;
+		double jitter;
+		double jitter_rsa;
+		bool marker;
+		bool bad_seq;
+		unsigned payload_len;
+		int codec;
+		bool set_energylevel;
+		u_int16_t energylevel;
+	};
+	struct sStreamAnalysisRowMos {
+		sStreamAnalysisRowMos() {
+			memset(this, 0, sizeof(*this));
+		}
+		unsigned f1;
+		unsigned f2;
+		unsigned adapt;
+		unsigned silence;
+	};
+	vector<sStreamAnalysisRow*> rows;
+	map<u_int64_t, sStreamAnalysisRowMos*> mos;
+	void exportCsvHeader();
+	void exportCsvRow(sStreamAnalysisRow *row, sStreamAnalysisRowMos *row_mos);
+	void exportCsvMos(sStreamAnalysisRowMos *row);
+	void exportCsvRows(bool all = false);
+	void clear();
+};
+
+
 u_int16_t get_energylevel(u_char *data, int datalen, int codec);
 
 

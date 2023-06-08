@@ -8513,6 +8513,8 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 		fprintf(stderr, "Couldn't open pcap file '%s': %s\n", pcap, errbuf);
 		return(2);
 	}
+	extern sStreamAnalysisData *rtp_stream_analysis_data;
+	rtp_stream_analysis_data = new sStreamAnalysisData;
 	int dlink = pcap_datalink(handle);
 	pcap_pkthdr *pcap_next_ex_header;
 	const u_char *pcap_next_ex_packet;
@@ -8596,6 +8598,11 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 		DESTROY_HP(&header_packet);
 	}
 	pcap_close(handle);
+	if(calltable) {
+		calltable->cleanup_calls(true);
+	}
+	rtp_stream_analysis_data->exportCsvRows(true);
+	delete rtp_stream_analysis_data;
 	return(0);
 }
 

@@ -244,7 +244,7 @@ extern cBilling *billing;
 
 extern cSqlDbData *dbData;
 
-extern char *opt_rtp_stream_analysis_params;
+extern sStreamAnalysisData *rtp_stream_analysis_data;
 
 extern int opt_charts_cache_max_threads;
 extern bool opt_charts_cache_ip_boost;
@@ -1239,6 +1239,8 @@ Call::closeRawFiles() {
 			} else {
 				rtp_i->graph.clearAutoOpen();
 			}
+		} else if(rtp_stream_analysis_data) {
+			rtp_i->save_mos_graph(true);
 		}
 		#endif
 	}
@@ -2095,7 +2097,7 @@ read:
 							}
 							packetS->flags.s.decrypt_ok = decrypt_ok;
 						}
-						if(opt_rtp_stream_analysis_params) {
+						if(rtp_stream_analysis_data) {
 							rtp_i->rtp_stream_analysis_output();
 						}
 						packetS->set_datalen_(datalen);
@@ -2350,7 +2352,7 @@ read:
 			}
 			packetS->flags.s.decrypt_ok = decrypt_ok;
 		}
-		if(opt_rtp_stream_analysis_params) {
+		if(rtp_stream_analysis_data) {
 			rtp_new->rtp_stream_analysis_output();
 		}
 		packetS->set_datalen_(datalen);

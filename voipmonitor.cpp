@@ -1234,6 +1234,7 @@ char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_audioconvert_params = NULL;
 char *opt_rtp_stream_analysis_params = NULL;
+sStreamAnalysisData *rtp_stream_analysis_data = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;

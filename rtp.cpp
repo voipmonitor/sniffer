@@ -75,7 +75,6 @@ extern bool opt_saveaudio_resync_jitterbuffer;
 extern bool opt_saveaudio_adaptive_jitterbuffer;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
-extern char *opt_rtp_stream_analysis_params;
 extern int opt_jitter_forcemark_transit_threshold;
 extern int opt_jitter_forcemark_delta_threshold;
 extern bool opt_save_energylevels;
@@ -85,6 +84,8 @@ extern char opt_energylevelheader[128];
 extern bool opt_rtp_count_all_sequencegap_as_loss;
 extern bool opt_check_diff_ssrc_on_same_ip_port;
 extern int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap;
+
+extern sStreamAnalysisData *rtp_stream_analysis_data;
 
 int calculate_mos_fromdsp(RTP *rtp, struct dsp *DSP);
 
@@ -447,6 +448,8 @@ RTP::setSRtpDecrypt(RTPsecure *srtp_decrypt, int index_call_ip_port, bool local)
 
 void
 RTP::save_mos_graph(bool delimiter) {
+	sStreamAnalysisData::sStreamAnalysisRowMos *rtp_stream_analysis_mos = NULL;
+ 
 	Call *owner = (Call*)call_owner;
 
 	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
@@ -471,6 +474,12 @@ RTP::save_mos_graph(bool delimiter) {
 			mosf1_avg = ((mosf1_avg * mos_time_ms) + (last_interval_mosf1 * diff_mos_time_ms)) / new_mos_time_ms;
 		} else {
 			mosf1_avg = last_interval_mosf1;
+		}
+		if(rtp_stream_analysis_data) {
+			if(!rtp_stream_analysis_mos) {
+				rtp_stream_analysis_mos = new sStreamAnalysisData::sStreamAnalysisRowMos;
+			}
+			rtp_stream_analysis_mos->f1 = last_interval_mosf1;
 		}
 		if(sverb.graph_mos) {
 			cout << "MOS F1"
@@ -506,6 +515,12 @@ RTP::save_mos_graph(bool delimiter) {
 		} else {
 			mosf2_avg = last_interval_mosf2;
 		}
+		if(rtp_stream_analysis_data) {
+			if(!rtp_stream_analysis_mos) {
+				rtp_stream_analysis_mos = new sStreamAnalysisData::sStreamAnalysisRowMos;
+			}
+			rtp_stream_analysis_mos->f2 = last_interval_mosf2;
+		}
 		if(sverb.graph_mos) {
 			cout << "MOS F2"
 			     << " saddr: " << saddr.getString().c_str() << " ssrc: " << hex << ssrc << dec
@@ -539,6 +554,12 @@ RTP::save_mos_graph(bool delimiter) {
 			mosAD_avg = ((mosAD_avg * mos_time_ms) + (last_interval_mosAD * diff_mos_time_ms)) / new_mos_time_ms;
 		} else {
 			mosAD_avg = last_interval_mosAD;
+		}
+		if(rtp_stream_analysis_data) {
+			if(!rtp_stream_analysis_mos) {
+				rtp_stream_analysis_mos = new sStreamAnalysisData::sStreamAnalysisRowMos;
+			}
+			rtp_stream_analysis_mos->adapt = last_interval_mosAD;
 		}
 		if(sverb.graph_mos) {
 			cout << "MOS AD"
@@ -575,6 +596,12 @@ RTP::save_mos_graph(bool delimiter) {
 			mosSilence_avg = ((mosSilence_avg * mos_time_ms) + (last_interval_mosSilence * diff_mos_time_ms)) / new_mos_time_ms;
 		} else {
 			mosSilence_avg = last_interval_mosSilence;
+		}
+		if(rtp_stream_analysis_data) {
+			if(!rtp_stream_analysis_mos) {
+				rtp_stream_analysis_mos = new sStreamAnalysisData::sStreamAnalysisRowMos;
+			}
+			rtp_stream_analysis_mos->silence = last_interval_mosSilence;
 		}
 		if(sverb.graph_mos) {
 			cout << "MOS SL"
@@ -625,6 +652,10 @@ RTP::save_mos_graph(bool delimiter) {
 
 	if(!is_read_from_file_simple()) {
 		rtp_stat.update(saddr, header_ts.tv_sec, last_interval_mosf1, last_interval_mosf2, last_interval_mosAD, jitter, last_stat_loss_perc_mult10);
+	}
+	
+	if(rtp_stream_analysis_data && rtp_stream_analysis_mos) {
+		rtp_stream_analysis_data->mos[new_mos_time_ms] = rtp_stream_analysis_mos;
 	}
 }
 
@@ -2688,12 +2719,12 @@ RTP::update_seq(u_int16_t seq) {
 		first = false;
 		init_seq(seq);
 		s->max_seq = seq - 1;
-		s->probation = opt_rtp_stream_analysis_params ? 0 : MIN_SEQUENTIAL;
+		s->probation = rtp_stream_analysis_data ? 0 : MIN_SEQUENTIAL;
 		s->lastTimeRec = header_ts;
 		s->lastTimeRecJ = header_ts;
 		s->lastTimeStamp = getTimestamp();
 		s->lastTimeStampJ = getTimestamp();
-		if(opt_rtp_stream_analysis_params) {
+		if(rtp_stream_analysis_data) {
 			last_voice_frame_ts = header_ts;
 			last_voice_frame_timestamp = getTimestamp();
 		}
@@ -2757,33 +2788,15 @@ RTP::update_seq(u_int16_t seq) {
 		(int64_t)((u_int32_t)ts1 - (u_int32_t)ts2))
 
 void RTP::rtp_stream_analysis_output() {
+	if(!rtp_stream_analysis_data) {
+		return;
+	}
 	if(!rsa.first_packet_time_us) {
 		rsa.first_packet_time_us = getTimeUS(header_ts);
 		rsa.first_timestamp = getTimestamp();
 	}
 	if(!rsa.counter) {
-		cout << fixed << setprecision(3);
-		cout << "rsa,"
-		     << "counter" << ","
-		     << "time_real" << ","
-		     << "time_rtp" << ","
-		     << "seq" << ","
-		     << "delta_real" << ","
-		     << "delta_rtp" << ","
-		     << "transit" << ","
-		     << "skew" << ","
-		     << "jitter" << ","
-		     << "jitter_rsa" << ","
-		     << "marker" << ","
-		     << "bad_seq" << ","
-		     << "mos_f1" << ","
-		     << "mos_f2" << ","
-		     << "mos_adapt" << ","
-		     << "mos_silence" << ","
-		     << "payload_len" <<  ","
-		     << "codec" << ","
-		     << "energylevel"
-		     << endl;
+		rtp_stream_analysis_data->exportCsvHeader();
 	}
 	++rsa.counter;
 	int64_t transit = rsa.counter > 1 ? 
@@ -2791,40 +2804,115 @@ void RTP::rtp_stream_analysis_output() {
 			    (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000)) : 
 			   0;
 	double jitter = rsa.jitter + (double)(((transit < 0) ? -transit/1000. : transit/1000.) - rsa.jitter)/16. ;
-	cout << "rsa,"
-	     << rsa.counter << ","
-	     << ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us) << ","
-	     << (RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) << ","
-	     << getSeqNum() << ","
-	     << (rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0) << ","
-	     << (rsa.counter > 1 ? (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0) << ","
-	     << transit << ","
-	     << ((RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000) - 
-		 ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us)) << ","
-	     << this->jitter << ","
-	     << jitter << ","
-	     << (getHeader()->marker ? 1 : 0) << ","
-	     << (rsa.counter > 1 ? getSeqNum() != ROT_SEQ(rsa.prev_seq + 1) : 0) << ","
-	     << (int)last_interval_mosf1 << ","
-	     << (int)last_interval_mosf2 << ","
-	     << (int)last_interval_mosAD << ","
-	     << (int)last_interval_mosSilence << ","
-	     << get_payload_len() << ","
-	     << codec;
-	     /*
-	     << (int)calculate_mos_fromrtp(this, 1, 1) << ","
-	     << (int)calculate_mos_fromrtp(this, 2, 1) << ","
-	     << (int)calculate_mos_fromrtp(this, 3, 1) << ","
-	     << (DSP ? calculate_mos_fromdsp(this, DSP) : null) << ","
-	     */
+	sStreamAnalysisData::sStreamAnalysisRow *row = new sStreamAnalysisData::sStreamAnalysisRow;
+	row->counter = rsa.counter;
+	row->time_real_us = (int64_t)getTimeUS(header_ts) - (int64_t)rsa.first_packet_time_us;
+	row->time_rtp_us = RTP_TS_SUB(getTimestamp(), rsa.first_timestamp)/(samplerate/1000.0)*1000;
+	row->seq = getSeqNum();
+	row->delta_real_us = rsa.counter > 1 ? ((int64_t)getTimeUS(header_ts) - (int64_t)rsa.last_packet_time_us) : 0;
+	row->delta_rtp_us = rsa.counter > 1 ? (RTP_TS_SUB(getTimestamp(), rsa.last_timestamp)/(samplerate/1000.0)*1000) : 0;
+	row->transit = transit;
+	row->skew = row->time_rtp_us - row->time_real_us;
+	row->jitter = this->jitter;
+	row->jitter_rsa = jitter;
+	row->marker = getHeader()->marker ? 1 : 0;
+	row->bad_seq = rsa.counter > 1 ? getSeqNum() != ROT_SEQ(rsa.prev_seq + 1) : 0;
+	row->payload_len = get_payload_len();
+	row->codec = codec;
 	if(payload_len > 0 && (codec == PAYLOAD_PCMU || codec == PAYLOAD_PCMA)) {
-		cout << "," << get_energylevel(payload_data, payload_len, codec);
+		row->set_energylevel = true;
+		row->energylevel = get_energylevel(payload_data, payload_len, codec);
 	}
-	cout << endl;
+	rtp_stream_analysis_data->rows.push_back(row);
 	rsa.last_packet_time_us = getTimeUS(header_ts);
 	rsa.last_timestamp = getTimestamp();
 	rsa.jitter = jitter;
 	rsa.prev_seq = getSeqNum();
+	rtp_stream_analysis_data->exportCsvRows();
+}
+
+void sStreamAnalysisData::exportCsvHeader() {
+	cout << "rsa,"
+	     << "counter" << ","
+	     << "time_real" << ","
+	     << "time_rtp" << ","
+	     << "seq" << ","
+	     << "delta_real" << ","
+	     << "delta_rtp" << ","
+	     << "transit" << ","
+	     << "skew" << ","
+	     << "jitter" << ","
+	     << "jitter_rsa" << ","
+	     << "marker" << ","
+	     << "bad_seq" << ","
+	     << "mos_f1" << ","
+	     << "mos_f2" << ","
+	     << "mos_adapt" << ","
+	     << "mos_silence" << ","
+	     << "payload_len" <<  ","
+	     << "codec" << ","
+	     << "energylevel"
+	     << endl;
+}
+
+void sStreamAnalysisData::exportCsvRow(sStreamAnalysisRow *row, sStreamAnalysisRowMos *row_mos) {
+	cout << fixed << setprecision(3);
+	cout << "rsa,"
+	     << row->counter << ","
+	     << row->time_real_us << ","
+	     << row->time_rtp_us << ","
+	     << row->seq << ","
+	     << row->delta_real_us << ","
+	     << row->delta_rtp_us << ","
+	     << row->transit << ","
+	     << row->skew << ","
+	     << row->jitter << ","
+	     << row->jitter_rsa << ","
+	     << row->marker << ","
+	     << row->bad_seq << ",";
+	exportCsvMos(row_mos);
+	cout << row->payload_len << ","
+	     << row->codec;
+	if(row->set_energylevel) {
+		cout << "," << row->energylevel;
+	}
+	cout << endl;
+}
+
+void sStreamAnalysisData::exportCsvMos(sStreamAnalysisRowMos *row) {
+	if(row && row->f1) cout << row->f1;
+	cout << ",";
+	if(row && row->f2) cout << row->f2;
+	cout << ",";
+	if(row && row->adapt) cout << row->adapt;
+	cout << ",";
+	if(row && row->silence) cout << row->silence;
+	cout << ",";
+}
+
+void sStreamAnalysisData::exportCsvRows(bool all) {
+	if(!mos.size() && !all) {
+		return;
+	}
+	sStreamAnalysisRowMos *row_mos = NULL;
+	if(mos.size()) {
+		row_mos = mos.begin()->second;
+	}
+	for(unsigned i = 0; i < rows.size(); i++) {
+		exportCsvRow(rows[i], row_mos);
+	}
+	clear();
+}
+
+void sStreamAnalysisData::clear() {
+	for(unsigned i = 0; i < rows.size(); i++) {
+		delete rows[i];
+	}
+	rows.clear();
+	for(map<u_int64_t, sStreamAnalysisRowMos*>::iterator it = mos.begin(); it != mos.end(); it++) {
+		delete it->second;
+	}
+	mos.clear();
 }
 
 double RTP::mos_min_from_avg(bool *null, bool prefer_f2) {
