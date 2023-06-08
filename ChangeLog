@@ -1,4 +1,9 @@
-31.71  07.06.2023
+31.7.2  08.06.2023
+=================
+- fix caching_sha2_password issue
+
+
+31.7.1  07.06.2023
 =================
 - fix 31.7
 - modify the assignment of the rtp stream to the rtcp packet [VS-1451]
