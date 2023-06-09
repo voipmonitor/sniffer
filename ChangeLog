@@ -1,3 +1,8 @@
+31.7.3  09.06.2023
+==================
+- cdr trends (special aggregation table) now stores src/dst MOS score with respect of the direction. MOS will now represents sender or receiver only and not MIN(src/dst)
+
+
 31.7.2  08.06.2023
 =================
 - fix caching_sha2_password issue
