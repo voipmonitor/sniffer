@@ -44,7 +44,11 @@ enum eChartType {
 	_chartType_packet_lost_caller,
 	_chartType_packet_lost_called,
 	_chartType_jitter,
+	_chartType_jitter_caller,
+	_chartType_jitter_called,
 	_chartType_delay,
+	_chartType_delay_caller,
+	_chartType_delay_called,
 	_chartType_rtcp_avgjitter,
 	_chartType_rtcp_maxjitter,
 	_chartType_rtcp_avgfr,
@@ -457,7 +461,7 @@ public:
 	cCdrStat();
 	~cCdrStat();
 	void init();
-	static void init_series(vector<cChartSeries*> *series);
+	static void init_series(vector<cChartSeries*> *series, int src_dst);
 	static void init_metrics(vector<sMetrics> *metrics);
 	void clear();
 	void add(sChartsCallData *call);
@@ -488,7 +492,8 @@ public:
 	}
 private:
 	eTypeStore typeStore;
-	vector<cChartSeries*> series;
+	vector<cChartSeries*> series_src;
+	vector<cChartSeries*> series_dst;
 	vector<sMetrics> metrics;
 	map<u_int32_t, cChartInterval*> intervals;
 	volatile u_int32_t first_interval;

@@ -4658,7 +4658,11 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_packet_lost_caller:
 	case _chartType_packet_lost_called:
 	case _chartType_jitter:
+	case _chartType_jitter_caller:
+	case _chartType_jitter_called:
 	case _chartType_delay:
+	case _chartType_delay_caller:
+	case _chartType_delay_called:
 	case _chartType_rtcp_avgjitter:
 	case _chartType_rtcp_maxjitter:
 	case _chartType_rtcp_avgfr:
@@ -4690,7 +4694,9 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_packet_lost_caller ||
 		    type == _chartType_silence_caller ||
 		    type == _chartType_silence_end_caller ||
-		    type == _chartType_clipping_caller)) {
+		    type == _chartType_clipping_caller ||
+		    type == _chartType_jitter_caller ||
+		    type == _chartType_delay_caller)) {
 			setNull = true;
 			break;
 		}
@@ -4704,7 +4710,9 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		    type == _chartType_packet_lost_called ||
 		    type == _chartType_silence_called ||
 		    type == _chartType_silence_end_called ||
-		    type == _chartType_clipping_called)) {
+		    type == _chartType_clipping_called ||
+		    type == _chartType_jitter_called ||
+		    type == _chartType_delay_called)) {
 			setNull = true;
 			break;
 		}
@@ -4818,6 +4826,12 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		case _chartType_packet_lost_called:
 			v = rtpab[1]->packet_loss(&setNull);
 			break;
+		case _chartType_jitter_caller:	
+			v = rtpab[0]->jitter_avg(&setNull);
+			break;
+		case _chartType_jitter_called:	
+			v = rtpab[1]->jitter_avg(&setNull);
+			break;
 		case _chartType_delay:
 			setNull = true;
 			for(unsigned i = 0; i < 2; i++) {
@@ -4854,6 +4868,32 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 				}
 			}
 			*/
+			break;
+		case _chartType_delay_caller:
+			{
+			setNull = true;
+			bool _null_s = false;
+			bool _null_c = false;
+			double _v_s = rtpab[0]->delay_sum(&_null_s);
+			double _v_c = rtpab[0]->delay_cnt(&_null_c);
+			if(!_null_s && !_null_c && _v_c != 0) {
+				setNull = false;
+				v = _v_s / _v_c;
+			}
+			}
+			break;
+		case _chartType_delay_called:
+			{
+			setNull = true;
+			bool _null_s = false;
+			bool _null_c = false;
+			double _v_s = rtpab[1]->delay_sum(&_null_s);
+			double _v_c = rtpab[1]->delay_cnt(&_null_c);
+			if(!_null_s && !_null_c && _v_c != 0) {
+				setNull = false;
+				v = _v_s / _v_c;
+			}
+			}
 			break;
 		case _chartType_rtcp_avgjitter:
 		case _chartType_rtcp_maxjitter:
@@ -5205,6 +5245,14 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		v = tablesContent->getValue_float(_t_cdr, "jitter_mult10", false, &setNull);
 		if(!setNull && v) v /= 10;
 		break;
+	case _chartType_jitter_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_avgjitter_mult10", false, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
+	case _chartType_jitter_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_avgjitter_mult10", false, &setNull);
+		if(!setNull && v) v /= 10;
+		break;
 	case _chartType_delay:
 		v = tablesContent->getValue_float(_t_cdr, "delay_avg_mult100", false, &setNull);
 		if(!setNull && v) v /= 100;
@@ -5221,6 +5269,14 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		}
 		}
 		*/
+		break;
+	case _chartType_delay_caller:
+		v = tablesContent->getValue_float(_t_cdr, "a_delay_avg_mult100", false, &setNull);
+		if(!setNull && v) v /= 100;
+		break;
+	case _chartType_delay_called:
+		v = tablesContent->getValue_float(_t_cdr, "b_delay_avg_mult100", false, &setNull);
+		if(!setNull && v) v /= 100;
 		break;
 	case _chartType_rtcp_avgjitter:
 		v = tablesContent->getValue_float(_t_cdr, "rtcp_avgjitter_mult10", false, &setNull);

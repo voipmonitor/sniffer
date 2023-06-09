@@ -3048,7 +3048,7 @@ double RTP::delay_sum(bool *null) {
 		       this->stats.d120 * 135 +
 		       this->stats.d150 * 175 + 
 		       this->stats.d200 * 250 + 
-		       this->stats.d300);
+		       this->stats.d300 * 300);
 	} else {
 		if(null) *null = true;
 		return(0);

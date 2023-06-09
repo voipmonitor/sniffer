@@ -40,7 +40,11 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_packet_lost_caller,	0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_packet_lost_called,	0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_jitter,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_jitter_caller,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_jitter_called,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_delay,			0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_delay_caller,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
+	{ _chartType_delay_called,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_rtcp_avgjitter,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_rtcp_maxjitter,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
 	{ _chartType_rtcp_avgfr,		0,	1,	_chartPercType_Asc,	0,	_chartSubType_value },
@@ -1214,8 +1218,9 @@ void cChartInterval::init(vmIP &ip_src, vmIP &ip_dst) {
 				if(iter == seriesDataCdrStat->end()) {
 					sSeriesDataCdrStat *seriesDataItem = new FILE_LINE(0) sSeriesDataCdrStat;
 					(*seriesDataCdrStat)[*ip] = seriesDataItem;
-					for(unsigned series_i = 0; series_i < cdrStat->series.size(); series_i++) {
-						seriesDataItem->data[series_i] = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, cdrStat->series[series_i], this);
+					vector<cChartSeries*> *series = src_dst == 0 ? &cdrStat->series_src : &cdrStat->series_dst;
+					for(unsigned series_i = 0; series_i < series->size(); series_i++) {
+						seriesDataItem->data[series_i] = new FILE_LINE(0) cChartIntervalSeriesData(typeUse, (*series)[series_i], this);
 						seriesDataItem->data[series_i]->prepareData();
 					}
 				}
@@ -1940,21 +1945,23 @@ cCdrStat::~cCdrStat() {
 }
 
 void cCdrStat::init() {
-	init_series(&series);
+	for(int src_dst = 0; src_dst < 2; src_dst++) {
+		init_series(src_dst == 0 ? &series_src : &series_dst, src_dst);
+	}
 	init_metrics(&metrics);
 }
 
-void cCdrStat::init_series(vector<cChartSeries*> *series) {
+void cCdrStat::init_series(vector<cChartSeries*> *series, int src_dst) {
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_count, "TCH_count", "cc"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_cps, "TCH_cps", "cps"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_minutes, "TCH_minutes"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr", "asr"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd", "acd"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_ner, "TCH_ner", "ner"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, "TCH_mos", "mos"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, "TCH_packet_lost", "packet_loss"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, "TCH_jitter", "jitter"));
-	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_delay, "TCH_delay", "delay"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_delay, src_dst == 0 ? "TCH_delay_caller" : "TCH_delay_called", "delay"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_customer, "TCH_price_customer"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_price_operator, "TCH_price_operator"));
 }
@@ -1991,10 +1998,14 @@ void cCdrStat::clear() {
 		delete iter->second;
 	}
 	intervals.clear();
-	for(vector<cChartSeries*>::iterator iter = series.begin(); iter != series.end(); iter++) {
+	for(vector<cChartSeries*>::iterator iter = series_src.begin(); iter != series_src.end(); iter++) {
 		delete *iter;
 	}
-	series.clear();
+	series_src.clear();
+	for(vector<cChartSeries*>::iterator iter = series_dst.begin(); iter != series_dst.end(); iter++) {
+		delete *iter;
+	}
+	series_dst.clear();
 }
 
 void cCdrStat::add(sChartsCallData *call) {
@@ -2122,7 +2133,7 @@ string cCdrStat::metrics_db_fields(vector<dstring> *fields) {
 	vector<sMetrics> metrics;
 	init_metrics(&metrics);
 	vector<cChartSeries*> series;
-	init_series(&series);
+	init_series(&series, 0);
 	fields->push_back(dstring("count_all", "int unsigned"));
 	fields->push_back(dstring("count_connected", "int unsigned"));
 	fields->push_back(dstring("count_lsr_3", "int unsigned"));
@@ -2371,7 +2382,11 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_packet_lost_caller" ? _chartType_packet_lost_caller :
 	       chartType == "TCH_packet_lost_called" ? _chartType_packet_lost_called :
 	       chartType == "TCH_jitter" ? _chartType_jitter :
+	       chartType == "TCH_jitter_caller" ? _chartType_jitter_caller :
+	       chartType == "TCH_jitter_called" ? _chartType_jitter_called :
 	       chartType == "TCH_delay" ? _chartType_delay :
+	       chartType == "TCH_delay_caller" ? _chartType_delay_caller :
+	       chartType == "TCH_delay_called" ? _chartType_delay_called :
 	       chartType == "TCH_rtcp_avgjitter" ? _chartType_rtcp_avgjitter :
 	       chartType == "TCH_rtcp_maxjitter" ? _chartType_rtcp_maxjitter :
 	       chartType == "TCH_rtcp_avgfr" ? _chartType_rtcp_avgfr :
