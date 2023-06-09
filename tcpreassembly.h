@@ -639,6 +639,7 @@ public:
 		u_int32_t seq;
 		u_char *data;
 		u_int32_t datalen;
+		u_int32_t time_s;
 	};
 	TcpReassemblyLink(class TcpReassembly *reassembly,
 			  vmIP ip_src, vmIP ip_dst, 
@@ -853,8 +854,9 @@ public:
 	}
 	void cleanup(u_int64_t act_time);
 	void printContent(int level  = 0);
-	void addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen);
+	void addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t time_s);
 	void clearRemainData(TcpReassemblyDataItem::eDirection direction);
+	void cleanupRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t time_s);
 	u_char *completeRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t *rslt_datalen, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t skip_first_items);
 	u_int32_t getRemainDataLength(TcpReassemblyDataItem::eDirection direction, u_int32_t skip_first_items);
 	u_int32_t getRemainDataItems(TcpReassemblyDataItem::eDirection direction);
@@ -924,7 +926,7 @@ private:
 	void *uData;
 	void *uData2;
 	void *uData2_last;
-	vector<sRemainDataItem> remainData[2];
+	deque<sRemainDataItem> remainData[2];
 	u_int32_t *check_duplicity_seq;
 	unsigned check_duplicity_seq_length;
 	list<d_u_int32_t> sip_offsets;

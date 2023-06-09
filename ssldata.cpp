@@ -126,6 +126,10 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		u_int32_t ssl_datalen;
 		bool alloc_ssl_data = false;
 		bool exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
+		if(exists_remain_data) {
+			reassemblyLink->cleanupRemainData(dataItem->getDirection(), dataItem->getTime().tv_sec);
+			exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
+		}
 		bool ignore_remain_data = false;
 		if(exists_remain_data) {
 			u_int32_t remain_data_items = reassemblyLink->getRemainDataItems(dataItem->getDirection());
@@ -202,13 +206,13 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				}
 			}
 			if(ssl_data_offset < ssl_datalen) {
-				reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
+				reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getTime().tv_sec);
 				if(debugStream) {
 					(*debugStream) << "SET REMAIN DATA: " << (ssl_datalen - ssl_data_offset) << endl;
 				}
 			}
 		} else {
-			reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data, ssl_datalen);
+			reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data, ssl_datalen, dataItem->getTime().tv_sec);
 			if(debugStream) {
 				(*debugStream) << (exists_remain_data ? "ADD" : "SET") << " REMAIN DATA: " << ssl_datalen << endl;
 			}
@@ -275,7 +279,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 				} else {
 					if(ssl_data_offset < ssl_datalen) {
 						reassemblyLink->clearRemainData(dataItem->getDirection());
-						reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset);
+						reassemblyLink->addRemainData(dataItem->getDirection(), dataItem->getAck(), dataItem->getSeq(), ssl_data + ssl_data_offset, ssl_datalen - ssl_data_offset, dataItem->getTime().tv_sec);
 						if(debugStream) {
 							(*debugStream) << "REMAIN DATA LENGTH: " << ssl_datalen - ssl_data_offset << endl;
 						}

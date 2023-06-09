@@ -2828,15 +2828,17 @@ void TcpReassemblyLink::extCleanup(int id, bool all) {
 	}
 }
 
-void TcpReassemblyLink::addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen) {
+void TcpReassemblyLink::addRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t ack, u_int32_t seq, u_char *data, u_int32_t datalen, u_int32_t time_s) {
 	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
 		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	cleanupRemainData(direction, time_s);
 	if(index >= 0 && data && datalen) {
 		sRemainDataItem item;
 		item.ack = ack;
 		item.seq = seq;
 		item.data = new FILE_LINE(0) u_char[datalen];
 		item.datalen = datalen;
+		item.time_s = time_s;
 		memcpy(item.data, data, datalen);
 		this->remainData[index].push_back(item);
 	}
@@ -2851,6 +2853,23 @@ void TcpReassemblyLink::clearRemainData(TcpReassemblyDataItem::eDirection direct
 				delete [] remainData[i][j].data;
 			}
 			remainData[i].clear();
+		}
+	}
+}
+
+void TcpReassemblyLink::cleanupRemainData(TcpReassemblyDataItem::eDirection direction, u_int32_t time_s) {
+	int index = direction == TcpReassemblyDataItem::DIRECTION_TO_DEST ? 0 :
+		    direction == TcpReassemblyDataItem::DIRECTION_TO_SOURCE ? 1 : -1;
+	if(!time_s) {
+		time_s = getTimeS_rdtsc();
+	}
+	for(int i = 0; i < 2; i++) {
+		if(index < 0 || index == i) {
+			while(remainData[i].size() &&
+			      remainData[i].front().time_s < time_s - reassembly->linkTimeout * 2) {
+				delete remainData[i].front().data;
+				remainData[i].pop_front();
+			}
 		}
 	}
 }
