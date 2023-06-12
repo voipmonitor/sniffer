@@ -580,9 +580,25 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 			 ", vlan = %s",
 			 VLAN_IS_SET(packetS->pid.vlan) ? intToString(packetS->pid.vlan).c_str() : "NULL");
 	}
-	strcat(query_buff, ", data = concat('#', from_base64('");
-	_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
-	strcat(query_buff, "'), '#')");
+	bool enable_base64 = isCloud() || useNewStore();
+	if(!enable_base64) {
+		string db_name = SqlDb_mysql::getDbName_static();
+		int db_version = SqlDb_mysql::getDbVersion_static();
+		if((db_name == "mysql" && db_version >= 50600) ||
+		   (db_name == "mariadb" && db_version >= 100005)) {
+			enable_base64 = true;
+		}
+	}
+	strcat(query_buff, ", data = ");
+	if(enable_base64) {
+		strcat(query_buff, "concat('#', from_base64('");
+		_base64_encode((unsigned char*)mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff));
+		strcat(query_buff, "'), '#')");
+	} else {
+		strcat(query_buff, "_latin1'#");
+		_sqlEscapeString(mpacket, savePacketLenWithHeaders, query_buff + strlen(query_buff), NULL);
+		strcat(query_buff, "#'");
+	}
 	sqlStore->query_lock(MYSQL_ADD_QUERY_END(string(query_buff)), STORE_PROC_ID_SAVE_PACKET_SQL, 0);
 }
 

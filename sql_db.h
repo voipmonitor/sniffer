@@ -756,6 +756,13 @@ public:
 	int getDbMajorVersion();
 	int getDbMinorVersion(int minorLevel  = 0);
 	string getDbName();
+	static int getDbVersion_static();
+	static int getDbMajorVersion_static();
+	static int getDbMinorVersion_static(int minorLevel  = 0);
+	static string getDbName_static();
+	static int _getDbMajorVersion(const char *db_version);
+	static int _getDbMinorVersion(const char *db_version, int minorLevel  = 0);
+	static string _getDbName(const char *db_version);
 	int getMaximumPartitions();
 	bool isSupportForDatetimeMs();
 	bool _getDbVersion();
@@ -779,6 +786,8 @@ private:
 	MYSQL *hMysqlConn;
 	MYSQL_RES *hMysqlRes;
 	string dbVersion;
+	static string dbVersion_static;
+	static volatile int dbVersion_static_sync;
 	unsigned long mysqlThreadId;
 	string selectedCompressType;
 	string selectedCompressSubtype;

@@ -1640,6 +1640,9 @@ SqlDb_mysql::SqlDb_mysql() {
 	this->mysqlThreadId = 0;
 }
 
+string SqlDb_mysql::dbVersion_static;
+volatile int SqlDb_mysql::dbVersion_static_sync = 0;
+
 SqlDb_mysql::~SqlDb_mysql() {
 	this->clean();
 }
@@ -1901,26 +1904,97 @@ int SqlDb_mysql::getDbMajorVersion() {
 		SqlDb_row row = this->fetchRow();
 		if(row) {
 			this->dbVersion = row[1];
+			__SYNC_LOCK(this->dbVersion_static_sync);
+			this->dbVersion_static = this->dbVersion;
+			__SYNC_UNLOCK(this->dbVersion_static_sync);
 		}
 	}
-	return(atoi(this->dbVersion.c_str()));
+	return(_getDbMajorVersion(this->dbVersion.c_str()));
 }
 
 int SqlDb_mysql::getDbMinorVersion(int minorLevel) {
 	this->_getDbVersion();
-	const char *pointToVersion = this->dbVersion.c_str();
-	for(int i = 0; i < minorLevel + 1 && pointToVersion; i++) {
-		const char *pointToSeparator = strchr(pointToVersion, '.');
-		if(pointToSeparator) {
-			pointToVersion = pointToSeparator + 1;
-		}
-	}
-	return(pointToVersion ? atoi(pointToVersion) : 0);
+	return(_getDbMinorVersion(this->dbVersion.c_str(), minorLevel));
 }
 
 string SqlDb_mysql::getDbName() {
 	this->_getDbVersion();
-	return(strcasestr(this->dbVersion.c_str(), "MariaDB") ? "mariadb" : "mysql");
+	return(_getDbName(this->dbVersion.c_str()));
+}
+
+int SqlDb_mysql::getDbVersion_static() {
+	int rslt = 0;
+	__SYNC_LOCK(dbVersion_static_sync);
+	if(!dbVersion_static.empty()) {
+		rslt = _getDbMajorVersion(dbVersion_static.c_str()) * 10000 + 
+		       _getDbMinorVersion(dbVersion_static.c_str()) * 100 + 
+		       _getDbMinorVersion(dbVersion_static.c_str(), 1);
+	}
+	__SYNC_UNLOCK(dbVersion_static_sync);
+	return(rslt);
+}
+
+int SqlDb_mysql::getDbMajorVersion_static() {
+	int rslt = 0;
+	__SYNC_LOCK(dbVersion_static_sync);
+	if(!dbVersion_static.empty()) {
+		rslt = _getDbMajorVersion(dbVersion_static.c_str());
+	}
+	__SYNC_UNLOCK(dbVersion_static_sync);
+	return(rslt);
+}
+
+int SqlDb_mysql::getDbMinorVersion_static(int minorLevel) {
+	int rslt = 0;
+	__SYNC_LOCK(dbVersion_static_sync);
+	if(!dbVersion_static.empty()) {
+		rslt = _getDbMinorVersion(dbVersion_static.c_str(), minorLevel);
+	}
+	__SYNC_UNLOCK(dbVersion_static_sync);
+	return(rslt);
+}
+
+string SqlDb_mysql::getDbName_static() {
+	string rslt = "";
+	__SYNC_LOCK(dbVersion_static_sync);
+	if(!dbVersion_static.empty()) {
+		rslt = _getDbName(dbVersion_static.c_str());
+	}
+	__SYNC_UNLOCK(dbVersion_static_sync);
+	return(rslt);
+}
+
+int SqlDb_mysql::_getDbMajorVersion(const char *db_version) {
+	int rslt = 0;
+	if(*db_version) {
+		rslt = atoi(db_version);
+	}
+	return(rslt);
+}
+
+int SqlDb_mysql::_getDbMinorVersion(const char *db_version, int minorLevel) {
+	int rslt = 0;
+	if(*db_version) {
+		const char *pointToVersion = db_version;
+		for(int i = 0; i < minorLevel + 1 && pointToVersion; i++) {
+			const char *pointToSeparator = strchr(pointToVersion, '.');
+			if(pointToSeparator) {
+				pointToVersion = pointToSeparator + 1;
+			}
+		}
+		if(pointToVersion) {
+			rslt = atoi(pointToVersion);
+		}
+	}
+	return(rslt);
+}
+
+string SqlDb_mysql::_getDbName(const char *db_version) {
+	string rslt = "";
+	if(*db_version) {
+		rslt = strcasestr(db_version, "MariaDB") ? "mariadb" : "mysql";
+	}
+	return(rslt);
 }
 
 int SqlDb_mysql::getMaximumPartitions() {
@@ -1941,6 +2015,9 @@ bool SqlDb_mysql::_getDbVersion() {
 		SqlDb_row row = this->fetchRow();
 		if(row) {
 			this->dbVersion = row[1];
+			__SYNC_LOCK(this->dbVersion_static_sync);
+			this->dbVersion_static = this->dbVersion;
+			__SYNC_UNLOCK(this->dbVersion_static_sync);
 		}
 	}
 	return(!this->dbVersion.empty());
