@@ -3171,11 +3171,13 @@ public:
 				}
 				rslt_call->call_id_alternative_unlock();
 			}
-			if(time) {
+			if(time && !rslt_call->stopProcessing) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
-				/*
-				cout << " *** ++ 1 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
-				*/
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
+					     << rslt_call->call_id << " : "
+					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				#endif
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -3192,9 +3194,11 @@ public:
 			rslt_call = callMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
-				/*
-				cout << " *** ++ 2 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
-				*/
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** ++ in_preprocess_queue_before_process_packet (2) : "
+					     << rslt_call->call_id << " : "
+					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				#endif
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}
@@ -3242,9 +3246,11 @@ public:
 			rslt_call = mergeMAPIT->second;
 			if(time) {
 				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
-				/*
-				cout << " *** ++ 3 in_preprocess_queue_before_process_packet " << rslt_call->in_preprocess_queue_before_process_packet << endl;
-				*/
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** ++ in_preprocess_queue_before_process_packet (3) : "
+					     << rslt_call->call_id << " : "
+					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				#endif
 				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
 				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 			}

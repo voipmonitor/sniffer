@@ -10688,15 +10688,19 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 			}
 			if(packetS->_findCall && packetS->call) {
 				__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
-				/*
-				cout << " *** -- 1 in_preprocess_queue_before_process_packet " << packetS->call->in_preprocess_queue_before_process_packet << endl;
-				*/
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** -- in_preprocess_queue_before_process_packet (1) : "
+					     << packetS->call->call_id << " : "
+					     << packetS->call->in_preprocess_queue_before_process_packet << endl;
+				#endif
 			}
 			if(packetS->_createCall && packetS->call_created) {
 				__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
-				/*
-				cout << " *** -- 2 in_preprocess_queue_before_process_packet " << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
-				*/
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** -- in_preprocess_queue_before_process_packet (2) : "
+					     << packetS->call_created->call_id << " : "
+					     << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
+				#endif
 			}
 		}
 		if(opt_quick_save_cdr == 2) {
@@ -10726,15 +10730,19 @@ void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 	}
 	if(packetS->_findCall && packetS->call) {
 		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
-		/*
-		cout << " *** -- 3 in_preprocess_queue_before_process_packet " << packetS->call->in_preprocess_queue_before_process_packet << endl;
-		*/
+		#if DEBUG_PREPROCESS_QUEUE
+			cout << " *** -- in_preprocess_queue_before_process_packet (3) : "
+			     << packetS->call->call_id << " : "
+			     << packetS->call->in_preprocess_queue_before_process_packet << endl;
+		#endif
 	}
 	if(packetS->_createCall && packetS->call_created) {
 		__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
-		/*
-		cout << " *** -- 4 in_preprocess_queue_before_process_packet " << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
-		*/
+		#if DEBUG_PREPROCESS_QUEUE
+			cout << " *** -- in_preprocess_queue_before_process_packet (4) "
+			     << packetS->call_created->call_id << " : "
+			     << packetS->call_created->in_preprocess_queue_before_process_packet << endl;
+		#endif
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + idPreProcessThread);
 }

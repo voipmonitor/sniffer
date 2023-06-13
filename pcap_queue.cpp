@@ -3609,6 +3609,11 @@ failed:
 	return(false);
 }
 
+#if REPLICATE_FIRST_PACKET_EVERY_S
+static pcap_pkthdr* __header;
+static u_char* __packet;
+#endif
+
 inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHandle, pcap_pkthdr** header, u_char** packet,
 								bool checkProtocol, sCheckProtocolData *checkProtocolData) {
 	if(!pcapHandle) {
@@ -3616,7 +3621,24 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 		*packet = NULL;
 		return(0);
 	}
+	#if REPLICATE_FIRST_PACKET_EVERY_S
+		int res;
+		if(!__header && !__packet) {
+			res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
+			__header = *header;
+			__packet = *packet;
+		} else {
+			sleep(REPLICATE_FIRST_PACKET_EVERY_S);
+			*header = __header;
+			*packet = __packet;
+			res = 1;
+		}
+		u_int64_t time_us = getTimeUS();
+		(*header)->ts.tv_sec = time_us / 1000000ull;
+		(*header)->ts.tv_usec = time_us % 1000000ull;
+	#else
 	int res = ::pcap_next_ex(pcapHandle, header, (const u_char**)packet);
+	#endif
 	if(!packet && res != -2) {
 		if(VERBOSE) {
 			u_int64_t actTime = getTimeMS();

@@ -12190,8 +12190,7 @@ Calltable::destroyCallsIfPcapsClosed() {
 		size_t size = this->calls_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *call = this->calls_deletequeue[i];
-			if(currTimeS > call->stopProcessingAt_s &&
-			   currTimeS - call->stopProcessingAt_s >= (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+			if(currTimeS >= call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 				if(call->isPcapsClose() && call->isEmptyChunkBuffersCount()) {
 					call->destroyCall();
 					delete call;
@@ -12216,8 +12215,7 @@ Calltable::destroyRegistersIfPcapsClosed() {
 		size_t size = this->registers_deletequeue.size();
 		for(size_t i = 0; i < size;) {
 			Call *reg = this->registers_deletequeue[i];
-			if(currTimeS > reg->stopProcessingAt_s &&
-			   currTimeS - reg->stopProcessingAt_s >= (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+			if(currTimeS >= reg->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 				if(!reg->isPcapsClose()) {
 					if(opt_enable_diameter) {
 						reg->moveDiameterPacketsToPcap();
@@ -12644,6 +12642,13 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	       pcap_t *handle, int dlt, int sensorId, int8_t ci) {
 	Call *newcall = new FILE_LINE(1011) Call(call_type, call_id, call_id_len, call_id_alternative, time_us);
 	newcall->in_preprocess_queue_before_process_packet = is_enable_packetbuffer() ? 1 : 0;
+	#if DEBUG_PREPROCESS_QUEUE
+		if(newcall->in_preprocess_queue_before_process_packet) {
+			cout << " *** ** in_preprocess_queue_before_process_packet (0) : "
+			     << call_id << " : "
+			     << newcall->in_preprocess_queue_before_process_packet << endl;
+		}
+	#endif
 	newcall->in_preprocess_queue_before_process_packet_at[0] = TIME_US_TO_S(time_us);
 	newcall->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
 
@@ -13074,8 +13079,8 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 							/*
 							cout << " *** set stop processing" << endl;
 							*/
-						} else if(currTimeS <= call->stopProcessingAt_s ||
-							  currTimeS - call->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+						} else if(currTimeS < call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5) ||
+							  TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60) {
 							closeCall = false;
 							++rejectedCalls_count;
 							++stat.rejected_wait_for_stop_processing;
@@ -13348,8 +13353,7 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 					reg->stopProcessing = true;
 					reg->stopProcessingAt_s = currTimeS;
 					closeReg = false;
-				} else if(currTimeS <= reg->stopProcessingAt_s ||
-					  currTimeS - reg->stopProcessingAt_s < (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
+				} else if(currTimeS < reg->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5)) {
 					closeReg = false;
 				}
 			}
