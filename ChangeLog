@@ -1,3 +1,8 @@
+31.7.5  22.06.2023
+==================
+- fix race in handle_dtmf leading to crash [VS-1456]
+
+
 31.7.4  22.06.2023
 ==================
 - fix some cleaning ssl issues [VS-1452]
