@@ -1,3 +1,10 @@
+31.7.4  22.06.2023
+==================
+- fix some cleaning ssl issues [VS-1452]
+- fix live sniffer saving for older databases [VS-1454]
+- fix issue when there are same call-id INVITEs without any responses [VS-1440]
+
+
 31.7.3  09.06.2023
 ==================
 - cdr trends (special aggregation table) now stores src/dst MOS score with respect of the direction. MOS will now represents sender or receiver only and not MIN(src/dst)
