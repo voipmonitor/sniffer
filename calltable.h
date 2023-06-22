@@ -1335,7 +1335,9 @@ public:
 	time_t destroy_call_at;
 	time_t destroy_call_at_bye;
 	time_t destroy_call_at_bye_confirmed;
+	
 	std::queue <s_dtmf> dtmf_history;
+	volatile int dtmf_sync;
 	
 	u_int64_t first_invite_time_us;
 	u_int64_t first_response_100_time_us;

@@ -677,6 +677,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	for(unsigned int i = 0; i < sizeof(dtmfflag2) / sizeof(dtmfflag2[0]); i++) {
 		dtmfflag2[i] = 0;
 	}
+	dtmf_sync = 0;
 	silencerecording = 0;
 	recordingpausedby182 = 0;
 	save_energylevels = false;
@@ -13611,6 +13612,8 @@ void Call::saveregister(struct timeval *currtime) {
 
 void
 Call::handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e_type dtmf_type) {
+ 
+	__SYNC_LOCK_USLEEP(dtmf_sync, 50);
 
 	if(enable_save_dtmf_db) {
 		s_dtmf q;
@@ -13696,6 +13699,9 @@ Call::handle_dtmf(char dtmf, double dtmf_time, vmIP saddr, vmIP daddr, s_dtmf::e
 			}       
 		}       
 	}
+	
+	__SYNC_UNLOCK(dtmf_sync);
+	
 }
 
 void
