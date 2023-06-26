@@ -549,7 +549,7 @@ inline void save_packet_sql(Call *call, packet_s_process *packetS, int uid,
 
 	// construct query and push it to mysqlquery queue
 	char query_buff[20000];
-	char livepacket_table[20];
+	char livepacket_table[50];
 	snprintf(livepacket_table, sizeof(livepacket_table), "livepacket_%i", uid);
 	snprintf(query_buff, sizeof(query_buff),
 		"INSERT INTO %s"
