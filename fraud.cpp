@@ -1186,7 +1186,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 						} else if(parent->typeBy == FraudAlert::_typeBy_source_number) {
 							alertInfo->set_number(_li, this->getDescr().c_str(), 
 									      callInfo->caller_number, callInfo->country_code_caller_number.c_str(),
-									      _actCalls); 
+									      _actCalls, callInfo->caller_domain);
 						} else {
 							alertInfo->set_summary(_li, this->getDescr().c_str(),
 									       _actCalls);
@@ -1494,13 +1494,14 @@ void FraudAlertInfo_rcc::set_ip(FraudAlert::eLocalInternational localInternation
 void FraudAlertInfo_rcc::set_number(FraudAlert::eLocalInternational localInternational,
 				    const char *timeperiod_name,
 				    string number, const char *number_location_code,
-				    unsigned int concurentCalls) {
+				    unsigned int concurentCalls, string domain) {
 	this->localInternational = localInternational;
 	if(timeperiod_name) {
 		this->timeperiod_name = timeperiod_name;
 	}
 	this->type_by = FraudAlert::_typeBy_source_number;
 	this->number = number;
+	this->domain = domain;
 	this->number_location_code = number_location_code;
 	this->concurentCalls = concurentCalls;
 }
@@ -1577,6 +1578,7 @@ string FraudAlertInfo_rcc::getJson() {
 		break;
 	case FraudAlert::_typeBy_source_number:
 		json.add("number", number);
+		json.add("domain", domain);
 		json.add("number_location_code", number_location_code);
 		json.add("number_country", countryCodes->getNameCountry(number_location_code.c_str()));
 		json.add("number_continent", countryCodes->getNameContinent(number_location_code.c_str()));
@@ -1659,9 +1661,11 @@ void FraudAlertInfo_chc::set(const char *number,
 			     vmIP ip_old,
 			     const char *location_code_old,
 			     const char *ua_old,
-			     vmIP ip_dst) {
+			     vmIP ip_dst,
+			     bool use_domain) {
 	this->number = number;
-	if(domain) this->domain = domain;
+	if(use_domain) this->domain = domain;
+	this->dom4res = domain;
 	this->typeLocation = typeLocation;
 	this->ip = ip;
 	this->location_code = location_code;
@@ -1677,6 +1681,7 @@ string FraudAlertInfo_chc::getJson() {
 	this->setAlertJsonBase(&json);
 	json.add("number", number);
 	json.add("domain", domain);
+	json.add("dom4res", dom4res);
 	json.add("type_location", 
 		 typeLocation == FraudAlert::_typeLocation_country ? 
 		  "country" : 
@@ -1738,7 +1743,7 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7009) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
-						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       callInfo->caller_domain.c_str(),
 						       _typeLocation_country,
 						       callInfo->caller_ip,
 						       callInfo->country_code_caller_ip.c_str(),
@@ -1746,13 +1751,14 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						       oldIp,
 						       oldCountry.c_str(),
 						       oldUa.c_str(),
-						       0);
+						       0,
+						       useDomain ? true : false);
 					this->evAlert(alertInfo);
 				}
 				if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7010) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
-						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       callInfo->caller_domain.c_str(),
 						       _typeLocation_continent,
 						       callInfo->caller_ip,
 						       callInfo->continent_code_caller_ip.c_str(),
@@ -1760,7 +1766,8 @@ void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
 						       oldIp,
 						       oldContinent.c_str(),
 						       oldUa.c_str(),
-						       0);
+						       0,
+						       useDomain ? true : false);
 					this->evAlert(alertInfo);
 				}
 			}
@@ -1807,7 +1814,7 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 				if(this->typeChangeLocation == _typeLocation_country && diffCountry) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7011) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
-						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       callInfo->caller_domain.c_str(),
 						       _typeLocation_country,
 						       callInfo->caller_ip,
 						       callInfo->country_code_caller_ip.c_str(),
@@ -1815,13 +1822,14 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						       oldIp,
 						       oldCountry.c_str(),
 						       oldUa.c_str(),
-						       callInfo->called_ip);
+						       callInfo->called_ip,
+						       useDomain ? true : false);
 					this->evAlert(alertInfo);
 				}
 				if(this->typeChangeLocation == _typeLocation_continent && diffContinent) {
 					FraudAlertInfo_chc *alertInfo = new FILE_LINE(7012) FraudAlertInfo_chc(this);
 					alertInfo->set(callInfo->caller_number.c_str(),
-						       useDomain ? callInfo->caller_domain.c_str() : NULL,
+						       callInfo->caller_domain.c_str(),
 						       _typeLocation_continent,
 						       callInfo->caller_ip,
 						       callInfo->continent_code_caller_ip.c_str(),
@@ -1829,7 +1837,8 @@ void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
 						       oldIp,
 						       oldContinent.c_str(),
 						       oldUa.c_str(),
-						       callInfo->called_ip);
+						       callInfo->called_ip,
+						       useDomain ? true : false);
 					this->evAlert(alertInfo);
 				}
 			}
@@ -1852,11 +1861,15 @@ FraudAlertInfo_d::FraudAlertInfo_d(FraudAlert *alert)
 void FraudAlertInfo_d::set(const char *src_number, 
 			   const char *dst_number, 
 			   const char *country_code, 
-			   const char *continent_code) {
+			   const char *continent_code,
+			   const char *src_domain,
+			   const char *dst_domain) {
 	this->src_number = src_number;
 	this->dst_number = dst_number;
 	this->country_code = country_code;
 	this->continent_code = continent_code;
+	this->src_domain = src_domain;
+	this->dst_domain = dst_domain;
 }
 
 string FraudAlertInfo_d::getJson() {
@@ -1864,6 +1877,8 @@ string FraudAlertInfo_d::getJson() {
 	this->setAlertJsonBase(&json);
 	json.add("src_number", src_number);
 	json.add("dst_number", dst_number);
+	json.add("src_domain", src_domain);
+	json.add("dst_domain", dst_domain);
 	if(!country_code.empty()) {
 		json.add("country_code", country_code);
 		json.add("country_name", countryCodes->getNameCountry(country_code.c_str()));
@@ -1895,7 +1910,9 @@ void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
 			alertInfo->set(callInfo->caller_number.c_str(),
 				       callInfo->called_number.c_str(),
 				       callInfo->country_code_called_number.c_str(),
-				       callInfo->continent_code_called_number.c_str());
+				       callInfo->continent_code_called_number.c_str(),
+				       callInfo->caller_domain.c_str(),
+				       callInfo->called_domain.c_str());
 			this->evAlert(alertInfo);
 		}
 	}
@@ -2173,10 +2190,12 @@ void FraudAlertInfo_seq::set(vmIP ips, vmIP ipd,
 			     unsigned int count,
 			     const char *country_code_ips,
 			     const char *country_code_ipd,
-			     const char *country_code_number) {
+			     const char *country_code_number,
+			     const char *domain) {
 	this->ips = ips;
 	this->ipd = ipd;
 	this->number = number ? number : "";
+	this->domain = domain ? domain : "";
 	this->count = count;
 	this->country_code_number = country_code_number ? country_code_number : "";
 	this->country_code_ips = country_code_ips ? country_code_ips : "";
@@ -2207,6 +2226,7 @@ string FraudAlertInfo_seq::getJson() {
 		}
 	}
 	json.add("number", number);
+	json.add("domain", domain);
 	if(!country_code_number.empty()) {
 		json.add("country_code_number", country_code_number);
 		json.add("country_name_number", countryCodes->getNameCountry(country_code_number.c_str()));
@@ -2229,7 +2249,7 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 	   this->okDayHour(callInfo)) {
 		sIpNumber ipNumber(typeByIP != _typeByIP_dst ? callInfo->caller_ip : 0,
 				   typeByIP == _typeByIP_dst || typeByIP == _typeByIP_both ? callInfo->called_ip : 0,
-				   callInfo->called_number.c_str());
+				   callInfo->called_number.c_str(), callInfo->called_domain.c_str());
 		map<sIpNumber, u_int64_t>::iterator iter = count.find(ipNumber);
 		if(iter == count.end()) {
 			count[ipNumber] = 1;
@@ -2251,7 +2271,8 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 					       iter->second,
 					       callInfo->country_code_caller_ip.c_str(),
 					       callInfo->country_code_called_ip.c_str(),
-					       callInfo->country_code_called_number.c_str());
+					       callInfo->country_code_called_number.c_str(),
+					       iter->first.domain.c_str());
 				this->evAlert(alertInfo);
 			}
 		}
