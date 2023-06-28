@@ -791,7 +791,7 @@ public:
 	void set_number(FraudAlert::eLocalInternational localInternational,
 			const char *timeperiod_name,
 			string number, const char *number_location_code,
-			unsigned int concurentCalls, string domain);
+			unsigned int concurentCalls);
 	void set_rtp_stream(FraudAlert::eLocalInternational localInternational,
 			    const char *timeperiod_name,
 			    FraudAlert::eTypeBy type_by, d_item<vmIP> rtp_stream_ip,
@@ -811,7 +811,6 @@ private:
 	vmIP ips, ipd;
 	string ips_location_code, ipd_location_code;
 	string number;
-	string domain;
 	string number_location_code;
 	d_item<vmIP> rtp_stream_ip;
 	d_u_int32_t rtp_stream_id;
@@ -856,13 +855,11 @@ public:
 		 vmIP ip_old,
 		 const char *location_code_old,
 		 const char *ua_old,
-		 vmIP ip_dst,
-		 bool use_domain);
+		 vmIP ip_dst);
 	string getJson();
 private:
 	string number;
 	string domain;
-	string dom4res;
 	FraudAlert::eTypeLocation typeLocation;
 	vmIP ip;
 	vmIP ip_old;
@@ -1049,13 +1046,11 @@ public:
 		 unsigned int count,
 		 const char *country_code_ips,
 		 const char *country_code_ipd,
-		 const char *country_code_number,
-		 const char *domain);
+		 const char *country_code_number);
 	string getJson();
 private:
 	vmIP ips, ipd;
 	string number;
-	string domain;
 	unsigned int count;
 	string country_code_ips, country_code_ipd;
 	string country_code_number;
@@ -1064,11 +1059,10 @@ private:
 class FraudAlert_seq : public FraudAlert {
 private:
 	struct sIpNumber {
-		sIpNumber(vmIP ips = 0, vmIP ipd = 0, const char *number = NULL, const char *domain = NULL) {
+		sIpNumber(vmIP ips = 0, vmIP ipd = 0, const char *number = NULL) {
 			this->ips = ips;
 			this->ipd = ipd;
 			this->number = number ? number : "";
-			this->domain = domain ? domain : "";
 		}
 		bool operator < (const sIpNumber& other) const { 
 			return(this->ips < other.ips ? 1 : this->ips > other.ips ? 0 :
@@ -1077,7 +1071,6 @@ private:
 		}
 		vmIP ips, ipd;
 		string number;
-		string domain;
 	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
