@@ -3070,7 +3070,10 @@ double get_rtp_sum_cpu_usage(double *max) {
 	   num_threads_active > 0 && num_threads_max > 0) {
 		bool set = false;
 		double sum = 0;
-		for(int i = 0; i < num_threads_active; i++) {
+		lock_add_remove_rtp_threads();
+		int _num_threads_active = num_threads_active;
+		unlock_add_remove_rtp_threads();
+		for(int i = 0; i < _num_threads_active; i++) {
 			if(rtp_threads[i].threadId) {
 				if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
 					rtp_threads[i].threadPstatData[1] = rtp_threads[i].threadPstatData[0];
@@ -3103,7 +3106,10 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 		ostringstream outStr;
 		outStr << fixed;
 		int counter = 0;
-		for(int i = 0; i < num_threads_active; i++) {
+		lock_add_remove_rtp_threads();
+		int _num_threads_active = num_threads_active;
+		unlock_add_remove_rtp_threads();
+		for(int i = 0; i < _num_threads_active; i++) {
 			if(rtp_threads[i].threadId) {
 				if(callPstat) {
 					if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
