@@ -315,8 +315,14 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
 		if(debug) fprintf(stdout, "put: delivery < jb->next_delivery\n");
-		jb->chan->last_loss_burst++;
-		return resynch_jb(jb, data, ms, ts, now);
+		if(marker != 1) {
+			jb->chan->last_loss_burst++;
+		}
+		int rslt = resynch_jb(jb, data, ms, ts, now);
+		if(marker == 1) {
+			jb->rxcore = now - ts;
+		}
+		return(rslt);
 	}
 	
 	/* what if the delivery time is bigger than next + delay? Seems like a frame for the future.

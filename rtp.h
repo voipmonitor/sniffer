@@ -916,8 +916,8 @@ struct sStreamAnalysisData {
 			memset(this, 0, sizeof(*this));
 		}
 		u_int32_t counter;
-		u_int64_t time_real_us;
-		u_int64_t time_rtp_us;
+		int64_t time_real_us;
+		int64_t time_rtp_us;
 		u_int16_t seq;
 		int64_t delta_real_us;
 		int64_t delta_rtp_us;
