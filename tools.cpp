@@ -3932,7 +3932,7 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 				break;
 			}
 			i += 2;
-		} else if(i == 0 || data[i - 1] == '\n') {
+		} else if(i == 0 || data[i - 1] == '\n' || (data[i - 1] == '\r' && data[i] != '\n')) {
 			ppNode *node = getNode(data + i, datalen - i - 1, &namelength);
 			if(node && !node->isSetNode(contents)) {
 				ppContentItemX *contentItem = node->getPointerToItem(contents);
