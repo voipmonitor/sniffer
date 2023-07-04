@@ -92,6 +92,8 @@ __inline__ unsigned long long rdtsc(void)
 #define TIME_US_TO_DEC_MS(us) ((u_int32_t)((us) % 1000000ull / 1000ull))
 #define TIME_US_TO_DEC_US(us) ((u_int32_t)((us) % 1000000ull))
 
+#define TIME_DIFF_FIX_OVERFLOW(us1, us2) ((us1) > (us2) ? (us1) - (us2) : 0)
+
 inline double ts2double(unsigned int sec, unsigned int usec) {
 	return double((double)sec + (0.000001f * (double)usec));
 }

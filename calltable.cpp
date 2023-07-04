@@ -7502,7 +7502,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			RTP *rtp_i = rtp_stream_by_index(i);
 			double stime = TIME_US_TO_SF(this->first_packet_time_us);
 			double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
-			double diff = rtime - stime;
+			double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
 
 			SqlDb_row rtps;
 			rtps.setIgnoreCheckExistsField();
@@ -7727,7 +7727,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				SqlDb_row txt;
 				txt.setIgnoreCheckExistsField();
 				txt.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-				txt.add(iter->time - this->first_packet_time_us, "time");
+				txt.add(TIME_DIFF_FIX_OVERFLOW(iter->time, this->first_packet_time_us), "time");
 				txt.add(iter->type, "type");
 				txt.add(sqlEscapeString(iter->txt), "content");
 				if(existsColumns.cdr_txt_calldate) {
@@ -7845,12 +7845,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		if(_save_sip_history) {
 			vector<SqlDb_row> siphist_rows;
+			u_int64_t _first_packet_time_us = first_packet_time_us;
+			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
+				if(iterSiphistory->time_us < _first_packet_time_us) {
+					_first_packet_time_us = iterSiphistory->time_us;
+				}
+			}
 			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
 				bool enableMultiInsert = true;
 				SqlDb_row siphist;
 				siphist.setIgnoreCheckExistsField();
 				siphist.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
+				siphist.add(iterSiphistory->time_us - _first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
 					if(useSetId()) {
 						siphist.add_cb_string(iterSiphistory->SIPrequest, "SIPrequest_id", cSqlDbCodebook::_cb_sip_request);
@@ -8107,7 +8113,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			RTP *rtp_i = rtp_stream_by_index(i);
 			double stime = TIME_US_TO_SF(this->first_packet_time_us);
 			double rtime = TIME_US_TO_SF(rtp_i->first_packet_time_us);
-			double diff = rtime - stime;
+			double diff = TIME_DIFF_FIX_OVERFLOW(rtime, stime);
 			SqlDb_row rtps;
 			rtps.add(cdrID, "cdr_ID");
 			if(rtp_i->first_codec_() >= 0) {
@@ -8221,7 +8227,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(list<sTxt>::iterator iter = txt.begin(); iter != txt.end(); iter++) {
 				SqlDb_row txt;
 				txt.add(cdrID, "cdr_ID");
-				txt.add(iter->time - this->first_packet_time_us, "time");
+				txt.add(TIME_DIFF_FIX_OVERFLOW(iter->time, this->first_packet_time_us), "time");
 				txt.add(iter->type, "type");
 				txt.add(sqlEscapeString(iter->txt), "content");
 				if(existsColumns.cdr_txt_calldate) {
@@ -8267,10 +8273,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 
 		if(_save_sip_history) {
+			u_int64_t _first_packet_time_us = first_packet_time_us;
+			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
+				if(iterSiphistory->time_us < _first_packet_time_us) {
+					_first_packet_time_us = iterSiphistory->time_us;
+				}
+			}
 			for(list<Call::sSipHistory>::iterator iterSiphistory = c_branch->SIPhistory.begin(); iterSiphistory != c_branch->SIPhistory.end(); iterSiphistory++) {
 				SqlDb_row siphist;
 				siphist.add(cdrID, "cdr_ID");
-				siphist.add(iterSiphistory->time_us - first_packet_time_us, "time");
+				siphist.add(iterSiphistory->time_us - _first_packet_time_us, "time");
 				if(iterSiphistory->SIPrequest.length()) {
 					 siphist.add(dbData->getCbId(cSqlDbCodebook::_cb_sip_request, iterSiphistory->SIPrequest.c_str(), true), "SIPrequest_id");
 				}
