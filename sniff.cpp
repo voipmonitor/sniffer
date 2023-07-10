@@ -2783,49 +2783,85 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	return sdp_media_counter;
 }
 
-int get_value_stringkeyval2(const char *data, unsigned int data_len, const char *key, char *value, int unsigned len) {
-	unsigned long r, tag_len;
-	char *tmp = gettag(data, data_len, NULL,
-			   key, &tag_len);
-	//gettag removes CR LF but we need it
-	if(!tag_len) {
-		goto fail_exit;
-	} else {
-		//gettag remove trailing CR but we need it 
-		tag_len++;
-	}
-	if((r = (unsigned long)memmem(tmp, tag_len, ";", 1)) == 0 &&
-	   (r = (unsigned long)memmem(tmp, tag_len, CR_STR, 1)) == 0 &&
-	   (r = (unsigned long)memmem(tmp, tag_len, LF_STR, 1)) == 0) {
-		goto fail_exit;
-	}
-	memcpy(value, (void*)tmp, MIN((r - (unsigned long)tmp), len));
-	value[MIN(r - (unsigned long)tmp, len - 1)] = '\0';
-	return 0;
-fail_exit:
-	strcpy(value, "");
-	return 1;
-}
+struct sContactsPosLength {
+	const char *pos;
+	unsigned length;
+};
 
-int get_expires_from_contact(packet_s_process *packetS, const char *from, int *expires){
-	char *s;
-	unsigned long l;
-
-	if(packetS->sipDataLen < 8) return 1;
-
-	s = gettag_sip_from(packetS, from, "\nContact:", "\nm:", &l);
-	if(s) {
-		char tmp[128];
-		int res = get_value_stringkeyval2(s, l + 2, "expires=", tmp, sizeof(tmp));
-		if(res) {
-			// not found, try again in case there is more Contact headers
-			return get_expires_from_contact(packetS, s, expires);
+void get_expires_from_contact(packet_s_process *packetS, const char *from, int *expires, CallBranch *c_branch){
+	if(packetS->sipDataLen < 8) return;
+	sContactsPosLength contacts[20];
+	unsigned contacts_count = 0;
+	unsigned contacts_max = sizeof(contacts) / sizeof(contacts[0]);
+	while(contacts_count < contacts_max - 1) {
+		char *s;
+		unsigned long l;
+		s = gettag_sip_from(packetS, from, "\nContact:", "\nm:", &l);
+		if(s) {
+			const char *pos = s;
+			while(pos && contacts_count < contacts_max - 1) {
+				const char *sep = strnchr(pos, ',', l - (pos - s));
+				if(sep) {
+					contacts[contacts_count].pos = pos;
+					contacts[contacts_count].length = sep - pos;
+					++contacts_count;
+					pos = (sep - s) < (unsigned)(l - 1) ? sep + 1 : NULL;
+				} else {
+					contacts[contacts_count].pos = pos;
+					contacts[contacts_count].length = l - (pos - s);
+					++contacts_count;
+					pos = NULL;
+				}
+			}
+			from = s;
 		} else {
-			*expires = atoi(tmp);
-			return 0;
+			break;
 		}
-	} else {
-		return 1;
+	}
+	unsigned expires_int_max = 0;
+	bool expires_set = false;
+	if(contacts_count > 0) {
+		for(unsigned i = 0; i < contacts_count; i++) {
+			const char *expires_pos = strncasestr(contacts[i].pos, "expires=", contacts[i].length);
+			if(expires_pos) {
+				expires_pos += 8;
+				if((expires_pos - contacts[i].pos) < contacts[i].length - 1) {
+					unsigned expires_str_max = 10;
+					char expires_str[expires_str_max + 1];
+					unsigned expires_str_length = min(expires_str_max, contacts[i].length - (unsigned)(expires_pos - contacts[i].pos));
+					strncpy(expires_str, expires_pos, expires_str_length);
+					expires_str[expires_str_length] = 0;
+					unsigned expires_int = atoi(expires_str);
+					if(expires_int > 0) {
+						if(contacts_count == 1) {
+							*expires = expires_int;
+							expires_set = true;
+						} else if(c_branch) {
+							string contact_num;
+							string contact_domain;
+							parse_peername(contacts[i].pos, contacts[i].length,
+								       _peername, NULL,
+								       &contact_num,
+								       ppntt_contact, ppndt_contact);
+							parse_peername(contacts[i].pos, contacts[i].length,
+								       _domain, NULL,
+								       &contact_domain,
+								       ppntt_contact, ppndt_contact_domain);
+							if(contact_num == c_branch->contact_num &&
+							   contact_domain == c_branch->contact_domain) {
+								*expires = expires_int;
+								expires_set = true;
+							}
+						} else if(expires_int > expires_int_max) {
+							expires_int_max = expires_int;
+						}
+					}
+				}
+			}
+		}
+	}
+	if(!expires_set && expires_int_max > 0) {
+		*expires = expires_int_max;
 	}
 }
 
@@ -3551,7 +3587,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 				s[l] = c;
 			}
 			// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-			get_expires_from_contact(packetS, NULL, &call->reg.register_expires);
+			get_expires_from_contact(packetS, NULL, &call->reg.register_expires, NULL);
 /*
 			syslog(LOG_NOTICE, "contact_num[%s] contact_domain[%s] from_num[%s] from_name[%s] from_domain[%s] digest_username[%s] digest_realm[%s] expires[%d]\n", 
 				call->contact_num, call->contact_domain, call->caller, call->callername, call->caller_domain, 
@@ -6026,7 +6062,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 				s[l] = c;
 			}
 			// the expire can be also in contact header Contact: 79438652 <sip:6600006@192.168.10.202:1026>;expires=240
-			get_expires_from_contact(packetS, NULL, &call->reg.register_expires);
+			get_expires_from_contact(packetS, NULL, &call->reg.register_expires, c_branch);
 		}
 		if(opt_enable_fraud && isFraudReady()) {
 			fraudConnectCall(call, packetS->getTimeval());
