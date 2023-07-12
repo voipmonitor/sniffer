@@ -1740,7 +1740,7 @@ void Registers::evTimer(u_int32_t time_s, int typeTimer) {
 eRegisterState convRegisterState(Call *call) {
 	CallBranch *c_branch = call->branch_main();
 	return(call->reg.msgcount <= 1 ||
-	       c_branch->lastSIPresponseNum == 401 || c_branch->lastSIPresponseNum == 403 || c_branch->lastSIPresponseNum == 404 ?
+	       c_branch->lastSIPresponseNum == 401 || c_branch->lastSIPresponseNum == 403 || c_branch->lastSIPresponseNum == 404 || c_branch->lastSIPresponseNum == 699 ?
 		rs_Failed :
 	       call->reg.regstate == rs_OK && !call->reg.register_expires ?
 		rs_Unregister :
