@@ -525,6 +525,7 @@ void cSnifferServerConnection::cp_service() {
 	}
 	if(jsonPasswordAesKeys.getValue("restore").empty() &&
 	   snifferServerServices.existsService(sensor_id, sensor_string.c_str())) {
+		sleep(5);
 		string error = "client with sensor_id " + intToString(sensor_id) + " is already connected, refusing connection";
 		socket->writeBlock(error);
 		socket->setError(error.c_str());
@@ -702,7 +703,7 @@ void cSnifferServerConnection::cp_service() {
 				   pingResponse != "pong") {
 					if(SS_VERBOSE().connect_info) {
 						ostringstream verbstr;
-						verbstr << "SNIFFER SERVICE DISCONNECT: "
+						verbstr << "SNIFFER SERVICE " << (pingResponse == "stop" ? "STOPPED" : "DISCONNECT") << ": "
 							<< "sensor_id: " << sensor_id;
 						if(!sensor_string.empty()) {
 							verbstr << ", " << "sensor_string: " << sensor_string;
@@ -1740,6 +1741,7 @@ cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions,
 
 void snifferClientStop(cSnifferClientService *snifferClientService) {
 	snifferClientService->stopResponseSender();
+	snifferClientService->receive_stop();
 	if(snifferClientService) {
 		delete snifferClientService;
 	}

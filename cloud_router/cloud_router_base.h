@@ -630,6 +630,7 @@ protected:
 	pthread_t receive_thread;
 	bool start_ok;
 	bool use_encode_data;
+	volatile u_int8_t send_stop;
 	map<cSocket::eSocketError, string> errorTypeStrings;
 };
 

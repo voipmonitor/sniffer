@@ -1393,6 +1393,7 @@ cReceiver::cReceiver() {
 	receive_socket = NULL;
 	receive_thread = 0;
 	start_ok = false;
+	send_stop = 0;
 	use_encode_data = false;
 }
 
@@ -1410,6 +1411,10 @@ bool cReceiver::receive_start(string host, u_int16_t port) {
 
 void cReceiver::receive_stop() {
 	if(receive_socket) {
+		send_stop = 1;
+		for(int i = 0; i < (5 + 2) * 10 && send_stop < 2; i++) {
+			usleep(100000);
+		}
 		receive_socket->setTerminate();
 		receive_socket->close();
 		if(receive_thread) {
@@ -1454,7 +1459,7 @@ void *cReceiver::receive_process(void *arg) {
 }
 
 void cReceiver::receive_process() {
-	while(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
+	while(!(receive_socket && receive_socket->isTerminate())) {
 		if(receive_process_loop_begin()) {
 			start_ok = true;
 			u_char *data;
@@ -1464,7 +1469,11 @@ void cReceiver::receive_process() {
 				if(string((char*)data, dataLen) != "ping") {
 					evData(data, dataLen);
 				} else {
-					receive_socket->writeBlock("pong");
+					receive_socket->writeBlock(send_stop ? "stop" : "pong");
+					if(send_stop) {
+						send_stop = 2;
+						break;
+					}
 				}
 			} else if(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
 				receive_socket->setError("timeout");

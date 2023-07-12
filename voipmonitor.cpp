@@ -2611,6 +2611,26 @@ void start_cloud_receiver() {
 	}
 }
 
+void stop_cloud_or_client() {
+	if(isCloud()) {
+		stop_cloud_receiver();
+	} else if(is_client()) {
+		snifferClientStop(snifferClientService);
+		snifferClientService = NULL;
+		if(opt_next_server_connections > 0) {
+			for(int i = 0; i < opt_next_server_connections; i++) {
+				snifferClientStop(snifferClientNextServices[i]);
+			}
+			delete [] snifferClientNextServices;
+			snifferClientNextServices = NULL;
+		}
+		if(snifferClientService_charts_cache) {
+			snifferClientStop(snifferClientService_charts_cache);
+			snifferClientService_charts_cache = NULL;
+		}
+	}
+}
+
 void *scanpcapdir( void */*dummy*/ ) {
  
 #ifndef FREEBSD
@@ -4134,22 +4154,8 @@ int main(int argc, char *argv[]) {
 	
 	}
 	
-	if(isCloud()) {
-		stop_cloud_receiver();
-	} else if(is_client()) {
-		snifferClientStop(snifferClientService);
-		snifferClientService = NULL;
-		if(opt_next_server_connections > 0) {
-			for(int i = 0; i < opt_next_server_connections; i++) {
-				snifferClientStop(snifferClientNextServices[i]);
-			}
-			delete [] snifferClientNextServices;
-			snifferClientNextServices = NULL;
-		}
-		if(snifferClientService_charts_cache) {
-			snifferClientStop(snifferClientService_charts_cache);
-			snifferClientService_charts_cache = NULL;
-		}
+	if(isCloud() || is_client()) {
+		stop_cloud_or_client();
 	} else if(is_server() && !is_read_from_file_simple()) {
 		snifferServerStop();
 	}
