@@ -787,7 +787,7 @@ tls13_hkdf_expand_label_context(int md, const StringInfo *secret,
 
     if (err) {
         ssl_debug_printf("%s failed  %d: %s\n", G_STRFUNC, md, gcry_strerror(err));
-        delete [] out;
+        delete [] *out;
         *out = NULL;
         return FALSE;
     }
