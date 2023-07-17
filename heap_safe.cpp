@@ -11,9 +11,8 @@
 #include <malloc.h>
 #endif
 
-//#ifdef HEAP_CHUNK_ENABLE
 #include "heap_chunk.h"
-//#endif
+
 
 extern sVerbose sverb;
 extern int opt_abort_if_alloc_gt_gb;
@@ -40,50 +39,50 @@ sFileLine AllocFileLines[] = {
 };
 
 
-#ifdef HEAP_CHUNK_ENABLE
-extern cHeap *heap_vm;
-extern bool heap_vm_active;
-extern size_t heap_vm_size_call;
-extern size_t heap_vm_size_packetbuffer;
+#if SEPARATE_HEAP_FOR_HUGETABLE
+extern cHeap *heap_vm_hp;
+extern bool heap_vm_hp_active;
+extern size_t heap_vm_hp_size_call;
+extern size_t heap_vm_hp_size_packetbuffer;
 
 static unsigned heap_vm_shift = 4;
-#endif //HEAP_CHUNK_ENABLE
+#endif //SEPARATE_HEAP_FOR_HUGETABLE
 
 
 inline void *_heapsafe_alloc(size_t sizeOfObject) {
-	#ifdef HEAP_CHUNK_ENABLE
-	if(heap_vm_active && 
-	   (sizeOfObject == heap_vm_size_call || sizeOfObject == heap_vm_size_packetbuffer)) {
+	#if SEPARATE_HEAP_FOR_HUGETABLE
+	if(heap_vm_hp_active && 
+	   (sizeOfObject == heap_vm_hp_size_call || sizeOfObject == heap_vm_hp_size_packetbuffer)) {
 		u_int16_t heapItemIndex;
-		void *ptr = heap_vm->MAlloc(sizeOfObject + heap_vm_shift, &heapItemIndex);
+		void *ptr = heap_vm_hp->MAlloc(sizeOfObject + heap_vm_shift, &heapItemIndex);
 		if(ptr) {
 			*(u_int16_t*)ptr = heapItemIndex;
 			return((char*)ptr + heap_vm_shift);
 		}
 	}
-	#endif //HEAP_CHUNK_ENABLE
+	#endif //SEPARATE_HEAP_FOR_HUGETABLE
 	return(malloc(sizeOfObject));
 }
  
 inline void _heapsafe_free(void *pointerToObject) {
-	#ifdef HEAP_CHUNK_ENABLE
-	if(heap_vm_active && (char*)pointerToObject > heap_vm->getMinPtr()) {
+	#if SEPARATE_HEAP_FOR_HUGETABLE
+	if(heap_vm_hp_active && (char*)pointerToObject > heap_vm_hp->getMinPtr()) {
 		char *_pointerToObject = (char*)pointerToObject - heap_vm_shift;
-		if(heap_vm->Free(_pointerToObject, *(u_int16_t*)_pointerToObject)) {
+		if(heap_vm_hp->Free(_pointerToObject, *(u_int16_t*)_pointerToObject)) {
 			return;
 		}
 	}
-	#endif //HEAP_CHUNK_ENABLE
+	#endif //SEPARATE_HEAP_FOR_HUGETABLE
 	free(pointerToObject);
 }
 
 inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {
-	#ifdef HEAP_CHUNK_ENABLE
-	if(heap_vm_active && (char*)pointerToObject > heap_vm->getMinPtr()) {
+	#if SEPARATE_HEAP_FOR_HUGETABLE
+	if(heap_vm_hp_active && (char*)pointerToObject > heap_vm_hp->getMinPtr()) {
 		_heapsafe_free(pointerToObject);
 		return(_heapsafe_alloc(sizeOfObject));
 	}
-	#endif //HEAP_CHUNK_ENABLE
+	#endif //SEPARATE_HEAP_FOR_HUGETABLE
 	return(realloc(pointerToObject, sizeOfObject));
 }
  

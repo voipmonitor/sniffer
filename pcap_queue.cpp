@@ -2817,17 +2817,28 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	}
 	outStrStat << "]MB ";
 	#endif
-	#ifdef HEAP_CHUNK_ENABLE
-	extern cHeap *heap_vm;
-	if(heap_vm) {
-		u_int64_t hugepages_vm_heap_size = heap_vm->getSumSize();
+	#if SEPARATE_HEAP_FOR_HUGETABLE
+	extern cHeap *heap_vm_hp;
+	if(heap_vm_hp) {
+		u_int64_t hugepages_vm_heap_size = heap_vm_hp->getSumSize();
 		if(hugepages_vm_heap_size) {
-			outStrStat << "HPSH["
-				   << setprecision(0) << (double)hugepages_vm_heap_size/1024/1024
+			outStrStat << "HEAP_HUGEPAGE["
+				   << setprecision(0) << (double)hugepages_vm_heap_size/(1024*1024)
 				   << "]MB ";
 		}
 	}
-	#endif //HEAP_CHUNK_ENABLE
+	#endif //SEPARATE_HEAP_FOR_HUGETABLE
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+	extern cHeap *heap_hashtable;
+	if(heap_hashtable) {
+		u_int64_t hashtable_heap_size = heap_hashtable->getSumSize();
+		u_int64_t hashtable_alloc_size = heap_hashtable->getAllocSize();
+		outStrStat << "HEAP_HASHTABLE["
+			   << setprecision(0) << (double)hashtable_alloc_size/(1024*1024) << "/"
+			   << setprecision(0) << (double)hashtable_heap_size/(1024*1024)
+			   << "]MB ";
+	}
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
 	//Get load average string
 	outStrStat << getLoadAvgStr() << " ";
 	map<string, pair<string, u_int64_t> > counters;

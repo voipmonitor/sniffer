@@ -393,14 +393,14 @@ static void stat_hp();
 void alloc_test_1() {
 	stat_hp();
 	unsigned s = 1000000;
-	//char *p = (char*)heap_vm->MAlloc(s);
+	//char *p = (char*)heap_vm_hp->MAlloc(s);
 	char *p = new char[s];
 	cout << "** alloc " << hex << (long)p << dec << endl;
 	stat_hp();
 	memset(p, 1, s);
 	cout << "** memset" << endl;
 	stat_hp();
-	//heap_vm->Free(p);
+	//heap_vm_hp->Free(p);
 	delete [] p;
 	cout << "** free" << endl;
 	stat_hp();
@@ -411,7 +411,7 @@ void *alloc_test_2t(void *arg) {
 	unsigned s = 1000000;
 	char **p = new char*[c];
 	for(unsigned i = 0; i < c; i++) {
-		//p[i] = (char*)heap_vm->MAlloc(s);
+		//p[i] = (char*)heap_vm_hp->MAlloc(s);
 		p[i] = new char[(s / 2) + (rand() % (s / 2))];
 	}
 	*(int*)arg = 1;
@@ -419,14 +419,14 @@ void *alloc_test_2t(void *arg) {
 	for(unsigned i = 0; i < c; i++) {
 		unsigned ii = rand() % c;
 		if(p[ii]) {
-			//heap_vm->Free(p[ii]);
+			//heap_vm_hp->Free(p[ii]);
 			delete p[ii];
 			p[ii] = NULL;
 		}
 	}
 	for(unsigned i = 0; i < c; i++) {
 		if(p[i]) {
-			//heap_vm->Free(p[i]);
+			//heap_vm_hp->Free(p[i]);
 			delete p[i];
 		}
 	}

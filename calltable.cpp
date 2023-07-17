@@ -65,6 +65,11 @@
 #include "separate_processing.h"
 #include "ssl_dssl.h"
 #include "diameter.h"
+#include "heap_chunk.h"
+
+#if HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif
 
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
@@ -11152,12 +11157,92 @@ Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, Call* call, int isc
 
 #else
 
+inline node_call_rtp *create_node_call() {
+	node_call_rtp *node;
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+		extern int opt_hashtable_heap_size;
+		extern cHeap *heap_hashtable;
+		if(opt_hashtable_heap_size) {
+			node = (node_call_rtp*)heap_hashtable->MAlloc(sizeof(node_call_rtp));
+		} else {
+			#if HAVE_LIBJEMALLOC
+				extern unsigned arena_index_hashtable;
+				node = (node_call_rtp*)mallocx(sizeof(node_call_rtp), MALLOCX_ARENA(arena_index_hashtable));
+			#else
+				node = new FILE_LINE(0) node_call_rtp;
+			#endif
+		}
+	#else
+		node = new FILE_LINE(0) node_call_rtp;
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
+	return(node);
+}
+
+inline void destroy_node_call(node_call_rtp *node) {
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+		extern int opt_hashtable_heap_size;
+		extern cHeap *heap_hashtable;
+		if(opt_hashtable_heap_size) {
+			heap_hashtable->Free(node);
+		} else {
+			#if HAVE_LIBJEMALLOC
+				extern unsigned arena_index_hashtable;
+				dallocx(node, MALLOCX_ARENA(arena_index_hashtable));
+			#else
+				delete node;
+			#endif
+		}
+	#else
+		delete node;
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
+}
+
+inline node_call_rtp_ip_port *create_node() {
+	node_call_rtp_ip_port *node;
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+		extern int opt_hashtable_heap_size;
+		extern cHeap *heap_hashtable;
+		if(opt_hashtable_heap_size) {
+			node = (node_call_rtp_ip_port*)heap_hashtable->MAlloc(sizeof(node_call_rtp_ip_port));
+		} else {
+			#if HAVE_LIBJEMALLOC
+				extern unsigned arena_index_hashtable;
+				node = (node_call_rtp_ip_port*)mallocx(sizeof(node_call_rtp_ip_port), MALLOCX_ARENA(arena_index_hashtable));
+			#else
+				node = new FILE_LINE(0) node_call_rtp_ip_port;
+			#endif
+		}
+	#else
+		node = new FILE_LINE(0) node_call_rtp_ip_port;
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
+	return(node);
+}
+
+inline void destroy_node(node_call_rtp_ip_port *node) {
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+		extern int opt_hashtable_heap_size;
+		extern cHeap *heap_hashtable;
+		if(opt_hashtable_heap_size) {
+			heap_hashtable->Free(node);
+		} else {
+			#if HAVE_LIBJEMALLOC
+				extern unsigned arena_index_hashtable;
+				dallocx(node, MALLOCX_ARENA(arena_index_hashtable));
+			#else
+				delete node;
+			#endif
+		}
+	#else
+		delete node;
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
+}
+
 inline node_call_rtp *insert_node_call(node_call_rtp *&begin, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags *sdp_flags) {
 	__SYNC_INC(c_branch->rtp_ip_port_counter);
 	#if CHECK_HASHTABLE_FOR_ALL_CALLS
 	__SYNC_INC(c_branch->rtp_ip_port_counter_add);
 	#endif
-	node_call_rtp *node_new = new FILE_LINE(0) node_call_rtp;
+	node_call_rtp *node_new = create_node_call();
 	node_new->next = begin;
 	node_new->c_branch = c_branch;
 	node_new->iscaller = iscaller;
@@ -11187,7 +11272,7 @@ inline node_call_rtp *delete_node_call(node_call_rtp *&begin, node_call_rtp *nod
 		begin = next;
 	}
 	__SYNC_DEC(node->c_branch->rtp_ip_port_counter);
-	delete node;
+	destroy_node_call(node);
 	return(next);
 }
 
@@ -11198,7 +11283,7 @@ inline node_call_rtp_ip_port *delete_node(node_call_rtp_ip_port *&begin, node_ca
 	} else {
 		begin = node->next;
 	}
-	delete node;
+	destroy_node(node);
 	return(next);
 }
 
@@ -11286,7 +11371,7 @@ void Calltable::_hashAdd(vmIP addr, vmPort port, long int time_s, CallBranch *c_
 
 	// addr / port combination not found - add it to hash at first position
 
-	node = new FILE_LINE(1009) node_call_rtp_ip_port;
+	node = create_node();
 	node->addr = addr;
 	node->port = port;
 	node->next = calls_hash[h];
@@ -12898,7 +12983,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
 		for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
-			map<string, Call*> *_calls_listMAP;
+			map<string, Call*> *_calls_listMAP = NULL;
 			list<Call*>::iterator callIT1;
 			map<string, Call*>::iterator callMAPIT1;
 			map<sStreamIds2, Call*>::iterator callMAPIT2;

@@ -105,6 +105,10 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
+#if HAVE_LIBJEMALLOC
+#include <jemalloc/jemalloc.h>
+#endif
+
 #ifndef FREEBSD
 #define BACKTRACE 1
 #endif
@@ -1321,6 +1325,9 @@ bool useIPv6 = false;
 long int runAt;
 
 cLogBuffer *logBuffer;
+
+int opt_hashtable_heap_size = 0;
+
 bool opt_hugepages_anon = false;
 int opt_hugepages_max = 0;
 int opt_hugepages_overcommit_max = 0;
@@ -3200,11 +3207,11 @@ bool is_set_gui_params() {
 }
 
 
-#ifdef HEAP_CHUNK_ENABLE
+#if SEPARATE_HEAP_FOR_HUGETABLE
 
-class cHeapVM : public cHeap {
+class cHeap_VM_HP : public cHeap {
 public:
-	cHeapVM();
+	cHeap_VM_HP();
 	bool setActive();
 protected:
 	void *initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve);
@@ -3217,25 +3224,25 @@ private:
 };
 
 
-cHeapVM *heap_vm;
-bool heap_vm_active;
-size_t heap_vm_size_call;
-size_t heap_vm_size_packetbuffer;
+cHeap_VM_HP *heap_vm_hp;
+bool heap_vm_hp_active;
+size_t heap_vm_hp_size_call;
+size_t heap_vm_hp_size_packetbuffer;
 
 
-cHeapVM::cHeapVM() {
+cHeap_VM_HP::cHeap_VM_HP() {
 	hugepage_fd = -1;
 	hugepage_size = 0;
 }
 
-bool cHeapVM::setActive() {
+bool cHeap_VM_HP::setActive() {
 	if(initHugepages()) {
 		return(cHeap::setActive());
 	}
 	return(false);
 }
 
-void *cHeapVM::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
+void *cHeap_VM_HP::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
 	size_t _size = 512 * 1024 * 1024;
 	size_t _size_reserve = 1 * 2048 * 1024;
 	_size += _size_reserve;
@@ -3253,16 +3260,62 @@ void *cHeapVM::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
 	return(NULL);
 }
 
-void cHeapVM::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
+void cHeap_VM_HP::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
 	munmap_hugepage(ptr, size + size_reserve);
 	sum_size -= size + size_reserve;
 }
 
-bool cHeapVM::initHugepages() {
+bool cHeap_VM_HP::initHugepages() {
 	return(init_hugepages(&hugepage_fd, &hugepage_size));
 }
 
-#endif //HEAP_CHUNK_ENABLE
+#endif //SEPARATE_HEAP_FOR_HUGETABLE
+
+
+#if SEPARATE_HEAP_FOR_HASHTABLE
+
+class cHeap_HASHTABLE : public cHeap {
+public:
+	cHeap_HASHTABLE(unsigned size_mb);
+protected:
+	void *initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve);
+	void termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve);
+private:
+	unsigned size_mb;
+};
+
+cHeap_HASHTABLE *heap_hashtable;
+
+cHeap_HASHTABLE::cHeap_HASHTABLE(unsigned size_mb) {
+	this->size_mb = size_mb;
+}
+
+void *cHeap_HASHTABLE::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
+	size_t _size = size_mb * 1024 * 1024;
+	size_t _size_reserve = 1 * 1024 * 1024;
+	_size += _size_reserve;
+	void *ptr = calloc(1, _size);
+	if(ptr) {
+		*size = _size;
+		*size_reserve = _size_reserve;
+		sum_size += _size + _size_reserve;
+		return(ptr);
+	}
+	return(NULL);
+}
+
+void cHeap_HASHTABLE::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
+	free(ptr);
+	sum_size -= size +size_reserve;
+}
+
+#if HAVE_LIBJEMALLOC
+
+unsigned arena_index_hashtable;
+
+#endif //HAVE_LIBJEMALLOC
+
+#endif //SEPARATE_HEAP_FOR_HASHTABLE
 
 
 int main(int argc, char *argv[]) {
@@ -3959,21 +4012,36 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(opt_hugepages_second_heap) {
-		#ifdef HEAP_CHUNK_ENABLE
-		heap_vm = new cHeapVM;
-		if(heap_vm->setActive()) {
-			heap_vm_active = true;
+		#if SEPARATE_HEAP_FOR_HUGETABLE
+		heap_vm_hp = new cHeap_VM_HP;
+		if(heap_vm_hp->setActive()) {
+			heap_vm_hp_active = true;
 			if(opt_hugepages_second_heap == 1 || opt_hugepages_second_heap == 2) {
-				heap_vm_size_call = sizeof(Call);
+				heap_vm_hp_size_call = sizeof(Call);
 			}
 			if(opt_hugepages_second_heap == 1 || opt_hugepages_second_heap == 3) {
-				heap_vm_size_packetbuffer = opt_pcap_queue_block_max_size;
+				heap_vm_hp_size_packetbuffer = opt_pcap_queue_block_max_size;
 			}
 		}
 		#else
-		syslog(LOG_ERR, "option hugepages_second_heap need recompile with #define HEAP_CHUNK_ENABLE 1");
-		#endif //HEAP_CHUNK_ENABLE
+		syslog(LOG_ERR, "option hugepages_second_heap need recompile with #define SEPARATE_HEAP_FOR_HUGETABLE 1");
+		#endif //SEPARATE_HEAP_FOR_HUGETABLE
 	}
+	
+	#if SEPARATE_HEAP_FOR_HASHTABLE
+		if(opt_hashtable_heap_size) {
+			heap_hashtable = new cHeap_HASHTABLE(opt_hashtable_heap_size);
+		} else {
+			#if HAVE_LIBJEMALLOC
+				size_t arena_index_hashtable_size = sizeof(arena_index_hashtable);
+				mallctl("arenas.create", (void *)&arena_index_hashtable, &arena_index_hashtable_size, NULL, 0);
+			#endif
+		}
+	#else
+		if(opt_hashtable_heap_size) {
+			syslog(LOG_ERR, "option hashtable_heap_size need recompile with #define SEPARATE_HEAP_FOR_HASHTABLE 1");
+		}
+	#endif //SEPARATE_HEAP_FOR_HASHTABLE
 	
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
@@ -5681,8 +5749,7 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 
 //#define HAVE_LIBJEMALLOC
 
-#ifdef HAVE_LIBJEMALLOC
-#include <jemalloc/jemalloc.h>
+#if HAVE_LIBJEMALLOC
 string jeMallocStat(bool full) {
 	string rslt;
 	string tempFileName = tmpnam();
@@ -6876,6 +6943,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interrupts_counters",  &opt_interrupts_counters));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("new-config", &useNewCONFIG));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ipv6", &useIPv6));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hashtable_heap_size", &opt_hashtable_heap_size));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("hugepages_anon", &opt_hugepages_anon));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_max", &opt_hugepages_max));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hugepages_overcommit_max", &opt_hugepages_overcommit_max));
@@ -11971,6 +12039,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "interrupts_counters", NULL))) {
 		opt_interrupts_counters = yesno(value);
 	}
+	
+	if((value = ini.GetValue("general", "hashtable_heap_size", NULL))) {
+		opt_hashtable_heap_size = atoi(value);
+	}
+	
 	if((value = ini.GetValue("general", "hugepages_anon", NULL))) {
 		opt_hugepages_anon = yesno(value);
 	}

@@ -5,9 +5,6 @@
 #include "heap_chunk.h"
 
 
-#ifdef HEAP_CHUNK_ENABLE
-
-
 using namespace std;
 
 #define USED_HEADER_SIZE 16 // p (long)&temp->PrevFree - (long)temp; (sizeof(unsigned int)+sizeof(void*))
@@ -204,7 +201,7 @@ void cHeapItem::InsertFreeBlock(sHeader *block) {
 		block->NextFree = temp;
 		block->PrevFree = Rover;
 	} else { 
-		Rover=  block;
+		Rover = block;
 		block->PrevFree = block;
 		block->NextFree = block;
 	}
@@ -213,10 +210,10 @@ void cHeapItem::InsertFreeBlock(sHeader *block) {
 void cHeapItem::JoinFreeBlocks(sHeader *block1,sHeader *block2) {
 	block1->Size += block2->Size;
 	if(Last == block2) {
-		Last=block1;
+		Last = block1;
 	} else {
 		sHeader *temp = (sHeader*)((char*)block2+block2->Size);
-		temp->PrevReal=block1;
+		temp->PrevReal = block1;
 	}
 	PullFreeBlock(block2);
 }
@@ -247,6 +244,7 @@ bool cHeapItem::IsOwnItem(const void *pointerToObject) {
 cHeap::cHeap(u_int16_t maxHeapItems) {
 	this->maxHeapItems = maxHeapItems;
 	countHeapItems = 0;
+	allocSize = 0;
 	heapItems = (cHeapItem**)calloc(maxHeapItems ,sizeof(cHeapItem*));
 	active = false;
 	min_ptr = 0;
@@ -263,6 +261,7 @@ void *cHeap::MAlloc(u_int32_t sizeOfObject, u_int16_t *heapItemIndex) {
 		heapItems[0] = createHeapItem();
 		countHeapItems = 1;
 		void *p = heapItems[0]->MAlloc(sizeOfObject);
+		incAllocSize(p);
 		unlock();
 		if(heapItemIndex) {
 			*heapItemIndex = 1;
@@ -275,6 +274,7 @@ void *cHeap::MAlloc(u_int32_t sizeOfObject, u_int16_t *heapItemIndex) {
 		}
 		void *allocObject = heapItems[i]->MAlloc(sizeOfObject);
 		if(allocObject) {
+			incAllocSize(allocObject);
 			unlock();
 			if(heapItemIndex) {
 				*heapItemIndex = i + 1;
@@ -287,6 +287,7 @@ void *cHeap::MAlloc(u_int32_t sizeOfObject, u_int16_t *heapItemIndex) {
 		heapItems[countHeapItems] = createHeapItem();
 		++countHeapItems;
 		void *p = heapItems[_heapItemIndex]->MAlloc(sizeOfObject);
+		incAllocSize(p);
 		unlock();
 		if(heapItemIndex) {
 			*heapItemIndex = _heapItemIndex + 1;
@@ -302,6 +303,7 @@ bool cHeap::Free(void *pointerToObject, u_int16_t heapItemIndex) {
 		return(false);
 	}
 	lock();
+	decAllocSize(pointerToObject);
 	if(heapItemIndex && heapItemIndex <= countHeapItems &&
 	   heapItems[heapItemIndex - 1]->Free(pointerToObject)) {
 		unlock();
@@ -351,6 +353,3 @@ cHeapItem *cHeap::createHeapItem() {
 	heapItem->Heap = this;
 	return(heapItem);
 }
-
-
-#endif //HEAP_CHUNK_ENABLE

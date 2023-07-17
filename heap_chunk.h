@@ -3,8 +3,6 @@
 
 #include "config.h"
 
-#ifdef HEAP_CHUNK_ENABLE
-
 
 class cHeap_base {
 public:
@@ -88,6 +86,18 @@ public:
 	inline bool isActive() {
 		return(active);
 	}
+	inline u_int32_t itemSize(void *p) {
+		return(((cHeapItem::sHeader*)((char*)p - 16))->Size);
+	}
+	inline void incAllocSize(void *p) {
+		allocSize += itemSize(p);
+	}
+	inline void decAllocSize(void *p) {
+		allocSize -= itemSize(p);
+	}
+	inline u_int64_t getAllocSize() {
+		return(allocSize);
+	}
 private:
 	cHeapItem *createHeapItem();
 	void lock() {
@@ -99,13 +109,11 @@ private:
 private:
 	u_int16_t maxHeapItems;
 	volatile u_int16_t countHeapItems;
+	volatile u_int64_t allocSize;
 	cHeapItem **heapItems;
 	bool active;
 	volatile int _sync;
 };
-
-
-#endif // HEAP_CHUNK_ENABLE
 
 
 #endif //HEAP_CHUNK_H
