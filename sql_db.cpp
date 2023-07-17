@@ -3943,7 +3943,7 @@ void MySqlStore_process::waitForTerminate() {
 
 void MySqlStore_process::waitForFullQueue() {
 	if(this->queryBuffLimit > 0) {
-		while(this->query_buff.size() > this->queryBuffLimit && !is_terminating()) {
+		while(this->query_buff.size() > (unsigned)this->queryBuffLimit && !is_terminating()) {
 			usleep(1000);
 		}
 	}

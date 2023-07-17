@@ -1824,8 +1824,8 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			   int parse_type, const char *parse_type_param,
 			   string *rslt_str, 
 			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
-	const char *_rslt_str;
-	unsigned _rslt_str_length;
+	const char *_rslt_str = NULL;
+	unsigned _rslt_str_length = 0;
 	bool _rslt = _parse_peername(peername_tag, peername_tag_len,
 				     parse_type, parse_type_param,
 				     rslt_str ? &_rslt_str : NULL, &_rslt_str_length, 

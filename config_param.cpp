@@ -746,7 +746,7 @@ double cConfigItem_float::getValue() {
 }
 
 string cConfigItem_float::getValueStr(bool /*configFile*/) {
-	double val;
+	double val = 0;
 	if(param_float) {
 		val = *param_float;
 	}
