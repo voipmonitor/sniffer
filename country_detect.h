@@ -56,6 +56,7 @@ public:
 			number_regexp_cond = NULL;
 			number_length_from = -1;
 			number_length_to = -1;
+			trim_prefixes_only_one = false;
 			trim_prefix_length = -1;
 			is_international= false;
 		}
@@ -72,17 +73,28 @@ public:
 		int number_length_to;
 		vector<string> trim_prefixes_string;
 		vector<cRegExp*> trim_prefixes_regexp;
+		bool trim_prefixes_only_one;
 		int trim_prefix_length;
 		bool is_international;
 		string country_code;
 		string descr;
 		ListIP_wb ipFilter;
 	};
+	struct sPrefixPointer {
+		void *prefix;
+		bool is_regexp;
+		bool use;
+		unsigned match_length;
+		string regexp_match;
+		inline string *match() {
+			return(is_regexp ? &regexp_match : (string*)prefix);
+		}
+	};
 public:
 	CheckInternational();
 	~CheckInternational();
 	void setInternationalPrefixes(const char *prefixes, vector<string> *separators = NULL);
-	void setSkipPrefixes(const char *prefixes, vector<string> *separators = NULL);
+	void setSkipPrefixes(const char *prefixes, vector<string> *separators = NULL, bool onlyOne = false);
 	void setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict);
 	void setEnableCheckNapaWithoutPrefix(bool enableCheckNapaWithoutPrefix, int minLengthNapaWithoutPrefix);
 	bool isSet(SqlDb_row *dbRow);
@@ -115,18 +127,18 @@ public:
 	}
 	bool processCustomerDataAdvanced(const char *number, vmIP ip,
 					 bool *isInternational, string *country, string *numberWithoutPrefix = NULL);
-	bool skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool recurse,
+	bool skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool prefixes_all, bool prefixes_recurse,
 			  string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL,
 			  bool isInternationalPrefixes = false);
 	bool skipInternationalPrefixes(const char *number,
 				       string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL) {
-		return(this->skipPrefixes(number, &internationalPrefixes_string, &internationalPrefixes_regexp, false,
+		return(this->skipPrefixes(number, &internationalPrefixes_string, &internationalPrefixes_regexp, true, false,
 					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes,
 					  true));
 	}
 	bool skipSkipPrefixes(const char *number,
 			      string *numberWithoutPrefix = NULL, string *skipPrefix = NULL, unsigned *skipPrefixLength = NULL, vector<string> *skipPrefixes = NULL) {
-		return(this->skipPrefixes(number, &skipPrefixes_string, &skipPrefixes_regexp, true,
+		return(this->skipPrefixes(number, &skipPrefixes_string, &skipPrefixes_regexp, !skipPrefixesOnlyOne, !skipPrefixesOnlyOne,
 					  numberWithoutPrefix, skipPrefix, skipPrefixLength, skipPrefixes));
 	}
 	string numberNormalized(const char *number, vmIP ip, class CountryPrefixes *countryPrefixes);
@@ -140,6 +152,7 @@ private:
 	int minLengthNapaWithoutPrefix;
 	vector<string> skipPrefixes_string;
 	vector<cRegExp*> skipPrefixes_regexp;
+	bool skipPrefixesOnlyOne;
 	vector<CountryPrefix_recAdv*> customer_data_advanced;
 friend class CountryPrefixes;
 };

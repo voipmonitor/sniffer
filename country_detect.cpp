@@ -163,6 +163,7 @@ CheckInternational::CheckInternational() {
 	internationalMinLengthPrefixesStrict = false;
 	enableCheckNapaWithoutPrefix = false;
 	minLengthNapaWithoutPrefix = 0;
+	skipPrefixesOnlyOne = false;
 }
 
 CheckInternational::~CheckInternational() {
@@ -187,7 +188,7 @@ void CheckInternational::setInternationalPrefixes(const char *prefixes, vector<s
 	}
 }
 
-void CheckInternational::setSkipPrefixes(const char *prefixes, vector<string> *separators) {
+void CheckInternational::setSkipPrefixes(const char *prefixes, vector<string> *separators, bool onlyOne) {
 	clearSkipPrefixes();
 	vector<string> skipPrefixes = separators ?
 				       split(prefixes, *separators, true) :
@@ -201,6 +202,7 @@ void CheckInternational::setSkipPrefixes(const char *prefixes, vector<string> *s
 			}
 		}
 	}
+	this->skipPrefixesOnlyOne = onlyOne;
 }
 
 void CheckInternational::setInternationalMinLength(int internationalMinLength, bool internationalMinLengthPrefixesStrict) {
@@ -268,7 +270,7 @@ void CheckInternational::_load(SqlDb_row *dbRow) {
 	countryCodeForLocalNumbers = (*dbRow)["country_code_for_local_numbers"];
 	enableCheckNapaWithoutPrefix = atoi((*dbRow)["enable_check_napa_without_prefix"].c_str());
 	minLengthNapaWithoutPrefix = atoi((*dbRow)["min_length_napa_without_prefix"].c_str());
-	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators);
+	setSkipPrefixes((*dbRow)["skip_prefixes"].c_str(), &prefixesSeparators, atoi((*dbRow)["skip_prefixes_only_one"].c_str()));
 }
 
 bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
@@ -341,6 +343,7 @@ bool CheckInternational::loadCustomerPrefixAdv(SqlDb *sqlDb) {
 						}
 					}
 				}
+				recAdv->trim_prefixes_only_one = atoi(row["trim_prefixes_only_one"].c_str());
 				if(row["trim_prefix_length"].length()) {
 					recAdv->trim_prefix_length = atoi(row["trim_prefix_length"].c_str());
 				}
@@ -419,7 +422,7 @@ bool CheckInternational::processCustomerDataAdvanced(const char *number, vmIP ip
 			}
 			if(numberWithoutPrefix) {
 				if(recAdv->trim_prefixes_string.size() || recAdv->trim_prefixes_regexp.size()) {
-					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, true, numberWithoutPrefix);
+					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, !recAdv->trim_prefixes_only_one, numberWithoutPrefix);
 				} else if(recAdv->trim_prefix_length > 0 && recAdv->trim_prefix_length < (int)strlen(number)) {
 					*numberWithoutPrefix = number + recAdv->trim_prefix_length;
 				} else {
@@ -432,7 +435,7 @@ bool CheckInternational::processCustomerDataAdvanced(const char *number, vmIP ip
 	return(false);
 }
 
-bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool recurse,
+bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefixes_string, vector<cRegExp*> *prefixes_regexp, bool prefixes_all, bool prefixes_recurse,
 				      string *numberWithoutPrefix, string *skipPrefix, unsigned *skipPrefixLength, vector<string> *skipPrefixes,
 				      bool isInternationalPrefixes) {
 	unsigned _skipPrefixLength = 0;
@@ -446,40 +449,76 @@ bool CheckInternational::skipPrefixes(const char *number, vector<string> *prefix
 	}
 	skipPrefixes->clear();
 	unsigned number_length = strlen(number);
-	bool existsPrefix = false;
+	unsigned prefixes_count = prefixes_string->size() + prefixes_regexp->size();
+	sPrefixPointer prefixes[prefixes_count];
+	unsigned prefixes_i = 0;
+	for(unsigned i = 0; i < prefixes_string->size(); i++) {
+		prefixes[prefixes_i].prefix = &(*prefixes_string)[i];
+		prefixes[prefixes_i].is_regexp = false;
+		++prefixes_i;
+	}
+	for(unsigned i = 0; i < prefixes_regexp->size(); i++) {
+		prefixes[prefixes_i].prefix = (*prefixes_regexp)[i];
+		prefixes[prefixes_i].is_regexp = true;
+		++prefixes_i;
+	}
 	do {
-		existsPrefix = false;
-		if(prefixes_string) {
-			for(unsigned i = 0; i < prefixes_string->size(); i++) {
-				if((number_length - *skipPrefixLength) > (*prefixes_string)[i].length() &&
-				   !strncmp(number + *skipPrefixLength, (*prefixes_string)[i].c_str(), (*prefixes_string)[i].length()) &&
-				   (!isInternationalPrefixes ||
-				    !internationalMinLengthPrefixesStrict ||
-				    !internationalMinLength ||
-				    (number_length - *skipPrefixLength) >= (internationalMinLength + (*prefixes_string)[i].length()))) {
-					existsPrefix = true;
-					*skipPrefixLength += (*prefixes_string)[i].length();
-					skipPrefixes->push_back((*prefixes_string)[i]);
+		unsigned use = false;
+		for(unsigned prefixes_i = 0; prefixes_i < prefixes_count; prefixes_i++) {
+			prefixes[prefixes_i].use = false;
+		}
+		do {
+			unsigned prefixes_i_maxlength = 0;
+			unsigned prefixes_maxlength = 0;
+			for(unsigned prefixes_i = 0; prefixes_i < prefixes_count; prefixes_i++) {
+				if(!prefixes[prefixes_i].use) {
+					if(prefixes[prefixes_i].is_regexp) {
+						cRegExp *prefix_regexp = (cRegExp*)prefixes[prefixes_i].prefix;
+						vector<string> matches;
+						if(prefix_regexp->match(number + *skipPrefixLength, &matches) &&
+						   matches.size() &&
+						   (number_length - *skipPrefixLength) > matches[0].length() &&
+						   (!isInternationalPrefixes ||
+						    !internationalMinLengthPrefixesStrict ||
+						    !internationalMinLength ||
+						    (number_length - *skipPrefixLength) >= (internationalMinLength + matches[0].length()))) {
+							prefixes[prefixes_i].regexp_match = matches[0];
+							prefixes[prefixes_i].match_length = matches[0].length();
+							if(prefixes[prefixes_i].match_length > prefixes_maxlength) {
+								prefixes_maxlength = prefixes[prefixes_i].match_length;
+								prefixes_i_maxlength = prefixes_i;
+							}
+						}
+					} else {
+						string *prefix_string = (string*)prefixes[prefixes_i].prefix;
+						if((number_length - *skipPrefixLength) > prefix_string->length() &&
+						   !strncmp(number + *skipPrefixLength, prefix_string->c_str(), prefix_string->length()) &&
+						   (!isInternationalPrefixes ||
+						    !internationalMinLengthPrefixesStrict ||
+						    !internationalMinLength ||
+						    (number_length - *skipPrefixLength) >= (internationalMinLength + prefix_string->length()))) {
+							prefixes[prefixes_i].match_length = prefix_string->length();
+							if(prefixes[prefixes_i].match_length > prefixes_maxlength) {
+								prefixes_maxlength = prefixes[prefixes_i].match_length;
+								prefixes_i_maxlength = prefixes_i;
+							}
+						}
+					}
 				}
 			}
-		}
-		if(!existsPrefix && prefixes_regexp) {
-			for(unsigned i = 0; i < prefixes_regexp->size(); i++) {
-				vector<string> matches;
-				if((*prefixes_regexp)[i]->match(number + *skipPrefixLength, &matches) &&
-				   matches.size() &&
-				   (number_length - *skipPrefixLength) > matches[0].length() &&
-				   (!isInternationalPrefixes ||
-				    !internationalMinLengthPrefixesStrict ||
-				    !internationalMinLength ||
-				    (number_length - *skipPrefixLength) >= (internationalMinLength + matches[0].length()))) {
-					existsPrefix = true;
-					*skipPrefixLength += matches[0].length();
-					skipPrefixes->push_back(matches[0]);
-				}
+			if(prefixes_maxlength > 0) {
+				*skipPrefixLength += prefixes[prefixes_i_maxlength].match_length;
+				skipPrefixes->push_back(*prefixes[prefixes_i_maxlength].match());
+				prefixes[prefixes_i_maxlength].use = true;
+				use = true;
+			} else {
+				break;
 			}
+		} while(prefixes_all);
+		if(!use) {
+			break;
 		}
-	} while(existsPrefix && recurse);
+	} while(prefixes_recurse);
 	if(*skipPrefixLength) {
 		if(numberWithoutPrefix) {
 			*numberWithoutPrefix = number + *skipPrefixLength;
