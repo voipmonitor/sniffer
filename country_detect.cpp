@@ -422,7 +422,7 @@ bool CheckInternational::processCustomerDataAdvanced(const char *number, vmIP ip
 			}
 			if(numberWithoutPrefix) {
 				if(recAdv->trim_prefixes_string.size() || recAdv->trim_prefixes_regexp.size()) {
-					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, !recAdv->trim_prefixes_only_one, numberWithoutPrefix);
+					this->skipPrefixes(number, &recAdv->trim_prefixes_string, &recAdv->trim_prefixes_regexp, !recAdv->trim_prefixes_only_one, !recAdv->trim_prefixes_only_one, numberWithoutPrefix);
 				} else if(recAdv->trim_prefix_length > 0 && recAdv->trim_prefix_length < (int)strlen(number)) {
 					*numberWithoutPrefix = number + recAdv->trim_prefix_length;
 				} else {
