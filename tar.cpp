@@ -66,6 +66,7 @@ extern int opt_pcap_dump_tar_rtp_level;
 extern int opt_pcap_dump_tar_compress_graph;
 extern int opt_pcap_dump_tar_graph_level;
 extern int opt_pcap_dump_tar_threads;
+extern int absolute_timeout;
 
 extern int opt_filesclean;
 extern int opt_nocdr;
@@ -1502,11 +1503,13 @@ TarQueue::cleanTars(int terminate_pass) {
 		// walk through all tars
 		Tar *tar = tars_it->second;
 		// find the tar in tartimemap 
+		u_int32_t time_s = getTimeS();
 		if(!tar->_sync_lock &&
-		   !checkTartimemap(&tar->time) &&
+		   (!checkTartimemap(&tar->time) ||
+		    time_s > (tar->created_at + absolute_timeout * 2)) &&
 		   (terminate_pass ||
-		    getTimeS_rdtsc() > (tar->created_at + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
-		    getTimeS() > (tar->created_at + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
+		    time_s > (tar->created_at + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
+		    time_s > (tar->created_at + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());

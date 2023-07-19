@@ -13178,7 +13178,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 							cout << " *** set stop processing" << endl;
 							*/
 						} else if(currTimeS < call->stopProcessingAt_s + (opt_safe_cleanup_calls == 2 ? 15 : 5) ||
-							  TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60) {
+							  (opt_safe_cleanup_calls == 2 && TIME_US_TO_S(call->first_packet_time_us) / 60 >= currTimeS_unshift / 60)) {
 							closeCall = false;
 							++rejectedCalls_count;
 							++stat.rejected_wait_for_stop_processing;
