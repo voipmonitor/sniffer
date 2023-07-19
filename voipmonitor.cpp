@@ -427,6 +427,7 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
 int opt_cleanup_calls_period = 10;
+bool opt_cleanup_calls_period_set = false;
 int opt_destroy_calls_period = 2;
 int opt_safe_cleanup_calls = 1;
 bool opt_destroy_calls_in_storing_cdr = false;
@@ -11835,6 +11836,7 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);
+		opt_cleanup_calls_period_set = true;
 	}
 	if((value = ini.GetValue("general", "destroy_calls_period", NULL))) {
 		opt_destroy_calls_period = atoi(value);
@@ -12499,6 +12501,12 @@ bool useCdrStatInStore() {
 
 bool useCdrStatProcessThreads() {
 	return(opt_cdr_stat_values || opt_cdr_stat_sources);
+}
+
+int cleanup_calls_period() {
+	return((useNewCONFIG ? CONFIG.isSet("cleanup_calls_period") : opt_cleanup_calls_period_set) || !opt_quick_save_cdr ?
+		opt_cleanup_calls_period :
+		1);
 }
 
 

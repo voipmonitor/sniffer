@@ -420,6 +420,8 @@ bool useCdrStatInProcessCall();
 bool useCdrStatInStore();
 bool useCdrStatProcessThreads();
 
+int cleanup_calls_period();
+
 inline bool useChartsCacheOrCdrStatInProcessCall() {
 	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall());
 }

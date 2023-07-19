@@ -6984,7 +6984,7 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 	}
 	u_int64_t actTimeS = getTimeS_rdtsc();
 	if(!doQuickCleanup &&
-	   actTimeS <= (process_packet__last_cleanup_calls + (opt_quick_save_cdr ? 1 : opt_cleanup_calls_period))) {
+	   actTimeS <= (process_packet__last_cleanup_calls + cleanup_calls_period())) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
