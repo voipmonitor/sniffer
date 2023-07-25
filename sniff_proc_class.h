@@ -527,7 +527,7 @@ public:
 				#endif
 				vmIP saddr, vmPort source, vmIP daddr, vmPort dest, 
 				int datalen, int dataoffset,
-				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, bool packetDelete,
+				u_int16_t handle_index, pcap_pkthdr *header, const u_char *packet, e_packet_alloc_type packet_alloc_type,
 				packet_flags pflags, struct iphdr2 *header_ip_encaps, struct iphdr2 *header_ip,
 				pcap_block_store *block_store, int block_store_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid,
 				int blockstore_lock = 1) {
@@ -588,8 +588,12 @@ public:
 			       datalen > 2 ||
 			       blockstore_lock != 1;
 		if(!ok_push) {
-			if(packetDelete) {
-				delete header;
+			if(packet_alloc_type > _t_packet_alloc_na) {
+				if(packet_alloc_type &_t_packet_alloc_header_plus) {
+					delete (pcap_pkthdr_plus*)header;
+				} else if(packet_alloc_type &_t_packet_alloc_header_std) {
+					delete (pcap_pkthdr*)header;
+				}
 				delete [] packet;
 			}
 			return;
@@ -620,7 +624,7 @@ public:
 		packetS->handle_index = handle_index; 
 		packetS->header_pt = header;
 		packetS->packet = packet; 
-		packetS->_packet_alloc = packetDelete; 
+		packetS->_packet_alloc_type = packet_alloc_type; 
 		packetS->pflags = pflags;
 		packetS->header_ip_encaps_offset = header_ip_encaps ? ((u_char*)header_ip_encaps - packet) : 0xFFFF; 
 		packetS->header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0; 
@@ -1145,8 +1149,12 @@ public:
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
-		if((*packetS)->_packet_alloc) {
-			delete (*packetS)->header_pt;
+		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
+			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
+				delete (pcap_pkthdr_plus*)(*packetS)->header_pt;
+			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
+				delete (pcap_pkthdr*)(*packetS)->header_pt;
+			}
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();
@@ -1169,8 +1177,12 @@ public:
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
-		if((*packetS)->_packet_alloc) {
-			delete (*packetS)->header_pt;
+		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
+			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
+				delete (pcap_pkthdr_plus*)(*packetS)->header_pt;
+			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
+				delete (pcap_pkthdr*)(*packetS)->header_pt;
+			}
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();
@@ -1190,8 +1202,12 @@ public:
 		if((*packetS)->_blockstore_lock) {
 			(*packetS)->block_store->unlock_packet((*packetS)->block_store_index);
 		}
-		if((*packetS)->_packet_alloc) {
-			delete (*packetS)->header_pt;
+		if((*packetS)->_packet_alloc_type > _t_packet_alloc_na) {
+			if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_plus) {
+				delete (pcap_pkthdr_plus*)(*packetS)->header_pt;
+			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
+				delete (pcap_pkthdr*)(*packetS)->header_pt;
+			}
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();

@@ -180,7 +180,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 			#endif
 			src.ip, src.port, dst.ip, dst.port, 
 			data.length(), dataOffset,
-			pcap_handle_index, tcpHeader, tcpPacket, true, 
+			pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 			pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
 			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 			false);
@@ -206,7 +206,7 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 			#endif
 			src.ip, src.port, dst.ip, dst.port, 
 			data.length(), dataOffset,
-			pcap_handle_index, udpHeader, udpPacket, true, 
+			pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
 			pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
 			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 			false);

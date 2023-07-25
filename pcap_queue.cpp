@@ -8956,7 +8956,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			#endif
 			header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
 			datalen, data - (char*)hp->packet,
-			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? false : true /*packetDelete*/,
+			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? _t_packet_alloc_na : _t_packet_alloc_header_plus,
 			pflags, header_ip_encaps, header_ip,
 			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);

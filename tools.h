@@ -3459,13 +3459,15 @@ private:
 		}
 		inline ~sHeapItemsPool() {
 		}
+		template <class type_pool>
 		inline void destroyAll() {
 			for(unsigned i = 0; i < pool_size; i++) {
-				#if HEAPSAFE
-					delete_object(pool[i]);
-				#else
-					free(pool[i]);
-				#endif
+				delete (type_pool*)pool[i];
+			}
+		}
+		inline void destroyAll_u_char() {
+			for(unsigned i = 0; i < pool_size; i++) {
+				delete [] (u_char*)pool[i];
 			}
 		}
 		u_int16_t pool_size;
@@ -3484,18 +3486,8 @@ public:
 		this->stack = new FILE_LINE(39027) rqueue_quick<sHeapItemsPool>(this->size_max / HEAP_ITEM_POOL_SIZE, 0, 0, NULL, false);
 	}
 	~cHeapItemsPointerStack() {
-		for(unsigned i = 0; i < this->pop_queues_max; i++) {
-			this->pop_queues[i].destroyAll();
-		}
 		delete [] this->pop_queues;
-		for(unsigned i = 0; i < this->push_queues_max; i++) {
-			this->push_queues[i].destroyAll();
-		}
 		delete [] this->push_queues;
-		sHeapItemsPool pool;
-		while(stack->pop(&pool, false, true)) {
-			pool.destroyAll();
-		}
 		delete this->stack;
 	}
 	inline bool push(void *item, u_int16_t push_queue_index) {
@@ -3552,6 +3544,31 @@ public:
 			}
 		}
 		return(true);
+	}
+	template <class type_pool>
+	void destroyAll() {
+		for(unsigned i = 0; i < this->pop_queues_max; i++) {
+			this->pop_queues[i].destroyAll<type_pool>();
+		}
+		for(unsigned i = 0; i < this->push_queues_max; i++) {
+			this->push_queues[i].destroyAll<type_pool>();
+		}
+		sHeapItemsPool pool;
+		while(stack->pop(&pool, false, true)) {
+			pool.destroyAll<type_pool>();
+		}
+	}
+	void destroyAll_u_char() {
+		for(unsigned i = 0; i < this->pop_queues_max; i++) {
+			this->pop_queues[i].destroyAll_u_char();
+		}
+		for(unsigned i = 0; i < this->push_queues_max; i++) {
+			this->push_queues[i].destroyAll_u_char();
+		}
+		sHeapItemsPool pool;
+		while(stack->pop(&pool, false, true)) {
+			pool.destroyAll_u_char();
+		}
 	}
 public:
 	u_int32_t size_max;

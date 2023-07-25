@@ -177,7 +177,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packetS->handle_index = handle_index; 
 					packetS->header_pt = tcpHeader;
 					packetS->packet = tcpPacket; 
-					packetS->_packet_alloc = true; 
+					packetS->_packet_alloc_type = _t_packet_alloc_header_std; 
 					packetS->pflags.init();
 					packetS->pflags.tcp = 2;
 					packetS->header_ip_offset = ethHeaderLength; 
@@ -222,7 +222,7 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 							#endif
 							_ip_src, _port_src, _ip_dst, _port_dst, 
 							_datalen, dataOffset,
-							handle_index, tcpHeader, tcpPacket, true, 
+							handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 							pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
 							NULL, 0, dlt, sensor_id, sensor_ip, pid,
 							false);

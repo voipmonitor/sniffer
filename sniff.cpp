@@ -8486,7 +8486,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 						ppd.header_ip ? ppd.header_ip->get_daddr() : 0, 
 						ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 						ppd.datalen, dataoffset, 
-						handle_index, header, packet, true,
+						handle_index, header, packet, _t_packet_alloc_header_std,
 						ppd.flags, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 						NULL, 0, handle_dlt, opt_id_sensor, 0, ppd.pid);
 				} else {
@@ -8641,7 +8641,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 				ppd.header_ip ? ppd.header_ip->get_daddr() : 0, 
 				ppd.header_ip ? ppd.header_udp->get_dest() : vmPort(), 
 				ppd.datalen, dataoffset, 
-				0, header, packet, true,
+				0, header, packet, _t_packet_alloc_header_std,
 				ppd.flags, (iphdr2*)(packet + ppd.header_ip_encaps_offset), (iphdr2*)(packet + ppd.header_ip_offset),
 				NULL, 0, global_pcap_dlink, opt_id_sensor, 0, ppd.pid);
 		}
@@ -9496,12 +9496,15 @@ PreProcessPacket::~PreProcessPacket() {
 	delete [] this->items_flag;
 	delete [] this->items_thread_index;
 	if(this->stackSip) {
+		this->stackSip->destroyAll<packet_s_process>();
 		delete this->stackSip;
 	}
 	if(this->stackRtp) {
+		this->stackRtp->destroyAll_u_char();
 		delete this->stackRtp;
 	}
 	if(this->stackOther) {
+		this->stackOther->destroyAll<packet_s_stack>();
 		delete this->stackOther;
 	}
 }
@@ -9840,7 +9843,7 @@ void *PreProcessPacket::outThreadFunction() {
 						#else
 						this->process_DETACH_plus(batch_detach->batch[batch_index]);
 						#endif
-						batch_detach->batch[batch_index]->_packet_alloc = false;
+						batch_detach->batch[batch_index]->_packet_alloc_type = _t_packet_alloc_na;
 					}
 				}
 				#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
@@ -10499,11 +10502,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 				// call process_mgcp before tcp reassembly - TODO !
 				this->process_mgcp(&packetS);
 			} else if(packetS->pflags.diameter) {
-				tcpReassemblyDiameter->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
+				tcpReassemblyDiameter->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc_type,
 								packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip, packetS->pid,
 								this, packetS, isDiameter);
-				packetS->_packet_alloc = false;
+				packetS->_packet_alloc_type = _t_packet_alloc_na;
 				packetS->_blockstore_lock = false;
 				if(packetS->next_action == _ppna_set) {
 					packetS->next_action = _ppna_destroy;
@@ -10544,11 +10547,11 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 					__SYNC_INC(__xc_reassembly[0]);
 					#endif
 				 
-					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc,
+					tcpReassemblySipExt->push_tcp(packetS->header_pt, packetS->header_ip_(), (u_char*)packetS->packet, packetS->_packet_alloc_type,
 								      packetS->block_store, packetS->block_store_index, packetS->_blockstore_lock,
 								      packetS->handle_index, packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip, packetS->pid,
 								      this, packetS, isSip || possibleWebSocketSip);
-					packetS->_packet_alloc = false;
+					packetS->_packet_alloc_type = _t_packet_alloc_na;
 					packetS->_blockstore_lock = false;
 					if(packetS->next_action == _ppna_set) {
 						packetS->next_action = _ppna_destroy;
@@ -10934,7 +10937,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 				*partPacketS = *packetS;
 				partPacketS->stack = NULL;
 				partPacketS->blockstore_relock(18 /*pb lock flag*/);
-				if(partPacketS->_packet_alloc) {
+				if(partPacketS->_packet_alloc_type > _t_packet_alloc_na) {
 					partPacketS->new_alloc_packet_header();
 				}
 				if(packetS_orig && packetS_orig->next_action) {
@@ -11407,7 +11410,7 @@ packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDa
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
 	//newPacketS->header_ip = newHeaderIpInNewPacket;
-	newPacketS->_packet_alloc = true;
+	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
 	return(newPacketS);
 }
 
@@ -11421,7 +11424,7 @@ packet_s_process *PreProcessPacket::clonePacketS(packet_s_process *packetS) {
 	memcpy(new_packet, newPacketS->packet, new_header->caplen);
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;
-	newPacketS->_packet_alloc = true;
+	newPacketS->_packet_alloc_type = _t_packet_alloc_header_std;
 	return(newPacketS);
 }
 

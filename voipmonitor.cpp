@@ -3245,17 +3245,20 @@ bool cHeap_VM_HP::setActive() {
 
 void *cHeap_VM_HP::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
 	size_t _size = 512 * 1024 * 1024;
-	size_t _size_reserve = 1 * 2048 * 1024;
-	_size += _size_reserve;
+	size_t _size_reserve = 1 * 1024 * 1024;
 	size_t size_mmap;
 	void *ptr = mmap_hugepage(hugepage_fd, 0, false,
-				  _size, &size_mmap, NULL, 
+				  _size + _size_reserve, &size_mmap, NULL, 
 				  hugepage_size, 1,
 				  false, NULL);
 	if(ptr) {
-		*size = size_mmap - _size_reserve;
-		*size_reserve = _size_reserve;
-		sum_size += size_mmap;
+		if(size_mmap > _size_reserve) {
+			*size = size_mmap - _size_reserve;
+			*size_reserve = _size_reserve;
+		} else {
+			*size = size_mmap;
+			*size_reserve = 0;
+		}
 		return(ptr);
 	}
 	return(NULL);
@@ -3263,7 +3266,6 @@ void *cHeap_VM_HP::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
 
 void cHeap_VM_HP::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
 	munmap_hugepage(ptr, size + size_reserve);
-	sum_size -= size + size_reserve;
 }
 
 bool cHeap_VM_HP::initHugepages() {
@@ -3293,13 +3295,11 @@ cHeap_HASHTABLE::cHeap_HASHTABLE(unsigned size_mb) {
 
 void *cHeap_HASHTABLE::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) {
 	size_t _size = size_mb * 1024 * 1024;
-	size_t _size_reserve = 1 * 1024 * 1024;
-	_size += _size_reserve;
-	void *ptr = calloc(1, _size);
+	size_t _size_reserve = 16 * 1024;
+	void *ptr = calloc(1, _size + _size_reserve);
 	if(ptr) {
 		*size = _size;
 		*size_reserve = _size_reserve;
-		sum_size += _size + _size_reserve;
 		return(ptr);
 	}
 	return(NULL);
@@ -3307,7 +3307,6 @@ void *cHeap_HASHTABLE::initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) 
 
 void cHeap_HASHTABLE::termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) {
 	free(ptr);
-	sum_size -= size +size_reserve;
 }
 
 #if HAVE_LIBJEMALLOC

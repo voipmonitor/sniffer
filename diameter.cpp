@@ -57,7 +57,7 @@ void DiameterTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			packetS->handle_index = handle_index; 
 			packetS->header_pt = tcpHeader;
 			packetS->packet = tcpPacket; 
-			packetS->_packet_alloc = true; 
+			packetS->_packet_alloc_type = _t_packet_alloc_header_std; 
 			packetS->pflags.init();
 			packetS->pflags.tcp = 2;
 			packetS->header_ip_offset = ethHeaderLength; 

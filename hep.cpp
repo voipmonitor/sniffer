@@ -130,7 +130,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
 				payload_len, dataOffset,
-				pcap_handle_index, tcpHeader, tcpPacket, true, 
+				pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 				pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
 				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);
@@ -155,7 +155,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				#endif
 				hepData.ip_source_address, hepData.protocol_source_port, hepData.ip_destination_address, hepData.protocol_destination_port, 
 				payload_len, dataOffset,
-				pcap_handle_index, udpHeader, udpPacket, true, 
+				pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
 				pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
 				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
 				false);

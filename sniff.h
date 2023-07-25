@@ -118,6 +118,12 @@ enum e_packet_s_type {
 	_t_packet_s_process
 };
 
+enum e_packet_alloc_type {
+	_t_packet_alloc_na = 0,
+	_t_packet_alloc_header_std = 1,
+	_t_packet_alloc_header_plus = 2
+};
+
 struct packet_flags {
 	u_int8_t tcp : 2;
 	u_int8_t ss7 : 1;
@@ -182,7 +188,7 @@ struct packet_s {
 	bool is_rtp : 1;
 	#endif
 	bool _blockstore_lock : 1;
-	bool _packet_alloc : 1;
+	enum e_packet_alloc_type _packet_alloc_type : 2;
 	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 	sAudiocodes *audiocodes;
 	#endif
@@ -418,7 +424,7 @@ struct packet_s {
 	}
 	inline void init() {
 		_blockstore_lock = false;
-		_packet_alloc = false;
+		_packet_alloc_type = _t_packet_alloc_na;
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		audiocodes = NULL;
 		#endif
@@ -492,10 +498,14 @@ struct packet_s {
 		#endif
 	}
 	inline void packetdelete() {
-		if(_packet_alloc) {
-			delete header_pt;
+		if(_packet_alloc_type > _t_packet_alloc_na) {
+			if(_packet_alloc_type &_t_packet_alloc_header_plus) {
+				delete (pcap_pkthdr_plus*)header_pt;
+			} else if(_packet_alloc_type &_t_packet_alloc_header_std) {
+				delete (pcap_pkthdr*)header_pt;
+			}
 			delete [] packet;
-			_packet_alloc = false;
+			_packet_alloc_type = _t_packet_alloc_na;
 		}
 	}
 	inline bool isRtp() {

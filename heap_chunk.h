@@ -8,7 +8,6 @@ class cHeap_base {
 public:
 	cHeap_base() {
 		min_ptr = NULL;
-		sum_size = 0;
 	}
 	inline void setMinPtr(char *ptr) {
 		if(!min_ptr || ptr < min_ptr) {
@@ -18,15 +17,11 @@ public:
 	inline char *getMinPtr() {
 		return(min_ptr);
 	}
-	inline u_int64_t getSumSize() {
-		return(sum_size);
-	}
 protected:
 	virtual void *initHeapBuffer(u_int32_t *size, u_int32_t *size_reserve) = 0;
 	virtual void termHeapBuffer(void *ptr, u_int32_t size, u_int32_t size_reserve) = 0;
 protected:
 	char *min_ptr;
-	u_int64_t sum_size;
 friend class cHeapItem;
 };
 
@@ -40,8 +35,11 @@ protected:
 	};
 public:
 	cHeapItem(cHeap_base *heap);
-	void *MAlloc(u_int32_t sizeOfObject);
-	bool Free(void *pointerToObject);
+	inline void *MAlloc(u_int32_t sizeOfObject);
+	inline int8_t Free(void *pointerToObject);
+	inline bool isEmpty() {
+		return(Buff == NULL);
+	}
 	bool InitBuff();
 	void TermBuff();
 	bool Check();
@@ -98,8 +96,10 @@ public:
 	inline u_int64_t getAllocSize() {
 		return(allocSize);
 	}
+	u_int64_t getSumSize();
 private:
 	cHeapItem *createHeapItem();
+	void destroyLastHeapItem();
 	void lock() {
 		while(__sync_lock_test_and_set(&_sync, 1));
 	}

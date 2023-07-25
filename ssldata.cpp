@@ -85,7 +85,7 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 						#endif
 						_ip_src, _port_src, _ip_dst, _port_dst, 
 						_datalen, dataOffset,
-						handle_index, tcpHeader, tcpPacket, true, 
+						handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 						pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
 						NULL, 0, dlt, sensor_id, sensor_ip, pid,
 						false);
@@ -456,7 +456,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
-			handle_index, tcpHeader, tcpPacket, true, 
+			handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
 			pflags, (iphdr2*)(tcpPacket + ethHeaderLength), (iphdr2*)(tcpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);
@@ -480,7 +480,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			#endif
 			ip_src, port_src, ip_dst, port_dst, 
 			dataLength, dataOffset,
-			handle_index, udpHeader, udpPacket, true, 
+			handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
 			pflags, (iphdr2*)(udpPacket + ethHeaderLength), (iphdr2*)(udpPacket + ethHeaderLength),
 			NULL, 0, dlt, sensor_id, sensor_ip, pid,
 			false);

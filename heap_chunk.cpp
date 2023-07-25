@@ -32,7 +32,7 @@ void *cHeapItem::MAlloc(u_int32_t sizeOfObject) {
 	return(Alloc(sizeOfObject));
 }
 
-bool cHeapItem::Free(void *pointerToObject) { 
+int8_t cHeapItem::Free(void *pointerToObject) { 
 	if(IsOwnItem(pointerToObject)) { 
 		pointerToObject = (char*)pointerToObject - USED_HEADER_SIZE;
 		if(pointerToObject == Last) {
@@ -40,13 +40,14 @@ bool cHeapItem::Free(void *pointerToObject) {
 		} else {
 			FreeInnerBlock((sHeader*)pointerToObject);
 		}
+		IsFull = false;
 		if(Buff == Break) {
 			TermBuff();
+			return(2);
 		}
-		IsFull = false;
-		return(true);
+		return(1);
 	}
-	return(false);
+	return(0);
 }
 
 bool cHeapItem::InitBuff() {
@@ -303,14 +304,21 @@ bool cHeap::Free(void *pointerToObject, u_int16_t heapItemIndex) {
 		return(false);
 	}
 	lock();
+	int8_t rsltFree = 0;
 	decAllocSize(pointerToObject);
 	if(heapItemIndex && heapItemIndex <= countHeapItems &&
-	   heapItems[heapItemIndex - 1]->Free(pointerToObject)) {
+	   (rsltFree = heapItems[heapItemIndex - 1]->Free(pointerToObject)) > 0) {
+		if(rsltFree == 2 && heapItemIndex == countHeapItems) {
+			destroyLastHeapItem();
+		}
 		unlock();
 		return(true);
 	}
 	for(int i = 0; i < countHeapItems; i++) {
-		if(heapItems[i]->Free(pointerToObject)) {
+		if((rsltFree = heapItems[i]->Free(pointerToObject)) > 0) {
+			if(rsltFree == 2 && i == countHeapItems - 1) {
+				destroyLastHeapItem();
+			}
 			unlock();
 			return(true);
 		}
@@ -348,8 +356,28 @@ bool cHeap::setActive() {
 	return(true);
 }
 
+u_int64_t cHeap::getSumSize() {
+	u_int64_t rslt = 0;
+	lock();
+	for(int i = 0; i < countHeapItems; i++) {
+		if(!heapItems[i]->isEmpty()) {
+			rslt += heapItems[i]->Size + heapItems[i]->Size_reserve;
+		}
+	}
+	unlock();
+	return(rslt);
+}
+
 cHeapItem *cHeap::createHeapItem() {
 	cHeapItem *heapItem = (cHeapItem*)calloc(1, sizeof(cHeapItem));
 	heapItem->Heap = this;
 	return(heapItem);
+}
+
+void cHeap::destroyLastHeapItem() {
+	if(countHeapItems > 0 && heapItems[countHeapItems - 1]->isEmpty()) {
+		free(heapItems[countHeapItems - 1]);
+		heapItems[countHeapItems - 1] = NULL;
+		--countHeapItems;
+	}
 }
