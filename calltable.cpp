@@ -9717,54 +9717,21 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 					break;
 				}
 			}
-			if((iter->sport != _sport || iter->saddr != _saddr) && 
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
-				_proxies.push_back(vmIPport(iter->saddr, iter->sport));
-			}
-			if((iter->dport != _sport || iter->daddr != _saddr) && 
-			   (iter->dport != _dport || iter->daddr != _daddr) && 
-			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
-				if(!(!opt_call_branches &&
-				     opt_sdp_check_direction_ext &&
-				     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
-					_proxies.push_back(vmIPport(_daddr, _dport));
-					_daddr = iter->daddr;
-					_dport = iter->dport;
-					iter_rslt = iter;
-				}
-			}
-		}
-	}
-	if(!_daddr.isSet()) {
-		_saddr.clear(); _daddr.clear();
-		_sport.clear(); _dport.clear();
-		_proxies.clear();
-		iter_rslt = c_branch->invite_sdaddr.end();
-		for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
-			unsigned _index = c_branch->invite_sdaddr_bad_order ? sort_indexes[index] : index;
-			if(_index >= invite_sdaddr_order_size) {
-				continue;
-			}
-			vector<sInviteSD_Addr>::iterator iter = c_branch->invite_sdaddr.begin() + c_branch->invite_sdaddr_order[_index].order;
-			if((!only_ipv || iter->daddr.v() == only_ipv)) { 
-				if(!_saddr.isSet() && !_daddr.isSet()) {
-					_saddr = iter->saddr;
-					_sport = iter->sport;
-					_daddr = iter->daddr;
-					_dport = iter->dport;
-					iter_rslt = iter;
-					if(onlyFirst) {
-						break;
-					}
-					continue;
-				}
-				if((iter->sport != _sport || iter->saddr != _saddr) &&
-				   iter->sport == _dport && iter->saddr == _daddr &&
-				   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
+			if(iter->sport != _sport || iter->saddr != _saddr) {
+				if(find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
 					_proxies.push_back(vmIPport(iter->saddr, iter->sport));
-					_daddr = iter->daddr;
-					_dport = iter->dport;
-					iter_rslt = iter;
+				}
+				if((iter->dport != _sport || iter->daddr != _saddr) && 
+				   (iter->dport != _dport || iter->daddr != _daddr) && 
+				   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
+					if(!(!opt_call_branches &&
+					     opt_sdp_check_direction_ext &&
+					     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
+						_proxies.push_back(vmIPport(_daddr, _dport));
+						_daddr = iter->daddr;
+						_dport = iter->dport;
+						iter_rslt = iter;
+					}
 				}
 			}
 		}
@@ -9774,7 +9741,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			*dport = _dport;
 		}
 		if(daddr_encaps) {
-			*daddr_encaps = iter_rslt->saddr_first;
+			*daddr_encaps = iter_rslt->daddr_first;
 		}
 		if(daddr_encaps_protocol) {
 			*daddr_encaps_protocol = iter_rslt->daddr_first_protocol;
@@ -9869,7 +9836,6 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		c_branch->sipcalledip_encaps_prot_rslt = getSipcalledip_encaps_prot(c_branch);
 		c_branch->sipcalledport_rslt = getSipcalledport(c_branch);
 	}
-	
 	if(!set_proxies) {
 		vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
 		this->proxies_undup(proxies_undup, NULL, &proxy_exclude);

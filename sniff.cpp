@@ -5435,17 +5435,18 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						   true);
 		}
 		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
-			if((packetS->source_() != call->getSipcallerport(c_branch) || packetS->saddr_() != call->getSipcallerip(c_branch)) && 
-			   !call->in_proxy(packetS->saddr_(), packetS->source_())) {
-				call->proxy_add(packetS->saddr_(), packetS->source_());
-			}
-			if((packetS->dest_() != call->getSipcallerport(c_branch) || packetS->daddr_() != call->getSipcallerip(c_branch)) && 
-			   (packetS->dest_() != call->getSipcalledport(c_branch) || packetS->daddr_() != call->getSipcalledip(c_branch)) && 
-			   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
-				if(!(opt_sdp_check_direction_ext &&
-				     packetS->saddr_() == call->getSipcallerip(c_branch) && call->all_invite_is_multibranch(c_branch, packetS->saddr_()))) {
-					call->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
-					call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
+			if(packetS->source_() != call->getSipcallerport(c_branch) || packetS->saddr_() != call->getSipcallerip(c_branch)) {
+				if(!call->in_proxy(packetS->saddr_(), packetS->source_())) {
+					call->proxy_add(packetS->saddr_(), packetS->source_());
+				}
+				if((packetS->dest_() != call->getSipcallerport(c_branch) || packetS->daddr_() != call->getSipcallerip(c_branch)) && 
+				   (packetS->dest_() != call->getSipcalledport(c_branch) || packetS->daddr_() != call->getSipcalledip(c_branch)) && 
+				   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
+					if(!(opt_sdp_check_direction_ext &&
+					     packetS->saddr_() == call->getSipcallerip(c_branch) && call->all_invite_is_multibranch(c_branch, packetS->saddr_()))) {
+						call->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
+						call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
+					}
 				}
 			}
 		}
