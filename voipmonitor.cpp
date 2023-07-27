@@ -1239,6 +1239,7 @@ char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_audioconvert_params = NULL;
 char *opt_rtp_stream_analysis_params = NULL;
+bool opt_disable_rtp_seq_probation = false;
 sStreamAnalysisData *rtp_stream_analysis_data = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
@@ -7299,6 +7300,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"spectrogram-gui", 1, 0, _param_spectrogram_gui},
 	    {"audio-convert", 1, 0, _param_audio_convert},
 	    {"rtp-streams-analysis", 1, 0, _param_rtp_streams_analysis},
+	    {"disable-rtp-seq-probation", 0, 0, _param_disable_rtp_seq_probation},
 	    {"saveaudio-from-rtp", 0, 0, _param_saveaudio_from_rtp},
 	    {"update-schema", 0, 0, _param_update_schema},
 	    {"new-config", 0, 0, _param_new_config},
@@ -7648,6 +7650,9 @@ void get_command_line_arguments() {
 					opt_rtp_stream_analysis_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_rtp_stream_analysis_params, optarg);
 				}
+				break;
+			case _param_disable_rtp_seq_probation:
+				opt_disable_rtp_seq_probation = true;
 				break;
 			case _param_saveaudio_from_rtp:
 				opt_saveaudio_from_first_invite = false;

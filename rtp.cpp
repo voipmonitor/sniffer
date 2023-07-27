@@ -84,6 +84,7 @@ extern char opt_energylevelheader[128];
 extern bool opt_rtp_count_all_sequencegap_as_loss;
 extern bool opt_check_diff_ssrc_on_same_ip_port;
 extern int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap;
+extern bool opt_disable_rtp_seq_probation;
 
 extern sStreamAnalysisData *rtp_stream_analysis_data;
 
@@ -2719,7 +2720,7 @@ RTP::update_seq(u_int16_t seq) {
 		first = false;
 		init_seq(seq);
 		s->max_seq = seq - 1;
-		s->probation = rtp_stream_analysis_data ? 0 : MIN_SEQUENTIAL;
+		s->probation = opt_disable_rtp_seq_probation ? 0 : MIN_SEQUENTIAL;
 		s->lastTimeRec = header_ts;
 		s->lastTimeRecJ = header_ts;
 		s->lastTimeStamp = getTimestamp();
