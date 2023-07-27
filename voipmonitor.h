@@ -144,6 +144,7 @@ enum eCmdLineParams {
 	_param_spectrogram_gui,
 	_param_audio_convert,
 	_param_rtp_streams_analysis,
+	_param_disable_rtp_seq_probation,
 	_param_saveaudio_from_rtp,
 	_param_update_schema,
 	_param_new_config,
