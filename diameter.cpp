@@ -4,6 +4,7 @@
 
 
 extern bool opt_diameter_ignore_domain;
+extern bool opt_diameter_ignore_prefix;
 extern int opt_diameter_time_overlap;
 
 
@@ -220,6 +221,12 @@ string cDiameter::getPublicIdentity(cDiameterAvpDataItems *dataItems) {
 				publicIdentity = publicIdentity.substr(0, domainSeparatorPos);
 			}
 		}
+		if(opt_diameter_ignore_prefix) {
+			size_t prefixSeparatorPos = publicIdentity.find(':');
+			if(prefixSeparatorPos != string::npos && prefixSeparatorPos < publicIdentity.length() - 1) {
+				publicIdentity = publicIdentity.substr(prefixSeparatorPos + 1);
+			}
+		}
 		return(publicIdentity);
 	}
 	return("");
@@ -236,6 +243,12 @@ string cDiameter::getSessionId(cDiameterAvpDataItems *dataItems) {
 			size_t domainSeparatorPos = sessionId.find('@');
 			if(domainSeparatorPos != string::npos && domainSeparatorPos > 0) {
 				sessionId = sessionId.substr(0, domainSeparatorPos);
+			}
+		}
+		if(opt_diameter_ignore_prefix) {
+			size_t prefixSeparatorPos = sessionId.find(':');
+			if(prefixSeparatorPos != string::npos && prefixSeparatorPos < sessionId.length() - 1) {
+				sessionId = sessionId.substr(prefixSeparatorPos + 1);
 			}
 		}
 		if(!strncasecmp(sessionId.c_str(), "sip:", 4) ||
@@ -257,6 +270,12 @@ string cDiameter::getCallingPartyAddress(cDiameterAvpDataItems *dataItems) {
 			size_t domainSeparatorPos = callingPartyAddress.find('@');
 			if(domainSeparatorPos != string::npos && domainSeparatorPos > 0) {
 				callingPartyAddress = callingPartyAddress.substr(0, domainSeparatorPos);
+			}
+		}
+		if(opt_diameter_ignore_prefix) {
+			size_t prefixSeparatorPos = callingPartyAddress.find(':');
+			if(prefixSeparatorPos != string::npos && prefixSeparatorPos < callingPartyAddress.length() - 1) {
+				callingPartyAddress = callingPartyAddress.substr(prefixSeparatorPos + 1);
 			}
 		}
 		return(callingPartyAddress);
@@ -670,7 +689,8 @@ string cDiameterPacketStack::print_packets_stack() {
 bool cDiameterPacketStack::check_used(const sQueuePacketsId *queue_packets_id) {
 	extern Calltable *calltable;
 	return((!queue_packets_id->public_identity.empty() && 
-		calltable->find_by_diameter_to_sip(queue_packets_id->public_identity.c_str()) != NULL) ||
+		(calltable->find_by_diameter_to_sip(queue_packets_id->public_identity.c_str()) != NULL ||
+		 calltable->find_by_diameter_from_sip(queue_packets_id->public_identity.c_str()) != NULL)) ||
 	       (!queue_packets_id->session_id.empty() && 
 		(calltable->find_by_diameter_to_sip(queue_packets_id->session_id.c_str()) != NULL || 
 		 calltable->find_by_diameter_from_sip(queue_packets_id->session_id.c_str()) != NULL)) ||
@@ -681,6 +701,7 @@ bool cDiameterPacketStack::check_used(const sQueuePacketsId *queue_packets_id) {
 void cDiameterPacketStack::addFindIndexes(cQueuePackets *queue_packets) {
 	if(!queue_packets->id.public_identity.empty()) {
 		addFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.public_identity.c_str());
+		addFindIndex(queue_packets, &packet_stack_by_from, queue_packets->id.public_identity.c_str());
 	}
 	if(!queue_packets->id.session_id.empty()) {
 		addFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.session_id.c_str());
@@ -701,6 +722,7 @@ void cDiameterPacketStack::eraseFindIndexes(cQueuePackets *queue_packets) {
 	map<string, cQueuePackets*>::iterator iter;
 	if(!queue_packets->id.public_identity.empty()) {
 		eraseFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.public_identity.c_str());
+		eraseFindIndex(queue_packets, &packet_stack_by_from, queue_packets->id.public_identity.c_str());
 	}
 	if(!queue_packets->id.session_id.empty()) {
 		eraseFindIndex(queue_packets, &packet_stack_by_to, queue_packets->id.session_id.c_str());

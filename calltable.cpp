@@ -14118,6 +14118,13 @@ void Call::setDiameterFromSip(const char *from_sip) {
 			*pointerToDomainSeparator = 0;
 		}
 	}
+	extern bool opt_diameter_ignore_prefix;
+	if(opt_diameter_ignore_prefix) {
+		char *pointerToPrefixSeparator = (char*)strchr(from_sip, ':');
+		if(pointerToPrefixSeparator && *(pointerToPrefixSeparator + 1)) {
+			from_sip = pointerToPrefixSeparator + 1;
+		}
+	}
 	calltable->lock_calls_diameter_from_sip_listMAP();
 	diameter_from_sip[from_sip] = true;
 	calltable->calls_diameter_from_sip_listMAP[from_sip] = this;
@@ -14130,6 +14137,13 @@ void Call::setDiameterToSip(const char *to_sip) {
 		char *pointerToDomainSeparator = (char*)strchr(to_sip, '@');
 		if(pointerToDomainSeparator && pointerToDomainSeparator > to_sip) {
 			*pointerToDomainSeparator = 0;
+		}
+	}
+	extern bool opt_diameter_ignore_prefix;
+	if(opt_diameter_ignore_prefix) {
+		char *pointerToPrefixSeparator = (char*)strchr(to_sip, ':');
+		if(pointerToPrefixSeparator && *(pointerToPrefixSeparator + 1)) {
+			to_sip = pointerToPrefixSeparator + 1;
 		}
 	}
 	calltable->lock_calls_diameter_to_sip_listMAP();

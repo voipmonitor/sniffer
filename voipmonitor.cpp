@@ -440,6 +440,7 @@ int opt_ss7timeout = 3600;
 vector<string> opt_ws_params;
 bool opt_enable_diameter;
 bool opt_diameter_ignore_domain;
+bool opt_diameter_ignore_prefix;
 int opt_diameter_time_overlap = 10;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
@@ -6704,6 +6705,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_ports("diameter_udp_ports", diameter_udp_portmatrix));
 				expert();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_ignore_domain", &opt_diameter_ignore_domain));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_ignore_prefix", &opt_diameter_ignore_prefix));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("diameter_time_overlap", &opt_diameter_time_overlap));
 
 	minorGroupIfNotSetBegin();
@@ -11168,6 +11170,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "diameter_ignore_domain", NULL))) {
 		opt_diameter_ignore_domain = yesno(value);
+	}
+	if((value = ini.GetValue("general", "diameter_ignore_prefix", NULL))) {
+		opt_diameter_ignore_prefix = yesno(value);
 	}
 	if((value = ini.GetValue("general", "diameter_time_overlap", NULL))) {
 		opt_diameter_time_overlap = atoi(value);
