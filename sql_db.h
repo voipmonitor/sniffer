@@ -1221,8 +1221,8 @@ void dropMysqlPartitionsCdrStat();
 void dropMysqlPartitionsRtpStat();
 void dropMysqlPartitionsLogSensor();
 void dropMysqlPartitionsBillingAgregation();
-void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions);
-void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb);
+void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions, char type = 0);
+void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb, char type = 0);
 void checkMysqlIdCdrChildTables();
 
 

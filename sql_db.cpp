@@ -10537,14 +10537,14 @@ void dropMysqlPartitionsCdrStat() {
 	if(opt_cdr_stat_values) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
-				dropMysqlPartitionsTable(("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0);
+				dropMysqlPartitionsTable(("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
 			}
 		}
 	}
 	if(opt_cdr_stat_sources) {
 		for(int src_dst = 0; src_dst < 2; src_dst++) {
 			if(cCdrStat::enableBySrcDst(src_dst)) {
-				dropMysqlPartitionsTable(("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0);
+				dropMysqlPartitionsTable(("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str(), opt_cleandatabase_cdr_stat, 0, 'm');
 			}
 		}
 	}
@@ -10594,17 +10594,17 @@ void dropMysqlPartitionsBillingAgregation() {
 	partitionsServiceIsInProgress = 0;
 }
 
-void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions) {
+void dropMysqlPartitionsTable(const char *table, int cleanParam, unsigned maximumPartitions, char type) {
 	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
 	sqlDb->setDisableLogError();
 	sqlDb->setDisableNextAttemptIfError();
-	_dropMysqlPartitions(table, cleanParam, maximumPartitions, sqlDb);
+	_dropMysqlPartitions(table, cleanParam, maximumPartitions, sqlDb, type);
 	delete sqlDb;
 	syslog(LOG_NOTICE, "%s", (string("drop ") + table + " old partitions - end").c_str());
 }
 
-void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb) {
+void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPartitions, SqlDb *sqlDb, char type) {
 	bool _createSqlObject = false;
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
@@ -10618,7 +10618,7 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 		time_t prev_day_time = act_time - cleanParam * 24 * 60 * 60;
 		struct tm prevDayTime = time_r(&prev_day_time);
 		char limitPartName_buff[20] = "";
-		strftime(limitPartName_buff, sizeof(limitPartName_buff), "p%y%m%d", &prevDayTime);
+		strftime(limitPartName_buff, sizeof(limitPartName_buff), type == 'm' ? "p%y%m" : "p%y%m%d", &prevDayTime);
 		limitPartName = limitPartName_buff;
 	}
 	map<string, int> partitions;
