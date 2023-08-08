@@ -808,38 +808,43 @@ int SqlDb::processResponseFromQueryBy(const char *response, const char *query, u
 	if(!strcasecmp(result.c_str(), "OK")) {
 		ok = true;
 	} else {
-		bool tryNext = true;
 		unsigned int errorCode = atol(result.c_str());
-		size_t posSeparator = result.find('|');
-		string errorString;
-		if(posSeparator != string::npos) {
-			size_t posSeparator2 = result.find('|', posSeparator + 1);
-			if(posSeparator2 != string::npos) {
-				tryNext = atoi(result.substr(posSeparator + 1).c_str());
-				errorString = result.substr(posSeparator2 + 1);
+		if(this->ignoreErrorCodes.size() &&
+		   std::find(this->ignoreErrorCodes.begin(), this->ignoreErrorCodes.end(), errorCode) != this->ignoreErrorCodes.end()) {
+			ok = true;
+		} else { 
+			bool tryNext = true;
+			size_t posSeparator = result.find('|');
+			string errorString;
+			if(posSeparator != string::npos) {
+				size_t posSeparator2 = result.find('|', posSeparator + 1);
+				if(posSeparator2 != string::npos) {
+					tryNext = atoi(result.substr(posSeparator + 1).c_str());
+					errorString = result.substr(posSeparator2 + 1);
+				} else {
+					errorString = result.substr(posSeparator + 1);
+				}
 			} else {
-				errorString = result.substr(posSeparator + 1);
+				errorString = result;
 			}
-		} else {
-			errorString = result;
-		}
-		if(!sql_noerror && !this->disableLogError) {
-			if(query) {
-				errorString = "sql response: [" + errorString + "] from query: [" + query + "]";
+			if(!sql_noerror && !this->disableLogError) {
+				if(query) {
+					errorString = "sql response: [" + errorString + "] from query: [" + query + "]";
+				}
+				setLastError(errorCode, errorString.c_str(), true);
 			}
-			setLastError(errorCode, errorString.c_str(), true);
-		}
-		if(tryNext) {
-			if(sql_noerror || sql_disable_next_attempt_if_error || 
-			   this->disableLogError || this->disableNextAttemptIfError ||
-			   errorCode == ER_PARSE_ERROR) {
+			if(tryNext) {
+				if(sql_noerror || sql_disable_next_attempt_if_error || 
+				   this->disableLogError || this->disableNextAttemptIfError ||
+				   errorCode == ER_PARSE_ERROR) {
+					return(-1);
+				} else if(errorCode != CR_SERVER_GONE_ERROR &&
+					  pass < this->maxQueryPass - 5) {
+					pass = this->maxQueryPass - 5;
+				}
+			} else {
 				return(-1);
-			} else if(errorCode != CR_SERVER_GONE_ERROR &&
-				  pass < this->maxQueryPass - 5) {
-				pass = this->maxQueryPass - 5;
 			}
-		} else {
-			return(-1);
 		}
 	}
 	if(ok) {
@@ -2184,6 +2189,10 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 		}
 		if(this->connected()) {
 			if(mysql_query(this->hMysqlConn, preparedQuery.c_str())) {
+				if(this->ignoreErrorCodes.size() &&
+				   std::find(this->ignoreErrorCodes.begin(), this->ignoreErrorCodes.end(), mysql_errno(this->hMysql)) != this->ignoreErrorCodes.end()) {
+					break;
+				}
 				if(verbosity > 1) {
 					syslog(LOG_NOTICE, "query error - query: %s", prepareQueryForPrintf(preparedQuery).c_str());
 					syslog(LOG_NOTICE, "query error - error: %s", mysql_error(this->hMysql));
@@ -10111,6 +10120,9 @@ void createMysqlPartitionsCdr() {
 	syslog(LOG_NOTICE, "%s", "create cdr partitions - begin");
 	for(int connectId = 0; connectId < (use_mysql_2() ? 2 : 1); connectId++) {
 		SqlDb *sqlDb = createSqlObject(connectId);
+		sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
+		sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
+		sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
 		if(isCloud() && connectId == 0) {
 			SqlDb_mysql *sqlDbMysql = dynamic_cast<SqlDb_mysql*>(sqlDb);
 			if(sqlDbMysql) {
@@ -10280,13 +10292,17 @@ void createMysqlPartitionsBillingAgregation(SqlDb *sqlDb) {
 void createMysqlPartitionsTable(const char* table, bool partition_oldver, bool disableHourPartitions, char type) {
 	syslog(LOG_NOTICE, "%s", (string("create ") + table + " partitions - begin").c_str());
 	SqlDb *sqlDb = createSqlObject();
+	sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
+	sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
+	sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
 	unsigned int maxQueryPassOld = sqlDb->getMaxQueryPass();
 	if(!type) {
 		type = opt_cdr_partition_by_hours && !disableHourPartitions ? 'h' : 'd';
 	}
 	if(type == 'm') {
 		for(int next_month = 0; next_month < 2; next_month++) {
-			if(isCloud() || cloud_db) {
+			if(!next_month ||
+			   isCloud() || cloud_db) {
 				sqlDb->setMaxQueryPass(1);
 			}
 			_createMysqlPartition(table, type, next_month, partition_oldver, NULL, sqlDb);

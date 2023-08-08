@@ -490,6 +490,12 @@ public:
 	unsigned int getMaxQueryPass() {
 		return(this->maxQueryPass);
 	}
+	void setIgnoreErrorCode(unsigned int errorCode) {
+		this->ignoreErrorCodes.push_back(errorCode);
+	}
+	void clearIgnoreErrorCodes() {
+		this->ignoreErrorCodes.clear();
+	}
 	virtual void cleanFields();
 	virtual void clean() = 0;
 	virtual bool createSchema(int connectId = 0) = 0;
@@ -588,6 +594,7 @@ protected:
 	bool conn_showversion;
 	ulong loginTimeout;
 	unsigned int maxQueryPass;
+	list<unsigned int> ignoreErrorCodes;
 	vector<string> fields;
 	vector<int> fields_type;
 	bool enableSqlStringInContent;
