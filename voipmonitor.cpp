@@ -549,7 +549,7 @@ bool opt_saveaudio_from_first_invite = true;
 bool opt_saveaudio_afterconnect = false;
 bool opt_saveaudio_from_rtp = false;
 int opt_saveaudio_stereo = 1;
-bool opt_saveaudio_big_jitter_resync_threshold = false;
+int opt_saveaudio_jitter_resync_threshold = 1000;
 int opt_saveaudio_dedup_seq = 0;
 int opt_liveaudio = 1;
 int opt_register_timeout = 5;
@@ -7297,7 +7297,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"ignorertcpjitter", 1, 0, _param_ignorertcpjitter},
 	    {"natalias", 1, 0, _param_natalias},
 	    {"mono", 0, 0, _param_mono},
-	    {"big-jitter-resync-threshold", 0, 0, _param_big_jitter_resync_threshold},
+	    {"big-jitter-resync-threshold", 2, 0, _param_big_jitter_resync_threshold},
 	    {"untar-gui", 1, 0, _param_untar_gui},
 	    {"unlzo-gui", 1, 0, _param_unlzo_gui},
 	    {"waveform-gui", 1, 0, _param_waveform_gui},
@@ -7614,7 +7614,13 @@ void get_command_line_arguments() {
 				opt_saveaudio_stereo = 0;
 				break;
 			case _param_big_jitter_resync_threshold:
-				opt_saveaudio_big_jitter_resync_threshold = true;
+				opt_saveaudio_jitter_resync_threshold = 5000;
+				if(optarg) {
+					int tmpthreshold = atoi(optarg);
+					if(tmpthreshold > 0 && tmpthreshold < 50000) {
+						opt_saveaudio_jitter_resync_threshold = tmpthreshold;
+					}
+				}
 				break;
 			case _param_mgcp:
 				opt_mgcp = 1;
