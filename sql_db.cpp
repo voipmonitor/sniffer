@@ -1668,8 +1668,11 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			this->connecting = false;
 			return(false);
 		}
-		bool reconnect = 1;
-		mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+		extern bool opt_mysql_reconnect;
+		if(opt_mysql_reconnect) {
+			bool reconnect = 1;
+			mysql_options(this->hMysql, MYSQL_OPT_RECONNECT, &reconnect);
+		}
 		string connect_via_str;
 		for(int connectPass = 0; connectPass < 2; connectPass++) {
 			if(connectPass) {

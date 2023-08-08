@@ -477,6 +477,7 @@ char opt_tcpreassembly_diameter_log[1024];
 int opt_allow_zerossrc = 0;
 int opt_convert_dlt_sll_to_en10 = 0;
 unsigned int opt_mysql_connect_timeout = 60;
+bool opt_mysql_reconnect = true;
 int opt_mysqlcompress = 1;
 char opt_mysqlcompress_type[256];
 int opt_mysql_enable_transactions = 0;
@@ -5875,6 +5876,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42087) cConfigItem_yesno("autoload_from_sqlvmexport", &opt_autoload_from_sqlvmexport));
 				expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysql_connect_timeout", &opt_mysql_connect_timeout));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_reconnect", &opt_mysql_reconnect));
 					addConfigItem(new FILE_LINE(42088) cConfigItem_yesno("mysqlcompress", &opt_mysqlcompress));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("mysqlcompress_type", opt_mysqlcompress_type, sizeof(opt_mysqlcompress_type)));
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
@@ -10430,6 +10432,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysql_connect_timeout", NULL))) {
 		opt_mysql_connect_timeout = atoi(value);
+	}
+	if((value = ini.GetValue("general", "mysql_reconnect", NULL))) {
+		opt_mysql_reconnect = yesno(value);
 	}
 	if((value = ini.GetValue("general", "mysqlcompress", NULL))) {
 		opt_mysqlcompress = yesno(value);
