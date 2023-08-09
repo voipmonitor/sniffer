@@ -69,6 +69,8 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_asr,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
 	{ _chartType_ner_avg,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
 	{ _chartType_ner,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
+	{ _chartType_seer_avg,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
+	{ _chartType_seer,			0,	1,	_chartPercType_NA,	0,	_chartSubType_acd_asr },
 	{ _chartType_sipResp,			0,	1,	_chartPercType_NA,	1,	_chartSubType_count },
 	{ _chartType_sipResponse,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
 	{ _chartType_sipResponse_base,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
@@ -95,6 +97,7 @@ cChartDataItem::cChartDataItem() {
 	this->min = -1;
 	this->sum = 0;
 	this->count = 0;
+	this->count2 = 0;
 	this->countAll = 0;
 	this->countConected = 0;
 	this->sumDuration = 0;
@@ -187,6 +190,31 @@ void cChartDataItem::add(sChartsCallData *call,
 					if(!connect_duration_null ||
 					   (series->ner_lsr_filter && series->ner_lsr_filter->check((unsigned)lsr))) {
 						++this->count;
+					}
+				}
+			}
+			break;
+		case _chartType_seer:
+		case _chartType_seer_avg:
+			if(series->def.chartType == _chartType_seer ||
+			   (firstInterval && beginInInterval)) {
+				double lsr;
+				bool lsr_null;
+				if(call->type == sChartsCallData::_call) {
+					call->call()->getChartCacheValue(_chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
+					if(series->seer_lsr_filter[0] && series->seer_lsr_filter[0]->check((unsigned)lsr)) {
+						++this->count;
+					}
+					if(series->seer_lsr_filter[1] && !series->seer_lsr_filter[1]->check((unsigned)lsr)) {
+						++this->count2;
+					}
+				} else {
+					Call::getChartCacheValue(call->tables_content(), _chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
+					if(series->seer_lsr_filter[0] && series->seer_lsr_filter[0]->check((unsigned)lsr)) {
+						++this->count;
+					}
+					if(series->seer_lsr_filter[1] && !series->seer_lsr_filter[1]->check((unsigned)lsr)) {
+						++this->count2;
 					}
 				}
 			}
@@ -348,6 +376,16 @@ string cChartDataItem::json(cChartSeries *series) {
 				return(exp.getJson());
 			}
 			break;
+		case _chartType_seer_avg:
+		case _chartType_seer:
+			if(this->count2) {
+				JsonExport exp;
+				exp.add("_", "cmp2");
+				exp.add("v1", this->count);
+				exp.add("v2", this->count2);
+				return(exp.getJson());
+			}
+			break;
 		}
 		break;
 	case _chartSubType_perc:
@@ -416,6 +454,12 @@ double cChartDataItem::getValue(class cChartSeries *series, eChartValueType type
 		case _chartType_ner:
 			if(this->countAll) {
 				return((double)this->count / this->countAll * 100);
+			}
+			break;
+		case _chartType_seer_avg:
+		case _chartType_seer:
+			if(this->count2) {
+				return((double)this->count / this->count2 * 100);
 			}
 			break;
 		}
@@ -1493,7 +1537,7 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 }
 
 
-void cChartNerLsrFilter::parseData(JsonItem *jsonData) {
+void cChartLsrFilter::parseData(JsonItem *jsonData) {
 	JsonItem *queryItem = jsonData->getItem("w");
 	for(size_t qi = 0; qi < queryItem->getLocalCount(); qi++) {
 		w.push_back(atoi(queryItem->getLocalItem(qi)->getLocalValue().c_str()));
@@ -1555,12 +1599,20 @@ cChartSeries::cChartSeries(unsigned int id, const char *config_id, const char *c
 			filters.push_back(filter);
 		}
 	}
+	ner_lsr_filter = NULL;
+	seer_lsr_filter[0] = NULL;
+	seer_lsr_filter[1] = NULL;
 	JsonItem *nerLsrFilterItem = jsonConfig.getItem("params/nerLsrFilter");
 	if(nerLsrFilterItem) {
-		ner_lsr_filter = new FILE_LINE(0) cChartNerLsrFilter;
+		ner_lsr_filter = new FILE_LINE(0) cChartLsrFilter;
 		ner_lsr_filter->parseData(nerLsrFilterItem);
-	} else {
-		ner_lsr_filter = NULL;
+	}
+	for(unsigned i = 0; i < 2; i++) {
+		JsonItem *seerLsrFilterItem = jsonConfig.getItem("params/seer" + intToString(i + 1) + "LsrFilter");
+		if(seerLsrFilterItem) {
+			seer_lsr_filter[i] = new FILE_LINE(0) cChartLsrFilter;
+			seer_lsr_filter[i]->parseData(seerLsrFilterItem);
+		}
 	}
 	def = getChartTypeDef(chartTypeFromString(chartType));
 	used_counter = 0;
@@ -1574,14 +1626,26 @@ cChartSeries::cChartSeries(eCdrStatType cdrStatType, const char *chart_type, con
 		sourceDataName = source_data_name;
 	}
 	def = getChartTypeDef(chartTypeFromString(chart_type));
-	if(def.subType == _chartSubType_acd_asr &&
-	   (def.chartType == _chartType_ner || def.chartType == _chartType_ner_avg)) {
-		JsonItem ner_lsr_filter_config;
-		ner_lsr_filter_config.parse("{\"w\":[\"600\",\"603\",\"604\",\"607\",\"608\"],\"ws\":[\"2\",\"3\",\"4\"],\"b\":null,\"bs\":null}");
-		ner_lsr_filter = new FILE_LINE(0) cChartNerLsrFilter;
-		ner_lsr_filter->parseData(&ner_lsr_filter_config);
-	} else {
-		ner_lsr_filter = NULL;
+	ner_lsr_filter = NULL;
+	seer_lsr_filter[0] = NULL;
+	seer_lsr_filter[1] = NULL;
+	if(def.subType == _chartSubType_acd_asr) {
+		if(def.chartType == _chartType_ner || def.chartType == _chartType_ner_avg) {
+			JsonItem ner_lsr_filter_config;
+			ner_lsr_filter_config.parse("{\"w\":[\"600\",\"603\",\"604\",\"607\",\"608\"],\"ws\":[\"2\",\"3\",\"4\"],\"b\":null,\"bs\":null}");
+			ner_lsr_filter = new FILE_LINE(0) cChartLsrFilter;
+			ner_lsr_filter->parseData(&ner_lsr_filter_config);
+		}
+		if(def.chartType == _chartType_seer || def.chartType == _chartType_seer_avg) {
+			for(unsigned i = 0; i < 2; i++) {
+				JsonItem seer_lsr_filter_config;
+				seer_lsr_filter_config.parse(i == 0 ? 
+							      "{\"w\":[\"200\",\"480\",\"486\",\"600\",\"603\"],\"ws\":null,\"b\":null,\"bs\":null}" :
+							      "{\"w\":null,\"ws\":[\"3\"],\"b\":null,\"bs\":null}");
+				seer_lsr_filter[i] = new FILE_LINE(0) cChartLsrFilter;
+				seer_lsr_filter[i]->parseData(&seer_lsr_filter_config);
+			}
+		}
 	}
 	used_counter = 0;
 	terminating = 0;
@@ -1599,6 +1663,12 @@ void cChartSeries::clear() {
 	if(ner_lsr_filter) {
 		delete ner_lsr_filter;
 		ner_lsr_filter = NULL;
+	}
+	for(unsigned i = 0; i < 2; i++) {
+		if(seer_lsr_filter[i]) {
+			delete seer_lsr_filter[i];
+			seer_lsr_filter[i] = NULL;
+		}
 	}
 }
 
@@ -1958,6 +2028,7 @@ void cCdrStat::init_series(vector<cChartSeries*> *series, int src_dst) {
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_asr, "TCH_asr", "asr"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_acd, "TCH_acd", "acd"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_ner, "TCH_ner", "ner"));
+	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_seer, "TCH_seer", "seer"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_mos, src_dst == 0 ? "TCH_mos_caller" : "TCH_mos_called", "mos"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_packet_loss, src_dst == 0 ? "TCH_packet_lost_caller" : "TCH_packet_lost_called", "packet_loss"));
 	series->push_back(new FILE_LINE(0) cChartSeries(_cdrStatType_jitter, src_dst == 0 ? "TCH_jitter_caller" : "TCH_jitter_called", "jitter"));
@@ -1977,6 +2048,7 @@ void cCdrStat::init_metrics(vector<sMetrics> *metrics) {
 	metrics->push_back(sMetrics("asr", _cdrStatType_asr, _chartValueType_na));
 	metrics->push_back(sMetrics("acd", _cdrStatType_acd, _chartValueType_na));
 	metrics->push_back(sMetrics("ner", _cdrStatType_ner, _chartValueType_na));
+	metrics->push_back(sMetrics("seer", _cdrStatType_seer, _chartValueType_na));
 	metrics->push_back(sMetrics("mos_avg", _cdrStatType_mos, _chartValueType_avg));
 	metrics->push_back(sMetrics("mos_perc95", _cdrStatType_mos, _chartValueType_perc95));
 	metrics->push_back(sMetrics("mos_perc99", _cdrStatType_mos, _chartValueType_perc99));
@@ -2411,6 +2483,8 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_asr" ? _chartType_asr :
 	       chartType == "TCH_ner_avg" ? _chartType_ner_avg :
 	       chartType == "TCH_ner" ? _chartType_ner :
+	       chartType == "TCH_seer_avg" ? _chartType_seer_avg :
+	       chartType == "TCH_seer" ? _chartType_seer :
 	       chartType == "TCH_sipResp" ? _chartType_sipResp :
 	       chartType == "TCH_sipResponse" ? _chartType_sipResponse :
 	       chartType == "TCH_sipResponse_base" ? _chartType_sipResponse_base :

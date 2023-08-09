@@ -73,6 +73,8 @@ enum eChartType {
 	_chartType_asr,
 	_chartType_ner_avg,
 	_chartType_ner,
+	_chartType_seer_avg,
+	_chartType_seer,
 	_chartType_sipResp,
 	_chartType_sipResponse,
 	_chartType_sipResponse_base,
@@ -126,6 +128,7 @@ enum eCdrStatType {
 	_cdrStatType_asr = 11,
 	_cdrStatType_acd,
 	_cdrStatType_ner,
+	_cdrStatType_seer,
 	_cdrStatType_mos = 21,
 	_cdrStatType_packet_loss,
 	_cdrStatType_jitter,
@@ -159,6 +162,7 @@ private:
 	volatile double sum;
 	map<float, unsigned> values;
 	volatile unsigned int count;
+	volatile unsigned int count2;
 	map<unsigned int, unsigned int> count_intervals;
 	volatile unsigned int countAll;
 	volatile unsigned int countConected;
@@ -324,7 +328,7 @@ friend class cCharts;
 friend class cCdrStat;
 };
 
-class cChartNerLsrFilter {
+class cChartLsrFilter {
 private:
 	struct sFilterItem {
 		sFilterItem(unsigned lsr) {
@@ -385,7 +389,8 @@ private:
 	vector<string> param;
 	map<string_icase, int> param_map;
 	vector<cChartFilter*> filters;
-	cChartNerLsrFilter *ner_lsr_filter;
+	cChartLsrFilter *ner_lsr_filter;
+	cChartLsrFilter *seer_lsr_filter[2];
 	sChartTypeDef def;
 	volatile int used_counter;
 	volatile int terminating;

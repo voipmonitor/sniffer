@@ -5054,6 +5054,8 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_asr:
 	case _chartType_ner_avg:
 	case _chartType_ner:
+	case _chartType_seer_avg:
+	case _chartType_seer:
 		v = 1;
 		break;
 	case _chartType_sipResp:
@@ -5379,6 +5381,8 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 	case _chartType_asr:
 	case _chartType_ner_avg:
 	case _chartType_ner:
+	case _chartType_seer_avg:
+	case _chartType_seer:
 		v = 1;
 		break;
 	case _chartType_sipResp:
