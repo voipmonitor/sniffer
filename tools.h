@@ -4848,4 +4848,8 @@ public:
 };
 
 
+string jeMallocStat(bool full);
+void jeMallocStat_save();
+
+
 #endif

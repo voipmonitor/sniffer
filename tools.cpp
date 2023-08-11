@@ -9638,3 +9638,77 @@ string cWsCalls::printUncofirmed() {
 	return(out.str());
 }
 
+
+#if HAVE_LIBJEMALLOC
+string jeMallocStat(bool full) {
+	string rslt;
+	string tempFileName = tmpnam();
+	if(tempFileName.empty()) {
+		syslog(LOG_ERR, "Can't get tmp filename in the jeMallocStat.");
+		return(rslt);
+	}
+	char *tempFileNamePointer = (char*)tempFileName.c_str();
+	mallctl("prof.dump", NULL, NULL, &tempFileNamePointer, sizeof(char*));
+	FILE *jeout = fopen(tempFileName.c_str(), "rt");
+	if(jeout) {
+		char *buff = new FILE_LINE(42067) char[10000];
+		while(fgets(buff, 10000, jeout)) {
+			if(full) {
+				rslt += buff;
+			} else {
+				if(reg_match(buff, "MAPPED_LIBRARIES", __FILE__, __LINE__)) {
+					break;
+				}
+				if(*buff) {
+					if(reg_match(buff, "^[0-9]+: [0-9]+", __FILE__, __LINE__)) {
+						char *pointerToSizeSeparator = strchr(buff, ':');
+						if(pointerToSizeSeparator &&
+						   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
+							rslt += buff;
+						}
+					} else {
+						rslt += buff;
+					}
+				}
+			}
+		}
+		delete [] buff;
+		fclose(jeout);
+	}
+	unlink(tempFileName.c_str());
+	return(rslt);
+}
+#else
+string jeMallocStat(bool /*full*/) {
+	return("");
+}
+#endif //HAVE_LIBJEMALLOC
+
+#if HAVE_LIBJEMALLOC
+void jeMallocStat_save() {
+	string stat = jeMallocStat(true);
+	if(!stat.length()) {
+		return;
+	}
+	time_t act_time = time(NULL);
+	tm act_time_local = time_r(&act_time);
+	char hourFolder[50];
+	strftime(hourFolder, sizeof(hourFolder), "%Y-%m-%d/%H", &act_time_local);
+	char minuteSecondFile[50];
+	strftime(minuteSecondFile, sizeof(minuteSecondFile), "%M-%S", &act_time_local);
+	extern string opt_jemalloc_stat_full_folder;
+	string folder = opt_jemalloc_stat_full_folder + "/" + hourFolder;
+	if(!file_exists(folder)) {
+		mkdir_r(folder, 0777);
+	}
+	FileZipHandler *fileZipHandler =  new FILE_LINE(0) FileZipHandler(8 * 1024, 0, FileZipHandler::gzip);
+	if(fileZipHandler->open(tsf_na, (folder + "/mm_" + minuteSecondFile + ".gz").c_str())) {
+		fileZipHandler->write((char*)stat.c_str(), stat.length());
+		fileZipHandler->close();
+	}
+	delete fileZipHandler;
+}
+#else
+void jeMallocStat_save() {
+}
+#endif //HAVE_LIBJEMALLOC

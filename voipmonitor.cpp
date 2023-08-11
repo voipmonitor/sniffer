@@ -1381,6 +1381,7 @@ string extract_rtp_payload;
 bool opt_all_configuration_options_in_gui = false;
 bool opt_all_unlink_log = false;
 bool opt_bt_sighandler_enable = true;
+string opt_jemalloc_stat_full_folder;
 
 
 #include <stdio.h>
@@ -4977,6 +4978,11 @@ int main_init_read() {
 				if(sverb.memory_stat_log) {
 					printMemoryStat();
 				}
+				#if HAVE_LIBJEMALLOC
+				if(!opt_jemalloc_stat_full_folder.empty()) {
+					jeMallocStat_save();
+				}
+				#endif
 				if(tcpReassemblyHttp) {
 					tcpReassemblyHttp->setDoPrintContent();
 				}
@@ -5748,54 +5754,6 @@ void __cyg_profile_func_exit(void *this_fn, void */*call_site*/) {
 }
 }
 #endif
-
-
-//#define HAVE_LIBJEMALLOC
-
-#if HAVE_LIBJEMALLOC
-string jeMallocStat(bool full) {
-	string rslt;
-	string tempFileName = tmpnam();
-	if(tempFileName.empty()) {
-		syslog(LOG_ERR, "Can't get tmp filename in the jeMallocStat.");
-		return(rslt);
-	}
-	char *tempFileNamePointer = (char*)tempFileName.c_str();
-	mallctl("prof.dump", NULL, NULL, &tempFileNamePointer, sizeof(char*));
-	FILE *jeout = fopen(tempFileName.c_str(), "rt");
-	if(jeout) {
-		char *buff = new FILE_LINE(42067) char[10000];
-		while(fgets(buff, 10000, jeout)) {
-			if(full) {
-				rslt += buff;
-			} else {
-				if(reg_match(buff, "MAPPED_LIBRARIES", __FILE__, __LINE__)) {
-					break;
-				}
-				if(*buff) {
-					if(reg_match(buff, "^[0-9]+: [0-9]+", __FILE__, __LINE__)) {
-						char *pointerToSizeSeparator = strchr(buff, ':');
-						if(pointerToSizeSeparator &&
-						   atoll(buff) * atoll(pointerToSizeSeparator + 2) > sverb.memory_stat_ignore_limit) {
-							rslt += buff;
-						}
-					} else {
-						rslt += buff;
-					}
-				}
-			}
-		}
-		delete [] buff;
-		fclose(jeout);
-	}
-	unlink(tempFileName.c_str());
-	return(rslt);
-}
-#else
-string jeMallocStat(bool /*full*/) {
-	return("");
-}
-#endif //HAVE_LIBJEMALLOC
 
 
 // CONFIGURATION
@@ -6970,6 +6928,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_configuration_options_in_gui", &opt_all_configuration_options_in_gui));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("bt_sighandler", &opt_bt_sighandler_enable));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("jemalloc_stat_full_folder", &opt_jemalloc_stat_full_folder));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12127,6 +12086,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "bt_sighandler", NULL))) {
 		opt_bt_sighandler_enable = yesno(value);
+	}
+	if((value = ini.GetValue("general", "jemalloc_stat_full_folder", NULL))) {
+		opt_jemalloc_stat_full_folder = value;
 	}
 
 	/*

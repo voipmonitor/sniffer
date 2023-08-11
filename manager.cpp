@@ -4542,7 +4542,6 @@ int Mgmt_jemalloc_stat(Mgmt_params *params) {
 		params->registerCommand("jemalloc_stat", "return jemalloc statistics");
 		return(0);
 	}
-	string jeMallocStat(bool full);
 	string rsltMemoryStat = jeMallocStat(strstr(params->buf, "full"));
 	return(params->sendString(&rsltMemoryStat));
 }
