@@ -137,7 +137,6 @@ enum eCmdLineParams {
 	_param_ignorertcpjitter,
 	_param_natalias,
 	_param_mono,
-	_param_big_jitter_resync_threshold,
 	_param_untar_gui,
 	_param_unlzo_gui,
 	_param_waveform_gui,
