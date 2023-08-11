@@ -8224,13 +8224,17 @@ void set_context_config() {
 			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
 		}
 	}
- 
-	if(opt_mysql_enable_new_store && !is_support_for_mysql_new_store()) {
-		opt_mysql_enable_new_store = false;
-		syslog(LOG_ERR, "option mysql_enable_new_store is not suported in your configuration");
-	}
-	if(!opt_mysql_enable_new_store) {
-		opt_mysql_enable_set_id = false;
+	
+	if(is_support_for_mysql_new_store()) {
+		if(opt_mysql_enable_set_id && !opt_mysql_enable_new_store) {
+			opt_mysql_enable_new_store = 2;
+		}
+	} else {
+		if(opt_mysql_enable_new_store || opt_mysql_enable_set_id) {
+			opt_mysql_enable_new_store = false;
+			opt_mysql_enable_set_id = false;
+			syslog(LOG_ERR, "option mysql_enable_new_store and mysql_enable_set_id is not suported in your configuration");
+		}
 	}
 	
 	if(opt_mysql_enable_new_store == 2 && !opt_mysql_enable_set_id) {
