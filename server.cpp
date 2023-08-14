@@ -1129,7 +1129,7 @@ bool cSnifferServerConnection::rsaAesInit(bool writeRsltOK) {
 			if(timeDiff > opt_client_server_connect_maximum_time_diff_s) {
 				cLogSensor::log(cLogSensor::error,  
 						"sensor is not allowed to connect because of different time",
-						"Time difference between server and client (id_sensor:%i) is too big (%is). Please synchronise time on both server and client.",
+						"Time difference between server and client (id_sensor:%i) is too big (%is). Please synchronise time on both server and client. Or the data was delayed due some network problems.",
 						sensorId,
 						timeDiff);
 				socket->writeBlock("bad time");
