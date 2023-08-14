@@ -31,6 +31,14 @@
 #define LIMIT_SMALLINT_UNSIGNED(value) 	(min(0xFFFFu, (unsigned)(value)))
 #define LIMIT_MEDIUMINT_UNSIGNED(value)	(min(0xFFFFFFu, (unsigned)(value)))
 
+#define LIMIT_TINYINT_SIGNED(value) 	((value) > 127 ? 127 : ((value) < -128 ? -128 : (value)))
+#define LIMIT_SMALLINT_SIGNED(value) 	((value) > 32767 ? 32767 : ((value) < -32768 ? -32768 : (value)))
+#define LIMIT_MEDIUMINT_SIGNED(value)	((value) > 8388607 ? 8388607 : ((value) < -8388608 ? -8388608 : (value)))
+
+#define LIMIT_TINYINT_SIGNED_TO_UNSIGNED(value) 	(unsigned)((value) > 0XFF ? 0xFF : ((value) < 0 ? 0 : (value)))
+#define LIMIT_SMALLINT_SIGNED_TO_UNSIGNED(value) 	(unsigned)((value) > 0xFFFF ? 0xFFFF : ((value) < 0 ? 0 : (value)))
+#define LIMIT_MEDIUMINT_SIGNED_TO_UNSIGNED(value)	(unsigned)((value) > 0xFFFFFF ? 0xFFFFFF : ((value) < 0 ? 0 : (value)))
+
 
 using namespace std;
 
@@ -1315,7 +1323,8 @@ struct sExistsColumns {
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
 	bool cdr_txt_calldate;
-	bool cdr_rtcp_loss_is_smallint_type;
+	bool cdr_ab_rtcp_loss_is_smallint_type[2];
+	bool cdr_ab_rtcp_loss_is_signed_type[2];
 	bool cdr_vlan;
 	bool cdr_conference;
 	bool cdr_conference_calldate;

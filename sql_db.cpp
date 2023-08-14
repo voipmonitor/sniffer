@@ -8875,7 +8875,10 @@ void SqlDb_mysql::checkColumns_cdr(bool log) {
 				"sipcalledip_encaps_prot", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	
-	existsColumns.cdr_rtcp_loss_is_smallint_type = this->getTypeColumn("cdr", "a_rtcp_loss", true) == "smallint(5) unsigned" ? true : false;
+	existsColumns.cdr_ab_rtcp_loss_is_smallint_type[0] = this->getTypeColumn("cdr", "a_rtcp_loss", true).find("smallint") != string::npos;
+	existsColumns.cdr_ab_rtcp_loss_is_smallint_type[1] = this->getTypeColumn("cdr", "b_rtcp_loss", true).find("smallint") != string::npos;
+	existsColumns.cdr_ab_rtcp_loss_is_signed_type[0] = this->getTypeColumn("cdr", "a_rtcp_loss", true).find("unsigned") == string::npos;
+	existsColumns.cdr_ab_rtcp_loss_is_signed_type[1] = this->getTypeColumn("cdr", "b_rtcp_loss", true).find("unsigned") == string::npos;
 	
 	existsColumns.cdr_a_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "a_last_rtp_from_end").find("unsigned") != string::npos;
 	existsColumns.cdr_b_last_rtp_from_end_unsigned = this->getTypeColumn("cdr", "b_last_rtp_from_end").find("unsigned") != string::npos;

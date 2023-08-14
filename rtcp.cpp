@@ -400,9 +400,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 			int rtp_find_type;
 			RTP *rtp = find_rtp(call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
-				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
-				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
-				loss |= (int32_t)reportblock.packets_lost[0];
+				int32_t loss = ntoh24(reportblock.packets_lost);
 				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;
@@ -536,9 +534,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 			int rtp_find_type;
 			RTP *rtp = find_rtp(call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
-				int32_t loss = ((int32_t)reportblock.packets_lost[2]) << 16;
-				loss |= ((int32_t)reportblock.packets_lost[1]) << 8;
-				loss |= (int32_t)reportblock.packets_lost[0];
+				int32_t loss = ntoh24(reportblock.packets_lost);
 				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;

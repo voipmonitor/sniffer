@@ -1024,8 +1024,120 @@ inline u_int16_t bitmaskshift_16(u_int16_t val, u_int16_t mask) {
 	return((ntohs(val) & mask) >> __builtin_ctzll(mask)); 
 }
 
-inline u_int32_t bitmaskshift_32(u_int32_t val, u_int16_t mask) {
+inline u_int32_t bitmaskshift_32(u_int32_t val, u_int32_t mask) {
 	return((ntohl(val) & mask) >> __builtin_ctzll(mask)); 
+}
+
+inline u_int16_t ntoh16(const void *p) {
+    return (u_int16_t)*((const u_int8_t*)(p)+0)<<8|
+           (u_int16_t)*((const u_int8_t*)(p)+1)<<0;
+}
+
+inline u_int32_t ntoh24(const void *p) {
+    return (u_int32_t)*((const u_int8_t*)(p)+0)<<16|
+           (u_int32_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int32_t)*((const u_int8_t*)(p)+2)<<0;
+}
+
+inline u_int32_t ntoh32(const void *p) {
+    return (u_int32_t)*((const u_int8_t*)(p)+0)<<24|
+           (u_int32_t)*((const u_int8_t*)(p)+1)<<16|
+           (u_int32_t)*((const u_int8_t*)(p)+2)<<8|
+           (u_int32_t)*((const u_int8_t*)(p)+3)<<0;
+}
+
+inline u_int64_t ntoh40(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+0)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<0;
+}
+
+inline u_int64_t ntoh48(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+0)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+5)<<0;
+}
+
+inline u_int64_t ntoh56(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+0)<<48|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+5)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+6)<<0;
+}
+
+inline u_int64_t ntoh64(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+0)<<56|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<48|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+5)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+6)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+7)<<0;
+}
+
+inline u_int16_t letoh16(const void *p) {
+    return (u_int16_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int16_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int32_t letoh24(const void *p) {
+    return (u_int32_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int32_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int32_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int32_t letoh32(const void *p) {
+    return (u_int32_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int32_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int32_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int32_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int64_t letoh40(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+4)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int64_t letoh48(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+5)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int64_t letoh56(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+6)<<48|
+           (u_int64_t)*((const u_int8_t*)(p)+5)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+0)<<0;
+}
+
+inline u_int64_t letoh64(const void *p) {
+    return (u_int64_t)*((const u_int8_t*)(p)+7)<<56|
+           (u_int64_t)*((const u_int8_t*)(p)+6)<<48|
+           (u_int64_t)*((const u_int8_t*)(p)+5)<<40|
+           (u_int64_t)*((const u_int8_t*)(p)+4)<<32|
+           (u_int64_t)*((const u_int8_t*)(p)+3)<<24|
+           (u_int64_t)*((const u_int8_t*)(p)+2)<<16|
+           (u_int64_t)*((const u_int8_t*)(p)+1)<<8|
+           (u_int64_t)*((const u_int8_t*)(p)+0)<<0;
 }
 
 

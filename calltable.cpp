@@ -6945,10 +6945,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				}
 
 				if(rtpab[i]->rtcp.counter) {
-					cdr.add(existsColumns.cdr_rtcp_loss_is_smallint_type ?
-						 LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.loss) :
-						 LIMIT_MEDIUMINT_UNSIGNED(rtpab[i]->rtcp.loss),
-						c+"_rtcp_loss");
+					if(existsColumns.cdr_ab_rtcp_loss_is_smallint_type[i]) {
+						cdr.add(LIMIT_SMALLINT_SIGNED_TO_UNSIGNED(rtpab[i]->rtcp.loss), c+"_rtcp_loss");
+					} else if(existsColumns.cdr_ab_rtcp_loss_is_signed_type[i]) {
+						cdr.add(LIMIT_MEDIUMINT_SIGNED(rtpab[i]->rtcp.loss), c+"_rtcp_loss");
+					} else {
+						cdr.add(LIMIT_MEDIUMINT_SIGNED_TO_UNSIGNED(rtpab[i]->rtcp.loss), c+"_rtcp_loss");
+					}
 					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.maxfr), c+"_rtcp_maxfr");
 					rtcp_avgfr_mult10[i] = (int)round(rtpab[i]->rtcp.avgfr * 10);
 					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtcp_avgfr_mult10[i]), c+"_rtcp_avgfr_mult10");
