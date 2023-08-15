@@ -318,6 +318,11 @@ public:
 		ChunkBuffer *buffer;
 		Tar *tar;
 		time_t time;
+		inline data_t() {
+			buffer = NULL;
+			tar = NULL;
+			time = 0;
+		}
 		inline void setDataTar(data_tar *data) {
 			*(data_tar*)this = *data;
 		}

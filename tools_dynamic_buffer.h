@@ -276,6 +276,7 @@ public:
 	virtual bool compress_ev(char *data, u_int32_t len, u_int32_t decompress_len, bool format_data = false);
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
+	void deleteChunks();
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
 	void lock_chunkBuffer() {
 		while(__sync_lock_test_and_set(&this->_sync_chunkBuffer, 1));
@@ -295,6 +296,12 @@ public:
 	}
 	static u_int64_t getChunkBuffersSumsize() {
 		return(chunk_buffers_sumsize);
+	}
+	inline bool get_warning_try_write_to_closed_tar() {
+		return(warning_try_write_to_closed_tar);
+	}
+	inline void set_warning_try_write_to_closed_tar() {
+		warning_try_write_to_closed_tar = true;
 	}
 private:
 	void strange_log(const char *error);
@@ -327,6 +334,7 @@ private:
 	unsigned int last_tar_time;
 	volatile u_int64_t chunk_buffer_size;
 	u_int64_t created_at;
+	bool warning_try_write_to_closed_tar;
 static volatile u_int64_t chunk_buffers_sumsize;
 };      
 

@@ -1405,7 +1405,10 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 	Tar *tar = NULL;
 	pthread_mutex_lock(&tarQueue->tarslock);
 	if(tarQueue->tars.find(tarName) == tarQueue->tars.end()) {
-		syslog(LOG_ERR, "try to write close tar: %s",  tarName);
+		if(!data->buffer->get_warning_try_write_to_closed_tar()) {
+			syslog(LOG_ERR, "try write [%s] to closed tar: %s", data->buffer->getName_c_str(), tarName);
+			data->buffer->set_warning_try_write_to_closed_tar();
+		}
 	} else {
 		tar = data->tar;
 	}
@@ -1454,6 +1457,9 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 			}
 			tar->writing = 0;
 		}
+	} else {
+		//data->buffer->chunkIterate(NULL, true, true, lenForProceed);
+		data->buffer->deleteChunks();
 	}
 	
 	#if TAR_PROF
@@ -1469,7 +1475,6 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 			       tar->time.getTimeString().c_str());
 		}
 		delete data->buffer;
-		//tar->incClosedPartCounter();
 		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
 	}
 	

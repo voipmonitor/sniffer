@@ -986,6 +986,7 @@ ChunkBuffer::ChunkBuffer(int time, data_tar_time tar_time, bool need_tar_pos,
 	this->last_tar_time = 0;
 	this->chunk_buffer_size = 0;
 	this->created_at = getTimeUS();
+	this->warning_try_write_to_closed_tar = false;
 	if(call) {
 		#if DEBUG_ASYNC_TAR_WRITE
 		if(!call->incChunkBuffers(typeContent - 1 + indexContent, this, this->name.c_str())) {
@@ -1206,7 +1207,9 @@ bool ChunkBuffer::compress_ev(char *data, u_int32_t len, u_int32_t decompress_le
 }
 
 bool ChunkBuffer::decompress_ev(char *data, u_int32_t len) {
- 	decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
+	if(decompress_chunkbufferIterateEv) {
+		decompress_chunkbufferIterateEv->chunkbuffer_iterate_ev(data, len, this->decompress_pos);
+	}
 	this->decompress_pos += len;
 	if(sverb.chunk_buffer > 2) {
 		cout << "decompress ev " << len << " " << this->decompress_pos << " " << endl;
@@ -1391,7 +1394,9 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 				}
 			}
 		}
-		chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0 , this->decompress_pos);
+		if(chunkbufferIterateEv) {
+			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0 , this->decompress_pos);
+		}
 		if(!enableContinue) {
 			this->compressStream->termDecompress();
 		}
@@ -1401,7 +1406,9 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
 				if(counterIterator++) ++it;
 				if(it->chunk) {
-					chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, 0);
+					if(chunkbufferIterateEv) {
+						chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, 0);
+					}
 					this->chunkIterateProceedLen += it->len;
 					if(freeChunks) {
 						it->deleteChunk(this);
@@ -1409,14 +1416,18 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					pos += it->len;
 				}
 			}
-			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
+			if(chunkbufferIterateEv) {
+				chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
+			}
 		} else {
 			for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
 				if(counterIterator++) ++it;
 				if(!it->chunk) {
 					continue;
 				}
-				chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
+				if(chunkbufferIterateEv) {
+					chunkbufferIterateEv->chunkbuffer_iterate_ev(it->chunk, it->len, pos);
+				}
 				this->chunkIterateProceedLen += it->len;
 				if(freeChunks) {
 					it->deleteChunk(this);
@@ -1430,11 +1441,27 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					break;
 				}
 			}
-			chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
+			if(chunkbufferIterateEv) {
+				chunkbufferIterateEv->chunkbuffer_iterate_ev(NULL, 0, pos);
+			}
 		}
 	}
 	if(sverb.chunk_buffer > 1) { 
 		cout << "### end chunkIterate " << this->chunkIterateProceedLen << endl;
+	}
+}
+
+void ChunkBuffer::deleteChunks() {
+	size_t counterIterator = 0;
+	size_t sizeChunkBuffer = chunkBuffer_countItems;
+	for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+		if(counterIterator++) ++it;
+		if(it->chunk) {
+			it->deleteChunk(this);
+		}
+		if(!this->closed && counterIterator >= sizeChunkBuffer - 1) {
+			break;
+		}
 	}
 }
 
