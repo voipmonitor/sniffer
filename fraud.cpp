@@ -1060,7 +1060,7 @@ void FraudAlert_rcc_callInfo::dump(string *dump) {
 	}
 	if(calls_international.size()) {
 		outStr << "   * calls_international * (" << calls_international.size() << ")" << endl;
-		for(map<string, u_int64_t>::iterator iter = calls_local.begin(); iter != calls_local.end(); iter++) {
+		for(map<string, u_int64_t>::iterator iter = calls_international.begin(); iter != calls_international.end(); iter++) {
 			outStr << "      " << iter->first 
 			       << " : " << sqlDateTimeString(TIME_US_TO_S(iter->second)) 
 			       << " : " << (actTimeS > TIME_US_TO_S(iter->second) ? actTimeS - TIME_US_TO_S(iter->second) : 0)
