@@ -13070,6 +13070,9 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					++stat.in_preprocess_issue;
 				}
 				if(closeCall) {
+					if(opt_enable_fraud && !closeAll) {
+						fraudEndCall(call, call->unshiftSystemTime_ms(currTimeMS));
+					}
 					if(sverb.cleanup_calls_log) {
 						ostringstream str;
 						str << " *** closeCall " << call->call_id

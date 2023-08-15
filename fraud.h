@@ -494,6 +494,7 @@ protected:
 	virtual bool defStorePcaps() { return(false); }
 	virtual bool supportVerbLog() { return(false); }
 	virtual int8_t needTimer() { return(0); }
+	virtual void dump(string */*dump*/) {}
 protected:
 	eFraudAlertType type;
 	unsigned int dbId;
@@ -593,6 +594,11 @@ public:
 	void addInternational(const char *callid, u_int64_t at) {
 		calls_international[callid] = at;
 	}
+	bool empty() {
+		return(calls_local.size() == 0 && calls_international.size() == 0);
+	}
+	void cleanup(u_int64_t actTime_us);
+	void dump(string *dump);
 private:
 	map<string, u_int64_t> calls_local;
 	map<string, u_int64_t> calls_international;
@@ -720,6 +726,8 @@ private:
 	bool checkOkAlert(sIdAlert idAlert, size_t concurentCalls, u_int64_t at,
 			  FraudAlert::eLocalInternational li,
 			  FraudAlert_rcc *alert);
+	void cleanup(u_int64_t actTime_us);
+	void dump(string *dump);
 protected:
 	unsigned int concurentCallsLimitLocal_tp;
 	unsigned int concurentCallsLimitInternational_tp;
@@ -734,6 +742,8 @@ private:
 	map<sIdAlert, sAlertInfo> alerts_international;
 	map<sIdAlert, sAlertInfo> alerts_booth;
 	FraudAlert_rcc *parent;
+	u_int32_t last_cleanup_at;
+friend class FraudAlert_rcc;
 };
 
 class FraudAlert_rcc_timePeriods : public FraudAlert_rcc_base {
@@ -779,6 +789,7 @@ private:
 	vector<TimePeriod> timePeriods;
 	map<u_int32_t, sAlertInfo> alerts;
 	FraudAlert_rcc *parent;
+friend class FraudAlert_rcc;
 };
 
 class FraudAlertInfo_rcc : public FraudAlertInfo {
@@ -839,6 +850,8 @@ protected:
 	bool defTypeBy() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
 	bool supportVerbLog() { return(true); }
+private:
+	void dump(string *dump);
 private:
 	vector<FraudAlert_rcc_timePeriods> timePeriods;
 };
@@ -1245,6 +1258,7 @@ public:
 		return(useUserRestriction_custom_headers);
 	}
 	void waitForEmptyQueues(int timeout = 60);
+	void rccDump(string *dump);
 private:
 	void pushToCallQueue(sFraudCallInfo *callInfo);
 	void pushToRtpStreamQueue(sFraudRtpStreamInfo *streamInfo);
@@ -1373,6 +1387,9 @@ void fraudRegister(Register *reg, RegisterState *regState, eRegisterState state,
 string whereCondFraudAlerts();
 bool isExistsFraudAlerts(bool *storePcaps = NULL, SqlDb *sqlDb = NULL);
 bool selectSensorsContainSensorId(string select_sensors);
+
+void fraudRccDump(string *dump);
+
 
 inline bool isFraudReady() {
 	extern FraudAlerts *fraudAlerts;

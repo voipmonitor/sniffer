@@ -14,6 +14,7 @@ extern int opt_nocdr;
 extern MySqlStore *sqlStore;
 extern CountryDetect *countryDetect;
 extern sExistsColumns existsColumns;
+extern int absolute_timeout;
 
 FraudAlerts *fraudAlerts = NULL;
 volatile int _fraudAlerts_ready = 0;
@@ -1024,6 +1025,51 @@ FraudAlert_rcc_callInfo::FraudAlert_rcc_callInfo() {
 	this->last_alert_info_li = 0;
 }
 
+void FraudAlert_rcc_callInfo::cleanup(u_int64_t actTime_us) {
+	if(calls_local.size()) {
+		for(map<string, u_int64_t>::iterator iter = calls_local.begin(); iter != calls_local.end();) {
+			if(iter->second + TIME_S_TO_US(absolute_timeout) < actTime_us) {
+				calls_local.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+	}
+	if(calls_international.size()) {
+		for(map<string, u_int64_t>::iterator iter = calls_international.begin(); iter != calls_international.end();) {
+			if(iter->second + TIME_S_TO_US(absolute_timeout) < actTime_us) {
+				calls_international.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+	}
+}
+
+void FraudAlert_rcc_callInfo::dump(string *dump) {
+	ostringstream outStr;
+	u_int32_t actTimeS = getTimeS_rdtsc();
+	if(calls_local.size()) {
+		outStr << "   * calls_local * (" << calls_local.size() << ")" << endl;
+		for(map<string, u_int64_t>::iterator iter = calls_local.begin(); iter != calls_local.end(); iter++) {
+			outStr << "      " << iter->first 
+			       << " : " << sqlDateTimeString(TIME_US_TO_S(iter->second)) 
+			       << " : " << (actTimeS > TIME_US_TO_S(iter->second) ? actTimeS - TIME_US_TO_S(iter->second) : 0)
+			       << endl;
+		}
+	}
+	if(calls_international.size()) {
+		outStr << "   * calls_international * (" << calls_international.size() << ")" << endl;
+		for(map<string, u_int64_t>::iterator iter = calls_local.begin(); iter != calls_local.end(); iter++) {
+			outStr << "      " << iter->first 
+			       << " : " << sqlDateTimeString(TIME_US_TO_S(iter->second)) 
+			       << " : " << (actTimeS > TIME_US_TO_S(iter->second) ? actTimeS - TIME_US_TO_S(iter->second) : 0)
+			       << endl;
+		}
+	}
+	dump->append(outStr.str());
+}
+
 FraudAlert_rcc_rtpStreamInfo::FraudAlert_rcc_rtpStreamInfo() {
 	this->last_alert_info_local = 0;
 	this->last_alert_info_international = 0;
@@ -1071,6 +1117,7 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods(SqlDb *sqlDb) {
 
 FraudAlert_rcc_base::FraudAlert_rcc_base(FraudAlert_rcc *parent) {
 	this->parent = parent;
+	last_cleanup_at = 0;
 }
 
 FraudAlert_rcc_base::~FraudAlert_rcc_base() {
@@ -1260,6 +1307,12 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 		break;
 	default:
 		break;
+	}
+	if(!last_cleanup_at) {
+		last_cleanup_at = TIME_US_TO_S(callInfo->at_last);
+	} else if(last_cleanup_at + 15 * 60 < TIME_US_TO_S(callInfo->at_last)) {
+		cleanup(TIME_US_TO_S(callInfo->at_last));
+		last_cleanup_at = TIME_US_TO_S(callInfo->at_last);
 	}
 }
 
@@ -1471,6 +1524,65 @@ bool FraudAlert_rcc_base::checkOkAlert(sIdAlert idAlert, size_t concurentCalls, 
 	return(true);
 }
 
+void FraudAlert_rcc_base::cleanup(u_int64_t actTime_us) {
+	calls_summary.cleanup(actTime_us);
+	if(calls_by_ip.size()) {
+		for(map<vmIP, FraudAlert_rcc_callInfo*>::iterator iter = calls_by_ip.begin(); iter != calls_by_ip.end();) {
+			iter->second->cleanup(actTime_us);
+			if(iter->second->empty()) {
+				delete iter->second;
+				calls_by_ip.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+	}
+	if(calls_by_number.size()) {
+		for(map<string, FraudAlert_rcc_callInfo*>::iterator iter = calls_by_number.begin(); iter != calls_by_number.end();) {
+			iter->second->cleanup(actTime_us);
+			if(iter->second->empty()) {
+				delete iter->second;
+				calls_by_number.erase(iter++);
+			} else {
+				iter++;
+			}
+		}
+	}
+}
+
+void FraudAlert_rcc_base::dump(string *dump) {
+	ostringstream outStr;
+	string calls_summary_str;
+	calls_summary.dump(&calls_summary_str);
+	if(!calls_summary_str.empty()) {
+		outStr << " * calls_summary *" << endl
+		       << calls_summary_str;
+	}
+	if(calls_by_ip.size()) {
+		outStr << " * calls_by_ip * (" << calls_by_ip.size() << ")" << endl;
+		for(map<vmIP, FraudAlert_rcc_callInfo*>::iterator iter = calls_by_ip.begin(); iter != calls_by_ip.end(); iter++) {
+			string str;
+			iter->second->dump(&str);
+			if(!str.empty()) {
+				outStr << " IP : " << iter->first.getString() << endl
+				       << str;
+			}
+		}
+	}
+	if(calls_by_number.size()) {
+		outStr << " * calls_by_number * (" << calls_by_number.size() << ")" << endl;
+		for(map<string, FraudAlert_rcc_callInfo*>::iterator iter = calls_by_number.begin(); iter != calls_by_number.end(); iter++) {
+			string str;
+			iter->second->dump(&str);
+			if(!str.empty()) {
+				outStr << " NUMBER : " << iter->first << endl
+				       << str;
+			}
+		}
+	}
+	dump->append(outStr.str());
+}
+
 FraudAlertInfo_rcc::FraudAlertInfo_rcc(FraudAlert *alert) 
  : FraudAlertInfo(alert) {
 }
@@ -1644,6 +1756,28 @@ bool FraudAlert_rcc::needEvCall_call() {
 bool FraudAlert_rcc::needEvRtpStream() {
 	return(typeBy == _typeBy_rtp_stream_ip || 
 	       typeBy == _typeBy_rtp_stream_ip_group);
+}
+
+void FraudAlert_rcc::dump(string *dump) {
+	ostringstream outStr;
+	outStr << "-----------------------" << endl
+	       << "| alert: " << descr << endl
+	       << "-----------------------" << endl;
+	string str;
+	FraudAlert_rcc_base::dump(&str);
+	if(!str.empty()) {
+		outStr << "BASE" << endl
+		       << str;
+	}
+	for(unsigned i = 0; i < timePeriods.size(); i++) {
+		string str;
+		timePeriods[i].dump(&str);
+		if(!str.empty()) {
+			outStr << "TIMEPERIOD " << timePeriods[i].descr << endl
+			       << str;
+		}
+	}
+	dump->append(outStr.str());
 }
 
 FraudAlertInfo_chc::FraudAlertInfo_chc(FraudAlert *alert) 
@@ -3107,6 +3241,16 @@ void FraudAlerts::refresh() {
 	unlock_alerts();
 }
 
+void FraudAlerts::rccDump(string *dump) {
+	lock_alerts();
+	for(vector<FraudAlert*>::iterator iter = alerts.begin(); iter != alerts.end(); iter++) {
+		if((*iter)->type == FraudAlert::_rcc) {
+			(*iter)->dump(dump);
+		}
+	}
+	unlock_alerts();
+}
+
 void FraudAlerts::startTimer(bool lock, bool ifNeed) {
 	if(ifNeed) {
 		bool need = false;;
@@ -3519,4 +3663,12 @@ bool selectSensorsContainSensorId(string select_sensors) {
 		}
 	}
 	return(false);
+}
+
+void fraudRccDump(string *dump) {
+	fraudAlerts_lock();
+	if(fraudAlerts) {
+		fraudAlerts->rccDump(dump);
+	}
+	fraudAlerts_unlock();
 }

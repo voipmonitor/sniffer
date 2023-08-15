@@ -369,6 +369,7 @@ int Mgmt_listen_stop(Mgmt_params *params);
 int Mgmt_options_qualify_refresh(Mgmt_params *params);
 int Mgmt_send_call_info_refresh(Mgmt_params *params);
 int Mgmt_fraud_refresh(Mgmt_params *params);
+int Mgmt_fraud_rcc_dump(Mgmt_params *params);
 int Mgmt_set_json_config(Mgmt_params *params);
 int Mgmt_get_json_config(Mgmt_params *params);
 int Mgmt_hot_restart(Mgmt_params *params);
@@ -484,6 +485,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_options_qualify_refresh,
 	Mgmt_send_call_info_refresh,
 	Mgmt_fraud_refresh,
+	Mgmt_fraud_rcc_dump,
 	Mgmt_set_json_config,
 	Mgmt_get_json_config,
 	Mgmt_hot_restart,
@@ -3540,6 +3542,19 @@ int Mgmt_fraud_refresh(Mgmt_params *params) {
 	}
 	refreshFraud();
 	return(params->sendString("reload ok"));
+}
+
+int Mgmt_fraud_rcc_dump(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("fraud_rcc_dump", "fraud rcc dump");
+		return(0);
+	}
+	string rslt;
+	fraudRccDump(&rslt);
+	if(rslt.empty()) {
+		rslt = "fraud rcc dump is empty";
+	}
+	return(params->sendString(rslt));
 }
 
 int Mgmt_send_call_info_refresh(Mgmt_params *params) {
