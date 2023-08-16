@@ -200,6 +200,7 @@ public:
 	string getMaxSpoolDate();
 	void getSumSizeByDate(map<string, long long> *sizeByDate);
 	string printSumSizeByDate();
+	string printSumSizeByType();
 	string getOldestDate();
 	static void run_cleanProcess(int spoolIndex = -1);
 	static void run_clean_obsolete(int spoolIndex = -1);
@@ -330,6 +331,7 @@ private:
 	time_t lastRunLoadSpoolDataDir;
 	unsigned counterLoadSpoolDataDir;
 	bool force_reindex_spool_flag;
+	u_int32_t autoclean_log_at;
 };
 
 

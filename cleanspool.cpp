@@ -332,6 +332,7 @@ CleanSpool::CleanSpool(int spoolIndex) {
 	lastRunLoadSpoolDataDir = 0;
 	counterLoadSpoolDataDir = 0;
 	force_reindex_spool_flag = false;
+	autoclean_log_at = 0;
 }
 
 CleanSpool::~CleanSpool() {
@@ -498,8 +499,24 @@ string CleanSpool::printSumSizeByDate() {
 	getSumSizeByDate(&sizeByDate);
 	ostringstream outStr;
 	for(map<string, long long>::iterator iter = sizeByDate.begin(); iter != sizeByDate.end(); iter++) {
-		outStr << iter->first << " : " << iter->second << endl;
+		outStr << iter->first << " : " << (iter->second / (1024 * 1024)) << " MB" << endl;
 	}
+	return(outStr.str());
+}
+
+string CleanSpool::printSumSizeByType() {
+	long long allsize_total;
+	long long sipsize_total;
+	long long rtpsize_total;
+	long long graphsize_total;
+	long long audiosize_total;
+	allsize_total = this->spoolData.getSplitSumSize(&sipsize_total, &rtpsize_total, &graphsize_total, &audiosize_total);
+	ostringstream outStr;
+	outStr << "allsize : " << (allsize_total / (1024 * 1024)) << " MB" << endl
+	       << "sipsize : " << (sipsize_total / (1024 * 1024)) << " MB" << endl
+	       << "rtpsize : " << (rtpsize_total / (1024 * 1024)) << " MB" << endl
+	       << "graphsize : " << (graphsize_total / (1024 * 1024)) << " MB" << endl
+	       << "audiosize : " << (audiosize_total / (1024 * 1024)) << " MB" << endl;
 	return(outStr.str());
 }
 
@@ -1153,8 +1170,7 @@ void CleanSpool::cleanThreadProcess() {
 		updatedSpoolData = true;
 	}
 	bool criticalLowSpace = false;
-	long int maxpoolsize = 0;
-	extern int autocleaning_log_count;
+	long int maxpoolsize_autoclean = 0;
 	if((opt_other.autocleanspoolminpercent || opt_other.autocleanmingb) &&
 	   (!opt_dirs.rtp.length() || opt_dirs.rtp == opt_dirs.main) && 
 	   (!opt_dirs.graph.length() || opt_dirs.graph == opt_dirs.main) && 
@@ -1206,22 +1222,68 @@ void CleanSpool::cleanThreadProcess() {
 				}
 				usedSizeGB = (double)spoolData.getSumSize() / (1024 * 1024 * 1024);
 			}
-			maxpoolsize = (usedSizeGB + freeSpaceGB - min(totalSpaceGB * opt_other.autocleanspoolminpercent / 100, (double)opt_other.autocleanmingb)) * 1024;
-			if(maxpoolsize > 1000 &&
-			   (!opt_max.maxpoolsize || maxpoolsize < opt_max.maxpoolsize)) {
+			double min_free_gb_perc = totalSpaceGB * opt_other.autocleanspoolminpercent / 100;
+			double min_free_gb_abs = opt_other.autocleanmingb;
+			double min_free_gb = 0;
+			if(min_free_gb_perc > 0 && min_free_gb_abs > 0) {
+				if(max(min_free_gb_perc, min_free_gb_abs) < usedSizeGB * 0.1) {
+					min_free_gb = max(min_free_gb_perc, min_free_gb_abs);
+				} else {
+					min_free_gb = min(min_free_gb_perc, min_free_gb_abs);
+				}
+			} else {
+				min_free_gb = min_free_gb_perc > 0 ? min_free_gb_perc : min_free_gb_abs;
+			}
+			maxpoolsize_autoclean = (usedSizeGB + freeSpaceGB - min_free_gb) * 1024;
+			if(sverb.cleanspool) {
+				long long allsize_total;
+				long long sipsize_total;
+				long long rtpsize_total;
+				long long graphsize_total;
+				long long audiosize_total;
+				allsize_total = this->spoolData.getSplitSumSize(&sipsize_total, &rtpsize_total, &graphsize_total, &audiosize_total);
+				ostringstream outStr;
+				outStr << "opt_other.autocleanspoolminpercent: " << opt_other.autocleanspoolminpercent << " % , "
+				       << "opt_other.autocleanmingb: " << opt_other.autocleanmingb << " GB , "
+				       << "usedSizeGB: " << (usedSizeGB * 1024) << " MB , " 
+				       << "allsize_total: " << (allsize_total / (1024 * 1024)) << " MB , "
+				       << "sipsize_total: " << (sipsize_total / (1024 * 1024)) << " MB , "
+				       << "rtpsize_total: " << (rtpsize_total / (1024 * 1024)) << " MB , "
+				       << "graphsize_total: " << (graphsize_total / (1024 * 1024)) << " MB , "
+				       << "audiosize_total: " << (audiosize_total / (1024 * 1024)) << " MB , "
+				       << "freeSpaceGB: " << (freeSpaceGB * 1024) << " MB , "
+				       << "totalSpaceGB: " << (totalSpaceGB * 1024) << " MB, "
+				       << "min_free_gb_perc: " << (min_free_gb_perc * 1024) << " MB, "
+				       << "min_free_gb_abs: " << (min_free_gb_abs * 1024) << " MB, "
+				       << "min_free_gb: " << (min_free_gb * 1024) << " MB";
+				syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - sizes : %s", spoolIndex, outStr.str().c_str());
+				outStr.str("");
+				outStr.clear();
+				outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
+				syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - %s", spoolIndex, outStr.str().c_str());
+			}
+			if(maxpoolsize_autoclean > 1000 &&
+			   (!opt_max.maxpoolsize || maxpoolsize_autoclean < opt_max.maxpoolsize)) {
 				if(opt_max.maxpoolsize && 
 				   opt_max.maxpoolsize < totalSpaceGB * 1024 * 1.05 &&
-				   maxpoolsize < opt_max.maxpoolsize * 0.8) {
-					maxpoolsize = opt_max.maxpoolsize * 0.8;
+				   maxpoolsize_autoclean < opt_max.maxpoolsize * 0.8) {
+					maxpoolsize_autoclean = opt_max.maxpoolsize * 0.8;
+					if(sverb.cleanspool) {
+						ostringstream outStr;
+						outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
+						syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - %s (maxpoolsize reduction must not fall below 80%% of the value in the configuration (if set correctly))", spoolIndex, outStr.str().c_str());
+					}
 				}
 				syslog(LOG_NOTICE, "cleanspool[%i]: %s: %li MB", 
 				       spoolIndex,
 				       opt_max.maxpoolsize ?
 					"low spool disk space - maxpoolsize set to new value" :
 					"maxpoolsize set to value",
-				       maxpoolsize);
+				       maxpoolsize_autoclean);
 			} else {
-				if(!autocleaning_log_count) {
+				u_int32_t actTime = getTimeS();
+				if(!autoclean_log_at ||
+				   autoclean_log_at + 3600 < actTime) {
 					char criticalLowSpoolSpace_str[1024];
 					snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
 						 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
@@ -1230,23 +1292,26 @@ void CleanSpool::cleanThreadProcess() {
 						 usedSizeGB,
 						 freeSpaceGB);
 					cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
+					autoclean_log_at = actTime;
 				}
-				if(autocleaning_log_count++ >= 12) {
-					autocleaning_log_count = 0;
+				maxpoolsize_autoclean = 0;
+				if(sverb.cleanspool) {
+					ostringstream outStr;
+					outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
+					syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - maxpoolsize reduction is cancelled", spoolIndex);
 				}
-				maxpoolsize = 0;
 			}
 			criticalLowSpace = true;
 		} else {
-			autocleaning_log_count = 0;
+			autoclean_log_at = 0;
 		}
 	}
 	if((timeOk && !suspended) || criticalLowSpace) {
 		if(sverb.cleanspool) {
 			syslog(LOG_NOTICE, "cleanspool[%i]: run clean_spooldir", spoolIndex);
 		}
-		if(maxpoolsize > 1000) {
-			maxpoolsize_set = maxpoolsize;
+		if(maxpoolsize_autoclean > 1000) {
+			maxpoolsize_set = maxpoolsize_autoclean;
 		}
 		critical_low_space = criticalLowSpace;
 		clean_spooldir_run();
@@ -2645,7 +2710,9 @@ void CleanSpool::force_reindex_spool() {
 }
 
 string CleanSpool::print_spool() {
-	return(intToString(spoolData.getSumSize()) + "\r\n" + printSumSizeByDate());
+	return(intToString(spoolData.getSumSize() / (1024 * 1024)) + " MB\r\n\r\n" + 
+	       printSumSizeByDate() + "\r\n" + 
+	       printSumSizeByType() + "\r\n");
 }
 
 unsigned int CleanSpool::get_reduk_maxpoolsize(unsigned int maxpoolsize) {
