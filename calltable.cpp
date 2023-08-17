@@ -280,6 +280,8 @@ extern int opt_safe_cleanup_calls;
 extern int opt_quick_save_cdr;
 extern bool opt_srtp_rtp_local_instances;
 
+static node_call_rtp_ip_port *calls_hash_static[MAXNODE];
+
 
 sCallField callFields[] = {
 	{ cf_callreference, "callreference" },
@@ -10412,7 +10414,8 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	calls_ipv6_port = new FILE_LINE(0) cNodeData<node_call_rtp_ports>;
 	#elif NEW_RTP_FIND__PORT_NODES || NEW_RTP_FIND__MAP_LIST
 	#else
-	memset(calls_hash, 0x0, sizeof(calls_hash));
+	memset(calls_hash_static, 0x0, sizeof(calls_hash_static));
+	calls_hash = calls_hash_static;
 	#endif
 	_sync_lock_calls_hash = 0;
 	_sync_lock_calls_listMAP = 0;

@@ -3651,7 +3651,7 @@ private:
 	#elif NEW_RTP_FIND__MAP_LIST
 	map<u_int64_t, node_call_rtp*> calls_ip_port;
 	#else
-	node_call_rtp_ip_port *calls_hash[MAXNODE];
+	node_call_rtp_ip_port **calls_hash;
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
