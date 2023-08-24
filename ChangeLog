@@ -1,3 +1,29 @@
+31.8  24.08.2023
+================
+- added Session Establishment Effectiveness Ratio (SEER) metric (https://www.rfc-editor.org/rfc/rfc6076#page-19) [VG-2659]
+- add register last sip response code 699 as failed state [VS-1459]
+- apply new option 'only one' after skip/trim prefixes in country rules [VS-2658]
+- add support for voipmonitor / wireshark mode switcher in rtp analyzer [VS-1474]
+- diameter - add option diameter_ignore_prefix = yes/NO, add relation between public_identity and sip_from [VS-1420]
+- set MYSQL_OPT_RECONNECT so the mysql connection is reconnected automatically within the mysql library 
+- fix livesniffer for long uid [VS-1455]
+- fix time overflow when packets are out of order [VS-1461]
+- correctly parse header even if it is delimited only by '\r' [VS-1460]
+- fix some low MOS rare cases [VS-1465]
+- fix issue with detection of registration expiration with multiple contact information [VS-1462]
+- fix issue with client restart in cloud or client mode (force stop client service) [VS-1463]
+- fix write to tar file when there is no disk space and cleanup is performed [VS-1440]
+- accept cleanup_calls_period parameter even if quick_save_cdr is enabled [VS-1471]
+- better proxy detection (fixes some cases not detected as proxy) [VS-1475]
+- revert default config/voipmonitor.conf to rtp tar setting: lzo/no-gzip 
+- fix partition deletion for cdr_stat - force to keep active partition (for case of low cleandatabase_cdr_stat parameter) [VS-1477]
+- fix problem with concurrent creation of partitions from multiple sensors [VS-1477]
+- automatically enable mysql_enable_new_store=per_query (if 'no') if mysql_enable_set_id is enabled and if there are no conflicts in the configuration
+- fix value limitation in a/b_rtcp_loss columns, fix parsing a/b_rtcp_loss from rtcp. Fixes 'Out of range value for column 'b_rtcp_loss' at row' [VS-1480] 
+- realtime concurrent calls fraud fixes - faster detach of calls from fraud logs in cleanup_calls [VS-1482]
+- fix automatic cleaning when disk space is low
+
+
 31.7.5  22.06.2023
 ==================
 - fix race in handle_dtmf leading to crash [VS-1456]
