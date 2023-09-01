@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <fstream>
 #include <algorithm>
+#include <errno.h>
 
 #include "voipmonitor.h"
 #include "pstat.h"
