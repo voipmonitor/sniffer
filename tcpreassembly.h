@@ -1083,11 +1083,11 @@ public:
 	bool isActiveLog() {
 		return(this->log != NULL);
 	}
-	void prepareCleanupPstatData();
-	double getCleanupCpuUsagePerc(bool preparePstatData = false);
-	void preparePacketPstatData();
-	double getPacketCpuUsagePerc(bool preparePstatData = false);
-	string getCpuUsagePerc();
+	void prepareCleanupPstatData(int pstatDataIndex);
+	double getCleanupCpuUsagePerc(int pstatDataIndex, bool preparePstatData = false);
+	void preparePacketPstatData(int pstatDataIndex);
+	double getPacketCpuUsagePerc(int pstatDataIndex, bool preparePstatData = false);
+	string getCpuUsagePerc(int pstatDataIndex);
 	bool check_ip(vmIP sip, vmIP dip, vmPort sport = 0, vmPort dport = 0) {
 		if(type == http || type == webrtc) {
 			extern vector<vmIP> httpip;
@@ -1221,8 +1221,8 @@ private:
 	bool terminated;
 	bool ignoreTerminating;
 	FILE *log;
-	pstat_data cleanupThreadPstatData[2];
-	pstat_data packetThreadPstatData[2];
+	pstat_data cleanupThreadPstatData[2][2];
+	pstat_data packetThreadPstatData[2][2];
 	u_long _cleanupCounter;
 	u_int32_t linkTimeout;
 	SafeAsyncQueue<sPacket> *packetQueue;

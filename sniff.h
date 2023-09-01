@@ -29,12 +29,13 @@
 
 
 void *rtp_read_thread_func(void *arg);
-void add_rtp_read_thread();
-void set_remove_rtp_read_thread();
+bool add_rtp_read_thread();
+bool set_remove_rtp_read_thread();
 int get_index_rtp_read_thread_min_size();
 int get_index_rtp_read_thread_min_calls();
-double get_rtp_sum_cpu_usage(double *max = NULL);
-string get_rtp_threads_cpu_usage(bool callPstat);
+int get_index_rtp_read_thread_min_cpu();
+double get_rtp_sum_cpu_usage(double *max, double *min, int pstatDataIndex);
+string get_rtp_threads_cpu_usage(int pstatDataIndex, bool callPstat = true);
 
 #ifdef HAS_NIDS
 void readdump_libnids(pcap_t *handle);
@@ -1120,6 +1121,7 @@ public:
 public:
 	rtp_read_thread()  {
 		this->calls = 0;
+		this->cpu = -1;
 	}
 	void init(int threadNum, size_t qring_length);
 	void init_qring(size_t qring_length);
@@ -1360,10 +1362,11 @@ public:
 	volatile unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
-	pstat_data threadPstatData[2];
+	pstat_data threadPstatData[2][2];
 	volatile bool remove_flag;
 	u_int32_t last_use_time_s;
 	volatile u_int32_t calls;
+	volatile double cpu;
 	volatile int push_lock_sync;
 	volatile int count_lock_sync;
 };

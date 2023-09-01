@@ -1092,15 +1092,15 @@ public:
 	AsyncClose();
 	~AsyncClose();
 	void startThreads(int countPcapThreads, int maxPcapThreads);
-	void addThread();
-	void removeThread();
+	bool addThread();
+	bool removeThread();
 	void add(pcap_dumper_t *handle, bool updateFilesQueue = false,
 		 Call_abstract *call = NULL, PcapDumper *pcapDumper = NULL, 
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass) {
+			if(pass || ((FileZipHandler*)handle)->userData > (unsigned)countPcapThreads) {
 				((FileZipHandler*)handle)->userData = 0;
 			}
 			int useThreadOper = 0;
@@ -1112,10 +1112,12 @@ public:
 					unsigned int minSize = UINT_MAX;
 					int minSizeIndex = 0;
 					for(int i = 0; i < countPcapThreads; i++) {
-						size = q[i].size();
-						if(size < minSize) {
-							minSize = size;
-							minSizeIndex = i;
+						if(activeThread[i]) {
+							size = q[i].size();
+							if(size < minSize) {
+								minSize = size;
+								minSizeIndex = i;
+							}
 						}
 					}
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
@@ -1136,7 +1138,7 @@ public:
 		      char *data, int length) {
 		extern int opt_pcap_dump_bufflength;
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass) {
+			if(pass || ((FileZipHandler*)handle)->userData > (unsigned)countPcapThreads) {
 				((FileZipHandler*)handle)->userData = 0;
 			}
 			int useThreadOper = 0;
@@ -1147,10 +1149,12 @@ public:
 					unsigned int minSize = UINT_MAX;
 					int minSizeIndex = 0;
 					for(int i = 0; i < countPcapThreads; i++) {
-						size = q[i].size();
-						if(size < minSize) {
-							minSize = size;
-							minSizeIndex = i;
+						if(activeThread[i]) {
+							size = q[i].size();
+							if(size < minSize) {
+								minSize = size;
+								minSizeIndex = i;
+							}
 						}
 					}
 					((FileZipHandler*)handle)->userData = minSizeIndex + 1;
@@ -1170,7 +1174,7 @@ public:
 		 eTypeSpoolFile typeSpoolFile = tsf_na, const char *file = NULL,
 		 long long writeBytes = 0) {
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass) {
+			if(pass || handle->userData > (unsigned)countPcapThreads) {
 				handle->userData = 0;
 			}
 			int useThreadOper = 0;
@@ -1181,10 +1185,12 @@ public:
 				unsigned int minSize = UINT_MAX;
 				int minSizeIndex = 0;
 				for(int i = 0; i < countPcapThreads; i++) {
-					size = q[i].size();
-					if(size < minSize) {
-						minSize = size;
-						minSizeIndex = i;
+					if(activeThread[i]) {
+						size = q[i].size();
+						if(size < minSize) {
+							minSize = size;
+							minSizeIndex = i;
+						}
 					}
 				}
 				handle->userData = minSizeIndex + 1;
@@ -1201,7 +1207,7 @@ public:
 	void addWrite(FileZipHandler *handle,
 		      char *data, int length) {
 		for(int pass = 0; pass < 2; pass++) {
-			if(pass) {
+			if(pass || handle->userData > (unsigned)countPcapThreads) {
 				handle->userData = 0;
 			}
 			int useThreadOper = 0;
@@ -1211,10 +1217,12 @@ public:
 				unsigned int minSize = UINT_MAX;
 				int minSizeIndex = 0;
 				for(int i = 0; i < countPcapThreads; i++) {
-					size = q[i].size();
-					if(size < minSize) {
-						minSize = size;
-						minSizeIndex = i;
+					if(activeThread[i]) {
+						size = q[i].size();
+						if(size < minSize) {
+							minSize = size;
+							minSizeIndex = i;
+						}
 					}
 				}
 				handle->userData = minSizeIndex + 1;
@@ -1229,6 +1237,7 @@ public:
 	bool add(AsyncCloseItem *item, int threadIndex, int useThreadOper = 0) {
 		lock(threadIndex);
 		if(!activeThread[threadIndex]) {
+			delete item;
 			unlock(threadIndex);
 			return(false);
 		}
@@ -1248,8 +1257,8 @@ public:
 		}
 	}
 	void safeTerminate();
-	void preparePstatData(int threadIndex);
-	double getCpuUsagePerc(int threadIndex, bool preparePstatData = false);
+	void preparePstatData(int threadIndex, int pstatDataIndex);
+	double getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool preparePstatData = true);
 	int getCountThreads() {
 		return(countPcapThreads);
 	}
@@ -1278,9 +1287,10 @@ private:
 	pthread_t thread[AsyncClose_maxPcapThreads];
 	volatile int _sync[AsyncClose_maxPcapThreads];
 	int threadId[AsyncClose_maxPcapThreads];
-	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2];
+	pstat_data threadPstatData[AsyncClose_maxPcapThreads][2][2];
 	StartThreadData startThreadData[AsyncClose_maxPcapThreads];
-	volatile int removeThreadProcessed;
+	volatile uint64_t removeThreadProcessedAt_ms;
+	volatile uint32_t lastThreadOperationAt_s;
 	volatile uint64_t useThread[AsyncClose_maxPcapThreads];
 	volatile int activeThread[AsyncClose_maxPcapThreads];
 	volatile int cpuPeak[AsyncClose_maxPcapThreads];

@@ -71,7 +71,6 @@
 #define DEBUG_VERBOSE 		(VERBOSE && false)
 #define DEBUG_SLEEP		(DEBUG_VERBOSE && true)
 #define DEBUG_ALL_PACKETS	(DEBUG_VERBOSE && false)
-#define EXTENDED_LOG		(DEBUG_VERBOSE || (VERBOSE && verbosityE > 1))
 #define TERMINATING 		((is_terminating() && this->enableAutoTerminate) || this->threadDoTerminate)
 
 #define FILE_BUFFER_SIZE 1000000
@@ -259,8 +258,6 @@ static unsigned long sumBlocksCounterIn[3];
 static unsigned long sumBlocksCounterOut[3];
 static unsigned long long sumPacketsSize[3];
 static unsigned long long sumPacketsSizeCompress[3];
-static unsigned long maxBypassBufferItems;
-static unsigned long maxBypassBufferSize;
 static unsigned long countBypassBufferSizeExceeded;
 static double heap_pb_perc = 0;
 static double heap_pb_used_perc = 0;
@@ -1440,7 +1437,8 @@ PcapQueue::PcapQueue(eTypeQueue typeQueue, const char *nameQueue) {
 	}
 	this->lastTimeLogErrPcapNextExNullPacket = 0;
 	this->lastTimeLogErrPcapNextExErrorReading = 0;
-	this->pcapStatCounter = 0;
+	this->pcapStatLogCounter = 0;
+	this->pcapStatCpuCheckCounter = 0;
 }
 
 PcapQueue::~PcapQueue() {
@@ -1493,25 +1491,30 @@ void PcapQueue::setInstancePcapFifo(PcapQueue_readFromFifo *pcapQueue) {
 	this->instancePcapFifo = pcapQueue;
 }
 
-void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
+void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	u_int64_t startTimeMS = getTimeMS_rdtsc();
 	vector<u_int64_t> lapTime;
 	vector<string> lapTimeDescr;
+	int pstatDataIndex = task == pcapStatLog ? 0 : 1;
 	
-	++pcapStatCounter;
-
-	sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
-	sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
-	sumPacketsCounterOut[2] = sumPacketsCounterOut[0] - sumPacketsCounterOut[1];
-	sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
-	sumBlocksCounterIn[2] = sumBlocksCounterIn[0] - sumBlocksCounterIn[1];
-	sumBlocksCounterIn[1] = sumBlocksCounterIn[0];
-	sumBlocksCounterOut[2] = sumBlocksCounterOut[0] - sumBlocksCounterOut[1];
-	sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
-	sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
-	sumPacketsSize[1] = sumPacketsSize[0];
-	sumPacketsSizeCompress[2] = sumPacketsSizeCompress[0] - sumPacketsSizeCompress[1];
-	sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
+	if(task == pcapStatLog) {
+		++pcapStatLogCounter;
+		sumPacketsCounterIn[2] = sumPacketsCounterIn[0] - sumPacketsCounterIn[1];
+		sumPacketsCounterIn[1] = sumPacketsCounterIn[0];
+		sumPacketsCounterOut[2] = sumPacketsCounterOut[0] - sumPacketsCounterOut[1];
+		sumPacketsCounterOut[1] = sumPacketsCounterOut[0];
+		sumBlocksCounterIn[2] = sumBlocksCounterIn[0] - sumBlocksCounterIn[1];
+		sumBlocksCounterIn[1] = sumBlocksCounterIn[0];
+		sumBlocksCounterOut[2] = sumBlocksCounterOut[0] - sumBlocksCounterOut[1];
+		sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
+		sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
+		sumPacketsSize[1] = sumPacketsSize[0];
+		sumPacketsSizeCompress[2] = sumPacketsSizeCompress[0] - sumPacketsSizeCompress[1];
+		sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
+	}
+	if(task == pcapStatCpuCheck) {
+		++pcapStatCpuCheckCounter;
+	}
 
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
@@ -1519,73 +1522,40 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
 
-	if(this->instancePcapHandle) {
+	if(task == pcapStatLog && this->instancePcapHandle) {
 		if(this->instancePcapHandle->initAllReadThreadsFinished) {
 			this->instancePcapHandle->prepareLogTraffic();
 		} else {
 			return;
 		}
 	}
+	
 	ostringstream outStr;
+	outStr << fixed;
 	pcap_drop_flag = 0;
-	if(sverb.log_profiler) {
-		lapTime.push_back(getTimeMS_rdtsc());
-		lapTimeDescr.push_back("pcapStatString_interface-before");
+	
+	string pcapStatString_interface_rslt;
+	if(task == pcapStatLog) {
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("pcapStatString_interface-before");
+		}
+		pcapStatString_interface_rslt = this->instancePcapHandle ? 
+						 this->instancePcapHandle->pcapStatString_interface(statPeriod) :
+						 this->pcapStatString_interface(statPeriod);
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("pcapStatString_interface-after");
+		}
 	}
-	string pcapStatString_interface_rslt = this->instancePcapHandle ? 
-						this->instancePcapHandle->pcapStatString_interface(statPeriod) :
-						this->pcapStatString_interface(statPeriod);
-	if(sverb.log_profiler) {
-		lapTime.push_back(getTimeMS_rdtsc());
-		lapTimeDescr.push_back("pcapStatString_interface-after");
-	}
+	
 	size_t count_calls = calltable->getCountCalls();
-	if(EXTENDED_LOG) {
-		string statString = "\n";
-		if(statCalls) {
-			ostringstream outStr;
-			outStr << "CALLS: " << count_calls << ", " << calls_counter;
-			if(opt_ipaccount) {
-				outStr << "  IPACC_BUFFER " << lengthIpaccBuffer();
-			}
-			outStr << endl;
-			statString += outStr.str();
-		}
-		statString += 
-			this->pcapStatString_packets(statPeriod) +
-			(this->instancePcapHandle ? 
-				this->instancePcapHandle->pcapStatString_bypass_buffer(statPeriod) :
-				this->pcapStatString_bypass_buffer(statPeriod)) +
-			this->pcapStatString_memory_buffer(statPeriod) +
-			this->pcapStatString_disk_buffer(statPeriod) +
-			pcapStatString_interface_rslt +
-			"\n";
-		if(statString.length()) {
-			if(DEBUG_VERBOSE) {
-				cout << statString;
-			} else {
-				syslog(LOG_NOTICE, "packetbuffer stat:");
-				char *pointToBeginLine = (char*)statString.c_str();
-				while(pointToBeginLine && *pointToBeginLine) {
-					char *pointToLineBreak = strchr(pointToBeginLine, '\n');
-					if(pointToLineBreak) {
-						*pointToLineBreak = '\0';
-					}
-					syslog(LOG_NOTICE, "%s", pointToBeginLine);
-					if(pointToLineBreak) {
-						*pointToLineBreak = '\n';
-						pointToBeginLine = pointToLineBreak + 1;
-					} else {
-						pointToBeginLine = NULL;
-					}
-				}
-			}
-		}
-	} else {
-		heap_pb_perc = buffersControl.getPerc_pb();
-		heap_pb_used_perc = buffersControl.getPerc_pb_used();
-		heap_pb_trash_perc = buffersControl.getPerc_pb_trash();
-		heap_pb_pool_perc = buffersControl.getPerc_pb_pool();
+	heap_pb_perc = buffersControl.getPerc_pb();
+	heap_pb_used_perc = buffersControl.getPerc_pb_used();
+	heap_pb_trash_perc = buffersControl.getPerc_pb_trash();
+	heap_pb_pool_perc = buffersControl.getPerc_pb_pool();
+	
+	if(task == pcapStatCpuCheck) {
 		extern bool opt_processing_limitations;
 		extern int opt_processing_limitations_heap_high_limit;
 		extern int opt_processing_limitations_heap_low_limit;
@@ -1603,502 +1573,344 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 								       cProcessingLimitations::_pl_rtp);
 			}
 		}
-		outStr << fixed;
+	}
+	
+	if(task == pcapStatLog && sverb.log_profiler) {
+		lapTime.push_back(getTimeMS_rdtsc());
+		lapTimeDescr.push_back("check heap");
+	}
+	
+	if(task == pcapStatLog && !this->isMirrorSender()) {
+		outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
+		       << "[";
+		#if EXPERIMENTAL_SEPARATE_PROCESSSING
+		if(separate_processing() == 2) {
+			outStr << calltable->calls_queue.size();
+		} else {
+			outStr << calls_counter;
+		}
+		#else
+		outStr << calls_counter;
+		#endif
+		extern volatile int storing_cdr_next_threads_count;
+		if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
+			outStr << "(s" << calls_for_store_counter << ")";
+			calls_for_store_counter = 0;
+		}
+		outStr << ",r:" << registers_counter << "]";
+		calltable->lock_calls_audioqueue();
+		size_t audioQueueSize = calltable->audio_queue.size();
+		if(audioQueueSize) {
+			size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
+			outStr << "[" << audioQueueSize << "/" << audioQueueThreads <<"]";
+		}
+		calltable->unlock_calls_audioqueue();
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());
-			lapTimeDescr.push_back("check heap");
+			lapTimeDescr.push_back("calls");
 		}
-		if(!this->isMirrorSender()) {
-			outStr << "calls[" << count_calls << ",r:" << calltable->registers_listMAP.size() << "]"
-			       << "[";
-			#if EXPERIMENTAL_SEPARATE_PROCESSSING
-			if(separate_processing() == 2) {
-				outStr << calltable->calls_queue.size();
-			} else {
-				outStr << calls_counter;
-			}
-			#else
-			outStr << calls_counter;
-			#endif
-			extern volatile int storing_cdr_next_threads_count;
-			if(storing_cdr_next_threads_count > 1 && calls_for_store_counter > 0) {
-				outStr << "(s" << calls_for_store_counter << ")";
-				calls_for_store_counter = 0;
-			}
-			outStr << ",r:" << registers_counter << "]";
-			calltable->lock_calls_audioqueue();
-			size_t audioQueueSize = calltable->audio_queue.size();
-			if(audioQueueSize) {
-				size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
-				outStr << "[" << audioQueueSize << "/" << audioQueueThreads <<"]";
-			}
-			calltable->unlock_calls_audioqueue();
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("calls");
-			}
 #if defined(HAVE_LIBGNUTLS) and defined(HAVE_SSL_WS)
-			extern string getSslStat();
-			string sslStat = getSslStat();
-			if(!sslStat.empty()) {
-				outStr << sslStat;
-			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("ssl stat");
-			}
+		extern string getSslStat();
+		string sslStat = getSslStat();
+		if(!sslStat.empty()) {
+			outStr << sslStat;
+		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("ssl stat");
+		}
 #endif
-			outStr << " ";
-			if(opt_enable_ss7) {
-				outStr << "ss7[" << calltable->ss7_listMAP.size() << "]"
-				       << "[" << calltable->ss7_queue.size() << "] ";
+		outStr << " ";
+		if(opt_enable_ss7) {
+			outStr << "ss7[" << calltable->ss7_listMAP.size() << "]"
+			       << "[" << calltable->ss7_queue.size() << "] ";
+		}
+		if(opt_ipaccount) {
+			outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
+		}
+		if(opt_rrd) {
+			rrd_set_value(RRD_VALUE_inv, count_calls);
+			rrd_set_value(RRD_VALUE_reg, calltable->registers_listMAP.size());
+		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("rrd");
+		}
+		extern u_int64_t counter_calls;
+		extern u_int64_t counter_calls_clean;
+		extern volatile u_int64_t counter_calls_save_1;
+		extern volatile u_int64_t counter_calls_save_2;
+		extern u_int64_t counter_registers;
+		extern u_int64_t counter_registers_clean;
+		extern u_int64_t counter_sip_packets[2];
+		extern u_int64_t counter_sip_register_packets;
+		extern u_int64_t counter_sip_message_packets;
+		extern u_int64_t counter_rtp_packets[2];
+		extern u_int64_t counter_all_packets;
+		extern volatile u_int64_t counter_user_packets[5];
+		if(this->counter_calls_old ||
+		   this->counter_calls_clean_old ||
+		   this->counter_registers_old ||
+		   this->counter_registers_clean_old ||
+		   this->counter_sip_packets_old[0] ||
+		   this->counter_sip_packets_old[1] ||
+		   this->counter_rtp_packets_old[0] ||
+		   this->counter_rtp_packets_old[1] ||
+		   this->counter_all_packets_old) {
+			outStr << "PS[C:";
+			if(this->counter_calls_old) {
+				long unsigned v = (counter_calls - this->counter_calls_old) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_C, v);
+				}
+			} else {
+				outStr << "-";
 			}
-			if(opt_ipaccount) {
-				outStr << "ipacc_buffer[" << lengthIpaccBuffer() << "/" << sizeIpaccBuffer() << "] ";
+			outStr << "/";
+			if(this->counter_calls_clean_old) {
+				outStr << '-' << (counter_calls_clean - this->counter_calls_clean_old) / statPeriod;
+			} else {
+				outStr << "-";
 			}
-			if (opt_rrd) {
-				rrd_set_value(RRD_VALUE_inv, count_calls);
-				rrd_set_value(RRD_VALUE_reg, calltable->registers_listMAP.size());
-			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("rrd");
-			}
-			extern u_int64_t counter_calls;
-			extern u_int64_t counter_calls_clean;
-			extern volatile u_int64_t counter_calls_save_1;
-			extern volatile u_int64_t counter_calls_save_2;
-			extern u_int64_t counter_registers;
-			extern u_int64_t counter_registers_clean;
-			extern u_int64_t counter_sip_packets[2];
-			extern u_int64_t counter_sip_register_packets;
-			extern u_int64_t counter_sip_message_packets;
-			extern u_int64_t counter_rtp_packets[2];
-			extern u_int64_t counter_all_packets;
-			extern volatile u_int64_t counter_user_packets[5];
-			if(this->counter_calls_old ||
-			   this->counter_calls_clean_old ||
-			   this->counter_registers_old ||
-			   this->counter_registers_clean_old ||
-			   this->counter_sip_packets_old[0] ||
-			   this->counter_sip_packets_old[1] ||
-			   this->counter_rtp_packets_old[0] ||
-			   this->counter_rtp_packets_old[1] ||
-			   this->counter_all_packets_old) {
-				outStr << "PS[C:";
-				if(this->counter_calls_old) {
-					long unsigned v = (counter_calls - this->counter_calls_old) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_C, v);
-					}
+			if(this->counter_calls_save_1_old ||
+			   this->counter_calls_save_2_old) {
+				outStr << "(";
+				if(this->counter_calls_save_1_old) {
+					outStr << (counter_calls_save_1 - this->counter_calls_save_1_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
 				outStr << "/";
-				if(this->counter_calls_clean_old) {
-					outStr << '-' << (counter_calls_clean - this->counter_calls_clean_old) / statPeriod;
+				if(this->counter_calls_save_2_old) {
+					outStr << (counter_calls_save_2 - this->counter_calls_save_2_old) / statPeriod;
 				} else {
 					outStr << "-";
 				}
-				if(this->counter_calls_save_1_old ||
-				   this->counter_calls_save_2_old) {
-					outStr << "(";
-					if(this->counter_calls_save_1_old) {
-						outStr << (counter_calls_save_1 - this->counter_calls_save_1_old) / statPeriod;
-					} else {
-						outStr << "-";
-					}
-					outStr << "/";
-					if(this->counter_calls_save_2_old) {
-						outStr << (counter_calls_save_2 - this->counter_calls_save_2_old) / statPeriod;
-					} else {
-						outStr << "-";
-					}
-					outStr << ")";
-				}
-				outStr << " r:";
-				if(this->counter_registers_old) {
-					outStr << (counter_registers - this->counter_registers_old) / statPeriod;
-				} else {
-					outStr << "-";
-				}
-				outStr << "/";
-				if(this->counter_registers_clean_old) {
-					outStr << '-' << (counter_registers_clean - this->counter_registers_clean_old) / statPeriod;
-				} else {
-					outStr << "-";
-				}
-				outStr << " S:";
-				if(this->counter_sip_packets_old[0]) {
-					long unsigned v = (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_S0, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				outStr << "/";
-				if(this->counter_sip_packets_old[1]) {
-					long unsigned v = (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_S1, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				outStr << " SR:";
-				if(this->counter_sip_register_packets_old) {
-					long unsigned v = (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_SR, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				outStr << " SM:";
-				if(this->counter_sip_message_packets_old) {
-					long unsigned v = (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_SM, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				outStr << " R:";
-				if(this->counter_rtp_packets_old[0]) {
-					long unsigned v = (counter_rtp_packets[0] - this->counter_rtp_packets_old[0]) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_R, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				outStr << "/";
-				if(this->counter_rtp_packets_old[1]) {
-					long unsigned v = (counter_rtp_packets[1] - this->counter_rtp_packets_old[1]) / statPeriod;
-					outStr << v;
-				} else {
-					outStr << "-";
-				}
-				outStr << " A:";
-				if(this->counter_all_packets_old) {
-					long unsigned v = (counter_all_packets - this->counter_all_packets_old) / statPeriod;
-					outStr << v;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_PS_A, v);
-					}
-				} else {
-					outStr << "-";
-				}
-				for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
-					if(counter_user_packets[i] && this->counter_user_packets_old[i]) {
-						outStr << " U" << i << ":";
-						outStr << (counter_user_packets[i] - this->counter_user_packets_old[i]) / statPeriod;
-					}
-				}
-				outStr << "] ";
+				outStr << ")";
 			}
-			this->counter_calls_old = counter_calls;
-			this->counter_calls_clean_old = counter_calls_clean;
-			this->counter_calls_save_1_old = counter_calls_save_1;
-			this->counter_calls_save_2_old = counter_calls_save_2;
-			this->counter_registers_old = counter_registers;
-			this->counter_registers_clean_old = counter_registers_clean;
-			this->counter_sip_packets_old[0] = counter_sip_packets[0];
-			this->counter_sip_packets_old[1] = counter_sip_packets[1];
-			this->counter_sip_register_packets_old = counter_sip_register_packets;
-			this->counter_sip_message_packets_old = counter_sip_message_packets;
-			this->counter_rtp_packets_old[0] = counter_rtp_packets[0];
-			this->counter_rtp_packets_old[1] = counter_rtp_packets[1];
-			this->counter_all_packets_old = counter_all_packets;
+			outStr << " r:";
+			if(this->counter_registers_old) {
+				outStr << (counter_registers - this->counter_registers_old) / statPeriod;
+			} else {
+				outStr << "-";
+			}
+			outStr << "/";
+			if(this->counter_registers_clean_old) {
+				outStr << '-' << (counter_registers_clean - this->counter_registers_clean_old) / statPeriod;
+			} else {
+				outStr << "-";
+			}
+			outStr << " S:";
+			if(this->counter_sip_packets_old[0]) {
+				long unsigned v = (counter_sip_packets[0] - this->counter_sip_packets_old[0]) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_S0, v);
+				}
+			} else {
+				outStr << "-";
+			}
+			outStr << "/";
+			if(this->counter_sip_packets_old[1]) {
+				long unsigned v = (counter_sip_packets[1] - this->counter_sip_packets_old[1]) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_S1, v);
+				}
+			} else {
+				outStr << "-";
+			}
+			outStr << " SR:";
+			if(this->counter_sip_register_packets_old) {
+				long unsigned v = (counter_sip_register_packets - this->counter_sip_register_packets_old) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_SR, v);
+				}
+			} else {
+				outStr << "-";
+			}
+			outStr << " SM:";
+			if(this->counter_sip_message_packets_old) {
+				long unsigned v = (counter_sip_message_packets - this->counter_sip_message_packets_old) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_SM, v);
+				}
+			} else {
+				outStr << "-";
+			}
+			outStr << " R:";
+			if(this->counter_rtp_packets_old[0]) {
+				long unsigned v = (counter_rtp_packets[0] - this->counter_rtp_packets_old[0]) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_R, v);
+				}
+			} else {
+				outStr << "-";
+			}
+			outStr << "/";
+			if(this->counter_rtp_packets_old[1]) {
+				long unsigned v = (counter_rtp_packets[1] - this->counter_rtp_packets_old[1]) / statPeriod;
+				outStr << v;
+			} else {
+				outStr << "-";
+			}
+			outStr << " A:";
+			if(this->counter_all_packets_old) {
+				long unsigned v = (counter_all_packets - this->counter_all_packets_old) / statPeriod;
+				outStr << v;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_PS_A, v);
+				}
+			} else {
+				outStr << "-";
+			}
 			for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
-				this->counter_user_packets_old[i] = counter_user_packets[i];
+				if(counter_user_packets[i] && this->counter_user_packets_old[i]) {
+					outStr << " U" << i << ":";
+					outStr << (counter_user_packets[i] - this->counter_user_packets_old[i]) / statPeriod;
+				}
 			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("packet counters");
+			outStr << "] ";
+		}
+		this->counter_calls_old = counter_calls;
+		this->counter_calls_clean_old = counter_calls_clean;
+		this->counter_calls_save_1_old = counter_calls_save_1;
+		this->counter_calls_save_2_old = counter_calls_save_2;
+		this->counter_registers_old = counter_registers;
+		this->counter_registers_clean_old = counter_registers_clean;
+		this->counter_sip_packets_old[0] = counter_sip_packets[0];
+		this->counter_sip_packets_old[1] = counter_sip_packets[1];
+		this->counter_sip_register_packets_old = counter_sip_register_packets;
+		this->counter_sip_message_packets_old = counter_sip_message_packets;
+		this->counter_rtp_packets_old[0] = counter_rtp_packets[0];
+		this->counter_rtp_packets_old[1] = counter_rtp_packets[1];
+		this->counter_all_packets_old = counter_all_packets;
+		for(unsigned i = 0; i < sizeof(this->counter_user_packets_old) / sizeof(this->counter_user_packets_old[0]); i++) {
+			this->counter_user_packets_old[i] = counter_user_packets[i];
+		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("packet counters");
+		}
+		extern bool opt_save_query_to_files;
+		if(loadFromQFiles) {
+			bool fill = false;
+			string stat = loadFromQFiles->getLoadFromQFilesStat();
+			string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
+			u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(SqlDb::_tq_store);
+			u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
+			SqlDb::resetDelayQuery(SqlDb::_tq_store);
+			if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
+				outStr << "SQLf[";
 			}
-			extern bool opt_save_query_to_files;
-			if(loadFromQFiles) {
-				bool fill = false;
-				string stat = loadFromQFiles->getLoadFromQFilesStat();
-				string stat_proc = sverb.qfiles ? loadFromQFiles->getLoadFromQFilesStat(true) : "";
-				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(SqlDb::_tq_store);
-				u_int32_t countFilesQuery = loadFromQFiles->getLoadFromQFilesCount();
-				SqlDb::resetDelayQuery(SqlDb::_tq_store);
-				if(!stat.empty() || avgDelayQuery || !stat_proc.empty()) {
-					outStr << "SQLf[";
-				}
-				if(!stat.empty()) {
-					outStr << stat;
-					fill = true;
-				}
-				if(avgDelayQuery) {
-					if(fill) {
-						outStr << " / ";
-					}
-					outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
-					fill = true;
-					if (opt_rrd) {
-						rrd_set_value(RRD_VALUE_SQLf_D, avgDelayQuery);
-						rrd_set_value(RRD_VALUE_SQLf_C, countFilesQuery);
-					}
-				}
-				if(!stat_proc.empty()) {
-					if(fill) {
-						outStr << " / ";
-					}
-					outStr << stat_proc;
-					fill = true;
-				}
+			if(!stat.empty()) {
+				outStr << stat;
+				fill = true;
+			}
+			if(avgDelayQuery) {
 				if(fill) {
-					outStr << "] ";
+					outStr << " / ";
+				}
+				outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
+				fill = true;
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_SQLf_D, avgDelayQuery);
+					rrd_set_value(RRD_VALUE_SQLf_C, countFilesQuery);
 				}
 			}
-			if(!loadFromQFiles || !opt_save_query_to_files || sverb.force_log_sqlq) {
-				outStr << "SQLq[";
-				if(isCloud()) {
-					int sizeSQLq = sqlStore->getSize(1, 0) +
-						       (loadFromQFiles ? loadFromQFiles->getSize(1, 0) : 0);
-					outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
-				} else {
-					map<int, int> size_map;
-					map<int, int> size_map_by_id_2;
-					sqlStore->fillSizeMap(&size_map, &size_map_by_id_2);
-					if(loadFromQFiles) {
-						loadFromQFiles->fillSizeMap(&size_map, &size_map_by_id_2);
-					}
-					bool first = true;
-					for(map<int, int>::iterator iter = size_map_by_id_2.begin(); iter != size_map_by_id_2.end(); iter++) {
-						int id_main = iter->first / 100;
-						int id_2 = iter->first % 100;
-						int size = iter->second;
-						string id_main_str =
-							id_main == STORE_PROC_ID_CDR ? "C" :
-							id_main == STORE_PROC_ID_CHARTS_CACHE  ? "ch" :
-							id_main == STORE_PROC_ID_MESSAGE ? "M" :
-							id_main == STORE_PROC_ID_REGISTER ? "R" :
-							id_main == STORE_PROC_ID_SS7 ? "7" :
-							id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
-							id_main == STORE_PROC_ID_CLEANSPOOL ? "Cl" :
-							id_main == STORE_PROC_ID_HTTP ? "H" :
-							id_main == STORE_PROC_ID_OTHER ? "O" :
-							("i" + intToString(id_main) + "_");
-						outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
-						first = false;
-					}
-					if(opt_rrd) {
-						for(map<int, int>::iterator iter = size_map.begin(); iter != size_map.end(); iter++) {
-							int id_main = iter->first;
-							int size = iter->second;
-							const char *id_main_rrd_str = 
-								id_main == STORE_PROC_ID_CDR ? RRD_VALUE_SQLq_C :
-								id_main == STORE_PROC_ID_MESSAGE ? RRD_VALUE_SQLq_M :
-								id_main == STORE_PROC_ID_REGISTER ? RRD_VALUE_SQLq_R :
-								id_main == STORE_PROC_ID_HTTP ? RRD_VALUE_SQLq_H :
-								NULL;
-							if(id_main_rrd_str) {
-								rrd_add_value(id_main_rrd_str, size);
-							}
-						}
-					}
-					#if 0
-					int sizeSQLq;
-					for(int i = 0; i < opt_mysqlstore_max_threads_cdr; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CDR, i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CDR, i) : 0);
-						if(i == 0 || sizeSQLq >= 1) {
-							if(i) {
-								outStr << " C" << (i+1) << ":";
-							} else {
-								outStr << "C:";
-								if(sizeSQLq < 0) {
-									sizeSQLq = 0;
-								}
-							}
-							outStr << sizeSQLq;
-							if (opt_rrd) {
-								rrd_add_value(RRD_VALUE_SQLq_C, sizeSQLq);
-							}
-						}
-					}
-					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE, i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE, i) : 0);
-						if(sizeSQLq >= 0) {
-							if(i) {
-								outStr << " ch" << (i+1) << ":";
-							} else {
-								outStr << " ch:";
-								if(sizeSQLq < 0) {
-									sizeSQLq = 0;
-								}
-							}
-							outStr << sizeSQLq;
-						}
-					}
-					for(int i = 0; i < opt_mysqlstore_max_threads_charts_cache; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) +
-						           (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CHARTS_CACHE_REMOTE, i) : 0);
-						if(sizeSQLq >= 0) {
-							if(i) {
-								outStr << " chr" << (i+1) << ":";
-							} else {
-								outStr << " chr:";
-								if(sizeSQLq < 0) {
-									sizeSQLq = 0;
-								}
-							}
-							outStr << sizeSQLq;
-						}
-					}
-					for(int i = 0; i < opt_mysqlstore_max_threads_message; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_MESSAGE, i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_MESSAGE, i) : 0);
-						if(sizeSQLq >= (i ? 1 : 0)) {
-							if(i) {
-								outStr << " M" << (i+1) << ":";
-							} else {
-								outStr << " M:";
-								if(sizeSQLq < 0) {
-									sizeSQLq = 0;
-								}
-							}
-							outStr << sizeSQLq;
-							if (opt_rrd) {
-								rrd_add_value(RRD_VALUE_SQLq_M, sizeSQLq / 100);
-							}
-						}
-					}
-					for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_REGISTER, i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_REGISTER, i) : 0);
-						if(sizeSQLq >= (i ? 1 : 0)) {
-							if(i) {
-								outStr << " R" << (i+1) << ":";
-							} else {
-								outStr << " R:";
-								if(sizeSQLq < 0) {
-									sizeSQLq = 0;
-								}
-							}
-							outStr << sizeSQLq;
-							if (opt_rrd) {
-								rrd_add_value(RRD_VALUE_SQLq_R, sizeSQLq / 100);
-							}
-						}
-					}
-					if(opt_enable_ss7) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SS7, -1) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SS7, -1) : 0);
-						if(sizeSQLq >= 0) {
-							outStr << " 7:" << sizeSQLq;
-						}
-					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_SAVE_PACKET_SQL, -1) +
-						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_SAVE_PACKET_SQL, -1) : 0);
-					if(sizeSQLq >= 0) {
-						outStr << " L:" << sizeSQLq;
-					}
-					sizeSQLq = sqlStore->getSize(STORE_PROC_ID_CLEANSPOOL, -1) + 
-						   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_CLEANSPOOL, -1) : 0);
-					if(sizeSQLq >= 0) {
-						outStr << " Cl:" << sizeSQLq;
-						if (opt_rrd) {
-							rrd_set_value(RRD_VALUE_SQLq_Cl, sizeSQLq / 100);
-						}
-					}
-					for(int i = 0; i < opt_mysqlstore_max_threads_http; i++) {
-						sizeSQLq = sqlStore->getSize(STORE_PROC_ID_HTTP, i) +
-							   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_HTTP, i) : 0);
-						if(sizeSQLq >= (i ? 1 : 0)) {
-							if(i) {
-								outStr << " H" << (i+1) << ":";
-							} else {
-								outStr << " H:";
-							}
-							outStr << sizeSQLq;
-							if (opt_rrd) {
-								rrd_add_value(RRD_VALUE_SQLq_H, sizeSQLq / 100);
-							}
-						}
-					}
-					if(opt_ipaccount) {
-						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_base; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC, i) + 
-								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC, i) : 0);
-							if(sizeSQLq >= 1) {
-								outStr << " I" << (STORE_PROC_ID_IPACC + i) << ":" << sizeSQLq;
-							}
-						}
-						for(int i = STORE_PROC_ID_IPACC_AGR_INTERVAL; i <= STORE_PROC_ID_IPACC_AGR_DAY; i++) {
-							sizeSQLq = sqlStore->getSize(i, -1) +
-								   (loadFromQFiles ? loadFromQFiles->getSize(i, -1) : 0);
-							if(sizeSQLq >= 1) {
-								outStr << " I" << i << ":" << sizeSQLq;
-							}
-						}
-						for(int i = 0; i < opt_mysqlstore_max_threads_ipacc_agreg2; i++) {
-							sizeSQLq = sqlStore->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR, i) +
-								   (loadFromQFiles ? loadFromQFiles->getSize(STORE_PROC_ID_IPACC_AGR2_HOUR, i) : 0);
-							if(sizeSQLq >= 1) {
-								outStr << " I" << (STORE_PROC_ID_IPACC_AGR2_HOUR + i) << ":" << sizeSQLq;
-							}
-						}
-						/*
-						sizeSQLq = sqlStoreLog->getSizeMult(12,
-										    STORE_PROC_ID_IPACC_1,
-										    STORE_PROC_ID_IPACC_2,
-										    STORE_PROC_ID_IPACC_3,
-										    STORE_PROC_ID_IPACC_AGR_INTERVAL,
-										    STORE_PROC_ID_IPACC_AGR_HOUR,
-										    STORE_PROC_ID_IPACC_AGR_DAY,
-										    STORE_PROC_ID_IPACC_AGR2_HOUR_1,
-										    STORE_PROC_ID_IPACC_AGR2_HOUR_2,
-										    STORE_PROC_ID_IPACC_AGR2_HOUR_3,
-										    STORE_PROC_ID_IPACC_AGR2_DAY_1,
-										    STORE_PROC_ID_IPACC_AGR2_DAY_2,
-										    STORE_PROC_ID_IPACC_AGR2_DAY_3);
-						if(sizeSQLq >= 0) {
-							outStr << " I:" << sizeSQLq;
-						}
-						*/
-					}
-					#endif
+			if(!stat_proc.empty()) {
+				if(fill) {
+					outStr << " / ";
 				}
-				for(int i = 0; i < 2; i++) {
-					SqlDb::eTypeQuery typeQuery = i == 0 ? SqlDb::_tq_std : SqlDb::_tq_redirect;
-					const char *prefix = i == 0 ? "" : "R";
-					u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(typeQuery);
-					if(avgDelayQuery) {
-						outStr << " / " << setprecision(3) << prefix << (double)avgDelayQuery / 1000 << "s";
-					}
-					u_int32_t countQuery = SqlDb::getCountQuery(typeQuery);
-					if(countQuery) {
-						outStr << " / " << prefix << (countQuery / statPeriod) << "q/s";
-					}
-					SqlDb::resetDelayQuery(typeQuery);
-				}
-				u_int64_t insertCount = SqlDb::getCountInsert();
-				if(insertCount) {
-					if(insertCount / statPeriod) {
-						outStr << " / " << (insertCount / statPeriod) << "i/s";
-					}
-					SqlDb::resetCountInsert();
-				}
+				outStr << stat_proc;
+				fill = true;
+			}
+			if(fill) {
 				outStr << "] ";
-			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("sql");
 			}
 		}
+		if(!loadFromQFiles || !opt_save_query_to_files || sverb.force_log_sqlq) {
+			outStr << "SQLq[";
+			if(isCloud()) {
+				int sizeSQLq = sqlStore->getSize(1, 0) +
+					       (loadFromQFiles ? loadFromQFiles->getSize(1, 0) : 0);
+				outStr << (sizeSQLq >=0 ? sizeSQLq : 0);
+			} else {
+				map<int, int> size_map;
+				map<int, int> size_map_by_id_2;
+				sqlStore->fillSizeMap(&size_map, &size_map_by_id_2);
+				if(loadFromQFiles) {
+					loadFromQFiles->fillSizeMap(&size_map, &size_map_by_id_2);
+				}
+				bool first = true;
+				for(map<int, int>::iterator iter = size_map_by_id_2.begin(); iter != size_map_by_id_2.end(); iter++) {
+					int id_main = iter->first / 100;
+					int id_2 = iter->first % 100;
+					int size = iter->second;
+					string id_main_str =
+						id_main == STORE_PROC_ID_CDR ? "C" :
+						id_main == STORE_PROC_ID_CHARTS_CACHE  ? "ch" :
+						id_main == STORE_PROC_ID_MESSAGE ? "M" :
+						id_main == STORE_PROC_ID_REGISTER ? "R" :
+						id_main == STORE_PROC_ID_SS7 ? "7" :
+						id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
+						id_main == STORE_PROC_ID_CLEANSPOOL ? "Cl" :
+						id_main == STORE_PROC_ID_HTTP ? "H" :
+						id_main == STORE_PROC_ID_OTHER ? "O" :
+						("i" + intToString(id_main) + "_");
+					outStr << (first ? "" : " ") << id_main_str << (id_2 + 1) << ":" << size;
+					first = false;
+				}
+				if(opt_rrd) {
+					for(map<int, int>::iterator iter = size_map.begin(); iter != size_map.end(); iter++) {
+						int id_main = iter->first;
+						int size = iter->second;
+						const char *id_main_rrd_str = 
+							id_main == STORE_PROC_ID_CDR ? RRD_VALUE_SQLq_C :
+							id_main == STORE_PROC_ID_MESSAGE ? RRD_VALUE_SQLq_M :
+							id_main == STORE_PROC_ID_REGISTER ? RRD_VALUE_SQLq_R :
+							id_main == STORE_PROC_ID_HTTP ? RRD_VALUE_SQLq_H :
+							NULL;
+						if(id_main_rrd_str) {
+							rrd_add_value(id_main_rrd_str, size);
+						}
+					}
+				}
+			}
+			for(int i = 0; i < 2; i++) {
+				SqlDb::eTypeQuery typeQuery = i == 0 ? SqlDb::_tq_std : SqlDb::_tq_redirect;
+				const char *prefix = i == 0 ? "" : "R";
+				u_int32_t avgDelayQuery = SqlDb::getAvgDelayQuery(typeQuery);
+				if(avgDelayQuery) {
+					outStr << " / " << setprecision(3) << prefix << (double)avgDelayQuery / 1000 << "s";
+				}
+				u_int32_t countQuery = SqlDb::getCountQuery(typeQuery);
+				if(countQuery) {
+					outStr << " / " << prefix << (countQuery / statPeriod) << "q/s";
+				}
+				SqlDb::resetDelayQuery(typeQuery);
+			}
+			u_int64_t insertCount = SqlDb::getCountInsert();
+			if(insertCount) {
+				if(insertCount / statPeriod) {
+					outStr << " / " << (insertCount / statPeriod) << "i/s";
+				}
+				SqlDb::resetCountInsert();
+			}
+			outStr << "] ";
+		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("sql");
+		}
+	}
+	
+	double useAsyncWriteBuffer = buffersControl.getPerc_asyncwrite();
+	if(task == pcapStatLog) {
 		outStr << "heap[u" << setprecision(0) << heap_pb_used_perc
 		       << "|t" << setprecision(0) << heap_pb_trash_perc;
 		if(sverb.heap_use_time) {
@@ -2121,7 +1933,13 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		   (opt_dpdk_copy_packetbuffer || opt_dpdk_prealloc_packetbuffer)) {
 			outStr << "|p" << setprecision(0) << heap_pb_pool_perc;
 		}
-		double useAsyncWriteBuffer = buffersControl.getPerc_asyncwrite();
+		outStr << "|a" << setprecision(0) << useAsyncWriteBuffer
+		       << "] ";
+		if(opt_rrd) {
+			rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
+		}
+	}
+	if(task == pcapStatCpuCheck) {
 		if(useAsyncWriteBuffer > 50) {
 			if(CleanSpool::suspend()) {
 				syslog(LOG_NOTICE, "large workload disk operation - cleanspool suspended");
@@ -2131,11 +1949,9 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				syslog(LOG_NOTICE, "cleanspool resumed");
 			}
 		}
-		outStr << "|a" << setprecision(0) << useAsyncWriteBuffer
-		       << "] ";
-		if(opt_rrd) {
-			rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
-		}
+	}
+	
+	if(task == pcapStatLog) {
 		if(this->instancePcapHandle) {
 			unsigned long bypassBufferSizeExceeded = this->instancePcapHandle->pcapStat_get_bypass_buffer_size_exeeded();
 			string statPacketDrops = this->instancePcapHandle->getStatPacketDrop();
@@ -2176,7 +1992,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
 		if(speed >= 0) {
 			outStr << "[" << setprecision(1) << speed << "Mb/s] ";
-			if (opt_rrd) {
+			if(opt_rrd) {
 				rrd_set_value(RRD_VALUE_mbs, speed);
 			}
 			last_traffic = speed;
@@ -2190,60 +2006,67 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("x1");
 		}
 	}
+	
 	if(!this->isMirrorSender() && opt_pcap_dump_tar) {
-		outStr << "tarQ[" << glob_tar_queued_files << "] ";
-		extern TarCopy *tarCopy;
-		if(tarCopy) {
-			outStr << "tarMq[" << tarCopy->queueLength() << "] ";
-		}
-		u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
-		if(tarBufferSize) {
-			outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
-		}
-		if(sverb.log_profiler) {
-			lapTime.push_back(getTimeMS_rdtsc());
-			lapTimeDescr.push_back("tarbuffer");
+		if(task == pcapStatLog) {
+			outStr << "tarQ[" << glob_tar_queued_files << "] ";
+			extern TarCopy *tarCopy;
+			if(tarCopy) {
+				outStr << "tarMq[" << tarCopy->queueLength() << "] ";
+			}
+			u_int64_t tarBufferSize = ChunkBuffer::getChunkBuffersSumsize();
+			if(tarBufferSize) {
+				outStr << "tarB[" << setprecision(0) << tarBufferSize / 1024 / 1024 << "MB] ";
+			}
+			if(sverb.log_profiler) {
+				lapTime.push_back(getTimeMS_rdtsc());
+				lapTimeDescr.push_back("tarbuffer");
+			}
 		}
 		extern TarQueue *tarQueue[2];
 		for(int i = 0; i < 2; i++) {
 			if(tarQueue[i]) {
 				bool okPercTarCpu = false;
 				for(int j = 0; j < tarQueue[i]->maxthreads; j++) {
-					double tar_cpu = tarQueue[i]->getCpuUsagePerc(j, true);
+					double tar_cpu = tarQueue[i]->getCpuUsagePerc(j, pstatDataIndex);
 					if(tar_cpu > 0) {
-						if(okPercTarCpu) {
-							outStr << '|';
-						} else {
-							outStr << (i ? "tarCPU-spool2[" : "tarCPU[");
-							okPercTarCpu = true;
-						}
-						outStr << setprecision(1) << tar_cpu;
-						if (opt_rrd) {
-							rrd_add_value(RRD_VALUE_tarCPU, tar_cpu);
+						if(task == pcapStatLog) {
+							if(okPercTarCpu) {
+								outStr << '|';
+							} else {
+								outStr << (i ? "tarCPU-spool2[" : "tarCPU[");
+								okPercTarCpu = true;
+							}
+							outStr << setprecision(1) << tar_cpu;
+							if(opt_rrd) {
+								rrd_add_value(RRD_VALUE_tarCPU, tar_cpu);
+							}
 						}
 					}
 				}
-				if(okPercTarCpu) {
+				if(task == pcapStatLog && okPercTarCpu) {
 					outStr << "%] ";
 				}
 			}
 		}
-		if(sverb.log_profiler) {
+		if(task == pcapStatLog && sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());
 			lapTimeDescr.push_back("tar");
 		}
 	}
+	
 	ostringstream outStrStat;
 	outStrStat << fixed;
-	if(this->instancePcapHandle) {
+	
+	if(task == pcapStatLog && this->instancePcapHandle) {
 		double sumMaxReadThreads;
 		int countThreadsSumMaxReadThreads;
-		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads, &countThreadsSumMaxReadThreads, statPeriod);
-		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, true);
-		double t0cpuWrite = this->instancePcapHandle->getCpuUsagePerc(writeThread, true);
+		outStrStat << this->instancePcapHandle->pcapStatString_cpuUsageReadThreads(&sumMaxReadThreads, &countThreadsSumMaxReadThreads, statPeriod, pstatDataIndex);
+		double t0cpu = this->instancePcapHandle->getCpuUsagePerc(mainThread, pstatDataIndex);
+		double t0cpuWrite = this->instancePcapHandle->getCpuUsagePerc(writeThread, pstatDataIndex);
 		double t0cpuNextThreads[PCAP_QUEUE_NEXT_THREADS_MAX];
 		for(int i = 0; i < PCAP_QUEUE_NEXT_THREADS_MAX; i++) {
-			t0cpuNextThreads[i] = this->instancePcapHandle->getCpuUsagePerc((eTypeThread)(nextThread1 + i), true);
+			t0cpuNextThreads[i] = this->instancePcapHandle->getCpuUsagePerc((eTypeThread)(nextThread1 + i), pstatDataIndex);
 		}
 		if(t0cpu >= 0) {
 			outStrStat << "t0CPU[" << setprecision(1) << t0cpu;
@@ -2256,7 +2079,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				}
 			}
 			outStrStat << "%] ";
-			if (opt_rrd) {
+			if(opt_rrd) {
 				rrd_set_value(RRD_VALUE_tCPU_t0, t0cpu);
 			}
 		}
@@ -2277,82 +2100,99 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			lapTimeDescr.push_back("t0");
 		}
 	}
-	string t1cpu = this->getCpuUsage(false, true);
-	if(t1cpu.length()) {
-		outStrStat << t1cpu << " ";
-	} else {
-		double t1cpu = this->getCpuUsagePerc(mainThread, true);
-		if(t1cpu >= 0) {
-			outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
-			if (opt_rrd) {
-				rrd_set_value(RRD_VALUE_tCPU_t1, t1cpu);
+	
+	if(task == pcapStatLog) {
+		string t1cpu = this->getCpuUsage(false, pstatDataIndex);
+		if(t1cpu.length()) {
+			outStrStat << t1cpu << " ";
+		} else {
+			double t1cpu = this->getCpuUsagePerc(mainThread, pstatDataIndex);
+			if(t1cpu >= 0) {
+				outStrStat << "t1CPU[" << setprecision(1) << t1cpu << "%] ";
+				if(opt_rrd) {
+					rrd_set_value(RRD_VALUE_tCPU_t1, t1cpu);
+				}
 			}
 		}
+		if(sverb.log_profiler) {
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("t1");
+		}
 	}
-	if(sverb.log_profiler) {
-		lapTime.push_back(getTimeMS_rdtsc());
-		lapTimeDescr.push_back("t1");
-	}
-	double t2cpu = this->getCpuUsagePerc(writeThread, true);
+	
+	double t2cpu = this->getCpuUsagePerc(writeThread, pstatDataIndex);
 	double sum_t2cpu = 0;
 	if(t2cpu >= 0) {
 		if(isMirrorSender()) {
-			outStrStat << "t2CPU[" << t2cpu;
+			if(task == pcapStatLog) {
+				outStrStat << "t2CPU[" << t2cpu;
+			}
 		} else {
-			outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
-			if(opt_pcap_queue_dequeu_method &&
-			   !opt_pcap_queue_dequeu_need_blocks &&
-			   opt_pcap_queue_dequeu_window_length > 0) {
-				if(heap_pb_used_perc > 30 && t2cpu > opt_cpu_limit_new_thread_high) {
-					if(opt_pcap_queue_dequeu_window_length_div < 100) {
-						if(!opt_pcap_queue_dequeu_window_length_div) {
-							opt_pcap_queue_dequeu_window_length_div = 2;
-						} else {
-							opt_pcap_queue_dequeu_window_length_div *= 2;
+			if(task == pcapStatLog) {
+				outStrStat << "t2CPU[" << "pb:" << setprecision(1) << t2cpu;
+			}
+			if(task == pcapStatCpuCheck) {
+				if(opt_pcap_queue_dequeu_method &&
+				   !opt_pcap_queue_dequeu_need_blocks &&
+				   opt_pcap_queue_dequeu_window_length > 0) {
+					static int do_increase_dequeu_window_counter = 0;
+					if(heap_pb_used_perc > 15 && t2cpu > opt_cpu_limit_new_thread) {
+						if(opt_pcap_queue_dequeu_window_length_div < 100) {
+							if(!opt_pcap_queue_dequeu_window_length_div) {
+								opt_pcap_queue_dequeu_window_length_div = 2;
+							} else {
+								opt_pcap_queue_dequeu_window_length_div *= 2;
+							}
+							syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
+							       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
 						}
-						syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
-						       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
-					}
-				} else if(heap_pb_used_perc < 5 && t2cpu < 30 &&
-					  opt_pcap_queue_dequeu_window_length_div > 0) {
-					if(opt_pcap_queue_dequeu_window_length_div > 2) {
-						opt_pcap_queue_dequeu_window_length_div /= 2;
-						syslog(LOG_INFO, "increase pcap_queue_deque_window_length to %i", 
-						       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
+						do_increase_dequeu_window_counter = 0;
+					} else if(heap_pb_used_perc < 5 && t2cpu < 30 &&
+						  opt_pcap_queue_dequeu_window_length_div > 0) {
+						if((++do_increase_dequeu_window_counter) >= 10) {
+							if(opt_pcap_queue_dequeu_window_length_div > 2) {
+								opt_pcap_queue_dequeu_window_length_div /= 2;
+								syslog(LOG_INFO, "increase pcap_queue_deque_window_length to %i", 
+								       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
+							} else {
+								opt_pcap_queue_dequeu_window_length_div = 0;
+								syslog(LOG_INFO, "restore pcap_queue_deque_window_length to %i", 
+								       opt_pcap_queue_dequeu_window_length);
+							}
+							do_increase_dequeu_window_counter = 0;
+						}
 					} else {
-						opt_pcap_queue_dequeu_window_length_div = 0;
-						syslog(LOG_INFO, "restore pcap_queue_deque_window_length to %i", 
-						       opt_pcap_queue_dequeu_window_length);
+						do_increase_dequeu_window_counter = 0;
 					}
 				}
 			}
 			if(pcapQueueQ_outThread_detach) {
-				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(true);
-				if(detach_cpu >= 0) {
+				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(pstatDataIndex);
+				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach:" << setprecision(1) << detach_cpu;
 				}
 			}
 			if(pcapQueueQ_outThread_defrag) {
-				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(true);
-				if(defrag_cpu >= 0) {
+				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(pstatDataIndex);
+				if(task == pcapStatLog && defrag_cpu >= 0) {
 					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
 				}
 			}
 			if(pcapQueueQ_outThread_dedup) {
-				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(true);
-				if(dedup_cpu >= 0) {
+				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(pstatDataIndex);
+				if(task == pcapStatLog && dedup_cpu >= 0) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
 				}
 			}
 			if(pcapQueueQ_outThread_detach2) {
-				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(true);
-				if(detach_cpu >= 0) {
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(pstatDataIndex);
+				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
 				}
 			}
 			if(opt_ipaccount) {
-				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, true);
-				if(ipacc_cpu >= 0) {
+				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, pstatDataIndex);
+				if(task == pcapStatLog && ipacc_cpu >= 0) {
 					outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
 				}
 			}
@@ -2367,33 +2207,35 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 					if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
 						double percFullQring = 0;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(true, j, j == 0 ? &percFullQring : NULL);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, j == 0 ? &percFullQring : NULL, pstatDataIndex);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
-							outStrStat << "/" 
-								   << preProcessPacket[i]->getShortcatTypeThread() << ":"
-								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-							if(sverb.qring_stat) {
-								double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-								if(qringFillingPerc > 0) {
-									outStrStat << "r" << qringFillingPerc;
-								}
-							}
-							if(sverb.qring_full && percFullQring > sverb.qring_full) {
-								outStrStat << "#" << percFullQring;
-							}
-							if(i == 0 && sverb.alloc_stat) {
-								if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
-									unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
-									unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
-									outStrStat << "a" << stack << ':' << alloc << ':';
-									if(alloc + stack) {
-										outStrStat << (stack * 100 / (alloc + stack)) << '%';
-									} else {
-										outStrStat << '-';
+							if(task == pcapStatLog) {
+								outStrStat << "/" 
+									   << preProcessPacket[i]->getShortcatTypeThread() << ":"
+									   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+								if(sverb.qring_stat) {
+									double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+									if(qringFillingPerc > 0) {
+										outStrStat << "r" << qringFillingPerc;
 									}
 								}
-								preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
-								preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+								if(sverb.qring_full && percFullQring > sverb.qring_full) {
+									outStrStat << "#" << percFullQring;
+								}
+								if(i == 0 && sverb.alloc_stat) {
+									if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
+										unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
+										unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
+										outStrStat << "a" << stack << ':' << alloc << ':';
+										if(alloc + stack) {
+											outStrStat << (stack * 100 / (alloc + stack)) << '%';
+										} else {
+											outStrStat << '-';
+										}
+									}
+									preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
+									preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+								}
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
@@ -2415,12 +2257,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 								last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 							}
-							if(j == 0 && opt_t2_boost &&
-							   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
-							   heap_pb_used_perc > 10 &&
-							   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
-							    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
-								preProcessPacket[i]->addNextThread();
+							if(task == pcapStatCpuCheck) {
+								static int do_add_thread_counter = 0;
+								if(j == 0 && opt_t2_boost &&
+								   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread &&
+								   heap_pb_used_perc > 10 &&
+								   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
+								    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+									if((++do_add_thread_counter) >= 2) {
+										preProcessPacket[i]->addNextThread();
+										do_add_thread_counter = 0;
+									}
+								} else {
+									do_add_thread_counter = 0;
+								}
 							}
 						}
 					}
@@ -2430,19 +2280,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 						double percFullQring = 0;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(true, 0, &percFullQring);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallX[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
-							outStrStat << "/" 
-								   << preProcessPacketCallX[i]->getShortcatTypeThread()
-								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-							if(sverb.qring_stat) {
-								double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
-								if(qringFillingPerc > 0) {
-									outStrStat << "r" << qringFillingPerc;
+							if(task == pcapStatLog) {
+								outStrStat << "/" 
+									   << preProcessPacketCallX[i]->getShortcatTypeThread()
+									   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+								if(sverb.qring_stat) {
+									double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
+									if(qringFillingPerc > 0) {
+										outStrStat << "r" << qringFillingPerc;
+									}
 								}
-							}
-							if(sverb.qring_full && percFullQring > sverb.qring_full) {
-								outStrStat << "#" << percFullQring;
+								if(sverb.qring_full && percFullQring > sverb.qring_full) {
+									outStrStat << "#" << percFullQring;
+								}
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
@@ -2452,19 +2304,21 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				if(preProcessPacketCallFindX && calltable->useCallFindX()) {
 					for(int i = 0; i < preProcessPacketCallX_count; i++) {
 						double percFullQring;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(true, 0, &percFullQring);
+						double t2cpu_preprocess_packet_out_thread = preProcessPacketCallFindX[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
-							outStrStat << "/" 
-								   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
-								   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-							if(sverb.qring_stat) {
-								double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
-								if(qringFillingPerc > 0) {
-									outStrStat << "r" << qringFillingPerc;
+							if(task == pcapStatLog) {
+								outStrStat << "/" 
+									   << preProcessPacketCallFindX[i]->getShortcatTypeThread()
+									   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+								if(sverb.qring_stat) {
+									double qringFillingPerc = preProcessPacketCallFindX[i]->getQringFillingPerc();
+									if(qringFillingPerc > 0) {
+										outStrStat << "r" << qringFillingPerc;
+									}
 								}
-							}
-							if(sverb.qring_full && percFullQring > sverb.qring_full) {
-								outStrStat << "#" << percFullQring;
+								if(sverb.qring_full && percFullQring > sverb.qring_full) {
+									outStrStat << "#" << percFullQring;
+								}
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
@@ -2472,7 +2326,7 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-			if(opt_rrd) {
+			if(task == pcapStatLog && opt_rrd) {
 				rrd_set_value(RRD_VALUE_tCPU_t2, sum_t2cpu);
 			}
 			int countRtpRhThreads = 0;
@@ -2483,18 +2337,20 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
 						double percFullQring;
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(true, i, i == 0 ? &percFullQring : NULL);
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(i, i == 0 ? &percFullQring : NULL, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
-							outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
-								   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
-							if(i == 0 && sverb.qring_stat) {
-								double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
-								if(qringFillingPerc > 0) {
-									outStrStat << "r" << qringFillingPerc;
+							if(task == pcapStatLog) {
+								outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
+									   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								if(i == 0 && sverb.qring_stat) {
+									double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
+									if(qringFillingPerc > 0) {
+										outStrStat << "r" << qringFillingPerc;
+									}
 								}
-							}
-							if(i == 0 && sverb.qring_full && percFullQring > sverb.qring_full) {
-								outStrStat << "#" << percFullQring;
+								if(i == 0 && sverb.qring_full && percFullQring > sverb.qring_full) {
+									outStrStat << "#" << percFullQring;
+								}
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
@@ -2510,17 +2366,19 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
 						double percFullQring;
-						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(true,0, &percFullQring);
+						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
-							outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
-							if(sverb.qring_stat) {
-								double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
-								if(qringFillingPerc > 0) {
-									outStrStat << "r" << qringFillingPerc;
+							if(task == pcapStatLog) {
+								outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								if(sverb.qring_stat) {
+									double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
+									if(qringFillingPerc > 0) {
+										outStrStat << "r" << qringFillingPerc;
+									}
 								}
-							}
-							if(sverb.qring_full && percFullQring > sverb.qring_full) {
-								outStrStat << "#" << percFullQring;
+								if(sverb.qring_full && percFullQring > sverb.qring_full) {
+									outStrStat << "#" << percFullQring;
+								}
 							}
 						}
 						++countRtpRdThreads;
@@ -2532,122 +2390,219 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					}
 				}
 			}
-			extern int opt_enable_preprocess_packet;
-			if(opt_enable_preprocess_packet == -1) {
-				if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
-					PreProcessPacket::autoStartNextLevelPreProcessPacket();
-				} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
-					PreProcessPacket::autoStopLastLevelPreProcessPacket();
+			if(task == pcapStatCpuCheck) {
+				extern int opt_enable_preprocess_packet;
+				if(opt_enable_preprocess_packet == -1) {
+					static int do_start_last_level_counter = 0;
+					static int do_stop_last_level_counter = 0;
+					if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
+						if((++do_start_last_level_counter) >= 2) {
+							PreProcessPacket::autoStartNextLevelPreProcessPacket();
+							do_start_last_level_counter = 0;
+						}
+						do_stop_last_level_counter = 0;
+					} else if(last_t2cpu_preprocess_packet_out_thread_check_next_level < opt_cpu_limit_delete_t2sip_thread) {
+						if((++do_stop_last_level_counter) >= 10) {
+							PreProcessPacket::autoStopLastLevelPreProcessPacket();
+							do_stop_last_level_counter = 0;
+						}
+						do_start_last_level_counter = 0;
+					} else {
+						do_start_last_level_counter = 0;
+						do_stop_last_level_counter = 0;
+					}
+				}
+				static int do_add_thread_callx_counter = 0;
+				if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
+				   heap_pb_used_perc > 10 &&
+				   calltable->enableCallX() && !calltable->useCallX()) {
+					if((++do_add_thread_callx_counter) >= 2) {
+						PreProcessPacket::autoStartCallX_PreProcessPacket();
+						do_add_thread_callx_counter = 0;
+					}
+				} else {
+					do_add_thread_callx_counter = 0;
+				}
+				static int do_add_process_rtp_counter = 0;
+				if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
+					if((++do_add_process_rtp_counter) >= 2) {
+						ProcessRtpPacket::autoStartProcessRtpPacket();
+						do_add_process_rtp_counter = 0;
+					}
+				} else {
+					do_add_process_rtp_counter = 0;
+				}
+				extern int opt_process_rtp_packets_hash_next_thread_max;
+				static int do_add_thread_rh_counter = 0;
+				if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+				   (opt_process_rtp_packets_hash_next_thread_max <= 0 || countRtpRhThreads < opt_process_rtp_packets_hash_next_thread_max) &&
+				   needAddRtpRhThreads) {
+					if((++do_add_thread_rh_counter) >= 2) {
+						processRtpPacketHash->addRtpRhThread();
+						do_add_thread_rh_counter = 0;
+					}
+				} else {
+					do_add_thread_rh_counter = 0;
+				}
+				extern int opt_enable_process_rtp_packet_max;
+				static int do_add_thread_rd_counter = 0;
+				if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
+				   (opt_enable_process_rtp_packet_max <= 0 || countRtpRdThreads < opt_enable_process_rtp_packet_max) &&
+				   needAddRtpRdThreads) {
+					if((++do_add_thread_rd_counter) >= 2) {
+						ProcessRtpPacket::addRtpRdThread();
+						do_add_thread_rd_counter = 0;
+					}
+				} else {
+					do_add_thread_rd_counter = 0;
 				}
 			}
-			if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
-			   heap_pb_used_perc > 10 &&
-			   calltable->enableCallX() && !calltable->useCallX()) {
-				PreProcessPacket::autoStartCallX_PreProcessPacket();
-			}
-			if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
-				ProcessRtpPacket::autoStartProcessRtpPacket();
-			}
-			extern int opt_process_rtp_packets_hash_next_thread_max;
-			if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
-			   (opt_process_rtp_packets_hash_next_thread_max <= 0 || countRtpRhThreads < opt_process_rtp_packets_hash_next_thread_max) &&
-			   needAddRtpRhThreads) {
-				processRtpPacketHash->addRtpRhThread();
-			}
-			extern int opt_enable_process_rtp_packet_max;
-			if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
-			   (opt_enable_process_rtp_packet_max <= 0 || countRtpRdThreads < opt_enable_process_rtp_packet_max) &&
-			   needAddRtpRdThreads) {
-				ProcessRtpPacket::addRtpRdThread();
-			}
-			if(count_t2cpu > 1) {
+			if(task == pcapStatLog && count_t2cpu > 1) {
 				outStrStat << "/S:" << setprecision(1) << sum_t2cpu;
 			}
 		}
-		outStrStat << "%] ";
+		if(task == pcapStatLog) {
+			outStrStat << "%] ";
+		}
 	}
-	if(sverb.log_profiler) {
+	if(task == pcapStatLog && sverb.log_profiler) {
 		lapTime.push_back(getTimeMS_rdtsc());
 		lapTimeDescr.push_back("t2");
 	}
+	
 	if(!isMirrorSender()) {
 		double tRTPcpuMax = 0;
-		double tRTPcpu = get_rtp_sum_cpu_usage(&tRTPcpuMax);
-		if(tRTPcpu >= 0) {
+		double tRTPcpuMin = 0;
+		double tRTPcpuSum = get_rtp_sum_cpu_usage(&tRTPcpuMax, &tRTPcpuMin, pstatDataIndex);
+		if(tRTPcpuSum >= 0) {
 			extern volatile int num_threads_active;
-			outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpu << "%/";
-			if(sverb.rtp_extend_stat) {
-				outStrStat << get_rtp_threads_cpu_usage(false) << "/";
-			} else {
-				outStrStat << tRTPcpuMax << "m/";
-			}
-			outStrStat << num_threads_active << "t] ";
-			if(tRTPcpu / num_threads_active > opt_cpu_limit_new_thread ||
-			   (heap_pb_used_perc > 10 && tRTPcpuMax >= 98)) {
-				for(int i = 0; i < (heap_pb_used_perc > 20 ? 3 : 1); i++) {
-					add_rtp_read_thread();
+			if(task == pcapStatLog) {
+				outStrStat << "tRTP_CPU[" << setprecision(1) << tRTPcpuSum << "%/";
+				if(sverb.rtp_extend_stat) {
+					outStrStat << get_rtp_threads_cpu_usage(pstatDataIndex, false) << "/";
+				} else {
+					outStrStat << tRTPcpuMax << "m/";
 				}
-			} else if(num_threads_active > 1 &&
-				  tRTPcpu / num_threads_active < opt_cpu_limit_delete_thread &&
-				  pcapStatCounter > (opt_fork ? 100 : 10) &&
-				  !sverb.disable_read_rtp) {
-				set_remove_rtp_read_thread();
+				outStrStat << num_threads_active << "t] ";
+			}
+			if(task == pcapStatCpuCheck) {
+				/*
+				cout << " ** RTP THREADS ** " 
+				     << num_threads_active << " / "
+				     << "heap_trash_perc: " << heap_pb_trash_perc << " / " 
+				     << "cpu_avg: " << tRTPcpuSum / num_threads_active << " / " 
+				     << "cpu_max: " <<  tRTPcpuMax << " / " 
+				     << "cpu_min: " << tRTPcpuMin
+				     << endl;
+				extern rtp_read_thread *rtp_threads;
+				cout << "   ";
+				for(int i = 0; i < num_threads_active; i++) {
+					if(rtp_threads[i].threadId) {
+						cout << "T" << (i + 1) << " "
+						     << "c: " << rtp_threads[i].calls << " "
+						     << "p: " << rtp_threads[i].cpu;
+					}
+					if(i < num_threads_active - 1) {
+						cout << " / ";
+					}
+				}
+				cout << endl;
+				*/
+				static int do_add_thread_counter = 0;
+				static int do_remove_thread_counter = 0;
+				if((tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread &&
+				    tRTPcpuMin > opt_cpu_limit_new_thread) ||
+				   (num_threads_active == 1 &&
+				    tRTPcpuMax > (opt_cpu_limit_new_thread / 2) && heap_pb_trash_perc > 10)) {
+					if(num_threads_active == 1 || (++do_add_thread_counter) >= 2) {
+						int newThreads = heap_pb_trash_perc > 20 ? 6 :
+								 heap_pb_trash_perc > 16 ? 5 :
+								 heap_pb_trash_perc > 13 ? 4 :
+								 heap_pb_trash_perc > 10 ? 3 :
+								 heap_pb_trash_perc >  5 ? 2 :
+											   1;
+						for(int i = 0; i < newThreads; i++) {
+							if(add_rtp_read_thread()) {
+								syslog(LOG_NOTICE, "create rtp thread");
+							}
+						}
+						do_add_thread_counter = 0;
+					}
+					do_remove_thread_counter = 0;
+				} else if(num_threads_active > 1 &&
+					  tRTPcpuSum / num_threads_active < opt_cpu_limit_delete_thread &&
+					  tRTPcpuMax < opt_cpu_limit_delete_thread &&
+					  pcapStatCpuCheckCounter > 60 &&
+					  !sverb.disable_read_rtp) {
+					if((++do_remove_thread_counter) >= 10) {
+						if(set_remove_rtp_read_thread()) {
+							syslog(LOG_NOTICE, "remove rtp thread");
+						}
+						do_remove_thread_counter = 0;
+					}
+					do_add_thread_counter = 0;
+				} else {
+					do_add_thread_counter = 0;
+					do_remove_thread_counter = 0;
+				}
 			}
 		}
-		if(sverb.log_profiler) {
-			lapTime.push_back(getTimeMS_rdtsc());
-			lapTimeDescr.push_back("trtp");
-		}
-		if(tcpReassemblyHttp) {
-			string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc();
-			if(!cpuUsagePerc.empty()) {
-				outStrStat << "thttpCPU[" << cpuUsagePerc << "] ";
-			}
+		if(task == pcapStatLog) {
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("thttp");
+				lapTimeDescr.push_back("trtp");
 			}
-		}
-		if(tcpReassemblyWebrtc) {
-			string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc();
-			if(!cpuUsagePerc.empty()) {
-				outStrStat << "twebrtcCPU[" << cpuUsagePerc << "] ";
+			if(tcpReassemblyHttp) {
+				string cpuUsagePerc = tcpReassemblyHttp->getCpuUsagePerc(pstatDataIndex);
+				if(!cpuUsagePerc.empty()) {
+					outStrStat << "thttpCPU[" << cpuUsagePerc << "] ";
+				}
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("thttp");
+				}
 			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("twebrtc");
+			if(tcpReassemblyWebrtc) {
+				string cpuUsagePerc = tcpReassemblyWebrtc->getCpuUsagePerc(pstatDataIndex);
+				if(!cpuUsagePerc.empty()) {
+					outStrStat << "twebrtcCPU[" << cpuUsagePerc << "] ";
+				}
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("twebrtc");
+				}
 			}
-		}
-		if(tcpReassemblySsl) {
-			string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc();
-			if(!cpuUsagePerc.empty()) {
-				outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
+			if(tcpReassemblySsl) {
+				string cpuUsagePerc = tcpReassemblySsl->getCpuUsagePerc(pstatDataIndex);
+				if(!cpuUsagePerc.empty()) {
+					outStrStat << "tsslCPU[" << cpuUsagePerc << "] ";
+				}
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("tssl");
+				}
 			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("tssl");
+			extern link_packets_queue dtls_queue;
+			u_int32_t dtls_queue_links = dtls_queue.countLinks();
+			u_int32_t dtls_queue_packets = dtls_queue.countPackets();
+			if(dtls_queue_links > 0 || dtls_queue_packets > 0) {
+				outStrStat << "dtls[l:" << dtls_queue_links 
+					   << "/p:" << dtls_queue_packets
+					   << "] ";
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("dtls");
+				}
 			}
-		}
-		extern link_packets_queue dtls_queue;
-		u_int32_t dtls_queue_links = dtls_queue.countLinks();
-		u_int32_t dtls_queue_packets = dtls_queue.countPackets();
-		if(dtls_queue_links > 0 || dtls_queue_packets > 0) {
-			outStrStat << "dtls[l:" << dtls_queue_links 
-				   << "/p:" << dtls_queue_packets
-				   << "] ";
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("dtls");
-			}
-		}
-		if(tcpReassemblySipExt) {
-			string cpuUsagePerc = tcpReassemblySipExt->getCpuUsagePerc();
-			if(!cpuUsagePerc.empty()) {
-				outStrStat << "tsip_tcpCPU[" << cpuUsagePerc << "] ";
-			}
-			if(sverb.log_profiler) {
-				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("tsip");
+			if(tcpReassemblySipExt) {
+				string cpuUsagePerc = tcpReassemblySipExt->getCpuUsagePerc(pstatDataIndex);
+				if(!cpuUsagePerc.empty()) {
+					outStrStat << "tsip_tcpCPU[" << cpuUsagePerc << "] ";
+				}
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("tsip");
+				}
 			}
 		}
 		extern AsyncClose *asyncClose;
@@ -2656,58 +2611,93 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 			double last_tac_cpu = 0;
 			bool exists_set_tac_cpu = false;
 			for(int i = 0; i < asyncClose->getCountThreads(); i++) {
-				double tac_cpu = asyncClose->getCpuUsagePerc(i, true);
+				double tac_cpu = asyncClose->getCpuUsagePerc(i, pstatDataIndex);
 				last_tac_cpu = tac_cpu;
 				if(tac_cpu >= 0) {
 					v_tac_cpu.push_back(tac_cpu);
 					exists_set_tac_cpu = true;
 				}
 			}
-			if(exists_set_tac_cpu) {
+			if(task == pcapStatLog && exists_set_tac_cpu) {
 				outStrStat << "tacCPU[";
 				for(size_t i = 0; i < v_tac_cpu.size(); i++) {
 					if(i) {
 						outStrStat << '|';
 					}
 					outStrStat << setprecision(1) << v_tac_cpu[i];
-					if (opt_rrd) {
+					if(opt_rrd) {
 						rrd_add_value(RRD_VALUE_zipCPU, v_tac_cpu[i]);
 					}
 				}
 				outStrStat << "%] ";
 			}
-			if(last_tac_cpu > opt_cpu_limit_new_thread) {
-				asyncClose->addThread();
-			} else if(last_tac_cpu < opt_cpu_limit_delete_thread) {
-				asyncClose->removeThread();
+			if(task == pcapStatCpuCheck) {
+				static int do_add_thread_counter = 0;
+				static int do_remove_thread_counter = 0;
+				if(last_tac_cpu > opt_cpu_limit_new_thread) {
+					if((++do_add_thread_counter) >= 2) {
+						if(asyncClose->addThread()) {
+							syslog(LOG_NOTICE, "create tac thread");
+						}
+						do_add_thread_counter = 0;
+					}
+					do_remove_thread_counter = 0;
+				} else if(last_tac_cpu < opt_cpu_limit_delete_thread) {
+					if((++do_remove_thread_counter) >= 10) {
+						if(asyncClose->removeThread()) {
+							syslog(LOG_NOTICE, "remove tac thread");
+						}
+						do_remove_thread_counter = 0;
+					}
+					do_add_thread_counter = 0;
+				} else {
+					do_add_thread_counter = 0;
+					do_remove_thread_counter = 0;
+				}
 			}
 		}
-		extern string storing_cdr_getCpuUsagePerc(double *avg);
+		extern string storing_cdr_getCpuUsagePerc(double *avg, int pstatDataIndex);
 		double storing_cdr_cpu_avg;
-		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc(&storing_cdr_cpu_avg);
-		if(!storing_cdr_cpu.empty()) {
+		string storing_cdr_cpu = storing_cdr_getCpuUsagePerc(&storing_cdr_cpu_avg, pstatDataIndex);
+		if(task == pcapStatLog && !storing_cdr_cpu.empty()) {
 			outStrStat << "storing[" << storing_cdr_cpu << "%] ";
 		}
-		if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread_high &&
-		   calls_counter > 10000 &&
-		   calls_counter > (int)count_calls * 1.5) {
-			extern void storing_cdr_next_thread_add();
-			storing_cdr_next_thread_add();
-		} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
-			  calls_counter < (int)count_calls * 1.5) {
-			extern void storing_cdr_next_thread_remove();
-			storing_cdr_next_thread_remove();
+		if(task == pcapStatCpuCheck) {
+			static int do_add_thread_counter = 0;
+			static int do_remove_thread_counter = 0;
+			if(storing_cdr_cpu_avg > opt_cpu_limit_new_thread &&
+			   calls_counter > 10000 &&
+			   calls_counter > (int)count_calls * 1.5) {
+				if((++do_add_thread_counter) >= 2) {
+					extern void storing_cdr_next_thread_add();
+					storing_cdr_next_thread_add();
+					do_add_thread_counter = 0;
+				}
+				do_remove_thread_counter = 0;
+			} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread &&
+				  calls_counter < (int)count_calls * 1.5) {
+				if((++do_remove_thread_counter) >= 10) {
+					extern void storing_cdr_next_thread_remove();
+					storing_cdr_next_thread_remove();
+					do_remove_thread_counter = 0;
+				}
+				do_add_thread_counter = 0;
+			} else {
+				do_add_thread_counter = 0;
+				do_remove_thread_counter= 0;
+			}
 		}
 		extern bool opt_charts_cache;
 		if(opt_charts_cache || snifferClientOptions.remote_chart_server || existsRemoteChartServer()) {
-			extern u_int32_t counter_charts_cache;
-			extern u_int64_t counter_charts_cache_delay_us;
 			double chc_cpu_avg;
-			string chc_cpu = calltable->processCallsInChartsCache_cpuUsagePerc(&chc_cpu_avg);
+			string chc_cpu = calltable->processCallsInChartsCache_cpuUsagePerc(&chc_cpu_avg, pstatDataIndex);
 			size_t ch_q = calltable->calls_charts_cache_queue.size();
 			size_t chs_q_s = getRemoteChartServerQueueSize();
-			if(!chc_cpu.empty() || (counter_charts_cache && counter_charts_cache_delay_us) || 
-			   ch_q > 0 || chs_q_s > 0) {
+			extern u_int32_t counter_charts_cache;
+			extern u_int64_t counter_charts_cache_delay_us;
+			if(task == pcapStatLog &&
+			   (!chc_cpu.empty() || (counter_charts_cache && counter_charts_cache_delay_us) || 
+			    ch_q > 0 || chs_q_s > 0)) {
 				outStrStat << "charts[";
 				if(!chc_cpu.empty()) {
 					outStrStat  << chc_cpu << "%";
@@ -2732,302 +2722,315 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 					outStrStat  << chs_q_s << "qr";
 				}
 				outStrStat << "] ";
+				counter_charts_cache = 0;
+				counter_charts_cache_delay_us = 0;
 			}
-			if(pcapStatCounter > 2) {
+			if(task == pcapStatCpuCheck && pcapStatCpuCheckCounter > 2) {
 				extern int opt_charts_cache_queue_limit;
-				if(chc_cpu_avg > opt_cpu_limit_new_thread_high &&
+				static int do_add_thread_counter = 0;
+				static int do_remove_thread_counter = 0;
+				if(chc_cpu_avg > opt_cpu_limit_new_thread &&
 				   calltable->calls_charts_cache_queue.size() > (unsigned)opt_charts_cache_queue_limit / 3) {
-					calltable->processCallsInChartsCache_thread_add();
+					if((++do_add_thread_counter) >= 2) {
+						calltable->processCallsInChartsCache_thread_add();
+						do_add_thread_counter = 0;
+					}
+					do_remove_thread_counter = 0;
 				} else if(storing_cdr_cpu_avg < opt_cpu_limit_delete_thread) {
-					calltable->processCallsInChartsCache_thread_remove();
+					if((++do_remove_thread_counter) >= 10) {
+						calltable->processCallsInChartsCache_thread_remove();
+						do_remove_thread_counter = 0;
+					}
+					do_add_thread_counter = 0;
+				} else {
+					do_add_thread_counter = 0;
+					do_remove_thread_counter = 0;
 				}
 			}
-			counter_charts_cache = 0;
-			counter_charts_cache_delay_us = 0;
 		}
-		if(opt_rrd) {
-			extern RrdCharts rrd_charts;
-			double rrd_charts_cpu = rrd_charts.getCpuUsageQueueThreadPerc(true);
-			if(rrd_charts_cpu > 0) {
-				 outStrStat << "RRD[" << setprecision(1) << rrd_charts_cpu << "%] ";
-			}
-		}
-		if(sverb.log_profiler) {
-			lapTime.push_back(getTimeMS_rdtsc());
-			lapTimeDescr.push_back("tasync");
-		}
-		if(opt_ipaccount) {
-			string ipaccCpu = getIpaccCpuUsagePerc();
-			if(!ipaccCpu.empty()) {
-				outStrStat << "tipaccCPU["
-					   << ipaccCpu
-					   << "] ";
+		if(task == pcapStatLog) {
+			if(opt_rrd) {
+				extern RrdCharts rrd_charts;
+				double rrd_charts_cpu = rrd_charts.getCpuUsageQueueThreadPerc(pstatDataIndex);
+				if(rrd_charts_cpu > 0) {
+					 outStrStat << "RRD[" << setprecision(1) << rrd_charts_cpu << "%] ";
+				}
 			}
 			if(sverb.log_profiler) {
 				lapTime.push_back(getTimeMS_rdtsc());
-				lapTimeDescr.push_back("tipacc");
+				lapTimeDescr.push_back("tasync");
 			}
-		}
-	}
-	outStrStat << "RSS/VSZ[";
-	long unsigned int rss = this->getRssUsage(true);
-	if(rss > 0) {
-		outStrStat << setprecision(0) << (double)rss/1024/1024;
-		if (opt_rrd) {
-			rrd_set_value(RRD_VALUE_RSS, (double)rss/1024/1024);
-		}
-	}
-	long unsigned int vsize = this->getVsizeUsage();
-	if(vsize > 0) {
-		if(rss > 0) {
-			outStrStat << '|';
-		}
-		outStrStat << setprecision(0) << (double)vsize/1024/1024;
-	}
-	if(sverb.log_profiler) {
-		lapTime.push_back(getTimeMS_rdtsc());
-		lapTimeDescr.push_back("rss_vsz");
-	}
-	outStrStat << "]MB ";
-	u_int64_t hugepages_base = HugetlbSysAllocator_base();
-	if(hugepages_base) {
-		outStrStat << "HP["
-			   << setprecision(0) << (double)hugepages_base/1024/1024
-			   << "]MB ";
-	}
-	#if HAVE_LIBTCMALLOC
-	outStrStat << "TCM[";
-	const char *tcm_status_types[][2] = {
-		{"generic.heap_size", "h"},
-		{"generic.current_allocated_bytes", "a"},
-		{"tcmalloc.pageheap_free_bytes", "f"},
-		{"tcmalloc.pageheap_unmapped_bytes", "u"},
-		{"tcmalloc.current_total_thread_cache_bytes", "tc"}
-	};
-	for(unsigned i = 0, j = 0; i < sizeof(tcm_status_types)/sizeof(tcm_status_types[0]); i++) {
-		size_t tcm_bytes = 0;
-		MallocExtension::instance()->GetNumericProperty(tcm_status_types[i][0], &tcm_bytes);
-		if(round((double)tcm_bytes/1024/1024) > 0) {
-			if(j) {
-				outStrStat << "/";
-			}
-			outStrStat << tcm_status_types[i][1] << ":" << setprecision(0) << (double)tcm_bytes/1024/1024;
-			++j;
-		}
-	}
-	outStrStat << "]MB ";
-	#endif
-	#if SEPARATE_HEAP_FOR_HUGETABLE
-	extern cHeap *heap_vm_hp;
-	if(heap_vm_hp) {
-		u_int64_t hugepages_vm_heap_size = heap_vm_hp->getSumSize();
-		if(hugepages_vm_heap_size) {
-			outStrStat << "HEAP_HUGEPAGE["
-				   << setprecision(0) << (double)hugepages_vm_heap_size/(1024*1024)
-				   << "]MB ";
-		}
-	}
-	#endif //SEPARATE_HEAP_FOR_HUGETABLE
-	#if SEPARATE_HEAP_FOR_HASHTABLE
-	extern cHeap *heap_hashtable;
-	if(heap_hashtable) {
-		u_int64_t hashtable_heap_size = heap_hashtable->getSumSize();
-		u_int64_t hashtable_alloc_size = heap_hashtable->getAllocSize();
-		outStrStat << "HEAP_HASHTABLE["
-			   << setprecision(0) << (double)hashtable_alloc_size/(1024*1024) << "/"
-			   << setprecision(0) << (double)hashtable_heap_size/(1024*1024)
-			   << "]MB ";
-	}
-	#endif //SEPARATE_HEAP_FOR_HASHTABLE
-	//Get load average string
-	outStrStat << getLoadAvgStr() << " ";
-	map<string, pair<string, u_int64_t> > counters;
-	get_interrupts_counters(&counters);
-	if(counters["tlb"].second) {
-		static u_int64_t oldCountersTlb;
-		if(oldCountersTlb) {
-			unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
-			outStrStat << (tlb > 10000 ? "*" : "") << "TLB[" << tlb << "] ";
-			static unsigned counter_high_tlb = 0;
-			if(tlb >= 500) {
-				++counter_high_tlb;
-				static bool try_disable_numa_balancing = false;
-				extern int opt_numa_balancing_set;
-				if(opt_numa_balancing_set == numa_balancing_set_autodisable &&
-				   !try_disable_numa_balancing &&
-				   counter_high_tlb >= (unsigned)(60 / sverb.pcap_stat_period)) {
-					SimpleBuffer content;
-					string error;
-					if(file_get_contents(numa_balancing_config_filename, &content, &error) &&
-					   atoi((char*)content) != 0) {
-						try_disable_numa_balancing = true;
-						syslog(LOG_NOTICE, "TLB is too high, try set numa_balancing to 0");
-						content.clear();
-						content.add("0");
-						if(!file_put_contents(numa_balancing_config_filename, &content, &error)) {
-							syslog(LOG_ERR, "%s", error.c_str());
-						}
-					}
-					counter_high_tlb = 0;
+			if(opt_ipaccount) {
+				string ipaccCpu = getIpaccCpuUsagePerc(0);
+				if(!ipaccCpu.empty()) {
+					outStrStat << "tipaccCPU["
+						   << ipaccCpu
+						   << "] ";
 				}
-			} else {
-				counter_high_tlb = 0;
+				if(sverb.log_profiler) {
+					lapTime.push_back(getTimeMS_rdtsc());
+					lapTimeDescr.push_back("tipacc");
+				}
 			}
 		}
-		oldCountersTlb = counters["tlb"].second;
 	}
-	outStrStat << "v" << RTPSENSOR_VERSION << " ";
-	//outStrStat << pcapStatCounter << " ";
-	if (opt_rrd) {
-		double la[3];
-		getLoadAvg(&la[0], &la[1], &la[2]);
-		rrd_set_value(RRD_VALUE_LA_m1, la[0]);
-		rrd_set_value(RRD_VALUE_LA_m5, la[1]);
-		rrd_set_value(RRD_VALUE_LA_m15, la[2]);
-	}
-	pbStatString = outStr.str() + outStrStat.str() + externalError;
-	externalError.erase();
-	pbCountPacketDrop = this->instancePcapHandle ?
-				this->instancePcapHandle->getCountPacketDrop() :
-				this->getCountPacketDrop();
-	if(sverb.skinny) {
-		extern u_int64_t _handle_skinny_counter_all;
-		extern u_int64_t _handle_skinny_counter_next_iterate;
-		outStrStat << "skinny["
-			   << _handle_skinny_counter_all
-			   << "/"
-			   << _handle_skinny_counter_next_iterate
-			   << "] ";
-	}
-	if(EXTENDED_LOG) {
-		if(DEBUG_VERBOSE) {
-			cout << outStrStat.str() << endl;
-		} else {
-			syslog(LOG_NOTICE, "packetbuffer cpu / mem stat:");
-			syslog(LOG_NOTICE, "%s", outStrStat.str().c_str());
+	long unsigned int rss;
+	if(task == pcapStatLog) {
+		outStrStat << "RSS/VSZ[";
+		rss = this->getRssUsage(true);
+		if(rss > 0) {
+			outStrStat << setprecision(0) << (double)rss/1024/1024;
+			if(opt_rrd) {
+				rrd_set_value(RRD_VALUE_RSS, (double)rss/1024/1024);
+			}
 		}
-	} else if(VERBOSE) {
-		outStr << outStrStat.str();
-		extern bool incorrectCaplenDetected;
-		if(incorrectCaplenDetected) {
-			outStr << "!CAPLEN ";
-		}
-		extern char opt_syslog_string[256];
-		if(opt_syslog_string[0]) {
-			outStr << opt_syslog_string << " ";
+		long unsigned int vsize = this->getVsizeUsage();
+		if(vsize > 0) {
+			if(rss > 0) {
+				outStrStat << '|';
+			}
+			outStrStat << setprecision(0) << (double)vsize/1024/1024;
 		}
 		if(sverb.log_profiler) {
-			ostringstream outStrLogProfiler;
-			u_int64_t endTimeMS = getTimeMS_rdtsc();
-			u_int64_t prevTime = startTimeMS;
-			for(unsigned i = 0; i < lapTime.size(); i++) {
-				outStrLogProfiler << lapTimeDescr[i] << ":"
-						  << (lapTime[i] > prevTime ? lapTime[i] - prevTime : 0) << ", ";
-				prevTime = lapTime[i];
-			}
-			outStrLogProfiler << (endTimeMS > startTimeMS ? endTimeMS - startTimeMS : 0);
-			outStr << "("
-			       << (endTimeMS > startTimeMS + 100 ? "LOG PROFILER" : "log profiler") << " "
-			       << outStrLogProfiler.str() << "ms) ";
+			lapTime.push_back(getTimeMS_rdtsc());
+			lapTimeDescr.push_back("rss_vsz");
 		}
-		outStr << endl;
-		outStr << pcapStatString_interface_rslt;
-		if(sverb.ssl_stats) {
+		outStrStat << "]MB ";
+		u_int64_t hugepages_base = HugetlbSysAllocator_base();
+		if(hugepages_base) {
+			outStrStat << "HP["
+				   << setprecision(0) << (double)hugepages_base/1024/1024
+				   << "]MB ";
+		}
+		#if HAVE_LIBTCMALLOC
+		outStrStat << "TCM[";
+		const char *tcm_status_types[][2] = {
+			{"generic.heap_size", "h"},
+			{"generic.current_allocated_bytes", "a"},
+			{"tcmalloc.pageheap_free_bytes", "f"},
+			{"tcmalloc.pageheap_unmapped_bytes", "u"},
+			{"tcmalloc.current_total_thread_cache_bytes", "tc"}
+		};
+		for(unsigned i = 0, j = 0; i < sizeof(tcm_status_types)/sizeof(tcm_status_types[0]); i++) {
+			size_t tcm_bytes = 0;
+			MallocExtension::instance()->GetNumericProperty(tcm_status_types[i][0], &tcm_bytes);
+			if(round((double)tcm_bytes/1024/1024) > 0) {
+				if(j) {
+					outStrStat << "/";
+				}
+				outStrStat << tcm_status_types[i][1] << ":" << setprecision(0) << (double)tcm_bytes/1024/1024;
+				++j;
+			}
+		}
+		outStrStat << "]MB ";
+		#endif
+		#if SEPARATE_HEAP_FOR_HUGETABLE
+		extern cHeap *heap_vm_hp;
+		if(heap_vm_hp) {
+			u_int64_t hugepages_vm_heap_size = heap_vm_hp->getSumSize();
+			if(hugepages_vm_heap_size) {
+				outStrStat << "HEAP_HUGEPAGE["
+					   << setprecision(0) << (double)hugepages_vm_heap_size/(1024*1024)
+					   << "]MB ";
+			}
+		}
+		#endif //SEPARATE_HEAP_FOR_HUGETABLE
+		#if SEPARATE_HEAP_FOR_HASHTABLE
+		extern cHeap *heap_hashtable;
+		if(heap_hashtable) {
+			u_int64_t hashtable_heap_size = heap_hashtable->getSumSize();
+			u_int64_t hashtable_alloc_size = heap_hashtable->getAllocSize();
+			outStrStat << "HEAP_HASHTABLE["
+				   << setprecision(0) << (double)hashtable_alloc_size/(1024*1024) << "/"
+				   << setprecision(0) << (double)hashtable_heap_size/(1024*1024)
+				   << "]MB ";
+		}
+		#endif //SEPARATE_HEAP_FOR_HASHTABLE
+		//Get load average string
+		outStrStat << getLoadAvgStr() << " ";
+		map<string, pair<string, u_int64_t> > counters;
+		get_interrupts_counters(&counters);
+		if(counters["tlb"].second) {
+			static u_int64_t oldCountersTlb;
+			if(oldCountersTlb) {
+				unsigned tlb = (counters["tlb"].second - oldCountersTlb) / statPeriod;
+				outStrStat << (tlb > 10000 ? "*" : "") << "TLB[" << tlb << "] ";
+				static unsigned counter_high_tlb = 0;
+				if(tlb >= 500) {
+					++counter_high_tlb;
+					static bool try_disable_numa_balancing = false;
+					extern int opt_numa_balancing_set;
+					if(opt_numa_balancing_set == numa_balancing_set_autodisable &&
+					   !try_disable_numa_balancing &&
+					   counter_high_tlb >= (unsigned)(60 / sverb.pcap_stat_period)) {
+						SimpleBuffer content;
+						string error;
+						if(file_get_contents(numa_balancing_config_filename, &content, &error) &&
+						   atoi((char*)content) != 0) {
+							try_disable_numa_balancing = true;
+							syslog(LOG_NOTICE, "TLB is too high, try set numa_balancing to 0");
+							content.clear();
+							content.add("0");
+							if(!file_put_contents(numa_balancing_config_filename, &content, &error)) {
+								syslog(LOG_ERR, "%s", error.c_str());
+							}
+						}
+						counter_high_tlb = 0;
+					}
+				} else {
+					counter_high_tlb = 0;
+				}
+			}
+			oldCountersTlb = counters["tlb"].second;
+		}
+		outStrStat << "v" << RTPSENSOR_VERSION << " ";
+		//outStrStat << pcapStatCounter << " ";
+		if(opt_rrd) {
+			double la[3];
+			getLoadAvg(&la[0], &la[1], &la[2]);
+			rrd_set_value(RRD_VALUE_LA_m1, la[0]);
+			rrd_set_value(RRD_VALUE_LA_m5, la[1]);
+			rrd_set_value(RRD_VALUE_LA_m15, la[2]);
+		}
+		pbStatString = outStr.str() + outStrStat.str() + externalError;
+		externalError.erase();
+		pbCountPacketDrop = this->instancePcapHandle ?
+					this->instancePcapHandle->getCountPacketDrop() :
+					this->getCountPacketDrop();
+		if(sverb.skinny) {
+			extern u_int64_t _handle_skinny_counter_all;
+			extern u_int64_t _handle_skinny_counter_next_iterate;
+			outStrStat << "skinny["
+				   << _handle_skinny_counter_all
+				   << "/"
+				   << _handle_skinny_counter_next_iterate
+				   << "] ";
+		}
+		if(VERBOSE) {
+			outStr << outStrStat.str();
+			extern bool incorrectCaplenDetected;
+			if(incorrectCaplenDetected) {
+				outStr << "!CAPLEN ";
+			}
+			extern char opt_syslog_string[256];
+			if(opt_syslog_string[0]) {
+				outStr << opt_syslog_string << " ";
+			}
+			if(sverb.log_profiler) {
+				ostringstream outStrLogProfiler;
+				u_int64_t endTimeMS = getTimeMS_rdtsc();
+				u_int64_t prevTime = startTimeMS;
+				for(unsigned i = 0; i < lapTime.size(); i++) {
+					outStrLogProfiler << lapTimeDescr[i] << ":"
+							  << (lapTime[i] > prevTime ? lapTime[i] - prevTime : 0) << ", ";
+					prevTime = lapTime[i];
+				}
+				outStrLogProfiler << (endTimeMS > startTimeMS ? endTimeMS - startTimeMS : 0);
+				outStr << "("
+				       << (endTimeMS > startTimeMS + 100 ? "LOG PROFILER" : "log profiler") << " "
+				       << outStrLogProfiler.str() << "ms) ";
+			}
 			outStr << endl;
-			outStr << ssl_stats_str();
-			ssl_stats_reset();
-		}
-		string outStr_str = outStr.str();
-		char *pointToBeginLine = (char*)outStr_str.c_str();
-		while(pointToBeginLine && *pointToBeginLine) {
-			char *pointToLineBreak = strchr(pointToBeginLine, '\n');
-			if(pointToLineBreak) {
-				*pointToLineBreak = '\0';
+			outStr << pcapStatString_interface_rslt;
+			if(sverb.ssl_stats) {
+				outStr << endl;
+				outStr << ssl_stats_str();
+				ssl_stats_reset();
 			}
-			syslog(LOG_NOTICE, "%s", pointToBeginLine);
-			if(sverb.pcap_stat_to_stdout) {
-				cout << "VM(" << getpid() << ") " << pointToBeginLine << endl;
-			}
-			if(pointToLineBreak) {
-				*pointToLineBreak = '\n';
-				pointToBeginLine = pointToLineBreak + 1;
-			} else {
-				pointToBeginLine = NULL;
+			string outStr_str = outStr.str();
+			char *pointToBeginLine = (char*)outStr_str.c_str();
+			while(pointToBeginLine && *pointToBeginLine) {
+				char *pointToLineBreak = strchr(pointToBeginLine, '\n');
+				if(pointToLineBreak) {
+					*pointToLineBreak = '\0';
+				}
+				syslog(LOG_NOTICE, "%s", pointToBeginLine);
+				if(sverb.pcap_stat_to_stdout) {
+					cout << "VM(" << getpid() << ") " << pointToBeginLine << endl;
+				}
+				if(pointToLineBreak) {
+					*pointToLineBreak = '\n';
+					pointToBeginLine = pointToLineBreak + 1;
+				} else {
+					pointToBeginLine = NULL;
+				}
 			}
 		}
 	}
 
-	extern int global_livesniffer;
-	extern map<unsigned int, livesnifferfilter_s*> usersniffer;
-	extern map<unsigned int, string> usersniffer_kill_reason;
-	extern volatile int usersniffer_sync;
-	extern volatile int usersniffer_checksize_sync;
-	extern pthread_t usersniffer_checksize_thread;
-	extern int opt_livesniffer_timeout_s;
-	extern int opt_livesniffer_tablesize_max_mb;
-	if(global_livesniffer) {
-		if(heap_pb_perc >= 60) {
-			if(usersniffer.size()) {
-				cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "too high load - terminate");
+	if(task == pcapStatCpuCheck) {
+		extern int global_livesniffer;
+		extern map<unsigned int, livesnifferfilter_s*> usersniffer;
+		extern map<unsigned int, string> usersniffer_kill_reason;
+		extern volatile int usersniffer_sync;
+		extern volatile int usersniffer_checksize_sync;
+		extern pthread_t usersniffer_checksize_thread;
+		extern int opt_livesniffer_timeout_s;
+		extern int opt_livesniffer_tablesize_max_mb;
+		if(global_livesniffer) {
+			if(heap_pb_perc >= 60) {
+				if(usersniffer.size()) {
+					cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "too high load - terminate");
+					while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+					for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
+						string kill_reason = "too high load";
+						log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+						delete iter->second;
+						usersniffer_kill_reason[iter->first] = kill_reason;
+						usersniffer.erase(iter++);
+					}
+					global_livesniffer = 0;
+					__sync_lock_release(&usersniffer_sync);
+					if(log) {
+						log->end();
+					}
+				}
+			} else {
+				time_t now = time(NULL);
+				cLogSensor *log = NULL;
 				while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
 				for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
-					string kill_reason = "too high load";
-					log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
-					delete iter->second;
-					usersniffer_kill_reason[iter->first] = kill_reason;
-					usersniffer.erase(iter++);
+					if(now > iter->second->created_at && 
+					   ((opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) ||
+					    (iter->second->timeout_s > 0 && (now - iter->second->created_at) >= iter->second->timeout_s))) {
+						string kill_reason;
+						if(opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) {
+							kill_reason = "timeout (in sniffer configuration - " + intToString(opt_livesniffer_timeout_s) + "s)";
+						} else {
+							kill_reason = "timeout (define in gui)";
+						}
+						if (!(iter->second->disable_timeout_warn_msg)) {
+							if(!log) {
+								log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
+							}
+							log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
+						}
+						delete iter->second;
+						usersniffer_kill_reason[iter->first] = kill_reason;
+						usersniffer.erase(iter++);
+					} else {
+						iter++;
+					}
 				}
-				global_livesniffer = 0;
+				if(!usersniffer.size()) {
+					global_livesniffer = 0;
+				}
 				__sync_lock_release(&usersniffer_sync);
 				if(log) {
 					log->end();
 				}
 			}
-		} else {
-			time_t now = time(NULL);
-			cLogSensor *log = NULL;
-			while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
-			for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
-				if(now > iter->second->created_at && 
-				   ((opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) ||
-				    (iter->second->timeout_s > 0 && (now - iter->second->created_at) >= iter->second->timeout_s))) {
-					string kill_reason;
-					if(opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) {
-						kill_reason = "timeout (in sniffer configuration - " + intToString(opt_livesniffer_timeout_s) + "s)";
-					} else {
-						kill_reason = "timeout (define in gui)";
-					}
-					if (!(iter->second->disable_timeout_warn_msg)) {
-						if(!log) {
-							log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "timeout - terminate");
-						}
-						log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
-					}
-					delete iter->second;
-					usersniffer_kill_reason[iter->first] = kill_reason;
-					usersniffer.erase(iter++);
-				} else {
-					iter++;
-				}
+			if(opt_livesniffer_tablesize_max_mb > 0 && usersniffer.size() && !usersniffer_checksize_sync) {
+				usersniffer_checksize_sync = 1;
+				extern void *checkSizeOfLivepacketTables(void *arg);
+				vm_pthread_create_autodestroy("check size of livepacket tables",
+							      &usersniffer_checksize_thread, NULL, checkSizeOfLivepacketTables, this, __FILE__, __LINE__);
 			}
-			if(!usersniffer.size()) {
-				global_livesniffer = 0;
-			}
-			__sync_lock_release(&usersniffer_sync);
-			if(log) {
-				log->end();
-			}
-		}
-		if(opt_livesniffer_tablesize_max_mb > 0 && usersniffer.size() && !usersniffer_checksize_sync) {
-			usersniffer_checksize_sync = 1;
-			extern void *checkSizeOfLivepacketTables(void *arg);
-			vm_pthread_create_autodestroy("check size of livepacket tables",
-						      &usersniffer_checksize_thread, NULL, checkSizeOfLivepacketTables, this, __FILE__, __LINE__);
 		}
 	}
 
-	if (opt_rrd) {
-		if (opt_rrd == 1) {
+	if(task == pcapStatLog && opt_rrd) {
+		if(opt_rrd == 1) {
 			rrd_charts_create();
 			rrd_charts_alter();
 			opt_rrd ++;
@@ -3035,50 +3038,52 @@ void PcapQueue::pcapStat(int statPeriod, bool statCalls) {
 		rrd_update();
 	}
 	
-	extern bool opt_abort_if_heap_full;
-	extern bool opt_exit_if_heap_full;
-	if(opt_abort_if_heap_full || opt_exit_if_heap_full ||
-	   sverb.abort_if_heap_full || sverb.exit_if_heap_full) {
-		if(packetbuffer_memory_is_full || heap_pb_perc > 98) {
-			if(++heapFullCounter > 10) {
-				syslog(LOG_ERR, "HEAP FULL - %s!", opt_exit_if_heap_full || sverb.exit_if_heap_full ? "EXIT" : "ABORT");
-				if(opt_exit_if_heap_full || sverb.exit_if_heap_full) {
-					extern WDT *wdt;
-					wdt = NULL;
-					exit(2);
-				} else {
-					abort();
+	if(task == pcapStatLog) {
+		extern bool opt_abort_if_heap_full;
+		extern bool opt_exit_if_heap_full;
+		if(opt_abort_if_heap_full || opt_exit_if_heap_full ||
+		   sverb.abort_if_heap_full || sverb.exit_if_heap_full) {
+			if(packetbuffer_memory_is_full || heap_pb_perc > 98) {
+				if(++heapFullCounter > 10) {
+					syslog(LOG_ERR, "HEAP FULL - %s!", opt_exit_if_heap_full || sverb.exit_if_heap_full ? "EXIT" : "ABORT");
+					if(opt_exit_if_heap_full || sverb.exit_if_heap_full) {
+						extern WDT *wdt;
+						wdt = NULL;
+						exit(2);
+					} else {
+						abort();
+					}
 				}
+			} else {
+				heapFullCounter = 0;
 			}
-		} else {
-			heapFullCounter = 0;
 		}
-	}
-	
-	extern bool opt_abort_if_heap_full_and_t2cpu_is_low;
-	extern bool opt_exit_if_heap_full_and_t2cpu_is_low;
-	if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
-		if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
-			if(++heapFullIfT2cpuIsLowCounter > 10) {
-				syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
-				if(opt_exit_if_heap_full_and_t2cpu_is_low) {
-					extern WDT *wdt;
-					wdt = NULL;
-					exit(2);
-				} else {
-					abort();
+		
+		extern bool opt_abort_if_heap_full_and_t2cpu_is_low;
+		extern bool opt_exit_if_heap_full_and_t2cpu_is_low;
+		if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
+			if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
+				if(++heapFullIfT2cpuIsLowCounter > 10) {
+					syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
+					if(opt_exit_if_heap_full_and_t2cpu_is_low) {
+						extern WDT *wdt;
+						wdt = NULL;
+						exit(2);
+					} else {
+						abort();
+					}
 				}
+			} else {
+				heapFullIfT2cpuIsLowCounter = 0;
 			}
-		} else {
-			heapFullIfT2cpuIsLowCounter = 0;
 		}
-	}
-	
-	extern int opt_abort_if_rss_gt_gb;
-	if(opt_abort_if_rss_gt_gb > 0 && (int)(rss/1024/1024/1024) > opt_abort_if_rss_gt_gb) {
-		syslog(LOG_ERR, "RSS %i > %i - ABORT!",
-		       (int)(rss/1024/1024/1024), opt_abort_if_rss_gt_gb);
-		exit(2);
+		
+		extern int opt_abort_if_rss_gt_gb;
+		if(opt_abort_if_rss_gt_gb > 0 && (int)(rss/1024/1024/1024) > opt_abort_if_rss_gt_gb) {
+			syslog(LOG_ERR, "RSS %i > %i - ABORT!",
+			       (int)(rss/1024/1024/1024), opt_abort_if_rss_gt_gb);
+			exit(2);
+		}
 	}
 }
 
@@ -3210,25 +3215,25 @@ int PcapQueue::getThreadPid(eTypeThread typeThread) {
 	return(0);
 }
 
-pstat_data *PcapQueue::getThreadPstatData(eTypeThread typeThread) {
+pstat_data *PcapQueue::getThreadPstatData(eTypeThread typeThread, int pstatDataIndex) {
 	switch(typeThread) {
 	case mainThread:
-		return(mainThreadPstatData);
+		return(mainThreadPstatData[pstatDataIndex]);
 	case writeThread:
-		return(writeThreadPstatData);
+		return(writeThreadPstatData[pstatDataIndex]);
 	case nextThread1:
-		return(nextThreadsPstatData[0]);
+		return(nextThreadsPstatData[0][pstatDataIndex]);
 	case nextThread2:
-		return(nextThreadsPstatData[1]);
+		return(nextThreadsPstatData[1][pstatDataIndex]);
 	case nextThread3:
-		return(nextThreadsPstatData[2]);
+		return(nextThreadsPstatData[2][pstatDataIndex]);
 	}
 	return(NULL);
 }
 
-void PcapQueue::preparePstatData(eTypeThread typeThread) {
+void PcapQueue::preparePstatData(eTypeThread typeThread, int pstatDataIndex) {
 	int pid = getThreadPid(typeThread);
-	pstat_data *threadPstatData = getThreadPstatData(typeThread);
+	pstat_data *threadPstatData = getThreadPstatData(typeThread, pstatDataIndex);
 	if(pid && threadPstatData) {
 		if(threadPstatData[0].cpu_total_time) {
 			threadPstatData[1] = threadPstatData[0];
@@ -3241,15 +3246,15 @@ void PcapQueue::prepareProcPstatData() {
 	pstat_get_data(0, this->procPstatData);
 }
 
-double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, bool preparePstatData) {
+double PcapQueue::getCpuUsagePerc(eTypeThread typeThread, int pstatDataIndex, bool preparePstatData) {
 	if(this->threadInitFailed) {
 		return(-1);
 	}
 	if(preparePstatData) {
-		this->preparePstatData(typeThread);
+		this->preparePstatData(typeThread, pstatDataIndex);
 	}
 	int pid = getThreadPid(typeThread);
-	pstat_data *threadPstatData = getThreadPstatData(typeThread);
+	pstat_data *threadPstatData = getThreadPstatData(typeThread, pstatDataIndex);
 	if(pid && threadPstatData) {
 		double ucpu_usage, scpu_usage;
 		if(threadPstatData[0].cpu_total_time && threadPstatData[1].cpu_total_time) {
@@ -5935,24 +5940,24 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 	}
 }
 
-void PcapQueue_readFromInterfaceThread::preparePstatData() {
+void PcapQueue_readFromInterfaceThread::preparePstatData(int pstatDataIndex) {
 	if(this->threadId && !this->threadDoTerminate) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time) {
+			this->threadPstatData[pstatDataIndex][1] = this->threadPstatData[pstatDataIndex][0];
 		}
-		pstat_get_data(this->threadId, this->threadPstatData);
+		pstat_get_data(this->threadId, this->threadPstatData[pstatDataIndex]);
 	}
 }
 
-double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(bool preparePstatData) {
+double PcapQueue_readFromInterfaceThread::getCpuUsagePerc(int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData();
+		this->preparePstatData(pstatDataIndex);
 	}
 	if(this->threadId && !this->threadDoTerminate) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time && this->threadPstatData[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[0], &this->threadPstatData[1],
+				&this->threadPstatData[pstatDataIndex][0], &this->threadPstatData[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}
@@ -6621,19 +6626,6 @@ bool PcapQueue_readFromInterface::openPcap(const char *filename, string *tempFil
 	return(true);
 }
 
-string PcapQueue_readFromInterface::pcapStatString_bypass_buffer(int /*statPeriod*/) {
-	ostringstream outStr;
-	outStr << fixed;
-	uint64_t useSize = blockStoreBypassQueue->getUseSize();
-	uint64_t useItems = blockStoreBypassQueue->getUseItems();
-	outStr << "PACKETBUFFER_THREAD0_HEAP: "
-	       << setw(6) << (useSize / 1024 / 1024) << "MB (" << setw(3) << useItems << ")"
-	       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_bypass_max_size) << "%"
-	       << " of " << setw(6) << (opt_pcap_queue_bypass_max_size / 1024 / 1024) << "MB"
-	       << "   peak: " << (maxBypassBufferSize / 1024 / 1024) << "MB" << " (" << maxBypassBufferItems << ")" << " / size exceeded occurrence " << countBypassBufferSizeExceeded << endl;
-	return(outStr.str());
-}
-
 unsigned long PcapQueue_readFromInterface::pcapStat_get_bypass_buffer_size_exeeded() {
 	return(countBypassBufferSizeExceeded);
 }
@@ -6718,7 +6710,7 @@ void PcapQueue_readFromInterface::initStat_interface() {
 	}
 }
 
-string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide) {
+string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide, int pstatDataIndex) {
 	ostringstream outStrStat;
 	outStrStat << fixed;
 	if(sumMax) {
@@ -6733,7 +6725,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 		}
 		double sum = 0;
 		double countThreads = 1;
-		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(true);
+		double ti_cpu = this->readThreads[i]->getCpuUsagePerc(pstatDataIndex);
 		if(ti_cpu >= 0) {
 			sum += ti_cpu;
 			outStrStat << "t0i_" << this->readThreads[i]->interfaceName << "_CPU[";
@@ -6761,7 +6753,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->dpdkWorkerThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->dpdkWorkerThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->dpdkWorkerThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/dpdk_worker:" << setprecision(1) << tid_cpu;
@@ -6793,7 +6785,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->detachThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->detachThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->detachThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/detach:" << setprecision(1) << tid_cpu;
@@ -6821,7 +6813,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->pcapProcessThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->pcapProcessThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->pcapProcessThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/pcap_process:" << setprecision(1) << tid_cpu;
@@ -6835,7 +6827,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->defragThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->defragThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/defrag:" << setprecision(1) << tid_cpu;
@@ -6849,7 +6841,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->md1Thread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->md1Thread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/md1:" << setprecision(1) << tid_cpu;
@@ -6863,7 +6855,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->md2Thread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->md2Thread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/md2:" << setprecision(1) << tid_cpu;
@@ -6877,7 +6869,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->dedupThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->dedupThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/dedup:" << setprecision(1) << tid_cpu;
@@ -6891,7 +6883,7 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 			}
 			if(this->readThreads[i]->serviceThread) {
 				++countThreads;
-				double tid_cpu = this->readThreads[i]->serviceThread->getCpuUsagePerc(true);
+				double tid_cpu = this->readThreads[i]->serviceThread->getCpuUsagePerc(pstatDataIndex);
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/service:" << setprecision(1) << tid_cpu;
@@ -6953,14 +6945,7 @@ void PcapQueue_readFromInterface::check_bypass_buffer() {
 				countBypassBufferSizeExceeded_inc = true;
 			}
 			USLEEP_C(100, usleepCounter++);
-			maxBypassBufferSize = 0;
-			maxBypassBufferItems = 0;
 		}
-	}
-	if(EXTENDED_LOG &&
-	   blockStoreBypassQueueSize > maxBypassBufferSize) {
-		maxBypassBufferSize = blockStoreBypassQueueSize;
-		maxBypassBufferItems = blockStoreBypassQueue->getUseItems();
 	}
 }
 
@@ -8160,7 +8145,7 @@ double PcapQueue_readFromFifo::pcapStat_get_disk_buffer_mb() {
 	}
 }
 
-string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatData) {
+string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, int pstatDataIndex, bool preparePstatData) {
 	if(!writeThread && this->packetServerDirection == directionRead) {
 		bool empty = true;
 		ostringstream outStr;
@@ -8170,16 +8155,16 @@ string PcapQueue_readFromFifo::getCpuUsage(bool writeThread, bool preparePstatDa
 			if(iter->second->active) {
 				sPacketServerConnection *connection = iter->second;
 				if(preparePstatData) {
-					if(connection->threadPstatData[0].cpu_total_time) {
-						connection->threadPstatData[1] = connection->threadPstatData[0];
+					if(connection->threadPstatData[pstatDataIndex][0].cpu_total_time) {
+						connection->threadPstatData[pstatDataIndex][1] = connection->threadPstatData[pstatDataIndex][0];
 					}
-					pstat_get_data(connection->threadId, connection->threadPstatData);
+					pstat_get_data(connection->threadId, connection->threadPstatData[pstatDataIndex]);
 				}
-				if(connection->threadPstatData[0].cpu_total_time &&
-				   connection->threadPstatData[1].cpu_total_time) {
+				if(connection->threadPstatData[pstatDataIndex][0].cpu_total_time &&
+				   connection->threadPstatData[pstatDataIndex][1].cpu_total_time) {
 					double ucpu_usage, scpu_usage;
 					pstat_calc_cpu_usage_pct(
-						&connection->threadPstatData[0], &connection->threadPstatData[1],
+						&connection->threadPstatData[pstatDataIndex][0], &connection->threadPstatData[pstatDataIndex][1],
 						&ucpu_usage, &scpu_usage);
 					double cpu_usage = ucpu_usage + scpu_usage;
 					if(empty) {
@@ -9519,24 +9504,24 @@ void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
 	}
 }
 
-void PcapQueue_outputThread::preparePstatData() {
+void PcapQueue_outputThread::preparePstatData(int pstatDataIndex) {
 	if(this->outThreadId) {
-		if(this->threadPstatData[0].cpu_total_time) {
-			this->threadPstatData[1] = this->threadPstatData[0];
+		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time) {
+			this->threadPstatData[pstatDataIndex][1] = this->threadPstatData[pstatDataIndex][0];
 		}
-		pstat_get_data(this->outThreadId, this->threadPstatData);
+		pstat_get_data(this->outThreadId, this->threadPstatData[pstatDataIndex]);
 	}
 }
 
-double PcapQueue_outputThread::getCpuUsagePerc(bool preparePstatData) {
+double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData();
+		this->preparePstatData(pstatDataIndex);
 	}
 	if(this->outThreadId) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[0].cpu_total_time && this->threadPstatData[1].cpu_total_time) {
+		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time && this->threadPstatData[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[0], &this->threadPstatData[1],
+				&this->threadPstatData[pstatDataIndex][0], &this->threadPstatData[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}

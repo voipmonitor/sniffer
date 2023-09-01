@@ -26,6 +26,9 @@
 #define DLT_TYPES_MAX 10
 #define PCAP_QUEUE_NEXT_THREADS_MAX 3
 
+#define PSTAT_MAIN 0
+
+
 class pcap_block_store_queue {
 public:
 	pcap_block_store_queue();
@@ -257,6 +260,10 @@ public:
 		socketServerThread  = 2,
 		destroyBlocksThread = 3
 	};
+	enum pcapStatTask {
+		pcapStatLog,
+		pcapStatCpuCheck
+	};
 	PcapQueue(eTypeQueue typeQueue, const char *nameQueue);
 	virtual ~PcapQueue();
 	void setEnableMainThread(bool enable = true);
@@ -273,7 +280,7 @@ public:
 	}
 	inline pcap_t* getPcapHandle(int dlt);
 	inline u_int16_t getPcapHandleIndex(int dlt);
-	void pcapStat(int statPeriod = 1, bool statCalls = true);
+	void pcapStat(pcapStatTask task, int statPeriod = 1);
 	string pcapDropCountStat();
 	string externalError;
 	void initStat();
@@ -301,7 +308,6 @@ protected:
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
 	virtual double pcapStat_get_speed_mb_s(int statPeriod);
-	virtual string pcapStatString_bypass_buffer(int /*statPeriod*/) { return(""); }
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual string pcapStatString_memory_buffer(int /*statPeriod*/) { return(""); }
 	virtual string pcapStatString_disk_buffer(int /*statPeriod*/) { return(""); }
@@ -311,18 +317,18 @@ protected:
 	virtual string pcapDropCountStat_interface() { return(""); }
 	virtual ulong getCountPacketDrop() { return(0); }
 	virtual string getStatPacketDrop() { return(""); }
-	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int /*divide*/) { 
+	virtual string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int /*divide*/, int /*pstatDataIndex*/) { 
 		if(sumMax) *sumMax = 0;
 		if(countThreadsSumMax) *countThreadsSumMax = 0;
 		return(""); 
 	};
 	virtual void initStat_interface() {};
 	int getThreadPid(eTypeThread typeThread);
-	pstat_data *getThreadPstatData(eTypeThread typeThread);
-	void preparePstatData(eTypeThread typeThread = mainThread);
+	pstat_data *getThreadPstatData(eTypeThread typeThread, int pstatDataIndex);
+	void preparePstatData(eTypeThread typeThread, int pstatDataIndex);
 	void prepareProcPstatData();
-	double getCpuUsagePerc(eTypeThread typeThread = mainThread, bool preparePstatData = false);
-	virtual string getCpuUsage(bool /*writeThread*/ = false, bool /*preparePstatData*/ = false) { return(""); }
+	double getCpuUsagePerc(eTypeThread typeThread, int pstatDataIndex, bool preparePstatData = true);
+	virtual string getCpuUsage(bool /*writeThread*/, int /*pstatDataIndex*/, bool /*preparePstatData*/ = true) { return(""); }
 	long unsigned int getVsizeUsage(bool preparePstatData = false);
 	long unsigned int getRssUsage(bool preparePstatData = false);
 	virtual bool isMirrorSender() {
@@ -350,9 +356,9 @@ protected:
 	int mainThreadId;
 	int writeThreadId;
 	int nextThreadsId[PCAP_QUEUE_NEXT_THREADS_MAX];
-	pstat_data mainThreadPstatData[2];
-	pstat_data writeThreadPstatData[2];
-	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2];
+	pstat_data mainThreadPstatData[2][2];
+	pstat_data writeThreadPstatData[2][2];
+	pstat_data nextThreadsPstatData[PCAP_QUEUE_NEXT_THREADS_MAX][2][2];
 	pstat_data procPstatData[2];
 	bool initAllReadThreadsFinished;
 protected:
@@ -374,7 +380,8 @@ private:
 	u_int64_t counter_user_packets_old[5];
 	u_int64_t lastTimeLogErrPcapNextExNullPacket;
 	u_int64_t lastTimeLogErrPcapNextExErrorReading;
-	u_long pcapStatCounter;
+	u_long pcapStatLogCounter;
+	u_long pcapStatCpuCheckCounter;
 friend void *_PcapQueue_threadFunction(void *arg);
 friend void *_PcapQueue_writeThreadFunction(void *arg);
 };
@@ -721,8 +728,8 @@ private:
 	inline static void _dpdk_packet_process__mbufs_in_packetbuffer(void *user, pcap_pkthdr *pcap_header, void *mbuf);
 	inline void dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf);
 	void processBlock(pcap_block_store *block);
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData = false);
+	void preparePstatData(int pstatDataIndex);
+	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
@@ -763,7 +770,7 @@ private:
 	unsigned long pop_usleep_sum_last_push;
 	bool force_push;
 	volatile bool threadTerminated;
-	pstat_data threadPstatData[2];
+	pstat_data threadPstatData[2][2];
 	volatile int _sync_qring;
 	eTypeInterfaceThread typeThread;
 	PcapQueue_readFromInterfaceThread *readThread;
@@ -814,14 +821,13 @@ protected:
 	u_int16_t _getPcapHandleIndex(int /*dlt*/) { 
 		return(this->pcapHandleIndex);
 	}
-	string pcapStatString_bypass_buffer(int statPeriod);
 	unsigned long pcapStat_get_bypass_buffer_size_exeeded();
 	string pcapStatString_interface(int statPeriod);
 	string pcapDropCountStat_interface();
 	virtual ulong getCountPacketDrop();
 	virtual string getStatPacketDrop();
 	void initStat_interface();
-	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide);
+	string pcapStatString_cpuUsageReadThreads(double *sumMax, int *countThreadsSumMax, int divide, int pstatDataIndex);
 	string getInterfaceName(bool simple = false);
 	void prepareLogTraffic();
 private:
@@ -870,7 +876,7 @@ public:
 		bool active;
 		pthread_t threadHandle;
 		int threadId;
-		pstat_data threadPstatData[2];
+		pstat_data threadPstatData[2][2];
 		u_int32_t block_counter;
 	};
 	struct sPacketTimeInfo {
@@ -962,7 +968,7 @@ protected:
 	string pcapStatString_disk_buffer(int statPeriod);
 	double pcapStat_get_disk_buffer_perc();
 	double pcapStat_get_disk_buffer_mb();
-	string getCpuUsage(bool writeThread = false, bool preparePstatData = false);
+	string getCpuUsage(bool writeThread, int pstatDataIndex, bool preparePstatData = true);
 	bool socketWritePcapBlock(pcap_block_store *blockStore);
 	bool socketWritePcapBlockBySnifferClient(pcap_block_store *blockStore);
 	bool socketGetHost();
@@ -1091,8 +1097,8 @@ public:
 		}
 		return("");
 	}
-	void preparePstatData();
-	double getCpuUsagePerc(bool preparePstatData);
+	void preparePstatData(int pstatDataIndex);
+	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -1105,7 +1111,7 @@ private:
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
-	pstat_data threadPstatData[2];
+	pstat_data threadPstatData[2][2];
 	int outThreadId;
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;

@@ -1668,24 +1668,24 @@ TarQueue::TarQueue(int spoolIndex) {
 	
 };	      
 
-void TarQueue::preparePstatData(int threadIndex) {
+void TarQueue::preparePstatData(int threadIndex, int pstatDataIndex) {
 	if(this->tarthreads[threadIndex].threadId) {
-		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time) {
-			this->tarthreads[threadIndex].threadPstatData[1] = this->tarthreads[threadIndex].threadPstatData[0];
+		if(this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][0].cpu_total_time) {
+			this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][1] = this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][0];
 		}
-		pstat_get_data(this->tarthreads[threadIndex].threadId, this->tarthreads[threadIndex].threadPstatData);
+		pstat_get_data(this->tarthreads[threadIndex].threadId, this->tarthreads[threadIndex].threadPstatData[pstatDataIndex]);
 	}
 }
 
-double TarQueue::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
+double TarQueue::getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(threadIndex);
+		this->preparePstatData(threadIndex, pstatDataIndex);
 	}
 	if(this->tarthreads[threadIndex].threadId) {
 		double ucpu_usage, scpu_usage;
-		if(this->tarthreads[threadIndex].threadPstatData[0].cpu_total_time && this->tarthreads[threadIndex].threadPstatData[1].cpu_total_time) {
+		if(this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][0].cpu_total_time && this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->tarthreads[threadIndex].threadPstatData[0], &this->tarthreads[threadIndex].threadPstatData[1],
+				&this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][0], &this->tarthreads[threadIndex].threadPstatData[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			double rslt = ucpu_usage + scpu_usage;
 			if(rslt > this->tarthreads[threadIndex].cpuPeak) {

@@ -215,8 +215,8 @@ public:
 	void startQueueThread();
 	static void *queueThread(void *arg);
 	void _queueThread();
-	void prepareQueueThreadPstatData();
-	double getCpuUsageQueueThreadPerc(bool preparePstatData);
+	void prepareQueueThreadPstatData(int pstatDataIndex);
+	double getCpuUsageQueueThreadPerc(int pstatDataIndex, bool preparePstatData = true);
 	void createMapValues();
 	static void rrd_lock() {
 		while(__sync_lock_test_and_set(&sync_rrd, 1));
@@ -245,7 +245,7 @@ private:
 	volatile int sync_queue;
 	pthread_t queue_thread_handle;
 	int queueThreadId;
-	pstat_data queueThreadPstatData[2];
+	pstat_data queueThreadPstatData[2][2];
 	static volatile int sync_rrd;
 };
 

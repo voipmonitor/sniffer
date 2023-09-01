@@ -3120,75 +3120,75 @@ inline void *_TcpReassembly_packetThreadFunction(void* arg) {
 	return(((TcpReassembly*)arg)->packetThreadFunction(arg));
 }
 
-void TcpReassembly::prepareCleanupPstatData() {
+void TcpReassembly::prepareCleanupPstatData(int pstatDataIndex) {
 	if(!this->enableCleanupThread) {
 		return;
 	}
-	if(this->cleanupThreadPstatData[0].cpu_total_time) {
-		this->cleanupThreadPstatData[1] = this->cleanupThreadPstatData[0];
+	if(this->cleanupThreadPstatData[pstatDataIndex][0].cpu_total_time) {
+		this->cleanupThreadPstatData[pstatDataIndex][1] = this->cleanupThreadPstatData[pstatDataIndex][0];
 	}
-	pstat_get_data(this->cleanupThreadId, this->cleanupThreadPstatData);
+	pstat_get_data(this->cleanupThreadId, this->cleanupThreadPstatData[pstatDataIndex]);
 }
 
-double TcpReassembly::getCleanupCpuUsagePerc(bool preparePstatData) {
+double TcpReassembly::getCleanupCpuUsagePerc(int pstatDataIndex, bool preparePstatData) {
 	if(!this->enableCleanupThread) {
 		return(-1);
 	}
 	if(preparePstatData) {
-		this->prepareCleanupPstatData();
+		this->prepareCleanupPstatData(pstatDataIndex);
 	}
 	double ucpu_usage, scpu_usage;
-	if(this->cleanupThreadPstatData[0].cpu_total_time && this->cleanupThreadPstatData[1].cpu_total_time) {
+	if(this->cleanupThreadPstatData[pstatDataIndex][0].cpu_total_time && this->cleanupThreadPstatData[pstatDataIndex][1].cpu_total_time) {
 		pstat_calc_cpu_usage_pct(
-			&this->cleanupThreadPstatData[0], &this->cleanupThreadPstatData[1],
+			&this->cleanupThreadPstatData[pstatDataIndex][0], &this->cleanupThreadPstatData[pstatDataIndex][1],
 			&ucpu_usage, &scpu_usage);
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
 }
 
-void TcpReassembly::preparePacketPstatData() {
+void TcpReassembly::preparePacketPstatData(int pstatDataIndex) {
 	if(!this->enablePacketThread) {
 		return;
 	}
-	if(this->packetThreadPstatData[0].cpu_total_time) {
-		this->packetThreadPstatData[1] = this->packetThreadPstatData[0];
+	if(this->packetThreadPstatData[pstatDataIndex][0].cpu_total_time) {
+		this->packetThreadPstatData[pstatDataIndex][1] = this->packetThreadPstatData[pstatDataIndex][0];
 	}
-	pstat_get_data(this->packetThreadId, this->packetThreadPstatData);
+	pstat_get_data(this->packetThreadId, this->packetThreadPstatData[pstatDataIndex]);
 }
 
-double TcpReassembly::getPacketCpuUsagePerc(bool preparePstatData) {
+double TcpReassembly::getPacketCpuUsagePerc(int pstatDataIndex, bool preparePstatData) {
 	if(!this->enablePacketThread) {
 		return(-1);
 	}
 	if(preparePstatData) {
-		this->preparePacketPstatData();
+		this->preparePacketPstatData(pstatDataIndex);
 	}
 	double ucpu_usage, scpu_usage;
-	if(this->packetThreadPstatData[0].cpu_total_time && this->packetThreadPstatData[1].cpu_total_time) {
+	if(this->packetThreadPstatData[pstatDataIndex][0].cpu_total_time && this->packetThreadPstatData[pstatDataIndex][1].cpu_total_time) {
 		pstat_calc_cpu_usage_pct(
-			&this->packetThreadPstatData[0], &this->packetThreadPstatData[1],
+			&this->packetThreadPstatData[pstatDataIndex][0], &this->packetThreadPstatData[pstatDataIndex][1],
 			&ucpu_usage, &scpu_usage);
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
 }
 
-string TcpReassembly::getCpuUsagePerc() {
+string TcpReassembly::getCpuUsagePerc(int pstatDataIndex) {
 	ostringstream outStr;
 	double tPacketCpu = -1;
 	double tCleanupCpu = -1;
 	outStr << fixed;
 	bool existsPerc = false;
 	if(this->enablePacketThread) {
-		tPacketCpu = this->getPacketCpuUsagePerc(true);
+		tPacketCpu = this->getPacketCpuUsagePerc(pstatDataIndex, true);
 		if(tPacketCpu >= 0) {
 			outStr << setprecision(1) << tPacketCpu;
 			existsPerc = true;
 		}
 	}
 	if(this->enableCleanupThread) {
-		tCleanupCpu = this->getCleanupCpuUsagePerc(true);
+		tCleanupCpu = this->getCleanupCpuUsagePerc(pstatDataIndex, true);
 		if(tCleanupCpu >= 0) {
 			if(tPacketCpu >= 0) {
 				outStr << '|';

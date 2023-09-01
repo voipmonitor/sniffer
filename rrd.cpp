@@ -608,24 +608,24 @@ void RrdCharts::_queueThread() {
 	}
 }
 
-void RrdCharts::prepareQueueThreadPstatData() {
+void RrdCharts::prepareQueueThreadPstatData(int pstatDataIndex) {
 	if(queueThreadId) {
-		if(queueThreadPstatData[0].cpu_total_time) {
-			queueThreadPstatData[1] = queueThreadPstatData[0];
+		if(queueThreadPstatData[pstatDataIndex][0].cpu_total_time) {
+			queueThreadPstatData[pstatDataIndex][1] = queueThreadPstatData[pstatDataIndex][0];
 		}
-		pstat_get_data(queueThreadId, queueThreadPstatData);
+		pstat_get_data(queueThreadId, queueThreadPstatData[pstatDataIndex]);
 	}
 }
 
-double RrdCharts::getCpuUsageQueueThreadPerc(bool preparePstatData) {
+double RrdCharts::getCpuUsageQueueThreadPerc(int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		prepareQueueThreadPstatData();
+		prepareQueueThreadPstatData(pstatDataIndex);
 	}
 	if(queueThreadId) {
 		double ucpu_usage, scpu_usage;
-		if(queueThreadPstatData[0].cpu_total_time && queueThreadPstatData[1].cpu_total_time) {
+		if(queueThreadPstatData[pstatDataIndex][0].cpu_total_time && queueThreadPstatData[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&queueThreadPstatData[0], &queueThreadPstatData[1],
+				&queueThreadPstatData[pstatDataIndex][0], &queueThreadPstatData[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			return(ucpu_usage + scpu_usage);
 		}

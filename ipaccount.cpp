@@ -601,15 +601,15 @@ int Ipacc::refreshCustIpCache() {
 	return(0);
 }
 
-string Ipacc::getCpuUsagePerc() {
+string Ipacc::getCpuUsagePerc(int pstatDataIndex) {
 	ostringstream outStr;
 	outStr << fixed;
-	double cpu = get_cpu_usage_perc(this->outThreadId, this->threadPstatData);
+	double cpu = get_cpu_usage_perc(this->outThreadId, this->threadPstatData[pstatDataIndex]);
 	if(cpu > 0) {
 		outStr << setprecision(1) << cpu << "a%";
 	}
 	for(unsigned i = 0; i < save_thread_count; i++) {
-		cpu = get_cpu_usage_perc(save_thread_data[i].tid, save_thread_data[i].pstat);
+		cpu = get_cpu_usage_perc(save_thread_data[i].tid, save_thread_data[i].pstat[pstatDataIndex]);
 		if(cpu > 0) {
 			if(outStr.str().length()) {
 				outStr << "/";
@@ -1723,9 +1723,9 @@ unsigned int sizeIpaccBuffer() {
 	return(IPACC ? IPACC->sizeBuffer() : 0);
 }
 
-string getIpaccCpuUsagePerc() {
+string getIpaccCpuUsagePerc(int pstatDataIndex) {
 	if(IPACC) {
-		return(IPACC->getCpuUsagePerc());
+		return(IPACC->getCpuUsagePerc(pstatDataIndex));
 	}
 	return("");
 }

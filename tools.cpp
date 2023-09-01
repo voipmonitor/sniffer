@@ -1855,7 +1855,8 @@ AsyncClose::AsyncClose() {
 		activeThread[i] = 0;
 		cpuPeak[i] = 0;
 	}
-	removeThreadProcessed = 0;
+	removeThreadProcessedAt_ms = 0;
+	lastThreadOperationAt_s = 0;
 }
 
 AsyncClose::~AsyncClose() {
@@ -1886,9 +1887,10 @@ void AsyncClose::startThreads(int countPcapThreads, int maxPcapThreads) {
 	}
 }
 
-void AsyncClose::addThread() {
+bool AsyncClose::addThread() {
+	bool rslt = false;
 	if(opt_pcap_dump_bufflength && countPcapThreads < maxPcapThreads &&
-	   !removeThreadProcessed) {
+	   !removeThreadProcessedAt_ms) {
 		startThreadData[countPcapThreads].threadIndex = countPcapThreads;
 		startThreadData[countPcapThreads].asyncClose = this;
 		useThread[countPcapThreads] = 0;
@@ -1898,15 +1900,23 @@ void AsyncClose::addThread() {
 		vm_pthread_create("async store",
 				  &this->thread[countPcapThreads], NULL, AsyncClose_process, &startThreadData[countPcapThreads], __FILE__, __LINE__);
 		++countPcapThreads;
+		lastThreadOperationAt_s = getTimeS_rdtsc();
+		rslt = true;
 	}
+	return(rslt);
 }
 
-void AsyncClose::removeThread() {
+bool AsyncClose::removeThread() {
+	bool rslt = false;
 	if(opt_pcap_dump_bufflength && countPcapThreads > minPcapThreads &&
-	   !removeThreadProcessed && cpuPeak[countPcapThreads - 1] > 10) {
-		removeThreadProcessed = 1;
+	   !removeThreadProcessedAt_ms && cpuPeak[countPcapThreads - 1] > 10 &&
+	   lastThreadOperationAt_s + 60 < getTimeS_rdtsc()) {
+		removeThreadProcessedAt_ms = getTimeMS_rdtsc();
 		--countPcapThreads;
+		lastThreadOperationAt_s = getTimeS_rdtsc();
+		rslt = true;
 	}
+	return(rslt);
 }
 
 void AsyncClose::processTask(int threadIndex) {
@@ -1914,12 +1924,13 @@ void AsyncClose::processTask(int threadIndex) {
 	this->threadId[threadIndex] = get_unix_tid();
 	do {
 		processAll(threadIndex);
-		if(removeThreadProcessed && threadIndex >= countPcapThreads) {
+		if(removeThreadProcessedAt_ms && removeThreadProcessedAt_ms + 1000 < getTimeMS_rdtsc() && 
+		   threadIndex >= countPcapThreads) {
 			lock(threadIndex);
 			if(!useThread[threadIndex] || !q[threadIndex].size()) {
 				activeThread[threadIndex] = 0;
 				unlock(threadIndex);
-				removeThreadProcessed = 0;
+				removeThreadProcessedAt_ms = 0;
 				break;
 			}
 			unlock(threadIndex);
@@ -1990,27 +2001,27 @@ void AsyncClose::safeTerminate() {
 	syslog(LOG_NOTICE, "terminated - async");
 }
 
-void AsyncClose::preparePstatData(int threadIndex) {
+void AsyncClose::preparePstatData(int threadIndex, int pstatDataIndex) {
 	if(this->threadId[threadIndex]) {
-		if(this->threadPstatData[threadIndex][0].cpu_total_time) {
-			this->threadPstatData[threadIndex][1] = this->threadPstatData[threadIndex][0];
+		if(this->threadPstatData[threadIndex][pstatDataIndex][0].cpu_total_time) {
+			this->threadPstatData[threadIndex][pstatDataIndex][1] = this->threadPstatData[threadIndex][pstatDataIndex][0];
 		}
-		pstat_get_data(this->threadId[threadIndex], this->threadPstatData[threadIndex]);
+		pstat_get_data(this->threadId[threadIndex], this->threadPstatData[threadIndex][pstatDataIndex]);
 	}
 }
 
-double AsyncClose::getCpuUsagePerc(int threadIndex, bool preparePstatData) {
+double AsyncClose::getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(threadIndex);
+		this->preparePstatData(threadIndex, pstatDataIndex);
 	}
 	if(this->threadId[threadIndex]) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[threadIndex][0].cpu_total_time && this->threadPstatData[threadIndex][1].cpu_total_time) {
+		if(this->threadPstatData[threadIndex][pstatDataIndex][0].cpu_total_time && this->threadPstatData[threadIndex][pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[threadIndex][0], &this->threadPstatData[threadIndex][1],
+				&this->threadPstatData[threadIndex][pstatDataIndex][0], &this->threadPstatData[threadIndex][pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			double rslt = ucpu_usage + scpu_usage;
-			if(rslt > cpuPeak[threadIndex]) {
+			if(pstatDataIndex == 1 && rslt > cpuPeak[threadIndex]) {
 				cpuPeak[threadIndex] = rslt;
 			}
 			return(rslt);

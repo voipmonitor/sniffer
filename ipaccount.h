@@ -172,7 +172,7 @@ public:
 	struct s_save_thread_data {
 		pthread_t thread;
 		int tid;
-		pstat_data pstat[2];
+		pstat_data pstat[2][2];
 		sem_t sem[2];
 		s_ipacc_data *data;
 		s_cache cache;
@@ -196,7 +196,7 @@ public:
 	}
 	void startThread();
 	void stopThread();
-	string getCpuUsagePerc();
+	string getCpuUsagePerc(int pstatDataIndex);
 private:
 	void *outThreadFunction();
 	void lock_map_ipacc_data() {
@@ -220,7 +220,7 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	int outThreadId;
-	pstat_data threadPstatData[2];
+	pstat_data threadPstatData[2][2];
 	unsigned save_thread_count;
 	s_save_thread_data *save_thread_data;
 	int terminating_save_threads;
@@ -460,7 +460,7 @@ CustPhoneNumberCache *getCustPnCache();
 int refreshCustIpCache();
 unsigned int lengthIpaccBuffer();
 unsigned int sizeIpaccBuffer();
-string getIpaccCpuUsagePerc();
+string getIpaccCpuUsagePerc(int pstatDataIndex);
 void initIpacc();
 void termIpacc();
 void ipaccStartThread();

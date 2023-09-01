@@ -383,7 +383,7 @@ public:
 		int threadId;
 		int thread_id;
 		bool threadEnd;
-		pstat_data threadPstatData[2];
+		pstat_data threadPstatData[2][2];
 		volatile int cpuPeak;
 		unsigned int counter;
 		volatile int _sync_lock;
@@ -440,8 +440,8 @@ public:
 	unsigned int last_flushTars;
 	void cleanTars(int term_pass = false);
 	static void *tarthreadworker(void*);
-	void preparePstatData(int threadIndex);
-	double getCpuUsagePerc(int threadIndex, bool preparePstatData);
+	void preparePstatData(int threadIndex, int pstatDataIndex);
+	double getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool preparePstatData = true);
 	bool allThreadsEnds();
 	bool flushTar(const char *tarName);
 	unsigned flushAllTars();

@@ -3015,13 +3015,16 @@ void *rtp_read_thread_func(void *arg) {
 	return NULL;
 }
 
-void add_rtp_read_thread() {
+static volatile u_int32_t last_tp_read_thread_operation_at = 0;
+
+bool add_rtp_read_thread() {
 	extern int num_threads_start;
 	extern int num_threads_max;
 	extern volatile int num_threads_active;
 	if(num_threads_start == num_threads_max) {
-		return;
+		return(false);
 	}
+	bool rslt = false;
 	lock_add_remove_rtp_threads();
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0 &&
@@ -3032,29 +3035,37 @@ void add_rtp_read_thread() {
 			rtp_threads[num_threads_active].alloc_qring();
 			vm_pthread_create_autodestroy("rtp read",
 						      &(rtp_threads[num_threads_active].thread), NULL, rtp_read_thread_func, (void*)&rtp_threads[num_threads_active], __FILE__, __LINE__);
+			rslt = true;
 		}
 		++num_threads_active;
+		last_tp_read_thread_operation_at = getTimeS_rdtsc();
 	}
 	unlock_add_remove_rtp_threads();
+	return(rslt);
 }
 
-void set_remove_rtp_read_thread() {
+bool set_remove_rtp_read_thread() {
 	extern int num_threads_start;
 	extern int num_threads_max;
 	extern volatile int num_threads_active;
 	if(num_threads_start == num_threads_max) {
-		return;
+		return(false);
 	}
+	bool rslt = false;
 	lock_add_remove_rtp_threads();
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 1 &&
 	   (num_threads_active == num_threads_max ||
 	    (!rtp_threads[num_threads_active].remove_flag &&
-	     !rtp_threads[num_threads_active].threadId))) {
+	     !rtp_threads[num_threads_active].threadId)) &&
+	   last_tp_read_thread_operation_at + 60 < getTimeS_rdtsc()) {
 		rtp_threads[num_threads_active - 1].remove_flag = true;
 		--num_threads_active;
+		last_tp_read_thread_operation_at = getTimeS_rdtsc();
+		rslt = true;
 	}
 	unlock_add_remove_rtp_threads();
+	return(rslt);
 }
 
 int get_index_rtp_read_thread_min_size() {
@@ -3096,11 +3107,39 @@ int get_index_rtp_read_thread_min_calls() {
 	return(minCallsIndex);
 }
 
-double get_rtp_sum_cpu_usage(double *max) {
+int get_index_rtp_read_thread_min_cpu() {
+	lock_add_remove_rtp_threads();
+	extern volatile int num_threads_active;
+	size_t minCpu = 0;
+	int minCpuIndex = -1;
+	for(int i = 0; i < num_threads_active; i++) {
+		if(rtp_threads[i].threadId > 0 && !rtp_threads[i].remove_flag) {
+			double cpu = rtp_threads[i].cpu;
+			if(cpu > 120) {
+				minCpuIndex = -1;
+				break;
+			}
+			if(minCpuIndex == -1 || minCpu > cpu) {
+				minCpuIndex = i;
+				minCpu = cpu;
+			}
+		}
+	}
+	if(minCpuIndex >= 0) {
+		__sync_add_and_fetch(&rtp_threads[minCpuIndex].calls, 1);
+	}
+	unlock_add_remove_rtp_threads();
+	return(minCpuIndex);
+}
+
+double get_rtp_sum_cpu_usage(double *max, double *min, int pstatDataIndex) {
 	extern int num_threads_max;
 	extern volatile int num_threads_active;
 	if(max) {
 		*max = 0;
+	}
+	if(min) {
+		*min = -1;
 	}
 	if(is_enable_rtp_threads() &&
 	   num_threads_active > 0 && num_threads_max > 0) {
@@ -3111,20 +3150,30 @@ double get_rtp_sum_cpu_usage(double *max) {
 		unlock_add_remove_rtp_threads();
 		for(int i = 0; i < _num_threads_active; i++) {
 			if(rtp_threads[i].threadId) {
-				if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
-					rtp_threads[i].threadPstatData[1] = rtp_threads[i].threadPstatData[0];
+				if(rtp_threads[i].threadPstatData[pstatDataIndex][0].cpu_total_time) {
+					rtp_threads[i].threadPstatData[pstatDataIndex][1] = rtp_threads[i].threadPstatData[pstatDataIndex][0];
 				}
-				pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData);
+				pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData[pstatDataIndex]);
 				double ucpu_usage, scpu_usage;
-				if(rtp_threads[i].threadPstatData[0].cpu_total_time && rtp_threads[i].threadPstatData[1].cpu_total_time) {
+				if(rtp_threads[i].threadPstatData[pstatDataIndex][0].cpu_total_time && rtp_threads[i].threadPstatData[pstatDataIndex][1].cpu_total_time) {
 					pstat_calc_cpu_usage_pct(
-						&rtp_threads[i].threadPstatData[0], &rtp_threads[i].threadPstatData[1],
+						&rtp_threads[i].threadPstatData[pstatDataIndex][0], &rtp_threads[i].threadPstatData[pstatDataIndex][1],
 						&ucpu_usage, &scpu_usage);
+					if(pstatDataIndex == 1) {
+						rtp_threads[i].cpu = ucpu_usage + scpu_usage;
+					}
 					sum += ucpu_usage + scpu_usage;
 					if(max && ucpu_usage + scpu_usage > *max) {
 						*max = ucpu_usage + scpu_usage;
 					}
+					if(max && (*min == -1 || ucpu_usage + scpu_usage < *min)) {
+						*min = ucpu_usage + scpu_usage;
+					}
 					set = true;
+				} else {
+					if(min) {
+						*min = 0;
+					}
 				}
 			}
 		}
@@ -3134,7 +3183,7 @@ double get_rtp_sum_cpu_usage(double *max) {
 	}
 }
 
-string get_rtp_threads_cpu_usage(bool callPstat) {
+string get_rtp_threads_cpu_usage(int pstatDataIndex, bool callPstat) {
 	extern int num_threads_max;
 	extern volatile int num_threads_active;
 	if(is_enable_rtp_threads() &&
@@ -3148,15 +3197,15 @@ string get_rtp_threads_cpu_usage(bool callPstat) {
 		for(int i = 0; i < _num_threads_active; i++) {
 			if(rtp_threads[i].threadId) {
 				if(callPstat) {
-					if(rtp_threads[i].threadPstatData[0].cpu_total_time) {
-						rtp_threads[i].threadPstatData[1] = rtp_threads[i].threadPstatData[0];
+					if(rtp_threads[i].threadPstatData[pstatDataIndex][0].cpu_total_time) {
+						rtp_threads[i].threadPstatData[pstatDataIndex][1] = rtp_threads[i].threadPstatData[pstatDataIndex][0];
 					}
-					pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData);
+					pstat_get_data(rtp_threads[i].threadId, rtp_threads[i].threadPstatData[pstatDataIndex]);
 				}
 				double ucpu_usage, scpu_usage;
-				if(rtp_threads[i].threadPstatData[0].cpu_total_time && rtp_threads[i].threadPstatData[1].cpu_total_time) {
+				if(rtp_threads[i].threadPstatData[pstatDataIndex][0].cpu_total_time && rtp_threads[i].threadPstatData[pstatDataIndex][1].cpu_total_time) {
 					pstat_calc_cpu_usage_pct(
-						&rtp_threads[i].threadPstatData[0], &rtp_threads[i].threadPstatData[1],
+						&rtp_threads[i].threadPstatData[pstatDataIndex][0], &rtp_threads[i].threadPstatData[pstatDataIndex][1],
 						&ucpu_usage, &scpu_usage);
 					if(counter) {
 						outStr << ';';
@@ -10368,27 +10417,27 @@ void PreProcessPacket::push_batch_nothread() {
 	}
 }
 
-void PreProcessPacket::preparePstatData(int nextThreadIndexPlus) {
+void PreProcessPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
 	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
-		if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time) {
-			this->threadPstatData[nextThreadIndexPlus][1] = this->threadPstatData[nextThreadIndexPlus][0];
+		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time) {
+			this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1] = this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0];
 		}
-		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus]);
+		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[pstatDataIndex][nextThreadIndexPlus]);
 	}
 }
 
-double PreProcessPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus, double *percFullQring) {
+double PreProcessPacket::getCpuUsagePerc(int nextThreadIndexPlus, double *percFullQring, int pstatDataIndex, bool preparePstatData) {
 	++getCpuUsagePerc_counter;
 	if(this->isActiveOutThread()) {
 		if(preparePstatData) {
-			this->preparePstatData(nextThreadIndexPlus);
+			this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 		}
 		if(this->outThreadId) {
 			if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
 				double ucpu_usage, scpu_usage;
-				if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][1].cpu_total_time) {
+				if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1].cpu_total_time) {
 					pstat_calc_cpu_usage_pct(
-						&this->threadPstatData[nextThreadIndexPlus][0], &this->threadPstatData[nextThreadIndexPlus][1],
+						&this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0], &this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1],
 						&ucpu_usage, &scpu_usage);
 					if(percFullQring) {
 						*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
@@ -12120,24 +12169,24 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	}
 }
 
-void ProcessRtpPacket::preparePstatData(int nextThreadIndexPlus) {
+void ProcessRtpPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
 	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
-		if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time) {
-			this->threadPstatData[nextThreadIndexPlus][1] = this->threadPstatData[nextThreadIndexPlus][0];
+		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time) {
+			this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1] = this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0];
 		}
-		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus]);
+		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus][pstatDataIndex]);
 	}
 }
 
-double ProcessRtpPacket::getCpuUsagePerc(bool preparePstatData, int nextThreadIndexPlus, double *percFullQring) {
+double ProcessRtpPacket::getCpuUsagePerc(int nextThreadIndexPlus, double *percFullQring, int pstatDataIndex, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(nextThreadIndexPlus);
+		this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 	}
 	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[nextThreadIndexPlus][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][1].cpu_total_time) {
+		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[nextThreadIndexPlus][0], &this->threadPstatData[nextThreadIndexPlus][1],
+				&this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0], &this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			if(percFullQring) {
 				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;

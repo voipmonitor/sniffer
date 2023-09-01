@@ -21,10 +21,6 @@ bool pstat_get_data(const int pid, pstat_data* result);
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
 			      double* ucpu_usage, double* scpu_usage);
-void pstat_calc_cpu_usage(const pstat_data* cur_usage,
-			  const pstat_data* last_usage,
-			  long unsigned int* ucpu_usage,
-			  long unsigned int* scpu_usage);
 double get_cpu_usage_perc(const int pid, pstat_data *data);
 long unsigned int getRss();
 void getLoadAvg(double *la_1, double *la_5, double *la_15);

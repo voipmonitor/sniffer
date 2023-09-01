@@ -1030,8 +1030,8 @@ public:
 		}
 	}
 	void push_batch_nothread();
-	void preparePstatData(int nextThreadId = 0);
-	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0, double *percFullQring = NULL);
+	void preparePstatData(int nextThreadId, int pstatDataIndex);
+	double getCpuUsagePerc(int nextThreadId, double *percFullQring, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
 	void addNextThread();
 	static void autoStartNextLevelPreProcessPacket();
@@ -1578,7 +1578,7 @@ private:
 	pthread_t out_thread_handle;
 	int next_threads;
 	pthread_t next_thread_handle[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
-	pstat_data threadPstatData[1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS][2];
+	pstat_data threadPstatData[1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS][2][2];
 	sem_t sem_sync_next_thread[MAX_PRE_PROCESS_PACKET_NEXT_THREADS][2];
 	s_next_thread_data next_thread_data[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	u_int64_t qringPushCounter;
@@ -1864,8 +1864,8 @@ public:
 			qring_push_index_count = 0;
 		}
 	}
-	void preparePstatData(int nextThreadId = 0);
-	double getCpuUsagePerc(bool preparePstatData, int nextThreadId = 0, double *percFullQring = NULL);
+	void preparePstatData(int nextThreadId, int pstatDataIndex);
+	double getCpuUsagePerc(int nextThreadId, double *percFullQring, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
@@ -1930,7 +1930,7 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
-	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
+	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2][2];
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
 	bool term_processRtp;

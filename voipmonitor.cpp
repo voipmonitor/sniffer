@@ -1006,14 +1006,14 @@ int opt_upgrade_try_http_if_https_fail = 0;
 
 pthread_t storing_cdr_thread;		// ID of worker storing CDR thread 
 int storing_cdr_tid;
-pstat_data storing_cdr_thread_pstat_data[2];
+pstat_data storing_cdr_thread_pstat_data[2][2];
 struct sStoringCdrNextThreads {
 	sStoringCdrNextThreads() {
 		memset(this, 0, sizeof(*this));
 	}
 	pthread_t thread;
 	int tid;
-	pstat_data pstat[2];
+	pstat_data pstat[2][2];
 	sem_t sem[2];
 	bool init;
 	list<Call*> *calls;
@@ -1181,10 +1181,10 @@ BogusDumper *bogusDumper;
 
 char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 80;
-int opt_cpu_limit_new_thread = 50;
-int opt_cpu_limit_new_thread_high = 75;
+int opt_cpu_limit_new_thread = 70;
+int opt_cpu_limit_new_thread_high = 80;
 int opt_cpu_limit_delete_thread = 5;
-int opt_cpu_limit_delete_t2sip_thread = 17;
+int opt_cpu_limit_delete_t2sip_thread = 15;
 
 int opt_memory_purge_interval = 60;
 int opt_memory_purge_if_release_gt = 500;
@@ -2467,19 +2467,19 @@ void storing_cdr_next_thread_remove() {
 	}
 }
 
-string storing_cdr_getCpuUsagePerc(double *avg) {
+string storing_cdr_getCpuUsagePerc(double *avg, int pstatDataIndex) {
 	ostringstream cpuStr;
 	cpuStr << fixed;
 	double cpu_sum = 0;
 	unsigned cpu_count = 0;
-	double cpu = get_cpu_usage_perc(storing_cdr_tid, storing_cdr_thread_pstat_data);
+	double cpu = get_cpu_usage_perc(storing_cdr_tid, storing_cdr_thread_pstat_data[pstatDataIndex]);
 	if(cpu > 0) {
 		cpuStr << setprecision(1) << cpu;
 		cpu_sum += cpu;
 		++cpu_count;
 	}
 	for(int i = 0; i < storing_cdr_next_threads_count; i++) {
-		double cpu = get_cpu_usage_perc(storing_cdr_next_threads[i].tid, storing_cdr_next_threads[i].pstat);
+		double cpu = get_cpu_usage_perc(storing_cdr_next_threads[i].tid, storing_cdr_next_threads[i].pstat[pstatDataIndex]);
 		if(cpu > 0) {
 			cpuStr << '/' << setprecision(1) << cpu;
 			cpu_sum += cpu;
@@ -4664,9 +4664,16 @@ int main_init_read() {
 		}
 		
 		if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
+			bool autoStartCallX = false;
 			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
 			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+				if(autoStartCallX) {
+					preProcessPacketCallX[i]->startOutThread();
+				}
+			}
+			if(autoStartCallX) {
+				preProcessPacketCallX_state = PreProcessPacket::callx_process;
 			}
 			if(calltable->enableCallFindX()) {
 				preProcessPacketCallFindX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count];
@@ -4957,10 +4964,12 @@ int main_init_read() {
 					  &scanpcapdir_thread, NULL, scanpcapdir, NULL, __FILE__, __LINE__);
 		}
 		
-		uint64_t _counter = 0;
+		uint64_t _counterLog = 0;
+		uint64_t _counterCpuCheck = 0;
 		if(!sverb.pcap_stat_period) {
 			sverb.pcap_stat_period = verbosityE > 0 ? 1 : 10;
 		}
+		int logPeriodS = verbosityE > 0 ? 1 : sverb.pcap_stat_period;
 		manager_parse_command_enable();
 		
 		if(!wdt && !is_read_from_file() && opt_fork && enable_wdt && rightPSversion && bashPresent) {
@@ -4969,9 +4978,10 @@ int main_init_read() {
 
 		while(!is_terminating()) {
 			u_int64_t startTimeMS = getTimeMS_rdtsc();
-			if(_counter) {
+			u_int64_t endTimeMS = startTimeMS + logPeriodS * 1000;
+			if(_counterLog) {
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
-				pcapQueueQ->pcapStat(verbosityE > 0 ? 1 : sverb.pcap_stat_period);
+				pcapQueueQ->pcapStat(PcapQueue::pcapStatLog, logPeriodS);
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
 				if(sverb.memory_stat_log) {
 					printMemoryStat();
@@ -5010,13 +5020,27 @@ int main_init_read() {
 					dpdk_check_affinity();
 				}
 			}
-			while(startTimeMS + sverb.pcap_stat_period * 1000 > getTimeMS_rdtsc()) {
+			u_int64_t startTimeCpuCheck = 0;
+			while(true) {
+				u_int64_t time_ms = getTimeMS_rdtsc();
+				if(time_ms >= endTimeMS) {
+					break;
+				}
+				if(!startTimeCpuCheck ||
+				   (time_ms >= startTimeCpuCheck + 1000 &&
+				    time_ms + 900 < endTimeMS)) {
+					startTimeCpuCheck = getTimeMS_rdtsc();
+					if(_counterCpuCheck) {
+						pcapQueueQ->pcapStat(PcapQueue::pcapStatCpuCheck, 1);
+					}
+					++_counterCpuCheck;
+				}
 				USLEEP(10000);
 				if(logBuffer) {
 					logBuffer->apply();
 				}
 			}
-			++_counter;
+			++_counterLog;
 
 			#if DEBUG_PACKET_COUNT
 			extern volatile int __xc_inv;

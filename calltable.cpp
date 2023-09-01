@@ -12229,7 +12229,7 @@ void Calltable::processCallsInChartsCache_thread_remove() {
 	}
 }
 
-string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
+string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatDataIndex) {
 	if(!useChartsCacheOrCdrStatProcessThreads()) {
 		return("");
 	}
@@ -12239,7 +12239,7 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg) {
 	unsigned cpu_count = 0;
 	while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
 	for(int i = 0; i < chc_threads_count; i++) {
-		double cpu = get_cpu_usage_perc(chc_threads[i].tid, chc_threads[i].pstat);
+		double cpu = get_cpu_usage_perc(chc_threads[i].tid, chc_threads[i].pstat[pstatDataIndex]);
 		if(cpu > 0) {
 			if(cpu_count) {
 				cpuStr << '/';

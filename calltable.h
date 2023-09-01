@@ -2937,7 +2937,7 @@ private:
 	struct sChcThreadData {
 		pthread_t thread;
 		int tid;
-		pstat_data pstat[2];
+		pstat_data pstat[2][2];
 		sem_t sem[2];
 		bool init;
 		list<sChartsCallData> *calls;
@@ -3608,7 +3608,7 @@ public:
 	static void *_processCallsInChartsCache_thread(void *_threadIndex);
 	void processCallsInChartsCache_thread_add();
 	void processCallsInChartsCache_thread_remove();
-	string processCallsInChartsCache_cpuUsagePerc(double *avg);
+	string processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatDataIndex);
 
 	void destroyCallsIfPcapsClosed();
 	void destroyRegistersIfPcapsClosed();
