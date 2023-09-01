@@ -181,6 +181,51 @@ friend class cChartIntervalSeriesData;
 };
 
 class cChartDataPool {
+private:
+	class cPool {
+	public:
+		cPool(u_int32_t timeFrom, u_int32_t timeTo) {
+			size_m = (timeTo - timeFrom) / 60 + 1;
+			pool = new FILE_LINE(0) u_int32_t*[size_m];
+			for(unsigned i = 0; i < size_m; i++) {
+				pool[i] = NULL;
+			}
+		}
+		~cPool() {
+			for(unsigned i = 0; i < size_m; i++) {
+				if(pool[i]) {
+					delete pool[i];
+				}
+			}
+			delete pool;
+		}
+		void inc(u_int32_t time_s) {
+			u_int32_t time_m = time_s / 60;
+			if(time_m >= size_m) {
+				return;
+			}
+			time_s = time_s % 60;
+			if(!pool[time_m]) {
+				pool[time_m] = new FILE_LINE(0) u_int32_t[60];
+				memset((void*)pool[time_m], 0, 60 * sizeof(u_int32_t));
+			}
+			++pool[time_m][time_s];
+		}
+		u_int32_t operator [] (u_int32_t time_s) {
+			u_int32_t time_m = time_s / 60;
+			if(time_m >= size_m) {
+				return(0);
+			}
+			time_s = time_s % 60;
+			if(!pool[time_m]) {
+				return(0);
+			}
+			return(pool[time_m][time_s]);
+		}
+	private:
+		u_int32_t size_m;
+		u_int32_t **pool;
+	};
 public:
 	cChartDataPool();
 	~cChartDataPool();
@@ -196,7 +241,7 @@ private:
 	map<unsigned int, unsigned int> all_intervals;
 	volatile unsigned int all_fi;
 	volatile unsigned int all_li;
-	volatile u_int32_t *pool;
+	cPool *pool;
 };
 
 class cChartIntervalSeriesData {

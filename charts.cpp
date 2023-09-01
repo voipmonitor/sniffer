@@ -599,13 +599,12 @@ cChartDataPool::cChartDataPool() {
 
 cChartDataPool::~cChartDataPool() {
 	if(this->pool) {
-		delete [] this->pool;
+		delete this->pool;
 	}
 }
 
 void cChartDataPool::createPool(u_int32_t timeFrom, u_int32_t timeTo) {
-	this->pool = new FILE_LINE(0) u_int32_t[timeTo - timeFrom];
-	memset((void*)this->pool, 0, (timeTo - timeFrom) * sizeof(u_int32_t));
+	this->pool = new cPool(timeFrom, timeTo);
 }
 
 void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool firstInterval, bool lastInterval, bool beginInInterval,
@@ -628,7 +627,7 @@ void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool fir
 			++this->all_li;
 		}
 		for(unsigned int i = from; i <= to; i++) {
-			++this->pool[i - interval->timeFrom];
+			this->pool->inc(i - interval->timeFrom);
 		}
 		break;
 	case _chartType_cps:
@@ -637,7 +636,7 @@ void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool fir
 		++this->all;
 		if(beginInInterval && firstInterval) {
 			++this->all_fi;
-			++this->pool[from - interval->timeFrom];
+			this->pool->inc(from - interval->timeFrom);
 		}
 		break;
 	case _chartType_minutes:
@@ -699,13 +698,14 @@ string cChartDataPool::json(class cChartSeries *series, cChartInterval *interval
 			if(i) {
 				pool_str += ',';
 			}
-			pool_str += intToString(this->pool[i]);
-			if(this->pool[i]) {
+			u_int32_t pool_i = (*this->pool)[i];
+			pool_str += intToString(pool_i);
+			if(pool_i) {
 				min = min == UINT_MAX ?
-				       this->pool[i] :
-				       ((unsigned int)this->pool[i] < min ? this->pool[i] : min);
-				max =  ((unsigned int)this->pool[i] > max ? this->pool[i] : max);
-				sum += this->pool[i];
+				       pool_i :
+				       ((unsigned int)pool_i < min ? pool_i : min);
+				max =  ((unsigned int)pool_i > max ? pool_i : max);
+				sum += pool_i;
 				++count;
 			}
 		}
@@ -753,12 +753,13 @@ double cChartDataPool::getValue(class cChartSeries *series, cChartInterval *inte
 		unsigned int sum = 0;
 		unsigned int count = 0;
 		for(unsigned int i = 0; i < interval->timeTo - interval->timeFrom; i++) {
-			if(this->pool[i]) {
+			u_int32_t pool_i = (*this->pool)[i];
+			if(pool_i) {
 				min = min == UINT_MAX ?
-				       this->pool[i] :
-				       ((unsigned int)this->pool[i] < min ? this->pool[i] : min);
-				max =  ((unsigned int)this->pool[i] > max ? this->pool[i] : max);
-				sum += this->pool[i];
+				       pool_i :
+				       ((unsigned int)pool_i < min ? pool_i : min);
+				max =  ((unsigned int)pool_i > max ? pool_i : max);
+				sum += pool_i;
 				++count;
 			}
 		}
