@@ -3274,7 +3274,8 @@ Call::convertRawToWav() {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
 			if(!force_convert_raw_to_wav &&
-			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || rtp_stream_by_index(ssrc_index)->skip)) {
+			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || 
+			    rtp_stream_by_index(ssrc_index)->skip || !rtp_stream_by_index(ssrc_index)->stats.received)) {
 				continue;
 			}
 			adir = 1;
@@ -3291,7 +3292,8 @@ Call::convertRawToWav() {
 		while(fgets(line, sizeof(line), pl)) {
 			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv1.tv_sec, &tv1.tv_usec);
 			if(!force_convert_raw_to_wav &&
-			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || rtp_stream_by_index(ssrc_index)->skip)) {
+			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || 
+			    rtp_stream_by_index(ssrc_index)->skip || !rtp_stream_by_index(ssrc_index)->stats.received)) {
 				continue;
 			}
 			bdir = 1;
@@ -3924,6 +3926,14 @@ Call::convertRawToWav() {
 
 	}
 
+	if(adir == 1 && bdir == 1) {
+		if(!file_exists(wav0)) {
+			adir = 0;
+		}
+		if(!file_exists(wav1)) {
+			bdir = 0;
+		}
+	}
 	if(adir == 1 && bdir == 1) {
 		// merge caller and called 
 		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
