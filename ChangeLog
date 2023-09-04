@@ -1,3 +1,11 @@
+31.9  24.08.2023
+================
+- new threads were spawned too late on high traffic servers - evaluation is now performed sooner [VG-2672]
+- lower memory usage for cdr trends 
+- fix dst SIP ip for some cases (broken in 31.8) [VS-1492] 
+- fix audio decode for some cases (enable the use of a stream with zero received packets in the ab stream selection) [VS-1494]
+
+
 31.8  24.08.2023
 ================
 - added Session Establishment Effectiveness Ratio (SEER) metric (https://www.rfc-editor.org/rfc/rfc6076#page-19) [VG-2659]
