@@ -2280,6 +2280,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									do_add_thread_counter = 0;
 								}
 							}
+							#if C_THREAD_OVERLOAD_MONITORING
+							if(task == pcapStatCpuCheck && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
+								static int c_thread_overload_counter = 0;
+								if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
+									if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+										abort();
+									}
+								} else {
+									c_thread_overload_counter = 0;
+								}
+							}
+							#endif
 						}
 					}
 				}
@@ -2292,7 +2304,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						if(t2cpu_preprocess_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
 								outStrStat << "/" 
-									   << preProcessPacketCallX[i]->getShortcatTypeThread()
+									   << preProcessPacketCallX[i]->getShortcatTypeThread() << ":"
 									   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
 								if(sverb.qring_stat) {
 									double qringFillingPerc = preProcessPacketCallX[i]->getQringFillingPerc();
@@ -2307,6 +2319,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 						}
+						#if C_THREAD_OVERLOAD_MONITORING
+						if(task == pcapStatCpuCheck) {
+							static int c_thread_overload_counter = 0;
+							if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
+								if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+									abort();
+								}
+							} else {
+								c_thread_overload_counter = 0;
+							}
+						}
+						#endif
 					}
 				}
 				if(preProcessPacketCallFindX && calltable->useCallFindX()) {

@@ -10422,7 +10422,7 @@ void PreProcessPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIn
 		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time) {
 			this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1] = this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0];
 		}
-		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[pstatDataIndex][nextThreadIndexPlus]);
+		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus][pstatDataIndex]);
 	}
 }
 
