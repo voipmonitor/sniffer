@@ -6095,10 +6095,9 @@ void Call::selectRtpAB() {
 						     << endl;
 					}
 				}
-				if(rtp_stream_by_index(indexes[k])->received_() &&
-				   (pass_rtpab_simple || rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip_() || 
-				    (pass_rtpab == 1 && rtp_stream_by_index(indexes[k])->first_codec_() >= 0) ||
-				    pass_rtpab == 2)) {
+				if(pass_rtpab_simple || rtp_stream_by_index(indexes[k])->ok_other_ip_side_by_sip_() || 
+				   (pass_rtpab == 1 && rtp_stream_by_index(indexes[k])->first_codec_() >= 0) ||
+				   pass_rtpab == 2) {
 					if(!rtpab_ok[0] &&
 					   rtp_stream_by_index(indexes[k])->iscaller && 
 					   (!rtpab[0] || rtp_stream_by_index(indexes[k])->received_() > rtpab[0]->received_())) {
