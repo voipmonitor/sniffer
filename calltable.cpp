@@ -9830,7 +9830,7 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 		sipcalledip_confirmed = getSipcalledipFromInviteList(c_branch, &sipcalledport_confirmed, &sipcalledip_encaps_confirmed, &sipcalledip_encaps_prot_confirmed, &proxies, true);
 		if(sipcalledip_confirmed.isSet()) {
 			set_sipcalledip = true;
-			c_branch->sipcalledip_rslt = getSipcalledip(c_branch);
+			c_branch->sipcalledip_rslt = sipcalledip_confirmed;
 			c_branch->sipcalledip_encaps_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_confirmed : getSipcalledip_encaps(c_branch);
 			c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot(c_branch);
 			c_branch->sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport(c_branch);
