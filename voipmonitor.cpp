@@ -1181,6 +1181,7 @@ BogusDumper *bogusDumper;
 
 char opt_syslog_string[256];
 int opt_cpu_limit_warning_t0 = 80;
+int opt_cpu_limit_new_thread_if_heap_grows = 50;
 int opt_cpu_limit_new_thread = 70;
 int opt_cpu_limit_new_thread_high = 80;
 int opt_cpu_limit_delete_thread = 5;
@@ -6639,6 +6640,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42344) cConfigItem_string("php_path", opt_php_path, sizeof(opt_php_path)));
 		addConfigItem(new FILE_LINE(42345) cConfigItem_string("syslog_string", opt_syslog_string, sizeof(opt_syslog_string)));
 		addConfigItem(new FILE_LINE(42346) cConfigItem_integer("cpu_limit_new_thread", &opt_cpu_limit_new_thread));
+		addConfigItem(new FILE_LINE(42346) cConfigItem_integer("cpu_limit_new_thread_if_heap_grows", &opt_cpu_limit_new_thread_if_heap_grows));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("cpu_limit_new_thread_high", &opt_cpu_limit_new_thread_high));
 		addConfigItem(new FILE_LINE(42347) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
 		addConfigItem(new FILE_LINE(42348) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
@@ -11781,6 +11783,9 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "cpu_limit_new_thread", NULL))) {
 		opt_cpu_limit_new_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "cpu_limit_new_thread_if_heap_grows", NULL))) {
+		opt_cpu_limit_new_thread_if_heap_grows = atoi(value);
 	}
 	if((value = ini.GetValue("general", "cpu_limit_new_thread_high", NULL))) {
 		opt_cpu_limit_new_thread_high = atoi(value);

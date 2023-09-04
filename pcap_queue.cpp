@@ -1518,6 +1518,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 
 	extern int opt_cpu_limit_warning_t0;
 	extern int opt_cpu_limit_new_thread;
+	extern int opt_cpu_limit_new_thread_if_heap_grows;
 	extern int opt_cpu_limit_new_thread_high;
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
@@ -2135,16 +2136,21 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				if(opt_pcap_queue_dequeu_method &&
 				   !opt_pcap_queue_dequeu_need_blocks &&
 				   opt_pcap_queue_dequeu_window_length > 0) {
+					static int do_decrease_dequeu_window_counter = 0;
 					static int do_increase_dequeu_window_counter = 0;
-					if(heap_pb_used_perc > 15 && t2cpu > opt_cpu_limit_new_thread) {
-						if(opt_pcap_queue_dequeu_window_length_div < 100) {
-							if(!opt_pcap_queue_dequeu_window_length_div) {
-								opt_pcap_queue_dequeu_window_length_div = 2;
-							} else {
-								opt_pcap_queue_dequeu_window_length_div *= 2;
+					if((heap_pb_used_perc > 10 && t2cpu > opt_cpu_limit_new_thread_if_heap_grows) ||
+					   t2cpu > opt_cpu_limit_new_thread) {
+						if((++do_decrease_dequeu_window_counter) >= 2) {
+							if(opt_pcap_queue_dequeu_window_length_div < 100) {
+								if(!opt_pcap_queue_dequeu_window_length_div) {
+									opt_pcap_queue_dequeu_window_length_div = 2;
+								} else {
+									opt_pcap_queue_dequeu_window_length_div *= 2;
+								}
+								syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
+								       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
 							}
-							syslog(LOG_INFO, "decrease pcap_queue_deque_window_length to %i", 
-							       opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div);
+							do_decrease_dequeu_window_counter = 0;
 						}
 						do_increase_dequeu_window_counter = 0;
 					} else if(heap_pb_used_perc < 5 && t2cpu < 30 &&
@@ -2161,7 +2167,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							}
 							do_increase_dequeu_window_counter = 0;
 						}
+						do_decrease_dequeu_window_counter = 0;
 					} else {
+						do_decrease_dequeu_window_counter = 0;
 						do_increase_dequeu_window_counter = 0;
 					}
 				}
