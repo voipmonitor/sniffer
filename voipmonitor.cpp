@@ -666,6 +666,7 @@ bool opt_rtpmap_indirect = true;
 int opt_jitter_forcemark_transit_threshold = 10;
 int opt_jitter_forcemark_delta_threshold = 500;
 bool opt_disable_rtp_warning = false;
+bool opt_disable_rtp_seq_probation = false;
 int opt_hash_modify_queue_length_ms = 0;
 bool opt_disable_process_sdp = false;
 
@@ -1240,7 +1241,6 @@ char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_audioconvert_params = NULL;
 char *opt_rtp_stream_analysis_params = NULL;
-bool opt_disable_rtp_seq_probation = false;
 sStreamAnalysisData *rtp_stream_analysis_data = NULL;
 char *opt_check_regexp_gui_params = NULL;
 char *opt_test_regexp_gui_params = NULL;
@@ -6610,6 +6610,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_transit_threshold", &opt_jitter_forcemark_transit_threshold));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("jitter_forcemark_delta_threshold", &opt_jitter_forcemark_delta_threshold));
 				addConfigItem(new FILE_LINE(42327) cConfigItem_yesno("disable_rtp_warning", &opt_disable_rtp_warning));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_rtp_seq_probation", &opt_disable_rtp_seq_probation));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sdp_check_direction_ext", &opt_sdp_check_direction_ext));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("rtp_count_all_sequencegap_as_loss", &opt_rtp_count_all_sequencegap_as_loss));
@@ -10902,6 +10903,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "disable_rtp_warning", NULL))) {
 		opt_disable_rtp_warning = yesno(value);
+	}
+	if((value = ini.GetValue("general", "disable_rtp_seq_probation", NULL))) {
+		opt_disable_rtp_seq_probation = yesno(value);
 	}
 	if((value = ini.GetValue("general", "sdp_check_direction_ext", NULL))) {
 		opt_sdp_check_direction_ext = yesno(value);
