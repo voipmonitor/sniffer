@@ -513,7 +513,7 @@ class CallBranch : public CallStructs {
 public:
 	CallBranch(Call *call = NULL, unsigned branch_id = 0);
 	inline void invite_list_lock() {
-		__SYNC_LOCK(_invite_list_lock);
+		__SYNC_LOCK_USLEEP(_invite_list_lock, 50);
 	}
 	inline void invite_list_unlock() {
 		__SYNC_UNLOCK(_invite_list_lock);

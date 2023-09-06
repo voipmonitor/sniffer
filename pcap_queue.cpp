@@ -2285,6 +2285,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								static int c_thread_overload_counter = 0;
 								if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
 									if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+										syslog(LOG_ERR, "ABORT - due persistent overload thread c");
 										abort();
 									}
 								} else {
@@ -2324,6 +2325,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							static int c_thread_overload_counter = 0;
 							if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
 								if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+									syslog(LOG_ERR, "ABORT - due persistent overload thread cx");
 									abort();
 								}
 							} else {
@@ -2389,7 +2391,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						}
 						if(i > 0) {
 							++countRtpRhThreads;
-							if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
+							if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread && 
+							   (heap_pb_used_perc + heap_pb_trash_perc) > 10) {
 								needAddRtpRhThreads = true;
 							}
 						}
@@ -2414,7 +2417,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							}
 						}
 						++countRtpRdThreads;
-						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
+						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread && 
+						   (heap_pb_used_perc + heap_pb_trash_perc) > 10) {
 							needAddRtpRdThreads = true;
 						}
 						++count_t2cpu;
