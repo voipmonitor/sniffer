@@ -1,4 +1,4 @@
-31.9  24.08.2023
+31.9  05.09.2023
 ================
 - new threads were spawned too late on high traffic servers - thread CPU usage is now performed in shorter intervals (was 10seconds) [VG-2672]
 - lower memory usage for cdr trends 
