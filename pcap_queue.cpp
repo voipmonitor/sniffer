@@ -1522,6 +1522,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	extern int opt_cpu_limit_new_thread_high;
 	extern int opt_cpu_limit_delete_thread;
 	extern int opt_cpu_limit_delete_t2sip_thread;
+	extern int opt_heap_limit_new_thread;
 
 	if(task == pcapStatLog && this->instancePcapHandle) {
 		if(this->instancePcapHandle->initAllReadThreadsFinished) {
@@ -2138,7 +2139,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				   opt_pcap_queue_dequeu_window_length > 0) {
 					static int do_decrease_dequeu_window_counter = 0;
 					static int do_increase_dequeu_window_counter = 0;
-					if((heap_pb_used_perc > 10 && t2cpu > opt_cpu_limit_new_thread_if_heap_grows) ||
+					if((heap_pb_used_perc > opt_heap_limit_new_thread && 
+					    t2cpu > opt_cpu_limit_new_thread_if_heap_grows) ||
 					   t2cpu > opt_cpu_limit_new_thread) {
 						if((++do_decrease_dequeu_window_counter) >= 2) {
 							if(opt_pcap_queue_dequeu_window_length_div < 100) {
@@ -2269,7 +2271,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								static int do_add_thread_counter = 0;
 								if(j == 0 && opt_t2_boost &&
 								   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread &&
-								   heap_pb_used_perc > 10 &&
+								   heap_pb_used_perc > opt_heap_limit_new_thread &&
 								   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
 								    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
 									if((++do_add_thread_counter) >= 2) {
@@ -2285,6 +2287,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								static int c_thread_overload_counter = 0;
 								if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
 									if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+										syslog(LOG_ERR, "ABORT - due persistent overload thread c");
 										abort();
 									}
 								} else {
@@ -2324,6 +2327,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							static int c_thread_overload_counter = 0;
 							if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
 								if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+									syslog(LOG_ERR, "ABORT - due persistent overload thread cx");
 									abort();
 								}
 							} else {
@@ -2366,6 +2370,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			int countRtpRdThreads = 0;
 			bool needAddRtpRdThreads = false;
 			if(processRtpPacketHash) {
+				double t2cpu_rh_sum = 0;
+				double t2cpu_rh_min = 0;
+				double t2cpu_rh_count = 0;
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
 						double percFullQring;
@@ -2386,15 +2393,28 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
+							if(i > 0) {
+								t2cpu_rh_sum += t2cpu_process_rtp_packet_out_thread;
+								if(!t2cpu_rh_min || t2cpu_process_rtp_packet_out_thread < t2cpu_rh_min) {
+									t2cpu_rh_min = t2cpu_process_rtp_packet_out_thread;
+								}
+								++t2cpu_rh_count;
+							}
 						}
 						if(i > 0) {
 							++countRtpRhThreads;
-							if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
-								needAddRtpRhThreads = true;
-							}
 						}
 					}
 				}
+				if(t2cpu_rh_count > 0 &&
+				   t2cpu_rh_sum / t2cpu_rh_count > opt_cpu_limit_new_thread &&
+				   t2cpu_rh_min > opt_cpu_limit_new_thread && 
+				   heap_pb_used_perc > opt_heap_limit_new_thread) {
+					needAddRtpRhThreads = true;
+				}
+				double t2cpu_rd_sum = 0;
+				double t2cpu_rd_min = 0;
+				double t2cpu_rd_count = 0;
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
 						double percFullQring;
@@ -2414,12 +2434,20 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							}
 						}
 						++countRtpRdThreads;
-						if(t2cpu_process_rtp_packet_out_thread > opt_cpu_limit_new_thread) {
-							needAddRtpRdThreads = true;
-						}
 						++count_t2cpu;
 						sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
+						t2cpu_rd_sum += t2cpu_process_rtp_packet_out_thread;
+						if(!t2cpu_rd_min || t2cpu_process_rtp_packet_out_thread < t2cpu_rd_min) {
+							t2cpu_rd_min = t2cpu_process_rtp_packet_out_thread;
+						}
+						++t2cpu_rd_count;
 					}
+				}
+				if(t2cpu_rd_count > 0 &&
+				   t2cpu_rd_sum / t2cpu_rd_count > opt_cpu_limit_new_thread &&
+				   t2cpu_rd_min > opt_cpu_limit_new_thread && 
+				   heap_pb_used_perc > opt_heap_limit_new_thread) {
+					needAddRtpRdThreads = true;
 				}
 			}
 			if(task == pcapStatCpuCheck) {
@@ -2427,7 +2455,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				if(opt_enable_preprocess_packet == -1) {
 					static int do_start_last_level_counter = 0;
 					static int do_stop_last_level_counter = 0;
-					if(last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
+					if(heap_pb_used_perc > opt_heap_limit_new_thread && 
+					   last_t2cpu_preprocess_packet_out_thread_check_next_level > opt_cpu_limit_new_thread) {
 						if((++do_start_last_level_counter) >= 2) {
 							PreProcessPacket::autoStartNextLevelPreProcessPacket();
 							do_start_last_level_counter = 0;
@@ -2446,7 +2475,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				static int do_add_thread_callx_counter = 0;
 				if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
-				   heap_pb_used_perc > 10 &&
+				   heap_pb_used_perc > opt_heap_limit_new_thread &&
 				   calltable->enableCallX() && !calltable->useCallX()) {
 					if((++do_add_thread_callx_counter) >= 2) {
 						PreProcessPacket::autoStartCallX_PreProcessPacket();
@@ -2456,7 +2485,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					do_add_thread_callx_counter = 0;
 				}
 				static int do_add_process_rtp_counter = 0;
-				if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread) {
+				if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread &&
+				   heap_pb_used_perc > opt_heap_limit_new_thread) {
 					if((++do_add_process_rtp_counter) >= 2) {
 						ProcessRtpPacket::autoStartProcessRtpPacket();
 						do_add_process_rtp_counter = 0;
@@ -2542,17 +2572,21 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				*/
 				static int do_add_thread_counter = 0;
 				static int do_remove_thread_counter = 0;
-				if((tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread &&
-				    tRTPcpuMin > opt_cpu_limit_new_thread) ||
+				if(tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread_high ||
+				   (tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread &&
+				    tRTPcpuMin > opt_cpu_limit_new_thread && 
+				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread) ||
 				   (num_threads_active == 1 &&
-				    tRTPcpuMax > (opt_cpu_limit_new_thread / 2) && heap_pb_trash_perc > 10)) {
+				    tRTPcpuMax > (opt_cpu_limit_new_thread / 2) && 
+				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread)) {
 					if(num_threads_active == 1 || (++do_add_thread_counter) >= 2) {
-						int newThreads = heap_pb_trash_perc > 20 ? 6 :
-								 heap_pb_trash_perc > 16 ? 5 :
-								 heap_pb_trash_perc > 13 ? 4 :
-								 heap_pb_trash_perc > 10 ? 3 :
-								 heap_pb_trash_perc >  5 ? 2 :
-											   1;
+						double heap_pb_used_trash_perc = heap_pb_used_perc + heap_pb_trash_perc;
+						int newThreads = heap_pb_used_trash_perc > 20 ? 6 :
+								 heap_pb_used_trash_perc > 16 ? 5 :
+								 heap_pb_used_trash_perc > 13 ? 4 :
+								 heap_pb_used_trash_perc > 10 ? 3 :
+								 heap_pb_used_trash_perc >  5 ? 2 :
+												1;
 						for(int i = 0; i < newThreads; i++) {
 							if(add_rtp_read_thread()) {
 								syslog(LOG_NOTICE, "create rtp thread");

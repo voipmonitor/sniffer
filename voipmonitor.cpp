@@ -257,7 +257,7 @@ int opt_dbdtmf = 0;
 int opt_pcapdtmf = 1;
 int opt_inbanddtmf = 0;
 int opt_fasdetect = 0;
-int opt_sipalg_detect = 0;
+bool opt_sipalg_detect = false;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
@@ -608,7 +608,7 @@ int opt_autocleanmingb = 5;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
-int opt_last_rtp_from_end = 1;
+bool opt_last_rtp_from_end = true;
 int opt_pcap_dump_bufflength = 8192;
 int opt_pcap_dump_asyncwrite = 1;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
@@ -1187,6 +1187,7 @@ int opt_cpu_limit_new_thread = 70;
 int opt_cpu_limit_new_thread_high = 80;
 int opt_cpu_limit_delete_thread = 5;
 int opt_cpu_limit_delete_t2sip_thread = 15;
+int opt_heap_limit_new_thread = 5;
 
 int opt_memory_purge_interval = 60;
 int opt_memory_purge_if_release_gt = 500;
@@ -3290,7 +3291,7 @@ private:
 	unsigned size_mb;
 };
 
-cHeap_HASHTABLE *heap_hashtable;
+cHeap *heap_hashtable;
 
 cHeap_HASHTABLE::cHeap_HASHTABLE(unsigned size_mb) {
 	this->size_mb = size_mb;
@@ -6645,6 +6646,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("cpu_limit_new_thread_high", &opt_cpu_limit_new_thread_high));
 		addConfigItem(new FILE_LINE(42347) cConfigItem_integer("cpu_limit_delete_thread", &opt_cpu_limit_delete_thread));
 		addConfigItem(new FILE_LINE(42348) cConfigItem_integer("cpu_limit_delete_t2sip_thread", &opt_cpu_limit_delete_t2sip_thread));
+		addConfigItem(new FILE_LINE(0) cConfigItem_integer("heap_limit_new_thread", &opt_heap_limit_new_thread));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_interval", &opt_memory_purge_interval));
 		addConfigItem(new FILE_LINE(0) cConfigItem_integer("memory_purge_if_release_gt", &opt_memory_purge_if_release_gt));
 	group("upgrade");
@@ -11799,6 +11801,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "cpu_limit_delete_t2sip_thread", NULL))) {
 		opt_cpu_limit_delete_t2sip_thread = atoi(value);
+	}
+	if((value = ini.GetValue("general", "heap_limit_new_thread", NULL))) {
+		opt_heap_limit_new_thread = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "memory_purge_interval", NULL))) {
