@@ -257,7 +257,7 @@ int opt_dbdtmf = 0;
 int opt_pcapdtmf = 1;
 int opt_inbanddtmf = 0;
 int opt_fasdetect = 0;
-int opt_sipalg_detect = 0;
+bool opt_sipalg_detect = false;
 int opt_rtcp = 1;		// pair RTP+1 port to RTCP and save it. 
 int opt_nocdr = 0;		// do not save cdr?
 char opt_nocdr_for_last_responses[1024];
@@ -608,7 +608,7 @@ int opt_autocleanmingb = 5;
 int opt_cleanspool_enable_run_hour_from = -1;
 int opt_cleanspool_enable_run_hour_to = -1;
 int opt_mysqlloadconfig = 1;
-int opt_last_rtp_from_end = 1;
+bool opt_last_rtp_from_end = true;
 int opt_pcap_dump_bufflength = 8192;
 int opt_pcap_dump_asyncwrite = 1;
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
@@ -3290,7 +3290,7 @@ private:
 	unsigned size_mb;
 };
 
-cHeap_HASHTABLE *heap_hashtable;
+cHeap *heap_hashtable;
 
 cHeap_HASHTABLE::cHeap_HASHTABLE(unsigned size_mb) {
 	this->size_mb = size_mb;

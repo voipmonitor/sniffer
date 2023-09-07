@@ -6243,7 +6243,7 @@ string SensorsMap::getSensorName(int sensorId, bool file) {
 }
 
 void prepare_string_to_filename(char *str, unsigned int str_length) {
-	extern char opt_convert_char[256];
+	extern char opt_convert_char[64];
 	if(!str_length) {
 		str_length = strlen(str);
 	}

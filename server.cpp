@@ -1075,7 +1075,7 @@ void cSnifferServerConnection::cp_keycheck() {
 		if(is_readend()) {
 			break;
 		}
-		extern int remote_keycheck(string input, string *output, string *error);
+		extern bool remote_keycheck(string input, string *output, string *error);
 		string output;
 		string error;
 		if(remote_keycheck(input, &output, &error)) {

@@ -283,7 +283,7 @@ extern vector<int> opt_ignore_rtp_after_response_list;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
 extern int opt_hash_modify_queue_length_ms;
-extern int opt_sipalg_detect;
+extern bool opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
 extern int opt_destroy_calls_period;
@@ -1807,7 +1807,7 @@ inline bool parse_peername(const char *peername_tag, unsigned int peername_tag_l
 			   char *rslt_str, unsigned int rslt_str_max_length, 
 			   eParsePeernameTagType tagType, eParsePeernameDestType destType) {
 	const char *_rslt_str;
-	unsigned _rslt_str_length;
+	unsigned _rslt_str_length = 0;
 	bool _rslt = _parse_peername(peername_tag, peername_tag_len,
 				     parse_type, parse_type_param,
 				     rslt_str ? &_rslt_str : NULL, &_rslt_str_length, 
@@ -4462,7 +4462,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	if(packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE)) {
 		++call->invite_packets_counter;
 		if(opt_max_invite_packets_in_call > 0 && call->invite_packets_counter > opt_max_invite_packets_in_call) {
-			return;
+			if(call->invite_packets_counter == opt_max_invite_packets_in_call + 1) {
+				syslog(LOG_NOTICE, "call %s has reached limit number of invite packets", call->call_id.c_str());
+			}
+			goto endsip_save_packet;
 		}
 		int inviteSdaddrCounter = 0;
 		c_branch->invite_list_lock();
