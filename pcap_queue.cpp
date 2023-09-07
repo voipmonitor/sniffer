@@ -2574,10 +2574,10 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				static int do_remove_thread_counter = 0;
 				if((tRTPcpuSum / num_threads_active > opt_cpu_limit_new_thread &&
 				    tRTPcpuMin > opt_cpu_limit_new_thread && 
-				    heap_pb_trash_perc > opt_heap_limit_new_thread) ||
+				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread) ||
 				   (num_threads_active == 1 &&
 				    tRTPcpuMax > (opt_cpu_limit_new_thread / 2) && 
-				    heap_pb_trash_perc > opt_heap_limit_new_thread)) {
+				    (heap_pb_used_perc + heap_pb_trash_perc) > opt_heap_limit_new_thread)) {
 					if(num_threads_active == 1 || (++do_add_thread_counter) >= 2) {
 						int newThreads = heap_pb_trash_perc > 20 ? 6 :
 								 heap_pb_trash_perc > 16 ? 5 :
