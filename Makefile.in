@@ -75,6 +75,7 @@ endif
 
 GLIBCFLAGS =$(shell pkg-config --cflags glib-2.0)
 GLIBLIB =$(shell pkg-config --libs glib-2.0)
+GLIBLIBSTATIC =$(shell pkg-config --libs --static glib-2.0)
 GLIBLIBPATH =$(shell pkg-config --libs-only-L glib-2.0)
 CURLCFLAGS =$(shell pkg-config --cflags libcurl)
 CURLLIB =$(shell pkg-config --libs libcurl)
@@ -88,7 +89,7 @@ LIBLZMA=@LIBLZMA@
 LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
 SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} -llzo2 ${LIBPNG} ${LIBFFT} @DPDK_LDFLAGS@
-STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIB} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD}
+STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi -llzma ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD}
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
 CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
