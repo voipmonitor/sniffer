@@ -5023,7 +5023,7 @@ int main_init_read() {
 				}
 			}
 			u_int64_t startTimeCpuCheck = 0;
-			while(true) {
+			while(!is_terminating()) {
 				u_int64_t time_ms = getTimeMS_rdtsc();
 				if(time_ms >= endTimeMS) {
 					break;
@@ -5033,7 +5033,9 @@ int main_init_read() {
 				    time_ms + 900 < endTimeMS)) {
 					startTimeCpuCheck = getTimeMS_rdtsc();
 					if(_counterCpuCheck) {
+						pthread_mutex_lock(&terminate_packetbuffer_lock);
 						pcapQueueQ->pcapStat(PcapQueue::pcapStatCpuCheck, 1);
+						pthread_mutex_unlock(&terminate_packetbuffer_lock);
 					}
 					++_counterCpuCheck;
 				}
