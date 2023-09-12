@@ -1331,6 +1331,7 @@ long int runAt;
 cLogBuffer *logBuffer;
 
 int opt_hashtable_heap_size = 0;
+bool opt_hashtable_heap_size_set = false;
 
 bool opt_hugepages_anon = false;
 int opt_hugepages_max = 0;
@@ -8314,6 +8315,10 @@ void set_context_config() {
 				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull, false, true);
 			}
 		}
+		
+		if(buffersControl.getMaxBufferMem() > 1000 && !opt_hashtable_heap_size_set) {
+			opt_hashtable_heap_size = 64;
+		}
 	}
 	
 	if(is_receiver() && !opt_use_id_sensor_for_receiver_in_files) {
@@ -12055,6 +12060,7 @@ int eval_config(string inistr) {
 	
 	if((value = ini.GetValue("general", "hashtable_heap_size", NULL))) {
 		opt_hashtable_heap_size = atoi(value);
+		opt_hashtable_heap_size_set = true;
 	}
 	
 	if((value = ini.GetValue("general", "hugepages_anon", NULL))) {

@@ -3596,12 +3596,14 @@ class cThreadMonitor {
 private:
 	struct sThread {
 		int tid;
+		pthread_t thread;
 		string description;
 		pstat_data pstat[2];
 	};
 	struct sDescrCpuPerc {
 		string description;
 		int tid;
+		pthread_t thread;
 		double cpu_perc;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 

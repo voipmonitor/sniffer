@@ -6840,6 +6840,7 @@ cThreadMonitor::cThreadMonitor() {
 void cThreadMonitor::registerThread(const char *description) {
 	sThread thread;
 	thread.tid = get_unix_tid();
+	thread.thread = pthread_self();
 	thread.description = description;
 	memset(thread.pstat, 0, sizeof(thread.pstat));
 	tm_lock();
@@ -6858,6 +6859,7 @@ string cThreadMonitor::output() {
 			sDescrCpuPerc dp;
 			dp.description = iter->second.description;
 			dp.tid = iter->second.tid;
+			dp.thread = iter->second.thread;
 			dp.cpu_perc = cpu_perc;
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
@@ -6870,12 +6872,24 @@ string cThreadMonitor::output() {
 	int counter = 0;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
 		outStr << fixed
-		       << setw(50) << iter_dp->description
-		       << " (" << setw(5) << iter_dp->tid << ") : "
-		       << setprecision(1) << setw(5) << iter_dp->cpu_perc;
+		       << setw(40) << left << iter_dp->description
+		       << " (" << setw(6) << right << iter_dp->tid << ") : "
+		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
+		int sched_type;
+		sched_param sch_param;
+		if(pthread_getschedparam(iter_dp->thread, &sched_type, &sch_param) == 0) {
+			if(sched_type != SCHED_OTHER || sch_param.sched_priority != 0) {
+				outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
+				       << " " << setw(3) << right << sch_param.sched_priority;
+			} else {
+				outStr << setw(11) << " ";
+			}
+		}
 		++counter;
 		if(!(counter % 2)) {
 			outStr << endl;
+		} else {
+			outStr << "  |  ";
 		}
 	}
 	if(counter % 2) {

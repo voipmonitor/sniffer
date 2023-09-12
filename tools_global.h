@@ -317,6 +317,9 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 
 bool pthread_set_affinity(pthread_t thread, string cores_set, string cores_unset);
 bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset);
+bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type);
+bool pthread_set_max_priority(int sched_type);
+string get_sched_type_str(int sched_type);
 void get_list_cores(string input, vector<int> &list);
 void get_list_cores(string input, list<int> &list);
 

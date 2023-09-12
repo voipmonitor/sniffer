@@ -109,6 +109,40 @@ bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> 
 	return(pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset) == 0);
 }
 
+bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type) {
+	int max_priority = sched_get_priority_max(sched_type);
+	if(max_priority == -1) {
+		syslog(LOG_NOTICE, "failed to get max priority for '%s' for thread %i", get_sched_type_str(sched_type).c_str(), tid);
+	} else {
+		sched_param sch_param; 
+		sch_param.sched_priority = max_priority;
+		int rslt_set = pthread_setschedparam(thread, SCHED_FIFO, &sch_param);
+		if(rslt_set != 0) {
+			syslog(LOG_NOTICE, "failed (error %i) to set scheduler parameters for thread %i", rslt_set, tid);
+		} else {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+bool pthread_set_max_priority(int sched_type) {
+	return(pthread_set_max_priority(pthread_self(), get_unix_tid(), sched_type));
+}
+
+string get_sched_type_str(int sched_type) {
+	return(sched_type == SCHED_OTHER ? "other" :
+	       sched_type == SCHED_FIFO ? "fifo" :
+	       sched_type == SCHED_RR ? "rr" :
+	       #ifdef __USE_GNU
+	       sched_type == SCHED_BATCH ? "batch" :
+	       sched_type == SCHED_ISO ? "iso" :
+	       sched_type == SCHED_IDLE ? "idle" :
+	       sched_type == SCHED_DEADLINE ? "deadl" :
+	       #endif
+	       "?");
+}
+
 void get_list_cores(string input, vector<int> &list) {
 	int count_cores = sysconf(_SC_NPROCESSORS_ONLN);
 	if(input == "all") {
