@@ -116,7 +116,7 @@ bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type) {
 	} else {
 		sched_param sch_param; 
 		sch_param.sched_priority = max_priority;
-		int rslt_set = pthread_setschedparam(thread, SCHED_FIFO, &sch_param);
+		int rslt_set = pthread_setschedparam(thread, sched_type, &sch_param);
 		if(rslt_set != 0) {
 			syslog(LOG_NOTICE, "failed (error %i) to set scheduler parameters for thread %i", rslt_set, tid);
 		} else {
