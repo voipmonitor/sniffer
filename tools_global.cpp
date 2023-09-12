@@ -14,6 +14,13 @@
 cThreadMonitor threadMonitor;
 #endif
 
+#ifdef CARESRESOLVER
+#include <ares.h>
+#endif
+
+#ifdef CARESRESOLVER
+static volatile int ares_flag = 0;
+#endif
 
 struct vm_pthread_struct {
 	void *(*start_routine)(void *arg);
@@ -1546,6 +1553,105 @@ cResolver::cResolver() {
 	_sync_lock = 0;
 }
 
+
+#ifdef CARESRESOLVER
+// c-ares callback function to process DNS query results
+static void resolve_callback(void *arg, int status, int timeouts, struct hostent *host) {
+    (void)timeouts;  // unused
+
+    auto *data = static_cast<std::tuple<vector<vmIP>*, vmIP*, const char*>*>(arg);
+    auto *ips = std::get<0>(*data);
+    auto *ip = std::get<1>(*data);
+    const char* hostname = std::get<2>(*data);
+
+    if (status == ARES_SUCCESS) {
+        for (int i = 0; host->h_addr_list[i] != NULL; ++i) {
+            vmIP _ip;
+            if (host->h_addrtype == AF_INET) {
+                _ip.setIPv4(*((in_addr_t*) host->h_addr_list[i]), true);
+            }
+            #if VM_IPV6
+            else if (VM_IPV6_B && host->h_addrtype == AF_INET6) {
+                _ip.setIPv6(*((struct in6_addr*) host->h_addr_list[i]), true);
+            }
+            #endif
+            if(_ip.isSet()) {
+                syslog(LOG_NOTICE, "c-ares resolved host %s to %s", hostname, _ip.getString().c_str());
+                if (!ip->isSet()) {
+                    *ip = _ip;
+                }
+                if (ips) {
+                    ips->push_back(_ip);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    // Indicate that the query is done
+    ares_flag = 1;
+}
+#endif
+
+#ifdef CARESRESOLVER
+vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
+    vmIP ip;
+    ares_channel channel;
+    int status;
+    struct ares_options options;
+    int optmask = 0;
+
+    // Initialize the c-ares library
+    status = ares_library_init(ARES_LIB_INIT_ALL);
+    if (status != ARES_SUCCESS) {
+        syslog(LOG_ERR, "ares_library_init failed: %s", ares_strerror(status));
+        return ip;
+    }
+
+    // Initialize a channel to the c-ares library
+    status = ares_init_options(&channel, &options, optmask);
+    if(status != ARES_SUCCESS) {
+        syslog(LOG_ERR, "ares_init_options failed: %s", ares_strerror(status));
+        ares_library_cleanup();
+        return ip;
+    }
+
+    // Start the DNS query
+    auto data = std::make_tuple(ips, &ip, host);
+    ares_gethostbyname(channel, host, AF_UNSPEC, resolve_callback, &data);
+
+    // Wait for the query to complete
+    while (!ares_flag) {
+        struct timeval *tvp, tv;
+        fd_set read_fds, write_fds;
+        int nfds;
+
+        FD_ZERO(&read_fds);
+        FD_ZERO(&write_fds);
+        nfds = ares_fds(channel, &read_fds, &write_fds);
+        if (nfds == 0)
+            break;
+
+        tvp = ares_timeout(channel, NULL, &tv);
+        select(nfds, &read_fds, &write_fds, NULL, tvp);
+
+        ares_process(channel, &read_fds, &write_fds);
+    }
+
+    // Clean up the c-ares library
+    ares_destroy(channel);
+    ares_library_cleanup();
+
+    if (ips && ips->size() > 1) {
+        sort_ips_by_type(ips);
+        ip = (*ips)[0];
+    }
+
+    return ip;
+}
+#endif
+
+
 vmIP cResolver::resolve(const char *host, vector<vmIP> *ips, unsigned timeout, eTypeResolve typeResolve) {
 	if(use_lock) {
 		lock();
@@ -1618,6 +1724,7 @@ string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve t
 	return("");
 }
 
+#ifndef CARESRESOLVER
 vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
 	struct addrinfo req, *res;
@@ -1667,6 +1774,7 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	}
 	return(ip);
 }
+#endif
 
 vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
