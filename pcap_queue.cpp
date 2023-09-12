@@ -41,10 +41,6 @@
 #include "tcmalloc_hugetables.h"
 #include "heap_chunk.h"
 
-#include <zlib.h> // for CRC32
-
-#define CRC32_DIGEST_LENGTH 4
-
 #ifndef FREEBSD
 #include <malloc.h>
 #endif
@@ -9492,91 +9488,6 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 	}
 }
 
-
-void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
-	uint32_t crc32_val = 0;  // CRC32 result will be a 32-bit value
-
-	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && ((pcap_pkthdr_plus2*)hp->header)->crc32_val) {
-		crc32_val = ((pcap_pkthdr_plus2*)hp->header)->crc32_val;
-	} else {
-		if(hp->header->header_ip_offset) {
-			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
-			char *data = NULL;
-			int datalen = 0;
-			udphdr2 *header_udp = NULL;
-			tcphdr2 *header_tcp = NULL;
-			u_int8_t ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
-			if(ip_protocol == IPPROTO_UDP) {
-				header_udp = (udphdr2*)((char*)header_ip + header_ip->get_hdr_size());
-				datalen = get_udp_data_len(header_ip, header_udp, &data, hp->packet, hp->header->get_caplen());
-			} else if(ip_protocol == IPPROTO_TCP) {
-				header_tcp = (tcphdr2*)((char*)header_ip + header_ip->get_hdr_size());
-				datalen = get_tcp_data_len(header_ip, header_tcp, &data, hp->packet, hp->header->get_caplen());
-			} else if (opt_enable_ss7 && ip_protocol == IPPROTO_SCTP) {
-				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
-			}
-			if(data && datalen) {
-				if(opt_dup_check_ipheader) {
-					bool header_ip_set_orig = false;
-					u_int8_t header_ip_ttl_orig = 0;
-					u_int16_t header_ip_check_orig = 0;
-					if(opt_dup_check_ipheader_ignore_ttl && opt_dup_check_ipheader == 1) {
-						header_ip_ttl_orig = header_ip->get_ttl();
-						header_ip_check_orig = header_ip->get_check();
-						header_ip->set_ttl(0);
-						header_ip->set_check(0);
-						header_ip_set_orig = true;
-					}
-					bool header_udp_set_orig = false;
-					u_int16_t header_udp_checksum_orig;
-					if(opt_dup_check_udpheader_ignore_checksum && ip_protocol == IPPROTO_UDP) {
-						header_udp_checksum_orig = header_udp->check;
-						header_udp->check = 0;
-						header_udp_set_orig = true;
-					}
-					if(opt_dup_check_ipheader == 1) {
-						crc32_val = crc32(crc32_val, (const Bytef *)header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
-					} else if(opt_dup_check_ipheader == 2) {
-						u_int16_t header_ip_size = header_ip->get_hdr_size();
-						u_char *data_crc32 = (u_char*)header_ip;
-						unsigned data_crc32_size = MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len());
-						if(data_crc32_size > header_ip_size) {
-							data_crc32 += header_ip_size;
-							data_crc32_size -= header_ip_size;
-						}
-						crc32_val = crc32(crc32_val, data_crc32, data_crc32_size);
-						// This function, 'md5_update_ip', needs to be adapted for CRC32 or replaced with something suitable
-						header_ip->md5_update_ip(&crc32_val); 
-					}
-					if(header_ip_set_orig) {
-						header_ip->set_ttl(header_ip_ttl_orig);
-						header_ip->set_check(header_ip_check_orig);
-					}
-					if(header_udp_set_orig) {
-						header_udp->check = header_udp_checksum_orig;
-					}
-				} else {
-					crc32_val = crc32(crc32_val, (const Bytef *)data, datalen);
-				}
-			}
-		}
-	}
-	if(crc32_val) {
-		if(memcmp(&crc32_val, this->dedup_buffer + (crc32_val * CRC32_DIGEST_LENGTH), CRC32_DIGEST_LENGTH) == 0) {
-			if(sverb.dedup) {
-				cout << "*** DEDUP 2" << endl;
-			}
-			hp->destroy_or_unlock_blockstore();
-			return;
-		}
-		memcpy(this->dedup_buffer + (crc32_val * CRC32_DIGEST_LENGTH), &crc32_val, CRC32_DIGEST_LENGTH);
-	}
-	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
-		hp->destroy_or_unlock_blockstore();
-	}
-}
-
-#if 0
 void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 	uint16_t *_md5 = NULL;
 	uint16_t __md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
@@ -9662,7 +9573,6 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		hp->destroy_or_unlock_blockstore();
 	}
 }
-#endif
 
 void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach2) == 0) {
