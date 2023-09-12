@@ -5,7 +5,7 @@
 #include <syslog.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#ifdef CARECRESOLVER
+#ifdef CARESRESOLVER
 #include <ares.h>
 #endif
 
@@ -17,7 +17,7 @@
 cThreadMonitor threadMonitor;
 #endif
 
-#ifdef CARECRESOLVER
+#ifdef CARESRESOLVER
 static volatile int ares_flag = 0;
 #endif
 
@@ -1553,7 +1553,7 @@ cResolver::cResolver() {
 }
 
 
-#ifdef CARECRESOLVER
+#ifdef CARESRESOLVER
 // c-ares callback function to process DNS query results
 static void resolve_callback(void *arg, int status, int timeouts, struct hostent *host) {
     (void)timeouts;  // unused
@@ -1592,7 +1592,7 @@ static void resolve_callback(void *arg, int status, int timeouts, struct hostent
 }
 #endif
 
-#ifdef CARECRESOLVER
+#ifdef CARESRESOLVER
 vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
     vmIP ip;
     ares_channel channel;
@@ -1723,7 +1723,7 @@ string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve t
 	return("");
 }
 
-#ifndef CARECRESOLVER
+#ifndef CARESRESOLVER
 vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
 	struct addrinfo req, *res;
