@@ -12,8 +12,6 @@ PLATFORM=`uname`
 AC_CANONICAL_SYSTEM
 AC_CANONICAL_HOST
 
-AC_MSG_ERROR($build_cpu)
-
 # Checks for programs.
 AC_PROG_CXX
 AC_PROG_CC
@@ -116,24 +114,24 @@ AC_ARG_WITH(dpdk-lib, [  --with-dpdk-lib=PATH path to explicit lib files], [
 # Check for MySQL libraries (or MariaDB)
 AC_MSG_CHECKING(for mysql_config executable)
 AC_ARG_WITH(mysql, [  --with-mysql=PATH path to mysql_config binary or mysql prefix dir], [
-	if test -x $withval -a -f $withval
-	then
-		MYSQL_CONFIG=$withval
-	elif test -x $withval/bin/mysql_config -a -f $withval/bin/mysql_config
+    if test -x $withval -a -f $withval
     then
-		MYSQL_CONFIG=$withval/bin/mysql_config
+        MYSQL_CONFIG=$withval
+    elif test -x $withval/bin/mysql_config -a -f $withval/bin/mysql_config
+    then
+        MYSQL_CONFIG=$withval/bin/mysql_config
     fi
 ], [
-	if test -x /usr/local/mysql/bin/mysql_config -a -f /usr/local/mysql/bin/mysql_config
-	then
-		MYSQL_CONFIG=/usr/local/mysql/bin/mysql_config
-	elif test -x /usr/bin/mysql_config -a -f /usr/bin/mysql_config
-	then
-		MYSQL_CONFIG=/usr/bin/mysql_config
-	elif test -x /usr/local/bin/mysql_config -a -f /usr/local/bin/mysql_config
-	then
-		MYSQL_CONFIG=/usr/local/bin/mysql_config
-	fi
+    if test -x /usr/local/mysql/bin/mysql_config -a -f /usr/local/mysql/bin/mysql_config
+    then
+        MYSQL_CONFIG=/usr/local/mysql/bin/mysql_config
+    elif test -x /usr/bin/mysql_config -a -f /usr/bin/mysql_config
+    then
+        MYSQL_CONFIG=/usr/bin/mysql_config
+    elif test -x /usr/local/bin/mysql_config -a -f /usr/local/bin/mysql_config
+    then
+        MYSQL_CONFIG=/usr/local/bin/mysql_config
+    fi
 ])
 if test "x$MYSQL_CONFIG" = "x"
 then
@@ -141,7 +139,12 @@ then
     exit 3
 else
     AC_SUBST([MYSQLCFLAGS],[`$MYSQL_CONFIG --cflags`])
-    MYSQLLDFLAGS=`$MYSQL_CONFIG --libs`
+    
+    MYSQLLDFLAGS_LIBS=`$MYSQL_CONFIG --libs`
+    MYSQLLDFLAGS_LIBS_SYS=`$MYSQL_CONFIG --libs_sys 2>/dev/null`
+    
+    MYSQLLDFLAGS="$MYSQLLDFLAGS_LIBS_SYS $MYSQLLDFLAGS_LIBS"
+
     LDFLAGS="$LDFLAGS $MYSQLLDFLAGS"
     AC_SUBST([MYSQLLIB],[$MYSQLLDFLAGS])
     AC_SUBST([MYSQLINCLUDE],[`$MYSQL_CONFIG --include`])
