@@ -5,9 +5,6 @@
 #include <syslog.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#ifdef CARESRESOLVER
-#include <ares.h>
-#endif
 
 #include "tools_global.h"
 
@@ -15,6 +12,10 @@
 #include "tools.h"
 #include "common.h"
 cThreadMonitor threadMonitor;
+#endif
+
+#ifdef CARESRESOLVER
+#include <ares.h>
 #endif
 
 #ifdef CARESRESOLVER
