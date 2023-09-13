@@ -4765,7 +4765,8 @@ void PcapQueue_readFromInterfaceThread::cancelThread() {
 
 void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned int /*arg2*/) {
 	if(this->typeThread == read) {
-		pthread_set_max_priority(SCHED_FIFO);
+		extern string opt_sched_pol_interface;
+		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->threadId = get_unix_tid();
 	if(VERBOSE) {
@@ -5578,7 +5579,8 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuff
 void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	
 	if(this->typeThread == read) {
-		pthread_set_max_priority(SCHED_FIFO);
+		extern string opt_sched_pol_interface;
+		pthread_set_priority(opt_sched_pol_interface);
 		if(dpdkHandle) {
 			if(dpdk_config(dpdkHandle)->type_read_thread != _dpdk_trt_std) {
 				if(opt_dpdk_copy_packetbuffer) {
@@ -7688,7 +7690,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 
 void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) {
 	if(!(this->packetServerDirection == directionWrite || is_client_packetbuffer_sender())) {
-		pthread_set_max_priority(SCHED_RR);
+		extern string opt_sched_pol_interface;
+		pthread_set_priority(opt_sched_pol_interface);
 	}
 	this->writeThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
@@ -9266,7 +9269,8 @@ void PcapQueue_outputThread::push_batch() {
 }
 
 void *PcapQueue_outputThread::outThreadFunction() {
-	pthread_set_max_priority(SCHED_RR);
+	extern string opt_sched_pol_pb;
+	pthread_set_priority(opt_sched_pol_pb);
 	this->initThreadOk = true;
 	extern unsigned int opt_preprocess_packets_qring_usleep;
 	this->outThreadId = get_unix_tid();

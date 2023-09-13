@@ -317,9 +317,12 @@ inline int vm_pthread_create_autodestroy(const char *thread_description,
 
 bool pthread_set_affinity(pthread_t thread, string cores_set, string cores_unset);
 bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> *cores_unset);
-bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type);
-bool pthread_set_max_priority(int sched_type);
+bool pthread_max_priority(pthread_t thread, int tid, int sched_type, int priority = -1);
+bool pthread_max_priority(int sched_type, int priority = -1);
+bool pthread_set_priority(const char *sched_type_priority);
+inline bool pthread_set_priority(string &sched_type_priority) { if(!sched_type_priority.empty()) return(pthread_set_priority(sched_type_priority.c_str())); return(true); }
 string get_sched_type_str(int sched_type);
+int get_sched_type_from_str(const char *sched_type);
 void get_list_cores(string input, vector<int> &list);
 void get_list_cores(string input, list<int> &list);
 

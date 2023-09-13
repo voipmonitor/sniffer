@@ -1384,6 +1384,11 @@ bool opt_all_unlink_log = false;
 bool opt_bt_sighandler_enable = true;
 string opt_jemalloc_stat_full_folder;
 
+string opt_sched_pol_interface;
+string opt_sched_pol_pb;
+string opt_sched_pol_sip;
+string opt_sched_pol_rtp_prep;
+string opt_sched_pol_rtp_read;
 
 #include <stdio.h>
 #include <pthread.h>
@@ -6959,6 +6964,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("all_unlink_log", &opt_all_unlink_log));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("bt_sighandler", &opt_bt_sighandler_enable));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("jemalloc_stat_full_folder", &opt_jemalloc_stat_full_folder));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_interface", &opt_sched_pol_interface));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_pb", &opt_sched_pol_pb));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_sip", &opt_sched_pol_sip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_rtp_prep", &opt_sched_pol_rtp_prep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_rtp_read", &opt_sched_pol_rtp_read));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12129,6 +12139,22 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "jemalloc_stat_full_folder", NULL))) {
 		opt_jemalloc_stat_full_folder = value;
+	}
+	
+	if((value = ini.GetValue("general", "sched_pol_interface", NULL))) {
+		opt_sched_pol_interface = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_pb", NULL))) {
+		opt_sched_pol_pb = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_sip", NULL))) {
+		opt_sched_pol_sip = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_rtp_prep", NULL))) {
+		opt_sched_pol_rtp_prep = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_rtp_read", NULL))) {
+		opt_sched_pol_rtp_read = value;
 	}
 
 	/*

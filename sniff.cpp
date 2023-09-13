@@ -2919,7 +2919,8 @@ void unlock_add_remove_rtp_threads() {
 }
 
 void *rtp_read_thread_func(void *arg) {
-	pthread_set_max_priority(SCHED_RR);
+	extern string opt_sched_pol_rtp_read;
+	pthread_set_priority(opt_sched_pol_rtp_read);
 	rtp_read_thread *read_thread = (rtp_read_thread*)arg;
 	read_thread->threadId = get_unix_tid();
 	read_thread->last_use_time_s = getTimeMS_rdtsc() / 1000;
@@ -9700,7 +9701,8 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 void *PreProcessPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start PreProcessPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
-	pthread_set_max_priority(SCHED_RR);
+	extern string opt_sched_pol_sip;
+	pthread_set_priority(opt_sched_pol_sip);
 	packet_s_process *packetS;
 	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	batch_pcap_queue_packet_data *batch_detach_x;
@@ -11540,7 +11542,8 @@ ProcessRtpPacket::~ProcessRtpPacket() {
 void *ProcessRtpPacket::outThreadFunction() {
 	this->outThreadId = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket out thread %s/%i", this->type == hash ? "hash" : "distribute", this->outThreadId);
-	pthread_set_max_priority(SCHED_RR);
+	extern string opt_sched_pol_rtp_prep;
+	pthread_set_priority(opt_sched_pol_rtp_prep);
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
@@ -11611,7 +11614,8 @@ void *ProcessRtpPacket::outThreadFunction() {
 void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
 	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
-	pthread_set_max_priority(SCHED_RR);
+	extern string opt_sched_pol_rtp_prep;
+	pthread_set_priority(opt_sched_pol_rtp_prep);
 	int usleepUseconds = 20;
 	unsigned int usleepCounter = 0;
 	while(!this->term_processRtp) {
