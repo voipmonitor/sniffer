@@ -6847,29 +6847,90 @@ cThreadMonitor::cThreadMonitor() {
 	_sync = 0;
 }
 
-void cThreadMonitor::registerThread(const char *description) {
+void cThreadMonitor::registerThread(int tid, const char *description) {
 	sThread thread;
-	thread.tid = get_unix_tid();
+	thread.tid = tid;
 	thread.thread = pthread_self();
 	thread.description = description;
 	memset(thread.pstat, 0, sizeof(thread.pstat));
+	thread.orig_scheduler = -1;
+	thread.orig_priority = -1;
 	tm_lock();
 	threads[thread.tid] = thread;
 	tm_unlock();
 }
 
-string cThreadMonitor::output() {
+void cThreadMonitor::unregisterThread(int tid) {
+	tm_lock();
+	threads.erase(tid);
+	tm_unlock();
+}
+
+void cThreadMonitor::setSchedPolPriority(int indexPstat) {
+	extern string opt_sched_pol_auto;
+	extern int opt_sched_pol_auto_heap_limit;
+	extern int opt_sched_pol_auto_cpu_limit;
+	extern cBuffersControl buffersControl;
+	if(buffersControl.getPerc_pb_used() + buffersControl.getPerc_pb_trash() < opt_sched_pol_auto_heap_limit) {
+		return;
+	}
+	int sched_type;
+	int priority;
+	if(!parse_sched_type_priority(opt_sched_pol_auto.c_str(), &sched_type, &priority)) {
+		return;
+	}
+	list<sDescrCpuPerc> descrPerc;
+	tm_lock();
+	map<int, sThread>::iterator iter;
+	for(iter = threads.begin(); iter != threads.end(); iter++) {
+		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
+		if(cpu_perc > 0) {
+			sDescrCpuPerc dp;
+			dp.description = iter->second.description;
+			dp.tid = iter->second.tid;
+			dp.cpu_perc = cpu_perc;
+			descrPerc.push_back(dp);
+		}
+	}
+	tm_unlock();
+	ostringstream outStr;
+	descrPerc.sort();
+	list<sDescrCpuPerc>::iterator iter_dp;
+	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
+		if(iter_dp->cpu_perc >= opt_sched_pol_auto_cpu_limit) {
+			tm_lock();
+			sThread *thread = &threads[iter_dp->tid];
+			if(thread->orig_scheduler == -1 && thread->orig_priority == -1) {
+				thread->orig_scheduler = sched_getscheduler(thread->tid);
+				sched_param sch_param;
+				sched_getparam(thread->tid, &sch_param);
+				thread->orig_priority = sch_param.sched_priority;
+			}
+			if(sched_type != sched_getscheduler(thread->tid)) {
+				sched_param sch_param;
+				sched_getparam(thread->tid, &sch_param);
+				if(priority != sch_param.sched_priority) {
+					pthread_set_priority(thread->thread, thread->tid, sched_type, priority);
+				}
+			}
+			tm_unlock();
+		} else {
+			break;
+		}
+	}
+}
+
+string cThreadMonitor::output(int indexPstat) {
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
 	tm_lock();
 	map<int, sThread>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		double cpu_perc = this->getCpuUsagePerc(&iter->second);
+		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
 			dp.description = iter->second.description;
 			dp.tid = iter->second.tid;
-			dp.thread = iter->second.thread;
 			dp.cpu_perc = cpu_perc;
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
@@ -6913,19 +6974,15 @@ string cThreadMonitor::output() {
 	return(outStr.str());
 }
 
-void cThreadMonitor::preparePstatData(sThread *thread) {
-	if(thread->pstat[0].cpu_total_time) {
-		thread->pstat[1] = thread->pstat[0];
+double cThreadMonitor::getCpuUsagePerc(sThread *thread, int indexPstat) {
+	if(thread->pstat[indexPstat][0].cpu_total_time) {
+		thread->pstat[indexPstat][1] = thread->pstat[indexPstat][0];
 	}
-	pstat_get_data(thread->tid, thread->pstat);
-}
-
-double cThreadMonitor::getCpuUsagePerc(sThread *thread) {
-	this->preparePstatData(thread);
+	pstat_get_data(thread->tid, thread->pstat[indexPstat]);
 	double ucpu_usage, scpu_usage;
-	if(thread->pstat[0].cpu_total_time && thread->pstat[1].cpu_total_time) {
+	if(thread->pstat[indexPstat][0].cpu_total_time && thread->pstat[indexPstat][1].cpu_total_time) {
 		pstat_calc_cpu_usage_pct(
-			&thread->pstat[0], &thread->pstat[1],
+			&thread->pstat[indexPstat][0], &thread->pstat[indexPstat][1],
 			&ucpu_usage, &scpu_usage);
 		return(ucpu_usage + scpu_usage);
 	}

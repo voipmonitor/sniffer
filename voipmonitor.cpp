@@ -1390,6 +1390,11 @@ string opt_sched_pol_sip;
 string opt_sched_pol_rtp_prep;
 string opt_sched_pol_rtp_read;
 
+string opt_sched_pol_auto;
+int opt_sched_pol_auto_heap_limit;
+int opt_sched_pol_auto_cpu_limit;
+
+
 #include <stdio.h>
 #include <pthread.h>
 #ifdef HAVE_OPENSSL
@@ -5028,6 +5033,10 @@ int main_init_read() {
 					dpdk_check_affinity();
 				}
 			}
+			if(!opt_sched_pol_auto.empty() && opt_sched_pol_auto_heap_limit && opt_sched_pol_auto_cpu_limit) {
+				extern cThreadMonitor threadMonitor;
+				threadMonitor.setSchedPolPriority(0);
+			}
 			u_int64_t startTimeCpuCheck = 0;
 			while(!is_terminating()) {
 				u_int64_t time_ms = getTimeMS_rdtsc();
@@ -6969,6 +6978,9 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_sip", &opt_sched_pol_sip));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_rtp_prep", &opt_sched_pol_rtp_prep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_rtp_read", &opt_sched_pol_rtp_read));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_auto", &opt_sched_pol_auto));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_heap_limit", &opt_sched_pol_auto_heap_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_cpu_limit", &opt_sched_pol_auto_cpu_limit));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12155,6 +12167,15 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sched_pol_rtp_read", NULL))) {
 		opt_sched_pol_rtp_read = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_auto", NULL))) {
+		opt_sched_pol_auto = value;
+	}
+	if((value = ini.GetValue("general", "sched_pol_auto_heap_limit", NULL))) {
+		opt_sched_pol_auto_heap_limit = atoi(value);
+	}
+	if((value = ini.GetValue("general", "sched_pol_auto_cpu_limit", NULL))) {
+		opt_sched_pol_auto_cpu_limit = atoi(value);
 	}
 
 	/*

@@ -35,11 +35,13 @@ void *vm_pthread_create_start_routine(void *arg) {
 		syslog(LOG_NOTICE, "start thread '%s' %i", 
 		       thread_data.description.c_str(), get_unix_tid());
 	}
-	threadMonitor.registerThread(thread_data.description.c_str());
+	int tid = get_unix_tid();
+	threadMonitor.registerThread(tid, thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
 	#ifdef CLOUD_ROUTER_CLIENT
 	termTimeCacheForThread();
+	threadMonitor.unregisterThread(tid);
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "end thread '%s'", 
 		       thread_data.description.c_str());
@@ -143,6 +145,15 @@ bool pthread_set_priority(const char *sched_type_priority) {
 	if(!sched_type_priority || !*sched_type_priority) {
 		return(false);
 	}
+	int sched_type;
+	int priority;
+	if(!parse_sched_type_priority(sched_type_priority, &sched_type, &priority)) {
+		return(false);
+	}
+	return(pthread_set_priority(pthread_self(), get_unix_tid(), sched_type, priority));
+}
+
+bool parse_sched_type_priority(const char *sched_type_priority, int *sched_type_out, int *priority_out) {
 	string sched_type_str;
 	string priority_str;
 	const char *p = sched_type_priority;
@@ -156,9 +167,14 @@ bool pthread_set_priority(const char *sched_type_priority) {
 	}
 	int sched_type = get_sched_type_from_str(sched_type_str.c_str());
 	if(sched_type == -1) {
-		syslog(LOG_NOTICE, "unknown schule policy %s", sched_type_str.c_str());
+		syslog(LOG_NOTICE, "unknown schedule policy %s", sched_type_str.c_str());
+		*sched_type_out = -1;
+		*priority_out = -1;
+		return(false);
 	}
-	return(pthread_set_priority(pthread_self(), get_unix_tid(), sched_type, atoi(priority_str.c_str())));
+	*sched_type_out = sched_type;
+	*priority_out = atoi(priority_str.c_str());
+	return(true);
 }
 
 string get_sched_type_str(int sched_type) {
