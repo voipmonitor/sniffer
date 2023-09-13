@@ -6880,9 +6880,13 @@ string cThreadMonitor::output() {
 	descrPerc.sort();
 	list<sDescrCpuPerc>::iterator iter_dp;
 	int counter = 0;
+	int maxDescrLength = 45;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
+		char descr[maxDescrLength + 1];
+		strncpy(descr, iter_dp->description.c_str(), maxDescrLength);
+		descr[maxDescrLength] = 0;
 		outStr << fixed
-		       << setw(45) << left << iter_dp->description.substr(0, 45)
+		       << setw(maxDescrLength) << left << iter_dp->description.substr(0, maxDescrLength)
 		       << " (" << setw(6) << right << iter_dp->tid << ") : "
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
 		int sched_type;
