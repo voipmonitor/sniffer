@@ -42,6 +42,7 @@ default: shared ;
 
 
 WIRESHARKLIBSTATIC =$(shell pkg-config --libs-only-l --static wireshark)
+WIRESHARKLIBSHARED =$(shell pkg-config --libs-only-l wireshark)
 WIRESHARKCFLAGS =$(shell pkg-config --cflags wireshark)
 
 core2cust: GCCARCH = core2
@@ -51,6 +52,9 @@ clean: GCCARCH = core2
 ss7: core2 static
 ss7: CXXFLAGS += -DHAVE_LIBWIRESHARK -DLIBWIRESHARK_VERSION=30605 ${WIRESHARKCFLAGS}
 ss7: SS7= ${WIRESHARKLIBSTATIC} -lwiretap -lwsutil -llua5.2 -lxml2 -llz4 -llzma -lz -lcares -lnghttp2
+ss7shared: shared
+ss7shared: SS7= ${WIRESHARKLIBSHARED} -lwiretap -lwsutil -llua5.2 -lxml2 -llz4 -llzma -lz -lcares -lnghttp2 -lgnutls
+ss7shared: CXXFLAGS += -DHAVE_LIBWIRESHARK -DLIBWIRESHARK_VERSION=30605 ${WIRESHARKCFLAGS}
 #Makefile.deps: GCCARCH = core2
 
 
