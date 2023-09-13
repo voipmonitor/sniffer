@@ -4365,6 +4365,7 @@ bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {
 	case gzip:
 	case snappy:
 	case lzo:
+	case lz4:
 		if(!this->compressStream) {
 			this->initCompress();
 		}
@@ -4404,12 +4405,13 @@ bool FileZipHandler::__directWriteToFile(char *data, int length) {
 
 void FileZipHandler::initCompress() {
 	this->compressStream =  new FILE_LINE(38017) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
-							     this->typeCompress == snappy ? CompressStream::snappy :
-							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
-							     this->typeCompress == snappy || this->typeCompress == lzo ?
-							      this->bufferLength :
-							      8 * 1024, 
-							     0);
+								    this->typeCompress == snappy ? CompressStream::snappy :
+								    this->typeCompress == lzo ? CompressStream::lzo : 
+								    this->typeCompress == lz4 ? CompressStream::lz4 : CompressStream::compress_na,
+								    this->typeCompress == snappy || this->typeCompress == lzo || this->typeCompress == lz4 ?
+								     this->bufferLength :
+								     8 * 1024, 
+								    0);
 	this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
 					  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
 					  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
@@ -4419,10 +4421,11 @@ void FileZipHandler::initCompress() {
 
 void FileZipHandler::initDecompress() {
 	this->compressStream =  new FILE_LINE(38018) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
-							     this->typeCompress == snappy ? CompressStream::snappy :
-							     this->typeCompress == lzo ? CompressStream::lzo : CompressStream::compress_na,
-							     8 * 1024,
-							     0);
+								    this->typeCompress == snappy ? CompressStream::snappy :
+								    this->typeCompress == lzo ? CompressStream::lzo : 
+								    this->typeCompress == lz4 ? CompressStream::lz4 : CompressStream::compress_na,
+								    8 * 1024,
+								    0);
 }
 
 void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
@@ -4538,13 +4541,15 @@ FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeC
 	strlwr(_compress_method, sizeof(_compress_method));
 	if(yesno(_compress_method)) {
 		return(FileZipHandler::compress_default);
-	} else if(!strcmp(_compress_method, "zip") ||
-		  !strcmp(_compress_method, "gzip")) {
+	} else if(!strcasecmp(_compress_method, "zip") ||
+		  !strcasecmp(_compress_method, "gzip")) {
 		return(FileZipHandler::gzip);
-	} else if(!strcmp(_compress_method, "snappy")) {
+	} else if(!strcasecmp(_compress_method, "snappy")) {
 		return(FileZipHandler::snappy);
-	} else if(!strcmp(_compress_method, "lzo")) {
+	} else if(!strcasecmp(_compress_method, "lzo")) {
 		return(FileZipHandler::lzo);
+	} else if(!strcasecmp(_compress_method, "lz4")) {
+		return(FileZipHandler::lz4);
 	}
 	return(FileZipHandler::compress_na);
 }
@@ -4557,6 +4562,8 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 		return("snappy");
 	case lzo:
 		return("lzo");
+	case lz4:
+		return("lz4");
 	case compress_default:
 		return("yes");
 	default:
@@ -4571,6 +4578,7 @@ string FileZipHandler::getConfigMenuString() {
 	       << convTypeCompress(gzip) << ':' << gzip << '|'
 	       << convTypeCompress(snappy) << ':' << snappy << '|'
 	       << convTypeCompress(lzo) << ':' << lzo << '|'
+	       << convTypeCompress(lz4) << ':' << lz4 << '|'
 	       << "no:0";
 	return(outStr.str());
 }
@@ -4596,7 +4604,9 @@ FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
 bool FileZipHandler::needTarPos() {
 	return(tar &&
 	       (typeCompress == lzo ||
-		(typeCompress == compress_default && getTypeCompressDefault() == lzo)));
+		(typeCompress == compress_default && getTypeCompressDefault() == lzo) ||
+		typeCompress == lz4 ||
+		(typeCompress == compress_default && getTypeCompressDefault() == lz4)));
 }
 
 bool FileZipHandler::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
@@ -6872,7 +6882,7 @@ string cThreadMonitor::output() {
 	int counter = 0;
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
 		outStr << fixed
-		       << setw(40) << left << iter_dp->description
+		       << setw(45) << left << iter_dp->description.substr(0, 45)
 		       << " (" << setw(6) << right << iter_dp->tid << ") : "
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
 		int sched_type;

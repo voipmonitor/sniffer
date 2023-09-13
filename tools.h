@@ -605,7 +605,8 @@ public:
 		compress_default,
 		gzip,
 		snappy,
-		lzo
+		lzo,
+		lz4
 	};
 	struct sReadBufferItem {
 		u_char *buff;

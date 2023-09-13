@@ -124,6 +124,7 @@ private:
 	#ifdef HAVE_LIBLZ4
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
+	class SimpleBuffer *lz4DecompressData;
 	#endif //HAVE_LIBLZ4
 	#ifdef HAVE_LIBLZO
 	u_char *lzoWrkmem;

@@ -34,6 +34,7 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	#ifdef HAVE_LIBLZ4
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
+	this->lz4DecompressData = NULL;
 	#endif //HAVE_LIBLZ4
 	#ifdef HAVE_LIBLZO
 	this->lzoWrkmem = NULL;
@@ -203,7 +204,12 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		#endif //HAVE_LIBLZO
 		break;
 	case lz4:
+		#ifdef HAVE_LIBLZ4
+		if(!this->lz4DecompressData && this->forceStream) {
+			this->lz4DecompressData = new FILE_LINE(0) SimpleBuffer();
+		}
 		createDecompressBuffer(dataLen);
+		#endif //HAVE_LIBLZ4
 		break;
 	case lz4_stream:
 		#ifdef HAVE_LIBLZ4
@@ -277,6 +283,10 @@ void CompressStream::termDecompress() {
 	}
 	#endif //HAVE_LIBLZO
 	#ifdef HAVE_LIBLZ4
+	if(this->lz4DecompressData) {
+		delete this->lz4DecompressData;
+		this->lz4DecompressData = NULL;
+	}
 	if(this->lz4StreamDecode) {
 		LZ4_freeStreamDecode(this->lz4StreamDecode);
 		this->lz4StreamDecode = NULL;
@@ -459,17 +469,45 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		if(!this->compressBuffer) {
 			this->initCompress();
 		}
-		size_t compressLength = LZ4_compress(data, this->compressBuffer, len);
-		if(compressLength > 0) {
-			if(baseEv->compress_ev(this->compressBuffer, compressLength, len)) {
-				this->processed_len += len;
+		size_t chunk_offset = 0;
+		while(chunk_offset < len) {
+			size_t chunk_len = min((size_t)this->compressBufferLength, (size_t)(len - chunk_offset));
+			lzo_uint compressLength = this->compressBufferBoundLength;
+			compressLength = LZ4_compress_default(data + chunk_offset, this->compressBuffer, chunk_len, compressLength);
+			if(compressLength > 0) {
+				extern unsigned int HeapSafeCheck;
+				if(!this->processed_len && this->autoPrefixFile) {
+					if(!baseEv->compress_ev(HeapSafeCheck & _HeapSafeErrorBeginEnd ? 
+								 (char*)SimpleBuffer((char*)"LZ4", 3).data() : 
+								 (char*)"LZ4", 
+								3, 0, true)) {
+						this->setError("lz4 compress_ev failed");
+						return(false);
+					}
+				}
+				if(this->forceStream) {
+					sChunkSizeInfo sizeInfo;
+					sizeInfo.compress_size = compressLength;
+					sizeInfo.size = len;
+					if(!baseEv->compress_ev(HeapSafeCheck & _HeapSafeErrorBeginEnd ? 
+								 (char*)SimpleBuffer(&sizeInfo, sizeof(sizeInfo)).data() :
+								 (char*)&sizeInfo, 
+								sizeof(sizeInfo), 0, true)) {
+						this->setError("lz4 compress_ev failed");
+						return(false);
+					}
+				}
+				if(baseEv->compress_ev(this->compressBuffer, compressLength, len)) {
+					this->processed_len += len;
+				} else {
+					this->setError("lz4 compress_ev failed");
+					return(false);
+				}
 			} else {
-				this->setError("lz4 compress_ev failed");
+				this->setError("lz4 compress failed");
 				return(false);
 			}
-		} else {
-			this->setError("lz4 compress failed");
-			return(false);
+			chunk_offset += chunk_len;
 		}
 		#endif //HAVE_LIBLZ4
 		}
@@ -524,6 +562,10 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			len -= 3;
 		} else if(len >= 3 && !memcmp(data, "LZO", 3)) {
 			this->typeCompress = lzo;
+			data += 3;
+			len -= 3;
+		} else if(len >= 3 && !memcmp(data, "LZ4", 3)) {
+			this->typeCompress = lz4;
 			data += 3;
 			len -= 3;
 		} else {
@@ -714,17 +756,50 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		break;
 	case lz4:
 		#ifdef HAVE_LIBLZ4
-		if(!this->decompressBuffer) {
+		if(this->forceStream) {
+			this->initDecompress(0);
+			if(len >= 3 && !memcmp(data, "LZ4", 3) && !this->lz4DecompressData->size()) {
+				data += 3;
+				len -= 3;
+			}
+			this->lz4DecompressData->add(data, len);
+		} else {
 			this->initDecompress(decompress_len);
 		}
-		if(LZ4_decompress_fast(data, this->decompressBuffer, decompress_len)) {
-			if(!baseEv->decompress_ev(this->decompressBuffer, decompress_len)) {
-				this->setError("lz4 decompress_ev failed");
+		while(!this->forceStream ||
+		      (this->lz4DecompressData->size() > sizeof(sChunkSizeInfo) &&
+		       (sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->lz4DecompressData->data())->compress_size) <= this->lz4DecompressData->size())) {
+			u_int32_t decompressLength;
+			if(this->forceStream) {
+				this->initDecompress(((sChunkSizeInfo*)this->lz4DecompressData->data())->size);
+				decompressLength = ((sChunkSizeInfo*)this->lz4DecompressData->data())->size;
+			} else {
+				decompressLength = decompress_len;
+			}
+			int decompress_rslt = LZ4_decompress_safe(this->forceStream ?
+								   (const char*)(this->lz4DecompressData->data() + sizeof(sChunkSizeInfo)) :
+								   data, 
+								  this->decompressBuffer, 
+								  this->forceStream ? 
+								   ((sChunkSizeInfo*)this->lz4DecompressData->data())->compress_size : 
+								   len,
+								  decompressLength);
+			if(decompress_rslt == (int)(this->forceStream ?
+						     ((sChunkSizeInfo*)this->lz4DecompressData->data())->size :
+						     decompress_len)) {
+				if(!baseEv->decompress_ev(this->decompressBuffer, decompressLength)) {
+					this->setError("lz4 decompress_ev failed");
+					return(false);
+				}
+			} else {
+				this->setError("lz4 decompress failed");
 				return(false);
 			}
-		} else {
-			this->setError("lz4 decompress failed");
-			return(false);
+			if(this->lz4DecompressData) {
+				this->lz4DecompressData->removeDataFromLeft(sizeof(sChunkSizeInfo) + ((sChunkSizeInfo*)this->lz4DecompressData->data())->compress_size);
+			} else {
+				break;
+			}
 		}
 		if(use_len) {
 			*use_len = len;
@@ -858,25 +933,25 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 	char _compress_method[20];
 	strcpy_null_term(_compress_method, typeCompress);
 	strlwr(_compress_method, sizeof(_compress_method));
-	if(!strcmp(_compress_method, "zip") ||
-	   !strcmp(_compress_method, "gzip")) {
+	if(!strcasecmp(_compress_method, "zip") ||
+	   !strcasecmp(_compress_method, "gzip")) {
 		return(CompressStream::zip);
 	} 
 	#ifdef HAVE_LIBLZMA
-	else if(!strcmp(_compress_method, "lzma")) {
+	else if(!strcasecmp(_compress_method, "lzma")) {
 		return(CompressStream::lzma);
 	}
 	#endif //HAVE_LIBLZMA
-	else if(!strcmp(_compress_method, "snappy")) {
+	else if(!strcasecmp(_compress_method, "snappy")) {
 		return(CompressStream::snappy);
 	} 
-	else if(!strcmp(_compress_method, "lzo")) {
+	else if(!strcasecmp(_compress_method, "lzo")) {
 		return(CompressStream::lzo);
 	} 
 	#ifdef HAVE_LIBLZ4
-	else if(!strcmp(_compress_method, "lz4")) {
+	else if(!strcasecmp(_compress_method, "lz4")) {
 		return(CompressStream::lz4);
-	} else if(!strcmp(_compress_method, "lz4_stream")) {
+	} else if(!strcasecmp(_compress_method, "lz4_stream")) {
 		return(CompressStream::lz4_stream);
 	}
 	#endif //HAVE_LIBLZ4
