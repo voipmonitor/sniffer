@@ -6887,13 +6887,13 @@ string cThreadMonitor::output() {
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
 		int sched_type;
 		sched_param sch_param;
-		if(pthread_getschedparam(iter_dp->thread, &sched_type, &sch_param) == 0) {
-			if(sched_type != SCHED_OTHER || sch_param.sched_priority != 0) {
-				outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
-				       << " " << setw(3) << right << sch_param.sched_priority;
-			} else {
-				outStr << setw(11) << " ";
-			}
+		sched_type = sched_getscheduler(iter_dp->tid);
+		sched_getparam(iter_dp->tid, &sch_param);
+		if(sched_type != SCHED_OTHER || sch_param.sched_priority != 0) {
+			outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
+			       << " " << setw(3) << right << sch_param.sched_priority;
+		} else {
+			outStr << setw(11) << " ";
 		}
 		++counter;
 		if(!(counter % 2)) {

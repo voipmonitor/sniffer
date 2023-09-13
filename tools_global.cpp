@@ -116,25 +116,27 @@ bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> 
 	return(pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset) == 0);
 }
 
-bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type) {
-	int max_priority = sched_get_priority_max(sched_type);
-	if(max_priority == -1) {
-		syslog(LOG_NOTICE, "failed to get max priority for '%s' for thread %i", get_sched_type_str(sched_type).c_str(), tid);
-	} else {
-		sched_param sch_param; 
-		sch_param.sched_priority = max_priority;
-		int rslt_set = pthread_setschedparam(thread, sched_type, &sch_param);
-		if(rslt_set != 0) {
-			syslog(LOG_NOTICE, "failed (error %i) to set scheduler parameters for thread %i", rslt_set, tid);
-		} else {
-			return(true);
+bool pthread_set_max_priority(pthread_t thread, int tid, int sched_type, int priority) {
+	if(priority < 0) {
+		priority = sched_get_priority_max(sched_type);
+		if(priority == -1) {
+			syslog(LOG_NOTICE, "failed to get max priority for '%s' for thread %i", get_sched_type_str(sched_type).c_str(), tid);
+			return(false);
 		}
 	}
-	return(false);
+	sched_param sch_param; 
+	sch_param.sched_priority = priority;
+	int rslt_set = pthread_setschedparam(thread, sched_type, &sch_param);
+	if(rslt_set != 0) {
+		syslog(LOG_NOTICE, "failed (error %i) to set scheduler parameters for thread %i", rslt_set, tid);
+		return(false);
+	} else {
+		return(true);
+	}
 }
 
-bool pthread_set_max_priority(int sched_type) {
-	return(pthread_set_max_priority(pthread_self(), get_unix_tid(), sched_type));
+bool pthread_set_max_priority(int sched_type, int priority) {
+	return(pthread_set_max_priority(pthread_self(), get_unix_tid(), sched_type, priority));
 }
 
 string get_sched_type_str(int sched_type) {
