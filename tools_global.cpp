@@ -160,7 +160,7 @@ bool parse_sched_type_priority(const char *sched_type_priority, int *sched_type_
 	while(*p) {
 		if(isalpha(*p)) {
 			sched_type_str += *p;
-		} else if(isdigit(*p)) {
+		} else if(isdigit(*p) || *p == '-') {
 			priority_str += *p;
 		}
 		++p;
