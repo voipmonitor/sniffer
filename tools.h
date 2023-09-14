@@ -3599,12 +3599,13 @@ private:
 		int tid;
 		pthread_t thread;
 		string description;
-		pstat_data pstat[2];
+		pstat_data pstat[5][2];
+		int orig_scheduler;
+		int orig_priority;
 	};
 	struct sDescrCpuPerc {
 		string description;
 		int tid;
-		pthread_t thread;
 		double cpu_perc;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
@@ -3612,11 +3613,12 @@ private:
 	};
 public:
 	cThreadMonitor();
-	void registerThread(const char *description);
-	string output();
+	void registerThread(int tid, const char *description);
+	void unregisterThread(int tid);
+	void setSchedPolPriority(int indexPstat);
+	string output(int indexPstat);
 private:
-	void preparePstatData(sThread *thread);
-	double getCpuUsagePerc(sThread *thread);
+	double getCpuUsagePerc(sThread *thread, int indexPstat);
 	void tm_lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}

@@ -5,6 +5,7 @@
 #include <syslog.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/resource.h>
 
 #include "tools_global.h"
 
@@ -35,11 +36,13 @@ void *vm_pthread_create_start_routine(void *arg) {
 		syslog(LOG_NOTICE, "start thread '%s' %i", 
 		       thread_data.description.c_str(), get_unix_tid());
 	}
-	threadMonitor.registerThread(thread_data.description.c_str());
+	int tid = get_unix_tid();
+	threadMonitor.registerThread(tid, thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
 	#ifdef CLOUD_ROUTER_CLIENT
 	termTimeCacheForThread();
+	threadMonitor.unregisterThread(tid);
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "end thread '%s'", 
 		       thread_data.description.c_str());
@@ -117,7 +120,16 @@ bool pthread_set_affinity(pthread_t thread, vector<int> *cores_set, vector<int> 
 }
 
 bool pthread_set_priority(pthread_t thread, int tid, int sched_type, int priority) {
-	if(priority < 0) {
+	if(sched_type == 100) {
+		int rslt_set = setpriority(PRIO_PROCESS, tid, priority);
+		if(rslt_set != 0) {
+			syslog(LOG_NOTICE, "failed (error %i) to set priority for thread %i", rslt_set, tid);
+			return(false);
+		} else {
+			return(true);
+		}
+	}
+	if(priority == -1) {
 		priority = sched_get_priority_max(sched_type);
 		if(priority == -1) {
 			syslog(LOG_NOTICE, "failed to get max priority for '%s' for thread %i", get_sched_type_str(sched_type).c_str(), tid);
@@ -143,26 +155,41 @@ bool pthread_set_priority(const char *sched_type_priority) {
 	if(!sched_type_priority || !*sched_type_priority) {
 		return(false);
 	}
+	int sched_type;
+	int priority;
+	if(!parse_sched_type_priority(sched_type_priority, &sched_type, &priority)) {
+		return(false);
+	}
+	return(pthread_set_priority(pthread_self(), get_unix_tid(), sched_type, priority));
+}
+
+bool parse_sched_type_priority(const char *sched_type_priority, int *sched_type_out, int *priority_out) {
 	string sched_type_str;
 	string priority_str;
 	const char *p = sched_type_priority;
 	while(*p) {
 		if(isalpha(*p)) {
 			sched_type_str += *p;
-		} else if(isdigit(*p)) {
+		} else if(isdigit(*p) || *p == '-') {
 			priority_str += *p;
 		}
 		++p;
 	}
 	int sched_type = get_sched_type_from_str(sched_type_str.c_str());
 	if(sched_type == -1) {
-		syslog(LOG_NOTICE, "unknown schule policy %s", sched_type_str.c_str());
+		syslog(LOG_NOTICE, "unknown schedule policy %s", sched_type_str.c_str());
+		*sched_type_out = -1;
+		*priority_out = -1;
+		return(false);
 	}
-	return(pthread_set_priority(pthread_self(), get_unix_tid(), sched_type, atoi(priority_str.c_str())));
+	*sched_type_out = sched_type;
+	*priority_out = atoi(priority_str.c_str());
+	return(true);
 }
 
 string get_sched_type_str(int sched_type) {
-	return(sched_type == SCHED_OTHER ? "other" :
+	return(sched_type == 100 ? "prio" :
+	       sched_type == SCHED_OTHER ? "other" :
 	       sched_type == SCHED_FIFO ? "fifo" :
 	       sched_type == SCHED_RR ? "rr" :
 	       #ifdef __USE_GNU
@@ -175,7 +202,8 @@ string get_sched_type_str(int sched_type) {
 }
 
 int get_sched_type_from_str(const char *sched_type) {
-	return(strcasestr(sched_type, "other") ? SCHED_OTHER :
+	return(strcasestr(sched_type, "prio") ? 100 :
+	       strcasestr(sched_type, "other") ? SCHED_OTHER :
 	       strcasestr(sched_type, "fifo") ? SCHED_FIFO :
 	       strcasestr(sched_type, "rr") ? SCHED_RR :
 	       #ifdef __USE_GNU

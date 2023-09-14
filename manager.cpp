@@ -4265,7 +4265,7 @@ int Mgmt_sniffer_threads(Mgmt_params *params) {
 		return(0);
 	}
 	extern cThreadMonitor threadMonitor;
-	string threads = threadMonitor.output();
+	string threads = threadMonitor.output(1);
 	return(params->sendString(&threads));
 }
 
