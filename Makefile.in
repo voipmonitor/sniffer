@@ -101,6 +101,10 @@ CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 
 LIBS2 = @LIBS2@
 
+CFLAGS += @CFLAGS@
+CXXFLAGS += @CXXFLAGS@
+LDFLAGS += @LDFLAGS@
+
 shared: LDFLAGS += -Wl,--allow-multiple-definition
 shared: cleantest $(objects) 
 	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS_PATH} ${LIBS}

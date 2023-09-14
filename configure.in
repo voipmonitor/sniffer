@@ -2,9 +2,12 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.67])
-AC_INIT([voipmonitor], [VERSION], [support@voipmonitor.org])
+AC_INIT([voipmonitor],[VERSION],[support@voipmonitor.org])
 AC_CONFIG_SRCDIR([voipmonitor.cpp])
 AC_CONFIG_HEADERS([config.h])
+
+AC_ARG_VAR([CFLAGS], [compiler flags for C])
+AC_ARG_VAR([CXXFLAGS], [compiler flags for C++])
 
 # test platform
 PLATFORM=`uname`

@@ -615,14 +615,12 @@ INSTALL_DATA
 INSTALL_SCRIPT
 INSTALL_PROGRAM
 ac_ct_CC
-CFLAGS
 CC
 OBJEXT
 EXEEXT
 ac_ct_CXX
 CPPFLAGS
 LDFLAGS
-CXXFLAGS
 CXX
 target_os
 target_vendor
@@ -636,6 +634,8 @@ build_os
 build_vendor
 build_cpu
 build
+CXXFLAGS
+CFLAGS
 target_alias
 host_alias
 build_alias
@@ -688,14 +688,14 @@ enable_dpdk
       ac_precious_vars='build_alias
 host_alias
 target_alias
-CXX
+CFLAGS
 CXXFLAGS
+CXX
 LDFLAGS
 LIBS
 CPPFLAGS
 CCC
-CC
-CFLAGS'
+CC'
 
 
 # Initialize some variables set by options.
@@ -1323,15 +1323,15 @@ Optional Packages:
   --with-heap_profiler    use tcmalloc library with heap profiler
 
 Some influential environment variables:
+  CFLAGS      compiler flags for C
+  CXXFLAGS    compiler flags for C++
   CXX         C++ compiler command
-  CXXFLAGS    C++ compiler flags
   LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
               nonstandard directory <lib dir>
   LIBS        libraries to pass to the linker, e.g. -l<library>
   CPPFLAGS    (Objective) C/C++ preprocessor flags, e.g. -I<include dir> if
               you have headers in a nonstandard directory <include dir>
   CC          C compiler command
-  CFLAGS      C compiler flags
 
 Use these variables to override the choices made by `configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -1934,6 +1934,9 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 ac_config_headers="$ac_config_headers config.h"
+
+
+
 
 
 # test platform
