@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+#include <sys/resource.h>
 
 #include "voipmonitor.h"
 
@@ -6906,12 +6907,11 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 				sched_getparam(thread->tid, &sch_param);
 				thread->orig_priority = sch_param.sched_priority;
 			}
-			if(sched_type != sched_getscheduler(thread->tid)) {
-				sched_param sch_param;
-				sched_getparam(thread->tid, &sch_param);
-				if(priority != sch_param.sched_priority) {
-					pthread_set_priority(thread->thread, thread->tid, sched_type, priority);
-				}
+			sched_param sch_param;
+			sched_getparam(thread->tid, &sch_param);
+			if(sched_type != sched_getscheduler(thread->tid) ||
+			   priority != sch_param.sched_priority) {
+				pthread_set_priority(thread->thread, thread->tid, sched_type, priority);
 			}
 			tm_unlock();
 		} else {
@@ -6958,7 +6958,12 @@ string cThreadMonitor::output(int indexPstat) {
 			outStr << "  " << setw(5) << left << get_sched_type_str(sched_type)
 			       << " " << setw(3) << right << sch_param.sched_priority;
 		} else {
-			outStr << setw(11) << " ";
+			int priority = getpriority(PRIO_PROCESS, iter_dp->tid);
+			if(priority != 0) {
+				outStr << "  " << setw(5) << left << priority << setw(4) << " ";
+			} else {
+				outStr << setw(11) << " ";
+			}
 		}
 		++counter;
 		if(!(counter % 2)) {
