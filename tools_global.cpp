@@ -188,31 +188,55 @@ bool parse_sched_type_priority(const char *sched_type_priority, int *sched_type_
 }
 
 string get_sched_type_str(int sched_type) {
-	return(sched_type == 100 ? "prio" :
-	       sched_type == SCHED_OTHER ? "other" :
-	       sched_type == SCHED_FIFO ? "fifo" :
-	       sched_type == SCHED_RR ? "rr" :
-	       #ifdef __USE_GNU
-	       sched_type == SCHED_BATCH ? "batch" :
-	       sched_type == SCHED_ISO ? "iso" :
-	       sched_type == SCHED_IDLE ? "idle" :
-	       sched_type == SCHED_DEADLINE ? "deadl" :
-	       #endif
-	       "?");
+	if (sched_type == 100) return "prio";
+	#ifdef SCHED_OTHER
+	if (sched_type == SCHED_OTHER) return "other";
+	#endif
+	#ifdef SCHED_FIFO
+	if (sched_type == SCHED_FIFO) return "fifo";
+	#endif
+	#ifdef SCHED_RR
+	if (sched_type == SCHED_RR) return "rr";
+	#endif
+	#ifdef SCHED_BATCH
+	if (sched_type == SCHED_BATCH) return "batch";
+	#endif
+	#ifdef SCHED_ISO
+	if (sched_type == SCHED_ISO) return "iso";
+	#endif
+	#ifdef SCHED_IDLE
+	if (sched_type == SCHED_IDLE) return "idle";
+	#endif
+	#ifdef SCHED_DEADLINE
+	if (sched_type == SCHED_DEADLINE) return "deadl";
+	#endif
+	return "?";
 }
 
 int get_sched_type_from_str(const char *sched_type) {
-	return(strcasestr(sched_type, "prio") ? 100 :
-	       strcasestr(sched_type, "other") ? SCHED_OTHER :
-	       strcasestr(sched_type, "fifo") ? SCHED_FIFO :
-	       strcasestr(sched_type, "rr") ? SCHED_RR :
-	       #ifdef __USE_GNU
-	       strcasestr(sched_type, "batch") ? SCHED_BATCH :
-	       strcasestr(sched_type, "iso") ? SCHED_ISO :
-	       strcasestr(sched_type, "idle") ? SCHED_IDLE :
-	       strcasestr(sched_type, "deadl") ? SCHED_DEADLINE :
-	       #endif
-	       -1);
+	if (strcasestr(sched_type, "prio")) return 100;
+	#ifdef SCHED_OTHER
+	if (strcasestr(sched_type, "other")) return SCHED_OTHER;
+	#endif
+	#ifdef SCHED_FIFO
+	if (strcasestr(sched_type, "fifo")) return SCHED_FIFO;
+	#endif
+	#ifdef SCHED_RR
+	if (strcasestr(sched_type, "rr")) return SCHED_RR;
+	#endif
+	#ifdef SCHED_BATCH
+	if (strcasestr(sched_type, "batch")) return SCHED_BATCH;
+	#endif
+	#ifdef SCHED_ISO
+	if (strcasestr(sched_type, "iso")) return SCHED_ISO;
+	#endif
+	#ifdef SCHED_IDLE
+	if (strcasestr(sched_type, "idle")) return SCHED_IDLE;
+	#endif
+	#ifdef SCHED_DEADLINE
+	if (strcasestr(sched_type, "deadl")) return SCHED_DEADLINE;
+	#endif
+	return -1;
 }
 
 void get_list_cores(string input, vector<int> &list) {
