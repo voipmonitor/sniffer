@@ -57,7 +57,6 @@ extern char *diameter_tcp_portmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
 extern unsigned int defrag_counter;
-extern unsigned int duplicate_counter;
 extern int opt_save_ip_from_encaps_ipheader_only_gre;
 
 
@@ -868,13 +867,13 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	if(((ppf & ppf_calcMD5) || (ppf & ppf_dedup)) && ppd->header_ip) {
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
 		if(opt_dup_check && 
-		   ppd->prevmd5s != NULL && 
+		   ppd->dedup_buffer != NULL && 
 		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
 		   !(ppd->flags.tcp && opt_enable_http && (httpportmatrix[ppd->header_tcp->get_source()] || httpportmatrix[ppd->header_tcp->get_dest()])) &&
 		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
 		   !(ppd->flags.tcp && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
-			uint16_t *_md5 = header_packet ? (*header_packet)->md5 : pcap_header_plus2->md5;
+			sPacketDuplCheck *_dc = header_packet ? &(*header_packet)->dc : &pcap_header_plus2->dc;
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;
 				u_int8_t header_ip_ttl_orig;
@@ -902,12 +901,12 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						header_udp_set_orig = true;
 					}
 				}
-				MD5_Init(&ppd->ctx);
+				sPacketDuplCheckProc dcp(_dc, opt_dup_check == 2);
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
-					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len()));
+					dcp.data(ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len()));
 				} else if(opt_dup_check_ipheader == 1) {
-					MD5_Update(&ppd->ctx, ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len()));
+					dcp.data(ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len()));
 				} else if(opt_dup_check_ipheader == 2) {
 					u_int16_t header_ip_size = ppd->header_ip->get_hdr_size();
 					u_char *data_md5 = (u_char*)ppd->header_ip;
@@ -916,14 +915,14 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						data_md5 += header_ip_size;
 						data_md5_size -= header_ip_size;
 					}
-					MD5_Update(&ppd->ctx, data_md5 , data_md5_size);
-					ppd->header_ip->md5_update_ip(&ppd->ctx);
+					dcp.data(data_md5 , data_md5_size);
+					ppd->header_ip->md5_update_ip(&dcp);
 				} else {
 					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 					// will be matched regardless on IP 
-					MD5_Update(&ppd->ctx, ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
+					dcp.data(ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
 				}
-				MD5_Final((unsigned char*)_md5, &ppd->ctx);
+				dcp.final();
 				if(header_ip_set_orig) {
 					ppd->header_ip->set_ttl(header_ip_ttl_orig);
 					ppd->header_ip->set_check(header_ip_check_orig);
@@ -935,12 +934,13 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				cout << " " << MD5_String((unsigned char*)_md5);
 				#endif
 			}
-			if((ppf & ppf_dedup) && _md5[0]) {
-				if(memcmp(_md5, ppd->prevmd5s + (_md5[0] * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+			if((ppf & ppf_dedup) && !_dc->is_empty()) {
+				if(_dc->check_dupl(ppd->dedup_buffer, opt_dup_check == 2)) {
 					//printf("dropping duplicate md5[%s]\n", md5);
+					extern unsigned int duplicate_counter;
 					duplicate_counter++;
 					if(sverb.dedup) {
-						cout << "*** DEDUP " << duplicate_counter << endl;
+						cout << "*** DEDUP (pcapProcess) " << duplicate_counter << endl;
 					}
 					if(pcap_header_plus2) {
 						pcap_header_plus2->ignore = true;
@@ -950,7 +950,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					#endif
 					return(0);
 				}
-				memcpy(ppd->prevmd5s + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
+				_dc->store(ppd->dedup_buffer, opt_dup_check == 2);
 			}
 		}
 	}

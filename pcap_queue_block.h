@@ -173,13 +173,13 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	}
 	inline void clear() {
 		detect_headers = 0;
-		md5[0] = 0;
+		dc.clear();
 		ignore = false;
 		pid.clear();
 	}
 	u_int8_t detect_headers;
 	u_int16_t eth_protocol;
-	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	sPacketDuplCheck dc;
 	u_int8_t ignore;
 };
 

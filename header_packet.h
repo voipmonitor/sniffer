@@ -4,6 +4,7 @@
 
 #include "rqueue.h"
 #include "md5.h"
+#include "packet_dupl_check.h"
 
 
 #define VLAN_UNSET 0xFFFF
@@ -28,12 +29,12 @@ struct sHeaderPacket {
 	u_int16_t header_ip_offset;
 	u_int16_t eth_protocol;
 	sPacketInfoData pid;
-	uint16_t md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
+	sPacketDuplCheck dc;
 	pcap_pkthdr header;
 	u_char packet[1];
 	inline void clearPcapProcessData() {
 		detect_headers = 0;
-		md5[0] = 0;
+		dc.clear();
 	}
 };
 #define HPH(hp) (&((hp)->header))

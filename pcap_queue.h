@@ -391,13 +391,14 @@ struct pcapProcessData {
 		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 		extern int opt_dup_check;
 		if(opt_dup_check) {
-			this->prevmd5s = new FILE_LINE(16003) unsigned char[65536 * MD5_DIGEST_LENGTH]; // 1M
-			memset(this->prevmd5s, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(unsigned char));
+			unsigned dedup_buffer_size = 65536 * (opt_dup_check == 2 ? MD5_DIGEST_LENGTH : sizeof(u_int32_t));
+			this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
+			memset(this->dedup_buffer, 0, dedup_buffer_size);
 		}
 	}
 	~pcapProcessData() {
-		if(this->prevmd5s) {
-			delete [] this->prevmd5s;
+		if(this->dedup_buffer) {
+			delete [] this->dedup_buffer;
 		}
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
@@ -414,8 +415,7 @@ struct pcapProcessData {
 	int16_t traillen;
 	packet_flags flags;
 	sPacketInfoData pid;
-	unsigned char *prevmd5s;
-	MD5_CTX ctx;
+	unsigned char *dedup_buffer;
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };

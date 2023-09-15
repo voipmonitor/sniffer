@@ -549,7 +549,7 @@ void cSnifferServerConnection::cp_service() {
 			ok_parameters.add("use_blocks_pb", true);
 		}
 		if(opt_dup_check) {
-			ok_parameters.add("deduplicate", true);
+			ok_parameters.add("deduplicate", opt_dup_check);
 		}
 		if(useNewStore()) {
 			ok_parameters.add("mysql_new_store", useNewStore());
@@ -1352,11 +1352,16 @@ bool cSnifferClientService::receive_process_loop_begin() {
 							syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because it is enabled on server");
 							change_config = true;
 						}
-						if(!rsltConnectData_json.getValue("deduplicate").empty() &&
-						   !opt_dup_check) {
-							opt_dup_check = true;
-							syslog(LOG_NOTICE, "enabling deduplicate because it is enabled on server");
-							change_config = true;
+						if(!rsltConnectData_json.getValue("deduplicate").empty()) {
+							int server_dup_check = atoi(rsltConnectData_json.getValue("deduplicate").c_str());
+							if(opt_dup_check != server_dup_check) {
+								syslog(LOG_NOTICE, 
+								       opt_dup_check ?
+									"change the deduplication type because it is set differently on the server" :
+									"enabling deduplicate because it is enabled on server");
+								opt_dup_check = server_dup_check;
+								change_config = true;
+							}
 						}
 						if(change_config) {
 							extern void set_context_config();
