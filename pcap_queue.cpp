@@ -9150,7 +9150,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
 	if(typeOutputThread == dedup) {
-		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 2 ? MD5_DIGEST_LENGTH : sizeof(u_int32_t));
+		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int32_t));
 		this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
 		memset(this->dedup_buffer, 0, dedup_buffer_size);
 	} else {
