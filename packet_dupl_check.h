@@ -41,7 +41,7 @@ struct sPacketDuplCheck {
 			store_md5(dedup_buffer);
 		}
 	}
-};
+} __attribute__((packed));
 
 struct sPacketDuplCheckProc {
 	inline sPacketDuplCheckProc(sPacketDuplCheck *dc, bool _crc = false) {
