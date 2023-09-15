@@ -6854,6 +6854,7 @@ void cThreadMonitor::registerThread(int tid, const char *description) {
 	thread.thread = pthread_self();
 	thread.description = description;
 	memset(thread.pstat, 0, sizeof(thread.pstat));
+	memset(thread.cs, 0, sizeof(thread.cs));
 	thread.orig_scheduler = -1;
 	thread.orig_priority = -1;
 	tm_lock();
@@ -6932,6 +6933,7 @@ string cThreadMonitor::output(int indexPstat) {
 			dp.description = iter->second.description;
 			dp.tid = iter->second.tid;
 			dp.cpu_perc = cpu_perc;
+			dp.cs = this->getContextSwitches(&iter->second, indexPstat);
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
 		}
@@ -6950,6 +6952,7 @@ string cThreadMonitor::output(int indexPstat) {
 		       << setw(maxDescrLength) << left << iter_dp->description.substr(0, maxDescrLength)
 		       << " (" << setw(6) << right << iter_dp->tid << ") : "
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
+		// scheduler / priority
 		int sched_type;
 		sched_param sch_param;
 		sched_type = sched_getscheduler(iter_dp->tid);
@@ -6965,6 +6968,31 @@ string cThreadMonitor::output(int indexPstat) {
 				outStr << setw(11) << " ";
 			}
 		}
+		// nonvoluntary / voluntary
+		outStr << "  ";
+		if(iter_dp->cs.non_voluntary > 1e9) {
+			outStr << right << scientific << setprecision(2)
+			       << (double)iter_dp->cs.non_voluntary;
+		} else {
+			outStr << right << setw(8)
+			       << iter_dp->cs.non_voluntary;
+		}
+		outStr << " / ";
+		if(iter_dp->cs.voluntary > 1e9) {
+			outStr << right << scientific << setprecision(2)
+			       << (double)iter_dp->cs.voluntary;
+		} else {
+			outStr << right << setw(8)
+			       << iter_dp->cs.voluntary;
+		}
+		if(iter_dp->cs.voluntary) {
+			outStr << " / "
+			       << right << setprecision(3) << setw(7)
+			       << ((double)iter_dp->cs.non_voluntary / iter_dp->cs.voluntary);
+		} else {
+			outStr << setw(10) << " ";
+		}
+		//
 		++counter;
 		if(!(counter % 2)) {
 			outStr << endl;
@@ -6992,6 +7020,18 @@ double cThreadMonitor::getCpuUsagePerc(sThread *thread, int indexPstat) {
 		return(ucpu_usage + scpu_usage);
 	}
 	return(-1);
+}
+
+context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, int indexPstat) {
+	if(thread->cs[indexPstat][0].voluntary || thread->cs[indexPstat][0].non_voluntary) {
+		thread->cs[indexPstat][1] = thread->cs[indexPstat][0];
+	}
+	context_switches_get_data(thread->tid, thread->cs[indexPstat]);
+	context_switches_data rslt = { 0, 0 };
+	if(thread->cs[indexPstat][0].voluntary || thread->cs[indexPstat][0].non_voluntary) {
+		rslt = get_context_switches(&thread->cs[indexPstat][0], &thread->cs[indexPstat][1]);
+	}
+	return(rslt);
 }
 
 

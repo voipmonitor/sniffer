@@ -17,12 +17,12 @@ extern bool opt_interrupts_counters;
 bool pstat_quietly_errors = false;
 
 
-bool pstat_get_data(const int pid, pstat_data* result) {
+bool pstat_get_data(const int tid, pstat_data* result) {
 	char stat_filepath[100]; 
-	//snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", pid);
+	//snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", tid);
 	
-	if(pid) {
-		snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/task/%u/stat", getpid(), pid);
+	if(tid) {
+		snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/task/%u/stat", getpid(), tid);
 	} else {
 		snprintf(stat_filepath, sizeof(stat_filepath), "/proc/%u/stat", getpid());
 	}
@@ -78,6 +78,43 @@ bool pstat_get_data(const int pid, pstat_data* result) {
 	return(true);
 }
 
+bool context_switches_get_data(const int tid, context_switches_data* result) {
+	char filepath[100]; 
+	snprintf(filepath, sizeof(filepath), "/proc/%u/task/%u/status", getpid(), tid);
+	
+	FILE *fp = fopen(filepath, "r");
+	if(fp == NULL) {
+		#ifndef FREEBSD
+		if(!pstat_quietly_errors && errno != ENOENT) {
+			perror("fopen error (/proc/[pid]/task/[taskid]/satus) ");
+		}
+		#endif
+		return(false);
+	}
+	char line[256];
+	while(fgets(line, sizeof(line), fp)) {
+		if(strstr(line, "voluntary_ctxt_switches:")) {
+			const char *sep = strchr(line, ':');
+			if(sep) {
+				++sep;
+				while(*sep == ' ' || *sep == '\t') {
+					++sep;
+				}
+				if(isdigit(*sep)) {
+					bool non = strstr(line, "nonvoluntary");
+					if(non) {
+						result->non_voluntary = atoll(sep);
+					} else {
+						result->voluntary = atoll(sep);
+					}
+				}
+			}
+		}
+	}
+	fclose(fp);
+	return(true);
+}
+
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
 			      double* ucpu_usage, double* scpu_usage) {
@@ -97,12 +134,12 @@ void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 	*scpu_usage = _scpu_usage < 200 ? _scpu_usage : 0;
 }
 
-double get_cpu_usage_perc(const int pid, pstat_data *data) {
-	if(pid) {
+double get_cpu_usage_perc(const int tid, pstat_data *data) {
+	if(tid) {
 		if(data[0].cpu_total_time) {
 			data[1] = data[0];
 		}
-		pstat_get_data(pid, data);
+		pstat_get_data(tid, data);
 		double ucpu_usage, scpu_usage;
 		if(data[0].cpu_total_time && data[1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(&data[0], &data[1], &ucpu_usage, &scpu_usage);
@@ -110,6 +147,17 @@ double get_cpu_usage_perc(const int pid, pstat_data *data) {
 		}
 	}
 	return(-1);
+}
+
+context_switches_data get_context_switches(const context_switches_data* cur, const context_switches_data* last) {
+	context_switches_data rslt = { 0, 0 };
+	if(cur->voluntary >= last->voluntary) {
+		rslt.voluntary = cur->voluntary - last->voluntary;
+	}
+	if(cur->non_voluntary >= last->non_voluntary) {
+		rslt.non_voluntary = cur->non_voluntary - last->non_voluntary;
+	}
+	return(rslt);
 }
 
 long unsigned int getRss() {

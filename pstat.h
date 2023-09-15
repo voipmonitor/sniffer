@@ -16,12 +16,19 @@ struct pstat_data {
     long long unsigned int cpu_total_time;
 };
 
+struct context_switches_data {
+    long long unsigned int voluntary;
+    long long unsigned int non_voluntary;
+};
 
-bool pstat_get_data(const int pid, pstat_data* result);
+
+bool pstat_get_data(const int tid, pstat_data* result);
+bool context_switches_get_data(const int tid, context_switches_data* result);
 void pstat_calc_cpu_usage_pct(const pstat_data* cur_usage,
 			      const pstat_data* last_usage,
 			      double* ucpu_usage, double* scpu_usage);
-double get_cpu_usage_perc(const int pid, pstat_data *data);
+double get_cpu_usage_perc(const int tid, pstat_data *data);
+context_switches_data get_context_switches(const context_switches_data* cur, const context_switches_data* last);
 long unsigned int getRss();
 void getLoadAvg(double *la_1, double *la_5, double *la_15);
 std::string getLoadAvgStr();

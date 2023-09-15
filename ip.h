@@ -35,6 +35,7 @@
 
 #include "endian.h"
 #include "md5.h"
+#include "packet_dupl_check.h"
 
 
 #ifdef FREEBSD
@@ -577,6 +578,10 @@ struct ip6hdr2 {
 		MD5_Update(ctx, &_saddr , sizeof(_saddr));
 		MD5_Update(ctx, &_daddr , sizeof(_daddr));
 	}
+	inline void md5_update_ip(sPacketDuplCheckProc *dcp) {
+		dcp->data(&_saddr , sizeof(_saddr));
+		dcp->data(&_daddr , sizeof(_daddr));
+	}
 	#if __BYTE_ORDER == __LITTLE_ENDIAN
 	unsigned tc1:4;
 	unsigned version:4;
@@ -907,6 +912,18 @@ struct iphdr2 {
 		#if VM_IPV6
 		} else {
 			((ip6hdr2*)this)->md5_update_ip(ctx);
+		}
+		#endif
+	}
+	inline void md5_update_ip(sPacketDuplCheckProc *dcp) {
+		#if VM_IPV6
+		if(version == 4) {
+		#endif
+			dcp->data(&_saddr , sizeof(_saddr));
+			dcp->data(&_daddr , sizeof(_daddr));
+		#if VM_IPV6
+		} else {
+			((ip6hdr2*)this)->md5_update_ip(dcp);
 		}
 		#endif
 	}

@@ -6335,7 +6335,8 @@ void cConfig::addConfigItems() {
 				->addAlias("autocleanspoolmingb"));
 		setDisableIfEnd();
 	group("IP protocol");
-		addConfigItem(new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check));
+		addConfigItem((new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check))
+			->addValues("md5:1|crc:2"));
 		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader))
 				->addValues("ip_only:2"));
 		addConfigItem(new FILE_LINE(42248) cConfigItem_yesno("udpfrag", &opt_udpfrag));

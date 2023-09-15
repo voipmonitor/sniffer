@@ -5267,7 +5267,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			POP_FROM_PREV_THREAD;
 			bool okPush = true;
 			if((this->typeThread == md1 && !(this->counter % 2)) ||
-			   (this->typeThread == md2 && (opt_dup_check ? !hpii.header_packet->md5[0] : !hpii.header_packet->detect_headers))) {
+			   (this->typeThread == md2 && (opt_dup_check ? hpii.header_packet->dc.is_empty() : !hpii.header_packet->detect_headers))) {
 				if(opt_dup_check || !hpii.header_packet->detect_headers) {
 					res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 								NULL, 0,
@@ -5995,7 +5995,7 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 			}
 			break;
 		case md2:
-			if(!((pcap_pkthdr_plus2*)block->get_header(i))->md5[0]) {
+			if(((pcap_pkthdr_plus2*)block->get_header(i))->dc.is_empty()) {
 				this->pcapProcess(NULL, 0, block, i, ppf, _pcapDumpHandle);
 			}
 			break;
@@ -9150,8 +9150,9 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
 	if(typeOutputThread == dedup) {
-		this->dedup_buffer = new FILE_LINE(16003) u_char[65536 * MD5_DIGEST_LENGTH]; // 1M
-		memset(this->dedup_buffer, 0, 65536 * MD5_DIGEST_LENGTH * sizeof(u_char));
+		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int32_t));
+		this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
+		memset(this->dedup_buffer, 0, dedup_buffer_size);
 	} else {
 		this->dedup_buffer = NULL;
 	}
@@ -9488,10 +9489,10 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 }
 
 void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
-	uint16_t *_md5 = NULL;
-	uint16_t __md5[MD5_DIGEST_LENGTH / (sizeof(uint16_t) / sizeof(unsigned char))];
-	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && ((pcap_pkthdr_plus2*)hp->header)->md5[0]) {
-		_md5 = ((pcap_pkthdr_plus2*)hp->header)->md5;
+	sPacketDuplCheck *_dc = NULL;
+	sPacketDuplCheck __dc;
+	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && !((pcap_pkthdr_plus2*)hp->header)->dc.is_empty()) {
+		_dc = &((pcap_pkthdr_plus2*)hp->header)->dc;
 	} else {
 		if(hp->header->header_ip_offset) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
@@ -9510,8 +9511,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
 			if(data && datalen) {
-				MD5_CTX md5_ctx;
-				MD5_Init(&md5_ctx);
+				sPacketDuplCheckProc dcp(&__dc, opt_dup_check == 2);
 				if(opt_dup_check_ipheader) {
 					bool header_ip_set_orig = false;
 					u_int8_t header_ip_ttl_orig = 0;
@@ -9531,7 +9531,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 						header_udp_set_orig = true;
 					}
 					if(opt_dup_check_ipheader == 1) {
-						MD5_Update(&md5_ctx, header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
+						dcp.data(header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
 					} else if(opt_dup_check_ipheader == 2) {
 						u_int16_t header_ip_size = header_ip->get_hdr_size();
 						u_char *data_md5 = (u_char*)header_ip;
@@ -9540,8 +9540,8 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 							data_md5 += header_ip_size;
 							data_md5_size -= header_ip_size;
 						}
-						MD5_Update(&md5_ctx, data_md5 , data_md5_size);
-						header_ip->md5_update_ip(&md5_ctx);
+						dcp.data(data_md5 , data_md5_size);
+						header_ip->md5_update_ip(&dcp);
 					}
 					if(header_ip_set_orig) {
 						header_ip->set_ttl(header_ip_ttl_orig);
@@ -9551,22 +9551,24 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 						header_udp->check = header_udp_checksum_orig;
 					}
 				} else {
-					MD5_Update(&md5_ctx, data, datalen);
+					dcp.data(data, datalen);
 				}
-				MD5_Final((unsigned char*)__md5, &md5_ctx);
-				_md5 = __md5;
+				dcp.final();
+				_dc = &__dc;
 			}
 		}
 	}
-	if(_md5) {
-		if(memcmp(_md5, this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), MD5_DIGEST_LENGTH) == 0) {
+	if(_dc) {
+		if(_dc->check_dupl(this->dedup_buffer, opt_dup_check == 2)) {
+			extern unsigned int duplicate_counter;
+			duplicate_counter++;
 			if(sverb.dedup) {
-				cout << "*** DEDUP 2" << endl;
+				cout << "*** DEDUP (processDedup) " << duplicate_counter << endl;
 			}
 			hp->destroy_or_unlock_blockstore();
 			return;
 		}
-		memcpy(this->dedup_buffer + (_md5[0] * MD5_DIGEST_LENGTH), _md5, MD5_DIGEST_LENGTH);
+		_dc->store(this->dedup_buffer, opt_dup_check == 2);
 	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
 		hp->destroy_or_unlock_blockstore();

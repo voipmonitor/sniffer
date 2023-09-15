@@ -3600,6 +3600,7 @@ private:
 		pthread_t thread;
 		string description;
 		pstat_data pstat[5][2];
+		context_switches_data cs[5][2];
 		int orig_scheduler;
 		int orig_priority;
 	};
@@ -3607,6 +3608,7 @@ private:
 		string description;
 		int tid;
 		double cpu_perc;
+		context_switches_data cs;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
 		}
@@ -3619,6 +3621,7 @@ public:
 	string output(int indexPstat);
 private:
 	double getCpuUsagePerc(sThread *thread, int indexPstat);
+	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
 	void tm_lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
