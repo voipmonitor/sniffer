@@ -150,6 +150,9 @@ struct pcap_pkthdr_plus {
 	inline u_int64_t get_time_ms() {
 		return(get_tv_sec() * 1000ull + get_tv_usec() / 1000);
 	}
+	inline u_int64_t get_time_us() {
+		return(get_tv_sec() * 1000000ull + get_tv_usec());
+	}
 	#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 		pcap_pkthdr header;
 	#else

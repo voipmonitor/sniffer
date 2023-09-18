@@ -901,7 +901,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						header_udp_set_orig = true;
 					}
 				}
-				sPacketDuplCheckProc dcp(_dc, opt_dup_check == 2);
+				sPacketDuplCheckProc dcp(_dc, opt_dup_check);
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
 					dcp.data(ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len()));
@@ -935,7 +935,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				#endif
 			}
 			if((ppf & ppf_dedup) && !_dc->is_empty()) {
-				if(_dc->check_dupl(ppd->dedup_buffer, opt_dup_check == 2)) {
+				if(_dc->check_dupl(ppd->dedup_buffer, opt_dup_check)) {
 					//printf("dropping duplicate md5[%s]\n", md5);
 					extern unsigned int duplicate_counter;
 					duplicate_counter++;
@@ -950,7 +950,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					#endif
 					return(0);
 				}
-				_dc->store(ppd->dedup_buffer, opt_dup_check == 2);
+				_dc->store(ppd->dedup_buffer, opt_dup_check);
 			}
 		}
 	}

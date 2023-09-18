@@ -9150,7 +9150,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
 	if(typeOutputThread == dedup) {
-		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int32_t));
+		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int16_t));
 		this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
 		memset(this->dedup_buffer, 0, dedup_buffer_size);
 	} else {
@@ -9511,7 +9511,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
 			if(data && datalen) {
-				sPacketDuplCheckProc dcp(&__dc, opt_dup_check == 2);
+				sPacketDuplCheckProc dcp(&__dc, opt_dup_check);
 				if(opt_dup_check_ipheader) {
 					bool header_ip_set_orig = false;
 					u_int8_t header_ip_ttl_orig = 0;
@@ -9559,7 +9559,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		}
 	}
 	if(_dc) {
-		if(_dc->check_dupl(this->dedup_buffer, opt_dup_check == 2)) {
+		if(_dc->check_dupl(this->dedup_buffer, opt_dup_check)) {
 			extern unsigned int duplicate_counter;
 			duplicate_counter++;
 			if(sverb.dedup) {
@@ -9568,7 +9568,7 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			hp->destroy_or_unlock_blockstore();
 			return;
 		}
-		_dc->store(this->dedup_buffer, opt_dup_check == 2);
+		_dc->store(this->dedup_buffer, opt_dup_check);
 	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
 		hp->destroy_or_unlock_blockstore();
