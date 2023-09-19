@@ -34,6 +34,12 @@
 /* Define if using liblzma */
 #undef HAVE_LIBLZMA
 
+/* Define if using libzstd */
+#undef HAVE_LIBZSTD
+
+/* Define if using liblz4 */
+#undef HAVE_LIBLZ4
+
 /* Define if using liblzo */
 #undef HAVE_LIBLZO
 
