@@ -11,6 +11,9 @@
 #ifdef HAVE_LIBLZMA
 #include <lzma.h>
 #endif //HAVE_LIBLZMA
+#ifdef HAVE_LIBZSTD
+#include <zstd.h>
+#endif //HAVE_LIBZSTD
 #ifdef HAVE_LIBLZ4
 #include <lz4.h>
 #endif //HAVE_LIBLZ4
@@ -44,6 +47,7 @@ public:
 		zip,
 		gzip,
 		lzma,
+		zstd,
 		snappy,
 		lzo,
 		lz4,
@@ -57,8 +61,7 @@ public:
 public:
 	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	virtual ~CompressStream();
-	void setZipLevel(int zipLevel);
-	void setLzmaLevel(int lzmaLevel);
+	void setCompressLevel(int compressLevel);
 	void enableAutoPrefixFile();
 	void enableForceStream();
 	void setSendParameters(int client, void *c_client);
@@ -121,6 +124,10 @@ private:
 	lzma_stream *lzmaStream;
 	lzma_stream *lzmaStreamDecompress;
 	#endif //HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	ZSTD_CCtx *zstdCtx;
+	ZSTD_DCtx *zstdCtxDecompress;
+	#endif //HAVE_LIBZSTD
 	#ifdef HAVE_LIBLZ4
 	LZ4_stream_t *lz4Stream;
 	LZ4_streamDecode_t *lz4StreamDecode;
@@ -133,8 +140,7 @@ private:
 	#endif //HAVE_LIBLZO
 	class SimpleBuffer *snappyDecompressData;
 	string errorString;
-	int zipLevel;
-	int lzmaLevel;
+	int compressLevel;
 	bool autoPrefixFile;
 	bool forceStream;
 	u_int32_t processed_len;
@@ -229,7 +235,7 @@ public:
 		    const char *name = NULL);
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
-	void setZipLevel(int zipLevel);
+	void setCompressLevel(int compressLevel);
 	int getTime() {
 		return(time);
 	}

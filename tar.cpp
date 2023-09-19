@@ -59,7 +59,7 @@ using namespace std;
 volatile unsigned int glob_tar_queued_files;
 
 extern bool opt_pcap_dump_tar_use_hash_instead_of_long_callid;
-extern int opt_pcap_dump_tar_compress_sip; //0 off, 1 gzip, 2 lzma
+extern int opt_pcap_dump_tar_compress_sip; //0 off, 1 gzip, 2 lzma, 3 zstd
 extern int opt_pcap_dump_tar_sip_level;
 extern int opt_pcap_dump_tar_compress_rtp;
 extern int opt_pcap_dump_tar_rtp_level;
@@ -368,7 +368,8 @@ void
 Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, const char *tarPosString) {
 	bool enableDetectTarPos = true;
 	if(!reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) &&
-	   !reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__)) {
+	   !reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) &&
+	   !reg_match(this->pathname.c_str(), "tar\\.zst", __FILE__, __LINE__)) {
 		this->readData.send_parameters_zip = false;
 	} else {
 		enableDetectTarPos = false;
@@ -386,6 +387,8 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 									 CompressStream::gzip :
 									reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) ?
 									 CompressStream::lzma :
+									reg_match(this->pathname.c_str(), "tar\\.zst", __FILE__, __LINE__) ?
+									 CompressStream::zstd :
 									 CompressStream::compress_na,
 									this->readData.bufferBaseSize, 0);
 	size_t read_position = 0;
@@ -666,8 +669,8 @@ Tar::initZip() {
 			//this->setError("zip initialize failed");
 			return(false);
 		} else {
-			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new FILE_LINE(34007) char[this->zipBufferLength];
+			this->compressBufferLength = 8192*4;
+			this->compressBuffer = new FILE_LINE(34007) char[this->compressBufferLength];
 		}
 	}
 	return(true);
@@ -679,11 +682,11 @@ Tar::flushZip() {
 		return(false);
 	}
 	do {
-		this->zipStream->avail_out = this->zipBufferLength;
-		this->zipStream->next_out = (unsigned char*)this->zipBuffer;
+		this->zipStream->avail_out = this->compressBufferLength;
+		this->zipStream->next_out = (unsigned char*)this->compressBuffer;
 		if(deflate(this->zipStream, Z_FINISH)) {
-			int have = this->zipBufferLength - this->zipStream->avail_out;
-			if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+			int have = this->compressBufferLength - this->zipStream->avail_out;
+			if(::write(tar.fd, (const char*)this->compressBuffer, have) <= 0) {
 				//this->setError();
 				break;
 			};
@@ -703,12 +706,12 @@ Tar::writeZip(const void *buf, size_t len) {
 	this->zipStream->avail_in = len;
 	this->zipStream->next_in = (unsigned char*)buf;
 	do {
-		this->zipStream->avail_out = this->zipBufferLength;
-		this->zipStream->next_out = (unsigned char*)this->zipBuffer;
+		this->zipStream->avail_out = this->compressBufferLength;
+		this->zipStream->next_out = (unsigned char*)this->compressBuffer;
 
 		if(deflate(this->zipStream, flush ? Z_FINISH : Z_NO_FLUSH) != Z_STREAM_ERROR) {
-			int have = this->zipBufferLength - this->zipStream->avail_out;
-			if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+			int have = this->compressBufferLength - this->zipStream->avail_out;
+			if(::write(tar.fd, (const char*)this->compressBuffer, have) <= 0) {
 				//this->setError();
 				return(false);
 			};     
@@ -735,8 +738,8 @@ Tar::initLzma() {
 			fprintf (stderr, "lzma_easy_encoder error: %d\n", (int) ret_xz);
 			return(false);
 		} else {
-			this->zipBufferLength = 8192*4;
-			this->zipBuffer = new FILE_LINE(34009) char[this->zipBufferLength];
+			this->compressBufferLength = 8192*4;
+			this->compressBuffer = new FILE_LINE(34009) char[this->compressBufferLength];
 		}
 	}
 	return(true);
@@ -751,19 +754,19 @@ Tar::flushLzma() {
 //	this->lzmaStream->next_in = NULL;
 //	this->lzmaStream->avail_in = 0;
 	do {
-		this->lzmaStream->avail_out = this->zipBufferLength;
-		this->lzmaStream->next_out = (unsigned char*)this->zipBuffer;
+		this->lzmaStream->avail_out = this->compressBufferLength;
+		this->lzmaStream->next_out = (unsigned char*)this->compressBuffer;
 		ret_xz = lzma_code(this->lzmaStream, LZMA_FINISH);
 		if(ret_xz == LZMA_STREAM_END) {
-			int have = this->zipBufferLength - this->lzmaStream->avail_out;
-			if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+			int have = this->compressBufferLength - this->lzmaStream->avail_out;
+			if(::write(tar.fd, (const char*)this->compressBuffer, have) <= 0) {
 				//this->setError();
 				break;
 			};
 			break;
 		}
-		int have = this->zipBufferLength - this->lzmaStream->avail_out;
-		if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+		int have = this->compressBufferLength - this->lzmaStream->avail_out;
+		if(::write(tar.fd, (const char*)this->compressBuffer, have) <= 0) {
 			//this->setError();
 			break;
 		};
@@ -782,8 +785,8 @@ Tar::writeLzma(const void *buf, size_t len) {
 	this->lzmaStream->next_in = (const uint8_t*)buf;
 	this->lzmaStream->avail_in = len;
 	do {
-		this->lzmaStream->next_out = (unsigned char*)this->zipBuffer;
-		this->lzmaStream->avail_out = this->zipBufferLength;
+		this->lzmaStream->next_out = (unsigned char*)this->compressBuffer;
+		this->lzmaStream->avail_out = this->compressBufferLength;
 
 		/* compress data */
 		ret_xz = lzma_code(lzmaStream, LZMA_RUN);
@@ -792,13 +795,110 @@ Tar::writeLzma(const void *buf, size_t len) {
 			fprintf (stderr, "lzma_code error: %d\n", (int) ret_xz);
 			return LZMA_RET_ERROR_COMPRESSION;
 		} else {
-			int have = this->zipBufferLength - this->lzmaStream->avail_out;
-			if(::write(tar.fd, (const char*)this->zipBuffer, have) <= 0) {
+			int have = this->compressBufferLength - this->lzmaStream->avail_out;
+			if(::write(tar.fd, (const char*)this->compressBuffer, have) <= 0) {
 				//this->setError();
 				return(false);
 			}
 		}
 	} while(this->lzmaStream->avail_out == 0);
+	return(true);
+}      
+#endif
+
+#ifdef HAVE_LIBZSTD
+int
+Tar::initZstd() {
+	if(!this->zstdCtx) {
+		this->zstdCtx = ZSTD_createCCtx();
+		if(!this->zstdCtx) {
+			//this->setError("zstd initialize failed");
+			return(false);
+		} else {
+			int rslt;
+			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdlevel);
+			if(ZSTD_isError(rslt)) {
+				syslog(LOG_NOTICE, "bad zstd level %i", zstdlevel);
+			}
+			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, ZSTD_fast);
+			if(ZSTD_isError(rslt)) {
+				syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
+			}
+			this->compressBufferLength = 8192*4;
+			this->compressBuffer = new FILE_LINE(34009) char[this->compressBufferLength];
+		}
+	}
+	return(this->zstdCtx != NULL);
+}
+
+bool 
+Tar::flushZstd() {
+	if(!writeCounter || writeCounterFlush >= writeCounter) {
+		return(false);
+	}
+	size_t remaining = 0;
+        do {
+		ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+		remaining = ZSTD_flushStream(zstdCtx, &outBuffer);
+		if(!ZSTD_isError(remaining)) {
+			if(outBuffer.pos > 0) {
+				if(::write(tar.fd, (const char*)this->compressBuffer, outBuffer.pos) <= 0) {
+					//this->setError();
+					return(false);
+				}
+			}
+		} else {
+			//this->setError("zstd deflate failed");
+			return(false);
+		}
+        } while(remaining);
+	writeCounterFlush = writeCounter;
+	return(true);
+}
+
+bool 
+Tar::endZstd() {
+	size_t remaining = 0;
+        do {
+		ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+		remaining = ZSTD_endStream(zstdCtx, &outBuffer);
+		if(!ZSTD_isError(remaining)) {
+			if(outBuffer.pos > 0) {
+				if(::write(tar.fd, (const char*)this->compressBuffer, outBuffer.pos) <= 0) {
+					//this->setError();
+					return(false);
+				}
+			}
+		} else {
+			//this->setError("zstd deflate failed");
+			return(false);
+		}
+        } while(remaining);
+	return(true);
+}
+
+int
+Tar::writeZstd(const void *buf, size_t len) {
+	if(!this->initZstd()) {
+		return(false);
+	}
+	++writeCounter;
+	ZSTD_inBuffer inBuffer = { buf, len, 0 };
+        do {
+		ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+		size_t const rslt = ZSTD_compressStream(zstdCtx, &outBuffer , &inBuffer);
+		if(!ZSTD_isError(rslt)) {
+			if(outBuffer.pos > 0) {
+				if(::write(tar.fd, (const char*)this->compressBuffer, outBuffer.pos) <= 0) {
+					//this->setError();
+					return(false);
+				}
+			}
+		} else {
+			//this->setError("zstd deflate failed");
+			return(false);
+		}
+        } while(inBuffer.pos < inBuffer.size);
 	return(true);
 }      
 #endif
@@ -812,10 +912,17 @@ Tar::flush() {
 		if(this->flushLzma()) {
 			lzma_end(this->lzmaStream);
 			delete this->lzmaStream;
-			delete [] this->zipBuffer;
+			delete [] this->compressBuffer;
 			this->lzmaStream = NULL;
-			this->zipBuffer = NULL;
+			this->compressBuffer = NULL;
 			this->initLzma();
+			_flush = true;
+		}
+	}
+#endif
+#ifdef HAVE_LIBZSTD
+	if(this->zstdCtx) {
+		if(this->flushZstd()) {
 			_flush = true;
 		}
 	}
@@ -824,9 +931,9 @@ Tar::flush() {
 		if(this->flushZip()) {
 			deflateEnd(this->zipStream);
 			delete this->zipStream;
-			delete [] this->zipBuffer;
+			delete [] this->compressBuffer;
 			this->zipStream = NULL;
-			this->zipBuffer = NULL;
+			this->compressBuffer = NULL;
 			this->initZip();
 			_flush = true;
 		}
@@ -843,34 +950,56 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	while(opt_blocktarwrite) {
 		sleep(1);
 	}
-	int zip = false;
-	int lzma = false;
+	bool zip = false;
+	bool lzma = false;
+	bool zstd = false;
 	switch(tar.qtype) {
 	case 1:
-		if(opt_pcap_dump_tar_compress_sip == 1) {
-			gziplevel = opt_pcap_dump_tar_sip_level;
+		switch(opt_pcap_dump_tar_compress_sip) {
+		case 1:
+			gziplevel = opt_pcap_dump_tar_sip_level >= 0 ? opt_pcap_dump_tar_sip_level : 6;
 			zip = true;
-		} else if(opt_pcap_dump_tar_compress_sip == 2) {
-			lzmalevel = opt_pcap_dump_tar_sip_level;
+			break;
+		case 2:
+			lzmalevel = opt_pcap_dump_tar_sip_level >= 0 ? opt_pcap_dump_tar_sip_level : 5;
 			lzma = true;
+			break;
+		case 3:
+			zstdlevel = opt_pcap_dump_tar_sip_level >= 0 ? opt_pcap_dump_tar_sip_level : 3;
+			zstd = true;
+			break;
 		}
 		break;
 	case 2:
-		if(opt_pcap_dump_tar_compress_rtp == 1) {
-			gziplevel = opt_pcap_dump_tar_rtp_level;
+		switch(opt_pcap_dump_tar_compress_rtp) {
+		case 1:
+			gziplevel = opt_pcap_dump_tar_rtp_level >= 0 ? opt_pcap_dump_tar_rtp_level : 1;
 			zip = true;
-		} else if(opt_pcap_dump_tar_compress_rtp == 2) {
-			lzmalevel = opt_pcap_dump_tar_rtp_level;
+			break;
+		case 2:
+			lzmalevel = opt_pcap_dump_tar_rtp_level >= 0 ? opt_pcap_dump_tar_rtp_level : 5;
 			lzma = true;
+			break;
+		case 3:
+			zstdlevel = opt_pcap_dump_tar_rtp_level >= 0 ? opt_pcap_dump_tar_rtp_level : 3;
+			zstd = true;
+			break;
 		}
 		break;
 	case 3:
-		if(opt_pcap_dump_tar_compress_graph == 1) {
-			gziplevel = opt_pcap_dump_tar_graph_level;
+		switch(opt_pcap_dump_tar_compress_graph) {
+		case 1:
+			gziplevel = opt_pcap_dump_tar_graph_level >= 0 ? opt_pcap_dump_tar_graph_level : 1;
 			zip = true;
-		} else if(opt_pcap_dump_tar_compress_graph == 2) {
-			lzmalevel = opt_pcap_dump_tar_graph_level;
+			break;
+		case 2:
+			lzmalevel = opt_pcap_dump_tar_graph_level >= 0 ? opt_pcap_dump_tar_graph_level : 5;
 			lzma = true;
+			break;
+		case 3:
+			zstdlevel = opt_pcap_dump_tar_graph_level >= 0 ? opt_pcap_dump_tar_graph_level : 3;
+			zstd = true;
+			break;
 		}
 		break;
 	}
@@ -881,6 +1010,10 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 		#ifdef HAVE_LIBLZMA
 		writeLzma((char *)(buf), len);
 		#endif //HAVE_LIBLZMA
+	} else if(zstd){
+		#ifdef HAVE_LIBZSTD
+		writeZstd((char *)(buf), len);
+		#endif //HAVE_LIBZSTD
 	} else {
 		::write(tar.fd, (char *)(buf), len);
 	}
@@ -910,8 +1043,15 @@ void Tar::tar_close() {
 			this->lzmaStream = NULL;
 		}
 	#endif
-		if(this->zipBuffer) {
-			delete [] this->zipBuffer;
+	#ifdef HAVE_LIBZSTD
+		if(this->zstdCtx) {
+			endZstd();
+			ZSTD_freeCCtx(this->zstdCtx);
+			this->zstdCtx = NULL;
+		}
+	#endif
+		if(this->compressBuffer) {
+			delete [] this->compressBuffer;
 		}
 		addtofilesqueue();
 		if(sverb.tar) { 
@@ -1075,6 +1215,9 @@ TarQueue::write(int qtype, data_t data) {
 		case 2:
 			tar_name << ".xz";
 			break;
+		case 3:
+			tar_name << ".zst";
+			break;
 		}
 		break;
 	case 2:
@@ -1085,6 +1228,9 @@ TarQueue::write(int qtype, data_t data) {
 		case 2:
 			tar_name << ".xz";
 			break;
+		case 3:
+			tar_name << ".zst";
+			break;
 		}
 		break;
 	case 3:
@@ -1094,6 +1240,9 @@ TarQueue::write(int qtype, data_t data) {
 			break;
 		case 2:
 			tar_name << ".xz";
+			break;
+		case 3:
+			tar_name << ".zst";
 			break;
 		}
 		break;

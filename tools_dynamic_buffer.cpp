@@ -31,6 +31,10 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lzmaStream = NULL;
 	this->lzmaStreamDecompress = NULL;
 	#endif //HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	this->zstdCtx = NULL;
+	this->zstdCtxDecompress = NULL;
+	#endif //HAVE_LIBZSTD
 	#ifdef HAVE_LIBLZ4
 	this->lz4Stream = NULL;
 	this->lz4StreamDecode = NULL;
@@ -42,8 +46,7 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lzoDecompressData = NULL;
 	#endif //HAVE_LIBLZO
 	this->snappyDecompressData = NULL;
-	this->zipLevel = Z_DEFAULT_COMPRESSION;
-	this->lzmaLevel = 6;
+	this->compressLevel = -1;
 	this->autoPrefixFile = false;
 	this->forceStream = false;
 	this->processed_len = 0;
@@ -56,12 +59,8 @@ CompressStream::~CompressStream() {
 	this->termDecompress();
 }
 
-void CompressStream::setZipLevel(int zipLevel) {
-	this->zipLevel = zipLevel;
-}
-
-void CompressStream::setLzmaLevel(int lzmaLevel) {
-	this->lzmaLevel = lzmaLevel;
+void CompressStream::setCompressLevel(int compressLevel) {
+	this->compressLevel = compressLevel;
 }
 
 void CompressStream::enableAutoPrefixFile() {
@@ -88,9 +87,10 @@ void CompressStream::initCompress() {
 			this->zipStream->zalloc = Z_NULL;
 			this->zipStream->zfree = Z_NULL;
 			this->zipStream->opaque = Z_NULL;
+			int zipLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
 			if((this->typeCompress == zip ?
-			     deflateInit(this->zipStream, this->zipLevel) :
-			     deflateInit2(this->zipStream, this->zipLevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY)) == Z_OK) {
+			     deflateInit(this->zipStream, zipLevel) :
+			     deflateInit2(this->zipStream, zipLevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY)) == Z_OK) {
 				createCompressBuffer();
 			} else {
 				deflateEnd(this->zipStream);
@@ -100,11 +100,12 @@ void CompressStream::initCompress() {
 		}
 		break;
 	case lzma:
-#ifdef HAVE_LIBLZMA
+		#ifdef HAVE_LIBLZMA
 		if(!this->lzmaStream) {
 			this->lzmaStream = new FILE_LINE(40002) lzma_stream;
 			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
-			int ret = lzma_easy_encoder(this->lzmaStream, this->lzmaLevel, LZMA_CHECK_CRC64);
+			int lzmaLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
+			int ret = lzma_easy_encoder(this->lzmaStream, lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
 				createCompressBuffer();
 			} else {
@@ -114,8 +115,30 @@ void CompressStream::initCompress() {
 				break;
 			}
 		}
+		#endif
 		break;
-#endif
+	case zstd:
+		#ifdef HAVE_LIBZSTD
+		if(!this->zstdCtx) {
+			this->zstdCtx = ZSTD_createCCtx();
+			if(this->zstdCtx) {
+				int zstdLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
+				int rslt;
+				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdLevel);
+				if(ZSTD_isError(rslt)) {
+					syslog(LOG_NOTICE, "bad zstd level %i", zstdLevel);
+				}
+				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, ZSTD_fast);
+				if(ZSTD_isError(rslt)) {
+					syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
+				}
+				createCompressBuffer();
+			} else {
+				this->setError("zstd initialize failed");
+			}
+		}
+		#endif
+		break;
 	case snappy:
 		if(!this->compressBuffer) {
 			createCompressBuffer();
@@ -171,7 +194,7 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 		}
 		break;
 	case lzma:
-#ifdef HAVE_LIBLZMA 
+		#ifdef HAVE_LIBLZMA
 		if(!this->lzmaStreamDecompress) {
 			this->lzmaStreamDecompress = new FILE_LINE(40005) lzma_stream;
 			memset_heapsafe(this->lzmaStreamDecompress, 0, sizeof(lzma_stream));
@@ -184,8 +207,20 @@ void CompressStream::initDecompress(u_int32_t dataLen) {
 				this->setError(error);
 			}
 		}
+		#endif
 		break;
-#endif
+	case zstd:
+		#ifdef HAVE_LIBZSTD
+		if(!this->zstdCtxDecompress) {
+			this->zstdCtxDecompress = ZSTD_createDCtx();
+			if(this->zstdCtxDecompress) {
+				createDecompressBuffer(this->decompressBufferLength);
+			} else {
+				this->setError("zstd initialize failed");
+			}
+		}
+		#endif
+		break;
 	case snappy:
 		if(!this->snappyDecompressData && this->forceStream) {
 			this->snappyDecompressData = new FILE_LINE(40006) SimpleBuffer();
@@ -237,6 +272,12 @@ void CompressStream::termCompress() {
 		this->lzmaStream = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	if(this->zstdCtx) {
+		ZSTD_freeCCtx(this->zstdCtx);
+		this->zstdCtx = NULL;
+	}
+	#endif //ifdef HAVE_LIBZSTD
 	#ifdef HAVE_LIBLZO
 	if(this->lzoWrkmem) {
 		delete [] this->lzoWrkmem;
@@ -268,6 +309,12 @@ void CompressStream::termDecompress() {
 		this->lzmaStreamDecompress = NULL;
 	}
 	#endif //ifdef HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	if(this->zstdCtxDecompress) {
+		ZSTD_freeDCtx(this->zstdCtxDecompress);
+		this->zstdCtxDecompress = NULL;
+	}
+	#endif //ifdef HAVE_LIBZSTD
 	if(this->snappyDecompressData) {
 		delete this->snappyDecompressData;
 		this->snappyDecompressData = NULL;
@@ -341,7 +388,6 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		}
 		break;
 	case lzma:
-		{
 		#ifdef HAVE_LIBLZMA
 		if(!this->lzmaStream) {
 			this->initCompress();
@@ -365,7 +411,50 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		} while(this->lzmaStream->avail_out == 0);
 		this->processed_len += len;
 		#endif
+		break;
+	case zstd:
+		#ifdef HAVE_LIBZSTD
+		if(!this->zstdCtx) {
+			this->initCompress();
 		}
+		if(len) {
+			ZSTD_inBuffer inBuffer = { data, len, 0 };
+			do {
+				ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+				size_t rslt = ZSTD_compressStream(zstdCtx, &outBuffer , &inBuffer);
+				if(!ZSTD_isError(rslt)) {
+					if(outBuffer.pos > 0) {
+						if(!baseEv->compress_ev(this->compressBuffer, outBuffer.pos, 0)) {
+							this->setError("zstd compress_ev failed");
+							return(false);
+						}
+					}
+				} else {
+					this->setError("zstd compress failed");
+					return(false);
+				}
+			} while(inBuffer.pos < inBuffer.size);
+		}
+		if(flush) {
+			size_t remaining = 0;
+			do {
+				ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+				remaining = ZSTD_endStream(zstdCtx, &outBuffer);
+				if(!ZSTD_isError(remaining)) {
+					if(outBuffer.pos > 0) {
+						if(!baseEv->compress_ev(this->compressBuffer, outBuffer.pos, 0)) {
+							this->setError("zstd compress_ev failed");
+							return(false);
+						}
+					}
+				} else {
+					this->setError("zstd compress failed");
+					return(false);
+				}
+			} while(remaining);
+		}
+		this->processed_len += len;
+		#endif
 		break;
 	case snappy: {
 		if(!this->compressBuffer) {
@@ -556,7 +645,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		return(true);
 	}
 	if(this->typeCompress == compress_auto && this->autoPrefixFile) {
-		if(len >= 3 && !memcmp(data, "SNA", 3)) {
+		if(len >= 4 && !memcmp(data, "\x28\xb5\x2f\xfd", 4)) {
+			this->typeCompress = zstd;
+		} else if(len >= 3 && !memcmp(data, "SNA", 3)) {
 			this->typeCompress = snappy;
 			data += 3;
 			len -= 3;
@@ -635,6 +726,33 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		} while(this->lzmaStreamDecompress->avail_out == 0);
 		if(use_len) {
 			*use_len = len - this->lzmaStreamDecompress->avail_in;
+		}
+		#endif
+		break;
+	case zstd:
+		#ifdef HAVE_LIBZSTD
+		if(!this->zstdCtxDecompress) {
+			this->initDecompress(0);
+		}
+		{
+		ZSTD_inBuffer inBuffer = { data, len, 0 };
+		while(inBuffer.pos < inBuffer.size) {
+			ZSTD_outBuffer outBuffer = { this->decompressBuffer, this->decompressBufferLength, 0 };
+			size_t rslt = ZSTD_decompressStream(zstdCtxDecompress, &outBuffer , &inBuffer);
+			if(!ZSTD_isError(rslt)) {
+				if(outBuffer.pos > 0) {
+					if(!baseEv->decompress_ev(this->decompressBuffer, outBuffer.pos)) {
+						this->setError("zstd decompress_ev failed");
+						return(false);
+					}
+				}
+			} else {
+				this->setError(string("zstd decompress failed - ") + ZSTD_getErrorName(rslt));
+				return(false);
+			}
+		} }
+		if(use_len) {
+			*use_len = len;
 		}
 		#endif
 		break;
@@ -844,6 +962,7 @@ void CompressStream::createCompressBuffer() {
 	case zip:
 	case gzip:
 	case lzma:
+	case zstd:
 		if(!this->compressBufferLength) {
 			this->compressBufferLength = 8 * 1024;
 		}
@@ -897,6 +1016,7 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	case zip:
 	case gzip:
 	case lzma:
+	case zstd:
 		if(!this->decompressBufferLength) {
 			this->decompressBufferLength = 8 * 1024;
 		}
@@ -942,6 +1062,11 @@ CompressStream::eTypeCompress CompressStream::convTypeCompress(const char *typeC
 		return(CompressStream::lzma);
 	}
 	#endif //HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	else if(!strcasecmp(_compress_method, "zstd")) {
+		return(CompressStream::zstd);
+	}
+	#endif //HAVE_LIBZSTD
 	else if(!strcasecmp(_compress_method, "snappy")) {
 		return(CompressStream::snappy);
 	} 
@@ -962,10 +1087,16 @@ const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
 	switch(typeCompress) {
 	case zip:
 		return("zip");
+	case gzip:
+		return("gzip");
 	#ifdef HAVE_LIBLZMA
 	case lzma:
 		return("lzma");
 	#endif //HAVE_LIBLZMA
+	#ifdef HAVE_LIBZSTD
+	case zstd:
+		return("zstd");
+	#endif //HAVE_LIBZSTD
 	case snappy:
 		return("snappy");
 	case lzo:
@@ -985,9 +1116,19 @@ const char *CompressStream::convTypeCompress(eTypeCompress typeCompress) {
 string CompressStream::getConfigMenuString() {
 	ostringstream outStr;
 	outStr << convTypeCompress(zip) << ':' << zip << '|'
+	       << convTypeCompress(gzip) << ':' << gzip << '|'
+	       #ifdef HAVE_LIBLZMA
 	       << convTypeCompress(lzma) << ':' << lzma << '|'
+	       #endif //HAVE_LIBLZMA
+	       #ifdef HAVE_LIBZSTD
+	       << convTypeCompress(zstd) << ':' << zstd << '|'
+	       #endif //HAVE_LIBZSTD
 	       << convTypeCompress(snappy) << ':' << snappy << '|'
 	       << convTypeCompress(lzo) << ':' << lzo << '|'
+	       #ifdef HAVE_LIBLZ4
+	       << convTypeCompress(lz4) << ':' << lz4 << '|'
+	       << convTypeCompress(lz4_stream) << ':' << lz4_stream << '|'
+	       #endif //HAVE_LIBLZ4
 	       << "no:0";
 	return(outStr.str());
 }
@@ -1121,9 +1262,9 @@ void ChunkBuffer::setTypeCompress(CompressStream::eTypeCompress typeCompress, u_
 	}
 }
 
-void ChunkBuffer::setZipLevel(int zipLevel) {
+void ChunkBuffer::setCompressLevel(int compressLevel) {
 	if(this->compressStream) {
-		this->compressStream->setZipLevel(zipLevel);
+		this->compressStream->setCompressLevel(compressLevel);
 	}
 }
 

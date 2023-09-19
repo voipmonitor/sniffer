@@ -604,6 +604,8 @@ public:
 		compress_na,
 		compress_default,
 		gzip,
+		lzma,
+		zstd,
 		snappy,
 		lzo,
 		lz4

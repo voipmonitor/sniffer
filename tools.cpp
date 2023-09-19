@@ -106,9 +106,9 @@ extern int opt_pcap_dump_asyncwrite;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
-extern int opt_pcap_dump_ziplevel_sip;
-extern int opt_pcap_dump_ziplevel_rtp;
-extern int opt_pcap_dump_ziplevel_graph;
+extern int opt_pcap_dump_compresslevel_sip;
+extern int opt_pcap_dump_compresslevel_rtp;
+extern int opt_pcap_dump_compresslevel_graph;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -4364,6 +4364,8 @@ bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {
 	case compress_default:
 		this->setTypeCompressDefault();
 	case gzip:
+	case lzma:
+	case zstd:
 	case snappy:
 	case lzo:
 	case lz4:
@@ -4406,6 +4408,8 @@ bool FileZipHandler::__directWriteToFile(char *data, int length) {
 
 void FileZipHandler::initCompress() {
 	this->compressStream =  new FILE_LINE(38017) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+								    this->typeCompress == lzma ? CompressStream::lzma :
+								    this->typeCompress == zstd ? CompressStream::zstd :
 								    this->typeCompress == snappy ? CompressStream::snappy :
 								    this->typeCompress == lzo ? CompressStream::lzo : 
 								    this->typeCompress == lz4 ? CompressStream::lz4 : CompressStream::compress_na,
@@ -4413,15 +4417,17 @@ void FileZipHandler::initCompress() {
 								     this->bufferLength :
 								     8 * 1024, 
 								    0);
-	this->compressStream->setZipLevel(typeFile == pcap_sip ? opt_pcap_dump_ziplevel_sip : 
-					  typeFile == pcap_rtp ? opt_pcap_dump_ziplevel_rtp : 
-					  typeFile == graph_rtp ? opt_pcap_dump_ziplevel_graph : Z_DEFAULT_COMPRESSION);
+	this->compressStream->setCompressLevel(typeFile == pcap_sip ? opt_pcap_dump_compresslevel_sip : 
+					       typeFile == pcap_rtp ? opt_pcap_dump_compresslevel_rtp : 
+					       typeFile == graph_rtp ? opt_pcap_dump_compresslevel_graph : -1);
 	this->compressStream->enableAutoPrefixFile();
 	this->compressStream->enableForceStream();
 }
 
 void FileZipHandler::initDecompress() {
 	this->compressStream =  new FILE_LINE(38018) CompressStream(this->typeCompress == gzip ? CompressStream::gzip :
+								    this->typeCompress == lzma ? CompressStream::lzma :
+								    this->typeCompress == zstd ? CompressStream::zstd :
 								    this->typeCompress == snappy ? CompressStream::snappy :
 								    this->typeCompress == lzo ? CompressStream::lzo : 
 								    this->typeCompress == lz4 ? CompressStream::lz4 : CompressStream::compress_na,
@@ -4458,19 +4464,19 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 		case pcap_sip:
 			if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
 				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_sip, 8 * 1024, this->bufferLength);
-				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
+				this->tarBuffer->setCompressLevel(opt_pcap_dump_tar_internal_gzip_sip_level);
 			}
 			break;
 		case pcap_rtp:
 			if(opt_pcap_dump_tar_internalcompress_rtp != CompressStream::compress_na) {
 				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_rtp, 8 * 1024, this->bufferLength);
-				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
+				this->tarBuffer->setCompressLevel(opt_pcap_dump_tar_internal_gzip_rtp_level);
 			}
 			break;
 		case graph_rtp:
 			if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
 				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
-				this->tarBuffer->setZipLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
+				this->tarBuffer->setCompressLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
 			}
 			break;
 		case na:
@@ -4545,6 +4551,10 @@ FileZipHandler::eTypeCompress FileZipHandler::convTypeCompress(const char *typeC
 	} else if(!strcasecmp(_compress_method, "zip") ||
 		  !strcasecmp(_compress_method, "gzip")) {
 		return(FileZipHandler::gzip);
+	} else if(!strcasecmp(_compress_method, "lzma")) {
+		return(FileZipHandler::lzma);
+	} else if(!strcasecmp(_compress_method, "zstd")) {
+		return(FileZipHandler::zstd);
 	} else if(!strcasecmp(_compress_method, "snappy")) {
 		return(FileZipHandler::snappy);
 	} else if(!strcasecmp(_compress_method, "lzo")) {
@@ -4559,6 +4569,10 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 	switch(typeCompress) {
 	case gzip:
 		return("zip");
+	case lzma:
+		return("lzma");
+	case zstd:
+		return("zstd");
 	case snappy:
 		return("snappy");
 	case lzo:
@@ -4577,6 +4591,8 @@ string FileZipHandler::getConfigMenuString() {
 	ostringstream outStr;
 	outStr << convTypeCompress(compress_default) << ':' << compress_default << '|'
 	       << convTypeCompress(gzip) << ':' << gzip << '|'
+	       << convTypeCompress(lzma) << ':' << lzma << '|'
+	       << convTypeCompress(zstd) << ':' << zstd << '|'
 	       << convTypeCompress(snappy) << ':' << snappy << '|'
 	       << convTypeCompress(lzo) << ':' << lzo << '|'
 	       << convTypeCompress(lz4) << ':' << lz4 << '|'
@@ -4604,7 +4620,13 @@ FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
 
 bool FileZipHandler::needTarPos() {
 	return(tar &&
-	       (typeCompress == lzo ||
+	       (typeCompress == lzma ||
+		(typeCompress == compress_default && getTypeCompressDefault() == lzma) ||
+		typeCompress == zstd ||
+		(typeCompress == compress_default && getTypeCompressDefault() == zstd) ||
+		typeCompress == snappy ||
+		(typeCompress == compress_default && getTypeCompressDefault() == snappy) ||
+		typeCompress == lzo ||
 		(typeCompress == compress_default && getTypeCompressDefault() == lzo) ||
 		typeCompress == lz4 ||
 		(typeCompress == compress_default && getTypeCompressDefault() == lz4)));

@@ -619,30 +619,30 @@ FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp =
 	#else
 		FileZipHandler::gzip;
 	#endif //HAVE_LIBLZO
-int opt_pcap_dump_ziplevel_sip = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_ziplevel_rtp = 1;
-int opt_pcap_dump_ziplevel_graph = 1;
+int opt_pcap_dump_compresslevel_sip = -1;
+int opt_pcap_dump_compresslevel_rtp = -1;
+int opt_pcap_dump_compresslevel_graph = -1;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
 bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
-int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma
-int opt_pcap_dump_tar_sip_level = 6;
+int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_sip_level = -1;
 int opt_pcap_dump_tar_sip_use_pos = 0;
 int opt_pcap_dump_tar_compress_rtp = 0;
-int opt_pcap_dump_tar_rtp_level = 1;
+int opt_pcap_dump_tar_rtp_level = -1;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
 int opt_pcap_dump_tar_compress_graph = 0;
-int opt_pcap_dump_tar_graph_level = 1;
+int opt_pcap_dump_tar_graph_level = -1;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
-int opt_pcap_dump_tar_internal_gzip_sip_level = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_tar_internal_gzip_rtp_level = Z_DEFAULT_COMPRESSION;
-int opt_pcap_dump_tar_internal_gzip_graph_level = Z_DEFAULT_COMPRESSION;
+int opt_pcap_dump_tar_internal_gzip_sip_level = -1;
+int opt_pcap_dump_tar_internal_gzip_rtp_level = -1;
+int opt_pcap_dump_tar_internal_gzip_graph_level = -1;
 int opt_pcap_ifdrop_limit = 20;
 int opt_pcap_dpdk_ifdrop_limit = 0;
 int swapDelayCount = 0;
@@ -6235,9 +6235,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save_ip_from_encaps_ipheader_only_gre", &opt_save_ip_from_encaps_ipheader_only_gre));
 					expert();
 					addConfigItem(new FILE_LINE(42203) cConfigItem_type_compress("pcap_dump_zip_sip", &opt_pcap_dump_zip_sip));
-					addConfigItem(new FILE_LINE(42204) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_ziplevel_sip));
+					addConfigItem((new FILE_LINE(42204) cConfigItem_integer("pcap_dump_ziplevel_sip", &opt_pcap_dump_compresslevel_sip))
+						->addAlias("pcap_dump_compresslevel_sip"));
 					addConfigItem((new FILE_LINE(42205) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
-						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
+						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
 					addConfigItem(new FILE_LINE(42206) cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
 					addConfigItem(new FILE_LINE(42207) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
 					addConfigItem(new FILE_LINE(42208) cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
@@ -6264,9 +6265,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
-					addConfigItem(new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_ziplevel_rtp));
+					addConfigItem((new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_compresslevel_rtp))
+						->addAlias("pcap_dump_compresslevel_rtp"));
 					addConfigItem((new FILE_LINE(42214) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
-						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
+						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
 					addConfigItem(new FILE_LINE(42215) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
 					addConfigItem(new FILE_LINE(42217) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
@@ -6279,9 +6281,10 @@ void cConfig::addConfigItems() {
 				->setDefaultValueStr("no"));
 					expert();
 					addConfigItem(new FILE_LINE(42219) cConfigItem_type_compress("pcap_dump_zip_graph", &opt_gzipGRAPH));
-					addConfigItem(new FILE_LINE(42220) cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_ziplevel_graph));
+					addConfigItem((new FILE_LINE(42220) cConfigItem_integer("pcap_dump_ziplevel_graph", &opt_pcap_dump_compresslevel_graph))
+						->addAlias("pcap_dump_compresslevel_graph"));
 					addConfigItem((new FILE_LINE(42221) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
-						->addValues("zip:1|z:1|gzip:1|g:1|lz4:2|l:2|no:0|n:0|0:0"));
+						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
 					addConfigItem(new FILE_LINE(42222) cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
 					addConfigItem(new FILE_LINE(42223) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
 					addConfigItem(new FILE_LINE(42224) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
@@ -6859,7 +6862,8 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem(new FILE_LINE(42447) cConfigItem_type_compress("pcap_dump_zip", (FileZipHandler::eTypeCompress*)NULL));
 					addConfigItem(new FILE_LINE(42448) cConfigItem_type_compress("pcap_dump_zip_all", (FileZipHandler::eTypeCompress*)NULL));
-					addConfigItem(new FILE_LINE(42449) cConfigItem_integer("pcap_dump_ziplevel"));
+					addConfigItem((new FILE_LINE(42449) cConfigItem_integer("pcap_dump_ziplevel"))
+						->addAlias("pcap_dump_compresslevel"));
 					addConfigItem(new FILE_LINE(42450) cConfigItem_integer("pcap_dump_writethreads_max", &opt_pcap_dump_writethreads_max));
 					addConfigItem(new FILE_LINE(42451) cConfigItem_yesno("pcapsplit", &opt_pcap_split));
 					addConfigItem((new FILE_LINE(42452) cConfigItem_yesno("spooldiroldschema", &opt_newdir))
@@ -7050,10 +7054,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			setenv("TZ", opt_timezone, 1);
 		}
 	}
-	if(configItem->config_name == "pcap_dump_ziplevel") {
-		opt_pcap_dump_ziplevel_sip =
-		opt_pcap_dump_ziplevel_rtp =
-		opt_pcap_dump_ziplevel_graph = configItem->getValueInt();
+	if(configItem->config_name == "pcap_dump_ziplevel" || configItem->config_name == "pcap_dump_compress_level") {
+		opt_pcap_dump_compresslevel_sip =
+		opt_pcap_dump_compresslevel_rtp =
+		opt_pcap_dump_compresslevel_graph = configItem->getValueInt();
 	}
 	if(configItem->config_name == "savertp") {
 		switch(configItem->getValueInt()) {
@@ -11545,19 +11549,19 @@ int eval_config(string inistr) {
 		strlwr((char*)value);
 		opt_gzipGRAPH = FileZipHandler::convTypeCompress(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL))) {
-		opt_pcap_dump_ziplevel_sip = 
-		opt_pcap_dump_ziplevel_rtp = 
-		opt_pcap_dump_ziplevel_graph = atoi(value);
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel", NULL))) {
+		opt_pcap_dump_compresslevel_sip = 
+		opt_pcap_dump_compresslevel_rtp = 
+		opt_pcap_dump_compresslevel_graph = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_ziplevel_sip", NULL))) {
-		opt_pcap_dump_ziplevel_sip = atoi(value);
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_sip", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_sip", NULL))) {
+		opt_pcap_dump_compresslevel_sip = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_ziplevel_rtp", NULL))) {
-		opt_pcap_dump_ziplevel_rtp = atoi(value);
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_rtp", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_rtp", NULL))) {
+		opt_pcap_dump_compresslevel_rtp = atoi(value);
 	}
-	if((value = ini.GetValue("general", "pcap_dump_ziplevel_graph", NULL))) {
-		opt_pcap_dump_ziplevel_graph = atoi(value);
+	if((value = ini.GetValue("general", "pcap_dump_ziplevel_graph", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_graph", NULL))) {
+		opt_pcap_dump_compresslevel_graph = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
@@ -11584,7 +11588,11 @@ int eval_config(string inistr) {
 		case 'Z':
 		case 'g':
 		case 'G':
-			opt_pcap_dump_tar_compress_sip = 1; // gzip
+			if(!strncasecmp(value, "zs", 2)) {
+				opt_pcap_dump_tar_compress_sip = 3; // zstd
+			} else {
+				opt_pcap_dump_tar_compress_sip = 1; // gzip
+			}
 			break;
 		case 'l':
 		case 'L':
@@ -11603,7 +11611,11 @@ int eval_config(string inistr) {
 		case 'Z':
 		case 'g':
 		case 'G':
-			opt_pcap_dump_tar_compress_rtp = 1; // gzip
+			if(!strncasecmp(value, "zs", 2)) {
+				opt_pcap_dump_tar_compress_rtp = 3; // zstd
+			} else {
+				opt_pcap_dump_tar_compress_rtp = 1; // gzip
+			}
 			break;
 		case 'l':
 		case 'L':
@@ -11622,7 +11634,11 @@ int eval_config(string inistr) {
 		case 'Z':
 		case 'g':
 		case 'G':
-			opt_pcap_dump_tar_compress_graph = 1; // gzip
+			if(!strncasecmp(value, "zs", 2)) {
+				opt_pcap_dump_tar_compress_graph = 3; // zstd
+			} else {
+				opt_pcap_dump_tar_compress_graph = 1; // gzip
+			}
 			break;
 		case 'l':
 		case 'L':

@@ -10,6 +10,9 @@
 #ifdef HAVE_LIBLZMA
 #include <lzma.h>
 #endif
+#ifdef HAVE_LIBZSTD
+#include <zstd.h>
+#endif
 
 #include "tools.h"
 #include "tools_dynamic_buffer.h"
@@ -126,7 +129,10 @@ public:
 #ifdef HAVE_LIBLZMA
 		this->lzmaStream = NULL;
 #endif
-		this->zipBuffer = NULL;
+#ifdef HAVE_LIBZSTD
+		this->zstdCtx = NULL;
+#endif
+		this->compressBuffer = NULL;
 		memset(&tar, 0, sizeof(tar));
 		partCounter = 0;
 		lastFlushTime = 0;
@@ -154,6 +160,7 @@ public:
 	void tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len);
 	int gziplevel;
 	int lzmalevel;
+	int zstdlevel;
 
 	void th_set_type(mode_t mode);
 	void th_set_path(char *pathname, bool partSuffix = false);
@@ -185,6 +192,12 @@ public:
 	bool flushLzma();
 	int writeLzma(const void *buf, size_t len);
 #endif
+#ifdef HAVE_LIBZSTD
+	int initZstd();
+	bool flushZstd();
+	bool endZstd();
+	int writeZstd(const void *buf, size_t len);
+#endif
 	bool flush();
 	void addtofilesqueue();
 	
@@ -206,8 +219,8 @@ public:
 	}
 private:
 	z_stream *zipStream;
-	int zipBufferLength;
-	char *zipBuffer;
+	int compressBufferLength;
+	char *compressBuffer;
 	//map<string, u_int32_t> partCounter;
 	unsigned long partCounter;
 	//volatile u_int32_t partCounterSize;
@@ -294,6 +307,10 @@ private:
 	#define LZMA_RET_ERROR_OUTPUT	3
 	#define LZMA_RET_ERROR_COMPRESSION   4
 
+#endif
+
+#ifdef HAVE_LIBZSTD
+	ZSTD_CCtx *zstdCtx;
 #endif
 
 	volatile int _sync_lock;
