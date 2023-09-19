@@ -700,7 +700,7 @@ void test() {
 	case 23 : {
 		for(int pass = 0; pass < 1000; pass++) {
 		cTestCompress *testCompress = new FILE_LINE(42055) cTestCompress(CompressStream::gzip);
-		testCompress->setZipLevel(1);
+		testCompress->setCompressLevel(1);
 		testCompress->testCompress();
 		//testCompress->testDecompress();
 		delete testCompress;
@@ -738,6 +738,88 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		unsigned int c = 1e7;
+		u_int64_t start, stop;
+		unsigned buff_l = 1000;
+		u_char buff[buff_l];
+		for(unsigned i = 0; i < buff_l; i++) {
+			buff[i] = rand();
+		}
+		u_int64_t s;
+	 
+		s = 0;
+		cout << "crc32" << endl;
+		start = getTimeUS();
+		for(unsigned i = 0; i < c; i++) {
+			s += crc32(0, buff, buff_l);
+		}
+		stop = getTimeUS();
+		cout << stop - start << " / " << s << endl;
+	 
+		s = 0;
+		cout << "crc32_sse" << endl;
+		start = getTimeUS();
+		for(unsigned i = 0; i < c; i++) {
+			s+= crc32_sse(0, (const char*)buff, buff_l);
+		}
+		stop = getTimeUS();
+		cout << stop - start << " / " << s << endl;
+		
+		break;
+	 
+		cout <<  tuplehash(3141284542, 16118) << endl;
+		cout <<  tuplehash(3141284542, 16119) << endl;
+		break;
+	 
+		{
+		sqlStore = new FILE_LINE(42059) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
+							   isCloud() ? cloud_host : NULL, cloud_token, cloud_router, &optMySsl);
+
+		char query_buff[20000];
+		
+		const char *mpacket = "\324ò\241\002\000\004\000\000\000\000\000\000\000\000\000\200\f\000\000q\000\000\000\264\341\206d\260\377\003\000\311\005\000\000\311\005\000\000\000\000\000\001\000\006\000\t\017\t\000\024on\b\000E(\005\271\000\000\000\000m\021\374\227\300\250c\030\300\250g\v\003\236\003\235\005\245\000\000\t\216\024\201\2411\275\377\377\377\377\377\377\377\377\b\006\n\016\343uL\034\000\000\344\333,\300\250e\311\300\250e\255\023\304\023\304\021\000E`\005s\000\000\000\000@\021<?\300\250e\311\300\250e\255\023\304\023\304\005_\000\000INVITE sip:25040_9171.ESL@192.168.101.173:5060;line=648b892de469b77;realip=10.0.28.130:49262;natip=93.47.153.108:64611 SIP/2.0\r\nP-Charging-Vector: icid-value=ESL.1684338062072.virt.160102.[25040_9171.ESL-1];icid-generated-at=192.168.101.201\r\nContact: <sip:00393401009234@192.168.101.201:5067>\r\nUser-Agent: Intraswitch/10.2.37_SCF-8\r\nCSeq: 1684314886 INVITE\r\nMin-SE: 90\r\nAlert-Info: <auto>\r\nCall-Info: <sip:ESL>;answer-after=0\r\nSupported: replaces, 100rel, timer\r\nFrom: <sip:00393401009234@192.168.101.201:5067>;tag=b0399877-69c3-62bf-69cc-32331ef03d9f\r\nMax-Forwards: 69\r\nSession-Expires: 1800\r\nVia: SIP/2.0/UDP 192.168.101.201:5060;branch=z9hG4bK4cebd74a-73a5-d0e3-8064-c22f6b7a7b9e\r\nVia: SIP/2.0/UDP 192.168.101.201:5067;branch=z9hG4bKcf8e3cef-ec0d-73b3-908e-a3e233c0e4e5\r\nRecord-Route: <sip:IstraPID-109958746@192.168.101.201;lr>\r\nAnswer-Mode: auto\r\nCall-ID: c5789761-71cf-405c-ba67-939121b34dbb@192.168.101.201\r\nContent-Type: application/sdp\r\nTo: <sip:25040_9171.ESL@192.168.101.201>\r\nContent-Length: 266\r\nAllow: INVITE, ACK, CANCEL, OPTIONS, BYE, MESSAGE, PRACK, REFER, INFO, SUBSCRIBE, NOTIFY\r\n\r\nv=0\r\no=ipbx 1686547050874 1686547050874 IN IP4 192.168.101.201\r\ns=477482417\r\nc=IN IP4 192.168.101.201\r\nt=0 0\r\nm=audio 47602 RTP/AVP 8 0 18 99\r\na=rtpmap:8 PCMA/8000/1\r\na=rtpmap:0 PCMU/8000/1\r\na=rtpmap:18 G729/8000/1\r\na=rtpmap:99 telephone-event/8000\r\na=fmtp:99 0-15\r\n";
+		int mpacket_length = 1521;
+		
+		strcpy(query_buff, "INSERT INTO livepacket_1 SET sipcallerip = 3232261577, sipcalledip = 3232261549, id_sensor = 0, sport = 5060, dport = 5060, istcp = 0, created_at = '2023-06-12 11:13:24', microseconds = 262064, callid = 'c5789761-71cf-405c-ba67-939121b34dbb@192.168.101.201', description = 'INVITE sip:25040_9171.ESL@192.168.101.173:5060;line=648b892de469b77;realip=10.0.28.130:49262;natip=93.47.153.108:64611 SIP/2.0', vlan = NULL, data =");
+		strcat(query_buff, "_latin1'#");
+		_sqlEscapeString(mpacket, mpacket_length, query_buff + strlen(query_buff), NULL);
+		strcat(query_buff, "#'");
+		
+		sqlStore->query_lock(MYSQL_ADD_QUERY_END(string(query_buff)), STORE_PROC_ID_SAVE_PACKET_SQL, 0);
+		
+		break;
+
+		}
+	 
+		{
+		cout << " --- " << endl;
+		cout << "free [GB old]: " << GetFreeDiskSpace("/home") / (1024*1024*1024) << endl;
+		cout << "free [GB]: " << GetFreeDiskSpace_GB("/home") << endl;
+		cout << "free [%]: " << GetFreeDiskSpace_perc("/home") << endl;
+		cout << "total [GB old]: " << GetTotalDiskSpace("/home") / (1024*1024*1024) << endl;
+		cout << "total [GB]: " << GetTotalDiskSpace_GB("/home") << endl;
+		break;
+		}
+	 
+		{
+		//vmIPmask ipm(str_2_vmIP("192.168.1.0"), 28);
+		vmIPmask ipm(str_2_vmIP("::ab:dead:babe"), 120);
+		cout << ipm.getString() << endl;
+		list<vmIP> list_ip;
+		ipm.ip_list(&list_ip);
+		for(list<vmIP>::iterator iter = list_ip.begin(); iter != list_ip.end(); iter++) {
+			cout << iter->getString() << endl;
+		}
+		cout << ipm.ip_list_size() << endl;
+		
+		vmIP ip = str_2_vmIP("::ab:FFFF:FFFF:FFFF:FFFF");
+		ip._inc();
+		ip._inc();
+		cout << ip.getString() << endl;
+		
+		break;
+		}
 	 
 		{
 		VmCodecs *vmCodecs = new FILE_LINE(0) VmCodecs;
