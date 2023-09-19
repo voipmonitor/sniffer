@@ -161,6 +161,7 @@ public:
 	int gziplevel;
 	int lzmalevel;
 	int zstdlevel;
+	int zstdstrategy;
 
 	void th_set_type(mode_t mode);
 	void th_set_path(char *pathname, bool partSuffix = false);

@@ -109,6 +109,9 @@ extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_compresslevel_sip;
 extern int opt_pcap_dump_compresslevel_rtp;
 extern int opt_pcap_dump_compresslevel_graph;
+extern int opt_pcap_dump_compress_sip_zstdstrategy = 0;
+extern int opt_pcap_dump_compress_rtp_zstdstrategy = 0;
+extern int opt_pcap_dump_compress_graph_zstdstrategy = 0;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -4420,6 +4423,9 @@ void FileZipHandler::initCompress() {
 	this->compressStream->setCompressLevel(typeFile == pcap_sip ? opt_pcap_dump_compresslevel_sip : 
 					       typeFile == pcap_rtp ? opt_pcap_dump_compresslevel_rtp : 
 					       typeFile == graph_rtp ? opt_pcap_dump_compresslevel_graph : -1);
+	this->compressStream->setCompressStrategy(typeFile == pcap_sip ? opt_pcap_dump_compress_sip_zstdstrategy : 
+					       typeFile == pcap_rtp ? opt_pcap_dump_compress_rtp_zstdstrategy : 
+					       typeFile == graph_rtp ? opt_pcap_dump_compress_graph_zstdstrategy : 0);
 	this->compressStream->enableAutoPrefixFile();
 	this->compressStream->enableForceStream();
 }

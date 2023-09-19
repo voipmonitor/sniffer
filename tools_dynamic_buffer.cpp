@@ -63,6 +63,10 @@ void CompressStream::setCompressLevel(int compressLevel) {
 	this->compressLevel = compressLevel;
 }
 
+void CompressStream::setCompressStrategy(int strategy) {
+	this->compressStrategy = strategy;
+}
+
 void CompressStream::enableAutoPrefixFile() {
 	this->autoPrefixFile = true;
 }
@@ -128,7 +132,7 @@ void CompressStream::initCompress() {
 				if(ZSTD_isError(rslt)) {
 					syslog(LOG_NOTICE, "bad zstd level %i", zstdLevel);
 				}
-				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, ZSTD_fast);
+				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, this->compressStrategy);
 				if(ZSTD_isError(rslt)) {
 					syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
 				}

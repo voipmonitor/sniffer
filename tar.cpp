@@ -68,6 +68,10 @@ extern int opt_pcap_dump_tar_graph_level;
 extern int opt_pcap_dump_tar_threads;
 extern int absolute_timeout;
 
+extern int opt_pcap_dump_tar_sip_zstdstrategy = 0;
+extern int opt_pcap_dump_tar_rtp_zstdstrategy = 0;
+extern int opt_pcap_dump_tar_graph_zstdstrategy = 0;
+
 extern int opt_filesclean;
 extern int opt_nocdr;
 extern int verbosity;
@@ -820,7 +824,7 @@ Tar::initZstd() {
 			if(ZSTD_isError(rslt)) {
 				syslog(LOG_NOTICE, "bad zstd level %i", zstdlevel);
 			}
-			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, ZSTD_fast);
+			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, zstdstrategy);
 			if(ZSTD_isError(rslt)) {
 				syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
 			}
@@ -965,7 +969,8 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 			lzma = true;
 			break;
 		case 3:
-			zstdlevel = opt_pcap_dump_tar_sip_level >= 0 ? opt_pcap_dump_tar_sip_level : 3;
+			zstdlevel = opt_pcap_dump_tar_sip_level;
+			zstdstrategy = opt_pcap_dump_tar_sip_zstdstrategy;
 			zstd = true;
 			break;
 		}
@@ -981,7 +986,8 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 			lzma = true;
 			break;
 		case 3:
-			zstdlevel = opt_pcap_dump_tar_rtp_level >= 0 ? opt_pcap_dump_tar_rtp_level : 3;
+			zstdlevel = opt_pcap_dump_tar_rtp_level;
+			zstdstrategy = opt_pcap_dump_tar_rtp_zstdstrategy;
 			zstd = true;
 			break;
 		}
@@ -997,7 +1003,8 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 			lzma = true;
 			break;
 		case 3:
-			zstdlevel = opt_pcap_dump_tar_graph_level >= 0 ? opt_pcap_dump_tar_graph_level : 3;
+			zstdlevel = opt_pcap_dump_tar_graph_level;
+			zstdstrategy = opt_pcap_dump_tar_graph_zstdstrategy;
 			zstd = true;
 			break;
 		}
