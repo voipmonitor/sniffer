@@ -6,8 +6,19 @@ AC_INIT([voipmonitor],[VERSION],[support@voipmonitor.org])
 AC_CONFIG_SRCDIR([voipmonitor.cpp])
 AC_CONFIG_HEADERS([config.h])
 
-AC_ARG_VAR([CFLAGS], [compiler flags for C])
-AC_ARG_VAR([CXXFLAGS], [compiler flags for C++])
+#AC_ARG_VAR([CFLAGS], [compiler flags for C])
+#AC_ARG_VAR([CXXFLAGS], [compiler flags for C++])
+
+AC_ARG_VAR([CFLAGS], [compiler flags for C code])
+if test "x$CFLAGS" = "x"; then
+  CFLAGS=''
+fi
+
+AC_ARG_VAR([CXXFLAGS], [compiler flags for C++ code])
+if test "x$CXXFLAGS" = "x"; then
+  CXXFLAGS=''
+fi
+
 
 # test platform
 PLATFORM=`uname`

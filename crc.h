@@ -51,6 +51,7 @@ inline bool crc32_sse_is_available() {
 	return(0);
 }
 
+__attribute__((target("sse4.2")))
 inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 	// If the string is empty, return the initial crc
 	if (len == 0)

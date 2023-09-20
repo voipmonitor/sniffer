@@ -1325,8 +1325,8 @@ Optional Packages:
   --with-heap_profiler    use tcmalloc library with heap profiler
 
 Some influential environment variables:
-  CFLAGS      compiler flags for C
-  CXXFLAGS    compiler flags for C++
+  CFLAGS      compiler flags for C code
+  CXXFLAGS    compiler flags for C++ code
   CXX         C++ compiler command
   LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
               nonstandard directory <lib dir>
@@ -1938,7 +1938,18 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 ac_config_headers="$ac_config_headers config.h"
 
 
+#AC_ARG_VAR([CFLAGS], [compiler flags for C])
+#AC_ARG_VAR([CXXFLAGS], [compiler flags for C++])
 
+
+if test "x$CFLAGS" = "x"; then
+  CFLAGS=''
+fi
+
+
+if test "x$CXXFLAGS" = "x"; then
+  CXXFLAGS=''
+fi
 
 
 # test platform

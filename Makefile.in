@@ -1,34 +1,6 @@
 ##### CPU variants #####
-GCCARCH = $(shell uname -m)
-MTUNE =
-
-ifeq ($(GCCARCH),amd64)
-  GCCARCH = core2
-  MTUNE = -mtune=core2
-endif
-
-ifeq ($(GCCARCH),i386)
-  GCCARCH = core2
-  MTUNE = -mtune=core2
-endif
-
-ifeq ($(GCCARCH),x86_64)
-  GCCARCH = core2
-  MTUNE = -mtune=core2
-endif
-
-ifeq ($(findstring arm,$(GCCARCH)),arm)
-  GCCARCH = armv6k
-endif
-
-ifeq ($(GCCARCH),aarch64)
-  GCCARCH = native
-endif
-
-#GCCVERSION = $(shell gcc --version | grep ^gcc | sed 's/^.* //g' | cut -f1,2 -d.)  
-#ifeq "$(GCCVERSION)" "4.1"
-#  GCCARCH = core2
-#endif
+GCCARCH = native
+MTUNE = -mtune=native
 
 FBSDDEF =
 PLATFORM = $(shell uname)
@@ -39,7 +11,6 @@ endif
 .DEFAULT_GOAL := shared
 .PHONY: default
 default: shared ;
-
 
 WIRESHARKLIBSTATIC =$(shell pkg-config --libs-only-l --static wireshark)
 WIRESHARKLIBSHARED =$(shell pkg-config --libs-only-l wireshark)
@@ -94,11 +65,11 @@ LIBZSTD=@LIBZSTD@
 LIBLZ4=@LIBLZ4@
 LIBGNUTLS=@LIBGNUTLS@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
-SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} -lzstd
-STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} 
+SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} -flto
+STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} -flto
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
-CXXFLAGS +=  -Wall -fPIC -g3 -O2 -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
+CXXFLAGS +=  -Wall -fPIC -g3 -O3 -flto -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@
 CFLAGS += ${CXXFLAGS}
 LIBS = ${SHARED_LIBS} 
 LIBS2 = @LIBS2@
