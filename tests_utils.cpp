@@ -739,6 +739,7 @@ void test() {
 	 
 	case 1: {
 	 
+		#if CRC_SSE and (defined(__x86_64__) or defined(__i386__))
 		unsigned int c = 1e7;
 		u_int64_t start, stop;
 		unsigned buff_l = 1000;
@@ -765,6 +766,7 @@ void test() {
 		}
 		stop = getTimeUS();
 		cout << stop - start << " / " << s << endl;
+		#endif
 		
 		break;
 	 
