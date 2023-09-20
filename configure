@@ -595,6 +595,8 @@ LIBGNUTLSSTATIC
 LIBGNUTLS
 LIBLZO
 LIBLZMA
+LIBLZ4
+LIBZSTD
 LIBFFT
 LIBPNG
 MYSQL_WITHOUT_SSL_SUPPORT
@@ -4475,6 +4477,80 @@ else
   as_fn_error $? "Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel" "$LINENO" 5
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lzstd" >&5
+$as_echo_n "checking for main in -lzstd... " >&6; }
+if ${ac_cv_lib_zstd_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lzstd  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_zstd_main=yes
+else
+  ac_cv_lib_zstd_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_zstd_main" >&5
+$as_echo "$ac_cv_lib_zstd_main" >&6; }
+if test "x$ac_cv_lib_zstd_main" = xyes; then :
+  HAVE_LIBZSTD=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find zstd. apt-get install libzstd-dev" >&5
+$as_echo "$as_me: Unable to find zstd. apt-get install libzstd-dev" >&6;}
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llz4" >&5
+$as_echo_n "checking for main in -llz4... " >&6; }
+if ${ac_cv_lib_lz4_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-llz4  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_lz4_main=yes
+else
+  ac_cv_lib_lz4_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_lz4_main" >&5
+$as_echo "$ac_cv_lib_lz4_main" >&6; }
+if test "x$ac_cv_lib_lz4_main" = xyes; then :
+  HAVE_LIBLZ4=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find lz4. apt-get install liblz4-dev" >&5
+$as_echo "$as_me: Unable to find lz4. apt-get install liblz4-dev" >&6;}
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llzma" >&5
 $as_echo_n "checking for main in -llzma... " >&6; }
 if ${ac_cv_lib_lzma_main+:} false; then :
@@ -4800,6 +4876,24 @@ $as_echo "#define HAVE_LIBFFT 1" >>confdefs.h
 	HAVE_LIBFFT_T=yes
 fi
 
+HAVE_LIBZSTD_T=no
+if test "x$HAVE_LIBZSTD" = "x1"; then
+
+$as_echo "#define HAVE_LIBZSTD 1" >>confdefs.h
+
+	LIBZSTD="-lzstd"
+
+	HAVE_LIBZSTD_T=yes
+fi
+HAVE_LIBLZ4_T=no
+if test "x$HAVE_LIBLZ4" = "x1"; then
+
+$as_echo "#define HAVE_LIBLZ4 1" >>confdefs.h
+
+	LIBLZ4="-llz4"
+
+	HAVE_LIBLZ4_T=yes
+fi
 HAVE_LIBLZMA_T=no
 if test "x$HAVE_LIBLZMA" = "x1"; then
 
