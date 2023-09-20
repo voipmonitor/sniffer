@@ -128,13 +128,13 @@ void CompressStream::initCompress() {
 			if(this->zstdCtx) {
 				int zstdLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
 				int rslt;
-				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdLevel);
-				if(ZSTD_isError(rslt)) {
-					syslog(LOG_NOTICE, "bad zstd level %i", zstdLevel);
-				}
 				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, this->compressStrategy);
 				if(ZSTD_isError(rslt)) {
 					syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
+				}
+				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdLevel);
+				if(ZSTD_isError(rslt)) {
+					syslog(LOG_NOTICE, "bad zstd level %i", zstdLevel);
 				}
 				createCompressBuffer();
 			} else {
@@ -421,41 +421,24 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		if(!this->zstdCtx) {
 			this->initCompress();
 		}
-		if(len) {
-			ZSTD_inBuffer inBuffer = { data, len, 0 };
-			do {
-				ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
-				size_t rslt = ZSTD_compressStream(zstdCtx, &outBuffer , &inBuffer);
-				if(!ZSTD_isError(rslt)) {
-					if(outBuffer.pos > 0) {
-						if(!baseEv->compress_ev(this->compressBuffer, outBuffer.pos, 0)) {
-							this->setError("zstd compress_ev failed");
-							return(false);
-						}
+		{
+		ZSTD_inBuffer inBuffer = { data, len, 0 };
+		size_t remaining = 0;
+		do {
+			ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
+			remaining = ZSTD_compressStream2(zstdCtx, &outBuffer , &inBuffer, flush ? ZSTD_e_end : ZSTD_e_continue);
+			if(!ZSTD_isError(remaining)) {
+				if(outBuffer.pos > 0) {
+					if(!baseEv->compress_ev(this->compressBuffer, outBuffer.pos, 0)) {
+						this->setError("zstd compress_ev failed");
+						return(false);
 					}
-				} else {
-					this->setError("zstd compress failed");
-					return(false);
 				}
-			} while(inBuffer.pos < inBuffer.size);
-		}
-		if(flush) {
-			size_t remaining = 0;
-			do {
-				ZSTD_outBuffer outBuffer = { this->compressBuffer, (size_t)this->compressBufferLength, 0 };
-				remaining = ZSTD_endStream(zstdCtx, &outBuffer);
-				if(!ZSTD_isError(remaining)) {
-					if(outBuffer.pos > 0) {
-						if(!baseEv->compress_ev(this->compressBuffer, outBuffer.pos, 0)) {
-							this->setError("zstd compress_ev failed");
-							return(false);
-						}
-					}
-				} else {
-					this->setError("zstd compress failed");
-					return(false);
-				}
-			} while(remaining);
+			} else {
+				this->setError("zstd compress failed");
+				return(false);
+			}
+		} while(flush ? remaining : inBuffer.pos < inBuffer.size);
 		}
 		this->processed_len += len;
 		#endif

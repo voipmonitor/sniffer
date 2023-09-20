@@ -68,9 +68,9 @@ extern int opt_pcap_dump_tar_graph_level;
 extern int opt_pcap_dump_tar_threads;
 extern int absolute_timeout;
 
-extern int opt_pcap_dump_tar_sip_zstdstrategy = 0;
-extern int opt_pcap_dump_tar_rtp_zstdstrategy = 0;
-extern int opt_pcap_dump_tar_graph_zstdstrategy = 0;
+extern int opt_pcap_dump_tar_sip_zstdstrategy;
+extern int opt_pcap_dump_tar_rtp_zstdstrategy;
+extern int opt_pcap_dump_tar_graph_zstdstrategy;
 
 extern int opt_filesclean;
 extern int opt_nocdr;
@@ -820,13 +820,13 @@ Tar::initZstd() {
 			return(false);
 		} else {
 			int rslt;
-			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdlevel);
-			if(ZSTD_isError(rslt)) {
-				syslog(LOG_NOTICE, "bad zstd level %i", zstdlevel);
-			}
 			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, zstdstrategy);
 			if(ZSTD_isError(rslt)) {
 				syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
+			}
+			rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_compressionLevel, zstdlevel);
+			if(ZSTD_isError(rslt)) {
+				syslog(LOG_NOTICE, "bad zstd level %i", zstdlevel);
 			}
 			this->compressBufferLength = 8192*4;
 			this->compressBuffer = new FILE_LINE(34009) char[this->compressBufferLength];
