@@ -11,7 +11,7 @@ u_int32_t crc32buf(u_char *buf, size_t len) {
 	return(crc32buf((char*)buf, len));
 }
 
-#if CRC_SSE and (defined(__x86_64__) or defined(__i386__))
+#if defined(__x86_64__) or defined(__i386__)
 
 #include <nmmintrin.h>
 

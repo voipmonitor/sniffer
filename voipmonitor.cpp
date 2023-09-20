@@ -8734,7 +8734,7 @@ void set_context_config() {
 	
 	opt_kamailio = opt_kamailio_dstip.isSet();
 	
-	#if CRC_SSE and (defined(__x86_64__) or defined(__i386__))
+	#if defined(__x86_64__) or defined(__i386__)
 	if(opt_dup_check == 2 && crc32_sse_is_available()) {
 		opt_dup_check = 3;
 	}

@@ -66,7 +66,7 @@ struct sPacketDuplCheckProc {
 	}
 	inline void data_crc(u_char *data, unsigned len) {
 		dc->crc = 
-			  #if CRC_SSE and (defined(__x86_64__) or defined(__i386__))
+			  #if defined(__x86_64__) or defined(__i386__)
 			  _type == 3 ? crc32_sse(dc->crc, (const char*)data, len) :
 			  #endif
 			  crc32(dc->crc, data, len);
