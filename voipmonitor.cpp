@@ -8428,7 +8428,7 @@ void set_context_config() {
 	if(opt_pcap_dump_tar) {
 		if(opt_cachedir[0]) {
 			opt_cachedir[0] = '\0';
-			syslog(LOG_ERR, "option cachedir is not suported with option 'tar = yes'");
+			syslog(LOG_ERR, "option cachedir is not supported with option 'tar = yes'");
 		}
 		if(opt_pcap_dump_tar_compress_sip) {
 			opt_pcap_dump_zip_sip = FileZipHandler::compress_na;
@@ -11569,11 +11569,20 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel_sip", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_sip", NULL))) {
 		opt_pcap_dump_compresslevel_sip = atoi(value);
 	}
+	if((value = ini.GetValue("general", "pcap_dump_compress_strategy_sip", NULL))) {
+		opt_pcap_dump_compress_sip_zstdstrategy = atoi(value);
+	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel_rtp", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_rtp", NULL))) {
 		opt_pcap_dump_compresslevel_rtp = atoi(value);
 	}
+	if((value = ini.GetValue("general", "pcap_dump_compress_strategy_rtp", NULL))) {
+		opt_pcap_dump_compress_rtp_zstdstrategy = atoi(value);
+	}
 	if((value = ini.GetValue("general", "pcap_dump_ziplevel_graph", NULL)) || (value = ini.GetValue("general", "pcap_dump_compresslevel_graph", NULL))) {
 		opt_pcap_dump_compresslevel_graph = atoi(value);
+	}
+	if((value = ini.GetValue("general", "pcap_dump_compress_strategy_graph", NULL))) {
+		opt_pcap_dump_compress_graph_zstdstrategy = atoi(value);
 	}
 	if((value = ini.GetValue("general", "pcap_dump_writethreads", NULL))) {
 		opt_pcap_dump_writethreads = atoi(value);
@@ -11666,11 +11675,20 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "tar_sip_level", NULL))) {
 		opt_pcap_dump_tar_sip_level = atoi(value);
 	}
+	if((value = ini.GetValue("general", "tar_sip_strategy", NULL))) {
+		opt_pcap_dump_tar_sip_zstdstrategy = atoi(value);
+	}
 	if((value = ini.GetValue("general", "tar_rtp_level", NULL))) {
 		opt_pcap_dump_tar_rtp_level = atoi(value);
 	}
+	if((value = ini.GetValue("general", "tar_rtp_strategy", NULL))) {
+		opt_pcap_dump_tar_rtp_zstdstrategy = atoi(value);
+	}
 	if((value = ini.GetValue("general", "tar_graph_level", NULL))) {
 		opt_pcap_dump_tar_graph_level = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_graph_strategy", NULL))) {
+		opt_pcap_dump_tar_graph_zstdstrategy = atoi(value);
 	}
 	if((value = ini.GetValue("general", "tar_internalcompress_sip", NULL))) {
 		opt_pcap_dump_tar_internalcompress_sip = CompressStream::convTypeCompress(value);
