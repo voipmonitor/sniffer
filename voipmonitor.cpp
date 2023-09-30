@@ -533,7 +533,7 @@ int opt_response_default_timeout = 5;
 bool opt_ignore_rtp_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_bye = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
-bool opt_ignore_rtp_after_cancel_confirmed = false;
+bool opt_ignore_rtp_after_cancel_confirmed = true;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
@@ -1397,9 +1397,9 @@ string opt_sched_pol_sip;
 string opt_sched_pol_rtp_prep;
 string opt_sched_pol_rtp_read;
 
-string opt_sched_pol_auto;
-int opt_sched_pol_auto_heap_limit;
-int opt_sched_pol_auto_cpu_limit;
+string opt_sched_pol_auto = "prio -20";
+int opt_sched_pol_auto_heap_limit 1;
+int opt_sched_pol_auto_cpu_limit = 45;
 
 
 #include <stdio.h>

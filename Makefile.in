@@ -80,11 +80,11 @@ LDFLAGS += @LDFLAGS@
 
 shared: LDFLAGS += -Wl,--allow-multiple-definition
 shared: cleantest $(objects) 
-	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS_PATH} ${LIBS}
+	${CXX} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${LIBS}
 
 static: LDFLAGS += -Wl,--allow-multiple-definition
 static: cleantest $(objects) 
-	${CXX} $(objects) ${LDFLAGS} -o voipmonitor ${LIBS_PATH} ${STATIC_LIBS}
+	${CXX} $(objects) ${LIBS_PATH} ${LDFLAGS} -o voipmonitor ${STATIC_LIBS}
 
 core2: cleantest static
 
@@ -106,7 +106,7 @@ core2cust: LIBGROUP = -Wl,--start-group $(GLIBCDIR)/libc.a -lgcc -lgcc_eh -Wl,--
 core2cust: CXXFLAGS += -I /opt/libc/include 
 core2cust: CFLAGS += ${CXXFLAGS}
 core2cust: cleantest $(objects)
-	${CXX} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} ${LIBS_PATH}
+	${CXX} ${LIBS_PATH} $(LDFLAGS) -o voipmonitor $(STARTFILES) ${objects} $(LIBGROUP) $(ENDFILES) -L/opt/libc/lib ${STATIC_LIBS} 
 
 DEPENDSC:=${shell find . -type f -name '*.c' -print}
 DEPENDSCPP:=${shell find . -type f -name '*.cpp' -print}
