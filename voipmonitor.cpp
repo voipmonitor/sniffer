@@ -1398,7 +1398,7 @@ string opt_sched_pol_rtp_prep;
 string opt_sched_pol_rtp_read;
 
 string opt_sched_pol_auto = "prio -20";
-int opt_sched_pol_auto_heap_limit 1;
+int opt_sched_pol_auto_heap_limit = 1;
 int opt_sched_pol_auto_cpu_limit = 45;
 
 
@@ -9855,7 +9855,9 @@ int eval_config(string inistr) {
 		opt_sip_msg_compare_vlan = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
-		opt_dup_check = yesno(value);
+		opt_dup_check = !strcasecmp(value, "md5") ? 1 :
+				!strcasecmp(value, "crc") ? 2 :
+				yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
 		opt_dup_check_ipheader = !strcasecmp(value, "ip_only") ? 2 : yesno(value);
