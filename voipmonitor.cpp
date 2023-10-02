@@ -1216,8 +1216,8 @@ char opt_git_folder[1024];
 char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
-bool opt_save_query_to_files;
-bool opt_save_query_charts_to_files;
+bool opt_save_query_to_files = true;
+bool opt_save_query_charts_to_files = true;
 bool opt_save_query_charts_remote_to_files;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
@@ -5861,7 +5861,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42077) cConfigItem_yesno("mysql_2_http",  &opt_mysql_2_http));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
-				->setDefaultValueStr("no"));
+				->setDefaultValueStr("yes"));
 				advanced();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts"))
 					->setDefaultValueStr("no"));
