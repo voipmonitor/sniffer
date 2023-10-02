@@ -537,6 +537,7 @@ bool opt_ignore_rtp_after_cancel_confirmed = true;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
+bool opt_ignore_rtp_after_response_list_exists = false;
 int opt_saveaudio_reversestereo = 0;
 bool opt_saveaudio_adaptive_jitterbuffer = false;
 bool opt_saveaudio_resync_jitterbuffer = false;
@@ -1431,6 +1432,14 @@ static bool check_complete_parameters();
 static void final_parameters();
 static void parse_opt_nocdr_for_last_responses();
 static void set_cdr_check_unique_callid_in_sensors_list();
+static void parse_config_item(const char *config, map<vmIPport, string> *item_ip, map<vmIPmask_port, string> *item_net);
+static void parse_config_item(const char *config, vector<vmIPport> *item);
+static void parse_config_item(const char *config, vector<vmIP> *item_ip, vector<vmIPmask> *item_net);
+static void parse_config_item(const char *config, nat_aliases_t *item);
+static void parse_config_item(const char *config, vector<string> *item);
+static void parse_config_item(const char *config, vector<int> *item);
+static void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix);
+static void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, map<u_int16_t, bool> *ports);
 
 void init_management_functions(void);
  
@@ -8710,6 +8719,9 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks_read_check = 1;
 	}
 	
+	if(!(useNewCONFIG ? CONFIG.isExists("ignore_rtp_after_response") : opt_ignore_rtp_after_response_list_exists)) {
+		parse_config_item("408;480;486;487;481;600;503", &opt_ignore_rtp_after_response_list);
+	}
 	if(opt_ignore_rtp_after_response_list.size() > 1) {
 		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
 	}
@@ -11425,6 +11437,7 @@ int eval_config(string inistr) {
 		for (; i != values.end(); ++i) {
 			parse_config_item(i->pItem, &opt_ignore_rtp_after_response_list);
 		}
+		opt_ignore_rtp_after_response_list_exists = true;
 	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);

@@ -61,6 +61,7 @@ protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/, bool /*enableInitBeforeSet*/ = true, bool /*enableClearBeforeFirstSet*/ = false) { return(false); }
+	bool existsInConfigFile(CSimpleIniA *ini);
 	string getValueFromConfigFile(CSimpleIniA *ini);
 	vector<string> getValuesFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true);
 	bool getValueFromMapValues(const char *str_value, int *rslt_value);
@@ -94,6 +95,10 @@ protected:
 	bool set_in_config;
 	bool set_in_db;
 	bool set_in_json;
+	bool exists;
+	bool exists_in_config;
+	bool exists_in_db;
+	bool exists_in_json;
 	string value_in_config;
 	string value_in_db;
 	string value_in_json;
@@ -714,6 +719,7 @@ public:
 	cConfigItem *getItem(const char *itemName);
 	bool isSet();
 	bool isSet(const char *itemName);
+	bool isExists(const char *itemName);
 	void beginTrackDiffValues();
 	void endTrackDiffValues(list<sDiffValue> *diffValues);
 private:
