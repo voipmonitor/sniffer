@@ -753,7 +753,7 @@ bool opt_detect_alone_bye = true;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_partition_by_hours = 0;
-bool opt_cdr_force_primary_index_in_all_tables = 1;
+bool opt_cdr_force_primary_index_in_all_tables = 0;
 bool opt_cdr_sipport = 0;
 bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
@@ -7774,7 +7774,7 @@ void get_command_line_arguments() {
 				opt_disableplc = 1;
 				break;
 			case 'L':
-				opt_dup_check = 1;
+				opt_dup_check = 2;
 				break;
 			case 'K':
 				opt_norecord_dtmf = 1;
@@ -8052,7 +8052,7 @@ void get_command_line_arguments() {
 					exit(1);
 				}
 				opt_process_pcap_type = _pp_dedup;
-				opt_dup_check = 1;
+				opt_dup_check = 2;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
 				opt_dup_check_udpheader_ignore_checksum = 1;
@@ -8733,7 +8733,9 @@ void set_context_config() {
 	}
 	
 	opt_kamailio = opt_kamailio_dstip.isSet();
-	
+
+	// force deduplication to crc32 always 
+	if(opt_dup_check == 1) opt_dup_check = 2;	
 	#if defined(__x86_64__) or defined(__i386__)
 	if(opt_dup_check == 2 && crc32_sse_is_available()) {
 		opt_dup_check = 3;
