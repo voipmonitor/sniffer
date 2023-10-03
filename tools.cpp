@@ -109,9 +109,18 @@ extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
 extern int opt_pcap_dump_compresslevel_sip;
 extern int opt_pcap_dump_compresslevel_rtp;
 extern int opt_pcap_dump_compresslevel_graph;
-extern int opt_pcap_dump_compress_sip_zstdstrategy = 0;
-extern int opt_pcap_dump_compress_rtp_zstdstrategy = 0;
-extern int opt_pcap_dump_compress_graph_zstdstrategy = 0;
+extern int opt_pcap_dump_compresslevel_sip_gzip;
+extern int opt_pcap_dump_compresslevel_sip_lzma;
+extern int opt_pcap_dump_compresslevel_sip_zstd;
+extern int opt_pcap_dump_compresslevel_rtp_gzip;
+extern int opt_pcap_dump_compresslevel_rtp_lzma;
+extern int opt_pcap_dump_compresslevel_rtp_zstd;
+extern int opt_pcap_dump_compresslevel_graph_gzip;
+extern int opt_pcap_dump_compresslevel_graph_lzma;
+extern int opt_pcap_dump_compresslevel_graph_zstd;
+extern int opt_pcap_dump_compress_sip_zstdstrategy;
+extern int opt_pcap_dump_compress_rtp_zstdstrategy;
+extern int opt_pcap_dump_compress_graph_zstdstrategy;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -4420,12 +4429,25 @@ void FileZipHandler::initCompress() {
 								     this->bufferLength :
 								     8 * 1024, 
 								    0);
-	this->compressStream->setCompressLevel(typeFile == pcap_sip ? opt_pcap_dump_compresslevel_sip : 
-					       typeFile == pcap_rtp ? opt_pcap_dump_compresslevel_rtp : 
-					       typeFile == graph_rtp ? opt_pcap_dump_compresslevel_graph : -1);
-	this->compressStream->setCompressStrategy(typeFile == pcap_sip ? opt_pcap_dump_compress_sip_zstdstrategy : 
-					       typeFile == pcap_rtp ? opt_pcap_dump_compress_rtp_zstdstrategy : 
-					       typeFile == graph_rtp ? opt_pcap_dump_compress_graph_zstdstrategy : 0);
+	this->compressStream->setCompressLevel(typeFile == pcap_sip ? 
+						(opt_pcap_dump_compresslevel_sip != INT_MIN ? opt_pcap_dump_compresslevel_sip :
+						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_sip_gzip :
+						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_sip_lzma :
+						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_sip_zstd : INT_MIN) :
+					       typeFile == pcap_rtp ? 
+						(opt_pcap_dump_compresslevel_rtp != INT_MIN ? opt_pcap_dump_compresslevel_rtp :
+						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_rtp_gzip :
+						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_rtp_lzma :
+						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_rtp_zstd : INT_MIN) :
+					       typeFile == graph_rtp ? 
+						(opt_pcap_dump_compresslevel_graph != INT_MIN ? opt_pcap_dump_compresslevel_graph :
+						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_graph_gzip :
+						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_graph_lzma :
+						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_graph_zstd : INT_MIN) :
+						INT_MIN);
+	this->compressStream->setCompressZstdStrategy(typeFile == pcap_sip ? opt_pcap_dump_compress_sip_zstdstrategy : 
+						      typeFile == pcap_rtp ? opt_pcap_dump_compress_rtp_zstdstrategy : 
+						      typeFile == graph_rtp ? opt_pcap_dump_compress_graph_zstdstrategy : INT_MIN);
 	this->compressStream->enableAutoPrefixFile();
 	this->compressStream->enableForceStream();
 }

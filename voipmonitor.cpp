@@ -242,12 +242,7 @@ int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
-FileZipHandler::eTypeCompress opt_gzipGRAPH =
-	#ifdef HAVE_LIBLZO
-		FileZipHandler::lzo;
-	#else
-		FileZipHandler::gzip;
-	#endif //HAVE_LIBLZO
+FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -617,32 +612,52 @@ FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_n
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = 
 	#ifdef HAVE_LIBLZO
 		FileZipHandler::lzo;
+	#elif HAVE_LIBZSTD
+		FileZipHandler::zstd;
 	#else
 		FileZipHandler::gzip;
 	#endif //HAVE_LIBLZO
-int opt_pcap_dump_compresslevel_sip = -1;
-int opt_pcap_dump_compresslevel_rtp = -1;
-int opt_pcap_dump_compresslevel_graph = -1;
-int opt_pcap_dump_compress_sip_zstdstrategy = 0;
-int opt_pcap_dump_compress_rtp_zstdstrategy = 0;
-int opt_pcap_dump_compress_graph_zstdstrategy = 0;
+int opt_pcap_dump_compresslevel_sip = INT_MIN;
+int opt_pcap_dump_compresslevel_rtp = INT_MIN;
+int opt_pcap_dump_compresslevel_graph = INT_MIN;
+int opt_pcap_dump_compresslevel_sip_gzip = 1;
+int opt_pcap_dump_compresslevel_sip_lzma = 1;
+int opt_pcap_dump_compresslevel_sip_zstd = 1;
+int opt_pcap_dump_compresslevel_rtp_gzip = 1;
+int opt_pcap_dump_compresslevel_rtp_lzma = 1;
+int opt_pcap_dump_compresslevel_rtp_zstd = 1;
+int opt_pcap_dump_compresslevel_graph_gzip = 1;
+int opt_pcap_dump_compresslevel_graph_lzma = 1;
+int opt_pcap_dump_compresslevel_graph_zstd = 1;
+int opt_pcap_dump_compress_sip_zstdstrategy = INT_MIN;
+int opt_pcap_dump_compress_rtp_zstdstrategy = INT_MIN;
+int opt_pcap_dump_compress_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
 bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
-int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma, 3 zstd
-int opt_pcap_dump_tar_sip_level = -1;
-int opt_pcap_dump_tar_sip_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_sip = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_sip_level = INT_MIN;
+int opt_pcap_dump_tar_sip_level_gzip = 6;
+int opt_pcap_dump_tar_sip_level_lzma = 5;
+int opt_pcap_dump_tar_sip_level_zstd = 3;
+int opt_pcap_dump_tar_sip_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_sip_use_pos = 0;
-int opt_pcap_dump_tar_compress_rtp = 0;
-int opt_pcap_dump_tar_rtp_level = -1;
-int opt_pcap_dump_tar_rtp_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_rtp = 0; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_rtp_level = INT_MIN;
+int opt_pcap_dump_tar_rtp_level_gzip = 1;
+int opt_pcap_dump_tar_rtp_level_lzma = 1;
+int opt_pcap_dump_tar_rtp_level_zstd = 1;
+int opt_pcap_dump_tar_rtp_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
-int opt_pcap_dump_tar_compress_graph = 0;
-int opt_pcap_dump_tar_graph_level = -1;
-int opt_pcap_dump_tar_graph_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_graph = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_graph_level = INT_MIN;
+int opt_pcap_dump_tar_graph_level_gzip = 6;
+int opt_pcap_dump_tar_graph_level_lzma = 5;
+int opt_pcap_dump_tar_graph_level_zstd = 3;
+int opt_pcap_dump_tar_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;

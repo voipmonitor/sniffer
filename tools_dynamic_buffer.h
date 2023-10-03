@@ -62,7 +62,7 @@ public:
 	CompressStream(eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	virtual ~CompressStream();
 	void setCompressLevel(int compressLevel);
-	void setCompressStrategy(int strategy);
+	void setCompressZstdStrategy(int compressZstdStrategy);
 	void enableAutoPrefixFile();
 	void enableForceStream();
 	void setSendParameters(int client, void *c_client);
@@ -142,7 +142,7 @@ private:
 	class SimpleBuffer *snappyDecompressData;
 	string errorString;
 	int compressLevel;
-	int compressStrategy;
+	int compressZstdStrategy;
 	bool autoPrefixFile;
 	bool forceStream;
 	u_int32_t processed_len;
