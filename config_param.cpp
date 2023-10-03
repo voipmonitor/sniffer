@@ -27,6 +27,10 @@ cConfigItem::cConfigItem(const char *name) {
 	set_in_config = false;
 	set_in_db = false;
 	set_in_json = false;
+	exists = false;
+	exists_in_config = false;
+	exists_in_db = false;
+	exists_in_json = false;
 	defaultValueStr_set = false;
 	naDefaultValueStr = false;
 	clearBeforeFirstSet = false;
@@ -130,6 +134,20 @@ cConfigItem *cConfigItem::setDescription(const char *description) {
 cConfigItem *cConfigItem::setHelp(const char *help) {
 	this->help = help ? help : "";
 	return(this);
+}
+
+bool cConfigItem::existsInConfigFile(CSimpleIniA *ini) {
+	const char *value = ini->GetValue("general", config_name.c_str(), NULL);
+	if(value) {
+		return(true);
+	}
+	for(list<string>::iterator iter = config_name_alias.begin(); iter != config_name_alias.end(); iter++) {
+		value = ini->GetValue("general", (*iter).c_str(), NULL);
+		if(value) {
+			return(true);
+		}
+	}
+	return(false);
 }
 
 string cConfigItem::getValueFromConfigFile(CSimpleIniA *ini) {
@@ -2578,7 +2596,12 @@ bool cConfig::loadFromConfigFile(const char *filename, string *error, bool silen
 							 iter->second->getValueFromConfigFile(&ini);
 			iter->second->set = true;
 			iter->second->set_in_config = true;
+			iter->second->exists = true;
+			iter->second->exists_in_config = true;
 			evSetConfigItem(iter->second);
+		} else if(iter->second->existsInConfigFile(&ini)) {
+			iter->second->exists = true;
+			iter->second->exists_in_config = true;
 		}
 	}
 	unlock();
@@ -2847,6 +2870,8 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 						iter_map->second->value_in_json = value;
 						evSetConfigItem(iter_map->second);
 					}
+					iter_map->second->exists = true;
+					iter_map->second->exists_in_json = true;
 				} else {
 					iter_map->second->clearToDefaultValue();
 					evSetConfigItem(iter_map->second);
@@ -2907,6 +2932,8 @@ void cConfig::setFromMysql(bool checkConnect, bool onlyIfSet) {
 								iter_map->second->value_in_db = row[column];
 								evSetConfigItem(iter_map->second);
 							}
+							iter_map->second->exists = true;
+							iter_map->second->exists_in_db = true;
 						} else if(!onlyIfSet) {
 							iter_map->second->clearToDefaultValue();
 							evSetConfigItem(iter_map->second);
@@ -3036,6 +3063,11 @@ bool cConfig::isSet() {
 bool cConfig::isSet(const char *itemName) {
 	cConfigItem *item = getItem(itemName);
 	return(item ? item->set : false);
+}
+
+bool cConfig::isExists(const char *itemName) {
+	cConfigItem *item = getItem(itemName);
+	return(item ? item->exists : false);
 }
 
 void cConfig::beginTrackDiffValues() {

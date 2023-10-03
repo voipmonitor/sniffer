@@ -979,10 +979,14 @@ void cSnifferServerConnection::cp_store() {
 }
 
 bool cSnifferServerConnection::cp_store_check() {
+	extern bool opt_mysql_mysql_redirect_cdr_queue;
 	if((snifferServerOptions.mysql_queue_limit &&
 	    server->sql_queue_size(false) > snifferServerOptions.mysql_queue_limit) ||
-	   (snifferServerOptions.mysql_redirect_queue_limit &&
-	    server->sql_queue_size(true) > snifferServerOptions.mysql_redirect_queue_limit)) {
+	   (opt_mysql_mysql_redirect_cdr_queue &&
+	    (snifferServerOptions.mysql_redirect_queue_limit || snifferServerOptions.mysql_queue_limit) &&
+	    server->sql_queue_size(true) > (snifferServerOptions.mysql_redirect_queue_limit ? 
+					     snifferServerOptions.mysql_redirect_queue_limit : 
+					     snifferServerOptions.mysql_queue_limit / 5))) {
 		extern int opt_client_server_sleep_ms_if_queue_is_full;
 		JsonExport exp;
 		exp.add("error", "sql queue is full");

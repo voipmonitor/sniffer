@@ -242,12 +242,7 @@ int opt_faxt30detect = 0;	// if = 1 all sdp is activated (can take a lot of cpu)
 int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
-FileZipHandler::eTypeCompress opt_gzipGRAPH =
-	#ifdef HAVE_LIBLZO
-		FileZipHandler::lzo;
-	#else
-		FileZipHandler::gzip;
-	#endif //HAVE_LIBLZO
+FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -537,6 +532,7 @@ bool opt_ignore_rtp_after_cancel_confirmed = true;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
+bool opt_ignore_rtp_after_response_list_exists = false;
 int opt_saveaudio_reversestereo = 0;
 bool opt_saveaudio_adaptive_jitterbuffer = false;
 bool opt_saveaudio_resync_jitterbuffer = false;
@@ -616,32 +612,52 @@ FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip = FileZipHandler::compress_n
 FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp = 
 	#ifdef HAVE_LIBLZO
 		FileZipHandler::lzo;
+	#elif HAVE_LIBZSTD
+		FileZipHandler::zstd;
 	#else
 		FileZipHandler::gzip;
 	#endif //HAVE_LIBLZO
-int opt_pcap_dump_compresslevel_sip = -1;
-int opt_pcap_dump_compresslevel_rtp = -1;
-int opt_pcap_dump_compresslevel_graph = -1;
-int opt_pcap_dump_compress_sip_zstdstrategy = 0;
-int opt_pcap_dump_compress_rtp_zstdstrategy = 0;
-int opt_pcap_dump_compress_graph_zstdstrategy = 0;
+int opt_pcap_dump_compresslevel_sip = INT_MIN;
+int opt_pcap_dump_compresslevel_rtp = INT_MIN;
+int opt_pcap_dump_compresslevel_graph = INT_MIN;
+int opt_pcap_dump_compresslevel_sip_gzip = 1;
+int opt_pcap_dump_compresslevel_sip_lzma = 1;
+int opt_pcap_dump_compresslevel_sip_zstd = 1;
+int opt_pcap_dump_compresslevel_rtp_gzip = 1;
+int opt_pcap_dump_compresslevel_rtp_lzma = 1;
+int opt_pcap_dump_compresslevel_rtp_zstd = 1;
+int opt_pcap_dump_compresslevel_graph_gzip = 1;
+int opt_pcap_dump_compresslevel_graph_lzma = 1;
+int opt_pcap_dump_compresslevel_graph_zstd = 1;
+int opt_pcap_dump_compress_sip_zstdstrategy = INT_MIN;
+int opt_pcap_dump_compress_rtp_zstdstrategy = INT_MIN;
+int opt_pcap_dump_compress_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
 bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
-int opt_pcap_dump_tar_compress_sip = 1; //0 off, 1 gzip, 2 lzma, 3 zstd
-int opt_pcap_dump_tar_sip_level = -1;
-int opt_pcap_dump_tar_sip_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_sip = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_sip_level = INT_MIN;
+int opt_pcap_dump_tar_sip_level_gzip = 6;
+int opt_pcap_dump_tar_sip_level_lzma = 5;
+int opt_pcap_dump_tar_sip_level_zstd = 3;
+int opt_pcap_dump_tar_sip_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_sip_use_pos = 0;
-int opt_pcap_dump_tar_compress_rtp = 0;
-int opt_pcap_dump_tar_rtp_level = -1;
-int opt_pcap_dump_tar_rtp_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_rtp = 0; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_rtp_level = INT_MIN;
+int opt_pcap_dump_tar_rtp_level_gzip = 1;
+int opt_pcap_dump_tar_rtp_level_lzma = 1;
+int opt_pcap_dump_tar_rtp_level_zstd = 1;
+int opt_pcap_dump_tar_rtp_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
-int opt_pcap_dump_tar_compress_graph = 0;
-int opt_pcap_dump_tar_graph_level = -1;
-int opt_pcap_dump_tar_graph_zstdstrategy = 0;
+int opt_pcap_dump_tar_compress_graph = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_graph_level = INT_MIN;
+int opt_pcap_dump_tar_graph_level_gzip = 6;
+int opt_pcap_dump_tar_graph_level_lzma = 5;
+int opt_pcap_dump_tar_graph_level_zstd = 3;
+int opt_pcap_dump_tar_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
@@ -1224,7 +1240,7 @@ int opt_save_query_to_files_period;
 int opt_query_cache_speed;
 int opt_query_cache_check_utf;
 
-int opt_load_query_from_files;
+int opt_load_query_from_files = 1;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify = true;
@@ -1398,7 +1414,7 @@ string opt_sched_pol_rtp_prep;
 string opt_sched_pol_rtp_read;
 
 string opt_sched_pol_auto = "prio -20";
-int opt_sched_pol_auto_heap_limit 1;
+int opt_sched_pol_auto_heap_limit = 1;
 int opt_sched_pol_auto_cpu_limit = 45;
 
 
@@ -1431,6 +1447,14 @@ static bool check_complete_parameters();
 static void final_parameters();
 static void parse_opt_nocdr_for_last_responses();
 static void set_cdr_check_unique_callid_in_sensors_list();
+static void parse_config_item(const char *config, map<vmIPport, string> *item_ip, map<vmIPmask_port, string> *item_net);
+static void parse_config_item(const char *config, vector<vmIPport> *item);
+static void parse_config_item(const char *config, vector<vmIP> *item_ip, vector<vmIPmask> *item_net);
+static void parse_config_item(const char *config, nat_aliases_t *item);
+static void parse_config_item(const char *config, vector<string> *item);
+static void parse_config_item(const char *config, vector<int> *item);
+static void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, char *port_matrix);
+static void parse_config_item_ports(CSimpleIniA::TNamesDepend *values, map<u_int16_t, bool> *ports);
 
 void init_management_functions(void);
  
@@ -5872,7 +5896,7 @@ void cConfig::addConfigItems() {
 				->setDefaultValueStr("yes"));
 				advanced();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts"))
-					->setDefaultValueStr("no"));
+					->setDefaultValueStr("yes"));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts_remote"))
 					->setDefaultValueStr("no"));
 				addConfigItem(new FILE_LINE(42079) cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
@@ -7207,18 +7231,24 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_to_files = false;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_to_files = false;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts_remote") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_remote_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_remote_to_files = false;
 		}
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
@@ -8423,6 +8453,13 @@ void set_context_config() {
 		}
 	}
 	
+	if(is_read_from_file_by_pb()) {
+		opt_save_query_to_files = false;
+		opt_save_query_charts_to_files = false;
+		opt_save_query_charts_remote_to_files = false;
+		opt_load_query_from_files = 0;
+	}
+	
 	if(is_read_from_file()) {
 		if(is_receiver()) {
 			opt_pcap_queue_receive_from_ip_port.clear();
@@ -8718,6 +8755,9 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks_read_check = 1;
 	}
 	
+	if(!(useNewCONFIG ? CONFIG.isExists("ignore_rtp_after_response") : opt_ignore_rtp_after_response_list_exists)) {
+		parse_config_item("408;480;486;487;481;600;503", &opt_ignore_rtp_after_response_list);
+	}
 	if(opt_ignore_rtp_after_response_list.size() > 1) {
 		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
 	}
@@ -9865,7 +9905,9 @@ int eval_config(string inistr) {
 		opt_sip_msg_compare_vlan = yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate", NULL))) {
-		opt_dup_check = yesno(value);
+		opt_dup_check = !strcasecmp(value, "md5") ? 1 :
+				!strcasecmp(value, "crc") ? 2 :
+				yesno(value);
 	}
 	if((value = ini.GetValue("general", "deduplicate_ipheader", NULL))) {
 		opt_dup_check_ipheader = !strcasecmp(value, "ip_only") ? 2 : yesno(value);
@@ -11433,6 +11475,7 @@ int eval_config(string inistr) {
 		for (; i != values.end(); ++i) {
 			parse_config_item(i->pItem, &opt_ignore_rtp_after_response_list);
 		}
+		opt_ignore_rtp_after_response_list_exists = true;
 	}
 	if((value = ini.GetValue("general", "saveaudio_answeronly", NULL))) {
 		opt_saveaudio_answeronly = yesno(value);
@@ -11982,17 +12025,29 @@ int eval_config(string inistr) {
 		opt_upgrade_by_git = yesno(value);
 	}
 	
-	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
-		opt_save_query_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_to_files = false;
+		}
 	}
-	if((value = ini.GetValue("general", "query_cache_charts", NULL)) && yesno(value)) {
-		opt_save_query_charts_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache_charts", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_charts_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_to_files = false;
+		}
 	}
-	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL)) && yesno(value)) {
-		opt_save_query_charts_remote_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_charts_remote_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_remote_to_files = false;
+		}
 	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);

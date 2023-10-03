@@ -46,7 +46,8 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->lzoDecompressData = NULL;
 	#endif //HAVE_LIBLZO
 	this->snappyDecompressData = NULL;
-	this->compressLevel = -1;
+	this->compressLevel = INT_MIN;
+	this->compressZstdStrategy = INT_MIN;
 	this->autoPrefixFile = false;
 	this->forceStream = false;
 	this->processed_len = 0;
@@ -63,8 +64,8 @@ void CompressStream::setCompressLevel(int compressLevel) {
 	this->compressLevel = compressLevel;
 }
 
-void CompressStream::setCompressStrategy(int strategy) {
-	this->compressStrategy = strategy;
+void CompressStream::setCompressZstdStrategy(int compressZstdStrategy) {
+	this->compressZstdStrategy = compressZstdStrategy;
 }
 
 void CompressStream::enableAutoPrefixFile() {
@@ -91,7 +92,7 @@ void CompressStream::initCompress() {
 			this->zipStream->zalloc = Z_NULL;
 			this->zipStream->zfree = Z_NULL;
 			this->zipStream->opaque = Z_NULL;
-			int zipLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
+			int zipLevel = this->compressLevel != INT_MIN ? this->compressLevel : Z_DEFAULT_COMPRESSION;
 			if((this->typeCompress == zip ?
 			     deflateInit(this->zipStream, zipLevel) :
 			     deflateInit2(this->zipStream, zipLevel, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY)) == Z_OK) {
@@ -108,7 +109,7 @@ void CompressStream::initCompress() {
 		if(!this->lzmaStream) {
 			this->lzmaStream = new FILE_LINE(40002) lzma_stream;
 			memset_heapsafe(this->lzmaStream, 0, sizeof(lzma_stream));
-			int lzmaLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
+			int lzmaLevel = this->compressLevel != INT_MIN ? this->compressLevel : LZMA_PRESET_DEFAULT;
 			int ret = lzma_easy_encoder(this->lzmaStream, lzmaLevel, LZMA_CHECK_CRC64);
 			if(ret == LZMA_OK) {
 				createCompressBuffer();
@@ -126,9 +127,10 @@ void CompressStream::initCompress() {
 		if(!this->zstdCtx) {
 			this->zstdCtx = ZSTD_createCCtx();
 			if(this->zstdCtx) {
-				int zstdLevel = this->compressLevel >= 0 ? this->compressLevel : 1;
+				int zstdLevel = this->compressLevel != INT_MIN ? this->compressLevel : ZSTD_CLEVEL_DEFAULT;
+				int zstdStrategy = this->compressZstdStrategy != INT_MIN ? this->compressZstdStrategy : 0;
 				int rslt;
-				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, this->compressStrategy);
+				rslt = ZSTD_CCtx_setParameter(this->zstdCtx, ZSTD_c_strategy, zstdStrategy);
 				if(ZSTD_isError(rslt)) {
 					syslog(LOG_NOTICE, "bad zstd strategy %i", ZSTD_fast);
 				}
