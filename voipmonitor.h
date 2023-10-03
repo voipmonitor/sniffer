@@ -146,7 +146,7 @@ enum eCmdLineParams {
 	_param_disable_rtp_seq_probation,
 	_param_saveaudio_from_rtp,
 	_param_update_schema,
-	_param_new_config,
+	_param_old_config,
 	_param_print_config_struct,
 	_param_print_config_file,
 	_param_print_config_file_default,
