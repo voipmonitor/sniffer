@@ -4494,8 +4494,16 @@ int main_init_read() {
         rlp.rlim_max = opt_openfile_max;
         setrlimit(RLIMIT_NOFILE, &rlp);
         getrlimit(RLIMIT_NOFILE, &rlp);
-        if(opt_fork and rlp.rlim_cur < 65535) {
-                printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
+        if(opt_fork and rlp.rlim_cur < opt_openfile_max) {
+		printf("Warning: The maximum number of open files is currently set to %d. Consider increasing this limit to %d by running 'ulimit -n %d' and updating the configuration file. Attempting to set the limit to 65535.", (int)rlp.rlim_cur, (int)opt_openfile_max, (int)opt_openfile_max);
+		// try fallback to usual maximum 65535
+		rlp.rlim_cur = 65535;
+		rlp.rlim_max = 65535;
+		setrlimit(RLIMIT_NOFILE, &rlp);
+		getrlimit(RLIMIT_NOFILE, &rlp);
+		if(opt_fork and rlp.rlim_cur < 65535) {
+			printf("Warning: The maximum number of open files is still only %d. Setting to 65535 failed.", (int)rlp.rlim_cur);
+		}
         }
 	// set core file dump to unlimited size
 	rlp.rlim_cur = RLIM_INFINITY;
