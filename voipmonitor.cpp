@@ -1232,15 +1232,15 @@ char opt_git_folder[1024];
 char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
-bool opt_save_query_to_files;
-bool opt_save_query_charts_to_files;
+bool opt_save_query_to_files = true;
+bool opt_save_query_charts_to_files = true;
 bool opt_save_query_charts_remote_to_files;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
 int opt_query_cache_speed;
 int opt_query_cache_check_utf;
 
-int opt_load_query_from_files;
+int opt_load_query_from_files = 1;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify = true;
@@ -5885,10 +5885,10 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42077) cConfigItem_yesno("mysql_2_http",  &opt_mysql_2_http));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
-				->setDefaultValueStr("no"));
+				->setDefaultValueStr("yes"));
 				advanced();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts"))
-					->setDefaultValueStr("no"));
+					->setDefaultValueStr("yes"));
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("query_cache_charts_remote"))
 					->setDefaultValueStr("no"));
 				addConfigItem(new FILE_LINE(42079) cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
@@ -7223,18 +7223,24 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		if(configItem->getValueInt()) {
 			opt_save_query_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_to_files = false;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_to_files = false;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts_remote") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_remote_to_files = true;
 			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_remote_to_files = false;
 		}
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
@@ -8437,6 +8443,13 @@ void set_context_config() {
 			_parse_packet_global_process_packet.setStdParse();
 			calltable = new FILE_LINE(0) Calltable();
 		}
+	}
+	
+	if(is_read_from_file_by_pb()) {
+		opt_save_query_to_files = false;
+		opt_save_query_charts_to_files = false;
+		opt_save_query_charts_remote_to_files = false;
+		opt_load_query_from_files = 0;
 	}
 	
 	if(is_read_from_file()) {
@@ -12002,17 +12015,29 @@ int eval_config(string inistr) {
 		opt_upgrade_by_git = yesno(value);
 	}
 	
-	if((value = ini.GetValue("general", "query_cache", NULL)) && yesno(value)) {
-		opt_save_query_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_to_files = false;
+		}
 	}
-	if((value = ini.GetValue("general", "query_cache_charts", NULL)) && yesno(value)) {
-		opt_save_query_charts_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache_charts", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_charts_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_to_files = false;
+		}
 	}
-	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL)) && yesno(value)) {
-		opt_save_query_charts_remote_to_files = true;
-		opt_load_query_from_files = 1;
+	if((value = ini.GetValue("general", "query_cache_charts_remote", NULL))) {
+		if(yesno(value)) {
+			opt_save_query_charts_remote_to_files = true;
+			opt_load_query_from_files = 1;
+		} else {
+			opt_save_query_charts_remote_to_files = false;
+		}
 	}
 	if((value = ini.GetValue("general", "query_cache_speed", NULL))) {
 		opt_query_cache_speed = yesno(value);
