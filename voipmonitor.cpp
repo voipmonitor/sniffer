@@ -1276,7 +1276,7 @@ char opt_test_str[1024];
 
 map<int, string> command_line_data;
 cConfig CONFIG;
-bool useNewCONFIG = 0;
+bool useNewCONFIG = true;
 bool useCmdLineConfig = false;
 
 bool printConfigStruct = false;
@@ -3572,11 +3572,8 @@ int main(int argc, char *argv[]) {
 	cConfigMap configMap;
 	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, configfile);
 	CONFIG.loadConfigMapConfigFileOrDirectory(&configMap, "/etc/voipmonitor/conf.d/");
-	if(opt_cmp_config_params ||
-	   configMap.getFirstItem("new-config", true) == "yes" ||
-	   !configMap.getFirstItem("server_bind").empty() ||
-	   !configMap.getFirstItem("server_destination").empty()) {
-		useNewCONFIG = true;
+	if(configMap.getFirstItem("old-config", true) == "yes") {
+		useNewCONFIG = false;
 	}
 	
 	#if VM_IPV6
@@ -7373,7 +7370,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"disable-rtp-seq-probation", 0, 0, _param_disable_rtp_seq_probation},
 	    {"saveaudio-from-rtp", 0, 0, _param_saveaudio_from_rtp},
 	    {"update-schema", 0, 0, _param_update_schema},
-	    {"new-config", 0, 0, _param_new_config},
+	    {"old-config", 0, 0, _param_old_config},
 	    {"print-config-struct", 0, 0, _param_print_config_struct},
 	    {"print-config-file", 0, 0, _param_print_config_file},
 	    {"print-config-file-default", 0, 0, _param_print_config_file_default},
@@ -7747,8 +7744,8 @@ void get_command_line_arguments() {
 					strcpy(opt_read_pcap_gui_params, optarg);
 				}
 				break;
-			case _param_new_config:
-				useNewCONFIG = true;
+			case _param_old_config:
+				useNewCONFIG = false;
 				break;
 			case _param_print_config_struct:
 				printConfigStruct = true;
