@@ -59,7 +59,7 @@ using namespace std;
 volatile unsigned int glob_tar_queued_files;
 
 extern bool opt_pcap_dump_tar_use_hash_instead_of_long_callid;
-extern int opt_pcap_dump_tar_compress_sip; //0 off, 1 gzip, 2 lzma, 3 zstd
+extern int opt_pcap_dump_tar_compress_sip;
 extern int opt_pcap_dump_tar_sip_level;
 extern int opt_pcap_dump_tar_sip_level_gzip;
 extern int opt_pcap_dump_tar_sip_level_lzma;
@@ -968,53 +968,59 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	bool zstd = false;
 	switch(tar.qtype) {
 	case 1:
-		switch(opt_pcap_dump_tar_compress_sip) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_sip)) {
+		case _gzip_force:
 			gziplevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_gzip;
 			zip = true;
 			break;
-		case 2:
+		case _lzma:
 			lzmalevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_lzma;
 			lzma = true;
 			break;
-		case 3:
+		case _zstd:
 			zstdlevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_sip_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_sip_zstdstrategy : 0;
 			zstd = true;
 			break;
+		default:
+			break;
 		}
 		break;
 	case 2:
-		switch(opt_pcap_dump_tar_compress_rtp) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_rtp)) {
+		case _gzip_force:
 			gziplevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_gzip;
 			zip = true;
 			break;
-		case 2:
+		case _lzma:
 			lzmalevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_lzma;
 			lzma = true;
 			break;
-		case 3:
+		case _zstd:
 			zstdlevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_rtp_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_rtp_zstdstrategy : 0;
 			zstd = true;
 			break;
+		default:
+			break;
 		}
 		break;
 	case 3:
-		switch(opt_pcap_dump_tar_compress_graph) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_graph)) {
+		case _gzip_force:
 			gziplevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_gzip;
 			zip = true;
 			break;
-		case 2:
+		case _lzma:
 			lzmalevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_lzma;
 			lzma = true;
 			break;
-		case 3:
+		case _zstd:
 			zstdlevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_graph_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_graph_zstdstrategy : 0;
 			zstd = true;
+			break;
+		default:
 			break;
 		}
 		break;
@@ -1142,6 +1148,45 @@ bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t /*decompres
 	return(true);
 }
 
+string Tar::getTarCompressConfigValues() {
+	vector<string> configOptions;
+	configOptions.push_back("zip:" + intToString(_gzip_to_zstd));
+	configOptions.push_back("z:" + intToString(_gzip_to_zstd));
+	configOptions.push_back("gzip:" + intToString(_gzip_to_zstd));
+	configOptions.push_back("g:" + intToString(_gzip_to_zstd));
+	configOptions.push_back("gzipforce:" + intToString(_gzip_force));
+	#if HAVE_LIBLZMA
+	configOptions.push_back("lzma:" + intToString(_lzma));
+	configOptions.push_back("l:" + intToString(_lzma));
+	#endif
+	#if HAVE_LIBZSTD
+	configOptions.push_back("zstd:" + intToString(_zstd));
+	#endif
+	configOptions.push_back("no:" + intToString(_no_compress));
+	configOptions.push_back("n:" + intToString(_no_compress));
+	configOptions.push_back("0:" + intToString(_no_compress));
+	return(implode(configOptions, "|"));
+}
+
+Tar::eTarCompressType Tar::checkCompressType(int compressType) {
+	switch(compressType) {
+	case _gzip_to_zstd:
+		#if HAVE_LIBZSTD
+		return(_zstd);
+		#else
+		return(_gzip);
+		#endif
+	case _lzma:
+		#if HAVE_LIBLZMA
+		return(_lzma);
+		#else
+		return(_gzip);
+		#endif
+	default:
+		return((Tar::eTarCompressType)compressType);
+	}
+}
+
 void			   
 TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	__sync_add_and_fetch(&glob_tar_queued_files, 1);
@@ -1224,41 +1269,47 @@ TarQueue::write(int qtype, data_t data) {
 		 << setw(2) << data.hour << setw(1) << "-" << setw(2) << data.minute << ".tar";
 	switch(qtype) {
 	case 1:
-		switch(opt_pcap_dump_tar_compress_sip) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_sip)) {
+		case Tar::_gzip_force:
 			tar_name << ".gz";
 			break;
-		case 2:
+		case Tar::_lzma:
 			tar_name << ".xz";
 			break;
-		case 3:
+		case Tar::_zstd:
 			tar_name << ".zst";
+			break;
+		default:
 			break;
 		}
 		break;
 	case 2:
-		switch(opt_pcap_dump_tar_compress_rtp) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_rtp)) {
+		case Tar::_gzip_force:
 			tar_name << ".gz";
 			break;
-		case 2:
+		case Tar::_lzma:
 			tar_name << ".xz";
 			break;
-		case 3:
+		case Tar::_zstd:
 			tar_name << ".zst";
+			break;
+		default:
 			break;
 		}
 		break;
 	case 3:
-		switch(opt_pcap_dump_tar_compress_graph) {
-		case 1:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_graph)) {
+		case Tar::_gzip_force:
 			tar_name << ".gz";
 			break;
-		case 2:
+		case Tar::_lzma:
 			tar_name << ".xz";
 			break;
-		case 3:
+		case Tar::_zstd:
 			tar_name << ".zst";
+			break;
+		default:
 			break;
 		}
 		break;

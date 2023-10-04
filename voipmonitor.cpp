@@ -638,21 +638,31 @@ int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
 int opt_pcap_dump_tar = 1;
 bool opt_pcap_dump_tar_use_hash_instead_of_long_callid = 1;
 int opt_pcap_dump_tar_threads = 8;
-int opt_pcap_dump_tar_compress_sip = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_compress_sip =
+	#if HAVE_LIBZSTD
+		Tar::_zstd;
+	#else
+		Tar::_gzip;
+	#endif
 int opt_pcap_dump_tar_sip_level = INT_MIN;
 int opt_pcap_dump_tar_sip_level_gzip = 6;
 int opt_pcap_dump_tar_sip_level_lzma = 5;
 int opt_pcap_dump_tar_sip_level_zstd = 3;
 int opt_pcap_dump_tar_sip_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_sip_use_pos = 0;
-int opt_pcap_dump_tar_compress_rtp = 0; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_compress_rtp = Tar::_no_compress;
 int opt_pcap_dump_tar_rtp_level = INT_MIN;
 int opt_pcap_dump_tar_rtp_level_gzip = 1;
 int opt_pcap_dump_tar_rtp_level_lzma = 1;
 int opt_pcap_dump_tar_rtp_level_zstd = 1;
 int opt_pcap_dump_tar_rtp_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_rtp_use_pos = 0;
-int opt_pcap_dump_tar_compress_graph = 3; //0 off, 1 gzip, 2 lzma, 3 zstd
+int opt_pcap_dump_tar_compress_graph =
+	#if HAVE_LIBZSTD
+		Tar::_zstd;
+	#else
+		Tar::_gzip;
+	#endif
 int opt_pcap_dump_tar_graph_level = INT_MIN;
 int opt_pcap_dump_tar_graph_level_gzip = 6;
 int opt_pcap_dump_tar_graph_level_lzma = 5;
@@ -6266,7 +6276,7 @@ void cConfig::addConfigItems() {
 						->addAlias("pcap_dump_compresslevel_sip"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_sip", &opt_pcap_dump_compress_sip_zstdstrategy));
 					addConfigItem((new FILE_LINE(42205) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
-						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
+						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(42206) cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_strategy", &opt_pcap_dump_tar_sip_zstdstrategy));
 					addConfigItem(new FILE_LINE(42207) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
@@ -6298,7 +6308,7 @@ void cConfig::addConfigItems() {
 						->addAlias("pcap_dump_compresslevel_rtp"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_rtp", &opt_pcap_dump_compress_rtp_zstdstrategy));
 					addConfigItem((new FILE_LINE(42214) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
-						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
+						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(42215) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_strategy", &opt_pcap_dump_tar_rtp_zstdstrategy));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
@@ -6316,7 +6326,7 @@ void cConfig::addConfigItems() {
 						->addAlias("pcap_dump_compresslevel_graph"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_graph", &opt_pcap_dump_compress_graph_zstdstrategy));
 					addConfigItem((new FILE_LINE(42221) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
-						->addValues("zip:1|z:1|gzip:1|g:1|lzma:2|l:2|zstd:3|no:0|n:0|0:0"));
+						->addValues(Tar::getTarCompressConfigValues().c_str()));
 					addConfigItem(new FILE_LINE(42222) cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_strategy", &opt_pcap_dump_tar_graph_zstdstrategy));
 					addConfigItem(new FILE_LINE(42223) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
@@ -11650,19 +11660,19 @@ int eval_config(string inistr) {
 		case 'g':
 		case 'G':
 			if(!strncasecmp(value, "zs", 2)) {
-				opt_pcap_dump_tar_compress_sip = 3; // zstd
+				opt_pcap_dump_tar_compress_sip = Tar::_zstd;
 			} else {
-				opt_pcap_dump_tar_compress_sip = 1; // gzip
+				opt_pcap_dump_tar_compress_sip = Tar::_gzip_to_zstd;
 			}
 			break;
 		case 'l':
 		case 'L':
-			opt_pcap_dump_tar_compress_sip = 2; // lzma
+			opt_pcap_dump_tar_compress_sip = Tar::_lzma;
 			break;
 		case '0':
 		case 'n':
 		case 'N':
-			opt_pcap_dump_tar_compress_sip = 0; // na
+			opt_pcap_dump_tar_compress_sip = Tar::_no_compress;
 			break;
 		}
 	}
@@ -11673,19 +11683,19 @@ int eval_config(string inistr) {
 		case 'g':
 		case 'G':
 			if(!strncasecmp(value, "zs", 2)) {
-				opt_pcap_dump_tar_compress_rtp = 3; // zstd
+				opt_pcap_dump_tar_compress_rtp = Tar::_zstd;
 			} else {
-				opt_pcap_dump_tar_compress_rtp = 1; // gzip
+				opt_pcap_dump_tar_compress_rtp = Tar::_gzip_to_zstd;
 			}
 			break;
 		case 'l':
 		case 'L':
-			opt_pcap_dump_tar_compress_rtp = 2; // lzma
+			opt_pcap_dump_tar_compress_rtp = Tar::_lzma;
 			break;
 		case '0':
 		case 'n':
 		case 'N':
-			opt_pcap_dump_tar_compress_rtp = 0; // na
+			opt_pcap_dump_tar_compress_rtp = Tar::_no_compress;
 			break;
 		}
 	}
@@ -11696,19 +11706,19 @@ int eval_config(string inistr) {
 		case 'g':
 		case 'G':
 			if(!strncasecmp(value, "zs", 2)) {
-				opt_pcap_dump_tar_compress_graph = 3; // zstd
+				opt_pcap_dump_tar_compress_graph = Tar::_zstd;
 			} else {
-				opt_pcap_dump_tar_compress_graph = 1; // gzip
+				opt_pcap_dump_tar_compress_graph = Tar::_gzip_to_zstd;
 			}
 			break;
 		case 'l':
 		case 'L':
-			opt_pcap_dump_tar_compress_graph = 2; // lzma
+			opt_pcap_dump_tar_compress_graph = Tar::_lzma;
 			break;
 		case '0':
 		case 'n':
 		case 'N':
-			opt_pcap_dump_tar_compress_graph = 0; // na
+			opt_pcap_dump_tar_compress_graph = Tar::_no_compress;
 			break;
 		}
 	}

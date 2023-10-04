@@ -63,6 +63,13 @@ inline void int_to_oct(unsigned long num, char *oct, int octlen) {
 
 class Tar : public ChunkBuffer_baseIterate, public CompressStream_baseEv {
 public:
+	enum eTarCompressType {
+		_no_compress = 0,
+		_gzip_to_zstd = 1,
+		_gzip_force = 2,
+		_lzma = 3,
+		_zstd = 4
+	};
 	/* our version of the tar header structure */
 	struct tar_header
 	{       
@@ -317,6 +324,11 @@ private:
 	volatile int _sync_lock;
 
 	friend class TarQueue;
+	
+public:
+	
+	static string getTarCompressConfigValues();
+	static eTarCompressType checkCompressType(int compressType);
 
 };
 
