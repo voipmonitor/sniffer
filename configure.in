@@ -182,8 +182,8 @@ CFLAGS=$ORIGCFLAGS
 CXXFLAGS=$ORIGCXXFLAGS
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
-AC_CHECK_LIB([zstd], [main], HAVE_LIBZSTD=1, AC_MSG_NOTICE([Unable to find zstd. apt-get install libzstd-dev]))
-AC_CHECK_LIB([lz4], [main], HAVE_LIBLZ4=1, AC_MSG_NOTICE([Unable to find lz4. apt-get install liblz4-dev]))
+AC_CHECK_LIB([zstd], [main], HAVE_LIBZSTD=1, AC_MSG_ERROR([Unable to find zstd. apt-get install libzstd-dev]))
+AC_CHECK_LIB([lz4], [main], HAVE_LIBLZ4=1, AC_MSG_ERROR([Unable to find lz4. apt-get install liblz4-dev]))
 AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel]))
 AC_CHECK_LIB([lzo2], [main], HAVE_LIBLZO=1, AC_MSG_ERROR([Unable to find lzo. apt-get install liblzo2-dev | yum install lzo-devel]))
 AC_CHECK_LIB([gnutls], [gnutls_init], HAVE_LIBGNUTLS=1, AC_MSG_NOTICE([Unable to find gnutls - disabling SIP TLS decoder. apt-get install gnutls-dev | yum install gnutls-devel]))

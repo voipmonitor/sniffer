@@ -4528,8 +4528,7 @@ $as_echo "$ac_cv_lib_zstd_main" >&6; }
 if test "x$ac_cv_lib_zstd_main" = xyes; then :
   HAVE_LIBZSTD=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find zstd. apt-get install libzstd-dev" >&5
-$as_echo "$as_me: Unable to find zstd. apt-get install libzstd-dev" >&6;}
+  as_fn_error $? "Unable to find zstd. apt-get install libzstd-dev" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llz4" >&5
@@ -4565,8 +4564,7 @@ $as_echo "$ac_cv_lib_lz4_main" >&6; }
 if test "x$ac_cv_lib_lz4_main" = xyes; then :
   HAVE_LIBLZ4=1
 else
-  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find lz4. apt-get install liblz4-dev" >&5
-$as_echo "$as_me: Unable to find lz4. apt-get install liblz4-dev" >&6;}
+  as_fn_error $? "Unable to find lz4. apt-get install liblz4-dev" "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llzma" >&5
