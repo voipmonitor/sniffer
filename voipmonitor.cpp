@@ -1000,7 +1000,7 @@ int opt_pcapdump = 0;
 int opt_callend = 1; //if true, cdr.called is saved
 bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
-int opt_t2_boost = false;
+int opt_t2_boost = true;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
