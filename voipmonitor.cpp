@@ -306,7 +306,7 @@ int opt_id_sensor_cleanspool = -1;
 bool opt_use_id_sensor_for_receiver_in_files = false;
 char opt_name_sensor[256] = "";
 volatile int readend = 0;
-int opt_dup_check = 0;
+int opt_dup_check = 2;
 int opt_dup_check_ipheader = 1;
 int opt_dup_check_ipheader_ignore_ttl = 1;
 int opt_dup_check_udpheader_ignore_checksum = 1;
@@ -775,7 +775,7 @@ unsigned int graph_event = GRAPH_EVENT;
 int opt_mos_lqo = 0;
 char opt_capture_rules_telnum_file[1024];
 char opt_capture_rules_sip_header_file[1024];
-bool opt_detect_alone_bye = false;
+bool opt_detect_alone_bye = true;
 bool opt_time_precision_in_ms = false;
 bool opt_cdr_partition = 1;
 bool opt_cdr_partition_by_hours = 0;
@@ -4525,8 +4525,16 @@ int main_init_read() {
         rlp.rlim_max = opt_openfile_max;
         setrlimit(RLIMIT_NOFILE, &rlp);
         getrlimit(RLIMIT_NOFILE, &rlp);
-        if(opt_fork and rlp.rlim_cur < 65535) {
-                printf("Warning, max open files is: %d consider raise this to 65535 with ulimit -n 65535 and set it in config file\n", (int)rlp.rlim_cur);
+        if(opt_fork and rlp.rlim_cur < opt_openfile_max) {
+		printf("Warning: The maximum number of open files is currently set to %d. Consider increasing this limit to %d by running 'ulimit -n %d' and updating the configuration file. Attempting to set the limit to 65535.", (int)rlp.rlim_cur, (int)opt_openfile_max, (int)opt_openfile_max);
+		// try fallback to usual maximum 65535
+		rlp.rlim_cur = 65535;
+		rlp.rlim_max = 65535;
+		setrlimit(RLIMIT_NOFILE, &rlp);
+		getrlimit(RLIMIT_NOFILE, &rlp);
+		if(opt_fork and rlp.rlim_cur < 65535) {
+			printf("Warning: The maximum number of open files is still only %d. Setting to 65535 failed.", (int)rlp.rlim_cur);
+		}
         }
 	// set core file dump to unlimited size
 	rlp.rlim_cur = RLIM_INFINITY;
@@ -7811,7 +7819,7 @@ void get_command_line_arguments() {
 				opt_disableplc = 1;
 				break;
 			case 'L':
-				opt_dup_check = 1;
+				opt_dup_check = 2;
 				break;
 			case 'K':
 				opt_norecord_dtmf = 1;
@@ -8089,7 +8097,7 @@ void get_command_line_arguments() {
 					exit(1);
 				}
 				opt_process_pcap_type = _pp_dedup;
-				opt_dup_check = 1;
+				opt_dup_check = 2;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
 				opt_dup_check_udpheader_ignore_checksum = 1;
@@ -8780,7 +8788,9 @@ void set_context_config() {
 	}
 	
 	opt_kamailio = opt_kamailio_dstip.isSet();
-	
+
+	// force deduplication to crc32 always 
+	if(opt_dup_check == 1) opt_dup_check = 2;	
 	#if defined(__x86_64__) or defined(__i386__)
 	if(opt_dup_check == 2 && crc32_sse_is_available()) {
 		opt_dup_check = 3;

@@ -38,7 +38,7 @@ enum eServerClientTypeCompress {
 struct sSnifferServerOptions {
 	sSnifferServerOptions() {
 		port = 60024;
-		mysql_queue_limit = 0;
+		mysql_queue_limit = 1000000;
 		mysql_redirect_queue_limit = 0;
 		mysql_concat_limit = 1000;
 		type_compress = _cs_compress_gzip;
