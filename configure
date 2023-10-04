@@ -4362,8 +4362,15 @@ else
 
     MYSQLLDFLAGS_LIBS=`$MYSQL_CONFIG --libs`
     MYSQLLDFLAGS_LIBS_SYS=`$MYSQL_CONFIG --libs_sys 2>/dev/null`
-    if test $? -ne 0; then :
-  MYSQLLDFLAGS_LIBS_SYS=""
+    # check if the --libx_sys ends with error or Usage (some mysql_config does not return $?=1 if paramteters is not supported
+    if test $? -eq 0; then :
+  if test "x`echo $MYSQLLDFLAGS_LIBS_SYS | grep 'Usage'`" = "x"; then :
+
+else
+  MYSQLLDFLAGS_LIBS_SYS="$MYSQLLDFLAGS_LIBS"
+fi
+else
+  MYSQLLDFLAGS_LIBS_SYS="$MYSQLLDFLAGS_LIBS"
 fi
 
     MYSQLLDFLAGS="$MYSQLLDFLAGS_LIBS_SYS $MYSQLLDFLAGS_LIBS"
