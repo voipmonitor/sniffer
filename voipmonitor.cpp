@@ -1427,6 +1427,8 @@ string opt_sched_pol_auto = "prio -20";
 int opt_sched_pol_auto_heap_limit = 1;
 int opt_sched_pol_auto_cpu_limit = 45;
 
+bool opt_use_thread_setname = false;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -7038,6 +7040,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("sched_pol_auto", &opt_sched_pol_auto));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_heap_limit", &opt_sched_pol_auto_heap_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_cpu_limit", &opt_sched_pol_auto_cpu_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_thread_setname", &opt_use_thread_setname));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -12304,6 +12307,10 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "sched_pol_auto_cpu_limit", NULL))) {
 		opt_sched_pol_auto_cpu_limit = atoi(value);
+	}
+	
+	if((value = ini.GetValue("general", "use_thread_setname", NULL))) {
+		opt_use_thread_setname = yesno(value);
 	}
 
 	/*

@@ -31,12 +31,12 @@ struct vm_pthread_struct {
 void *vm_pthread_create_start_routine(void *arg) {
 	vm_pthread_struct thread_data = *(vm_pthread_struct*)arg;
 	delete (vm_pthread_struct*)arg;
+	int tid = get_unix_tid();
 	#ifdef CLOUD_ROUTER_CLIENT
 	if(sverb.thread_create) {
 		syslog(LOG_NOTICE, "start thread '%s' %i", 
-		       thread_data.description.c_str(), get_unix_tid());
+		       thread_data.description.c_str(), tid);
 	}
-	int tid = get_unix_tid();
 	threadMonitor.registerThread(tid, thread_data.description.c_str());
 	#endif
 	void *rslt = thread_data.start_routine(thread_data.arg);
@@ -77,6 +77,13 @@ int vm_pthread_create(const char *thread_description,
 		pthread_attr_destroy(&_attr);
 	}
 	#ifdef CLOUD_ROUTER_CLIENT
+	extern bool opt_use_thread_setname;
+	if(opt_use_thread_setname && thread_description) {
+		char thread_name[16];
+		strncpy(thread_name, thread_description, sizeof(thread_name));
+		thread_name[sizeof(thread_name) - 1] = 0;
+		pthread_setname_np(*thread, thread_name);
+	}
 	extern string opt_cpu_cores;
 	extern bool opt_use_dpdk;
 	if(!opt_cpu_cores.empty()) {
