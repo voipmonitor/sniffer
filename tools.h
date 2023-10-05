@@ -634,6 +634,14 @@ public:
 				USLEEP(1000);
 			}
 		}
+		if(this->buffer && this->useBufferLength + length <= this->bufferLength) {
+			memcpy_heapsafe(this->buffer + this->useBufferLength, this->buffer,
+					data, NULL,
+					length,
+					__FILE__, __LINE__);
+			this->useBufferLength += length;
+			return(true);
+		}
 		#if not EXPERIMENTAL_SUPPRESS_FILEZIPHANDLER_WRITELOCK
 		lock_write();
 		#endif
