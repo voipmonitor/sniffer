@@ -5,8 +5,8 @@ class cBuffersControl {
 public:
 	cBuffersControl() {
 		max_buffer_mem = 0;
-		max_buffer_mem_orig = 0;
-		max_buffer_mem_mb_info = 0;
+		max_buffer_mem_own_use = 0;
+		max_buffer_mem_other_uses = 0;
 		pb_used_size = 0;
 		pb_trash_size = 0;
 		pb_pool_size = 0;
@@ -14,25 +14,13 @@ public:
 		pb_trash_minTime = -1;
 		pb_trash_maxTime = -1;
 	}
-	void setMaxBufferMem(u_int64_t max_buffer_mem, bool orig = false, bool set_max_buffer_mem_mb_info = false) {
-		this->max_buffer_mem = max_buffer_mem;
-		if(orig) {
-			this->max_buffer_mem_orig = max_buffer_mem;
-		}
-		if(set_max_buffer_mem_mb_info) {
-			this->max_buffer_mem_mb_info = max_buffer_mem / (1024 * 1024);
-		}
+	void setMaxBufferMemMB(u_int32_t max_buffer_mem_mb, u_int32_t max_buffer_mem_other_uses_mb) {
+		this->max_buffer_mem = max_buffer_mem_mb * (1024ull * 1024);
+		this->max_buffer_mem_own_use = (max_buffer_mem_mb - max_buffer_mem_other_uses_mb) * (1024ull * 1024);
+		this->max_buffer_mem_other_uses = max_buffer_mem_other_uses_mb * (1024ull * 1024);
 	}
-	u_int64_t getMaxBufferMem(bool mb_info = false) {
-		return(mb_info ?
-			(this->max_buffer_mem_mb_info ? this->max_buffer_mem_mb_info : (this->max_buffer_mem / (1024 * 1024))) :
-			this->max_buffer_mem);
-	}
-	void restoreMaxBufferMemFromOrig() {
-		this->max_buffer_mem = this->max_buffer_mem_orig;
-	}
-	bool isSetOrig() {
-		return(this->max_buffer_mem_orig > 0);
+	u_int64_t getMaxBufferMemMB() {
+		return(this->max_buffer_mem / (1024 * 1024));
 	}
 	void set__pb_used_size(volatile u_int64_t *sizeOfBlocksInMemory) {
 		this->pb_used_size = *sizeOfBlocksInMemory;
@@ -86,25 +74,25 @@ public:
 		return(check() &&
 		       pb_used_size + 
 		       pb_trash_size +
-		       pb_pool_size + add < max_buffer_mem * 0.9);
+		       pb_pool_size + add < max_buffer_mem_own_use * 0.9);
 	}
 	bool check__pb__add_pool(size_t add) {
 		extern int opt_dpdk_rotate_packetbuffer_pool_max_perc;
 		if(opt_dpdk_rotate_packetbuffer_pool_max_perc && check()) {
 			u_int64_t sum = this->sum();
-			if(sum < max_buffer_mem) {
-				return(pb_pool_size + add < (max_buffer_mem - sum) * opt_dpdk_rotate_packetbuffer_pool_max_perc / 100);
+			if(sum < max_buffer_mem_own_use) {
+				return(pb_pool_size + add < (max_buffer_mem_own_use - sum) * opt_dpdk_rotate_packetbuffer_pool_max_perc / 100);
 			}
 		}
 		return(false);
 	}
 	bool check__asyncwrite__add(size_t add) {
 		return((check() &&
-		        asyncwrite_size + add < max_buffer_mem * 0.9) ||
-		       asyncwrite_size + add < max_buffer_mem * 0.1);
+		        asyncwrite_size + add < max_buffer_mem_own_use * 0.9) ||
+		       asyncwrite_size + add < max_buffer_mem_own_use * 0.1);
 	}
 	bool check() {
-		return(sum() < max_buffer_mem);
+		return(sum() < max_buffer_mem_own_use);
 	}
 	u_int64_t sum() {
 		return(pb_used_size + 
@@ -115,19 +103,19 @@ public:
 	double getPerc_pb() {
 		return((double)(pb_used_size + 
 				pb_trash_size + 
-				pb_pool_size) / (max_buffer_mem * 0.9) * 100);
+				pb_pool_size) / (max_buffer_mem_own_use * 0.9) * 100);
 	}
 	double getPerc_pb_used() {
-		return((double)pb_used_size / (max_buffer_mem * 0.9) * 100);
+		return((double)pb_used_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
 	double getPerc_pb_trash() {
-		return((double)pb_trash_size / (max_buffer_mem * 0.9) * 100);
+		return((double)pb_trash_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
 	double getPerc_pb_pool() {
-		return((double)pb_pool_size / (max_buffer_mem * 0.9) * 100);
+		return((double)pb_pool_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
 	double getPerc_asyncwrite() {
-		return((double)asyncwrite_size / (max_buffer_mem * 0.9) * 100);
+		return((double)asyncwrite_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
 	void PcapQueue_readFromFifo__blockStoreTrash_time_set(unsigned long time) {
 		if(pb_trash_minTime == (unsigned long)-1 ||
@@ -149,8 +137,8 @@ public:
 	}
 private:
 	u_int64_t max_buffer_mem;
-	u_int64_t max_buffer_mem_orig;
-	u_int64_t max_buffer_mem_mb_info;
+	u_int64_t max_buffer_mem_own_use;
+	u_int64_t max_buffer_mem_other_uses;
 	volatile u_int64_t pb_used_size;
 	volatile u_int64_t pb_trash_size;
 	volatile u_int64_t pb_pool_size;
