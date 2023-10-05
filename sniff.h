@@ -34,6 +34,7 @@ bool set_remove_rtp_read_thread();
 int get_index_rtp_read_thread_min_size();
 int get_index_rtp_read_thread_min_calls();
 int get_index_rtp_read_thread_min_cpu();
+int get_index_rtp_rd_thread_min_calls();
 double get_rtp_sum_cpu_usage(double *max, double *min, int pstatDataIndex);
 string get_rtp_threads_cpu_usage(int pstatDataIndex, bool callPstat = true);
 

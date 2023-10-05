@@ -1870,6 +1870,12 @@ public:
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
 	static void addRtpRdThread();
+	static void lockAddRtpRdThread() {
+		__SYNC_LOCK(_sync_add_rtp_rd_threads);
+	}
+	static void unlockAddRtpRdThread() {
+		__SYNC_UNLOCK(_sync_add_rtp_rd_threads);
+	}
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
 		unsigned int _writeit = writeit;
@@ -1907,6 +1913,15 @@ public:
 		}
 		return("");
 	}
+	inline int getCalls() {
+		return(calls);
+	}
+	inline void incCalls() {
+		__SYNC_INC(calls);
+	}
+	inline void decCalls() {
+		if(calls > 0) __SYNC_DEC(calls);
+	}
 private:
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
@@ -1942,6 +1957,8 @@ private:
 	unsigned push_thread;
 	u_int64_t last_race_log[2];
 	#endif
+	volatile u_int32_t calls;
+	static volatile int _sync_add_rtp_rd_threads;
 friend inline void *_ProcessRtpPacket_outThreadFunction(void *arg);
 friend inline void *_ProcessRtpPacket_nextThreadFunction(void *arg);
 };

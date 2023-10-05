@@ -1178,6 +1178,8 @@ Call::~Call(){
 			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
 		}
 		unlock_add_remove_rtp_threads();
+		extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
+		processRtpPacketDistribute[thread_num_rd]->decCalls();
 	}
 	
 	if(reg.reg_tcp_seq) {
@@ -4619,9 +4621,20 @@ void Call::setRtpThreadNum() {
 			__sync_add_and_fetch(&rtp_threads[thread_num].calls, 1);
 			unlock_add_remove_rtp_threads();
 		}
+		thread_num_rd = get_index_rtp_rd_thread_min_calls();
+		if(thread_num_rd < 0) {
+			extern volatile int process_rtp_packets_distribute_threads_use;
+			ProcessRtpPacket::lockAddRtpRdThread();
+			if(process_rtp_packets_distribute_threads_use) {
+				thread_num_rd = gthread_num % process_rtp_packets_distribute_threads_use;
+				extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
+				processRtpPacketDistribute[thread_num_rd]->incCalls();
+			} else {
+				thread_num_rd = 0;
+			}
+			ProcessRtpPacket::unlockAddRtpRdThread();
+		}
 		gthread_num++;
-		extern int process_rtp_packets_distribute_threads_use;
-		thread_num_rd = process_rtp_packets_distribute_threads_use ? gthread_num % process_rtp_packets_distribute_threads_use : 0;
 	}
 }
 

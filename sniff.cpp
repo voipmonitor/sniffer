@@ -184,7 +184,7 @@ extern int opt_saveudptl;
 extern nat_aliases_t nat_aliases;
 extern int opt_enable_preprocess_packet;
 extern int opt_enable_process_rtp_packet;
-extern int process_rtp_packets_distribute_threads_use;
+extern volatile int process_rtp_packets_distribute_threads_use;
 extern int opt_pre_process_packets_next_thread;
 extern int opt_pre_process_packets_next_thread_max;
 extern int opt_process_rtp_packets_hash_next_thread;
@@ -3132,6 +3132,32 @@ int get_index_rtp_read_thread_min_cpu() {
 	}
 	unlock_add_remove_rtp_threads();
 	return(minCpuIndex);
+}
+
+int get_index_rtp_rd_thread_min_calls() {
+	ProcessRtpPacket::lockAddRtpRdThread();
+	if(process_rtp_packets_distribute_threads_use == 0) {
+		ProcessRtpPacket::unlockAddRtpRdThread();
+		return(-1);
+	} else if(process_rtp_packets_distribute_threads_use == 1) {
+		processRtpPacketDistribute[0]->incCalls();
+		ProcessRtpPacket::unlockAddRtpRdThread();
+		return(0);
+	} 
+	size_t minCalls = 0;
+	int minCallsIndex = -1;
+	for(int i = 0; i < process_rtp_packets_distribute_threads_use; i++) {
+		u_int32_t calls = processRtpPacketDistribute[i]->getCalls();
+		if(minCallsIndex == -1 || minCalls > calls) {
+			minCallsIndex = i;
+			minCalls = calls;
+		}
+	}
+	if(minCallsIndex >= 0) {
+		processRtpPacketDistribute[minCallsIndex]->incCalls();
+	}
+	ProcessRtpPacket::unlockAddRtpRdThread();
+	return(minCallsIndex);
 }
 
 double get_rtp_sum_cpu_usage(double *max, double *min, int pstatDataIndex) {
@@ -11528,6 +11554,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	last_race_log[0] = 0;
 	last_race_log[1] = 0;
 	#endif
+	this->calls = 0;
 }
 
 ProcessRtpPacket::~ProcessRtpPacket() {
@@ -12229,11 +12256,15 @@ void ProcessRtpPacket::addRtpRhThread() {
 void ProcessRtpPacket::addRtpRdThread() {
 	if(process_rtp_packets_distribute_threads_use < MAX_PROCESS_RTP_PACKET_THREADS &&
 	   !processRtpPacketDistribute[process_rtp_packets_distribute_threads_use]) {
+		lockAddRtpRdThread();
 		ProcessRtpPacket *_processRtpPacketDistribute = new FILE_LINE(26035) ProcessRtpPacket(ProcessRtpPacket::distribute, process_rtp_packets_distribute_threads_use);
 		processRtpPacketDistribute[process_rtp_packets_distribute_threads_use] = _processRtpPacketDistribute;
 		++process_rtp_packets_distribute_threads_use;
+		unlockAddRtpRdThread();
 	}
 }
+
+volatile int ProcessRtpPacket::_sync_add_rtp_rd_threads = 0;
 
 void rtp_read_thread::init(int threadNum, size_t qring_length) {
 	this->threadId = 0;
