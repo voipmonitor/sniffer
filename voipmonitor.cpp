@@ -8404,11 +8404,9 @@ void set_context_config() {
 			}
 		}
 		
-		/*
 		if(buffersControl.getMaxBufferMem() > 1000 && !opt_hashtable_heap_size_set) {
 			opt_hashtable_heap_size = 64;
 		}
-		*/
 	}
 	
 	if(is_receiver() && !opt_use_id_sensor_for_receiver_in_files) {
