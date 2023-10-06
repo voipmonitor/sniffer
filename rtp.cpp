@@ -1231,7 +1231,7 @@ bool RTP::read(CallBranch *c_branch,
 	}
 
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(owner && owner->forcemark_time.size() > forcemark_owner_used) {
+	if(owner && owner->forcemark_time_size > forcemark_owner_used) {
 		owner->forcemark_lock();
 		bool checkNextForcemark = false;
 		do {

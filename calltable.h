@@ -1317,6 +1317,7 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	vector<u_int64_t> forcemark_time;
+	volatile u_int32_t forcemark_time_size;
 	volatile int _forcemark_lock;
 	int first_codec;
 	bool	has_second_merged_leg;

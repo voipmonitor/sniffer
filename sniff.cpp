@@ -4091,6 +4091,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 					u_int64_t _forcemark_time = packetS->getTimeUS();
 					call->forcemark_lock();
 					call->forcemark_time.push_back(_forcemark_time);
+					++call->forcemark_time_size;
 					if(sverb.forcemark) {
 						cout << "add forcemark (inactive): " << _forcemark_time 
 						     << " forcemarks size: " << call->forcemark_time.size() 

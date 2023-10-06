@@ -711,6 +711,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
 	_custom_headers_content_sync = 0;
+	forcemark_time_size = 0;
 	_forcemark_lock = 0;
 	_proxies_lock = 0;
 	a_mos_lqo = -1;
@@ -1383,6 +1384,7 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 			u_int64_t _forcemark_time_us = getTimeUS(ts);
 			forcemark_lock();
 			forcemark_time.push_back(_forcemark_time_us);
+			++forcemark_time_size;
 			if(sverb.forcemark) {
 				cout << "add forcemark: " << _forcemark_time_us 
 				     << " forcemarks size: " << forcemark_time.size() 
@@ -3823,7 +3825,7 @@ Call::convertRawToWav() {
 											vmcodecs_path_static_ok = true;
 											break;
 										} else if(pass < 4) {
-											syslog(LOG_ERR, "vmcodecs download faild - try next after 5s");
+											syslog(LOG_ERR, "vmcodecs download failed - try next after 5s");
 											for(int i = 0; i < 5 && !is_terminating(); i++) {
 												sleep(1);
 											}
