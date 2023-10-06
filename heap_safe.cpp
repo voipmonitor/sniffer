@@ -85,7 +85,8 @@ inline void *_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject) {
 	#endif //SEPARATE_HEAP_FOR_HUGETABLE
 	return(realloc(pointerToObject, sizeOfObject));
 }
- 
+
+#if HEAPSAFE
 inline void * heapsafe_safe_alloc(size_t sizeOfObject) { 
 	void *pointerToObject = _heapsafe_alloc(sizeOfObject + HEAPSAFE_SAFE_ALLOC_RESERVE * 2);
 	if(!pointerToObject) {
@@ -293,6 +294,7 @@ inline void * heapsafe_alloc(size_t sizeOfObject, const char *memory_type1 = NUL
 		 SIZEOF_MCB :
 		 0));
 }
+#endif
 
 inline void * alloc_memory_stat_quick(size_t sizeOfObject, int alloc_number = 0) { 
 	void *pointerToObject = NULL;
@@ -308,6 +310,7 @@ inline void * alloc_memory_stat_quick(size_t sizeOfObject, int alloc_number = 0)
 	return((unsigned char*)pointerToObject + sizeof(sMemoryStatQuickBlock));
 }
 
+#if HEAPSAFE
 inline void heapsafe_safe_free(void *pointerToObject) {
 	if(!pointerToObject) {
 		return;
@@ -390,6 +393,7 @@ inline void heapsafe_free(void *pointerToObject) {
 		HeapSafeAllocError(error);
 	}
 }
+#endif
 
 inline void free_memory_stat_quick(void *pointerToObject) {
 	if(pointerToObject) {
@@ -399,6 +403,7 @@ inline void free_memory_stat_quick(void *pointerToObject) {
 	}
 }
 
+#if HEAPSAFE
 inline void *heapsafe_safe_realloc(void *pointerToObject, size_t sizeOfObject) {
 	char *_pointerToBegin;
 	if(pointerToObject) {
@@ -438,6 +443,7 @@ inline void * heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const
 	}
 	return(newPointerToObject);
 }
+#endif
 
 inline void * realloc_memory_stat_quick(void *pointerToObject, size_t sizeOfObject, int alloc_number = 0) { 
 	size_t oldSize = 0;
@@ -586,6 +592,7 @@ void operator delete[](void *pointerToObject, size_t) {
 #endif
 
 
+#if HEAPSAFE
 void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) {
 	void *newPointer = HeapSafeCheck ?
 			    (HeapSafeCheck & _HeapSafeSafeReserve ?
@@ -599,8 +606,10 @@ void *realloc_object(void *pointerToObject, size_t sizeOfObject, const char *mem
 	}
 	return(newPointer);
 }
+#endif
 
 
+#if HEAPSAFE
 extern "C" {
 void * c_heapsafe_alloc(size_t sizeOfObject, const char *memory_type1, int memory_type2, int alloc_number) { 
 	void *newPointer = HeapSafeCheck ?
@@ -644,6 +653,7 @@ void * c_heapsafe_realloc(void *pointerToObject, size_t sizeOfObject, const char
 	return(newPointer);
 }
 }
+#endif
 
 
 void HeapSafeAllocError(int error) {
