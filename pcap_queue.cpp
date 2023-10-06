@@ -50,21 +50,12 @@
 #endif
 
 
-#define TEST_DEBUG_PARAMS 0
-#if TEST_DEBUG_PARAMS == 1
-	#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000
-	#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000
-	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500
-	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000
-	#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500
-#else
-	#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000		// 500 kB
-	#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000		// 500 MB
-	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500		// 250 MB
-	#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000		// 20 GB
-	#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500		// 500 MB
-#endif
-#define AVG_PACKET_SIZE						250
+#define OPT_PCAP_BLOCK_STORE_MAX_ITEMS			2000		// 500 kB
+#define OPT_PCAP_FILE_STORE_MAX_BLOCKS			1000		// 500 MB
+#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY	500		// 250 MB
+#define OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK		40000		// 20 GB
+#define OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS			500		// 500 MB
+#define AVG_PACKET_SIZE					250
 
 
 #define VERBOSE 		(verbosity > 0)
@@ -195,23 +186,12 @@ void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg);
 static bool __config_ENABLE_TOGETHER_READ_WRITE_FILE	= false;
 
 bool opt_pcap_queue_disable = false;
-#if TEST_DEBUG_PARAMS > 0
-	u_int opt_pcap_queue_block_max_time_ms 			= 500;
-	size_t opt_pcap_queue_block_max_size   			= OPT_PCAP_BLOCK_STORE_MAX_ITEMS * AVG_PACKET_SIZE;
-	u_int opt_pcap_queue_file_store_max_time_ms		= 5000;
-	size_t opt_pcap_queue_file_store_max_size		= opt_pcap_queue_block_max_size * OPT_PCAP_FILE_STORE_MAX_BLOCKS;
-	uint64_t opt_pcap_queue_store_queue_max_memory_size	= opt_pcap_queue_block_max_size * OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_MEMORY;
-	uint64_t opt_pcap_queue_store_queue_max_disk_size	= opt_pcap_queue_block_max_size * OPT_PCAP_STORE_QUEUE_MAX_BLOCKS_IN_DISK;
-	uint64_t opt_pcap_queue_bypass_max_size			= opt_pcap_queue_block_max_size * OPT_PCAP_QUEUE_BYPASS_MAX_ITEMS;
-#else
-	u_int opt_pcap_queue_block_max_time_ms 			= 500;
-	size_t opt_pcap_queue_block_max_size   			= 1024 * 1024;
-	u_int opt_pcap_queue_file_store_max_time_ms		= 2000;
-	size_t opt_pcap_queue_file_store_max_size		= 200 * 1024 * 1024;
-	uint64_t opt_pcap_queue_store_queue_max_memory_size	= 200 * 1024 * 1024; //default is 200MB
-	uint64_t opt_pcap_queue_store_queue_max_disk_size	= 0;
-	uint64_t opt_pcap_queue_bypass_max_size			= 256 * 1024 * 1024;
-#endif
+u_int opt_pcap_queue_block_max_time_ms 			= 500;
+size_t opt_pcap_queue_block_max_size   			= 1024 * 1024;
+u_int opt_pcap_queue_file_store_max_time_ms		= 2000;
+size_t opt_pcap_queue_file_store_max_size		= 200 * 1024 * 1024;
+uint64_t opt_pcap_queue_store_queue_max_disk_size	= 0;
+uint64_t opt_pcap_queue_bypass_max_size			= 256 * 1024 * 1024;
 int opt_pcap_queue_compress				= -1;
 pcap_block_store::compress_method opt_pcap_queue_compress_method 
 							= pcap_block_store::snappy;
@@ -1165,7 +1145,7 @@ bool pcap_file_store::destroy() {
 
 string pcap_file_store::getFilePathName() {
 	char filePathName[this->folder.length() + 100];
-	sprintf(filePathName, TEST_DEBUG_PARAMS ? "%s/pcap_store_mx_%010u" : "%s/pcap_store_%010u", this->folder.c_str(), this->id);
+	sprintf(filePathName, "%s/pcap_store_%010u", this->folder.c_str(), this->id);
 	return(filePathName);
 }
 
@@ -8172,33 +8152,6 @@ bool PcapQueue_readFromFifo::openPcapDeadHandle(int dlt) {
 		global_pcap_handle_index = this->pcapDeadHandlesIndex[0];
 	}
 	return(true);
-}
-
-string PcapQueue_readFromFifo::pcapStatString_memory_buffer(int /*statPeriod*/) {
-	ostringstream outStr;
-	outStr << fixed;
-	uint64_t useSize = buffersControl.get__pb_used_size() + buffersControl.get__pb_trash_size();
-	outStr << "PACKETBUFFER_TOTAL_HEAP:   "
-	       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
-	       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_memory_size) << "%"
-	       << " of " << setw(6) << (opt_pcap_queue_store_queue_max_memory_size / 1024 / 1024) << "MB" << endl;
-	outStr << "PACKETBUFFER_TRASH_HEAP:   "
-	       << setw(6) << (buffersControl.get__pb_trash_size() / 1024 / 1024) << "MB" << endl;
-	return(outStr.str());
-}
-
-string PcapQueue_readFromFifo::pcapStatString_disk_buffer(int /*statPeriod*/) {
-	ostringstream outStr;
-	if(opt_pcap_queue_store_queue_max_disk_size &&
-	   this->pcapStoreQueue.fileStoreFolder.length()) {
-		outStr << fixed;
-		uint64_t useSize = this->pcapStoreQueue.getFileStoreUseSize();
-		outStr << "PACKETBUFFER_FILES:        "
-		       << setw(6) << (useSize / 1024 / 1024) << "MB" << setw(6) << ""
-		       << " " << setw(5) << setprecision(1) << (100. * useSize / opt_pcap_queue_store_queue_max_disk_size) << "%"
-		       << " of " << setw(6) << (opt_pcap_queue_store_queue_max_disk_size / 1024 / 1024) << "MB" << endl;
-	}
-	return(outStr.str());
 }
 
 double PcapQueue_readFromFifo::pcapStat_get_disk_buffer_perc() {

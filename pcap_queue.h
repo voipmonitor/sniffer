@@ -309,8 +309,6 @@ protected:
 	virtual double pcapStat_get_compress();
 	virtual double pcapStat_get_speed_mb_s(int statPeriod);
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
-	virtual string pcapStatString_memory_buffer(int /*statPeriod*/) { return(""); }
-	virtual string pcapStatString_disk_buffer(int /*statPeriod*/) { return(""); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
 	virtual string pcapStatString_interface(int /*statPeriod*/) { return(""); }
@@ -962,10 +960,8 @@ protected:
 		}
 		return(global_pcap_handle);
 	}
-	string pcapStatString_memory_buffer(int statPeriod);
 	double pcapStat_get_memory_buffer_perc();
 	double pcapStat_get_memory_buffer_perc_trash();
-	string pcapStatString_disk_buffer(int statPeriod);
 	double pcapStat_get_disk_buffer_perc();
 	double pcapStat_get_disk_buffer_mb();
 	string getCpuUsage(bool writeThread, int pstatDataIndex, bool preparePstatData = true);

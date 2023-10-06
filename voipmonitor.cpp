@@ -269,6 +269,7 @@ int opt_rtp_check_timestamp = 0;
 int opt_jitterbuffer_f1 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f1
 int opt_jitterbuffer_f2 = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_f2
 int opt_jitterbuffer_adapt = 1;		// turns off/on jitterbuffer simulator to compute MOS score mos_adapt
+int opt_max_buffer_mem = 0;
 int opt_ringbuffer = 50;	// ring buffer in MB 
 bool opt_sip_message = true;
 int opt_sip_register = 0;	// if == 1 save REGISTER messages, if == 2, use old registers
@@ -729,7 +730,7 @@ extern size_t opt_pcap_queue_block_max_size;
 bool opt_pcap_queue_block_max_size_set;
 extern u_int opt_pcap_queue_file_store_max_time_ms;
 extern size_t opt_pcap_queue_file_store_max_size;
-extern uint64_t opt_pcap_queue_store_queue_max_memory_size;
+uint64_t opt_pcap_queue_store_queue_max_memory_size;
 extern uint64_t opt_pcap_queue_store_queue_max_disk_size;
 extern uint64_t opt_pcap_queue_bypass_max_size;
 extern int opt_pcap_queue_compress;
@@ -6200,7 +6201,7 @@ void cConfig::addConfigItems() {
 		addConfigItem(new FILE_LINE(42163) cConfigItem_integer("managerport", &opt_manager_port));
 	group("buffers and memory usage");
 		subgroup("main");
-			addConfigItem((new FILE_LINE(42164) cConfigItem_integer("max_buffer_mem"))
+			addConfigItem((new FILE_LINE(42164) cConfigItem_integer("max_buffer_mem", &opt_max_buffer_mem))
 				->setNaDefaultValueStr());
 			addConfigItem((new FILE_LINE(42165) cConfigItem_integer("ringbuffer", &opt_ringbuffer))
 				->setMaximum(2000));
@@ -7233,9 +7234,6 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "sip_send_port") {
 		sipSendSocket_ip_port.set_port(configItem->getValueInt());
-	}
-	if(configItem->config_name == "max_buffer_mem") {
-		buffersControl.setMaxBufferMem(configItem->getValueInt() * 1024 * 1024, true, true);
 	}
 	if(configItem->config_name == "query_cache") {
 		if(configItem->getValueInt()) {
@@ -8341,70 +8339,45 @@ void set_context_config() {
 	}
 	
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
-		// restore orig values
-		buffersControl.restoreMaxBufferMemFromOrig();
-		static u_int64_t opt_pcap_queue_store_queue_max_memory_size_orig = 0;
-		if(!opt_pcap_queue_store_queue_max_memory_size_orig) {
-			opt_pcap_queue_store_queue_max_memory_size_orig = opt_pcap_queue_store_queue_max_memory_size;
+		u_int32_t max_buffer_mem_mb = 0;
+		if(opt_max_buffer_mem) {
+			max_buffer_mem_mb = opt_max_buffer_mem;
+		} else if(opt_pcap_queue_store_queue_max_memory_size) {
+			max_buffer_mem_mb = opt_pcap_queue_store_queue_max_memory_size / (1024 * 1024);
+		}
+		u_int32_t total_memory_mb = getTotalMemory() / (1024 * 1024);
+		if(!max_buffer_mem_mb) {
+			 max_buffer_mem_mb = min((u_int32_t)2000, total_memory_mb / 2);
+		} else if(max_buffer_mem_mb > total_memory_mb * 3 / 4) {
+			 max_buffer_mem_mb = total_memory_mb * 3 / 4;
+		}
+		u_int32_t thread0_buffer_mb = 0;
+		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
+			// disable disc save
+			if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
+				// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB, minimum = 50MB
+				thread0_buffer_mb = max_buffer_mem_mb / 8;
+				if(thread0_buffer_mb > 100) {
+					thread0_buffer_mb = 100;
+				} else if(thread0_buffer_mb < 50) {
+					thread0_buffer_mb = 50;
+				}
+			} else {
+				// disable compress and suppress t1 thread - thread0 buffer not need
+				thread0_buffer_mb = 0;
+			}
 		} else {
-			opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_store_queue_max_memory_size_orig;
-		}
-		//
-		for(int pass = 0; pass < (buffersControl.isSetOrig() ? 1 : 2); pass++) {
-			if(buffersControl.getMaxBufferMem()) {
-				u_int64_t totalMemory = getTotalMemory();
-				if(buffersControl.getMaxBufferMem() > totalMemory / 2) {
-					buffersControl.setMaxBufferMem(totalMemory / 2, false, true);
-					syslog(LOG_NOTICE, "set buffer memory limit to %" int_64_format_prefix "lu", totalMemory / 2);
-				} else if(pass) {
-					break;
-				}
-			}
-			// prepare for old buffer size calculate
-			if(buffersControl.getMaxBufferMem()) {
-				opt_pcap_queue_store_queue_max_memory_size = buffersControl.getMaxBufferMem() * 0.9;
-			}
-			// old buffer size calculate &&  set size opt_pcap_queue_bypass_max_size
-			if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
-				// disable disc save
-				if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
-					// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB, minimum = 50MB
-					opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 8;
-					if(opt_pcap_queue_bypass_max_size > 100 * 1024 * 1024) {
-						opt_pcap_queue_bypass_max_size = 100 * 1024 * 1024;
-					} else if(opt_pcap_queue_bypass_max_size < 50 * 1024 * 1024) {
-						opt_pcap_queue_bypass_max_size = 50 * 1024 * 1024;
-					}
-				} else {
-					// disable compress and suppress t1 thread - thread0 buffer not need
-					opt_pcap_queue_bypass_max_size = 0;
-				}
-			} else {
-				// enable disc save - maximum thread0 buffer = 500MB
-				opt_pcap_queue_bypass_max_size = opt_pcap_queue_store_queue_max_memory_size / 4;
-				if(opt_pcap_queue_bypass_max_size > 500 * 1024 * 1024) {
-					opt_pcap_queue_bypass_max_size = 500 * 1024 * 1024;
-				}
-			}
-			// set old buffer size via opt_pcap_queue_bypass_max_size
-			if(opt_pcap_queue_store_queue_max_memory_size < opt_pcap_queue_bypass_max_size * 2) {
-				opt_pcap_queue_store_queue_max_memory_size = opt_pcap_queue_bypass_max_size * 2;
-			} else {
-				opt_pcap_queue_store_queue_max_memory_size -= opt_pcap_queue_bypass_max_size;
-			}
-			// set new buffer size via opt_pcap_queue_bypass_max_size
-			if(buffersControl.getMaxBufferMem()) {
-				if(buffersControl.getMaxBufferMem() < opt_pcap_queue_bypass_max_size * 2) {
-					buffersControl.setMaxBufferMem(opt_pcap_queue_bypass_max_size * 2, false, true);
-				} else {
-					buffersControl.setMaxBufferMem(buffersControl.getMaxBufferMem() - opt_pcap_queue_bypass_max_size);
-				}
-			} else {
-				buffersControl.setMaxBufferMem(opt_pcap_queue_store_queue_max_memory_size + opt_pcap_dump_asyncwrite_maxsize * 1024ull * 1024ull, false, true);
+			// enable disc save - maximum thread0 buffer = 500MB
+			thread0_buffer_mb = max_buffer_mem_mb / 4;
+			if(thread0_buffer_mb > 500) {
+				thread0_buffer_mb = 500;
+			} else if(thread0_buffer_mb < 100) {
+				thread0_buffer_mb = 100;
 			}
 		}
-		
-		if(buffersControl.getMaxBufferMem() > 1000 && !opt_hashtable_heap_size_set) {
+		buffersControl.setMaxBufferMemMB(max_buffer_mem_mb, thread0_buffer_mb);
+		opt_pcap_queue_bypass_max_size = thread0_buffer_mb * 1024ull * 1024;
+		if(buffersControl.getMaxBufferMemMB() > 1000 && !opt_hashtable_heap_size_set) {
 			opt_hashtable_heap_size = 64;
 		}
 	}
@@ -9118,7 +9091,7 @@ bool check_complete_parameters() {
 }
 
 void final_parameters() {
-	u_int64_t max_buffer_mem_mb = buffersControl.getMaxBufferMem(true);
+	u_int64_t max_buffer_mem_mb = buffersControl.getMaxBufferMemMB();
 	if(max_buffer_mem_mb > 0) {
 		syslog(LOG_NOTICE, "max_buffer_mem: %" int_64_format_prefix "lu MB", max_buffer_mem_mb);
 	}
@@ -12020,7 +11993,7 @@ int eval_config(string inistr) {
 	}
 	
 	if((value = ini.GetValue("general", "max_buffer_mem", NULL))) {
-		buffersControl.setMaxBufferMem(atol(value) * 1024 * 1024, true, true);
+		opt_max_buffer_mem = atoi(value);
 	}
 	
 	if((value = ini.GetValue("general", "git_folder", NULL))) {
