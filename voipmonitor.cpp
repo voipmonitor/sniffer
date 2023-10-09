@@ -8736,9 +8736,11 @@ void set_context_config() {
 		opt_pcap_queue_use_blocks_read_check = 1;
 	}
 	
+	/* ticket VS-1504 - disabling automatic default values for ignore_rtp_after_response
 	if(!(useNewCONFIG ? CONFIG.isExists("ignore_rtp_after_response") : opt_ignore_rtp_after_response_list_exists)) {
 		parse_config_item("408;480;486;487;481;600;503", &opt_ignore_rtp_after_response_list);
 	}
+	*/
 	if(opt_ignore_rtp_after_response_list.size() > 1) {
 		std::sort(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end());
 	}
