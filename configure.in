@@ -319,6 +319,54 @@ fi
 #AC_FUNC_STRTOD
 #AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
 
+
+# Initialize the FLTO variable
+FLTO=""
+
+# Add --disable-flto option
+AC_ARG_ENABLE([flto],
+  [AS_HELP_STRING([--disable-flto], [Disable the use of gcc -flto flag])],
+  [],
+  [enable_flto=yes]  # Default is to enable flto
+)
+
+# Check if flto is not disabled by the user
+if test "x$enable_flto" != "xno"; then
+  # Check if gcc supports -flto
+  AC_MSG_CHECKING([whether gcc supports -flto])
+  AC_COMPILE_IFELSE(
+    [AC_LANG_SOURCE([[int main() { return 0; }]])],
+    [
+      # Save the current CFLAGS
+      saved_CFLAGS="$CFLAGS"
+      
+      # Add -flto to CFLAGS for the test
+      CFLAGS="$CFLAGS -flto"
+      
+      # Attempt to compile with -flto
+      AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([[int main() { return 0; }]])],
+        [
+          # -flto works, so update the FLTO variable
+          AC_MSG_RESULT([yes])
+          FLTO="-flto"
+        ],
+        [
+          # Compilation failed, so -flto is not supported
+          AC_MSG_RESULT([no])
+        ]
+      )
+      
+      # Restore the original CFLAGS
+      CFLAGS="$saved_CFLAGS"
+    ]
+  )
+fi
+
+# Make the FLTO variable available in the generated Makefile
+AC_SUBST(FLTO)
+
+
 AC_CONFIG_FILES([Makefile
                  simpleini/Makefile])
 
