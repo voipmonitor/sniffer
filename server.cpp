@@ -653,6 +653,7 @@ void cSnifferServerConnection::cp_service() {
 						}
 						delete [] queryGzip;
 					}
+				#ifdef HAVE_LIBLZO
 				} else if(snifferServerOptions.type_compress == _cs_compress_lzo) {
 					cLzo lzoCompressQuery;
 					u_char *queryLzo;
@@ -664,6 +665,7 @@ void cSnifferServerConnection::cp_service() {
 						}
 						delete [] queryLzo;
 					}
+				#endif
 				} else {
 					if(!socket->writeBlock(("rch:" + *rchs_query).c_str(), use_encode_data ? cSocket::_te_aes : cSocket::_te_na)) {
 						okSend = false;
@@ -899,11 +901,15 @@ void cSnifferServerConnection::cp_store() {
 		if(cp_store_check()) {
 			string queryStr;
 			cGzip gzipDecompressQuery;
+			#ifdef HAVE_LIBLZO
 			cLzo lzoDecompressQuery;
+			#endif
 			if(gzipDecompressQuery.isCompress(query, queryLength)) {
 				queryStr = gzipDecompressQuery.decompressString(query, queryLength);
+			#ifdef HAVE_LIBLZO
 			} else if(lzoDecompressQuery.isCompress(query, queryLength)) {
 				queryStr = lzoDecompressQuery.decompressString(query, queryLength);
+			#endif
 			} else {
 				queryStr = string((char*)query, queryLength);
 			}
@@ -1456,19 +1462,23 @@ void cSnifferClientService::evData(u_char *data, size_t dataLen) {
 		}
 		string queryStr;
 		cGzip gzipDecompressQuery;
+		#ifdef HAVE_LIBLZO
 		cLzo lzoDecompressQuery;
+		#endif
 		if(gzipDecompressQuery.isCompress(data + 4, dataLen - 4)) {
 			queryStr = gzipDecompressQuery.decompressString(data + 4, dataLen - 4);
 			if(queryStr.empty()) {
 				receive_socket->writeBlock("error in decompress zip");
 				return;
 			}
+		#ifdef HAVE_LIBLZO
 		} else if(lzoDecompressQuery.isCompress(data + 4, dataLen - 4)) {
 			queryStr = lzoDecompressQuery.decompressString(data + 4, dataLen - 4);
 			if(queryStr.empty()) {
 				receive_socket->writeBlock("error in decompress lzo");
 				return;
 			}
+		#endif
 		} else {
 			queryStr = string((char*)data + 4, dataLen - 4);
 		}

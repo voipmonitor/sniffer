@@ -1585,6 +1585,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			u_int64_t _forcemark_time = getTimeUS(header);
 			call->forcemark_lock();
 			call->forcemark_time.push_back(_forcemark_time);
+			++call->forcemark_time_size;
 			if(sverb.forcemark) {
 				cout << "add forcemark (skinny): " << _forcemark_time 
 				     << " forcemarks size: " << call->forcemark_time.size()

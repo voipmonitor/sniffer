@@ -1142,6 +1142,21 @@ public:
 			       !legs.back()->disconnect_time);
 		}
 	};
+	struct cBranchInfo {
+		vmIP sip_src_addr;
+		string to;
+		string branch;
+		bool operator == (const cBranchInfo& other) const { 
+			return(this->sip_src_addr == other.sip_src_addr &&
+			       this->to == other.to &&
+			       this->branch == other.branch); 
+		}
+		bool operator < (const cBranchInfo& other) const { 
+			return(this->sip_src_addr < other.sip_src_addr ? true : this->sip_src_addr > other.sip_src_addr ? false :
+			       this->to < other.to ? true : this->to > other.to ? false :
+			       this->branch < other.branch);
+		}
+	};
 	enum eSrvccFlag {
 		_srvcc_na,
 		_srvcc_post,
@@ -1317,6 +1332,7 @@ public:
 	unsigned int ps_drop;
 	unsigned int ps_ifdrop;
 	vector<u_int64_t> forcemark_time;
+	volatile u_int32_t forcemark_time_size;
 	volatile int _forcemark_lock;
 	int first_codec;
 	bool	has_second_merged_leg;
@@ -1515,6 +1531,7 @@ public:
 	bool is_multiple_to_branch(CallBranch *c_branch);
 	bool all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_lock = true);
 	bool to_is_canceled(CallBranch *c_branch, const char *to);
+	bool all_branches_is_canceled(CallBranch *c_branch, bool check_ip);
 	const char *get_to_not_canceled(CallBranch *c_branch, bool uri = false);
 	const char *get_to_uri_not_canceled(CallBranch *c_branch) {
 		return(get_to_not_canceled(c_branch, true));
@@ -1580,7 +1597,7 @@ public:
 			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 			      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
 			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
-	void cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch, struct timeval *ts);
+	void cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch);
 	
 	/**
 	 * @brief get pointer to PcapDumper of the writing pcap file  

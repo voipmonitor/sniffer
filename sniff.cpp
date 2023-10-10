@@ -4091,6 +4091,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 					u_int64_t _forcemark_time = packetS->getTimeUS();
 					call->forcemark_lock();
 					call->forcemark_time.push_back(_forcemark_time);
+					++call->forcemark_time_size;
 					if(sverb.forcemark) {
 						cout << "add forcemark (inactive): " << _forcemark_time 
 						     << " forcemarks size: " << call->forcemark_time.size() 
@@ -5016,18 +5017,21 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		++count_sip_cancel;
 		call->setSeenCancel(c_branch, true, packet_time_us, packetS->get_callid());
 
-		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
-		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged) &&
-		   call->is_closed_other_branches(c_branch)) {
-			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
-			call->destroy_call_at = packetS->getTime_s() + (opt_quick_save_cdr == 2 ? 0 :
-								       (opt_quick_save_cdr ? 1 : 10));
-		}
-		
 		if(opt_call_branches || call->is_multiple_to_branch(c_branch)) { 
 			detect_to(packetS, to, sizeof(to), &to_detected);
 			detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-			call->cancel_ip_port_hash(c_branch, packetS->saddr_(), to, branch, packetS->getTimeval_pt());
+			call->cancel_ip_port_hash(c_branch, packetS->saddr_(), to, branch);
+		}
+		
+		// CANCEL continues with Status: 200 canceling; 200 OK; 487 Req. terminated; ACK. Lets wait max 10 seconds and destroy call
+		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
+			//do not set destroy for CANCEL which belongs to first leg in case of merged legs through sip header 
+			if(opt_call_branches ?
+			    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
+			    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
+				call->destroy_call_at = packetS->getTime_s() + (opt_quick_save_cdr == 2 ? 0 :
+									       (opt_quick_save_cdr ? 1 : 10));
+			}
 		}
 		
 		//check and save CSeq for later to compare with OK 
@@ -5416,28 +5420,30 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   (opt_sip_message && packetS->cseq.method == MESSAGE) || 
 			   (packetS->cseq.method == PRACK && packetS->lastSIPresponseNum == 481)) &&
 			  (IS_SIP_RES3XX(packetS->sip_method) || IS_SIP_RES4XX(packetS->sip_method) || packetS->sip_method == RES5XX || packetS->sip_method == RES6XX)) {
-			if(opt_ignore_rtp_after_response && !c_branch->ignore_rtp_after_response_time_usec) {
-				vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
-				if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
-					c_branch->ignore_rtp_after_response_time_usec = packet_time_us;
-					#if EXPERIMENTAL_SEPARATE_PROCESSSING
-					if(separate_processing() == cSeparateProcessing::_sip) {
-						sendCloseCall(call->call_id.c_str(), 
-							      call->first_packet_time_us, 
-							      call->flags,
-							      cSeparateProcessing::_stop_processing, 
-							      packetS->getTimeUS());
-					}
-					#endif
-				}
-			}
 			if(IS_SIP_RES4XX(packetS->sip_method) && packetS->sip_method != 401 && packetS->sip_method != 407 &&
 			   (opt_call_branches || call->is_multiple_to_branch(c_branch))) {
 				detect_to(packetS, to, sizeof(to), &to_detected);
 				detect_branch(packetS, branch, sizeof(branch), &branch_detected);
-				call->cancel_ip_port_hash(c_branch, packetS->daddr_(), to, branch, packetS->getTimeval_pt());
+				call->cancel_ip_port_hash(c_branch, packetS->daddr_(), to, branch);
 			}
-				
+			if(opt_ignore_rtp_after_response && !c_branch->ignore_rtp_after_response_time_usec) {
+				if(opt_call_branches ||
+				   !call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false)) {
+					vector<int>::iterator iter = std::lower_bound(opt_ignore_rtp_after_response_list.begin(), opt_ignore_rtp_after_response_list.end(), packetS->lastSIPresponseNum);
+					if(iter != opt_ignore_rtp_after_response_list.end() && *iter == packetS->lastSIPresponseNum) {
+						c_branch->ignore_rtp_after_response_time_usec = packet_time_us;
+						#if EXPERIMENTAL_SEPARATE_PROCESSSING
+						if(separate_processing() == cSeparateProcessing::_sip) {
+							sendCloseCall(call->call_id.c_str(), 
+								      call->first_packet_time_us, 
+								      call->flags,
+								      cSeparateProcessing::_stop_processing, 
+								      packetS->getTimeUS());
+						}
+						#endif
+					}
+				}
+			}
 			if(lastSIPresponseNum == 487) {
 				fraudSessionCanceledCall(call, packetS->getTimeval());
 			}
@@ -5453,7 +5459,11 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			} else if(lastSIPresponseNum != 401 && lastSIPresponseNum != 407 && lastSIPresponseNum != 501) {
 				// save packet 
 				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout);
+					if(opt_call_branches ?
+					    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
+					    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
+						call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout);
+					}
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
 					call->not_acceptable = true;
@@ -12029,6 +12039,12 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	if(lock) {
 		calltable->lock_calls_hash();
 	}
+	/*
+	cout << "RTP - **** -"
+	     << " src: " << packetS->saddr_().getString() << " : " << packetS->source_()
+	     << " dst: " << packetS->daddr_().getString() << " : " << packetS->dest_()
+	     << endl;
+	*/
 	node_call_rtp *n_call = NULL;
 	#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		#if EXPERIMENTAL_PRECREATION_RTP_HASH_INDEX

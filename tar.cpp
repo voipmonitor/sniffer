@@ -1174,13 +1174,13 @@ Tar::eTarCompressType Tar::checkCompressType(int compressType) {
 		#if HAVE_LIBZSTD
 		return(_zstd);
 		#else
-		return(_gzip);
+		return(_gzip_force);
 		#endif
 	case _lzma:
 		#if HAVE_LIBLZMA
 		return(_lzma);
 		#else
-		return(_gzip);
+		return(_gzip_force);
 		#endif
 	default:
 		return((Tar::eTarCompressType)compressType);

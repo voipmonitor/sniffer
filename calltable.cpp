@@ -711,6 +711,7 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 		syslog(LOG_NOTICE, "CREATE CALL %s", this->call_id.c_str());
 	}
 	_custom_headers_content_sync = 0;
+	forcemark_time_size = 0;
 	_forcemark_lock = 0;
 	_proxies_lock = 0;
 	a_mos_lqo = -1;
@@ -1383,6 +1384,7 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 			u_int64_t _forcemark_time_us = getTimeUS(ts);
 			forcemark_lock();
 			forcemark_time.push_back(_forcemark_time_us);
+			++forcemark_time_size;
 			if(sverb.forcemark) {
 				cout << "add forcemark: " << _forcemark_time_us 
 				     << " forcemarks size: " << forcemark_time.size() 
@@ -1483,7 +1485,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 	}
 }
 
-void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch, struct timeval *ts) {
+void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->ip_port[i].sip_src_addr == sip_src_addr &&
 		   (!branch || !strcmp(c_branch->ip_port[i].branch.c_str(), branch)) &&
@@ -1609,6 +1611,34 @@ bool Call::to_is_canceled(CallBranch *c_branch, const char *to) {
 		}
 	}
 	return(false);
+}
+
+bool Call::all_branches_is_canceled(CallBranch *c_branch, bool check_ip) {
+	map<cBranchInfo, bool> branches;
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty()) {
+			cBranchInfo bi;
+			if(check_ip) {
+				bi.sip_src_addr = c_branch->ip_port[i].sip_src_addr;
+			}
+			bi.to = c_branch->ip_port[i].to;
+			bi.branch = c_branch->ip_port[i].branch;
+			map<cBranchInfo, bool>::iterator bi_it = branches.find(bi);
+			if(bi_it == branches.end()) {
+				branches[bi] = c_branch->ip_port[i].canceled;
+			} else {
+				if(c_branch->ip_port[i].canceled) {
+					branches[bi] = true;
+				}
+			}
+		}
+	}
+	for(map<cBranchInfo, bool>::iterator bi_it = branches.begin(); bi_it != branches.end(); bi_it++) {
+		if(!bi_it->second) {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 const char* Call::get_to_not_canceled(CallBranch *c_branch, bool uri) {
@@ -3823,7 +3853,7 @@ Call::convertRawToWav() {
 											vmcodecs_path_static_ok = true;
 											break;
 										} else if(pass < 4) {
-											syslog(LOG_ERR, "vmcodecs download faild - try next after 5s");
+											syslog(LOG_ERR, "vmcodecs download failed - try next after 5s");
 											for(int i = 0; i < 5 && !is_terminating(); i++) {
 												sleep(1);
 											}

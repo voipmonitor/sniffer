@@ -1311,7 +1311,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 	if(!last_cleanup_at) {
 		last_cleanup_at = TIME_US_TO_S(callInfo->at_last);
 	} else if(last_cleanup_at + 15 * 60 < TIME_US_TO_S(callInfo->at_last)) {
-		cleanup(TIME_US_TO_S(callInfo->at_last));
+		cleanup(callInfo->at_last);
 		last_cleanup_at = TIME_US_TO_S(callInfo->at_last);
 	}
 }
