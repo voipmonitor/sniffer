@@ -3478,6 +3478,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 						}
 						delete [] queryGzip;
 					}
+				#ifdef HAVE_LIBLZO
 				} else if(_snifferClientOptions->type_compress == _cs_compress_lzo) {
 					cLzo lzoCompressQuery;
 					u_char *queryLzo;
@@ -3488,6 +3489,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 						}
 						delete [] queryLzo;
 					}
+				#endif
 				}
 			} else {
 				if(!this->remote_socket->writeBlock(query_str_with_id, cSocket::_te_aes)) {

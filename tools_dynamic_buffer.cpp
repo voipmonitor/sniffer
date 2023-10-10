@@ -550,7 +550,7 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 		size_t chunk_offset = 0;
 		while(chunk_offset < len) {
 			size_t chunk_len = min((size_t)this->compressBufferLength, (size_t)(len - chunk_offset));
-			lzo_uint compressLength = this->compressBufferBoundLength;
+			int compressLength = this->compressBufferBoundLength;
 			compressLength = LZ4_compress_default(data + chunk_offset, this->compressBuffer, chunk_len, compressLength);
 			if(compressLength > 0) {
 				extern unsigned int HeapSafeCheck;

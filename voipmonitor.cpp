@@ -643,7 +643,7 @@ int opt_pcap_dump_tar_compress_sip =
 	#if HAVE_LIBZSTD
 		Tar::_zstd;
 	#else
-		Tar::_gzip;
+		Tar::_gzip_force;
 	#endif
 int opt_pcap_dump_tar_sip_level = INT_MIN;
 int opt_pcap_dump_tar_sip_level_gzip = 6;
@@ -662,7 +662,7 @@ int opt_pcap_dump_tar_compress_graph =
 	#if HAVE_LIBZSTD
 		Tar::_zstd;
 	#else
-		Tar::_gzip;
+		Tar::_gzip_force;
 	#endif
 int opt_pcap_dump_tar_graph_level = INT_MIN;
 int opt_pcap_dump_tar_graph_level_gzip = 6;
