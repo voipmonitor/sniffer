@@ -81,7 +81,7 @@ inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 }
 #else
 inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
-	return 0
+	return 0;
 }
 #endif
 
