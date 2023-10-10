@@ -55,7 +55,6 @@ inline bool crc32_sse_is_available() {
 
 #if defined(__x86_64__)
 __attribute__((target("sse4.2")))
-#endif
 inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 	// If the string is empty, return the initial crc
 	if (len == 0)
@@ -80,6 +79,11 @@ inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 	// XOR again with INT_MAX
 	return (crc ^= 0xFFFFFFFF);
 }
+#else
+inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
+	return 0
+}
+#endif
 
 #endif
 
