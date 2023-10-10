@@ -1485,7 +1485,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 	}
 }
 
-void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch, struct timeval *ts) {
+void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->ip_port[i].sip_src_addr == sip_src_addr &&
 		   (!branch || !strcmp(c_branch->ip_port[i].branch.c_str(), branch)) &&
@@ -1611,6 +1611,34 @@ bool Call::to_is_canceled(CallBranch *c_branch, const char *to) {
 		}
 	}
 	return(false);
+}
+
+bool Call::all_branches_is_canceled(CallBranch *c_branch, bool check_ip) {
+	map<cBranchInfo, bool> branches;
+	for(int i = 0; i < c_branch->ipport_n; i++) {
+		if(!c_branch->ip_port[i].to.empty() && !c_branch->ip_port[i].branch.empty()) {
+			cBranchInfo bi;
+			if(check_ip) {
+				bi.sip_src_addr = c_branch->ip_port[i].sip_src_addr;
+			}
+			bi.to = c_branch->ip_port[i].to;
+			bi.branch = c_branch->ip_port[i].branch;
+			map<cBranchInfo, bool>::iterator bi_it = branches.find(bi);
+			if(bi_it == branches.end()) {
+				branches[bi] = c_branch->ip_port[i].canceled;
+			} else {
+				if(c_branch->ip_port[i].canceled) {
+					branches[bi] = true;
+				}
+			}
+		}
+	}
+	for(map<cBranchInfo, bool>::iterator bi_it = branches.begin(); bi_it != branches.end(); bi_it++) {
+		if(!bi_it->second) {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 const char* Call::get_to_not_canceled(CallBranch *c_branch, bool uri) {
