@@ -13,7 +13,9 @@ u_int32_t crc32buf(u_char *buf, size_t len) {
 
 #if defined(__x86_64__) or defined(__i386__)
 
+#if defined(__x86_64__)
 #include <nmmintrin.h>
+#endif
 
 #define CRC_SSE_ALIGN_SIZE 0x08UL           // Align at an 8-byte boundary
 #define CRC_SSE_ALIGN_MASK (CRC_SSE_ALIGN_SIZE - 1) // Bitmask for 8-byte bound addresses
@@ -51,6 +53,7 @@ inline bool crc32_sse_is_available() {
 	return(0);
 }
 
+#if defined(__x86_64__)
 __attribute__((target("sse4.2")))
 inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 	// If the string is empty, return the initial crc
@@ -76,6 +79,11 @@ inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 	// XOR again with INT_MAX
 	return (crc ^= 0xFFFFFFFF);
 }
+#else
+inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
+	return 0;
+}
+#endif
 
 #endif
 

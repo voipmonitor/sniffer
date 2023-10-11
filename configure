@@ -587,6 +587,7 @@ PACKAGE_URL=''
 ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+FLTO
 DPDK_LDFLAGS
 DPDK_CFLAGS
 HEAPPROF_CXXFLAG
@@ -686,6 +687,7 @@ with_dpdk_lib
 with_mysql
 with_heap_profiler
 enable_dpdk
+enable_flto
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1313,6 +1315,7 @@ Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --disable-dpdk          Disable searching for dpdk libs (librte_*)
+  --disable-flto          Disable the use of gcc -flto flag
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -5027,6 +5030,71 @@ fi
 #AC_FUNC_STRNLEN
 #AC_FUNC_STRTOD
 #AC_CHECK_FUNCS([gethostbyname gettimeofday inet_ntoa memmove memset mkdir mkfifo pow select setenv setlocale socket sqrt strcasecmp strchr strdup strerror strncasecmp strndup strstr strtol])
+
+
+# Initialize the FLTO variable
+FLTO=""
+
+# Add --disable-flto option
+# Check whether --enable-flto was given.
+if test "${enable_flto+set}" = set; then :
+  enableval=$enable_flto;
+else
+  enable_flto=yes  # Default is to enable flto
+
+fi
+
+
+# Check if flto is not disabled by the user
+if test "x$enable_flto" != "xno"; then
+  # Check if gcc supports -flto
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether gcc supports -flto" >&5
+$as_echo_n "checking whether gcc supports -flto... " >&6; }
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int main() { return 0; }
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+      # Save the current CFLAGS
+      saved_CFLAGS="$CFLAGS"
+
+      # Add -flto to CFLAGS for the test
+      CFLAGS="$CFLAGS -flto"
+
+      # Attempt to compile with -flto
+      cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+int main() { return 0; }
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+
+          # -flto works, so update the FLTO variable
+          { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+          FLTO="-flto"
+
+else
+
+          # Compilation failed, so -flto is not supported
+          { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+      # Restore the original CFLAGS
+      CFLAGS="$saved_CFLAGS"
+
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+
+# Make the FLTO variable available in the generated Makefile
+
+
 
 ac_config_files="$ac_config_files Makefile simpleini/Makefile"
 
