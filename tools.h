@@ -708,6 +708,7 @@ private:
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
 	eTypeCompress getTypeCompressDefault();
+	eTypeCompress checkCompressType(eTypeCompress compressType);
 	void addReadBuffer(char *data, u_int32_t len);
 	void lock_write() {
 		__SYNC_LOCK_USLEEP(_sync_write_lock, 10);

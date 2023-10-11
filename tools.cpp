@@ -4114,7 +4114,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
 	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
-	this->typeCompress = typeCompress;
+	this->typeCompress = checkCompressType(typeCompress);
 	this->dumpHandler = dumpHandler;
 	this->call = call;
 	this->time = call ? call->calltime_s() : 0;
@@ -4640,9 +4640,46 @@ FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
 		return(gzip);
 	case pcap_rtp:
 	case graph_rtp:
+		#if HAVE_LIBLZO
 		return(lzo);
+		#else
+		return(gzip);
+		#endif
 	default:
 		return(gzip);
+	}
+}
+
+FileZipHandler::eTypeCompress FileZipHandler::checkCompressType(eTypeCompress compressType) {
+	switch(compressType) {
+	case lzma:
+		#if HAVE_LIBLZMA
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	case zstd:
+		#if HAVE_LIBZSTD
+		return(compressType);
+		#elif HAVE_LIBLZO
+		return(lzo);
+		#else
+		return(gzip);
+		#endif
+	case lzo:
+		#if HAVE_LIBLZO
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	case lz4:
+		#if HAVE_LIBLZ4
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	default:
+		return(compressType);
 	}
 }
 
