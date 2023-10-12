@@ -2157,33 +2157,53 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(pcapQueueQ_outThread_detach) {
-				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(pstatDataIndex);
+				double percFullQring = 0;
+				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach:" << setprecision(1) << detach_cpu;
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
+					}
 				}
 			}
 			if(pcapQueueQ_outThread_defrag) {
-				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(pstatDataIndex);
+				double percFullQring = 0;
+				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && defrag_cpu >= 0) {
 					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
+					}
 				}
 			}
 			if(pcapQueueQ_outThread_dedup) {
-				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(pstatDataIndex);
+				double percFullQring = 0;
+				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && dedup_cpu >= 0) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
+					}
 				}
 			}
 			if(pcapQueueQ_outThread_detach2) {
-				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(pstatDataIndex);
+				double percFullQring = 0;
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
+					}
 				}
 			}
 			if(opt_ipaccount) {
+				double percFullQring = 0;
 				double ipacc_cpu = this->getCpuUsagePerc(destroyBlocksThread, pstatDataIndex);
 				if(task == pcapStatLog && ipacc_cpu >= 0) {
 					outStrStat << "/ipacc:" << setprecision(1) << ipacc_cpu;
+					if(sverb.qring_full && percFullQring > sverb.qring_full) {
+						outStrStat << "#" << percFullQring;
+					}
 				}
 			}
 			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
@@ -9099,6 +9119,8 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
+	qringPushCounter = 0;
+	qringPushCounter_full = 0;
 	this->outThreadId = 0;
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
@@ -9168,10 +9190,14 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		hp->block_store_locked = true;
 	}
 	if(!qring_push_index) {
+		++qringPushCounter;
 		unsigned int usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
 			if(is_terminating()) {
 				return;
+			}
+			if(usleepCounter == 0) {
+				++qringPushCounter_full;
 			}
 			USLEEP_C(20, usleepCounter++);
 		}
@@ -9543,7 +9569,7 @@ void PcapQueue_outputThread::preparePstatData(int pstatDataIndex) {
 	}
 }
 
-double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, bool preparePstatData) {
+double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, double *percFullQring, bool preparePstatData) {
 	if(preparePstatData) {
 		this->preparePstatData(pstatDataIndex);
 	}
@@ -9553,8 +9579,18 @@ double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, bool prepareP
 			pstat_calc_cpu_usage_pct(
 				&this->threadPstatData[pstatDataIndex][0], &this->threadPstatData[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
+			if(percFullQring) {
+				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+				qringPushCounter = 0;
+				qringPushCounter_full = 0;
+			}
 			return(ucpu_usage + scpu_usage);
 		}
+	}
+	if(percFullQring) {
+		*percFullQring = -1;
+		qringPushCounter = 0;
+		qringPushCounter_full = 0;
 	}
 	return(-1);
 }

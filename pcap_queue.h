@@ -1094,7 +1094,7 @@ public:
 		return("");
 	}
 	void preparePstatData(int pstatDataIndex);
-	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
+	double getCpuUsagePerc(int pstatDataIndex, double *percFullQring, bool preparePstatData = true);
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -1108,6 +1108,8 @@ private:
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
+	u_int64_t qringPushCounter;
+	u_int64_t qringPushCounter_full;
 	int outThreadId;
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;
