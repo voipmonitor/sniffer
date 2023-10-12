@@ -6126,7 +6126,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 						}
 						cout << "exit " << *exitCode << endl;
 					} else {
-						usleep(10000);
+						USLEEP(10000);
 					}
 				} else {
 					break;

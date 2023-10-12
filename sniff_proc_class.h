@@ -1548,12 +1548,10 @@ private:
 		return(false);
 	}
 	void lock_push() {
-		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
-			USLEEP(10);
-		}
+		__SYNC_LOCK(this->_sync_push);
 	}
 	void unlock_push() {
-		__sync_lock_release(&this->_sync_push);
+		__SYNC_UNLOCK(this->_sync_push);
 	}
 	inline bool need_lock_push() {
 		return(opt_enable_ssl || opt_ipfix || opt_hep);

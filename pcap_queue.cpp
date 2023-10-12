@@ -5672,7 +5672,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 							}
 							#endif
 						}
-						usleep(1);
+						USLEEP(1);
 					}
 					for(int i = 0; i < 2; i++) {
 						delete dispatch_data.copy_block[i];
@@ -5863,7 +5863,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 		default:
 			block = this->prevThread->pop_block();
 			if(!block) {
-				this->pop_usleep_sum += USLEEP_C(100, this->counter_pop_usleep++);
+				this->pop_usleep_sum += USLEEP_C(20, this->counter_pop_usleep++);
 				if(this->pop_usleep_sum > this->pop_usleep_sum_last_push + 200000) {
 					this->prevThread->setForcePush();
 					this->pop_usleep_sum_last_push = this->pop_usleep_sum;
@@ -6561,7 +6561,7 @@ void PcapQueue_readFromInterface::threadFunction_blocks() {
 			}
 			usleepCounter = 0;
 		} else {
-			USLEEP_C(100, usleepCounter++);
+			USLEEP_C(20, usleepCounter++);
 		}
 	}
 
@@ -9600,7 +9600,7 @@ static void *dpdk_main_thread_fce(void *arg) {
 	dpdk_do_pre_init(NULL);
 	dpdk_init = true;
 	while(!is_terminating()) {
-		usleep(100000);
+		USLEEP(100000);
 	}
 	return(NULL);
 }
@@ -9617,7 +9617,7 @@ void PcapQueue_init() {
 						      dpdk_main_thread_fce, NULL, 
 						      __FILE__, __LINE__);
 			while(!dpdk_init) {
-				usleep(100000);
+				USLEEP(100000);
 			}
 		}
 	}

@@ -9647,7 +9647,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				next_thread_data->batch = NULL;
 				next_thread_data->processing = 0;
 			} else {
-				usleep(20);
+				USLEEP(20);
 			}
 			continue;
 		}
@@ -9670,7 +9670,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				next_thread_data->batch = NULL;
 				next_thread_data->processing = 0;
 			} else {
-				usleep(20);
+				USLEEP(20);
 			}
 			continue;
 		}

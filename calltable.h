@@ -868,7 +868,7 @@ public:
 			return(true);
 		}
 		for(unsigned i = 0; i < 3; i++) {
-			usleep(10);
+			USLEEP(10);
 			if(isChunkBuffersCountSyncOK()) {
 				return(true);
 			}

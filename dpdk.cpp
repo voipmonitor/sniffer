@@ -910,7 +910,7 @@ static int rte_read_thread(void *arg) {
 	setpriority(PRIO_PROCESS, dpdk->rte_read_thread_pid, -19);
 	printf(" * DPDK READ (rte) THREAD %i\n", dpdk->rte_read_thread_pid);
 	while(!dpdk->initialized) {
-		usleep(1000);
+		USLEEP(1000);
 	}
 	dpdk_reset_statistics(dpdk, true);
 	void (*dpdk_process_packet_2)(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
@@ -1065,7 +1065,7 @@ static int rte_read_thread(void *arg) {
 						#if DPDK_WAIT_FOR_EMPTY_RING_IF_FULL
 						if(unlikely(!nb_rx_enqueue)) {
 							while(!rte_ring_empty(dpdk->rx_to_worker_ring) && !dpdk->terminating) {
-								usleep(1000);
+								USLEEP(1000);
 							}
 						}
 						#endif
