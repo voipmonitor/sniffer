@@ -671,6 +671,7 @@ public:
 				if(opt_preprocess_packets_qring_push_usleep) {
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 				} else {
+					__asm__ volatile ("pause");
 					++usleepCounter;
 				}
 			}
@@ -716,6 +717,7 @@ public:
 				if(opt_preprocess_packets_qring_push_usleep) {
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 				} else {
+					__asm__ volatile ("pause");
 					++usleepCounter;
 				}
 			}
@@ -785,6 +787,7 @@ public:
 				if(opt_preprocess_packets_qring_push_usleep) {
 					USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 				} else {
+					__asm__ volatile ("pause");
 					++usleepCounter;
 				}
 			}
@@ -846,6 +849,7 @@ public:
 					if(opt_preprocess_packets_qring_push_usleep) {
 						USLEEP_C(opt_preprocess_packets_qring_push_usleep, usleepCounter++);
 					} else {
+						__asm__ volatile ("pause");
 						++usleepCounter;
 					}
 				}
@@ -1802,6 +1806,7 @@ public:
 				if(opt_process_rtp_packets_qring_push_usleep) {
 					USLEEP_C(opt_process_rtp_packets_qring_push_usleep, usleepCounter++);
 				} else {
+					__asm__ volatile ("pause");
 					++usleepCounter;
 				}
 			}

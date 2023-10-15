@@ -877,24 +877,23 @@ static map<sUsleepStatsId, unsigned int> usleepStats;
 static volatile int usleepStatsSync;
 
 void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
-	if(sverb.usleep_stats) {
-		__SYNC_LOCK(usleepStatsSync);
-		sUsleepStatsId id;
-		id.file = file;
-		id.line = line;
-		id.tid = get_unix_tid();
-		id.us = fix ? 
-			 useconds :
-			 (useconds < 100 ?
-			   useconds / 10 * 10 :
-			   useconds / 100 * 100);
-		++usleepStats[id];
-		__SYNC_UNLOCK(usleepStatsSync);
-	}
+	__SYNC_LOCK(usleepStatsSync);
+	sUsleepStatsId id;
+	id.file = file;
+	id.line = line;
+	id.tid = get_unix_tid();
+	id.us = fix ? 
+		 useconds :
+		 (useconds < 10 ? useconds :
+		  useconds < 100 ? useconds / 10 * 10 :
+		  useconds / 100 * 100);
+	++usleepStats[id];
+	__SYNC_UNLOCK(usleepStatsSync);
 }
 
 string usleep_stats(unsigned int useconds_lt) {
-	if(sverb.usleep_stats) {
+	extern bool opt_usleep_stats;
+	if(opt_usleep_stats) {
 		list<sUsleepStatsIdCnt> _usleepStat;
 		__SYNC_LOCK(usleepStatsSync);
 		for(map<sUsleepStatsId, unsigned int>::iterator iter = usleepStats.begin(); iter != usleepStats.end(); iter++) {
@@ -931,11 +930,9 @@ string usleep_stats(unsigned int useconds_lt) {
 }
 
 void usleep_stats_clear() {
-	if(sverb.usleep_stats) {
-		__SYNC_LOCK(usleepStatsSync);
-		usleepStats.clear();
-		__SYNC_UNLOCK(usleepStatsSync);
-	}
+	__SYNC_LOCK(usleepStatsSync);
+	usleepStats.clear();
+	__SYNC_UNLOCK(usleepStatsSync);
 }
 #endif
 

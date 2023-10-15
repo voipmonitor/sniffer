@@ -437,7 +437,7 @@ int Mgmt_alloc_trim(Mgmt_params *params);
 int Mgmt_alloc_test(Mgmt_params *params);
 int Mgmt_tcmalloc_stats(Mgmt_params *params);
 int Mgmt_hashtable_stats(Mgmt_params *params);
-int Mgmt_usleep_stats(Mgmt_params *params);
+int Mgmt_usleep(Mgmt_params *params);
 int Mgmt_charts_cache(Mgmt_params *params);
 int Mgmt_packetbuffer_log(Mgmt_params *params);
 int Mgmt_diameter_packets_stack(Mgmt_params *params);
@@ -553,7 +553,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_alloc_test,
 	Mgmt_tcmalloc_stats,
 	Mgmt_hashtable_stats,
-	Mgmt_usleep_stats,
+	Mgmt_usleep,
 	Mgmt_charts_cache,
 	Mgmt_packetbuffer_log,
 	Mgmt_diameter_packets_stack,
@@ -4696,20 +4696,61 @@ int Mgmt_hashtable_stats(Mgmt_params *params) {
 	#endif
 }
 
-int Mgmt_usleep_stats(Mgmt_params *params) {
+int Mgmt_usleep(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("usleep_stats", "usleep_stats");
+		params->registerCommand("usleep", "usleep management");
 		return(0);
+	}
+	char us_params[5][100];
+	for(unsigned i = 0; i < sizeof(us_params) / sizeof(us_params[0]); i++) {
+	}
+	if(strlen(params->buf) > params->command.length() + 1) {
+		sscanf(params->buf + params->command.length() + 1, "%s %s %s %s %s",
+		       us_params[0], us_params[1], us_params[2], us_params[3], us_params[4]);
 	}
 	extern string usleep_stats(unsigned int useconds_lt);
 	extern void usleep_stats_clear();
-	unsigned int useconds_lt = 0;
-	if(strlen(params->buf) + params->command.length() + 1) {
-		useconds_lt = atoi(params->buf + params->command.length() + 1);
+	if(!strcasecmp(us_params[0], "stats_start")) {
+		extern bool opt_usleep_stats;
+		opt_usleep_stats = true;
+	} else if(!strcasecmp(us_params[0], "stats_stop")) {
+		extern bool opt_usleep_stats;
+		opt_usleep_stats = false;
+		usleep_stats_clear();
+	} else if(!strcasecmp(us_params[0], "stats")) {
+		unsigned useconds_lt = atoi(us_params[1]);
+		string usleepStats = usleep_stats(useconds_lt);
+		usleep_stats_clear();
+		return(params->sendString(usleepStats));
+	} else if(!strcasecmp(us_params[0], "set_preprocess")) {
+		extern unsigned int opt_preprocess_packets_qring_usleep;
+		extern unsigned int opt_preprocess_packets_qring_push_usleep;
+		extern unsigned int opt_process_rtp_packets_qring_usleep;
+		extern unsigned int opt_process_rtp_packets_qring_push_usleep;
+		opt_preprocess_packets_qring_usleep = 
+		opt_preprocess_packets_qring_push_usleep =
+		opt_process_rtp_packets_qring_usleep = 
+		opt_process_rtp_packets_qring_push_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_lock_calls_hash")) {
+		extern unsigned int opt_lock_calls_hash_usleep;
+		opt_lock_calls_hash_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_rtp")) {
+		extern unsigned int rtp_qring_usleep;
+		rtp_qring_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_sip_batch")) {
+		extern unsigned int opt_sip_batch_usleep;
+		opt_sip_batch_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_rtp_batch")) {
+		extern unsigned int opt_rtp_batch_usleep;
+		opt_rtp_batch_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_progressive")) {
+		extern bool opt_usleep_progressive;
+		opt_usleep_progressive = yesno(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_all")) {
+		extern unsigned int opt_usleep_force;
+		opt_usleep_force = atoi(us_params[1]);
 	}
-	string usleepStats = usleep_stats(useconds_lt);
-	usleep_stats_clear();
-	return(params->sendString(usleepStats));
+	return(0);
 }
 
 int Mgmt_charts_cache(Mgmt_params *params) {

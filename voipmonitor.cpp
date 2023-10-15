@@ -423,6 +423,12 @@ unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 bool opt_process_rtp_packets_qring_force_push = true;
+bool opt_usleep_stats = false;
+bool opt_usleep_progressive = true;
+unsigned int opt_usleep_force = 0;
+unsigned int opt_lock_calls_hash_usleep = 10;
+unsigned int opt_sip_batch_usleep = 10;
+unsigned int opt_rtp_batch_usleep = 10;
 int opt_cleanup_calls_period = 10;
 bool opt_cleanup_calls_period_set = false;
 int opt_destroy_calls_period = 2;
@@ -7042,6 +7048,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_heap_limit", &opt_sched_pol_auto_heap_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_cpu_limit", &opt_sched_pol_auto_cpu_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_thread_setname", &opt_use_thread_setname));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("opt_usleep_progressive", &opt_usleep_progressive));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("opt_lock_calls_hash_usleep", &opt_lock_calls_hash_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("opt_sip_batch_usleep", &opt_sip_batch_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("opt_rtp_batch_usleep", &opt_rtp_batch_usleep));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -7542,7 +7552,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 25) == "memory_stat_ignore_limit=")
 								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
 	else if(verbParam == "qring_stat")			sverb.qring_stat = 1;
-	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atoi(verbParam.c_str() + 11);
+	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atof(verbParam.c_str() + 11);
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
@@ -7613,7 +7623,6 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
 	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
 	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
-	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;

@@ -3636,9 +3636,14 @@ public:
 	string getCallTableJson(char *params, bool *zip = NULL);
 	
 	void lock_calls_hash() {
+		extern unsigned int opt_lock_calls_hash_usleep;
 		unsigned int usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
-			USLEEP_C(10, usleepCounter++);
+			if(opt_lock_calls_hash_usleep) {
+				USLEEP_C(opt_lock_calls_hash_usleep, usleepCounter++);
+			} else {
+				__asm__ volatile ("pause");
+			}
 		}
 	}
 	void unlock_calls_hash() {

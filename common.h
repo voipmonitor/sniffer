@@ -61,7 +61,7 @@ struct sVerbose {
 	int memory_stat_log;
 	int memory_stat_ignore_limit;
 	int qring_stat;
-	int qring_full;
+	double qring_full;
 	int alloc_stat;
 	int qfiles;
 	int query_error;
@@ -127,7 +127,6 @@ struct sVerbose {
 	int cleanup_calls;
 	int cleanup_calls_log;
 	int cleanup_calls_stat;
-	int usleep_stats;
 	int charts_cache_only;
 	int charts_cache_filters_eval;
 	int charts_cache_filters_eval_rslt;

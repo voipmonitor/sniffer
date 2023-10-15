@@ -3821,7 +3821,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				if(packetTime > this->lastPacketTimeUS) {
 					diffTime += packetTime - this->lastPacketTimeUS;
 					if(diffTime > 1000) {
-						USLEEP(diffTime / opt_pb_read_from_file_speed);
+						usleep(diffTime / opt_pb_read_from_file_speed);
 						diffTime = 0;
 					}
 				}
@@ -9289,7 +9289,12 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			usleepSumTime = 0;
 			usleepSumTime_lastPush = 0;
 		} else {
-			usleepSumTime += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
+			if(opt_preprocess_packets_qring_usleep) {
+				usleepSumTime += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
+			} else {
+				__asm__ volatile ("pause");
+				++usleepCounter;
+			}
 			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
 				switch(typeOutputThread) {
 				case detach:
