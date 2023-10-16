@@ -4743,6 +4743,9 @@ int Mgmt_usleep(Mgmt_params *params) {
 	} else if(!strcasecmp(us_params[0], "set_rtp_batch")) {
 		extern unsigned int opt_rtp_batch_usleep;
 		opt_rtp_batch_usleep = atoi(us_params[1]);
+	} else if(!strcasecmp(us_params[0], "set_lock_calls")) {
+		extern unsigned int opt_lock_calls_usleep;
+		opt_lock_calls_usleep = atoi(us_params[1]);
 	} else if(!strcasecmp(us_params[0], "set_progressive")) {
 		extern bool opt_usleep_progressive;
 		opt_usleep_progressive = yesno(us_params[1]);
