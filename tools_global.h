@@ -149,13 +149,6 @@ inline u_int64_t getTimeMS(unsigned long tv_sec, unsigned long tv_usec) {
     return(tv_sec * 1000ull + tv_usec / 1000);
 }
 
-inline timeval zeroTimeval() {
-	timeval ts;
-	ts.tv_sec = 0;
-	ts.tv_usec = 0;
-	return(ts);
-}
-
 inline bool isSetTimeval(timeval &ts) {
 	return(ts.tv_sec);
 }
@@ -242,6 +235,21 @@ inline u_int64_t getTimeNS() {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
+}
+
+inline timeval getTimeval() {
+	u_int64_t time_us = getTimeUS();
+	timeval ts;
+	ts.tv_sec = TIME_US_TO_S(time_us);
+	ts.tv_usec = TIME_US_TO_DEC_US(time_us);
+	return(ts);
+}
+
+inline timeval zeroTimeval() {
+	timeval ts;
+	ts.tv_sec = 0;
+	ts.tv_usec = 0;
+	return(ts);
 }
 
 

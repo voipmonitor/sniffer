@@ -155,7 +155,9 @@ struct DSSL_Session_
 	
 	void *tls_session;
 	uint64_t tls_session_server_seq;
+	uint64_t tls_session_server_seq_saved;
 	uint64_t tls_session_client_seq;
+	uint64_t tls_session_client_seq_saved;
 	int tls_session_state;
 	
 	uint8_t tls_12_sessionkey_via_ws;
