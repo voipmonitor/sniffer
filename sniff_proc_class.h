@@ -483,6 +483,7 @@ public:
 		volatile unsigned end;
 		volatile unsigned skip;
 		volatile int thread_index;
+		volatile int data_ready;
 		volatile int processing;
 		void null() {
 			batch = NULL;
@@ -490,6 +491,7 @@ public:
 			end = 0;
 			skip = 0;
 			thread_index = 0;
+			data_ready = 0;
 			processing = 0;
 		}
 	};
@@ -1752,6 +1754,7 @@ public:
 		#if EXPERIMENTAL_PROCESS_RTP_MOD_02
 		volatile int thread_index;
 		#endif
+		volatile int data_ready;
 		volatile int processing;
 		void null() {
 			batch = NULL;
@@ -1761,6 +1764,7 @@ public:
 			#if EXPERIMENTAL_PROCESS_RTP_MOD_02
 			thread_index = 0;
 			#endif
+			data_ready = 0;
 			processing = 0;
 		}
 	};
