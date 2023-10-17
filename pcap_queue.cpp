@@ -8721,12 +8721,10 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 
 int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
  
-	/*
 	extern int opt_sleepprocesspacket;
 	if(opt_sleepprocesspacket) {
-		USLEEP(100000);
+		usleep(100000);
 	}
-	*/
  
 	extern int opt_blockprocesspacket;
 	if(sverb.disable_process_packet_in_packetbuffer ||
