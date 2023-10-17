@@ -9802,7 +9802,11 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 						this->next_thread_data[i].batch = batch_detach_x->batch;
 						this->next_thread_data[i].processing = 1;
-						sem_post(&sem_sync_next_thread[i][0]);
+						if(opt_pre_process_packets_next_thread_sem_sync) {
+							sem_post(&sem_sync_next_thread[i][0]);
+						} else {
+							this->next_thread_data[i].data_ready = 1;
+						}
 					}
 					if(_process_only_in_next_threads) {
 						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
@@ -9828,7 +9832,18 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 					for(int i = 0; i < _next_threads; i++) {
-						sem_wait(&sem_sync_next_thread[i][1]);
+						if(opt_pre_process_packets_next_thread_sem_sync == 2) {
+							sem_wait(&sem_sync_next_thread[i][1]);
+						} else {
+							while(this->next_thread_data[i].processing) { 
+								extern unsigned int opt_sip_batch_usleep;
+								if(opt_sip_batch_usleep) {
+									USLEEP(opt_sip_batch_usleep);
+								} else {
+									__asm__ volatile ("pause");
+								}
+							}
+						}
 					}
 					for(unsigned batch_index = completed; batch_index < count; batch_index++) {
 						this->process_DETACH_X_2(qring_detach_active_push_item->batch[batch_index]);

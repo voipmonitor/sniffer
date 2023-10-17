@@ -1326,8 +1326,11 @@ private:
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
 		extern int opt_t2_boost;
 		extern int opt_skinny;
+		extern bool opt_enable_diameter;
 		extern char *sipportmatrix;
 		extern char *skinnyportmatrix;
+		extern char *diameter_tcp_portmatrix;
+		extern char *diameter_udp_portmatrix;
 		extern int opt_mgcp;
 		extern unsigned opt_tcp_port_mgcp_gateway;
 		extern unsigned opt_udp_port_mgcp_gateway;
@@ -1339,7 +1342,6 @@ private:
 		vmIP saddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_saddr();
 		vmIP daddr = ((iphdr2*)(packet + packet_data->header_ip_offset))->get_daddr();
 		#endif
-		bool packetDelete = packet_data->hp.block_store ? false : true;
 		int blockstore_lock = packet_data->hp.block_store_locked ? 2 : 1;
 		packet_data->pflags.skinny = opt_skinny && packet_data->pflags.tcp && (skinnyportmatrix[packet_data->source] || skinnyportmatrix[packet_data->dest]);
 		packet_data->pflags.mgcp = opt_mgcp && 
@@ -1348,10 +1350,10 @@ private:
 					      (unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
 					     ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
 					      (unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent));
-		pflags.diameter = opt_enable_diameter && 
-				  (pflags.tcp ?
-				    diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
-				    diameter_udp_portmatrix[source] || diameter_udp_portmatrix[dest]);
+		packet_data->pflags.diameter = opt_enable_diameter && 
+					       (packet_data->pflags.tcp ?
+						 diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
+						 diameter_udp_portmatrix[packet_data->source] || diameter_udp_portmatrix[packet_data->dest]);
 		#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES
 		extern bool opt_audiocodes;
 		extern unsigned opt_udp_port_audiocodes;
@@ -1392,7 +1394,7 @@ private:
 			       #endif
 			       blockstore_lock != 1;
 		if(!ok_push) {
-			if(packetDelete) {
+			if(!packet_data->hp.block_store) {
 				delete header;
 				delete [] packet;
 			}
@@ -1418,7 +1420,7 @@ private:
 		packetS_detach->handle_index = packet_data->handle_index; 
 		packetS_detach->header_pt = header;
 		packetS_detach->packet = packet; 
-		packetS_detach->_packet_alloc = packetDelete; 
+		packetS_detach->_packet_alloc_type = packet_data->hp.block_store ? _t_packet_alloc_na : _t_packet_alloc_header_plus; 
 		packetS_detach->pflags = packet_data->pflags;
 		packetS_detach->header_ip_encaps_offset = packet_data->header_ip_encaps_offset; 
 		packetS_detach->header_ip_offset = packet_data->header_ip_offset; 
