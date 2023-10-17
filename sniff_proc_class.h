@@ -1383,7 +1383,10 @@ private:
 					#endif
 					;
 		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
-		bool is_rtp = packet_data->datalen > 2 && IS_RTP(packet + packet_data->data_offset, packet_data->datalen);
+		bool is_rtp = packet_data->datalen > 2 &&
+			      (IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
+			       IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) || 
+			       IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen));
 		#endif
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
