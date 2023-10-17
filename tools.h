@@ -3605,21 +3605,27 @@ public:
 #endif
 
 class cThreadMonitor {
-private:
+public:
 	struct sThread {
 		int tid;
 		pthread_t thread;
 		string description;
 		pstat_data pstat[5][2];
 		context_switches_data cs[5][2];
+		volatile u_int64_t usleep_sum;
+		u_int64_t usleep_sum_stopper[5];
+		u_int64_t last_time_us[2][5];
 		int orig_scheduler;
 		int orig_priority;
 	};
+private:
 	struct sDescrCpuPerc {
 		string description;
 		int tid;
 		double cpu_perc;
 		context_switches_data cs;
+		u_int64_t usleep;
+		u_int64_t time_us;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
 		}
@@ -3628,11 +3634,14 @@ public:
 	cThreadMonitor();
 	void registerThread(int tid, const char *description);
 	void unregisterThread(int tid);
+	sThread *getSelfThread();
 	void setSchedPolPriority(int indexPstat);
 	string output(int indexPstat);
 private:
 	double getCpuUsagePerc(sThread *thread, int indexPstat);
 	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
+	u_int64_t getUsleep(sThread *thread, int indexPstat);
+	u_int64_t getTimeUS(sThread *thread, int indexPstat);
 	void tm_lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
@@ -3640,7 +3649,7 @@ private:
 		__sync_lock_release(&this->_sync);
 	}
 private:
-	map<int, sThread> threads;
+	map<int, sThread*> threads;
 	volatile int _sync;
 };
 

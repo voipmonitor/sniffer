@@ -6936,23 +6936,43 @@ cThreadMonitor::cThreadMonitor() {
 }
 
 void cThreadMonitor::registerThread(int tid, const char *description) {
-	sThread thread;
-	thread.tid = tid;
-	thread.thread = pthread_self();
-	thread.description = description;
-	memset(thread.pstat, 0, sizeof(thread.pstat));
-	memset(thread.cs, 0, sizeof(thread.cs));
-	thread.orig_scheduler = -1;
-	thread.orig_priority = -1;
+	sThread *thread = new FILE_LINE(0) sThread;
+	thread->tid = tid;
+	thread->thread = pthread_self();
+	thread->description = description;
+	memset(thread->pstat, 0, sizeof(thread->pstat));
+	memset(thread->cs, 0, sizeof(thread->cs));
+	thread->usleep_sum = 0;
+	memset(thread->usleep_sum_stopper, 0, sizeof(thread->usleep_sum_stopper));
+	memset(thread->last_time_us, 0, sizeof(thread->last_time_us));
+	thread->orig_scheduler = -1;
+	thread->orig_priority = -1;
 	tm_lock();
-	threads[thread.tid] = thread;
+	threads[thread->tid] = thread;
 	tm_unlock();
 }
 
 void cThreadMonitor::unregisterThread(int tid) {
 	tm_lock();
-	threads.erase(tid);
+	map<int, sThread*>::iterator iter = threads.find(tid);
+	if(iter != threads.end()) {
+		if(!sverb.usleep_stat) {
+			delete iter->second;
+		}
+		threads.erase(iter);
+	}
 	tm_unlock();
+}
+
+cThreadMonitor::sThread *cThreadMonitor::getSelfThread() {
+	sThread *thread = NULL;
+	tm_lock();
+	map<int, sThread*>::iterator iter = threads.find(get_unix_tid());
+	if(iter != threads.end()) {
+		thread = iter->second;
+	}
+	tm_unlock();
+	return(thread);
 }
 
 void cThreadMonitor::setSchedPolPriority(int indexPstat) {
@@ -6970,13 +6990,13 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	}
 	list<sDescrCpuPerc> descrPerc;
 	tm_lock();
-	map<int, sThread>::iterator iter;
+	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
+		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second.description;
-			dp.tid = iter->second.tid;
+			dp.description = iter->second->description;
+			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
 			descrPerc.push_back(dp);
 		}
@@ -6988,7 +7008,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
 		if(iter_dp->cpu_perc >= opt_sched_pol_auto_cpu_limit) {
 			tm_lock();
-			sThread *thread = &threads[iter_dp->tid];
+			sThread *thread = threads[iter_dp->tid];
 			if(thread->orig_scheduler == -1 && thread->orig_priority == -1) {
 				thread->orig_scheduler = sched_getscheduler(thread->tid);
 				sched_param sch_param;
@@ -7012,15 +7032,17 @@ string cThreadMonitor::output(int indexPstat) {
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
 	tm_lock();
-	map<int, sThread>::iterator iter;
+	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
+		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second.description;
-			dp.tid = iter->second.tid;
+			dp.description = iter->second->description;
+			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
-			dp.cs = this->getContextSwitches(&iter->second, indexPstat);
+			dp.cs = this->getContextSwitches(iter->second, indexPstat);
+			dp.usleep = this->getUsleep(iter->second, indexPstat);
+			dp.time_us = this->getTimeUS(iter->second, indexPstat);
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
 		}
@@ -7079,6 +7101,16 @@ string cThreadMonitor::output(int indexPstat) {
 		} else {
 			outStr << setw(10) << " ";
 		}
+		// usleep
+		if(sverb.usleep_stat) {
+			outStr << "  ";
+			if(iter_dp->usleep && iter_dp->time_us) {
+				outStr << "us " << right << setw(5) << setprecision(1) 
+				       << ((double)iter_dp->usleep / iter_dp->time_us * 100) << "% ";
+			} else {
+				outStr << setw(10) << " ";
+			}
+		}
 		//
 		++counter;
 		if(!(counter % 2)) {
@@ -7119,6 +7151,22 @@ context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, int in
 		rslt = get_context_switches(&thread->cs[indexPstat][0], &thread->cs[indexPstat][1]);
 	}
 	return(rslt);
+}
+
+u_int64_t cThreadMonitor::getUsleep(sThread *thread, int indexPstat) {
+	u_int64_t rslt = thread->usleep_sum - thread->usleep_sum_stopper[indexPstat];
+	thread->usleep_sum_stopper[indexPstat] = thread->usleep_sum;
+	return(rslt);
+}
+
+u_int64_t cThreadMonitor::getTimeUS(sThread *thread, int indexPstat) {
+	if(thread->last_time_us[indexPstat][0]) {
+		thread->last_time_us[indexPstat][1] = thread->last_time_us[indexPstat][0];
+	}
+	thread->last_time_us[indexPstat][0] = ::getTimeUS();
+	return(thread->last_time_us[indexPstat][1] ?
+		thread->last_time_us[indexPstat][0] - thread->last_time_us[indexPstat][1] :
+		0);
 }
 
 

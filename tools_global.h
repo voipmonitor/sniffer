@@ -293,7 +293,8 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 		}
 	}
 	extern bool opt_usleep_stats;
-	if(opt_usleep_stats) {
+	extern sVerbose sverb;
+	if(opt_usleep_stats || sverb.usleep_stat) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(rslt_useconds, counter == (unsigned int)-1, file, line);
 	}
@@ -306,7 +307,8 @@ inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
 		useconds = opt_usleep_force;
 	}
 	extern bool opt_usleep_stats;
-	if(opt_usleep_stats) {
+	extern sVerbose sverb;
+	if(opt_usleep_stats || sverb.usleep_stat) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(useconds, 1, file, line);
 	}

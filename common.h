@@ -62,6 +62,7 @@ struct sVerbose {
 	int memory_stat_ignore_limit;
 	int qring_stat;
 	double qring_full;
+	int usleep_stat;
 	int alloc_stat;
 	int qfiles;
 	int query_error;

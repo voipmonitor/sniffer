@@ -877,18 +877,30 @@ static map<sUsleepStatsId, unsigned int> usleepStats;
 static volatile int usleepStatsSync;
 
 void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
-	__SYNC_LOCK(usleepStatsSync);
-	sUsleepStatsId id;
-	id.file = file;
-	id.line = line;
-	id.tid = get_unix_tid();
-	id.us = fix ? 
-		 useconds :
-		 (useconds < 10 ? useconds :
-		  useconds < 100 ? useconds / 10 * 10 :
-		  useconds / 100 * 100);
-	++usleepStats[id];
-	__SYNC_UNLOCK(usleepStatsSync);
+	extern bool opt_usleep_stats;
+	if(opt_usleep_stats) {
+		__SYNC_LOCK(usleepStatsSync);
+		sUsleepStatsId id;
+		id.file = file;
+		id.line = line;
+		id.tid = get_unix_tid();
+		id.us = fix ? 
+			 useconds :
+			 (useconds < 10 ? useconds :
+			  useconds < 100 ? useconds / 10 * 10 :
+			  useconds / 100 * 100);
+		++usleepStats[id];
+		__SYNC_UNLOCK(usleepStatsSync);
+	}
+	if(sverb.usleep_stat) {
+		static __thread cThreadMonitor::sThread *thread = NULL;
+		if(!thread) {
+			thread = threadMonitor.getSelfThread();
+		}
+		if(thread) {
+			thread->usleep_sum += useconds;
+		}
+	}
 }
 
 string usleep_stats(unsigned int useconds_lt) {

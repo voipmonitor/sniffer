@@ -7560,6 +7560,7 @@ void parse_verb_param(string verbParam) {
 								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
 	else if(verbParam == "qring_stat")			sverb.qring_stat = 1;
 	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atof(verbParam.c_str() + 11);
+	else if(verbParam == "usleep_stat")			sverb.usleep_stat = 1;
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
