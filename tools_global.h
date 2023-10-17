@@ -296,7 +296,7 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	extern sVerbose sverb;
 	if(opt_usleep_stats || sverb.usleep_stat) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(rslt_useconds, counter == (unsigned int)-1, file, line);
+		usleep_stats_add(rslt_useconds, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
 	}
 	usleep(rslt_useconds);
 	return(rslt_useconds);

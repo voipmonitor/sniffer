@@ -879,16 +879,20 @@ static volatile int usleepStatsSync;
 void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
 	extern bool opt_usleep_stats;
 	if(opt_usleep_stats) {
-		__SYNC_LOCK(usleepStatsSync);
+		static __thread unsigned int tid = 0;
+		if(!tid) {
+			tid = get_unix_tid();
+		}
 		sUsleepStatsId id;
 		id.file = file;
 		id.line = line;
-		id.tid = get_unix_tid();
+		id.tid = tid;
 		id.us = fix ? 
 			 useconds :
 			 (useconds < 10 ? useconds :
 			  useconds < 100 ? useconds / 10 * 10 :
 			  useconds / 100 * 100);
+		__SYNC_LOCK(usleepStatsSync);
 		++usleepStats[id];
 		__SYNC_UNLOCK(usleepStatsSync);
 	}
