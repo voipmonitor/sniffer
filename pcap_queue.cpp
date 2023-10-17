@@ -9197,7 +9197,12 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			if(usleepCounter == 0) {
 				++qringPushCounter_full;
 			}
-			USLEEP_C(20, usleepCounter++);
+			extern unsigned int opt_sip_batch_usleep;
+			if(opt_sip_batch_usleep) {
+				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+			} else {
+				__asm__ volatile ("pause");
+			}
 		}
 		qring_push_index = this->writeit + 1;
 		qring_push_index_count = 0;
