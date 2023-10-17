@@ -4722,6 +4722,13 @@ int Mgmt_usleep(Mgmt_params *params) {
 		string usleepStats = usleep_stats(useconds_lt);
 		usleep_stats_clear();
 		return(params->sendString(usleepStats));
+	} else if(!strcasecmp(us_params[0], "stats_and_stop")) {
+		extern bool opt_usleep_stats;
+		unsigned useconds_lt = atoi(us_params[1]);
+		string usleepStats = usleep_stats(useconds_lt);
+		opt_usleep_stats = false;
+		usleep_stats_clear();
+		return(params->sendString(usleepStats));
 	} else if(!strcasecmp(us_params[0], "set_preprocess")) {
 		extern unsigned int opt_preprocess_packets_qring_usleep;
 		extern unsigned int opt_preprocess_packets_qring_push_usleep;
