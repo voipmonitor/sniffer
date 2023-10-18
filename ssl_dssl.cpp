@@ -460,6 +460,10 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+	extern int opt_disable_wait_for_ssl_key;
+	if(opt_disable_wait_for_ssl_key && use_wait) {
+		use_wait = false;
+	}
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
@@ -513,6 +517,10 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
+	extern int opt_disable_wait_for_ssl_key;
+	if(opt_disable_wait_for_ssl_key && use_wait) {
+		use_wait = false;
+	}
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 

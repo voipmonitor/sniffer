@@ -110,6 +110,7 @@ int opt_blockcleanupcalls = 0;
 int opt_sleepprocesspacket = 0;
 int opt_blockqfile = 0;
 int opt_block_alloc_stack = 0;
+int opt_disable_wait_for_ssl_key = 0;
 
 using namespace std;
 
@@ -2379,6 +2380,8 @@ int Mgmt_offon(Mgmt_params *params) {
 			{ "blockqfile", &opt_blockqfile, 1, "block qfiles"},
 			{ "unblock_alloc_stack", &opt_block_alloc_stack, 0, "unblock stack allocation"},
 			{ "block_alloc_stack", &opt_block_alloc_stack, 1, "block stack allocation"},
+			{ "disable_wait_for_ssl_key", &opt_disable_wait_for_ssl_key, 1, "disable wait for ssl key"},
+			{ "enable_wait_for_ssl_key", &opt_disable_wait_for_ssl_key, 0, "enable wait for ssl key"},
 			{ "disablecdr", &opt_nocdr, 1, "disable cdr creation"},
 			{ "enablecdr", &opt_nocdr, 0, "enable cdr creation"},
 			{ "unset_partitions_service", &partitionsServiceIsInProgress, 0, "unset flag partitions service is in progress"},

@@ -8745,6 +8745,10 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 
 int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
  
+	if(hp_state == _hppq_out_state_NA) {
+		sumPacketsSizeOut[0] += hp->header->get_caplen();
+	}
+	
 	extern int opt_sleepprocesspacket;
 	if(opt_sleepprocesspacket) {
 		usleep(100000);
@@ -8764,10 +8768,6 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		cout << "break 1" << endl;
 	}
 	*/
-	
-	if(hp_state == _hppq_out_state_NA) {
-		sumPacketsSizeOut[0] += hp->header->get_caplen();
-	}
 	
 	if(opt_t2_boost_pb_detach_thread && opt_t2_boost && pcapQueueQ_outThread_detach &&
 	   hp_state == _hppq_out_state_NA) {
