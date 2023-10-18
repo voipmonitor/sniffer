@@ -237,6 +237,7 @@ static unsigned long sumPacketsCounterOut[3];
 static unsigned long sumBlocksCounterIn[3];
 static unsigned long sumBlocksCounterOut[3];
 static unsigned long long sumPacketsSize[3];
+static unsigned long long sumPacketsSizeOut[3];
 static unsigned long long sumPacketsSizeCompress[3];
 static unsigned long countBypassBufferSizeExceeded;
 static double heap_pb_perc = 0;
@@ -1489,6 +1490,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		sumBlocksCounterOut[1] = sumBlocksCounterOut[0];
 		sumPacketsSize[2] = sumPacketsSize[0] - sumPacketsSize[1];
 		sumPacketsSize[1] = sumPacketsSize[0];
+		sumPacketsSizeOut[2] = sumPacketsSizeOut[0] - sumPacketsSizeOut[1];
+		sumPacketsSizeOut[1] = sumPacketsSizeOut[0];
 		sumPacketsSizeCompress[2] = sumPacketsSizeCompress[0] - sumPacketsSizeCompress[1];
 		sumPacketsSizeCompress[1] = sumPacketsSizeCompress[0];
 	}
@@ -1972,8 +1975,21 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			outStr << "comp[" << setprecision(0) << compress << "] ";
 		}
 		double speed = this->pcapStat_get_speed_mb_s(statPeriod);
-		if(speed >= 0) {
-			outStr << "[" << setprecision(1) << speed << "Mb/s] ";
+		double speed_out = this->pcapStat_get_speed_out_mb_s(statPeriod);
+		if(speed >= 0 || speed_out >= 0) {
+			outStr << "[";
+			if(speed >= 0) {
+				outStr << setprecision(1) << speed;
+			} else {
+				outStr << "-";
+			}
+			outStr << "/";
+			if(speed_out >= 0) {
+				outStr << setprecision(1) << speed_out;
+			} else {
+				outStr << "-";
+			}
+			outStr << "Mb/s] ";
 			if(opt_rrd) {
 				rrd_set_value(RRD_VALUE_mbs, speed);
 			}
@@ -3260,6 +3276,14 @@ double PcapQueue::pcapStat_get_compress() {
 double PcapQueue::pcapStat_get_speed_mb_s(int statPeriod) {
 	if(sumPacketsSize[2]) {
 		return(((double)sumPacketsSize[2])/statPeriod/(1024*1024)*8);
+	} else {
+		return(-1);
+	}
+}
+
+double PcapQueue::pcapStat_get_speed_out_mb_s(int statPeriod) {
+	if(sumPacketsSizeOut[2]) {
+		return(((double)sumPacketsSizeOut[2])/statPeriod/(1024*1024)*8);
 	} else {
 		return(-1);
 	}
@@ -8740,6 +8764,10 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		cout << "break 1" << endl;
 	}
 	*/
+	
+	if(hp_state == _hppq_out_state_NA) {
+		sumPacketsSizeOut[0] += hp->header->get_caplen();
+	}
 	
 	if(opt_t2_boost_pb_detach_thread && opt_t2_boost && pcapQueueQ_outThread_detach &&
 	   hp_state == _hppq_out_state_NA) {
