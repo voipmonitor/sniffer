@@ -7195,7 +7195,7 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 				}
 			}
 			sumPacketsCounterIn[0] += blockStore->count;
-			sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
+			sumPacketsSize[0] += blockStore->getSizePackets();
 			sumPacketsSizeCompress[0] += blockStore->size_compress;
 			++sumBlocksCounterIn[0];
 			*block_counter = blockStore->block_counter;
@@ -7323,7 +7323,7 @@ inline void PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(pcap_block_sto
 	unsigned int usleepCounter = 0;
 	while(!TERMINATING) {
 		if(this->pcapStoreQueue.push(blockStore, false)) {
-			sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
+			sumPacketsSize[0] += blockStore->getSizePackets();
 			break;
 		} else {
 			USLEEP_C(100, usleepCounter++);
@@ -7618,7 +7618,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 												}
 											}
 											sumPacketsCounterIn[0] += blockStore->count;
-											sumPacketsSize[0] += blockStore->size_packets ? blockStore->size_packets : blockStore->size;
+											sumPacketsSize[0] += blockStore->getSizePackets();
 											sumPacketsSizeCompress[0] += blockStore->size_compress;
 											++sumBlocksCounterIn[0];
 											blockStore = new FILE_LINE(15055) pcap_block_store;
