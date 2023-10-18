@@ -9519,15 +9519,30 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									      opt_preprocess_packets_qring_length, 
-									     1, 200);
+									     #if EXPERIMENTAL_T2_DETACH_X_MOD
+									     5,
+									     #else
+									     1,
+									     #endif
+									     200);
 		this->stackRtp = new FILE_LINE(26027) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
 									       opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									       opt_preprocess_packets_qring_length) * 10, 
-									     1, 200);
+									     #if EXPERIMENTAL_T2_DETACH_X_MOD
+									     5,
+									     #else
+									     1,
+									     #endif
+									     200);
 		this->stackOther = new FILE_LINE(0) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									    opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									    opt_preprocess_packets_qring_length, 
-									   1, 200);
+									   #if EXPERIMENTAL_T2_DETACH_X_MOD
+									   5,
+									   #else
+									   1,
+									   #endif
+									   200);
 	} else {
 		this->stackSip = NULL;
 		this->stackRtp = NULL;

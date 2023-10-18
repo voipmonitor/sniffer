@@ -450,7 +450,13 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pflags.init();
 		pflags.tcp = 2;
 		pflags.ssl = true;
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+		preProcessPacket[
+		#if EXPERIMENTAL_T2_DETACH_X_MOD
+		PreProcessPacket::ppt_sip
+		#else
+		PreProcessPacket::ppt_detach
+		#endif
+		]->push_packet(
 			#if USE_PACKET_NUMBER
 			0, 
 			#endif
@@ -474,7 +480,13 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		packet_flags pflags;
 		pflags.init();
 		pflags.ssl = true;
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+		preProcessPacket[
+		#if EXPERIMENTAL_T2_DETACH_X_MOD
+		PreProcessPacket::ppt_sip
+		#else
+		PreProcessPacket::ppt_detach
+		#endif
+		]->push_packet(
 			#if USE_PACKET_NUMBER
 			0,
 			#endif
