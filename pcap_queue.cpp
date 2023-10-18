@@ -1983,11 +1983,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			} else {
 				outStr << "-";
 			}
-			outStr << "/";
 			if(speed_out >= 0) {
-				outStr << setprecision(1) << speed_out;
-			} else {
-				outStr << "-";
+				outStr << "/";
+				if(speed_out >= 0) {
+					outStr << setprecision(1) << speed_out;
+				} else {
+					outStr << "-";
+				}
 			}
 			outStr << "Mb/s] ";
 			if(opt_rrd) {
