@@ -1848,6 +1848,7 @@ public:
 		#endif
 		volatile int data_ready;
 		volatile int processing;
+		unsigned counters[2];
 		void null() {
 			batch = NULL;
 			start = 0;
@@ -1858,6 +1859,8 @@ public:
 			#endif
 			data_ready = 0;
 			processing = 0;
+			counters[0] = 0;
+			counters[1] = 0;
 		}
 	};
 public:
@@ -2026,7 +2029,7 @@ private:
 	void *nextThreadFunction(int next_thread_index_plus);
 	void rtp_batch(batch_packet_s_process *batch, unsigned count);
 	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
-	void find_hash(packet_s_process_0 *packetS, bool lock = true);
+	inline void find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock = true);
 public:
 	eType type;
 	int indexThread;

@@ -11803,7 +11803,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 										   (u_char*)packetS->data_(), packetS->datalen_(),
 										   packetS->getTimeUS());
 				}
-				this->find_hash(packetS, false);
+				this->find_hash(packetS, hash_thread_data->counters, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
@@ -11834,7 +11834,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 											   (u_char*)packetS->data_(), packetS->datalen_(),
 											   packetS->getTimeUS());
 					}
-					this->find_hash(packetS, false);
+					this->find_hash(packetS, hash_thread_data->counters, false);
 					if(packetS->call_info.length > 0) {
 						if(packetS->call_info.length > 1) {
 							packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
@@ -11943,7 +11943,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						}
 					}
 				}
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					counter_rtp_packets[0] += this->hash_thread_data[i].counters[0];
+					counter_rtp_packets[1] += this->hash_thread_data[i].counters[1];
+				}
 			} else {
+				unsigned rtp_counters[2] = { 0, 0 };
 				for(unsigned batch_index = 0; 
 				    batch_index < count / (_process_rtp_packets_hash_next_threads + 1); 
 				    batch_index++) {
@@ -11959,7 +11964,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 											   (u_char*)packetS->data_(), packetS->datalen_(),
 											   packetS->getTimeUS());
 					}
-					this->find_hash(packetS, false);
+					this->find_hash(packetS, rtp_counters, false);
 					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
 					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
@@ -11984,8 +11989,15 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						}
 					}
 				}
+				counter_rtp_packets[0] += rtp_counters[0];
+				counter_rtp_packets[1] += rtp_counters[1];
+				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+					counter_rtp_packets[0] += this->hash_thread_data[i].counters[0];
+					counter_rtp_packets[1] += this->hash_thread_data[i].counters[1];
+				}
 			}
 		} else {
+			unsigned rtp_counters[2] = { 0, 0 };
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
 				if(!packetS) {
@@ -11999,7 +12011,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 										   (u_char*)packetS->data_(), packetS->datalen_(),
 										   packetS->getTimeUS());
 				}
-				this->find_hash(packetS, false);
+				this->find_hash(packetS, rtp_counters, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
 				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
@@ -12010,6 +12022,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					this->hash_find_flag[batch_index] = -1;
 				}
 			}
+			counter_rtp_packets[0] += rtp_counters[0];
+			counter_rtp_packets[1] += rtp_counters[1];
 		}
 		calltable->unlock_calls_hash();
 		for(;batch_index_distribute < count; batch_index_distribute++) {
@@ -12089,11 +12103,12 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		}		
 		#endif
 	} else {
+		unsigned rtp_counters[2] = { 0, 0 };
 		for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 			packet_s_process_0 *packetS = batch->batch[batch_index];
 			batch->batch[batch_index] = NULL;
 			if(packetS->call_info.length < 0) {
-				this->find_hash(packetS);
+				this->find_hash(packetS, rtp_counters);
 			}
 			if(packetS->call_info.length) {
 				process_packet__rtp_call_info(&packetS->call_info, packetS, 
@@ -12113,6 +12128,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 40 + indexThread);
 			}
 		}
+		counter_rtp_packets[0] += rtp_counters[0];
+		counter_rtp_packets[1] += rtp_counters[1];
 	}
 }
 
@@ -12169,7 +12186,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 	}
 }
 
-void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
+void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock) {
 	packetS->blockstore_addflag(31 /*pb lock flag*/);
 	packetS->call_info.length = 0;
 	packetS->call_info.find_by_dest = false;
@@ -12217,7 +12234,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 	#endif
 		unsigned counter_rtp_only_packets = 0;
 		bool use_dtls_queue = false;
-		++counter_rtp_packets[0];
+		++counters[0];
 		#if (NEW_RTP_FIND__NODES && NEW_RTP_FIND__NODES__LIST) || HASH_RTP_FIND__LIST || NEW_RTP_FIND__MAP_LIST
 		for(list<call_rtp*>::iterator iter = n_call->begin(); iter != n_call->end(); iter++) {
 			call_rtp *call_rtp = *iter;
@@ -12231,7 +12248,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, bool lock) {
 				#if not EXPERIMENTAL_SUPPRESS_CALL_CONFIRMATION_FOR_RTP_PROCESSING
 				if(call_confirmation_for_rtp_processing(call, c_branch, &packetS->call_info, packetS)) {
 				#endif
-					++counter_rtp_packets[1];
+					++counters[1];
 					if(!call_rtp->is_rtcp) {
 						++counter_rtp_only_packets;
 					}
