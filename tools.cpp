@@ -1565,7 +1565,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				pcap_pkthdr *headers_alloc[2] = { NULL, NULL };
 				int packets_alloc_counter = 0;
 				if(enable_convert_dlt_sll_to_en10(dlt) && header->caplen > 16) {
-					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen];
+					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen + 1000]; // allocation reserve due to ticket VS-1508
 					pcap_pkthdr *header_mod = new FILE_LINE(0) pcap_pkthdr;
 					packet_convert_dlt_sll_to_en10(packet, packet_mod, header, header_mod);
 					packet = packet_mod;
