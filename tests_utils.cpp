@@ -622,7 +622,7 @@ void load_rtp_pcap(const char *pcap) {
 	opt_read_from_file = true;
 	
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-	for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+	for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 		preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 	}
  

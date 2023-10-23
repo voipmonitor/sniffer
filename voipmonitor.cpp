@@ -1011,6 +1011,7 @@ int opt_callend = 1; //if true, cdr.called is saved
 bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = true;
+int opt_t2_boost_direct_rtp = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
@@ -3886,7 +3887,7 @@ int main(int argc, char *argv[]) {
 		opt_saveRAW = 0;
 		opt_saveWAV = 0;
 		sverb.process_rtp_header = 1;
-		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+		for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		_parse_packet_global_process_packet.setStdParse();
@@ -4718,17 +4719,17 @@ int main_init_read() {
 			}
 		}
 		
-		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+		for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		if(is_enable_packetbuffer()) {
-			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
-				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && 
-				    i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other &&
-				    i != PreProcessPacket::PreProcessPacket::ppt_pp_diameter) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg()) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_diameter && opt_enable_diameter)) {
+			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
+				if((i != PreProcessPacket::ppt_pp_register && 
+				    i != PreProcessPacket::ppt_pp_sip_other &&
+				    i != PreProcessPacket::ppt_pp_diameter) ||
+				   (i == PreProcessPacket::ppt_pp_register && opt_sip_register) ||
+				   (i == PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg()) ||
+				   (i == PreProcessPacket::ppt_pp_diameter && opt_enable_diameter)) {
 					preProcessPacket[i]->startOutThread();
 				}
 			}
@@ -4738,7 +4739,7 @@ int main_init_read() {
 			bool autoStartCallX = false;
 			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
 			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callx, i);
 				if(autoStartCallX) {
 					preProcessPacketCallX[i]->startOutThread();
 				}
@@ -4749,7 +4750,7 @@ int main_init_read() {
 			if(calltable->enableCallFindX()) {
 				preProcessPacketCallFindX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count];
 				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callfindx, i);
+					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callfindx, i);
 				}
 				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 					preProcessPacketCallX[i]->startOutThread();
@@ -5940,6 +5941,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))
@@ -8306,6 +8308,10 @@ void set_spool_permission() {
 
 void set_context_config() {
  
+	if(opt_t2_boost_direct_rtp) {
+		opt_t2_boost = true;
+	}
+	
 	if(opt_use_dpdk) {
 		opt_t2_boost = true;
 		if(!(useNewCONFIG ? CONFIG.isSet("packetbuffer_block_maxsize") : opt_pcap_queue_block_max_size_set)) {
@@ -8443,7 +8449,7 @@ void set_context_config() {
 			opt_saveGRAPH = 0;
 			opt_saveRAW = 0;
 			opt_saveWAV = 0;
-			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 				preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 			}
 			_parse_packet_global_process_packet.setStdParse();

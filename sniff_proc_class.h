@@ -25,6 +25,9 @@
 #define SIP_LINE_SEPARATOR_STR(lf, str) (lf ? LF_LINE_SEPARATOR str: CR_LF_LINE_SEPARATOR str)
 
 
+extern int opt_t2_boost_direct_rtp;
+
+
 #if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 inline void add_t2_queue_full_stat() {
 	extern volatile int t2_queue_full_stat_sync;
@@ -374,9 +377,7 @@ private:
 class PreProcessPacket {
 public:
 	enum eTypePreProcessThread {
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
 		ppt_detach_x,
-		#endif
 		ppt_detach,
 		ppt_sip,
 		ppt_extend,
@@ -395,7 +396,6 @@ public:
 		callx_process,
 		callx_find
 	};
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	struct pcap_queue_packet_data {
 		u_int16_t header_ip_offset;
 		u_int16_t header_ip_encaps_offset;
@@ -428,7 +428,6 @@ public:
 		volatile int used;
 		unsigned max_count;
 	};
-	#endif
 	struct batch_packet_s {
 		batch_packet_s(unsigned max_count) {
 			count = 0;
@@ -498,7 +497,6 @@ public:
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread = 0);
 	~PreProcessPacket();
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	inline void push_packet(
 				u_int16_t header_ip_offset,
 				u_int16_t header_ip_encaps_offset,
@@ -522,7 +520,6 @@ public:
 		packet_data->handle_index = handle_index;
 		push_packet_detach_x__finish();
 	}
-	#endif
 	inline void push_packet(
 				#if USE_PACKET_NUMBER
 				u_int64_t packet_number,
@@ -600,25 +597,26 @@ public:
 			}
 			return;
 		}
-		#if not EXPERIMENTAL_T2_DETACH_X_MOD
-		if(need_lock_push()) {
-			this->lock_push();
-		}
+		bool _lock = false;
 		packet_s *packetS;
-		if(this->outThreadState == 2) {
-			packetS = push_packet_detach__get_pointer();
+		if(opt_t2_boost_direct_rtp) {
+			static __thread packet_s *_packetS = NULL;
+			if(!_packetS) {
+				_packetS = new FILE_LINE(0) packet_s;
+			}
+			packetS = _packetS;
 		} else {
-			static packet_s _packetS;
-			packetS = &_packetS;
+			if(need_lock_push()) {
+				this->lock_push();
+				_lock = true;
+			}
+			if(this->outThreadState == 2) {
+				packetS = push_packet_detach__get_pointer();
+			} else {
+				static packet_s _packetS;
+				packetS = &_packetS;
+			}
 		}
-		#else
-		packet_s *packetS;
-		static __thread packet_s *_packetS = NULL;
-		if(!_packetS) {
-			_packetS = new FILE_LINE(0) packet_s;
-		}
-		packetS = _packetS;
-		#endif
 		packetS->packet_s::init();
 		#if USE_PACKET_NUMBER
 		packetS->packet_number = packet_number;
@@ -657,20 +655,19 @@ public:
 		} else if(blockstore_lock == 2) {
 			packetS->blockstore_setlock();
 		}
-		#if not EXPERIMENTAL_T2_DETACH_X_MOD
-		if(this->outThreadState == 2) {
-			push_packet_detach__finish(packetS);
+		if(opt_t2_boost_direct_rtp) {
+			process_DETACH(packetS);
 		} else {
-			push_packet_detach(packetS);
+			if(this->outThreadState == 2) {
+				push_packet_detach__finish(packetS);
+			} else {
+				push_packet_detach(packetS);
+			}
+			if(_lock) {
+				this->unlock_push();
+			}
 		}
-		if(need_lock_push()) {
-			this->unlock_push();
-		}
-		#else
-		process_DETACH(packetS);
-		#endif
 	}
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	inline pcap_queue_packet_data *push_packet_detach_x__get_pointer() {
 		if(!qring_push_index) {
 			++qringPushCounter;
@@ -716,7 +713,6 @@ public:
 			qring_push_index_count = 0;
 		}
 	}
-	#endif
 	inline packet_s *push_packet_detach__get_pointer() {
 		if(!qring_push_index) {
 			++qringPushCounter;
@@ -746,25 +742,13 @@ public:
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		void **p = ((packet_s_plus_pointer*)packetS)->pointer;
 		if(packetS->need_sip_process) {
-			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(
-													  #if EXPERIMENTAL_T2_DETACH_X_MOD
-													  this->typePreProcessThread
-													  #endif
-													 );
+			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread);
 			p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
 		} else if(!packetS->pflags.other_processing()) {
-			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(
-													  #if EXPERIMENTAL_T2_DETACH_X_MOD
-													  this->typePreProcessThread
-													  #endif
-													 );
+			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread);
 			p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackRtp;
 		} else {
-			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(
-													    #if EXPERIMENTAL_T2_DETACH_X_MOD
-													    this->typePreProcessThread
-													    #endif
-													   );
+			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackOther;
 		}
 		++qring_push_index_count;
@@ -861,13 +845,12 @@ public:
 			this->packetS_destroy(packetS);
 			return;
 		}
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
 		bool _lock = false;
-		if(typePreProcessThread == ppt_sip && need_lock_push()) {
+		if(opt_t2_boost_direct_rtp &&
+		   typePreProcessThread == ppt_sip && opt_enable_ssl) {
 			lock_push();
 			_lock = true;
 		}
-		#endif
 		if(this->outThreadState == 2) {
 			++qringPushCounter;
 			if(!qring_push_index) {
@@ -919,10 +902,8 @@ public:
 				for(unsigned int i = 0; i < qring_push_index_count; i++) {
 					packet_s_process *_packetS = qring[qring_push_index - 1]->batch[i];
 					switch(this->typePreProcessThread) {
-					#if EXPERIMENTAL_T2_DETACH_X_MOD
 					case ppt_detach_x:
 						break;
-					#endif
 					case ppt_detach:
 						break;
 					case ppt_sip:
@@ -963,10 +944,8 @@ public:
 				qring_push_index_count = 0;
 			}
 			switch(this->typePreProcessThread) {
-			#if EXPERIMENTAL_T2_DETACH_X_MOD
 			case ppt_detach_x:
 				break;
-			#endif
 			case ppt_detach:
 				break;
 			case ppt_sip:
@@ -1003,11 +982,9 @@ public:
 				break;
 			}
 		}
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
 		if(_lock) {
 			unlock_push();
 		}
-		#endif
 	}
 	inline void push_batch() {
 		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
@@ -1024,19 +1001,18 @@ public:
 			push_thread = _tid;
 		}
 		#endif
+		bool _lock = false;
 		if(typePreProcessThread == ppt_detach && need_lock_push()) {
 			this->lock_push();
+			_lock = true;
 		}
 		if(this->outThreadState == 2) {
 			if(qring_push_index && qring_push_index_count) {
 				#if RQUEUE_SAFE
-					#if EXPERIMENTAL_T2_DETACH_X_MOD
 					if(typePreProcessThread == ppt_detach_x) {
 						__SYNC_SET_TO_LOCK(qring_detach_x_active_push_item->count, qring_push_index_count, this->_sync_count);
 						__SYNC_SET(qring_detach_x_active_push_item->used);
-					} else
-					#endif
-					if(typePreProcessThread == ppt_detach) {
+					} else if(typePreProcessThread == ppt_detach) {
 						__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
 						__SYNC_SET(qring_detach_active_push_item->used);
 					} else {
@@ -1068,7 +1044,7 @@ public:
 			}
 			push_batch_nothread();
 		}
-		if(typePreProcessThread == ppt_detach && need_lock_push()) {
+		if(_lock) {
 			this->unlock_push();
 		}
 	}
@@ -1099,17 +1075,11 @@ public:
 		packet_s_stack *packetS = new FILE_LINE(0) packet_s_stack;
 		return(packetS);
 	}
-	inline packet_s_process *packetS_sip_pop_from_stack(
-							    #if EXPERIMENTAL_T2_DETACH_X_MOD
-							    u_int16_t pop_queue_index
-							    #endif
-							   ) {
+	inline packet_s_process *packetS_sip_pop_from_stack(u_int16_t pop_queue_index) {
 		packet_s_process *packetS;
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
-		if(this->stackSip->pop((void**)&packetS, pop_queue_index)) {
-		#else
-		if(this->stackSip->popq((void**)&packetS)) {
-		#endif
+		if(opt_t2_boost_direct_rtp ?
+		    this->stackSip->pop((void**)&packetS, pop_queue_index) :
+		    this->stackSip->popq((void**)&packetS)) {
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE(28006) packet_s_process;
@@ -1117,17 +1087,11 @@ public:
 		}
 		return(packetS);
 	}
-	inline packet_s_process_0 *packetS_rtp_pop_from_stack(
-							      #if EXPERIMENTAL_T2_DETACH_X_MOD
-							      u_int16_t pop_queue_index
-							      #endif
-							     ) {
+	inline packet_s_process_0 *packetS_rtp_pop_from_stack(u_int16_t pop_queue_index) {
 		packet_s_process_0 *packetS;
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
-		if(this->stackRtp->pop((void**)&packetS, pop_queue_index)) {
-		#else
-		if(this->stackRtp->popq((void**)&packetS)) {
-		#endif
+		if(opt_t2_boost_direct_rtp ?
+		    this->stackRtp->pop((void**)&packetS, pop_queue_index) :
+		    this->stackRtp->popq((void**)&packetS)) {
 			++allocStackCounter[0];
 		} else {
 			packetS = packet_s_process_0::create();
@@ -1135,17 +1099,11 @@ public:
 		}
 		return(packetS);
 	}
-	inline packet_s_stack *packetS_other_pop_from_stack(
-							    #if EXPERIMENTAL_T2_DETACH_X_MOD
-							    u_int16_t pop_queue_index
-							    #endif
-							   ) {
+	inline packet_s_stack *packetS_other_pop_from_stack(u_int16_t pop_queue_index) {
 		packet_s_stack *packetS;
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
-		if(this->stackOther->pop((void**)&packetS, pop_queue_index)) {
-		#else
-		if(this->stackOther->popq((void**)&packetS)) {
-		#endif
+		if(opt_t2_boost_direct_rtp ?
+		    this->stackOther->pop((void**)&packetS, pop_queue_index) :
+		    this->stackOther->popq((void**)&packetS)) {
 			++allocStackCounter[0];
 		} else {
 			packetS = new FILE_LINE(0) packet_s_stack;
@@ -1312,10 +1270,8 @@ public:
 	}
 	string getNameTypeThread() {
 		switch(typePreProcessThread) {
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
 		case ppt_detach_x:
 			return("detachx");
-		#endif
 		case ppt_detach:
 			return("detach");
 		case ppt_sip:
@@ -1345,10 +1301,8 @@ public:
 	}
 	string getShortcatTypeThread() {
 		switch(typePreProcessThread) {
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
 		case ppt_detach_x:
 			return("dx");
-		#endif
 		case ppt_detach:
 			return("d");
 		case ppt_sip:
@@ -1383,7 +1337,6 @@ public:
 		       this->nextThreadId[next_thread_index]);
 	}
 private:
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
 		extern int opt_t2_boost;
 		extern int opt_skinny;
@@ -1443,19 +1396,15 @@ private:
 					(audiocodes && audiocodes->media_type == sAudiocodes::ac_mt_SIP)
 					#endif
 					;
-		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
-		bool is_rtp = packet_data->datalen > 2 &&
-			      (IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
-			       IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) || 
-			       IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen));
-		#endif
+		bool is_rtp = opt_t2_boost_direct_rtp ?
+			       (packet_data->datalen > 2 &&
+				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
+				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) || 
+				 IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen))) :
+			       false;
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||
-			       #if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
-			       is_rtp ||
-			       #else
-			       packet_data->datalen > 2 ||
-			       #endif
+			       (opt_t2_boost_direct_rtp ? is_rtp : packet_data->datalen > 2) ||
 			       blockstore_lock != 1;
 		if(!ok_push) {
 			if(!packet_data->hp.block_store) {
@@ -1501,9 +1450,7 @@ private:
 		}
 		#endif
 		packetS_detach->need_sip_process = need_sip_process;
-		#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 		packetS_detach->is_rtp = is_rtp;
-		#endif
 		if(blockstore_lock == 1) {
 			packetS_detach->blockstore_lock(3 /*pb lock flag*/);
 		} else if(blockstore_lock == 2) {
@@ -1518,48 +1465,23 @@ private:
 		}
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(packetS_detach->need_sip_process) {
-			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(
-																#if EXPERIMENTAL_T2_DETACH_X_MOD
-																this->typePreProcessThread
-																#endif
-															       );
+			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->pointer[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackSip;
 		} else if(!packetS_detach->pflags.other_processing()) {
-			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(
-																#if EXPERIMENTAL_T2_DETACH_X_MOD
-																this->typePreProcessThread
-																#endif
-															       );
+			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->pointer[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackRtp;
 		} else {
-			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(
-																  #if EXPERIMENTAL_T2_DETACH_X_MOD
-																  this->typePreProcessThread
-																  #endif
-																 );
+			packetS_detach->pointer[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			packetS_detach->pointer[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackOther;
 		}
 	}
-	#endif
 	inline void process_DETACH(packet_s *packetS_detach) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		packet_s_process *packetS = packetS_detach->need_sip_process ?
-					     preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(
-															#if EXPERIMENTAL_T2_DETACH_X_MOD
-															this->typePreProcessThread
-															#endif
-														       ) : 
+					     preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread) : 
 					    !packetS_detach->pflags.other_processing() ?
-					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(
-																	   #if EXPERIMENTAL_T2_DETACH_X_MOD
-																	   this->typePreProcessThread
-																	   #endif
-																	  ) :
-					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(
-																	     #if EXPERIMENTAL_T2_DETACH_X_MOD
-																	     this->typePreProcessThread
-																	     #endif
-																	    );
+					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread) :
+					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 		u_int8_t __type = packetS->__type;
 		*(packet_s*)packetS = *(packet_s*)packetS_detach;
 		packetS->__type = __type;
@@ -1657,10 +1579,8 @@ private:
 	unsigned idPreProcessThread;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
 	batch_pcap_queue_packet_data **qring_detach_x;
 	batch_pcap_queue_packet_data *qring_detach_x_active_push_item;
-	#endif
 	batch_packet_s **qring_detach;
 	batch_packet_s *qring_detach_active_push_item;
 	batch_packet_s_process **qring;
@@ -1720,22 +1640,20 @@ inline packet_s_stack *PACKET_S_PROCESS_OTHER_CREATE() {
 	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_create());
 }
 
-#if not EXPERIMENTAL_T2_DETACH_X_MOD
 inline packet_s_process *PACKET_S_PROCESS_SIP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack());
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(0));
 }
 
 inline packet_s_process_0 *PACKET_S_PROCESS_RTP_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack());
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(0));
 }
 
 inline packet_s_stack *PACKET_S_PROCESS_OTHER_POP_FROM_STACK() {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
-	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack());
+	return(preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(0));
 }
-#endif
 
 inline void PACKET_S_PROCESS_DESTROY(packet_s_process_0 **packet) {
 	extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];

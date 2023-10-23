@@ -2232,87 +2232,89 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu;
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
-				for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
-					if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
-						double percFullQring = 0;
-						double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, j == 0 ? &percFullQring : NULL, pstatDataIndex);
-						if(t2cpu_preprocess_packet_out_thread >= 0) {
-							if(task == pcapStatLog) {
-								outStrStat << "/" 
-									   << preProcessPacket[i]->getShortcatTypeThread() << ":"
-									   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
-								if(sverb.qring_stat) {
-									double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
-									if(qringFillingPerc > 0) {
-										outStrStat << "r" << qringFillingPerc;
-									}
-								}
-								if(sverb.qring_full && percFullQring > sverb.qring_full) {
-									outStrStat << "#" << percFullQring;
-								}
-								if(i == 0 && sverb.alloc_stat) {
-									if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
-										unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
-										unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
-										outStrStat << "a" << stack << ':' << alloc << ':';
-										if(alloc + stack) {
-											outStrStat << (stack * 100 / (alloc + stack)) << '%';
-										} else {
-											outStrStat << '-';
+				if(preProcessPacket[i]) {
+					for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
+						if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
+							double percFullQring = 0;
+							double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, j == 0 ? &percFullQring : NULL, pstatDataIndex);
+							if(t2cpu_preprocess_packet_out_thread >= 0) {
+								if(task == pcapStatLog) {
+									outStrStat << "/" 
+										   << preProcessPacket[i]->getShortcatTypeThread() << ":"
+										   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+									if(sverb.qring_stat) {
+										double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
+										if(qringFillingPerc > 0) {
+											outStrStat << "r" << qringFillingPerc;
 										}
 									}
-									preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
-									preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+									if(sverb.qring_full && percFullQring > sverb.qring_full) {
+										outStrStat << "#" << percFullQring;
+									}
+									if(i == 0 && sverb.alloc_stat) {
+										if(preProcessPacket[i]->getAllocCounter(1) || preProcessPacket[i]->getAllocStackCounter(1)) {
+											unsigned long stack = preProcessPacket[i]->getAllocStackCounter(0) - preProcessPacket[i]->getAllocStackCounter(1);
+											unsigned long alloc = preProcessPacket[i]->getAllocCounter(0) - preProcessPacket[i]->getAllocCounter(1);
+											outStrStat << "a" << stack << ':' << alloc << ':';
+											if(alloc + stack) {
+												outStrStat << (stack * 100 / (alloc + stack)) << '%';
+											} else {
+												outStrStat << '-';
+											}
+										}
+										preProcessPacket[i]->setAllocCounter(preProcessPacket[i]->getAllocCounter(0), 1);
+										preProcessPacket[i]->setAllocStackCounter(preProcessPacket[i]->getAllocStackCounter(0), 1);
+									}
 								}
-							}
-							++count_t2cpu;
-							sum_t2cpu += t2cpu_preprocess_packet_out_thread;
-							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
-								last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
-							}
-							if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
-								call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
-							}
-							if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
-							   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
-								last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
-							}
-							if(task == pcapStatCpuCheck) {
-								static int do_add_thread_counter = 0;
-								if(j == 0 && opt_t2_boost &&
-								   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread &&
-								   heap_pb_used_perc > opt_heap_limit_new_thread &&
-								   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
-								    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
-									if((++do_add_thread_counter) >= 2) {
-										preProcessPacket[i]->addNextThread();
+								++count_t2cpu;
+								sum_t2cpu += t2cpu_preprocess_packet_out_thread;
+								if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_rtp && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
+									last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
+								}
+								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
+									call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
+								}
+								if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
+									last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
+								}
+								if(task == pcapStatCpuCheck) {
+									static int do_add_thread_counter = 0;
+									if(j == 0 && opt_t2_boost &&
+									   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread &&
+									   heap_pb_used_perc > opt_heap_limit_new_thread &&
+									   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
+									    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+										if((++do_add_thread_counter) >= 2) {
+											preProcessPacket[i]->addNextThread();
+											do_add_thread_counter = 0;
+										}
+									} else {
 										do_add_thread_counter = 0;
 									}
-								} else {
-									do_add_thread_counter = 0;
 								}
-							}
-							#if C_THREAD_OVERLOAD_MONITORING
-							if(task == pcapStatCpuCheck && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
-								static int c_thread_overload_counter = 0;
-								if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
-									if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
-										syslog(LOG_ERR, "ABORT - due persistent overload thread c");
-										abort();
+								#if C_THREAD_OVERLOAD_MONITORING
+								if(task == pcapStatCpuCheck && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
+									static int c_thread_overload_counter = 0;
+									if(t2cpu_preprocess_packet_out_thread > C_THREAD_OVERLOAD_MONITORING_LIMIT_CPU) {
+										if((++c_thread_overload_counter) > C_THREAD_OVERLOAD_MONITORING_LIMIT_COUNTER) {
+											syslog(LOG_ERR, "ABORT - due persistent overload thread c");
+											abort();
+										}
+									} else {
+										c_thread_overload_counter = 0;
 									}
-								} else {
-									c_thread_overload_counter = 0;
 								}
+								#endif
 							}
-							#endif
 						}
 					}
 				}
@@ -9000,29 +9002,29 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				return(0);
 			}
 		}
-		#if EXPERIMENTAL_T2_DETACH_X_MOD
-		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
-			header_ip ? (u_char*)header_ip - hp->packet : 0,
-			header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
-			(u_char*)data - hp->packet,
-			datalen,
-			header_ip ? sport.getPort() : 0,
-			header_ip ? dport.getPort() : 0,
-			pflags,
-			hp,
-			this->getPcapHandleIndex(hp->dlt));
-		#else
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			#if USE_PACKET_NUMBER
-			packet_counter_all,
-			#endif
-			header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
-			datalen, data - (char*)hp->packet,
-			this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? _t_packet_alloc_na : _t_packet_alloc_header_plus,
-			pflags, header_ip_encaps, header_ip,
-			hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
-			hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
-		#endif
+		if(opt_t2_boost_direct_rtp) {
+			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+				header_ip ? (u_char*)header_ip - hp->packet : 0,
+				header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
+				(u_char*)data - hp->packet,
+				datalen,
+				header_ip ? sport.getPort() : 0,
+				header_ip ? dport.getPort() : 0,
+				pflags,
+				hp,
+				this->getPcapHandleIndex(hp->dlt));
+		} else {
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+				#if USE_PACKET_NUMBER
+				packet_counter_all,
+				#endif
+				header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
+				datalen, data - (char*)hp->packet,
+				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? _t_packet_alloc_na : _t_packet_alloc_header_plus,
+				pflags, header_ip_encaps, header_ip,
+				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
+				hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
+		}
 		return(1);
 	}
 	
@@ -9038,16 +9040,17 @@ void PcapQueue_readFromFifo::pushBatchProcessPacket() {
 		pcapQueueQ_outThread_dedup->push_batch();
 	} else if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push_batch();
-	} else 
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
-	if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
-		preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+	} else {
+		if(opt_t2_boost_direct_rtp) {
+			if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+				preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+			}
+		} else {
+			if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+				preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+			}
+		}
 	}
-	#else
-	if(preProcessPacket[PreProcessPacket::ppt_detach]) {
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
-	}
-	#endif
 }
 
 void PcapQueue_readFromFifo::checkFreeSizeCachedir() {
@@ -9346,15 +9349,15 @@ void *PcapQueue_outputThread::outThreadFunction() {
 						break;
 					}
 				case detach2:
-					#if EXPERIMENTAL_T2_DETACH_X_MOD
-					if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
-						preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+					if(opt_t2_boost_direct_rtp) {
+						if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+							preProcessPacket[PreProcessPacket::ppt_detach_x]->push_batch();
+						}
+					} else {
+						if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+							preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
+						}
 					}
-					#else
-					if(preProcessPacket[PreProcessPacket::ppt_detach]) {
-						preProcessPacket[PreProcessPacket::ppt_detach]->push_batch();
-					}
-					#endif
 					break;
 				}
 				usleepSumTime_lastPush = usleepSumTime;
