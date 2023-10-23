@@ -566,6 +566,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	is_sipalg_detected = false;
 	
 	ipport_n = 0;
+	logged_max_ip_per_call = false;
 	
 	end_call_rtp = 0;
 	end_call_hash_removed = 0;
@@ -1283,8 +1284,9 @@ int Call::add_ip_port(CallBranch *c_branch,
 		cout << "RTP - add_ip_port: " << addr.getString() << " / " << port << " " << iscaller_description(iscaller) << endl;
 	}
 
-	if(c_branch->ipport_n == MAX_IP_PER_CALL){
+	if(c_branch->ipport_n == MAX_IP_PER_CALL && !c_branch->logged_max_ip_per_call){
 		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), addr.getString().c_str(), port.getPort());
+		c_branch->logged_max_ip_per_call = true;
 	}
 	// add ip and port
 	if(c_branch->ipport_n >= MAX_IP_PER_CALL){
