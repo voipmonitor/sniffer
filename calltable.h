@@ -646,6 +646,7 @@ public:
 	
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	int ipport_n;
+	bool logged_max_ip_per_call;
 
 	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;
