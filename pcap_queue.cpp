@@ -2233,11 +2233,21 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu;
 			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
 				if(preProcessPacket[i]) {
+					double t2cpu_preprocess_packet_thread_max = 0;
+					double t2cpu_preprocess_packet_next_threads_sum = 0;
+					int t2cpu_preprocess_packet_next_threads_count = 0;
 					for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 						if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
 							double percFullQring = 0;
 							double t2cpu_preprocess_packet_out_thread = preProcessPacket[i]->getCpuUsagePerc(j, j == 0 ? &percFullQring : NULL, pstatDataIndex);
 							if(t2cpu_preprocess_packet_out_thread >= 0) {
+								if(t2cpu_preprocess_packet_out_thread > t2cpu_preprocess_packet_thread_max) {
+									t2cpu_preprocess_packet_thread_max = t2cpu_preprocess_packet_out_thread;
+								}
+								if(j > 0) {
+									t2cpu_preprocess_packet_next_threads_sum += t2cpu_preprocess_packet_out_thread;
+									++t2cpu_preprocess_packet_next_threads_count;
+								}
 								if(task == pcapStatLog) {
 									outStrStat << "/" 
 										   << preProcessPacket[i]->getShortcatTypeThread() << ":"
@@ -2286,21 +2296,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 									last_t2cpu_preprocess_packet_out_thread_rtp = t2cpu_preprocess_packet_out_thread;
 								}
-								if(task == pcapStatCpuCheck) {
-									static int do_add_thread_counter = 0;
-									if(j == 0 && opt_t2_boost &&
-									   t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread &&
-									   heap_pb_used_perc > opt_heap_limit_new_thread &&
-									   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
-									    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
-										if((++do_add_thread_counter) >= 2) {
-											preProcessPacket[i]->addNextThread();
-											do_add_thread_counter = 0;
-										}
-									} else {
-										do_add_thread_counter = 0;
-									}
-								}
 								#if C_THREAD_OVERLOAD_MONITORING
 								if(task == pcapStatCpuCheck && preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
 									static int c_thread_overload_counter = 0;
@@ -2314,6 +2309,34 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									}
 								}
 								#endif
+							}
+						}
+					}
+					if(task == pcapStatCpuCheck) {
+						if(opt_t2_boost &&
+						   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach_x ||
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+							static int do_add_thread_counter[PreProcessPacket::ppt_end_base];
+							static int do_remove_thread_counter[PreProcessPacket::ppt_end_base];
+							if((t2cpu_preprocess_packet_next_threads_count < 2 ?
+							     t2cpu_preprocess_packet_thread_max > opt_cpu_limit_new_thread :
+							     t2cpu_preprocess_packet_next_threads_sum / t2cpu_preprocess_packet_next_threads_count > opt_cpu_limit_new_thread) &&
+							   heap_pb_used_perc > opt_heap_limit_new_thread) {
+								if((++do_add_thread_counter[i]) >= 2) {
+									preProcessPacket[i]->addNextThread();
+									do_add_thread_counter[i] = 0;
+								}
+								do_remove_thread_counter[i] = 0;
+							} else if(t2cpu_preprocess_packet_thread_max < opt_cpu_limit_delete_thread) {
+								if((++do_remove_thread_counter[i]) >= 2) {
+									preProcessPacket[i]->removeNextThread();
+									do_remove_thread_counter[i] = 0;
+								}
+								do_add_thread_counter[i] = 0;
+							} else {
+								do_add_thread_counter[i] = 0;
+								do_remove_thread_counter[i] = 0;
 							}
 						}
 					}
@@ -2386,13 +2409,14 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				rrd_set_value(RRD_VALUE_tCPU_t2, sum_t2cpu);
 			}
 			int countRtpRhThreads = 0;
-			bool needAddRtpRhThreads = false;
+			bool needAddRtpRhThread = false;
+			bool needRemoveRtpRhThread = false;
 			int countRtpRdThreads = 0;
-			bool needAddRtpRdThreads = false;
+			bool needAddRtpRdThread = false;
 			if(processRtpPacketHash) {
-				double t2cpu_rh_sum = 0;
-				double t2cpu_rh_min = 0;
-				double t2cpu_rh_count = 0;
+				double t2cpu_rh_max = 0;
+				double t2cpu_rh_next_sum = 0;
+				double t2cpu_rh_next_count = 0;
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
 						double percFullQring;
@@ -2413,12 +2437,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 							}
 							++count_t2cpu;
 							sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
+							if(t2cpu_process_rtp_packet_out_thread > t2cpu_rh_max) {
+								t2cpu_rh_max = t2cpu_process_rtp_packet_out_thread;
+							}
 							if(i > 0) {
-								t2cpu_rh_sum += t2cpu_process_rtp_packet_out_thread;
-								if(!t2cpu_rh_min || t2cpu_process_rtp_packet_out_thread < t2cpu_rh_min) {
-									t2cpu_rh_min = t2cpu_process_rtp_packet_out_thread;
-								}
-								++t2cpu_rh_count;
+								t2cpu_rh_next_sum += t2cpu_process_rtp_packet_out_thread;
+								++t2cpu_rh_next_count;
 							}
 						}
 						if(i > 0) {
@@ -2426,14 +2450,16 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						}
 					}
 				}
-				if(t2cpu_rh_count > 0 &&
-				   t2cpu_rh_sum / t2cpu_rh_count > opt_cpu_limit_new_thread &&
-				   t2cpu_rh_min > opt_cpu_limit_new_thread && 
+				if((t2cpu_rh_next_count < 2 ?
+				     t2cpu_rh_max > opt_cpu_limit_new_thread :
+				     t2cpu_rh_next_sum / t2cpu_rh_next_count > opt_cpu_limit_new_thread) &&
 				   heap_pb_used_perc > opt_heap_limit_new_thread) {
-					needAddRtpRhThreads = true;
+					needAddRtpRhThread = true;
+				} else if(countRtpRhThreads > 0 &&
+					  t2cpu_rh_max < opt_cpu_limit_delete_thread) {
+					needRemoveRtpRhThread = true;
 				}
 				double t2cpu_rd_sum = 0;
-				double t2cpu_rd_min = 0;
 				double t2cpu_rd_count = 0;
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
@@ -2457,17 +2483,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						++count_t2cpu;
 						sum_t2cpu += t2cpu_process_rtp_packet_out_thread;
 						t2cpu_rd_sum += t2cpu_process_rtp_packet_out_thread;
-						if(!t2cpu_rd_min || t2cpu_process_rtp_packet_out_thread < t2cpu_rd_min) {
-							t2cpu_rd_min = t2cpu_process_rtp_packet_out_thread;
-						}
 						++t2cpu_rd_count;
 					}
 				}
 				if(t2cpu_rd_count > 0 &&
 				   t2cpu_rd_sum / t2cpu_rd_count > opt_cpu_limit_new_thread &&
-				   t2cpu_rd_min > opt_cpu_limit_new_thread && 
 				   heap_pb_used_perc > opt_heap_limit_new_thread) {
-					needAddRtpRdThreads = true;
+					needAddRtpRdThread = true;
 				}
 			}
 			if(task == pcapStatCpuCheck) {
@@ -2514,23 +2536,29 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				} else {
 					do_add_process_rtp_counter = 0;
 				}
-				extern int opt_process_rtp_packets_hash_next_thread_max;
 				static int do_add_thread_rh_counter = 0;
-				if(countRtpRhThreads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
-				   (opt_process_rtp_packets_hash_next_thread_max <= 0 || countRtpRhThreads < opt_process_rtp_packets_hash_next_thread_max) &&
-				   needAddRtpRhThreads) {
+				static int do_remove_thread_rh_counter = 0;
+				if(needAddRtpRhThread) {
 					if((++do_add_thread_rh_counter) >= 2) {
 						processRtpPacketHash->addRtpRhThread();
 						do_add_thread_rh_counter = 0;
 					}
+					do_remove_thread_rh_counter = 0;
+				} else if(needRemoveRtpRhThread) {
+					if((++do_remove_thread_rh_counter) >= 2) {
+						processRtpPacketHash->removeRtpRhThread();
+						do_remove_thread_rh_counter = 0;
+					}
+					do_add_thread_rh_counter = 0;
 				} else {
 					do_add_thread_rh_counter = 0;
+					do_remove_thread_rh_counter = 0;
 				}
 				extern int opt_enable_process_rtp_packet_max;
 				static int do_add_thread_rd_counter = 0;
 				if(countRtpRdThreads < MAX_PROCESS_RTP_PACKET_THREADS &&
 				   (opt_enable_process_rtp_packet_max <= 0 || countRtpRdThreads < opt_enable_process_rtp_packet_max) &&
-				   needAddRtpRdThreads) {
+				   needAddRtpRdThread) {
 					if((++do_add_thread_rd_counter) >= 2) {
 						ProcessRtpPacket::addRtpRdThread();
 						do_add_thread_rd_counter = 0;

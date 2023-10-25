@@ -494,6 +494,34 @@ public:
 			processing = 0;
 		}
 	};
+	struct s_next_thread {
+		volatile int thread_id;
+		pthread_t thread_handle;
+		pstat_data thread_pstat_data[2][2];
+		s_next_thread_data next_data;
+		sem_t sem_sync[2];
+		volatile int terminate;
+		void null() {
+			thread_id = 0;
+			thread_handle = 0;
+			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
+			next_data.null();
+			memset(sem_sync, 0, sizeof(sem_sync));
+			terminate = 0;
+		}
+		void sem_init() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				::sem_init(&sem_sync[i], 0, 0);
+			}
+		}
+		void sem_term() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				sem_destroy(&sem_sync[i]);
+			}
+		}
+	};
 public:
 	PreProcessPacket(eTypePreProcessThread typePreProcessThread, unsigned idPreProcessThread = 0);
 	~PreProcessPacket();
@@ -1053,6 +1081,7 @@ public:
 	double getCpuUsagePerc(int nextThreadId, double *percFullQring, int pstatDataIndex, bool preparePstatData = true);
 	void terminate();
 	void addNextThread();
+	void removeNextThread();
 	static void autoStartNextLevelPreProcessPacket();
 	static void autoStartCallX_PreProcessPacket();
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
@@ -1334,7 +1363,7 @@ public:
 	static packet_s_process *clonePacketS(packet_s_process *packetS);
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
-		       this->nextThreadId[next_thread_index]);
+		       this->next_threads[next_thread_index].thread_id);
 	}
 private:
 	inline void process_DETACH_X_1(pcap_queue_packet_data *packet_data, packet_s_plus_pointer *packetS_detach) {
@@ -1556,10 +1585,12 @@ private:
 	void endOutThread(bool force = false);
 	void *outThreadFunction();
 	void *nextThreadFunction(int next_thread_index_plus);
+	void createNextThread();
+	void termNextThread();
 	inline void processNextAction(packet_s_process *packetS);
 	bool isNextThreadsGt2Processing(int next_threads) {
 		for(int i = 2; i < next_threads; i++) {
-			if(this->next_thread_data[i].processing) {
+			if(this->next_threads[i].next_data.processing) {
 				return(true);
 			}
 		}
@@ -1589,16 +1620,14 @@ private:
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
+	int outThreadId;
 	pthread_t out_thread_handle;
-	int next_threads;
-	pthread_t next_thread_handle[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
-	pstat_data threadPstatData[1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS][2][2];
-	sem_t sem_sync_next_thread[MAX_PRE_PROCESS_PACKET_NEXT_THREADS][2];
-	s_next_thread_data next_thread_data[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	pstat_data threadPstatData[2][2];
+	volatile int next_threads_count;
+	volatile int next_threads_count_mod;
+	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
-	int outThreadId;
-	int nextThreadId[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	volatile int *items_flag;
 	volatile int *items_thread_index;
 	volatile int items_processed;
@@ -1781,6 +1810,34 @@ public:
 			counters[1] = 0;
 		}
 	};
+	struct s_hash_next_thread {
+		volatile int thread_id;
+		pthread_t thread_handle;
+		pstat_data thread_pstat_data[2][2];
+		s_hash_thread_data hash_data;
+		sem_t sem_sync[2];
+		volatile int terminate;
+		void null() {
+			thread_id = 0;
+			thread_handle = 0;
+			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
+			hash_data.null();
+			memset(sem_sync, 0, sizeof(sem_sync));
+			terminate = 0;
+		}
+		void sem_init() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				::sem_init(&sem_sync[i], 0, 0);
+			}
+		}
+		void sem_term() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				sem_destroy(&sem_sync[i]);
+			}
+		}
+	};
 public:
 	ProcessRtpPacket(eType type, int indexThread);
 	~ProcessRtpPacket();
@@ -1889,6 +1946,7 @@ public:
 	void terminate();
 	static void autoStartProcessRtpPacket();
 	void addRtpRhThread();
+	void removeRtpRhThread();
 	static void addRtpRdThread();
 	static void lockAddRtpRdThread() {
 		__SYNC_LOCK(_sync_add_rtp_rd_threads);
@@ -1905,7 +1963,7 @@ public:
 	}
 	bool isNextThreadsGt2Processing(int process_rtp_packets_hash_next_threads) {
 		for(int i = 2; i < process_rtp_packets_hash_next_threads; i++) {
-			if(this->hash_thread_data[i].processing) {
+			if(this->hash_next_threads[i].hash_data.processing) {
 				return(true);
 			}
 		}
@@ -1913,7 +1971,7 @@ public:
 	}
 	bool existsNextThread(int next_thread_index) {
 		return(next_thread_index < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
-		       this->nextThreadId[next_thread_index]);
+		       this->hash_next_threads[next_thread_index].thread_id);
 	}
 	string getNameTypeThread() {
 		switch(type) {
@@ -1948,13 +2006,15 @@ private:
 	void rtp_batch(batch_packet_s_process *batch, unsigned count);
 	inline void rtp_packet_distr(packet_s_process_0 *packetS, int _process_rtp_packets_distribute_threads_use);
 	inline void find_hash(packet_s_process_0 *packetS, unsigned *counters, bool lock = true);
+	void createNextHashThread();
+	void termNextHashThread();
 public:
 	eType type;
 	int indexThread;
 	int outThreadId;
-	int nextThreadId[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 private:
-	int process_rtp_packets_hash_next_threads;
+	volatile int process_rtp_packets_hash_next_threads;
+	volatile int process_rtp_packets_hash_next_threads_mod;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
 	batch_packet_s_process **qring;
@@ -1964,14 +2024,12 @@ private:
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
-	pthread_t next_thread_handle[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
-	pstat_data threadPstatData[1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2][2];
+	pstat_data threadPstatData[2][2];
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
 	bool term_processRtp;
-	s_hash_thread_data hash_thread_data[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
+	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
 	volatile int *hash_find_flag;
-	sem_t sem_sync_next_thread[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS][2];
 	volatile int _sync_count;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;

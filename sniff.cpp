@@ -188,6 +188,7 @@ extern volatile int process_rtp_packets_distribute_threads_use;
 extern int opt_pre_process_packets_next_thread;
 extern int opt_pre_process_packets_next_thread_max;
 extern int opt_process_rtp_packets_hash_next_thread;
+extern int opt_process_rtp_packets_hash_next_thread_max;
 extern int opt_pre_process_packets_next_thread_sem_sync;
 extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 extern unsigned int opt_preprocess_packets_qring_length;
@@ -9503,11 +9504,6 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->_sync_push = 0;
 	this->_sync_count = 0;
 	this->term_preProcess = false;
-	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
-		this->nextThreadId[i] = 0;
-		this->next_thread_handle[i] = 0;
-		this->next_thread_data[i].null();
-	}
 	if(typePreProcessThread == ppt_detach) {
 		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
@@ -9534,26 +9530,23 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	allocStackCounter[0] = allocStackCounter[1] = 0;
 	getCpuUsagePerc_counter = 0;
 	getCpuUsagePerc_counter_at_start_out_thread = 0;
-	this->next_threads = opt_t2_boost &&
-			     (typePreProcessThread == ppt_detach_x || 
-			      typePreProcessThread == ppt_detach || 
-			      typePreProcessThread == ppt_sip) ? 
-			      min(opt_pre_process_packets_next_thread, min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) : 
-			      0;
-	for(int i = 0; i < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS); i++) {
-		this->nextThreadId[i] = 0;
-		this->next_thread_handle[i] = 0;
-		this->next_thread_data[i].null();
-		if(i < this->next_threads) {
-			for(int j = 0; j < opt_pre_process_packets_next_thread_sem_sync; j++) {
-				sem_init(&sem_sync_next_thread[i][j], 0, 0);
-			}
-			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-			arg->preProcessPacket = this;
-			arg->next_thread_id = i + 1;
-			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
-					  &this->next_thread_handle[i], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-		}
+	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+		this->next_threads[i].null();
+	}
+	this->next_threads_count = opt_t2_boost &&
+				   (typePreProcessThread == ppt_detach_x || 
+				    typePreProcessThread == ppt_detach || 
+				    typePreProcessThread == ppt_sip) ? 
+				    min(max(opt_pre_process_packets_next_thread, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) : 
+				    0;
+	this->next_threads_count_mod = 0;
+	for(int i = 0; i < this->next_threads_count; i++) {
+		this->next_threads[i].sem_init();
+		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+		arg->preProcessPacket = this;
+		arg->next_thread_id = i + 1;
+		vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+				  &this->next_threads[i].thread_handle, NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 	}
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	push_thread = 0;
@@ -9615,11 +9608,12 @@ void PreProcessPacket::endOutThread(bool force) {
 }
 
 void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
-	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
-	syslog(LOG_NOTICE, "start PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), this->nextThreadId[next_thread_index_plus - 1]);
+	this->next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	syslog(LOG_NOTICE, "start PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), this->next_threads[next_thread_index_plus - 1].thread_id);
 	unsigned int usleepCounter = 0;
 	while(!this->term_preProcess) {
-		s_next_thread_data *next_thread_data = &this->next_thread_data[next_thread_index_plus - 1];
+		s_next_thread *next_thread = &this->next_threads[next_thread_index_plus - 1];
+		s_next_thread_data *next_thread_data = &next_thread->next_data;
 	 
 		#if EXPERIMENTAL_T2_OUTTHREAD_SIP_MOD == 1
 	 
@@ -9676,9 +9670,9 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 		#endif
 	 
 		if(opt_pre_process_packets_next_thread_sem_sync) {
-			sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
+			sem_wait(&next_thread->sem_sync[0]);
 		} else {
-			while(!this->term_preProcess && !next_thread_data->data_ready) {
+			while(!this->term_preProcess && !next_thread_data->data_ready && !next_thread->terminate) {
 				extern unsigned int opt_sip_batch_usleep;
 				if(opt_sip_batch_usleep) {
 					USLEEP(opt_sip_batch_usleep);
@@ -9688,7 +9682,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 			}
 			next_thread_data->data_ready = 0;
 		}
-		if(this->term_preProcess) {
+		if(this->term_preProcess || next_thread->terminate) {
 			break;
 		}
 		if(next_thread_data->batch) {
@@ -9734,7 +9728,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 			next_thread_data->processing = 0;
 			usleepCounter = 0;
 			if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-				sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
+				sem_post(&next_thread->sem_sync[1]);
 			}
 		} else {
 			extern unsigned int opt_sip_batch_usleep;
@@ -9760,6 +9754,17 @@ void *PreProcessPacket::outThreadFunction() {
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_preProcess) {
+		if(this->next_threads_count_mod &&
+		   (this->typePreProcessThread == ppt_detach_x ||
+		    this->typePreProcessThread == ppt_detach ||
+		    this->typePreProcessThread == ppt_sip)) {
+			if(this->next_threads_count_mod > 0) {
+				createNextThread();
+			} else if(this->next_threads_count_mod < 0) {
+				termNextThread();
+			}
+			this->next_threads_count_mod = 0;
+		}
 		bool exists_used = false;
 		if(this->typePreProcessThread == ppt_detach_x) {
 			if(this->qring_detach_x[this->readit]->used == 1) {
@@ -9770,34 +9775,35 @@ void *PreProcessPacket::outThreadFunction() {
 				unsigned count = batch_detach_x->count;
 				__SYNC_UNLOCK(this->_sync_count);
 				batch_packet_s *qring_detach_active_push_item = preProcessPacket[ppt_detach]->qring_detach_active_push_item;
-				if(this->next_thread_handle[0]) {
+				if(this->next_threads[0].thread_handle) {
 					unsigned completed = 0;
-					int _next_threads = this->next_threads;
-					bool _process_only_in_next_threads = _next_threads > 1;
+					int _next_threads_count = this->next_threads_count;
+					bool _process_only_in_next_threads = _next_threads_count > 1;
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 					}
-					for(int i = 0; i < _next_threads; i++) {
+					for(int i = 0; i < _next_threads_count; i++) {
+						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
-							this->next_thread_data[i].start = i;
-							this->next_thread_data[i].end = count;
-							this->next_thread_data[i].skip = _next_threads;
+							this->next_threads[i].next_data.start = i;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = _next_threads_count;
 						} else {
-							this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
-							this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
-							this->next_thread_data[i].skip = 1;
+							this->next_threads[i].next_data.start = count / (_next_threads_count + 1) * (i + 1);
+							this->next_threads[i].next_data.end = i == (_next_threads_count - 1) ? count : count / (_next_threads_count + 1) * (i + 2);
+							this->next_threads[i].next_data.skip = 1;
 						}
-						this->next_thread_data[i].batch = batch_detach_x->batch;
-						this->next_thread_data[i].processing = 1;
+						this->next_threads[i].next_data.batch = batch_detach_x->batch;
+						this->next_threads[i].next_data.processing = 1;
 						if(opt_pre_process_packets_next_thread_sem_sync) {
-							sem_post(&sem_sync_next_thread[i][0]);
+							sem_post(&this->next_threads[i].sem_sync[0]);
 						} else {
-							this->next_thread_data[i].data_ready = 1;
+							this->next_threads[i].next_data.data_ready = 1;
 						}
 					}
 					if(_process_only_in_next_threads) {
-						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
-						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								this->process_DETACH_X_2(qring_detach_active_push_item->batch[completed]);
@@ -9813,16 +9819,16 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					} else {
 						for(unsigned batch_index = 0; 
-						    batch_index < count / (_next_threads + 1); 
+						    batch_index < count / (_next_threads_count + 1); 
 						    batch_index++) {
 							this->process_DETACH_X_1(batch_detach_x->batch[batch_index], qring_detach_active_push_item->batch[batch_index]);
 						}
 					}
-					for(int i = 0; i < _next_threads; i++) {
+					for(int i = 0; i < _next_threads_count; i++) {
 						if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-							sem_wait(&sem_sync_next_thread[i][1]);
+							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
-							while(this->next_thread_data[i].processing) { 
+							while(this->next_threads[i].next_data.processing) { 
 								extern unsigned int opt_sip_batch_usleep;
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
@@ -9854,39 +9860,39 @@ void *PreProcessPacket::outThreadFunction() {
 			if(this->qring_detach[this->readit]->used == 1) {
 				exists_used = true;
 				batch_detach = this->qring_detach[this->readit];
-				if(this->next_thread_handle[0]) {
+				if(this->next_threads[0].thread_handle) {
 					__SYNC_LOCK(this->_sync_count);
 					unsigned count = batch_detach->count;
 					__SYNC_UNLOCK(this->_sync_count);
 					unsigned completed = 0;
-					int _next_threads = this->next_threads;
-					bool _process_only_in_next_threads = _next_threads > 1;
+					int _next_threads_count = this->next_threads_count;
+					bool _process_only_in_next_threads = _next_threads_count > 1;
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 					}
-					for(int i = 0; i < _next_threads; i++) {
-						this->next_thread_data[i].null();
+					for(int i = 0; i < _next_threads_count; i++) {
+						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
-							this->next_thread_data[i].start = i;
-							this->next_thread_data[i].end = count;
-							this->next_thread_data[i].skip = _next_threads;
+							this->next_threads[i].next_data.start = i;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = _next_threads_count;
 						} else {
-							this->next_thread_data[i].start = count / (_next_threads + 1) * (i + 1);
-							this->next_thread_data[i].end = i == (_next_threads - 1) ? count : count / (_next_threads + 1) * (i + 2);
-							this->next_thread_data[i].skip = 1;
+							this->next_threads[i].next_data.start = count / (_next_threads_count + 1) * (i + 1);
+							this->next_threads[i].next_data.end = i == (_next_threads_count - 1) ? count : count / (_next_threads_count + 1) * (i + 2);
+							this->next_threads[i].next_data.skip = 1;
 						}
-						this->next_thread_data[i].batch = batch_detach->batch;
-						this->next_thread_data[i].processing = 1;
+						this->next_threads[i].next_data.batch = batch_detach->batch;
+						this->next_threads[i].next_data.processing = 1;
 						if(opt_pre_process_packets_next_thread_sem_sync) {
-							sem_post(&sem_sync_next_thread[i][0]);
+							sem_post(&this->next_threads[i].sem_sync[0]);
 						} else {
-							this->next_thread_data[i].data_ready = 1;
+							this->next_threads[i].next_data.data_ready = 1;
 						}
 					}
 					if(_process_only_in_next_threads) {
 						#if not EXPERIMENTAL_T2_STOP_IN_PROCESS_DETACH
-						while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
-						      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+						while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+						      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
 							if(completed < count &&
 							   this->items_flag[completed] != 0) {
 								packet_s_process* p = (packet_s_process*)(batch_detach->batch[completed]->pointer[0]);
@@ -9914,16 +9920,16 @@ void *PreProcessPacket::outThreadFunction() {
 						#endif
 					} else {
 						for(unsigned batch_index = 0; 
-						    batch_index < count / (_next_threads + 1); 
+						    batch_index < count / (_next_threads_count + 1); 
 						    batch_index++) {
 							this->process_DETACH_plus(batch_detach->batch[batch_index], false);
 						}
 					}
-					for(int i = 0; i < _next_threads; i++) {
+					for(int i = 0; i < _next_threads_count; i++) {
 						if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-							sem_wait(&sem_sync_next_thread[i][1]);
+							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
-							while(this->next_thread_data[i].processing) { 
+							while(this->next_threads[i].next_data.processing) { 
 								extern unsigned int opt_sip_batch_usleep;
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
@@ -9978,7 +9984,7 @@ void *PreProcessPacket::outThreadFunction() {
 					batch_detach->used = 0;
 				#endif
 			}
-		} else if(this->typePreProcessThread == ppt_sip && this->next_thread_handle[0]) {
+		} else if(this->typePreProcessThread == ppt_sip && this->next_threads[0].thread_handle) {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
 				batch = this->qring[this->readit];
@@ -10038,10 +10044,10 @@ void *PreProcessPacket::outThreadFunction() {
 				unsigned count = batch->count;
 				__SYNC_UNLOCK(this->_sync_count);
 				unsigned completed = 0;
-				int _next_threads = this->next_threads;
-				bool _process_only_in_next_threads = _next_threads > 1;
-				if(_next_threads > 0) {
-					int port_modulo = _process_only_in_next_threads ? _next_threads : _next_threads + 1;
+				int _next_threads_count = this->next_threads_count;
+				bool _process_only_in_next_threads = _next_threads_count > 1;
+				if(_next_threads_count > 0) {
+					int port_modulo = _process_only_in_next_threads ? _next_threads_count : _next_threads_count + 1;
 					for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 						this->items_flag[batch_index] = 0;
 						packet_s_process *packetS = batch->batch[batch_index];
@@ -10072,31 +10078,31 @@ void *PreProcessPacket::outThreadFunction() {
 						thread_index %= port_modulo;
 						this->items_thread_index[batch_index] = thread_index;
 					}
-					for(int i = 0; i < _next_threads; i++) {
-						this->next_thread_data[i].null();
+					for(int i = 0; i < _next_threads_count; i++) {
+						this->next_threads[i].next_data.null();
 						if(_process_only_in_next_threads) {
-							this->next_thread_data[i].start = 0;
-							this->next_thread_data[i].end = count;
-							this->next_thread_data[i].skip = 1;
-							this->next_thread_data[i].thread_index = i;
+							this->next_threads[i].next_data.start = 0;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = 1;
+							this->next_threads[i].next_data.thread_index = i;
 						} else {
-							this->next_thread_data[i].start = 0;
-							this->next_thread_data[i].end = count;
-							this->next_thread_data[i].skip = 1;
-							this->next_thread_data[i].thread_index = i + 1;
+							this->next_threads[i].next_data.start = 0;
+							this->next_threads[i].next_data.end = count;
+							this->next_threads[i].next_data.skip = 1;
+							this->next_threads[i].next_data.thread_index = i + 1;
 						}
-						this->next_thread_data[i].batch = batch->batch;
-						this->next_thread_data[i].processing = 1;
+						this->next_threads[i].next_data.batch = batch->batch;
+						this->next_threads[i].next_data.processing = 1;
 						if(opt_pre_process_packets_next_thread_sem_sync) {
-							sem_post(&sem_sync_next_thread[i][0]);
+							sem_post(&this->next_threads[i].sem_sync[0]);
 						} else {
-							this->next_thread_data[i].data_ready = 1;
+							this->next_threads[i].next_data.data_ready = 1;
 						}
 					}
 				}
 				if(_process_only_in_next_threads) {
-					while(this->next_thread_data[0].processing || this->next_thread_data[1].processing ||
-					      (_next_threads > 2 && this->isNextThreadsGt2Processing(_next_threads))) {
+					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
 						if(completed < count &&
 						   this->items_flag[completed] != 0) {
 							processNextAction(batch->batch[completed]);
@@ -10111,7 +10117,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 				} else {
-					if(_next_threads > 0) {
+					if(_next_threads_count > 0) {
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 							if(this->items_thread_index[batch_index] == 0) {
 								packet_s_process *packetS = batch->batch[batch_index];
@@ -10124,12 +10130,12 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 				}
-				if(_next_threads > 0) {
-					for(int i = 0; i < _next_threads; i++) {
+				if(_next_threads_count > 0) {
+					for(int i = 0; i < _next_threads_count; i++) {
 						if(opt_pre_process_packets_next_thread_sem_sync == 2) {
-							sem_wait(&sem_sync_next_thread[i][1]);
+							sem_wait(&this->next_threads[i].sem_sync[1]);
 						} else {
-							while(this->next_thread_data[i].processing) { 
+							while(this->next_threads[i].next_data.processing) {
 								extern unsigned int opt_sip_batch_usleep;
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
@@ -10360,6 +10366,44 @@ void *PreProcessPacket::outThreadFunction() {
 	return(NULL);
 }
 
+void PreProcessPacket::createNextThread() {
+	if(!(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
+	     (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max))) {
+		return;
+	}
+	this->next_threads[this->next_threads_count].null();
+	this->next_threads[this->next_threads_count].sem_init();
+	arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+	arg->preProcessPacket = this;
+	arg->next_thread_id = this->next_threads_count + 1;
+	vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
+			  &this->next_threads[this->next_threads_count].thread_handle, NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+	while(!this->next_threads[this->next_threads_count].thread_id) {
+		extern unsigned int opt_sip_batch_usleep;
+		if(opt_sip_batch_usleep) {
+			USLEEP(opt_sip_batch_usleep);
+		} else {
+			__asm__ volatile ("pause");
+		}
+	}
+	++this->next_threads_count;
+}
+
+void PreProcessPacket::termNextThread() {
+	if(!(this->next_threads_count > 0 &&
+	     (opt_pre_process_packets_next_thread <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread))) {
+		return;
+	}
+	--this->next_threads_count;
+	this->next_threads[this->next_threads_count].terminate = true;
+	if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
+		sem_post(&this->next_threads[this->next_threads_count].sem_sync[0]);
+	}
+	pthread_join(this->next_threads[this->next_threads_count].thread_handle, NULL);
+	this->next_threads[this->next_threads_count].sem_term();
+	this->next_threads[this->next_threads_count].null();
+}
+
 void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 	switch(packetS->next_action) {
 	case _ppna_push_to_extend:
@@ -10492,11 +10536,13 @@ void PreProcessPacket::push_batch_nothread() {
 }
 
 void PreProcessPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
-	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
-		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time) {
-			this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1] = this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0];
+	int thread_id = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+	if(thread_id) {
+		pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+		if(thread_pstat_data[pstatDataIndex][0].cpu_total_time) {
+			thread_pstat_data[pstatDataIndex][1] = thread_pstat_data[pstatDataIndex][0];
 		}
-		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus][pstatDataIndex]);
+		pstat_get_data(thread_id, thread_pstat_data[pstatDataIndex]);
 	}
 }
 
@@ -10506,20 +10552,20 @@ double PreProcessPacket::getCpuUsagePerc(int nextThreadIndexPlus, double *percFu
 		if(preparePstatData) {
 			this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 		}
-		if(this->outThreadId) {
-			if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
-				double ucpu_usage, scpu_usage;
-				if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1].cpu_total_time) {
-					pstat_calc_cpu_usage_pct(
-						&this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0], &this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1],
-						&ucpu_usage, &scpu_usage);
-					if(percFullQring) {
-						*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
-						qringPushCounter = 0;
-						qringPushCounter_full = 0;
-					}
-					return(ucpu_usage + scpu_usage);
+		int thread_id = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+		if(thread_id) {
+			double ucpu_usage, scpu_usage;
+			pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+			if(thread_pstat_data[pstatDataIndex][0].cpu_total_time && thread_pstat_data[pstatDataIndex][1].cpu_total_time) {
+				pstat_calc_cpu_usage_pct(
+					&thread_pstat_data[pstatDataIndex][0], &thread_pstat_data[pstatDataIndex][1],
+					&ucpu_usage, &scpu_usage);
+				if(percFullQring) {
+					*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
+					qringPushCounter = 0;
+					qringPushCounter_full = 0;
 				}
+				return(ucpu_usage + scpu_usage);
 			}
 		}
 	}
@@ -10538,38 +10584,30 @@ void PreProcessPacket::terminate() {
 		USLEEP_C(10, usleepCounter++);
 	}
 	this->out_thread_handle = 0;
-	for(int i = 0; i < this->next_threads; i++) {
-		if(this->next_thread_handle[i]) {
+	for(int i = 0; i < this->next_threads_count; i++) {
+		if(this->next_threads[i].thread_handle) {
+			this->next_threads[i].terminate = true;
 			if(opt_pre_process_packets_next_thread_sem_sync) {
-				sem_post(&this->sem_sync_next_thread[i][0]);
+				sem_post(&this->next_threads[i].sem_sync[0]);
 			}
-			pthread_join(this->next_thread_handle[i], NULL);
-			this->next_thread_handle[i] = 0;
-			for(int j = 0; j < opt_pre_process_packets_next_thread_sem_sync; j++) {
-				sem_destroy(&sem_sync_next_thread[i][j]);
-			}
+			pthread_join(this->next_threads[i].thread_handle, NULL);
+			this->next_threads[i].sem_term();
+			this->next_threads[i].null();
 		}
 	}
 }
 
 void PreProcessPacket::addNextThread() {
-	if(opt_t2_boost &&
-	   (this->typePreProcessThread == ppt_detach_x ||
-	    this->typePreProcessThread == ppt_detach || 
-	    this->typePreProcessThread == ppt_sip) &&
-	   this->next_threads < min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) {
-		int add_threads = this->next_threads == 0 && min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS) > 1 ? 2 : 1;
-		for(int add_thread = 0; add_thread < add_threads; add_thread++) {
-			for(int j = 0; j < opt_pre_process_packets_next_thread_sem_sync; j++) {
-				sem_init(&sem_sync_next_thread[this->next_threads][j], 0, 0);
-			}
-			arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
-			arg->preProcessPacket = this;
-			arg->next_thread_id = this->next_threads + 1;
-			vm_pthread_create(("pre process next - " + getNameTypeThread()).c_str(),
-					  &this->next_thread_handle[this->next_threads], NULL, _PreProcessPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-			++this->next_threads;
-		}
+	if(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
+	   (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max)) {
+		this->next_threads_count_mod = 1;
+	}
+}
+
+void PreProcessPacket::removeNextThread() {
+	if(this->next_threads_count > 0 &&
+	   (opt_pre_process_packets_next_thread <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread)) {
+		this->next_threads_count_mod = -1;
 	}
 }
 
@@ -11581,25 +11619,22 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->qringPushCounter_full = 0;
 	this->outThreadId = 0;
 	this->term_processRtp = false;
-	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
-		this->nextThreadId[i] = 0;
-		this->next_thread_handle[i] = 0;
-		this->hash_thread_data[i].null();
-	}
 	this->_sync_count = 0;
 	vm_pthread_create((string("t2 rtp preprocess ") + (type == hash ? "hash" : "distribute")).c_str(),
 			  &this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this, __FILE__, __LINE__);
-	this->process_rtp_packets_hash_next_threads = opt_process_rtp_packets_hash_next_thread;
+	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
+		this->hash_next_threads[i].null();
+	}
+	this->process_rtp_packets_hash_next_threads = max(opt_process_rtp_packets_hash_next_thread, 0);
+	this->process_rtp_packets_hash_next_threads_mod = 0;
 	if(type == hash && this->process_rtp_packets_hash_next_threads) {
 		for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
-			for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
-				sem_init(&sem_sync_next_thread[i][j], 0, 0);
-			}
+			this->hash_next_threads[i].sem_init();
 			arg_next_thread *arg = new FILE_LINE(26031) arg_next_thread;
 			arg->processRtpPacket = this;
 			arg->next_thread_id = i + 1;
 			vm_pthread_create("hash next",
-					  &this->next_thread_handle[i], NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+					  &this->hash_next_threads[i].thread_handle, NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
 	}
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
@@ -11627,6 +11662,14 @@ void *ProcessRtpPacket::outThreadFunction() {
 	unsigned int usleepCounter = 0;
 	u_int64_t usleepSumTimeForPushBatch = 0;
 	while(!this->term_processRtp) {
+		if(this->process_rtp_packets_hash_next_threads_mod && this->type == hash) {
+			if(this->process_rtp_packets_hash_next_threads_mod > 0) {
+				createNextHashThread();
+			} else if(this->process_rtp_packets_hash_next_threads_mod < 0) {
+				termNextHashThread();
+			}
+			this->process_rtp_packets_hash_next_threads_mod = 0;
+		}
 		if(this->qring[this->readit]->used == 1) {
 			batch_packet_s_process *batch = this->qring[this->readit];
 			__SYNC_LOCK(this->_sync_count);
@@ -11697,17 +11740,18 @@ void *ProcessRtpPacket::outThreadFunction() {
 }
 
 void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
-	this->nextThreadId[next_thread_index_plus - 1] = get_unix_tid();
-	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->nextThreadId[next_thread_index_plus - 1]);
+	this->hash_next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->hash_next_threads[next_thread_index_plus - 1].thread_id);
 	extern string opt_sched_pol_rtp_prep;
 	pthread_set_priority(opt_sched_pol_rtp_prep);
 	unsigned int usleepCounter = 0;
 	while(!this->term_processRtp) {
-		s_hash_thread_data *hash_thread_data = &this->hash_thread_data[next_thread_index_plus - 1];
+		s_hash_next_thread *hash_thread = &this->hash_next_threads[next_thread_index_plus - 1];
+		s_hash_thread_data *hash_thread_data = &hash_thread->hash_data;
 		if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
-			sem_wait(&sem_sync_next_thread[next_thread_index_plus - 1][0]);
+			sem_wait(&hash_thread->sem_sync[0]);
 		} else {
-			while(!this->term_processRtp && !hash_thread_data->data_ready) {
+			while(!this->term_processRtp && !hash_thread_data->data_ready && !hash_thread->terminate) {
 				extern unsigned int opt_rtp_batch_usleep;
 				if(opt_rtp_batch_usleep) {
 					USLEEP(opt_rtp_batch_usleep);
@@ -11717,7 +11761,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			}
 			hash_thread_data->data_ready = 0;
 		}
-		if(this->term_processRtp) {
+		if(this->term_processRtp || hash_thread->terminate) {
 			break;
 		}
 		if(hash_thread_data->batch) {
@@ -11811,7 +11855,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			hash_thread_data->processing = 0;
 			usleepCounter = 0;
 			if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
-				sem_post(&sem_sync_next_thread[next_thread_index_plus - 1][1]);
+				sem_post(&hash_thread->sem_sync[1]);
 			}
 		} else {
 			extern unsigned int opt_rtp_batch_usleep;
@@ -11836,32 +11880,30 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		}
 		#if not EXPERIMENTAL_PROCESS_RTP_MOD_02
 		calltable->lock_calls_hash();
-		if(this->next_thread_handle[0]) {
-			for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
-				this->hash_thread_data[i].null();
-			}
+		if(this->hash_next_threads[0].thread_handle) {
 			for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
+				this->hash_next_threads[i].hash_data.null();
 				if(_find_hash_only_in_next_threads) {
-					this->hash_thread_data[i].start = i;
-					this->hash_thread_data[i].end = count;
-					this->hash_thread_data[i].skip = _process_rtp_packets_hash_next_threads;
+					this->hash_next_threads[i].hash_data.start = i;
+					this->hash_next_threads[i].hash_data.end = count;
+					this->hash_next_threads[i].hash_data.skip = _process_rtp_packets_hash_next_threads;
 				} else {
-					this->hash_thread_data[i].start = count / (_process_rtp_packets_hash_next_threads + 1) * (i + 1);
-					this->hash_thread_data[i].end = i == (_process_rtp_packets_hash_next_threads - 1) ? 
-									 count : 
-									 count / (_process_rtp_packets_hash_next_threads + 1) * (i + 2);
-					this->hash_thread_data[i].skip = 1;
+					this->hash_next_threads[i].hash_data.start = count / (_process_rtp_packets_hash_next_threads + 1) * (i + 1);
+					this->hash_next_threads[i].hash_data.end = i == (_process_rtp_packets_hash_next_threads - 1) ? 
+										    count : 
+										    count / (_process_rtp_packets_hash_next_threads + 1) * (i + 2);
+					this->hash_next_threads[i].hash_data.skip = 1;
 				}
-				this->hash_thread_data[i].batch = batch;
-				this->hash_thread_data[i].processing = 1;
+				this->hash_next_threads[i].hash_data.batch = batch;
+				this->hash_next_threads[i].hash_data.processing = 1;
 				if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
-					sem_post(&sem_sync_next_thread[i][0]);
+					sem_post(&this->hash_next_threads[i].sem_sync[0]);
 				} else {
-					this->hash_thread_data[i].data_ready = 1;
+					this->hash_next_threads[i].hash_data.data_ready = 1;
 				}
 			}
 			if(_find_hash_only_in_next_threads) {
-				while(this->hash_thread_data[0].processing || this->hash_thread_data[1].processing ||
+				while(this->hash_next_threads[0].hash_data.processing || this->hash_next_threads[1].hash_data.processing ||
 				      (_process_rtp_packets_hash_next_threads > 2 && this->isNextThreadsGt2Processing(_process_rtp_packets_hash_next_threads))) {
 					if(batch_index_distribute < count &&
 					   this->hash_find_flag[batch_index_distribute] != 0) {
@@ -11881,8 +11923,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					}
 				}
 				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
-					counter_rtp_packets[0] += this->hash_thread_data[i].counters[0];
-					counter_rtp_packets[1] += this->hash_thread_data[i].counters[1];
+					counter_rtp_packets[0] += this->hash_next_threads[i].hash_data.counters[0];
+					counter_rtp_packets[1] += this->hash_next_threads[i].hash_data.counters[1];
 				}
 			} else {
 				unsigned rtp_counters[2] = { 0, 0 };
@@ -11914,9 +11956,9 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				}
 				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
 					if(opt_process_rtp_packets_hash_next_thread_sem_sync == 2) {
-						sem_wait(&sem_sync_next_thread[i][1]);
+						sem_wait(&this->hash_next_threads[i].sem_sync[1]);
 					} else {
-						while(this->hash_thread_data[i].processing) { 
+						while(this->hash_next_threads[i].hash_data.processing) { 
 							extern unsigned int opt_rtp_batch_usleep;
 							if(opt_rtp_batch_usleep) {
 								USLEEP(opt_rtp_batch_usleep);
@@ -11929,8 +11971,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				counter_rtp_packets[0] += rtp_counters[0];
 				counter_rtp_packets[1] += rtp_counters[1];
 				for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
-					counter_rtp_packets[0] += this->hash_thread_data[i].counters[0];
-					counter_rtp_packets[1] += this->hash_thread_data[i].counters[1];
+					counter_rtp_packets[0] += this->hash_next_threads[i].hash_data.counters[0];
+					counter_rtp_packets[1] += this->hash_next_threads[i].hash_data.counters[1];
 				}
 			}
 		} else {
@@ -12278,12 +12320,52 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 	}
 }
 
-void ProcessRtpPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
-	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
-		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time) {
-			this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1] = this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0];
+void ProcessRtpPacket::createNextHashThread() {
+	if(!(this->process_rtp_packets_hash_next_threads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+	     (opt_process_rtp_packets_hash_next_thread_max <= 0 || this->process_rtp_packets_hash_next_threads < opt_process_rtp_packets_hash_next_thread_max))) {
+		return;
+	}
+	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].null();
+	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].sem_init();
+	arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+	arg->processRtpPacket = this;
+	arg->next_thread_id = this->process_rtp_packets_hash_next_threads + 1;
+	vm_pthread_create("hash next",
+			  &this->hash_next_threads[this->process_rtp_packets_hash_next_threads].thread_handle, NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
+	while(!this->hash_next_threads[this->process_rtp_packets_hash_next_threads].thread_id) {
+		extern unsigned int opt_rtp_batch_usleep;
+		if(opt_rtp_batch_usleep) {
+			USLEEP(opt_rtp_batch_usleep);
+		} else {
+			__asm__ volatile ("pause");
 		}
-		pstat_get_data(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId, this->threadPstatData[nextThreadIndexPlus][pstatDataIndex]);
+	}
+	++this->process_rtp_packets_hash_next_threads;
+}
+
+void ProcessRtpPacket::termNextHashThread() {
+	if(!(this->process_rtp_packets_hash_next_threads > 0 &&
+	     (opt_process_rtp_packets_hash_next_thread <= 0 || this->process_rtp_packets_hash_next_threads > opt_process_rtp_packets_hash_next_thread))) {
+		return;
+	}
+	--this->process_rtp_packets_hash_next_threads;
+	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].terminate = true;
+	if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
+		sem_post(&this->hash_next_threads[this->process_rtp_packets_hash_next_threads].sem_sync[0]);
+	}
+	pthread_join(this->hash_next_threads[this->process_rtp_packets_hash_next_threads].thread_handle, NULL);
+	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].sem_term();
+	this->hash_next_threads[this->process_rtp_packets_hash_next_threads].null();
+}
+
+void ProcessRtpPacket::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
+	int thread_id = nextThreadIndexPlus ? this->hash_next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+	if(thread_id) {
+		pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->hash_next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+		if(thread_pstat_data[pstatDataIndex][0].cpu_total_time) {
+			thread_pstat_data[pstatDataIndex][1] = thread_pstat_data[pstatDataIndex][0];
+		}
+		pstat_get_data(thread_id, thread_pstat_data[pstatDataIndex]);
 	}
 }
 
@@ -12291,11 +12373,13 @@ double ProcessRtpPacket::getCpuUsagePerc(int nextThreadIndexPlus, double *percFu
 	if(preparePstatData) {
 		this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 	}
-	if(nextThreadIndexPlus ? this->nextThreadId[nextThreadIndexPlus - 1] : this->outThreadId) {
+	int thread_id = nextThreadIndexPlus ? this->hash_next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+	if(thread_id) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0].cpu_total_time && this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1].cpu_total_time) {
+		pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->hash_next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+		if(thread_pstat_data[pstatDataIndex][0].cpu_total_time && thread_pstat_data[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][0], &this->threadPstatData[nextThreadIndexPlus][pstatDataIndex][1],
+				&thread_pstat_data[pstatDataIndex][0], &thread_pstat_data[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			if(percFullQring) {
 				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
@@ -12320,15 +12404,14 @@ void ProcessRtpPacket::terminate() {
 		this->out_thread_handle = 0;
 	}
 	for(int i = 0; i < this->process_rtp_packets_hash_next_threads; i++) {
-		if(this->next_thread_handle[i]) {
+		if(this->hash_next_threads[i].thread_handle) {
+			this->hash_next_threads[i].terminate = true;
 			if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
-				sem_post(&this->sem_sync_next_thread[i][0]);
+				sem_post(&this->hash_next_threads[i].sem_sync[0]);
 			}
-			pthread_join(this->next_thread_handle[i], NULL);
-			this->next_thread_handle[i] = 0;
-			for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
-				sem_destroy(&sem_sync_next_thread[i][j]);
-			}
+			pthread_join(this->hash_next_threads[i].thread_handle, NULL);
+			this->hash_next_threads[i].sem_term();
+			this->hash_next_threads[i].null();
 		}
 	}
 }
@@ -12347,16 +12430,16 @@ void ProcessRtpPacket::autoStartProcessRtpPacket() {
 }
 
 void ProcessRtpPacket::addRtpRhThread() {
-	if(this->process_rtp_packets_hash_next_threads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS) {
-		for(int j = 0; j < opt_process_rtp_packets_hash_next_thread_sem_sync; j++) {
-			sem_init(&sem_sync_next_thread[this->process_rtp_packets_hash_next_threads][j], 0, 0);
-		}
-		arg_next_thread *arg = new FILE_LINE(26034) arg_next_thread;
-		arg->processRtpPacket = this;
-		arg->next_thread_id = this->process_rtp_packets_hash_next_threads + 1;
-		vm_pthread_create("hash next",
-				  &this->next_thread_handle[this->process_rtp_packets_hash_next_threads], NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
-		++this->process_rtp_packets_hash_next_threads;
+	if(this->process_rtp_packets_hash_next_threads < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS &&
+	   (opt_process_rtp_packets_hash_next_thread_max <= 0 || this->process_rtp_packets_hash_next_threads < opt_process_rtp_packets_hash_next_thread_max)) {
+		this->process_rtp_packets_hash_next_threads_mod = 1;
+	}
+}
+
+void ProcessRtpPacket::removeRtpRhThread() {
+	if(this->process_rtp_packets_hash_next_threads > 0 &&
+	   (opt_process_rtp_packets_hash_next_thread <= 0 || this->process_rtp_packets_hash_next_threads > opt_process_rtp_packets_hash_next_thread)) {
+		this->process_rtp_packets_hash_next_threads_mod = -1;
 	}
 }
 

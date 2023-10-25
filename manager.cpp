@@ -404,15 +404,7 @@ int Mgmt_sniffer_threads(Mgmt_params *params);
 int Mgmt_sniffer_stat(Mgmt_params *params);
 int Mgmt_gitUpgrade(Mgmt_params *params);
 int Mgmt_login_screen_popup(Mgmt_params *params);
-int Mgmt_ac_add_thread(Mgmt_params *params);
-int Mgmt_ac_remove_thread(Mgmt_params *params);
 int Mgmt_processing_limitations(Mgmt_params *params);
-int Mgmt_t2sip_add_thread(Mgmt_params *params);
-int Mgmt_t2sip_remove_thread(Mgmt_params *params);
-int Mgmt_storing_cdr_add_thread(Mgmt_params *params);
-int Mgmt_storing_cdr_remove_thread(Mgmt_params *params);
-int Mgmt_rtpread_add_thread(Mgmt_params *params);
-int Mgmt_rtpread_remove_thread(Mgmt_params *params);
 int Mgmt_enable_bad_packet_order_warning(Mgmt_params *params);
 int Mgmt_sipports(Mgmt_params *params);
 int Mgmt_skinnyports(Mgmt_params *params);
@@ -438,6 +430,7 @@ int Mgmt_alloc_trim(Mgmt_params *params);
 int Mgmt_alloc_test(Mgmt_params *params);
 int Mgmt_tcmalloc_stats(Mgmt_params *params);
 int Mgmt_hashtable_stats(Mgmt_params *params);
+int Mgmt_thread(Mgmt_params *params);
 int Mgmt_usleep(Mgmt_params *params);
 int Mgmt_charts_cache(Mgmt_params *params);
 int Mgmt_packetbuffer_log(Mgmt_params *params);
@@ -520,15 +513,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_sniffer_stat,
 	Mgmt_gitUpgrade,
 	Mgmt_login_screen_popup,
-	Mgmt_ac_add_thread,
-	Mgmt_ac_remove_thread,
 	Mgmt_processing_limitations,
-	Mgmt_t2sip_add_thread,
-	Mgmt_t2sip_remove_thread,
-	Mgmt_storing_cdr_add_thread,
-	Mgmt_storing_cdr_remove_thread,
-	Mgmt_rtpread_add_thread,
-	Mgmt_rtpread_remove_thread,
 	Mgmt_enable_bad_packet_order_warning,
 	Mgmt_sipports,
 	Mgmt_skinnyports,
@@ -554,6 +539,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_alloc_test,
 	Mgmt_tcmalloc_stats,
 	Mgmt_hashtable_stats,
+	Mgmt_thread,
 	Mgmt_usleep,
 	Mgmt_charts_cache,
 	Mgmt_packetbuffer_log,
@@ -4299,26 +4285,6 @@ int Mgmt_login_screen_popup(Mgmt_params *params) {
 	return(0);
 }
 
-int Mgmt_ac_add_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("ac_add_thread", "ac_add_thread");
-		return(0);
-	}
-	extern AsyncClose *asyncClose;
-	asyncClose->addThread();
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_ac_remove_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("ac_remove_thread", "ac_remove_thread");
-		return(0);
-	}
-	extern AsyncClose *asyncClose;
-	asyncClose->removeThread();
-	return(params->sendString("ok\n"));
-}
-
 int Mgmt_processing_limitations(Mgmt_params *params) {
 	extern cProcessingLimitations processing_limitations;
 	if (params->task == params->mgmt_task_DoInit) {
@@ -4336,68 +4302,6 @@ int Mgmt_processing_limitations(Mgmt_params *params) {
 		processing_limitations.decLimitations(cProcessingLimitations::_pl_all, true);
 	}
 	return(0);
-}
-
-int Mgmt_t2sip_add_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("t2sip_add_thread", "t2sip_add_thread");
-		return(0);
-	}
-	if(opt_t2_boost) {
-		PreProcessPacket::autoStartCallX_PreProcessPacket();
-	} else {
-		PreProcessPacket::autoStartNextLevelPreProcessPacket();
-	}
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_t2sip_remove_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("t2sip_remove_thread", "t2sip_remove_thread");
-		return(0);
-	}
-	if(!opt_t2_boost) {
-		PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
-	}
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_storing_cdr_add_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("storing_cdr_add_thread", "storing_cdr_add_thread");
-		return(0);
-	}
-	extern void storing_cdr_next_thread_add();
-	storing_cdr_next_thread_add();
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_storing_cdr_remove_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("storing_cdr_remove_thread", "storing_cdr_remove_thread");
-		return(0);
-	}
-	extern void storing_cdr_next_thread_remove();
-	storing_cdr_next_thread_remove();
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_rtpread_add_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("rtpread_add_thread", "rtpread_add_thread");
-		return(0);
-	}
-	add_rtp_read_thread();
-	return(params->sendString("ok\n"));
-}
-
-int Mgmt_rtpread_remove_thread(Mgmt_params *params) {
-	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("rtpread_remove_thread", "rtpread_remove_thread");
-		return(0);
-	}
-	set_remove_rtp_read_thread();
-	return(params->sendString("ok\n"));
 }
 
 int Mgmt_enable_bad_packet_order_warning(Mgmt_params *params) {
@@ -4699,6 +4603,112 @@ int Mgmt_hashtable_stats(Mgmt_params *params) {
 	#endif
 }
 
+int Mgmt_thread(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("thread", "threads management");
+		return(0);
+	}
+	char thread_params[5][100];
+	for(unsigned i = 0; i < sizeof(thread_params) / sizeof(thread_params[0]); i++) {
+		thread_params[i][0] = 0;
+	}
+	if(strlen(params->buf) > params->command.length() + 1) {
+		sscanf(params->buf + params->command.length() + 1, "%s %s %s %s %s",
+		       thread_params[0], thread_params[1], thread_params[2], thread_params[3], thread_params[4]);
+	}
+	if(!strcasecmp(thread_params[0], "rtp")) {
+		if(!strcasecmp(thread_params[1], "add")) {
+			add_rtp_read_thread();
+			return(params->sendString("ok\n"));
+		} else if(!strcasecmp(thread_params[1], "remove")) {
+			set_remove_rtp_read_thread();
+			return(params->sendString("ok\n"));
+		}
+	} else if(!strcasecmp(thread_params[0], "rtp_rh")) {
+		extern ProcessRtpPacket *processRtpPacketHash;
+		if(processRtpPacketHash) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				processRtpPacketHash->addRtpRhThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				processRtpPacketHash->removeRtpRhThread();
+				return(params->sendString("ok\n"));
+			}
+		}
+	} else if(!strcasecmp(thread_params[0], "sip_t2")) {
+		if(!strcasecmp(thread_params[1], "add")) {
+			if(opt_t2_boost) {
+				PreProcessPacket::autoStartCallX_PreProcessPacket();
+			} else {
+				PreProcessPacket::autoStartNextLevelPreProcessPacket();
+			}
+			return(params->sendString("ok\n"));
+		} else if(!strcasecmp(thread_params[1], "remove")) {
+			if(opt_t2_boost) {
+				return(params->sendString("not supported in t2_boost mode\n"));
+			} else {
+				PreProcessPacket::autoStopLastLevelPreProcessPacket(true);
+			}
+			return(params->sendString("ok\n"));
+		}
+	} else if(!strcasecmp(thread_params[0], "sip_detach_x")) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		if(preProcessPacket[PreProcessPacket::ppt_detach_x]) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				preProcessPacket[PreProcessPacket::ppt_detach_x]->addNextThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				preProcessPacket[PreProcessPacket::ppt_detach_x]->removeNextThread();
+				return(params->sendString("ok\n"));
+			}
+		}
+	} else if(!strcasecmp(thread_params[0], "sip_detach")) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		if(preProcessPacket[PreProcessPacket::ppt_detach]) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				preProcessPacket[PreProcessPacket::ppt_detach]->addNextThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				preProcessPacket[PreProcessPacket::ppt_detach]->removeNextThread();
+				return(params->sendString("ok\n"));
+			}
+		}
+	} else if(!strcasecmp(thread_params[0], "sip_sip")) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		if(preProcessPacket[PreProcessPacket::ppt_sip]) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				preProcessPacket[PreProcessPacket::ppt_sip]->addNextThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				preProcessPacket[PreProcessPacket::ppt_sip]->removeNextThread();
+				return(params->sendString("ok\n"));
+			}
+		}
+	} else if(!strcasecmp(thread_params[0], "ac")) {
+		extern AsyncClose *asyncClose;
+		if(asyncClose) {
+			if(!strcasecmp(thread_params[1], "add")) {
+				asyncClose->addThread();
+				return(params->sendString("ok\n"));
+			} else if(!strcasecmp(thread_params[1], "remove")) {
+				asyncClose->removeThread();
+				return(params->sendString("ok\n"));
+			}
+		}
+	} else if(!strcasecmp(thread_params[0], "store_cdr")) {
+		if(!strcasecmp(thread_params[1], "add")) {
+			extern void storing_cdr_next_thread_add();
+			storing_cdr_next_thread_add();
+			return(params->sendString("ok\n"));
+		} else if(!strcasecmp(thread_params[1], "remove")) {
+			extern void storing_cdr_next_thread_remove();
+			storing_cdr_next_thread_remove();
+			return(params->sendString("ok\n"));
+		}
+	}
+	return(0);
+}
+
 int Mgmt_usleep(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		params->registerCommand("usleep", "usleep management");
@@ -4706,6 +4716,7 @@ int Mgmt_usleep(Mgmt_params *params) {
 	}
 	char us_params[5][100];
 	for(unsigned i = 0; i < sizeof(us_params) / sizeof(us_params[0]); i++) {
+		us_params[i][0] = 0;
 	}
 	if(strlen(params->buf) > params->command.length() + 1) {
 		sscanf(params->buf + params->command.length() + 1, "%s %s %s %s %s",
@@ -4716,10 +4727,12 @@ int Mgmt_usleep(Mgmt_params *params) {
 	if(!strcasecmp(us_params[0], "stats_start")) {
 		extern bool opt_usleep_stats;
 		opt_usleep_stats = true;
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "stats_stop")) {
 		extern bool opt_usleep_stats;
 		opt_usleep_stats = false;
 		usleep_stats_clear();
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "stats")) {
 		unsigned useconds_lt = atoi(us_params[1]);
 		string usleepStats = usleep_stats(useconds_lt);
@@ -4741,27 +4754,35 @@ int Mgmt_usleep(Mgmt_params *params) {
 		opt_preprocess_packets_qring_push_usleep =
 		opt_process_rtp_packets_qring_usleep = 
 		opt_process_rtp_packets_qring_push_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_lock_calls_hash")) {
 		extern unsigned int opt_lock_calls_hash_usleep;
 		opt_lock_calls_hash_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_rtp")) {
 		extern unsigned int rtp_qring_usleep;
 		rtp_qring_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_sip_batch")) {
 		extern unsigned int opt_sip_batch_usleep;
 		opt_sip_batch_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_rtp_batch")) {
 		extern unsigned int opt_rtp_batch_usleep;
 		opt_rtp_batch_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_lock_calls")) {
 		extern unsigned int opt_lock_calls_usleep;
 		opt_lock_calls_usleep = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_progressive")) {
 		extern bool opt_usleep_progressive;
 		opt_usleep_progressive = yesno(us_params[1]);
+		return(params->sendString("ok\n"));
 	} else if(!strcasecmp(us_params[0], "set_all")) {
 		extern unsigned int opt_usleep_force;
 		opt_usleep_force = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	}
 	return(0);
 }
