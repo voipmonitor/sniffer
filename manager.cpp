@@ -377,6 +377,7 @@ int Mgmt_hot_restart(Mgmt_params *params);
 int Mgmt_crules_print(Mgmt_params *params);
 int Mgmt_reload(Mgmt_params *params);
 int Mgmt_custom_headers_refresh(Mgmt_params *params);
+int Mgmt_custom_headers_dump(Mgmt_params *params);
 int Mgmt_no_hash_message_rules_refresh(Mgmt_params *params);
 int Mgmt_billing_refresh(Mgmt_params *params);
 int Mgmt_country_detect_refresh(Mgmt_params *params);
@@ -486,6 +487,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_crules_print,
 	Mgmt_reload,
 	Mgmt_custom_headers_refresh,
+	Mgmt_custom_headers_dump,
 	Mgmt_no_hash_message_rules_refresh,
 	Mgmt_billing_refresh,
 	Mgmt_country_detect_refresh,
@@ -3587,6 +3589,30 @@ int Mgmt_custom_headers_refresh(Mgmt_params *params) {
 		no_hash_message_rules->refresh();
 	}
 	return(params->sendString("reload ok"));
+}
+
+int Mgmt_custom_headers_dump(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("custom_headers_dump", "custom headers dump");
+		return(0);
+	}
+	char ch_type[100] = "";
+	if(strlen(params->buf) > params->command.length() + 1) {
+		sscanf(params->buf + params->command.length() + 1, "%s", ch_type);
+	}
+	extern CustomHeaders *custom_headers_cdr;
+	extern CustomHeaders *custom_headers_message;
+	CustomHeaders *ch = NULL;
+	if(!strcasecmp(ch_type, "cdr")) {
+		ch = custom_headers_cdr;
+	} else if(!strcasecmp(ch_type, "message")) {
+		ch = custom_headers_message;
+	}
+	if(ch) {
+		string ch_dump = ch->dump();
+		return(params->sendString(ch_dump));
+	}
+	return(0);
 }
 
 int Mgmt_no_hash_message_rules_refresh(Mgmt_params *params) {

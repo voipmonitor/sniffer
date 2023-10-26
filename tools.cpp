@@ -252,7 +252,7 @@ vector<string> explode(const string& str, const char ch) {
 	return result;
 }
 
-string implode(vector<string> vect, const char *sep) {
+string implode(vector<string> &vect, const char *sep) {
 	string rslt;
 	for(unsigned i = 0; i < vect.size(); i++) {
 		if(i) {
@@ -263,7 +263,20 @@ string implode(vector<string> vect, const char *sep) {
 	return(rslt);
 }
 
-string implode(vector<int> vect, const char *sep) {
+string implode(list<string> &items, const char *sep) {
+	string rslt;
+	unsigned i = 0;
+	for(list<string>::iterator iter = items.begin(); iter != items.end(); iter++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += *iter;
+		++i;
+	}
+	return(rslt);
+}
+
+string implode(vector<int> &vect, const char *sep) {
 	string rslt;
 	for(unsigned i = 0; i < vect.size(); i++) {
 		if(i) {
