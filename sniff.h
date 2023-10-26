@@ -93,9 +93,9 @@ struct sll2_header {
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0 && \
 				(*(u_int16_t*)(data) == 0x0100 || *(u_int16_t*)(data) == 0x0101 || *(u_int16_t*)(data) == 0x1101 || \
 				 *(u_int16_t*)(data) == 0x0200 || *(u_int16_t*)(data) == 0x0201 || *(u_int16_t*)(data) == 0x1201))
-#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
-#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)data == 0x16)
-#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
+#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)(data) >= 0x14 && *(u_char*)(data) <= 0x19)
+#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)(data) == 0x16)
+#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)(data))[0] == 'M' && ((char*)(data))[1] == 'R' && ((char*)(data))[2] == 'C' && ((char*)(data))[3] == 'P')
 
 
 #define if_likely(x) __builtin_expect(!!(x), 1)

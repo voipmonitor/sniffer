@@ -424,13 +424,17 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			bool allocWsData;
 			u_char *ws_data = ws.decodeData(&allocWsData);
 			if(ws_data) {
-				cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				if(strncasestr((char*)ws_data, "Call-ID", ws.getDataLength())) {
+					cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				}
 				if(allocWsData) {
 					delete [] ws_data;
 				}
 			}
 		} else {
-			cout << string((char*)data, dataLength) << endl;
+			if(strncasestr((char*)data, "Call-ID", dataLength)) {
+				cout << string((char*)data, dataLength) << endl;
+			}
 		}
 		cout << "------" << endl;
 	}
