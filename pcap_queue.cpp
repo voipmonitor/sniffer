@@ -8050,7 +8050,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			}
 		}
 		if(!blockStore) {
-			if(usleepSumTime > usleepSumTime_lastPush + 100000 &&
+			extern unsigned int opt_push_batch_limit_ms;
+			if(usleepSumTime > usleepSumTime_lastPush + opt_push_batch_limit_ms * 1000 &&
 			   this->packetServerDirection != directionWrite) {
 				this->pushBatchProcessPacket();
 				usleepSumTime_lastPush = usleepSumTime;
@@ -9244,6 +9245,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		push_thread = _tid;
 	}
 	#endif
+	u_int64_t time_us = hp->header->get_time_us();
 	if(hp && hp->block_store && !hp->block_store_locked) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
@@ -9268,10 +9270,13 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		qring_push_index = this->writeit + 1;
 		qring_push_index_count = 0;
 		qring_active_push_item = qring[qring_push_index - 1];
+		extern unsigned int opt_push_batch_limit_ms;
+		qring_active_push_item_limit_us = time_us + opt_push_batch_limit_ms * 1000;
 	}
 	qring_active_push_item->batch[qring_push_index_count] = *hp;
 	++qring_push_index_count;
-	if(qring_push_index_count == qring_active_push_item->max_count) {
+	if(qring_push_index_count == qring_active_push_item->max_count ||
+	   time_us > qring_active_push_item_limit_us) {
 		qring_active_push_item->count = qring_push_index_count;
 		qring_active_push_item->used = 1;
 		if((this->writeit + 1) == this->qring_length) {
@@ -9359,7 +9364,8 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				__asm__ volatile ("pause");
 				++usleepCounter;
 			}
-			if(usleepSumTime > usleepSumTime_lastPush + 100000) {
+			extern unsigned int opt_push_batch_limit_ms;
+			if(usleepSumTime > usleepSumTime_lastPush + opt_push_batch_limit_ms * 1000) {
 				switch(typeOutputThread) {
 				case detach:
 					if(pcapQueueQ_outThread_defrag) {

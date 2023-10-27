@@ -546,7 +546,7 @@ public:
 		packet_data->pflags = pflags;
 		packet_data->hp = *hp;
 		packet_data->handle_index = handle_index;
-		push_packet_detach_x__finish();
+		push_packet_detach_x__finish(hp->header->get_time_us());
 	}
 	inline void push_packet(
 				#if USE_PACKET_NUMBER
@@ -721,9 +721,14 @@ public:
 		}
 		return((pcap_queue_packet_data*)qring_detach_x_active_push_item->batch[qring_push_index_count]);
 	}
-	inline void push_packet_detach_x__finish() {
+	inline void push_packet_detach_x__finish(u_int64_t time_us) {
+		if(qring_push_index_count == 0) {
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_detach_x_active_push_item_limit_us = time_us + opt_push_batch_limit_ms * 1000;
+		}
 		++qring_push_index_count;
-		if(qring_push_index_count == qring_detach_x_active_push_item->max_count) {
+		if(qring_push_index_count == qring_detach_x_active_push_item->max_count ||
+		   time_us > qring_detach_x_active_push_item_limit_us) {
 			#if RQUEUE_SAFE
 				__SYNC_SET_TO_LOCK(qring_detach_x_active_push_item->count, qring_push_index_count, this->_sync_count);
 				__SYNC_SET(qring_detach_x_active_push_item->used);
@@ -779,8 +784,14 @@ public:
 			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackOther;
 		}
+		u_int64_t time_us = packetS->getTimeUS();
+		if(qring_push_index_count == 0) {
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_detach_active_push_item_limit_us = time_us + opt_push_batch_limit_ms * 1000;
+		}
 		++qring_push_index_count;
-		if(qring_push_index_count == qring_detach_active_push_item->max_count) {
+		if(qring_push_index_count == qring_detach_active_push_item->max_count ||
+		   time_us > qring_detach_active_push_item_limit_us) {
 			#if RQUEUE_SAFE
 				__SYNC_SET_TO_LOCK(qring_detach_active_push_item->count, qring_push_index_count, this->_sync_count);
 				__SYNC_SET(qring_detach_active_push_item->used);
@@ -873,6 +884,7 @@ public:
 			this->packetS_destroy(packetS);
 			return;
 		}
+		u_int64_t time_us = packetS->getTimeUS();
 		bool _lock = false;
 		if(opt_t2_boost_direct_rtp &&
 		   typePreProcessThread == ppt_sip && opt_enable_ssl) {
@@ -901,10 +913,13 @@ public:
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
 				qring_active_push_item = qring[qring_push_index - 1];
+				extern unsigned int opt_push_batch_limit_ms;
+				qring_active_push_item_limit_us = time_us + opt_push_batch_limit_ms * 1000;
 			}
 			qring_active_push_item->batch[qring_push_index_count] = packetS;
 			++qring_push_index_count;
-			if(qring_push_index_count == qring_active_push_item->max_count) {
+			if(qring_push_index_count == qring_active_push_item->max_count ||
+			   time_us > qring_active_push_item_limit_us) {
 			        #if RQUEUE_SAFE
 					__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
 					__SYNC_SET(qring_active_push_item->used);
@@ -1612,10 +1627,13 @@ private:
 	unsigned int qring_length;
 	batch_pcap_queue_packet_data **qring_detach_x;
 	batch_pcap_queue_packet_data *qring_detach_x_active_push_item;
+	u_int64_t qring_detach_x_active_push_item_limit_us;
 	batch_packet_s **qring_detach;
 	batch_packet_s *qring_detach_active_push_item;
+	u_int64_t qring_detach_active_push_item_limit_us;
 	batch_packet_s_process **qring;
 	batch_packet_s_process *qring_active_push_item;
+	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;
@@ -1866,6 +1884,7 @@ public:
 			syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 			return;
 		}
+		u_int64_t time_us = packetS->getTimeUS();
 		if(!qring_push_index) {
 			++qringPushCounter;
 			unsigned int usleepCounter = 0;
@@ -1887,10 +1906,13 @@ public:
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
 			qring_active_push_item = this->qring[qring_push_index - 1];
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_active_push_item_limit_us = time_us + opt_push_batch_limit_ms * 1000;
 		}
 		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
-		if(qring_push_index_count == qring_active_push_item->max_count) {
+		if(qring_push_index_count == qring_active_push_item->max_count ||
+		   time_us > qring_active_push_item_limit_us) {
 			#if RQUEUE_SAFE
 				__SYNC_SET_TO_LOCK(qring_active_push_item->count, qring_push_index_count, this->_sync_count);
 				__SYNC_SET(qring_active_push_item->used);
@@ -2019,6 +2041,7 @@ private:
 	unsigned int qring_length;
 	batch_packet_s_process **qring;
 	batch_packet_s_process *qring_active_push_item;
+	u_int64_t qring_active_push_item_limit_us;
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
 	volatile unsigned int readit;

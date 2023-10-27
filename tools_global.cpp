@@ -1836,11 +1836,12 @@ string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve t
 #ifndef CARESRESOLVER
 vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
-	struct addrinfo req, *res;
+	struct addrinfo req, *res, *res_main;
 	memset(&req, 0, sizeof(req));
 	req.ai_family = AF_UNSPEC;
 	req.ai_socktype = SOCK_STREAM;
 	if(getaddrinfo(host, NULL, &req, &res) == 0) {
+		res_main = res;
 		while(res) {
 			if(res->ai_family == AF_INET) {
 				vmIP _ip;
@@ -1876,6 +1877,7 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 			#endif
 			res = res->ai_next;
 		}
+		freeaddrinfo(res_main);
 	}
 	if (ips && ips->size() > 1) {
 		sort_ips_by_type(ips);

@@ -2989,9 +2989,10 @@ void *rtp_read_thread_func(void *arg) {
 					break;
 				}
 				unlock_add_remove_rtp_threads();
+				extern unsigned int opt_push_batch_limit_ms;
 				if(!opt_t2_boost && read_thread->remove_flag &&
 				   (opt_ipaccount || 
-				    (usleepSumTime > usleepSumTime_lastPush + 100000))) {
+				    (usleepSumTime > usleepSumTime_lastPush + opt_push_batch_limit_ms * 1000))) {
 					read_thread->push_batch();
 					usleepSumTime_lastPush = usleepSumTime;
 				}
@@ -10270,7 +10271,8 @@ void *PreProcessPacket::outThreadFunction() {
 			if(this->outThreadState == 1) {
 				break;
 			}
-			if(usleepSumTimeForPushBatch > 500000ull) {
+			extern unsigned int opt_push_batch_limit_ms;
+			if(usleepSumTimeForPushBatch > opt_push_batch_limit_ms * 1000) {
 				switch(this->typePreProcessThread) {
 				case ppt_detach_x:
 					preProcessPacket[ppt_detach]->push_batch();
@@ -11700,7 +11702,8 @@ void *ProcessRtpPacket::outThreadFunction() {
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
 		} else {
-			if(usleepSumTimeForPushBatch > 500000ull && !is_terminating()) {
+			extern unsigned int opt_push_batch_limit_ms;
+			if(usleepSumTimeForPushBatch > opt_push_batch_limit_ms * 1000 && !is_terminating()) {
 				switch(this->type) {
 				case hash:
 					for(int i = 0; i < process_rtp_packets_distribute_threads_use; i++) {

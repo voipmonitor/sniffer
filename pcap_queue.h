@@ -1105,6 +1105,7 @@ private:
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
 	sBatchHP *qring_active_push_item;
+	u_int64_t qring_active_push_item_limit_us;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
