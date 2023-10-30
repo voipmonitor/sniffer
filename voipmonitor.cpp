@@ -424,6 +424,7 @@ unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
+bool use_push_batch_limit_ms = true;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
 unsigned int opt_usleep_force = 0;

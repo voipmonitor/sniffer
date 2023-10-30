@@ -1997,6 +1997,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			last_traffic = speed;
 		}
+		extern bool use_push_batch_limit_ms;
+		extern unsigned int opt_push_batch_limit_ms;
+		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed < 200;
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
 			lastcachedirtransfered = cachedirtransfered;
@@ -9245,8 +9248,8 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		push_thread = _tid;
 	}
 	#endif
-	extern unsigned int opt_push_batch_limit_ms;
-	u_int64_t time_us = opt_push_batch_limit_ms ? hp->header->get_time_us() : 0;
+	extern bool use_push_batch_limit_ms;
+	u_int64_t time_us = use_push_batch_limit_ms ? hp->header->get_time_us() : 0;
 	if(hp && hp->block_store && !hp->block_store_locked) {
 		hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 		hp->block_store_locked = true;
@@ -9271,7 +9274,8 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		qring_push_index = this->writeit + 1;
 		qring_push_index_count = 0;
 		qring_active_push_item = qring[qring_push_index - 1];
-		qring_active_push_item_limit_us = opt_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+		extern unsigned int opt_push_batch_limit_ms;
+		qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 	}
 	qring_active_push_item->batch[qring_push_index_count] = *hp;
 	++qring_push_index_count;

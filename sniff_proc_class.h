@@ -546,8 +546,8 @@ public:
 		packet_data->pflags = pflags;
 		packet_data->hp = *hp;
 		packet_data->handle_index = handle_index;
-		extern unsigned int opt_push_batch_limit_ms;
-		push_packet_detach_x__finish(opt_push_batch_limit_ms ? hp->header->get_time_us() : 0);
+		extern bool use_push_batch_limit_ms;
+		push_packet_detach_x__finish(use_push_batch_limit_ms ? hp->header->get_time_us() : 0);
 	}
 	inline void push_packet(
 				#if USE_PACKET_NUMBER
@@ -723,9 +723,10 @@ public:
 		return((pcap_queue_packet_data*)qring_detach_x_active_push_item->batch[qring_push_index_count]);
 	}
 	inline void push_packet_detach_x__finish(u_int64_t time_us) {
-		extern unsigned int opt_push_batch_limit_ms;
 		if(qring_push_index_count == 0) {
-			qring_detach_x_active_push_item_limit_us = opt_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+			extern bool use_push_batch_limit_ms;
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_detach_x_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 		}
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_detach_x_active_push_item->max_count ||
@@ -785,10 +786,11 @@ public:
 			p[0] = preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
 			p[1] = preProcessPacket[PreProcessPacket::ppt_detach]->stackOther;
 		}
-		extern unsigned int opt_push_batch_limit_ms;
-		u_int64_t time_us = opt_push_batch_limit_ms ? packetS->getTimeUS() : 0;
+		extern bool use_push_batch_limit_ms;
+		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(qring_push_index_count == 0) {
-			qring_detach_active_push_item_limit_us = opt_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_detach_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 		}
 		++qring_push_index_count;
 		if(qring_push_index_count == qring_detach_active_push_item->max_count ||
@@ -885,8 +887,8 @@ public:
 			this->packetS_destroy(packetS);
 			return;
 		}
-		extern unsigned int opt_push_batch_limit_ms;
-		u_int64_t time_us = opt_push_batch_limit_ms ? packetS->getTimeUS() : 0;
+		extern bool use_push_batch_limit_ms;
+		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		bool _lock = false;
 		if(opt_t2_boost_direct_rtp &&
 		   typePreProcessThread == ppt_sip && opt_enable_ssl) {
@@ -915,7 +917,8 @@ public:
 				qring_push_index = this->writeit + 1;
 				qring_push_index_count = 0;
 				qring_active_push_item = qring[qring_push_index - 1];
-				qring_active_push_item_limit_us = opt_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+				extern unsigned int opt_push_batch_limit_ms;
+				qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 			}
 			qring_active_push_item->batch[qring_push_index_count] = packetS;
 			++qring_push_index_count;
@@ -1887,8 +1890,8 @@ public:
 			syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 			return;
 		}
-		extern unsigned int opt_push_batch_limit_ms;
-		u_int64_t time_us = opt_push_batch_limit_ms ? packetS->getTimeUS() : 0;
+		extern bool use_push_batch_limit_ms;
+		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		if(!qring_push_index) {
 			++qringPushCounter;
 			unsigned int usleepCounter = 0;
@@ -1910,7 +1913,8 @@ public:
 			qring_push_index = this->writeit + 1;
 			qring_push_index_count = 0;
 			qring_active_push_item = this->qring[qring_push_index - 1];
-			qring_active_push_item_limit_us = opt_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
+			extern unsigned int opt_push_batch_limit_ms;
+			qring_active_push_item_limit_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 		}
 		qring_active_push_item->batch[qring_push_index_count] = packetS;
 		++qring_push_index_count;
