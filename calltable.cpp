@@ -1180,8 +1180,11 @@ Call::~Call(){
 			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
 		}
 		unlock_add_remove_rtp_threads();
+		extern volatile int process_rtp_packets_distribute_threads_use;
 		extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
-		processRtpPacketDistribute[thread_num_rd]->decCalls();
+		if(process_rtp_packets_distribute_threads_use) {
+			processRtpPacketDistribute[thread_num_rd]->decCalls();
+		}
 	}
 	
 	if(reg.reg_tcp_seq) {
