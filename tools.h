@@ -2193,7 +2193,7 @@ public:
 		ppContentsX() {
 			clean();
 		}
-		void clean() {
+		inline void clean() {
 			memset(&std, 0, sizeof(std));
 			memset(&custom, 0, sizeof(custom));
 			doubleEndLine = NULL;
@@ -2201,14 +2201,14 @@ public:
 			parseDataPtr = NULL;
 			sip = false;
 		}
-		u_int32_t parse(char *data, unsigned long datalen, bool clean) {
+		inline u_int32_t parse(char *data, unsigned long datalen, bool clean) {
 			extern ParsePacket _parse_packet_global_process_packet;
 			if(clean) {
 				this->clean();
 			}
 			return(_parse_packet_global_process_packet.parseData(data, datalen, this));
 		}
-		const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
+		inline const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
 			extern ParsePacket _parse_packet_global_process_packet;
 			while(*nodeName == '\n') {
 				++nodeName;
@@ -2228,7 +2228,7 @@ public:
 			*dataLength = 0;
 			return(NULL);
 		}
-		std::string getContentString(const char *nodeName) {
+		inline std::string getContentString(const char *nodeName) {
 			u_int32_t dataLength = 0;
 			const char *contentData = getContentData(nodeName, &dataLength);
 			if(contentData && dataLength) {
@@ -2236,10 +2236,10 @@ public:
 			}
 			return("");
 		}
-		const char *getParseData() {
+		inline const char *getParseData() {
 			return(parseDataPtr);
 		}
-		bool isSip() {
+		inline bool isSip() {
 			return(sip);
 		}
 		void debugData() {
@@ -2340,6 +2340,7 @@ public:
 	u_int32_t parseData(char *data, unsigned long datalen, ppContentsX *contents);
 	void free();
 	void debugData(ppContentsX *contents);
+	void refreshIfNeed();
 private:
 	std::vector<string> nodesStd;
 	std::vector<string> nodesCheckSip;

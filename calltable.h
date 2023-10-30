@@ -3890,7 +3890,7 @@ public:
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
 	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day);
-	unsigned long getLoadTime() {
+	inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call, int type, tCH_Content *ch_content);

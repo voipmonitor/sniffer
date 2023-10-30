@@ -9766,6 +9766,9 @@ void *PreProcessPacket::outThreadFunction() {
 			}
 			this->next_threads_count_mod = 0;
 		}
+		if(this->typePreProcessThread == ppt_sip) {
+			_parse_packet_global_process_packet.refreshIfNeed();
+		}
 		bool exists_used = false;
 		if(this->typePreProcessThread == ppt_detach_x) {
 			if(this->qring_detach_x[this->readit]->used == 1) {

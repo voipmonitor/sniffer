@@ -937,6 +937,7 @@ public:
 				qring_push_index_count = 0;
 			}
 		} else {
+			extern ParsePacket _parse_packet_global_process_packet;
 			unsigned int usleepCounter = 0;
 			while(this->outThreadState) {
 				USLEEP_C(10, usleepCounter++);
@@ -992,6 +993,7 @@ public:
 			case ppt_detach:
 				break;
 			case ppt_sip:
+				_parse_packet_global_process_packet.refreshIfNeed();
 				this->process_SIP(packetS);
 				break;
 			case ppt_extend:
