@@ -252,7 +252,7 @@ vector<string> explode(const string& str, const char ch) {
 	return result;
 }
 
-string implode(vector<string> vect, const char *sep) {
+string implode(vector<string> &vect, const char *sep) {
 	string rslt;
 	for(unsigned i = 0; i < vect.size(); i++) {
 		if(i) {
@@ -263,7 +263,20 @@ string implode(vector<string> vect, const char *sep) {
 	return(rslt);
 }
 
-string implode(vector<int> vect, const char *sep) {
+string implode(list<string> &items, const char *sep) {
+	string rslt;
+	unsigned i = 0;
+	for(list<string>::iterator iter = items.begin(); iter != items.end(); iter++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += *iter;
+		++i;
+	}
+	return(rslt);
+}
+
+string implode(vector<int> &vect, const char *sep) {
 	string rslt;
 	for(unsigned i = 0; i < vect.size(); i++) {
 		if(i) {
@@ -1565,7 +1578,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 				pcap_pkthdr *headers_alloc[2] = { NULL, NULL };
 				int packets_alloc_counter = 0;
 				if(enable_convert_dlt_sll_to_en10(dlt) && header->caplen > 16) {
-					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen];
+					u_char *packet_mod = new FILE_LINE(0) u_char[header->caplen + 1000]; // allocation reserve due to ticket VS-1508
 					pcap_pkthdr *header_mod = new FILE_LINE(0) pcap_pkthdr;
 					packet_convert_dlt_sll_to_en10(packet, packet_mod, header, header_mod);
 					packet = packet_mod;
@@ -3683,12 +3696,14 @@ ParsePacket::~ParsePacket() {
 }
 	
 void ParsePacket::setStdParse() {
-	if(!root) {
-		root = new FILE_LINE(38006) ppNode;
+	if(root) {
+		delete root;
 	}
-	if(!rootCheckSip) {
-		rootCheckSip = new FILE_LINE(38007) ppNode;
+	root = new FILE_LINE(38006) ppNode;
+	if(rootCheckSip) {
+		delete rootCheckSip;
 	}
+	rootCheckSip = new FILE_LINE(38007) ppNode;
 	addNode("content-length:", typeNode_std, true);
 	addNode("l:", typeNode_std, true);
 	addNode("INVITE ", typeNode_std);
@@ -3899,46 +3914,6 @@ void ParsePacket::addNodeCheckSip(const char *nodeName) {
 }
 
 u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX *contents) {
-	extern CustomHeaders *custom_headers_cdr;
-	extern CustomHeaders *custom_headers_message;
-	extern CustomHeaders *custom_headers_sip_msg;
-	if(!this->timeSync_SIP_HEADERfilter) {
-		this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
-	}
-	bool reload_for_sipheaderfilter = false;
-	bool reload_for_custom_headers_cdr = false;
-	bool reload_for_custom_headers_message = false;
-	bool reload_for_custom_headers_sip_msg = false;
-	if(SIP_HEADERfilter::getLoadTime() > this->timeSync_SIP_HEADERfilter) {
-		reload_for_sipheaderfilter = true;
-	}
-	if(custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) {
-		reload_for_custom_headers_cdr = true;
-	}
-	if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
-		reload_for_custom_headers_message = true;
-	}
-	if(custom_headers_sip_msg && custom_headers_sip_msg->getLoadTime() > this->timeSync_custom_headers_sip_msg) {
-		reload_for_custom_headers_sip_msg = true;
-	}
-	if(reload_for_sipheaderfilter ||
-	   reload_for_custom_headers_cdr ||
-	   reload_for_custom_headers_message ||
-	   reload_for_custom_headers_sip_msg) {
-		this->setStdParse();
-		if(reload_for_sipheaderfilter) {
-			this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
-			if(sverb.capture_filter) {
-				syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
-			}
-		}
-		if(reload_for_custom_headers_cdr) {
-			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
-		}
-		if(reload_for_custom_headers_sip_msg) {
-			 this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
-		}
-	}
 	unsigned long rsltDataLen = datalen;
 	contents->sip = datalen ? isSipContent(data, datalen - 1) : false;
 	unsigned int namelength;
@@ -4010,6 +3985,52 @@ void ParsePacket::free() {
 
 void ParsePacket::debugData(ppContentsX *contents) {
 	root->debugData(contents, this);
+}
+
+void ParsePacket::refreshIfNeed() {
+	extern CustomHeaders *custom_headers_cdr;
+	extern CustomHeaders *custom_headers_message;
+	extern CustomHeaders *custom_headers_sip_msg;
+	if(!this->timeSync_SIP_HEADERfilter) {
+		this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+	}
+	bool reload_for_sipheaderfilter = false;
+	bool reload_for_custom_headers_cdr = false;
+	bool reload_for_custom_headers_message = false;
+	bool reload_for_custom_headers_sip_msg = false;
+	if(SIP_HEADERfilter::getLoadTime() > this->timeSync_SIP_HEADERfilter) {
+		reload_for_sipheaderfilter = true;
+	}
+	if(custom_headers_cdr && custom_headers_cdr->getLoadTime() > this->timeSync_custom_headers_cdr) {
+		reload_for_custom_headers_cdr = true;
+	}
+	if(custom_headers_message && custom_headers_message->getLoadTime() > this->timeSync_custom_headers_message) {
+		reload_for_custom_headers_message = true;
+	}
+	if(custom_headers_sip_msg && custom_headers_sip_msg->getLoadTime() > this->timeSync_custom_headers_sip_msg) {
+		reload_for_custom_headers_sip_msg = true;
+	}
+	if(reload_for_sipheaderfilter ||
+	   reload_for_custom_headers_cdr ||
+	   reload_for_custom_headers_message ||
+	   reload_for_custom_headers_sip_msg) {
+		this->setStdParse();
+		if(reload_for_sipheaderfilter) {
+			this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
+			if(sverb.capture_filter) {
+				syslog(LOG_NOTICE, "SIP_HEADERfilter - reload ParsePacket::parseData after load SIP_HEADERfilter");
+			}
+		}
+		if(reload_for_custom_headers_cdr) {
+			 this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
+		}
+		if(reload_for_custom_headers_message) {
+			 this->timeSync_custom_headers_message = custom_headers_cdr->getLoadTime();
+		}
+		if(reload_for_custom_headers_sip_msg) {
+			 this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
+		}
+	}
 }
 
 
@@ -4114,7 +4135,7 @@ FileZipHandler::FileZipHandler(int bufferLength, int enableAsyncWrite, eTypeComp
 	this->tarBuffer = NULL;
 	this->tarBufferCreated = false;
 	this->enableAsyncWrite = enableAsyncWrite && !is_read_from_file_simple();
-	this->typeCompress = typeCompress;
+	this->typeCompress = checkCompressType(typeCompress);
 	this->dumpHandler = dumpHandler;
 	this->call = call;
 	this->time = call ? call->calltime_s() : 0;
@@ -4640,9 +4661,46 @@ FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
 		return(gzip);
 	case pcap_rtp:
 	case graph_rtp:
+		#if HAVE_LIBLZO
 		return(lzo);
+		#else
+		return(gzip);
+		#endif
 	default:
 		return(gzip);
+	}
+}
+
+FileZipHandler::eTypeCompress FileZipHandler::checkCompressType(eTypeCompress compressType) {
+	switch(compressType) {
+	case lzma:
+		#if HAVE_LIBLZMA
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	case zstd:
+		#if HAVE_LIBZSTD
+		return(compressType);
+		#elif HAVE_LIBLZO
+		return(lzo);
+		#else
+		return(gzip);
+		#endif
+	case lzo:
+		#if HAVE_LIBLZO
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	case lz4:
+		#if HAVE_LIBLZ4
+		return(compressType);
+		#else
+		return(gzip);
+		#endif
+	default:
+		return(compressType);
 	}
 }
 
@@ -6089,7 +6147,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 						}
 						cout << "exit " << *exitCode << endl;
 					} else {
-						usleep(10000);
+						USLEEP(10000);
 					}
 				} else {
 					break;
@@ -6899,23 +6957,43 @@ cThreadMonitor::cThreadMonitor() {
 }
 
 void cThreadMonitor::registerThread(int tid, const char *description) {
-	sThread thread;
-	thread.tid = tid;
-	thread.thread = pthread_self();
-	thread.description = description;
-	memset(thread.pstat, 0, sizeof(thread.pstat));
-	memset(thread.cs, 0, sizeof(thread.cs));
-	thread.orig_scheduler = -1;
-	thread.orig_priority = -1;
+	sThread *thread = new FILE_LINE(0) sThread;
+	thread->tid = tid;
+	thread->thread = pthread_self();
+	thread->description = description;
+	memset(thread->pstat, 0, sizeof(thread->pstat));
+	memset(thread->cs, 0, sizeof(thread->cs));
+	thread->usleep_sum = 0;
+	memset(thread->usleep_sum_stopper, 0, sizeof(thread->usleep_sum_stopper));
+	memset(thread->last_time_us, 0, sizeof(thread->last_time_us));
+	thread->orig_scheduler = -1;
+	thread->orig_priority = -1;
 	tm_lock();
-	threads[thread.tid] = thread;
+	threads[thread->tid] = thread;
 	tm_unlock();
 }
 
 void cThreadMonitor::unregisterThread(int tid) {
 	tm_lock();
-	threads.erase(tid);
+	map<int, sThread*>::iterator iter = threads.find(tid);
+	if(iter != threads.end()) {
+		if(!sverb.usleep_stat) {
+			delete iter->second;
+		}
+		threads.erase(iter);
+	}
 	tm_unlock();
+}
+
+cThreadMonitor::sThread *cThreadMonitor::getSelfThread() {
+	sThread *thread = NULL;
+	tm_lock();
+	map<int, sThread*>::iterator iter = threads.find(get_unix_tid());
+	if(iter != threads.end()) {
+		thread = iter->second;
+	}
+	tm_unlock();
+	return(thread);
 }
 
 void cThreadMonitor::setSchedPolPriority(int indexPstat) {
@@ -6933,13 +7011,13 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	}
 	list<sDescrCpuPerc> descrPerc;
 	tm_lock();
-	map<int, sThread>::iterator iter;
+	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
+		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second.description;
-			dp.tid = iter->second.tid;
+			dp.description = iter->second->description;
+			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
 			descrPerc.push_back(dp);
 		}
@@ -6951,7 +7029,7 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
 		if(iter_dp->cpu_perc >= opt_sched_pol_auto_cpu_limit) {
 			tm_lock();
-			sThread *thread = &threads[iter_dp->tid];
+			sThread *thread = threads[iter_dp->tid];
 			if(thread->orig_scheduler == -1 && thread->orig_priority == -1) {
 				thread->orig_scheduler = sched_getscheduler(thread->tid);
 				sched_param sch_param;
@@ -6975,15 +7053,17 @@ string cThreadMonitor::output(int indexPstat) {
 	list<sDescrCpuPerc> descrPerc;
 	double sum_cpu = 0;
 	tm_lock();
-	map<int, sThread>::iterator iter;
+	map<int, sThread*>::iterator iter;
 	for(iter = threads.begin(); iter != threads.end(); iter++) {
-		double cpu_perc = this->getCpuUsagePerc(&iter->second, indexPstat);
+		double cpu_perc = this->getCpuUsagePerc(iter->second, indexPstat);
 		if(cpu_perc > 0) {
 			sDescrCpuPerc dp;
-			dp.description = iter->second.description;
-			dp.tid = iter->second.tid;
+			dp.description = iter->second->description;
+			dp.tid = iter->second->tid;
 			dp.cpu_perc = cpu_perc;
-			dp.cs = this->getContextSwitches(&iter->second, indexPstat);
+			dp.cs = this->getContextSwitches(iter->second, indexPstat);
+			dp.usleep = this->getUsleep(iter->second, indexPstat);
+			dp.time_us = this->getTimeUS(iter->second, indexPstat);
 			descrPerc.push_back(dp);
 			sum_cpu += cpu_perc;
 		}
@@ -7042,6 +7122,16 @@ string cThreadMonitor::output(int indexPstat) {
 		} else {
 			outStr << setw(10) << " ";
 		}
+		// usleep
+		if(sverb.usleep_stat) {
+			outStr << "  ";
+			if(iter_dp->usleep && iter_dp->time_us) {
+				outStr << "us " << right << setw(5) << setprecision(1) 
+				       << ((double)iter_dp->usleep / iter_dp->time_us * 100) << "% ";
+			} else {
+				outStr << setw(10) << " ";
+			}
+		}
 		//
 		++counter;
 		if(!(counter % 2)) {
@@ -7082,6 +7172,22 @@ context_switches_data cThreadMonitor::getContextSwitches(sThread *thread, int in
 		rslt = get_context_switches(&thread->cs[indexPstat][0], &thread->cs[indexPstat][1]);
 	}
 	return(rslt);
+}
+
+u_int64_t cThreadMonitor::getUsleep(sThread *thread, int indexPstat) {
+	u_int64_t rslt = thread->usleep_sum - thread->usleep_sum_stopper[indexPstat];
+	thread->usleep_sum_stopper[indexPstat] = thread->usleep_sum;
+	return(rslt);
+}
+
+u_int64_t cThreadMonitor::getTimeUS(sThread *thread, int indexPstat) {
+	if(thread->last_time_us[indexPstat][0]) {
+		thread->last_time_us[indexPstat][1] = thread->last_time_us[indexPstat][0];
+	}
+	thread->last_time_us[indexPstat][0] = ::getTimeUS();
+	return(thread->last_time_us[indexPstat][1] ?
+		thread->last_time_us[indexPstat][0] - thread->last_time_us[indexPstat][1] :
+		0);
 }
 
 

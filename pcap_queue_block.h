@@ -343,6 +343,16 @@ struct pcap_block_store {
 		       sizeof(uint32_t) * offsets_size + 
 		       sizeof(*this));
 	}
+	size_t getSizePackets() {
+		if(size_packets) {
+			return(size_packets);
+		}
+		size_t size_headers = count * (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+		if(size > size_headers) {
+			return(size - size_headers);
+		}
+		return(0);
+	}
 	u_char *getSaveBuffer(uint32_t block_counter = 0);
 	void restoreFromSaveBuffer(u_char *saveBuffer);
 	int addRestoreChunk(u_char *buffer, size_t size, size_t *offset = NULL, bool restoreFromStore = false, string *error = NULL);

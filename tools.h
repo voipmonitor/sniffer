@@ -304,8 +304,9 @@ queue<string> listFilesDir(char * dir);
 vector<string> listDir(string path, bool withDir = false);
 vector<string> explode(const char *, const char);
 vector<string> explode(const string&, const char);
-string implode(vector<string> vect, const char *sep);
-string implode(vector<int> vect, const char *sep);
+string implode(vector<string> &vect, const char *sep);
+string implode(list<string> &items, const char *sep);
+string implode(vector<int> &vect, const char *sep);
 string implode(list<u_int64_t> *items, const char *sep);
 int getUpdDifTime(struct timeval *before);
 int getDifTime(struct timeval *before);
@@ -708,6 +709,7 @@ private:
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void setTypeCompressDefault();
 	eTypeCompress getTypeCompressDefault();
+	eTypeCompress checkCompressType(eTypeCompress compressType);
 	void addReadBuffer(char *data, u_int32_t len);
 	void lock_write() {
 		__SYNC_LOCK_USLEEP(_sync_write_lock, 10);
@@ -2191,7 +2193,7 @@ public:
 		ppContentsX() {
 			clean();
 		}
-		void clean() {
+		inline void clean() {
 			memset(&std, 0, sizeof(std));
 			memset(&custom, 0, sizeof(custom));
 			doubleEndLine = NULL;
@@ -2199,14 +2201,14 @@ public:
 			parseDataPtr = NULL;
 			sip = false;
 		}
-		u_int32_t parse(char *data, unsigned long datalen, bool clean) {
+		inline u_int32_t parse(char *data, unsigned long datalen, bool clean) {
 			extern ParsePacket _parse_packet_global_process_packet;
 			if(clean) {
 				this->clean();
 			}
 			return(_parse_packet_global_process_packet.parseData(data, datalen, this));
 		}
-		const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
+		inline const char *getContentData(const char *nodeName, u_int32_t *dataLength) {
 			extern ParsePacket _parse_packet_global_process_packet;
 			while(*nodeName == '\n') {
 				++nodeName;
@@ -2226,7 +2228,7 @@ public:
 			*dataLength = 0;
 			return(NULL);
 		}
-		std::string getContentString(const char *nodeName) {
+		inline std::string getContentString(const char *nodeName) {
 			u_int32_t dataLength = 0;
 			const char *contentData = getContentData(nodeName, &dataLength);
 			if(contentData && dataLength) {
@@ -2234,10 +2236,10 @@ public:
 			}
 			return("");
 		}
-		const char *getParseData() {
+		inline const char *getParseData() {
 			return(parseDataPtr);
 		}
-		bool isSip() {
+		inline bool isSip() {
 			return(sip);
 		}
 		void debugData() {
@@ -2338,6 +2340,7 @@ public:
 	u_int32_t parseData(char *data, unsigned long datalen, ppContentsX *contents);
 	void free();
 	void debugData(ppContentsX *contents);
+	void refreshIfNeed();
 private:
 	std::vector<string> nodesStd;
 	std::vector<string> nodesCheckSip;
@@ -3604,21 +3607,27 @@ public:
 #endif
 
 class cThreadMonitor {
-private:
+public:
 	struct sThread {
 		int tid;
 		pthread_t thread;
 		string description;
 		pstat_data pstat[5][2];
 		context_switches_data cs[5][2];
+		volatile u_int64_t usleep_sum;
+		u_int64_t usleep_sum_stopper[5];
+		u_int64_t last_time_us[2][5];
 		int orig_scheduler;
 		int orig_priority;
 	};
+private:
 	struct sDescrCpuPerc {
 		string description;
 		int tid;
 		double cpu_perc;
 		context_switches_data cs;
+		u_int64_t usleep;
+		u_int64_t time_us;
 		bool operator < (const sDescrCpuPerc& other) const { 
 			return(this->cpu_perc > other.cpu_perc); 
 		}
@@ -3627,11 +3636,14 @@ public:
 	cThreadMonitor();
 	void registerThread(int tid, const char *description);
 	void unregisterThread(int tid);
+	sThread *getSelfThread();
 	void setSchedPolPriority(int indexPstat);
 	string output(int indexPstat);
 private:
 	double getCpuUsagePerc(sThread *thread, int indexPstat);
 	context_switches_data getContextSwitches(sThread *thread, int indexPstat);
+	u_int64_t getUsleep(sThread *thread, int indexPstat);
+	u_int64_t getTimeUS(sThread *thread, int indexPstat);
 	void tm_lock() {
 		while(__sync_lock_test_and_set(&this->_sync, 1));
 	}
@@ -3639,7 +3651,7 @@ private:
 		__sync_lock_release(&this->_sync);
 	}
 private:
-	map<int, sThread> threads;
+	map<int, sThread*> threads;
 	volatile int _sync;
 };
 

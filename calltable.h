@@ -646,6 +646,7 @@ public:
 	
 	ip_port_call_info ip_port[MAX_IP_PER_CALL];
 	int ipport_n;
+	bool logged_max_ip_per_call;
 
 	volatile int end_call_rtp;
 	volatile int end_call_hash_removed;
@@ -868,7 +869,7 @@ public:
 			return(true);
 		}
 		for(unsigned i = 0; i < 3; i++) {
-			usleep(10);
+			USLEEP(10);
 			if(isChunkBuffersCountSyncOK()) {
 				return(true);
 			}
@@ -3078,53 +3079,120 @@ public:
 	 * @brief lock calls_queue structure 
 	 *
 	*/
-	void lock_calls_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&qlock);*/ };
-	void lock_calls_audioqueue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_audioqueue, 1)) USLEEP(10); /*pthread_mutex_lock(&qaudiolock);*/ };
-	void lock_calls_charts_cache_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_charts_cache_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&qaudiolock);*/ };
-	void lock_calls_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_deletequeue, 1)) USLEEP(10); /*pthread_mutex_lock(&qdellock);*/ };
-	void lock_registers_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_queue, 1)) USLEEP(10); };
-	void lock_registers_deletequeue() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) USLEEP(10); };
-	void lock_files_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_files_queue, 1)) USLEEP(10); /*pthread_mutex_lock(&flock);*/ };
-	void lock_calls_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
-	void lock_calls_listMAP_X(u_int8_t ci) { while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(10); };
-	void lock_calls_mergeMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_mergeMAPlock);*/ };
-	void lock_calls_diameter_from_sip_listMAP() { __SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_from_sip_listMAP, 10); };
-	void lock_calls_diameter_to_sip_listMAP() { __SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_to_sip_listMAP, 10); };
+	void lock_calls_queue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_queue, 1)) USLEEP(opt_lock_calls_usleep); 
+		/*pthread_mutex_lock(&qlock);*/
+	}
+	void lock_calls_audioqueue() { 
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_audioqueue, 1)) USLEEP(opt_lock_calls_usleep); 
+		/*pthread_mutex_lock(&qaudiolock);*/
+	}
+	void lock_calls_charts_cache_queue() { 
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_charts_cache_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&qaudiolock);*/
+	}
+	void lock_calls_deletequeue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_deletequeue, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&qdellock);*/
+	}
+	void lock_registers_queue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_registers_queue, 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_registers_deletequeue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_files_queue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_files_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&flock);*/
+	}
+	void lock_calls_listMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&calls_listMAPlock);*/
+	}
+	void lock_calls_listMAP_X(u_int8_t ci) {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_calls_mergeMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&calls_mergeMAPlock);*/
+	}
+	void lock_calls_diameter_from_sip_listMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_from_sip_listMAP, opt_lock_calls_usleep);
+	}
+	void lock_calls_diameter_to_sip_listMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_diameter_to_sip_listMAP, opt_lock_calls_usleep);
+	}
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	void lock_conference_calls_map() { while(__sync_lock_test_and_set(&this->_sync_lock_conference_calls_map, 1)) USLEEP(10); /*pthread_mutex_lock(&calls_listMAPlock);*/ };
+	void lock_conference_calls_map() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_conference_calls_map, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&calls_listMAPlock);*/
+	}
 	#endif
-	void lock_registers_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
-	void lock_skinny_maps() { while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(10); /*pthread_mutex_lock(&registers_listMAPlock);*/ };
-	void lock_ss7_listMAP() { while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) USLEEP(10); }
-	void lock_process_ss7_listmap() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) USLEEP(10); }
-	void lock_process_ss7_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) USLEEP(10); }
-	void lock_hash_modify_queue() { while(__sync_lock_test_and_set(&this->_sync_lock_hash_modify_queue, 1)) USLEEP(10); }
+	void lock_registers_listMAP() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&registers_listMAPlock);*/
+	}
+	void lock_skinny_maps() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(opt_lock_calls_usleep);
+		/*pthread_mutex_lock(&registers_listMAPlock);*/
+	}
+	void lock_ss7_listMAP() { 
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_process_ss7_listmap() { 
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_process_ss7_queue() {
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) USLEEP(opt_lock_calls_usleep);
+	}
+	void lock_hash_modify_queue() { 
+		extern unsigned int opt_lock_calls_usleep;
+		while(__sync_lock_test_and_set(&this->_sync_lock_hash_modify_queue, 1)) USLEEP(opt_lock_calls_usleep);
+	}
 
 	/**
 	 * @brief unlock calls_queue structure 
 	 *
 	*/
-	void unlock_calls_queue() { __sync_lock_release(&this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ };
-	void unlock_calls_audioqueue() { __sync_lock_release(&this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ };
-	void unlock_calls_charts_cache_queue() { __sync_lock_release(&this->_sync_lock_calls_charts_cache_queue); /*pthread_mutex_unlock(&qcharts_chache_lock);*/ };
-	void unlock_calls_deletequeue() { __sync_lock_release(&this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ };
-	void unlock_registers_queue() { __sync_lock_release(&this->_sync_lock_registers_queue); };
-	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); };
-	void unlock_files_queue() { __sync_lock_release(&this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ };
-	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ };
-	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); };
-	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
-	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); };
-	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); };
+	void unlock_calls_queue() { __sync_lock_release(&this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ }
+	void unlock_calls_audioqueue() { __sync_lock_release(&this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ }
+	void unlock_calls_charts_cache_queue() { __sync_lock_release(&this->_sync_lock_calls_charts_cache_queue); /*pthread_mutex_unlock(&qcharts_chache_lock);*/ }
+	void unlock_calls_deletequeue() { __sync_lock_release(&this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ }
+	void unlock_registers_queue() { __sync_lock_release(&this->_sync_lock_registers_queue); }
+	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); }
+	void unlock_files_queue() { __sync_lock_release(&this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
+	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
+	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); }
+	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
+	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
+	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	void unlock_conference_calls_map() { __sync_lock_release(&this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ };
+	void unlock_conference_calls_map() { __sync_lock_release(&this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	#endif
-	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ };
-	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); };
-	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); };
-	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); };
-	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); };
-	void unlock_hash_modify_queue() { __sync_lock_release(&this->_sync_lock_hash_modify_queue); };
+	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ }
+	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); }
+	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); }
+	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); }
+	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); }
+	void unlock_hash_modify_queue() { __sync_lock_release(&this->_sync_lock_hash_modify_queue); }
 
 	/**
 	 * @brief add Call to Calltable
@@ -3636,9 +3704,14 @@ public:
 	string getCallTableJson(char *params, bool *zip = NULL);
 	
 	void lock_calls_hash() {
+		extern unsigned int opt_lock_calls_hash_usleep;
 		unsigned int usleepCounter = 0;
 		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
-			USLEEP_C(10, usleepCounter++);
+			if(opt_lock_calls_hash_usleep) {
+				USLEEP_C(opt_lock_calls_hash_usleep, usleepCounter++);
+			} else {
+				__asm__ volatile ("pause");
+			}
 		}
 	}
 	void unlock_calls_hash() {
@@ -3777,6 +3850,7 @@ public:
 				}
 			}
 		}
+		string dump(const char *prefix);
 		eSpecialType specialType;
 		vector<string> header;
 		vector<string> header_find;
@@ -3816,7 +3890,7 @@ public:
 	}
 	void createMysqlPartitions(class SqlDb *sqlDb);
 	void createMysqlPartitions(class SqlDb *sqlDb, char type, int next_day);
-	unsigned long getLoadTime() {
+	inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
 	string getQueryForSaveUseInfo(Call *call, int type, tCH_Content *ch_content);
@@ -3835,6 +3909,7 @@ public:
 	static string tCH_Content_value(tCH_Content *ch_content, int i1, int i2);
 	unsigned getSize();
 	int getCustomHeaderMaxSize();
+	string dump();
 private:
 	void lock_custom_headers() {
 		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));

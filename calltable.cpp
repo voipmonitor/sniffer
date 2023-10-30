@@ -566,6 +566,7 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	is_sipalg_detected = false;
 	
 	ipport_n = 0;
+	logged_max_ip_per_call = false;
 	
 	end_call_rtp = 0;
 	end_call_hash_removed = 0;
@@ -1179,8 +1180,11 @@ Call::~Call(){
 			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
 		}
 		unlock_add_remove_rtp_threads();
+		extern volatile int process_rtp_packets_distribute_threads_use;
 		extern ProcessRtpPacket *processRtpPacketDistribute[MAX_PROCESS_RTP_PACKET_THREADS];
-		processRtpPacketDistribute[thread_num_rd]->decCalls();
+		if(process_rtp_packets_distribute_threads_use) {
+			processRtpPacketDistribute[thread_num_rd]->decCalls();
+		}
 	}
 	
 	if(reg.reg_tcp_seq) {
@@ -1283,8 +1287,9 @@ int Call::add_ip_port(CallBranch *c_branch,
 		cout << "RTP - add_ip_port: " << addr.getString() << " / " << port << " " << iscaller_description(iscaller) << endl;
 	}
 
-	if(c_branch->ipport_n == MAX_IP_PER_CALL){
+	if(c_branch->ipport_n == MAX_IP_PER_CALL && !c_branch->logged_max_ip_per_call){
 		syslog(LOG_ERR,"callid [%s]: to much INVITEs in this call [%s:%d], raise MAX_IP_PER_CALL and recompile sniffer", call_id.c_str(), addr.getString().c_str(), port.getPort());
+		c_branch->logged_max_ip_per_call = true;
 	}
 	// add ip and port
 	if(c_branch->ipport_n >= MAX_IP_PER_CALL){
@@ -14305,6 +14310,31 @@ void Call::moveDiameterPacketsToPcap(bool enableSave) {
 }
 
 
+string CustomHeaders::sCustomHeaderData::dump(const char *prefix) {
+	ostringstream outStr;
+	outStr << prefix << "specialType: " << specialType << endl
+	       << prefix << "header: " << implode(header, "; ") << endl
+	       << prefix << "header_find: " << implode(header_find, "; ") << endl
+	       << prefix << "doNotAddColon: " << doNotAddColon << endl
+	       << prefix << "db_id: " << db_id << endl
+	       << prefix << "leftBorder: " << leftBorder << endl
+	       << prefix << "rightBorder: " << rightBorder << endl
+	       << prefix << "regularExpression: " << regularExpression << endl
+	       << prefix << "screenPopupField: " << screenPopupField << endl
+	       << prefix << "reqRespDirection: " << reqRespDirection << endl
+	       << prefix << "useLastValue: " << useLastValue << endl
+	       << prefix << "cseqMethod: " << implode(cseqMethod, "q ") << endl;
+	string sipResponseCodeInfoImpl;
+	for(std::vector<pair<int, int> >::iterator iter = sipResponseCodeInfo.begin(); iter != sipResponseCodeInfo.end(); iter++) {
+		if(!sipResponseCodeInfoImpl.empty()) {
+			sipResponseCodeInfoImpl += "; ";
+		}
+		sipResponseCodeInfoImpl += intToString(iter->first) + ":" + intToString(iter->second);
+	}
+	outStr << prefix << "sipResponseCodeInfoImpl: " << sipResponseCodeInfoImpl << endl;
+	return(outStr.str());
+}
+
 CustomHeaders::CustomHeaders(eType type, SqlDb *sqlDb) {
 	this->type = type;
 	switch(type) {
@@ -15107,6 +15137,37 @@ unsigned CustomHeaders::getSize() {
 
 int CustomHeaders::getCustomHeaderMaxSize() {
 	return(max(opt_custom_headers_max_size, 1024));
+}
+
+string CustomHeaders::dump() {
+	ostringstream outStr;
+	outStr << "type: " << type << endl
+	       << "configTable: " << configTable << endl
+	       << "mainTable: " << mainTable << endl
+	       << "nextTablePrefix: " << nextTablePrefix << endl
+	       << "fixedTable: " << fixedTable << endl
+	       << "relIdColumn: " << relIdColumn << endl
+	       << "relTimeColumn: " << relTimeColumn << endl;
+	outStr << "custom_headers: " << endl;
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			outStr << "   " << iter->first << " / " << iter2->first << endl;
+			outStr << iter2->second.dump("      ");
+		}
+	}
+	outStr << "allNextTables: " << implode(allNextTables, "; ") << endl;
+	string calldate_ms_mpl;
+	for(map<int, bool>::iterator iter = calldate_ms.begin(); iter != calldate_ms.end(); iter++) {
+		if(!calldate_ms_mpl.empty()) {
+			calldate_ms_mpl += "; ";
+		}
+		calldate_ms_mpl += intToString(iter->first) + ":" + intToString(iter->second);
+	}
+	outStr << "calldate_ms: " << calldate_ms_mpl << endl;
+	outStr << "loadTime: " << loadTime << endl
+	       << "lastTimeSaveUseInfo: " << lastTimeSaveUseInfo << endl
+	       << "_sync_custom_headers: " << _sync_custom_headers << endl;
+	return(outStr.str());
 }
 
 

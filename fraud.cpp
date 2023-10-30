@@ -1277,10 +1277,14 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 			break;
 		}
 		if(call) {
-			if(callInfo->local_called_number) {
-				call->calls_local.erase(callInfo->callid);
-			} else {
-				call->calls_international.erase(callInfo->callid);
+			for(int i = 0; i < 2; i++) {
+				map<string, u_int64_t> *calls = i == 0 ? 
+								 (callInfo->local_called_number ? &call->calls_local : &call->calls_international) :
+								 (callInfo->local_called_number ? &call->calls_international : &call->calls_local);
+				map<string, u_int64_t>::iterator iter = calls->find(callInfo->callid);
+				if(iter != calls->end()) {
+					calls->erase(iter);
+				}
 			}
 			if(sverb.fraud) {
 				syslog(LOG_NOTICE, "fraud %s / %s / %i rcc -- %s / %s / %zd", 

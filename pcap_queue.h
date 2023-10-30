@@ -308,6 +308,7 @@ protected:
 	virtual string pcapStatString_packets(int statPeriod);
 	virtual double pcapStat_get_compress();
 	virtual double pcapStat_get_speed_mb_s(int statPeriod);
+	virtual double pcapStat_get_speed_out_mb_s(int statPeriod);
 	virtual unsigned long pcapStat_get_bypass_buffer_size_exeeded() { return(0); }
 	virtual double pcapStat_get_disk_buffer_perc() { return(-1); }
 	virtual double pcapStat_get_disk_buffer_mb() { return(-1); }
@@ -1094,7 +1095,7 @@ public:
 		return("");
 	}
 	void preparePstatData(int pstatDataIndex);
-	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
+	double getCpuUsagePerc(int pstatDataIndex, double *percFullQring, bool preparePstatData = true);
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -1104,10 +1105,13 @@ private:
 	unsigned qring_push_index;
 	unsigned qring_push_index_count;
 	sBatchHP *qring_active_push_item;
+	u_int64_t qring_active_push_item_limit_us;
 	volatile unsigned int readit;
 	volatile unsigned int writeit;
 	pthread_t out_thread_handle;
 	pstat_data threadPstatData[2][2];
+	u_int64_t qringPushCounter;
+	u_int64_t qringPushCounter_full;
 	int outThreadId;
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;

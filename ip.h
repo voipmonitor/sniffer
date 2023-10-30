@@ -91,7 +91,11 @@ struct vmIP {
 			}
 		} else {
 		#endif
+			#if defined(__x86_64__)
 			ip.v4.n = atol((char*)data_ip);
+			#else
+			ip.v4.n = atoll((char*)data_ip);
+			#endif
 		#if VM_IPV6
 		}
 		#endif

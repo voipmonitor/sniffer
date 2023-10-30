@@ -66,6 +66,7 @@ typedef std::map<vmIP, vmIP> nat_aliases_t; //!<
 
 extern bool opt_audiocodes;
 extern bool opt_kamailio;
+extern int opt_t2_boost_direct_rtp;
 
 
 /* this is copied from libpcap sll.h header file, which is not included in debian distribution */
@@ -92,9 +93,9 @@ struct sll2_header {
 #define IS_STUN(data, datalen) ((datalen) >= 2 && (htons(*(u_int16_t*)(data)) & 0xC000) == 0x0 && \
 				(*(u_int16_t*)(data) == 0x0100 || *(u_int16_t*)(data) == 0x0101 || *(u_int16_t*)(data) == 0x1101 || \
 				 *(u_int16_t*)(data) == 0x0200 || *(u_int16_t*)(data) == 0x0201 || *(u_int16_t*)(data) == 0x1201))
-#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)data >= 0x14 && *(u_char*)data <= 0x19)
-#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)data == 0x16)
-#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)data)[0] == 'M' && ((char*)data)[1] == 'R' && ((char*)data)[2] == 'C' && ((char*)data)[3] == 'P')
+#define IS_DTLS(data, datalen) ((datalen) >= 1 && *(u_char*)(data) >= 0x14 && *(u_char*)(data) <= 0x19)
+#define IS_DTLS_HANDSHAKE(data, datalen) ((datalen) >= 1 && *(u_char*)(data) == 0x16)
+#define IS_MRCP(data, datalen) ((datalen) >= 4 && ((char*)(data))[0] == 'M' && ((char*)(data))[1] == 'R' && ((char*)(data))[2] == 'C' && ((char*)(data))[3] == 'P')
 
 
 #define if_likely(x) __builtin_expect(!!(x), 1)
@@ -182,13 +183,9 @@ struct packet_s {
 	u_int16_t header_ip_offset;
 	sPacketInfoData pid;
 	packet_flags pflags;
-	#if EXPERIMENTAL_T2_DETACH_X_MOD
-	bool skip : 1;
-	#endif
 	bool need_sip_process : 1;
-	#if EXPERIMENTAL_T2_DIRECT_RTP_PUSH
 	bool is_rtp : 1;
-	#endif
+	bool skip : 1;
 	bool _blockstore_lock : 1;
 	enum e_packet_alloc_type _packet_alloc_type : 2;
 	#if not EXPERIMENTAL_SUPPRESS_AUDIOCODES

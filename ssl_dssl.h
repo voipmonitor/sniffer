@@ -63,7 +63,7 @@ private:
 	static int get_keys(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
 	string get_session_data(struct timeval ts);
 	bool restore_session_data(const char *data);
-	void store_session(class cSslDsslSessions *sessions, struct timeval ts);
+	void store_session(class cSslDsslSessions *sessions, struct timeval ts, bool force = false);
 private:
 	vmIP ips;
 	vmPort ports;
@@ -169,6 +169,7 @@ public:
 	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait = true);
 	void keyErase(u_char *client_random);
 	void keysCleanup();
+	void storeSessions();
 private:
 	cSslDsslSession *addSession(vmIP ips, vmPort ports, string keyfile);
 	NM_PacketDir checkIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);

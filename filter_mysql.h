@@ -302,7 +302,7 @@ public:
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
-	static unsigned long getLoadTime() {
+	static inline unsigned long getLoadTime() {
 		return(loadTime);
 	}
 	static void lock() {

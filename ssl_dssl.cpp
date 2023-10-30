@@ -332,16 +332,20 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 		jsonGetKey(&jsonData, "key_exporter_secret", &session->get_keys_rslt_data.exporter_secret);
 		jsonGetKey(&jsonData, "key_client_traffic_secret_0", &session->get_keys_rslt_data.client_traffic_secret_0);
 		jsonGetKey(&jsonData, "key_server_traffic_secret_0", &session->get_keys_rslt_data.server_traffic_secret_0);
-		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
-		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
+		session->tls_session_server_seq = 
+		session->tls_session_server_seq_saved = atoll(jsonData.getValue("seq_server").c_str());
+		session->tls_session_client_seq = 
+		session->tls_session_client_seq_saved =  atoll(jsonData.getValue("seq_client").c_str());
 		if(!tls_13_generate_keys(session, true)) {
 			return(false);
 		}
 	} else if(session->version == TLS1_2_VERSION && atoi(jsonData.getValue("tls_ws").c_str())) {
 		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
 		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
-		session->tls_session_server_seq = atoll(jsonData.getValue("seq_server").c_str());
-		session->tls_session_client_seq = atoll(jsonData.getValue("seq_client").c_str());
+		session->tls_session_server_seq = 
+		session->tls_session_server_seq_saved = atoll(jsonData.getValue("seq_server").c_str());
+		session->tls_session_client_seq = 
+		session->tls_session_client_seq_saved = atoll(jsonData.getValue("seq_client").c_str());
 		session->tls_session_state = atol(jsonData.getValue("state").c_str());
 		if(!tls_12_generate_keys(session, true)) {
 			return(false);
@@ -369,11 +373,11 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 	return(false);
 }
 
-void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval ts) {
+void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval ts, bool force) {
 	if(opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table &&
 	   this->process_data_counter > 0 &&
 	   this->session->c_dec.version && this->session->s_dec.version &&
-	    (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - (session->version == TLS1_3_VERSION ? 60 : 3600)))) {
+	    (force || (!this->stored_at || this->stored_at < (u_long)(ts.tv_sec - (session->version == TLS1_3_VERSION ? 60 : 3600))))) {
 		string session_data = get_session_data(ts);
 		SqlDb_row session_row_insert;
 		session_row_insert.add(existsColumns.ssl_sessions_id_sensor_is_unsigned && opt_id_sensor < 0 ? 0 : opt_id_sensor, "id_sensor");
@@ -393,6 +397,8 @@ void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval t
 				     sessions->sqlDb->insertOrUpdateQuery(sessions->storeSessionsTableName(), session_row_insert, session_row_update, false, true)),
 				     STORE_PROC_ID_OTHER, 0);
 		this->stored_at = ts.tv_sec;
+		this->session->tls_session_server_seq_saved = this->session->tls_session_server_seq;
+		this->session->tls_session_client_seq_saved = this->session->tls_session_client_seq;
 		sessions->deleteOldSessions(ts);
 	}
 }
@@ -454,6 +460,10 @@ void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_cha
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+	extern int opt_disable_wait_for_ssl_key;
+	if(opt_disable_wait_for_ssl_key && use_wait) {
+		use_wait = false;
+	}
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
@@ -507,6 +517,10 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 }
 
 bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
+	extern int opt_disable_wait_for_ssl_key;
+	if(opt_disable_wait_for_ssl_key && use_wait) {
+		use_wait = false;
+	}
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
 		log_ssl_sessionkey = 
@@ -788,6 +802,11 @@ void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPo
 	map<sStreamId, cSslDsslSession*>::iterator iter_session;
 	iter_session = sessions.find(sid);
 	if(iter_session != sessions.end()) {
+		if(iter_session->second->session->tls_session_server_seq != iter_session->second->session->tls_session_server_seq_saved ||
+		   iter_session->second->session->tls_session_client_seq != iter_session->second->session->tls_session_client_seq_saved) {
+			timeval ts = getTimeval();
+			iter_session->second->store_session(this, ts, true);
+		}
 		if(iter_session->second->get_keys_ok) {
 			keyErase(iter_session->second->session->client_random);
 		}
@@ -874,6 +893,18 @@ void cSslDsslSessions::keyErase(u_char *client_random) {
 
 void cSslDsslSessions::keysCleanup() {
 	this->session_keys.cleanup();
+}
+
+void cSslDsslSessions::storeSessions() {
+	if(opt_ssl_store_sessions && !opt_nocdr) {
+		timeval ts = getTimeval();
+		for(map<sStreamId, cSslDsslSession*>::iterator iter = sessions.begin(); iter != sessions.end(); iter++) {
+			if(iter->second->session->tls_session_server_seq != iter->second->session->tls_session_server_seq_saved ||
+			   iter->second->session->tls_session_client_seq != iter->second->session->tls_session_client_seq_saved) {
+				iter->second->store_session(this, ts, true);
+			}
+		}
+	}
 }
 
 cSslDsslSession *cSslDsslSessions::addSession(vmIP ips, vmPort ports, string keyfile) {
@@ -1065,6 +1096,7 @@ void ssl_dssl_init() {
 void ssl_dssl_clean() {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	if(SslDsslSessions) {
+		SslDsslSessions->storeSessions();
 		delete SslDsslSessions;
 		SslDsslSessions = NULL;
 	}

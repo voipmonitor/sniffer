@@ -1798,7 +1798,7 @@ ssl_decompress_record(SslDecompress* decomp _U_, const guchar* in _U_, guint inl
 
 int
 ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint16 record_version,
-        gboolean ignore_mac_failed,
+        gboolean find_valid_mac, gboolean ignore_mac_failed,
         const guchar *in, guint16 inl, StringInfo *comp_str, StringInfo *out_str, guint *outl)
 {
     guint   pad, worklen, uncomplen, maclen, mac_fraglen = 0;
@@ -1836,7 +1836,7 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 
 	u_int8_t auth_tag_used_seq = FALSE;
 	u_int8_t auth_tag_failed = FALSE;
-        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
+        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, !find_valid_mac && ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
             /* decryption failed */
             // return -1;
 	    if(enable_try_seq && auth_tag_used_seq && auth_tag_failed) {
@@ -1851,17 +1851,21 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 		for(guint64 try_seq = try_seq_from; try_seq <= try_seq_to && !seq_ok; try_seq++) {
 		    if (try_seq != seq_old) {
 			decoder->seq = try_seq;
-			if (tls_decrypt_aead_record(ssl, decoder, ct, record_version, ignore_mac_failed, in, inl, out_str, &worklen, NULL, NULL)) {
+			if (tls_decrypt_aead_record(ssl, decoder, ct, record_version, !find_valid_mac && ignore_mac_failed, in, inl, out_str, &worklen, NULL, NULL)) {
 			    seq_ok = TRUE;
 			}
 		    }
 		}
 		if (!seq_ok) {
 		    decoder->seq = seq_old;
-		    return -1;
+                    if (!ignore_mac_failed) {
+                        return -1;
+                    }
 		}
 	    } else {
-		return -1;
+                if (!ignore_mac_failed) {
+                    return -1;
+                }
 	    }
         }
 
@@ -2150,8 +2154,10 @@ u_int8_t tls_decrypt_record(void* dssl_sess, u_char* data, u_int32_t len,
     guint outl = 0;
     StringInfo comp_str;
     StringInfo out_str;
+    extern bool opt_ssl_find_valid_mac;
     extern bool opt_ssl_ignore_error_invalid_mac;
     u_int8_t rslt_decrypt = ssl_decrypt_record(ssl_ds, is_from_server ? ssl_ds->server : ssl_ds->client, record_type, record_version,
+        opt_ssl_find_valid_mac,
 	opt_ssl_ignore_error_invalid_mac,
         data, len, &comp_str, &out_str, &outl) == 0;
     if(rslt_decrypt && outl <= rslt_max_len) {

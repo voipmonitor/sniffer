@@ -424,13 +424,17 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			bool allocWsData;
 			u_char *ws_data = ws.decodeData(&allocWsData);
 			if(ws_data) {
-				cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				if(strncasestr((char*)ws_data, "Call-ID", ws.getDataLength())) {
+					cout << string((char*)ws_data, ws.getDataLength()) << endl;
+				}
 				if(allocWsData) {
 					delete [] ws_data;
 				}
 			}
 		} else {
-			cout << string((char*)data, dataLength) << endl;
+			if(strncasestr((char*)data, "Call-ID", dataLength)) {
+				cout << string((char*)data, dataLength) << endl;
+			}
 		}
 		cout << "------" << endl;
 	}
@@ -450,7 +454,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		pflags.init();
 		pflags.tcp = 2;
 		pflags.ssl = true;
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+		preProcessPacket[opt_t2_boost_direct_rtp ?
+				  PreProcessPacket::ppt_sip :
+				  PreProcessPacket::ppt_detach]->push_packet(
 			#if USE_PACKET_NUMBER
 			0, 
 			#endif
@@ -474,7 +480,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 		packet_flags pflags;
 		pflags.init();
 		pflags.ssl = true;
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+		preProcessPacket[opt_t2_boost_direct_rtp ?
+				  PreProcessPacket::ppt_sip :
+				  PreProcessPacket::ppt_detach]->push_packet(
 			#if USE_PACKET_NUMBER
 			0,
 			#endif

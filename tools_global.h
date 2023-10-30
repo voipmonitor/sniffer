@@ -149,13 +149,6 @@ inline u_int64_t getTimeMS(unsigned long tv_sec, unsigned long tv_usec) {
     return(tv_sec * 1000ull + tv_usec / 1000);
 }
 
-inline timeval zeroTimeval() {
-	timeval ts;
-	ts.tv_sec = 0;
-	ts.tv_usec = 0;
-	return(ts);
-}
-
 inline bool isSetTimeval(timeval &ts) {
 	return(ts.tv_sec);
 }
@@ -244,6 +237,21 @@ inline u_int64_t getTimeNS() {
     return(time.tv_sec * 1000000000ull + time.tv_nsec);
 }
 
+inline timeval getTimeval() {
+	u_int64_t time_us = getTimeUS();
+	timeval ts;
+	ts.tv_sec = TIME_US_TO_S(time_us);
+	ts.tv_usec = TIME_US_TO_DEC_US(time_us);
+	return(ts);
+}
+
+inline timeval zeroTimeval() {
+	timeval ts;
+	ts.tv_sec = 0;
+	ts.tv_usec = 0;
+	return(ts);
+}
+
 
 #if defined(CLOUD_ROUTER_SERVER) or defined(CLOUD_ROUTER_SSLKEYLOGGER)
 #define USLEEP(us) usleep(us);
@@ -252,8 +260,13 @@ inline u_int64_t getTimeNS() {
 #define USLEEP(us) usleep(us, __FILE__, __LINE__);
 #define USLEEP_C(us, c) usleep(us, c, __FILE__, __LINE__);
 inline unsigned int usleep(unsigned int useconds, unsigned int counter, const char *file, int line) {
+	extern unsigned int opt_usleep_force;
+	if(opt_usleep_force) {
+		useconds = opt_usleep_force;
+	}
  	unsigned int rslt_useconds = useconds;
-	if(useconds < 5000 && counter != (unsigned int)-1) {
+	extern bool opt_usleep_progressive;
+	if(opt_usleep_progressive && useconds < 5000 && counter != (unsigned int)-1) {
 		unsigned int useconds_min = 0;
 		double useconds_multiple_inc = 0.01;
 		extern double last_traffic;
@@ -279,17 +292,23 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 			rslt_useconds = useconds_min;
 		}
 	}
+	extern bool opt_usleep_stats;
 	extern sVerbose sverb;
-	if(sverb.usleep_stats) {
+	if(opt_usleep_stats || sverb.usleep_stat) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
-		usleep_stats_add(rslt_useconds, counter == (unsigned int)-1, file, line);
+		usleep_stats_add(rslt_useconds, !opt_usleep_progressive || counter == (unsigned int)-1, file, line);
 	}
 	usleep(rslt_useconds);
 	return(rslt_useconds);
 }
 inline unsigned int usleep(unsigned int useconds, const char *file, int line) {
+	extern unsigned int opt_usleep_force;
+	if(opt_usleep_force) {
+		useconds = opt_usleep_force;
+	}
+	extern bool opt_usleep_stats;
 	extern sVerbose sverb;
-	if(sverb.usleep_stats) {
+	if(opt_usleep_stats || sverb.usleep_stat) {
 		void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line);
 		usleep_stats_add(useconds, 1, file, line);
 	}

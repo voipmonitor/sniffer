@@ -339,7 +339,7 @@ void cSeparateProcessing::writeThread() {
 			}
 			delete [] (u_char*)buff;
 		} else {
-			usleep(usleep_us);
+			USLEEP(usleep_us);
 		}
 	}
 	closeFifo();
@@ -357,7 +357,7 @@ void cSeparateProcessing::processThread() {
 			}*/
 			processBuff((u_char*)buff);
 		} else {
-			usleep(usleep_us);
+			USLEEP(usleep_us);
 			usleep_sum += usleep_us;
 			if(usleep_sum > 100000) {
 				if(processRtpIpPortData.data.size()) {

@@ -877,24 +877,39 @@ static map<sUsleepStatsId, unsigned int> usleepStats;
 static volatile int usleepStatsSync;
 
 void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int line) {
-	if(sverb.usleep_stats) {
-		__SYNC_LOCK(usleepStatsSync);
+	extern bool opt_usleep_stats;
+	if(opt_usleep_stats) {
+		static __thread unsigned int tid = 0;
+		if(!tid) {
+			tid = get_unix_tid();
+		}
 		sUsleepStatsId id;
 		id.file = file;
 		id.line = line;
-		id.tid = get_unix_tid();
+		id.tid = tid;
 		id.us = fix ? 
 			 useconds :
-			 (useconds < 100 ?
-			   useconds / 10 * 10 :
-			   useconds / 100 * 100);
+			 (useconds < 10 ? useconds :
+			  useconds < 100 ? useconds / 10 * 10 :
+			  useconds / 100 * 100);
+		__SYNC_LOCK(usleepStatsSync);
 		++usleepStats[id];
 		__SYNC_UNLOCK(usleepStatsSync);
+	}
+	if(sverb.usleep_stat) {
+		static __thread cThreadMonitor::sThread *thread = NULL;
+		if(!thread) {
+			thread = threadMonitor.getSelfThread();
+		}
+		if(thread) {
+			thread->usleep_sum += useconds;
+		}
 	}
 }
 
 string usleep_stats(unsigned int useconds_lt) {
-	if(sverb.usleep_stats) {
+	extern bool opt_usleep_stats;
+	if(opt_usleep_stats) {
 		list<sUsleepStatsIdCnt> _usleepStat;
 		__SYNC_LOCK(usleepStatsSync);
 		for(map<sUsleepStatsId, unsigned int>::iterator iter = usleepStats.begin(); iter != usleepStats.end(); iter++) {
@@ -931,11 +946,9 @@ string usleep_stats(unsigned int useconds_lt) {
 }
 
 void usleep_stats_clear() {
-	if(sverb.usleep_stats) {
-		__SYNC_LOCK(usleepStatsSync);
-		usleepStats.clear();
-		__SYNC_UNLOCK(usleepStatsSync);
-	}
+	__SYNC_LOCK(usleepStatsSync);
+	usleepStats.clear();
+	__SYNC_UNLOCK(usleepStatsSync);
 }
 #endif
 
@@ -1823,11 +1836,12 @@ string cResolver::resolve_str(const char *host, unsigned timeout, eTypeResolve t
 #ifndef CARESRESOLVER
 vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
-	struct addrinfo req, *res;
+	struct addrinfo req, *res, *res_main;
 	memset(&req, 0, sizeof(req));
 	req.ai_family = AF_UNSPEC;
 	req.ai_socktype = SOCK_STREAM;
 	if(getaddrinfo(host, NULL, &req, &res) == 0) {
+		res_main = res;
 		while(res) {
 			if(res->ai_family == AF_INET) {
 				vmIP _ip;
@@ -1863,6 +1877,7 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 			#endif
 			res = res->ai_next;
 		}
+		freeaddrinfo(res_main);
 	}
 	if (ips && ips->size() > 1) {
 		sort_ips_by_type(ips);

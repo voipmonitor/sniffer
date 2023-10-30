@@ -408,10 +408,11 @@ int opt_enable_preprocess_packet = -1;
 int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 volatile int process_rtp_packets_distribute_threads_use = 0;
-int opt_pre_process_packets_next_thread = 0;
+int opt_pre_process_packets_next_thread = -1;
 int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
+int opt_pre_process_packets_next_thread_sem_sync = 2;
 int opt_process_rtp_packets_hash_next_thread_sem_sync = 2;
 unsigned int opt_preprocess_packets_qring_length = 2000;
 unsigned int opt_preprocess_packets_qring_item_length = 0;
@@ -422,7 +423,15 @@ unsigned int opt_process_rtp_packets_qring_length = 2000;
 unsigned int opt_process_rtp_packets_qring_item_length = 0;
 unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
-bool opt_process_rtp_packets_qring_force_push = true;
+unsigned int opt_push_batch_limit_ms = 100;
+bool use_push_batch_limit_ms = true;
+bool opt_usleep_stats = false;
+bool opt_usleep_progressive = true;
+unsigned int opt_usleep_force = 0;
+unsigned int opt_lock_calls_hash_usleep = 10;
+unsigned int opt_sip_batch_usleep = 10;
+unsigned int opt_rtp_batch_usleep = 10;
+unsigned int opt_lock_calls_usleep = 10;
 int opt_cleanup_calls_period = 10;
 bool opt_cleanup_calls_period_set = false;
 int opt_destroy_calls_period = 2;
@@ -446,6 +455,7 @@ int opt_enable_ssl = 0;
 unsigned int opt_ssl_link_timeout = 5 * 60;
 bool opt_ssl_ignore_tcp_handshake = true;
 bool opt_ssl_log_errors = false;
+bool opt_ssl_find_valid_mac = true;
 bool opt_ssl_ignore_error_invalid_mac = true;
 bool opt_ssl_ignore_error_bad_finished_digest = true;
 int opt_ssl_tls_12_sessionkey_mode = 1;
@@ -1002,6 +1012,7 @@ int opt_callend = 1; //if true, cdr.called is saved
 bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = true;
+int opt_t2_boost_direct_rtp = false;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
@@ -3877,7 +3888,7 @@ int main(int argc, char *argv[]) {
 		opt_saveRAW = 0;
 		opt_saveWAV = 0;
 		sverb.process_rtp_header = 1;
-		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+		for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		_parse_packet_global_process_packet.setStdParse();
@@ -4709,17 +4720,17 @@ int main_init_read() {
 			}
 		}
 		
-		for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+		for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 		}
 		if(is_enable_packetbuffer()) {
-			for(int i = 0; i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
-				if((i != PreProcessPacket::PreProcessPacket::ppt_pp_register && 
-				    i != PreProcessPacket::PreProcessPacket::ppt_pp_sip_other &&
-				    i != PreProcessPacket::PreProcessPacket::ppt_pp_diameter) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_register && opt_sip_register) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg()) ||
-				   (i == PreProcessPacket::PreProcessPacket::ppt_pp_diameter && opt_enable_diameter)) {
+			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < max(1, min(opt_enable_preprocess_packet, (int)PreProcessPacket::ppt_end_base)); i++) {
+				if((i != PreProcessPacket::ppt_pp_register && 
+				    i != PreProcessPacket::ppt_pp_sip_other &&
+				    i != PreProcessPacket::ppt_pp_diameter) ||
+				   (i == PreProcessPacket::ppt_pp_register && opt_sip_register) ||
+				   (i == PreProcessPacket::ppt_pp_sip_other && is_enable_sip_msg()) ||
+				   (i == PreProcessPacket::ppt_pp_diameter && opt_enable_diameter)) {
 					preProcessPacket[i]->startOutThread();
 				}
 			}
@@ -4729,7 +4740,7 @@ int main_init_read() {
 			bool autoStartCallX = false;
 			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
 			for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
-				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callx, i);
+				preProcessPacketCallX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callx, i);
 				if(autoStartCallX) {
 					preProcessPacketCallX[i]->startOutThread();
 				}
@@ -4740,7 +4751,7 @@ int main_init_read() {
 			if(calltable->enableCallFindX()) {
 				preProcessPacketCallFindX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count];
 				for(int i = 0; i < preProcessPacketCallX_count; i++) {
-					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::PreProcessPacket::ppt_pp_callfindx, i);
+					preProcessPacketCallFindX[i] = new FILE_LINE(0) PreProcessPacket(PreProcessPacket::ppt_pp_callfindx, i);
 				}
 				for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 					preProcessPacketCallX[i]->startOutThread();
@@ -5931,6 +5942,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))
@@ -6183,13 +6195,15 @@ void cConfig::addConfigItems() {
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_hash_next_thread_max", &opt_process_rtp_packets_hash_next_thread_max))
 						->setMaximum(MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("pre_process_packets_next_thread_sem_sync", &opt_pre_process_packets_next_thread_sem_sync))
+						->addValues("2:2"));
 					addConfigItem((new FILE_LINE(42157) cConfigItem_yesno("process_rtp_packets_hash_next_thread_sem_sync", &opt_process_rtp_packets_hash_next_thread_sem_sync))
 						->addValues("2:2"));
 					addConfigItem(new FILE_LINE(42158) cConfigItem_integer("process_rtp_packets_qring_length", &opt_process_rtp_packets_qring_length));
 					addConfigItem(new FILE_LINE(42159) cConfigItem_integer("process_rtp_packets_qring_item_length", &opt_process_rtp_packets_qring_item_length));
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
-					addConfigItem(new FILE_LINE(42161) cConfigItem_yesno("process_rtp_packets_qring_force_push", &opt_process_rtp_packets_qring_force_push));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -6425,6 +6439,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_sessionkey_keep", &ssl_client_random_keep));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_tcp_handshake", &opt_ssl_ignore_tcp_handshake));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_log_errors", &opt_ssl_log_errors));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_find_valid_mac", &opt_ssl_find_valid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_invalid_mac", &opt_ssl_ignore_error_invalid_mac));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_ignore_error_bad_finished_digest", &opt_ssl_ignore_error_bad_finished_digest));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_tls_12_sessionkey_mode", &opt_ssl_tls_12_sessionkey_mode))
@@ -7042,6 +7057,11 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_heap_limit", &opt_sched_pol_auto_heap_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sched_pol_auto_cpu_limit", &opt_sched_pol_auto_cpu_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("use_thread_setname", &opt_use_thread_setname));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("usleep_progressive", &opt_usleep_progressive));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_hash_usleep", &opt_lock_calls_hash_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_batch_usleep", &opt_sip_batch_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("rtp_batch_usleep", &opt_rtp_batch_usleep));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("lock_calls_usleep", &opt_lock_calls_usleep));
 						obsolete();
 						addConfigItem(new FILE_LINE(42466) cConfigItem_yesno("enable_fraud", &opt_enable_fraud));
 						addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_billing", &opt_enable_billing));
@@ -7542,7 +7562,8 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam.substr(0, 25) == "memory_stat_ignore_limit=")
 								sverb.memory_stat_ignore_limit = atoi(verbParam.c_str() + 25);
 	else if(verbParam == "qring_stat")			sverb.qring_stat = 1;
-	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atoi(verbParam.c_str() + 11);
+	else if(verbParam.substr(0, 10) == "qring_full")	sverb.qring_full = atof(verbParam.c_str() + 11);
+	else if(verbParam == "usleep_stat")			sverb.usleep_stat = 1;
 	else if(verbParam == "alloc_stat")			sverb.alloc_stat = 1;
 	else if(verbParam == "qfiles")				sverb.qfiles = 1;
 	else if(verbParam == "query_error")			sverb.query_error = 1;
@@ -7613,7 +7634,6 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "cleanup_calls")			sverb.cleanup_calls = 1;
 	else if(verbParam == "cleanup_calls_log")		sverb.cleanup_calls_log = 1;
 	else if(verbParam == "cleanup_calls_stat")		sverb.cleanup_calls_stat = 1;
-	else if(verbParam == "usleep_stats")			sverb.usleep_stats = 1;
 	else if(verbParam == "charts_cache_only")		sverb.charts_cache_only = 1;
 	else if(verbParam == "charts_cache_filters_eval")	sverb.charts_cache_filters_eval = 1;
 	else if(verbParam == "charts_cache_filters_eval_rslt")	sverb.charts_cache_filters_eval_rslt = 1;
@@ -8289,6 +8309,10 @@ void set_spool_permission() {
 
 void set_context_config() {
  
+	if(opt_t2_boost_direct_rtp) {
+		opt_t2_boost = true;
+	}
+	
 	if(opt_use_dpdk) {
 		opt_t2_boost = true;
 		if(!(useNewCONFIG ? CONFIG.isSet("packetbuffer_block_maxsize") : opt_pcap_queue_block_max_size_set)) {
@@ -8426,7 +8450,7 @@ void set_context_config() {
 			opt_saveGRAPH = 0;
 			opt_saveRAW = 0;
 			opt_saveWAV = 0;
-			for(int i = 0; i < PreProcessPacket::ppt_end_base; i++) {
+			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 				preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 			}
 			_parse_packet_global_process_packet.setStdParse();
@@ -8540,7 +8564,12 @@ void set_context_config() {
 			opt_process_rtp_packets_hash_next_thread = 2;
 		}
 		#endif
-		opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
+		if(!CONFIG.isSet("pre_process_packets_next_thread_sem_sync")) {
+			opt_pre_process_packets_next_thread_sem_sync = 1;
+		}
+		if(!CONFIG.isSet("process_rtp_packets_hash_next_thread_sem_sync")) {
+			opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
+		}
 		if(opt_preprocess_packets_qring_length <= 2000 &&
 		   opt_preprocess_packets_qring_item_length == 0) {
 			opt_preprocess_packets_qring_length = 3;
@@ -11209,6 +11238,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread_max", NULL))) {
 		opt_process_rtp_packets_hash_next_thread_max = min(atoi(value), MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS);
 	}
+	if((value = ini.GetValue("general", "pre_process_packets_next_thread_sem_sync", NULL))) {
+		opt_pre_process_packets_next_thread_sem_sync = atoi(value) == 2 ? 2 :yesno(value);
+	}
 	if((value = ini.GetValue("general", "process_rtp_packets_hash_next_thread_sem_sync", NULL))) {
 		opt_process_rtp_packets_hash_next_thread_sem_sync = atoi(value) == 2 ? 2 :yesno(value);
 	}
@@ -11286,6 +11318,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "ssl_log_errors", NULL))) {
 		opt_ssl_log_errors = yesno(value);
+	}
+	if((value = ini.GetValue("general", "ssl_find_valid_mac", NULL))) {
+		opt_ssl_find_valid_mac = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_ignore_error_invalid_mac", NULL))) {
 		opt_ssl_ignore_error_invalid_mac = yesno(value);
@@ -11961,8 +11996,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "process_rtp_packets_qring_push_usleep", NULL))) {
 		opt_process_rtp_packets_qring_push_usleep = atol(value);
 	}
-	if((value = ini.GetValue("general", "process_rtp_packets_qring_force_push", NULL))) {
-		opt_process_rtp_packets_qring_force_push = yesno(value);
+	if((value = ini.GetValue("general", "push_batch_limit_ms", NULL))) {
+		opt_push_batch_limit_ms = atol(value);
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);
