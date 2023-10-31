@@ -3617,13 +3617,8 @@ void ListCheckString_wb::addBlack(const char *checkString,
 
 
 ParsePacket::ppNode::ppNode() {
-	for(int i = 0; i < 256; i++) {
-		nodes[i] = 0;
-	}
-	leaf = false;
-	typeNode = typeNode_std;
-	nodeIndex = 0;
-	isContentLength = false;
+	init_node();
+	init_subnodes();
 }
 
 ParsePacket::ppNode::~ppNode() {
@@ -3658,7 +3653,42 @@ void ParsePacket::ppNode::addNode(const char *nodeName, eTypeNode typeNode, int 
 		this->isContentLength = isContentLength;
 	}
 }
-		
+
+void ParsePacket::ppNode::removeNode(const char *nodeName) {
+	while(*nodeName == '\n') {
+		 ++nodeName;
+	}
+	if(*nodeName) {
+		unsigned char nodeChar = (unsigned char)*nodeName;
+		if(nodeChar >= 'A' && nodeChar <= 'Z') {
+			nodeChar -= 'A' - 'a';
+		}
+		ppNode *node = (ppNode*)nodes[nodeChar];
+		if(!node) {
+			return;
+		}
+		node->removeNode(nodeName + 1);
+	} else {
+		init_node();
+	}
+}
+
+void ParsePacket::ppNode::init_node() {
+	for(int i = 0; i < 256; i++) {
+		nodes[i] = 0;
+	}
+	leaf = false;
+	typeNode = typeNode_std;
+	nodeIndex = 0;
+	isContentLength = false;
+}
+
+void ParsePacket::ppNode::init_subnodes() {
+	for(int i = 0; i < 256; i++) {
+		nodes[i] = 0;
+	}
+}
+
 void ParsePacket::ppNode::debugData(ppContentsX *contents, ParsePacket *parsePacket) {
 	if(leaf) {
 		if(typeNode == typeNode_std && contents->std[nodeIndex].length > 0) {
@@ -3696,74 +3726,72 @@ ParsePacket::~ParsePacket() {
 }
 	
 void ParsePacket::setStdParse() {
-	if(root) {
-		delete root;
+	if(!root) {
+		root = new FILE_LINE(38006) ppNode;
 	}
-	root = new FILE_LINE(38006) ppNode;
-	if(rootCheckSip) {
-		delete rootCheckSip;
+	if(!rootCheckSip) {
+		rootCheckSip = new FILE_LINE(38007) ppNode;
 	}
-	rootCheckSip = new FILE_LINE(38007) ppNode;
-	addNode("content-length:", typeNode_std, true);
-	addNode("l:", typeNode_std, true);
-	addNode("INVITE ", typeNode_std);
-	addNode("MESSAGE ", typeNode_std);
-	addNode("call-id:", typeNode_std);
-	addNode("i:", typeNode_std);
-	addNode("from:", typeNode_std);
-	addNode("f:", typeNode_std);
-	addNode("to:", typeNode_std);
-	addNode("t:", typeNode_std);
-	addNode("contact:", typeNode_std);
-	addNode("m:", typeNode_std);
-	addNode("remote-party-id:", typeNode_std);
+	addNode("content-length:", true);
+	addNode("l:", true);
+	addNode("INVITE ");
+	addNode("MESSAGE ");
+	addNode("call-id:");
+	addNode("i:");
+	addNode("from:");
+	addNode("f:");
+	addNode("to:");
+	addNode("t:");
+	addNode("contact:");
+	addNode("m:");
+	addNode("remote-party-id:");
 	extern int opt_passertedidentity;
 	if(opt_passertedidentity) {
-		addNode("P-Asserted-Identity:", typeNode_std);
+		addNode("P-Asserted-Identity:");
 	}
 	extern int opt_ppreferredidentity;
 	if(opt_ppreferredidentity) {
-		addNode("P-Preferred-Identity:", typeNode_std);
+		addNode("P-Preferred-Identity:");
 	}
-	addNode("geoposition:", typeNode_std);
-	addNode("user-agent:", typeNode_std);
-	addNode("authorization:", typeNode_std);
-	addNode("proxy-authorization:", typeNode_std);
-	addNode("expires:", typeNode_std);
-	addNode("x-voipmonitor-norecord:", typeNode_std);
-	addNode("signal:", typeNode_std);
-	addNode("signal=", typeNode_std);
-	addNode("x-voipmonitor-custom1:", typeNode_std);
-	addNode("content-type:", typeNode_std);
-	addNode("c:", typeNode_std);
-	addNode("cseq:", typeNode_std);
-	addNode("supported:", typeNode_std);
-	addNode("proxy-authenticate:", typeNode_std);
-	addNode("via:", typeNode_std);
-	addNode("v:", typeNode_std);
+	addNode("geoposition:");
+	addNode("user-agent:");
+	addNode("authorization:");
+	addNode("proxy-authorization:");
+	addNode("expires:");
+	addNode("x-voipmonitor-norecord:");
+	addNode("signal:");
+	addNode("signal=");
+	addNode("x-voipmonitor-custom1:");
+	addNode("content-type:");
+	addNode("c:");
+	addNode("cseq:");
+	addNode("supported:");
+	addNode("proxy-authenticate:");
+	addNode("via:");
+	addNode("v:");
 	extern sExistsColumns existsColumns;
 	if(existsColumns.cdr_reason) {
-		addNode("reason:", typeNode_std);
+		addNode("reason:");
 	}
-	addNode("m=audio ", typeNode_std);
-	addNode("a=rtpmap:", typeNode_std);
-	addNode("o=", typeNode_std);
-	addNode("c=IN IP4 ", typeNode_std);
-	addNode("expires=", typeNode_std);
-	addNode("username=\"", typeNode_std);
-	addNode("realm=\"", typeNode_std);
+	addNode("m=audio ");
+	addNode("a=rtpmap:");
+	addNode("o=");
+	addNode("c=IN IP4 ");
+	addNode("expires=");
+	addNode("username=\"");
+	addNode("realm=\"");
 	
-	addNode("CallID:", typeNode_std);
-	addNode("LocalAddr:", typeNode_std);
-	addNode("RemoteAddr:", typeNode_std);
-	addNode("QualityEst:", typeNode_std);
-	addNode("PacketLoss:", typeNode_std);
+	addNode("CallID:");
+	addNode("LocalAddr:");
+	addNode("RemoteAddr:");
+	addNode("QualityEst:");
+	addNode("PacketLoss:");
 	
 	extern char opt_call_id_alternative[256];
 	extern vector<string> opt_call_id_alternative_v;
 	if(opt_call_id_alternative[0] && opt_call_id_alternative_v.size()) {
 		for(unsigned i = 0; i < opt_call_id_alternative_v.size(); i++) {
-			addNode(opt_call_id_alternative_v[i].c_str(), typeNode_std);
+			addNode(opt_call_id_alternative_v[i].c_str());
 		}
 	}
 	
@@ -3773,7 +3801,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str(), typeNode_std);
+		addNode(findHeader.c_str());
 	}
 	
 	extern char opt_match_header[128];
@@ -3782,7 +3810,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str(), typeNode_std);
+		addNode(findHeader.c_str());
 	}
 	
 	extern char opt_callidmerge_header[128];
@@ -3791,7 +3819,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str(), typeNode_std);
+		addNode(findHeader.c_str());
 	}
 	
 	extern char opt_energylevelheader[128];
@@ -3800,7 +3828,7 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str(), typeNode_std);
+		addNode(findHeader.c_str());
 	}
 
 	extern char opt_silenceheader[128];
@@ -3809,30 +3837,30 @@ void ParsePacket::setStdParse() {
 		if(findHeader[findHeader.length() - 1] != ':') {
 			findHeader.append(":");
 		}
-		addNode(findHeader.c_str(), typeNode_std);
+		addNode(findHeader.c_str());
 	}
 	
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
 	extern CustomHeaders *custom_headers_sip_msg;
 	if(custom_headers_cdr) {
-		custom_headers_cdr->addToStdParse(this);
+		custom_headers_cdr->prepareCustomNodes(this);
 		this->timeSync_custom_headers_cdr = custom_headers_cdr->getLoadTime();
 	}
 	if(custom_headers_message) {
-		custom_headers_message->addToStdParse(this);
+		custom_headers_message->prepareCustomNodes(this);
 		this->timeSync_custom_headers_message = custom_headers_message->getLoadTime();
 	}
 	if(custom_headers_sip_msg) {
-		custom_headers_sip_msg->addToStdParse(this);
+		custom_headers_sip_msg->prepareCustomNodes(this);
 		this->timeSync_custom_headers_sip_msg = custom_headers_sip_msg->getLoadTime();
 	}
 	
 	extern vmIP opt_kamailio_dstip;
 	if(opt_kamailio_dstip.isSet()) {
-		addNode("X-Siptrace-Fromip:", typeNode_std);
-		addNode("X-Siptrace-Toip:", typeNode_std);
-		addNode("X-Siptrace-Time:", typeNode_std);
+		addNode("X-Siptrace-Fromip:");
+		addNode("X-Siptrace-Toip:");
+		addNode("X-Siptrace-Time:");
 	}
 	
 	/* obsolete
@@ -3870,37 +3898,125 @@ void ParsePacket::setStdParse() {
 	addNodeCheckSip("MESSAGE");
 	addNodeCheckSip("UPDATE");
 	
-	SIP_HEADERfilter::addNodes(this);
+	SIP_HEADERfilter::prepareCustomNodes(this);
 	this->timeSync_SIP_HEADERfilter = SIP_HEADERfilter::getLoadTime();
 	
 	extern bool opt_conference_processing;
 	if(opt_conference_processing) {
-		addNode("event:", typeNode_std);
-		addNode("subscription-state:", typeNode_std);
-		addNode("referred-by:", typeNode_std);
+		addNode("event:");
+		addNode("subscription-state:");
+		addNode("referred-by:");
+	}
+	
+	applyCustomNodes();
+}
+
+void ParsePacket::clearNodes() {
+	nodesStd.clear();
+	nodesCheckSip.clear();
+	nodesCustom.clear();
+	if(root) {
+		delete root;
+		root = NULL;
+	}
+	if(rootCheckSip) {
+		delete rootCheckSip;
+		rootCheckSip = NULL;
 	}
 }
 
-void ParsePacket::addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength) {
-	std::vector<string> *listNodes = typeNode == typeNode_std ? &nodesStd :
-					 typeNode == typeNode_custom ? &nodesCustom : NULL;
-	if(!listNodes) {
-		return;
-	}
+void ParsePacket::addNode(const char *nodeName, bool isContentLength) {
 	string nodeNameUpper = string(*nodeName == '\n' ? nodeName + 1 : nodeName);
 	std::transform(nodeNameUpper.begin(), nodeNameUpper.end(), nodeNameUpper.begin(), ::toupper);
 	if(std::find(nodesStd.begin(), nodesStd.end(), nodeNameUpper) == nodesStd.end() &&
 	   std::find(nodesCustom.begin(), nodesCustom.end(), nodeNameUpper) == nodesCustom.end()) {
-		if(listNodes->size() < (typeNode == typeNode_std ? ParsePacket_std_max : ParsePacket_custom_max)) {
-			listNodes->push_back(nodeNameUpper);
+		if(nodesStd.size() < ParsePacket_std_max) {
 			if(!root) {
 				root = new FILE_LINE(38008) ppNode;
 			}
-			root->addNode(nodeName, typeNode, listNodes->size() - 1, isContentLength);
+			nodesStd.push_back(nodeNameUpper);
+			root->addNode(nodeName, typeNode_std, nodesStd.size() - 1, isContentLength);
 		} else {
 			syslog(LOG_WARNING, "too much sip nodes for ParsePacket");
 		}
 	}
+}
+
+void ParsePacket::addCustomNode(const char *nodeName) {
+	string nodeNameUpper = string(*nodeName == '\n' ? nodeName + 1 : nodeName);
+	std::transform(nodeNameUpper.begin(), nodeNameUpper.end(), nodeNameUpper.begin(), ::toupper);
+	if(std::find(nodesStd.begin(), nodesStd.end(), nodeNameUpper) == nodesStd.end() &&
+	   std::find(nodesCustom.begin(), nodesCustom.end(), nodeNameUpper) == nodesCustom.end()) {
+		int indexFreeNode = -1;
+		int countNodes = 0;
+		for(unsigned i = 0; i < nodesCustom.size(); i++) {
+			if(!nodesCustom[i].empty()) {
+				++countNodes;
+			} else if(indexFreeNode < 0) {
+				indexFreeNode = i;
+			}
+		}
+		if(countNodes < ParsePacket_custom_max) {
+			if(!root) {
+				root = new FILE_LINE(38008) ppNode;
+			}
+			if(indexFreeNode >= 0) {
+				nodesCustom[indexFreeNode] = nodeNameUpper;
+			} else {
+				nodesCustom.push_back(nodeNameUpper);
+				indexFreeNode = nodesCustom.size() - 1;
+			}
+			root->addNode(nodeName, typeNode_custom, indexFreeNode, false);
+		} else {
+			syslog(LOG_WARNING, "too much sip custom nodes for ParsePacket");
+		}
+	}
+}
+
+void ParsePacket::prepareCustomNode(const char *nodeName) {
+	string nodeNameUpper = string(*nodeName == '\n' ? nodeName + 1 : nodeName);
+	std::transform(nodeNameUpper.begin(), nodeNameUpper.end(), nodeNameUpper.begin(), ::toupper);
+	if(std::find(nodesCustom_prepare.begin(), nodesCustom_prepare.end(), nodeNameUpper) == nodesCustom_prepare.end()) {
+		nodesCustom_prepare.push_back(nodeNameUpper);
+	}
+}
+
+void ParsePacket::applyCustomNodes() {
+	vector<string> removeNodes;
+	for(unsigned i = 0; i < nodesCustom.size(); i++) {
+		if(std::find(nodesCustom_prepare.begin(), nodesCustom_prepare.end(), nodesCustom[i]) == nodesCustom_prepare.end()) {
+			removeNodes.push_back(nodesCustom[i]);
+		}
+	}
+	for(unsigned i = 0; i < removeNodes.size(); i++) {
+		removeCustomNode(removeNodes[i].c_str());
+	}
+	for(unsigned i = 0; i < nodesCustom_prepare.size(); i++) {
+		if(std::find(nodesCustom.begin(), nodesCustom.end(), nodesCustom_prepare[i]) == nodesCustom.end()) {
+			addCustomNode(nodesCustom_prepare[i].c_str());
+		}
+	}
+	nodesCustom_prepare.clear();
+}
+
+void ParsePacket::removeCustomNode(const char *nodeName) {
+	if(!root) {
+		return;
+	}
+	string nodeNameUpper = string(*nodeName == '\n' ? nodeName + 1 : nodeName);
+	std::transform(nodeNameUpper.begin(), nodeNameUpper.end(), nodeNameUpper.begin(), ::toupper);
+	int indexInListNodes = -1;
+	for(unsigned i = 0; i < nodesCustom.size(); i++) {
+		if(nodesCustom[i] == nodeNameUpper) {
+			indexInListNodes = i;
+			break;
+		}
+	}
+	if(indexInListNodes < 0) {
+		return;
+	}
+	root->removeNode(nodeNameUpper.c_str());
+	nodesCustom[indexInListNodes] = "";
 }
 
 void ParsePacket::addNodeCheckSip(const char *nodeName) {

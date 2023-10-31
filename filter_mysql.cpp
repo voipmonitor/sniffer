@@ -1040,9 +1040,9 @@ void SIP_HEADERfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-void SIP_HEADERfilter::_addNodes(ParsePacket *parsePacket) {
+void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
 	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
-		parsePacket->addNode((it_header->first + ":").c_str(), ParsePacket::typeNode_custom);
+		parsePacket->prepareCustomNode((it_header->first + ":").c_str());
 	}
 }
 
@@ -1056,13 +1056,13 @@ int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, vo
 	return(rslt);
 }
 
-void SIP_HEADERfilter::addNodes(ParsePacket *parsePacket) {
+void SIP_HEADERfilter::prepareCustomNodes(ParsePacket *parsePacket) {
 	if(reload_do) {
 		applyReload();
 	}
 	lock();
 	if(filter_active) {
-		filter_active->_addNodes(parsePacket);
+		filter_active->_prepareCustomNodes(parsePacket);
 	}
 	unlock();
 }

@@ -2257,6 +2257,7 @@ public:
 		ppNode();
 		~ppNode();
 		void addNode(const char *nodeName, eTypeNode typeNode, int nodeIndex, bool isContentLength);
+		void removeNode(const char *nodeName);
 		ppContentItemX *getContent(const char *nodeName, ppContentsX *contents, ppNode **node_rslt, u_int32_t *namelength_rslt = NULL, 
 					   u_int32_t namelength = 0, u_int32_t namelength_limit = UINT_MAX) {
 			if(!leaf) {
@@ -2308,6 +2309,8 @@ public:
 			return(typeNode == typeNode_std ? &contents->std[this->nodeIndex] :
 			       typeNode == typeNode_custom ? &contents->custom[this->nodeIndex] : NULL);
 		}
+		void init_node();
+		void init_subnodes();
 		void debugData(ppContentsX *contents, ParsePacket *parsePacket);
 		volatile ppNode *nodes[256];
 		bool leaf;
@@ -2319,7 +2322,12 @@ public:
 	ParsePacket();
 	~ParsePacket();
 	void setStdParse();
-	void addNode(const char *nodeName, eTypeNode typeNode, bool isContentLength = false);
+	void clearNodes();
+	void addNode(const char *nodeName, bool isContentLength = false);
+	void addCustomNode(const char *nodeName);
+	void prepareCustomNode(const char *nodeName);
+	void applyCustomNodes();
+	void removeCustomNode(const char *nodeName);
 	void addNodeCheckSip(const char *nodeName);
 	ppNode *getNode(const char *data, u_int32_t datalength, u_int32_t *namelength_rslt) {
 		ppNode *node;
@@ -2345,6 +2353,7 @@ private:
 	std::vector<string> nodesStd;
 	std::vector<string> nodesCheckSip;
 	std::vector<string> nodesCustom;
+	std::vector<string> nodesCustom_prepare;
 	ppNode *root;
 	ppNode *rootCheckSip;
 	unsigned long timeSync_SIP_HEADERfilter;

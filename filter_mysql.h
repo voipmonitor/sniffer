@@ -295,9 +295,9 @@ public:
 	void loadFile(u_int32_t *global_flags);
 	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
-	void _addNodes(ParsePacket *parsePacket);
+	void _prepareCustomNodes(ParsePacket *parsePacket);
 	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
-	static void addNodes(ParsePacket *parsePacket);
+	static void prepareCustomNodes(ParsePacket *parsePacket);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);

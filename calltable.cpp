@@ -14515,7 +14515,7 @@ void CustomHeaders::refresh(SqlDb *sqlDb, bool enableCreatePartitions) {
 	unlock_custom_headers();
 }
 
-void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
+void CustomHeaders::prepareCustomNodes(ParsePacket *parsePacket) {
 	lock_custom_headers();
 	map<int, map<int, sCustomHeaderData> >::iterator iter;
 	for(iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
@@ -14523,7 +14523,7 @@ void CustomHeaders::addToStdParse(ParsePacket *parsePacket) {
 		for(iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
 			for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
 				if(iter2->second.header_find[i].length()) {
-					parsePacket->addNode(iter2->second.header_find[i].c_str(), ParsePacket::typeNode_custom);
+					parsePacket->prepareCustomNode(iter2->second.header_find[i].c_str());
 				}
 			}
 		}

@@ -4571,6 +4571,7 @@ int main_init_read() {
 
 	cFilters::loadActive(sqlDbInit);
 
+	_parse_packet_global_process_packet.clearNodes();
 	_parse_packet_global_process_packet.setStdParse();
 
 	if(is_enable_sip_msg()) {
