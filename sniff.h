@@ -1115,6 +1115,7 @@ public:
 			count = 0;
 		}
 		unsigned count;
+		u_int64_t limit_time_us;
 	};
 public:
 	rtp_read_thread()  {
@@ -1153,8 +1154,11 @@ public:
 			packet->blockstore_addflag(threadNum /*pb lock flag*/);
 			packet->blockstore_addflag(threadIndex /*pb lock flag*/);
 			
+			extern bool use_push_batch_limit_ms;
+			u_int64_t time_us = use_push_batch_limit_ms ? packet->getTimeUS() : 0;
 			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
-			if(thread_buffer->count == thread_buffer->max_count) {
+			if(thread_buffer->count == thread_buffer->max_count ||
+			   time_us > thread_buffer->limit_time_us) {
 				while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
 				packet->blockstore_addflag(62 /*pb lock flag*/);
 
@@ -1195,6 +1199,10 @@ public:
 				
 				thread_buffer->count = 0;
 				__sync_lock_release(&this->push_lock_sync);
+			}
+			if(thread_buffer->count == 0) {
+				extern unsigned int opt_push_batch_limit_ms;
+				thread_buffer->limit_time_us = use_push_batch_limit_ms ? time_us + opt_push_batch_limit_ms * 1000 : 0;
 			}
 			rtp_packet_pcap_queue *rtpp_pq = &thread_buffer->batch[thread_buffer->count];
 			rtpp_pq->c_branch = c_branch;

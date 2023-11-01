@@ -1002,8 +1002,8 @@ int num_threads_max = 0;
 volatile int num_threads_active = 0;
 unsigned int rtpthreadbuffer = 20;	// default 20MB
 unsigned int rtp_qring_length = 0;
-unsigned int rtp_qring_usleep = 100;
-unsigned int rtp_qring_batch_length = 10;
+unsigned int rtp_qring_usleep = 10;
+unsigned int rtp_qring_batch_length = 1000;
 unsigned int gthread_num = 0;
 
 int opt_pcapdump = 0;
