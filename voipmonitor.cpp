@@ -389,6 +389,7 @@ unsigned int opt_pb_read_from_file_max_packets = 0;
 bool opt_continue_after_read = false;
 bool opt_suppress_cleanup_after_read = false;
 bool opt_nonstop_read = false;
+bool opt_unlimited_read = false;
 bool opt_nonstop_read_quick = false;
 int opt_time_to_terminate = 0;
 bool opt_receiver_check_id_sensor = true;
@@ -425,6 +426,8 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
 bool use_push_batch_limit_ms = true;
+unsigned int opt_huge_batch_length = 40000;
+bool huge_batch_need = false;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
 unsigned int opt_usleep_force = 0;
@@ -6205,6 +6208,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("huge_batch_length", &opt_huge_batch_length));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -7413,6 +7417,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"time-to-terminate", 1, 0, _param_time_to_terminate},
 	    {"continue-after-read", 0, 0, _param_continue_after_read},
 	    {"suppress-cleanup-after-read", 0, 0, _param_suppress_cleanup_after_read},
+	    {"unlimited-read", 0, 0, _param_unlimited_read},
 	    {"nonstop-read", 0, 0, _param_nonstop_read},
 	    {"nonstop-read-quick", 0, 0, _param_nonstop_read_quick},
 	    {"diff-days", 1, 0, _param_diff_days},
@@ -7943,6 +7948,9 @@ void get_command_line_arguments() {
 				break;
 			case _param_suppress_cleanup_after_read:
 				opt_suppress_cleanup_after_read = true;
+				break;
+			case _param_unlimited_read:
+				opt_unlimited_read = true;
 				break;
 			case _param_nonstop_read:
 				opt_nonstop_read = true;
@@ -11999,6 +12007,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "push_batch_limit_ms", NULL))) {
 		opt_push_batch_limit_ms = atol(value);
+	}
+	if((value = ini.GetValue("general", "huge_batch_length", NULL))) {
+		opt_huge_batch_length = atol(value);
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);

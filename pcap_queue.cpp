@@ -138,6 +138,7 @@ extern unsigned int opt_pb_read_from_file_max_packets;
 extern bool opt_continue_after_read;
 extern bool opt_suppress_cleanup_after_read;
 extern bool opt_nonstop_read;
+extern bool opt_unlimited_read;
 extern bool opt_nonstop_read_quick;
 extern int opt_time_to_terminate;
 extern char opt_scanpcapdir[2048];
@@ -2000,6 +2001,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		extern bool use_push_batch_limit_ms;
 		extern unsigned int opt_push_batch_limit_ms;
 		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed < 200;
+		extern bool huge_batch_need;
+		huge_batch_need = opt_t2_boost && speed > 1000;
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
 			lastcachedirtransfered = cachedirtransfered;
@@ -3886,7 +3889,7 @@ inline int PcapQueue_readFromInterface_base::pcap_next_ex_iface(pcap_t *pcapHand
 				}
 			}
 			this->lastPacketTimeUS = packetTime;
-		} else if(!opt_nonstop_read_quick && heap_pb_used_perc > 5) {
+		} else if(!opt_unlimited_read && !opt_nonstop_read_quick && heap_pb_used_perc > 5) {
 			USLEEP(50);
 		}
 		if(opt_pb_read_from_file_max_packets && packets_counter > opt_pb_read_from_file_max_packets) {

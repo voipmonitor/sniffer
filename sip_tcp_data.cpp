@@ -216,16 +216,28 @@ void SipTcpData::processData(vmIP ip_src, vmIP ip_dst,
 					packet_flags pflags;
 					pflags.init();
 					pflags.tcp = 2;
-					preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-							#if USE_PACKET_NUMBER
-							0, 
-							#endif
-							_ip_src, _port_src, _ip_dst, _port_dst, 
-							_datalen, dataOffset,
-							handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
-							pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
-							NULL, 0, dlt, sensor_id, sensor_ip, pid,
-							false);
+					if(opt_t2_boost_direct_rtp) {
+						sHeaderPacketPQout hp(tcpHeader, tcpPacket,
+								      dlt, sensor_id, sensor_ip);
+						preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+								ethHeaderLength, 0xFFFF,
+								dataOffset, _datalen,
+								_port_src, _port_dst,
+								pflags,
+								&hp,
+								handle_index);
+					} else {
+						preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+								#if USE_PACKET_NUMBER
+								0, 
+								#endif
+								_ip_src, _port_src, _ip_dst, _port_dst, 
+								_datalen, dataOffset,
+								handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
+								pflags, (iphdr2*)(tcpPacket + ethHeaderLength), NULL,
+								NULL, 0, dlt, sensor_id, sensor_ip, pid,
+								false);
+					}
 				}
 			}
 		}

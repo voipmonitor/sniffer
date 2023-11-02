@@ -174,16 +174,28 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 		pflags.ssl = true;
 		sPacketInfoData pid;
 		pid.clear();
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			#if USE_PACKET_NUMBER
-			0, 
-			#endif
-			src.ip, src.port, dst.ip, dst.port, 
-			data.length(), dataOffset,
-			pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
-			pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
-			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
-			false);
+		if(opt_t2_boost_direct_rtp) {
+			sHeaderPacketPQout hp(tcpHeader, tcpPacket,
+					      dlink, opt_id_sensor, vmIP());
+			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+				sizeof(header_eth), 0xFFFF,
+				dataOffset, data.length(),
+				src.port, dst.port,
+				pflags,
+				&hp,
+				pcap_handle_index);
+		} else {
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+				#if USE_PACKET_NUMBER
+				0, 
+				#endif
+				src.ip, src.port, dst.ip, dst.port, 
+				data.length(), dataOffset,
+				pcap_handle_index, tcpHeader, tcpPacket, _t_packet_alloc_header_std, 
+				pflags, (iphdr2*)(tcpPacket + sizeof(header_eth)), (iphdr2*)(tcpPacket + sizeof(header_eth)),
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
+				false);
+		}
 	} else {
 		pcap_pkthdr *udpHeader;
 		u_char *udpPacket;
@@ -200,16 +212,28 @@ void cIPFixConnection::push_packet(sIPFixHeader *header, string &data, bool tcp,
 		pflags.ssl = true;
 		sPacketInfoData pid;
 		pid.clear();
-		preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
-			#if USE_PACKET_NUMBER
-			0,
-			#endif
-			src.ip, src.port, dst.ip, dst.port, 
-			data.length(), dataOffset,
-			pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
-			pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
-			NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
-			false);
+		if(opt_t2_boost_direct_rtp) {
+			sHeaderPacketPQout hp(udpHeader, udpPacket,
+					      dlink, opt_id_sensor, vmIP());
+			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
+				sizeof(header_eth), 0xFFFF,
+				dataOffset, data.length(),
+				src.port, dst.port,
+				pflags,
+				&hp,
+				pcap_handle_index);
+		} else {
+			preProcessPacket[PreProcessPacket::ppt_detach]->push_packet(
+				#if USE_PACKET_NUMBER
+				0,
+				#endif
+				src.ip, src.port, dst.ip, dst.port, 
+				data.length(), dataOffset,
+				pcap_handle_index, udpHeader, udpPacket, _t_packet_alloc_header_std, 
+				pflags, (iphdr2*)(udpPacket + sizeof(header_eth)), (iphdr2*)(udpPacket + sizeof(header_eth)),
+				NULL, 0, dlink, opt_id_sensor, vmIP(), pid,
+				false);
+		}
 	}
 }
 

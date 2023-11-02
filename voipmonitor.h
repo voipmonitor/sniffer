@@ -157,6 +157,7 @@ enum eCmdLineParams {
 	_param_time_to_terminate,
 	_param_continue_after_read,
 	_param_suppress_cleanup_after_read,
+	_param_unlimited_read,
 	_param_nonstop_read,
 	_param_nonstop_read_quick,
 	_param_diff_days,

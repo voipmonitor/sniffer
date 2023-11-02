@@ -203,6 +203,22 @@ struct sHeaderPacketPQout {
 	vmIP sensor_ip;
 	bool block_store_locked;
 	u_int16_t header_ip_last_offset;
+	sHeaderPacketPQout() {
+	}
+	sHeaderPacketPQout(pcap_pkthdr *header, u_char *packet,
+			   u_int16_t dlt, int16_t sensor_id, vmIP sensor_ip) {
+		this->header = new FILE_LINE(0) pcap_pkthdr_plus;
+		this->header->convertFromStdHeaderToStd(header);
+		delete header;
+		this->packet = packet;
+		this->block_store = NULL;
+		this->block_store_index = 0;
+		this->dlt = dlt;
+		this->sensor_id = sensor_id;
+		this->sensor_ip = sensor_ip;
+		this->block_store_locked = false;
+		this->header_ip_last_offset = 0xFFFF;
+	}
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
 			if(block_store_locked) {

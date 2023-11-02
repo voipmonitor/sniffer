@@ -423,6 +423,17 @@ public:
 			}
 			delete [] batch;
 		}
+		void realloc(unsigned new_max_count) {
+			for(unsigned i = 0; i < max_count; i++) {
+				delete batch[i];
+			}
+			delete [] batch;
+			max_count = new_max_count;
+			batch = new FILE_LINE(0) pcap_queue_packet_data*[max_count];
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i] = new FILE_LINE(0) pcap_queue_packet_data;
+			}
+		}
 		pcap_queue_packet_data **batch;
 		volatile unsigned count;
 		volatile int used;
@@ -443,6 +454,17 @@ public:
 				delete batch[i];
 			}
 			delete [] batch;
+		}
+		void realloc(unsigned new_max_count) {
+			for(unsigned i = 0; i < max_count; i++) {
+				delete batch[i];
+			}
+			delete [] batch;
+			max_count = new_max_count;
+			batch = new FILE_LINE(0) packet_s_plus_pointer*[max_count];
+			for(unsigned i = 0; i < max_count; i++) {
+				batch[i] = new FILE_LINE(0) packet_s_plus_pointer;
+			}
 		}
 		packet_s_plus_pointer **batch;
 		volatile unsigned count;
@@ -466,6 +488,12 @@ public:
 				}
 			}
 			delete [] batch;
+		}
+		void realloc(unsigned new_max_count) {
+			delete [] batch;
+			max_count = new_max_count;
+			batch = new FILE_LINE(0) packet_s_process*[max_count];
+			memset(batch, 0, sizeof(packet_s_process*) * max_count);
 		}
 		packet_s_process **batch;
 		volatile unsigned count;
@@ -535,6 +563,11 @@ public:
 				packet_flags pflags,
 				sHeaderPacketPQout *hp,
 				u_int16_t handle_index) {
+		bool _lock = false;
+		if(this->needLockPush) {
+			this->lock_push();
+			_lock = true;
+		}
 		pcap_queue_packet_data *packet_data;
 		packet_data = push_packet_detach_x__get_pointer();
 		packet_data->header_ip_offset = header_ip_offset;
@@ -548,6 +581,9 @@ public:
 		packet_data->handle_index = handle_index;
 		extern bool use_push_batch_limit_ms;
 		push_packet_detach_x__finish(use_push_batch_limit_ms ? hp->header->get_time_us() : 0);
+		if(_lock) {
+			this->unlock_push();
+		}
 	}
 	inline void push_packet(
 				#if USE_PACKET_NUMBER
@@ -628,14 +664,8 @@ public:
 		}
 		bool _lock = false;
 		packet_s *packetS;
-		if(opt_t2_boost_direct_rtp) {
-			static __thread packet_s *_packetS = NULL;
-			if(!_packetS) {
-				_packetS = new FILE_LINE(0) packet_s;
-			}
-			packetS = _packetS;
-		} else {
-			if(need_lock_push()) {
+		if(typePreProcessThread == ppt_detach) {
+			if(this->needLockPush) {
 				this->lock_push();
 				_lock = true;
 			}
@@ -645,6 +675,12 @@ public:
 				static packet_s _packetS;
 				packetS = &_packetS;
 			}
+		} else {
+			static __thread packet_s *_packetS = NULL;
+			if(!_packetS) {
+				_packetS = new FILE_LINE(0) packet_s;
+			}
+			packetS = _packetS;
 		}
 		packetS->packet_s::init();
 		#if USE_PACKET_NUMBER
@@ -684,9 +720,7 @@ public:
 		} else if(blockstore_lock == 2) {
 			packetS->blockstore_setlock();
 		}
-		if(opt_t2_boost_direct_rtp) {
-			process_DETACH(packetS);
-		} else {
+		if(typePreProcessThread == ppt_detach) {
 			if(this->outThreadState == 2) {
 				push_packet_detach__finish(packetS);
 			} else {
@@ -695,6 +729,8 @@ public:
 			if(_lock) {
 				this->unlock_push();
 			}
+		} else {
+			process_DETACH_type(packetS);
 		}
 	}
 	inline pcap_queue_packet_data *push_packet_detach_x__get_pointer() {
@@ -890,8 +926,7 @@ public:
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
 		bool _lock = false;
-		if(opt_t2_boost_direct_rtp &&
-		   typePreProcessThread == ppt_sip && opt_enable_ssl) {
+		if(this->needLockPush) {
 			lock_push();
 			_lock = true;
 		}
@@ -1051,7 +1086,7 @@ public:
 		}
 		#endif
 		bool _lock = false;
-		if(typePreProcessThread == ppt_detach && need_lock_push()) {
+		if(this->needLockPush) {
 			this->lock_push();
 			_lock = true;
 		}
@@ -1537,6 +1572,18 @@ private:
 		packetS->__type = __type;
 		preProcessPacket[ppt_sip]->push_packet(packetS);
 	}
+	inline void process_DETACH_type(packet_s *packetS_detach) {
+		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+		packet_s_process *packetS = packetS_detach->need_sip_process ?
+					     preProcessPacket[PreProcessPacket::ppt_detach]->packetS_sip_pop_from_stack(this->typePreProcessThread) : 
+					    !packetS_detach->pflags.other_processing() ?
+					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_rtp_pop_from_stack(this->typePreProcessThread) :
+					     (packet_s_process*)preProcessPacket[PreProcessPacket::ppt_detach]->packetS_other_pop_from_stack(this->typePreProcessThread);
+		u_int8_t __type = packetS->__type;
+		*(packet_s*)packetS = *(packet_s*)packetS_detach;
+		packetS->__type = __type;
+		preProcessPacket[typePreProcessThread]->push_packet(packetS);
+	}
 	inline void process_DETACH_plus(packet_s_plus_pointer *packetS_detach, bool push = true) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		packet_s_process *packetS = (packet_s_process*)packetS_detach->pointer[0];
@@ -1623,11 +1670,9 @@ private:
 	void unlock_push() {
 		__SYNC_UNLOCK(this->_sync_push);
 	}
-	inline bool need_lock_push() {
-		return(opt_enable_ssl || opt_ipfix || opt_hep);
-	}
 private:
 	eTypePreProcessThread typePreProcessThread;
+	bool needLockPush;
 	unsigned idPreProcessThread;
 	unsigned int qring_batch_item_length;
 	unsigned int qring_length;
@@ -1652,8 +1697,8 @@ private:
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
-	volatile int *items_flag;
-	volatile int *items_thread_index;
+	volatile int8_t *items_flag;
+	volatile int8_t *items_thread_index;
 	volatile int items_processed;
 	volatile int _sync_push;
 	volatile int _sync_count;
@@ -1799,6 +1844,12 @@ public:
 				}
 			}
 			delete [] batch;
+		}
+		void realloc(unsigned new_max_count) {
+			delete [] batch;
+			max_count = new_max_count;
+			batch = new FILE_LINE(0) packet_s_process_0*[max_count];
+			memset(batch, 0, sizeof(packet_s_process_0*) * max_count);
 		}
 		packet_s_process_0 **batch;
 		volatile unsigned count;
@@ -2059,7 +2110,7 @@ private:
 	u_int64_t qringPushCounter_full;
 	bool term_processRtp;
 	s_hash_next_thread hash_next_threads[MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS];
-	volatile int *hash_find_flag;
+	volatile int8_t *hash_find_flag;
 	volatile int _sync_count;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;

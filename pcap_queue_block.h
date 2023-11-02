@@ -55,6 +55,14 @@ struct pcap_pkthdr_plus {
 			this->header_fix_size.len = header->len;
 		#endif
 	}
+	inline void convertFromStdHeaderToStd(pcap_pkthdr *header) {
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			this->header = *header;
+		#else
+			this->std = 1;
+			this->header_std = *header;
+		#endif
+	}
 	inline pcap_pkthdr *convertToStdHeader() {
 		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
 			return(&this->header);
