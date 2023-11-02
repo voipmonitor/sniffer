@@ -12169,14 +12169,14 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 	if(opt_t2_boost) {
 		if(packetS->call_info.length == 1) {
 			packetS->blockstore_addflag(42 /*pb lock flag*/);
-			processRtpPacketDistribute[packetS->call_info.calls[0].c_branch->call->thread_num_rd]->push_packet(packetS);
+			processRtpPacketDistribute[packetS->call_info.calls[0].thread_num_rd]->push_packet(packetS);
 		} else {
 			#if not EXPERIMENTAL_PROCESS_RTP_MOD_01
 			int threads_rd[MAX_PROCESS_RTP_PACKET_THREADS];
-			threads_rd[0] = packetS->call_info.calls[0].c_branch->call->thread_num_rd;
+			threads_rd[0] = packetS->call_info.calls[0].thread_num_rd;
 			int threads_rd_count = 1;
 			for(int i = 1; i < packetS->call_info.length; i++) {
-				int thread_rd = packetS->call_info.calls[i].c_branch->call->thread_num_rd;
+				int thread_rd = packetS->call_info.calls[i].thread_num_rd;
 				if(thread_rd != threads_rd[0]) {
 					bool exists = false;
 					for(int j = 1; j < threads_rd_count; j++) {
