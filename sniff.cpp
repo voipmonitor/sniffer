@@ -11315,6 +11315,9 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 						kamailio_subst->ts.tv_usec = 0;
 					}
 					packetS->kamailio_subst = kamailio_subst;
+					#if EXPERIMENTAL_SEPARATE_TIME_US
+					packetS->time_us = ::getTimeUS(kamailio_subst->ts);
+					#endif
 				}
 			}
 		}

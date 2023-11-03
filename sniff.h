@@ -181,6 +181,9 @@ struct packet_s {
 	u_int16_t _dataoffset;
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
+	#if EXPERIMENTAL_SEPARATE_TIME_US
+	u_int64_t time_us;
+	#endif
 	sPacketInfoData pid;
 	packet_flags pflags;
 	bool need_sip_process : 1;
@@ -374,12 +377,16 @@ struct packet_s {
 		init();
 	}
 	inline u_int64_t getTimeUS() {
+		#if EXPERIMENTAL_SEPARATE_TIME_US
+		return(time_us);
+		#else
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
 		if(kamailio_subst && isSetTimeval(kamailio_subst->ts)) {
 			return(::getTimeUS(kamailio_subst->ts));
 		}
 		#endif
 		return(::getTimeUS(header_pt->ts));
+		#endif
 	}
 	inline double getTimeSF() {
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO
