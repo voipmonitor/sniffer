@@ -8728,6 +8728,9 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 			packetS->header_pt = header;
 			packetS->packet = packet; 
 			packetS->header_ip_offset = (u_char*)ppd.header_ip - packet; 
+			#if EXPERIMENTAL_SEPARATE_TIME_US
+			packetS->time_us = ::getTimeUS(header);
+			#endif
 			packetS->dlt = dlink; 
 			call->read_rtp(&call->first_branch, packetS, 1, true, false, s_sdp_flags_base(), false, (char*)"file");
 			delete header;
