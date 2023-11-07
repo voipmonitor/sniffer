@@ -427,6 +427,7 @@ unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
 bool use_push_batch_limit_ms = true;
 unsigned int opt_huge_batch_length = 40000;
+unsigned int opt_huge_batch_traffic_limit = 1000;
 bool huge_batch_need = false;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
@@ -6209,6 +6210,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("huge_batch_length", &opt_huge_batch_length));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("huge_batch_traffic_limit", &opt_huge_batch_traffic_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -8579,23 +8581,35 @@ void set_context_config() {
 		if(!CONFIG.isSet("process_rtp_packets_hash_next_thread_sem_sync")) {
 			opt_process_rtp_packets_hash_next_thread_sem_sync = 1;
 		}
-		if(opt_preprocess_packets_qring_length <= 2000 &&
-		   opt_preprocess_packets_qring_item_length == 0) {
+		unsigned default_preprocess_packets_qring_item_length = 
+									#if DEBUG_DTLS_QUEUE
+									500;
+									#else
+									5000;
+									#endif
+		if(useNewCONFIG) {
+			if(!CONFIG.isSet("preprocess_packets_qring_length")) {
+				opt_preprocess_packets_qring_length = 3;
+			}
+			if(!CONFIG.isSet("preprocess_packets_qring_item_length")) {
+				opt_preprocess_packets_qring_item_length = default_preprocess_packets_qring_item_length;
+			}
+		} else if(opt_preprocess_packets_qring_length <= 2000 &&
+			  opt_preprocess_packets_qring_item_length == 0) {
 			opt_preprocess_packets_qring_length = 3;
-			#if DEBUG_DTLS_QUEUE
-			opt_preprocess_packets_qring_item_length = 500;
-			#else 
-			opt_preprocess_packets_qring_item_length = 5000;
-			#endif
+			opt_preprocess_packets_qring_item_length = default_preprocess_packets_qring_item_length;
 		}
-		if(opt_process_rtp_packets_qring_length <= 2000 &&
-		   opt_process_rtp_packets_qring_item_length == 0) {
+		if(useNewCONFIG) {
+			if(!CONFIG.isSet("process_rtp_packets_qring_length")) {
+				opt_process_rtp_packets_qring_length = 4;
+			}
+			if(!CONFIG.isSet("process_rtp_packets_qring_item_length")) {
+				opt_process_rtp_packets_qring_item_length = default_preprocess_packets_qring_item_length;
+			}
+		} else if(opt_process_rtp_packets_qring_length <= 2000 &&
+			  opt_process_rtp_packets_qring_item_length == 0) {
 			opt_process_rtp_packets_qring_length = 4;
-			#if DEBUG_DTLS_QUEUE
-			opt_process_rtp_packets_qring_item_length = 500;
-			#else
-			opt_process_rtp_packets_qring_item_length = 5000;
-			#endif
+			opt_process_rtp_packets_qring_item_length = default_preprocess_packets_qring_item_length;
 		}
 	}
 	
@@ -12010,6 +12024,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "huge_batch_length", NULL))) {
 		opt_huge_batch_length = atol(value);
+	}
+	if((value = ini.GetValue("general", "huge_batch_traffic_limit", NULL))) {
+		opt_huge_batch_traffic_limit = atol(value);
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);

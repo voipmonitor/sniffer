@@ -2001,8 +2001,11 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		extern bool use_push_batch_limit_ms;
 		extern unsigned int opt_push_batch_limit_ms;
 		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed < 200;
+		extern unsigned int opt_huge_batch_traffic_limit;
 		extern bool huge_batch_need;
-		huge_batch_need = opt_t2_boost && speed > 1000;
+		if(opt_t2_boost && opt_huge_batch_traffic_limit > 0 && speed > opt_huge_batch_traffic_limit) {
+			huge_batch_need = true;
+		}
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
 			lastcachedirtransfered = cachedirtransfered;

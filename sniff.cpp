@@ -2948,6 +2948,8 @@ void *rtp_read_thread_func(void *arg) {
 						rslt_read_rtp = rtpp_pq->c_branch->call->read_rtp(rtpp_pq->c_branch, rtpp_pq->packet, rtpp_pq->iscaller, rtpp_pq->find_by_dest, rtpp_pq->stream_in_multiple_calls, rtpp_pq->sdp_flags, rtpp_pq->save_packet,
 												  rtpp_pq->packet->block_store && rtpp_pq->packet->block_store->ifname[0] ? rtpp_pq->packet->block_store->ifname : NULL);
 					}
+				} else {
+					rslt_read_rtp = true;
 				}
 				rtpp_pq->c_branch->call->shift_destroy_call_at(rtpp_pq->c_branch, rtpp_pq->packet->getTime_s());
 				if(rslt_read_rtp) {
@@ -10687,7 +10689,7 @@ void PreProcessPacket::process_SIP(packet_s_process *packetS, bool parallel_thre
 	}
 	#endif
 	#if EXPERIMENTAL_T2_STOP_IN_PROCESS_SIP
-		packetS->next_action = _ppna_push_to_other;
+		packetS->next_action = _ppna_destroy;
 		return;
 	#endif
 	if(!opt_t2_boost_direct_rtp) {
