@@ -11904,7 +11904,11 @@ int Calltable::_hashRemove(CallBranch *c_branch, bool use_lock) {
 
 void 
 Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
-	_applyHashModifyQueue(setBegin, use_lock_calls_hash);
+	lock_hash_modify_queue();
+	if(!hash_modify_queue.empty()) {
+		_applyHashModifyQueue(setBegin, use_lock_calls_hash);
+	}
+	unlock_hash_modify_queue();
 }
 
 void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {

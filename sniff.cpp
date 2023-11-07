@@ -10360,9 +10360,16 @@ void *PreProcessPacket::outThreadFunction() {
 						for(int i = 0; i < preProcessPacketCallX_count; i++) {
 							preProcessPacketCallX[i]->push_batch();
 						}
+					} else {
+						if(opt_hash_modify_queue_length_ms) {
+							calltable->applyHashModifyQueue(true);
+						}
 					}
 					if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 						_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
+						if(opt_hash_modify_queue_length_ms) {
+							calltable->applyHashModifyQueue(true);
+						}
 					}
 					break;
 				case ppt_pp_callx:
@@ -10545,12 +10552,18 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 			_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
+			if(opt_hash_modify_queue_length_ms) {
+				calltable->applyHashModifyQueue(true);
+			}
 		}
 		break;
 	case ppt_pp_callx:
 		if(opt_t2_boost && 
 		   (int)idPreProcessThread == preProcessPacketCallX_count) {
 			_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
+			if(opt_hash_modify_queue_length_ms) {
+				calltable->applyHashModifyQueue(true);
+			}
 		}
 		break;
 	case ppt_pp_callfindx:

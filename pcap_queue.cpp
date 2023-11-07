@@ -4332,6 +4332,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 		} else {
 			if(!opt_nonstop_read) {
 				while(!is_terminating()) {
+					this->tryForcePush();
 					sleep(1);
 				}
 			}
