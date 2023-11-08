@@ -2650,12 +2650,14 @@ public:
 		__SYNC_UNLOCK(_branches_lock);
 	}
 	
+	#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 	void dtls_queue_lock() {
 		__SYNC_LOCK(dtls_queue_sync);
 	}
 	void dtls_queue_unlock() {
 		__SYNC_UNLOCK(dtls_queue_sync);
 	}
+	#endif
 	
 	void setDiameterFromSip(const char *from_sip);
 	void setDiameterToSip(const char *to_sip);
