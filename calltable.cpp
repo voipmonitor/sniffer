@@ -1859,7 +1859,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
  
 	extern int opt_enable_ssl;
 	extern bool opt_srtp_rtp_dtls_decrypt;
-	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtls()) {
+	if(opt_enable_ssl && opt_srtp_rtp_dtls_decrypt && packetS->isDtlsHandshake()) {
 		read_dtls(packetS);
 		if(enable_save_packet) {
 			save_packet(this, packetS, _t_packet_dtls, 0, 0, __FILE__, __LINE__);
