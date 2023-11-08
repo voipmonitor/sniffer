@@ -150,7 +150,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 	if(is_request) {
 		parse_mgcp_request(&request, &mgcp_lines);
 		if(request.is_set()) {
-			request.time = getTimeUS(packetS->header_pt);
+			request.time = packetS->getTimeUS();
 		} else {
 			return(NULL);
 		}
@@ -158,7 +158,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 	if(is_response) {
 		parse_mgcp_response(&response, &mgcp_lines);
 		if(response.is_set()) {
-			response.time = getTimeUS(packetS->header_pt);
+			response.time = packetS->getTimeUS();
 		} else {
 			return(NULL);
 		}
@@ -198,9 +198,9 @@ void *handle_mgcp(packet_s_process *packetS) {
 						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 					return NULL;
 				}       
-				call = calltable->add_mgcp(&request, getTimeUS(packetS->header_pt), packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
+				call = calltable->add_mgcp(&request, packetS->getTimeUS(), packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(),
 							   get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_());
-				call->set_first_packet_time_us(getTimeUS(packetS->header_pt));
+				call->set_first_packet_time_us(packetS->getTimeUS());
 				CallBranch *c_branch = call->branch_main();
 				c_branch->called_final = request.endpoint;
 				call->setSipcallerip(c_branch, packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
@@ -307,14 +307,14 @@ void *handle_mgcp(packet_s_process *packetS) {
 		if(!call->connect_time_us && is_request) {
 			if((request_type == _mgcp_CRCX && request.parameters.connection_mode == "SENDRECV") ||
 			   (request_type == _mgcp_RQNT && request.parameters.requested_events == "L/HF(N),L/HU(N)")) {
-				call->connect_time_us = getTimeUS(packetS->header_pt);
+				call->connect_time_us = packetS->getTimeUS();
 			}
 		}
 		save_packet(call, packetS, _t_packet_mgcp);
 		if(request.type == _mgcp_CRCX || request.type == _mgcp_MDCX || request.type == _mgcp_DLCX) {
-			call->set_last_mgcp_connect_packet_time_us(getTimeUS(packetS->header_pt));
+			call->set_last_mgcp_connect_packet_time_us(packetS->getTimeUS());
 		}
-		call->set_last_signal_packet_time_us(getTimeUS(packetS->header_pt));
+		call->set_last_signal_packet_time_us(packetS->getTimeUS());
 	}
 	return(NULL);
 }

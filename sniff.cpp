@@ -4443,7 +4443,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		cout << dump_data << endl;
 	}
 	
-	call->updateTimeShift(getTimeUS(packetS->header_pt));
+	call->updateTimeShift(packetS->getTimeUS());
 	++call->sip_packets_counter;
 	if(opt_max_sip_packets_in_call > 0 && call->sip_packets_counter > opt_max_sip_packets_in_call) {
 		return;
@@ -5014,13 +5014,13 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 			for(map<string, Call*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
 				if(!iter->second->conference_disconnect_time) {
-					iter->second->conference_disconnect_time = getTimeUS(packetS->header_pt);
+					iter->second->conference_disconnect_time = packetS->getTimeUS();
 				}
 			}
 			#else
 			for(map<Call::sConferenceLegId, Call::sConferenceLegs*>::iterator iter = call->conference_legs.begin(); iter != call->conference_legs.end(); iter++) {
 				if(iter->second->isConnect()) {
-					iter->second->setDisconnectTime(getTimeUS(packetS->header_pt));
+					iter->second->setDisconnectTime(packetS->getTimeUS());
 				}
 			}
 			#endif
@@ -6080,7 +6080,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 	
 	c_branch = call->branch_main();
 	
-	call->updateTimeShift(getTimeUS(packetS->header_pt));
+	call->updateTimeShift(packetS->getTimeUS());
 	
 	call->set_last_signal_packet_time_us(packetS->getTimeUS());
 	

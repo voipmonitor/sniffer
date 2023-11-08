@@ -1734,7 +1734,7 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		if(srtp_decrypt->need_prepare_decrypt()) {
 			srtp_decrypt->prepare_decrypt(packetS->saddr_(), packetS->daddr_(), packetS->source_(), packetS->dest_(), true, packetS->getTimeUS());
 		}
-		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, getTimeUS(packetS->header_pt));
+		srtp_decrypt->decrypt_rtcp((u_char*)packetS->data_(), &datalen, packetS->getTimeUS());
 		packetS->set_datalen_(datalen);
 	}
 
@@ -1774,7 +1774,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 #if EXPERIMENTAL_LITE_RTP_MOD
  
 	if(first_rtp_time_us == 0) {
-		first_rtp_time_us = getTimeUS(packetS->header_pt);
+		first_rtp_time_us = packetS->getTimeUS();
 	}
 	
 	RTPFixedHeader* rtp_header = RTP::getHeader(packetS->data_());
@@ -1814,7 +1814,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 		rtp_find->sport = packetS->source_();
 		rtp_find->dport = packetS->dest_();
 		rtp_find->iscaller = iscaller;
-		rtp_find->first_packet_time_us = getTimeUS(packetS->header_pt);
+		rtp_find->first_packet_time_us = packetS->getTimeUS();
 		++ssrc_n;
 	}
 	
@@ -1849,7 +1849,7 @@ bool Call::read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int iscal
 			}
 		}
 		++rtp_find->received;
-		rtp_find->last_packet_time_us = getTimeUS(packetS->header_pt);
+		rtp_find->last_packet_time_us = packetS->getTimeUS();
 	}
 	
 	_save_rtp(packetS, sdp_flags, enable_save_packet, false, false);
@@ -1963,7 +1963,7 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 	}
 
 	if(first_rtp_time_us == 0) {
-		first_rtp_time_us = getTimeUS(packetS->header_pt);
+		first_rtp_time_us = packetS->getTimeUS();
 	}
 	
 	unsigned int curSSRC;
@@ -2041,9 +2041,9 @@ bool Call::_read_rtp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 				// found 
 			 
 				if(rtp_i->iscaller) {
-					last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
+					last_rtp_a_packet_time_us = packetS->getTimeUS();
 				} else {
-					last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
+					last_rtp_b_packet_time_us = packetS->getTimeUS();
 				}
 
 				if(rtp_i->stopReadProcessing && opt_rtp_check_both_sides_by_sdp == 1) {
@@ -2187,9 +2187,9 @@ read:
 		}
 		
 		if(iscaller) {
-			last_rtp_a_packet_time_us = getTimeUS(packetS->header_pt);
+			last_rtp_a_packet_time_us = packetS->getTimeUS();
 		} else {
-			last_rtp_b_packet_time_us = getTimeUS(packetS->header_pt);
+			last_rtp_b_packet_time_us = packetS->getTimeUS();
 		}
 		
 		if(udptl) {
@@ -10222,7 +10222,7 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		iam_src_ip = packetS->saddr_();
 		iam_dst_ip = packetS->daddr_();
 		if(!iam_time_us) {
-			iam_time_us = getTimeUS(packetS->header_pt);
+			iam_time_us = packetS->getTimeUS();
 		}
 		strcpy_null_term(fbasename, filename().c_str());
 		break;
@@ -10233,24 +10233,24 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 	case SS7_ACM:
 		last_message_type = acm;
 		if(!acm_time_us) {
-			acm_time_us = getTimeUS(packetS->header_pt);
+			acm_time_us = packetS->getTimeUS();
 		}
 		break;
 	case SS7_CPG:
 		last_message_type = cpg;
 		if(!cpg_time_us) {
-			cpg_time_us = getTimeUS(packetS->header_pt);
+			cpg_time_us = packetS->getTimeUS();
 		}
 		break;
 	case SS7_ANM:
 		last_message_type = anm;
 		if(!anm_time_us) {
-			anm_time_us = getTimeUS(packetS->header_pt);
+			anm_time_us = packetS->getTimeUS();
 		}
 		break;
 	case SS7_REL:
 		last_message_type = rel;
-		rel_time_us = getTimeUS(packetS->header_pt);
+		rel_time_us = packetS->getTimeUS();
 		rlc_time_us = 0;
 		destroy_at_s = getTimeS(packetS->header_pt) + opt_ss7timeout_rel;
 		if(isset_unsigned(data->isup_cause_indicator)) {
@@ -10259,7 +10259,7 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		break;
 	case SS7_RLC:
 		last_message_type = rlc;
-		rlc_time_us = getTimeUS(packetS->header_pt);
+		rlc_time_us = packetS->getTimeUS();
 		destroy_at_s = getTimeS(packetS->header_pt) + opt_ss7timeout_rlc;
 		break;
 	}
@@ -10273,7 +10273,7 @@ void Ss7::processData(packet_s_stack *packetS, sParseData *data) {
 		rlc_time_us = 0;
 		break;
 	}
-	last_time_us = getTimeUS(packetS->header_pt);
+	last_time_us = packetS->getTimeUS();
 	if(!pcap.isOpen()) {
 		string pathfilename = get_pathfilename(tsf_ss7);
 		pcap.open(tsf_ss7, pathfilename.c_str(), useHandle, useDlt);
@@ -12839,7 +12839,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 
 Ss7 *
 Calltable::add_ss7(packet_s_stack *packetS, Ss7::sParseData *data) {
-	Ss7 *newss7 = new FILE_LINE(0) Ss7(getTimeUS(packetS->header_pt));
+	Ss7 *newss7 = new FILE_LINE(0) Ss7(packetS->getTimeUS());
 	newss7->useHandle = get_pcap_handle(packetS->handle_index);
 	newss7->useDlt = packetS->dlt;
 	newss7->processData(packetS, data);

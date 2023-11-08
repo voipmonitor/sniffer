@@ -396,7 +396,7 @@ void cSipMsgRelation::addSipMsg(cSipMsgItem *item, packet_s_process *packetS, cS
 			}
 		}
 		if(requestResponse) {
-			requestResponse->next_requests_time_us.push_back(getTimeUS(packetS->header_pt));
+			requestResponse->next_requests_time_us.push_back(packetS->getTimeUS());
 			delete item;
 		} else {
 			requestResponse = new FILE_LINE(0) cSipMsgRequestResponse(item->time_us);
