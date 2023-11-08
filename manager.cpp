@@ -355,6 +355,7 @@ int Mgmt_cleanup_tcpreassembly(Mgmt_params *params);
 int Mgmt_expire_registers(Mgmt_params *params);
 int Mgmt_cleanup_registers(Mgmt_params *params);
 int Mgmt_cleanup_calls(Mgmt_params *params);
+int Mgmt_dtls_queue_cleanup(Mgmt_params *params);
 int Mgmt_getipaccount(Mgmt_params *params);
 int Mgmt_ipaccountfilter(Mgmt_params *params);
 int Mgmt_stopipaccount(Mgmt_params *params);
@@ -465,6 +466,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_expire_registers,
 	Mgmt_cleanup_registers,
 	Mgmt_cleanup_calls,
+	Mgmt_dtls_queue_cleanup,
 	Mgmt_getipaccount,
 	Mgmt_ipaccountfilter,
 	Mgmt_stopipaccount,
@@ -2019,6 +2021,16 @@ int Mgmt_cleanup_calls(Mgmt_params* params) {
 		return(0);
 	}
 	calltable->cleanup_calls(true);
+	return(params->sendString("ok"));
+}
+
+int Mgmt_dtls_queue_cleanup(Mgmt_params* params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("dtls_queue_cleanup", "clean dtls queue");
+		return(0);
+	}
+	extern void dtls_queue_cleanup();
+	dtls_queue_cleanup();
 	return(params->sendString("ok"));
 }
 

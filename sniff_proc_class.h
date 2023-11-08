@@ -1507,7 +1507,7 @@ private:
 		packetS_detach->skip = false;
 		packetS_detach->packet_s::init();
 		#if USE_PACKET_NUMBER
-		packetS->packet_number = packet_number;
+		packetS_detach->packet_number = 0; //packet_number;
 		#endif
 		#if not EXPERIMENTAL_PACKETS_WITHOUT_IP
 		packetS_detach->_saddr = saddr;

@@ -5090,6 +5090,7 @@ int main_init_read() {
 				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 				print_t2_queue_full_stat();
 				#endif
+				#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 				if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
 					extern void dtls_queue_cleanup();
 					dtls_queue_cleanup();
@@ -5097,6 +5098,7 @@ int main_init_read() {
 				if(opt_use_dpdk && (opt_other_thread_affinity_check || opt_other_thread_affinity_set)) {
 					dpdk_check_affinity();
 				}
+				#endif
 			}
 			if(!opt_sched_pol_auto.empty() && opt_sched_pol_auto_heap_limit && opt_sched_pol_auto_cpu_limit) {
 				extern cThreadMonitor threadMonitor;

@@ -1189,7 +1189,12 @@ public:
 	map<int, class RTPsecure*> rtp_secure_map;
 	cDtls *dtls;
 	bool dtls_exists;
+	#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 	volatile bool dtls_queue_move;
+	#else
+	volatile unsigned dtls_queue_move;
+	volatile int dtls_queue_sync;
+	#endif
 	vector<cDtlsLink::sSrtpKeys*> dtls_keys;
 	volatile int dtls_keys_sync;
 	volatile int rtplock_sync;
@@ -2643,6 +2648,13 @@ public:
 	}
 	void branches_unlock() {
 		__SYNC_UNLOCK(_branches_lock);
+	}
+	
+	void dtls_queue_lock() {
+		__SYNC_LOCK(dtls_queue_sync);
+	}
+	void dtls_queue_unlock() {
+		__SYNC_UNLOCK(dtls_queue_sync);
 	}
 	
 	void setDiameterFromSip(const char *from_sip);

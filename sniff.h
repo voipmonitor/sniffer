@@ -970,7 +970,9 @@ public:
 	}
 	void push(packet_s *packetS, bool keep) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
+		#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 		lock();
+		#endif
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;
@@ -992,10 +994,13 @@ public:
 		if(keep) {
 			((packet_s_process_0*)packetS)->set_reuse_counter();
 		}
+		#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 		unlock();
+		#endif
 		packetS->blockstore_addflag(121 /*pb lock flag*/);
 		#if DEBUG_DTLS_QUEUE
-		cout << " * queue dtls" << endl;
+		static unsigned _c = 0;
+		cout << " * queue dtls " << (++_c) << endl;
 		#endif
 	}
 	void moveToPacket(packet_s_process_0 *packetS, bool keep) {
@@ -1005,6 +1010,9 @@ public:
 		map<s_link_id, s_link*>::iterator iter_link = links.find(id);
 		if(iter_link != links.end()) {
 			link = iter_link->second;
+			#if DEBUG_DTLS_QUEUE
+			cout << " * INSERT DTLS: " << link->queue.size() << endl;
+			#endif
 			for(list<packet_s*>::iterator iter = link->queue.begin(); iter != link->queue.end(); iter++) {
 				packetS->insert_packet((packet_s_process_0*)(*iter));
 				if(keep) {
@@ -1014,7 +1022,8 @@ public:
 				}
 				((packet_s_process_0*)(*iter))->blockstore_addflag(122 /*pb lock flag*/);
 				#if DEBUG_DTLS_QUEUE
-				cout << " * insert dtls" << endl;
+				static unsigned _c = 0;
+				cout << " * insert dtls " << (++_c) << " rc:" << ((int)((packet_s_process_0*)(*iter))->reuse_counter) << endl;
 				#endif
 			}
 			if(!keep) {
@@ -1026,10 +1035,14 @@ public:
 	inline bool existsContent() {
 		return(links.size() > 0);
 	}
-	inline bool existsLink(packet_s *packetS) {
+	inline unsigned existsLink(packet_s *packetS) {
 		s_link_id id;
 		createId(&id, packetS);
-		return(links.find(id) != links.end());
+		map<s_link_id, s_link*>::iterator iter = links.find(id);
+		if(iter == links.end()) {
+			return(0);
+		}
+		return(iter->second->queue.size());
 	}
 	inline u_int32_t countLinks() {
 		return(links.size());
@@ -1066,6 +1079,9 @@ private:
 	unsigned expiration_link_ms;
 	unsigned expiration_link_count;
 	volatile u_int64_t packets_counter;
+#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
+friend class ProcessRtpPacket;
+#endif
 };
 
 
