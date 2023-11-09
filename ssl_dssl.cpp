@@ -339,7 +339,7 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 		if(!tls_13_generate_keys(session, true)) {
 			return(false);
 		}
-	} else if(session->version == TLS1_2_VERSION && atoi(jsonData.getValue("tls_ws").c_str())) {
+	} else if((session->version == TLS1_2_VERSION || session->version == TLS1_1_VERSION || session->version == TLS1_VERSION) && atoi(jsonData.getValue("tls_ws").c_str())) {
 		hexdecode(session->server_random, jsonData.getValue("server_random").c_str(), sizeof(session->server_random));
 		hexdecode(session->master_secret, jsonData.getValue("master_secret").c_str(), sizeof(session->master_secret));
 		session->tls_session_server_seq = 
