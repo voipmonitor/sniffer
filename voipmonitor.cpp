@@ -470,7 +470,7 @@ int opt_ssl_store_sessions = 2;
 int opt_ssl_store_sessions_expiration_hours = 12;
 int opt_ssl_aead_try_seq_backward = 0;
 int opt_ssl_aead_try_seq_forward = 0;
-bool opt_ssl_enable_dtls_queue = true;
+int opt_ssl_enable_dtls_queue = 1;
 int opt_ssl_dtls_queue_expiration_s = 10;
 int opt_ssl_dtls_queue_expiration_count = 20;
 bool opt_ssl_dtls_queue_keep = false;
@@ -5090,15 +5090,19 @@ int main_init_read() {
 				#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
 				print_t2_queue_full_stat();
 				#endif
-				#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-				if(opt_enable_ssl && opt_ssl_enable_dtls_queue) {
-					extern void dtls_queue_cleanup();
-					dtls_queue_cleanup();
+				if(opt_enable_ssl) {
+					if(opt_ssl_enable_dtls_queue == 1) {
+						extern void dtls_queue_cleanup();
+						dtls_queue_cleanup();
+					}
+					if(opt_ssl_dtls_handshake_safe) {
+						extern void dtls_handshake_safe_links_cleanup();
+						dtls_handshake_safe_links_cleanup();
+					}
 				}
 				if(opt_use_dpdk && (opt_other_thread_affinity_check || opt_other_thread_affinity_set)) {
 					dpdk_check_affinity();
 				}
-				#endif
 			}
 			if(!opt_sched_pol_auto.empty() && opt_sched_pol_auto_heap_limit && opt_sched_pol_auto_cpu_limit) {
 				extern cThreadMonitor threadMonitor;
@@ -6461,13 +6465,14 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_store_sessions_expiration_hours", &opt_ssl_store_sessions_expiration_hours));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_backward", &opt_ssl_aead_try_seq_backward));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_aead_try_seq_forward", &opt_ssl_aead_try_seq_forward));
-			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue));
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue", &opt_ssl_enable_dtls_queue))
+				->addValues("lockless:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_expiration", &opt_ssl_dtls_queue_expiration_s));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("ssl_dtls_queue_max_packets", &opt_ssl_dtls_queue_expiration_count));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_enable_redirection_unencrypted_sip_content", &opt_ssl_enable_redirection_unencrypted_sip_content));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_queue_keep", &opt_ssl_dtls_queue_keep));
 			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_handshake_safe", &opt_ssl_dtls_handshake_safe))
-				->addValues("ext:2"));
+				->addValues("ext:2|only:3"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
@@ -11380,7 +11385,7 @@ int eval_config(string inistr) {
 		opt_ssl_aead_try_seq_forward = atoi(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue", NULL))) {
-		opt_ssl_enable_dtls_queue = yesno(value);
+		opt_ssl_enable_dtls_queue = !strcasecmp(value, "lockless") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_queue_expiration", NULL))) {
 		opt_ssl_dtls_queue_expiration_s = atoi(value);
@@ -11392,7 +11397,8 @@ int eval_config(string inistr) {
 		opt_ssl_dtls_queue_keep = yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_handshake_safe", NULL))) {
-		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "ext") ? 2 : yesno(value);
+		opt_ssl_dtls_handshake_safe = !strcasecmp(value, "only") ? 3 :
+					      !strcasecmp(value, "ext") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "ssl_dtls_find_by_server_side", NULL))) {
 		opt_ssl_dtls_find_by_server_side = yesno(value);

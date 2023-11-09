@@ -150,7 +150,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 		}
 	}
 	if(opt_ssl_dtls_handshake_safe && enable_handshake_safe) {
-		if((opt_ssl_dtls_handshake_safe == 2 || handshake_data.client_random_set || handshake_data.server_random_set) &&
+		if((opt_ssl_dtls_handshake_safe >= 2 || handshake_data.client_random_set || handshake_data.server_random_set) &&
 		   (!handshake_data.client_random_set || !handshake_data.server_random_set)) {
 			sHandshakeData handshake_data_;
 			if(dtls_handshake_safe_links.getHandshakeData(server.ip, server.port,
@@ -170,7 +170,7 @@ bool cDtlsLink::findSrtpKeys(list<sSrtpKeys*> *keys, Call *call,
 							log_str += "; apply client random from safe handshake";
 						}
 					}
-				} else if(opt_ssl_dtls_handshake_safe == 2) {
+				} else if(opt_ssl_dtls_handshake_safe >= 2) {
 					handshake_data = handshake_data_;
 					if(sverb.dtls && ssl_sessionkey_enable()) {
 						log_str += "; force apply safe handshake";

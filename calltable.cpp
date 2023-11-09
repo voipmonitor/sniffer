@@ -664,12 +664,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	rtpab[1] = NULL;
 	dtls = NULL;
 	dtls_exists = false;
-	#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-	dtls_queue_move = false;
-	#else
 	dtls_queue_move = 0;
 	dtls_queue_sync = 0;
-	#endif
 	dtls_keys_sync = 0;
 	rtplock_sync = 0;
 	listening_worker_run = NULL;

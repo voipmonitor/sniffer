@@ -134,6 +134,7 @@ struct packet_flags {
 	u_int8_t ssl : 1;
 	u_int8_t skinny : 1;
 	u_int8_t mgcp: 1;
+	u_int8_t dtls_handshake: 1;
 	u_int8_t diameter: 1;
 	inline void init() {
 		for(unsigned i = 0; i < sizeof(*this); i++) {
@@ -525,8 +526,7 @@ struct packet_s {
 		       IS_DTLS(data_(), datalen_()));
 	}
 	inline bool isDtlsHandshake() {
-		return(!pflags.tcp &&
-		       IS_DTLS_HANDSHAKE(data_(), datalen_()));
+		return(pflags.dtls_handshake);
 	}
 	inline bool isMrcp() {
 		return(IS_MRCP(data_(), datalen_()));
@@ -968,11 +968,11 @@ public:
 	void setExpirationLink_count(unsigned expiration_link_count) {
 		this->expiration_link_count = expiration_link_count;
 	}
-	void push(packet_s *packetS, bool keep) {
+	void push(packet_s *packetS, bool keep, bool use_lock) {
 		u_int64_t time_ms = getTimeMS_rdtsc();
-		#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-		lock();
-		#endif
+		if(use_lock) {
+			lock();
+		}
 		s_link_id id;
 		createId(&id, packetS);
 		s_link *link = NULL;
@@ -994,9 +994,9 @@ public:
 		if(keep) {
 			((packet_s_process_0*)packetS)->set_reuse_counter();
 		}
-		#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-		unlock();
-		#endif
+		if(use_lock) {
+			unlock();
+		}
 		packetS->blockstore_addflag(121 /*pb lock flag*/);
 		#if DEBUG_DTLS_QUEUE
 		static unsigned _c = 0;
@@ -1079,9 +1079,7 @@ private:
 	unsigned expiration_link_ms;
 	unsigned expiration_link_count;
 	volatile u_int64_t packets_counter;
-#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
 friend class ProcessRtpPacket;
-#endif
 };
 
 

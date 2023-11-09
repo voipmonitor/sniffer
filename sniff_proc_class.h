@@ -614,6 +614,7 @@ public:
 				 (unsigned)source == opt_tcp_port_mgcp_callagent || (unsigned)dest == opt_tcp_port_mgcp_callagent) :
 				((unsigned)source == opt_udp_port_mgcp_gateway || (unsigned)dest == opt_udp_port_mgcp_gateway ||
 				 (unsigned)source == opt_udp_port_mgcp_callagent || (unsigned)dest == opt_udp_port_mgcp_callagent));
+		pflags.dtls_handshake = !pflags.tcp && IS_DTLS_HANDSHAKE(packet + dataoffset, datalen);
 		pflags.diameter = opt_enable_diameter && 
 				  (pflags.tcp ?
 				    diameter_tcp_portmatrix[source] || diameter_tcp_portmatrix[dest] :
@@ -1452,6 +1453,7 @@ private:
 					      (unsigned)packet_data->source == opt_tcp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_tcp_port_mgcp_callagent) :
 					     ((unsigned)packet_data->source == opt_udp_port_mgcp_gateway || (unsigned)packet_data->dest == opt_udp_port_mgcp_gateway ||
 					      (unsigned)packet_data->source == opt_udp_port_mgcp_callagent || (unsigned)packet_data->dest == opt_udp_port_mgcp_callagent));
+		packet_data->pflags.dtls_handshake = !packet_data->pflags.tcp && IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen);
 		packet_data->pflags.diameter = opt_enable_diameter && 
 					       (packet_data->pflags.tcp ?
 						 diameter_tcp_portmatrix[packet_data->source] || diameter_tcp_portmatrix[packet_data->dest] :
@@ -1487,8 +1489,7 @@ private:
 		bool is_rtp = opt_t2_boost_direct_rtp ?
 			       (packet_data->datalen > 2 &&
 				(IS_RTP(packet + packet_data->data_offset, packet_data->datalen) || 
-				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen) || 
-				 IS_DTLS_HANDSHAKE(packet + packet_data->data_offset, packet_data->datalen))) :
+				 IS_DTLS(packet + packet_data->data_offset, packet_data->datalen))) :
 			       false;
 		bool ok_push = !opt_t2_boost ||
 			       need_sip_process ||

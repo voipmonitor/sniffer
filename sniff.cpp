@@ -141,7 +141,8 @@ extern int opt_norecord_header;
 extern int opt_enable_http;
 extern int opt_enable_webrtc;
 extern int opt_enable_ssl;
-extern bool opt_ssl_enable_dtls_queue;
+extern int opt_ssl_enable_dtls_queue;
+extern bool opt_ssl_dtls_queue_lockless;
 extern bool ssl_client_random_use;
 extern int opt_convert_dlt_sll_to_en10;
 extern char *sipportmatrix;
@@ -306,6 +307,8 @@ extern cProcessingLimitations processing_limitations;
 
 
 #define ENABLE_DTLS_QUEUE (opt_enable_ssl && ssl_client_random_use && opt_ssl_enable_dtls_queue)
+#define ENABLE_DTLS_QUEUE_WITH_LOCK (ENABLE_DTLS_QUEUE && opt_ssl_enable_dtls_queue == 1)
+#define ENABLE_DTLS_QUEUE_LOCKLESS (ENABLE_DTLS_QUEUE && opt_ssl_enable_dtls_queue == 2)
 #define ENABLE_DTLS_HANDSHAKE_SAFE_LINKS (opt_enable_ssl && ssl_client_random_use && opt_ssl_dtls_handshake_safe)
 
 
@@ -6769,12 +6772,6 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 	} else {
 		packetS->blockstore_addflag(24 /*pb lock flag*/);
 		packetS->init2_rtp();
-		if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
-			dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
-								   packetS->daddr_(), packetS->dest_(),
-								   (u_char*)packetS->data_(), packetS->datalen_(),
-								   packetS->getTimeUS());
-		}
 		packet_s_process_calls_info *call_info = packet_s_process_calls_info::create();
 		call_info->length = 0;
 		call_info->find_by_dest = false;
@@ -6868,13 +6865,13 @@ bool process_packet_rtp(packet_s_process_0 *packetS) {
 		if(call_info->length) {
 			if(call_info->length > 1) {
 				packetS->set_reuse_counter_with_insert_packets(call_info->length,
-									       call_info->length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+									       call_info->length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
 			}
 			process_packet__rtp_call_info(call_info, packetS);
 			packet_s_process_calls_info::free(call_info);
 			return(true);
 		} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-			dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+			dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 			packet_s_process_calls_info::free(call_info);
 			return(true);
 		} else if(opt_rtpnosip) {
@@ -11061,6 +11058,17 @@ void PreProcessPacket::process_DIAMETER(packet_s_process *packetS) {
 }
 
 void PreProcessPacket::process_RTP(packet_s_process_0 *packetS) {
+	if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->pflags.dtls_handshake) {
+		packetS->init2_rtp();
+		dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
+							   packetS->daddr_(), packetS->dest_(),
+							   (u_char*)packetS->data_(), packetS->datalen_(),
+							   packetS->getTimeUS());
+		if(opt_ssl_dtls_handshake_safe == 3) {
+			PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 3);
+			return;
+		}
+	}
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	if(separate_processing() == cSeparateProcessing::_sip) {
 		PACKET_S_PROCESS_DESTROY(&packetS);
@@ -11846,6 +11854,8 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			unsigned batch_index_start = hash_thread_data->start;
 			unsigned batch_index_end = hash_thread_data->end;
 			unsigned batch_index_skip = hash_thread_data->skip;
+			bool ENABLE_DTLS_QUEUE_WITH_LOCK_ = ENABLE_DTLS_QUEUE_WITH_LOCK;
+			bool ENABLE_DTLS_QUEUE_LOCKLESS_ = ENABLE_DTLS_QUEUE_LOCKLESS;
 			for(unsigned batch_index = batch_index_start; 
 			    batch_index < batch_index_end; 
 			    batch_index += batch_index_skip) {
@@ -11854,24 +11864,16 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 					continue;
 				}
-				#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-				if(packetS->isDtlsHandshake()) {
+				if(ENABLE_DTLS_QUEUE_LOCKLESS_ && packetS->isDtlsHandshake()) {
 					this->hash_find_flag[batch_index] = -2;
 					continue;
 				}
-				#endif
 				packetS->init2_rtp();
-				if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
-					dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
-										   packetS->daddr_(), packetS->dest_(),
-										   (u_char*)packetS->data_(), packetS->datalen_(),
-										   packetS->getTimeUS());
-				}
 				this->find_hash(packetS, hash_thread_data->counters, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
-				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-					dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+				} else if(ENABLE_DTLS_QUEUE_WITH_LOCK_ && packetS->isDtlsHandshake()) {
+					dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 					this->hash_find_flag[batch_index] = -2;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);
@@ -11883,6 +11885,8 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				unsigned batch_index_start = hash_thread_data->start;
 				unsigned batch_index_end = hash_thread_data->end;
 				unsigned batch_index_skip = hash_thread_data->skip;
+				bool ENABLE_DTLS_QUEUE_WITH_LOCK_ = ENABLE_DTLS_QUEUE_WITH_LOCK;
+				bool ENABLE_DTLS_QUEUE_LOCKLESS_ = ENABLE_DTLS_QUEUE_LOCKLESS;
 				for(unsigned batch_index = batch_index_start; 
 				    batch_index < batch_index_end; 
 				    batch_index += batch_index_skip) {
@@ -11891,22 +11895,20 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 						syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 						continue;
 					}
-					packetS->init2_rtp();
-					if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
-						dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
-											   packetS->daddr_(), packetS->dest_(),
-											   (u_char*)packetS->data_(), packetS->datalen_(),
-											   packetS->getTimeUS());
+					if(ENABLE_DTLS_QUEUE_LOCKLESS_ && packetS->isDtlsHandshake()) {
+						this->hash_find_flag[batch_index] = -2;
+						continue;
 					}
+					packetS->init2_rtp();
 					this->find_hash(packetS, hash_thread_data->counters, false);
 					if(packetS->call_info.length > 0) {
 						if(packetS->call_info.length > 1) {
 							packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
-												       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+												       packetS->call_info.length - (opt_ssl_dtls_queue_keep || opt_ssl_dtls_queue == 2 ? 1 : 0));
 						}
 						this->hash_find_flag[batch_index] = 1;
-					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+					} else if(ENABLE_DTLS_QUEUE_WITH_LOCK_ && packetS->isDtlsHandshake()) {
+						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 						this->hash_find_flag[batch_index] = -2;
 					} else {
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 30 + next_thread_index_plus - 1);
@@ -11964,8 +11966,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 		#if not EXPERIMENTAL_PROCESS_RTP_MOD_02
 		calltable->lock_calls_hash();
 		if(this->hash_next_threads[0].thread_handle) {
-			#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-			if(ENABLE_DTLS_QUEUE) {
+			if(ENABLE_DTLS_QUEUE_LOCKLESS) {
 				u_int64_t time_ms = getTimeMS_rdtsc();
 				if(time_ms > dtls_queue.last_cleanup_ms + dtls_queue.cleanup_interval_ms) {
 					dtls_queue._cleanup(time_ms);
@@ -11974,11 +11975,10 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 					packet_s_process_0 *packetS = batch->batch[i];
 					if(packetS->isDtlsHandshake()) {
 						packetS->init2_rtp();
-						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+						dtls_queue.push(packetS, true, false);
 					}
 				}
 			}
-			#endif
 			for(int i = 0; i < _process_rtp_packets_hash_next_threads; i++) {
 				this->hash_next_threads[i].hash_data.null();
 				if(_find_hash_only_in_next_threads) {
@@ -12026,6 +12026,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 				}
 			} else {
 				unsigned rtp_counters[2] = { 0, 0 };
+				bool ENABLE_DTLS_QUEUE_WITH_LOCK_ = ENABLE_DTLS_QUEUE_WITH_LOCK;
+				bool ENABLE_DTLS_QUEUE_LOCKLESS_ = ENABLE_DTLS_QUEUE_LOCKLESS;
 				for(unsigned batch_index = 0; 
 				    batch_index < count / (_process_rtp_packets_hash_next_threads + 1); 
 				    batch_index++) {
@@ -12034,24 +12036,16 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 						continue;
 					}
-					#if EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-					if(packetS->isDtlsHandshake()) {
+					if(ENABLE_DTLS_QUEUE_LOCKLESS_ && packetS->isDtlsHandshake()) {
 						this->hash_find_flag[batch_index] = -2;
 						continue;
 					}
-					#endif
 					packetS->init2_rtp();
-					if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
-						dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
-											   packetS->daddr_(), packetS->dest_(),
-											   (u_char*)packetS->data_(), packetS->datalen_(),
-											   packetS->getTimeUS());
-					}
 					this->find_hash(packetS, rtp_counters, false);
 					if(packetS->call_info.length > 0) {
 						this->hash_find_flag[batch_index] = 1;
-					} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+					} else if(ENABLE_DTLS_QUEUE_WITH_LOCK_ && packetS->isDtlsHandshake()) {
+						dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 						this->hash_find_flag[batch_index] = -2;
 					} else {
 						PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
@@ -12081,24 +12075,24 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 			}
 		} else {
 			unsigned rtp_counters[2] = { 0, 0 };
+			bool ENABLE_DTLS_QUEUE_WITH_LOCK_ = ENABLE_DTLS_QUEUE_WITH_LOCK;
+			bool ENABLE_DTLS_QUEUE_LOCKLESS_ = ENABLE_DTLS_QUEUE_LOCKLESS;
 			for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 				packet_s_process_0 *packetS = batch->batch[batch_index];
 				if(!packetS) {
 					syslog(LOG_NOTICE, "NULL packetS in %s %i", __FILE__, __LINE__);
 					continue;
 				}
-				packetS->init2_rtp();
-				if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS && packetS->isDtlsHandshake()) {
-					dtls_handshake_safe_links.processHandshake(packetS->saddr_(), packetS->source_(),
-										   packetS->daddr_(), packetS->dest_(),
-										   (u_char*)packetS->data_(), packetS->datalen_(),
-										   packetS->getTimeUS());
+				if(ENABLE_DTLS_QUEUE_LOCKLESS_ && packetS->isDtlsHandshake()) {
+					this->hash_find_flag[batch_index] = -2;
+					continue;
 				}
+				packetS->init2_rtp();
 				this->find_hash(packetS, rtp_counters, false);
 				if(packetS->call_info.length > 0) {
 					this->hash_find_flag[batch_index] = 1;
-				} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-					dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+				} else if(ENABLE_DTLS_QUEUE_WITH_LOCK_ && packetS->isDtlsHandshake()) {
+					dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 					this->hash_find_flag[batch_index] = -2;
 				} else {
 					PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 5);
@@ -12198,8 +12192,8 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 							      true,
 							      opt_t2_boost ? indexThread + 1 : 0,
 							      indexThread + 1);
-			} else if(ENABLE_DTLS_QUEUE && packetS->isDtlsHandshake()) {
-				dtls_queue.push(packetS, opt_ssl_dtls_queue_keep);
+			} else if(ENABLE_DTLS_QUEUE_WITH_LOCK && packetS->isDtlsHandshake()) {
+				dtls_queue.push(packetS, opt_ssl_dtls_queue_keep, true);
 			} else {
 				if(opt_rtpnosip) {
 					process_packet__rtp_nosip(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), 
@@ -12243,14 +12237,14 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 				}
 			}
 			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
-								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
 			for(int i = 0; i < threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[threads_rd[i]]->push_packet(packetS);
 			}
 			#else
 			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
-								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
 			for(int i = 0; i < packetS->call_info.threads_rd_count; i++) {
 				packetS->blockstore_addflag(46 /*pb lock flag*/);
 				processRtpPacketDistribute[packetS->call_info.threads_rd[i]]->push_packet(packetS);
@@ -12260,7 +12254,7 @@ inline void ProcessRtpPacket::rtp_packet_distr(packet_s_process_0 *packetS, int 
 	} else {
 		if(packetS->call_info.length > 1) {
 			packetS->set_reuse_counter_with_insert_packets(packetS->call_info.length,
-								       packetS->call_info.length - (opt_ssl_dtls_queue_keep ? 1 : 0));
+								       packetS->call_info.length - (opt_ssl_dtls_queue_keep || opt_ssl_enable_dtls_queue == 2 ? 1 : 0));
 		}
 		ProcessRtpPacket *_processRtpPacket = processRtpPacketDistribute[1] ?
 						       processRtpPacketDistribute[min(packetS->source_().getPort(), packetS->dest_().getPort()) / 2 % _process_rtp_packets_distribute_threads_use] :
@@ -12335,46 +12329,39 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 					if(!call_rtp->is_rtcp) {
 						++counter_rtp_only_packets;
 					}
-					#if not EXPERIMENTAL_DTLS_QUEUE_LOCKLESS
-					if(ENABLE_DTLS_QUEUE &&
-					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
-					   !call->existsSrtpCryptoConfig() &&
-					   call->existsSrtpFingerprint() &&
-					   !use_dtls_queue &&
-					   !call->dtls_queue_move) {
-						if(dtls_queue.existsContent()) {
-							dtls_queue.lock();
-							if(dtls_queue.existsLink(packetS) && !packetS->insert_packets && !call->dtls_queue_move) {
-								dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
-								call->dtls_queue_move = true;
-							}
-							dtls_queue.unlock();
-							use_dtls_queue = true;
-						}
-					}
-					#else
 					if(ENABLE_DTLS_QUEUE &&
 					   call_rtp->sdp_flags.protocol == sdp_proto_srtp &&
 					   !call->existsSrtpCryptoConfig() &&
 					   call->existsSrtpFingerprint() &&
 					   !use_dtls_queue) {
-						if(dtls_queue.existsContent() && !packetS->insert_packets) {
-							unsigned c = dtls_queue.existsLink(packetS);
-							bool needMove = false;
-							call->dtls_queue_lock();
-							if(call->dtls_queue_move < c) {
-								call->dtls_queue_move = c;
-								needMove = true;
+						if(opt_ssl_enable_dtls_queue == 2) {
+							if(dtls_queue.existsContent()) {
+								unsigned c = dtls_queue.existsLink(packetS);
+								bool needMove = false;
+								call->dtls_queue_lock();
+								if(call->dtls_queue_move < c) {
+									call->dtls_queue_move = c;
+									needMove = true;
+								}
+								call->dtls_queue_unlock();
+								if(needMove && !packetS->insert_packets) {
+									dtls_queue.moveToPacket(packetS, true);
+									call->dtls_queue_move = c;
+								}
+								use_dtls_queue = true;
 							}
-							call->dtls_queue_unlock();
-							if(needMove) {
-								dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
-								call->dtls_queue_move = c;
+						} else {
+							if(!call->dtls_queue_move && dtls_queue.existsContent()) {
+								dtls_queue.lock();
+								if(dtls_queue.existsLink(packetS) && !packetS->insert_packets) {
+									dtls_queue.moveToPacket(packetS, opt_ssl_dtls_queue_keep);
+									call->dtls_queue_move = true;
+								}
+								dtls_queue.unlock();
 								use_dtls_queue = true;
 							}
 						}
 					}
-					#endif
 					packetS->blockstore_addflag(34 /*pb lock flag*/);
 					packetS->call_info.calls[packetS->call_info.length].c_branch = c_branch;
 					packetS->call_info.calls[packetS->call_info.length].iscaller = call_rtp->iscaller;
@@ -12772,6 +12759,9 @@ void dtls_queue_cleanup() {
 	if(ENABLE_DTLS_QUEUE) {
 		dtls_queue.cleanup();
 	}
+}
+
+void dtls_handshake_safe_links_cleanup() {
 	if(ENABLE_DTLS_HANDSHAKE_SAFE_LINKS) {
 		dtls_handshake_safe_links.cleanup();
 	}

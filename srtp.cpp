@@ -176,7 +176,7 @@ void RTPsecure::prepare_decrypt(vmIP saddr, vmIP daddr, vmPort sport, vmPort dpo
 		ssl_sessionkey_log(log_str);
 	}
 	if(is_dtls() && !cryptoConfigVector.size()) {
-		for(int pass_source_dtls_object = 0; pass_source_dtls_object < (opt_ssl_dtls_handshake_safe == 2 ? 2 : 1); pass_source_dtls_object++) {
+		for(int pass_source_dtls_object = 0; pass_source_dtls_object < (opt_ssl_dtls_handshake_safe >= 2 ? 2 : 1); pass_source_dtls_object++) {
 			cDtls *source_dtls_object = pass_source_dtls_object == 0 ? call->dtls : &dtls_handshake_safe_links;
 			if(source_dtls_object) {
 				list<cDtlsLink::sSrtpKeys*> keys;
