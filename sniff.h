@@ -182,7 +182,7 @@ struct packet_s {
 	u_int16_t _dataoffset;
 	u_int16_t header_ip_encaps_offset;
 	u_int16_t header_ip_offset;
-	#if EXPERIMENTAL_SEPARATE_TIME_US
+	#if not NOT_USE_SEPARATE_TIME_US
 	u_int64_t time_us;
 	#endif
 	sPacketInfoData pid;
@@ -378,7 +378,7 @@ struct packet_s {
 		init();
 	}
 	inline u_int64_t getTimeUS() {
-		#if EXPERIMENTAL_SEPARATE_TIME_US
+		#if not NOT_USE_SEPARATE_TIME_US
 		return(time_us);
 		#else
 		#if not EXPERIMENTAL_SUPPRESS_KAMAILIO

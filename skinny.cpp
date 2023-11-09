@@ -1315,7 +1315,7 @@ static inline void save_packet(Call *call, struct pcap_pkthdr *header, const u_c
 	packetS.pflags.init();
 	packetS.pflags.tcp = istcp;
 	packetS.header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0;
-	#if EXPERIMENTAL_SEPARATE_TIME_US
+	#if not NOT_USE_SEPARATE_TIME_US
 	packetS.time_us = ::getTimeUS(header);
 	#endif
 	packetS._datalen = datalen;

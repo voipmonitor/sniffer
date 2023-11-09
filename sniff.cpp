@@ -8731,7 +8731,7 @@ int rtp_stream_analysis(const char *pcap, bool onlyRtp) {
 			packetS->header_pt = header;
 			packetS->packet = packet; 
 			packetS->header_ip_offset = (u_char*)ppd.header_ip - packet; 
-			#if EXPERIMENTAL_SEPARATE_TIME_US
+			#if not NOT_USE_SEPARATE_TIME_US
 			packetS->time_us = ::getTimeUS(header);
 			#endif
 			packetS->dlt = dlink; 
@@ -11345,7 +11345,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 						kamailio_subst->ts.tv_usec = 0;
 					}
 					packetS->kamailio_subst = kamailio_subst;
-					#if EXPERIMENTAL_SEPARATE_TIME_US
+					#if not NOT_USE_SEPARATE_TIME_US
 					packetS->time_us = ::getTimeUS(kamailio_subst->ts);
 					#endif
 				}

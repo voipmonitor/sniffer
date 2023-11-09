@@ -703,7 +703,7 @@ public:
 		packetS->pflags = pflags;
 		packetS->header_ip_encaps_offset = header_ip_encaps ? ((u_char*)header_ip_encaps - packet) : 0xFFFF; 
 		packetS->header_ip_offset = header_ip ? ((u_char*)header_ip - packet) : 0; 
-		#if EXPERIMENTAL_SEPARATE_TIME_US
+		#if not NOT_USE_SEPARATE_TIME_US
 		packetS->time_us = ::getTimeUS(header->ts);
 		#endif
 		packetS->block_store = block_store; 
@@ -1526,7 +1526,7 @@ private:
 		packetS_detach->pflags = packet_data->pflags;
 		packetS_detach->header_ip_encaps_offset = packet_data->header_ip_encaps_offset; 
 		packetS_detach->header_ip_offset = packet_data->header_ip_offset; 
-		#if EXPERIMENTAL_SEPARATE_TIME_US
+		#if not NOT_USE_SEPARATE_TIME_US
 		packetS_detach->time_us = ::getTimeUS(header->ts);
 		#endif
 		packetS_detach->block_store = packet_data->hp.block_store; 

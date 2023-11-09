@@ -62,7 +62,7 @@ void DiameterTcpData::processData(vmIP ip_src, vmIP ip_dst,
 			packetS->pflags.init();
 			packetS->pflags.tcp = 2;
 			packetS->header_ip_offset = ethHeaderLength;
-			#if EXPERIMENTAL_SEPARATE_TIME_US
+			#if not NOT_USE_SEPARATE_TIME_US
 			packetS->time_us = ::getTimeUS(tcpHeader);
 			#endif
 			packetS->block_store = NULL; 
