@@ -8624,7 +8624,12 @@ void set_context_config() {
 	}
 	
 	if(opt_t2_boost == 2) {
-		opt_t2_boost_direct_rtp = true;
+		if(!CONFIG.isSet("t2_boost_direct_rtp")) {
+			opt_t2_boost_direct_rtp = true;
+		}
+		if(!CONFIG.isSet("t2_boost_pb_detach_thread")) {
+			opt_t2_boost_pb_detach_thread = 2;
+		}
 	}
 	
 	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
