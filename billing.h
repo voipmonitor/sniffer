@@ -86,10 +86,10 @@ public:
 	#endif
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	map<unsigned, cBillingAssignment*> operators;
@@ -109,10 +109,10 @@ public:
 	bool checkDomain(const char *domain, eBilingSide side);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	bool agregation;
@@ -157,10 +157,10 @@ public:
 	bool isHoliday(unsigned id, tm &day, const char *timezone);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	map<unsigned, cStateHolidays> holidays;
@@ -261,10 +261,10 @@ public:
 	unsigned getDefaultCustomerBillingId();
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	map<unsigned, cBillingRule*> rules;
@@ -314,10 +314,10 @@ public:
 	string getCurrencyCode(unsigned id);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	list<sCurrencyItem> items;
@@ -382,10 +382,10 @@ public:
 				bool use_exclude_rules = true);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	bool set;

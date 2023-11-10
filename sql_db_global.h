@@ -71,10 +71,10 @@ public:
 private:
 	u_int64_t get_last_id(const char *table, const char *idColumn = NULL, SqlDb *sqlDb = NULL);
 	void lock_autoinc() {
-		while(__sync_lock_test_and_set(&_sync_autoinc, 1));
+		__SYNC_LOCK(_sync_autoinc);
 	}
 	void unlock_autoinc() {
-		__sync_lock_release(&_sync_autoinc);
+		__SYNC_UNLOCK(_sync_autoinc);
 	}
 private:
 	void *u_data;
@@ -110,16 +110,16 @@ private:
 	void _load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb = NULL);
 	static void *_loadInBackground(void *arg);
 	void lock_data() {
-		while(__sync_lock_test_and_set(&_sync_data, 1));
+		__SYNC_LOCK(_sync_data);
 	}
 	void unlock_data() {
-		__sync_lock_release(&_sync_data);
+		__SYNC_UNLOCK(_sync_data);
 	}
 	void lock_load() {
-		while(__sync_lock_test_and_set(&_sync_load, 1));
+		__SYNC_LOCK(_sync_load);
 	}
 	bool lock_load(int timeout_us) {
-		while(__sync_lock_test_and_set(&_sync_load, 1)) {
+		__SYNC_LOCK_WHILE(_sync_load) {
 			timeout_us -= 100;
 			if(timeout_us < 0) {
 				return(false);
@@ -129,7 +129,7 @@ private:
 		return(true);
 	}
 	void unlock_load() {
-		__sync_lock_release(&_sync_load);
+		__SYNC_UNLOCK(_sync_load);
 	}
 private:
 	eTypeCodebook type;
@@ -193,10 +193,10 @@ private:
 	void initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb);
 	void initAutoIncrement(SqlDb *sqlDb);
 	void lock_data() {
-		while(__sync_lock_test_and_set(&_sync_data, 1));
+		__SYNC_LOCK(_sync_data);
 	}
 	void unlock_data() {
-		__sync_lock_release(&_sync_data);
+		__SYNC_UNLOCK(_sync_data);
 	}
 private:
 	cSqlDbCodebooks *codebooks;

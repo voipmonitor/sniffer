@@ -420,13 +420,13 @@ struct pcap_block_store {
 	#else
 	void lock_packet(int /*index*/, int /*flag*/) {
 	#endif
-		__sync_add_and_fetch(&this->_sync_packet_lock, 1);
+		__SYNC_INC(this->_sync_packet_lock);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		__sync_add_and_fetch(&this->_sync_packets_lock[index], 1);
+		__SYNC_INC(this->_sync_packets_lock[index]);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
-			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
-			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH], 1);
+			__SYNC_ADD(this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
+			__SYNC_INC(this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH]);
 		}
 		#endif
 		#endif
@@ -436,7 +436,7 @@ struct pcap_block_store {
 	#else
 	void unlock_packet(int index) {
 	#endif
-		__sync_sub_and_fetch(&this->_sync_packet_lock, 1);
+		__SYNC_DEC(this->_sync_packet_lock);
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		if(this->_sync_packets_lock[index] <= 0) {
 			syslog(LOG_ERR, "error in sync (unlock) packetbuffer block %lx / %i / %i", (u_int64_t)this, index, this->_sync_packets_lock[index]);
@@ -444,7 +444,7 @@ struct pcap_block_store {
 			abort();
 			#endif
 		}
-		__sync_sub_and_fetch(&this->_sync_packets_lock[index], 1);
+		__SYNC_DEC(this->_sync_packets_lock[index]);
 		#endif
 	}
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
@@ -455,8 +455,8 @@ struct pcap_block_store {
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
 		if(flag && this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] < DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH - 1) {
-			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
-			__sync_add_and_fetch(&this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH], 1);
+			__SYNC_ADD(this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH + this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH] + 1], flag);
+			__SYNC_INC(this->_sync_packets_flag[index * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH]);
 		}
 		#endif
 		#endif

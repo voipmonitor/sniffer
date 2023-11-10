@@ -18,6 +18,7 @@
 #include "tools_define.h"
 #include "tools_local.h"
 #include "ip.h"
+#include "sync.h"
 
 #ifdef CLOUD_ROUTER_CLIENT
 #include "common.h"
@@ -989,12 +990,10 @@ private:
 	void sort_ips_by_type(vector<vmIP> *ips);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			USLEEP(100);
-		}
+		__SYNC_LOCK_USLEEP(_sync_lock, 100);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync_lock);
+		__SYNC_UNLOCK(_sync_lock);
 	}
 private:
 	bool use_lock;
@@ -1017,12 +1016,10 @@ private:
 	bool init();
 	void term();
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			USLEEP(100);
-		}
+		__SYNC_LOCK_USLEEP(_sync_lock, 100);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync_lock);
+		__SYNC_UNLOCK(_sync_lock);
 	}
 private:
 	UConverter *cnv_utf8;

@@ -278,16 +278,16 @@ private:
 	void cleanup_history_by_max_items(unsigned max_items);
 	void close_pcaps_by_limit_time(u_int64_t limit_time_us, cSipMsgRelations *relations);
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	void lock_id() {
-		while(__sync_lock_test_and_set(&_sync_id, 1));
+		__SYNC_LOCK(_sync_id);
 	}
 	void unlock_id() {
-		__sync_lock_release(&_sync_id);
+		__SYNC_UNLOCK(_sync_id);
 	}
 private:
 	u_int64_t id;
@@ -439,40 +439,40 @@ private:
 	void internalThread();
 	static void *internalThread(void *arg);
 	void lock_relations() {
-		while(__sync_lock_test_and_set(&_sync_relations, 1));
+		__SYNC_LOCK(_sync_relations);
 	}
 	void unlock_relations() {
-		__sync_lock_release(&_sync_relations);
+		__SYNC_UNLOCK(_sync_relations);
 	}
 	void lock_params() {
-		while(__sync_lock_test_and_set(&_sync_params, 1));
+		__SYNC_LOCK(_sync_params);
 	}
 	void unlock_params() {
-		__sync_lock_release(&_sync_params);
+		__SYNC_UNLOCK(_sync_params);
 	}
 	void lock_params_load() {
-		while(__sync_lock_test_and_set(&_sync_params_load, 1));
+		__SYNC_LOCK(_sync_params_load);
 	}
 	void unlock_params_load() {
-		__sync_lock_release(&_sync_params_load);
+		__SYNC_UNLOCK(_sync_params_load);
 	}
 	void lock_cdp_queue() {
-		while(__sync_lock_test_and_set(&_sync_cdp_queue, 1));
+		__SYNC_LOCK(_sync_cdp_queue);
 	}
 	void unlock_cdp_queue() {
-		__sync_lock_release(&_sync_cdp_queue);
+		__SYNC_UNLOCK(_sync_cdp_queue);
 	}
 	void lock_close_pcap() {
-		while(__sync_lock_test_and_set(&_sync_close_pcap, 1));
+		__SYNC_LOCK(_sync_close_pcap);
 	}
 	void unlock_close_pcap() {
-		__sync_lock_release(&_sync_close_pcap);
+		__SYNC_UNLOCK(_sync_close_pcap);
 	}
 	void lock_save_to_db() {
-		while(__sync_lock_test_and_set(&_sync_save_to_db, 1));
+		__SYNC_LOCK(_sync_save_to_db);
 	}
 	void unlock_save_to_db() {
-		__sync_lock_release(&_sync_save_to_db);
+		__SYNC_UNLOCK(_sync_save_to_db);
 	}
 public:
 	map<cSipMsgRelationId, cSipMsgRelation*> relations;

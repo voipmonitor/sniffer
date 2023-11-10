@@ -103,10 +103,10 @@ struct HttpDataCache {
 	void writeToDb(bool all = false, bool ifExpiration = false);
 	map<HttpDataCache_id, HttpDataCache_link> data;
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1)) USLEEP(100);
+		__SYNC_LOCK_USLEEP(this->_sync, 100);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 	u_int64_t last_timestamp;
 	u_int64_t init_at;

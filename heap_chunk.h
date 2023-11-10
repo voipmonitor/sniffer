@@ -2,6 +2,7 @@
 #define HEAP_CHUNK_H
 
 #include "config.h"
+#include "sync.h"
 
 
 class cHeap_base {
@@ -101,10 +102,10 @@ private:
 	cHeapItem *createHeapItem();
 	void destroyLastHeapItem();
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	u_int16_t maxHeapItems;

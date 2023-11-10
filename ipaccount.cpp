@@ -477,7 +477,7 @@ void Ipacc::save(unsigned int interval_time, t_ipacc_buffer *ipacc_buffer, s_cac
 		}
 	}
 	
-	__sync_sub_and_fetch(&sync_save_ipacc_buffer[indexIpaccBuffer], 1);
+	__SYNC_DEC(sync_save_ipacc_buffer[indexIpaccBuffer]);
 	
 	//printf("flush\n");
 	

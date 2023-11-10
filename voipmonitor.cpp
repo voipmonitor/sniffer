@@ -2201,7 +2201,7 @@ void *storing_cdr( void */*dummy*/ ) {
 			size_t calls_queue_position = 0;
 			list<Call*> calls_for_store;
 			int _calls_for_store_counter = 0;
-			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+			__SYNC_LOCK(storing_cdr_next_threads_count_sync);
 			storing_cdr_next_threads_count_mod = storing_cdr_next_threads_count_mod_request;
 			storing_cdr_next_threads_count_mod_request = 0;
 			if((storing_cdr_next_threads_count_mod > 0 && storing_cdr_next_threads_count == opt_storing_cdr_max_next_threads) ||
@@ -2366,7 +2366,7 @@ void *storing_cdr( void */*dummy*/ ) {
 				}
 				storingCdrLastWriteAt = getActDateTimeF();
 			}
-			__sync_lock_release(&storing_cdr_next_threads_count_sync);
+			__SYNC_UNLOCK(storing_cdr_next_threads_count_sync);
 			if(terminating_storing_cdr && (!calls_queue_size || terminating > 1)) {
 				break;
 			}
@@ -5451,7 +5451,7 @@ void main_term_read() {
 		terminating_storing_cdr = 1;
 		pthread_join(storing_cdr_thread, NULL);
 		if(storing_cdr_next_threads) {
-			while(__sync_lock_test_and_set(&storing_cdr_next_threads_count_sync, 1));
+			__SYNC_LOCK(storing_cdr_next_threads_count_sync);
 			for(int i = 0; i < opt_storing_cdr_max_next_threads; i++) {
 				if(storing_cdr_next_threads[i].init) {
 					if(i < storing_cdr_next_threads_count) {
@@ -5464,7 +5464,7 @@ void main_term_read() {
 					delete storing_cdr_next_threads[i].calls;
 				}
 			}
-			__sync_lock_release(&storing_cdr_next_threads_count_sync);
+			__SYNC_UNLOCK(storing_cdr_next_threads_count_sync);
 			delete [] storing_cdr_next_threads;
 			storing_cdr_next_threads = NULL;
 		}
@@ -12778,9 +12778,9 @@ bool init_lib_gcrypt() {
 	if(_init_lib_gcrypt_rslt >= 0) {
 		return(_init_lib_gcrypt_rslt);
 	}
-	while(__sync_lock_test_and_set(&_init_lib_gcrypt_sync, 1));
+	__SYNC_LOCK(_init_lib_gcrypt_sync);
 	if(_init_lib_gcrypt_rslt >= 0) {
-		__sync_lock_release(&_init_lib_gcrypt_sync);
+		__SYNC_UNLOCK(_init_lib_gcrypt_sync);
 		return(_init_lib_gcrypt_rslt);
 	}
 	bool rslt = false;
@@ -12797,7 +12797,7 @@ bool init_lib_gcrypt() {
 	}
 	#endif
 	_init_lib_gcrypt_rslt = rslt;
-	__sync_lock_release(&_init_lib_gcrypt_sync);
+	__SYNC_UNLOCK(_init_lib_gcrypt_sync);
 	return(_init_lib_gcrypt_rslt);
 }
 
@@ -12810,14 +12810,14 @@ bool init_lib_srtp() {
 	if(_init_lib_srtp_rslt >= 0) {
 		return(_init_lib_srtp_rslt);
 	}
-	while(__sync_lock_test_and_set(&_init_lib_srtp_sync, 1));
+	__SYNC_LOCK(_init_lib_srtp_sync);
 	if(_init_lib_srtp_rslt >= 0) {
-		__sync_lock_release(&_init_lib_srtp_sync);
+		__SYNC_UNLOCK(_init_lib_srtp_sync);
 		return(_init_lib_srtp_rslt);
 	}
 	srtp_init();
 	_init_lib_srtp_rslt = 1;
-	__sync_lock_release(&_init_lib_srtp_sync);
+	__SYNC_UNLOCK(_init_lib_srtp_sync);
 	return(_init_lib_srtp_rslt);
 }
 #endif

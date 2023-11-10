@@ -1922,31 +1922,31 @@ public:
 	u_int32_t getAllReceivedRtpPackets();
 	
 	void call_id_alternative_lock() {
-		while(__sync_lock_test_and_set(&this->_call_id_alternative_lock, 1));
+		__SYNC_LOCK(this->_call_id_alternative_lock);
 	}
 	void call_id_alternative_unlock() {
-		__sync_lock_release(&this->_call_id_alternative_lock);
+		__SYNC_UNLOCK(this->_call_id_alternative_lock);
 	}
 	
 	void custom_headers_content_lock() {
-		while(__sync_lock_test_and_set(&this->_custom_headers_content_sync, 1));
+		__SYNC_LOCK(this->_custom_headers_content_sync);
 	}
 	void custom_headers_content_unlock() {
-		__sync_lock_release(&this->_custom_headers_content_sync);
+		__SYNC_UNLOCK(this->_custom_headers_content_sync);
 	}
 	
 	void forcemark_lock() {
-		while(__sync_lock_test_and_set(&this->_forcemark_lock, 1));
+		__SYNC_LOCK(this->_forcemark_lock);
 	}
 	void forcemark_unlock() {
-		__sync_lock_release(&this->_forcemark_lock);
+		__SYNC_UNLOCK(this->_forcemark_lock);
 	}
 
 	void proxies_lock() {
-		while(__sync_lock_test_and_set(&this->_proxies_lock, 1));
+		__SYNC_LOCK(this->_proxies_lock);
 	}
 	void proxies_unlock() {
-		__sync_lock_release(&this->_proxies_lock);
+		__SYNC_UNLOCK(this->_proxies_lock);
 	}
 	
 	bool is_enable_set_destroy_call_at_for_call(CallBranch *c_branch, sCseq *cseq, int merged) {
@@ -2071,25 +2071,25 @@ public:
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
-			__sync_add_and_fetch(&calls_counter, 1);
+			__SYNC_INC(calls_counter);
 			set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
 		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
-			__sync_sub_and_fetch(&calls_counter, 1);
+			__SYNC_DEC(calls_counter);
 			set_call_counter = false;
 		}
 	}
 	void registers_counter_inc() {
 		extern volatile int registers_counter;
-		__sync_add_and_fetch(&registers_counter, 1);
+		__SYNC_INC(registers_counter);
 		set_register_counter = true;
 	}
 	void registers_counter_dec() {
 		extern volatile int registers_counter;
-		__sync_sub_and_fetch(&registers_counter, 1);
+		__SYNC_DEC(registers_counter);
 		set_register_counter = false;
 	}
 	
@@ -2115,10 +2115,10 @@ public:
 	void removeCallIdMap();
 	void removeMergeCalls();
 	void mergecalls_lock() {
-		while(__sync_lock_test_and_set(&this->_mergecalls_lock, 1));
+		__SYNC_LOCK(this->_mergecalls_lock);
 	}
 	void mergecalls_unlock() {
-		__sync_lock_release(&this->_mergecalls_lock);
+		__SYNC_UNLOCK(this->_mergecalls_lock);
 	}
 	
 	inline void setSipcallerip(CallBranch *c_branch, vmIP ip, vmIP ip_encaps, u_int8_t ip_encaps_prot, vmPort port, const char *call_id = NULL) {
@@ -2514,19 +2514,19 @@ public:
 	void setRtpThreadNum();
 	
 	void hash_add_lock() {
-		while(__sync_lock_test_and_set(&this->_hash_add_lock, 1));
+		__SYNC_LOCK(this->_hash_add_lock);
 	}
 	void hash_add_unlock() {
-		__sync_lock_release(&this->_hash_add_lock);
+		__SYNC_UNLOCK(this->_hash_add_lock);
 	}
 	
 	void add_txt(u_int64_t time, eTxtType type, const char *txt, unsigned txt_length);
 	int detectCallerdByLabelInXml(const char *label);
 	void txt_lock() {
-		while(__sync_lock_test_and_set(&this->_txt_lock, 1));
+		__SYNC_LOCK(this->_txt_lock);
 	}
 	void txt_unlock() {
-		__sync_lock_release(&this->_txt_lock);
+		__SYNC_UNLOCK(this->_txt_lock);
 	}
 	
 	void getChartCacheValue(int type, double *value, string *value_str, bool *null, class cCharts *chartsCache);
@@ -3087,49 +3087,49 @@ public:
 	*/
 	void lock_calls_queue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_queue, 1)) USLEEP(opt_lock_calls_usleep); 
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_queue, opt_lock_calls_usleep); 
 		/*pthread_mutex_lock(&qlock);*/
 	}
 	void lock_calls_audioqueue() { 
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_audioqueue, 1)) USLEEP(opt_lock_calls_usleep); 
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_audioqueue, opt_lock_calls_usleep); 
 		/*pthread_mutex_lock(&qaudiolock);*/
 	}
 	void lock_calls_charts_cache_queue() { 
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_charts_cache_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_charts_cache_queue, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&qaudiolock);*/
 	}
 	void lock_calls_deletequeue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_deletequeue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_deletequeue, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&qdellock);*/
 	}
 	void lock_registers_queue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_registers_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_registers_queue, opt_lock_calls_usleep);
 	}
 	void lock_registers_deletequeue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_registers_deletequeue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_registers_deletequeue, opt_lock_calls_usleep);
 	}
 	void lock_files_queue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_files_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_files_queue, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&flock);*/
 	}
 	void lock_calls_listMAP() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_listMAPlock);*/
 	}
 	void lock_calls_listMAP_X(u_int8_t ci) {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_listMAP_X[ci], 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP_X[ci], opt_lock_calls_usleep);
 	}
 	void lock_calls_mergeMAP() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_mergeMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_mergeMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_mergeMAPlock);*/
 	}
 	void lock_calls_diameter_from_sip_listMAP() {
@@ -3143,62 +3143,62 @@ public:
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
 	void lock_conference_calls_map() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_conference_calls_map, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_conference_calls_map, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_listMAPlock);*/
 	}
 	#endif
 	void lock_registers_listMAP() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_registers_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_registers_listMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&registers_listMAPlock);*/
 	}
 	void lock_skinny_maps() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_skinny_maps, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_skinny_maps, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&registers_listMAPlock);*/
 	}
 	void lock_ss7_listMAP() { 
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_ss7_listMAP, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_ss7_listMAP, opt_lock_calls_usleep);
 	}
 	void lock_process_ss7_listmap() { 
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_listmap, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_process_ss7_listmap, opt_lock_calls_usleep);
 	}
 	void lock_process_ss7_queue() {
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_process_ss7_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_process_ss7_queue, opt_lock_calls_usleep);
 	}
 	void lock_hash_modify_queue() { 
 		extern unsigned int opt_lock_calls_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_lock_hash_modify_queue, 1)) USLEEP(opt_lock_calls_usleep);
+		__SYNC_LOCK_USLEEP(this->_sync_lock_hash_modify_queue, opt_lock_calls_usleep);
 	}
 
 	/**
 	 * @brief unlock calls_queue structure 
 	 *
 	*/
-	void unlock_calls_queue() { __sync_lock_release(&this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ }
-	void unlock_calls_audioqueue() { __sync_lock_release(&this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ }
-	void unlock_calls_charts_cache_queue() { __sync_lock_release(&this->_sync_lock_calls_charts_cache_queue); /*pthread_mutex_unlock(&qcharts_chache_lock);*/ }
-	void unlock_calls_deletequeue() { __sync_lock_release(&this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ }
-	void unlock_registers_queue() { __sync_lock_release(&this->_sync_lock_registers_queue); }
-	void unlock_registers_deletequeue() { __sync_lock_release(&this->_sync_lock_registers_deletequeue); }
-	void unlock_files_queue() { __sync_lock_release(&this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
-	void unlock_calls_listMAP() { __sync_lock_release(&this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
-	void unlock_calls_listMAP_X(u_int8_t ci) { __sync_lock_release(&this->_sync_lock_calls_listMAP_X[ci]); }
-	void unlock_calls_mergeMAP() { __sync_lock_release(&this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
+	void unlock_calls_queue() { __SYNC_UNLOCK(this->_sync_lock_calls_queue); /*pthread_mutex_unlock(&qlock);*/ }
+	void unlock_calls_audioqueue() { __SYNC_UNLOCK(this->_sync_lock_calls_audioqueue); /*pthread_mutex_unlock(&qaudiolock);*/ }
+	void unlock_calls_charts_cache_queue() { __SYNC_UNLOCK(this->_sync_lock_calls_charts_cache_queue); /*pthread_mutex_unlock(&qcharts_chache_lock);*/ }
+	void unlock_calls_deletequeue() { __SYNC_UNLOCK(this->_sync_lock_calls_deletequeue); /*pthread_mutex_unlock(&qdellock);*/ }
+	void unlock_registers_queue() { __SYNC_UNLOCK(this->_sync_lock_registers_queue); }
+	void unlock_registers_deletequeue() { __SYNC_UNLOCK(this->_sync_lock_registers_deletequeue); }
+	void unlock_files_queue() { __SYNC_UNLOCK(this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
+	void unlock_calls_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
+	void unlock_calls_listMAP_X(u_int8_t ci) { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP_X[ci]); }
+	void unlock_calls_mergeMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
 	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
 	#if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
-	void unlock_conference_calls_map() { __sync_lock_release(&this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
+	void unlock_conference_calls_map() { __SYNC_UNLOCK(this->_sync_lock_conference_calls_map); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	#endif
-	void unlock_registers_listMAP() { __sync_lock_release(&this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ }
-	void unlock_skinny_maps() { __sync_lock_release(&this->_sync_lock_skinny_maps); }
-	void unlock_ss7_listMAP() { __sync_lock_release(&this->_sync_lock_ss7_listMAP); }
-	void unlock_process_ss7_listmap() { __sync_lock_release(&this->_sync_lock_process_ss7_listmap); }
-	void unlock_process_ss7_queue() { __sync_lock_release(&this->_sync_lock_process_ss7_queue); }
-	void unlock_hash_modify_queue() { __sync_lock_release(&this->_sync_lock_hash_modify_queue); }
+	void unlock_registers_listMAP() { __SYNC_UNLOCK(this->_sync_lock_registers_listMAP); /*pthread_mutex_unlock(&registers_listMAPlock);*/ }
+	void unlock_skinny_maps() { __SYNC_UNLOCK(this->_sync_lock_skinny_maps); }
+	void unlock_ss7_listMAP() { __SYNC_UNLOCK(this->_sync_lock_ss7_listMAP); }
+	void unlock_process_ss7_listmap() { __SYNC_UNLOCK(this->_sync_lock_process_ss7_listmap); }
+	void unlock_process_ss7_queue() { __SYNC_UNLOCK(this->_sync_lock_process_ss7_queue); }
+	void unlock_hash_modify_queue() { __SYNC_UNLOCK(this->_sync_lock_hash_modify_queue); }
 
 	/**
 	 * @brief add Call to Calltable
@@ -3265,7 +3265,7 @@ public:
 				rslt_call->call_id_alternative_unlock();
 			}
 			if(time && !rslt_call->stopProcessing) {
-				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
 					     << rslt_call->call_id << " : "
@@ -3286,7 +3286,7 @@ public:
 		if(callMAPIT != calls_listMAP_X[ci].end()) {
 			rslt_call = callMAPIT->second;
 			if(time) {
-				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (2) : "
 					     << rslt_call->call_id << " : "
@@ -3338,7 +3338,7 @@ public:
 		if(mergeMAPIT != calls_mergeMAP.end()) {
 			rslt_call = mergeMAPIT->second;
 			if(time) {
-				__sync_add_and_fetch(&rslt_call->in_preprocess_queue_before_process_packet, 1);
+				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** ++ in_preprocess_queue_before_process_packet (3) : "
 					     << rslt_call->call_id << " : "
@@ -3712,7 +3712,7 @@ public:
 	void lock_calls_hash() {
 		extern unsigned int opt_lock_calls_hash_usleep;
 		unsigned int usleepCounter = 0;
-		while(__sync_lock_test_and_set(&this->_sync_lock_calls_hash, 1)) {
+		__SYNC_LOCK_WHILE(this->_sync_lock_calls_hash) {
 			if(opt_lock_calls_hash_usleep) {
 				USLEEP_C(opt_lock_calls_hash_usleep, usleepCounter++);
 			} else {
@@ -3721,7 +3721,7 @@ public:
 		}
 	}
 	void unlock_calls_hash() {
-		__sync_lock_release(&this->_sync_lock_calls_hash);
+		__SYNC_UNLOCK(this->_sync_lock_calls_hash);
 	}
 	
 	void addSystemCommand(const char *command);
@@ -3918,10 +3918,10 @@ public:
 	string dump();
 private:
 	void lock_custom_headers() {
-		while(__sync_lock_test_and_set(&this->_sync_custom_headers, 1));
+		__SYNC_LOCK(this->_sync_custom_headers);
 	}
 	void unlock_custom_headers() {
-		__sync_lock_release(&this->_sync_custom_headers);
+		__SYNC_UNLOCK(this->_sync_custom_headers);
 	}
 private:
 	eType type;
@@ -3969,10 +3969,10 @@ public:
 	void refresh(SqlDb *sqlDb = NULL);
 private:
 	void lock_no_hash() {
-		while(__sync_lock_test_and_set(&this->_sync_no_hash, 1));
+		__SYNC_LOCK(this->_sync_no_hash);
 	}
 	void unlock_no_hash() {
-		__sync_lock_release(&this->_sync_no_hash);
+		__SYNC_UNLOCK(this->_sync_no_hash);
 	}
 private:
 	list<NoHashMessageRule*> rules;

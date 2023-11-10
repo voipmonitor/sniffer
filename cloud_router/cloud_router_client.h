@@ -62,12 +62,10 @@ public:
 	void sendProcess();
 private:
 	void lock_data() {
-		while(__sync_lock_test_and_set(&_sync_data, 1)) {
-			USLEEP(10);
-		}
+		__SYNC_LOCK_USLEEP(_sync_data, 10);
 	}
 	void unlock_data() {
-		__sync_lock_release(&_sync_data);
+		__SYNC_UNLOCK(_sync_data);
 	}
 private:
 	string host;

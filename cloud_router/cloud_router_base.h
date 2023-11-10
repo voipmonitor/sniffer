@@ -204,14 +204,10 @@ public:
         }
 private:
         void lock() {
-                while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-                        if(SYNC_LOCK_USLEEP) {
-                                usleep(SYNC_LOCK_USLEEP);
-                        }
-                }
+                __SYNC_LOCK_USLEEP(_sync_lock, SYNC_LOCK_USLEEP);
         }
         void unlock() {
-                __sync_lock_release(&_sync_lock);
+                __SYNC_UNLOCK(_sync_lock);
         }
 private:
         map<vmIP, u_int32_t> ip_counter;
@@ -259,14 +255,10 @@ public:
 	}
 private:
         void lock() {
-                while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-                        if(SYNC_LOCK_USLEEP) {
-                                usleep(SYNC_LOCK_USLEEP);
-                        }
-                }
+                __SYNC_LOCK_USLEEP(_sync_lock, SYNC_LOCK_USLEEP);
         }
         void unlock() {
-                __sync_lock_release(&_sync_lock);
+		__SYNC_UNLOCK(_sync_lock);
         }
 private:
 	u_int64_t interval_ms;

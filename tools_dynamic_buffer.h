@@ -21,6 +21,7 @@
 #include <lzo/lzo1x.h>
 #endif //HAVE_LIBLZO
 #include <snappy-c.h>
+#include "sync.h"
 
 #include "tar_data.h"
 
@@ -198,8 +199,8 @@ public:
 			if(chunk) {
 				delete [] chunk;
 				chunk = NULL;
-				__sync_fetch_and_sub(&chunkBuffer->chunk_buffer_size, len);
-				__sync_fetch_and_sub(&ChunkBuffer::chunk_buffers_sumsize, len);
+				__SYNC_SUB(chunkBuffer->chunk_buffer_size, len);
+				__SYNC_SUB(ChunkBuffer::chunk_buffers_sumsize, len);
 			}
 		}
 		char *chunk;
@@ -288,16 +289,16 @@ public:
 	void deleteChunks();
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
 	void lock_chunkBuffer() {
-		while(__sync_lock_test_and_set(&this->_sync_chunkBuffer, 1));
+		__SYNC_LOCK(this->_sync_chunkBuffer);
 	}
 	void unlock_chunkBuffer() {
-		__sync_lock_release(&this->_sync_chunkBuffer);
+		__SYNC_UNLOCK(this->_sync_chunkBuffer);
 	}
 	void lock_compress() {
-		while(__sync_lock_test_and_set(&this->_sync_compress, 1));
+		__SYNC_LOCK(this->_sync_compress);
 	}
 	void unlock_compress() {
-		__sync_lock_release(&this->_sync_compress);
+		__SYNC_UNLOCK(this->_sync_compress);
 	}
 	void addTarPosInCall(u_int64_t pos);
 	bool isFull() {

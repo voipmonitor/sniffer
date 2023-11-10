@@ -10,6 +10,7 @@
 #include "common.h"
 #include "proc_limit.h"
 #include "heap_safe.h"
+#include "sync.h"
 
 #include "voipmonitor_define.h"
 
@@ -451,7 +452,7 @@ typedef struct mysqlSSLOptions {
 
 inline void inc_counter_user_packets(unsigned user_index) {
 	extern volatile u_int64_t counter_user_packets[5];
-	__sync_add_and_fetch(&counter_user_packets[user_index], 1);
+	__SYNC_INC(counter_user_packets[user_index]);
 }
 
 

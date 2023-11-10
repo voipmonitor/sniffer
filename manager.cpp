@@ -598,10 +598,10 @@ public:
 		unlock();
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	map<string, u_int64_t> data;
@@ -707,16 +707,16 @@ public:
 		return(min_pos == (u_int64_t)-1 ? 0 : min_pos);
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	void lock_map() {
-		while(__sync_lock_test_and_set(&_sync_map, 1));
+		__SYNC_LOCK(_sync_map);
 	}
 	void unlock_map() {
-		__sync_lock_release(&_sync_map);
+		__SYNC_UNLOCK(_sync_map);
 	}
 private:
 	map<string, s_client*> clients;
@@ -820,16 +820,16 @@ public:
 		}
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	void lock_map() {
-		while(__sync_lock_test_and_set(&_sync_map, 1));
+		__SYNC_LOCK(_sync_map);
 	}
 	void unlock_map() {
-		__sync_lock_release(&_sync_map);
+		__SYNC_UNLOCK(_sync_map);
 	}
 private:
 	map<Call*, s_worker*> workers;
@@ -1239,7 +1239,7 @@ static bool addCommandType(string command_type) {
 // 		rslt = true;
 // 	} else {
 // 		if(commmand_type_counter[command_type]->i < 20) {
-// 			__sync_add_and_fetch(&commmand_type_counter[command_type]->i, 1);
+// 			__SYNC_INC(commmand_type_counter[command_type]->i);
 // 			rslt = true;
 // 		}
 // 	}
@@ -1260,7 +1260,7 @@ static void subCommandType(string command_type) {
 	}
 	
 // 	if(commmand_type_counter[command_type]->i > 0) {
-// 		__sync_sub_and_fetch(&commmand_type_counter[command_type]->i, 1);
+// 		__SYNC_DEC(commmand_type_counter[command_type]->i);
 // 	}
 	
 	pthread_mutex_unlock(&commmand_type_counter_sync);
@@ -2848,7 +2848,7 @@ int Mgmt_getactivesniffers(Mgmt_params *params) {
 		params->registerCommand("getactivesniffers", "returns active sniffers");
 		return(0);
 	}
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 	string jsonResult = "[";
 	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT;
 	int counter = 0;
@@ -2863,7 +2863,7 @@ int Mgmt_getactivesniffers(Mgmt_params *params) {
 		++counter;
 	}
 	jsonResult += "]";
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	return(params->sendString(&jsonResult));
 }
 
@@ -2874,7 +2874,7 @@ int Mgmt_stoplivesniffer(Mgmt_params *params) {
 	}
 	u_int32_t uid = 0;
 	sscanf(params->buf, "stoplivesniffer %u", &uid);
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+	__SYNC_LOCK(usersniffer_sync);
 	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
 	if(usersnifferIT != usersniffer.end()) {
 		delete usersnifferIT->second;
@@ -2887,7 +2887,7 @@ int Mgmt_stoplivesniffer(Mgmt_params *params) {
 			syslog(LOG_NOTICE, "stop livesniffer - uid: %u", uid);
 		}
 	}
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	return 0;
 }
 
@@ -2899,7 +2899,7 @@ int Mgmt_getlivesniffer(Mgmt_params *params) {
 	char sendbuf[BUFSIZE];
 	u_int32_t uid = 0;
 	sscanf(params->buf, "getlivesniffer %u", &uid);
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
 	if(usersnifferIT != usersniffer.end()) {
 		string parameters = trim_str((char*)usersnifferIT->second->parameters);
@@ -2921,7 +2921,7 @@ int Mgmt_getlivesniffer(Mgmt_params *params) {
 			usersniffer_kill_reason.erase(uid);
 		}
 	}
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	return(params->sendString(sendbuf));
 }
 
@@ -2938,7 +2938,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	}
 	JsonItem jsonParameters;
 	jsonParameters.parse(parameters);
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 	unsigned int uid = atol(jsonParameters.getValue("uid").c_str());
 	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT = usersniffer.find(uid);
 	livesnifferfilter_s* filter;
@@ -3045,7 +3045,7 @@ int Mgmt_startlivesniffer(Mgmt_params *params) {
 	sqlDb->getTypeColumn(("livepacket_" + intToString(uid)).c_str(), NULL, true, true);
 	delete sqlDb;
 	global_livesniffer = 1;
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	return(0);
 }
 
@@ -3063,7 +3063,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		syslog(LOG_NOTICE, "set livesniffer - uid: %u search: %s value: %s", uid, search, value);
 	}
 
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 
 	if(memmem(search, sizeof(search), "all", 3)) {
 		global_livesniffer = 1;
@@ -3076,7 +3076,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 			usersniffer[uid] = filter;
 		}
 		updateLivesnifferfilters();
-		__sync_lock_release(&usersniffer_sync);
+		__SYNC_UNLOCK(usersniffer_sync);
 		return 0;
 	}
 
@@ -3304,7 +3304,7 @@ int Mgmt_livefilter(Mgmt_params *params) {
 		}
 		updateLivesnifferfilters();
 	}
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	return(params->sendString("ok"));
 }
 
@@ -4265,9 +4265,9 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	ostringstream outStrStat;
 	extern int vm_rrd_version;
 	checkRrdVersion(true);
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 	size_t countLiveSniffers = usersniffer.size();
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	outStrStat << "{";
 	outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
 	outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";

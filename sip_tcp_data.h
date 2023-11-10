@@ -50,14 +50,10 @@ public:
 private:
 	void lock_cache() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
-		while(__sync_lock_test_and_set(&_sync_cache, 1)) {
-			if(opt_sip_tcp_reassembly_ext_usleep) {
-				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
-			}
-		}
+		__SYNC_LOCK_USLEEP(_sync_cache, opt_sip_tcp_reassembly_ext_usleep);
 	}
 	void unlock_cache() {
-		__sync_lock_release(&_sync_cache);
+		__SYNC_UNLOCK(_sync_cache);
 	}
 private:
 	unsigned int counterProcessData;

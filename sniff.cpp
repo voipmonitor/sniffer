@@ -659,7 +659,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 	vmPort srcport = packetS->source_();
 	vmPort dstport = packetS->dest_();
 
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1));
+	__SYNC_LOCK(usersniffer_sync);
 	
 	map<unsigned int, livesnifferfilter_s*>::iterator usersnifferIT;
 	
@@ -812,7 +812,7 @@ inline void save_live_packet(Call *call, packet_s_process *packetS, unsigned cha
 		}
 	}
 	
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 }
 
 void save_live_packet(packet_s_process *packetS) {
@@ -2903,13 +2903,13 @@ inline void add_to_rtp_thread_queue(CallBranch *c_branch, packet_s_process_0 *pa
 			lastTimeSyslog = actTime;
 		}
 		if(preSyncRtp) {
-			__sync_sub_and_fetch(&c_branch->call->rtppacketsinqueue, 1);
+			__SYNC_DEC(c_branch->call->rtppacketsinqueue);
 		}
 		PACKET_S_PROCESS_DESTROY(&packetS);
 		return;
 	}
 	if(!preSyncRtp) {
-		__sync_add_and_fetch(&c_branch->call->rtppacketsinqueue, 1);
+		__SYNC_INC(c_branch->call->rtppacketsinqueue);
 	}
 	rtp_read_thread *read_thread = &(rtp_threads[c_branch->call->thread_num]);
 	read_thread->push(c_branch, packetS, iscaller, find_by_dest, is_rtcp, stream_in_multiple_calls, sdp_flags, enable_save_packet, threadIndex);
@@ -2918,11 +2918,11 @@ inline void add_to_rtp_thread_queue(CallBranch *c_branch, packet_s_process_0 *pa
 
 static volatile int _sync_add_remove_rtp_threads;
 void lock_add_remove_rtp_threads() {
-	while(__sync_lock_test_and_set(&_sync_add_remove_rtp_threads, 1));
+	__SYNC_LOCK(_sync_add_remove_rtp_threads);
 }
 
 void unlock_add_remove_rtp_threads() {
-	__sync_lock_release(&_sync_add_remove_rtp_threads);
+	__SYNC_UNLOCK(_sync_add_remove_rtp_threads);
 }
 
 void *rtp_read_thread_func(void *arg) {
@@ -2971,7 +2971,7 @@ void *rtp_read_thread_func(void *arg) {
 				}
 				#endif
 				PACKET_S_PROCESS_PUSH_TO_STACK(&rtpp_pq->packet, 60 + read_thread->threadNum);
-				__sync_sub_and_fetch(&rtpp_pq->c_branch->call->rtppacketsinqueue, 1);
+				__SYNC_DEC(rtpp_pq->c_branch->call->rtppacketsinqueue);
 			}
 			#if RQUEUE_SAFE
 				__SYNC_NULL(batch->count);
@@ -2979,7 +2979,7 @@ void *rtp_read_thread_func(void *arg) {
 				__SYNC_INCR(read_thread->readit, read_thread->qring_length);
 			#else
 				batch->count = 0;
-				__sync_sub_and_fetch(&batch->used, 1);
+				__SYNC_DEC(batch->used);
 				if((read_thread->readit + 1) == read_thread->qring_length) {
 					read_thread->readit = 0;
 				} else {
@@ -3119,7 +3119,7 @@ int get_index_rtp_read_thread_min_calls() {
 		}
 	}
 	if(minCallsIndex >= 0) {
-		__sync_add_and_fetch(&rtp_threads[minCallsIndex].calls, 1);
+		__SYNC_INC(rtp_threads[minCallsIndex].calls);
 	}
 	unlock_add_remove_rtp_threads();
 	return(minCallsIndex);
@@ -3144,7 +3144,7 @@ int get_index_rtp_read_thread_min_cpu() {
 		}
 	}
 	if(minCpuIndex >= 0) {
-		__sync_add_and_fetch(&rtp_threads[minCpuIndex].calls, 1);
+		__SYNC_INC(rtp_threads[minCpuIndex].calls);
 	}
 	unlock_add_remove_rtp_threads();
 	return(minCpuIndex);
@@ -6550,7 +6550,7 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 		}
 		if(!call_info->calls[call_info_index].use_sync) {
 			if(preSyncRtp) {
-				__sync_sub_and_fetch(&call_info->calls[call_info_index].c_branch->call->rtppacketsinqueue, 1);
+				__SYNC_DEC(call_info->calls[call_info_index].c_branch->call->rtppacketsinqueue);
 			}
 			if(packetS) {
 				packetS->blockstore_addflag(58 /*pb lock flag*/);
@@ -10954,7 +10954,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 				_process_packet__cleanup_calls(packetS, __FILE__, __LINE__);
 			}
 			if(packetS->_findCall && packetS->call) {
-				__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+				__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** -- in_preprocess_queue_before_process_packet (1) : "
 					     << packetS->call->call_id << " : "
@@ -10962,7 +10962,7 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 				#endif
 			}
 			if(packetS->_createCall && packetS->call_created) {
-				__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+				__SYNC_DEC(packetS->call_created->in_preprocess_queue_before_process_packet);
 				#if DEBUG_PREPROCESS_QUEUE
 					cout << " *** -- in_preprocess_queue_before_process_packet (2) : "
 					     << packetS->call_created->call_id << " : "
@@ -10996,7 +10996,7 @@ void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 		_process_packet__cleanup_calls(packetS, __FILE__, __LINE__);
 	}
 	if(packetS->_findCall && packetS->call) {
-		__sync_sub_and_fetch(&packetS->call->in_preprocess_queue_before_process_packet, 1);
+		__SYNC_DEC(packetS->call->in_preprocess_queue_before_process_packet);
 		#if DEBUG_PREPROCESS_QUEUE
 			cout << " *** -- in_preprocess_queue_before_process_packet (3) : "
 			     << packetS->call->call_id << " : "
@@ -11004,7 +11004,7 @@ void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 		#endif
 	}
 	if(packetS->_createCall && packetS->call_created) {
-		__sync_sub_and_fetch(&packetS->call_created->in_preprocess_queue_before_process_packet, 1);
+		__SYNC_DEC(packetS->call_created->in_preprocess_queue_before_process_packet);
 		#if DEBUG_PREPROCESS_QUEUE
 			cout << " *** -- in_preprocess_queue_before_process_packet (4) "
 			     << packetS->call_created->call_id << " : "
@@ -12378,7 +12378,7 @@ void ProcessRtpPacket::find_hash(packet_s_process_0 *packetS, unsigned *counters
 					packetS->call_info.calls[packetS->call_info.length].use_sync = false;
 					packetS->call_info.calls[packetS->call_info.length].multiple_calls = false;
 					packetS->call_info.calls[packetS->call_info.length].thread_num_rd = call->thread_num_rd;
-					__sync_add_and_fetch(&call->rtppacketsinqueue, 1);
+					__SYNC_INC(call->rtppacketsinqueue);
 					++packetS->call_info.length;
 					if(packetS->call_info.length >= packet_s_process_calls_info::max_calls()) {
 						break;
@@ -12711,11 +12711,11 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 		return(NULL);
 	}
 	vector<unsigned int> uids;
-	while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+	__SYNC_LOCK(usersniffer_sync);
 	for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); iter++) {
 		uids.push_back(iter->first);
 	}
-	__sync_lock_release(&usersniffer_sync);
+	__SYNC_UNLOCK(usersniffer_sync);
 	if(uids.size()) {
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->setDisableLogError(true);
@@ -12727,7 +12727,7 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 			if(size > 0) {
 				size /= (1024 * 1024);
 				if(size > opt_livesniffer_tablesize_max_mb) {
-					while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+					__SYNC_LOCK(usersniffer_sync);
 					if(usersniffer.find(uids[i]) != usersniffer.end()) {
 						string kill_reason = "table size limit (in sniffer configuration - " + intToString(opt_livesniffer_tablesize_max_mb) + "MB)";
 						if(!log) {
@@ -12741,7 +12741,7 @@ void *checkSizeOfLivepacketTables(void */*arg*/) {
 						}
 						usersniffer_kill_reason[uids[i]] = kill_reason;
 					}
-					__sync_lock_release(&usersniffer_sync);
+					__SYNC_UNLOCK(usersniffer_sync);
 				}
 			}
 		}

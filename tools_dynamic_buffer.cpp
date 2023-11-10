@@ -1317,8 +1317,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 		this->chunkBuffer.push_back(chunk);
 		++this->chunkBuffer_countItems;
 		this->len += datalen;
-		__sync_fetch_and_add(&this->chunk_buffer_size, datalen);
-		__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, datalen);
+		__SYNC_ADD(this->chunk_buffer_size, datalen);
+		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumsize, datalen);
 		}
 		break;
 	case add_fill_chunks: {
@@ -1362,8 +1362,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			}
 		}
 		this->len += allcopied;
-		__sync_fetch_and_add(&this->chunk_buffer_size, allcopied);
-		__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, allcopied);
+		__SYNC_ADD(this->chunk_buffer_size, allcopied);
+		__SYNC_ADD(ChunkBuffer::chunk_buffers_sumsize, allcopied);
 		}
 		break;
 	case add_fill_fix_len: {
@@ -1384,8 +1384,8 @@ void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decom
 			copied += whattocopy;
 			this->len += whattocopy;
 			this->lastChunk->len += whattocopy;
-			__sync_fetch_and_add(&this->chunk_buffer_size, whattocopy);
-			__sync_fetch_and_add(&ChunkBuffer::chunk_buffers_sumsize, whattocopy);
+			__SYNC_ADD(this->chunk_buffer_size, whattocopy);
+			__SYNC_ADD(ChunkBuffer::chunk_buffers_sumsize, whattocopy);
 		} while(datalen > copied);
 		}
 		break;

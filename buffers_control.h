@@ -29,10 +29,10 @@ public:
 		return(this->pb_used_size);
 	}
 	void add__pb_used_size(size_t size) {
-		__sync_fetch_and_add(&this->pb_used_size, size);
+		__SYNC_ADD(this->pb_used_size, size);
 	}
 	void sub__pb_used_size(size_t size) {
-		__sync_fetch_and_sub(&this->pb_used_size, size);
+		__SYNC_SUB(this->pb_used_size, size);
 	}
 	void set__pb_trash_size(volatile u_int64_t *blockStoreTrash_size) {
 		this->pb_trash_size = *blockStoreTrash_size;
@@ -41,10 +41,10 @@ public:
 		return(this->pb_trash_size);
 	}
 	void add__pb_trash_size(size_t size) {
-		__sync_fetch_and_add(&this->pb_trash_size, size);
+		__SYNC_ADD(this->pb_trash_size, size);
 	}
 	void sub__pb_trash_size(size_t size) {
-		__sync_fetch_and_sub(&this->pb_trash_size, size);
+		__SYNC_SUB(this->pb_trash_size, size);
 	}
 	void set__pb_pool_size(volatile u_int64_t *blockStorePool_size) {
 		this->pb_pool_size = *blockStorePool_size;
@@ -53,10 +53,10 @@ public:
 		return(this->pb_pool_size);
 	}
 	void add__pb_pool_size(size_t size) {
-		__sync_fetch_and_add(&this->pb_pool_size, size);
+		__SYNC_ADD(this->pb_pool_size, size);
 	}
 	void sub__pb_pool_size(size_t size) {
-		__sync_fetch_and_sub(&this->pb_pool_size, size);
+		__SYNC_SUB(this->pb_pool_size, size);
 	}
 	void set__asyncwrite_size(volatile u_int64_t *sizeOfDataInMemory) {
 		this->asyncwrite_size = *sizeOfDataInMemory;
@@ -65,10 +65,10 @@ public:
 		return(this->asyncwrite_size);
 	}
 	void add__asyncwrite_size(size_t size) {
-		__sync_fetch_and_add(&this->asyncwrite_size, size);
+		__SYNC_ADD(this->asyncwrite_size, size);
 	}
 	void sub__asyncwrite_size(size_t size) {
-		__sync_fetch_and_sub(&this->asyncwrite_size, size);
+		__SYNC_SUB(this->asyncwrite_size, size);
 	}
 	bool check__pb__add_used(size_t add = 0) {
 		return(check() &&

@@ -59,17 +59,17 @@ public:
 	}
 private:
 	void add_sizeOfBlocks(size_t size) {
-		while(__sync_lock_test_and_set(&this->sizeOfBlocks_sync, 1));
+		__SYNC_LOCK(this->sizeOfBlocks_sync);
 		this->sizeOfBlocks += size;
-		__sync_lock_release(&this->sizeOfBlocks_sync);
+		__SYNC_UNLOCK(this->sizeOfBlocks_sync);
 	}
 	void sub_sizeOfBlocks(size_t size) {
-		while(__sync_lock_test_and_set(&this->sizeOfBlocks_sync, 1));
+		__SYNC_LOCK(this->sizeOfBlocks_sync);
 		this->sizeOfBlocks -= size;
 		if(this->sizeOfBlocks < 0) {
 			this->sizeOfBlocks = 0;
 		}
-		__sync_lock_release(&this->sizeOfBlocks_sync);
+		__SYNC_UNLOCK(this->sizeOfBlocks_sync);
 	}
 private:
 	rqueue_quick<pcap_block_store*> *queueBlock;
@@ -114,10 +114,10 @@ private:
 	bool close(eTypeHandle typeHandle);
 	bool destroy();
 	void lock_sync_flush_file() {
-		while(__sync_lock_test_and_set(&this->_sync_flush_file, 1));
+		__SYNC_LOCK(this->_sync_flush_file);
 	}
 	void unlock_sync_flush_file() {
-		__sync_lock_release(&this->_sync_flush_file);
+		__SYNC_UNLOCK(this->_sync_flush_file);
 	}
 private:
 	u_int id;
@@ -153,16 +153,16 @@ private:
 	void memoryBufferIsFull_log();
 	void diskBufferIsFull_log();
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1));
+		__SYNC_LOCK(this->_sync_queue);
 	}
 	void unlock_queue() {
-		__sync_lock_release(&this->_sync_queue);
+		__SYNC_UNLOCK(this->_sync_queue);
 	}
 	void lock_fileStore() {
-		while(__sync_lock_test_and_set(&this->_sync_fileStore, 1));
+		__SYNC_LOCK(this->_sync_fileStore);
 	}
 	void unlock_fileStore() {
-		__sync_lock_release(&this->_sync_fileStore);
+		__SYNC_UNLOCK(this->_sync_fileStore);
 	}
 	void add_sizeOfBlocksInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
@@ -724,10 +724,10 @@ protected:
 	}
 	void cancelThread();
 	inline void lock_detach_buffer(int index) {
-		while(__sync_lock_test_and_set(&this->_sync_detachBuffer[index], 1)) USLEEP(10);
+		__SYNC_LOCK_USLEEP(this->_sync_detachBuffer[index], 10);
 	}
 	inline void unlock_detach_buffer(int index) {
-		__sync_lock_release(&this->_sync_detachBuffer[index]);
+		__SYNC_UNLOCK(this->_sync_detachBuffer[index]);
 	}
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
@@ -1008,10 +1008,10 @@ private:
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
 	void lock_packetServerConnections() {
-		while(__sync_lock_test_and_set(&this->_sync_packetServerConnections, 1));
+		__SYNC_LOCK(this->_sync_packetServerConnections);
 	}
 	void unlock_packetServerConnections() {
-		__sync_lock_release(&this->_sync_packetServerConnections);
+		__SYNC_UNLOCK(this->_sync_packetServerConnections);
 	}
 	void blockStoreTrashPush(pcap_block_store *block) {
 		lock_blockStoreTrash();
@@ -1019,16 +1019,16 @@ private:
 		unlock_blockStoreTrash();
 	}
 	void lock_blockStoreTrash() {
-		while(__sync_lock_test_and_set(&this->blockStoreTrash_sync, 1));
+		__SYNC_LOCK(this->blockStoreTrash_sync);
 	}
 	void unlock_blockStoreTrash() {
-		__sync_lock_release(&this->blockStoreTrash_sync);
+		__SYNC_UNLOCK(this->blockStoreTrash_sync);
 	}
 	void lock_blockStorePool() {
-		while(__sync_lock_test_and_set(&this->blockStorePool_sync, 1));
+		__SYNC_LOCK(this->blockStorePool_sync);
 	}
 	void unlock_blockStorePool() {
-		__sync_lock_release(&this->blockStorePool_sync);
+		__SYNC_UNLOCK(this->blockStorePool_sync);
 	}
 protected:
 	ip_port packetServerIpPort;

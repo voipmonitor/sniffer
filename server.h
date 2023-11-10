@@ -153,14 +153,10 @@ public:
 	void setTaskState(string id, sSnifferServerGuiTask::eTaskState state);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			if(SYNC_LOCK_USLEEP) {
-				USLEEP(SYNC_LOCK_USLEEP);
-			}
-		}
+		__SYNC_LOCK_USLEEP(_sync_lock, SYNC_LOCK_USLEEP);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync_lock);
+		__SYNC_UNLOCK(_sync_lock);
 	}
 public:
 	map<string, sSnifferServerGuiTask> tasks;
@@ -204,24 +200,16 @@ public:
 	string *get_rchs_query();
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync_lock, 1)) {
-			if(SYNC_LOCK_USLEEP) {
-				USLEEP(SYNC_LOCK_USLEEP);
-			}
-		}
+		__SYNC_LOCK_USLEEP(_sync_lock, SYNC_LOCK_USLEEP);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync_lock);
+		__SYNC_UNLOCK(_sync_lock);
 	}
 	void lock_rchs() {
-		while(__sync_lock_test_and_set(&_sync_rchs, 1)) {
-			if(SYNC_LOCK_USLEEP) {
-				USLEEP(SYNC_LOCK_USLEEP);
-			}
-		}
+		__SYNC_LOCK_USLEEP(_sync_rchs, SYNC_LOCK_USLEEP);
 	}
 	void unlock_rchs() {
-		__sync_lock_release(&_sync_rchs);
+		__SYNC_UNLOCK(_sync_rchs);
 	}
 public:
 	map<string, sSnifferServerService> services;
@@ -255,10 +243,10 @@ public:
 		return(terminate);
 	}
 	void lock_connection_threads() {
-		while(__sync_lock_test_and_set(&connection_threads_sync, 1));
+		__SYNC_LOCK(connection_threads_sync);
 	}
 	void unlock_connection_threads() {
-		__sync_lock_release(&connection_threads_sync);
+		__SYNC_UNLOCK(connection_threads_sync);
 	}
 private:
 	MySqlStore *sqlStore;
@@ -317,14 +305,10 @@ private:
 	eTypeConnection convTypeConnection(string typeConnection);
 	void updateSensorState(int32_t sensor_id);
 	void lock_tasks() {
-		while(__sync_lock_test_and_set(&_sync_tasks, 1)) {
-			if(SYNC_LOCK_USLEEP) {
-				USLEEP(SYNC_LOCK_USLEEP);
-			}
-		}
+		__SYNC_LOCK_USLEEP(_sync_tasks,  SYNC_LOCK_USLEEP);
 	}
 	void unlock_tasks() {
-		__sync_lock_release(&_sync_tasks);
+		__SYNC_UNLOCK(_sync_tasks);
 	}
 	string getTypeConnectionStr();
 protected: 
@@ -390,12 +374,10 @@ public:
 	void sendProcess();
 private:
 	void lock_data() {
-		while(__sync_lock_test_and_set(&_sync_data, 1)) {
-			USLEEP(10);
-		}
+		__SYNC_LOCK_USLEEP(_sync_data, 10);
 	}
 	void unlock_data() {
-		__sync_lock_release(&_sync_data);
+		__SYNC_UNLOCK(_sync_data);
 	}
 private:
 	string host;

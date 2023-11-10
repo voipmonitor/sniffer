@@ -147,16 +147,16 @@ public:
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	static void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
+		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
+		__SYNC_UNLOCK(_sync_reload);
 	}
 private:
 	int count;
@@ -201,16 +201,16 @@ public:
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	static void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
+		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
+		__SYNC_UNLOCK(_sync_reload);
 	}
 private:
 	int count;
@@ -247,16 +247,16 @@ public:
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void applyReload();
 	static void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	static void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
+		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
+		__SYNC_UNLOCK(_sync_reload);
 	}
 private:
 	int count;
@@ -306,16 +306,16 @@ public:
 		return(loadTime);
 	}
 	static void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	static void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
+		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
+		__SYNC_UNLOCK(_sync_reload);
 	}
 private:
 	int count;
@@ -338,10 +338,10 @@ public:
 	static void applyReload();
 	static void freeActive();
 	static void lock_reload() {
-		while(__sync_lock_test_and_set(&_sync_reload, 1));
+		__SYNC_LOCK(_sync_reload);
 	}
 	static void unlock_reload() {
-		__sync_lock_release(&_sync_reload);
+		__SYNC_UNLOCK(_sync_reload);
 	}
 	static inline u_int32_t getGlobalFlags() {
 		return(global_flags);

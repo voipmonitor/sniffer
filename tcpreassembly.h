@@ -868,14 +868,10 @@ public:
 private:
 	void lock_queue() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_queue, 1)) {
-			if(opt_sip_tcp_reassembly_ext_usleep) {
-				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
-			}
-		}
+		__SYNC_LOCK_USLEEP(this->_sync_queue, opt_sip_tcp_reassembly_ext_usleep);
 	}
 	void unlock_queue() {
-		__sync_lock_release(&this->_sync_queue);
+		__SYNC_UNLOCK(this->_sync_queue);
 	}
 	void pushpacket(TcpReassemblyStream::eDirection direction,
 		        TcpReassemblyStream_packet packet,
@@ -1140,36 +1136,24 @@ private:
 	void *packetThreadFunction(void *);
 	void lock_links() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_links, 1)) {
-			if(opt_sip_tcp_reassembly_ext_usleep) {
-				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
-			}
-		}
+		__SYNC_LOCK_USLEEP(this->_sync_links, opt_sip_tcp_reassembly_ext_usleep);
 	}
 	void unlock_links() {
-		__sync_lock_release(&this->_sync_links);
+		__SYNC_UNLOCK(this->_sync_links);
 	}
 	void lock_push() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_push, 1)) {
-			if(opt_sip_tcp_reassembly_ext_usleep) {
-				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
-			}
-		}
+		__SYNC_LOCK_USLEEP(this->_sync_push, opt_sip_tcp_reassembly_ext_usleep);
 	}
 	void unlock_push() {
-		__sync_lock_release(&this->_sync_push);
+		__SYNC_UNLOCK(this->_sync_push);
 	}
 	void lock_cleanup() {
 		extern int opt_sip_tcp_reassembly_ext_usleep;
-		while(__sync_lock_test_and_set(&this->_sync_cleanup, 1)) {
-			if(opt_sip_tcp_reassembly_ext_usleep) {
-				USLEEP(opt_sip_tcp_reassembly_ext_usleep);
-			}
-		}
+		__SYNC_LOCK_USLEEP(this->_sync_cleanup, opt_sip_tcp_reassembly_ext_usleep);
 	}
 	void unlock_cleanup() {
-		__sync_lock_release(&this->_sync_cleanup);
+		__SYNC_UNLOCK(this->_sync_cleanup);
 	}
 private:
 	eType type;

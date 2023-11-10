@@ -5,6 +5,8 @@
 #include <string.h>
 #include <string>
 
+#include "sync.h"
+
 
 class cLogBuffer_var {
 public:
@@ -73,10 +75,10 @@ public:
 	void apply();
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&sync, 1));
+		__SYNC_LOCK(sync);
 	}
 	void unlock() {
-		__sync_lock_release(&sync);
+		__SYNC_UNLOCK(sync);
 	}
 private:
 	cLogBuffer_item items[10];

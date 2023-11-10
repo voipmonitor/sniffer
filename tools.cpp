@@ -6085,13 +6085,13 @@ volatile int timeCacheMap_sync;
 
 void termTimeCacheForThread() {
 	unsigned int tid = get_unix_tid();
-	while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+	__SYNC_LOCK(timeCacheMap_sync);
 	map<unsigned int, sLocalTimeHourCache*>::iterator iter = timeCacheMap.find(tid);
 	if(iter != timeCacheMap.end()) {
 		delete iter->second;
 		timeCacheMap.erase(iter);
 	}
-	__sync_lock_release(&timeCacheMap_sync);
+	__SYNC_UNLOCK(timeCacheMap_sync);
 }
 
 string getGuiTimezone(SqlDb *sqlDb) {

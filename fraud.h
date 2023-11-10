@@ -1183,10 +1183,10 @@ protected:
 	int8_t needTimer() { return(cTimer::_tt_min); }
 private:
 	void lock_calls() {
-		while(__sync_lock_test_and_set(&this->_sync_calls, 1));
+		__SYNC_LOCK(this->_sync_calls);
 	}
 	void unlock_calls() {
-		__sync_lock_release(&this->_sync_calls);
+		__SYNC_UNLOCK(this->_sync_calls);
 	}
 private:
 	int check_interval_minutes;
@@ -1281,10 +1281,10 @@ private:
 	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Call *call);
 	void completeRegisterInfo(sFraudRegisterInfo *registerInfo, Register *reg, RegisterState *regState);
 	void lock_alerts() {
-		while(__sync_lock_test_and_set(&this->_sync_alerts, 1));
+		__SYNC_LOCK(this->_sync_alerts);
 	}
 	void unlock_alerts() {
-		__sync_lock_release(&this->_sync_alerts);
+		__SYNC_UNLOCK(this->_sync_alerts);
 	}
 	void startTimer(bool lock = true, bool ifNeed = false);
 	void stopTimer();

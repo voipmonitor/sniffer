@@ -416,19 +416,19 @@ Call_abstract::get_pathname(eTypeSpoolFile typeSpoolFile, const char *substSpool
 		_time_index_arr[2] = t.tm_hour;
 		_time_index_arr[3] = t.tm_min;
 		u_int32_t *_time_index = (u_int32_t*)_time_index_arr;
-		while(__sync_lock_test_and_set(&timeDirCache_sync, 1));
+		__SYNC_LOCK(timeDirCache_sync);
 		if(*_time_index == timeDirCache_index[t.tm_min]) {
 			strcpy_null_term(timeDir_buffer, (const char*)timeDirCache_buffer[t.tm_min]);
 		}
-		__sync_lock_release(&timeDirCache_sync);
+		__SYNC_UNLOCK(timeDirCache_sync);
 		if(!timeDir_buffer[0]) {
 			snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
 				 "%04d-%02d-%02d/%02d/%02d", 
 				 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min);
-			while(__sync_lock_test_and_set(&timeDirCache_sync, 1));
+			__SYNC_LOCK(timeDirCache_sync);
 			timeDirCache_index[t.tm_min] = *_time_index;
 			strncpy_null_term((char*)timeDirCache_buffer[t.tm_min], timeDir_buffer, sizeof(timeDir_buffer));
-			__sync_lock_release(&timeDirCache_sync);
+			__SYNC_UNLOCK(timeDirCache_sync);
 		}
 	} else {
 		snprintf(timeDir_buffer, sizeof(timeDir_buffer), 
@@ -1178,7 +1178,7 @@ Call::~Call(){
 		extern void unlock_add_remove_rtp_threads();
 		lock_add_remove_rtp_threads();
 		if(rtp_threads[thread_num].calls > 0) {
-			__sync_sub_and_fetch(&rtp_threads[thread_num].calls, 1);
+			__SYNC_DEC(rtp_threads[thread_num].calls);
 		}
 		unlock_add_remove_rtp_threads();
 		extern volatile int process_rtp_packets_distribute_threads_use;
@@ -4654,7 +4654,7 @@ void Call::setRtpThreadNum() {
 			extern void unlock_add_remove_rtp_threads();
 			lock_add_remove_rtp_threads();
 			thread_num = gthread_num % num_threads_active;
-			__sync_add_and_fetch(&rtp_threads[thread_num].calls, 1);
+			__SYNC_INC(rtp_threads[thread_num].calls);
 			unlock_add_remove_rtp_threads();
 		}
 		thread_num_rd = get_index_rtp_rd_thread_min_calls();
@@ -12042,7 +12042,7 @@ void Calltable::processCallsInChartsCache_stop() {
 	}
 	terminating_charts_cache = 1;
 	pthread_join(chc_threads[0].thread, NULL);
-	while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
+	__SYNC_LOCK(chc_threads_count_sync);
 	for(int i = 1; i < chc_threads_count; i++) {
 		sem_post(&chc_threads[i].sem[0]);
 		pthread_join(chc_threads[i].thread, NULL);
@@ -12050,7 +12050,7 @@ void Calltable::processCallsInChartsCache_stop() {
 			sem_destroy(&chc_threads[i].sem[j]);
 		}
 	}
-	__sync_lock_release(&chc_threads_count_sync);
+	__SYNC_UNLOCK(chc_threads_count_sync);
 }
 
 u_int32_t counter_charts_cache;
@@ -12064,7 +12064,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 	if(threadIndex == 0) {
 		chc_threads[0].calls = new FILE_LINE(0) list<sChartsCallData>;
 		while(1) {
-			while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
+			__SYNC_LOCK(chc_threads_count_sync);
 			chc_threads_count_mod = chc_threads_count_mod_request;
 			chc_threads_count_mod_request = 0;
 			if((chc_threads_count_mod > 0 && chc_threads_count == opt_charts_cache_max_threads) ||
@@ -12173,7 +12173,7 @@ void Calltable::processCallsInChartsCache_thread(int threadIndex) {
 					chc_threads_count_mod = 0;
 				}
 			}
-			__sync_lock_release(&chc_threads_count_sync);
+			__SYNC_UNLOCK(chc_threads_count_sync);
 			chartsCacheAndCdrStatStore();
 			chartsCacheAndCdrStatCleanup();
 			chartsCacheReload();
@@ -12298,7 +12298,7 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 	cpuStr << fixed;
 	double cpu_sum = 0;
 	unsigned cpu_count = 0;
-	while(__sync_lock_test_and_set(&chc_threads_count_sync, 1));
+	__SYNC_LOCK(chc_threads_count_sync);
 	for(int i = 0; i < chc_threads_count; i++) {
 		double cpu = get_cpu_usage_perc(chc_threads[i].tid, chc_threads[i].pstat[pstatDataIndex]);
 		if(cpu > 0) {
@@ -12310,7 +12310,7 @@ string Calltable::processCallsInChartsCache_cpuUsagePerc(double *avg, int pstatD
 			++cpu_count;
 		}
 	}
-	__sync_lock_release(&chc_threads_count_sync);
+	__SYNC_UNLOCK(chc_threads_count_sync);
 	if(avg) {
 		*avg = cpu_count ? cpu_sum / cpu_count : 0;
 	}

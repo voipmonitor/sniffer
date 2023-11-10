@@ -219,23 +219,23 @@ public:
 	double getCpuUsageQueueThreadPerc(int pstatDataIndex, bool preparePstatData = true);
 	void createMapValues();
 	static void rrd_lock() {
-		while(__sync_lock_test_and_set(&sync_rrd, 1));
+		__SYNC_LOCK(sync_rrd);
 	}
 	static void rrd_unlock() {
-		__sync_lock_release(&sync_rrd);
+		__SYNC_UNLOCK(sync_rrd);
 	}
 private:
 	void lock_values() {
-		while(__sync_lock_test_and_set(&sync_values, 1));
+		__SYNC_LOCK(sync_values);
 	}
 	void unlock_values() {
-		__sync_lock_release(&sync_values);
+		__SYNC_UNLOCK(sync_values);
 	}
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&sync_queue, 1));
+		__SYNC_LOCK(sync_queue);
 	}
 	void unlock_queue() {
-		__sync_lock_release(&sync_queue);
+		__SYNC_UNLOCK(sync_queue);
 	}
 private:
 	list<RrdChart*> charts;

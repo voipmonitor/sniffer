@@ -1235,45 +1235,45 @@ bool SqlDb::existsMultipleColumns(const char *table, ...) {
 }
 
 void SqlDb::startExistsColumnCache() {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	this->existsColumn_cache.clear();
 	this->existsColumn_cache_enable = true;
 	this->existsColumn_cache_suspend = false;
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 void SqlDb::stopExistsColumnCache() {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	this->existsColumn_cache.clear();
 	this->existsColumn_cache_enable = false;
 	this->existsColumn_cache_suspend = false;
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 void SqlDb::suspendExistsColumnCache() {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	if(this->existsColumn_cache_enable) {
 		this->existsColumn_cache_suspend = true;
 	}
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 void SqlDb::resumeExistsColumnCache() {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	this->existsColumn_cache_suspend = false;
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 bool SqlDb::isEnableExistColumnCache() {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	bool rslt = this->existsColumn_cache_enable &&
 		    !this->existsColumn_cache_suspend;
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 	return(rslt);
 }
 
 int SqlDb::existsColumnInCache(const char *table, const char *column, string *type) {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
 	if(iter != this->existsColumn_cache.end()) {
 		int rslt = 0;
@@ -1284,26 +1284,26 @@ int SqlDb::existsColumnInCache(const char *table, const char *column, string *ty
 				*type = iter2->second;
 			}
 		}
-		__sync_lock_release(&existsColumn_cache_sync);
+		__SYNC_UNLOCK(existsColumn_cache_sync);
 		return(rslt);
 	}
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 	return(-1);
 }
 
 void SqlDb::addColumnToCache(const char *table, const char *column, const char *type) {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	this->existsColumn_cache[table][column] = type;
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 void SqlDb::removeTableFromColumnCache(const char *table) {
-	while(__sync_lock_test_and_set(&existsColumn_cache_sync, 1));
+	__SYNC_LOCK(existsColumn_cache_sync);
 	map<string, map<string, string> >::iterator iter = this->existsColumn_cache.find(table);
 	if(iter != this->existsColumn_cache.end()) {
 		this->existsColumn_cache.erase(iter);
 	}
-	__sync_lock_release(&existsColumn_cache_sync);
+	__SYNC_UNLOCK(existsColumn_cache_sync);
 }
 
 bool SqlDb::isIPv6Column(string table, string column, bool useCache) {
@@ -1319,7 +1319,7 @@ bool SqlDb::_isIPv6Column(string table, string column) {
 		return(false);
 	}
 	bool isIPv6 = false;
-	while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+	__SYNC_LOCK(typeColumn_cache_sync);
 	if(typeColumn_cache.find(table) == typeColumn_cache.end()) {
 		SqlDb *sqlDb = createSqlObject();
 		sqlDb->query(string("show columns from ") + sqlDb->escapeTableName(table));
@@ -1335,7 +1335,7 @@ bool SqlDb::_isIPv6Column(string table, string column) {
 		std::transform(type.begin(), type.end(), type.begin(), ::tolower);
 		isIPv6 = type.find("varbinary") != string::npos;
 	}
-	__sync_lock_release(&typeColumn_cache_sync);
+	__SYNC_UNLOCK(typeColumn_cache_sync);
 	return(isIPv6);
 }
 
@@ -2518,7 +2518,7 @@ bool SqlDb_mysql::existsColumn(const char *table, const char *column, string *ty
 
 string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool toLower, bool useCache) {
 	if(useCache) {
-		while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+		__SYNC_LOCK(typeColumn_cache_sync);
 		if(!column ||
 		   typeColumn_cache.find(table) == typeColumn_cache.end()) {
 			this->query(string("show columns from ") + escapeTableName(table));
@@ -2537,7 +2537,7 @@ string SqlDb_mysql::getTypeColumn(const char *table, const char *column, bool to
 				}
 			}
 		}
-		__sync_lock_release(&typeColumn_cache_sync);
+		__SYNC_UNLOCK(typeColumn_cache_sync);
 		return(type);
 	} else if(isEnableExistColumnCache()) {
 		string type;
@@ -2565,12 +2565,12 @@ bool SqlDb_mysql::existsColumnInTypeCache(const char *table, const char *column)
 
 bool SqlDb_mysql::existsColumnInTypeCache_static(const char *table, const char *column) {
 	bool rslt = false;
-	while(__sync_lock_test_and_set(&typeColumn_cache_sync, 1));
+	__SYNC_LOCK(typeColumn_cache_sync);
 	if(typeColumn_cache.find(table) != typeColumn_cache.end() &&
 	   typeColumn_cache[table].find(column) != typeColumn_cache[table].end()) {
 		rslt = true;
 	}
-	__sync_lock_release(&typeColumn_cache_sync);
+	__SYNC_UNLOCK(typeColumn_cache_sync);
 	return(rslt);
 }
 
@@ -2590,7 +2590,7 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 	if(useCache) {
 		bool existsInCache = false;
 		int sizeInCache = 0;
-		while(__sync_lock_test_and_set(&partitions_cache_sync, 1));
+		__SYNC_LOCK(partitions_cache_sync);
 		if(partitions_cache.find(table) != partitions_cache.end()) {
 			if(partitions) {
 				*partitions = partitions_cache[table];
@@ -2598,7 +2598,7 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 			sizeInCache = partitions_cache[table].size();
 			existsInCache = true;
 		}
-		__sync_lock_release(&partitions_cache_sync);
+		__SYNC_UNLOCK(partitions_cache_sync);
 		if(existsInCache) {
 			return(sizeInCache);
 		}
@@ -2626,9 +2626,9 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 		}
 	}
 	if(useCache && partitions) {
-		while(__sync_lock_test_and_set(&partitions_cache_sync, 1));
+		__SYNC_LOCK(partitions_cache_sync);
 		partitions_cache[table] = *partitions;
-		__sync_lock_release(&partitions_cache_sync);
+		__SYNC_UNLOCK(partitions_cache_sync);
 	}
 	return(_size);
 }

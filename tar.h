@@ -220,10 +220,10 @@ public:
 	}
 
 	void tarlock() {
-		while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+		__SYNC_LOCK(this->_sync_lock);
 	}
 	void tarunlock() {
-		__sync_lock_release(&this->_sync_lock);
+		__SYNC_UNLOCK(this->_sync_lock);
 	}
 private:
 	z_stream *zipStream;
@@ -445,10 +445,10 @@ public:
 			return(maxTarName.empty() ? NULL : tarQueue->tars[maxTarName]);
 		}
 		inline void qlock() {
-			while(__sync_lock_test_and_set(&this->_sync_lock, 1));
+			__SYNC_LOCK(this->_sync_lock);
 		}
 		inline void qunlock() {
-			__sync_lock_release(&this->_sync_lock);
+			__SYNC_UNLOCK(this->_sync_lock);
 		}
 		inline void processData(TarQueue *tarQueue, const char *tarName, 
 					data_t *data, bool isClosed, size_t lenForProceed, size_t lenForProceedSafe);
@@ -478,8 +478,8 @@ public:
 	u_int64_t sumSizeOpenTars();
 	list<string> listOpenTars();
 	list<string> listTartimemap(bool pcapsContent = false);
-	void lock_okTarPointers() { while(__sync_lock_test_and_set(&_sync_okTarPointers, 1)); }
-	void unlock_okTarPointers() { __sync_lock_release(&_sync_okTarPointers); }
+	void lock_okTarPointers() { __SYNC_LOCK(_sync_okTarPointers); }
+	void unlock_okTarPointers() { __SYNC_UNLOCK(_sync_okTarPointers); }
 	void decreaseTartimemap(data_tar *t_data, const char *pcap);
 	void increaseTartimemap(data_tar *t_data, const char *pcap);
 	bool checkTartimemap(data_tar *t_data);
@@ -545,16 +545,16 @@ private:
 	bool copy(string src_filePathName);
 	bool copy(string src_filePathName, string dst_filePathName);
 	void tar_queue_lock() {
-		while(__sync_lock_test_and_set(&this->_sync_tar_queue, 1));
+		__SYNC_LOCK(this->_sync_tar_queue);
 	}
 	void tar_queue_unlock() {
-		__sync_lock_release(&this->_sync_tar_queue);
+		__SYNC_UNLOCK(this->_sync_tar_queue);
 	}
 	void copy_threads_lock() {
-		while(__sync_lock_test_and_set(&this->_sync_copy_threads, 1));
+		__SYNC_LOCK(this->_sync_copy_threads);
 	}
 	void copy_threads_unlock() {
-		__sync_lock_release(&this->_sync_copy_threads);
+		__SYNC_UNLOCK(this->_sync_copy_threads);
 	}
 private:
 	string destinationPath;

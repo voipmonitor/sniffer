@@ -80,7 +80,7 @@ int vm_pthread_create(const char *thread_description,
 	extern bool opt_use_thread_setname;
 	if(opt_use_thread_setname && thread_description) {
 		char thread_name[16];
-		strncpy(thread_name, thread_description, sizeof(thread_name));
+		strncpy(thread_name, thread_description, sizeof(thread_name) - 1);
 		thread_name[sizeof(thread_name) - 1] = 0;
 		pthread_setname_np(*thread, thread_name);
 	}

@@ -128,7 +128,7 @@ public:
 	inline int pop_queue_prepare() {
 		if(!pop_queue_pool_prepared) {
 			int rslt = 0;
-			while(__sync_lock_test_and_set(&_sync_prepare, 1));
+			__SYNC_LOCK(_sync_prepare);
 			if(stack->popq(&this->pop_queue_pool_prepare)) {
 				for(int i = 0; i < HEADER_PACKET_STACK_POOL_SIZE; i++) {
 					memset(this->pop_queue_pool_prepare.pool[i], 0, 100);
@@ -139,7 +139,7 @@ public:
 				pop_queue_pool_prepared = true;
 				rslt = 1;
 			}
-			__sync_lock_release(&_sync_prepare);
+			__SYNC_UNLOCK(_sync_prepare);
 			return(rslt);
 		}
 		return(0);
@@ -149,16 +149,16 @@ public:
 			*headerPacket = this->pop_queue.pool[HEADER_PACKET_STACK_POOL_SIZE - this->pop_queue_size];
 			--this->pop_queue_size;
 		} else {
-			while(__sync_lock_test_and_set(&_sync_prepare, 1));
+			__SYNC_LOCK(_sync_prepare);
 			if(pop_queue_pool_prepared) {
 				this->pop_queue = this->pop_queue_pool_prepare;
 				pop_queue_pool_prepared = false;
-				__sync_lock_release(&_sync_prepare);
+				__SYNC_UNLOCK(_sync_prepare);
 				*headerPacket = this->pop_queue.pool[0];
 				this->pop_queue_size = HEADER_PACKET_STACK_POOL_SIZE - 1;
 				//cout << "P" << flush;
 			} else {
-				__sync_lock_release(&_sync_prepare);
+				__SYNC_UNLOCK(_sync_prepare);
 				*headerPacket = (sHeaderPacket*)new FILE_LINE(9003) u_char[sizeof(sHeaderPacket) + packet_alloc_size];
 				(*headerPacket)->stack = this;
 				(*headerPacket)->packet_alloc_size = packet_alloc_size;

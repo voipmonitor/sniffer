@@ -123,10 +123,10 @@ public:
 	bool add(Call *call);
 	void cleanup(bool force);
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync_failed_intervals, 1));
+		__SYNC_LOCK(_sync_failed_intervals);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync_failed_intervals);
+		__SYNC_UNLOCK(_sync_failed_intervals);
 	}
 public:
 	map<u_int32_t, RegisterFailedInterval*> failed_intervals;
@@ -262,16 +262,16 @@ public:
 	inline bool getDataRow(RecordArray *rec);
 	string typeSaveStateToString(eTypeSaveState typeSaveState);
 	void lock_states() {
-		while(__sync_lock_test_and_set(&_sync_states, 1));
+		__SYNC_LOCK(_sync_states);
 	}
 	void unlock_states() {
-		__sync_lock_release(&_sync_states);
+		__SYNC_UNLOCK(_sync_states);
 	}
 	void lock_id() {
-		while(__sync_lock_test_and_set(&_sync_id, 1));
+		__SYNC_LOCK(_sync_id);
 	}
 	void unlock_id() {
-		__sync_lock_release(&_sync_id);
+		__SYNC_UNLOCK(_sync_id);
 	}
 public:
 	u_int64_t id;
@@ -331,28 +331,28 @@ public:
 	void getCountActiveBySensors(map<int, u_int32_t> *count);
 	void cleanupByJson(char *params);
 	void lock_registers() {
-		while(__sync_lock_test_and_set(&_sync_registers, 1));
+		__SYNC_LOCK(_sync_registers);
 	}
 	void unlock_registers() {
-		__sync_lock_release(&_sync_registers);
+		__SYNC_UNLOCK(_sync_registers);
 	}
 	void lock_registers_erase() {
-		while(__sync_lock_test_and_set(&_sync_registers_erase, 1));
+		__SYNC_LOCK(_sync_registers_erase);
 	}
 	void unlock_registers_erase() {
-		__sync_lock_release(&_sync_registers_erase);
+		__SYNC_UNLOCK(_sync_registers_erase);
 	}
 	void lock_register_state_id() {
-		while(__sync_lock_test_and_set(&_sync_register_state_id, 1));
+		__SYNC_LOCK(_sync_register_state_id);
 	}
 	void unlock_register_state_id() {
-		__sync_lock_release(&_sync_register_state_id);
+		__SYNC_UNLOCK(_sync_register_state_id);
 	}
 	void lock_register_failed_id() {
-		while(__sync_lock_test_and_set(&_sync_register_failed_id, 1));
+		__SYNC_LOCK(_sync_register_failed_id);
 	}
 	void unlock_register_failed_id() {
-		__sync_lock_release(&_sync_register_failed_id);
+		__SYNC_UNLOCK(_sync_register_failed_id);
 	}
 	bool isEnabledDeferredSaveForState() {
 		extern bool opt_sip_register_deferred_save;

@@ -268,11 +268,11 @@ volatile int _sync_pcap_handles;
 
 u_int16_t register_pcap_handle(pcap_t *handle) {
 	u_int16_t rslt_index;
-	while(__sync_lock_test_and_set(&_sync_pcap_handles, 1));
+	__SYNC_LOCK(_sync_pcap_handles);
 	if(!pcap_handles_count) ++pcap_handles_count;
 	rslt_index = pcap_handles_count;
 	pcap_handles[pcap_handles_count++] = handle;
-	__sync_lock_release(&_sync_pcap_handles);
+	__SYNC_UNLOCK(_sync_pcap_handles);
 	return(rslt_index);
 }
 
@@ -3097,7 +3097,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			if(heap_pb_perc >= 60) {
 				if(usersniffer.size()) {
 					cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "live sniffer", "too high load - terminate");
-					while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+					__SYNC_LOCK(usersniffer_sync);
 					for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
 						string kill_reason = "too high load";
 						log->log(NULL, "uid: %u, state: %s, reason: %s", iter->first, iter->second->getStringState().c_str(), kill_reason.c_str());
@@ -3106,7 +3106,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						usersniffer.erase(iter++);
 					}
 					global_livesniffer = 0;
-					__sync_lock_release(&usersniffer_sync);
+					__SYNC_UNLOCK(usersniffer_sync);
 					if(log) {
 						log->end();
 					}
@@ -3114,7 +3114,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			} else {
 				time_t now = time(NULL);
 				cLogSensor *log = NULL;
-				while(__sync_lock_test_and_set(&usersniffer_sync, 1)) {};
+				__SYNC_LOCK(usersniffer_sync);
 				for(map<unsigned int, livesnifferfilter_s*>::iterator iter = usersniffer.begin(); iter != usersniffer.end(); ) {
 					if(now > iter->second->created_at && 
 					   ((opt_livesniffer_timeout_s > 0 && (now - iter->second->created_at) >= opt_livesniffer_timeout_s) ||
@@ -3141,7 +3141,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				if(!usersniffer.size()) {
 					global_livesniffer = 0;
 				}
-				__sync_lock_release(&usersniffer_sync);
+				__SYNC_UNLOCK(usersniffer_sync);
 				if(log) {
 					log->end();
 				}
@@ -3588,7 +3588,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 	static volatile int _sync_start_capture = 0;
 	long unsigned int rssBeforeActivate, rssAfterActivate;
 	unsigned int usleepCounter = 0;
-	while(__sync_lock_test_and_set(&_sync_start_capture, 1)) {
+	__SYNC_LOCK_WHILE(_sync_start_capture) {
 		USLEEP_C(100, usleepCounter++);
 	}
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -3606,7 +3606,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			snprintf(errorstr, sizeof(errorstr), "pcap_open_offline %s failed: %s", _file.c_str(), errbuf); 
 			syslog(LOG_ERR, "%s", errorstr);
 			*error = errorstr;
-			__sync_lock_release(&_sync_start_capture);
+			__SYNC_UNLOCK(_sync_start_capture);
 			return(false);
 		}
 		this->pcapHandleIndex = register_pcap_handle(this->pcapHandle);
@@ -3622,7 +3622,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 				 this->interfaceName.c_str(), (unsigned int)time(NULL));
 			this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 		}
-		__sync_lock_release(&_sync_start_capture);
+		__SYNC_UNLOCK(_sync_start_capture);
 		return(true);
 	}
 	if(VERBOSE) {
@@ -3750,10 +3750,10 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 			 this->interfaceName.c_str(), (unsigned int)time(NULL));
 		this->pcapDumpHandle = pcap_dump_open(this->pcapHandle, pname);
 	}
-	__sync_lock_release(&_sync_start_capture);
+	__SYNC_UNLOCK(_sync_start_capture);
 	return(true);
 failed:
-	__sync_lock_release(&_sync_start_capture);
+	__SYNC_UNLOCK(_sync_start_capture);
 	syslog(LOG_ERR, "%s", errorstr);
 	*error = errorstr;
 	return(false);
@@ -4619,11 +4619,11 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	}
 	/****
 	uint32_t writeIndex = this->writeit[index] % this->qringmax;
-	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+	//__SYNC_LOCK(this->_sync_qring);
 	while(this->qring[index][writeIndex].used > 0) {
-		//__sync_lock_release(&this->_sync_qring);
+		//__SYNC_UNLOCK(this->_sync_qring);
 		USLEEP(100);
-		//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+		//__SYNC_LOCK(this->_sync_qring);
 	}
 	if(this->qring[index][writeIndex].used < 0) {
 		delete this->qring[index][writeIndex].header;
@@ -4645,7 +4645,7 @@ inline void PcapQueue_readFromInterfaceThread::push(sHeaderPacket **header_packe
 	} else {
 		this->writeit[index]++;
 	}
-	//__sync_lock_release(&this->_sync_qring);
+	//__SYNC_UNLOCK(this->_sync_qring);
 	****/
 }
 
@@ -4754,7 +4754,7 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 	return(rslt_hpi);
 	/****
 	uint32_t readIndex = this->readit[index] % this->qringmax;
-	//while(__sync_lock_test_and_set(&this->_sync_qring, 1));
+	//__SYNC_LOCK(this->_sync_qring);
 	hpi rslt_hpi;
 	if(this->qring[index][readIndex].used <= 0) {
 		rslt_hpi.header = NULL;
@@ -4779,7 +4779,7 @@ inline PcapQueue_readFromInterfaceThread::hpi PcapQueue_readFromInterfaceThread:
 			this->readit[index]++;
 		}
 	}
-	//__sync_lock_release(&this->_sync_qring);
+	//__SYNC_UNLOCK(this->_sync_qring);
 	return(rslt_hpi);
 	****/
 }

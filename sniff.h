@@ -736,16 +736,16 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline void reuse_counter_set(u_int8_t inc = 1) {
 		use_reuse_counter = 1;
-		__sync_add_and_fetch(&reuse_counter, inc);
+		__SYNC_ADD(reuse_counter, inc);
 	}
 	inline void reuse_counter_dec() {
-		__sync_sub_and_fetch(&reuse_counter, 1);
+		__SYNC_DEC(reuse_counter);
 	}
 	inline void reuse_counter_lock() {
-		while(__sync_lock_test_and_set(&reuse_counter_sync, 1));
+		__SYNC_LOCK(reuse_counter_sync);
 	}
 	inline void reuse_counter_unlock() {
-		__sync_lock_release(&reuse_counter_sync);
+		__SYNC_UNLOCK(reuse_counter_sync);
 	}
 	inline bool typeContentIsSip() {
 		return(type_content == _pptc_sip);
@@ -1180,7 +1180,7 @@ public:
 			batch_packet_rtp_thread_buffer *thread_buffer = this->thread_buffer[threadIndex - 1];
 			if(thread_buffer->count == thread_buffer->max_count ||
 			   time_us > thread_buffer->limit_time_us) {
-				while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+				__SYNC_LOCK(this->push_lock_sync);
 				packet->blockstore_addflag(62 /*pb lock flag*/);
 
 				/* destroy threadbuffer array - debug
@@ -1206,7 +1206,7 @@ public:
 					__SYNC_LOCK(this->count_lock_sync);
 					current_batch->count = thread_buffer->count;
 					__SYNC_UNLOCK(this->count_lock_sync);
-					__sync_add_and_fetch(&current_batch->used, 1);
+					__SYNC_INC(current_batch->used);
 					if((this->writeit + 1) == this->qring_length) {
 						this->writeit = 0;
 					} else {
@@ -1219,7 +1219,7 @@ public:
 				*/
 				
 				thread_buffer->count = 0;
-				__sync_lock_release(&this->push_lock_sync);
+				__SYNC_UNLOCK(this->push_lock_sync);
 			}
 			if(thread_buffer->count == 0) {
 				extern unsigned int opt_push_batch_limit_ms;
@@ -1237,7 +1237,7 @@ public:
 			packet->blockstore_addflag(63 /*pb lock flag*/);
 			thread_buffer->count++;
 		} else {
-			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			__SYNC_LOCK(this->push_lock_sync);
 		 
 			#if DEBUG_QUEUE_RTP_THREAD
 			unsigned tid = get_unix_tid();
@@ -1292,11 +1292,11 @@ public:
 				qring_push_index = 0;
 				qring_push_index_count = 0;
 			}
-			__sync_lock_release(&this->push_lock_sync);
+			__SYNC_UNLOCK(this->push_lock_sync);
 		}
 	}
 	inline void push_batch() {
-		while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+		__SYNC_LOCK(this->push_lock_sync);
 	 
 		#if DEBUG_QUEUE_RTP_THREAD
 		unsigned tid = get_unix_tid();
@@ -1326,7 +1326,7 @@ public:
 			qring_push_index = 0;
 			qring_push_index_count = 0;
 		}
-		__sync_lock_release(&this->push_lock_sync);
+		__SYNC_UNLOCK(this->push_lock_sync);
 	}
 	inline void push_thread_buffer(int threadIndex) {
 	 
@@ -1346,7 +1346,7 @@ public:
 			syslog(LOG_NOTICE, "push_thread_buffer in rtp_read_thread(%i) - %i", threadNum, threadIndex);
 			#endif
 		 
-			while(__sync_lock_test_and_set(&this->push_lock_sync, 1));
+			__SYNC_LOCK(this->push_lock_sync);
 			batch_packet_rtp *current_batch = this->qring[this->writeit];
 			unsigned int usleepCounter = 0;
 			while(current_batch->used != 0) {
@@ -1369,7 +1369,7 @@ public:
 				}
 			#endif
 			thread_buffer->count = 0;
-			__sync_lock_release(&this->push_lock_sync);
+			__SYNC_UNLOCK(this->push_lock_sync);
 		}
 	}
 public:

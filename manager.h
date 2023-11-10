@@ -25,10 +25,10 @@ public:
 			    const char */*screenPopupFieldsString*/) {}
 protected:
 	void lock_responses() {
-		while(__sync_lock_test_and_set(&this->_sync_responses, 1));
+		__SYNC_LOCK(this->_sync_responses);
 	}
 	void unlock_responses() {
-		__sync_lock_release(&this->_sync_responses);
+		__SYNC_UNLOCK(this->_sync_responses);
 	}
 protected:
 	sClientInfo client;
@@ -90,10 +90,10 @@ public:
 	int getCount();
 private:
 	void lock_client_threads() {
-		while(__sync_lock_test_and_set(&this->_sync_client_threads, 1));
+		__SYNC_LOCK(this->_sync_client_threads);
 	}
 	void unlock_client_threads() {
-		__sync_lock_release(&this->_sync_client_threads);
+		__SYNC_UNLOCK(this->_sync_client_threads);
 	}
 private: 
 	std::vector<ManagerClientThread*> clientThreads;

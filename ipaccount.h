@@ -436,16 +436,16 @@ public:
 	void flush();
 private:
 	void lock_cache() {
-		while(__sync_lock_test_and_set(&this->cache_sync, 1));
+		__SYNC_LOCK(this->cache_sync);
 	}
 	void unlock_cache() {
-		__sync_lock_release(&this->cache_sync);
+		__SYNC_UNLOCK(this->cache_sync);
 	}
 	void lock_load() {
-		while(__sync_lock_test_and_set(&this->load_sync, 1));
+		__SYNC_LOCK(this->load_sync);
 	}
 	void unlock_load() {
-		__sync_lock_release(&this->load_sync);
+		__SYNC_UNLOCK(this->load_sync);
 	}
 private:
 	map<vmIP, u_int32_t> custCacheMap;

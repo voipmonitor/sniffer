@@ -284,16 +284,16 @@ public:
 		this->debug_out_file = fopen(debug_out_filename, "w");
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1)) USLEEP(20);
+		__SYNC_LOCK_USLEEP(this->_sync, 20);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 	void lock_master() {
-		while(__sync_lock_test_and_set(&this->_sync_master, 1)) USLEEP(20);
+		__SYNC_LOCK_USLEEP(this->_sync_master, 20);
 	}
 	void unlock_master() {
-		__sync_lock_release(&this->_sync_master);
+		__SYNC_UNLOCK(this->_sync_master);
 	}
 private:
 	std::string description;

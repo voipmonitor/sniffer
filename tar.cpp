@@ -1192,7 +1192,7 @@ Tar::eTarCompressType Tar::checkCompressType(int compressType) {
 
 void			   
 TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
-	__sync_add_and_fetch(&glob_tar_queued_files, 1);
+	__SYNC_INC(glob_tar_queued_files);
 	data_t data;
 	data.setDataTar(tar_data);
 	data.buffer = buffer;
@@ -1694,7 +1694,7 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 			       tar->time.getTimeString().c_str());
 		}
 		delete data->buffer;
-		__sync_sub_and_fetch(&glob_tar_queued_files, 1);
+		__SYNC_DEC(glob_tar_queued_files);
 	}
 	
 	if(tar) {

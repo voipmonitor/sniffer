@@ -11,10 +11,10 @@ volatile int _sendCallInfo_useAdditionalPacketInformation = 0;
 
 
 static void sendCallInfo_lock() {
-	while(__sync_lock_test_and_set(&_sendCallInfo_lock, 1));
+	__SYNC_LOCK(_sendCallInfo_lock);
 }
 static void sendCallInfo_unlock() {
-	__sync_lock_release(&_sendCallInfo_lock);
+	__SYNC_UNLOCK(_sendCallInfo_lock);
 }
 
 

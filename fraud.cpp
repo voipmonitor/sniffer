@@ -38,10 +38,10 @@ static bool opt_enable_fraud_store_pcaps;
 
 
 static void fraudAlerts_lock() {
-	while(__sync_lock_test_and_set(&_fraudAlerts_lock, 1));
+	__SYNC_LOCK(_fraudAlerts_lock);
 }
 static void fraudAlerts_unlock() {
-	__sync_lock_release(&_fraudAlerts_lock);
+	__SYNC_UNLOCK(_fraudAlerts_lock);
 }
 
 

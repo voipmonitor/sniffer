@@ -137,10 +137,10 @@ public:
 	const char *enumToStrType(eSessionKeyType type);
 private:
 	void lock_map() {
-		while(__sync_lock_test_and_set(&this->_sync_map, 1));
+		__SYNC_LOCK(this->_sync_map);
 	}
 	void unlock_map() {
-		__sync_lock_release(&this->_sync_map);
+		__SYNC_UNLOCK(this->_sync_map);
 	}
 private:
 	map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> > keys;
@@ -179,16 +179,16 @@ private:
 	void deleteOldSessions(struct timeval ts);
 	string storeSessionsTableName();
 	void lock_sessions() {
-		while(__sync_lock_test_and_set(&this->_sync_sessions, 1));
+		__SYNC_LOCK(this->_sync_sessions);
 	}
 	void unlock_sessions() {
-		__sync_lock_release(&this->_sync_sessions);
+		__SYNC_UNLOCK(this->_sync_sessions);
 	}
 	void lock_sessions_db() {
-		while(__sync_lock_test_and_set(&this->_sync_sessions_db, 1));
+		__SYNC_LOCK(this->_sync_sessions_db);
 	}
 	void unlock_sessions_db() {
-		__sync_lock_release(&this->_sync_sessions_db);
+		__SYNC_UNLOCK(this->_sync_sessions_db);
 	}
 private:
 	map<sStreamId, cSslDsslSession*> sessions;

@@ -288,12 +288,10 @@ public:
 	}
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1)) {
-			USLEEP(10);
-		}
+		__SYNC_LOCK_USLEEP(this->_sync, 10);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	type_atomic atomicValue;
@@ -1277,12 +1275,10 @@ public:
 	}
 private:
 	void lock(int threadIndex) {
-		while(__sync_lock_test_and_set(&this->_sync[threadIndex], 1)) {
-			USLEEP(10);
-		}
+		__SYNC_LOCK_USLEEP(this->_sync[threadIndex], 10);
 	}
 	void unlock(int threadIndex) {
-		__sync_lock_release(&this->_sync[threadIndex]);
+		__SYNC_UNLOCK(this->_sync[threadIndex]);
 	}
 	void add_sizeOfDataInMemory(size_t size) {
 		extern cBuffersControl buffersControl;
@@ -1775,10 +1771,10 @@ public:
 		return(!listIP.size() && !listNet.size());
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 	std::vector<IP> *get_list_ip() {
 		return(&listIP);
@@ -1922,10 +1918,10 @@ public:
 		return(!listPhoneNumber.size() && !listPrefixes.size() && !listRegExp.size());
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	std::vector<PhoneNumber> listPhoneNumber;
@@ -1976,10 +1972,10 @@ public:
 		return(!listUA.size());
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	std::vector<UA> listUA;
@@ -2026,10 +2022,10 @@ public:
 		return(!listCheckString.size());
 	}
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	std::vector<CheckString> listCheckString;
@@ -2374,10 +2370,10 @@ protected:
 private:
 	static void timerThread();
 	static void lock_list_saq() {
-		while(__sync_lock_test_and_set(&_sync_list_saq, 1));
+		__SYNC_LOCK(_sync_list_saq);
 	}
 	static void unlock_list_saq() {
-		__sync_lock_release(&_sync_list_saq);
+		__SYNC_UNLOCK(_sync_list_saq);
 	}
 private:
 	static list<SafeAsyncQueue_base*> list_saq;
@@ -2404,39 +2400,39 @@ private:
 	void shiftPush();
 	void incSize() {
 		lock_size();
-		__sync_add_and_fetch(&size, 1);
+		__SYNC_INC(size);
 		unlock_size();
 	}
 	void decSize() {
 		lock_size();
 		if(size > 0) {
-			__sync_sub_and_fetch(&size, 1);
+			__SYNC_DEC(size);
 		}
 		unlock_size();
 	}
 	void lock_queue() {
-		while(__sync_lock_test_and_set(&_sync_queue, 1));
+		__SYNC_LOCK(_sync_queue);
 	}
 	void unlock_queue() {
-		__sync_lock_release(&_sync_queue);
+		__SYNC_UNLOCK(_sync_queue);
 	}
 	void lock_push_queue() {
-		while(__sync_lock_test_and_set(&_sync_push_queue, 1));
+		__SYNC_LOCK(_sync_push_queue);
 	}
 	void unlock_push_queue() {
-		__sync_lock_release(&_sync_push_queue);
+		__SYNC_UNLOCK(_sync_push_queue);
 	}
 	void lock_pop_queue() {
-		while(__sync_lock_test_and_set(&_sync_pop_queue, 1));
+		__SYNC_LOCK(_sync_pop_queue);
 	}
 	void unlock_pop_queue() {
-		__sync_lock_release(&_sync_pop_queue);
+		__SYNC_UNLOCK(_sync_pop_queue);
 	}
 	void lock_size() {
-		while(__sync_lock_test_and_set(&_sync_size, 1));
+		__SYNC_LOCK(_sync_size);
 	}
 	void unlock_size() {
-		__sync_lock_release(&_sync_size);
+		__SYNC_UNLOCK(_sync_size);
 	}
 private:
 	deque<type_queue_item> *push_queue;
@@ -2593,16 +2589,16 @@ private:
 	bool socketWrite(void *data, u_int32_t dataLength);
 	void flushData();
 	void lock_data() {
-		while(__sync_lock_test_and_set(&this->_sync_data, 1));
+		__SYNC_LOCK(this->_sync_data);
 	}
 	void unlock_data() {
-		__sync_lock_release(&this->_sync_data);
+		__SYNC_UNLOCK(this->_sync_data);
 	}
 	void add_size(size_t size) {
-		__sync_fetch_and_add(&this->_size_all, size);
+		__SYNC_ADD(this->_size_all, size);
 	}
 	void sub_size(size_t size) {
-		__sync_fetch_and_sub(&this->_size_all, size);
+		__SYNC_SUB(this->_size_all, size);
 	}
 private:
 	string name;
@@ -2626,10 +2622,10 @@ public:
 	void dump(pcap_pkthdr* header, u_char* packet, int dlt, const char *interfaceName);
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	map<string, PcapDumper*> dumpers;
@@ -2722,7 +2718,7 @@ struct sLocalTimeHourCacheItems {
 			}
 		} else {
 			extern volatile int _tz_sync;
-			while(__sync_lock_test_and_set(&_tz_sync, 1));
+			__SYNC_LOCK(_tz_sync);
 			char oldTZ[1024] = "";
 			if(timezone[0]) {
 				const char *_oldTZ = getenv("TZ");
@@ -2743,7 +2739,7 @@ struct sLocalTimeHourCacheItems {
 				}
 				tzset();
 			}
-			__sync_lock_release(&_tz_sync);
+			__SYNC_UNLOCK(_tz_sync);
 			if(sverb.timezones) {
 				cout << " *** get " << (timezone[0] ? (string("tz ") + timezone) : "local") << " time " << timestamp 
 				     << " / thread " << get_unix_tid() << endl;
@@ -2763,7 +2759,7 @@ struct sLocalTimeHourCacheItems {
 			}
 		}
 		extern volatile int _tz_sync;
-		while(__sync_lock_test_and_set(&_tz_sync, 1));
+		__SYNC_LOCK(_tz_sync);
 		char oldTZ[1024] = "";
 		if(timezone[0]) {
 			const char *_oldTZ = getenv("TZ");
@@ -2784,7 +2780,7 @@ struct sLocalTimeHourCacheItems {
 			}
 			tzset();
 		}
-		__sync_lock_release(&_tz_sync);
+		__SYNC_UNLOCK(_tz_sync);
 		addToCache(timestamp, time);
 		return(timestamp);
 	}
@@ -2869,7 +2865,7 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 	static volatile int timeCache_global_sync = 0;
 	static sLocalTimeHourCache *timeCache_global = NULL;
 	if(useGlobalTimeCache) {
-		while(__sync_lock_test_and_set(&timeCache_global_sync, 1));
+		__SYNC_LOCK(timeCache_global_sync);
 		if(!timeCache_global) {
 			timeCache_global = new FILE_LINE(39014) sLocalTimeHourCache();
 		}
@@ -2884,14 +2880,14 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 			extern map<unsigned int, sLocalTimeHourCache*> timeCacheMap;
 			extern volatile int timeCacheMap_sync;
 			unsigned int tid = get_unix_tid();
-			while(__sync_lock_test_and_set(&timeCacheMap_sync, 1));
+			__SYNC_LOCK(timeCacheMap_sync);
 			if(!timeCacheMap[tid]) {
 				timeCache = new FILE_LINE(39014) sLocalTimeHourCache();
 				timeCacheMap[tid] = timeCache;
 			} else {
 				timeCache = timeCacheMap[tid];
 			}
-			__sync_lock_release(&timeCacheMap_sync);
+			__SYNC_UNLOCK(timeCacheMap_sync);
 		#if not defined(__arm__)
 			timeCache_thread = timeCache;
 		}
@@ -2923,7 +2919,7 @@ inline void conv_tz(time_t *timestamp, struct tm *time, const char *timezone = N
 		}
 	}
 	if(useGlobalTimeCache) {
-		__sync_lock_release(&timeCache_global_sync);
+		__SYNC_UNLOCK(timeCache_global_sync);
 	}
 }
 inline struct tm time_r(u_int64_t timestamp_us, const char *timezone = NULL, bool useGlobalTimeCache = false) {
@@ -2997,10 +2993,10 @@ public:
 	}
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	map<int, sSensorData> sensors;
@@ -3654,10 +3650,10 @@ private:
 	u_int64_t getUsleep(sThread *thread, int indexPstat);
 	u_int64_t getTimeUS(sThread *thread, int indexPstat);
 	void tm_lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void tm_unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	map<int, sThread*> threads;
@@ -3977,10 +3973,10 @@ public:
 	void clear();
 private:
 	void lock() {
-		while(__sync_lock_test_and_set(&_sync, 1));
+		__SYNC_LOCK(_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&_sync);
+		__SYNC_UNLOCK(_sync);
 	}
 private:
 	map<cItem, u_int32_t> map_items;

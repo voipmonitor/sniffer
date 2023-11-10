@@ -122,10 +122,10 @@ private:
 			    eTypeSci typeSci, u_int64_t at,
 			    u_int16_t counter, sSciPacketInfo *packet_info);
 	void lock() {
-		while(__sync_lock_test_and_set(&this->_sync, 1));
+		__SYNC_LOCK(this->_sync);
 	}
 	void unlock() {
-		__sync_lock_release(&this->_sync);
+		__SYNC_UNLOCK(this->_sync);
 	}
 private:
 	list<SendCallInfoItem*> listSci;
