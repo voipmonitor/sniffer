@@ -1014,6 +1014,7 @@ private:
 		__SYNC_UNLOCK(this->_sync_packetServerConnections);
 	}
 	void blockStoreTrashPush(pcap_block_store *block) {
+		block->pushToTrashMS = getTimeMS_rdtsc();
 		lock_blockStoreTrash();
 		this->blockStoreTrash.push_back(block);
 		unlock_blockStoreTrash();

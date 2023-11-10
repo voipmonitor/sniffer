@@ -275,6 +275,7 @@ struct pcap_block_store {
 		this->idFileStore = 0;
 		this->filePosition = 0;
 		this->timestampMS = getTimeMS_rdtsc();
+		this->pushToTrashMS = 0;
 		this->_sync_packet_lock = 0;
 	}
 	~pcap_block_store() {
@@ -521,6 +522,7 @@ struct pcap_block_store {
 	u_int idFileStore;
 	u_int64_t filePosition;
 	u_int64_t timestampMS;
+	u_int64_t pushToTrashMS;
 	volatile int _sync_packet_lock;
 	#if DEBUG_SYNC_PCAP_BLOCK_STORE
 	volatile int8_t *_sync_packets_lock;

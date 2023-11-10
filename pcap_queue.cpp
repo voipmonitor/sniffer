@@ -9045,6 +9045,10 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			}
 		}
 		if(opt_t2_boost_direct_rtp) {
+			if(hp_state == _hppq_out_state_NA && hp && hp->block_store && !hp->block_store_locked) {
+				hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
+				hp->block_store_locked = true;
+			}
 			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
 				header_ip ? (u_char*)header_ip - hp->packet : 0,
 				header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
@@ -9122,7 +9126,10 @@ void PcapQueue_readFromFifo::cleanupBlockStoreTrash(bool all) {
 	lock_blockStoreTrash();
 	for(int i = 0; i < ((int)this->blockStoreTrash.size() - (all ? 0 : 5)); i++) {
 		bool del = false;
-		if(all || this->blockStoreTrash[i]->enableDestroy()) {
+		u_int64_t time_ms = getTimeMS_rdtsc();
+		if(all || 
+		   (this->blockStoreTrash[i]->enableDestroy() &&
+		    time_ms > this->blockStoreTrash[i]->pushToTrashMS + 100)) {
 			del = true;
 		} else if(opt_pcap_queue_block_timeout &&
 			  (this->blockStoreTrash[this->blockStoreTrash.size() - 1]->timestampMS - this->blockStoreTrash[i]->timestampMS) > (unsigned)opt_pcap_queue_block_timeout * 1000) {
