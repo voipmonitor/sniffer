@@ -426,9 +426,8 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
 bool use_push_batch_limit_ms = true;
-unsigned int opt_huge_batch_length = 40000;
-unsigned int opt_huge_batch_traffic_limit = 1000;
-bool huge_batch_need = false;
+unsigned int opt_batch_length_high_traffic = 40000;
+bool batch_length_high_traffic_need = false;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
 unsigned int opt_usleep_force = 0;
@@ -716,6 +715,8 @@ int opt_jitter_forcemark_delta_threshold = 500;
 bool opt_disable_rtp_warning = false;
 bool opt_disable_rtp_seq_probation = false;
 int opt_hash_modify_queue_length_ms = 0;
+int opt_hash_modify_queue_length_ms_high_traffic = 100;
+int hash_modify_queue_length_ms;
 bool opt_disable_process_sdp = false;
 
 bool opt_conference_processing = false;
@@ -1021,6 +1022,7 @@ int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
 bool opt_t2_boost_pcap_dispatch = false;
+int opt_t2_boost_high_traffic_limit = 1000;
 int opt_storing_cdr_max_next_threads = 3;
 bool opt_processing_limitations = false;
 int opt_processing_limitations_heap_high_limit = 50;
@@ -5952,7 +5954,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42089) cConfigItem_yesno("sqlcallend", &opt_callend));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
-					addConfigItem(new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost));
+					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
+						->addValues("high_traffic:2"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
@@ -6215,8 +6218,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("huge_batch_length", &opt_huge_batch_length));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("huge_batch_traffic_limit", &opt_huge_batch_traffic_limit));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_high_traffic", &opt_batch_length_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -6589,6 +6591,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_content_type_application_csta_xml", &opt_enable_content_type_application_csta_xml));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms", &opt_hash_modify_queue_length_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("hash_queue_length_ms_high_traffic", &opt_hash_modify_queue_length_ms_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_process_sdp", &opt_disable_process_sdp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("conference_processing", &opt_conference_processing));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("conference_uri", &opt_conference_uri));
@@ -8328,7 +8331,7 @@ void set_spool_permission() {
 void set_context_config() {
  
 	if(opt_t2_boost_direct_rtp) {
-		opt_t2_boost = true;
+		opt_t2_boost = 2;
 	}
 	
 	if(opt_use_dpdk) {
@@ -8619,6 +8622,14 @@ void set_context_config() {
 			opt_process_rtp_packets_qring_item_length = default_preprocess_packets_qring_item_length;
 		}
 	}
+	
+	if(opt_t2_boost == 2) {
+		opt_t2_boost_direct_rtp = true;
+	}
+	
+	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
+					opt_hash_modify_queue_length_ms_high_traffic :
+					opt_hash_modify_queue_length_ms;
 	
 	if(!opt_scanpcapdir[0] && !opt_pcap_queue_use_blocks && opt_pcap_queue_use_blocks_auto_enable) {
 		if(opt_udpfrag) {
@@ -10906,7 +10917,7 @@ int eval_config(string inistr) {
 		opt_disable_cdr_indexes_rtp = yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost", NULL))) {
-		opt_t2_boost = yesno(value);
+		opt_t2_boost = !strcasecmp(value, "high_traffic") ? 2 : yesno(value);
 	}
 	if((value = ini.GetValue("general", "t2_boost_enable_call_find_threads", NULL))) {
 		opt_t2_boost_call_find_threads = yesno(value);
@@ -11889,6 +11900,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "hash_queue_length_ms", NULL))) {
 		opt_hash_modify_queue_length_ms = atoi(value);
 	}
+	if((value = ini.GetValue("general", "hash_queue_length_ms_high_traffic", NULL))) {
+		opt_hash_modify_queue_length_ms_high_traffic = atoi(value);
+	}
 	if((value = ini.GetValue("general", "disable_process_sdp", NULL))) {
 		opt_disable_process_sdp = yesno(value);
 	}
@@ -12030,11 +12044,8 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "push_batch_limit_ms", NULL))) {
 		opt_push_batch_limit_ms = atol(value);
 	}
-	if((value = ini.GetValue("general", "huge_batch_length", NULL))) {
-		opt_huge_batch_length = atol(value);
-	}
-	if((value = ini.GetValue("general", "huge_batch_traffic_limit", NULL))) {
-		opt_huge_batch_traffic_limit = atol(value);
+	if((value = ini.GetValue("general", "batch_length_high_traffic", NULL))) {
+		opt_batch_length_high_traffic = atol(value);
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);

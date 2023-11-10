@@ -1998,14 +1998,17 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			last_traffic = speed;
 		}
+		
 		extern bool use_push_batch_limit_ms;
 		extern unsigned int opt_push_batch_limit_ms;
 		use_push_batch_limit_ms = opt_push_batch_limit_ms > 0 && speed < 200;
-		extern unsigned int opt_huge_batch_traffic_limit;
-		extern bool huge_batch_need;
-		if(opt_t2_boost && opt_huge_batch_traffic_limit > 0 && speed > opt_huge_batch_traffic_limit) {
-			huge_batch_need = true;
+		
+		extern unsigned int opt_t2_boost_high_traffic_limit;
+		if(opt_t2_boost == 2 && opt_t2_boost_high_traffic_limit > 0 && speed > opt_t2_boost_high_traffic_limit) {
+			extern bool batch_length_high_traffic_need;
+			batch_length_high_traffic_need = true;
 		}
+		
 		if(opt_cachedir[0] != '\0') {
 			outStr << "cdq[" << calltable->files_queue.size() << "][" << ((float)(cachedirtransfered - lastcachedirtransfered) / 1024.0 / 1024.0 / (float)statPeriod) << " MB/s] ";
 			lastcachedirtransfered = cachedirtransfered;

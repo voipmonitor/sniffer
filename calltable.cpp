@@ -188,7 +188,7 @@ extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_rtp_streams_max_in_call;
 extern int opt_rtp_check_both_sides_by_sdp;
-extern int opt_hash_modify_queue_length_ms;
+extern int hash_modify_queue_length_ms;
 extern int opt_mysql_enable_multiple_rows_insert;
 extern int opt_mysql_max_multiple_rows_insert;
 extern PreProcessPacket **preProcessPacketCallX;
@@ -879,7 +879,7 @@ void Call::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 		this->evDestroyIpPortRtpStream(c_branch, i);
 	}
 	
-	if(!opt_hash_modify_queue_length_ms) {
+	if(!hash_modify_queue_length_ms) {
 		int rest = calltable->hashRemove(c_branch, useHashQueueCounter);
 		if(rest) {
 			syslog(LOG_WARNING, "WARNING: rest after hash cleanup for callid: %s: %i", this->fbasename, rest);
@@ -922,13 +922,13 @@ void Call::removeFindTables(CallBranch *c_branch, bool set_end_call, bool destro
 	if(set_end_call) {
 		hash_add_lock();
 		c_branch->end_call_rtp = 1;
-		if(!(opt_hash_modify_queue_length_ms && c_branch->end_call_hash_removed)) {
+		if(!(hash_modify_queue_length_ms && c_branch->end_call_hash_removed)) {
 			this->hashRemove(c_branch, true);
 			c_branch->end_call_hash_removed = 1;
 		}
 		hash_add_unlock();
 	} else if(destroy) {
-		if(opt_hash_modify_queue_length_ms) {
+		if(hash_modify_queue_length_ms) {
 			calltable->hashRemoveForce(c_branch);
 		}
 		this->hashRemove(c_branch);
@@ -10617,7 +10617,7 @@ void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c
 		return;
 	}
 	
-	if(opt_hash_modify_queue_length_ms) {
+	if(hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_add;
 		hmd.addr = addr;
@@ -11452,7 +11452,7 @@ void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rt
 	}
 	#endif
 	
-	if(opt_hash_modify_queue_length_ms) {
+	if(hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_remove;
 		hmd.addr = addr;
@@ -11745,7 +11745,7 @@ int Calltable::_hashRemoveExt(CallBranch *c_branch, vmIP addr, vmPort port, bool
 int
 Calltable::hashRemove(CallBranch *c_branch, bool useHashQueueCounter) {
 
-	if(opt_hash_modify_queue_length_ms) {
+	if(hash_modify_queue_length_ms) {
 		sHashModifyData hmd;
 		hmd.oper = hmo_remove_call;
 		hmd.c_branch = c_branch;
@@ -11914,7 +11914,7 @@ Calltable::applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 
 void Calltable::_applyHashModifyQueue(bool setBegin, bool use_lock_calls_hash) {
 	if(hash_modify_queue_begin_ms) {
-		if(getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + opt_hash_modify_queue_length_ms) {
+		if(getTimeMS_rdtsc() >= hash_modify_queue_begin_ms + hash_modify_queue_length_ms) {
 			if (use_lock_calls_hash) lock_calls_hash();
 			for(list<sHashModifyData>::iterator iter = hash_modify_queue.begin(); iter != hash_modify_queue.end(); iter++) {
 				switch(iter->oper) {
@@ -13196,7 +13196,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					#endif
 					++call->attemptsClose;
 					if(!closeAll &&
-					   ((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
+					   ((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 					    call->rtppacketsinqueue > 0 ||
 					    call->useInListCalls 
 					    #if CONFERENCE_LEGS_MOD_WITHOUT_TABLE_CDR_CONFERENCE
@@ -13383,7 +13383,7 @@ Calltable::cleanup_calls_separate_processing_rtp() {
 		}
 		if(closeCall) {
 			call->removeFindTables(NULL, true);
-			if((opt_hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
+			if((hash_modify_queue_length_ms && call->hash_queue_counter > 0) ||
 			   call->rtppacketsinqueue > 0) {
 				closeCall = false;
 			}

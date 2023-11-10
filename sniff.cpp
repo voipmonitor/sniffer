@@ -202,8 +202,8 @@ extern unsigned int opt_process_rtp_packets_qring_usleep;
 extern bool process_rtp_packets_qring_force_push;
 extern unsigned int rtp_qring_usleep;
 extern unsigned int rtp_qring_batch_length;
-extern bool huge_batch_need;
-extern unsigned int opt_huge_batch_length;
+extern bool batch_length_high_traffic_need;
+extern unsigned int opt_batch_length_high_traffic;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
@@ -287,7 +287,7 @@ extern bool opt_ignore_rtp_after_response;
 extern vector<int> opt_ignore_rtp_after_response_list;
 extern bool opt_detect_alone_bye;
 extern bool opt_get_reason_from_bye_cancel;
-extern int opt_hash_modify_queue_length_ms;
+extern int hash_modify_queue_length_ms;
 extern bool opt_sipalg_detect;
 extern int opt_quick_save_cdr;
 extern int opt_cleanup_calls_period;
@@ -6731,7 +6731,7 @@ inline bool call_confirmation_for_rtp_processing(Call *call, CallBranch *c_branc
 		   (opt_ignore_rtp_after_response &&
 		    c_branch->ignore_rtp_after_response_time_usec &&
 		    packetS->getTimeUS() > c_branch->ignore_rtp_after_response_time_usec) ||
-		   (opt_hash_modify_queue_length_ms && c_branch->end_call_rtp) ||
+		   (hash_modify_queue_length_ms && c_branch->end_call_rtp) ||
 		   (call->flags & FLAG_SKIPCDR)) {
 			return(false);
 		}
@@ -9531,8 +9531,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 			this->qring[i]->used = 0;
 		}
 	}
-	this->items_flag = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_huge_batch_length)];
-	this->items_thread_index = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_huge_batch_length)];
+	this->items_flag = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
+	this->items_thread_index = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -9546,17 +9546,17 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 		this->stackSip = new FILE_LINE(26026) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									      opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									      opt_preprocess_packets_qring_length, 
-									     opt_t2_boost_direct_rtp ? 5 :1,
+									     opt_t2_boost_direct_rtp ? 5 : 1,
 									     200);
 		this->stackRtp = new FILE_LINE(26027) cHeapItemsPointerStack((opt_preprocess_packets_qring_item_length ?
 									       opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									       opt_preprocess_packets_qring_length) * 10, 
-									     opt_t2_boost_direct_rtp ? 5 :1,
+									     opt_t2_boost_direct_rtp ? 5 : 1,
 									     200);
 		this->stackOther = new FILE_LINE(0) cHeapItemsPointerStack(opt_preprocess_packets_qring_item_length ?
 									    opt_preprocess_packets_qring_item_length * opt_preprocess_packets_qring_length :
 									    opt_preprocess_packets_qring_length, 
-									   opt_t2_boost_direct_rtp ? 5 :1,
+									   opt_t2_boost_direct_rtp ? 5 : 1,
 									   200);
 	} else {
 		this->stackSip = NULL;
@@ -9889,8 +9889,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(huge_batch_need && batch_detach_x->max_count < opt_huge_batch_length) {
-						batch_detach_x->realloc(opt_huge_batch_length);
+					if(batch_length_high_traffic_need && batch_detach_x->max_count < opt_batch_length_high_traffic) {
+						batch_detach_x->realloc(opt_batch_length_high_traffic);
 					}
 					__SYNC_NULL(batch_detach_x->count);
 					__SYNC_NULL(batch_detach_x->used);
@@ -10021,8 +10021,8 @@ void *PreProcessPacket::outThreadFunction() {
 					counter_all_packets += batch_detach->count;
 				}
 				#if RQUEUE_SAFE
-					if(huge_batch_need && batch_detach->max_count < opt_huge_batch_length) {
-						batch_detach->realloc(opt_huge_batch_length);
+					if(batch_length_high_traffic_need && batch_detach->max_count < opt_batch_length_high_traffic) {
+						batch_detach->realloc(opt_batch_length_high_traffic);
 					}
 					__SYNC_NULL(batch_detach->count);
 					__SYNC_NULL(batch_detach->used);
@@ -10207,8 +10207,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(huge_batch_need && batch->max_count < opt_huge_batch_length) {
-						batch->realloc(opt_huge_batch_length);
+					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
+						batch->realloc(opt_batch_length_high_traffic);
 					}
 					__SYNC_NULL(batch->count);
 					__SYNC_NULL(batch->used);
@@ -10296,8 +10296,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(huge_batch_need && batch->max_count < opt_huge_batch_length) {
-						batch->realloc(opt_huge_batch_length);
+					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
+						batch->realloc(opt_batch_length_high_traffic);
 					}
 					__SYNC_NULL(batch->count);
 					__SYNC_NULL(batch->used);
@@ -10364,13 +10364,13 @@ void *PreProcessPacket::outThreadFunction() {
 							preProcessPacketCallX[i]->push_batch();
 						}
 					} else {
-						if(opt_hash_modify_queue_length_ms) {
+						if(hash_modify_queue_length_ms) {
 							calltable->applyHashModifyQueue(true);
 						}
 					}
 					if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 						_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
-						if(opt_hash_modify_queue_length_ms) {
+						if(hash_modify_queue_length_ms) {
 							calltable->applyHashModifyQueue(true);
 						}
 					}
@@ -10555,7 +10555,7 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		if(!opt_t2_boost || preProcessPacketCallX_state == PreProcessPacket::callx_na) {
 			_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
-			if(opt_hash_modify_queue_length_ms) {
+			if(hash_modify_queue_length_ms) {
 				calltable->applyHashModifyQueue(true);
 			}
 		}
@@ -10564,7 +10564,7 @@ void PreProcessPacket::push_batch_nothread() {
 		if(opt_t2_boost && 
 		   (int)idPreProcessThread == preProcessPacketCallX_count) {
 			_process_packet__cleanup_calls(NULL, __FILE__, __LINE__);
-			if(opt_hash_modify_queue_length_ms) {
+			if(hash_modify_queue_length_ms) {
 				calltable->applyHashModifyQueue(true);
 			}
 		}
@@ -11691,7 +11691,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 		this->qring[i] = new FILE_LINE(26029) batch_packet_s_process(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
-	this->hash_find_flag = new FILE_LINE(26030) volatile int8_t[max(this->qring_batch_item_length, opt_huge_batch_length)];
+	this->hash_find_flag = new FILE_LINE(26030) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	this->qring_active_push_item = NULL;
@@ -11766,8 +11766,8 @@ void *ProcessRtpPacket::outThreadFunction() {
 				this->rtp_batch(batch, count);
 			}
 			#if RQUEUE_SAFE
-				if(huge_batch_need && batch->max_count < opt_huge_batch_length) {
-					batch->realloc(opt_huge_batch_length);
+				if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
+					batch->realloc(opt_batch_length_high_traffic);
 				}
 				__SYNC_NULL(batch->count);
 				__SYNC_NULL(batch->used);
