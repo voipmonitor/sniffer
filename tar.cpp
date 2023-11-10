@@ -1035,6 +1035,9 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	} else if(zstd){
 		#ifdef HAVE_LIBZSTD
 		writeZstd((char *)(buf), len);
+		if(!this->tarLength) {
+			flushZstd();
+		}
 		#endif //HAVE_LIBZSTD
 	} else {
 		::write(tar.fd, (char *)(buf), len);
