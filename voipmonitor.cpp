@@ -8630,6 +8630,9 @@ void set_context_config() {
 		if(!CONFIG.isSet("t2_boost_pb_detach_thread")) {
 			opt_t2_boost_pb_detach_thread = 2;
 		}
+		if(!CONFIG.isSet("usleep_progressive")) {
+			opt_usleep_progressive = false;
+		}
 	}
 	
 	hash_modify_queue_length_ms = opt_t2_boost == 2 && (CONFIG.isSet("hash_queue_length_ms_high_traffic") || !CONFIG.isSet("hash_queue_length_ms")) ?
