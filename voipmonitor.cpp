@@ -542,7 +542,7 @@ int opt_response_default_timeout = 5;
 bool opt_ignore_rtp_after_bye_confirmed = true;
 bool opt_ignore_rtp_after_bye = false;
 bool opt_ignore_duration_after_bye_confirmed = true;
-bool opt_ignore_rtp_after_cancel_confirmed = true;
+bool opt_ignore_rtp_after_cancel_confirmed = false;
 bool opt_ignore_rtp_after_auth_failed = true;
 bool opt_ignore_rtp_after_response = false;
 vector<int> opt_ignore_rtp_after_response_list;
