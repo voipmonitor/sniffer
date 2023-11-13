@@ -8330,6 +8330,10 @@ void set_spool_permission() {
 
 void set_context_config() {
  
+	if(!CONFIG.isSet("t2_boost") && sysconf(_SC_NPROCESSORS_ONLN) <= 4) {
+		opt_t2_boost = 0;
+	}
+ 
 	if(opt_t2_boost_direct_rtp) {
 		opt_t2_boost = 2;
 	}
