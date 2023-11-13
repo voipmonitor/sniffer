@@ -3650,7 +3650,7 @@ private:
 	u_int64_t getUsleep(sThread *thread, int indexPstat);
 	u_int64_t getTimeUS(sThread *thread, int indexPstat);
 	void tm_lock() {
-		__SYNC_LOCK(this->_sync);
+		__SYNC_LOCK_QUICK(this->_sync);
 	}
 	void tm_unlock() {
 		__SYNC_UNLOCK(this->_sync);

@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <syslog.h>
 #include <algorithm> 
+#include "tools_global.h"
 
 #include "heap_chunk.h"
 

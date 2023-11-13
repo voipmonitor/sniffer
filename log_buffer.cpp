@@ -1,5 +1,6 @@
 #include <syslog.h>
 #include <stdio.h>
+#include "tools_global.h"
 
 #include "log_buffer.h"
 

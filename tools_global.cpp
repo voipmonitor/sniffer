@@ -892,7 +892,7 @@ void usleep_stats_add(unsigned int useconds, bool fix, const char *file, int lin
 			 (useconds < 10 ? useconds :
 			  useconds < 100 ? useconds / 10 * 10 :
 			  useconds / 100 * 100);
-		__SYNC_LOCK(usleepStatsSync);
+		__SYNC_LOCK_QUICK(usleepStatsSync);
 		++usleepStats[id];
 		__SYNC_UNLOCK(usleepStatsSync);
 	}

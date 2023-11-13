@@ -11,6 +11,7 @@
 #include "proc_limit.h"
 #include "heap_safe.h"
 #include "sync.h"
+#include "tools_global.h"
 
 #include "voipmonitor_define.h"
 
