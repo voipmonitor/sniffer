@@ -5955,7 +5955,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_fields_rtp", &opt_disable_cdr_fields_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_cdr_indexes_rtp", &opt_disable_cdr_indexes_rtp));
 					addConfigItem((new FILE_LINE(42090) cConfigItem_yesno("t2_boost", &opt_t2_boost))
-						->addValues("high_traffic:2"));
+						->addValues("high_traffic:2")
+						->addAlias("threading_expanded"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
