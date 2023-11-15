@@ -4359,7 +4359,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				c_branch = c_branch_id > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
 			} else if(opt_call_branches_find_smart) {
 				for(map<string, int>::iterator iter = call->branches_to_map.begin(); iter != call->branches_to_map.end(); iter++) {
-					CallBranch *comp_branch = iter->second > 0 ? call->next_branches[c_branch_id - 1] : &call->first_branch;
+					CallBranch *comp_branch = iter->second > 0 ? call->next_branches[iter->second - 1] : &call->first_branch;
 					if((!opt_call_branches_find_by_called_number ||
 					    data_callerd.smart_cmp_called_number(comp_branch)) &&
 					   (!opt_call_branches_find_by_called_domain ||
