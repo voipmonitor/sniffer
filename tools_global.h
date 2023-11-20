@@ -276,8 +276,14 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 		double useconds_multiple_inc = 0.01;
 		extern double last_traffic;
 		if(last_traffic >= 0) {
-			if(last_traffic < 1) {
+			if(last_traffic < 0.5) {
 				useconds_min = 500;
+				useconds_multiple_inc = 1;
+			} else if(last_traffic < 1) {
+				useconds_min = 200;
+				useconds_multiple_inc = 0.5;
+			} else if(last_traffic < 2) {
+				useconds_min = 100;
 				useconds_multiple_inc = 0.3;
 			} else if(last_traffic < 5) {
 				useconds_multiple_inc = 0.2;
