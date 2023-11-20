@@ -4821,6 +4821,10 @@ int Mgmt_usleep(Mgmt_params *params) {
 		extern unsigned int opt_usleep_force;
 		opt_usleep_force = atoi(us_params[1]);
 		return(params->sendString("ok\n"));
+	} else if(!strcasecmp(us_params[0], "set_min")) {
+		extern unsigned int opt_usleep_minimal;
+		opt_usleep_minimal = atoi(us_params[1]);
+		return(params->sendString("ok\n"));
 	}
 	return(0);
 }

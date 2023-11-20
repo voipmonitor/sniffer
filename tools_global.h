@@ -265,6 +265,10 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	if(opt_usleep_force) {
 		useconds = opt_usleep_force;
 	}
+	extern unsigned int opt_usleep_minimal;
+	if(opt_usleep_minimal && useconds < opt_usleep_minimal) {
+		useconds = opt_usleep_minimal;
+	}
  	unsigned int rslt_useconds = useconds;
 	extern bool opt_usleep_progressive;
 	if(opt_usleep_progressive && useconds < 5000 && counter != (unsigned int)-1) {
