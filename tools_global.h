@@ -271,10 +271,10 @@ inline unsigned int usleep(unsigned int useconds, unsigned int counter, const ch
 	}
  	unsigned int rslt_useconds = useconds;
 	extern bool opt_usleep_progressive;
-	if(opt_usleep_progressive && useconds < 5000 && counter != (unsigned int)-1) {
+	extern double last_traffic;
+	if((opt_usleep_progressive || last_traffic < 100) && useconds < 5000 && counter != (unsigned int)-1) {
 		unsigned int useconds_min = 0;
 		double useconds_multiple_inc = 0.01;
-		extern double last_traffic;
 		if(last_traffic >= 0) {
 			if(last_traffic < 0.5) {
 				if(last_traffic < 0.1) {
