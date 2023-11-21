@@ -1,28 +1,32 @@
-32.0  05.09.2023
-================
+2023.11.0  21.11..2023
+======================
 - voipmonitor.conf overhaul
-- replace gzip with zstd compression which has same compression ratio but is 5x faster (the latest GUI version is REQUIRED!) [VS-1496]
+- speed optimisations in threading processing (reduce locks and contentions, automatic add/remove threads in t2 processes)
+- static builds is now compiled with -O3 and -flto (increases memory throughput) 
+- t2_boost renamed to threading_expanded with new option high_traffic (high traffic will be default in near future) 
+- max_buffer_mem is et to 2000MB if the max_buffer_mem parameter is not present in the configuration
+- new scheduler thread prioroity - sched_* options in voipmonitor.conf. By default sniffer sets NICE -20 to all important threads. 
+- automatically enable hashtable_heap_size=64 (64MB) if max_buffer_mem is at least 1000MB
+- replace gzip with zstd compression which has the same compression ratio but is 5x faster (the latest GUI version is REQUIRED!) [VS-1496]
 - add support for LZ4 compression for pcap compression (slightly faster than lzo but worse compression ratio)
 - replace packet deduplication md5 with crc32 (including hw support on supported intel xeons) and enable deduplication by default - on high traffic 1-3 cpu cores are spared [VS-1497]
 - ./configure script now compiles with -O3 and supports static linking with the latest mariadb
 - fix ss7 configure script
 - support CFLAGS and CXXFLAGS for ./configure params
-- static builds is now compiled with -O3 and -flto (increases memory throughput) 
-- new scheduler thread prioroity - sched_* options in voipmonitor.conf. By default sniffer sets NICE -20 to all important threads. 
-- automatically enable hashtable_heap_size=64 (64MB) if max_buffer_mem is at least 1000MB
 - limit maximum number of possible INVITE packets within one call to prevent sniffer CPU overload [VS-1488]
 - fix issue with audio creation if stream contains 0 received packets (due to probation test). New option disable_rtp_seq_probation = yes/NO [VS-1494]
-- speed optimisation adding usleep (50ms) to invite_list_lock
 - fix storing loss to rtp_stat [VG-2683]
-- add noop instruction in the spinlock
 - ignore_rtp_after_bye_confirmed is now yes by default
-- ignore_rtp_after_cancel_confirmed is now yes by default
 - detect_alone_bye is now yes by default
-- ignore_rtp_after_response is now set to 408;480;486;487;481;600;503 by default
 - query_cache is now yes by default
 - mysql_queue_limit = 1000000 is now default
 - dscp is now yes by default 
-- t2_boost is set to yes by default 
+- fix early destroy_call_at for multibranch calls [VS-1504]
+- fix realtime concurrent call alert if the call changes between local and international states during processing [VS-1506]
+- fix problem with seq synchronization in tls 1.3 after restoring session from ssl_sesions table [VS-1505]
+- limit the number of 'to much INVITEs' messages in the syslog [VS-1507]
+- fix crash in sll to en10 conversion [VS-1508]
+- fix custom headers reload [VS-1509]?
 
 
 31.9  05.09.2023
