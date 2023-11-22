@@ -4,8 +4,8 @@
 
 #if defined(__x86_64__) || defined(__i386__)
 	#define __ASM_PAUSE __asm__ volatile ("pause")
-#elif defined(__arm__)
-	#define __ASM_PAUSE __asm__ volatile ("yield")
+#else
+	#define __ASM_PAUSE
 #endif
 
 #define __SYNC_LOCK_WHILE(vint) while(__sync_lock_test_and_set(&vint, 1))
