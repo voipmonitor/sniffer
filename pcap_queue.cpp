@@ -9285,11 +9285,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 			if(opt_sip_batch_usleep) {
 				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 			}
 		}
 		qring_push_index = this->writeit + 1;
@@ -9386,11 +9382,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			if(opt_preprocess_packets_qring_usleep) {
 				usleepSumTime += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 				++usleepCounter;
 			}
 			extern unsigned int opt_push_batch_limit_ms;

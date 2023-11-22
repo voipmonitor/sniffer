@@ -3716,7 +3716,7 @@ public:
 			if(opt_lock_calls_hash_usleep) {
 				USLEEP_C(opt_lock_calls_hash_usleep, usleepCounter++);
 			} else {
-				__asm__ volatile ("pause");
+				__ASM_PAUSE;
 			}
 		}
 	}

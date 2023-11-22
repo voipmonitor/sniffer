@@ -2,9 +2,15 @@
 #define SYNC_H
 
 
+#if defined(__x86_64__) || defined(__i386__)
+	#define __ASM_PAUSE __asm__ volatile ("pause")
+#elif defined(__arm__)
+	#define __ASM_PAUSE __asm__ volatile ("yield")
+#endif
+
 #define __SYNC_LOCK_WHILE(vint) while(__sync_lock_test_and_set(&vint, 1))
 #define __SYNC_LOCK_QUICK(vint) while(__sync_lock_test_and_set(&vint, 1));
-#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) { __asm__ volatile ("pause"); };
+#define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) { __ASM_PAUSE; };
 #define __SYNC_LOCK_USLEEP(vint, us_sleep) while(__sync_lock_test_and_set(&vint, 1)) { if(us_sleep) { USLEEP(us_sleep); } }
 #define __SYNC_UNLOCK(vint) __sync_lock_release(&vint);
 

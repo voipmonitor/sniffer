@@ -3009,11 +3009,7 @@ void *rtp_read_thread_func(void *arg) {
 			if(rtp_qring_usleep) {
 				usleepSumTime += USLEEP_C(rtp_qring_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 				++usleepCounter;
 			}
 		}
@@ -9719,11 +9715,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				if(opt_sip_batch_usleep) {
 					USLEEP(opt_sip_batch_usleep);
 				} else {
-					#if defined(__x86_64__) || defined(__i386__)
-						__asm__ volatile ("pause");
-					#elif defined(__arm__)
-						__asm__ volatile ("yield");
-					#endif
+					__ASM_PAUSE;
 				}
 			}
 			next_thread_data->data_ready = 0;
@@ -9781,11 +9773,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 			if(opt_sip_batch_usleep) {
 				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 			}
 		}
 	}
@@ -9866,11 +9854,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
 								} else {
-									#if defined(__x86_64__) || defined(__i386__)
-										__asm__ volatile ("pause");
-									#elif defined(__arm__)
-										__asm__ volatile ("yield");
-									#endif
+									__ASM_PAUSE;
 								}
 							}
 						}
@@ -9890,11 +9874,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
 								} else {
-									#if defined(__x86_64__) || defined(__i386__)
-										__asm__ volatile ("pause");
-									#elif defined(__arm__)
-										__asm__ volatile ("yield");
-									#endif
+									__ASM_PAUSE;
 								}
 							}
 						}
@@ -9977,11 +9957,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
 								} else {
-									#if defined(__x86_64__) || defined(__i386__)
-										__asm__ volatile ("pause");
-									#elif defined(__arm__)
-										__asm__ volatile ("yield");
-									#endif
+									__ASM_PAUSE;
 								}
 							}
 						}
@@ -10002,11 +9978,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
 								} else {
-									#if defined(__x86_64__) || defined(__i386__)
-										__asm__ volatile ("pause");
-									#elif defined(__arm__)
-										__asm__ volatile ("yield");
-									#endif
+									__ASM_PAUSE;
 								}
 							}
 						}
@@ -10187,11 +10159,7 @@ void *PreProcessPacket::outThreadFunction() {
 							if(opt_sip_batch_usleep) {
 								USLEEP(opt_sip_batch_usleep);
 							} else {
-								#if defined(__x86_64__) || defined(__i386__)
-									__asm__ volatile ("pause");
-								#elif defined(__arm__)
-									__asm__ volatile ("yield");
-								#endif
+								__ASM_PAUSE;
 							}
 						}
 					}
@@ -10219,11 +10187,7 @@ void *PreProcessPacket::outThreadFunction() {
 								if(opt_sip_batch_usleep) {
 									USLEEP(opt_sip_batch_usleep);
 								} else {
-									#if defined(__x86_64__) || defined(__i386__)
-										__asm__ volatile ("pause");
-									#elif defined(__arm__)
-										__asm__ volatile ("yield");
-									#endif
+									__ASM_PAUSE;
 								}
 							}
 						}
@@ -10453,11 +10417,7 @@ void *PreProcessPacket::outThreadFunction() {
 			if(opt_preprocess_packets_qring_usleep) {
 				usleepSumTimeForPushBatch += USLEEP_C(opt_preprocess_packets_qring_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 				++usleepCounter;
 			}
 		}
@@ -10484,11 +10444,7 @@ void PreProcessPacket::createNextThread() {
 		if(opt_sip_batch_usleep) {
 			USLEEP(opt_sip_batch_usleep);
 		} else {
-			#if defined(__x86_64__) || defined(__i386__)
-				__asm__ volatile ("pause");
-			#elif defined(__arm__)
-				__asm__ volatile ("yield");
-			#endif
+			__ASM_PAUSE;
 		}
 	}
 	++this->next_threads_count;
@@ -11860,11 +11816,7 @@ void *ProcessRtpPacket::outThreadFunction() {
 			if(opt_process_rtp_packets_qring_usleep) {
 				usleepSumTimeForPushBatch += USLEEP_C(opt_process_rtp_packets_qring_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 				++usleepCounter;
 			}
 		}
@@ -11889,11 +11841,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 				if(opt_rtp_batch_usleep) {
 					USLEEP(opt_rtp_batch_usleep);
 				} else {
-					#if defined(__x86_64__) || defined(__i386__)
-						__asm__ volatile ("pause");
-					#elif defined(__arm__)
-						__asm__ volatile ("yield");
-					#endif
+					__ASM_PAUSE;
 				}
 			}
 			hash_thread_data->data_ready = 0;
@@ -11999,11 +11947,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			if(opt_rtp_batch_usleep) {
 				USLEEP_C(opt_rtp_batch_usleep, usleepCounter++);
 			} else {
-				#if defined(__x86_64__) || defined(__i386__)
-					__asm__ volatile ("pause");
-				#elif defined(__arm__)
-					__asm__ volatile ("yield");
-				#endif
+				__ASM_PAUSE;
 			}
 		}
 	}
@@ -12072,11 +12016,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 						if(opt_rtp_batch_usleep) {
 							USLEEP(opt_rtp_batch_usleep);
 						} else {
-							#if defined(__x86_64__) || defined(__i386__)
-								__asm__ volatile ("pause");
-							#elif defined(__arm__)
-								__asm__ volatile ("yield");
-							#endif
+							__ASM_PAUSE;
 						}
 					}
 				}
@@ -12121,11 +12061,7 @@ void ProcessRtpPacket::rtp_batch(batch_packet_s_process *batch, unsigned count) 
 							if(opt_rtp_batch_usleep) {
 								USLEEP(opt_rtp_batch_usleep);
 							} else {
-								#if defined(__x86_64__) || defined(__i386__)
-									__asm__ volatile ("pause");
-								#elif defined(__arm__)
-									__asm__ volatile ("yield");
-								#endif
+								__ASM_PAUSE;
 							}
 						}
 					}
@@ -12516,11 +12452,7 @@ void ProcessRtpPacket::createNextHashThread() {
 		if(opt_rtp_batch_usleep) {
 			USLEEP(opt_rtp_batch_usleep);
 		} else {
-			#if defined(__x86_64__) || defined(__i386__)
-				__asm__ volatile ("pause");
-			#elif defined(__arm__)
-				__asm__ volatile ("yield");
-			#endif
+			__ASM_PAUSE;
 		}
 	}
 	++this->process_rtp_packets_hash_next_threads;
