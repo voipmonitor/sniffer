@@ -183,6 +183,19 @@ CXXFLAGS=$ORIGCXXFLAGS
 
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([zstd], [main], HAVE_LIBZSTD=1, AC_MSG_ERROR([Unable to find zstd. apt-get install libzstd-dev]))
+
+ZSTD_BIN='zstd'
+ZSTD_VER_MAJOR=`$ZSTD_BIN --version | cut -d 'v' -f2 | cut -d '.' -f1`
+ZSTD_VER_MINOR=`$ZSTD_BIN --version | cut -d 'v' -f2 | cut -d '.' -f2`
+if test -z $ZSTD_VER_MAJOR || test -z $ZSTD_VER_MINOR; then
+        AC_MSG_ERROR([Can't get about zstd version. $ZSTD_BIN binary is needed.])
+fi
+if (test $ZSTD_VER_MAJOR -eq 1 && test $ZSTD_VER_MINOR -ge 5) || test $ZSTD_VER_MAJOR -ge 2; then
+	AC_MSG_NOTICE([Zstd version is ok ($ZSTD_VER_MAJOR.$ZSTD_VER_MINOR).])
+else
+	AC_MSG_ERROR([Bad zstd version ($ZSTD_VER_MAJOR.$ZSTD_VER_MINOR). Version 1.5 or higher is required.])
+fi
+
 AC_CHECK_LIB([lz4], [main], HAVE_LIBLZ4=1, AC_MSG_ERROR([Unable to find lz4. apt-get install liblz4-dev]))
 AC_CHECK_LIB([lzma], [main], HAVE_LIBLZMA=1, AC_MSG_NOTICE([Unable to find lzma. apt-get install liblzma-dev | yum install xz-devel]))
 AC_CHECK_LIB([lzo2], [main], HAVE_LIBLZO=1, AC_MSG_ERROR([Unable to find lzo. apt-get install liblzo2-dev | yum install lzo-devel]))
