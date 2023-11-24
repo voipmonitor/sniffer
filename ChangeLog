@@ -1,4 +1,9 @@
-2023.11.0  21.11..2023
+2023.11.1  24.11.2023
+=====================
+- static builds uses gcc12 with the latest libc. Minimum kernel version is now >= 3.2.0 
+
+
+2023.11.0  21.11.2023
 ======================
 - voipmonitor.conf overhaul
 - speed optimisations in threading processing (reduce locks and contentions, automatic add/remove threads in t2 processes)
