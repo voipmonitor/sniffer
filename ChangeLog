@@ -1,3 +1,8 @@
+2023.11.3  24.11.2023
+=====================
+- fix illegal instruction in zstd 2023.11.X on < haswell 
+
+
 2023.11.2  24.11.2023
 =====================
 - fix illegal instruction in snappy 2023.11.1
