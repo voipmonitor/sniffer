@@ -1,3 +1,8 @@
+2023.11.2  24.11.2023
+=====================
+- fix illegal instruction in snappy 2023.11.1
+
+
 2023.11.1  24.11.2023
 =====================
 - static builds uses gcc12 with the latest libc. Minimum kernel version is now >= 3.2.0 
