@@ -1,3 +1,13 @@
+2023.11.4  25.11.2023
+=====================
+- fix illegal instruction in libcurl 2023.11.X on < haswell when sniffer upgrades itself. Manual upgrade is needed when on version >= 2023.11.1 and <= 2023.11.3 on < haswell CPU
+
+
+2023.11.3  24.11.2023
+=====================
+- fix illegal instruction in zstd 2023.11.X on < haswell 
+
+
 2023.11.2  24.11.2023
 =====================
 - fix illegal instruction in snappy 2023.11.1
