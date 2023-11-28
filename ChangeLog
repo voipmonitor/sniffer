@@ -1,4 +1,9 @@
-2023.11.5  25.11.2023
+2023.11.6  28.11.2023
+=====================
+- fix crash in illegal instruction in crc32 when server does not have SSE 4.2 and sniffer is in client mode forced to crc32 by the sniffer server
+
+
+2023.11.5  28.11.2023
 =====================
 - fix crash in destroySession if SslDsslSession does not contain a valid session
 - change zstd default level compression for sip and graph from 3 to 1 which lowers memory foot print by half with almost same compression ratio 
