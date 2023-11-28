@@ -802,13 +802,15 @@ void cSslDsslSessions::destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPo
 	map<sStreamId, cSslDsslSession*>::iterator iter_session;
 	iter_session = sessions.find(sid);
 	if(iter_session != sessions.end()) {
-		if(iter_session->second->session->tls_session_server_seq != iter_session->second->session->tls_session_server_seq_saved ||
-		   iter_session->second->session->tls_session_client_seq != iter_session->second->session->tls_session_client_seq_saved) {
-			timeval ts = getTimeval();
-			iter_session->second->store_session(this, ts, true);
-		}
-		if(iter_session->second->get_keys_ok) {
-			keyErase(iter_session->second->session->client_random);
+		if(iter_session->second->session) {
+			if(iter_session->second->session->tls_session_server_seq != iter_session->second->session->tls_session_server_seq_saved ||
+			   iter_session->second->session->tls_session_client_seq != iter_session->second->session->tls_session_client_seq_saved) {
+				timeval ts = getTimeval();
+				iter_session->second->store_session(this, ts, true);
+			}
+			if(iter_session->second->get_keys_ok) {
+				keyErase(iter_session->second->session->client_random);
+			}
 		}
 		delete iter_session->second;
 		sessions.erase(iter_session);
