@@ -60,17 +60,14 @@ volatile unsigned int glob_tar_queued_files;
 
 extern bool opt_pcap_dump_tar_use_hash_instead_of_long_callid;
 extern int opt_pcap_dump_tar_compress_sip;
-extern int opt_pcap_dump_tar_sip_level;
 extern int opt_pcap_dump_tar_sip_level_gzip;
 extern int opt_pcap_dump_tar_sip_level_lzma;
 extern int opt_pcap_dump_tar_sip_level_zstd;
 extern int opt_pcap_dump_tar_compress_rtp;
-extern int opt_pcap_dump_tar_rtp_level;
 extern int opt_pcap_dump_tar_rtp_level_gzip;
 extern int opt_pcap_dump_tar_rtp_level_lzma;
 extern int opt_pcap_dump_tar_rtp_level_zstd;
 extern int opt_pcap_dump_tar_compress_graph;
-extern int opt_pcap_dump_tar_graph_level;
 extern int opt_pcap_dump_tar_graph_level_gzip;
 extern int opt_pcap_dump_tar_graph_level_lzma;
 extern int opt_pcap_dump_tar_graph_level_zstd;
@@ -970,15 +967,15 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	case 1:
 		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_sip)) {
 		case _gzip_force:
-			gziplevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_gzip;
+			gziplevel = opt_pcap_dump_tar_sip_level_gzip;
 			zip = true;
 			break;
 		case _lzma:
-			lzmalevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_lzma;
+			lzmalevel = opt_pcap_dump_tar_sip_level_lzma;
 			lzma = true;
 			break;
 		case _zstd:
-			zstdlevel = opt_pcap_dump_tar_sip_level != INT_MIN ? opt_pcap_dump_tar_sip_level : opt_pcap_dump_tar_sip_level_zstd;
+			zstdlevel = opt_pcap_dump_tar_sip_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_sip_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_sip_zstdstrategy : 0;
 			zstd = true;
 			break;
@@ -989,15 +986,15 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	case 2:
 		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_rtp)) {
 		case _gzip_force:
-			gziplevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_gzip;
+			gziplevel = opt_pcap_dump_tar_rtp_level_gzip;
 			zip = true;
 			break;
 		case _lzma:
-			lzmalevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_lzma;
+			lzmalevel = opt_pcap_dump_tar_rtp_level_lzma;
 			lzma = true;
 			break;
 		case _zstd:
-			zstdlevel = opt_pcap_dump_tar_rtp_level != INT_MIN ? opt_pcap_dump_tar_rtp_level : opt_pcap_dump_tar_rtp_level_zstd;
+			zstdlevel = opt_pcap_dump_tar_rtp_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_rtp_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_rtp_zstdstrategy : 0;
 			zstd = true;
 			break;
@@ -1008,15 +1005,15 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 	case 3:
 		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_graph)) {
 		case _gzip_force:
-			gziplevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_gzip;
+			gziplevel = opt_pcap_dump_tar_graph_level_gzip;
 			zip = true;
 			break;
 		case _lzma:
-			lzmalevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_lzma;
+			lzmalevel = opt_pcap_dump_tar_graph_level_lzma;
 			lzma = true;
 			break;
 		case _zstd:
-			zstdlevel = opt_pcap_dump_tar_graph_level != INT_MIN ? opt_pcap_dump_tar_graph_level : opt_pcap_dump_tar_graph_level_zstd;
+			zstdlevel = opt_pcap_dump_tar_graph_level_zstd;
 			zstdstrategy = opt_pcap_dump_tar_graph_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_graph_zstdstrategy : 0;
 			zstd = true;
 			break;

@@ -659,14 +659,12 @@ int opt_pcap_dump_tar_compress_sip =
 	#else
 		Tar::_gzip_force;
 	#endif
-int opt_pcap_dump_tar_sip_level = INT_MIN;
 int opt_pcap_dump_tar_sip_level_gzip = 6;
 int opt_pcap_dump_tar_sip_level_lzma = 5;
-int opt_pcap_dump_tar_sip_level_zstd = 3;
+int opt_pcap_dump_tar_sip_level_zstd = 1;
 int opt_pcap_dump_tar_sip_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_sip_use_pos = 0;
 int opt_pcap_dump_tar_compress_rtp = Tar::_no_compress;
-int opt_pcap_dump_tar_rtp_level = INT_MIN;
 int opt_pcap_dump_tar_rtp_level_gzip = 1;
 int opt_pcap_dump_tar_rtp_level_lzma = 1;
 int opt_pcap_dump_tar_rtp_level_zstd = 1;
@@ -678,10 +676,9 @@ int opt_pcap_dump_tar_compress_graph =
 	#else
 		Tar::_gzip_force;
 	#endif
-int opt_pcap_dump_tar_graph_level = INT_MIN;
 int opt_pcap_dump_tar_graph_level_gzip = 6;
 int opt_pcap_dump_tar_graph_level_lzma = 5;
-int opt_pcap_dump_tar_graph_level_zstd = 3;
+int opt_pcap_dump_tar_graph_level_zstd = 1;
 int opt_pcap_dump_tar_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_graph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
@@ -6319,8 +6316,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_sip", &opt_pcap_dump_compress_sip_zstdstrategy));
 					addConfigItem((new FILE_LINE(42205) cConfigItem_yesno("tar_compress_sip", &opt_pcap_dump_tar_compress_sip))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
-					addConfigItem(new FILE_LINE(42206) cConfigItem_integer("tar_sip_level", &opt_pcap_dump_tar_sip_level));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_strategy", &opt_pcap_dump_tar_sip_zstdstrategy));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_level_gzip", &opt_pcap_dump_tar_sip_level_gzip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_level_lzma", &opt_pcap_dump_tar_sip_level_lzma));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_level_zstd", &opt_pcap_dump_tar_sip_level_zstd));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_sip_strategy_zstd", &opt_pcap_dump_tar_sip_zstdstrategy));
 					addConfigItem(new FILE_LINE(42207) cConfigItem_type_compress("tar_internalcompress_sip", &opt_pcap_dump_tar_internalcompress_sip));
 					addConfigItem(new FILE_LINE(42208) cConfigItem_integer("tar_internal_sip_level", &opt_pcap_dump_tar_internal_gzip_sip_level));
 		subgroup("RTP/RTCP/UDPTL");
@@ -6351,8 +6350,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_rtp", &opt_pcap_dump_compress_rtp_zstdstrategy));
 					addConfigItem((new FILE_LINE(42214) cConfigItem_yesno("tar_compress_rtp", &opt_pcap_dump_tar_compress_rtp))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
-					addConfigItem(new FILE_LINE(42215) cConfigItem_integer("tar_rtp_level", &opt_pcap_dump_tar_rtp_level));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_strategy", &opt_pcap_dump_tar_rtp_zstdstrategy));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_gzip", &opt_pcap_dump_tar_rtp_level_gzip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_lzma", &opt_pcap_dump_tar_rtp_level_lzma));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_level_zstd", &opt_pcap_dump_tar_rtp_level_zstd));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_rtp_strategy_zstd", &opt_pcap_dump_tar_rtp_zstdstrategy));
 					addConfigItem(new FILE_LINE(42216) cConfigItem_type_compress("tar_internalcompress_rtp", &opt_pcap_dump_tar_internalcompress_rtp));
 					addConfigItem(new FILE_LINE(42217) cConfigItem_integer("tar_internal_rtp_level", &opt_pcap_dump_tar_internal_gzip_rtp_level));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_local_instances", &opt_srtp_rtp_local_instances));
@@ -6369,8 +6370,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_graph", &opt_pcap_dump_compress_graph_zstdstrategy));
 					addConfigItem((new FILE_LINE(42221) cConfigItem_yesno("tar_compress_graph", &opt_pcap_dump_tar_compress_graph))
 						->addValues(Tar::getTarCompressConfigValues().c_str()));
-					addConfigItem(new FILE_LINE(42222) cConfigItem_integer("tar_graph_level", &opt_pcap_dump_tar_graph_level));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_strategy", &opt_pcap_dump_tar_graph_zstdstrategy));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_gzip", &opt_pcap_dump_tar_graph_level_gzip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_lzma", &opt_pcap_dump_tar_graph_level_lzma));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_level_zstd", &opt_pcap_dump_tar_graph_level_zstd));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_graph_strategy_zstd", &opt_pcap_dump_tar_graph_zstdstrategy));
 					addConfigItem(new FILE_LINE(42223) cConfigItem_type_compress("tar_internalcompress_graph", &opt_pcap_dump_tar_internalcompress_graph));
 					addConfigItem(new FILE_LINE(42224) cConfigItem_integer("tar_internal_graph_level", &opt_pcap_dump_tar_internal_gzip_graph_level));
 		subgroup("AUDIO");
@@ -11803,22 +11806,40 @@ int eval_config(string inistr) {
 			break;
 		}
 	}
-	if((value = ini.GetValue("general", "tar_sip_level", NULL))) {
-		opt_pcap_dump_tar_sip_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_sip_level_gzip", NULL))) {
+		opt_pcap_dump_tar_sip_level_gzip = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_sip_strategy", NULL))) {
+	if((value = ini.GetValue("general", "tar_sip_level_lzma", NULL))) {
+		opt_pcap_dump_tar_sip_level_lzma = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_sip_level_zstd", NULL))) {
+		opt_pcap_dump_tar_sip_level_zstd = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_sip_strategy_zstd", NULL))) {
 		opt_pcap_dump_tar_sip_zstdstrategy = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_rtp_level", NULL))) {
-		opt_pcap_dump_tar_rtp_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_rtp_level_gzip", NULL))) {
+		opt_pcap_dump_tar_rtp_level_gzip = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_rtp_strategy", NULL))) {
+	if((value = ini.GetValue("general", "tar_rtp_level_lzma", NULL))) {
+		opt_pcap_dump_tar_rtp_level_lzma = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_rtp_level_zstd", NULL))) {
+		opt_pcap_dump_tar_rtp_level_zstd = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_rtp_strategy_zstd", NULL))) {
 		opt_pcap_dump_tar_rtp_zstdstrategy = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_graph_level", NULL))) {
-		opt_pcap_dump_tar_graph_level = atoi(value);
+	if((value = ini.GetValue("general", "tar_graph_level_gzip", NULL))) {
+		opt_pcap_dump_tar_graph_level_gzip = atoi(value);
 	}
-	if((value = ini.GetValue("general", "tar_graph_strategy", NULL))) {
+	if((value = ini.GetValue("general", "tar_graph_level_lzma", NULL))) {
+		opt_pcap_dump_tar_graph_level_lzma = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_graph_level_zstd", NULL))) {
+		opt_pcap_dump_tar_graph_level_zstd = atoi(value);
+	}
+	if((value = ini.GetValue("general", "tar_graph_strategy_zstd", NULL))) {
 		opt_pcap_dump_tar_graph_zstdstrategy = atoi(value);
 	}
 	if((value = ini.GetValue("general", "tar_internalcompress_sip", NULL))) {
