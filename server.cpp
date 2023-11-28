@@ -1370,6 +1370,7 @@ bool cSnifferClientService::receive_process_loop_begin() {
 									"change the deduplication type because it is set differently on the server" :
 									"enabling deduplicate because it is enabled on server");
 								opt_dup_check = server_dup_check;
+								if(opt_dup_check == 3 && !crc32_sse_is_available()) opt_dup_check = 2; // do not force SSE 4.2 version if we do not have it
 								change_config = true;
 							}
 						}
