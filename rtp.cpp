@@ -459,7 +459,7 @@ RTP::save_mos_graph(bool delimiter) {
 	u_int64_t new_mos_time_ms = TIME_US_TO_MS(last_packet_time_us - first_packet_time_us);
 	u_int64_t diff_mos_time_ms = mos_time_ms ? new_mos_time_ms - mos_time_ms : 0;
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(opt_jitterbuffer_f1 and channel_fix1) {
+	if(opt_jitterbuffer_f1 > 0 and channel_fix1) {
 		last_interval_mosf1 = calculate_mos_fromrtp(this, 1, 1);
 
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
@@ -491,15 +491,17 @@ RTP::save_mos_graph(bool delimiter) {
 	} else 
 	#endif
 	{
-		last_interval_mosf1 = 45;
-		mosf1_min = 45;
-		mosf1_avg = 45;
-		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-			this->graph.write((char*)&last_interval_mosf1, 1);
+		if(opt_jitterbuffer_f1 == 0) {
+			last_interval_mosf1 = 45;
+			mosf1_min = 45;
+			mosf1_avg = 45;
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				this->graph.write((char*)&last_interval_mosf1, 1);
+			}
 		}
 	}
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(opt_jitterbuffer_f2 and channel_fix2) {
+	if(opt_jitterbuffer_f2 > 0 and channel_fix2) {
 		last_interval_mosf2 = calculate_mos_fromrtp(this, 2, 1);
 		//if(verbosity > 1) printf("mosf2[%d]\n", last_interval_mosf2);
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
@@ -531,15 +533,17 @@ RTP::save_mos_graph(bool delimiter) {
 	} else 
 	#endif
 	{
-		last_interval_mosf2 = 45;
-		mosf2_min = 45;
-		mosf2_avg = 45;
-		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-			this->graph.write((char*)&last_interval_mosf2, 1);
+		if(opt_jitterbuffer_f2 == 0) {
+			last_interval_mosf2 = 45;
+			mosf2_min = 45;
+			mosf2_avg = 45;
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				this->graph.write((char*)&last_interval_mosf2, 1);
+			}
 		}
 	}
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
-	if(opt_jitterbuffer_adapt and channel_adapt) {
+	if(opt_jitterbuffer_adapt > 0 and channel_adapt) {
 		last_interval_mosAD = calculate_mos_fromrtp(this, 3, 1);
 		//if(verbosity > 1) printf("mosAD[%d]\n", last_interval_mosAD);
 		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
@@ -571,11 +575,13 @@ RTP::save_mos_graph(bool delimiter) {
 	} else 
 	#endif
 	{
-		last_interval_mosAD = 45;
-		mosAD_min = 45;
-		mosAD_avg = 45;
-		if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-			this->graph.write((char*)&last_interval_mosAD, 1);
+		if(opt_jitterbuffer_adapt == 0) {
+			last_interval_mosAD = 45;
+			mosAD_min = 45;
+			mosAD_avg = 45;
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				this->graph.write((char*)&last_interval_mosAD, 1);
+			}
 		}
 	}
 
@@ -1482,15 +1488,15 @@ bool RTP::read(CallBranch *c_branch,
 
 			resetgraph = true;
 
-			if(opt_jitterbuffer_adapt) {
+			if(opt_jitterbuffer_adapt > 0) {
 				ast_jb_empty_and_reset(channel_adapt);
 				ast_jb_destroy(channel_adapt);
 			}
-			if(opt_jitterbuffer_f1) {
+			if(opt_jitterbuffer_f1 > 0) {
 				ast_jb_empty_and_reset(channel_fix1);
 				ast_jb_destroy(channel_fix1);
 			}
-			if(opt_jitterbuffer_f2) {
+			if(opt_jitterbuffer_f2 > 0) {
 				ast_jb_empty_and_reset(channel_fix2);
 				ast_jb_destroy(channel_fix2);
 			}
@@ -1589,15 +1595,15 @@ bool RTP::read(CallBranch *c_branch,
 
 		if(!(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) and diffSsrcInEqAddrPort) {
 			// reset jitter if ssrc changed
-			if(opt_jitterbuffer_adapt) {
+			if(opt_jitterbuffer_adapt > 0) {
 				ast_jb_empty_and_reset(channel_adapt);
 				ast_jb_destroy(channel_adapt);
 			}
-			if(opt_jitterbuffer_f1) {
+			if(opt_jitterbuffer_f1 > 0) {
 				ast_jb_empty_and_reset(channel_fix1);
 				ast_jb_destroy(channel_fix1);
 			}
-			if(opt_jitterbuffer_f2) {
+			if(opt_jitterbuffer_f2 > 0) {
 				ast_jb_empty_and_reset(channel_fix2);
 				ast_jb_destroy(channel_fix2);
 			}
@@ -1610,15 +1616,15 @@ bool RTP::read(CallBranch *c_branch,
 
 	if(lastframetype == AST_FRAME_DTMF and codec != PAYLOAD_TELEVENT) {
 		// last frame was DTMF and now we have voice. Reset jitterbuffers (case 338f884b17f9e5de6c830c237dcc09dd) 
-		if(opt_jitterbuffer_adapt) {
+		if(opt_jitterbuffer_adapt > 0) {
 			ast_jb_empty_and_reset(channel_adapt);
 			ast_jb_destroy(channel_adapt);
 		}
-		if(opt_jitterbuffer_f1) {
+		if(opt_jitterbuffer_f1 > 0) {
 			ast_jb_empty_and_reset(channel_fix1);
 			ast_jb_destroy(channel_fix1);
 		}
-		if(opt_jitterbuffer_f2) {
+		if(opt_jitterbuffer_f2 > 0) {
 			ast_jb_empty_and_reset(channel_fix2);
 			ast_jb_destroy(channel_fix2);
 		}
@@ -1691,15 +1697,15 @@ bool RTP::read(CallBranch *c_branch,
 		// on reinvite (which indicates forcemark_by_owner completely reset rtp jitterbuffer simulator and 
 		// there are cases where on reinvite rtp stream stops and there is gap in rtp sequence and timestamp but 
 		// since it was reinvite the stream just continues as expected
-		if(opt_jitterbuffer_adapt) {
+		if(opt_jitterbuffer_adapt > 0) {
 			ast_jb_empty_and_reset(channel_adapt);
 			ast_jb_destroy(channel_adapt);
 		}
-		if(opt_jitterbuffer_f1) {
+		if(opt_jitterbuffer_f1 > 0) {
 			ast_jb_empty_and_reset(channel_fix1);
 			ast_jb_destroy(channel_fix1);
 		}
-		if(opt_jitterbuffer_f2) {
+		if(opt_jitterbuffer_f2 > 0) {
 			ast_jb_empty_and_reset(channel_fix2);
 			ast_jb_destroy(channel_fix2);
 		}
@@ -1999,11 +2005,11 @@ bool RTP::read(CallBranch *c_branch,
 
 				packetization_iterator = 10; // this will cause that packetization is estimated as final
 
-				if(opt_jitterbuffer_f1)
+				if(opt_jitterbuffer_f1 > 0)
 					jitterbuffer(channel_fix1, false, false, false);
-				if(opt_jitterbuffer_f2)
+				if(opt_jitterbuffer_f2 > 0)
 					jitterbuffer(channel_fix2, false, false, false);
-				if(opt_jitterbuffer_adapt)
+				if(opt_jitterbuffer_adapt > 0)
 					jitterbuffer(channel_adapt, false, false, false);
 			} 
 
@@ -2101,11 +2107,11 @@ bool RTP::read(CallBranch *c_branch,
 				channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 				if(verbosity > 3) printf("[%x] packetization:[%d]\n", getSSRC(), packetization);
 
-				if(opt_jitterbuffer_f1)
+				if(opt_jitterbuffer_f1 > 0)
 					jitterbuffer(channel_fix1, false, false, false);
-				if(opt_jitterbuffer_f2)
+				if(opt_jitterbuffer_f2 > 0)
 					jitterbuffer(channel_fix2, false, false, false);
-				if(opt_jitterbuffer_adapt)
+				if(opt_jitterbuffer_adapt > 0)
 					jitterbuffer(channel_adapt, false, false, false);
 				if(use_channel_record) {
 					if(checkDuplChannelRecordSeq(seq)) {
@@ -2251,11 +2257,11 @@ bool RTP::read(CallBranch *c_branch,
 			channel_fix1->packetization = channel_fix2->packetization = channel_adapt->packetization = channel_record->packetization = packetization;
 		}
 		//printf("packetization [%d]\n", packetization);
-		if(opt_jitterbuffer_f1)
+		if(opt_jitterbuffer_f1 > 0)
 			jitterbuffer(channel_fix1, false, false, false);
-		if(opt_jitterbuffer_f2)
+		if(opt_jitterbuffer_f2 > 0)
 			jitterbuffer(channel_fix2, false, false, false);
-		if(opt_jitterbuffer_adapt)
+		if(opt_jitterbuffer_adapt > 0)
 			jitterbuffer(channel_adapt, false, false, false);
 		if(use_channel_record) {
 			if(checkDuplChannelRecordSeq(seq)) {

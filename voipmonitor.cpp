@@ -6739,9 +6739,12 @@ void cConfig::addConfigItems() {
 		subgroup("FAX");
 			addConfigItem(new FILE_LINE(42335) cConfigItem_yesno("faxdetect", &opt_faxt30detect));
 		subgroup("jitterbufer");
-			addConfigItem(new FILE_LINE(42336) cConfigItem_yesno("jitterbuffer_f1", &opt_jitterbuffer_f1));
-			addConfigItem(new FILE_LINE(42337) cConfigItem_yesno("jitterbuffer_f2", &opt_jitterbuffer_f2));
-			addConfigItem(new FILE_LINE(42338) cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt));
+			addConfigItem((new FILE_LINE(42336) cConfigItem_yesno("jitterbuffer_f1", &opt_jitterbuffer_f1))
+				->addValues("null:-1"));
+			addConfigItem((new FILE_LINE(42337) cConfigItem_yesno("jitterbuffer_f2", &opt_jitterbuffer_f2))
+				->addValues("null:-1"));
+			addConfigItem((new FILE_LINE(42338) cConfigItem_yesno("jitterbuffer_adapt", &opt_jitterbuffer_adapt))
+				->addValues("null:-1"));
 			addConfigItem(new FILE_LINE(42339) cConfigItem_yesno("enable_jitterbuffer_asserts", &opt_enable_jitterbuffer_asserts));
 		setDisableIfEnd();
 	group("system");
@@ -10894,7 +10897,7 @@ int eval_config(string inistr) {
 			opt_jitterbuffer_f1 = 1;
 			break;
 		default: 
-			opt_jitterbuffer_f1 = 0;
+			opt_jitterbuffer_f1 = !strcasecmp(value, "null") ? -1 : 0;
 			break;
 		}
 	}
@@ -10906,7 +10909,7 @@ int eval_config(string inistr) {
 			opt_jitterbuffer_f2 = 1;
 			break;
 		default: 
-			opt_jitterbuffer_f2 = 0;
+			opt_jitterbuffer_f2 = !strcasecmp(value, "null") ? -1 : 0;
 			break;
 		}
 	}
@@ -10918,7 +10921,7 @@ int eval_config(string inistr) {
 			opt_jitterbuffer_adapt = 1;
 			break;
 		default: 
-			opt_jitterbuffer_adapt = 0;
+			opt_jitterbuffer_adapt = !strcasecmp(value, "null") ? -1 : 0;
 			break;
 		}
 	}
