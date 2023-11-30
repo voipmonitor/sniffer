@@ -1,3 +1,8 @@
+2023.11.8  30.11.2023
+=====================
+- change gcc options for static builds to -march=x86-64 -mtune=generic which fixes support for all 64bit architectures. Optimised versions with SSE3 and SSE4 will come later. 
+
+
 2023.11.7  30.11.2023
 =====================
 - change DNS resolver to c-ares in static builds which fixes compatibility issue on old sysmtes preventing auto upgrade (download.voipmonitor.org resolve fails)
