@@ -1,3 +1,8 @@
+2023.11.7  30.11.2023
+=====================
+- change DNS resolver to c-ares in static builds which fixes compatibility issue on old sysmtes preventing auto upgrade (download.voipmonitor.org resolve fails)
+
+
 2023.11.6  28.11.2023
 =====================
 - fix crash in illegal instruction in crc32 when server does not have SSE 4.2 and sniffer is in client mode forced to crc32 by the sniffer server
