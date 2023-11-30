@@ -21,6 +21,7 @@ cThreadMonitor threadMonitor;
 
 #ifdef CARESRESOLVER
 static volatile int ares_flag = 0;
+pthread_mutex_t resolve_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 struct vm_pthread_struct {
@@ -1710,6 +1711,8 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
     struct ares_options options;
     int optmask = 0;
 
+    pthread_mutex_lock(&resolve_mutex);
+
     // Initialize the c-ares library
     status = ares_library_init(ARES_LIB_INIT_ALL);
     if (status != ARES_SUCCESS) {
@@ -1755,6 +1758,9 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
         sort_ips_by_type(ips);
         ip = (*ips)[0];
     }
+    
+    ares_flag = 0;
+    pthread_mutex_unlock(&resolve_mutex);
 
     return ip;
 }
