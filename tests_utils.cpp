@@ -676,6 +676,90 @@ void load_rtp_pcap(const char *pcap) {
 	 
 }
 
+void check_bad_ether_type(const char *params) {
+	if(!params || !*params) {
+		cout << "missing interface as parameter" << endl;
+		return;
+	}
+	vector<string> params_v = split(params, ' ');
+	string interface = params_v[0];
+	int opt_ringbuffer_mb = params_v.size() >= 2 && atoi(params_v[1].c_str()) > 0 ?
+				 atoi(params_v[1].c_str()) :
+				 10;
+	cout << "*** check bad ether_type for interface: " << interface
+	     << ", ringbuffer: " << opt_ringbuffer_mb << "MB" << endl;
+	bpf_u_int32 net;
+	bpf_u_int32 mask;
+	char errbuf[PCAP_ERRBUF_SIZE];
+	if(pcap_lookupnet(interface.c_str(), &net, &mask, errbuf) == -1) {
+		mask = PCAP_NETMASK_UNKNOWN;
+	}
+	cout << "pcap_lookupnet OK" << endl;
+	pcap_t *pcap_handle;
+	if((pcap_handle = pcap_create(interface.c_str(), errbuf)) == NULL) {
+		cout << "pcap_create failed on interface '" << interface << "': " << errbuf << endl;
+		return;
+	}
+	cout << "pcap_create OK" << endl;
+	int status;
+	if((status = pcap_set_snaplen(pcap_handle, 10000)) != 0) {
+		cout << "error pcap_set_snaplen" << endl;
+		return;
+	}
+	cout << "pcap_set_snaplen OK" << endl;
+	int opt_promisc = 1;
+	if((status = pcap_set_promisc(pcap_handle, opt_promisc)) != 0) {
+		cout << "error pcap_set_promisc" << endl;
+		return;
+	}
+	cout << "pcap_set_promisc OK" << endl;
+	if((status = pcap_set_timeout(pcap_handle, 1000)) != 0) {
+		cout << "error pcap_set_timeout" << endl;
+		return;
+	}
+	cout << "pcap_set_timeout OK" << endl;
+	if((status = pcap_set_buffer_size(pcap_handle, opt_ringbuffer_mb * 1024 * 1024ul)) != 0) {
+		cout << "error pcap_set_buffer_size" << endl;
+		return;
+	}
+	cout << "pcap_set_buffer_size OK" << endl;
+	if((status = pcap_activate(pcap_handle)) != 0) {
+		cout << "libpcap error: [" << pcap_geterr(pcap_handle) << "]" << endl;
+		return;
+	}
+	printf("pcap_activate OK\n");
+	pcap_pkthdr* header;
+	const u_char* packet;
+	u_int64_t counter = 0;
+	u_int64_t counter_ok = 0;
+	u_int64_t counter_bad = 0;
+	u_int64_t end_period_time = getTimeMS_rdtsc() + 1000;
+	int pcap_next_ex_rslt;
+	while((pcap_next_ex_rslt = pcap_next_ex(pcap_handle, &header, &packet)) >= 0) {
+		++counter;
+		if(pcap_next_ex_rslt > 0) {
+			if(((ether_header*)packet)->ether_type != 0xFFFF) {
+				++counter_ok;
+			} else {
+				++counter_bad;
+			}
+		}
+		if(getTimeMS_rdtsc() >= end_period_time) {
+			cout << "calls pcap_next_ex: " << counter;
+			if(counter_ok) {
+				cout << ", ok packets: " << counter_ok;
+			}
+			if(counter_bad) {
+				cout << ", bad packets (ether_type 0xFFFF): " << counter_bad;
+			}
+			cout << endl;
+			counter = 0;
+			counter_ok = 0;
+			counter_bad = 0;
+			end_period_time = getTimeMS_rdtsc() + 1000;
+		}
+	}
+}
 
 void test() {
  
@@ -1392,6 +1476,9 @@ void test() {
 		billing.load();
 		cout << billing.test(opt_test_arg, opt_test == _param_test_billing_json) << endl;
 		}
+		break;
+	case _param_check_bad_ether_type:
+		check_bad_ether_type(opt_test_arg);
 		break;
 	case _param_load_rtp_pcap:
 		load_rtp_pcap(opt_test_arg);

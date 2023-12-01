@@ -509,6 +509,7 @@ private:
 	int64_t lastPcapTime_s;
 	u_int64_t lastTimeErrorLogPcapTime_ms;
 	#endif
+	u_int64_t lastTimeErrorLogEtherTypeFFFF_ms;
 friend class PcapQueue_readFromInterfaceThread;
 };
 

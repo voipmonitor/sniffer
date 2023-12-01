@@ -7486,6 +7486,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"extract_payload", 1, 0, _param_extract_payload},
 	    {"extract_rtp_payload", 1, 0, _param_extract_rtp_payload},
 	    {"load-rtp-pcap", 1, 0, _param_load_rtp_pcap},
+	    {"check_bad_ether_type", 1, 0, _param_check_bad_ether_type},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8041,6 +8042,14 @@ void get_command_line_arguments() {
 				if(optarg) {
 					strcpy_null_term(opt_test_arg, optarg);
 				}
+				break;
+			case _param_check_bad_ether_type:
+				opt_test = c;
+				if(optarg) {
+					strcpy_null_term(opt_test_arg, optarg);
+				}
+				test();
+				exit(0);
 				break;
 			case _param_watchdog:
 				enable_wdt = yesno(optarg);

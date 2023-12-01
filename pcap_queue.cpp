@@ -3557,6 +3557,7 @@ PcapQueue_readFromInterface_base::PcapQueue_readFromInterface_base(const char *i
 	lastPcapTime_s = 0;
 	lastTimeErrorLogPcapTime_ms = 0;
 	#endif
+	lastTimeErrorLogEtherTypeFFFF_ms = 0;
 }
 
 PcapQueue_readFromInterface_base::~PcapQueue_readFromInterface_base() {
@@ -4067,6 +4068,14 @@ bool PcapQueue_readFromInterface_base::check_protocol(pcap_pkthdr* header, u_cha
 			return(true);
 		} else if(checkProtocolData->header_ip_offset == 0xFFFF) {
 			return(true);
+		} else if(checkProtocolData->protocol == 0xFFFF) {
+			u_int64_t actTime_ms = getTimeMS();
+			if(actTime_ms > this->lastTimeErrorLogEtherTypeFFFF_ms + 2000) {
+				ostringstream outStr;
+				outStr << "A bad packet with ether_type 0xFFFF was detected on interface " << interfaceName << ". Contact support!";
+				cLogSensor::log(cLogSensor::error, outStr.str().c_str());
+				this->lastTimeErrorLogEtherTypeFFFF_ms = actTime_ms;
+			}
 		}
 	}
 	return(false);
