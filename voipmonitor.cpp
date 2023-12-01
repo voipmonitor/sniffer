@@ -4100,13 +4100,15 @@ int main(int argc, char *argv[]) {
 	}
 	
 	#if SEPARATE_HEAP_FOR_HASHTABLE
-		if(opt_hashtable_heap_size) {
-			heap_hashtable = new cHeap_HASHTABLE(opt_hashtable_heap_size);
-		} else {
-			#if HAVE_LIBJEMALLOC
-				size_t arena_index_hashtable_size = sizeof(arena_index_hashtable);
-				mallctl("arenas.create", (void *)&arena_index_hashtable, &arena_index_hashtable_size, NULL, 0);
-			#endif
+		if(!is_client_packetbuffer_sender() && !is_sender()) {
+			if(opt_hashtable_heap_size) {
+				heap_hashtable = new cHeap_HASHTABLE(opt_hashtable_heap_size);
+			} else {
+				#if HAVE_LIBJEMALLOC
+					size_t arena_index_hashtable_size = sizeof(arena_index_hashtable);
+					mallctl("arenas.create", (void *)&arena_index_hashtable, &arena_index_hashtable_size, NULL, 0);
+				#endif
+			}
 		}
 	#else
 		if(opt_hashtable_heap_size) {
@@ -8444,7 +8446,8 @@ void set_context_config() {
 		}
 		buffersControl.setMaxBufferMemMB(max_buffer_mem_mb, thread0_buffer_mb);
 		opt_pcap_queue_bypass_max_size = thread0_buffer_mb * 1024ull * 1024;
-		if(buffersControl.getMaxBufferMemMB() > 1000 && !opt_hashtable_heap_size_set) {
+		if(buffersControl.getMaxBufferMemMB() > 1000 && !opt_hashtable_heap_size_set && 
+		   (!is_client_packetbuffer_sender() && !is_sender())) {
 			opt_hashtable_heap_size = 64;
 		}
 	}

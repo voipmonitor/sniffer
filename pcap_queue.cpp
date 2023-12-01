@@ -3185,22 +3185,24 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 		}
 		
-		extern bool opt_abort_if_heap_full_and_t2cpu_is_low;
-		extern bool opt_exit_if_heap_full_and_t2cpu_is_low;
-		if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
-			if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
-				if(++heapFullIfT2cpuIsLowCounter > 10) {
-					syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
-					if(opt_exit_if_heap_full_and_t2cpu_is_low) {
-						extern WDT *wdt;
-						wdt = NULL;
-						exit(2);
-					} else {
-						abort();
+		if(!is_client_packetbuffer_sender() && !is_sender()) {
+			extern bool opt_abort_if_heap_full_and_t2cpu_is_low;
+			extern bool opt_exit_if_heap_full_and_t2cpu_is_low;
+			if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
+				if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
+					if(++heapFullIfT2cpuIsLowCounter > 10) {
+						syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
+						if(opt_exit_if_heap_full_and_t2cpu_is_low) {
+							extern WDT *wdt;
+							wdt = NULL;
+							exit(2);
+						} else {
+							abort();
+						}
 					}
+				} else {
+					heapFullIfT2cpuIsLowCounter = 0;
 				}
-			} else {
-				heapFullIfT2cpuIsLowCounter = 0;
 			}
 		}
 		
