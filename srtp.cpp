@@ -82,6 +82,8 @@ RTPsecure::RTPsecure(eMode mode, Call *call, CallBranch *c_branch, int index_ip_
 	cryptoConfigActiveIndex = 0;
 	rtcp_index = 0;
 	rtp_roc = 0;
+	rtp_find_roc_max = 100;
+	rtp_find_roc_attempts_max = 5;
 	rtp_seq = 0;
 	rtp_rcc = 1;
 	rtp_seq_init = false;
@@ -116,7 +118,7 @@ bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
 			}
 		}
 	}
-	if(index_ip_port >= 0 &&
+	if(index_ip_port >= 0 && index_ip_port < c_branch->ipport_n &&
 	   c_branch->ip_port[index_ip_port].srtp_crypto_config_list &&
 	   cryptoConfigCallSize != c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size()) {
 		for(list<srtp_crypto_config>::iterator iter = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->begin();
@@ -126,6 +128,26 @@ bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
 		}
 		cryptoConfigCallSize = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size();
 		return(true);
+	} else if(index_ip_port < 0) {
+		unsigned sum_srtp_crypto_config_list_size = 0;
+		for(int i = 0; i < c_branch->ipport_n; i++) {
+			if(c_branch->ip_port[i].srtp_crypto_config_list) {
+				sum_srtp_crypto_config_list_size += c_branch->ip_port[i].srtp_crypto_config_list->size();
+			}
+		}
+		if(cryptoConfigCallSize != sum_srtp_crypto_config_list_size) {
+			for(int i = 0; i < c_branch->ipport_n; i++) {
+				if(c_branch->ip_port[i].srtp_crypto_config_list) {
+					for(list<srtp_crypto_config>::iterator iter = c_branch->ip_port[i].srtp_crypto_config_list->begin();
+					    iter != c_branch->ip_port[i].srtp_crypto_config_list->end();
+					    iter++) {
+						this->addCryptoConfig(iter->tag, iter->suite.c_str(), iter->key.c_str(), iter->from_time_us);
+					}
+				}
+			}
+			cryptoConfigCallSize = sum_srtp_crypto_config_list_size;
+			return(true);
+		}
 	}
 	return(false);
 }
@@ -372,11 +394,32 @@ bool RTPsecure::decrypt_rtp_native(u_char *data, unsigned *data_len, u_char *pay
 	}
 	uint32_t roc = compute_rtp_roc(seq);
 	u_char *tag = rtp_digest(data, *data_len - tag_size(), roc);
-	if(memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+	if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+		this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
+	} else if(rtp_find_roc_attempts_max) {
 		//cout << rtp->counter_packets << " err (tag)" << endl;
 		//hexdump(data + *data_len - tag_size(), tag_size());
 		//hexdump(tag, tag_size());
-		return(false);
+		if(!this->rtp_roc_ok[cryptoConfigActiveIndex] && this->rtp_find_roc_attempts[cryptoConfigActiveIndex] < rtp_find_roc_attempts_max) {
+			++this->rtp_find_roc_attempts[cryptoConfigActiveIndex];
+			unsigned rtp_roc_old = this->rtp_roc;
+			unsigned roc_try_max = 100;
+			for(unsigned roc_try = 0; roc_try < roc_try_max; roc_try++) {
+				this->rtp_roc = roc_try;
+				roc = compute_rtp_roc(seq);
+				tag = rtp_digest(data, *data_len - tag_size(), roc);
+				if(!memcmp(data + *data_len - tag_size(), tag, tag_size())) {
+					this->rtp_roc_ok[cryptoConfigActiveIndex] = true;
+					break;
+				}
+			}
+			if(!this->rtp_roc_ok[cryptoConfigActiveIndex]) {
+				this->rtp_roc = rtp_roc_old;
+				return(false);
+			}
+		} else {
+			return(false);
+		}
 	}
 	//hexdump(data, *data_len - tag_size());
 	if(!rtpDecrypt(payload, *payload_len - tag_size(), seq, ssrc)) {
@@ -628,6 +671,7 @@ bool RTPsecure::init_libsrtp() {
 	init_lib_srtp();
 	for(int i = 0; i < 2; i++) {
 		srtp_policy_t *policy = i == 0 ? &rtp->policy : &rtcp->policy;
+		memset(policy, 0x0, sizeof(srtp_policy_t));
 		switch(key_size()) {
 		case 128:
 			switch(tag_size()) {
@@ -640,6 +684,7 @@ bool RTPsecure::init_libsrtp() {
 				srtp_crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy->rtcp);
 				break;
 			}
+			break;
 		case 256:
 			switch(tag_size()) {
 			case 10:
@@ -651,9 +696,11 @@ bool RTPsecure::init_libsrtp() {
 				srtp_crypto_policy_set_aes_cm_256_hmac_sha1_32(&policy->rtcp);
 				break;
 			}
+			break;
 		}
 		policy->key = key_salt();
 		policy->ssrc.type = ssrc_specific;
+		policy->next = NULL;
 		policy->window_size = 128;
 		policy->rtp.sec_serv = sec_serv_conf_and_auth;
 		policy->rtp.auth_tag_len = tag_size();

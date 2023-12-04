@@ -207,6 +207,10 @@ private:
 	unsigned cryptoConfigActiveIndex;
 	uint32_t rtcp_index;
 	uint32_t rtp_roc;
+	map<int, bool> rtp_roc_ok;
+	uint16_t rtp_find_roc_max;
+	map<int, uint16_t> rtp_find_roc_attempts;
+	uint16_t rtp_find_roc_attempts_max;
 	uint16_t rtp_seq;
 	uint16_t rtp_rcc;
 	bool rtp_seq_init;
