@@ -4534,17 +4534,8 @@ else
   as_fn_error $? "Unable to find zstd. apt-get install libzstd-dev" "$LINENO" 5
 fi
 
-ZSTD_BIN='zstd'
-ZSTD_VER_MAJOR=`$ZSTD_BIN --version | cut -d 'v' -f2 | cut -d '.' -f1`
-ZSTD_VER_MINOR=`$ZSTD_BIN --version | cut -d 'v' -f2 | cut -d '.' -f2`
-if test -z $ZSTD_VER_MAJOR || test -z $ZSTD_VER_MINOR; then
-        as_fn_error $? "Can't get about zstd version. $ZSTD_BIN binary is needed." "$LINENO" 5
-fi
-if (test $ZSTD_VER_MAJOR -eq 1 && test $ZSTD_VER_MINOR -ge 5) || test $ZSTD_VER_MAJOR -ge 2; then
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: Zstd version is ok ($ZSTD_VER_MAJOR.$ZSTD_VER_MINOR)." >&5
-$as_echo "$as_me: Zstd version is ok ($ZSTD_VER_MAJOR.$ZSTD_VER_MINOR)." >&6;}
-else
-	as_fn_error $? "Bad zstd version ($ZSTD_VER_MAJOR.$ZSTD_VER_MINOR). Version 1.5 or higher is required." "$LINENO" 5
+if ! pkg-config --atleast-version 1.5.0 libzstd; then
+  as_fn_error $? "The version of zstd must be at least 1.5.0. You can compile it from this source: https://github.com/facebook/zstd." "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llz4" >&5
