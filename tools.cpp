@@ -7145,18 +7145,21 @@ void cThreadMonitor::setSchedPolPriority(int indexPstat) {
 	for(iter_dp = descrPerc.begin(); iter_dp != descrPerc.end(); iter_dp++) {
 		if(iter_dp->cpu_perc >= opt_sched_pol_auto_cpu_limit) {
 			tm_lock();
-			sThread *thread = threads[iter_dp->tid];
-			if(thread->orig_scheduler == -1 && thread->orig_priority == -1) {
-				thread->orig_scheduler = sched_getscheduler(thread->tid);
+			map<int, sThread*>::iterator iter = threads.find(iter_dp->tid);
+			if(iter != threads.end()) {
+				sThread *thread = iter->second;
+				if(thread->orig_scheduler == -1 && thread->orig_priority == -1) {
+					thread->orig_scheduler = sched_getscheduler(thread->tid);
+					sched_param sch_param;
+					sched_getparam(thread->tid, &sch_param);
+					thread->orig_priority = sch_param.sched_priority;
+				}
 				sched_param sch_param;
 				sched_getparam(thread->tid, &sch_param);
-				thread->orig_priority = sch_param.sched_priority;
-			}
-			sched_param sch_param;
-			sched_getparam(thread->tid, &sch_param);
-			if(sched_type != sched_getscheduler(thread->tid) ||
-			   priority != sch_param.sched_priority) {
-				pthread_set_priority(thread->thread, thread->tid, sched_type, priority);
+				if(sched_type != sched_getscheduler(thread->tid) ||
+				   priority != sch_param.sched_priority) {
+					pthread_set_priority(thread->thread, thread->tid, sched_type, priority);
+				}
 			}
 			tm_unlock();
 		} else {
