@@ -1245,7 +1245,10 @@ void cBilling::load(SqlDb *sqlDb) {
 	gui_timezone = getGuiTimezone(sqlDb);
 	set = rules->rules.size() > 0;
 	unlock();
-	createMysqlPartitionsBillingAgregation(sqlDb);
+	extern bool opt_disable_partition_operations;
+	if(!opt_disable_partition_operations) {
+		createMysqlPartitionsBillingAgregation(sqlDb);
+	}
 }
 
 bool cBilling::billing(time_t time, unsigned duration,
