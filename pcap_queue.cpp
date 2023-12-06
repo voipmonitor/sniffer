@@ -7265,12 +7265,14 @@ bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_
 
 string PcapQueue_readFromFifo::debugBlockStoreTrash() {
 	ostringstream outStr;
+	size_t sum_size = 0;
 	lock_blockStoreTrash();
 	for(unsigned i = 0; i < this->blockStoreTrash.size(); i++) {
 		pcap_block_store *bs = this->blockStoreTrash[i];
 		outStr << "* " << hex << bs << dec << endl;
 		outStr << "* " << sqlDateTimeString_us2ms(bs->timestampMS * 1000) << endl;
 		outStr << "lock packets: " << (int)bs->_sync_packet_lock << endl;
+		outStr << "size: " << bs->getUseAllSize() << endl;
 		#if DEBUG_SYNC_PCAP_BLOCK_STORE
 		unsigned counter = 0;
 		for(unsigned j = 0; j < bs->count; j++) {
@@ -7294,8 +7296,11 @@ string PcapQueue_readFromFifo::debugBlockStoreTrash() {
 		}
 		#endif
 		outStr << "---------" << endl;
+		sum_size += bs->getUseAllSize();
 	}
 	unlock_blockStoreTrash();
+	outStr << "SUM SIZE: " << sum_size
+	       << " (" << (sum_size / 1024 / 1024) << "MB)" << endl;
 	return(outStr.str());
 }
 
@@ -8084,7 +8089,10 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 		if(!(this->packetServerDirection != directionWrite &&
 		     opt_ipaccount)) {
-			if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
+			double heap_pb_trash_perc = buffersControl.getPerc_pb_trash();
+			if(heap_pb_trash_perc > 20) {
+				this->cleanupBlockStoreTrash();
+			} else if(!(++this->cleanupBlockStoreTrash_counter % 10)) {
 				u_int64_t time_ms = getTimeMS_rdtsc();
 				if(!cleanupBlockStoreTrash_at_ms || 
 				   (time_ms > cleanupBlockStoreTrash_at_ms && time_ms - cleanupBlockStoreTrash_at_ms > 1000)) {

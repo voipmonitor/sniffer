@@ -135,6 +135,18 @@ public:
 		pb_trash_minTime = -1;
 		pb_trash_maxTime = -1;
 	}
+	string debug() {
+	       ostringstream outStr;
+	       outStr << "BUFFERS CONTROL" << endl
+		      << "   max_buffer_mem: " << max_buffer_mem << " (" << (max_buffer_mem / 1024 / 1024) << "MB)" << endl
+		      << "   max_buffer_mem_own_use: " << max_buffer_mem_own_use << " (" << (max_buffer_mem_own_use / 1024 / 1024) << "MB)" << endl
+		      << "   max_buffer_mem_other_uses: " << max_buffer_mem_other_uses << " (" << (max_buffer_mem_other_uses / 1024 / 1024) << "MB)" << endl
+		      << "   pb_used_size: " << pb_used_size << " (" << (pb_used_size / 1024 / 1024) << "MB)" << endl
+		      << "   pb_trash_size: " << pb_trash_size << " (" << (pb_trash_size / 1024 / 1024) << "MB)" << endl
+		      << "   pb_pool_size: " << pb_pool_size << " (" << (pb_pool_size / 1024 / 1024) << "MB)" << endl
+		      << "   asyncwrite_size: " << asyncwrite_size << " (" << (asyncwrite_size / 1024 / 1024) << "MB)" << endl;
+		return(outStr.str());
+	}
 private:
 	u_int64_t max_buffer_mem;
 	u_int64_t max_buffer_mem_own_use;

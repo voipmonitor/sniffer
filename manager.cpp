@@ -4859,7 +4859,8 @@ int Mgmt_packetbuffer_log(Mgmt_params *params) {
 	}
 	if(strstr(params->buf, "packetbuffer_log") != NULL) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
-		string log = pcapQueueQ->debugBlockStoreTrash();
+		extern cBuffersControl buffersControl;
+		string log = pcapQueueQ->debugBlockStoreTrash() + "\n" + buffersControl.debug();
 		return(params->sendString(log));
 	} else if(strstr(params->buf, "packetbuffer_save") != NULL) {
 		char *nextParams = params->buf + strlen("packetbuffer_save");
