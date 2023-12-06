@@ -8518,7 +8518,9 @@ void set_context_config() {
 		if(is_read_from_file_simple()) {
 			setThreadingMode(1);
 		}
-		opt_pcap_queue_dequeu_method = 0;
+		if(!CONFIG.isSet("pcap_queue_dequeu_window_length")) {
+			opt_pcap_queue_dequeu_method = 0;
+		}
 	}
 	
 	if(opt_pcap_dump_tar) {

@@ -1252,7 +1252,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 			packetbuffer_memory_is_full = true;
 			return(false);
 		} else {
-			this->add_sizeOfBlocksInMemory(blockStore->getUseAllSize());
+			buffersControl.add__pb_used_size(blockStore->getUseAllSize());
 			packetbuffer_memory_is_full = false;
 		}
 	}
@@ -1285,8 +1285,6 @@ bool pcap_store_queue::pop(pcap_block_store **blockStore) {
 				delete *blockStore;
 				return(false);
 			}
-		} else {
-			this->sub_sizeOfBlocksInMemory((*blockStore)->getUseAllSize());
 		}
 		++this->cleanupFileStoreCounter;
 		if(!(this->cleanupFileStoreCounter % 100)) {
@@ -7828,19 +7826,21 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			if(blockStore) {
 				this->socketWritePcapBlock(blockStore);
 				this->blockStoreTrashPush(blockStore);
-				buffersControl.add__pb_trash_size(blockStore->getUseAllSize());
 			}
 		} else {
 			if(blockStore) {
-				if(blockStore->size_compress && !blockStore->uncompress()) {
-					delete blockStore;
-					blockStore = NULL;
-				} else {
-					buffersControl.add__pb_trash_size(blockStore->getUseAllSize());
-					if(opt_ipaccount) {
-						blockStore->is_voip = new FILE_LINE(15056) u_int8_t[blockStore->count];
-						memset(blockStore->is_voip, 0, blockStore->count);
+				if(blockStore->size_compress) {
+					buffersControl.sub__pb_used_size(blockStore->getUseAllSize());
+					if(blockStore->uncompress()) {
+						buffersControl.add__pb_used_size(blockStore->getUseAllSize());
+					} else {
+						delete blockStore;
+						blockStore = NULL;
 					}
+				}
+				if(opt_ipaccount && blockStore) {
+					blockStore->is_voip = new FILE_LINE(15056) u_int8_t[blockStore->count];
+					memset(blockStore->is_voip, 0, blockStore->count);
 				}
 				#if TRACE_CALL
 				if(sverb.trace_call) {

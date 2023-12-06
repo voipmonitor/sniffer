@@ -164,14 +164,6 @@ private:
 	void unlock_fileStore() {
 		__SYNC_UNLOCK(this->_sync_fileStore);
 	}
-	void add_sizeOfBlocksInMemory(size_t size) {
-		extern cBuffersControl buffersControl;
-		buffersControl.add__pb_used_size(size);
-	}
-	void sub_sizeOfBlocksInMemory(size_t size) {
-		extern cBuffersControl buffersControl;
-		buffersControl.sub__pb_used_size(size);
-	}
 private:
 	std::string fileStoreFolder;
 	std::deque<pcap_block_store*> queueStore;
@@ -1019,6 +1011,10 @@ private:
 		lock_blockStoreTrash();
 		this->blockStoreTrash.push_back(block);
 		unlock_blockStoreTrash();
+		extern cBuffersControl buffersControl;
+		size_t block_size = block->getUseAllSize();
+		buffersControl.sub__pb_used_size(block_size);
+		buffersControl.add__pb_trash_size(block_size);
 	}
 	void lock_blockStoreTrash() {
 		__SYNC_LOCK(this->blockStoreTrash_sync);

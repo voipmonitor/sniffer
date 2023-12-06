@@ -33,6 +33,9 @@ public:
 	}
 	void sub__pb_used_size(size_t size) {
 		__SYNC_SUB(this->pb_used_size, size);
+		if(this->pb_used_size > LLONG_MAX) {
+			this->pb_used_size = 0;
+		}
 	}
 	void set__pb_trash_size(volatile u_int64_t *blockStoreTrash_size) {
 		this->pb_trash_size = *blockStoreTrash_size;
@@ -45,6 +48,9 @@ public:
 	}
 	void sub__pb_trash_size(size_t size) {
 		__SYNC_SUB(this->pb_trash_size, size);
+		if(this->pb_trash_size > LLONG_MAX) {
+			this->pb_trash_size = 0;
+		}
 	}
 	void set__pb_pool_size(volatile u_int64_t *blockStorePool_size) {
 		this->pb_pool_size = *blockStorePool_size;
@@ -57,6 +63,9 @@ public:
 	}
 	void sub__pb_pool_size(size_t size) {
 		__SYNC_SUB(this->pb_pool_size, size);
+		if(this->pb_pool_size > LLONG_MAX) {
+			this->pb_pool_size = 0;
+		}
 	}
 	void set__asyncwrite_size(volatile u_int64_t *sizeOfDataInMemory) {
 		this->asyncwrite_size = *sizeOfDataInMemory;
@@ -69,6 +78,9 @@ public:
 	}
 	void sub__asyncwrite_size(size_t size) {
 		__SYNC_SUB(this->asyncwrite_size, size);
+		if(this->asyncwrite_size > LLONG_MAX) {
+			this->asyncwrite_size = 0;
+		}
 	}
 	bool check__pb__add_used(size_t add = 0) {
 		return(check() &&
