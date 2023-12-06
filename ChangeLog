@@ -1,6 +1,10 @@
-2023.11.9  30.11.2023
+2023.12.0  06.12.2023
 =====================
-- revert static build chain back to gcc8 with -O2 without flto - fixes issue with timezones and other issues. Brings back support for kernel >= 2.6.18 (old centos etc.) 
+- force heap cleanup if the size is greater than 20%
+- fix potential crash in setSchedPolPriority
+- suppress call createMysqlPartitionsBillingAgregation if is_client() is true [VS-1514]
+- add SRTP ROC find, fixes sip oneway issue [VS-1518]
+- log to syslog if ether_type is 0xFFFF (happens on old vmware nic drivers) and add testing command:  voipmonitor --check_bad_ether_type eth0
 
 
 2023.11.8  30.11.2023
