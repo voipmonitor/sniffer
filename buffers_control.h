@@ -8,11 +8,13 @@ public:
 		max_buffer_mem_own_use = 0;
 		max_buffer_mem_other_uses = 0;
 		pb_used_size = 0;
+		pb_used_dequeu_size = 0;
 		pb_trash_size = 0;
 		pb_pool_size = 0;
 		asyncwrite_size = 0;
 		pb_trash_minTime = -1;
 		pb_trash_maxTime = -1;
+		dequeu_time = 0;
 	}
 	void setMaxBufferMemMB(u_int32_t max_buffer_mem_mb, u_int32_t max_buffer_mem_other_uses_mb) {
 		this->max_buffer_mem = max_buffer_mem_mb * (1024ull * 1024);
@@ -35,6 +37,15 @@ public:
 		__SYNC_SUB(this->pb_used_size, size);
 		if(this->pb_used_size > LLONG_MAX) {
 			this->pb_used_size = 0;
+		}
+	}
+	void add__pb_used_dequeu_size(size_t size) {
+		__SYNC_ADD(this->pb_used_dequeu_size, size);
+	}
+	void sub__pb_used_dequeu_size(size_t size) {
+		__SYNC_SUB(this->pb_used_dequeu_size, size);
+		if(this->pb_used_dequeu_size > LLONG_MAX) {
+			this->pb_used_dequeu_size = 0;
 		}
 	}
 	void set__pb_trash_size(volatile u_int64_t *blockStoreTrash_size) {
@@ -120,6 +131,9 @@ public:
 	double getPerc_pb_used() {
 		return((double)pb_used_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
+	double getPerc_pb_used_dequeu() {
+		return((double)pb_used_dequeu_size / (max_buffer_mem_own_use * 0.9) * 100);
+	}
 	double getPerc_pb_trash() {
 		return((double)pb_trash_size / (max_buffer_mem_own_use * 0.9) * 100);
 	}
@@ -147,6 +161,12 @@ public:
 		pb_trash_minTime = -1;
 		pb_trash_maxTime = -1;
 	}
+	void set_dequeu_time(unsigned int dequeu_time) {
+		this->dequeu_time = dequeu_time;
+	}
+	unsigned int get_dequeu_time() {
+		return(dequeu_time);
+	}
 	string debug() {
 	       ostringstream outStr;
 	       outStr << "BUFFERS CONTROL" << endl
@@ -154,6 +174,7 @@ public:
 		      << "   max_buffer_mem_own_use: " << max_buffer_mem_own_use << " (" << (max_buffer_mem_own_use / 1024 / 1024) << "MB)" << endl
 		      << "   max_buffer_mem_other_uses: " << max_buffer_mem_other_uses << " (" << (max_buffer_mem_other_uses / 1024 / 1024) << "MB)" << endl
 		      << "   pb_used_size: " << pb_used_size << " (" << (pb_used_size / 1024 / 1024) << "MB)" << endl
+		      << "   pb_used_dequeu_size: " << pb_used_dequeu_size << " (" << (pb_used_dequeu_size / 1024 / 1024) << "MB)" << endl
 		      << "   pb_trash_size: " << pb_trash_size << " (" << (pb_trash_size / 1024 / 1024) << "MB)" << endl
 		      << "   pb_pool_size: " << pb_pool_size << " (" << (pb_pool_size / 1024 / 1024) << "MB)" << endl
 		      << "   asyncwrite_size: " << asyncwrite_size << " (" << (asyncwrite_size / 1024 / 1024) << "MB)" << endl;
@@ -164,11 +185,13 @@ private:
 	u_int64_t max_buffer_mem_own_use;
 	u_int64_t max_buffer_mem_other_uses;
 	volatile u_int64_t pb_used_size;
+	volatile u_int64_t pb_used_dequeu_size;
 	volatile u_int64_t pb_trash_size;
 	volatile u_int64_t pb_pool_size;
 	volatile u_int64_t asyncwrite_size;
 	unsigned long pb_trash_minTime;
 	unsigned long pb_trash_maxTime;
+	unsigned int dequeu_time;
 };
 
 #endif

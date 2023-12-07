@@ -243,6 +243,7 @@ static unsigned long long sumPacketsSizeCompress[3];
 static unsigned long countBypassBufferSizeExceeded;
 static double heap_pb_perc = 0;
 static double heap_pb_used_perc = 0;
+static double heap_pb_used_dequeu_perc = 0;
 static double heap_pb_trash_perc = 0;
 static double heap_pb_pool_perc = 0;
 static unsigned heapFullCounter = 0;
@@ -1536,6 +1537,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	size_t count_calls = calltable->getCountCalls();
 	heap_pb_perc = buffersControl.getPerc_pb();
 	heap_pb_used_perc = buffersControl.getPerc_pb_used();
+	heap_pb_used_dequeu_perc = buffersControl.getPerc_pb_used_dequeu();
 	heap_pb_trash_perc = buffersControl.getPerc_pb_trash();
 	heap_pb_pool_perc = buffersControl.getPerc_pb_pool();
 	
@@ -1921,6 +1923,12 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		       << "] ";
 		if(opt_rrd) {
 			rrd_set_value(RRD_VALUE_ratio, useAsyncWriteBuffer);
+		}
+		unsigned int dequeu_time = buffersControl.get_dequeu_time();
+		if(heap_pb_used_dequeu_perc > 0 || dequeu_time) {
+			outStr << "deq["
+			       << heap_pb_used_dequeu_perc << "/"
+			       << dequeu_time << "] ";
 		}
 	}
 	if(task == pcapStatCpuCheck) {
@@ -7805,6 +7813,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	u_int64_t blockInfo_at_first = 0;
 	u_int64_t blockInfo_at_last = 0;
 	sBlockInfo blockInfo[blockInfoCountMax];
+	//
 	unsigned int usleepCounter = 0;
 	unsigned long usleepSumTime = 0;
 	unsigned long usleepSumTime_lastPush = 0;
@@ -7864,6 +7873,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				if(opt_pcap_queue_dequeu_method == 1) {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
+						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 						listBlockStore[blockStore] = 0;
 						for(size_t i = 0; i < blockStore->count; i++) {
 							sPacketTimeInfo pti;
@@ -7916,6 +7926,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								++listBlockStore[pti.blockStore];
 								if(listBlockStore[pti.blockStore] == pti.blockStore->count) {
 									this->blockStoreTrashPush(pti.blockStore);
+									buffersControl.sub__pb_used_dequeu_size(pti.blockStore->getUseAllSize());
 									listBlockStore.erase(pti.blockStore);
 								}
 								if(first->second->empty()) {
@@ -7934,6 +7945,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 				} else {
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
+						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 						blockInfo[blockInfoCount].blockStore = blockStore;
 						blockInfo[blockInfoCount].count_processed = 0;
 						blockInfo[blockInfoCount].utime_first = getTimeUS(
@@ -7972,6 +7984,8 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							blockInfo_at_last = blockInfo[blockInfoCount].at;
 						}
 						++blockInfoCount;
+						buffersControl.set_dequeu_time(blockInfo_utime_last > blockInfo_utime_first ?
+										(blockInfo_utime_last - blockInfo_utime_first) / 1000 : 0);
 					}
 					while(blockInfoCount &&
 					      (_opt_pcap_queue_dequeu_need_blocks ?
@@ -7979,7 +7993,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						((blockInfo_utime_last - blockInfo_utime_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 &&
 						  blockInfo_at_last - blockInfo_at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000) ||
 						  at - blockInfo_at_first > (unsigned)_opt_pcap_queue_dequeu_window_length * 1000 * 4 ||
-						  buffersControl.getPerc_pb_trash() > 50 ||
+						  buffersControl.getPerc_pb_used_dequeu() > 20 ||
 						  blockInfoCount == blockInfoCountMax)) &&
 					      !TERMINATING) {
 						u_int64_t minUtime = 0;
@@ -7995,7 +8009,6 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							continue;
 						}
 						sBlockInfo *actBlockInfo = &blockInfo[minUtimeIndexBlockInfo];
-						
 						hp_out.header = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header;
 						hp_out.packet = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].packet;
 						hp_out.block_store = actBlockInfo->blockStore;
@@ -8011,6 +8024,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 						++actBlockInfo->count_processed;
 						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
 							this->blockStoreTrashPush(actBlockInfo->blockStore);
+							buffersControl.sub__pb_used_dequeu_size(actBlockInfo->blockStore->getUseAllSize());
 							--blockInfoCount;
 							for(int i = minUtimeIndexBlockInfo; i < blockInfoCount; i++) {
 								memcpy(blockInfo + i, blockInfo + i + 1, sizeof(sBlockInfo));
