@@ -933,15 +933,7 @@ void save_packet(Call *call, packet_s_process *packetS, int type, u_int8_t force
 							if(contentLengthNew > 0 && contentLengthOrig != contentLengthNew) {
 								char contLengthStr[20];
 								snprintf(contLengthStr, sizeof(contLengthStr), "%i", contentLengthNew);
-								#if __GNUC__ >= 8
-								#pragma GCC diagnostic push
-								#pragma GCC diagnostic ignored "-Wstringop-overflow"
-								#pragma GCC diagnostic ignored "-Wstringop-truncation"
-								#endif
-								strncpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
-								#if __GNUC__ >= 8
-								#pragma GCC diagnostic pop
-								#endif
+								memcpy(pointToModifyContLength, contLengthStr, strlen(contLengthStr));
 								char *pointToEndModifyContLength = pointToModifyContLength + strlen(contLengthStr);
 								while(*pointToEndModifyContLength != CR_CHAR && *pointToEndModifyContLength != LF_CHAR) {
 									*pointToEndModifyContLength = ' ';
