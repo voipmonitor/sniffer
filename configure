@@ -4534,8 +4534,8 @@ else
   as_fn_error $? "Unable to find zstd. apt-get install libzstd-dev" "$LINENO" 5
 fi
 
-if ! pkg-config --atleast-version 1.5.0 libzstd; then
-  as_fn_error $? "The version of zstd must be at least 1.5.0. You can compile it from this source: https://github.com/facebook/zstd." "$LINENO" 5
+if ! pkg-config --atleast-version 1.4.4 libzstd; then
+  as_fn_error $? "The version of zstd must be at least 1.4.4. You can compile it from this source: https://github.com/facebook/zstd." "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llz4" >&5

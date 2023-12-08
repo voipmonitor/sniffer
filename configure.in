@@ -184,8 +184,8 @@ CXXFLAGS=$ORIGCXXFLAGS
 AC_CHECK_LIB([z], [main], , AC_MSG_ERROR([Unable to find libz. apt-get install zlib1g-dev | yum install zlib-devel]))
 AC_CHECK_LIB([zstd], [main], HAVE_LIBZSTD=1, AC_MSG_ERROR([Unable to find zstd. apt-get install libzstd-dev]))
 
-if ! pkg-config --atleast-version 1.5.0 libzstd; then
-	AC_MSG_ERROR([The version of zstd must be at least 1.5.0. You can compile it from this source: https://github.com/facebook/zstd.])
+if ! pkg-config --atleast-version 1.4.4 libzstd; then
+	AC_MSG_ERROR([The version of zstd must be at least 1.4.4. You can compile it from this source: https://github.com/facebook/zstd.])
 fi
 
 AC_CHECK_LIB([lz4], [main], HAVE_LIBLZ4=1, AC_MSG_ERROR([Unable to find lz4. apt-get install liblz4-dev]))
