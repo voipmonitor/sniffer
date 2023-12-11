@@ -8875,6 +8875,8 @@ void set_context_config() {
 	#if defined(__x86_64__) or defined(__i386__)
 	if(opt_dup_check == 2 && crc32_sse_is_available()) {
 		opt_dup_check = 3;
+	} else if(opt_dup_check == 3 && !crc32_sse_is_available()) {
+		opt_dup_check = 2;
 	}
 	#endif
 }

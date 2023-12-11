@@ -1364,16 +1364,18 @@ bool cSnifferClientService::receive_process_loop_begin() {
 						}
 						if(!rsltConnectData_json.getValue("deduplicate").empty()) {
 							int server_dup_check = atoi(rsltConnectData_json.getValue("deduplicate").c_str());
-							if(opt_dup_check != server_dup_check) {
-								syslog(LOG_NOTICE, 
-								       opt_dup_check ?
-									"change the deduplication type because it is set differently on the server" :
-									"enabling deduplicate because it is enabled on server");
-								opt_dup_check = server_dup_check;
+							if(server_dup_check >= 0 && server_dup_check <= 3) {
 								#if defined(__x86_64__) or defined(__i386__)
-								if(opt_dup_check == 3 && !crc32_sse_is_available()) opt_dup_check = 2; // do not force SSE 4.2 version if we do not have it
+								if(server_dup_check == 3 && !crc32_sse_is_available()) server_dup_check = 2; // do not force SSE 4.2 version if we do not have it
 								#endif
-								change_config = true;
+								if(opt_dup_check != server_dup_check) {
+									syslog(LOG_NOTICE, 
+									       opt_dup_check ?
+										"change the deduplication type because it is set differently on the server" :
+										"enabling deduplicate because it is enabled on server");
+									opt_dup_check = server_dup_check;
+									change_config = true;
+								}
 							}
 						}
 						if(change_config) {
