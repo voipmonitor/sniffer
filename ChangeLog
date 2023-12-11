@@ -1,3 +1,12 @@
+2023.12.1  11.12.2023
+=====================
+- fix crc sse invalid instruction some servers
+- better filter for server/client traffic in packtebuffer_sender mode [VS-1524]
+- fix -flto warning
+- reducing the minimum required version of zstd to 1.4.4
+- dequeu queue modification on packetbuffer output add 20% heap limit for queue, add 'deq[N1/N2]' statement to log,  N1 is the number of percent of the heap the dequeu queue occupies, N2 is the current amount of time contained in the queue [VS-1521]
+
+
 2023.12.0  06.12.2023
 =====================
 - force heap cleanup if the size is greater than 20%
