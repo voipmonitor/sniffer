@@ -40,6 +40,8 @@ using namespace std;
 #define SYNC_LOCK_USLEEP 100
 #define MAX_LISTEN_SOCKETS 2
 
+#define SOCKET_END_STR "_END_"
+
 
 struct sCloudRouterVerbose {
 	sCloudRouterVerbose() {
@@ -538,6 +540,11 @@ public:
 	}
 	void set_rsa_pub_key(string key) {
 		return(rsa.setPubKey(key));
+	}
+	void sendEnd() {
+		if(aes.isSetKeys()) {
+			writeBlock(SOCKET_END_STR, cSocket::_te_aes);
+		}
 	}
 protected:
 	bool checkSumReadBuffer();

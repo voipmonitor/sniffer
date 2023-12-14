@@ -819,14 +819,18 @@ void cSnifferServerConnection::cp_query() {
 	u_char *query;
 	size_t queryLength;
 	unsigned counter = 0;
+	int timeout = 60;
 	while(!server->isTerminate() &&
-	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, 0, 1024 * 1024)) != NULL) {
+	      (query = socket->readBlock(&queryLength, cSocket::_te_aes, "", counter > 0, timeout, 1024 * 1024)) != NULL) {
 		string queryStr;
 		cGzip gzipDecompressQuery;
 		if(gzipDecompressQuery.isCompress(query, queryLength)) {
 			queryStr = gzipDecompressQuery.decompressString(query, queryLength);
 		} else {
 			queryStr = string((char*)query, queryLength);
+		}
+		if(queryStr == SOCKET_END_STR) {
+			break;
 		}
 		if(!queryStr.empty()) {
 			sqlDb->setMaxQueryPass(1);

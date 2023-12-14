@@ -503,6 +503,7 @@ volatile int SqlDb::typeColumn_cache_sync = 0;
 
 SqlDb::~SqlDb() {
 	if(this->remote_socket) {
+		this->remote_socket->sendEnd();
 		delete this->remote_socket;
 	}
 }
