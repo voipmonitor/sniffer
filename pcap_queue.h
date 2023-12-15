@@ -174,6 +174,7 @@ private:
 	int cleanupFileStoreCounter;
 	u_int64_t lastTimeLogErrDiskIsFull;
 	u_int64_t lastTimeLogErrMemoryIsFull;
+	u_int64_t firstTimeLogErrMemoryIsFull;
 friend class PcapQueue_readFromFifo;
 };
 

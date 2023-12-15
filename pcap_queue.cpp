@@ -1161,6 +1161,7 @@ pcap_store_queue::pcap_store_queue(const char *fileStoreFolder) {
 	this->cleanupFileStoreCounter = 0;
 	this->lastTimeLogErrDiskIsFull = 0;
 	this->lastTimeLogErrMemoryIsFull = 0;
+	this->firstTimeLogErrMemoryIsFull = 0;
 	if(fileStoreFolder && fileStoreFolder[0] && access(fileStoreFolder, F_OK ) == -1) {
 		mkdir_r(fileStoreFolder, 0700);
 	}
@@ -1255,6 +1256,7 @@ bool pcap_store_queue::push(pcap_block_store *blockStore, bool deleteBlockStoreI
 		} else {
 			buffersControl.add__pb_used_size(blockStore->getUseAllSize());
 			packetbuffer_memory_is_full = false;
+			firstTimeLogErrMemoryIsFull = 0;
 		}
 	}
 	this->lock_queue();
@@ -1359,6 +1361,17 @@ void pcap_store_queue::memoryBufferIsFull_log() {
 	if(actTime - 1000 > this->lastTimeLogErrMemoryIsFull) {
 		syslog(LOG_ERR, "packetbuffer: MEMORY IS FULL");
 		this->lastTimeLogErrMemoryIsFull = actTime;
+		if(!this->firstTimeLogErrMemoryIsFull) {
+			this->firstTimeLogErrMemoryIsFull = actTime;
+		} else if(this->lastTimeLogErrMemoryIsFull > this->firstTimeLogErrMemoryIsFull &&
+			  this->lastTimeLogErrMemoryIsFull - this->firstTimeLogErrMemoryIsFull > 2 * 60 * 1000) {
+			extern bool opt_abort_if_heap_full;
+			if(opt_abort_if_heap_full || sverb.abort_if_heap_full) {
+				syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
+				syslog(LOG_ERR, "ABORT!");
+				abort();
+			}
+		}
 	}
 }
 
@@ -7362,6 +7375,8 @@ bool PcapQueue_readFromFifo::checkIfMemoryBufferIsFull(unsigned size, bool log) 
 			this->pcapStoreQueue.memoryBufferIsFull_log();
 		}
 		return(true);
+	} else {
+		this->pcapStoreQueue.firstTimeLogErrMemoryIsFull = 0;
 	}
 	return(false);
 }
