@@ -1,3 +1,8 @@
+2023.12.2  15.12.2023
+=====================
+- force connection close on server in client/server which shortnes socket timeout which fixes too many mysql connections issue (all sniffer versions)
+
+
 2023.12.1  11.12.2023
 =====================
 - fix crc sse invalid instruction some servers
