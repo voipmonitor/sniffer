@@ -1368,7 +1368,7 @@ void pcap_store_queue::memoryBufferIsFull_log() {
 			extern bool opt_abort_if_heap_full;
 			if(opt_abort_if_heap_full || sverb.abort_if_heap_full) {
 				syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
-				syslog(LOG_ERR, "ABORT!");
+				syslog(LOG_ERR, "MEMORY IS FULL - ABORT!");
 				abort();
 			}
 		}
@@ -3190,6 +3190,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		   sverb.abort_if_heap_full || sverb.exit_if_heap_full) {
 			if(packetbuffer_memory_is_full || heap_pb_perc > 98) {
 				if(++heapFullCounter > 10) {
+					syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
 					syslog(LOG_ERR, "HEAP FULL - %s!", opt_exit_if_heap_full || sverb.exit_if_heap_full ? "EXIT" : "ABORT");
 					if(opt_exit_if_heap_full || sverb.exit_if_heap_full) {
 						extern WDT *wdt;
@@ -3210,6 +3211,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			if(opt_abort_if_heap_full_and_t2cpu_is_low || opt_exit_if_heap_full_and_t2cpu_is_low) {
 				if((packetbuffer_memory_is_full || heap_pb_perc > 98) && sum_t2cpu < 50) {
 					if(++heapFullIfT2cpuIsLowCounter > 10) {
+						syslog(LOG_NOTICE, "buffersControl: %s", buffersControl.debug().c_str());
 						syslog(LOG_ERR, "HEAP FULL (and t2cpu is low) - %s!", opt_exit_if_heap_full_and_t2cpu_is_low ? "EXIT" : "ABORT");
 						if(opt_exit_if_heap_full_and_t2cpu_is_low) {
 							extern WDT *wdt;
