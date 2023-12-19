@@ -1376,7 +1376,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
 #else
         guint8 ct _U_, guint16 record_version _U_,
 #endif
-        gboolean ignore_mac_failed
+        gboolean find_valid_mac, gboolean ignore_mac_failed
 #ifndef HAVE_LIBGCRYPT_AEAD
         _U_
 #endif
@@ -1448,6 +1448,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
      * Nonce construction is version-specific. Note that AEAD_CHACHA20_POLY1305
      * (RFC 7905) uses a nonce construction similar to TLS 1.3.
      */
+    bool _auth_tag_used_seq = false;
     if (is_v12 && cipher_mode != MODE_POLY1305) {
         if(!(decoder->write_iv.data_len() == IMPLICIT_NONCE_LEN)) return FALSE;
         /* Implicit (4) and explicit (8) part of nonce. */
@@ -1485,6 +1486,7 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
         phton64(nonce + nonce_len - 8, pntoh64(nonce + nonce_len - 8) ^ decoder->seq);
         ssl_debug_printf("%s seq %" G_GUINT64_FORMAT "\n", G_STRFUNC, decoder->seq);
 	if(auth_tag_used_seq) *auth_tag_used_seq = TRUE;
+        _auth_tag_used_seq = true;
     }
 
     /* Set nonce and additional authentication data */
@@ -1562,7 +1564,9 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
             ssl_print_data("auth_tag(actual)", auth_tag_wire, auth_tag_len);
 	    if(auth_tag_failed) *auth_tag_failed = TRUE;
         }
-        if (ignore_mac_failed) {
+        if (find_valid_mac && _auth_tag_used_seq) {
+            return FALSE;
+        } else if (ignore_mac_failed) {
             ssl_debug_printf("%s: auth check failed, but ignored for troubleshooting ;-)\n", G_STRFUNC);
         } else {
             return FALSE;
@@ -1836,10 +1840,10 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 
 	u_int8_t auth_tag_used_seq = FALSE;
 	u_int8_t auth_tag_failed = FALSE;
-        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, !find_valid_mac && ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
+        if (!tls_decrypt_aead_record(ssl, decoder, ct, record_version, enable_try_seq && find_valid_mac, ignore_mac_failed, in, inl, out_str, &worklen, &auth_tag_used_seq, &auth_tag_failed)) {
             /* decryption failed */
             // return -1;
-	    if(enable_try_seq && auth_tag_used_seq && auth_tag_failed) {
+	    if(enable_try_seq && find_valid_mac && auth_tag_used_seq && auth_tag_failed) {
 		gboolean seq_ok = FALSE;
 		guint64 seq_old = decoder->seq;
                 extern int opt_ssl_aead_try_seq_backward;
@@ -1851,7 +1855,7 @@ ssl_decrypt_record(SslDecryptSession *ssl, SslDecoder *decoder, guint8 ct, guint
 		for(guint64 try_seq = try_seq_from; try_seq <= try_seq_to && !seq_ok; try_seq++) {
 		    if (try_seq != seq_old) {
 			decoder->seq = try_seq;
-			if (tls_decrypt_aead_record(ssl, decoder, ct, record_version, !find_valid_mac && ignore_mac_failed, in, inl, out_str, &worklen, NULL, NULL)) {
+			if (tls_decrypt_aead_record(ssl, decoder, ct, record_version, false, false, in, inl, out_str, &worklen, NULL, NULL)) {
 			    seq_ok = TRUE;
 			}
 		    }
