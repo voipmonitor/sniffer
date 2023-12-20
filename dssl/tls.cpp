@@ -1565,6 +1565,9 @@ tls_decrypt_aead_record(SslDecryptSession *ssl, SslDecoder *decoder,
 	    if(auth_tag_failed) *auth_tag_failed = TRUE;
         }
         if (find_valid_mac && _auth_tag_used_seq) {
+            if (ignore_mac_failed) {
+                *outl = ciphertext_len;
+            }
             return FALSE;
         } else if (ignore_mac_failed) {
             ssl_debug_printf("%s: auth check failed, but ignored for troubleshooting ;-)\n", G_STRFUNC);
