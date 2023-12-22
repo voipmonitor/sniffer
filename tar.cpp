@@ -1334,7 +1334,8 @@ TarQueue::write(int qtype, data_t data) {
 		tar->tar_open(tar_name.str(), O_WRONLY | O_CREAT | O_APPEND, TAR_GNU);
 		tar->tar.qtype = qtype;
 		tar->time = data;
-		tar->created_at = data.time;
+		tar->created_at[0] = data.time;
+		tar->created_at[1] = getTimeS();
 		tar->spoolIndex = spoolIndex;
 		tar->sensorName = data.sensorName;
 		
@@ -1349,7 +1350,6 @@ TarQueue::write(int qtype, data_t data) {
 		pthread_mutex_unlock(&tarslock);
 	}
      
-	data.tar = tar;
 	tarthreads[tar->thread_id].qlock();
 //	printf("push id:%u\n", tar->thread_id);
 	if(tarthreads[tar->thread_id].queue_data.find(tar_name.str()) == tarthreads[tar->thread_id].queue_data.end()) {
@@ -1620,13 +1620,14 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
  
 	Tar *tar = NULL;
 	pthread_mutex_lock(&tarQueue->tarslock);
-	if(tarQueue->tars.find(tarName) == tarQueue->tars.end()) {
+	map<string, Tar*>::iterator tars_it = tarQueue->tars.find(tarName);
+	if(tars_it == tarQueue->tars.end()) {
 		if(!data->buffer->get_warning_try_write_to_closed_tar()) {
 			syslog(LOG_ERR, "try write [%s] to closed tar: %s", data->buffer->getName_c_str(), tarName);
 			data->buffer->set_warning_try_write_to_closed_tar();
 		}
 	} else {
-		tar = data->tar;
+		tar = tars_it->second;
 	}
 	pthread_mutex_unlock(&tarQueue->tarslock);
 	
@@ -1674,8 +1675,7 @@ TarQueue::tarthreads_t::processData(TarQueue *tarQueue, const char *tarName,
 			tar->writing = 0;
 		}
 	} else {
-		//data->buffer->chunkIterate(NULL, true, true, lenForProceed);
-		data->buffer->deleteChunks();
+		data->buffer->chunkIterate(NULL, true, true, lenForProceed);
 	}
 	
 	#if TAR_PROF
@@ -1727,10 +1727,10 @@ TarQueue::cleanTars(int terminate_pass) {
 		u_int32_t time_s = getTimeS();
 		if(!tar->_sync_lock &&
 		   (!checkTartimemap(&tar->time) ||
-		    time_s > (tar->created_at + absolute_timeout * 2)) &&
+		    time_s > (max(tar->created_at[0], tar->created_at[1]) + absolute_timeout * 2)) &&
 		   (terminate_pass ||
-		    time_s > (tar->created_at + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
-		    time_s > (tar->created_at + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
+		    time_s > (tar->created_at[0] + 60 + 10) ||		// +10 seconds more in new period to be sure nothing is in buffers
+		    time_s > (tar->created_at[0] + 60 + 2*60 + 10))) { 	// +2*60+10 seconds more in new period to be sure nothing is in buffers
 			// there are no calls in this start time - clean it
 			if(tars_it->second->writing) {
 				syslog(LOG_NOTICE, "fatal error! trying to close tar %s in the middle of writing data", tars_it->second->pathname.c_str());

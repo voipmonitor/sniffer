@@ -126,7 +126,7 @@ public:
 	volatile int writing;
 
 	data_tar time;
-	unsigned int created_at;
+	unsigned int created_at[2];
 	int thread_id;
 	
 
@@ -346,11 +346,9 @@ public:
 	       
 	struct data_t : public data_tar {
 		ChunkBuffer *buffer;
-		Tar *tar;
 		time_t time;
 		inline data_t() {
 			buffer = NULL;
-			tar = NULL;
 			time = 0;
 		}
 		inline void setDataTar(data_tar *data) {
