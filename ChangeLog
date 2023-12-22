@@ -1,3 +1,8 @@
+2023.12.3  20.12.2023
+=====================
+- fix tls decode for some cases and cypher suites (messages were shortened) broken since 2012.11.0
+
+
 2023.12.2  15.12.2023
 =====================
 - force connection close on server in client/server which shortnes socket timeout which fixes too many mysql connections issue (all sniffer versions)
