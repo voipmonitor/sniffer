@@ -5061,7 +5061,9 @@ int main_init_read() {
 			u_int64_t endTimeMS = startTimeMS + logPeriodS * 1000;
 			if(_counterLog) {
 				pthread_mutex_lock(&terminate_packetbuffer_lock);
-				pcapQueueQ->pcapStat(PcapQueue::pcapStatLog, logPeriodS);
+				if(pcapQueueQ) {
+					pcapQueueQ->pcapStat(PcapQueue::pcapStatLog, logPeriodS);
+				}
 				pthread_mutex_unlock(&terminate_packetbuffer_lock);
 				if(sverb.memory_stat_log) {
 					printMemoryStat();
@@ -5122,7 +5124,9 @@ int main_init_read() {
 					startTimeCpuCheck = getTimeMS_rdtsc();
 					if(_counterCpuCheck) {
 						pthread_mutex_lock(&terminate_packetbuffer_lock);
-						pcapQueueQ->pcapStat(PcapQueue::pcapStatCpuCheck, 1);
+						if(pcapQueueQ) {
+							pcapQueueQ->pcapStat(PcapQueue::pcapStatCpuCheck, 1);
+						}
 						pthread_mutex_unlock(&terminate_packetbuffer_lock);
 					}
 					++_counterCpuCheck;
