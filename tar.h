@@ -127,6 +127,7 @@ public:
 
 	data_tar time;
 	unsigned int created_at[2];
+	unsigned int last_write_at;
 	int thread_id;
 	
 
@@ -148,6 +149,9 @@ public:
 		writeCounter = 0;
 		writeCounterFlush = 0;
 		this->writing = 0;
+		created_at[0] = 0;
+		created_at[1] = 0;
+		last_write_at = 0;
 		this->_sync_lock = 0;
 	};
 	virtual ~Tar();
