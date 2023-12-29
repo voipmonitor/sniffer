@@ -1312,7 +1312,7 @@ void test() {
 	case 98:
 		{
 		RestartUpgrade restart(true, 
-				       "8.4RC15",
+				       "8.4RC15", NULL,
 				       "http://www.voipmonitor.org/senzor/download/8.4RC15",
 				       "cf9c2b266204be6cef845003e713e6df",
 				       "58e8ae1668b596cec20fd38aa7a83e23");

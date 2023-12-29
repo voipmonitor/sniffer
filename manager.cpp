@@ -4139,6 +4139,7 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 	}
 
 	bool upgrade = false;
+	string build;
 	string version;
 	string url;
 	string md5_32;
@@ -4163,55 +4164,87 @@ int Mgmt_upgrade_restart(Mgmt_params *params) {
 				if(posEnd != string::npos) {
 					version = command.substr(pos + 5, posEnd - pos - 5);
 				}
-			}
-			if(pos != string::npos) {
-				pos = command.find("url: [", pos);
+			} else {
+				pos = command.find("build: [");
 				if(pos != string::npos) {
 					size_t posEnd = command.find("]", pos);
 					if(posEnd != string::npos) {
-						url = command.substr(pos + 6, posEnd - pos - 6);
+						build = command.substr(pos + 8, posEnd - pos - 8);
 					}
 				}
 			}
-			if(pos != string::npos) {
-				pos = command.find("md5: [", pos);
+			if(build.empty()) {
 				if(pos != string::npos) {
-					size_t posEnd = command.find("]", pos);
-					if(posEnd != string::npos) {
-						md5_32 = command.substr(pos + 6, posEnd - pos - 6);
-					}
-					for(int i = 0; i < 3; i++) {
-						pos = command.find(" / [", pos);
-						if(pos != string::npos) {
-							size_t posEnd = command.find("]", pos);
-							if(posEnd != string::npos) {
-								string md5 = command.substr(pos + 4, posEnd - pos - 4);
-								switch(i) {
-									case 0: md5_64 = md5; break;
-									case 1: md5_arm = md5; break;
-									case 2: md5_64_ws = md5; break;
-								}
-								pos = posEnd;
-							} else {
-								break;
-							}
-						} else {
-							break;
+					pos = command.find("url: [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							url = command.substr(pos + 6, posEnd - pos - 6);
 						}
 					}
 				}
-			}
-			if(!version.length()) {
-				rsltForSend = "missing version in command line";
-			} else if(!url.length()) {
-				rsltForSend = "missing url in command line";
-			} else if(!md5_32.length() || !md5_64.length()) {
-				rsltForSend = "missing md5 in command line";
+				if(pos != string::npos) {
+					pos = command.find("md5: [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							md5_32 = command.substr(pos + 6, posEnd - pos - 6);
+						}
+						for(int i = 0; i < 3; i++) {
+							pos = command.find(" / [", pos);
+							if(pos != string::npos) {
+								size_t posEnd = command.find("]", pos);
+								if(posEnd != string::npos) {
+									string md5 = command.substr(pos + 4, posEnd - pos - 4);
+									switch(i) {
+										case 0: md5_64 = md5; break;
+										case 1: md5_arm = md5; break;
+										case 2: md5_64_ws = md5; break;
+									}
+									pos = posEnd;
+								} else {
+									break;
+								}
+							} else {
+								break;
+							}
+						}
+					}
+				}
+				if(!version.length()) {
+					rsltForSend = "missing version in command line";
+				} else if(!url.length()) {
+					rsltForSend = "missing url in command line";
+				} else if(!md5_32.length() || !md5_64.length()) {
+					rsltForSend = "missing md5 in command line";
+				}
+			} else {
+				pos = command.find("ver: [", pos);
+				if(pos != string::npos) {
+					size_t posEnd = command.find("]", pos);
+					if(posEnd != string::npos) {
+						version = command.substr(pos + 6, posEnd - pos - 6);
+					}
+				}
+				if(pos != string::npos) {
+					pos = command.find("url: [", pos);
+					if(pos != string::npos) {
+						size_t posEnd = command.find("]", pos);
+						if(posEnd != string::npos) {
+							url = command.substr(pos + 6, posEnd - pos - 6);
+						}
+					}
+				}
+				if(!version.length()) {
+					rsltForSend = "missing version in command line";
+				} else if(!url.length()) {
+					rsltForSend = "missing url in command line";
+				}
 			}
 		}
 	}
 	bool ok = false;
-	RestartUpgrade restart(upgrade, version.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str());
+	RestartUpgrade restart(upgrade, version.c_str(), build.c_str(), url.c_str(), md5_32.c_str(), md5_64.c_str(), md5_arm.c_str(), md5_64_ws.c_str());
 	if(!rsltForSend.length()) {
 		if(restart.createRestartScript() && restart.createSafeRunScript()) {
 			if((!upgrade || restart.runUpgrade()) &&

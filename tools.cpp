@@ -2056,10 +2056,13 @@ double AsyncClose::getCpuUsagePerc(int threadIndex, int pstatDataIndex, bool pre
 	return(-1);
 }
 
-RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {
+RestartUpgrade::RestartUpgrade(bool upgrade, const char *version, const char *build, const char *url, const char *md5_32, const char *md5_64, const char *md5_arm, const char *md5_64_ws) {
 	this->upgrade = upgrade;
 	if(version) {
 		this->version = version;
+	}
+	if(build) {
+		this->build = build;
 	}
 	if(url) {
 		this->url = url;
@@ -2133,58 +2136,114 @@ bool RestartUpgrade::runUpgrade() {
 		return(false);
 	}
 	unlink(this->upgradeTempFileName.c_str());
-	string binaryFilepathName = this->upgradeTempFileName + "/" + appname;
-	string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
-	extern int opt_upgrade_try_http_if_https_fail;
-	for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
-		string error;
-		string _url = (pass == 1 ? urlHttp : url) + "/voipmonitor" +
-			      (this->_64bit_ws ? 
-				"-wireshark.gz.64" :
-				(string(".gz.") + (this->_arm ? "armv6k" :
-						   this->_64bit ? "64" : "32")));
-		if(verbosity > 0) {
-			syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
-		}
-		bool get_url_file_rslt = get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error);
-		long long int get_url_file_size = 0;
-		if(get_url_file_rslt) {
-			get_url_file_size = GetFileSize(binaryGzFilepathName);
-			if(get_url_file_size <= 0) {
-				get_url_file_rslt = false;
-			} else if(get_url_file_size < 10000) {
-				FILE *check_file_handle = fopen(binaryGzFilepathName.c_str(), "r");
-				if(check_file_handle) {
-					char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
-					if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
-						check_file_buffer[get_url_file_size] = 0;
-						vector<string> matches;
-						if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
-						   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
-							error = matches[1];
+	string binaryFilepathName;
+	if(build.empty()) {
+		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
+		string binaryGzFilepathName = this->upgradeTempFileName + "/" + appname + ".gz";
+		extern int opt_upgrade_try_http_if_https_fail;
+		for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+			string error;
+			string _url = (pass == 1 ? urlHttp : url) + "/voipmonitor" +
+				      (this->_64bit_ws ? 
+					"-wireshark.gz.64" :
+					(string(".gz.") + (this->_arm ? "armv6k" :
+							   this->_64bit ? "64" : "32")));
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
+			}
+			bool get_url_file_rslt = get_url_file(_url.c_str(), binaryGzFilepathName.c_str(), &error);
+			long long int get_url_file_size = 0;
+			if(get_url_file_rslt) {
+				get_url_file_size = GetFileSize(binaryGzFilepathName);
+				if(get_url_file_size <= 0) {
+					get_url_file_rslt = false;
+				} else if(get_url_file_size < 10000) {
+					FILE *check_file_handle = fopen(binaryGzFilepathName.c_str(), "r");
+					if(check_file_handle) {
+						char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
+						if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
+							check_file_buffer[get_url_file_size] = 0;
+							vector<string> matches;
+							if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
+							   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
+								error = matches[1];
+								get_url_file_rslt = false;
+							}
+						} else {
 							get_url_file_rslt = false;
 						}
+						delete [] check_file_buffer;
+						fclose(check_file_handle);
 					} else {
+						error = "failed check of the download file";
 						get_url_file_rslt = false;
 					}
-					delete [] check_file_buffer;
-					fclose(check_file_handle);
-				} else {
-					error = "failed check of the download file";
-					get_url_file_rslt = false;
+				}
+			}
+			if(get_url_file_rslt) {
+				syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(binaryGzFilepathName));
+				this->errorString = "";
+				break;
+			} else {
+				this->errorString = "failed download upgrade";
+				if(!error.empty()) {
+					this->errorString += ": " + error;
+				}
+				if(pass || !opt_upgrade_try_http_if_https_fail) {
+					rmdir_r(this->upgradeTempFileName.c_str());
+					if(verbosity > 0) {
+						syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+					}
+					return(false);
 				}
 			}
 		}
-		if(get_url_file_rslt) {
-			syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(binaryGzFilepathName));
-			this->errorString = "";
-			break;
-		} else {
-			this->errorString = "failed download upgrade";
-			if(!error.empty()) {
-				this->errorString += ": " + error;
+		if(!file_exists(binaryGzFilepathName)) {
+			this->errorString = "failed download - missing destination file";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
 			}
-			if(pass || !opt_upgrade_try_http_if_https_fail) {
+			return(false);
+		}
+		long long binaryGzFilepathNameSize = GetFileSize(binaryGzFilepathName.c_str()); 
+		if(!binaryGzFilepathNameSize) {
+			this->errorString = "failed download - zero size of destination file";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		if(verbosity > 0) {
+			syslog(LOG_NOTICE, "try unzip");
+		}
+		string unzip_rslt = _gunzip_s(binaryGzFilepathName.c_str(), binaryFilepathName.c_str());
+		if(unzip_rslt.empty()) {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "unzip finished");
+			}
+		} else {
+			this->errorString = unzip_rslt;
+			if(verbosity > 1) {
+				FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
+				char buff[10000];
+				while(fgets(buff, sizeof(buff), f)) {
+					cout << buff << endl;
+				}
+			}
+			if(verbosity < 2) {
+				rmdir_r(this->upgradeTempFileName.c_str());
+			}
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		if(!this->getMD5().empty()) {
+			string md5 = GetFileMD5(binaryFilepathName);
+			if(this->getMD5() != md5) {
+				this->errorString = "failed download - bad md5: " + md5 + " <> " + this->getMD5();
 				rmdir_r(this->upgradeTempFileName.c_str());
 				if(verbosity > 0) {
 					syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
@@ -2192,53 +2251,130 @@ bool RestartUpgrade::runUpgrade() {
 				return(false);
 			}
 		}
-	}
-	if(!file_exists(binaryGzFilepathName)) {
-		this->errorString = "failed download - missing destination file";
-		rmdir_r(this->upgradeTempFileName.c_str());
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
-		return(false);
-	}
-	long long binaryGzFilepathNameSize = GetFileSize(binaryGzFilepathName.c_str()); 
-	if(!binaryGzFilepathNameSize) {
-		this->errorString = "failed download - zero size of destination file";
-		rmdir_r(this->upgradeTempFileName.c_str());
-		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
-		}
-		return(false);
-	}
-	if(verbosity > 0) {
-		syslog(LOG_NOTICE, "try unzip");
-	}
-	string unzip_rslt = _gunzip_s(binaryGzFilepathName.c_str(), binaryFilepathName.c_str());
-	if(unzip_rslt.empty()) {
-		if(verbosity > 0) {
-			syslog(LOG_NOTICE, "unzip finished");
-		}
 	} else {
-		this->errorString = unzip_rslt;
-		if(verbosity > 1) {
-			FILE *f = fopen(binaryGzFilepathName.c_str(), "rt");
-			char buff[10000];
-			while(fgets(buff, sizeof(buff), f)) {
-				cout << buff << endl;
+		string tarFileName = appname + "-" +
+				     (this->_64bit_ws ? "wireshark-" : "") +
+				     (this->_arm ? "armv6k" : (this->_64bit ? "amd64" : "i686")) + "-" +
+				     version + "-" +
+				     "static.tar.gz";
+		string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
+		string tarBinaryFilepathName = appname + "-" + 
+					       (this->_64bit_ws ? "wireshark-" : "") +
+					       (this->_arm ? "armv6k" : (this->_64bit ? "amd64" : "i686")) + "-" +
+					       version + "-" +
+					       "static" + "/usr/local/sbin/voipmonitor";
+		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
+		extern int opt_upgrade_try_http_if_https_fail;
+		for(int pass = 0; pass < (opt_upgrade_try_http_if_https_fail ? 2 : 1); pass++) {
+			string error;
+			string _url = (pass == 1 ? urlHttp : url) + "build-" + build + "/tarballdevel/" + tarFileName;
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "try download file: '%s'", _url.c_str());
+			}
+			bool get_url_file_rslt = get_url_file(_url.c_str(), tarFilepathName.c_str(), &error);
+			long long int get_url_file_size = 0;
+			if(get_url_file_rslt) {
+				get_url_file_size = GetFileSize(tarFilepathName);
+				if(get_url_file_size <= 0) {
+					get_url_file_rslt = false;
+				} else if(get_url_file_size < 10000) {
+					FILE *check_file_handle = fopen(tarFilepathName.c_str(), "r");
+					if(check_file_handle) {
+						char *check_file_buffer = new FILE_LINE(0) char[get_url_file_size + 1];
+						if(fread(check_file_buffer, 1, get_url_file_size, check_file_handle) == (unsigned)get_url_file_size) {
+							check_file_buffer[get_url_file_size] = 0;
+							vector<string> matches;
+							if(reg_match(check_file_buffer, "<title>(.*)</title>", &matches, true) ||
+							   reg_match(check_file_buffer, "<h1>(.*)</h1>", &matches, true)) {
+								error = matches[1];
+								get_url_file_rslt = false;
+							}
+						} else {
+							get_url_file_rslt = false;
+						}
+						delete [] check_file_buffer;
+						fclose(check_file_handle);
+					} else {
+						error = "failed check of the download file";
+						get_url_file_rslt = false;
+					}
+				}
+			}
+			if(get_url_file_rslt) {
+				syslog(LOG_NOTICE, "download file '%s' finished (size: %lli)", _url.c_str(), GetFileSize(tarFilepathName));
+				this->errorString = "";
+				break;
+			} else {
+				this->errorString = "failed download upgrade";
+				if(!error.empty()) {
+					this->errorString += ": " + error;
+				}
+				if(pass || !opt_upgrade_try_http_if_https_fail) {
+					rmdir_r(this->upgradeTempFileName.c_str());
+					if(verbosity > 0) {
+						syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+					}
+					return(false);
+				}
 			}
 		}
-		if(verbosity < 2) {
+		if(!file_exists(tarFilepathName)) {
+			this->errorString = "failed download - missing destination file";
 			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		long long binaryGzFilepathNameSize = GetFileSize(tarFilepathName.c_str()); 
+		if(!binaryGzFilepathNameSize) {
+			this->errorString = "failed download - zero size of destination file";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
 		}
 		if(verbosity > 0) {
-			syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			syslog(LOG_NOTICE, "try untar");
 		}
-		return(false);
-	}
-	if(!this->getMD5().empty()) {
-		string md5 = GetFileMD5(binaryFilepathName);
-		if(this->getMD5() != md5) {
-			this->errorString = "failed download - bad md5: " + md5 + " <> " + this->getMD5();
+		FILE *outputFileHandle = fopen(binaryFilepathName.c_str(), "wb");
+		if(!outputFileHandle) {
+			this->errorString = "open output file failed";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		Tar tar;
+		tar.tar_read_save_parameters(outputFileHandle);
+		tar.tar_open(tarFilepathName, O_RDONLY);
+		tar.tar_read(tarBinaryFilepathName.c_str());
+		fclose(outputFileHandle);
+		if(!tar.isReadError()) {
+			if(verbosity > 0) {
+				syslog(LOG_NOTICE, "untar finished");
+			}
+		} else {
+			this->errorString = "untar failed";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		if(!file_exists(binaryFilepathName)) {
+			this->errorString = "untar failed - missing destination file";
+			rmdir_r(this->upgradeTempFileName.c_str());
+			if(verbosity > 0) {
+				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());
+			}
+			return(false);
+		}
+		binaryGzFilepathNameSize = GetFileSize(binaryFilepathName.c_str()); 
+		if(!binaryGzFilepathNameSize) {
+			this->errorString = "untar failed - zero size of destination file";
 			rmdir_r(this->upgradeTempFileName.c_str());
 			if(verbosity > 0) {
 				syslog(LOG_ERR, "upgrade failed - %s", this->errorString.c_str());

@@ -1307,7 +1307,7 @@ private:
 
 class RestartUpgrade {
 public:
-	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *url = NULL, 
+	RestartUpgrade(bool upgrade = false, const char *version = NULL, const char *build = NULL, const char *url = NULL, 
 		       const char *md5_32 = NULL, const char *md5_64 = NULL, const char *md5_arm = NULL, const char *md5_64_ws = NULL);
 	bool runUpgrade();
 	bool createRestartScript();
@@ -1333,6 +1333,7 @@ private:
 private:
 	bool upgrade;
 	string version;
+	string build;
 	string url;
 	string md5_32;
 	string md5_64;
