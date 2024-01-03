@@ -1540,10 +1540,10 @@ bool PcapDumper::open(eTypeSpoolFile typeSpoolFile, const char *fileName, pcap_t
 
 bool incorrectCaplenDetected = false;
 
-void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
+bool PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool allPackets,
 		      u_char *data, unsigned int datalen, u_int32_t forceDatalen,
 		      vmIP saddr, vmIP daddr, vmPort source, vmPort dest,
-		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts) {
+		      bool istcp, u_int8_t forceVirtualUdp, timeval *ts, int *error) {
 	extern int opt_convert_dlt_sll_to_en10;
 	if(convert_dlt_sll_to_en10(dlt) != this->dlt) {
 		static u_int64_t lastTimeDltSyslog = 0;
@@ -1560,13 +1560,16 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 			lastTimeSyslog = actTime;
 			lastTimeDltSyslog = actTime;
 		}
-		return;
+		if(error) *error = error_dlt;
+		return(false);
 	}
 	#if DEBUG_ASYNC_TAR_WRITE
 	if((this->type == sip || this->type == rtp) && call) {
 		call->addPFlag(this->type - 1, Call_abstract::_p_flag_dumper_dump);
 	}
 	#endif
+	bool rslt = true;
+	if(error) *error = error_na;
 	extern unsigned int opt_maxpcapsize_mb;
 	if(this->handle) {
 		if(allPackets ||
@@ -1636,10 +1639,15 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 						delete headers_alloc[i];
 					}
 				}
+			} else {
+				rslt = false;
+				if(error) *error = error_maxcapsize;
 			}
 		} else {
 			syslog(LOG_NOTICE, "pcapdumper: incorrect caplen/len (%u/%u) in %s", header->caplen, header->len, fileName.c_str());
 			incorrectCaplenDetected = true;
+			rslt = false;
+			if(error) *error = error_caplen;
 		}
 		this->state = state_dump;
 		#if DEBUG_ASYNC_TAR_WRITE
@@ -1648,6 +1656,7 @@ void PcapDumper::dump(pcap_pkthdr* header, const u_char *packet, int dlt, bool a
 		}
 		#endif
 	}
+	return(rslt);
 }
 
 void PcapDumper::close(bool updateFilesQueue) {

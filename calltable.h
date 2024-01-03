@@ -146,6 +146,9 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define CDR_PROCLIM_SUPPRESS_RTP_PROC   (1 << 16)
 #define CDR_RTCP_EXISTS   		(1 << 17)
 #define CDR_PCAP_IN_SAFESPOOLDIR	(1 << 18)
+#define CDR_PCAP_DUMP_ERROR_DTL		(1 << 19)
+#define CDR_PCAP_DUMP_ERROR_MAXPCAPSIZE	(1 << 20)
+#define CDR_PCAP_DUMP_ERROR_CAPLEN	(1 << 21)
 
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
@@ -2658,6 +2661,9 @@ public:
 	void clearDiameterFromSip();
 	void clearDiameterToSip();
 	void moveDiameterPacketsToPcap(bool enableSave = true);
+	void set_pcap_dump_error(int pcap_dump_error) {
+		this->pcap_dump_error |= pcap_dump_error;
+	}
 	
 private:
 	
@@ -2669,6 +2675,7 @@ private:
 	PcapDumper pcap;
 	PcapDumper pcapSip;
 	PcapDumper pcapRtp;
+	int pcap_dump_error;
 	map<sStreamId, sUdptlDumper*> udptlDumpers;
 	volatile int _hash_add_lock;
 	int payload_rslt;

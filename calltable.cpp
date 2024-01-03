@@ -793,6 +793,8 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	last_mgcp_connect_packet_time_us = 0;
 	
+	pcap_dump_error = 0;
+	
 	_hash_add_lock = 0;
 	
 	counter = ++counter_s;
@@ -6458,6 +6460,18 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	if(this->rtcp_exists) {
 		cdr_flags |= CDR_RTCP_EXISTS;
+	}
+	
+	if(this->pcap_dump_error) {
+		if(this->pcap_dump_error & PcapDumper::error_dlt) {
+			cdr_flags |= CDR_PCAP_DUMP_ERROR_DTL;
+		}
+		if(this->pcap_dump_error & PcapDumper::error_maxcapsize) {
+			cdr_flags |= CDR_PCAP_DUMP_ERROR_MAXPCAPSIZE;
+		}
+		if(this->pcap_dump_error & PcapDumper::error_caplen) {
+			cdr_flags |= CDR_PCAP_DUMP_ERROR_CAPLEN;
+		}
 	}
 	
 	set<vmIP> proxies_undup;
