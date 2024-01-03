@@ -698,8 +698,9 @@ string CountryPrefixes::getCountry(const char *number, vmIP ip, vector<string> *
 	string internationalPrefix;
 	checkInternational->skipInternationalPrefixes(numberWithoutSkipPrefix.c_str(), &numberWithoutInternationalPrefix, &internationalPrefix);
 	string numberNormalized = numberWithoutInternationalPrefix;
-	while(numberNormalized[0] == '0' || 
-	      (!internationalPrefix.length() && numberNormalized[0] == '+')) {
+	while(!numberNormalized.empty() && 
+	      (numberNormalized[0] == '0' ||
+	       (!internationalPrefix.length() && numberNormalized[0] == '+'))) {
 		numberNormalized = numberNormalized.substr(1);
 	}
 	bool isInternational = internationalPrefix.length() ||

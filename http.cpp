@@ -138,7 +138,7 @@ void HttpData::processData(vmIP ip_src, vmIP ip_dst,
 		   body[0] == '{' && body[body.length() - 1] != '}') {
 			body += "}";
 		} else if(body.length() == contentLength + 1 &&
-			body[0] == '{' && body[body.length()] == '}') {
+			body[0] == '{' && body[body.length() - 1] == '}') {
 			// OK
 		} else {
 			continue;

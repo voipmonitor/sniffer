@@ -441,6 +441,7 @@ void cSeparateProcessing::processRtpIpPort(const char *call_id, sDataCall *dataC
 	comb.callData = dataCall;
 	comb.rtpIpPort = rtpIpPort;
 	comb.buff = buff;
+	comb.call = NULL;
 	processRtpIpPortData.data.push_back(comb);
 	if(dataCall->time_us > processRtpIpPortData.last_processed_time_us &&
 	   dataCall->time_us - processRtpIpPortData.last_processed_time_us > 100000) {

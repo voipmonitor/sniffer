@@ -953,6 +953,8 @@ void parse_heapsafeplus_coredump(const char *corefile, const char *outfile) {
 	
 	cout << "count <100 blocks: " << count_lt_100 << endl;
 	cout << "sum <100 blocks: " << sum_lt_100 << endl;
-	cout << "avg <100 block: " << (sum_lt_100 / count_lt_100) << endl;
+	if(count_lt_100 > 0) {
+		cout << "avg <100 block: " << (sum_lt_100 / count_lt_100) << endl;
+	}
  
 }

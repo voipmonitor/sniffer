@@ -9487,7 +9487,7 @@ bool cEvalFormula::sqlOperandReplace(sValue *value, string operand, sSplitOperan
 		} else {
 			column = operand;
 		}
-		if(table[0] == '`' && table[table.length() - 1] == '`') {
+		if(!table.empty() && table[0] == '`' && table[table.length() - 1] == '`') {
 			table = table.substr(1, table.length() - 2);
 		}
 		if(column[0] == '`' && column[column.length() - 1] == '`') {
