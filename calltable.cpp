@@ -9778,6 +9778,7 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 	vmIP _saddr, _daddr;
 	vmPort _sport, _dport;
 	list<vmIPport> _proxies;
+	string last_via_branch;
 	vector<sInviteSD_Addr>::iterator iter_rslt = c_branch->invite_sdaddr.end();
 	for(unsigned index = 0; index < invite_sdaddr_order_size; index++) {
 		unsigned _index = c_branch->invite_sdaddr_bad_order ? sort_indexes[index] : index;
@@ -9797,23 +9798,25 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 					break;
 				}
 			}
-			if(iter->sport != _sport || iter->saddr != _saddr) {
-				if(find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
-					_proxies.push_back(vmIPport(iter->saddr, iter->sport));
-				}
-				if((iter->dport != _sport || iter->daddr != _saddr) && 
-				   (iter->dport != _dport || iter->daddr != _daddr) && 
-				   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
-					if(!(!opt_call_branches &&
-					     opt_sdp_check_direction_ext &&
-					     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
-						_proxies.push_back(vmIPport(_daddr, _dport));
-						_daddr = iter->daddr;
-						_dport = iter->dport;
-						iter_rslt = iter;
-					}
+			bool diff_src = iter->sport != _sport || iter->saddr != _saddr;
+			if(diff_src &&
+			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->saddr,iter->sport)) == _proxies.end()) {
+				_proxies.push_back(vmIPport(iter->saddr, iter->sport));
+			}
+			if((onlyConfirmed || diff_src || iter->branch == last_via_branch) &&
+			   (iter->dport != _sport || iter->daddr != _saddr) &&
+			   (iter->dport != _dport || iter->daddr != _daddr) && 
+			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
+				if(!(!opt_call_branches &&
+				     opt_sdp_check_direction_ext &&
+				     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
+					_proxies.push_back(vmIPport(_daddr, _dport));
+					_daddr = iter->daddr;
+					_dport = iter->dport;
+					iter_rslt = iter;
 				}
 			}
+			last_via_branch = iter->branch;
 		}
 	}
 	if(_daddr.isSet()) {

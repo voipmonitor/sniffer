@@ -667,6 +667,8 @@ public:
 	bool updateDstnumOnAnswer;
 	bool updateDstnumFromMessage;
 	
+	string last_via_branch;
+	
 };
 
 struct raws_t {
