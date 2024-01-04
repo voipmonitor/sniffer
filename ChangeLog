@@ -1,3 +1,11 @@
+2024.01  04.01.2024
+===================
+- fix potential race condition / crash in tar if data entry is extremely delayed
+- added support for upgrading sniffer from develop branch
+- fixed minor issues detected by cppcheck
+- if pcap limit is set store it to the cdr.flag [VS-1514]
+
+
 2023.12.3  20.12.2023
 =====================
 - fix tls decode for some cases and cypher suites (messages were shortened) broken since 2012.11.0
