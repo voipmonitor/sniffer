@@ -78,6 +78,7 @@ int vm_pthread_create(const char *thread_description,
 		pthread_attr_destroy(&_attr);
 	}
 	#ifdef CLOUD_ROUTER_CLIENT
+	#ifndef __i686__
 	extern bool opt_use_thread_setname;
 	if(opt_use_thread_setname && thread_description) {
 		char thread_name[16];
@@ -85,6 +86,7 @@ int vm_pthread_create(const char *thread_description,
 		thread_name[sizeof(thread_name) - 1] = 0;
 		pthread_setname_np(*thread, thread_name);
 	}
+	#endif
 	extern string opt_cpu_cores;
 	extern bool opt_use_dpdk;
 	if(!opt_cpu_cores.empty()) {
