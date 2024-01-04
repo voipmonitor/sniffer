@@ -2263,13 +2263,13 @@ bool RestartUpgrade::runUpgrade() {
 	} else {
 		string tarFileName = appname + "-" +
 				     (this->_64bit_ws ? "wireshark-" : "") +
-				     (this->_arm ? "armv6k" : (this->_64bit ? "amd64" : "i686")) + "-" +
+				     (this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
 				     version + "-" +
 				     "static.tar.gz";
 		string tarFilepathName = this->upgradeTempFileName + "/" + tarFileName;
 		string tarBinaryFilepathName = appname + "-" + 
 					       (this->_64bit_ws ? "wireshark-" : "") +
-					       (this->_arm ? "armv6k" : (this->_64bit ? "amd64" : "i686")) + "-" +
+					       (this->_arm ? "armv6k" : (this->_64bit || this->_64bit_ws ? "amd64" : "i686")) + "-" +
 					       version + "-" +
 					       "static" + "/usr/local/sbin/voipmonitor";
 		binaryFilepathName = this->upgradeTempFileName + "/" + appname;
