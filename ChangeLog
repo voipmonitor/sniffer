@@ -1,3 +1,8 @@
+2024.01.1  05.01.2024
+=====================
+-  modify proxy and dst ip detection - use via.branch and confirmed invite matches [VS-1536]
+
+
 2024.01  04.01.2024
 ===================
 - fix potential race condition / crash in tar if data entry is extremely delayed
