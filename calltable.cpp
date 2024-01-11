@@ -5537,7 +5537,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			}
 			return(true);
 		}
-		child_table_enum = getTableEnumIndex(child_table);
+		child_table_enum = getDbTableEnumIndex(child_table);
 		if(child_table_enum >= _t_cdr_next && child_table_enum < _t_cdr_next_end) {
 			table = child_table;
 			child_table = NULL;
@@ -5671,7 +5671,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 		return(true);
 	}
 	if(!table_enum) {
-		table_enum = getTableEnumIndex(table);
+		table_enum = getDbTableEnumIndex(table);
 	}
 	int indexField = 0;
 	if(table_enum == _t_cdr) {
@@ -5739,7 +5739,7 @@ bool Call::sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
 			}
 			return(true);
 		}
- 		child_table_enum = getTableEnumIndex(child_table);
+ 		child_table_enum = getDbTableEnumIndex(child_table);
 		if(child_table_enum >= _t_cdr_next && child_table_enum < _t_cdr_next_end) {
 			table = child_table;
 			table_enum = child_table_enum;
@@ -5782,7 +5782,7 @@ bool Call::sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
 		column_str = tablesContent->findColumn(table_enum_subst, !column_subst.empty() ? column_subst.c_str() : column->c_str(), child_index, &columnIndex);
 	} else {
 		if(!table_enum) {
-			table_enum = getTableEnumIndex(table);
+			table_enum = getDbTableEnumIndex(table);
 		}
 		column_str = tablesContent->findColumn(table_enum, column->c_str(), child_index, &columnIndex);
 		if(!column_str) {
@@ -5829,7 +5829,7 @@ bool Call::sqlFormulaOperandReplace(cDbTablesContent *tablesContent,
 
 int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 	//sChartsCacheCallData *callData = (sChartsCacheCallData*)_callData;
-	int enumTable = getTableEnumIndex(child_table);
+	int enumTable = getDbTableEnumIndex(child_table);
 	if(enumTable < _t_cdr_next_end) {
 		return(1);
 	} else {
@@ -5849,28 +5849,6 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 		}
 	}
 	return(-1);
-}
-
-int Call::getTableEnumIndex(string *table) {
-	if(!strcasecmp(table->c_str(), "cdr")) {
-		return(_t_cdr);
-	} else if(!strncasecmp(table->c_str(), "cdr_next", 7)) {
-		if((*table)[8] == '_') {
-			int ch_index = atof(table->c_str() + 9);
-			if(ch_index > 0 && ch_index <= CDR_NEXT_MAX) {
-				return(_t_cdr_next + ch_index);
-			}
-		} else {
-			return(_t_cdr_next);
-		}
-	}
-	return(!strcasecmp(table->c_str(), "cdr_country_code") ? _t_cdr_country_code :
-	       !strcasecmp(table->c_str(), "cdr_proxy") ? _t_cdr_proxy :
-	       !strcasecmp(table->c_str(), "cdr_sipresp") ? _t_cdr_sipresp :
-	       !strcasecmp(table->c_str(), "cdr_siphistory") ? _t_cdr_siphistory :
-	       !strcasecmp(table->c_str(), "cdr_rtp") ? _t_cdr_rtp :
-	       !strcasecmp(table->c_str(), "cdr_sdp") ? _t_cdr_sdp :
-	       !strcasecmp(table->c_str(), "cdr_conference") ? _t_cdr_conference : 0);
 }
 
 int Call::detectCallerdByLabelInXml(const char *label) {

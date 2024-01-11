@@ -7,6 +7,7 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <queue>
 #include <map>
 #include <regex.h>
 #include <zlib.h>
@@ -1268,6 +1269,43 @@ public:
 	}
 public:
 	cBTree<bool> filter;
+};
+
+
+class cDbCalls {
+public:
+	struct sDbCallInfo {
+		u_int64_t id;
+		u_int64_t calldate;
+		int32_t sensor_id;
+		bool exists_rtp;
+		int operator == (const sDbCallInfo ci) {
+			return(calldate == ci.calldate &&
+			       sensor_id == ci.sensor_id &&
+			       exists_rtp == ci.exists_rtp);
+		}
+	};
+	struct sDbCall : public sDbCallInfo {
+		string callid;
+	};
+public:
+	cDbCalls(unsigned max_calls = 0, unsigned max_age_calls = 0);
+	void push(const char *callid, u_int64_t calldate, int32_t sensor_id, bool exists_rtp);
+	void push(sDbCall *dbCall);
+	void pop();
+	bool exists(const char *callid, sDbCallInfo *db_call_info = NULL);
+	void lock() {
+		__SYNC_LOCK(_sync);
+	}
+	void unlock() {
+		__SYNC_UNLOCK(_sync);
+	}
+private:
+	unsigned max_calls;
+	unsigned max_age_calls;
+	queue<sDbCall> calls_queue;
+	map<string, sDbCallInfo> calls_map;
+	volatile int _sync;
 };
 
 

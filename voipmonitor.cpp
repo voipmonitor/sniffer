@@ -890,6 +890,7 @@ char cloud_host[256] = "cloud.voipmonitor.org";
 char cloud_token[256] = "";
 bool cloud_router = true;
 unsigned cloud_router_port = 60023;
+string cloud_db_version;
 
 cCR_Receiver_service *cloud_receiver = NULL;
 cCR_ResponseSender *cloud_response_sender = NULL;
@@ -6975,6 +6976,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42456) cConfigItem_string("cloud_token", cloud_token, sizeof(cloud_token)));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cloud_router", &cloud_router));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cloud_router_port", &cloud_router_port));
+			addConfigItem(new FILE_LINE(0) cConfigItem_string("cloud_db_version", &cloud_db_version));
 			addConfigItem(new FILE_LINE(42457) cConfigItem_integer("cloud_activecheck_period", &opt_cloud_activecheck_period));
 		subgroup("server / client");
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_bind", &snifferServerOptions.host));
@@ -8369,15 +8371,17 @@ void set_context_config() {
 		}
 	}
 	
-	if(is_support_for_mysql_new_store()) {
-		if(opt_mysql_enable_set_id && !opt_mysql_enable_new_store) {
-			opt_mysql_enable_new_store = 2;
-		}
-	} else {
-		if(opt_mysql_enable_new_store || opt_mysql_enable_set_id) {
-			opt_mysql_enable_new_store = false;
-			opt_mysql_enable_set_id = false;
-			syslog(LOG_ERR, "option mysql_enable_new_store and mysql_enable_set_id is not suported in your configuration");
+	if(!isCloud()) {
+		if(is_support_for_mysql_new_store()) {
+			if(opt_mysql_enable_set_id && !opt_mysql_enable_new_store) {
+				opt_mysql_enable_new_store = 2;
+			}
+		} else {
+			if(opt_mysql_enable_new_store || opt_mysql_enable_set_id) {
+				opt_mysql_enable_new_store = false;
+				opt_mysql_enable_set_id = false;
+				syslog(LOG_ERR, "option mysql_enable_new_store and mysql_enable_set_id is not suported in your configuration");
+			}
 		}
 	}
 	
@@ -8392,6 +8396,10 @@ void set_context_config() {
 			syslog(LOG_NOTICE, "!!! if the mysql_enable_set_id option is enabled, no one else can write to the database !!!");
 			mysql_enable_set_id_notice = true;
 		}
+	}
+	
+	if(isCloud() && opt_cdr_check_exists_callid) {
+		opt_csv_store_format = true;
 	}
  
 	if(opt_scanpcapdir[0]) {

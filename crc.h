@@ -7,7 +7,7 @@
 
 
 u_int32_t crc32buf(char *buf, size_t len);
-u_int32_t crc32buf(u_char *buf, size_t len) {
+inline u_int32_t crc32buf(u_char *buf, size_t len) {
 	return(crc32buf((char*)buf, len));
 }
 

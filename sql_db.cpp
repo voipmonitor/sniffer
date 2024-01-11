@@ -108,6 +108,7 @@ extern CustomHeaders *custom_headers_sip_msg;
 extern int opt_ptime;
 
 extern bool cloud_db;
+extern string cloud_db_version;
 
 extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferClientOptions snifferClientOptions_charts_cache;
@@ -684,6 +685,8 @@ bool SqlDb::queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDe
 			JsonExport json_keys;
 			if(isCloud()) {
 				json_keys.add("token", cloud_token);
+				extern int opt_cdr_check_exists_callid;
+				json_keys.add("cdr_check_exists_callid", opt_cdr_check_exists_callid);
 			} else {
 				json_keys.add("password", snifferServerClientOptions.password);
 			}
@@ -1854,20 +1857,24 @@ bool SqlDb_mysql::connect(bool createDb, bool mainInit) {
 			if(silentConnect) {
 				setDisableLogError(disableLogErrorOld);
 			}
-			if(mainInit && !isCloud()) {
-				this->query("SHOW VARIABLES LIKE \"version\"");
-				SqlDb_row row;
-				if((row = this->fetchRow())) {
-					this->dbVersion = row[1];
-				}
-				while(this->fetchRow());
-				if(this->conn_showversion) {
-					syslog(LOG_INFO, "connect - db version %s (%i) %s / maximum partitions: %i / connect via %s", 
-					       this->getDbVersionString().c_str(), 
-					       this->getDbVersion(), 
-					       this->getDbName().c_str(), 
-					       this->getMaximumPartitions(),
-					       connect_via_str.c_str());
+			if(mainInit) {
+				if(!isCloud()) {
+					this->query("SHOW VARIABLES LIKE \"version\"");
+					SqlDb_row row;
+					if((row = this->fetchRow())) {
+						this->dbVersion = row[1];
+					}
+					while(this->fetchRow());
+					if(this->conn_showversion) {
+						syslog(LOG_INFO, "connect - db version %s (%i) %s / maximum partitions: %i / connect via %s", 
+						       this->getDbVersionString().c_str(), 
+						       this->getDbVersion(), 
+						       this->getDbName().c_str(), 
+						       this->getMaximumPartitions(),
+						       connect_via_str.c_str());
+					}
+				} else if(!cloud_db_version.empty()) {
+					this->dbVersion = cloud_db_version;
 				}
 			}
 			sql_disable_next_attempt_if_error = 0;
@@ -1908,13 +1915,20 @@ int SqlDb_mysql::multi_off() {
 
 int SqlDb_mysql::getDbMajorVersion() {
 	this->_getDbVersion();
-	if(this->dbVersion.empty() && !isCloud()) {
-		this->query("SHOW VARIABLES LIKE \"version\"");
-		SqlDb_row row = this->fetchRow();
-		if(row) {
-			this->dbVersion = row[1];
+	if(this->dbVersion.empty()) {
+		if(!isCloud()) {
+			this->query("SHOW VARIABLES LIKE \"version\"");
+			SqlDb_row row = this->fetchRow();
+			if(row) {
+				this->dbVersion = row[1];
+				__SYNC_LOCK(this->dbVersion_static_sync);
+				this->dbVersion_static = this->dbVersion;
+				__SYNC_UNLOCK(this->dbVersion_static_sync);
+			}
+		} else if(!cloud_db_version.empty()) {
+			this->dbVersion = cloud_db_version;
 			__SYNC_LOCK(this->dbVersion_static_sync);
-			this->dbVersion_static = this->dbVersion;
+			this->dbVersion_static = cloud_db_version;
 			__SYNC_UNLOCK(this->dbVersion_static_sync);
 		}
 	}
@@ -2019,13 +2033,20 @@ bool SqlDb_mysql::isSupportForDatetimeMs() {
 }
 
 bool SqlDb_mysql::_getDbVersion() {
-	if(this->dbVersion.empty() && !isCloud()) {
-		this->query("SHOW VARIABLES LIKE \"version\"");
-		SqlDb_row row = this->fetchRow();
-		if(row) {
-			this->dbVersion = row[1];
+	if(this->dbVersion.empty()) {
+		if(!isCloud()) {
+			this->query("SHOW VARIABLES LIKE \"version\"");
+			SqlDb_row row = this->fetchRow();
+			if(row) {
+				this->dbVersion = row[1];
+				__SYNC_LOCK(this->dbVersion_static_sync);
+				this->dbVersion_static = this->dbVersion;
+				__SYNC_UNLOCK(this->dbVersion_static_sync);
+			}
+		} else if(!cloud_db_version.empty()) {
+			this->dbVersion = cloud_db_version;
 			__SYNC_LOCK(this->dbVersion_static_sync);
-			this->dbVersion_static = this->dbVersion;
+			this->dbVersion_static = cloud_db_version;
 			__SYNC_UNLOCK(this->dbVersion_static_sync);
 		}
 	}
@@ -3771,9 +3792,10 @@ void MySqlStore_process::__store(list<string> *queries) {
 	string queries_str;
 	list<string> queries_list;
 	list<string> ig;
-	__store_prepare_queries(queries, dbData, NULL,
+	__store_prepare_queries(queries, dbData, NULL, NULL,
 				&queries_str, &queries_list, NULL,
 				useNewStore(), useSetId(), opt_mysql_enable_multiple_rows_insert,
+				0,
 				this->sqlDb->maxAllowedPacket);
 	if(useNewStore() == 2) {
 		if(sverb.store_process_query_compl) {

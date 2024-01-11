@@ -45,22 +45,8 @@ using namespace std;
 
 class SqlDb;
 
-class SqlDb_row {
+class SqlDb_row : public SqlDb_row_def {
 public:
-	enum eInternalFieldType {
-		_ift_na,
-		_ift_string,
-		_ift_int,
-		_ift_int_u,
-		_ift_double,
-		_ift_ip,
-		_ift_calldate,
-		_ift_sql,
-		_ift_cb_old,
-		_ift_cb_string = 0x10,
-		_ift_base      = 0x1F,
-		_ift_null      = 0x20
-	};
 	struct sInternalFieldValue {
 		int type;
 		union {

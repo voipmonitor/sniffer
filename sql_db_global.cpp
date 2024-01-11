@@ -11,6 +11,10 @@
 #include "calltable.h"
 #endif
 
+#ifdef CLOUD_ROUTER_SERVER
+#include "tools_tables_content.h"
+#endif
+
 
 extern char sql_driver[256];
 extern char odbc_driver[256];
@@ -748,17 +752,20 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *
 }
  
 
-void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *sqlDb,
+//#define DEBUG_CDR_CHECK_EXISTS_CALLID true
+
+void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls *dbCalls, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
+			     int cdr_check_exists_callid,
 			     long unsigned maxAllowedPacket) {
 	vector<string> q_delim;
 	q_delim.push_back(_MYSQL_QUERY_END_new);
 	q_delim.push_back(_MYSQL_QUERY_END_SUBST_new);
 	list<string> ig;
 	unsigned counterQueriesWithNextInsertGroup = 0;
+	list<string> queries_delete_list;
 	for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
-		#ifdef CLOUD_ROUTER_CLIENT
 		if(!strncmp(iter->c_str(), "csv", 3)) {
 			cDbTablesContent *tablesContent = new FILE_LINE(0) cDbTablesContent;
 			vector<string> query_vect = split(iter->c_str(), "\n", false, false);
@@ -767,12 +774,13 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 			}
 			string mainTable = tablesContent->getMainTable();
 			if(!mainTable.empty()) {
+				#if CLOUD_ROUTER_CLIENT
 				int store_flags = 0;
 				if(mainTable == "cdr") {
 					int store_flags_columnIndex;
-					store_flags = tablesContent->getValue_int(Call::_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
+					store_flags = tablesContent->getValue_int(_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
 					if(store_flags_columnIndex >= 0) {
-						tablesContent->removeColumn(Call::_t_cdr, store_flags_columnIndex);
+						tablesContent->removeColumn(_t_cdr, store_flags_columnIndex);
 					}
 				}
 				if(!store_flags || (store_flags & Call::_sf_db)) {
@@ -801,12 +809,86 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				} else {
 					delete tablesContent;
 				}
+				#elif CLOUD_ROUTER_SERVER
+				bool use_cdr_check_exists_callid = false;
+				bool skip = false;
+				bool replace_due_to_existence_rtp = false;
+				cDbCalls::sDbCall dbCall;
+				cDbCalls::sDbCall dbCallExists;
+				if(mainTable == "cdr") {
+					int store_flags_columnIndex;
+					tablesContent->getValue_int(_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
+					if(store_flags_columnIndex >= 0) {
+						tablesContent->removeColumn(_t_cdr, store_flags_columnIndex);
+					}
+					if(dbCalls && cdr_check_exists_callid) {
+						use_cdr_check_exists_callid = true;
+						dbCall.callid = tablesContent->getValue_string(_t_cdr_next, "fbasename");
+						dbCall.calldate = atoll(tablesContent->getValue_string(_t_cdr, "calldate"));
+						dbCall.sensor_id = atol(tablesContent->getValue_string(_t_cdr, "id_sensor"));
+						bool a_saddr_null = false;
+						bool b_saddr_null = false;
+						tablesContent->getValue_string(_t_cdr, "a_saddr", &a_saddr_null);
+						tablesContent->getValue_string(_t_cdr, "b_saddr", &b_saddr_null);
+						dbCall.exists_rtp = !a_saddr_null || !b_saddr_null;
+						#if DEBUG_CDR_CHECK_EXISTS_CALLID
+						cout << "callid: " << dbCall.callid << ", "
+						     << "calldate: " << dbCall.calldate << ", "
+						     << "sensor_id: " << dbCall.sensor_id << ", "
+						     << "exists_rtp: " << dbCall.exists_rtp << endl;
+						#endif
+						dbCalls->lock();
+						if(dbCalls->exists(dbCall.callid.c_str(), &dbCallExists)) {
+							if(dbCall.exists_rtp && !dbCallExists.exists_rtp) {
+								replace_due_to_existence_rtp = true;
+								#if DEBUG_CDR_CHECK_EXISTS_CALLID
+								cout << "REPLACE" << endl;
+								#endif
+							} else {
+								dbCalls->pop();
+								dbCalls->unlock();
+								skip = true;
+								#if DEBUG_CDR_CHECK_EXISTS_CALLID
+								cout << "SKIP" << endl;
+								#endif
+							}
+						}
+					}
+				}
+				if(!skip) {
+					tablesContent->substCB(dbData, cb_inserts);
+					u_int64_t main_id = 0;
+					tablesContent->substAI(dbData, &main_id);
+					if(use_cdr_check_exists_callid) {
+						dbCall.id = main_id;
+						#if DEBUG_CDR_CHECK_EXISTS_CALLID
+						cout << "id: " << dbCall.id << endl;
+						#endif
+						dbCalls->push(&dbCall);
+						dbCalls->pop();
+						dbCalls->unlock();
+						if(replace_due_to_existence_rtp) {
+							if(mainTable == "cdr") {
+								string calldate_str = sqlDateTimeString_us2ms(dbCallExists.calldate);
+								queries_delete_list.push_back("delete from cdr where id = " + intToString(dbCallExists.id) + " and " +
+											      "calldate = '" + calldate_str + "'");
+								queries_delete_list.push_back("delete from cdr_next where cdr_id = " + intToString(dbCallExists.id) + " and " +
+											      "calldate = '" + calldate_str + "'");
+							}
+							#if DEBUG_CDR_CHECK_EXISTS_CALLID
+							cout << "remove old id: " << dbCallExists.id << endl;
+							#endif
+						}
+					}
+					tablesContent->insertQuery(&ig, sqlDb);
+				}
+				delete tablesContent;
+				#endif
 			} else {
 				delete tablesContent;
 			}
 			iter++;
 		} else {
-		#endif
 			vector<string> query_vect = split(iter->c_str(), q_delim, false, false, false);
 			bool setIdMainRecord = false;
 			u_int64_t idMainRecord = 0;
@@ -961,9 +1043,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 				}
 			}
 			iter++;
-		#ifdef CLOUD_ROUTER_CLIENT
 		}
-		#endif
 	}
 	#if 1
 	if(ig.size()) {
@@ -1005,6 +1085,11 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *s
 			} else {
 				*queries_str += iter->first + " ) VALUES ( " + sqlEscapeString(values_str) + " )" + _MYSQL_QUERY_END_new;
 			}
+		}
+	}
+	if(queries_delete_list.size()) {
+		for(list<string>::iterator iter = queries_delete_list.begin(); iter != queries_delete_list.end(); iter++) {
+			queries_list->push_back(*iter);
 		}
 	}
 	#else

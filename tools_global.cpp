@@ -2099,3 +2099,55 @@ void cUtfConverter::term() {
 	}
 	init_ok = false;
 }
+
+
+#define DB_CALLS_MAX_CALLS_DEFAULT 100000
+#define DB_CALLS_MAX_AGE_CALLS_DEFAULT ((4*60+10)*60)
+
+cDbCalls::cDbCalls(unsigned max_calls, unsigned max_age_calls) {
+	this->max_calls = max_calls ? max_calls : DB_CALLS_MAX_CALLS_DEFAULT;
+	this->max_age_calls = max_age_calls ? max_age_calls : DB_CALLS_MAX_AGE_CALLS_DEFAULT;
+	_sync = 0;
+}
+
+void cDbCalls::push(const char *callid, u_int64_t calldate, int32_t sensor_id, bool exists_rtp) {
+	sDbCall dbCall;
+	dbCall.callid = callid;
+	dbCall.calldate = calldate;
+	dbCall.sensor_id = sensor_id;
+	dbCall.exists_rtp = exists_rtp;
+	push(&dbCall);
+}
+
+void cDbCalls::push(sDbCall *dbCall) {
+	calls_queue.push(*dbCall);
+	calls_map[dbCall->callid] = *dbCall;
+}
+
+void cDbCalls::pop() {
+	u_int64_t time_s = getTimeS_rdtsc();
+	while(calls_queue.size() > max_calls ||
+	      calls_queue.front().calldate / 1000000ull + max_age_calls < time_s) {
+		sDbCall call = calls_queue.front();
+		calls_queue.pop();
+		map<string, sDbCallInfo>::iterator iter = calls_map.find(call.callid);
+		if(iter != calls_map.end()) {
+			/*
+			cout << "pop callid " << call.callid << endl;
+			*/
+			calls_map.erase(iter);
+		}
+	}
+}
+
+bool cDbCalls::exists(const char *callid, sDbCallInfo *db_call_info) {
+	bool rslt = false;
+	map<string, sDbCallInfo>::iterator iter = calls_map.find(callid);
+	if(iter != calls_map.end()) {
+		rslt = true;
+		if(db_call_info) {
+			*db_call_info = iter->second;
+		}
+	}
+	return(rslt);
+}

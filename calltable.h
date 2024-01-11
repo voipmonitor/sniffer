@@ -125,8 +125,6 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define FLAG_SAVESUBSCRIBEDB		(1 << 26)
 #define FLAG_SAVESUBSCRIBEPCAP		(1 << 27)
 
-#define CDR_NEXT_MAX 10
-
 #define CDR_CHANGE_SRC_PORT_CALLER	(1 << 0)
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
 #define CDR_UNCONFIRMED_BYE		(1 << 2)
@@ -969,18 +967,6 @@ struct sChartsCacheCallData {
 */
 class Call : public CallStructs, public Call_abstract {
 public:
-	enum eTable {
-		_t_cdr = 1,
-		_t_cdr_next = 2,
-		_t_cdr_next_end = 20,
-		_t_cdr_country_code = 21,
-		_t_cdr_proxy,
-		_t_cdr_sipresp,
-		_t_cdr_siphistory,
-		_t_cdr_rtp,
-		_t_cdr_sdp,
-		_t_cdr_conference
-	};
 	enum eStoreFlags {
 		_sf_db = 1,
 		_sf_charts_cache = 2
@@ -2543,8 +2529,6 @@ public:
 					     cEvalFormula::sValue *value, string *table, string *column, void *callData, 
 					     string *child_table, unsigned child_index, cEvalFormula::sOperandReplaceData *ord);
 	int sqlChildTableSize(string *child_table, void *callData);
-	
-	static int getTableEnumIndex(string *table);
 	
 	bool isEmptyCdrRow() {
 		return(cdr.isEmpty());

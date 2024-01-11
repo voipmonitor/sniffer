@@ -162,7 +162,7 @@ void cChartDataItem::add(sChartsCallData *call,
 					}
 				} else {
 					bool connect_duration_null;
-					unsigned int connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+					unsigned int connect_duration = call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 					if(!connect_duration_null) {
 						++this->countConected;
 						this->sumDuration += connect_duration;
@@ -186,7 +186,7 @@ void cChartDataItem::add(sChartsCallData *call,
 				} else {
 					Call::getChartCacheValue(call->tables_content(), _chartType_sipResp, &lsr, NULL, &lsr_null, chartsCache);
 					bool connect_duration_null;
-					call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+					call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 					if(!connect_duration_null ||
 					   (series->ner_lsr_filter && series->ner_lsr_filter->check((unsigned)lsr))) {
 						++this->count;
@@ -235,7 +235,7 @@ void cChartDataItem::add(sChartsCallData *call,
 				}
 			} else {
 				bool connect_duration_null;
-				unsigned int connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+				unsigned int connect_duration = call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 				if(!connect_duration_null) {
 					++this->countConected;
 					if(intervalSeries->param.size() && 
@@ -644,7 +644,7 @@ void cChartDataPool::add(sChartsCallData *call, unsigned call_interval, bool fir
 		if(call->type == sChartsCallData::_call) {
 			connect_duration = call->call()->connect_duration_s();
 		} else {
-			connect_duration = call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration");
+			connect_duration = call->tables_content()->getValue_int(_t_cdr, "connect_duration");
 		}
 		unsigned int duration = calldate_to - calldate_from;
 		unsigned int calldate_from_connected = calldate_from + (duration - connect_duration);
@@ -1100,11 +1100,11 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 						}
 					} else {
 						bool connect_duration_null;
-						call->tables_content()->getValue_int(Call::_t_cdr, "connect_duration", false, &connect_duration_null);
+						call->tables_content()->getValue_int(_t_cdr, "connect_duration", false, &connect_duration_null);
 						if(!connect_duration_null) {
 							++iter_ip->second->count_connected;
 						}
-						int lsr = call->tables_content()->getValue_int(Call::_t_cdr, "lastSIPresponseNum");
+						int lsr = call->tables_content()->getValue_int(_t_cdr, "lastSIPresponseNum");
 						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
 							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
 						}
@@ -1524,7 +1524,7 @@ bool cChartFilter::check(sChartsCallData *call, void *callData, bool ip_comb_v6,
 				if(call->type == sChartsCallData::_call) {
 					cout << call->call()->call_id;
 				} else {
-					cout << call->tables_content()->getValue_str(Call::_t_cdr_next, "fbasename");
+					cout << call->tables_content()->getValue_str(_t_cdr_next, "fbasename");
 				}
 			}
 			cout << " * RSLT: " << rslt << endl;
@@ -1855,8 +1855,8 @@ void cCharts::add(sChartsCallData *call, void *callData, cFiltersCache *filtersC
 		calltime_us = call->call()->calltime_us();
 		callend_us = call->call()->callend_us();
 	} else {
-		calltime_us = call->tables_content()->getValue_int(Call::_t_cdr, "calldate");
-		callend_us = call->tables_content()->getValue_int(Call::_t_cdr, "callend");
+		calltime_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
+		callend_us = call->tables_content()->getValue_int(_t_cdr, "callend");
 	}
 	u_int32_t calltime_s = calltime_us / 1000000;
 	u_int32_t callend_s = callend_us / 1000000;
@@ -2096,13 +2096,13 @@ void cCdrStat::add(sChartsCallData *call) {
 			ip_dst = call->call()->getSipcalledip(call->call()->branch_main());
 		}
 	} else {
-		callbegin_us = call->tables_content()->getValue_int(Call::_t_cdr, "calldate");
-		callend_us = call->tables_content()->getValue_int(Call::_t_cdr, "callend");
+		callbegin_us = call->tables_content()->getValue_int(_t_cdr, "calldate");
+		callend_us = call->tables_content()->getValue_int(_t_cdr, "callend");
 		if(cCdrStat::enableBySrc()) {
-			ip_src = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip");
+			ip_src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
 		}
 		if(cCdrStat::enableByDst()) {
-			ip_dst = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip");
+			ip_dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
 		}
 	}
 	u_int32_t callbegin_s = callbegin_us / 1000000;
@@ -2277,12 +2277,12 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 			}
 		}
 	} else {
-		u.d.src = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip").getIPv4();
-		u.d.dst = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip").getIPv4();
-		int proxy_count = call->tables_content()->getCountRows(Call::_t_cdr_proxy);
+		u.d.src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip").getIPv4();
+		u.d.dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip").getIPv4();
+		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
 		if(proxy_count > 0) {
 			for(int i = 0; i < min((int)(sizeof(u.d.proxy) / sizeof(u.d.proxy[0])), proxy_count); i++) {
-				u.d.proxy[i] = call->tables_content()->getValue_ip(Call::_t_cdr_proxy, "dst", NULL, i).getIPv4();
+				u.d.proxy[i] = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, i).getIPv4();
 			}
 		}
 	}
@@ -2307,13 +2307,13 @@ void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 			proxy[proxies_counter++].clear();
 		}
 	} else {
-		src = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcallerip");
-		dst = call->tables_content()->getValue_ip(Call::_t_cdr, "sipcalledip");
+		src = call->tables_content()->getValue_ip(_t_cdr, "sipcallerip");
+		dst = call->tables_content()->getValue_ip(_t_cdr, "sipcalledip");
 		unsigned proxies_counter = 0;
-		int proxy_count = call->tables_content()->getCountRows(Call::_t_cdr_proxy);
+		int proxy_count = call->tables_content()->getCountRows(_t_cdr_proxy);
 		if(proxy_count > 0) {
 			while(proxies_counter < min((unsigned)(sizeof(proxy) / sizeof(proxy[0])), (unsigned)proxy_count)) {
-				proxy[proxies_counter] = call->tables_content()->getValue_ip(Call::_t_cdr_proxy, "dst", NULL, proxies_counter);
+				proxy[proxies_counter] = call->tables_content()->getValue_ip(_t_cdr_proxy, "dst", NULL, proxies_counter);
 				++proxies_counter;
 			}
 		}

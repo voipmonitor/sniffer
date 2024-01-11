@@ -15,6 +15,24 @@
 using namespace std;
 
 
+class SqlDb_row_def {
+public:
+	enum eInternalFieldType {
+		_ift_na,
+		_ift_string,
+		_ift_int,
+		_ift_int_u,
+		_ift_double,
+		_ift_ip,
+		_ift_calldate,
+		_ift_sql,
+		_ift_cb_old,
+		_ift_cb_string = 0x10,
+		_ift_base      = 0x1F,
+		_ift_null      = 0x20
+	};
+};
+
 class SqlDb_field {
 public:
 	SqlDb_field(const char *field, const char *alias = NULL, bool needEscapeField = true) {
@@ -291,9 +309,10 @@ string MYSQL_CODEBOOK_ID(int type, string value);
 string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd = true);
 
 
-void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, SqlDb *sqlDb,
+void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls *dbCalls, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
+			     int cdr_check_exists_callid,
 			     long unsigned maxAllowedPacket);
 
 
