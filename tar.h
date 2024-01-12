@@ -166,6 +166,7 @@ public:
 	void tar_read(const char *filename, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
 	void tar_read_send_parameters(int client, void *c_client, bool zip);
 	void tar_read_save_parameters(FILE *output_file_handle);
+	void tar_read_check_exists();
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void tar_read_block_ev(char *data);
 	void tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t pos, u_int32_t len);
@@ -250,6 +251,7 @@ private:
 			send_parameters_c_client = NULL;
 			send_parameters_zip = false;
 			output_file_handle = NULL;
+			check_exists = false;
 			null();
 		}
 		void null() {
@@ -300,6 +302,7 @@ private:
 		void *send_parameters_c_client;
 		bool send_parameters_zip;
 		FILE *output_file_handle;
+		bool check_exists;
 		CompressStream *decompressStreamFromLzo;
 		CompressStream *compressStreamToGzip;
 	} readData;

@@ -555,6 +555,11 @@ Tar::tar_read_save_parameters(FILE *output_file_handle) {
 	this->readData.output_file_handle = output_file_handle;
 }
 
+void 
+Tar::tar_read_check_exists() {
+	this->readData.check_exists = true;
+}
+
 bool 
 Tar::decompress_ev(char *data, u_int32_t len) {
 	if(len != T_BLOCKSIZE ||
@@ -654,6 +659,10 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_in
 			     << fileHeader.name
 			     << " size "
 			     << fileHeader.get_size() << endl;
+			if(this->readData.check_exists) {
+				cout << "EXISTS" << endl;
+				this->readData.end = true;
+			}
 		}
 		if(*fileHeader.name && !len) {
 			if((this->readData.filename.length() > TAR_FILENAME_LENGTH - 1 ?
@@ -2349,16 +2358,23 @@ int untar_gui(const char *args) {
 		cerr << "untar: open file " << tarFile << " failed" << endl;
 		return(1);
 	}
-	FILE *outputFileHandle = fopen(outputFile, "wb");
-	if(!outputFileHandle) {
-		cerr << "untar: open output file " << outputFile << " failed" << endl;
-		return(1);
+	FILE *outputFileHandle = NULL;
+	if(strcmp(outputFile, "check_exists")) {
+		outputFileHandle = fopen(outputFile, "wb");
+		if(!outputFileHandle) {
+			cerr << "untar: open output file " << outputFile << " failed" << endl;
+			return(1);
+		}
+		tar.tar_read_save_parameters(outputFileHandle);
+	} else {
+		tar.tar_read_check_exists();
 	}
-	tar.tar_read_save_parameters(outputFileHandle);
 	string destFile_conv = destFile;
 	prepare_string_to_filename((char*)destFile_conv.c_str());
 	tar.tar_read(destFile_conv.c_str(), 0, NULL, tarPos);
-	fclose(outputFileHandle);
+	if(outputFileHandle) {
+		fclose(outputFileHandle);
+	}
 	
 	return(0);
  
