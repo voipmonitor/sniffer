@@ -477,7 +477,7 @@ bool cDtls::findSrtpKeys(vmIP src_ip, vmPort src_port,
 						*direction = pass_direction;
 					}
 					if(node) {
-						*node = true;
+						*node = 2;
 					}
 				}
 			}
