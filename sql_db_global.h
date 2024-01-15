@@ -312,7 +312,9 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd = true);
 void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls *dbCalls, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
+			     #if CLOUD_ROUTER_SERVER
 			     int cdr_check_exists_callid,
+			     #endif
 			     long unsigned maxAllowedPacket);
 
 

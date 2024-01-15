@@ -799,7 +799,8 @@ bool opt_cdr_rtpport = 0;
 bool opt_cdr_rtpsrcport = 0;
 int opt_cdr_check_exists_callid = 0;
 string opt_cdr_check_unique_callid_in_sensors;
-list<int> opt_cdr_check_unique_callid_in_sensors_list;
+set<int> opt_cdr_check_unique_callid_in_sensors_list;
+unsigned opt_cdr_check_exists_callid_cache_max_size = 0;
 bool opt_cdr_check_duplicity_callid_in_next_pass_insert = 0;
 bool opt_message_check_duplicity_callid_in_next_pass_insert = 0;
 int opt_create_old_partitions = 0;
@@ -6534,6 +6535,9 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42265) cConfigItem_yesno("cdr_check_exists_callid", &opt_cdr_check_exists_callid))
 				->addValues("lock:2"));
 			addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_check_unique_callid_in_sensors", &opt_cdr_check_unique_callid_in_sensors));
+				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_check_exists_callid_cache_max_size", &opt_cdr_check_exists_callid_cache_max_size));
+			advanced();
 			addConfigItem(new FILE_LINE(42266) cConfigItem_yesno("cdronlyrtp", &opt_cdronlyrtp));
 			addConfigItem(new FILE_LINE(42267) cConfigItem_integer("callslimit", &opt_callslimit));
 			addConfigItem(new FILE_LINE(42268) cConfigItem_yesno("cdrproxy", &opt_cdrproxy));
@@ -9355,11 +9359,7 @@ void set_cdr_check_unique_callid_in_sensors_list() {
 	vector<string> _list = split(opt_cdr_check_unique_callid_in_sensors.c_str(), split(",|;| ", '|'), true);
 	for(unsigned i = 0; i < _list.size(); i++) {
 		int _idSensor = atoi(_list[i].c_str());
-		if(_idSensor > 0) {
-			opt_cdr_check_unique_callid_in_sensors_list.push_back(_idSensor);
-		} else {
-			opt_cdr_check_unique_callid_in_sensors_list.push_back(-1);
-		}
+		opt_cdr_check_unique_callid_in_sensors_list.insert(_idSensor > 0 ? _idSensor : -1);
 	}
 }
 
@@ -12671,8 +12671,7 @@ int check_set_rtp_threads(int num_rtp_threads) {
 }
 
 bool is_support_for_mysql_new_store() {
-	return(!(opt_cdr_check_exists_callid ||
-		 opt_cdr_check_duplicity_callid_in_next_pass_insert ||
+	return(!(opt_cdr_check_duplicity_callid_in_next_pass_insert ||
 		 opt_message_check_duplicity_callid_in_next_pass_insert));
 }
 
@@ -12797,7 +12796,9 @@ bool useCsvStoreFormat() {
 	       useSetId() && 
 	       opt_mysql_enable_multiple_rows_insert &&
 	       ((is_client() && snifferClientOptions.csv_store_format) ||
-		opt_csv_store_format));
+		opt_csv_store_format ||
+		opt_cdr_check_exists_callid ||
+		opt_cdr_check_unique_callid_in_sensors_list.size()));
 }
 
 bool useChartsCacheInProcessCall() {

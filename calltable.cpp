@@ -7298,7 +7298,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		
 		extern int opt_cdr_check_exists_callid;
 		extern string opt_cdr_check_unique_callid_in_sensors;
-		extern list<int> opt_cdr_check_unique_callid_in_sensors_list;
+		extern set<int> opt_cdr_check_unique_callid_in_sensors_list;
 		extern bool opt_cdr_check_duplicity_callid_in_next_pass_insert;
 		string cdr_callid_lock_name;
 		if(!useNewStore() &&
@@ -7322,7 +7322,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 				if(opt_cdr_check_unique_callid_in_sensors_list.size()) {
 					string inSensors;
 					bool nullSensor = false;
-					for(list<int>::iterator iter = opt_cdr_check_unique_callid_in_sensors_list.begin();
+					for(set<int>::iterator iter = opt_cdr_check_unique_callid_in_sensors_list.begin();
 					    iter != opt_cdr_check_unique_callid_in_sensors_list.end();
 					    iter++) {
 						if(*iter > -1) {

@@ -757,7 +757,9 @@ string sqlEscapeStringBorder(const char *inputStr, char borderChar, const char *
 void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls *dbCalls, SqlDb *sqlDb,
 			     string *queries_str, list<string> *queries_list, list<string> *cb_inserts,
 			     int enable_new_store, bool enable_set_id, bool enable_multiple_rows_insert,
+			     #if CLOUD_ROUTER_SERVER
 			     int cdr_check_exists_callid,
+			     #endif
 			     long unsigned maxAllowedPacket) {
 	vector<string> q_delim;
 	q_delim.push_back(_MYSQL_QUERY_END_new);
@@ -776,33 +778,107 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls
 			if(!mainTable.empty()) {
 				#if CLOUD_ROUTER_CLIENT
 				int store_flags = 0;
+				bool use_cdr_check_exists_callid = false;
+				bool skip = false;
+				bool replace_due_to_existence_rtp = false;
+				cDbCalls::sDbCall dbCall;
+				cDbCalls::sDbCall dbCallExists;
 				if(mainTable == "cdr") {
 					int store_flags_columnIndex;
 					store_flags = tablesContent->getValue_int(_t_cdr, "store_flags", false, NULL, 0, &store_flags_columnIndex);
 					if(store_flags_columnIndex >= 0) {
 						tablesContent->removeColumn(_t_cdr, store_flags_columnIndex);
 					}
+					if(dbCalls) {
+						extern int opt_cdr_check_exists_callid;
+						extern set<int> opt_cdr_check_unique_callid_in_sensors_list;
+						if(opt_cdr_check_exists_callid) {
+							use_cdr_check_exists_callid = true;
+						} else if(opt_cdr_check_unique_callid_in_sensors_list.size()) {
+							int sensor_id = atoi(tablesContent->getValue_string(_t_cdr, "id_sensor"));
+							if(opt_cdr_check_unique_callid_in_sensors_list.find(sensor_id > 0 ? sensor_id : -1) != opt_cdr_check_unique_callid_in_sensors_list.end()) {
+								use_cdr_check_exists_callid = true;
+							}
+						}
+						if(use_cdr_check_exists_callid) {
+							 dbCall.callid = tablesContent->getValue_string(_t_cdr_next, "fbasename");
+							 dbCall.calldate = atoll(tablesContent->getValue_string(_t_cdr, "calldate"));
+							 dbCall.sensor_id = atoi(tablesContent->getValue_string(_t_cdr, "id_sensor"));
+							 bool a_saddr_null = false;
+							 bool b_saddr_null = false;
+							 tablesContent->getValue_string(_t_cdr, "a_saddr", &a_saddr_null);
+							 tablesContent->getValue_string(_t_cdr, "b_saddr", &b_saddr_null);
+							 dbCall.exists_rtp = !a_saddr_null || !b_saddr_null;
+							 #if DEBUG_CDR_CHECK_EXISTS_CALLID
+							 cout << "callid: " << dbCall.callid << ", "
+							      << "calldate: " << dbCall.calldate << ", "
+							      << "sensor_id: " << dbCall.sensor_id << ", "
+							      << "exists_rtp: " << dbCall.exists_rtp << endl;
+							 #endif
+							 dbCalls->lock();
+							 if(dbCalls->exists(dbCall.callid.c_str(), &dbCallExists)) {
+								 if(dbCall.exists_rtp && !dbCallExists.exists_rtp) {
+									 replace_due_to_existence_rtp = true;
+									 #if DEBUG_CDR_CHECK_EXISTS_CALLID
+									 cout << "REPLACE" << endl;
+									 #endif
+								 } else {
+									 dbCalls->pop();
+									 dbCalls->unlock();
+									 skip = true;
+									 #if DEBUG_CDR_CHECK_EXISTS_CALLID
+									 cout << "SKIP" << endl;
+									 #endif
+								 }
+							 }
+						}
+					}
 				}
-				if(!store_flags || (store_flags & Call::_sf_db)) {
-					tablesContent->substCB(dbData, cb_inserts);
-					u_int64_t main_id = 0;
-					tablesContent->substAI(dbData, &main_id);
-					tablesContent->insertQuery(&ig, sqlDb);
-				}
-				if(store_flags & Call::_sf_charts_cache) {
-					if(existsRemoteChartServer()) {
-						extern MySqlStore *sqlStore;
-						sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE, 0);
-						delete tablesContent;
-					} else if(opt_charts_cache) {
-						extern Calltable *calltable;
-						calltable->lock_calls_charts_cache_queue();
-						#if DEBUG_STORE_COUNT
-						extern map<int, u_int64_t> _charts_cache_cnt;
-						++_charts_cache_cnt[0];
-						#endif
-						calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
-						calltable->unlock_calls_charts_cache_queue();
+				if(!skip) {
+					if(!store_flags || (store_flags & Call::_sf_db)) {
+						tablesContent->substCB(dbData, cb_inserts);
+						u_int64_t main_id = 0;
+						tablesContent->substAI(dbData, &main_id);
+						if(use_cdr_check_exists_callid) {
+							dbCall.id = main_id;
+							#if DEBUG_CDR_CHECK_EXISTS_CALLID
+							cout << "id: " << dbCall.id << endl;
+							#endif
+							dbCalls->push(&dbCall);
+							dbCalls->pop();
+							dbCalls->unlock();
+							if(replace_due_to_existence_rtp) {
+								if(mainTable == "cdr") {
+									string calldate_str = sqlDateTimeString_us2ms(dbCallExists.calldate);
+									queries_delete_list.push_back("delete from cdr where id = " + intToString(dbCallExists.id) + " and " +
+												      "calldate = '" + calldate_str + "'");
+									queries_delete_list.push_back("delete from cdr_next where cdr_id = " + intToString(dbCallExists.id) + " and " +
+												      "calldate = '" + calldate_str + "'");
+								}
+								#if DEBUG_CDR_CHECK_EXISTS_CALLID
+								cout << "remove old id: " << dbCallExists.id << endl;
+								#endif
+							}
+						}
+						tablesContent->insertQuery(&ig, sqlDb);
+					}
+					if(store_flags & Call::_sf_charts_cache) {
+						if(existsRemoteChartServer()) {
+							extern MySqlStore *sqlStore;
+							sqlStore->query_lock(iter->c_str(), STORE_PROC_ID_CHARTS_CACHE_REMOTE, 0);
+							delete tablesContent;
+						} else if(opt_charts_cache) {
+							extern Calltable *calltable;
+							calltable->lock_calls_charts_cache_queue();
+							#if DEBUG_STORE_COUNT
+							extern map<int, u_int64_t> _charts_cache_cnt;
+							++_charts_cache_cnt[0];
+							#endif
+							calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_tables_content, tablesContent));
+							calltable->unlock_calls_charts_cache_queue();
+						} else {
+							delete tablesContent;
+						}
 					} else {
 						delete tablesContent;
 					}
@@ -825,7 +901,7 @@ void __store_prepare_queries(list<string> *queries, cSqlDbData *dbData, cDbCalls
 						use_cdr_check_exists_callid = true;
 						dbCall.callid = tablesContent->getValue_string(_t_cdr_next, "fbasename");
 						dbCall.calldate = atoll(tablesContent->getValue_string(_t_cdr, "calldate"));
-						dbCall.sensor_id = atol(tablesContent->getValue_string(_t_cdr, "id_sensor"));
+						dbCall.sensor_id = atoi(tablesContent->getValue_string(_t_cdr, "id_sensor"));
 						bool a_saddr_null = false;
 						bool b_saddr_null = false;
 						tablesContent->getValue_string(_t_cdr, "a_saddr", &a_saddr_null);

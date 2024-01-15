@@ -2101,7 +2101,11 @@ void cUtfConverter::term() {
 }
 
 
+#if CLOUD_ROUTER_CLIENT
+#define DB_CALLS_MAX_CALLS_DEFAULT 1000000
+#elif CLOUD_ROUTER_SERVER
 #define DB_CALLS_MAX_CALLS_DEFAULT 100000
+#endif
 #define DB_CALLS_MAX_AGE_CALLS_DEFAULT ((4*60+10)*60)
 
 cDbCalls::cDbCalls(unsigned max_calls, unsigned max_age_calls) {

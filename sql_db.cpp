@@ -140,6 +140,7 @@ sExistsColumns existsColumns;
 SqlDb::eSupportPartitions supportPartitions = SqlDb::_supportPartitions_ok;
 
 cSqlDbData *dbData;
+cDbCalls *dbCalls;
 
 volatile int partitionsServiceIsInProgress = 0;
 
@@ -3792,10 +3793,9 @@ void MySqlStore_process::__store(list<string> *queries) {
 	string queries_str;
 	list<string> queries_list;
 	list<string> ig;
-	__store_prepare_queries(queries, dbData, NULL, NULL,
+	__store_prepare_queries(queries, dbData, dbCalls, NULL,
 				&queries_str, &queries_list, NULL,
 				useNewStore(), useSetId(), opt_mysql_enable_multiple_rows_insert,
-				0,
 				this->sqlDb->maxAllowedPacket);
 	if(useNewStore() == 2) {
 		if(sverb.store_process_query_compl) {
@@ -11169,18 +11169,26 @@ volatile int sCreatePartitions::in_progress = 0;
 
 void dbDataInit(SqlDb *sqlDb) {
 	cSqlDbData *_dbData = new FILE_LINE(0) cSqlDbData();
+	extern unsigned opt_cdr_check_exists_callid_cache_max_size;
+	extern int absolute_timeout;
+	cDbCalls *_dbCalls = new FILE_LINE(0) cDbCalls(opt_cdr_check_exists_callid_cache_max_size, absolute_timeout + 10 * 60);
 	if(!opt_nocdr) {
 		_dbData->init(!isCloud() && !is_client() && !is_sender() &&
 			     !is_read_from_file_simple(), 
 			     is_server() ? 0 : 1000000, sqlDb);
 	}
 	dbData = _dbData;
+	dbCalls = _dbCalls;
 }
 
 void dbDataTerm() {
 	if(dbData) {
 		delete dbData;
 		dbData = NULL;
+	}
+	if(dbCalls) {
+		delete dbCalls;
+		dbCalls = NULL;
 	}
 }
 
