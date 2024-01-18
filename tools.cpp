@@ -9459,7 +9459,6 @@ pid_t findMysqlProcess(void) {
 		if(vm_pexec((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$'").c_str(), &out) && out.size()) {
 			int mysql_pid = atoi((char*)out);
 			if(mysql_pid > 0) {
-				cout << " **** " << mysql_pid << endl;
 				return(mysql_pid);
 			}
 		}
