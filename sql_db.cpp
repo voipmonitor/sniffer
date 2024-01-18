@@ -5525,14 +5525,10 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	string partHourName;
 	string limitHourNext;
 	string partHourNextName;
-	if(opt_cdr_partition) {
-		partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
-		partMonthName = this->getPartMonthName(&limitMonth);
-		if(opt_cdr_partition_by_hours) {
-			partHourName = this->getPartHourName(&limitHour);
-			partHourNextName = this->getPartHourName(&limitHourNext, 1);
-		}
-	}
+	partDayName = this->getPartDayName(&limitDay, opt_create_old_partitions > 0 ? -opt_create_old_partitions : 0);
+	partMonthName = this->getPartMonthName(&limitMonth);
+	partHourName = this->getPartHourName(&limitHour);
+	partHourNextName = this->getPartHourName(&limitHourNext, 1);
 	
 	bool okTableSensorConfig = false;
 	if(this->existsTable("filter_ip")) {
@@ -7305,6 +7301,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
 	if(opt_ipaccount) {
+	 
 	this->query(string(
 	"CREATE TABLE IF NOT EXISTS `ipacc` (\
 			`saddr` ") + VM_IPV6_TYPE_MYSQL_COLUMN + " NOT NULL,\
@@ -7326,8 +7323,135 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `proto` (`proto`),\
 		KEY `interval_time` (`interval_time`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
-			string(" PARTITION BY RANGE COLUMNS(interval_time)(\
-				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)");
+	(opt_cdr_partition_oldver ?
+		string(" PARTITION BY RANGE (to_days(interval_time))(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+		string(" PARTITION BY RANGE COLUMNS(interval_time)(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)"));
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS ipacc_agr_interval (\
+			interval_time datetime,\
+			addr ")  + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+			customer_id int unsigned,\
+			proto smallint unsigned,\
+			port smallint unsigned,\
+			traffic_in bigint,\
+			traffic_out bigint,\
+			traffic_sum bigint,\
+			packets_in bigint,\
+			packets_out bigint,\
+			packets_sum bigint,\
+			traffic_voip_in bigint,\
+			traffic_voip_out bigint,\
+			traffic_voip_sum bigint,\
+			packets_voip_in bigint,\
+			packets_voip_out bigint,\
+			packets_voip_sum bigint,\
+		primary key (interval_time, addr, customer_id, proto, port)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition_oldver ?
+		string(" PARTITION BY RANGE (to_days(interval_time))(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+		string(" PARTITION BY RANGE COLUMNS(interval_time)(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)"));
+	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS ipacc_agr_hour (\
+			time_hour datetime,\
+			addr ")  + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+			customer_id int unsigned,\
+			proto smallint unsigned,\
+			port smallint unsigned,\
+			traffic_in bigint,\
+			traffic_out bigint,\
+			traffic_sum bigint,\
+			packets_in bigint,\
+			packets_out bigint,\
+			packets_sum bigint,\
+			traffic_voip_in bigint,\
+			traffic_voip_out bigint,\
+			traffic_voip_sum bigint,\
+			packets_voip_in bigint,\
+			packets_voip_out bigint,\
+			packets_voip_sum bigint,\
+		primary key (time_hour, addr, customer_id, proto, port),\
+		index idx_addr (addr),\
+		index idx_cust (customer_id),\
+		index idx_traffic_sum (traffic_sum),\
+		index idx_traffic_voip_sum (traffic_voip_sum)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition_oldver ?
+		string(" PARTITION BY RANGE (to_days(time_hour))(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+		string(" PARTITION BY RANGE COLUMNS(time_hour)(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)"));
+
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS ipacc_agr2_hour (\
+			time_hour datetime,\
+			addr ")  + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+			customer_id int unsigned,\
+			addr2 "  + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+			proto smallint unsigned,\
+			port smallint unsigned,\
+			traffic_in bigint,\
+			traffic_out bigint,\
+			traffic_sum bigint,\
+			packets_in bigint,\
+			packets_out bigint,\
+			packets_sum bigint,\
+			traffic_voip_in bigint,\
+			traffic_voip_out bigint,\
+			traffic_voip_sum bigint,\
+			packets_voip_in bigint,\
+			packets_voip_out bigint,\
+			packets_voip_sum bigint,\
+			primary key (time_hour, addr, customer_id, addr2, proto, port),\
+		index idx_addr (addr),\
+		index idx_cust (customer_id),\
+		index idx_addr12 (addr, addr2),\
+		index idx_cust_addr2 (customer_id, addr2),\
+		index idx_traffic_sum (traffic_sum),\
+		index idx_traffic_voip_sum (traffic_voip_sum)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition_oldver ?
+		string(" PARTITION BY RANGE (to_days(time_hour))(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+		string(" PARTITION BY RANGE COLUMNS(time_hour)(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)"));
+	 
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS ipacc_agr_day (\
+			date_day date,\
+			addr ")  + VM_IPV6_TYPE_MYSQL_COLUMN + ",\
+			customer_id int unsigned,\
+			proto smallint unsigned,\
+			port smallint unsigned,\
+			traffic_in bigint,\
+			traffic_out bigint,\
+			traffic_sum bigint,\
+			packets_in bigint,\
+			packets_out bigint,\
+			packets_sum bigint,\
+			traffic_voip_in bigint,\
+			traffic_voip_out bigint,\
+			traffic_voip_sum bigint,\
+			packets_voip_in bigint,\
+			packets_voip_out bigint,\
+			packets_voip_sum bigint,\
+			primary key (date_day, addr, customer_id, proto, port),\
+			index idx_addr (addr),\
+			index idx_cust (customer_id),\
+			index idx_traffic_sum (traffic_sum),\
+			index idx_traffic_voip_sum (traffic_voip_sum)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
+	(opt_cdr_partition_oldver ?
+		string(" PARTITION BY RANGE (to_days(date_day))(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitMonth + "')) engine innodb)" :
+		string(" PARTITION BY RANGE COLUMNS(date_day)(\
+			 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitMonth + "') engine innodb)"));
+	
 	}
 
 	this->query(
@@ -7874,11 +7998,11 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 		if(isCloud()) {
 			this->createProcedure(
 			"begin\
-			    call create_partition('ipacc', 'day', next_days);\
-			    call create_partition('ipacc_agr_interval', 'day', next_days);\
-			    call create_partition('ipacc_agr_hour', 'day', next_days);\
-			    call create_partition('ipacc_agr2_hour', 'day', next_days);\
-			    call create_partition('ipacc_agr_day', 'month', next_days);\
+			    call create_partition_v3('ipacc', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3('ipacc_agr_interval', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3('ipacc_agr_hour', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3('ipacc_agr2_hour', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3('ipacc_agr_day', 'month', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
 			 end",
 			"create_partitions_ipacc", "(next_days int)", true);
 			this->query(
@@ -7896,11 +8020,11 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 		} else {
 			this->createProcedure(
 			"begin\
-			    call create_partition(database_name, 'ipacc', 'day', next_days);\
-			    call create_partition(database_name, 'ipacc_agr_interval', 'day', next_days);\
-			    call create_partition(database_name, 'ipacc_agr_hour', 'day', next_days);\
-			    call create_partition(database_name, 'ipacc_agr2_hour', 'day', next_days);\
-			    call create_partition(database_name, 'ipacc_agr_day', 'month', next_days);\
+			    call create_partition_v3(database_name, 'ipacc', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3(database_name, 'ipacc_agr_interval', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3(database_name, 'ipacc_agr_hour', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3(database_name, 'ipacc_agr2_hour', 'day', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
+			    call create_partition_v3(database_name, 'ipacc_agr_day', 'month', next_days, " + string(opt_cdr_partition_oldver? "true" : "false") + ");\
 			 end",
 			"create_partitions_ipacc", "(database_name char(100), next_days int)", true);
 			this->query(string(
