@@ -9436,16 +9436,22 @@ long getSwapUsage(int pid) {
 }
 
 pid_t findMysqlProcess(void) {
-	char buff[16];
-	FILE *cmd_pipe = popen("pgrep '(mysqld|mariadbd)$'", "r");
-	int retval = 0;
-	if(cmd_pipe) {
-		if (fgets(buff, sizeof(buff), cmd_pipe)) {
-			retval = atoi(buff);
+	int mysql_pid = 0;
+	for(int i = 0; i < 2 && !mysql_pid; i++) {
+		FILE *cmd_pipe = popen((string("pgrep ") + (i == 0 ? "mysqld" : "mariadbd")).c_str(), "r");
+		if(cmd_pipe) {
+			char buff[256];
+			int lines = 0;
+			while(fgets(buff, sizeof(buff), cmd_pipe)) {
+				++lines;
+				if(lines == 1) {
+					mysql_pid = atoi(buff);
+				}
+			}
+			pclose(cmd_pipe);
 		}
-		pclose(cmd_pipe);
 	}
-	return(retval);
+	return(mysql_pid);
 }
 
 /* we have 10sec loop */
