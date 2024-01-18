@@ -9436,6 +9436,7 @@ long getSwapUsage(int pid) {
 }
 
 pid_t findMysqlProcess(void) {
+	/*
 	int mysql_pid = 0;
 	for(int i = 0; i < 2 && !mysql_pid; i++) {
 		FILE *cmd_pipe = popen((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$' 2>&1").c_str(), "r");
@@ -9452,6 +9453,18 @@ pid_t findMysqlProcess(void) {
 		}
 	}
 	return(mysql_pid);
+	*/
+	for(int i = 0; i < 2; i++) {
+		SimpleBuffer out;
+		if(vm_pexec((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$'").c_str(), &out) && out.size()) {
+			int mysql_pid = atoi((char*)out);
+			if(mysql_pid > 0) {
+				cout << " **** " << mysql_pid << endl;
+				return(mysql_pid);
+			}
+		}
+	}
+	return(0);
 }
 
 /* we have 10sec loop */
