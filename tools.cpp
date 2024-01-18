@@ -9438,7 +9438,7 @@ long getSwapUsage(int pid) {
 pid_t findMysqlProcess(void) {
 	int mysql_pid = 0;
 	for(int i = 0; i < 2 && !mysql_pid; i++) {
-		FILE *cmd_pipe = popen((string("pgrep ") + (i == 0 ? "mysqld" : "mariadbd")).c_str(), "r");
+		FILE *cmd_pipe = popen((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$'").c_str(), "r");
 		if(cmd_pipe) {
 			char buff[256];
 			int lines = 0;
