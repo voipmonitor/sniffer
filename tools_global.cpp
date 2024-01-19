@@ -309,7 +309,7 @@ cCpuCoreInfo::cCpuCoreInfo() {
 void cCpuCoreInfo::load() {
 	map_cpu_core_info.clear();
 	FILE *cmd_pipe;
-	cmd_pipe = popen("lscpu -p", "r");
+	cmd_pipe = popen("lscpu -p", "r"); // TODO: create an alternative using vm_pexec
 	if(cmd_pipe) {
 		vector<string> columns;
 		char bufRslt[512];
@@ -401,7 +401,7 @@ int cCpuCoreInfo::getHT_index(int cpu) {
 int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice) {
 	int main_pid = getpid();
 	vector<int> other_processes;
-	FILE *cmd_pipe = popen("ps -ax -o pid,tid,cmd", "r");
+	FILE *cmd_pipe = popen("ps -ax -o pid,tid,cmd", "r"); // TODO: create an alternative using vm_pexec
 	if(cmd_pipe) {
 		char buffRslt[512];
 		while(fgets(buffRslt, 512, cmd_pipe)) {
@@ -1897,6 +1897,27 @@ vmIP cResolver::resolve_std(const char *host, vector<vmIP> *ips) {
 
 vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 	vmIP ip;
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out;
+	if(vm_pexec((string("host ") + (ips ? "-t A " : "") + host).c_str(), &out) && out.size()) {
+		vector<string> try_ip = split((char*)out, split(",|;|\t| |\n", '|'), true);
+		bool okIP = false;
+		for(unsigned i = 0; !okIP && i < try_ip.size(); i++) {
+			vmIP _ip;
+			if (_ip.setFromString(try_ip[i].c_str())) {
+				syslog(LOG_NOTICE, "cmd host resolve host %s to %s", host, _ip.getString().c_str());
+				if (!ip.isSet()) {
+					ip = _ip;
+				}
+				if (ips) {
+					ips->push_back(_ip);
+				} else {
+					okIP = true;
+				}
+			}
+		}
+	}
+	#else
 	FILE *cmd_pipe;
 	if (ips) {
 		cmd_pipe = popen((string("host ") + host + " 2>/dev/null").c_str(), "r");
@@ -1925,6 +1946,7 @@ vmIP cResolver::resolve_by_system_host(const char *host, vector<vmIP> *ips) {
 		}
 		pclose(cmd_pipe);
 	}
+	#endif
 	if (ips && ips->size() > 1) {
 		sort_ips_by_type(ips);
 		ip = (*ips)[0];

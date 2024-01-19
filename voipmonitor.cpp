@@ -3524,6 +3524,9 @@ int main(int argc, char *argv[]) {
 	pcapstat.ps_ifdrop = 0;
 
 	signal(SIGPIPE, SIG_IGN);
+	signal(SIGINT,sigint_handler);
+	signal(SIGTERM,sigterm_handler);
+	signal(SIGCHLD,sigchld_handler);
 
 	/* parse arguments */
 
@@ -3972,9 +3975,6 @@ int main(int argc, char *argv[]) {
 		return(0);
 	}
 
-	signal(SIGINT,sigint_handler);
-	signal(SIGTERM,sigterm_handler);
-	signal(SIGCHLD,sigchld_handler);
 #ifdef BACKTRACE
 	if(opt_bt_sighandler_enable && (opt_fork || sverb.enable_bt_sighandler) && !is_read_from_file() && !is_set_gui_params()) {
 		struct sigaction sa;
@@ -4673,6 +4673,8 @@ int main_init_read() {
 	if(opt_fork) {
 		vm_pthread_create("defered service",
 				  &defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
+	} else {
+		dns_lookup_common_hostnames();
 	}
 	
 	// start thread processing queued cdr and sql queue - supressed if run as sender

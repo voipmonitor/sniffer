@@ -2721,7 +2721,7 @@ int VmCodecs::getVersion(string path) {
 		return(-1);
 	}
 	int rslt = -1;
-	FILE *cmd_pipe = popen((path + (path.empty() ? "" : "/") + "vmcodecs --version 2>&1").c_str(), "r");
+	FILE *cmd_pipe = popen((path + (path.empty() ? "" : "/") + "vmcodecs --version 2>&1").c_str(), "r"); // TODO: create an alternative using vm_pexec
 	if(cmd_pipe) {
 		char buffRslt[512] = "";
 		if(fgets(buffRslt, 512, cmd_pipe)) {
@@ -3015,36 +3015,66 @@ int findPIDinPSline (char *line) {
 }
 
 bool binaryFileExists(const char *cmd) {
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out, err;
+	vm_pexec((string("which ") + cmd).c_str(), &out, &err);
+	return(strstr((char*)out, "which:") || strstr((char*)err, "which:") ? false : true);
+	#else
 	FILE *cmd_pipe = popen((string("which ") + cmd + " 2>&1").c_str(), "r");
 	char buffRslt[512];
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);
 	return(strstr(buffRslt, "which:") ? false : true);
+	#endif
 }
 
 bool binaryFilePresence(const char *cmd, const char *not_exist_searchstr) {
-	FILE *cmd_pipe = popen(cmd, "r");
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out, err;
+	if(!vm_pexec(cmd, &out, &err)) {
+		return(false);
+	}
+	return(strstr((char*)out, not_exist_searchstr) || strstr((char*)err, not_exist_searchstr) ? false : true);
+	#else
+	FILE *cmd_pipe = popen((string(cmd) + " 2>&1").c_str(), "r");
 	char buffRslt[512];
 	fgets(buffRslt, 512, cmd_pipe);
 	pclose(cmd_pipe);
 	return(strstr(buffRslt, not_exist_searchstr) ? false : true);
+	#endif
 }
 
 bool isBashPresent(void) {
-	return(binaryFilePresence("bash --version 2>&1", " bash:"));
+	return(binaryFilePresence("bash --version", " bash:"));
 }
 
 bool isPSrightVersion(void) {
-	return(binaryFilePresence("ps -V 2>&1", "ps:"));
+	return(binaryFilePresence("ps -V", "ps:"));
 }
 
 bool isEthtoolInstalled(void) {
-	return(binaryFilePresence("ethtool --version 2>&1", " ethtool:"));
+	return(binaryFilePresence("ethtool --version", " ethtool:"));
 }
 
 list<int> getPids(string app, string grep_search) {
-	string cmd;
 	list<int> pids;
+	#if PREFER_VM_PEXEC && !defined FREEBSD
+	string cmd = "ps -w -C '" + app.substr(0, 15) + "' -o pid,args";
+	SimpleBuffer out;
+	if(vm_pexec(cmd.c_str(), &out) && out.size()) {
+		vector<string> out_v = split((char*)out, '\n');
+		for(unsigned i = 0; i < out_v.size(); i++) {
+			if(strcasestr(out_v[i].c_str(), grep_search.c_str()) &&
+			   !strcasestr(out_v[i].c_str(), "<defunct>")) {
+				int pid = findPIDinPSline((char*)out_v[i].c_str());
+				if(pid) {
+					pids.push_back(pid);
+				}
+			}
+		}
+	}
+	#else
+	string cmd;
 	char buffRslt[512];
 #ifdef FREEBSD
 	cmd = "ps -a -w -x -o pid,comm,args | grep -E '^ {0,}[[:digit:]]+ " + app + " ' | grep '" + grep_search + "'";
@@ -3061,14 +3091,27 @@ list<int> getPids(string app, string grep_search) {
 		}
 	}
 	pclose(cmd_pipe);
+	#endif
 	return(pids);
 }
 
 bool existsPidProcess(int pid) {
-	string cmd = "ps -p " + intToString(pid) + " -o pid";
-	char buffRslt[512];
 	bool exists = false;
+	string cmd = "ps -p " + intToString(pid) + " -o pid";
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out;
+	if(vm_pexec(cmd.c_str(), &out) && out.size()) {
+		vector<string> out_v = split((char*)out, '\n');
+		for(unsigned i = 0; i < out_v.size(); i++) {
+			if(findPIDinPSline((char*)out_v[i].c_str()) == pid) {
+				exists = true;
+				break;
+			}
+		}
+	}
+	#endif
 	FILE *cmd_pipe = popen(cmd.c_str(), "r");
+	char buffRslt[512];
 	while(fgets(buffRslt, 512, cmd_pipe)) {
 		if(findPIDinPSline(buffRslt) == pid) {
 			exists = true;
@@ -6313,7 +6356,7 @@ bool vm_pexec(const char *cmdLine, SimpleBuffer *out, SimpleBuffer *err, int *ex
 		}
 		if(execvp(exec_args[0], exec_args) == -1) {
 			char errmessage[1000];
-			snprintf(errmessage, sizeof(errmessage), "exec failed: %s", exec_args[0]);
+			snprintf(errmessage, sizeof(errmessage), "exec failed: %s: command not found", exec_args[0]);
 			write(2, errmessage, strlen(errmessage));
 			kill(getpid(), SIGKILL);
 		}
@@ -9345,36 +9388,65 @@ bool file_put_contents(const char *filename, SimpleBuffer *content, string *erro
 	return(true);
 }
 
-bool getInterfaceOption(const char *param, const char *searchstr, const char *iface, char sep, char *result) {
-	char buff[512];
-	char *ret;
-	snprintf(buff, sizeof(buff), "ethtool %s %s 2>&1", param, iface);
-	FILE *cmd_pipe = popen(buff, "r");
-	do {
-		if(!fgets(buff, 512, cmd_pipe)) {
-			ret = NULL;
-			break;
-		}
-	} while (!(ret = strstr(buff, searchstr)));
-	pclose(cmd_pipe);
-	if (ret) {
-		char *p = strrchr(buff, sep);
-		if(p) {
-			strncpy(result, ++p, 512);
-			return(true);
+string getInterfaceOption(const char *param, const char *searchstr, const char *iface, char *sep = " \t") {
+	char cmd[512];
+	snprintf(cmd, sizeof(cmd), "ethtool %s %s", param, iface);
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out;
+	if(vm_pexec(cmd, &out) && out.size()) {
+		vector<string> out_v = split((char*)out, '\n');
+		for(unsigned i = 0; i < out_v.size(); i++) {
+			if(out_v[i].find(searchstr) != string::npos) {
+				size_t pos_par = 0;
+				while(pos_par < out_v[i].length() && !strchr(sep, (out_v[i][pos_par]))) {
+					++pos_par;
+				}
+				while(pos_par < out_v[i].length() && strchr(sep, (out_v[i][pos_par]))) {
+					++pos_par;
+				}
+				if(pos_par < out_v[i].length()) {
+					return(out_v[i].substr(pos_par));
+				}
+				break;
+			}
 		}
 	}
+	#else
+	FILE *cmd_pipe = popen((string(cmd) + " 2>&1").c_str(), "r");
+	char buff[512];
+	while(fgets(buff, 512, cmd_pipe)) {
+		if(strstr(buff, searchstr)) {
+			char *p = buff;
+			while(*p && !strchr(sep, *p)) {
+				++p;
+			}
+			while(*p && strchr(sep, *p)) {
+				++p;
+			}
+			if(*p) {
+				pclose(cmd_pipe);
+				return(p);
+			}
+			break;
+		}
+	}
+	pclose(cmd_pipe);
+	#endif
 	printf("Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.\n", param, iface);
 	syslog(LOG_NOTICE, "Can't get value from 'ethtool %s %s'. This is not a fatal error. Some NICs don't support it.", param, iface);
-	return(false);
+	return("");
 }
 
 void setInterfaceOption(const char *param, const char *option, const char *iface, int value) {
 	char cmd[512];
-	int retval;
-	string buff;
-	snprintf(cmd, sizeof(cmd), "ethtool %s %s %s %i 2>&1", param, iface, option, value);
-	buff = pexec(cmd, &retval);
+	snprintf(cmd, sizeof(cmd), "ethtool %s %s %s %i", param, iface, option, value);
+	int retval = -1;
+	#if PREFER_VM_PEXEC
+	SimpleBuffer out;
+	vm_pexec(cmd, &out, NULL, &retval);
+	#else
+	pexec((char*)(string(cmd) + " 2>&1").c_str(), &retval);
+	#endif
 	if (retval == 0 || (retval / 0xff) == 80 /* same value */) {
 		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
 		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
@@ -9394,15 +9466,17 @@ void handleInterfaceOptions(void) {
 		return;
 	}
 	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
-		char rslt[512];
-		if(getInterfaceOption("-g", "RX:", (*iface).c_str(), '\t', rslt)) {
-			int maxval = atoi(rslt);
+		string rslt;
+		rslt = getInterfaceOption("-g", "RX:", (*iface).c_str());
+		if(!rslt.empty()) {
+			int maxval = atoi(rslt.c_str());
 			if (maxval > 0) {
 				setInterfaceOption("-G", "rx", (*iface).c_str(), maxval);
 			}
 		}
-		if(getInterfaceOption("-c", "rx-usecs:", (*iface).c_str(), ' ', rslt)) {
-			int curval = atoi(rslt);
+		rslt = getInterfaceOption("-c", "rx-usecs:", (*iface).c_str());
+		if(!rslt.empty()) {
+			int curval = atoi(rslt.c_str());
 			if(curval < 500) {
 				setInterfaceOption("-C", "rx-usecs", (*iface).c_str(), 1022);
 			}
@@ -9436,7 +9510,18 @@ long getSwapUsage(int pid) {
 }
 
 pid_t findMysqlProcess(void) {
-	/*
+	#if PREFER_VM_PEXEC
+	for(int i = 0; i < 2; i++) {
+		SimpleBuffer out;
+		if(vm_pexec((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$'").c_str(), &out) && out.size()) {
+			int mysql_pid = atoi((char*)out);
+			if(mysql_pid > 0) {
+				return(mysql_pid);
+			}
+		}
+	}
+	return(0);
+	#else
 	int mysql_pid = 0;
 	for(int i = 0; i < 2 && !mysql_pid; i++) {
 		FILE *cmd_pipe = popen((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$' 2>&1").c_str(), "r");
@@ -9453,17 +9538,7 @@ pid_t findMysqlProcess(void) {
 		}
 	}
 	return(mysql_pid);
-	*/
-	for(int i = 0; i < 2; i++) {
-		SimpleBuffer out;
-		if(vm_pexec((string("pgrep '") + (i == 0 ? "mysqld" : "mariadbd") + "$'").c_str(), &out) && out.size()) {
-			int mysql_pid = atoi((char*)out);
-			if(mysql_pid > 0) {
-				return(mysql_pid);
-			}
-		}
-	}
-	return(0);
+	#endif
 }
 
 /* we have 10sec loop */

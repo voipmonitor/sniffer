@@ -69,5 +69,7 @@
 
 #define SEPARATE_HEAP_FOR_HASHTABLE true
 
+#define PREFER_VM_PEXEC true
+
 
 #endif //VOIPMONITOR_DEFINE_H

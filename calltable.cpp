@@ -15858,7 +15858,7 @@ bool php_keycheck(string keycheck, string input, string *output, string *error) 
 		input.resize(pos_endl);
 	}
 	string cmd = "php " + keycheck + " \"" + input + "\"";
-	FILE *fp = popen(cmd.c_str(), "r");
+	FILE *fp = popen(cmd.c_str(), "r"); // TODO: create an alternative using vm_pexec
 	if(fp == NULL) {
 		*error = "failed to run command [" +  ("php " + keycheck) + "]";
 		return(false);

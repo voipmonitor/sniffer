@@ -1879,7 +1879,7 @@ bool ManagerClientThread_screen_popup::parseUserPassword() {
 			strcpy(rsltString, "login_failed error:[[Please set php_path parameter in voipmonitor.conf.]]\n");
 		} else {
 			string cmd = string("php ") + opt_php_path + "/php/run.php checkScreenPopupLicense -k " + key;
-			FILE *fp = popen(cmd.c_str(), "r");
+			FILE *fp = popen(cmd.c_str(), "r"); // TODO: create an alternative using vm_pexec
 			if(fp == NULL) {
 				rslt = false;
 				strcpy(rsltString, "login_failed error:[[Failed to run php checkScreenPopupLicense.]]\n");
