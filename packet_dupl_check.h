@@ -72,10 +72,12 @@ struct sPacketDuplCheckProc {
 			  crc32(dc->crc, data, len);
 	}
 	inline void data(void *data, unsigned len) {
-		if(_type == 1) {
-			data_md5((u_char*)data, len);
-		} else {
-			data_crc((u_char*)data, len);
+		if(len <= 0xFFFFF) {
+			if(_type == 1) {
+				data_md5((u_char*)data, len);
+			} else {
+				data_crc((u_char*)data, len);
+			}
 		}
 	}
 	inline void final() {
