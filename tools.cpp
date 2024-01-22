@@ -4922,6 +4922,8 @@ const char *FileZipHandler::convTypeCompress(eTypeCompress typeCompress) {
 	switch(typeCompress) {
 	case gzip:
 		return("zip");
+	case _gzip:
+		return("gzip");
 	case lzma:
 		return("lzma");
 	case zstd:
@@ -4944,6 +4946,7 @@ string FileZipHandler::getConfigMenuString() {
 	ostringstream outStr;
 	outStr << convTypeCompress(compress_default) << ':' << compress_default << '|'
 	       << convTypeCompress(gzip) << ':' << gzip << '|'
+	       << convTypeCompress(_gzip) << ':' << gzip << '|'
 	       << convTypeCompress(lzma) << ':' << lzma << '|'
 	       << convTypeCompress(zstd) << ':' << zstd << '|'
 	       << convTypeCompress(snappy) << ':' << snappy << '|'

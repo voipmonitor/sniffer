@@ -7238,15 +7238,21 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		switch(configItem->getValueInt()) {
 		case 0:
 			opt_saveGRAPH = 0;
-			opt_gzipGRAPH = FileZipHandler::compress_na;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzipGRAPH = FileZipHandler::compress_na;
+			}
 			break;
 		case 1:
 			opt_saveGRAPH = 1;
-			opt_gzipGRAPH = FileZipHandler::compress_na;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzipGRAPH = FileZipHandler::compress_na;
+			}
 			break;
 		case 2:
 			opt_saveGRAPH = 1;
-			opt_gzipGRAPH = FileZipHandler::gzip;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzipGRAPH = FileZipHandler::gzip;
+			}
 			break;
 		}
 	}
