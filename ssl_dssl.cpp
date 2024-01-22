@@ -765,6 +765,10 @@ void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, uns
 			session = addSession(server_addr, server_port, keyfile);
 			session->setClientIpPort(client_addr, client_port);
 			if(session->restore_session_data(session_data.data.c_str())) {
+				/*
+				cout << "S: " << sid.s.ip.getString() << ":" << sid.s.port.getString() << "  "
+				     << "C: " << sid.c.ip.getString() << ":" << sid.c.port.getString() << endl;
+				*/
 				sessions[sid] = session;
 				init_store_session = true;
 				lock_sessions_db();

@@ -430,7 +430,9 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 			    u_int16_t handle_index, int dlt, int sensor_id, vmIP sensor_ip, sPacketInfoData pid) {
 	if(sverb.ssldecode) {
 		hexdump(data, dataLength);
-		cout << "---" << endl;
+		cout << "--- begin ---" << endl;
+		cout << ip_src.getString() << ":" << port_src.getString() << " -> "
+		     << ip_dst.getString() << ":" << port_dst.getString() << endl;
 		if(dataType == ReassemblyBuffer::_websocket) {
 			cWebSocketHeader ws(data, dataLength);
 			bool allocWsData;
@@ -448,7 +450,7 @@ void SslData::processPacket(u_char *ethHeader, unsigned ethHeaderLength, bool et
 				cout << string((char*)data, dataLength) << endl;
 			}
 		}
-		cout << "------" << endl;
+		cout << "--- end ---" << endl;
 	}
 	if(dataType == ReassemblyBuffer::_websocket) {
 		pcap_pkthdr *tcpHeader;
