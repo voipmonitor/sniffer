@@ -1522,7 +1522,7 @@ public:
 	int get_index_by_iscaller(CallBranch *c_branch, int iscaller);
 	
 	bool is_multiple_to_branch(CallBranch *c_branch);
-	bool all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_lock = true);
+	bool all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, vmPort sport, bool use_lock = true);
 	bool to_is_canceled(CallBranch *c_branch, const char *to);
 	bool all_branches_is_canceled(CallBranch *c_branch, bool check_ip);
 	const char *get_to_not_canceled(CallBranch *c_branch, bool uri = false);

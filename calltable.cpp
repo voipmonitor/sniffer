@@ -1579,7 +1579,7 @@ bool Call::is_multiple_to_branch(CallBranch *c_branch) {
 	return(false);
 }
 
-bool Call::all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_lock) {
+bool Call::all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, vmPort sport, bool use_lock) {
 	if(use_lock) c_branch->invite_list_lock();
 	if(c_branch->invite_sdaddr.size() < 2) {
 		if(use_lock) c_branch->invite_list_unlock();
@@ -1590,11 +1590,11 @@ bool Call::all_invite_is_multibranch(CallBranch *c_branch, vmIP saddr, bool use_
 	unsigned int counter1 = 0;
 	unsigned int counter2 = 0;
 	for(iter1 = c_branch->invite_sdaddr.begin(); iter1 != c_branch->invite_sdaddr.end(); iter1++) {
-		if(iter1->saddr == saddr) {
+		if(iter1->saddr == saddr && iter1->sport == sport) {
 			++counter1;
 			counter2 = 0;
 			for(iter2 = c_branch->invite_sdaddr.begin(); iter2 != c_branch->invite_sdaddr.end(); iter2++) {
-				if(iter2->saddr == saddr) {
+				if(iter2->saddr == saddr && iter2->sport == sport) {
 					++counter2;
 					if(counter2 > counter1) {
 						if(iter1->called == iter2->called || iter1->branch == iter2->branch) {
@@ -9787,7 +9787,8 @@ vmIP Call::getSipcalledipFromInviteList(CallBranch *c_branch,
 			   find(_proxies.begin(), _proxies.end(), vmIPport(iter->daddr, iter->dport)) == _proxies.end()) {
 				if(!(!opt_call_branches &&
 				     opt_sdp_check_direction_ext &&
-				     iter->saddr == _saddr && all_invite_is_multibranch(c_branch, iter->saddr, false))) {
+				     iter->saddr == _saddr && iter->sport == _sport && 
+				     all_invite_is_multibranch(c_branch, iter->saddr, iter->sport, false))) {
 					_proxies.push_back(vmIPport(_daddr, _dport));
 					_daddr = iter->daddr;
 					_dport = iter->dport;

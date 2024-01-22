@@ -5550,7 +5550,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			   (packetS->dest_() != call->getSipcalledport(c_branch) || packetS->daddr_() != call->getSipcalledip(c_branch)) && 
 			   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
 				if(!(opt_sdp_check_direction_ext &&
-				     packetS->saddr_() == call->getSipcallerip(c_branch) && call->all_invite_is_multibranch(c_branch, packetS->saddr_()))) {
+				     packetS->saddr_() == call->getSipcallerip(c_branch) && 
+				     packetS->source_() == call->getSipcallerport(c_branch) &&
+				     call->all_invite_is_multibranch(c_branch, packetS->saddr_(), packetS->source_()))) {
 					call->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
 					call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				}
