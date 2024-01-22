@@ -302,6 +302,7 @@ extern bool opt_ssl_dtls_queue_keep;
 extern int opt_ssl_dtls_handshake_safe;
 extern unsigned opt_max_sip_packets_in_call;
 extern unsigned opt_max_invite_packets_in_call;
+extern bool opt_enable_semicolon_in_number;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -1597,7 +1598,7 @@ inline const char* get_peername_begin_sip_tag(const char *peername_tag, unsigned
 	}
 	return(NULL);
 }
- 
+
 inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_len,
 			   int parse_type, const char *parse_type_param,
 			   const char **rslt_str, unsigned int *rslt_str_length, 
@@ -1625,6 +1626,24 @@ inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_
 				ok = true;
 				break;
 			} else if(*end == ';') {
+				if(opt_enable_semicolon_in_number &&
+				   end < peername_tag + peername_tag_len - 1 &&
+				   isdigit(*(end+1))) {
+					bool exists_other_separator = false;
+					const char *p = end + 1;
+					while(p < peername_tag + peername_tag_len) {
+						if(*p == '@' || *p == '>') {
+							exists_other_separator = true;
+							break;
+						} else if(*p == '>') {
+							break;
+						}
+						++p;
+					}
+					if(exists_other_separator) {
+						continue;
+					}
+				}
 				if(destType == ppndt_caller && opt_callernum_numberonly) {
 					--end;
 					ok = true;
@@ -1778,7 +1797,29 @@ inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_
 	} else if(parse_type == _sip) {
 		begin = sip_tag;
 		for(end = begin; end < peername_tag + peername_tag_len; end++) {
-			if(*end == ';' || *end == '>' || *end == '"' || *end == ' ') {
+			if(*end == ';') {
+				if(opt_enable_semicolon_in_number &&
+				   end < peername_tag + peername_tag_len - 1 &&
+				   isdigit(*(end+1))) {
+					bool exists_other_separator = false;
+					const char *p = end + 1;
+					while(p < peername_tag + peername_tag_len) {
+						if(*p == '@' || *p == '>') {
+							exists_other_separator = true;
+							break;
+						} else if(*p == '>') {
+							break;
+						}
+						++p;
+					}
+					if(exists_other_separator) {
+						continue;
+					}
+				}
+				--end;
+				ok = true;
+				break;
+			} else if(*end == '>' || *end == '"' || *end == ' ') {
 				--end;
 				ok = true;
 				break;
@@ -2026,39 +2067,46 @@ void testPN() {
 		"\"sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org\" <sip:+971506416935@ims.mnc002.mcc424.3gppnetwork.org;user=phone>",
 		"sip:+491987117;npdi;rn=+49D2821987117@next-id.de;user=phone SIP/2.0",
 		"tel:+971506301206",
-		"sip:424021412720144@[2001:8f8:3048:8fd0:16de:2829:964c:e0f]:6400;EriBindingId=110537898666928;eribind-generated-at=10.225.46.76;sitag=%22%3Curn:gsma:imei:35842514-375055-0%3E%22 SIP/2.0"
+		"sip:424021412720144@[2001:8f8:3048:8fd0:16de:2829:964c:e0f]:6400;EriBindingId=110537898666928;eribind-generated-at=10.225.46.76;sitag=%22%3Curn:gsma:imei:35842514-375055-0%3E%22 SIP/2.0",
+		"sip:123;456@Abc",
+		"sip:123;a456@Abc"
 	};
 	for(unsigned i = 0; i < sizeof(e) / sizeof(e[0]); i++) {
 		char rslt[1000];
 		unsigned int rslt_len = sizeof(rslt);
 		
-		cout << endl << e[i] << endl;
+		cout << endl << " *** " << e[i] << endl;
 		
-		parse_peername(e[i], strlen(e[i]),
-			       _peername, NULL,
-			       rslt, rslt_len,
-			       ppntt_undefined, ppndt_undefined);
-		cout << "peername: " << rslt << endl;
-		parse_peername(e[i], strlen(e[i]),
-			       _peercname, NULL,
-			       rslt, rslt_len,
-			       ppntt_undefined, ppndt_undefined);
-		cout << "peercname: " << rslt << endl;
-		parse_peername(e[i], strlen(e[i]),
-			       _domain, NULL,
-			       rslt, rslt_len,
-			       ppntt_undefined, ppndt_undefined);
-		cout << "domain: " << rslt << endl;
-		parse_peername(e[i], strlen(e[i]),
-			       _tag, NULL,
-			       rslt, rslt_len,
-			       ppntt_undefined, ppndt_undefined);
-		cout << "tag: " << rslt << endl;
-		parse_peername(e[i], strlen(e[i]),
-			       _sip, NULL,
-			       rslt, rslt_len,
-			       ppntt_undefined, ppndt_undefined);
-		cout << "sip: " << rslt << endl;
+		if(parse_peername(e[i], strlen(e[i]),
+				  _peername, NULL,
+				  rslt, rslt_len,
+				  ppntt_undefined, ppndt_undefined)) {
+			cout << "peername: " << rslt << endl;
+		}
+		if(parse_peername(e[i], strlen(e[i]),
+				  _peercname, NULL,
+				  rslt, rslt_len,
+				  ppntt_undefined, ppndt_undefined)) {
+			cout << "peercname: " << rslt << endl;
+		}
+		if(parse_peername(e[i], strlen(e[i]),
+				  _domain, NULL,
+				  rslt, rslt_len,
+				  ppntt_undefined, ppndt_undefined)) {
+			cout << "domain: " << rslt << endl;
+		}
+		if(parse_peername(e[i], strlen(e[i]),
+				  _tag, NULL,
+				  rslt, rslt_len,
+				  ppntt_undefined, ppndt_undefined)) {
+			cout << "tag: " << rslt << endl;
+		}
+		if(parse_peername(e[i], strlen(e[i]),
+				  _sip, NULL,
+				  rslt, rslt_len,
+				  ppntt_undefined, ppndt_undefined)) {
+			cout << "sip: " << rslt << endl;
+		}
 		
 	}
 }
