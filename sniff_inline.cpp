@@ -904,23 +904,50 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				sPacketDuplCheckProc dcp(_dc, opt_dup_check);
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
-					dcp.data(ppd->header_ip, MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len()));
+					int data_dedup_size = MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len());
+					if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					}
+					dcp.data(ppd->header_ip, data_dedup_size);
 				} else if(opt_dup_check_ipheader == 1) {
-					dcp.data(ppd->header_ip, MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len()));
+					int data_dedup_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
+					if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					}
+					dcp.data(ppd->header_ip, data_dedup_size);
 				} else if(opt_dup_check_ipheader == 2) {
 					u_int16_t header_ip_size = ppd->header_ip->get_hdr_size();
-					u_char *data_md5 = (u_char*)ppd->header_ip;
-					unsigned data_md5_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
-					if(data_md5_size > header_ip_size) {
-						data_md5 += header_ip_size;
-						data_md5_size -= header_ip_size;
+					u_char *data_dedup = (u_char*)ppd->header_ip;
+					int data_dedup_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
+					if(data_dedup_size > header_ip_size) {
+						data_dedup += header_ip_size;
+						data_dedup_size -= header_ip_size;
 					}
-					dcp.data(data_md5 , data_md5_size);
+					if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					}
+					dcp.data(data_dedup , data_dedup_size);
 					ppd->header_ip->md5_update_ip(&dcp);
 				} else {
 					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 					// will be matched regardless on IP 
-					dcp.data(ppd->data, MAX(0, (unsigned long)ppd->datalen - ppd->traillen));
+					int data_dedup_size = ppd->datalen - ppd->traillen;
+					if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+						if(pcap_header_plus2) {
+							pcap_header_plus2->ignore = true;
+						}
+						return(0);
+					}
+					dcp.data(ppd->data, data_dedup_size);
 				}
 				dcp.final();
 				if(header_ip_set_orig) {

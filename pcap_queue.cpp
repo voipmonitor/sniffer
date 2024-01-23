@@ -9637,6 +9637,10 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			} else if (opt_enable_ss7 && ip_protocol == IPPROTO_SCTP) {
 				datalen = get_sctp_data_len(header_ip, &data, hp->packet, hp->header->get_caplen());
 			}
+			if(datalen < 0 || datalen > 0xFFFFF) {
+				hp->destroy_or_unlock_blockstore();
+				return;
+			}
 			if(data && datalen) {
 				sPacketDuplCheckProc dcp(&__dc, opt_dup_check);
 				if(opt_dup_check_ipheader) {
@@ -9658,16 +9662,25 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 						header_udp_set_orig = true;
 					}
 					if(opt_dup_check_ipheader == 1) {
-						dcp.data(header_ip, MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len()));
+						int data_dedup_size = MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len());
+						if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+							hp->destroy_or_unlock_blockstore();
+							return;
+						}
+						dcp.data(header_ip, data_dedup_size);
 					} else if(opt_dup_check_ipheader == 2) {
 						u_int16_t header_ip_size = header_ip->get_hdr_size();
-						u_char *data_md5 = (u_char*)header_ip;
-						unsigned data_md5_size = MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len());
-						if(data_md5_size > header_ip_size) {
-							data_md5 += header_ip_size;
-							data_md5_size -= header_ip_size;
+						u_char *data_dedup = (u_char*)header_ip;
+						int data_dedup_size = MIN(datalen + (data - (char*)header_ip), header_ip->get_tot_len());
+						if(data_dedup_size > header_ip_size) {
+							data_dedup += header_ip_size;
+							data_dedup_size -= header_ip_size;
 						}
-						dcp.data(data_md5 , data_md5_size);
+						if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
+							hp->destroy_or_unlock_blockstore();
+							return;
+						}
+						dcp.data(data_dedup , data_dedup_size);
 						header_ip->md5_update_ip(&dcp);
 					}
 					if(header_ip_set_orig) {
