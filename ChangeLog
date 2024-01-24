@@ -1,3 +1,9 @@
+2024.01.3  24.01.2024
+=====================
+- discard defective packets for which a negative datalength is calculated (might cause crash) 
+- adding an unlimited number of attempts to connect client to server [VS-1542]
+
+
 2024.01.2  23.01.2024
 =====================
 - add support for option cdr_check_exists_callid in cloud mode [VS-1534]
