@@ -1,3 +1,14 @@
+2024.01.2  23.01.2024
+=====================
+- add support for option cdr_check_exists_callid in cloud mode [VS-1534]
+- fix spool dir check if  additional spool directories are defined [VG-2743]
+- fix popen deadlock in findMysqlProcess on some configurations [VG-2743]
+- correct proxy detection if source ip is same as source ip proxy but with different source port [VS-1539]
+- added gzip to pcap_dump_zip_sip [VS-1541]
+- added length condition len <= 0xFFFFF to deduplicate
+- add packet lenght sanitization in packet deduplication [VS-1540] 
+
+
 2024.01.1  05.01.2024
 =====================
 -  modify proxy and dst ip detection - use via.branch and confirmed invite matches [VS-1536]
