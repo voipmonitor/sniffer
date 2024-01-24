@@ -958,7 +958,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					header_udp->check = header_udp_checksum_orig;
 				}
 				#ifdef DEDUP_DEBUG
-				cout << " " << MD5_String((unsigned char*)_md5);
+				cout << " " << MD5_String((unsigned char*)_dc->md5);
 				#endif
 			}
 			if((ppf & ppf_dedup) && !_dc->is_empty()) {

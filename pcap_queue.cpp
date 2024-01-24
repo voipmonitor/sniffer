@@ -9003,7 +9003,8 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		pflags.ss7 = 1;
 	}
 	
-	if((data - (char*)hp->packet) > header->caplen) {
+	if(datalen < 0 || datalen > 0xFFFFF ||
+	   (data - (char*)hp->packet) > header->caplen) {
 		extern BogusDumper *bogusDumper;
 		if(bogusDumper) {
 			bogusDumper->dump(header, hp->packet, hp->dlt, "process_packet");
