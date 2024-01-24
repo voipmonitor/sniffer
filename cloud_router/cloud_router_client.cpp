@@ -38,7 +38,7 @@ bool cCR_Receiver_service::start(string host, u_int16_t port) {
 	return(true);
 }
 
-bool cCR_Receiver_service::receive_process_loop_begin() {
+int cCR_Receiver_service::receive_process_loop_begin() {
 	if(connection_ok) {
 		if(receive_socket->isError()) {
 			_close();

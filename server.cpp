@@ -1270,7 +1270,7 @@ bool cSnifferClientService::start(string host, u_int16_t port) {
 	return(true);
 }
 
-bool cSnifferClientService::receive_process_loop_begin() {
+int cSnifferClientService::receive_process_loop_begin() {
 	if(connection_ok) {
 		if(receive_socket->isError()) {
 			_close();
@@ -1413,11 +1413,8 @@ bool cSnifferClientService::receive_process_loop_begin() {
 		}
 	}
 	if(!rsltConnectData_okRead) {
-		if(!start_ok) {
-			set_terminating();
-		}
 		_close();
-		return(false);
+		return(-1);
 	}
 	connection_ok = true;
 	if(SS_VERBOSE().start_client) {
@@ -1454,6 +1451,14 @@ bool cSnifferClientService::receive_process_loop_begin() {
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
 	return(true);
+}
+
+void cSnifferClientService::evSetTerminating() {
+	set_terminating();
+}
+
+bool cSnifferClientService::isSetTerminating() {
+	return(is_terminating());
 }
 
 void cSnifferClientService::evData(u_char *data, size_t dataLen) {
@@ -1757,6 +1762,7 @@ cSnifferClientService *snifferClientStart(sSnifferClientOptions *clientOptions,
 											     sensorString ? sensorString : opt_sensor_string, 
 											     RTPSENSOR_VERSION_INT());
 	snifferClientService->setClientOptions(clientOptions);
+	//snifferClientService->setMaxFirstConnectAttempts(10); // 0 (default) is infinite number of attempts
 	snifferClientService->createResponseSender();
 	snifferClientService->setErrorTypeString(cSocket::_se_loss_connection, "connection to the server has been lost - trying again");
 	snifferClientService->start(clientOptions->host, clientOptions->port);

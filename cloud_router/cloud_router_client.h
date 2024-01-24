@@ -13,7 +13,7 @@ public:
 	void setEnableTermninateIfConnectFailed(bool enableTermninateIfConnectFailed = true);
 	void setResponseSender(class cCR_ResponseSender *response_sender);
 	bool start(string host, u_int16_t port);
-	virtual bool receive_process_loop_begin();
+	virtual int receive_process_loop_begin();
 	virtual void evData(u_char *data, size_t dataLen);
 	string getConnectFrom() {
 		return(connect_from);

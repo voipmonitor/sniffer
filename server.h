@@ -331,7 +331,9 @@ public:
 	void createResponseSender();
 	void stopResponseSender();
 	bool start(string host, u_int16_t port);
-	virtual bool receive_process_loop_begin();
+	virtual int receive_process_loop_begin();
+	virtual void evSetTerminating();
+	virtual bool isSetTerminating();
 	virtual void evData(u_char *data, size_t dataLen);
 protected:
 	int32_t sensor_id;

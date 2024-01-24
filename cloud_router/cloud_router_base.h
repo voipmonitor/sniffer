@@ -613,7 +613,9 @@ public:
 	void _receive_start();
 	static void *receive_process(void *arg);
 	virtual void receive_process();
-	virtual bool receive_process_loop_begin();
+	virtual int receive_process_loop_begin();
+	virtual void evSetTerminating();
+	virtual bool isSetTerminating();
 	virtual void evData(u_char *data, size_t dataLen);
 	bool get_aes_keys(string *ckey, string *ivec) {
 		return(receive_socket->get_aes_keys(ckey, ivec));
@@ -624,12 +626,16 @@ public:
 	void setErrorTypeString(cSocket::eSocketError errorType, const char *errorString) {
 		errorTypeStrings[errorType] = errorString ? errorString : "";
 	}
+	void setMaxFirstConnectAttempts(int maxFirstConnectAttempts) {
+		this->maxFirstConnectAttempts = maxFirstConnectAttempts;
+	}
 protected:
 	cSocketBlock *receive_socket;
 	pthread_t receive_thread;
 	bool start_ok;
 	bool use_encode_data;
 	volatile u_int8_t send_stop;
+	int maxFirstConnectAttempts;
 	map<cSocket::eSocketError, string> errorTypeStrings;
 };
 

@@ -1395,6 +1395,7 @@ cReceiver::cReceiver() {
 	start_ok = false;
 	send_stop = 0;
 	use_encode_data = false;
+	maxFirstConnectAttempts = 0;
 }
 
 cReceiver::~cReceiver() {
@@ -1412,17 +1413,19 @@ bool cReceiver::receive_start(string host, u_int16_t port) {
 void cReceiver::receive_stop() {
 	if(receive_socket) {
 		send_stop = 1;
-		for(int i = 0; i < (5 + 2) * 10 && send_stop < 2; i++) {
+		for(int i = 0; i < (5 + 2) * 10 && send_stop < 2 && !isSetTerminating(); i++) {
 			usleep(100000);
 		}
-		receive_socket->setTerminate();
-		receive_socket->close();
-		if(receive_thread) {
-			pthread_join(receive_thread, NULL);
-			receive_thread = 0;
+		if(receive_socket) {
+			receive_socket->setTerminate();
+			receive_socket->close();
+			if(receive_thread) {
+				pthread_join(receive_thread, NULL);
+				receive_thread = 0;
+			}
+			delete receive_socket;
+			receive_socket = NULL;
 		}
-		delete receive_socket;
-		receive_socket = NULL;
 	}
 }
 
@@ -1459,8 +1462,13 @@ void *cReceiver::receive_process(void *arg) {
 }
 
 void cReceiver::receive_process() {
-	while(!(receive_socket && receive_socket->isTerminate())) {
-		if(receive_process_loop_begin()) {
+	int firstConnectAttempts = 0;
+	while(!(receive_socket && receive_socket->isTerminate()) && !isSetTerminating()) {
+		if(!start_ok) {
+			++firstConnectAttempts;
+		}
+		int rslt = receive_process_loop_begin();
+		if(rslt > 0) {
 			start_ok = true;
 			u_char *data;
 			size_t dataLen;
@@ -1478,17 +1486,35 @@ void cReceiver::receive_process() {
 			} else if(!((receive_socket && receive_socket->isTerminate()) || CR_TERMINATE())) {
 				receive_socket->setError("timeout");
 			}
-		} else {
+		} else if(rslt == 0) {
 			sleep(1);
+		} else if(rslt < 0) {
+			if(!start_ok && maxFirstConnectAttempts > 0) {
+				if(firstConnectAttempts < maxFirstConnectAttempts) {
+					sleep(1);
+				} else {
+					evSetTerminating();
+					break;
+				}
+			} else {
+				sleep(1);
+			}
 		}
 	}
 }
 
-bool cReceiver::receive_process_loop_begin() {
+int cReceiver::receive_process_loop_begin() {
 	return(true);
 }
 
 void cReceiver::evData(u_char *data, size_t dataLen) {
+}
+
+void cReceiver::evSetTerminating() {
+}
+
+bool cReceiver::isSetTerminating() {
+	return(false);
 }
 
 
