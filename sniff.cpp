@@ -358,8 +358,6 @@ u_int64_t counter_sip_message_packets;
 u_int64_t counter_rtp_packets[2];
 u_int64_t counter_all_packets;
 volatile u_int64_t counter_user_packets[5];
-u_int64_t process_rtp_counter;
-u_int64_t read_rtp_counter;
 
 extern struct queue_state *qs_readpacket_thread_queue;
 
@@ -3781,6 +3779,17 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 		}
 	}
 	
+	#if CALL_DEBUG_RTP
+	const char *_caller = "from";
+	const char *_called = "to";
+	if(sip_method == INVITE &&
+	   c_branch->caller.find(_caller) != string::npos &&
+	   strstr(call->get_called(c_branch), _called)) {
+		call->debug_rtp = true;
+		cout << " CALL: " << call->call_id << endl;
+	}
+	#endif
+	
 	return(true);
 
 }
@@ -6504,16 +6513,26 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 			iscaller = iscaller_inv_index(iscaller);
 		}
 		
-		if(sverb.process_rtp) {
-			++process_rtp_counter;
+		if(sverb.process_rtp
+		   #if CALL_DEBUG_RTP
+		   || call->debug_rtp == true
+		   #endif
+		) {
+			++call->process_rtp_counter;
 			cout << "RTP - process_packet -"
 			     << " callid: " << call->call_id
 			     << (call_info->find_by_dest ? " src: " : " SRC: ") << packetS->saddr_().getString() << " : " << packetS->source_()
 			     << (call_info->find_by_dest ? " DST: " : " dst: ") << packetS->daddr_().getString() << " : " << packetS->dest_()
 			     << " direction: " << iscaller_description(iscaller) 
 			     << " find_by_dest: " << call_info->find_by_dest
-			     << " counter: " << process_rtp_counter
+			     << " counter: " << call->process_rtp_counter
+			     << " time: " << (packetS->getTimeUS() / 1000 - call->first_packet_time_us / 1000)
 			     << endl;
+			#if CALL_DEBUG_RTP
+			if(call->debug_rtp == true && call->process_rtp_counter > 5) {
+				call->debug_rtp = -1;
+			}
+			#endif
 		}
 
 		if(pcap_drop_flag) {

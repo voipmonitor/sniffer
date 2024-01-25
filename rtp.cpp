@@ -436,6 +436,8 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	decrypt_srtp_ok = 0;
 	decrypt_srtp_failed = 0;
 	probably_unencrypted_payload = false;
+	
+	read_rtp_counter = 0;
 }
 
 void 
@@ -1162,7 +1164,6 @@ bool RTP::read(CallBranch *c_branch,
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	if(sverb.read_rtp) {
-		extern u_int64_t read_rtp_counter;
 		++read_rtp_counter;
 		cout << "RTP - read [" << this << "]-" 
 		     << " ssrc: " << hex << this->ssrc << dec << " "

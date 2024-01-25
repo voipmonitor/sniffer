@@ -853,6 +853,8 @@ private:
 	unsigned decrypt_srtp_ok;
 	unsigned decrypt_srtp_failed;
 	bool probably_unencrypted_payload;
+	
+	unsigned read_rtp_counter;
 friend class Call;
 friend class RTPsecure;
 };

@@ -845,6 +845,10 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	sip_packets_counter = 0;
 	invite_packets_counter = 0;
 	
+	process_rtp_counter = 0;
+	#if CALL_DEBUG_RTP
+	debug_rtp = false;
+	#endif
 }
 
 u_int64_t Call::counter_s = 0;
@@ -10580,7 +10584,11 @@ Calltable::~Calltable() {
 /* add node to hash. collisions are linked list of nodes*/
 void Calltable::hashAdd(vmIP addr, vmPort port, u_int64_t time_us, CallBranch *c_branch, int iscaller, int is_rtcp, s_sdp_flags sdp_flags) {
  
-	if(sverb.hash_rtp) {
+	if(sverb.hash_rtp
+	   #if CALL_DEBUG_RTP
+	   || c_branch->call->debug_rtp == true
+	   #endif
+	) {
 		cout << "hashAdd: " 
 		     << c_branch->call->call_id << " " << addr.getString() << ":" << port << " " 
 		     << (is_rtcp ? "rtcp " : "")
@@ -11422,7 +11430,11 @@ void Calltable::_hashAddExt(vmIP addr, vmPort port, long int time_s, CallBranch 
 /* remove node from hash */
 void Calltable::hashRemove(CallBranch *c_branch, vmIP addr, vmPort port, bool rtcp, bool ignore_rtcp_check, bool useHashQueueCounter) {
  
-	if(sverb.hash_rtp) {
+	if(sverb.hash_rtp
+	   #if CALL_DEBUG_RTP
+	   || c_branch->call->debug_rtp == true
+	   #endif
+	) {
 		cout << "hashRemove: " 
 		     << c_branch->call->call_id << " " 
 		     << addr.getString() << ":" << port << " "

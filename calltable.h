@@ -2699,6 +2699,10 @@ public:
 	#endif
 	unsigned sip_packets_counter;
 	unsigned invite_packets_counter;
+	unsigned process_rtp_counter;
+	#if CALL_DEBUG_RTP
+	volatile int8_t debug_rtp;
+	#endif
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
