@@ -8685,7 +8685,7 @@ Call::saveAloneByeToDb(bool enableBatchIfPossible) {
 	       "update cdr \
 		set flags = coalesce(flags, 0) | " + intToString(CDR_ALONE_UNCONFIRMED_BYE) + " \
 		where id = ( \
-			select max(cdr_id) \
+			select cdr_id \
 			from cdr_next \
 			where calldate > '" + sqlDateTimeString(calltime_s() - 60 * 60) + "' and \
 			      fbasename = '" + fbasename + "' \
