@@ -8,7 +8,7 @@
 
 using namespace std;
 
-#define USED_HEADER_SIZE 16 // p (long)&temp->PrevFree - (long)temp; (sizeof(unsigned int)+sizeof(void*))
+
 #define FREE_HEADER_SIZE sizeof(sHeader)
 #define DELTA_FACTOR     64
 
@@ -35,7 +35,7 @@ void *cHeapItem::MAlloc(u_int32_t sizeOfObject) {
 
 int8_t cHeapItem::Free(void *pointerToObject) { 
 	if(IsOwnItem(pointerToObject)) { 
-		pointerToObject = (char*)pointerToObject - USED_HEADER_SIZE;
+		pointerToObject = (char*)pointerToObject - HEAP_CHUNK_USED_HEADER_SIZE;
 		if(pointerToObject == Last) {
 			FreeLastBlock();
 		} else {
@@ -87,7 +87,7 @@ void *cHeapItem::Alloc(u_int32_t size) {
 	if(!size) {
 		return(NULL);
 	}
-	size = (size + USED_HEADER_SIZE + sizeof(sHeader) - 1) / sizeof(sHeader) * sizeof(sHeader);
+	size = (size + HEAP_CHUNK_USED_HEADER_SIZE + sizeof(sHeader) - 1) / sizeof(sHeader) * sizeof(sHeader);
 	if(!First) {
 		return(CreateHeap(size));
 	}

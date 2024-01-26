@@ -5,6 +5,13 @@
 #include "sync.h"
 
 
+#if defined(__x86_64__)
+#define HEAP_CHUNK_USED_HEADER_SIZE 16 // p (long)&temp->PrevFree - (long)temp; (sizeof(unsigned int)+sizeof(void*))
+#else
+#define HEAP_CHUNK_USED_HEADER_SIZE 8
+#endif
+
+
 class cHeap_base {
 public:
 	cHeap_base() {
@@ -86,7 +93,7 @@ public:
 		return(active);
 	}
 	inline u_int32_t itemSize(void *p) {
-		return(((cHeapItem::sHeader*)((char*)p - 16))->Size);
+		return(((cHeapItem::sHeader*)((char*)p - HEAP_CHUNK_USED_HEADER_SIZE))->Size);
 	}
 	inline void incAllocSize(void *p) {
 		allocSize += itemSize(p);
