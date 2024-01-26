@@ -426,7 +426,8 @@ unsigned int opt_process_rtp_packets_qring_usleep = 10;
 unsigned int opt_process_rtp_packets_qring_push_usleep = 10;
 unsigned int opt_push_batch_limit_ms = 100;
 bool use_push_batch_limit_ms = true;
-unsigned int opt_batch_length_high_traffic = 40000;
+unsigned int opt_batch_length_sip_high_traffic = 5000;
+unsigned int opt_batch_length_rtp_high_traffic = 40000;
 bool batch_length_high_traffic_need = false;
 bool opt_usleep_stats = false;
 bool opt_usleep_progressive = true;
@@ -6228,7 +6229,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42160) cConfigItem_integer("process_rtp_packets_qring_usleep", &opt_process_rtp_packets_qring_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("process_rtp_packets_qring_push_usleep", &opt_process_rtp_packets_qring_push_usleep));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("push_batch_limit_ms", &opt_push_batch_limit_ms));
-					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_high_traffic", &opt_batch_length_high_traffic));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_sip_high_traffic", &opt_batch_length_sip_high_traffic));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("batch_length_rtp_high_traffic", &opt_batch_length_rtp_high_traffic));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleanup_calls_period", &opt_cleanup_calls_period));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("destroy_calls_period", &opt_destroy_calls_period));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("safe_cleanup_calls", &opt_safe_cleanup_calls))
@@ -12127,8 +12129,11 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "push_batch_limit_ms", NULL))) {
 		opt_push_batch_limit_ms = atol(value);
 	}
-	if((value = ini.GetValue("general", "batch_length_high_traffic", NULL))) {
-		opt_batch_length_high_traffic = atol(value);
+	if((value = ini.GetValue("general", "batch_length_sip_high_traffic", NULL))) {
+		opt_batch_length_sip_high_traffic = atol(value);
+	}
+	if((value = ini.GetValue("general", "batch_length_rtp_high_traffic", NULL))) {
+		opt_batch_length_rtp_high_traffic = atol(value);
 	}
 	if((value = ini.GetValue("general", "cleanup_calls_period", NULL))) {
 		opt_cleanup_calls_period = atoi(value);

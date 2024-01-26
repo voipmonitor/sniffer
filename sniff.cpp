@@ -203,7 +203,8 @@ extern bool process_rtp_packets_qring_force_push;
 extern unsigned int rtp_qring_usleep;
 extern unsigned int rtp_qring_batch_length;
 extern bool batch_length_high_traffic_need;
-extern unsigned int opt_batch_length_high_traffic;
+extern unsigned int opt_batch_length_sip_high_traffic;
+extern unsigned int opt_batch_length_rtp_high_traffic;
 extern int opt_pcapdump;
 extern int opt_id_sensor;
 extern int opt_destination_number_mode;
@@ -9601,8 +9602,8 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 			this->qring[i]->used = 0;
 		}
 	}
-	this->items_flag = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
-	this->items_thread_index = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
+	this->items_flag = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_sip_high_traffic)];
+	this->items_thread_index = new FILE_LINE(0) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_sip_high_traffic)];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -9959,8 +9960,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(batch_length_high_traffic_need && batch_detach_x->max_count < opt_batch_length_high_traffic) {
-						batch_detach_x->realloc(opt_batch_length_high_traffic);
+					if(batch_length_high_traffic_need && batch_detach_x->max_count < opt_batch_length_sip_high_traffic) {
+						batch_detach_x->realloc(opt_batch_length_sip_high_traffic);
 					}
 					__SYNC_NULL(batch_detach_x->count);
 					__SYNC_NULL(batch_detach_x->used);
@@ -10091,8 +10092,8 @@ void *PreProcessPacket::outThreadFunction() {
 					counter_all_packets += batch_detach->count;
 				}
 				#if RQUEUE_SAFE
-					if(batch_length_high_traffic_need && batch_detach->max_count < opt_batch_length_high_traffic) {
-						batch_detach->realloc(opt_batch_length_high_traffic);
+					if(batch_length_high_traffic_need && batch_detach->max_count < opt_batch_length_sip_high_traffic) {
+						batch_detach->realloc(opt_batch_length_sip_high_traffic);
 					}
 					__SYNC_NULL(batch_detach->count);
 					__SYNC_NULL(batch_detach->used);
@@ -10277,8 +10278,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
-						batch->realloc(opt_batch_length_high_traffic);
+					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_sip_high_traffic) {
+						batch->realloc(opt_batch_length_sip_high_traffic);
 					}
 					__SYNC_NULL(batch->count);
 					__SYNC_NULL(batch->used);
@@ -10366,8 +10367,8 @@ void *PreProcessPacket::outThreadFunction() {
 					}
 				}
 				#if RQUEUE_SAFE
-					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
-						batch->realloc(opt_batch_length_high_traffic);
+					if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_sip_high_traffic) {
+						batch->realloc(opt_batch_length_sip_high_traffic);
 					}
 					__SYNC_NULL(batch->count);
 					__SYNC_NULL(batch->used);
@@ -11761,7 +11762,7 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 		this->qring[i] = new FILE_LINE(26029) batch_packet_s_process(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
-	this->hash_find_flag = new FILE_LINE(26030) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_high_traffic)];
+	this->hash_find_flag = new FILE_LINE(26030) volatile int8_t[max(this->qring_batch_item_length, opt_batch_length_rtp_high_traffic)];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	this->qring_active_push_item = NULL;
@@ -11836,8 +11837,8 @@ void *ProcessRtpPacket::outThreadFunction() {
 				this->rtp_batch(batch, count);
 			}
 			#if RQUEUE_SAFE
-				if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_high_traffic) {
-					batch->realloc(opt_batch_length_high_traffic);
+				if(batch_length_high_traffic_need && batch->max_count < opt_batch_length_rtp_high_traffic) {
+					batch->realloc(opt_batch_length_rtp_high_traffic);
 				}
 				__SYNC_NULL(batch->count);
 				__SYNC_NULL(batch->used);
