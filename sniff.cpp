@@ -302,7 +302,7 @@ extern bool opt_ssl_dtls_queue_keep;
 extern int opt_ssl_dtls_handshake_safe;
 extern unsigned opt_max_sip_packets_in_call;
 extern unsigned opt_max_invite_packets_in_call;
-extern bool opt_enable_semicolon_in_number;
+extern int opt_enable_semicolon_in_number;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -1626,7 +1626,7 @@ inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_
 			} else if(*end == ';') {
 				if(opt_enable_semicolon_in_number &&
 				   end < peername_tag + peername_tag_len - 1 &&
-				   isdigit(*(end+1))) {
+				   (opt_enable_semicolon_in_number == 2 || isdigit(*(end+1)))) {
 					bool exists_other_separator = false;
 					const char *p = end + 1;
 					while(p < peername_tag + peername_tag_len) {
@@ -1798,7 +1798,7 @@ inline bool _parse_peername(const char *peername_tag, unsigned int peername_tag_
 			if(*end == ';') {
 				if(opt_enable_semicolon_in_number &&
 				   end < peername_tag + peername_tag_len - 1 &&
-				   isdigit(*(end+1))) {
+				   (opt_enable_semicolon_in_number == 2 || isdigit(*(end+1)))) {
 					bool exists_other_separator = false;
 					const char *p = end + 1;
 					while(p < peername_tag + peername_tag_len) {

@@ -1121,7 +1121,7 @@ vector<vmIPmask> webrtcnet;
 bool opt_sip_only_tcp = false;
 unsigned opt_max_sip_packets_in_call = 20000;
 unsigned opt_max_invite_packets_in_call = 10000;
-bool opt_enable_semicolon_in_number = false;
+int opt_enable_semicolon_in_number = false;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
@@ -6626,7 +6626,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip_only_tcp", &opt_sip_only_tcp));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_sip_packets_in_call", &opt_max_sip_packets_in_call));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_invite_packets_in_call", &opt_max_invite_packets_in_call));
-					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_semicolon_in_number", &opt_enable_semicolon_in_number));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("enable_semicolon_in_number", &opt_enable_semicolon_in_number))
+						->addValues("force:2"));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));
@@ -12037,7 +12038,8 @@ int eval_config(string inistr) {
 		opt_max_invite_packets_in_call = atoi(value);
 	}
 	if((value = ini.GetValue("general", "enable_semicolon_in_number", NULL))) {
-		opt_enable_semicolon_in_number = yesno(value);
+		opt_enable_semicolon_in_number = !strcasecmp(value, "force") ? 2 :
+						 yesno(value);
 	}
 	
 	if((value = ini.GetValue("general", "enable_jitterbuffer_asserts", NULL))) {
