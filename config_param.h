@@ -706,7 +706,7 @@ public:
 	cConfigMap getConfigMap();
 	string getContentConfig(bool configFile = false, bool putDefaultValues = false);
 	string getJson(bool onlyIfSet = false, vector<string> *filter = NULL);
-	void setFromJson(const char *jsonStr, bool onlyIfSet = true);
+	void setFromJson(const char *jsonStr, bool enableReadOnlyParams = false);
 	void setFromMysql(bool checkConnect = false, bool onlyIfSet = true);
 	void putToMysql();
 	void setDefaultValues();

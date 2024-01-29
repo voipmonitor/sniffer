@@ -3709,6 +3709,9 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if(type_spool_file == tsf_na) {
 		type_spool_file = findTypeSpoolFile(spool_index, tar_filename);
 	}
+	if(strstr(tar_filename, "../")) {
+		return(params->sendString("access denied"));
+	}
 
 	Tar tar;
 	if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
@@ -3747,6 +3750,10 @@ int Mgmt_getfile(Mgmt_params *params) {
 	int type_spool_file = (int)tsf_na;
 
 	sscanf(params->buf, params->zip ? "getfile_zip %s %u %i" : "getfile %s %u %i", filename, &spool_index, &type_spool_file);
+	if(strstr(filename, "../")) {
+		return(params->sendString("access denied"));
+	}
+	
 	if(type_spool_file == tsf_na) {
 		type_spool_file = findTypeSpoolFile(spool_index, filename);
 	}

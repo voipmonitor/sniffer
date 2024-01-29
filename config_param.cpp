@@ -2826,7 +2826,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 	return(json.getJson());
 }
 
-void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
+void cConfig::setFromJson(const char *jsonStr, bool enableReadOnlyParams) {
 	map<string, vector<string>* > params;
 	JsonItem jsonData;
 	jsonData.parse(jsonStr);
@@ -2859,9 +2859,10 @@ void cConfig::setFromJson(const char *jsonStr, bool onlyIfSet) {
 	for(map<string, vector<string>* >::iterator iter = params.begin(); iter != params.end(); iter++) {
 		string config_name = iter->first;
 		bool set = iter->second != NULL && iter->second->size() > 0;
-		if(!onlyIfSet || set) {
+		if(set) {
 			map<string, cConfigItem*>::iterator iter_map = config_map.find(config_name);
-			if(iter_map != config_map.end()) {
+			if(iter_map != config_map.end() &&
+			   (enableReadOnlyParams || !iter_map->second->readOnly)) {
 				if(set) {
 					string value = iter->second->size() == 1 ? (*iter->second)[0] : implode(*iter->second, ";");
 					if(iter_map->second->setParamFromValueStr(value, true, true)) {
@@ -2971,7 +2972,7 @@ void cConfig::putToMysql() {
 	lock();
 	for(list<string>::iterator iter = config_list.begin(); iter != config_list.end(); iter++) {
 		map<string, cConfigItem*>::iterator iter_map = config_map.find(*iter);
-		if(iter_map != config_map.end()) {
+		if(iter_map != config_map.end() && !iter_map->second->readOnly) {
 			bool columnExists = false;
 			for(list<string>::iterator iter_column = sensor_config_columns.begin(); iter_column != sensor_config_columns.end(); iter_column++) {
 				if(*iter_column == *iter) {

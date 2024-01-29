@@ -6279,14 +6279,22 @@ void cConfig::addConfigItems() {
 	group("data storing");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
 		subgroup("main");
-			addConfigItem(new FILE_LINE(42180) cConfigItem_string("spooldir", opt_spooldir_main, sizeof(opt_spooldir_main)));
-			addConfigItem(new FILE_LINE(42181) cConfigItem_string("spooldir_rtp", opt_spooldir_rtp, sizeof(opt_spooldir_rtp)));
-			addConfigItem(new FILE_LINE(42182) cConfigItem_string("spooldir_graph", opt_spooldir_graph, sizeof(opt_spooldir_graph)));
-			addConfigItem(new FILE_LINE(42183) cConfigItem_string("spooldir_audio", opt_spooldir_audio, sizeof(opt_spooldir_audio)));
-			addConfigItem(new FILE_LINE(42184) cConfigItem_string("spooldir_2", opt_spooldir_2_main, sizeof(opt_spooldir_2_main)));
-			addConfigItem(new FILE_LINE(42185) cConfigItem_string("spooldir_2_rtp", opt_spooldir_2_rtp, sizeof(opt_spooldir_2_rtp)));
-			addConfigItem(new FILE_LINE(42186) cConfigItem_string("spooldir_2_graph", opt_spooldir_2_graph, sizeof(opt_spooldir_2_graph)));
-			addConfigItem(new FILE_LINE(42187) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)));
+			addConfigItem((new FILE_LINE(42180) cConfigItem_string("spooldir", opt_spooldir_main, sizeof(opt_spooldir_main)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42181) cConfigItem_string("spooldir_rtp", opt_spooldir_rtp, sizeof(opt_spooldir_rtp)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42182) cConfigItem_string("spooldir_graph", opt_spooldir_graph, sizeof(opt_spooldir_graph)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42183) cConfigItem_string("spooldir_audio", opt_spooldir_audio, sizeof(opt_spooldir_audio)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42184) cConfigItem_string("spooldir_2", opt_spooldir_2_main, sizeof(opt_spooldir_2_main)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42185) cConfigItem_string("spooldir_2_rtp", opt_spooldir_2_rtp, sizeof(opt_spooldir_2_rtp)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42186) cConfigItem_string("spooldir_2_graph", opt_spooldir_2_graph, sizeof(opt_spooldir_2_graph)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(42187) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)))
+				->setReadOnly());
 			addConfigItem(new FILE_LINE(42188) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("tar_use_hash_instead_of_long_callid", &opt_pcap_dump_tar_use_hash_instead_of_long_callid));
@@ -8322,11 +8330,11 @@ void get_command_line_arguments_json_config() {
 		switch(iter->first) {
 			case _param_json_config:
 				if(CONFIG.isSet()) {
-					CONFIG.setFromJson(iter->second.c_str());
+					CONFIG.setFromJson(iter->second.c_str(), true);
 				} else {
 					cConfig config;
 					config.addConfigItems();
-					config.setFromJson(iter->second.c_str());
+					config.setFromJson(iter->second.c_str(), true);
 				}
 				useCmdLineConfig = true;
 				if(!snifferServerOptions.host.empty() ||
