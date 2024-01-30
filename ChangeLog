@@ -1,8 +1,16 @@
+2024.01.5  30.01.2024
+=====================
+- since 31.9 deduplication was enabled by default with fast CRC32 but there exist collisions which skips some SIP messages leading to ignore some calls. Deduplication is now disabled by default again and md5 hash is used instead of crc if deduplication is enabled. Faster hashes will be added in the future. 
+- fix memory leak for all > 31.9 versions when short / non RTP packet arrives to the IP/port combination of some call [VS-1551]
+ticket VS-1550
+- fix ipfix and hep client emulation if pcap contain ipv6 [VS-1550]
+
+
 2024.01.4  29.01.2024
 =====================
 - TCP manager security fix (if you can not control access to the voipmonitor manager TCP port 5029 - upgrade is strongly advised) 
-- change default value for option 'detect_alone_bye' to 'no'. This option can cause excessive load to the database - more details was documented in the voipmonitor.conf [VS-1547]
-0 add 'force' option for 'enable_semicolon_in_number' - enable ';' in a number even if it is not followed by [0-9] [VS-1538]
+- change default value for option detect_alone_bye to no. This option can cause excessive load to the database - more details was documented in the voipmonitor.conf [VS-1547]
+0 add 'force' option for 'enable_semicolon_in_number' - enable semicolon in a number even if it is not followed by [0-9] [VS-1538]
 - fix threading_expanded = high_traffic mode (some early RTP pakcets were missing due to packet reorder/race in queue) - high_traffic option is not enabled by default  [VS-1545]
 - fix HEAP_HASHTABLE on 32bit sniffer
 
