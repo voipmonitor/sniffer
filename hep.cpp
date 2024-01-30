@@ -608,18 +608,20 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 			    &ppd, dlink, NULL, NULL);
 		u_int32_t caplen = HPH(header_packet)->caplen;
 		u_char *packet = HPP(header_packet);
-		if(ppd.header_ip->get_protocol() == IPPROTO_UDP) {
-			ppd.header_udp = (udphdr2*)((char*)ppd.header_ip + ppd.header_ip->get_hdr_size());
-			ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, pcap_next_ex_header->caplen);
-		} else if(ppd.header_ip->get_protocol() == IPPROTO_TCP) {
-			ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + ppd.header_ip->get_hdr_size());
-			ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);
-		}
-		if(ppd.datalen) {
-			if(ppd.header_ip->get_saddr() == client_ip && ppd.header_ip->get_daddr() == server_ip) {
-				cout << " -> " << flush;
-				if(socket.write((u_char*)ppd.data, ppd.datalen)) {
-					cout << "ok write " << ppd.datalen << endl;
+		if(ppd.header_ip) {
+			if(ppd.header_ip->get_protocol() == IPPROTO_UDP) {
+				ppd.header_udp = (udphdr2*)((char*)ppd.header_ip + ppd.header_ip->get_hdr_size());
+				ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, pcap_next_ex_header->caplen);
+			} else if(ppd.header_ip->get_protocol() == IPPROTO_TCP) {
+				ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + ppd.header_ip->get_hdr_size());
+				ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);
+			}
+			if(ppd.datalen) {
+				if(ppd.header_ip->get_saddr() == client_ip && ppd.header_ip->get_daddr() == server_ip) {
+					cout << " -> " << flush;
+					if(socket.write((u_char*)ppd.data, ppd.datalen)) {
+						cout << "ok write " << ppd.datalen << endl;
+					}
 				}
 			}
 		}
