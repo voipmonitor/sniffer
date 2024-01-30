@@ -6642,7 +6642,9 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 				} else {
 					PACKET_S_PROCESS_DESTROY(&packetS);
 				}
-				break;
+				if(!packetS) {
+					break;
+				}
 			}
 		}
 	}
