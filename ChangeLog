@@ -1,3 +1,12 @@
+2024.01.4  29.01.2024
+=====================
+- TCP manager security fix (if you can not control access to the voipmonitor manager TCP port 5029 - upgrade is strongly advised) 
+- change default value for option 'detect_alone_bye' to 'no'. This option can cause excessive load to the database - more details was documented in the voipmonitor.conf [VS-1547]
+0 add 'force' option for 'enable_semicolon_in_number' - enable ';' in a number even if it is not followed by [0-9] [VS-1538]
+- fix threading_expanded = high_traffic mode (some early RTP pakcets were missing due to packet reorder/race in queue) - high_traffic option is not enabled by default  [VS-1545]
+- fix HEAP_HASHTABLE on 32bit sniffer
+
+
 2024.01.3  24.01.2024
 =====================
 - discard defective packets for which a negative datalength is calculated (might cause crash) 
