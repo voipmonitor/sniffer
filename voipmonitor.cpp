@@ -8447,7 +8447,7 @@ void set_context_config() {
 	if(!is_read_from_file_simple() && !is_set_gui_params() && command_line_data.size()) {
 		u_int32_t max_buffer_mem_mb = 0;
 		if(opt_max_buffer_mem) {
-			max_buffer_mem_mb = opt_max_buffer_mem;
+			max_buffer_mem_mb = max(opt_max_buffer_mem, 10);
 		} else if(opt_pcap_queue_store_queue_max_memory_size) {
 			max_buffer_mem_mb = opt_pcap_queue_store_queue_max_memory_size / (1024 * 1024);
 		}
@@ -8461,12 +8461,10 @@ void set_context_config() {
 		if(!opt_pcap_queue_disk_folder.length() || !opt_pcap_queue_store_queue_max_disk_size) {
 			// disable disc save
 			if(opt_pcap_queue_compress || !opt_pcap_queue_suppress_t1_thread) {
-				// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB, minimum = 50MB
+				// enable compress or not suppress t1 thread - maximum thread0 buffer = 100MB
 				thread0_buffer_mb = max_buffer_mem_mb / 8;
 				if(thread0_buffer_mb > 100) {
 					thread0_buffer_mb = 100;
-				} else if(thread0_buffer_mb < 50) {
-					thread0_buffer_mb = 50;
 				}
 			} else {
 				// disable compress and suppress t1 thread - thread0 buffer not need
@@ -8477,8 +8475,6 @@ void set_context_config() {
 			thread0_buffer_mb = max_buffer_mem_mb / 4;
 			if(thread0_buffer_mb > 500) {
 				thread0_buffer_mb = 500;
-			} else if(thread0_buffer_mb < 100) {
-				thread0_buffer_mb = 100;
 			}
 		}
 		buffersControl.setMaxBufferMemMB(max_buffer_mem_mb, thread0_buffer_mb);
