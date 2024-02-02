@@ -3064,7 +3064,7 @@ list<int> getPids(string app, string grep_search) {
 	if(vm_pexec(cmd.c_str(), &out) && out.size()) {
 		vector<string> out_v = split((char*)out, '\n');
 		for(unsigned i = 0; i < out_v.size(); i++) {
-			if(strcasestr(out_v[i].c_str(), grep_search.c_str()) &&
+			if(reg_match(out_v[i].c_str(), grep_search.c_str()) &&
 			   !strcasestr(out_v[i].c_str(), "<defunct>")) {
 				int pid = findPIDinPSline((char*)out_v[i].c_str());
 				if(pid) {
