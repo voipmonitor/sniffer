@@ -1,3 +1,8 @@
+2024.02.1  02.01.2024
+=====================
+- fix killing old watchdog scripts after running sniffer after crash/abort
+
+
 2024.01.6  31.01.2024
 =====================
 - fix no traffic passing through when max_buffer_mem is set to lowe values [VS-1552]
