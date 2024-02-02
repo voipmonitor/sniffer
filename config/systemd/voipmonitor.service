@@ -1,10 +1,22 @@
+
 [Unit]
 Description=VoIPmonitor sniffer
+After=syslog.target
+After=network.target
+After=mysql.service
 
 [Service]
 Type=forking
-PIDFile=/var/run/voipmonitor.pid
-ExecStart=/usr/bin/voipmonitor --config-file /etc/voipmonitor.conf -v 1
-
+Restart=no
+TimeoutSec=5min
+IgnoreSIGPIPE=no
+KillMode=process
+GuessMainPID=no
+RemainAfterExit=yes
+SuccessExitStatus=5 6
+ExecStart=/etc/init.d/voipmonitor start
+ExecStop=/etc/init.d/voipmonitor stop
+#Place temp files in a secure directory, not /tmp?
+PrivateTmp=false
 [Install]
 WantedBy=multi-user.target
