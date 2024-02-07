@@ -1548,11 +1548,11 @@ bool RTP::read(CallBranch *c_branch,
 	
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	extern cProcessingLimitations processing_limitations;
-	if(processing_limitations.suppressRtpRead()) {
+	if(processing_limitations.suppressRtpRead() && owner) {
 		owner->suppress_rtp_read_due_to_insufficient_hw_performance = true;
 	}
 	if(is_video() || 
-	   owner->suppress_rtp_read_due_to_insufficient_hw_performance) {
+	   (owner && owner->suppress_rtp_read_due_to_insufficient_hw_performance)) {
 	#endif
 		last_seq = seq;
 		if(update_seq(seq)) {
