@@ -9765,7 +9765,7 @@ void cWsCalls::setConfirm(const char *callid, bool request, const char *str, con
 	}
 }
 
-string cWsCalls::printUncofirmed() {
+string cWsCalls::printUnconfirmed() {
 	ostringstream out;
 	unsigned counter = 0;
 	for(map<string, sCall>::iterator iter = calls.begin(); iter != calls.end(); iter++) {

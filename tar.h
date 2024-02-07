@@ -164,7 +164,7 @@ public:
 	int tar_append_buffer(ChunkBuffer *buffer, size_t lenForProceed = 0);
 	virtual void chunkbuffer_iterate_ev(char *data, u_int32_t len, u_int32_t pos);
 	void tar_read(const char *filename, u_int32_t recordId = 0, const char *tableType = NULL, const char *tarPosString = NULL);
-	void tar_read_send_parameters(int client, void *c_client, bool zip);
+	void tar_read_send_parameters(class Mgmt_params *mgmt_params);
 	void tar_read_save_parameters(FILE *output_file_handle);
 	void tar_read_check_exists();
 	virtual bool decompress_ev(char *data, u_int32_t len);
@@ -247,9 +247,7 @@ private:
 	class ReadData : public CompressStream_baseEv {
 	public:
 		ReadData() {
-			send_parameters_client = 0;
-			send_parameters_c_client = NULL;
-			send_parameters_zip = false;
+			send_parameters = NULL;
 			output_file_handle = NULL;
 			check_exists = false;
 			null();
@@ -298,9 +296,7 @@ private:
 		size_t bufferLength;
 		tar_header fileHeader;
 		size_t fileSize;
-		int send_parameters_client;
-		void *send_parameters_c_client;
-		bool send_parameters_zip;
+		Mgmt_params *send_parameters;
 		FILE *output_file_handle;
 		bool check_exists;
 		CompressStream *decompressStreamFromLzo;

@@ -293,6 +293,8 @@ int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W opt
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
 int opt_manager_nonblock_mode = 0;
+string opt_manager_aes_key;
+string opt_manager_aes_iv;
 int opt_rtpsave_threaded = 1;
 int opt_norecord_header = 0;	// if = 1 SIP call with X-VoipMonitor-norecord header will be not saved although global configuration says to record. 
 int opt_rtpnosip = 0;		// if = 1 RTP stream will be saved into calls regardless on SIP signalizatoin (handy if you need extract RTP without SIP)
@@ -1090,7 +1092,8 @@ pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
 //pthread_t destroy_calls_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
-pthread_t manager_ssh_thread;	
+pthread_t manager_file_thread = 0;
+bool manager_file_terminating = false;
 pthread_t cachedir_thread;	// ID of worker cachedir thread 
 pthread_t database_backup_thread;	// ID of worker backup thread 
 pthread_t tarqueuethread[2];	// ID of worker manager thread 
@@ -1154,6 +1157,7 @@ u_int16_t global_pcap_handle_index_dead_EN10MB = 0;
 rtp_read_thread *rtp_threads;
 
 int manager_socket_server = 0;
+int manager_socket_file_server = 0;
 
 pthread_mutex_t mysqlconnect_lock;
 pthread_mutex_t hostbyname_lock;
@@ -1448,6 +1452,8 @@ int opt_sched_pol_auto_heap_limit = 1;
 int opt_sched_pol_auto_cpu_limit = 45;
 
 bool opt_use_thread_setname = false;
+
+bool opt_manager_enable_unencrypted = false;
 
 
 #include <stdio.h>
@@ -4345,14 +4351,30 @@ int main(int argc, char *argv[]) {
 			USLEEP(10000); 
 			res = shutdown(manager_socket_server, SHUT_RDWR);	// break accept syscall in manager thread
 		}
+#ifndef FREEBSD
 		struct timespec ts;
 		ts.tv_sec = 1;
 		ts.tv_nsec = 0;
 		// wait for thread max 1 sec
-#ifndef FREEBSD	
-		//TODO: solve it for freebsd
 		pthread_timedjoin_np(manager_thread, NULL, &ts);
+		//TODO: solve it for freebsd
 #endif
+	}
+	
+#ifdef FREEBSD
+	if(manager_file_thread != NULL) {
+#else
+	if(manager_file_thread > 0) {
+#endif
+		int res;
+		res = shutdown(manager_socket_file_server, SHUT_RDWR);	// break accept syscall in manager thread
+		if(res == -1) {
+			// if shutdown failed it can happen when reding very short pcap file and the bind socket was not created in manager
+			USLEEP(10000); 
+			res = shutdown(manager_socket_file_server, SHUT_RDWR);	// break accept syscall in manager thread
+		}
+		pthread_join(manager_file_thread, NULL);
+		manager_file_thread = 0;
 	}
 	
 	if(opt_rrd) {
@@ -4382,7 +4404,7 @@ int main(int argc, char *argv[]) {
 	delete regfailedcache;
 	
 	if(ws_calls) {
-		cout << ws_calls->printUncofirmed();
+		cout << ws_calls->printUnconfirmed();
 		delete ws_calls;
 	}
 	
@@ -6238,8 +6260,16 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("destroy_calls_in_storing_cdr", &opt_destroy_calls_in_storing_cdr));
 			setDisableIfEnd();
 	group("manager");
-		addConfigItem(new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)));
-		addConfigItem(new FILE_LINE(42163) cConfigItem_integer("managerport", &opt_manager_port));
+		addConfigItem((new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(42163) cConfigItem_integer("managerport", &opt_manager_port))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(0) cConfigItem_string("manager_aes_key", &opt_manager_aes_key))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(0) cConfigItem_string("manager_aes_iv", &opt_manager_aes_iv))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("manager_enable_unencrypted", &opt_manager_enable_unencrypted))
+			->setReadOnly());
 	group("buffers and memory usage");
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42164) cConfigItem_integer("max_buffer_mem", &opt_max_buffer_mem))
@@ -7007,7 +7037,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_query", &snifferClientOptions.remote_query));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_store", &snifferClientOptions.remote_store));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("packetbuffer_sender", &snifferClientOptions.packetbuffer_sender));
-			addConfigItem(new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password));
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("server_password", &snifferServerClientOptions.password))
+				->setPassword());
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("remote_chart_server", &snifferClientOptions.remote_chart_server));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("server_sql_queue_limit", &snifferServerOptions.mysql_queue_limit));
@@ -7520,6 +7551,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"extract_rtp_payload", 1, 0, _param_extract_rtp_payload},
 	    {"load-rtp-pcap", 1, 0, _param_load_rtp_pcap},
 	    {"check_bad_ether_type", 1, 0, _param_check_bad_ether_type},
+	    {"manager_enable_unencrypted", 0, 0, _param_manager_enable_unencrypted},
 /*
 	    {"maxpoolsize", 1, 0, NULL},
 	    {"maxpooldays", 1, 0, NULL},
@@ -8288,6 +8320,9 @@ void get_command_line_arguments() {
 				if(optarg) {
 					strcpy_null_term(opt_test_arg, optarg);
 				}
+				break;
+			case _param_manager_enable_unencrypted:
+				opt_manager_enable_unencrypted = true;
 				break;
 		}
 		if(optarg) {
@@ -10463,6 +10498,12 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "managerip", NULL))) {
 		strcpy_null_term(opt_manager_ip, value);
+	}
+	if((value = ini.GetValue("general", "manager_aes_key", NULL))) {
+		opt_manager_aes_key = value;
+	}
+	if((value = ini.GetValue("general", "manager_aes_iv", NULL))) {
+		opt_manager_aes_iv = value;
 	}
 	if((value = ini.GetValue("general", "manager_nonblock_mode", NULL))) {
 		opt_manager_nonblock_mode = yesno(value);

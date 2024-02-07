@@ -77,7 +77,11 @@ extern volatile int registers_counter;
 extern char mac[32];
 extern int verbosity;
 extern char opt_php_path[1024];
+extern pthread_t manager_file_thread;
+extern bool manager_file_terminating;
 extern int manager_socket_server;
+extern int manager_socket_file_server;
+extern bool manager_socket_file_server_terminating;
 extern int opt_nocdr;
 extern int global_livesniffer;
 extern map<unsigned int, octects_live_t*> ipacc_live;
@@ -114,22 +118,29 @@ int opt_disable_wait_for_ssl_key = 0;
 
 using namespace std;
 
-int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mode*/);
+struct sMgmtCmdsReg {
+	int (*mgmtFce)(Mgmt_params *params);
+	string command;
+	string help;
+	int notNeedAes;
+};
+map<string, sMgmtCmdsReg> MgmtCmdsRegTable;
 
-std::map<string, int> MgmtCmdsRegTable;
-std::map<string, string> MgmtHelpTable;
-
-int Mgmt_params::registerCommand(const char *str, const char *help) {
-	string h(help, strlen(help));
-	string s(str, strlen(str));
-	MgmtCmdsRegTable[s] = index;
-	MgmtHelpTable[s] = h;
+int Mgmt_params::registerCommand(const char *cmd, const char *help, int notNeedAes) {
+	sMgmtCmdsReg cmd_reg;
+	cmd_reg.mgmtFce = this->mgmtFce;
+	cmd_reg.command = cmd;
+	if(help && *help) {
+		cmd_reg.help = help;
+	}
+	cmd_reg.notNeedAes = notNeedAes;
+	MgmtCmdsRegTable[cmd] = cmd_reg;
 	return(0);
 }
 
 int Mgmt_params::registerCommand(commandAndHelp *cmdHelp) {
 	while (cmdHelp->command) {
-		registerCommand(cmdHelp->command, cmdHelp->help);
+		registerCommand(cmdHelp->command, cmdHelp->help, cmdHelp->notNeedAes);
 		cmdHelp++;
 	}
 	return(0);
@@ -141,7 +152,7 @@ int Mgmt_params::sendString(const char *str) {
 }
 
 int Mgmt_params::sendString(const char *str, ssize_t size) {
-	if(sendvm(client.handler, c_client, str, size, 0) == -1){
+	if(_send(str, size) == -1) {
 		cerr << "Error sending data to client" << endl;
 		return -1;
 	}
@@ -172,7 +183,7 @@ int Mgmt_params::sendString(string *str) {
 	if(zip &&
 	   ((*str)[0] != 0x1f || (str->length() > 1 && (unsigned char)(*str)[1] != 0x8b))) {
 		compressStream = new FILE_LINE(13021) CompressStream(CompressStream::gzip, 1024, 0);
-		compressStream->setSendParameters(client.handler, c_client);
+		compressStream->setSendParameters(this);
 	}
 	unsigned chunkLength = 4096;
 	unsigned processedLength = 0;
@@ -185,7 +196,7 @@ int Mgmt_params::sendString(string *str) {
 			return -1;
 			}
 		} else {
-			if(sendvm(client.handler, c_client, (char*)str->c_str() + processedLength, processLength, 0) == -1){
+			if(_send((char*)str->c_str() + processedLength, processLength) == -1) {
 				cerr << "Error sending data to client" << endl;
 				return -1;
 			}
@@ -217,7 +228,7 @@ int Mgmt_params::sendFile(const char *fileName, u_int64_t tailMaxSize) {
 		lseek(fd, startPos);
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client.handler, c_client);
+	recompressStream->setSendParameters(this);
 	ssize_t nread;
 	size_t read_size = 0;
 	char rbuf[4096];
@@ -255,7 +266,7 @@ int Mgmt_params::sendConfigurationFile(const char *fileName, list<string> *hideP
 		return -1;
 	}
 	RecompressStream *recompressStream = new FILE_LINE(0) RecompressStream(RecompressStream::compress_na, zip ? RecompressStream::gzip : RecompressStream::compress_na);
-	recompressStream->setSendParameters(client.handler, c_client);
+	recompressStream->setSendParameters(this);
 	char lineBuffer[10000];
 	while(fgets(lineBuffer, sizeof(lineBuffer), file)) {
 		string lineBufferSubst;
@@ -317,15 +328,67 @@ int Mgmt_params::sendPexecOutput(const char *cmd) {
 	}
 }
 
-Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, ManagerClientThread **imanagerClientThread) {
+int Mgmt_params::_send(const char *buf, ssize_t len) {
+	int res = 0;
+	if(c_client) {
+		extern cCR_Receiver_service *cloud_receiver;
+		extern cSnifferClientService *snifferClientService;
+		string aes_ckey, aes_ivec;
+		if(cloud_receiver) {
+			cloud_receiver->get_aes_keys(&aes_ckey, &aes_ivec);
+		} else if(snifferClientService) {
+			snifferClientService->get_aes_keys(&aes_ckey, &aes_ivec);
+		}
+		res = c_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str()) ? 0: -1;
+	} else {
+		if(aes_key.isSetKeys()) {
+			if(!aes) {
+				aes = new FILE_LINE(0) cAes();
+				aes->setKeys(&aes_key);
+				aes->setCipher(aes_cipher.c_str());
+				send(client.handler, "aes:", 4, 0);
+			}
+			u_char *data_enc;
+			size_t datalen_enc;
+			if(aes->encrypt((u_char*)buf, len, &data_enc, &datalen_enc, false)) {
+				res = send(client.handler, data_enc, datalen_enc, 0);
+				delete [] data_enc;
+			}
+		} else {
+			res = send(client.handler, buf, len, 0);
+		}
+	}
+	return res;
+}
+
+Mgmt_params::Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, cAesKey *aes_key, const char *aes_cipher, ManagerClientThread **imanagerClientThread) {
 	buf = ibuf;
 	size = isize;
 	client = iclient;
 	c_client = ic_client;
 	managerClientThread = imanagerClientThread;
-	index = 0;
+	mgmtFce = NULL;
 	zip = false;
 	task = mgmt_task_na;
+	if(aes_key) {
+		this->aes_key = *aes_key;
+	}
+	if(aes_cipher) {
+		this->aes_cipher = aes_cipher;
+	}
+	aes = NULL;
+}
+
+Mgmt_params::~Mgmt_params() {
+	if(aes) {
+		u_char *data_enc;
+		size_t datalen_enc;
+		if(aes->encrypt((u_char*)"", 0, &data_enc, &datalen_enc, true)) {
+			send(client.handler, data_enc, datalen_enc, 0);
+			delete [] data_enc;
+		}
+		delete aes;
+	}
 }
 
 int Mgmt_help(Mgmt_params *params);
@@ -437,6 +500,8 @@ int Mgmt_usleep(Mgmt_params *params);
 int Mgmt_charts_cache(Mgmt_params *params);
 int Mgmt_packetbuffer_log(Mgmt_params *params);
 int Mgmt_diameter_packets_stack(Mgmt_params *params);
+int Mgmt_aes(Mgmt_params *params);
+int Mgmt_manager_file(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -548,7 +613,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_charts_cache,
 	Mgmt_packetbuffer_log,
 	Mgmt_diameter_packets_stack,
-	NULL
+	Mgmt_aes,
+	Mgmt_manager_file
 };
 
 struct listening_worker_arg {
@@ -1042,39 +1108,6 @@ void listening_remove_worker(Call *call) {
 	listening_master_unlock();
 }
 
-int sendvm(int socket, cClient *c_client, const char *buf, size_t len, int /*mode*/) {
-	int res = 0;
-	if(c_client) {
-		extern cCR_Receiver_service *cloud_receiver;
-		extern cSnifferClientService *snifferClientService;
-		string aes_ckey, aes_ivec;
-		if(cloud_receiver) {
-			cloud_receiver->get_aes_keys(&aes_ckey, &aes_ivec);
-		} else if(snifferClientService) {
-			snifferClientService->get_aes_keys(&aes_ckey, &aes_ivec);
-		}
-		res = c_client->writeAesEnc((u_char*)buf, len, aes_ckey.c_str(), aes_ivec.c_str()) ? 0: -1;
-	} else {
-		res = send(socket, buf, len, 0);
-	}
-	return res;
-}
-
-int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode) {
-	return(sendvm(socket, (cClient*)c_client, buf, len, mode));
-}
-
-int sendvm_from_stdout_of_command(char *command, int socket, cClient *c_client) {
-	SimpleBuffer out;
-	if(vm_pexec(command, &out) && out.size()) {
-		if(sendvm(socket, c_client, (const char*)out.data(), out.size(), 0) == -1) {
-			if (verbosity > 0) syslog(LOG_NOTICE, "sendvm_from_stdout_of_command: sending data problem");
-			return -1;
-		}
-	}
-	return 0;
-}
-
 void try_ip_mask(vmIP &addr, vmIP &mask, string &ipstr) {
         vector<string> ip_mask = split(ipstr.c_str(), "/", true);
 	if(ip_mask.size() >= 2) {
@@ -1095,11 +1128,11 @@ void manager_parse_command_disable() {
 	enable_parse_command = false;
 }
 
-static int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, ManagerClientThread **managerClientThread);
+static int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, cAesKey *aes_key, const char *aes_cipher, bool aes_missing, ManagerClientThread **managerClientThread);
 
-int parse_command(string cmd, sClientInfo client, cClient *c_client) {
+int parse_command(string cmd, sClientInfo client, cClient *c_client, cAesKey *aes_key, const char *aes_cipher, bool aes_missing) {
 	ManagerClientThread *managerClientThread = NULL;
-	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, c_client, &managerClientThread);
+	int rslt = _parse_command((char*)cmd.c_str(), cmd.length(), client, c_client, aes_key, aes_cipher, aes_missing, &managerClientThread);
 	if(managerClientThread) {
 		if(managerClientThread->parseCommand()) {
 			ClientThreads.add(managerClientThread);
@@ -1118,43 +1151,48 @@ int parse_command(string cmd, sClientInfo client, cClient *c_client) {
 	return(rslt);
 }
 
-int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, ManagerClientThread **managerClientThread) {
-	if(!enable_parse_command) {
-		return(0);
-	}
-
+sMgmtCmdsReg *find_mgmt_cmd(char *cmd) {
 	for(int i = 0; i < 2; i++) {
-		char *pointerToEndSeparator = strstr(buf, i == 0 ? "\r" : "\n");
+		char *pointerToEndSeparator = strstr(cmd, i == 0 ? "\r" : "\n");
 		if(pointerToEndSeparator) {
 			*pointerToEndSeparator = 0;
 		}
 	}
-	if(sverb.manager) {
-		syslog(LOG_NOTICE, "manager command: %s|END", buf);
+	sMgmtCmdsReg *mgmtCmd = NULL;
+	char *pointerToSeparatorInCmd = strpbrk(cmd, " \r\n\t");
+	std::map<string, sMgmtCmdsReg>::iterator MgmtItem = MgmtCmdsRegTable.find(pointerToSeparatorInCmd ? string(cmd, pointerToSeparatorInCmd) : cmd);
+	if(MgmtItem != MgmtCmdsRegTable.end()) {
+		mgmtCmd = &MgmtItem->second;
 	}
-	
-	int MgmtFuncIndex = -1;
-	string MgmtCommand;
-	char *pointerToSeparatorInCmd = strpbrk(buf, " \r\n\t");
-	std::map<string, int>::iterator MgmtItem = MgmtCmdsRegTable.find(pointerToSeparatorInCmd ? string(buf, pointerToSeparatorInCmd) : buf);
-	if (MgmtItem != MgmtCmdsRegTable.end()) {
-		MgmtFuncIndex = MgmtItem->second;
-		MgmtCommand = MgmtItem->first;
-	}
-	if(MgmtFuncIndex < 0) {
-		std::map<string, int>::iterator MgmtItem;
+	if(!mgmtCmd) {
+		map<string, sMgmtCmdsReg>::iterator MgmtItem;
 		for(MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
-			if(strstr(buf, MgmtItem->first.c_str())) {
-				MgmtFuncIndex = MgmtItem->second;
-				MgmtCommand = MgmtItem->first;
+			if(strstr(cmd, MgmtItem->first.c_str())) {
+				mgmtCmd = &MgmtItem->second;
 				break;
 			}
 		}
 	}
-	Mgmt_params* mparams = new FILE_LINE(0) Mgmt_params(buf, size, client, c_client, managerClientThread);
-	if(MgmtFuncIndex >= 0) {
-		mparams->command = MgmtCommand;
-		int ret = MgmtFuncArray[MgmtFuncIndex](mparams);
+	return(mgmtCmd);
+}
+
+int _parse_command(char *buf, int size, sClientInfo client, cClient *c_client, cAesKey *aes_key, const char *aes_cipher, bool aes_missing, ManagerClientThread **managerClientThread) {
+	if(!enable_parse_command) {
+		return(0);
+	}
+	sMgmtCmdsReg *mgmtCmd = find_mgmt_cmd(buf);
+	if(sverb.manager) {
+		syslog(LOG_NOTICE, "manager command: %s|END", buf);
+	}
+	Mgmt_params* mparams = new FILE_LINE(0) Mgmt_params(buf, size, client, c_client, aes_key, aes_cipher, managerClientThread);
+	if(mgmtCmd) {
+		if(aes_missing && !cManagerAes::notNeedAesForCommand(buf, mgmtCmd)) {
+			mparams->sendString("need aes!\n");
+			delete mparams;
+			return(-1);
+		}
+		mparams->command = mgmtCmd->command;
+		int ret = mgmtCmd->mgmtFce(mparams);
 		delete mparams;
 		return(ret);
 	} else {
@@ -1270,10 +1308,14 @@ static void subCommandType(string command_type) {
 void *manager_read_thread(void * arg) {
 
 	char buf[BUFSIZE];
-	string buf_long;
 	int size;
-	sClientInfo clientInfo = *(sClientInfo*)arg;
-	delete (sClientInfo*)arg;
+	SimpleBuffer command_buffer;
+	string command;
+	cAesKey aes_key;
+	string aes_cipher;
+	bool aes_missing = false;
+	sManagerClientInfo clientInfo = *(sManagerClientInfo*)arg;
+	delete (sManagerClientInfo*)arg;
 
 	if ((size = recv(clientInfo.handler, buf, BUFSIZE - 1, 0)) == -1) {
 		cerr << "Error in receiving data" << endl;
@@ -1281,16 +1323,19 @@ void *manager_read_thread(void * arg) {
 		return 0;
 	} else {
 		buf[size] = '\0';
-		buf_long = buf;
 		bool debugRecv = verbosity >= 2;
 		if(debugRecv) {
 			cout << "DATA: " << buf << endl;
 		}
-		if(!strstr(buf, "\r\n\r\n")) {
-			char buf_next[BUFSIZE];
+		if(!strncmp(buf, "aes", 3) ?
+		    memmem(buf, size, ":sea", 4) :
+		    strstr(buf, "\r\n\r\n")) {
+			command_buffer.add(buf, size);
+		} else {
 			if(debugRecv) {
 				cout << "NEXT_RECV start" << endl;
 			}
+			command_buffer.add(buf, size);
 			while(true) {
 				bool doRead = false;
 				int timeout_ms = 500;
@@ -1316,13 +1361,13 @@ void *manager_read_thread(void * arg) {
 					}
 				}
 				if(doRead &&
-				   (size = recv(clientInfo.handler, buf_next, BUFSIZE - 1, 0)) > 0) {
-					buf_next[size] = '\0';
-					buf_long += buf_next;
+				   (size = recv(clientInfo.handler, buf, BUFSIZE - 1, 0)) > 0) {
+					buf[size] = '\0';
+					command_buffer.add(buf, size);
 					if(debugRecv) {
-						cout << "NEXT DATA: " << buf_next << endl;
+						cout << "NEXT DATA: " << buf << endl;
 					}
-					if(buf_long.find("\r\n\r\n") != string::npos) {
+					if(cManagerAes::existsEnd(&command_buffer, NULL)) {
 						break;
 					}
 				} else {
@@ -1332,105 +1377,270 @@ void *manager_read_thread(void * arg) {
 			if(debugRecv) {
 				cout << "NEXT_RECV stop" << endl;
 			}
-			size_t posEnd;
-			if((posEnd = buf_long.find("\r\n\r\n")) != string::npos) {
-				buf_long.resize(posEnd);
+		}
+		if(cManagerAes::isAes(&command_buffer)) {
+			cManagerAes::decrypt(&command_buffer, &command, &aes_key, &aes_cipher);
+		} else {
+			if(!clientInfo.file_socket && cManagerAes::getAesKey(NULL)) {
+				aes_missing = true;
 			}
+			command = (char*)command_buffer;
 		}
 	}
 	
-	parse_command(buf_long, clientInfo, NULL);
+	size_t posEnd;
+	if((posEnd = command.find("\r\n\r\n")) != string::npos) {
+		command.resize(posEnd);
+	}
+	parse_command(command, clientInfo, NULL, &aes_key, aes_cipher.c_str(), aes_missing);
 	
 	termTimeCacheForThread();
 
 	return 0;
 }
 
-void perror_syslog(const char *msg) {
-	char buf[1024];
-	const char *errstr = strerror_r(errno, buf, sizeof(buf));
-	if(!errstr || !errstr[0]) {
-		errstr = "unknown error";
+
+bool cManagerAes::getAesKey(cAesKey *aes_key, bool force) {
+	extern string opt_manager_aes_key;
+	extern string opt_manager_aes_iv;
+	if(!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty()) {
+		string ckey = base64_decode(opt_manager_aes_key.c_str());
+		string ivec = base64_decode(opt_manager_aes_iv.c_str());
+		if(aes_key) {
+			aes_key->ckey = ckey;
+			aes_key->ivec = ivec;
+		}
+		cManagerAes::aes_key.ckey = ckey;
+		cManagerAes::aes_key.ivec = ivec;
+		return(true);
 	}
-	syslog(LOG_ERR, "%s:%s\n", msg, errstr);
+	u_int32_t time_s = getTimeS();
+	if(!force &&
+	   cManagerAes::aes_key.isSetKeys() &&
+	   cManagerAes::aes_key_at + (10 * 60) > time_s) {
+		if(aes_key) {
+			*aes_key = cManagerAes::aes_key;
+		}
+		return(true);
+	}
+	bool rslt = false;
+	SqlDb *sqlDb = createSqlObject();
+	sqlDb->query("SELECT * from `system` where type = 'manager_key'");
+	SqlDb_row row = sqlDb->fetchRow();
+	if(row) {
+		JsonItem jsonAesKey;
+		jsonAesKey.parse(row["content"]);
+		string key = jsonAesKey.getValue("key");
+		string iv = jsonAesKey.getValue("iv");
+		if(!key.empty() && !iv.empty()) {
+			string ckey = base64_decode(key.c_str());
+			string ivec = base64_decode(iv.c_str());
+			if(aes_key) {
+				aes_key->ckey = ckey;
+				aes_key->ivec = ivec;
+			}
+			cManagerAes::aes_key.ckey = ckey;
+			cManagerAes::aes_key.ivec = ivec;
+			cManagerAes::aes_key_at = time_s;
+			rslt = true;
+		}
+	}
+	delete sqlDb;
+	return(rslt);
 }
 
+bool cManagerAes::isAes(SimpleBuffer *buffer) {
+	return(buffer->size() >= 3 &&
+	       !strncasecmp((char*)buffer->data(), "aes", 3));
+ 
+}
 
-void *manager_server(void */*dummy*/) {
+bool cManagerAes::existsEnd(SimpleBuffer *buffer, int *endPos) {
+	bool is_aes = isAes(buffer);
+	if(buffer->size() >= (is_aes ? 4 : 2)) {
+		u_char *endPointer;
+		if((endPointer = (u_char*)memmem(buffer->data(), buffer->size(), is_aes ? ":sea" : "\r\n", is_aes ? 4 : 2)) != NULL) {
+			if(endPos) {
+				*endPos = endPointer - buffer->data();
+			}
+			return(true);
+		}
+	}
+	return(false);
+}
 
-	// Vytvorime soket - viz minuly dil
-	if ((manager_socket_server = socket_create(str_2_vmIP(opt_manager_ip), SOCK_STREAM, IPPROTO_TCP)) == -1) {
-		cerr << "Cannot create manager tcp socket" << endl;
+bool cManagerAes::decrypt(SimpleBuffer *buffer, string *rslt, cAesKey *aes_key, string *aes_cipher) {
+	if(!getAesKey(aes_key)) {
+		return(false);
+	}
+	u_char *aes_cipher_end = (u_char*)strnchr((char*)buffer->data(), ':', buffer->size());
+	if(aes_cipher_end && 
+	   aes_cipher_end - buffer->data() < 20) {
+		u_char *end_aes = (u_char*)memmem(buffer->data(), buffer->size(), ":sea", 4);
+		if(end_aes) {
+			*aes_cipher = string((char*)buffer->data(), aes_cipher_end - buffer->data());
+			for(int pass = 0; pass < 2; pass++) {
+				if(pass > 0) {
+					getAesKey(aes_key, true);
+				}
+				cAes aes;
+				aes.setKeys(aes_key);
+				aes.setCipher(aes_cipher->c_str());
+				u_char *decrypted;
+				size_t decrypted_length;
+				if(aes.decrypt(buffer->data() + (aes_cipher->length() + 1), end_aes - buffer->data() - (aes_cipher->length() + 1), &decrypted, &decrypted_length, true)) {
+					*rslt = string((char*)decrypted, decrypted_length);
+					delete [] decrypted;
+					return(true);
+				}
+			}
+		}
+	}
+	return(false);
+}
+
+bool cManagerAes::notNeedAesForCommand(char *command, sMgmtCmdsReg *mgmtCmd) {
+	extern bool opt_manager_enable_unencrypted;
+	if(opt_manager_enable_unencrypted) {
+		return(true);
+	}
+	if(!mgmtCmd) {
+		mgmtCmd = find_mgmt_cmd(command);
+	}
+	if(mgmtCmd) {
+		if(mgmtCmd->notNeedAes == 1) {
+			return(true);
+		} else if(mgmtCmd->notNeedAes == 2) {
+			Mgmt_params params(command, strlen(command), sClientInfo(), NULL, NULL, NULL, NULL);
+			params.task = Mgmt_params::mgmt_task_CheckNeedAes;
+			if(!mgmtCmd->mgmtFce(&params)) {
+				return(true);
+			}
+		}
+	}
+	if(!getAesKey(NULL, true)) {
+		return(true);
+	}
+	return(false);
+}
+
+cAesKey cManagerAes::aes_key;
+u_int32_t cManagerAes::aes_key_at = 0;
+
+
+void *manager_server(void *arg) {
+ 	sManagerServerArgs managerServerArgs;
+	if(arg) {
+		managerServerArgs = *(sManagerServerArgs*)arg;
+		delete (sManagerServerArgs*)arg;
+	}
+	if(!managerServerArgs.file_socket.empty()) {
+		manager_file_terminating = false;
+	}
+	int *manager_socket = managerServerArgs.file_socket.empty() ? &manager_socket_server : &manager_socket_file_server;
+	if((*manager_socket = (managerServerArgs.file_socket.empty() ?
+				socket_create(str_2_vmIP(opt_manager_ip), SOCK_STREAM, IPPROTO_TCP) :
+				socket(AF_UNIX, SOCK_STREAM, 0))) == -1) {
+		syslog(LOG_ERR, "Cannot create manager %s socket", managerServerArgs.file_socket.empty() ? "tcp": "file");
 		return 0;
 	}
 	int on = 1;
-	setsockopt(manager_socket_server, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
-	if(opt_manager_nonblock_mode) {
-		int flags = fcntl(manager_socket_server, F_GETFL, 0);
+	setsockopt(*manager_socket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+	if(opt_manager_nonblock_mode || managerServerArgs.non_block) {
+		int flags = fcntl(*manager_socket, F_GETFL, 0);
 		if(flags >= 0) {
-			fcntl(manager_socket_server, F_SETFL, flags | O_NONBLOCK);
+			fcntl(*manager_socket, F_SETFL, flags | O_NONBLOCK);
 		}
 	}
-tryagain:
-	if (socket_bind(manager_socket_server, str_2_vmIP(opt_manager_ip), opt_manager_port) == -1) {
-		syslog(LOG_ERR, "Cannot bind to port [%d] trying again after 5 seconds intervals\n", opt_manager_port);
-		sleep(5);
-		goto tryagain;
+	bool bindOk = false;
+	while(!bindOk) {
+		if(managerServerArgs.file_socket.empty()) {
+			if(socket_bind(*manager_socket, str_2_vmIP(opt_manager_ip), opt_manager_port) != -1) {
+				bindOk = true;
+			} else {
+				syslog(LOG_ERR, "Cannot bind to port [%d]; trying again after 5 seconds intervals", opt_manager_port);
+				sleep(5);
+			}
+		} else {
+			sockaddr_un file_socket_addr;
+			memset(&file_socket_addr, 0, sizeof(file_socket_addr));
+			file_socket_addr.sun_family = AF_UNIX;
+			strncpy(file_socket_addr.sun_path, managerServerArgs.file_socket.c_str(), sizeof(file_socket_addr.sun_path));
+			file_socket_addr.sun_path[sizeof(file_socket_addr.sun_path) - 1] = 0;
+			unlink(file_socket_addr.sun_path);
+			if(bind(*manager_socket, (struct sockaddr *)&file_socket_addr, sizeof(file_socket_addr)) != -1) {
+				extern int opt_fork;
+				if(opt_fork) {
+					if(chown(file_socket_addr.sun_path, 0, 0) == -1) {
+						syslog(LOG_ERR, "Cannot chown root [%s]", file_socket_addr.sun_path);
+						return 0;
+					}
+				}
+				if(chmod(file_socket_addr.sun_path, S_IRUSR | S_IWUSR) == -1) {
+					syslog(LOG_ERR, "Cannot chmod S_IRUSR | S_IWUSR [%s]", file_socket_addr.sun_path);
+					return 0;
+				}
+				bindOk = true;
+			} else {
+				syslog(LOG_ERR, "Cannot bind to [%s]; trying again after 5 seconds intervals", file_socket_addr.sun_path);
+				sleep(5);
+			}
+		}
 	}
-	// create queue with 100 connections max 
-	if (listen(manager_socket_server, 512) == -1) {
-		cerr << "Cannot create manager queue" << endl;
+	if(listen(*manager_socket, 512) == -1) {
+		syslog(LOG_ERR, "Cannot create manager queue");
 		return 0;
 	}
 	pthread_t threads;
 	pthread_attr_t attr;
 	fd_set rfds;
 	struct timeval tv;
-	while(!is_terminating_without_error()) {
+	while(!is_terminating_without_error() && 
+	      (managerServerArgs.file_socket.empty() ? true : !manager_file_terminating)) {
 		bool doAccept = false;
-		int timeout = 10;
-		if(!opt_manager_nonblock_mode) {
-			doAccept = true;
-		} else {
+		int timeout = managerServerArgs.timeout > 0 ? managerServerArgs.timeout : 10;
+		if(opt_manager_nonblock_mode || managerServerArgs.non_block) {
 			if(opt_socket_use_poll) {
 				pollfd fds[2];
 				memset(fds, 0 , sizeof(fds));
-				fds[0].fd = manager_socket_server;
+				fds[0].fd = *manager_socket;
 				fds[0].events = POLLIN;
 				if(poll(fds, 1, timeout * 1000) > 0) {
 					doAccept = true;
 				}
 			} else {
 				FD_ZERO(&rfds);
-				FD_SET(manager_socket_server, &rfds);
+				FD_SET(*manager_socket, &rfds);
 				tv.tv_sec = timeout;
 				tv.tv_usec = 0;
-				if(select(manager_socket_server + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
+				if(select(*manager_socket + 1, &rfds, (fd_set *) 0, (fd_set *) 0, &tv) > 0) {
 					doAccept = true;
 				}
 			}
+		} else {
+			doAccept = true;
 		}
 		if(doAccept) {
 			vmIP clientIP;
-			int clientHandler = socket_accept(manager_socket_server, &clientIP, NULL);
+			int clientHandler = socket_accept(*manager_socket, &clientIP, NULL);
 			if(is_terminating_without_error()) {
 				close(clientHandler);
-				close(manager_socket_server);
+				close(*manager_socket);
 				return 0;
 			}
-			if (clientHandler == -1) {
+			if(clientHandler == -1) {
 				//cerr << "Problem with accept client" <<endl;
 				close(clientHandler);
 				continue;
 			}
-
 			pthread_attr_init(&attr);
-			sClientInfo *clientInfo = new FILE_LINE(0) sClientInfo(clientHandler, clientIP);
+			sManagerClientInfo *clientInfo = new FILE_LINE(0) sManagerClientInfo(clientHandler, clientIP);
+			clientInfo->file_socket = !managerServerArgs.file_socket.empty();
 			int rslt = pthread_create (		/* Create a child thread        */
-				       &threads,		/* Thread ID (system assigned)  */    
-				       &attr,			/* Default thread attributes    */
-				       manager_read_thread,	/* Thread routine               */
-				       clientInfo);		/* Arguments to be passed       */
+					&threads,		/* Thread ID (system assigned)  */    
+					&attr,			/* Default thread attributes    */
+					manager_read_thread,	/* Thread routine               */
+					clientInfo);		/* Arguments to be passed       */
 			pthread_detach(threads);
 			pthread_attr_destroy(&attr);
 			if(rslt != 0) {
@@ -1438,8 +1648,37 @@ tryagain:
 			}
 		}
 	}
-	close(manager_socket_server);
+	close(*manager_socket);
+	if(!managerServerArgs.file_socket.empty()) {
+		unlink(managerServerArgs.file_socket.c_str());
+	}
 	return 0;
+}
+
+bool manager_file_server_start(string *file, string *error) {
+	if(manager_file_thread > 0) {
+		*error = "running";
+		return(false);
+	}
+	*file = tmpnam();
+	sManagerServerArgs *managerServerArgs = new FILE_LINE(0) sManagerServerArgs;
+	managerServerArgs->file_socket = *file;
+	managerServerArgs->non_block = true;
+	managerServerArgs->timeout = 1;
+	vm_pthread_create("manager file server",
+			  &manager_file_thread, NULL, manager_server, managerServerArgs, __FILE__, __LINE__);
+	return(true);
+}
+
+bool manager_file_server_stop(string *error) {
+	if(manager_file_thread == 0) {
+		*error = "not running";
+		return(false);
+	}
+	manager_file_terminating = true;
+	pthread_join(manager_file_thread, NULL);
+	manager_file_thread = 0;
+	return(true);
 }
 
 void livesnifferfilter_s::updateState() {
@@ -2009,7 +2248,7 @@ int ManagerClientThreads::getCount() {
 
 int Mgmt_getversion(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("getversion", "return the version of the sniffer");
+		params->registerCommand("getversion", "return the version of the sniffer", true);
 		return(0);
 	}
 	return(params->sendString(RTPSENSOR_VERSION));
@@ -2180,7 +2419,7 @@ int Mgmt_help(Mgmt_params* params) {
 		params->registerCommand("help", "print command's help");
 		return(0);
 	}
-	std::map<string, string>::iterator MgmtItem;
+	std::map<string, sMgmtCmdsReg>::iterator MgmtItem;
 	char *startOfParam = strpbrk(params->buf, " ");
 	stringstream sendBuff;
 	if (startOfParam) {
@@ -2192,19 +2431,19 @@ int Mgmt_help(Mgmt_params* params) {
 			return(-1);
 		}
 		string cmdStr (startOfParam, endOfParam);
-		MgmtItem = MgmtHelpTable.find(cmdStr);
-		if (MgmtItem != MgmtHelpTable.end()) {
-			if (MgmtItem->second.length()) {
-				sendBuff << MgmtItem->first << " ... " << MgmtItem->second << "." << endl << endl;
+		MgmtItem = MgmtCmdsRegTable.find(cmdStr);
+		if (MgmtItem != MgmtCmdsRegTable.end()) {
+			if (MgmtItem->second.help.length()) {
+				sendBuff << MgmtItem->second.command << " ... " << MgmtItem->second.help << "." << endl << endl;
 			}
 		} else {
 			sendBuff << "Command " << cmdStr << " not found." << endl << endl;
 		}
 	} else {
 		sendBuff << "List of commands:" << endl << endl;
-		for (MgmtItem = MgmtHelpTable.begin(); MgmtItem != MgmtHelpTable.end(); MgmtItem++) {
-			if (MgmtItem->second.length()) {
-				sendBuff << MgmtItem->first << " ... " << MgmtItem->second << "." << endl << endl;
+		for (MgmtItem = MgmtCmdsRegTable.begin(); MgmtItem != MgmtCmdsRegTable.end(); MgmtItem++) {
+			if (MgmtItem->second.help.length()) {
+				sendBuff << MgmtItem->second.command << " ... " << MgmtItem->second.help << "." << endl << endl;
 			}
 		}
 	}
@@ -2246,7 +2485,7 @@ int Mgmt_reindexspool(Mgmt_params *params) {
 
 int Mgmt_printspool(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("printspool", "print info about spool directory");
+		params->registerCommand("printspool", "print info about spool directory", true);
 		return(0);
 	}
 	string rslt;
@@ -2517,7 +2756,7 @@ int Mgmt_creategraph(Mgmt_params *params) {
 				if(!queueItem->error.empty()) {
 					error = queueItem->error;
 				} else {
-					if(sendvm(params->client.handler, params->c_client, (const char*)queueItem->result.data(), queueItem->result.size(), 0) == -1) {
+					if(params->sendString((const char*)queueItem->result.data(), queueItem->result.size()) == -1) {
 						if(verbosity > 0) {
 							syslog(LOG_NOTICE, "sendvm: sending data problem");
 						}
@@ -3505,13 +3744,36 @@ int Mgmt_hot_restart(Mgmt_params *params) {
 int Mgmt_get_json_config(Mgmt_params *params) {
 	string cmd = "get_json_config";
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand(cmd.c_str(), "export JSON config");
+		params->registerCommand(cmd.c_str(), "export JSON config", 2);
 		return(0);
 	}
 	string rslt;
 	vector<string> filter;
 	if(strlen(params->buf) > cmd.length() + 1) {
 		split(params->buf + cmd.length() + 1, ',', filter);
+	}
+	if (params->task == params->mgmt_task_CheckNeedAes) {
+		if(filter.size() == 0) {
+			return(true);
+		}
+		const char *notNeedAesValues[] = {
+			"server_bind",
+			"server_bind_port",
+			"server_destination",
+			"packetbuffer_sender"
+		};
+		for(vector<string>::iterator iter = filter.begin(); iter != filter.end(); iter++) {
+			bool notNeedAesValues_ok = false;
+			for(unsigned i = 0; i < sizeof(notNeedAesValues) / sizeof(notNeedAesValues[0]); i++) {
+				if(!strcmp(iter->c_str(), notNeedAesValues[i])) {
+					notNeedAesValues_ok = true;
+				}
+			}
+			if(!notNeedAesValues_ok) {
+				return(true);
+			}
+		}
+		return(false);
 	}
 	if(CONFIG.isSet()) {
 		rslt = CONFIG.getJson(false, &filter);
@@ -3694,6 +3956,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	}
 
 	bool zip = strstr(params->buf, "getfile_in_tar_zip");
+	params->zip = zip;
 
 	char tar_filename[2048];
 	char filename[2048];
@@ -3717,7 +3980,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
 		string filename_conv = filename;
 		prepare_string_to_filename((char*)filename_conv.c_str());
-		tar.tar_read_send_parameters(params->client.handler, params->c_client, zip);
+		tar.tar_read_send_parameters(params);
 		tar.tar_read(filename_conv.c_str(), recordId, tableType, tarPosI);
 		if(tar.isReadEnd()) {
 			getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
@@ -4292,7 +4555,7 @@ int Mgmt_gitUpgrade(Mgmt_params *params) {
 
 int Mgmt_sniffer_stat(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("sniffer_stat", "return sniffer's statistics");
+		params->registerCommand("sniffer_stat", "return sniffer's statistics", true);
 		return(0);
 	}
 
@@ -4328,7 +4591,7 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 
 int Mgmt_sniffer_threads(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("sniffer_threads", "return sniffer's thread statistics");
+		params->registerCommand("sniffer_threads", "return sniffer's thread statistics", true);
 		return(0);
 	}
 	extern cThreadMonitor threadMonitor;
@@ -4654,7 +4917,7 @@ int Mgmt_alloc_test(Mgmt_params *params) {
 
 int Mgmt_tcmalloc_stats(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("tcmalloc_stats", "tcmalloc_stats");
+		params->registerCommand("tcmalloc_stats", "tcmalloc_stats", true);
 		return(0);
 	}
 	#if HAVE_LIBTCMALLOC
@@ -4683,7 +4946,7 @@ int Mgmt_hashtable_stats(Mgmt_params *params) {
 
 int Mgmt_thread(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("thread", "threads management");
+		params->registerCommand("thread", "threads management", true);
 		return(0);
 	}
 	char thread_params[5][100];
@@ -4789,7 +5052,7 @@ int Mgmt_thread(Mgmt_params *params) {
 
 int Mgmt_usleep(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("usleep", "usleep management");
+		params->registerCommand("usleep", "usleep management", true);
 		return(0);
 	}
 	char us_params[5][100];
@@ -4890,8 +5153,8 @@ int Mgmt_charts_cache(Mgmt_params *params) {
 int Mgmt_packetbuffer_log(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
-			{"packetbuffer_log", "packetbuffer_log"},
-			{"packetbuffer_save", "packetbuffer_save"},
+			{"packetbuffer_log", "packetbuffer_log", true},
+			{"packetbuffer_save", "packetbuffer_save", true},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -5358,16 +5621,52 @@ int Mgmt_pausecall(Mgmt_params *params) {
 	return(0);
 }
 
+int Mgmt_aes(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		commandAndHelp ch[] = {
+			{"need_aes", NULL, true},
+			{"support_aes", NULL, true},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
+		return(0);
+	}
+	if(strstr(params->buf, "need_aes") != NULL) {
+		params->sendString("need aes!\n");
+	} else if(strstr(params->buf, "support_aes") != NULL) {
+		params->sendString("yes");
+	}
+	return(0);
+}
+
+int Mgmt_manager_file(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("manager_file", NULL, true);
+		return(0);
+	}
+	if(strstr(params->buf, "start") != NULL) {
+		string file, error;
+		if(manager_file_server_start(&file, &error)) {
+			params->sendString("OK (" + file + ")\n");
+		} else {
+			params->sendString(error + "\n");
+		}
+	} else if(strstr(params->buf, "stop") != NULL) {
+		string error;
+		if(manager_file_server_stop(&error)) {
+			params->sendString("OK\n");
+		} else {
+			params->sendString(error + "\n");
+		}
+	}
+	return(0);
+}
+
 void init_management_functions(void) {
-	int i;
-	Mgmt_params params(NULL, 0, 0, NULL, NULL);
+	Mgmt_params params(NULL, 0, 0, NULL, NULL, NULL, NULL);
 	params.task = params.mgmt_task_DoInit;
-
-	for (i = 0;; i++) {
-		params.index = i;
-		if (!MgmtFuncArray[i])
-			break;
-
+	for(unsigned i = 0; i < sizeof(MgmtFuncArray) / sizeof(MgmtFuncArray[0]); i++) {
+		params.mgmtFce = MgmtFuncArray[i];
 		MgmtFuncArray[i](&params);
 	}
 }

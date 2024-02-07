@@ -214,17 +214,7 @@ string cRsa::getError() {
 }
 
 
-cAes::cAes() {
-	ctx_enc = NULL;
-	ctx_dec = NULL;
-}
-
-cAes::~cAes() {
-	destroyCtxEnc();
-	destroyCtxDec();
-}
-
-void cAes::generate_keys() {
+void cAesKey::generate_keys() {
 	srand(getTimeUS());
 	ckey.resize(0);
 	for(int i = 0; i < 32; i++) {
@@ -238,6 +228,27 @@ void cAes::generate_keys() {
 	}
 }
 
+cAes::cAes() {
+	ctx_enc = NULL;
+	ctx_dec = NULL;
+}
+
+cAes::~cAes() {
+	destroyCtxEnc();
+	destroyCtxDec();
+}
+
+const EVP_CIPHER *cAes::getCipher() {
+	const EVP_CIPHER *rslt = NULL;
+	if(!cipher.empty()) {
+		rslt = EVP_get_cipherbyname(cipher.c_str());
+	}
+	if(!rslt) {
+		rslt = EVP_aes_128_cbc();
+	}
+	return(rslt);
+}
+
 bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
 	#ifdef HAVE_OPENSSL
 	*data_enc = NULL;
@@ -247,7 +258,7 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 			return(true);
 		}
 		ctx_enc = EVP_CIPHER_CTX_new();
-		if(!EVP_EncryptInit(ctx_enc, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
+		if(!EVP_EncryptInit(ctx_enc, getCipher(), (u_char*)key.ckey.c_str(), (u_char*)key.ivec.c_str())) {
 			EVP_CIPHER_CTX_free(ctx_enc);
 			ctx_enc = NULL;
 			return(false);
@@ -258,12 +269,16 @@ bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *data
 	int datalen_enc_part2 = 0;
 	if(datalen) {
 		if(!EVP_EncryptUpdate(ctx_enc, *data_enc, &datalen_enc_part1, data, datalen)) {
+			delete [] *data_enc;
+			*data_enc = NULL;
 			destroyCtxEnc();
 			return(false);
 		}
 	}
 	if(final) {
 		if(!EVP_EncryptFinal(ctx_enc, *data_enc + datalen_enc_part1, &datalen_enc_part2)) {
+			delete [] *data_enc;
+			*data_enc = NULL;
 			destroyCtxEnc();
 			return(false);
 		}
@@ -289,7 +304,7 @@ bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *data
 			return(true);
 		}
 		ctx_dec = EVP_CIPHER_CTX_new();
-		if(!EVP_DecryptInit(ctx_dec, EVP_aes_128_cbc(), (u_char*)ckey.c_str(), (u_char*)ivec.c_str())) {
+		if(!EVP_DecryptInit(ctx_dec, getCipher(), (u_char*)key.ckey.c_str(), (u_char*)key.ivec.c_str())) {
 			EVP_CIPHER_CTX_free(ctx_dec);
 			ctx_dec = NULL;
 			return(false);
@@ -300,12 +315,28 @@ bool cAes::decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *data
 	int datalen_dec_part2 = 0;
 	if(datalen) {
 		if(!EVP_DecryptUpdate(ctx_dec, *data_dec, &datalen_dec_part1, data, datalen)) {
+			unsigned long err_code = ERR_get_error();
+			if(err_code) {
+				char err_msg[256];
+				ERR_error_string_n(err_code, err_msg, sizeof(err_msg));
+				syslog(LOG_ERR, "Error in decrypt: %s (%lu)\n", err_msg, err_code);
+			}
+			delete [] *data_dec;
+			*data_dec = NULL;
 			destroyCtxDec();
 			return(false);
 		}
 	}
 	if(final) {
 		if(!EVP_DecryptFinal(ctx_dec, *data_dec + datalen_dec_part1, &datalen_dec_part2)) {
+			unsigned long err_code = ERR_get_error();
+			if(err_code) {
+				char err_msg[256];
+				ERR_error_string_n(err_code, err_msg, sizeof(err_msg));
+				syslog(LOG_ERR, "Error in decrypt: %s (%lu)\n", err_msg, err_code);
+			}
+			delete [] *data_dec;
+			*data_dec = NULL;
 			destroyCtxDec();
 			return(false);
 		}
@@ -1121,18 +1152,37 @@ string cSocketBlock::readLine(u_char **remainder, size_t *remainder_length) {
 }
 
 void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder, size_t remainder_length, u_int16_t timeout,
-					    SimpleBuffer *rsltBuffer) {
+					    SimpleBuffer *rsltBuffer,
+					    cAesKey *resend_aes_key, const char *resend_aes_cipher) {
 	string verb_str;
 	if(!timeout) {
 		timeout = timeouts.readblock;
 	}
 	u_int64_t startTime = getTimeUS();
+	cAes *resend_aes = NULL;
+	if(resend_aes_key && resend_aes_key->isSetKeys()) {
+		resend_aes = new FILE_LINE(0) cAes();
+		resend_aes->setKeys(resend_aes_key);
+		if(resend_aes_cipher && *resend_aes_cipher) {
+			resend_aes->setCipher(resend_aes_cipher);
+		}
+		dest->write((u_char*)"aes:", 4);
+	}
 	if(remainder) {
 		u_char *data_dec;
 		size_t data_dec_len;
 		this->decodeAesReadBuffer(remainder, remainder_length, &data_dec, &data_dec_len, false);
 		if(data_dec_len) {
-			dest->write(data_dec, data_dec_len);
+			if(resend_aes) {
+				u_char *data_enc;
+				size_t datalen_enc;
+				if(resend_aes->encrypt(data_dec, data_dec_len, &data_enc, &datalen_enc, false)) {
+					dest->write(data_enc, datalen_enc);
+					delete [] data_enc;
+				}
+			} else {
+				dest->write(data_dec, data_dec_len);
+			}
 		}
 		if(data_dec) {
 			delete [] data_dec;
@@ -1152,7 +1202,16 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 				size_t data_dec_len;
 				this->decodeAesReadBuffer(buffer, len, &data_dec, &data_dec_len, false);
 				if(data_dec_len) {
-					dest->write(data_dec, data_dec_len);
+					if(resend_aes) {
+						u_char *data_enc;
+						size_t datalen_enc;
+						if(resend_aes->encrypt(data_dec, data_dec_len, &data_enc, &datalen_enc, false)) {
+							dest->write(data_enc, datalen_enc);
+							delete [] data_enc;
+						}
+					} else {
+						dest->write(data_dec, data_dec_len);
+					}
 					if(rsltBuffer) {
 						rsltBuffer->add(data_dec, data_dec_len);
 					}
@@ -1169,7 +1228,16 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 			size_t data_dec_len;
 			this->decodeAesReadBuffer(NULL, 0, &data_dec, &data_dec_len, true);
 			if(data_dec_len) {
-				dest->write(data_dec, data_dec_len);
+				if(resend_aes) {
+					u_char *data_enc;
+					size_t datalen_enc;
+					if(resend_aes->encrypt(data_dec, data_dec_len, &data_enc, &datalen_enc, false)) {
+						dest->write(data_enc, datalen_enc);
+						delete [] data_enc;
+					}
+				} else {
+					dest->write(data_dec, data_dec_len);
+				}
 				if(rsltBuffer) {
 					rsltBuffer->add(data_dec, data_dec_len);
 				}
@@ -1190,6 +1258,15 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 	delete [] buffer;
 	if(remainder) {
 		delete [] remainder;
+	}
+	if(resend_aes) {
+		u_char *data_enc;
+		size_t datalen_enc;
+		if(resend_aes->encrypt((u_char*)"", 0, &data_enc, &datalen_enc, true)) {
+			dest->write(data_enc, datalen_enc);
+			delete [] data_enc;
+		}
+		delete resend_aes;
 	}
 	if(CR_VERBOSE().socket_decode) {
 		syslog(LOG_INFO, "decode %s", verb_str.c_str());

@@ -5,6 +5,7 @@
 #include "server.h"
 #include "sql_db.h"
 #include "pcap_queue.h"
+#include "manager.h"
 
 
 extern int opt_id_sensor;
@@ -362,7 +363,52 @@ void cSnifferServerConnection::connection_process() {
 	JsonItem jsonData;
 	u_char *remainder = NULL;
 	size_t remainder_length = 0;
-	string str = socket->readLine(&remainder, &remainder_length);
+	size_t bufferLength = 10 * 1024;
+	u_char *buffer = new FILE_LINE(0) u_char[bufferLength];
+	bool rsltRead = true;
+	SimpleBuffer readBuffer;
+	size_t readLength = bufferLength;
+	int endPos = -1;
+	while((rsltRead = socket->read(buffer, &readLength))) {
+		if(readLength) {
+			readBuffer.add(buffer, readLength);
+			if(cManagerAes::existsEnd(&readBuffer, &endPos)) {
+				break;
+			}
+		} else {
+			USLEEP(1000);
+		}
+		readLength = bufferLength;
+	}
+	delete [] buffer;
+	bool is_aes = cManagerAes::isAes(&readBuffer);
+	if(endPos >= 0) {
+		unsigned beginRemainderPos = endPos;
+		if(is_aes) beginRemainderPos += 4;
+		while(beginRemainderPos < readBuffer.size() &&
+		      (readBuffer.data()[beginRemainderPos] == '\n' || readBuffer.data()[beginRemainderPos] == '\r')) {
+			++beginRemainderPos;
+		}
+		if(beginRemainderPos < readBuffer.size()) {
+			remainder_length = readBuffer.size() - beginRemainderPos;
+			remainder = new FILE_LINE(0) u_char[remainder_length];
+			memcpy(remainder, readBuffer.data() + beginRemainderPos, remainder_length);
+		}
+	}
+	string str;
+	cAesKey aes_key;
+	string aes_cipher;
+	bool aes_missing = false;
+	if(is_aes) {
+		if(endPos > 0) {
+			cManagerAes::decrypt(&readBuffer, &str, &aes_key, &aes_cipher);
+		}
+	} else {
+		if(cManagerAes::getAesKey(NULL)) {
+			aes_missing = true;
+		}
+		str = string((char*)readBuffer.data(), endPos > 0 ? endPos : readBuffer.size());
+	}
 	if(!str.empty()) {
 		jsonData.parse(str.c_str());
 		typeConnection = convTypeConnection(jsonData.getValue("type_connection"));
@@ -377,7 +423,8 @@ void cSnifferServerConnection::connection_process() {
 	}
 	switch(typeConnection) {
 	case _tc_gui_command:
-		cp_gui_command(atol(jsonData.getValue("sensor_id").c_str()), jsonData.getValue("command"));
+		cp_gui_command(atol(jsonData.getValue("sensor_id").c_str()), jsonData.getValue("command"), 
+			       is_aes ? &aes_key : NULL, is_aes ? aes_cipher.c_str() : NULL, aes_missing);
 		break;
 	case _tc_service:
 		cp_service();
@@ -439,7 +486,7 @@ bool cSnifferServerConnection::checkPassword(string password, string *rsltStr) {
 	}
 }
 
-void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command) {
+void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command, cAesKey *aes_key, const char *aes_cipher, bool aes_missing) {
 	if(SS_VERBOSE().connect_info) {
 		ostringstream verbstr;
 		verbstr << "GUI COMAND: "
@@ -461,8 +508,25 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command)
 	}
 	sSnifferServerGuiTask task;
 	task.sensor_id = sensor_id;
-	task.command = command;
+	if(aes_missing && !cManagerAes::notNeedAesForCommand((char*)command.c_str())) {
+		syslog(LOG_INFO, "Need AES for command %s", command.c_str());
+	}
+	/*
+	if(aes_missing && !cManagerAes::notNeedAesForCommand((char*)command.c_str())) {
+		cout << " *** need aes for command " << command << endl;
+	}
+	*/
+	task.command = !aes_missing || cManagerAes::notNeedAesForCommand((char*)command.c_str()) ?
+			command :
+			"need_aes";
 	task.setTimeId();
+	if(aes_key) {
+		task.aes_key = *aes_key;
+		if(aes_cipher && *aes_cipher) {
+			task.aes_cipher = aes_cipher;
+		}
+	}
+	task.aes_missing = aes_missing;
 	task.gui_connection = this;
 	snifferServerGuiTasks.add(&task);
 	service_connection->addTask(task);
@@ -757,7 +821,8 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 					   !strncasecmp(task.command.c_str(), "hot_restart", 11);
 	SimpleBuffer rsltBuffer;
 	socket->readDecodeAesAndResendTo(gui_connection->socket, remainder, remainder_length, 0,
-					 needStopServiceIfResponseOk ? &rsltBuffer : NULL);
+					 needStopServiceIfResponseOk ? &rsltBuffer : NULL,
+					 &task.aes_key, task.aes_cipher.c_str());
 	if(needStopServiceIfResponseOk &&
 	   rsltBuffer.data_len() >= 2 && !strncasecmp(rsltBuffer, "ok", 2)) {
 		snifferServerServices.stopServiceBySensorId(sensor_id);
@@ -1571,8 +1636,8 @@ bool cSnifferClientResponse::start(string host, u_int16_t port) {
 }
 
 void cSnifferClientResponse::client_process() {
-	extern int parse_command(string cmd, sClientInfo client, cClient *c_client);
-	parse_command(command, 0, this);
+	extern int parse_command(string cmd, sClientInfo client, cClient *c_client, cAesKey *aes_key, const char *aes_cipher, bool aes_missing);
+	parse_command(command, 0, this, NULL, NULL, false);
 	if(response_sender) {
 		response_sender->add(gui_task_id, buffer);
 		buffer = NULL;

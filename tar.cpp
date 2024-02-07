@@ -51,6 +51,7 @@
 #include "tools.h"
 #include "config.h"
 #include "cleanspool.h"
+#include "manager.h"
 
 
 using namespace std;
@@ -380,7 +381,7 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 	if(!reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) &&
 	   !reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) &&
 	   !reg_match(this->pathname.c_str(), "tar\\.zst", __FILE__, __LINE__)) {
-		this->readData.send_parameters_zip = false;
+		this->readData.send_parameters->zip = false;
 	} else {
 		enableDetectTarPos = false;
 		if(flushTar(this->pathname.c_str())) {
@@ -544,10 +545,8 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 }
 
 void 
-Tar::tar_read_send_parameters(int client, void *c_client, bool zip) {
-	this->readData.send_parameters_client = client;
-	this->readData.send_parameters_c_client = c_client;
-	this->readData.send_parameters_zip = zip;
+Tar::tar_read_send_parameters(Mgmt_params *mgmt_params) {
+	this->readData.send_parameters = mgmt_params;
 }
 
 void 
@@ -622,7 +621,6 @@ Tar::tar_read_block_ev(char *data) {
 	}
 }
 
-extern int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode);
 void 
 Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_int32_t len) {
 	unsigned cmpLengthNameInTar = strlen(fileHeader.name);
@@ -646,7 +644,7 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_in
 				this->readData.decompressStreamFromLzo->enableForceStream();
 			}
 			if(!this->readData.compressStreamToGzip) {
-				this->readData.compressStreamToGzip = new FILE_LINE(34005) CompressStream(this->readData.send_parameters_zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
+				this->readData.compressStreamToGzip = new FILE_LINE(34005) CompressStream(this->readData.send_parameters->zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
 			}
 			if(this->readData.decompressStreamFromLzo->isError() ||
 			   this->readData.compressStreamToGzip->isError()) {
@@ -1148,8 +1146,8 @@ bool Tar::ReadData::decompress_ev(char *data, u_int32_t len) {
 bool Tar::ReadData::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
 	if(this->output_file_handle) {
 		fwrite(data, len, 1, this->output_file_handle);
-	} else if(this->send_parameters_client || this->send_parameters_c_client) {
-		if(_sendvm(this->send_parameters_client, this->send_parameters_c_client, data, len, 0) == -1) {
+	} else if(this->send_parameters) {
+		if(this->send_parameters->sendString(data, len) == -1) {
 			this->compressStreamToGzip->setError("send error");
 			return(false);
 		}

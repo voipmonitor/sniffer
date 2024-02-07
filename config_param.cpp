@@ -235,6 +235,7 @@ void cConfigItem::addItemToMenuItems(list<sMapValue> *menu, sMapValue menuItem) 
 }
 
 string cConfigItem::getJson() {
+	string password_value = "******";
 	JsonExport json;
 	json.add("name", config_name);
 	json.add("type", getTypeName());
@@ -251,24 +252,24 @@ string cConfigItem::getJson() {
 	if(set_in_config) {
 		json.add("set_in_config", set_in_config);
 		if(!value_in_config.empty()) {
-			json.add("value_in_config", value_in_config);
+			json.add("value_in_config", isPassword() ? password_value : value_in_config);
 		}
 	}
 	if(set_in_db) {
 		json.add("set_in_db", set_in_db);
 		if(!value_in_db.empty()) {
-			json.add("value_in_db", value_in_db);
+			json.add("value_in_db", isPassword() ? password_value : value_in_db);
 		}
 	}
 	if(set_in_json &&
 	   (!set_in_db || value_in_json != value_in_db)) {
 		json.add("set_in_json", set_in_json);
 		if(!value_in_json.empty()) {
-			json.add("value_in_json", value_in_json);
+			json.add("value_in_json", isPassword() ? password_value : value_in_json);
 		}
 	}
-	json.add("value", getValueStr());
-	json.add("default", defaultValueStr);
+	json.add("value", isPassword() ? password_value : getValueStr());
+	json.add("default", isPassword() ? password_value : defaultValueStr);
 	json.add("group", group_name);
 	json.add("subgroup", subgroup_name);
 	json.add("level", level);
@@ -2823,6 +2824,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 		nextData.add("setFromMysqlOk", setFromMysqlOk);
 		json.addJson("nextData", nextData.getJson());
 	}
+	json.add("version", RTPSENSOR_VERSION);
 	return(json.getJson());
 }
 

@@ -66,7 +66,7 @@ public:
 	void setCompressZstdStrategy(int compressZstdStrategy);
 	void enableAutoPrefixFile();
 	void enableForceStream();
-	void setSendParameters(int client, void *c_client);
+	void setSendParameters(class Mgmt_params *mgmt_params);
 	void initCompress();
 	void initDecompress(u_int32_t dataLen);
 	void termCompress();
@@ -147,8 +147,7 @@ private:
 	bool autoPrefixFile;
 	bool forceStream;
 	u_int32_t processed_len;
-	int sendParameter_client;
-	void *sendParameter_c_client;
+	Mgmt_params *sendParameters;
 friend class ChunkBuffer;
 };
 
@@ -158,7 +157,7 @@ public:
 	~RecompressStream();
 	void setTypeDecompress(eTypeCompress typeDecompress, bool enableForceStream = false);
 	void setTypeCompress(eTypeCompress typeCompress);
-	void setSendParameters(int client, void *c_client);
+	void setSendParameters(Mgmt_params *mgmt_params);
 	void processData(char *data, u_int32_t len);
 	void end();
 	bool isError();

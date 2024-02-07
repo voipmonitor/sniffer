@@ -4675,7 +4675,7 @@ public:
 	~cWsCalls();
 	void load(const char *filename);
 	void setConfirm(const char *callid, bool request, const char *str, const char *cseq);
-	string printUncofirmed();
+	string printUnconfirmed();
 public:
 	map<string, sCall> calls;
 	cCsv *csv;

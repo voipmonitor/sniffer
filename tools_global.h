@@ -398,6 +398,7 @@ int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bo
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 u_char *base64decode(const char *src, int *dst_length);
+string base64_decode(const char *src);
 string base64_encode(const unsigned char *data, size_t input_length);
 char *base64_encode(const unsigned char *data, size_t input_length, size_t *output_length);
 void _base64_encode(const unsigned char *data, size_t input_length, char *encoded_data, size_t output_length = 0);
@@ -769,6 +770,11 @@ public:
 	}
 	u_int32_t data_len() const {
 		return(bufferLength);
+	}
+	bool contains(u_char *data, unsigned len, bool at_begin = false) {
+		return(at_begin ?
+			bufferLength >= len && !memcmp(buffer, data, len) :
+			memmem(buffer, bufferLength, data, len) != NULL);
 	}
 	void clear() {
 		bufferLength = 0;

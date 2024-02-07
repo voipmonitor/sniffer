@@ -5,12 +5,33 @@
 #include <string>
 #include <vector>
 #include <queue>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 
 void *manager_client(void *dummy);
-void *manager_server(void *dummy);
+void *manager_server(void *arg);
 void *manager_ssh(void *dummy);
 int Handle_pause_call(long long callref, int val);
+
+
+struct sManagerServerArgs {
+	sManagerServerArgs() {
+		non_block = false;
+		timeout = 0;
+	}
+	string file_socket;
+	bool non_block;
+	int timeout;
+};
+
+struct sManagerClientInfo : public sClientInfo {
+	sManagerClientInfo(int handler = 0, vmIP ip = 0, bool file_socket = false)
+	: sClientInfo(handler, ip) {
+		this->file_socket = file_socket;
+	}
+	bool file_socket;
+};
 
 
 class ManagerClientThread {
@@ -101,13 +122,21 @@ private:
 };
 
 struct commandAndHelp {
+	commandAndHelp(const char *command, const char *help, int notNeedAes = 0) {
+		this->command = command;
+		this->help = help;
+		this->notNeedAes = notNeedAes;
+	}
 	const char *command;
 	const char *help;
+	int notNeedAes;
 };
 
 class Mgmt_params {
 public:
-	Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, ManagerClientThread **imanagerClientThread);
+	Mgmt_params(char *ibuf, int isize, sClientInfo iclient, cClient *ic_client, 
+		    cAesKey *aes_key, const char *aes_cipher, ManagerClientThread **imanagerClientThread);
+	~Mgmt_params();
 	int sendString(const char *);
 	int sendString(const char *, ssize_t);
 	int sendString(string);
@@ -117,14 +146,16 @@ public:
 	int sendFile(const char *fileName, u_int64_t tailMaxSize = 0);
 	int sendConfigurationFile(const char *fileName, list<string> *hidePasswordForOptions = NULL);
 	int sendPexecOutput(const char *cmd);
-	int registerCommand(const char *, const char *);
+	int _send(const char *, ssize_t);
+	int registerCommand(const char *cmd, const char *help, int notNeedAes = false);
 	int registerCommand(struct commandAndHelp *);
 	enum eTask {
 		mgmt_task_na = 0,
-		mgmt_task_DoInit = 1 << 0
+		mgmt_task_DoInit = 1 << 0,
+		mgmt_task_CheckNeedAes = 1 << 2
 	};
 	eTask task;
-	int index;
+	int (*mgmtFce)(class Mgmt_params *params);
 	bool zip;
 	string command;
 // vars for sendvm
@@ -133,6 +164,21 @@ public:
 	sClientInfo client;
 	cClient *c_client;
 	ManagerClientThread **managerClientThread;
+	cAesKey aes_key;
+	string aes_cipher;
+	cAes *aes;
+};
+
+class cManagerAes {
+public:
+	static bool getAesKey(cAesKey *aes_key, bool force = false);
+	static bool isAes(SimpleBuffer *buffer);
+	static bool existsEnd(SimpleBuffer *buffer, int *endPos);
+	static bool decrypt(SimpleBuffer *buffer, string *rslt, cAesKey *aes_key, string *aes_cipher);
+	static bool notNeedAesForCommand(char *command, struct sMgmtCmdsReg *mgmtCmd = NULL);
+private:
+	static cAesKey aes_key;
+	static u_int32_t aes_key_at;
 };
 
 void listening_master_lock();

@@ -1307,7 +1307,7 @@ void test() {
 		string jsonStr = config.getJson(true); 
 		cout << jsonStr << endl;
 		cout << "***" << endl;
-		config.setFromJson(jsonStr.c_str(), true);
+		config.setFromJson(jsonStr.c_str());
 		cout << "***" << endl;
 		config.putToMysql();
 		}

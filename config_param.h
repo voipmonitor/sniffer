@@ -57,6 +57,7 @@ public:
 	virtual string normalizeStringValuesForCmp(list<string> value) { return(""); }
 	virtual bool enable_normalizeStringValuesForCmp() { return(false); }
 	virtual bool enableMultiValues() { return(false); }
+	virtual bool isPassword() { return(false); }
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;

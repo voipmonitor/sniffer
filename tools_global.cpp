@@ -1017,6 +1017,14 @@ u_char *base64decode(const char *src, int *dst_length) {
 	return(dst);
 }
 
+string base64_decode(const char *src) {
+	int dst_length;
+	char *dst = (char*)base64decode(src, &dst_length);
+	string rslt = string(dst, dst_length);
+	delete [] dst;
+	return(rslt);
+}
+
 string base64_encode(const unsigned char *data, size_t input_length) {
 	if(!input_length) {
 		input_length = strlen((char*)data);

@@ -112,10 +112,8 @@ private:
 };
 
 
-class cAes {
-public:
-	cAes();
-	~cAes();
+class cAesKey {
+public: 
 	void generate_keys();
 	void setKeys(string ckey, string ivec) {
 		this->ckey = ckey;
@@ -130,11 +128,39 @@ public:
 			return(false);
 		}
 	}
+	bool isSetKeys() {
+		return(!ckey.empty() && !ivec.empty());
+	}
+public:
+	string ckey;
+	string ivec;
+};
+
+class cAes {
+public:
+	cAes();
+	~cAes();
+	void generate_keys() {
+		key.generate_keys();
+	}
+	void setKeys(string ckey, string ivec) {
+		key.setKeys(ckey, ivec);
+	}
+	void setKeys(cAesKey *aes_key) {
+		key.setKeys(aes_key->ckey, aes_key->ivec);
+	}
+	bool getKeys(string *ckey, string *ivec) {
+		return(key.getKeys(ckey, ivec));
+	}
+	void setCipher(const char *cipher) {
+		this->cipher = cipher;
+	}
+	const EVP_CIPHER *getCipher();
 	bool encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final);
 	bool decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final);
 	string getError();
 	bool isSetKeys() {
-		return(!ckey.empty() && !ivec.empty());
+		return(key.isSetKeys());
 	}
 private:
 	void destroyCtxEnc();
@@ -142,8 +168,8 @@ private:
 private:
 	EVP_CIPHER_CTX *ctx_enc;
 	EVP_CIPHER_CTX *ctx_dec;
-	string ckey;
-	string ivec;
+	cAesKey key;
+	string cipher;
 };
 
 
@@ -531,7 +557,8 @@ public:
 	}
 	string readLine(u_char **remainder = NULL, size_t *remainder_length = NULL);
 	void readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainder = NULL, size_t remainder_length = 0, u_int16_t timeout = 0,
-				      SimpleBuffer *rsltBuffer = NULL);
+				      SimpleBuffer *rsltBuffer = NULL,
+				      cAesKey *resend_aes_key = NULL, const char *resend_aes_cipher = NULL);
 	void generate_rsa_keys(unsigned keylen = 2048) {
 		rsa.generate_keys(keylen);
 	}

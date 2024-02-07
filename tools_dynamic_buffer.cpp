@@ -5,6 +5,7 @@
 #include "calltable.h"
 
 #include "tools_dynamic_buffer.h"
+#include "manager.h"
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 
@@ -51,8 +52,7 @@ CompressStream::CompressStream(eTypeCompress typeCompress, u_int32_t compressBuf
 	this->autoPrefixFile = false;
 	this->forceStream = false;
 	this->processed_len = 0;
-	this->sendParameter_client = 0;
-	this->sendParameter_c_client = NULL;
+	this->sendParameters = NULL;
 }
 
 CompressStream::~CompressStream() {
@@ -76,9 +76,8 @@ void CompressStream::enableForceStream() {
 	this->forceStream = true;
 }
 
-void CompressStream::setSendParameters(int client, void *c_client) {
-	this->sendParameter_client = client;
-	this->sendParameter_c_client = c_client;
+void CompressStream::setSendParameters(Mgmt_params *mgmt_params) {
+	this->sendParameters = mgmt_params;
 }
 
 void CompressStream::initCompress() {
@@ -1027,10 +1026,9 @@ void CompressStream::createDecompressBuffer(u_int32_t bufferLen) {
 	}
 }
 
-extern int _sendvm(int socket, void *c_client, const char *buf, size_t len, int mode);
 bool CompressStream::compress_ev(char *data, u_int32_t len, u_int32_t /*decompress_len*/, bool /*format_data*/) {
-	if(this->sendParameter_client || this->sendParameter_c_client) {
-		if(_sendvm(this->sendParameter_client, this->sendParameter_c_client, data, len, 0) == -1) {
+	if(this->sendParameters) {
+		if(this->sendParameters->sendString(data, len) == -1) {
 			this->setError("send error");
 			return(false);
 		}
@@ -1143,8 +1141,8 @@ void RecompressStream::setTypeCompress(eTypeCompress typeCompress) {
 	this->compressStream->setTypeCompress(typeCompress);
 }
 
-void RecompressStream::setSendParameters(int client, void *c_client) {
-	this->compressStream->setSendParameters(client, c_client);
+void RecompressStream::setSendParameters(Mgmt_params *mgmt_params) {
+	this->compressStream->setSendParameters(mgmt_params);
 }
 
 void RecompressStream::processData(char *data, u_int32_t len) {

@@ -8465,7 +8465,7 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	}
 	
 	unsigned proxies_index = 0;
-	for(set<vmIP>::iterator iter = n_branch_proxies_undup.begin(); iter != n_branch_proxies_undup.end(); iter++) {
+	for(set<vmIP>::iterator iter = n_branch_proxies_undup.begin(); iter != n_branch_proxies_undup.end() && proxies_index < 3; iter++) {
 		++proxies_index;
 		next_branch_row.add(*iter, ("proxyip_" + intToString(proxies_index)).c_str(), true, sqlDbSaveCall, table.c_str());
 	}
