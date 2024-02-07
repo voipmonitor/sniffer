@@ -51,6 +51,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #define DEBUG 1
 #define DEBUG_PREFIX "\n * SSL KEYLOG : "
 #define DEBUG_TO_SYSLOG 0
+//#define DEBUG_TO_FILE "/tmp/sslkeylog.log"
 
 #define min(a, b) (a < b ? a : b)
 
@@ -92,6 +93,7 @@ static char keylog_filename[200];
 static int keylog_file_fd = -1;
 
 static bool syslog_open = false;
+static FILE *filelog = NULL;
 
 struct sKeyQueueItem {
 	sKeyQueueItem(const char *key) {
@@ -127,7 +129,13 @@ static void debug_printf(const char* fmt, ...) {
 	#if DEBUG
 	va_list ap;
 	va_start(ap, fmt);
-	#if DEBUG_TO_SYSLOG
+	#if defined DEBUG_TO_FILE
+		if(!filelog) {
+			filelog = fopen(DEBUG_TO_FILE, "a");
+		}
+		fprintf(filelog, DEBUG_PREFIX);
+		vfprintf(filelog, fmt, ap);
+	#elif DEBUG_TO_SYSLOG
 		if(!syslog_open) {
 			openlog("SSL KEYLOG", LOG_PID, LOG_DAEMON);
 			syslog_open = true;
