@@ -178,7 +178,7 @@ public:
 	static bool notNeedAesForCommand(char *command, struct sMgmtCmdsReg *mgmtCmd = NULL);
 private:
 	static cAesKey aes_key;
-	static u_int32_t aes_key_at;
+	static volatile int _sync;
 };
 
 void listening_master_lock();

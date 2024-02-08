@@ -1414,13 +1414,13 @@ bool cManagerAes::getAesKey(cAesKey *aes_key, bool force) {
 		cManagerAes::aes_key.ivec = ivec;
 		return(true);
 	}
-	u_int32_t time_s = getTimeS();
+	__SYNC_LOCK(_sync);
 	if(!force &&
-	   cManagerAes::aes_key.isSetKeys() &&
-	   cManagerAes::aes_key_at + (10 * 60) > time_s) {
+	   cManagerAes::aes_key.isSetKeys()) {
 		if(aes_key) {
 			*aes_key = cManagerAes::aes_key;
 		}
+		__SYNC_UNLOCK(_sync);
 		return(true);
 	}
 	bool rslt = false;
@@ -1441,11 +1441,15 @@ bool cManagerAes::getAesKey(cAesKey *aes_key, bool force) {
 			}
 			cManagerAes::aes_key.ckey = ckey;
 			cManagerAes::aes_key.ivec = ivec;
-			cManagerAes::aes_key_at = time_s;
 			rslt = true;
 		}
 	}
 	delete sqlDb;
+	if(!rslt) {
+		cManagerAes::aes_key.ckey.clear();
+		cManagerAes::aes_key.ivec.clear();
+	}
+	__SYNC_UNLOCK(_sync);
 	return(rslt);
 }
 
@@ -1525,7 +1529,7 @@ bool cManagerAes::notNeedAesForCommand(char *command, sMgmtCmdsReg *mgmtCmd) {
 }
 
 cAesKey cManagerAes::aes_key;
-u_int32_t cManagerAes::aes_key_at = 0;
+volatile int cManagerAes::_sync = 0;
 
 
 void *manager_server(void *arg) {
@@ -5626,6 +5630,7 @@ int Mgmt_aes(Mgmt_params *params) {
 		commandAndHelp ch[] = {
 			{"need_aes", NULL, true},
 			{"support_aes", NULL, true},
+			{"exists_aes_key", NULL, true},
 			{NULL, NULL}
 		};
 		params->registerCommand(ch);
@@ -5635,6 +5640,8 @@ int Mgmt_aes(Mgmt_params *params) {
 		params->sendString("need aes!\n");
 	} else if(strstr(params->buf, "support_aes") != NULL) {
 		params->sendString("yes");
+	} else if(strstr(params->buf, "exists_aes_key") != NULL) {
+		params->sendString(cManagerAes::getAesKey(NULL, true) ? "yes" : "no");
 	}
 	return(0);
 }
