@@ -2252,10 +2252,23 @@ int ManagerClientThreads::getCount() {
 
 int Mgmt_getversion(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("getversion", "return the version of the sniffer", true);
+		commandAndHelp ch[] = {
+			{"getversion", "return the version of the sniffer", true},
+			{"getbuild", "return the build number of the sniffer", true},
+			{"getverbuild", "return the version and build number of the sniffer", true},
+			{NULL, NULL}
+		};
+		params->registerCommand(ch);
 		return(0);
 	}
-	return(params->sendString(RTPSENSOR_VERSION));
+	if(strstr(params->buf, "getversion") != NULL) {
+		return(params->sendString(RTPSENSOR_VERSION));
+	} else if(strstr(params->buf, "getbuild") != NULL) {
+		return(params->sendString(RTPSENSOR_BUILD_NUMBER));
+	} else if(strstr(params->buf, "getverbuild") != NULL) {
+		return(params->sendString(RTPSENSOR_VERSION + string(" (") + RTPSENSOR_BUILD_NUMBER + ")"));
+	}
+	return(0);
 }
 
 int Mgmt_cleanup_calls(Mgmt_params* params) {
@@ -4577,6 +4590,7 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	__SYNC_UNLOCK(usersniffer_sync);
 	outStrStat << "{";
 	outStrStat << "\"version\": \"" << RTPSENSOR_VERSION << "\",";
+	outStrStat << "\"build\": \"" << RTPSENSOR_BUILD_NUMBER << "\",";
 	outStrStat << "\"rrd_version\": \"" << vm_rrd_version << "\",";
 	outStrStat << "\"storingCdrLastWriteAt\": \"" << storingCdrLastWriteAt << "\",";
 	outStrStat << "\"pbStatString\": \"" << pbStatString << "\",";

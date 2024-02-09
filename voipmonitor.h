@@ -467,4 +467,14 @@ inline int separate_processing() {
 #endif
 
 
+string getVersionWithBuild() {
+	string rslt;
+	rslt = RTPSENSOR_VERSION;
+	if(RTPSENSOR_BUILD_NUMBER != string("local_build")) {
+		rslt += string("(b") + RTPSENSOR_BUILD_NUMBER + ")";
+	}
+	return(rslt);
+}
+
+
 #endif //VOIPMONITOR_H

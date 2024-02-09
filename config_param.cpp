@@ -2825,6 +2825,7 @@ string cConfig::getJson(bool onlyIfSet, vector<string> *filter) {
 		json.addJson("nextData", nextData.getJson());
 	}
 	json.add("version", RTPSENSOR_VERSION);
+	json.add("build", RTPSENSOR_BUILD_NUMBER);
 	return(json.getJson());
 }
 

@@ -3028,7 +3028,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			oldCountersTlb = counters["tlb"].second;
 		}
-		outStrStat << "v" << RTPSENSOR_VERSION << " ";
+		outStrStat << "v" << getVersionWithBuild() << " ";
 		//outStrStat << pcapStatCounter << " ";
 		if(opt_rrd) {
 			double la[3];

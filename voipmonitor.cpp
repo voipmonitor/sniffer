@@ -3743,7 +3743,7 @@ int main(int argc, char *argv[]) {
 	
 	runAt = time(NULL);
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size()) {
-		printf("voipmonitor version %s\n", RTPSENSOR_VERSION);
+		printf("voipmonitor version %s\n", getVersionWithBuild().c_str());
 		string localActTime = sqlDateTimeString(runAt);
 		printf("local time %s\n", localActTime.c_str());
 		syslog(LOG_NOTICE, "local time %s", localActTime.c_str());
@@ -4127,7 +4127,7 @@ int main(int argc, char *argv[]) {
 	#endif //SEPARATE_HEAP_FOR_HASHTABLE
 	
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
-		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", RTPSENSOR_VERSION);
+		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", getVersionWithBuild().c_str());
 		if(diffValuesMysqlLoadConfig.size()) {
 			cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "Configuration values in mysql have a higher weight than the values in the text configuration file. (name : text config / mysql config).");
 			for(list<cConfig::sDiffValue>::iterator iter = diffValuesMysqlLoadConfig.begin(); iter != diffValuesMysqlLoadConfig.end(); iter++) {
@@ -9256,7 +9256,7 @@ bool check_complete_parameters() {
                         "\n"
                         "One of <-i interface> or <-r pcap-file> must be specified, otherwise you may\n"
                         "set interface in configuration file.\n\n"
-                        , RTPSENSOR_VERSION, appname.c_str());
+                        , getVersionWithBuild().c_str(), appname.c_str());
                         /*        1         2         3         4         5         6         7         8
                          12345678901234567890123456789012345678901234567890123456789012345678901234567890
                            Ruler to assist with keeping help description to max. 80 chars wide:

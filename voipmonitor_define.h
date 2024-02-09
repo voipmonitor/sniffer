@@ -3,6 +3,7 @@
 
 
 #define RTPSENSOR_VERSION "2024.02.1"
+#define RTPSENSOR_BUILD_NUMBER "local_build"
 #define NAT
 
 #define FORMAT_WAV	1
