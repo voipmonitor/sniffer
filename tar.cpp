@@ -644,7 +644,10 @@ Tar::tar_read_file_ev(tar_header fileHeader, char *data, u_int32_t /*pos*/, u_in
 				this->readData.decompressStreamFromLzo->enableForceStream();
 			}
 			if(!this->readData.compressStreamToGzip) {
-				this->readData.compressStreamToGzip = new FILE_LINE(34005) CompressStream(this->readData.send_parameters->zip ? CompressStream::gzip : CompressStream::compress_na, 0, 0);
+				this->readData.compressStreamToGzip = new FILE_LINE(34005) CompressStream(this->readData.send_parameters && this->readData.send_parameters->zip ? 
+													   CompressStream::gzip : 
+													   CompressStream::compress_na,
+													  0, 0);
 			}
 			if(this->readData.decompressStreamFromLzo->isError() ||
 			   this->readData.compressStreamToGzip->isError()) {
