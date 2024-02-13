@@ -481,6 +481,8 @@ SqlDb::SqlDb() {
 	this->conn_sslcacert = NULL;
 	this->conn_sslcapath = NULL;
 	this->conn_disable_secure_auth = false;
+	this->cloud_router = false;
+	this->conn_showversion = false;
 	this->maxQueryPass = UINT_MAX;
 	this->loginTimeout = (ulong)NULL;
 	this->enableSqlStringInContent = false;
