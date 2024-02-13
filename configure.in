@@ -328,11 +328,15 @@ fi
 # Initialize the FLTO variable
 FLTO=""
 
-# Add --disable-flto option
+# Add --enable-flto option
 AC_ARG_ENABLE([flto],
-  [AS_HELP_STRING([--disable-flto], [Disable the use of gcc -flto flag])],
-  [],
-  [enable_flto=yes]  # Default is to enable flto
+  [AS_HELP_STRING([--enable-flto], [Enable the use of gcc -flto flag])],
+  [if test "x$enableval" = "xyes"; then
+    enable_flto=yes
+  else
+    enable_flto=no
+  fi],
+  [enable_flto=no]  # Default is to disable flto
 )
 
 # Check if flto is not disabled by the user

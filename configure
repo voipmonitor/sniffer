@@ -1315,7 +1315,7 @@ Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --disable-dpdk          Disable searching for dpdk libs (librte_*)
-  --disable-flto          Disable the use of gcc -flto flag
+  --enable-flto           Enable the use of gcc -flto flag
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -5039,13 +5039,17 @@ fi
 # Initialize the FLTO variable
 FLTO=""
 
-# Add --disable-flto option
+
+# Add --enable-flto option
 # Check whether --enable-flto was given.
 if test "${enable_flto+set}" = set; then :
-  enableval=$enable_flto;
+  enableval=$enable_flto; if test "x$enableval" = "xyes"; then
+    enable_flto=yes
+  else
+    enable_flto=no
+  fi
 else
-  enable_flto=yes  # Default is to enable flto
-
+  enable_flto=no  # Default is to disable flto
 fi
 
 
