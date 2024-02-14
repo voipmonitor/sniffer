@@ -177,7 +177,12 @@ CXXFLAGS=`$MYSQL_CONFIG --cflags`
 AC_COMPILE_IFELSE(
 	[AC_LANG_PROGRAM([[#include <mysql.h>]],
 		[[ int i = MYSQL_OPT_SSL_ENFORCE;]])],
-	[AC_MSG_NOTICE([Mysql SSL options found.])], [AC_SUBST([MYSQL_WITHOUT_SSL_SUPPORT],["yes"])AC_MSG_NOTICE([Mysql SSL options NOT found!])])
+	[AC_MSG_NOTICE([Mariadb SSL options found.])], [AC_SUBST([NO_MARIADB_SSL_SUPPORT],["yes"])])
+AC_COMPILE_IFELSE(
+	[AC_LANG_PROGRAM([[#include <mysql.h>]],
+		[[ int i = MYSQL_OPT_SSL_MODE;]])],
+	[AC_MSG_NOTICE([Mysql SSL options found.])], [AC_SUBST([NO_MYSQL_SSL_SUPPORT],["yes"])])
+AS_IF([test "x$NO_MARIADB_SSL_SUPPORT" = "xyes"], [AS_IF([test "x$NO_MYSQL_SSL_SUPPORT" = "xyes"],[AC_SUBST([MYSQL_WITHOUT_SSL_SUPPORT],["yes"])AC_MSG_NOTICE([Mariadb/MYSQL SSL options NOT found!])])])
 CFLAGS=$ORIGCFLAGS
 CXXFLAGS=$ORIGCXXFLAGS
 
