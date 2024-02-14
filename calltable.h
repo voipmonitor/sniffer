@@ -527,6 +527,26 @@ public:
 		       lastSIPresponseNum / 100 == 5 ||
 		       lastSIPresponseNum / 100 == 6);
 	}
+	void proxy_add(vmIP ip, vmPort port) {
+		if(ip.isSet()) {
+			proxies_lock();
+			proxies.push_back(vmIPport(ip, port));
+			proxies_unlock();
+		}
+	}
+	bool in_proxy(vmIP ip, vmPort port) {
+		proxies_lock();
+		bool rslt = find(proxies.begin(), proxies.end(), vmIPport(ip, port)) != proxies.end();
+		proxies_unlock();
+		return(rslt);
+	}
+	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
+	void proxies_lock() {
+		__SYNC_LOCK(this->_proxies_lock);
+	}
+	void proxies_unlock() {
+		__SYNC_UNLOCK(this->_proxies_lock);
+	}
 public:
 
 	Call *call;
@@ -593,6 +613,9 @@ public:
 	vmPort sipcallerport_rslt;
 	vmPort sipcalledport_rslt;
 	bool sipcallerdip_reverse;
+	
+	volatile int _proxies_lock;
+	list<vmIPport> proxies;
 	
 	int whohanged;
 	char oneway;
@@ -1419,9 +1442,6 @@ public:
 	map<int, map<int, dstring> > custom_headers_content_message;
 	volatile int _custom_headers_content_sync;
 
-	volatile int _proxies_lock;
-	list<vmIPport> proxies;
-	
 	u_int16_t onInvite_counter;
 	u_int16_t onCall_2XX_counter;
 	u_int16_t onCall_18X_counter;
@@ -1933,13 +1953,6 @@ public:
 		__SYNC_UNLOCK(this->_forcemark_lock);
 	}
 
-	void proxies_lock() {
-		__SYNC_LOCK(this->_proxies_lock);
-	}
-	void proxies_unlock() {
-		__SYNC_UNLOCK(this->_proxies_lock);
-	}
-	
 	bool is_enable_set_destroy_call_at_for_call(CallBranch *c_branch, sCseq *cseq, int merged) {
 		return((!cseq || !c_branch->invitecseq_in_dialog.size() || find(c_branch->invitecseq_in_dialog.begin(),c_branch->invitecseq_in_dialog.end(), *cseq) == c_branch->invitecseq_in_dialog.end()) &&
 		       (!this->has_second_merged_leg || (this->has_second_merged_leg && merged)));
@@ -1989,22 +2002,6 @@ public:
 	
 	void adjustUA(CallBranch *c_branch);
 	void adjustReason(CallBranch *c_branch);
-	
-	void proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies = NULL, vmIPport *exclude = NULL);
-
-	void proxy_add(vmIP ip, vmPort port) {
-		if(ip.isSet()) {
-			proxies_lock();
-			proxies.push_back(vmIPport(ip, port));
-			proxies_unlock();
-		}
-	}
-	bool in_proxy(vmIP ip, vmPort port) {
-		proxies_lock();
-		bool rslt = find(proxies.begin(), proxies.end(), vmIPport(ip, port)) != proxies.end();
-		proxies_unlock();
-		return(rslt);
-	}
 	
 	void createListeningBuffers();
 	void destroyListeningBuffers();
@@ -2190,7 +2187,7 @@ public:
 					}
 					if(proxies && proxies_correction.size()) {
 						vmIPport proxy_exclude(sipcalledip_correction, sipcalledport_correction);
-						proxies_undup(proxies, &proxies_correction, &proxy_exclude);
+						c_branch->proxies_undup(proxies, &proxies_correction, &proxy_exclude);
 					}
 					return(sipcalledip_correction);
 				}
@@ -2199,10 +2196,10 @@ public:
 		if(port) {
 			*port = c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0];
 		}
-		if(proxies && this->proxies.size()) {
+		if(proxies && c_branch->proxies.size()) {
 			vmIPport proxy_exclude(c_branch->sipcalledip_mod.isSet() ? c_branch->sipcalledip_mod : c_branch->sipcalledip[0], 
 					       c_branch->sipcalledport_mod.isSet() ? c_branch->sipcalledport_mod : c_branch->sipcalledport[0]);
-			proxies_undup(proxies, NULL, &proxy_exclude);
+			c_branch->proxies_undup(proxies, NULL, &proxy_exclude);
 		}
 		return(c_branch->sipcalledip_mod.isSet() ? c_branch->sipcalledip_mod : c_branch->sipcalledip[0]);
 	}
@@ -2920,6 +2917,7 @@ struct sChartsCallData {
 		this->data = data;
 	}
 	inline Call* call() { return((Call*)data); }
+	inline CallBranch* branch_main() { return(((Call*)data)->branch_main()); }
 	inline cDbTablesContent* tables_content() { return((cDbTablesContent*)data); }
 };
 

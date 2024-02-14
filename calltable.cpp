@@ -528,8 +528,9 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	sipcalledip_encaps_prot = 0xFF;
 	sipcallerip_encaps_prot_rslt = 0xFF;
 	sipcalledip_encaps_prot_rslt = 0xFF;
-	
 	sipcallerdip_reverse = false;
+	
+	_proxies_lock = 0;
 	
 	whohanged = -1;
 	oneway = 1;
@@ -583,6 +584,21 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	
 	updateDstnumOnAnswer = false;
 	updateDstnumFromMessage = false;
+}
+
+void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
+	bool need_lock = !proxies;
+	if(need_lock) proxies_lock();
+	if(!proxies) {
+		proxies = &this->proxies;
+	}
+	for(list<vmIPport>::iterator iter = proxies->begin(); iter != proxies->end(); iter++) {
+		if((!exclude || !(*iter == *exclude)) &&
+		   proxies_undup->find(iter->ip) == proxies_undup->end()) {
+			proxies_undup->insert(iter->ip);
+		}
+	}
+	if(need_lock) proxies_unlock();
 }
 
 /* constructor */
@@ -715,7 +731,6 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	_custom_headers_content_sync = 0;
 	forcemark_time_size = 0;
 	_forcemark_lock = 0;
-	_proxies_lock = 0;
 	a_mos_lqo = -1;
 	b_mos_lqo = -1;
 	
@@ -5551,7 +5566,7 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 			switch(child_table_enum) {
 			case _t_cdr_proxy:
 				{
-				list<vmIPport>::iterator iter = proxies.begin();
+				list<vmIPport>::iterator iter = branch_main()->proxies.begin();
 				for(unsigned i = 0; i < child_index; i++) {
 					++iter;
 				}
@@ -5839,7 +5854,7 @@ int Call::sqlChildTableSize(string *child_table, void */*_callData*/) {
 	} else {
 		switch(enumTable) {
 		case _t_cdr_proxy:
-			return(proxies.size());
+			return(branch_main()->proxies.size());
 		case _t_cdr_sipresp:
 			return(branch_main()->SIPresponse.size());
 		case _t_cdr_siphistory:
@@ -9162,7 +9177,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 
 	if(opt_messageproxy) {
 		set<vmIP> proxies_undup;
-		this->proxies_undup(&proxies_undup);
+		c_branch->proxies_undup(&proxies_undup);
 		set<vmIP>::iterator iter_undup = proxies_undup.begin();
 		while (iter_undup != proxies_undup.end()) {
 			if(*iter_undup == getSipcalledip(c_branch)) { ++iter_undup; continue; };
@@ -9443,7 +9458,7 @@ Call::saveMessageToDb(bool enableBatchIfPossible) {
 	
 		if(opt_messageproxy) {
 			set<vmIP> proxies_undup;
-			this->proxies_undup(&proxies_undup);
+			c_branch->proxies_undup(&proxies_undup);
 			set<vmIP>::iterator iter_undup = proxies_undup.begin();
 			while(iter_undup != proxies_undup.end()) {
 				SqlDb_row messageproxy;
@@ -9607,21 +9622,6 @@ void Call::adjustReason(CallBranch *c_branch) {
 			::adjustReason(&c_branch->reason_q850_text);
 		}
 	}
-}
-
-void Call::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
-	bool need_lock = !proxies;
-	if(need_lock) proxies_lock();
-	if(!proxies) {
-		proxies = &this->proxies;
-	}
-	for(list<vmIPport>::iterator iter = proxies->begin(); iter != proxies->end(); iter++) {
-		if((!exclude || !(*iter == *exclude)) &&
-		   proxies_undup->find(iter->ip) == proxies_undup->end()) {
-			proxies_undup->insert(iter->ip);
-		}
-	}
-	if(need_lock) proxies_unlock();
 }
 
 void Call::createListeningBuffers() {
@@ -9852,7 +9852,7 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 				c_branch->sipcalledip_encaps_rslt = sipcalledip_encaps;
 				c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_prot;
 				vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
-				this->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
+				c_branch->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
 				set_proxies = true;
 				break;
 			}
@@ -9892,7 +9892,7 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 			c_branch->sipcalledip_encaps_prot_rslt = sipcalledip_encaps_confirmed.isSet() ? sipcalledip_encaps_prot_confirmed : getSipcalledip_encaps_prot(c_branch);
 			c_branch->sipcalledport_rslt = sipcalledport_confirmed.isSet() ? sipcalledport_confirmed : getSipcalledport(c_branch);
 			vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
-			this->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
+			c_branch->proxies_undup(proxies_undup, &proxies, &proxy_exclude);
 			set_proxies = true;
 		}
 	}
@@ -9904,7 +9904,7 @@ void Call::prepareSipIpForSave(CallBranch *c_branch, set<vmIP> *proxies_undup) {
 	}
 	if(!set_proxies) {
 		vmIPport proxy_exclude(c_branch->sipcalledip_rslt, c_branch->sipcalledport_rslt);
-		this->proxies_undup(proxies_undup, NULL, &proxy_exclude);
+		c_branch->proxies_undup(proxies_undup, NULL, &proxy_exclude);
 	}
 }
 

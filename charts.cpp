@@ -1094,7 +1094,7 @@ void cChartInterval::add(sChartsCallData *call, unsigned call_interval, bool fir
 						if(call->call()->connect_time_us) {
 							++iter_ip->second->count_connected;
 						}
-						int lsr = call->call()->branch_main()->lastSIPresponseNum;
+						int lsr = call->branch_main()->lastSIPresponseNum;
 						if(lsr / 100 >= 3 && lsr / 100 <= 6) {
 							++iter_ip->second->count_lsr_3_6[lsr / 100 - 3];
 						}
@@ -2270,7 +2270,7 @@ void sFilterCache_call_ipv4_comb::set(sChartsCallData *call) {
 		u.d.src = c_branch->sipcallerip[0].getIPv4();
 		u.d.dst = c_branch->sipcalledip_rslt.getIPv4();
 		unsigned proxies_counter = 0;
-		for(list<vmIPport>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
+		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
 			u.d.proxy[proxies_counter++] = iter->ip.getIPv4();
 			if(proxies_counter == sizeof(u.d.proxy) / sizeof(u.d.proxy[0]) - 1) {
 				break;
@@ -2297,7 +2297,7 @@ void sFilterCache_call_ipv6_comb::set(sChartsCallData *call) {
 		src = c_branch->sipcallerip[0].getIPv6();
 		dst = c_branch->sipcalledip_rslt.getIPv6();
 		unsigned proxies_counter = 0;
-		for(list<vmIPport>::iterator iter = call->call()->proxies.begin(); iter != call->call()->proxies.end(); iter++) {
+		for(list<vmIPport>::iterator iter = call->branch_main()->proxies.begin(); iter != call->branch_main()->proxies.end(); iter++) {
 			proxy[proxies_counter++] = iter->ip;
 			if(proxies_counter == sizeof(proxy) / sizeof(proxy[0]) - 1) {
 				break;

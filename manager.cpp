@@ -1316,16 +1316,19 @@ void *manager_read_thread(void * arg) {
 	bool aes_missing = false;
 	sManagerClientInfo clientInfo = *(sManagerClientInfo*)arg;
 	delete (sManagerClientInfo*)arg;
-
+	bool debugRecv = verbosity >= 2;
+	if(debugRecv) {
+		cout << "START manager_read_thread" << endl;
+	}
 	if ((size = recv(clientInfo.handler, buf, BUFSIZE - 1, 0)) == -1) {
 		cerr << "Error in receiving data" << endl;
 		close(clientInfo.handler);
 		return 0;
 	} else {
 		buf[size] = '\0';
-		bool debugRecv = verbosity >= 2;
 		if(debugRecv) {
-			cout << "DATA: " << buf << endl;
+			cout << "DATA (" << size << ")" << endl;
+			hexdump(buf, size);
 		}
 		if(!strncmp(buf, "aes", 3) ?
 		    memmem(buf, size, ":sea", 4) :
@@ -1365,7 +1368,8 @@ void *manager_read_thread(void * arg) {
 					buf[size] = '\0';
 					command_buffer.add(buf, size);
 					if(debugRecv) {
-						cout << "NEXT DATA: " << buf << endl;
+						cout << "NEXT DATA (" << size << ")" << endl;
+						hexdump(buf, size);
 					}
 					if(cManagerAes::existsEnd(&command_buffer, NULL)) {
 						break;
@@ -1392,7 +1396,9 @@ void *manager_read_thread(void * arg) {
 	if((posEnd = command.find("\r\n\r\n")) != string::npos) {
 		command.resize(posEnd);
 	}
-	parse_command(command, clientInfo, NULL, &aes_key, aes_cipher.c_str(), aes_missing);
+	if(!command.empty()) {
+		parse_command(command, clientInfo, NULL, &aes_key, aes_cipher.c_str(), aes_missing);
+	}
 	
 	termTimeCacheForThread();
 

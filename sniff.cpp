@@ -5600,18 +5600,19 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		if(!(reverseInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
 			bool diff_src = packetS->source_() != call->getSipcallerport(c_branch) || packetS->saddr_() != call->getSipcallerip(c_branch);
-			if(diff_src && !call->in_proxy(packetS->saddr_(), packetS->source_())) {
-				call->proxy_add(packetS->saddr_(), packetS->source_());
+			if(diff_src && !c_branch->in_proxy(packetS->saddr_(), packetS->source_())) {
+				c_branch->proxy_add(packetS->saddr_(), packetS->source_());
 			}
 			if((diff_src || branch == c_branch->last_via_branch) &&
 			   (packetS->dest_() != call->getSipcallerport(c_branch) || packetS->daddr_() != call->getSipcallerip(c_branch)) && 
 			   (packetS->dest_() != call->getSipcalledport(c_branch) || packetS->daddr_() != call->getSipcalledip(c_branch)) && 
-			   !call->in_proxy(packetS->daddr_(), packetS->dest_())) {
-				if(!(opt_sdp_check_direction_ext &&
+			   !c_branch->in_proxy(packetS->daddr_(), packetS->dest_())) {
+				if(!(!opt_call_branches &&
+				     opt_sdp_check_direction_ext &&
 				     packetS->saddr_() == call->getSipcallerip(c_branch) && 
 				     packetS->source_() == call->getSipcallerport(c_branch) &&
 				     call->all_invite_is_multibranch(c_branch, packetS->saddr_(), packetS->source_()))) {
-					call->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
+					c_branch->proxy_add(call->getSipcalledip(c_branch), call->getSipcalledport(c_branch));
 					call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_(), packetS->get_callid());
 				}
 			}
