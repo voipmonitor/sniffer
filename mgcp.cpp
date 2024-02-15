@@ -274,7 +274,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 			}
 		}
 		if(is_request && request_type == _mgcp_DLCX) {
-			call->destroy_call_at = packetS->header_pt->ts.tv_sec + 10;
+			call->set_destroy_call_at(packetS->header_pt->ts.tv_sec, 10);
 		} else {
 			call->shift_destroy_call_at(call->branch_main(), packetS->getTime_s());
 		}

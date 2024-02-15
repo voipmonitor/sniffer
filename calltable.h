@@ -1979,6 +1979,20 @@ public:
 		return(true);
 	}
 	
+	void set_destroy_call_at(u_int32_t time_s, u_int32_t shift_s) {
+		if(!typeIs(REGISTER)) {
+			extern int opt_t2_boost_direct_rtp;
+			extern int opt_t2_boost_direct_rtp_delay_queue_ms;
+			extern int opt_t2_boost_direct_rtp_max_queue_length_ms;
+			if(opt_t2_boost_direct_rtp && (opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms)) {
+				int max_delay = max(opt_t2_boost_direct_rtp_delay_queue_ms, opt_t2_boost_direct_rtp_max_queue_length_ms);
+				if(shift_s < max_delay * 1.5 / 1000) {
+					shift_s = max_delay * 1.5 / 1000;
+				}
+			}
+		}
+		this->destroy_call_at = time_s + shift_s;
+	}
 	void shift_destroy_call_at(CallBranch *c_branch, u_int32_t time_s, int lastSIPresponseNum = 0) {
 		extern int opt_quick_save_cdr;
 		if(this->destroy_call_at > 0) {

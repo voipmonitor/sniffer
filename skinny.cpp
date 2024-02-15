@@ -1501,7 +1501,7 @@ void *handle_skinny2(pcap_pkthdr *header, const u_char *packet, vmIP saddr, vmPo
 			break;
 		case SKINNY_ONHOOK:
 			c_branch->lastSIPresponse = "ON HOOK";
-			call->destroy_call_at = header->ts.tv_sec + 5;
+			call->set_destroy_call_at(header->ts.tv_sec, 5);
 			if(!is_read_from_file_by_pb()) {
 				call->removeFindTables(c_branch, true);
 			}

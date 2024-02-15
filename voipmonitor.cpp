@@ -1021,6 +1021,8 @@ bool opt_disable_cdr_fields_rtp;
 bool opt_disable_cdr_indexes_rtp;
 int opt_t2_boost = true;
 int opt_t2_boost_direct_rtp = false;
+int opt_t2_boost_direct_rtp_delay_queue_ms = 0;
+int opt_t2_boost_direct_rtp_max_queue_length_ms = 0;
 int opt_t2_boost_call_find_threads = false;
 int opt_t2_boost_call_threads = 3;
 int opt_t2_boost_pb_detach_thread = 0;
@@ -5990,6 +5992,8 @@ void cConfig::addConfigItems() {
 						->addValues("high_traffic:2")
 						->addAlias("threading_expanded"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_delay_queue_ms", &opt_t2_boost_direct_rtp_delay_queue_ms));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_max_queue_length_ms", &opt_t2_boost_direct_rtp_max_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_max_next_call_threads", &opt_t2_boost_call_threads));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("t2_boost_pb_detach_thread", &opt_t2_boost_pb_detach_thread))

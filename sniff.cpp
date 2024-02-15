@@ -3673,7 +3673,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 		
 		if(sip_method == REGISTER) {	
 			// destroy all REGISTER from memory within 30 seconds 
-			call->destroy_call_at = packetS->getTime_s() + opt_register_timeout;
+			call->set_destroy_call_at(packetS->getTime_s(), opt_register_timeout);
 
 			// is it first register? set time and src mac if available
 			if (call->reg.regrrddiff == -1) {
@@ -4965,7 +4965,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 	} else if(opt_sip_message && packetS->sip_method == MESSAGE) {
 	 
-		call->destroy_call_at = packetS->getTime_s() + 60;
+		call->set_destroy_call_at(packetS->getTime_s(), 60);
 		c_branch->seenmessageok = false;
 
 		//check and save CSeq for later to compare with OK 
@@ -5032,7 +5032,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		++count_sip_bye;
 		if(call->is_enable_set_destroy_call_at_for_call(c_branch, NULL, merged)) {
 			//do not set destroy for BYE which belongs to first leg in case of merged legs through sip header 
-			call->destroy_call_at = packetS->getTime_s() + 60;
+			call->set_destroy_call_at(packetS->getTime_s(), 60);
 			call->destroy_call_at_bye = packetS->getTime_s() + opt_bye_timeout;
 		}
 		//check and save CSeq for later to compare with OK 
@@ -5103,8 +5103,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(opt_call_branches ?
 			    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
 			    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
-				call->destroy_call_at = packetS->getTime_s() + (opt_quick_save_cdr == 2 ? 0 :
-									       (opt_quick_save_cdr ? 1 : 10));
+				call->set_destroy_call_at(packetS->getTime_s(),
+							  (opt_quick_save_cdr == 2 ? 0 :
+							  (opt_quick_save_cdr ? 1 : 10)));
 			}
 		}
 		
@@ -5304,8 +5305,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 
 						// destroy call after 5 seonds from now 
 						if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-							call->destroy_call_at = packetS->getTime_s() + (opt_quick_save_cdr == 2 ? 0 :
-												       (opt_quick_save_cdr ? 1 : 5));
+							call->set_destroy_call_at(packetS->getTime_s(),
+										  (opt_quick_save_cdr == 2 ? 0 :
+										  (opt_quick_save_cdr ? 1 : 5)));
 							call->destroy_call_at_bye_confirmed = packetS->getTime_s() + opt_bye_confirmed_timeout;
 						}
 						#if EXPERIMENTAL_SEPARATE_PROCESSSING
@@ -5524,9 +5526,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(lastSIPresponseNum == 481) {
 				// 481 CallLeg/Transaction doesnt exist - set timeout to 180 seconds
 				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					call->destroy_call_at = packetS->getTime_s() + 180;
+					call->set_destroy_call_at(packetS->getTime_s(), 180);
 				} else if(c_branch->seenbye_and_ok_permanent) {
-					call->destroy_call_at = packetS->getTime_s() + 60;
+					call->set_destroy_call_at(packetS->getTime_s(), 60);
 				}
 			} else if(lastSIPresponseNum == 491) {
 				// do not set timeout for 491
@@ -5536,7 +5538,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 					if(opt_call_branches ?
 					    (!call->is_multibranch() || call->is_closed_other_branches(c_branch)) :
 					    (!call->is_multiple_to_branch(c_branch) || call->all_branches_is_canceled(c_branch, false))) {
-						call->destroy_call_at = packetS->getTime_s() + (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout);
+						call->set_destroy_call_at(packetS->getTime_s(), (packetS->sip_method == RES300 ? opt_redirect_response_300_timeout : opt_response_default_timeout));
 					}
 				}
 				if(lastSIPresponseNum == 488 || lastSIPresponseNum == 606) {
@@ -5562,7 +5564,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				goto endsip_save_packet;
 			} else if(!call->destroy_call_at) {
 				if(call->is_enable_set_destroy_call_at_for_call(c_branch, &packetS->cseq, merged)) {
-					call->destroy_call_at = packetS->getTime_s() + 60;
+					call->set_destroy_call_at(packetS->getTime_s(), 60);
 				}
 			}
 		} else if(packetS->cseq.method == BYE &&
@@ -6063,7 +6065,7 @@ void process_packet_sip_alone_bye(packet_s_process *packetS) {
 	if(!call) {
 		return;
 	}
-	call->destroy_call_at = packetS->getTime_s() + 60;
+	call->set_destroy_call_at(packetS->getTime_s(), 60);
 	CallBranch *c_branch = call->branch_main();
 	if(IS_SIP_RESXXX(packetS->sip_method) && packetS->cseq.is_set() &&
 	   packetS->cseq.method == BYE && 
@@ -6251,7 +6253,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		save_packet(call, packetS, _t_packet_sip);
 		if(call->reg.regstate == rs_OK &&
 		   call->reg.reg200count + call->reg.reg401count_all < call->reg.regcount) {
-			call->destroy_call_at = packetS->getTime_s() + opt_register_timeout;
+			call->set_destroy_call_at(packetS->getTime_s(), opt_register_timeout);
 		} else {
 			call->saveregister(packetS->getTimeval_pt());
 		}
@@ -6318,7 +6320,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 			   (packetS->sip_method == RES404 && call->reg.reg404count >= call->reg.regcount_after_4xx)) {
 				call->saveregister(packetS->getTimeval_pt());
 			} else {
-				call->destroy_call_at = packetS->getTime_s() + 1;
+				call->set_destroy_call_at(packetS->getTime_s(), 1);
 			}
 			if(logPacketSipMethodCall_enable) {
 				logPacketSipMethodCallDescr =
@@ -9665,6 +9667,11 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	last_race_log[0] = 0;
 	last_race_log[1] = 0;
 	#endif
+	direct_rtp_queue_push_item = NULL;
+	direct_rtp_queue_push_item_limit_us = 0;
+	direct_rtp_queue_pop_item = NULL;
+	direct_rtp_queue_lock = 0;
+	direct_rtp_queue_last_time = 0;
 }
 
 PreProcessPacket::~PreProcessPacket() {
@@ -9700,6 +9707,10 @@ PreProcessPacket::~PreProcessPacket() {
 	if(this->stackOther) {
 		this->stackOther->destroyAll<packet_s_stack>();
 		delete this->stackOther;
+	}
+	while(direct_rtp_queue.size()) {
+		delete direct_rtp_queue.front();
+		direct_rtp_queue.pop();
 	}
 }
 
@@ -9881,6 +9892,7 @@ void *PreProcessPacket::outThreadFunction() {
 			_parse_packet_global_process_packet.refreshIfNeed();
 		}
 		bool exists_used = false;
+		bool exists_used_direct_rtp = false;
 		if(this->typePreProcessThread == ppt_detach_x) {
 			if(this->qring_detach_x[this->readit]->used == 1) {
 				exists_used = true;
@@ -10018,8 +10030,12 @@ void *PreProcessPacket::outThreadFunction() {
 									if(opt_t2_boost_direct_rtp) {
 										if(p->need_sip_process || !p->is_rtp) {
 											preProcessPacket[ppt_sip]->push_packet(p);
-										} else  {
-											preProcessPacket[ppt_pp_rtp]->push_packet(p);
+										} else {
+											if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
+												preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+											} else {
+												preProcessPacket[ppt_pp_rtp]->push_packet(p);
+											}
 										}
 									} else {
 										preProcessPacket[ppt_sip]->push_packet(p);
@@ -10064,8 +10080,12 @@ void *PreProcessPacket::outThreadFunction() {
 							if(opt_t2_boost_direct_rtp) {
 								if(p->need_sip_process || !p->is_rtp) {
 									preProcessPacket[ppt_sip]->push_packet(p);
-								} else  {
-									preProcessPacket[ppt_pp_rtp]->push_packet(p);
+								} else {
+									if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
+										preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+									} else {
+										preProcessPacket[ppt_pp_rtp]->push_packet(p);
+									}
 								}
 							} else {
 								preProcessPacket[ppt_sip]->push_packet(p);
@@ -10081,8 +10101,12 @@ void *PreProcessPacket::outThreadFunction() {
 								this->process_DETACH_plus(batch_detach->batch[batch_index], false);
 								if(p->need_sip_process || !p->is_rtp) {
 									preProcessPacket[ppt_sip]->push_packet(p);
-								} else  {
-									preProcessPacket[ppt_pp_rtp]->push_packet(p);
+								} else {
+									if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
+										preProcessPacket[ppt_pp_rtp]->push_packet_to_direct_rtp_queue(p);
+									} else {
+										preProcessPacket[ppt_pp_rtp]->push_packet(p);
+									}
 								}
 							}
 						} else {
@@ -10299,6 +10323,34 @@ void *PreProcessPacket::outThreadFunction() {
 				}
 				
 			}
+		} else if(this->typePreProcessThread == ppt_pp_rtp && (opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms)) {
+			if(!direct_rtp_queue_pop_item) {
+				__SYNC_LOCK(direct_rtp_queue_lock);
+				if(direct_rtp_queue.size()) {
+					direct_rtp_queue_pop_item = direct_rtp_queue.front();
+					direct_rtp_queue.pop();
+				}
+				__SYNC_UNLOCK(direct_rtp_queue_lock);
+			}
+			if(direct_rtp_queue_pop_item) {
+				u_int64_t time_ms = getTimeMS_rdtsc();
+				for(unsigned i = direct_rtp_queue_pop_item->count_processed; i < direct_rtp_queue_pop_item->count; i++) {
+					if((opt_t2_boost_direct_rtp_delay_queue_ms > 0 &&
+					    time_ms > direct_rtp_queue_pop_item->packet_batch_time_ms[i] + opt_t2_boost_direct_rtp_delay_queue_ms) ||
+					   (opt_t2_boost_direct_rtp_max_queue_length_ms > 0 &&
+					    direct_rtp_queue_last_time >= direct_rtp_queue_pop_item->batch[i]->getTimeUS() + opt_t2_boost_direct_rtp_max_queue_length_ms * 1000)) {
+						++direct_rtp_queue_pop_item->count_processed;
+						this->process_RTP(direct_rtp_queue_pop_item->batch[i]);
+						exists_used_direct_rtp = true;
+					} else {
+						break;
+					}
+				}
+				if(direct_rtp_queue_pop_item->count_processed == direct_rtp_queue_pop_item->count) {
+					delete direct_rtp_queue_pop_item;
+					direct_rtp_queue_pop_item = NULL;
+				}
+			}
 		} else {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
@@ -10393,7 +10445,7 @@ void *PreProcessPacket::outThreadFunction() {
 			#endif
 			usleepCounter = 0;
 			usleepSumTimeForPushBatch = 0;
-		} else {
+		} else if(!exists_used_direct_rtp) {
 			if(this->outThreadState == 1) {
 				break;
 			}
@@ -10406,7 +10458,11 @@ void *PreProcessPacket::outThreadFunction() {
 				case ppt_detach:
 					preProcessPacket[ppt_sip]->push_batch();
 					if(opt_t2_boost_direct_rtp) {
-						preProcessPacket[ppt_pp_rtp]->push_batch();
+						if(opt_t2_boost_direct_rtp_delay_queue_ms || opt_t2_boost_direct_rtp_max_queue_length_ms) {
+							preProcessPacket[ppt_pp_rtp]->push_batch_to_direct_rtp_queue();
+						} else {
+							preProcessPacket[ppt_pp_rtp]->push_batch();
+						}
 					}
 					break;
 				case ppt_sip:

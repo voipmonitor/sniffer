@@ -7390,7 +7390,7 @@ string cThreadMonitor::output(int indexPstat) {
 		descr[maxDescrLength] = 0;
 		outStr << fixed
 		       << setw(maxDescrLength) << left << iter_dp->description.substr(0, maxDescrLength)
-		       << " (" << setw(6) << right << iter_dp->tid << ") : "
+		       << " (" << setw(7) << right << iter_dp->tid << ") : "
 		       << setprecision(1) << setw(5) << right << iter_dp->cpu_perc;
 		// scheduler / priority
 		int sched_type;
