@@ -601,6 +601,8 @@ LIBZSTD
 LIBFFT
 LIBPNG
 MYSQL_WITHOUT_SSL_SUPPORT
+NO_MYSQL_SSL_SUPPORT
+NO_MARIADB_SSL_SUPPORT
 MYSQLINCLUDE
 MYSQLLIB
 MYSQLCFLAGS
@@ -4446,14 +4448,39 @@ main ()
 }
 _ACEOF
 if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Mariadb SSL options found." >&5
+$as_echo "$as_me: Mariadb SSL options found." >&6;}
+else
+  NO_MARIADB_SSL_SUPPORT="yes"
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <mysql.h>
+int
+main ()
+{
+ int i = MYSQL_OPT_SSL_MODE;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
   { $as_echo "$as_me:${as_lineno-$LINENO}: Mysql SSL options found." >&5
 $as_echo "$as_me: Mysql SSL options found." >&6;}
 else
-  MYSQL_WITHOUT_SSL_SUPPORT="yes"
-{ $as_echo "$as_me:${as_lineno-$LINENO}: Mysql SSL options NOT found!" >&5
-$as_echo "$as_me: Mysql SSL options NOT found!" >&6;}
+  NO_MYSQL_SSL_SUPPORT="yes"
+
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+if test "x$NO_MARIADB_SSL_SUPPORT" = "xyes"; then :
+  if test "x$NO_MYSQL_SSL_SUPPORT" = "xyes"; then :
+  MYSQL_WITHOUT_SSL_SUPPORT="yes"
+{ $as_echo "$as_me:${as_lineno-$LINENO}: Mariadb/MYSQL SSL options NOT found!" >&5
+$as_echo "$as_me: Mariadb/MYSQL SSL options NOT found!" >&6;}
+fi
+fi
 CFLAGS=$ORIGCFLAGS
 CXXFLAGS=$ORIGCXXFLAGS
 
@@ -4534,8 +4561,9 @@ else
   as_fn_error $? "Unable to find zstd. apt-get install libzstd-dev" "$LINENO" 5
 fi
 
+
 if ! pkg-config --atleast-version 1.4.4 libzstd; then
-  as_fn_error $? "The version of zstd must be at least 1.4.4. You can compile it from this source: https://github.com/facebook/zstd." "$LINENO" 5
+	as_fn_error $? "The version of zstd must be at least 1.4.4. You can compile it from this source: https://github.com/facebook/zstd." "$LINENO" 5
 fi
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -llz4" >&5
@@ -5039,7 +5067,6 @@ fi
 # Initialize the FLTO variable
 FLTO=""
 
-
 # Add --enable-flto option
 # Check whether --enable-flto was given.
 if test "${enable_flto+set}" = set; then :
@@ -5050,6 +5077,7 @@ if test "${enable_flto+set}" = set; then :
   fi
 else
   enable_flto=no  # Default is to disable flto
+
 fi
 
 
