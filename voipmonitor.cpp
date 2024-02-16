@@ -5992,6 +5992,7 @@ void cConfig::addConfigItems() {
 						->addValues("high_traffic:2")
 						->addAlias("threading_expanded"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_direct_rtp", &opt_t2_boost_direct_rtp));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_delay_ms"));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_delay_queue_ms", &opt_t2_boost_direct_rtp_delay_queue_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("t2_boost_direct_rtp_max_queue_length_ms", &opt_t2_boost_direct_rtp_max_queue_length_ms));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("t2_boost_enable_call_find_threads", &opt_t2_boost_call_find_threads));
@@ -7420,6 +7421,10 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 				--i;
 			}
 		}
+	}
+	if(configItem->config_name == "t2_boost_direct_rtp_delay_ms") {
+		opt_t2_boost_direct_rtp_delay_queue_ms = configItem->getValueInt();
+		opt_t2_boost_direct_rtp_max_queue_length_ms = configItem->getValueInt();
 	}
 }
 
