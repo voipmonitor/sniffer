@@ -155,7 +155,9 @@ public:
 	void setCipher(const char *cipher) {
 		this->cipher = cipher;
 	}
+	#ifdef HAVE_OPENSSL
 	const EVP_CIPHER *getCipher();
+	#endif
 	bool encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final);
 	bool decrypt(u_char *data, size_t datalen, u_char **data_dec, size_t *datalen_dec, bool final);
 	string getError();

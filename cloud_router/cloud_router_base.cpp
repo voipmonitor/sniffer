@@ -238,6 +238,7 @@ cAes::~cAes() {
 	destroyCtxDec();
 }
 
+#ifdef HAVE_OPENSSL
 const EVP_CIPHER *cAes::getCipher() {
 	const EVP_CIPHER *rslt = NULL;
 	if(!cipher.empty()) {
@@ -248,6 +249,7 @@ const EVP_CIPHER *cAes::getCipher() {
 	}
 	return(rslt);
 }
+#endif
 
 bool cAes::encrypt(u_char *data, size_t datalen, u_char **data_enc, size_t *datalen_enc, bool final) {
 	#ifdef HAVE_OPENSSL
