@@ -95,13 +95,6 @@ extern bool opt_enable_diameter;
 extern int opt_fork;
 extern int opt_id_sensor;
 extern char opt_name_sensor[256];
-extern int opt_mysqlstore_max_threads_cdr;
-extern int opt_mysqlstore_max_threads_message;
-extern int opt_mysqlstore_max_threads_register;
-extern int opt_mysqlstore_max_threads_http;
-extern int opt_mysqlstore_max_threads_ipacc_base;
-extern int opt_mysqlstore_max_threads_ipacc_agreg2;
-extern int opt_mysqlstore_max_threads_charts_cache;
 extern int opt_t2_boost;
 extern int opt_t2_boost_pb_detach_thread;
 extern bool opt_t2_boost_pcap_dispatch;
@@ -1854,6 +1847,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						id_main == STORE_PROC_ID_CDR ? "C" :
 						id_main == STORE_PROC_ID_CHARTS_CACHE  ? "ch" :
 						id_main == STORE_PROC_ID_MESSAGE ? "M" :
+						id_main == STORE_PROC_ID_SIP_MSG ? "SM" :
 						id_main == STORE_PROC_ID_REGISTER ? "R" :
 						id_main == STORE_PROC_ID_SS7 ? "7" :
 						id_main == STORE_PROC_ID_SAVE_PACKET_SQL ? "L" :
@@ -1871,6 +1865,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						const char *id_main_rrd_str = 
 							id_main == STORE_PROC_ID_CDR ? RRD_VALUE_SQLq_C :
 							id_main == STORE_PROC_ID_MESSAGE ? RRD_VALUE_SQLq_M :
+							id_main == STORE_PROC_ID_SIP_MSG ? RRD_VALUE_SQLq_SM :
 							id_main == STORE_PROC_ID_REGISTER ? RRD_VALUE_SQLq_R :
 							id_main == STORE_PROC_ID_HTTP ? RRD_VALUE_SQLq_H :
 							NULL;

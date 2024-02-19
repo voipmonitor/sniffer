@@ -836,6 +836,18 @@ public:
 	bool isJsonObject() {
 		return(bufferLength && buffer[0] == '{' && buffer[bufferLength - 1] == '}');
 	}
+	bool writeToFile(const char *file) {
+		if(!size()) {
+			return(false);
+		}
+		bool rslt = false;
+		FILE *fh = fopen(file, "w");
+		if(fh) {
+			rslt = fwrite(data(), 1, size(), fh) == size();
+			fclose(fh);
+		}
+		return(rslt);
+	}
 private:
 	u_char *buffer;
 	u_int32_t bufferLength;

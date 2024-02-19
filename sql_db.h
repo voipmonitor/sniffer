@@ -1038,6 +1038,7 @@ private:
 		LoadFromQFilesThreadData() {
 			id_main = 0;
 			storeThreads = 1;
+			storeThreadsSet = false;
 			storeConcatLimit = 0;
 			store = NULL;
 			thread = 0;
@@ -1057,6 +1058,7 @@ private:
 		int id_main;
 		string name;
 		int storeThreads;
+		bool storeThreadsSet;
 		int storeConcatLimit;
 		MySqlStore *store;
 		pthread_t thread;
@@ -1135,6 +1137,7 @@ public:
 	}
 	int findMinId2(int id_main, bool lock = true);
 	int getMaxThreadsForStoreId(int id_main);
+	bool isSetMaxThreadsForStoreId(int id_main);
 	int getConcatLimitForStoreId(int id_main);
 	bool isRedirectStoreId(int id_main);
 private:

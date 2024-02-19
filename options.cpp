@@ -19,7 +19,7 @@ extern char * gettag_sip_ext(packet_s_process *packetS,
 
 extern MySqlStore *sqlStore;
 extern Calltable *calltable;
-extern int opt_mysqlstore_max_threads_message;
+extern int opt_mysqlstore_max_threads_sip_msg;
 extern int opt_nocdr;
 extern CustomHeaders *custom_headers_sip_msg;
 extern int opt_sip_options;
@@ -1092,10 +1092,10 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 		}
 		static unsigned int counterSqlStore = 0;
 		sqlStore->query_lock(query_str.c_str(),
-				     STORE_PROC_ID_MESSAGE, 
-				     opt_mysqlstore_max_threads_message > 1 &&
-				     sqlStore->getSize(STORE_PROC_ID_MESSAGE, 0) > 1000 ? 
-				      counterSqlStore % opt_mysqlstore_max_threads_message : 
+				     STORE_PROC_ID_SIP_MSG, 
+				     opt_mysqlstore_max_threads_sip_msg > 1 &&
+				     sqlStore->getSize(STORE_PROC_ID_SIP_MSG, 0) > 1000 ? 
+				      counterSqlStore % opt_mysqlstore_max_threads_sip_msg : 
 				      0);
 		++counterSqlStore;
 	} else {

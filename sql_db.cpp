@@ -4116,6 +4116,7 @@ void MySqlStore::loadFromQFiles_start() {
 			this->addLoadFromQFile(STORE_PROC_ID_CDR, "cdr");
 			this->addLoadFromQFile(STORE_PROC_ID_CDR_REDIRECT, "cdr");
 			this->addLoadFromQFile(STORE_PROC_ID_MESSAGE, "message");
+			this->addLoadFromQFile(STORE_PROC_ID_SIP_MSG, "sip_msg");
 			this->addLoadFromQFile(STORE_PROC_ID_CLEANSPOOL, "cleanspool");
 			this->addLoadFromQFile(STORE_PROC_ID_REGISTER, "register");
 			this->addLoadFromQFile(STORE_PROC_ID_SAVE_PACKET_SQL, "save_packet_sql");
@@ -4356,6 +4357,7 @@ void MySqlStore::addLoadFromQFile(int id_main, const char *name,
 	threadData.id_main = id_main;
 	threadData.name = name;
 	threadData.storeThreads = storeThreads > 0 ? storeThreads : getMaxThreadsForStoreId(id_main);
+	threadData.storeThreadsSet = storeThreads > 0 ? true : isSetMaxThreadsForStoreId(id_main);
 	threadData.storeConcatLimit = storeConcatLimit > 0 ? storeConcatLimit : getConcatLimitForStoreId(id_main);
 	threadData.store = store;
 	loadFromQFilesThreadData[id_main] = threadData;
@@ -4491,10 +4493,24 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 			++_lines;
 			if(!onlyCheck) {
 				string query = find_and_replace(posSeparator + 1, "__ENDL__", "\n");
+				int first_thread_qtSize = 0;
+				bool next_threads_exists = false;
+				bool next_threads_filled = false;
+				int next_threds_limit = 1000;
 				int id_2 = 0;
 				ssize_t id_2_minSize = -1;
 				for(int i = 0; i < loadFromQFilesThreadData[id_main].storeThreads; i++) {
 					int qtSize = this->getSize(id_main, i);
+					if(i == 0) {
+						first_thread_qtSize = qtSize;
+					} else {
+						if(qtSize >= 0) {
+							next_threads_exists = true;
+							if(qtSize > 0) {
+								next_threads_filled = true;
+							}
+						}
+					}
 					if(qtSize < 0) {
 						qtSize = 0;
 					}
@@ -4502,6 +4518,10 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 						id_2 = i;
 						id_2_minSize = qtSize;
 					}
+				}
+				if(id_2 && !loadFromQFilesThreadData[id_main].storeThreadsSet &&
+				   first_thread_qtSize < next_threds_limit && (!next_threads_exists || !next_threads_filled)) {
+					id_2 = 0;
 				}
 				if(!check(id_main, id_2)) {
 					find(id_main, id_2, loadFromQFilesThreadData[id_main].store);
@@ -5029,6 +5049,7 @@ int MySqlStore::findMinId2(int id_main, bool lock) {
 int MySqlStore::getMaxThreadsForStoreId(int id_main) {
 	extern int opt_mysqlstore_max_threads_cdr;
 	extern int opt_mysqlstore_max_threads_message;
+	extern int opt_mysqlstore_max_threads_sip_msg;
 	extern int opt_mysqlstore_max_threads_register;
 	extern int opt_mysqlstore_max_threads_http;
 	extern int opt_mysqlstore_max_threads_webrtc;
@@ -5045,6 +5066,9 @@ int MySqlStore::getMaxThreadsForStoreId(int id_main) {
 		break;
 	case STORE_PROC_ID_MESSAGE:
 		maxThreads = opt_mysqlstore_max_threads_message;
+		break;
+	case STORE_PROC_ID_SIP_MSG:
+		maxThreads = opt_mysqlstore_max_threads_sip_msg;
 		break;
 	case STORE_PROC_ID_REGISTER:
 		maxThreads = opt_mysqlstore_max_threads_register;
@@ -5070,9 +5094,58 @@ int MySqlStore::getMaxThreadsForStoreId(int id_main) {
 	return(maxThreads);
 }
 
+bool MySqlStore::isSetMaxThreadsForStoreId(int id_main) {
+	extern bool opt_mysqlstore_max_threads_cdr_set;
+	extern bool opt_mysqlstore_max_threads_message_set;
+	extern bool opt_mysqlstore_max_threads_sip_msg_set;
+	extern bool opt_mysqlstore_max_threads_register_set;
+	extern bool opt_mysqlstore_max_threads_http_set;
+	extern bool opt_mysqlstore_max_threads_webrtc_set;
+	extern bool opt_mysqlstore_max_threads_ipacc_base_set;
+	extern bool opt_mysqlstore_max_threads_ipacc_agreg2_set;
+	extern bool opt_mysqlstore_max_threads_charts_cache_set;
+	bool set = false;
+	switch(id_main) {
+	case STORE_PROC_ID_CDR:
+		set = opt_mysqlstore_max_threads_cdr_set;
+		break;
+	case STORE_PROC_ID_CDR_REDIRECT:
+		set = opt_mysqlstore_max_threads_cdr_set;
+		break;
+	case STORE_PROC_ID_MESSAGE:
+		set = opt_mysqlstore_max_threads_message_set;
+		break;
+	case STORE_PROC_ID_SIP_MSG:
+		set = opt_mysqlstore_max_threads_sip_msg_set;
+		break;
+	case STORE_PROC_ID_REGISTER:
+		set = opt_mysqlstore_max_threads_register_set;
+		break;
+	case STORE_PROC_ID_HTTP:
+		set = opt_mysqlstore_max_threads_http_set;
+		break;
+	case STORE_PROC_ID_WEBRTC:
+		set = opt_mysqlstore_max_threads_webrtc_set;
+		break;
+	case STORE_PROC_ID_IPACC:
+		set = opt_mysqlstore_max_threads_ipacc_base_set;
+		break;
+	case STORE_PROC_ID_IPACC_AGR_INTERVAL:
+	case STORE_PROC_ID_IPACC_AGR2_HOUR:
+		set = opt_mysqlstore_max_threads_ipacc_agreg2_set;
+		break;
+	case STORE_PROC_ID_CHARTS_CACHE:
+	case STORE_PROC_ID_CHARTS_CACHE_REMOTE:
+		set = opt_mysqlstore_max_threads_charts_cache_set;
+		break;
+	}
+	return(set);
+}
+
 int MySqlStore::getConcatLimitForStoreId(int id_main) {
 	extern int opt_mysqlstore_concat_limit_cdr;;
 	extern int opt_mysqlstore_concat_limit_message;
+	extern int opt_mysqlstore_concat_limit_sip_msg;
 	extern int opt_mysqlstore_concat_limit_register;
 	extern int opt_mysqlstore_concat_limit_http;
 	extern int opt_mysqlstore_concat_limit_webrtc;
@@ -5088,6 +5161,9 @@ int MySqlStore::getConcatLimitForStoreId(int id_main) {
 		break;
 	case STORE_PROC_ID_MESSAGE:
 		concatLimit = opt_mysqlstore_concat_limit_message;
+		break;
+	case STORE_PROC_ID_SIP_MSG:
+		concatLimit = opt_mysqlstore_concat_limit_sip_msg;
 		break;
 	case STORE_PROC_ID_REGISTER:
 		concatLimit = opt_mysqlstore_concat_limit_register;

@@ -41,6 +41,7 @@
 #define RRD_VALUE_SQLf_C "SQLf-C"
 #define RRD_VALUE_SQLq_C "SQLq-C"
 #define RRD_VALUE_SQLq_M "SQLq-M"
+#define RRD_VALUE_SQLq_SM "SQLq-SM"
 #define RRD_VALUE_SQLq_R "SQLq-R"
 #define RRD_VALUE_SQLq_Cl "SQLq-Cl"
 #define RRD_VALUE_SQLq_H "SQLq-H"
@@ -148,7 +149,7 @@ public:
 	virtual void setStdDb(unsigned rows = 0);
 	string createString();
 	void parseStructFromInfo(const char *info, list<RrdChartValue> *values);
-	void alterIfNeed(list<RrdChartValue> *valuesFromInfo, class RrdCharts *rrdCharts);
+	bool alterIfNeed(list<RrdChartValue> *valuesFromInfo, class RrdCharts *rrdCharts);
 	string infoString();
 	string graphString(const char *seriesGroupName,
 			   const char *dstfile, const char *fromTime, const char *toTime, 

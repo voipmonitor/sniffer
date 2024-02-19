@@ -497,6 +497,7 @@ char opt_mysqlcompress_type[256];
 int opt_mysql_enable_transactions = 0;
 int opt_mysql_enable_transactions_cdr = 0;
 int opt_mysql_enable_transactions_message = 0;
+int opt_mysql_enable_transactions_sip_msg = 0;
 int opt_mysql_enable_transactions_register = 0;
 int opt_mysql_enable_transactions_http = 0;
 int opt_mysql_enable_transactions_webrtc = 0;
@@ -1207,18 +1208,29 @@ bool opt_loadsqlconfig = true;
 int opt_mysqlstore_concat_limit = 0;
 int opt_mysqlstore_concat_limit_cdr = 0;
 int opt_mysqlstore_concat_limit_message = 0;
+int opt_mysqlstore_concat_limit_sip_msg = 0;
 int opt_mysqlstore_concat_limit_register = 0;
 int opt_mysqlstore_concat_limit_http = 0;
 int opt_mysqlstore_concat_limit_webrtc = 0;
 int opt_mysqlstore_concat_limit_ipacc = 0;
-int opt_mysqlstore_max_threads_cdr = 1;
-int opt_mysqlstore_max_threads_message = 1;
-int opt_mysqlstore_max_threads_register = 1;
+int opt_mysqlstore_max_threads_cdr = 3;
+int opt_mysqlstore_max_threads_message = 3;
+int opt_mysqlstore_max_threads_sip_msg = 3;
+int opt_mysqlstore_max_threads_register = 3;
 int opt_mysqlstore_max_threads_http = 1;
 int opt_mysqlstore_max_threads_webrtc = 1;
 int opt_mysqlstore_max_threads_ipacc_base = 3;
 int opt_mysqlstore_max_threads_ipacc_agreg2 = 3;
 int opt_mysqlstore_max_threads_charts_cache = 1;
+bool opt_mysqlstore_max_threads_cdr_set = false;
+bool opt_mysqlstore_max_threads_message_set = false;
+bool opt_mysqlstore_max_threads_sip_msg_set = false;
+bool opt_mysqlstore_max_threads_register_set = false;
+bool opt_mysqlstore_max_threads_http_set = false;
+bool opt_mysqlstore_max_threads_webrtc_set = false;
+bool opt_mysqlstore_max_threads_ipacc_base_set = false;
+bool opt_mysqlstore_max_threads_ipacc_agreg2_set = false;
+bool opt_mysqlstore_max_threads_charts_cache_set = false;
 int opt_mysqlstore_limit_queue_register = 1000000;
 
 char opt_curlproxy[256] = "";
@@ -5663,7 +5675,7 @@ void main_init_sqlstore() {
 			}
 			if(use_mysql_2()) {
 				sqlStore_2 = new FILE_LINE(42038) MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, mysql_2_socket,
-									     NULL, NULL, NULL, &optMySsl_2);
+									     NULL, NULL, false, &optMySsl_2);
 				if(opt_save_query_to_files) {
 					sqlStore_2->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 				}
@@ -5738,6 +5750,17 @@ void main_init_sqlstore() {
 				}
 				if(opt_message_check_duplicity_callid_in_next_pass_insert) {
 					sqlStore->setEnableFixDeadlock(STORE_PROC_ID_MESSAGE, i);
+				}
+			}
+			for(int i = 0; i < opt_mysqlstore_max_threads_sip_msg; i++) {
+				if(opt_mysqlstore_concat_limit_sip_msg) {
+					sqlStore->setConcatLimit(STORE_PROC_ID_SIP_MSG, i, opt_mysqlstore_concat_limit_sip_msg);
+				}
+				if(i) {
+					sqlStore->setEnableAutoDisconnect(STORE_PROC_ID_SIP_MSG, i);
+				}
+				if(opt_mysql_enable_transactions_sip_msg) {
+					sqlStore->setEnableTransaction(STORE_PROC_ID_SIP_MSG, i);
 				}
 			}
 			for(int i = 0; i < opt_mysqlstore_max_threads_register; i++) {
@@ -6023,6 +6046,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42095) cConfigItem_integer("mysqlstore_concat_limit", &opt_mysqlstore_concat_limit));
 				addConfigItem(new FILE_LINE(42096) cConfigItem_integer("mysqlstore_concat_limit_cdr", &opt_mysqlstore_concat_limit_cdr));
 				addConfigItem(new FILE_LINE(42097) cConfigItem_integer("mysqlstore_concat_limit_message", &opt_mysqlstore_concat_limit_message));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("mysqlstore_concat_limit_sip_msg", &opt_mysqlstore_concat_limit_sip_msg));
 				addConfigItem(new FILE_LINE(42098) cConfigItem_integer("mysqlstore_concat_limit_register", &opt_mysqlstore_concat_limit_register));
 				addConfigItem(new FILE_LINE(42099) cConfigItem_integer("mysqlstore_concat_limit_http", &opt_mysqlstore_concat_limit_http));
 				addConfigItem(new FILE_LINE(42100) cConfigItem_integer("mysqlstore_concat_limit_webrtc", &opt_mysqlstore_concat_limit_webrtc));
@@ -6030,6 +6054,8 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE(42102) cConfigItem_integer("mysqlstore_max_threads_cdr", &opt_mysqlstore_max_threads_cdr))
 					->setMaximum(99)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42103) cConfigItem_integer("mysqlstore_max_threads_message", &opt_mysqlstore_max_threads_message))
+					->setMaximum(99)->setMinimum(1));
+				addConfigItem((new FILE_LINE(0) cConfigItem_integer("mysqlstore_max_threads_sip_msg", &opt_mysqlstore_max_threads_sip_msg))
 					->setMaximum(99)->setMinimum(1));
 				addConfigItem((new FILE_LINE(42104) cConfigItem_integer("mysqlstore_max_threads_register", &opt_mysqlstore_max_threads_register))
 					->setMaximum(99)->setMinimum(1));
@@ -6047,6 +6073,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42110) cConfigItem_yesno("mysqltransactions", &opt_mysql_enable_transactions));
 				addConfigItem(new FILE_LINE(42111) cConfigItem_yesno("mysqltransactions_cdr", &opt_mysql_enable_transactions_cdr));
 				addConfigItem(new FILE_LINE(42112) cConfigItem_yesno("mysqltransactions_message", &opt_mysql_enable_transactions_message));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysqltransactions_sip_msg", &opt_mysql_enable_transactions_sip_msg));
 				addConfigItem(new FILE_LINE(42113) cConfigItem_yesno("mysqltransactions_register", &opt_mysql_enable_transactions_register));
 				addConfigItem(new FILE_LINE(42114) cConfigItem_yesno("mysqltransactions_http", &opt_mysql_enable_transactions_http));
 				addConfigItem(new FILE_LINE(42115) cConfigItem_yesno("mysqltransactions_webrtc", &opt_mysql_enable_transactions_webrtc));
@@ -8467,6 +8494,16 @@ void set_context_config() {
 		}
 	}
 	
+	opt_mysqlstore_max_threads_cdr_set = CONFIG.isSet("mysqlstore_max_threads_cdr_set");
+	opt_mysqlstore_max_threads_message_set = CONFIG.isSet("mysqlstore_max_threads_message");
+	opt_mysqlstore_max_threads_sip_msg_set = CONFIG.isSet("mysqlstore_max_threads_sip_msg");
+	opt_mysqlstore_max_threads_register_set = CONFIG.isSet("mysqlstore_max_threads_register");
+	opt_mysqlstore_max_threads_http_set = CONFIG.isSet("mysqlstore_max_threads_http");
+	opt_mysqlstore_max_threads_webrtc_set = CONFIG.isSet("mysqlstore_max_threads_webrtc");
+	opt_mysqlstore_max_threads_ipacc_base_set = CONFIG.isSet("mysqlstore_max_threads_ipacc_base");
+	opt_mysqlstore_max_threads_ipacc_agreg2_set = CONFIG.isSet("mysqlstore_max_threads_ipacc_agreg2");
+	opt_mysqlstore_max_threads_charts_cache_set = CONFIG.isSet("mysqlstore_max_threads_charts_cache");
+	
 	if(isCloud() && opt_cdr_check_exists_callid) {
 		opt_csv_store_format = true;
 	}
@@ -10713,6 +10750,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqltransactions_message", NULL))) {
 		opt_mysql_enable_transactions_message = yesno(value);
 	}
+	if((value = ini.GetValue("general", "mysqltransactions_sip_msg", NULL))) {
+		opt_mysql_enable_transactions_sip_msg = yesno(value);
+	}
 	if((value = ini.GetValue("general", "mysqltransactions_register", NULL))) {
 		opt_mysql_enable_transactions_register = yesno(value);
 	}
@@ -11706,6 +11746,9 @@ int eval_config(string inistr) {
 	if((value = ini.GetValue("general", "mysqlstore_concat_limit_message", NULL))) {
 		opt_mysqlstore_concat_limit_message = atoi(value);
 	}
+	if((value = ini.GetValue("general", "mysqlstore_concat_limit_sip_msg", NULL))) {
+		opt_mysqlstore_concat_limit_sip_msg = atoi(value);
+	}
 	if((value = ini.GetValue("general", "mysqlstore_concat_limit_register", NULL))) {
 		opt_mysqlstore_concat_limit_register = atoi(value);
 	}
@@ -11724,6 +11767,9 @@ int eval_config(string inistr) {
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_message", NULL))) {
 		opt_mysqlstore_max_threads_message = max(min(atoi(value), 99), 1);
+	}
+	if((value = ini.GetValue("general", "mysqlstore_max_threads_sip_msg", NULL))) {
+		opt_mysqlstore_max_threads_sip_msg = max(min(atoi(value), 99), 1);
 	}
 	if((value = ini.GetValue("general", "mysqlstore_max_threads_register", NULL))) {
 		opt_mysqlstore_max_threads_register = max(min(atoi(value), 99), 1);

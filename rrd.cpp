@@ -257,20 +257,174 @@ void RrdChart::parseStructFromInfo(const char *info, list<RrdChartValue> *values
 	}
 }
 
-void RrdChart::alterIfNeed(list<RrdChartValue> *valuesFromInfo, RrdCharts *rrdCharts) {
-	for(list<RrdChartValue*>::iterator iter = values.begin(); iter != values.end(); iter++) {
-		for(list<RrdChartValue>::iterator iter_info = valuesFromInfo->begin(); iter_info != valuesFromInfo->end(); iter_info++) {
-			if((*iter)->name == iter_info->name) {
-				if((*iter)->max != iter_info->max) {
-					syslog(LOG_NOTICE, "rrd alter : %s",
-					       (getDbFilename() + " : " + (*iter)->name + " : " + 
-						floatToString(iter_info->max, (*iter)->precision) + " -> " + floatToString((*iter)->max, (*iter)->precision)).c_str());
-					string alterStr = "tune " + getDbFilename() + " " +
-							  "--maximum " + (*iter)->name + ":" + floatToString((*iter)->max, (*iter)->precision);
-					rrdCharts->doRrdCmd(alterStr);
+bool RrdChart::alterIfNeed(list<RrdChartValue> *valuesFromInfo, RrdCharts *rrdCharts) {
+	if(values.size() == valuesFromInfo->size()) {
+		for(list<RrdChartValue*>::iterator iter = values.begin(); iter != values.end(); iter++) {
+			for(list<RrdChartValue>::iterator iter_info = valuesFromInfo->begin(); iter_info != valuesFromInfo->end(); iter_info++) {
+				if((*iter)->name == iter_info->name) {
+					if((*iter)->max != iter_info->max) {
+						syslog(LOG_NOTICE, "rrd alter : %s",
+						       (getDbFilename() + " : " + (*iter)->name + " : " + 
+							floatToString(iter_info->max, (*iter)->precision) + " -> " + floatToString((*iter)->max, (*iter)->precision)).c_str());
+						string alterStr = "tune " + getDbFilename() + " " +
+								  "--maximum " + (*iter)->name + ":" + floatToString((*iter)->max, (*iter)->precision);
+						rrdCharts->doRrdCmd(alterStr);
+					}
 				}
 			}
 		}
+		return(true);
+	} else {
+		bool debug = sverb.rrd_info;
+		string dbFilename = getDbFilename();
+		SimpleBuffer out, err;
+		int exit_code;
+		if(debug) {
+			cout << "ALTER RRD TABLE " << dbFilename << endl;
+		}
+		string tmpXml = tmpnam();
+		if(debug) {
+			cout << "ALTER RRD TABLE - step 1 - dump old table to file " << tmpXml << endl;
+		}
+		string dump_cmd = string(RRDTOOL_CMD) + " dump " + escapeShellArgument(dbFilename);
+		if(debug) {
+			cout << "call: " << dump_cmd << endl;
+		}
+		vm_pexec(dump_cmd.c_str(), &out, &err, &exit_code);
+		if(debug) {
+			cout << "err: " << (char*)err << endl;
+			cout << "exit_code: " << exit_code << endl;
+		}
+		if(exit_code) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed call %s, err: %s", dbFilename.c_str(), dump_cmd.c_str(), (char*)err);
+			unlink(tmpXml.c_str());
+			return(false);
+		}
+		if(!out.size()) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - empty result from call %s", dbFilename.c_str(), dump_cmd.c_str());
+			unlink(tmpXml.c_str());
+			return(false);
+		}
+		if(!out.writeToFile(tmpXml.c_str())) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed write dump to template file %s", dbFilename.c_str(), tmpXml.c_str());
+			unlink(tmpXml.c_str());
+			return(false);
+		}
+		if(debug) {
+			cout << "ALTER RRD TABLE - step 2 - create new table " << tmpXml << endl;
+		}
+		unlink(dbFilename.c_str());
+		string createString = this->createString();
+		extern RrdCharts rrd_charts;
+		if(!rrd_charts.doRrdCmd(createString)) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed create rrd table", dbFilename.c_str());
+			unlink(tmpXml.c_str());
+			return(false);
+		}
+		string tmpXmlNew = tmpnam();
+		if(debug) {
+			cout << "ALTER RRD TABLE - step 3 - dump new empty table to file " << tmpXmlNew << endl;
+		}
+		string dump_new_cmd = string(RRDTOOL_CMD) + " dump " + escapeShellArgument(dbFilename);
+		if(debug) {
+			cout << "call: " << dump_new_cmd << endl;
+		}
+		out.clear();
+		err.clear();
+		vm_pexec(dump_new_cmd.c_str(), &out, &err, &exit_code);
+		cout << "err: " << (char*)err << endl;
+		cout << "exit_code: " << exit_code << endl;
+		if(exit_code) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed call %s, err: %s", dbFilename.c_str(), dump_new_cmd.c_str(), (char*)err);
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			return(false);
+		}
+		if(!out.size()) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - empty result from call %s", dbFilename.c_str(), dump_new_cmd.c_str());
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			return(false);
+		}
+		if(!out.writeToFile(tmpXmlNew.c_str())) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed write dump to template file %s", dbFilename.c_str(), tmpXmlNew.c_str());
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			return(false);
+		}
+		string tmpXmlComb = tmpnam();
+		if(debug) {
+			cout << "ALTER RRD TABLE - step 4 - combination of new structure and old data to file " << tmpXmlComb << endl;
+		}
+		FILE *fh, *fh_new, *fh_comb;
+		fh = fopen(tmpXml.c_str(), "r");
+		if(!fh) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed open template file %s", dbFilename.c_str(), tmpXml.c_str());
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			unlink(tmpXmlComb.c_str());
+			return(false);
+		}
+		fh_new = fopen(tmpXmlNew.c_str(), "r");
+		if(!fh_new) {
+			fclose(fh);
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed open template file %s", dbFilename.c_str(), tmpXmlNew.c_str());
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			unlink(tmpXmlComb.c_str());
+			return(false);
+		}
+		fh_comb = fopen(tmpXmlComb.c_str(), "w");
+		if(!fh_comb) {
+			fclose(fh);
+			fclose(fh_new);
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed open template file %s", dbFilename.c_str(), tmpXmlComb.c_str());
+			unlink(tmpXml.c_str());
+			unlink(tmpXmlNew.c_str());
+			unlink(tmpXmlComb.c_str());
+			return(false);
+		}
+		char buff[10000];
+		while(fgets(buff, sizeof(buff), fh_new)) {
+			if(strstr(buff, "<rra>")) {
+				break;
+			}
+			fputs(buff, fh_comb);
+		}
+		bool existsRRA = false;
+		while(fgets(buff, sizeof(buff), fh_new)) {
+			if(strstr(buff, "<rra>")) {
+				existsRRA = true;
+			}
+			if(existsRRA) {
+				fputs(buff, fh_comb);
+			}
+		}
+		fclose(fh);
+		fclose(fh_new);
+		fclose(fh_comb);
+		unlink(tmpXml.c_str());
+		unlink(tmpXmlNew.c_str());
+		if(debug) {
+			cout << "ALTER RRD TABLE - step 5 - restore table from " << tmpXmlComb << endl;
+		}
+		unlink(dbFilename.c_str());
+		string import_cmd = string(RRDTOOL_CMD) + " restore " + escapeShellArgument(tmpXmlComb) + " " + escapeShellArgument(dbFilename);
+		if(debug) {
+			cout << "call: " << import_cmd << endl;
+		}
+		out.clear();
+		err.clear();
+		vm_pexec(import_cmd.c_str(), &out, &err, &exit_code);
+		cout << "err: " << (char*)err << endl;
+		cout << "exit_code: " << exit_code << endl;
+		if(exit_code) {
+			syslog(LOG_NOTICE, "ALTER RRD %s - failed call %s, err: %s", dbFilename.c_str(), import_cmd.c_str(), (char*)err);
+			unlink(tmpXmlComb.c_str());
+			return(false);
+		}
+		unlink(tmpXmlComb.c_str());
+		return(true);
 	}
 }
 
@@ -729,6 +883,7 @@ void rrd_charts_init() {
 	ch->addValue(RRD_VALUE_SQLf_C, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_C, NULL, NULL, 0, 1000000);
 	ch->addValue(RRD_VALUE_SQLq_M, NULL, NULL, 0, 100000);
+	ch->addValue(RRD_VALUE_SQLq_SM, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_R, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_Cl, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLq_H, NULL, NULL, 0, 100000);
@@ -738,7 +893,7 @@ void rrd_charts_init() {
 	g->setVerticalLabel("sec,count");
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLf_D, "SQL delay in s", "0000FF", "MAX", "LINE1", true))
 			->setAdjust("/", "1000");
-	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLf_C, "SQL queries count", "FF0000", "MAX", "LINE1", true));
+	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLf_C, "SQL cache files count", "FF0000", "MAX", "LINE1", true));
 	ch->addSeriesGroup(RRD_CHART_SERIES_SQLf, g);
 	// ** SQLq
 	g = new FILE_LINE(0) RrdChartSeriesGroup;
@@ -746,6 +901,8 @@ void rrd_charts_init() {
 	g->setVerticalLabel("queries");
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLq_C, "CDR queue", "0000FF", "MAX", "LINE1", true));
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLq_M, "Message queue", "00FF00", "MAX", "LINE1", true))
+			->setAdjust("*", "100");
+	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLq_SM, "Opt/Sub/Not queue", "55AA00", "MAX", "LINE1", true))
 			->setAdjust("*", "100");
 	g->addSeries(new FILE_LINE(0) RrdChartSeries(RRD_VALUE_SQLq_R, "Register queue", "FF0000", "MAX", "LINE1", true))
 			->setAdjust("*", "100");
