@@ -1,11 +1,29 @@
-2024.02.1  02.01.2024
+2024.02.2  20.02.2024
+=====================
+- Adding encryption support for communication between php and sniffer manager which is now by default (port 5029). New GUI is required for activate it. [VG-2751]
+- Update systemd service file.
+- fix crash in read rtp without sip (with use --rtp-nosig) [VS-1560]
+- fix ssl keylog compilation, fix for wolfssl 
+- fix crash in decompress tar to file (which is used when upgrading to the develop version)
+- -flto is now disabled by default in configure
+- fix SSL/TLS detection for Mysql 8.x [VS-1562]
+- limit log ether_type 0xFFFF only if this condition occurs more than 100 times per minute [VS-1563]
+- create separate sql queue for sip_msg (options/subscribe/notify)
+- set 3 threads by default to store cdr, messages, sip_msg and registrations; the next threads only start when 1000 requests are not completed
+- modify rrd to show the sip_msg queue graph (creating an alter to add a data source)
+- change sip-subscribe=no and sip-notify=no as default option (it needs to be enabled in voipmonitor.conf to store them) 
+- read configuration from db only if --config-file is specified
+- fix crash in decompress tar to file
+
+
+2024.02.1  02.02.2024
 =====================
 - fix killing old watchdog scripts after running sniffer after crash/abort
 
 
 2024.01.6  31.01.2024
 =====================
-- fix no traffic passing through when max_buffer_mem is set to lowe values [VS-1552]
+- fix no traffic passing through when max_buffer_mem is set to low values [VS-1552]
 
 
 2024.01.5  30.01.2024
