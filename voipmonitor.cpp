@@ -3713,17 +3713,17 @@ int main(int argc, char *argv[]) {
 			load_config(configfile);
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
-	}
-	list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
-	if(!opt_nocdr && !is_set_gui_params() && 
-	   !printConfigStruct && !printConfigFile &&
-	   isSqlDriver("mysql") && opt_mysqlloadconfig) {
-		if(useNewCONFIG) {
-			get_command_line_arguments_mysql();
-			get_command_line_arguments_json_config();
-			CONFIG.beginTrackDiffValues();
-			CONFIG.setFromMysql(true);
-			CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
+		list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
+		if(!opt_nocdr && !is_set_gui_params() && 
+		   !printConfigStruct && !printConfigFile &&
+		   isSqlDriver("mysql") && opt_mysqlloadconfig) {
+			if(useNewCONFIG) {
+				get_command_line_arguments_mysql();
+				get_command_line_arguments_json_config();
+				CONFIG.beginTrackDiffValues();
+				CONFIG.setFromMysql(true);
+				CONFIG.endTrackDiffValues(&diffValuesMysqlLoadConfig);
+			}
 		}
 	}
 	get_command_line_arguments();
