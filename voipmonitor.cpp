@@ -3691,6 +3691,7 @@ int main(int argc, char *argv[]) {
 		CONFIG.addConfigItems();
 		CONFIG.clearToDefaultValues();
 	}
+	list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
 	if(configfile[0]) {
 		if(useNewCONFIG) {
 			CONFIG.loadFromConfigFileOrDirectory(configfile);
@@ -3713,7 +3714,6 @@ int main(int argc, char *argv[]) {
 			load_config(configfile);
 			load_config((char*)"/etc/voipmonitor/conf.d/");
 		}
-		list<cConfig::sDiffValue> diffValuesMysqlLoadConfig;
 		if(!opt_nocdr && !is_set_gui_params() && 
 		   !printConfigStruct && !printConfigFile &&
 		   isSqlDriver("mysql") && opt_mysqlloadconfig) {
