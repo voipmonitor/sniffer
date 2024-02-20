@@ -381,7 +381,9 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 	if(!reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) &&
 	   !reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) &&
 	   !reg_match(this->pathname.c_str(), "tar\\.zst", __FILE__, __LINE__)) {
-		this->readData.send_parameters->zip = false;
+		if(this->readData.send_parameters) {
+			this->readData.send_parameters->zip = false;
+		}
 	} else {
 		enableDetectTarPos = false;
 		if(flushTar(this->pathname.c_str())) {
