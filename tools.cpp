@@ -4721,6 +4721,9 @@ bool FileZipHandler::_directWriteToFile(char *data, int length, bool flush) {
 		}
 		#endif
 		break;
+	case _gzip:
+		// _gzip converted to gzip
+		break;
 	}
 	return(false);
 }
@@ -9391,7 +9394,7 @@ bool file_put_contents(const char *filename, SimpleBuffer *content, string *erro
 	return(true);
 }
 
-string getInterfaceOption(const char *param, const char *searchstr, const char *iface, char *sep = " \t") {
+string getInterfaceOption(const char *param, const char *searchstr, const char *iface, const char *sep = " \t") {
 	char cmd[512];
 	snprintf(cmd, sizeof(cmd), "ethtool %s %s", param, iface);
 	#if PREFER_VM_PEXEC

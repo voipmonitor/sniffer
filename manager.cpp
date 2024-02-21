@@ -101,7 +101,6 @@ extern int enable_bad_packet_order_warning;
 extern bool opt_socket_use_poll;
 
 extern cConfig CONFIG;
-extern bool useNewCONFIG;
 extern volatile bool cloud_activecheck_sshclose;
 
 extern char opt_call_id_alternative[256];
@@ -3813,14 +3812,8 @@ int Mgmt_set_json_config(Mgmt_params *params) {
 		params->registerCommand("set_json_config", "set JSON config");
 		return(0);
 	}
-	string rslt;
-	if(useNewCONFIG) {
-		hot_restart_with_json_config(params->buf + 16);
-		rslt = "ok";
-	} else {
-		rslt = "not supported";
-	}
-	return(params->sendString(&rslt));
+	hot_restart_with_json_config(params->buf + 16);
+	return(params->sendString("ok"));
 }
 
 int Mgmt_fraud_refresh(Mgmt_params *params) {
@@ -4605,7 +4598,7 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	outStrStat << "\"memory_is_full\": \"" << packetbuffer_memory_is_full << "\",";
 	outStrStat << "\"count_live_sniffers\": \"" << countLiveSniffers << "\",";
 	outStrStat << "\"upgrade_by_git\": \"" << opt_upgrade_by_git << "\",";
-	outStrStat << "\"use_new_config\": \"" << useNewCONFIG << "\",";
+	outStrStat << "\"use_new_config\": \"" << true << "\",";
 	outStrStat << "\"terminating_error\": \"" << terminating_error << "\"";
 	outStrStat << "}";
 	outStrStat << endl;
@@ -5384,9 +5377,8 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 			return(params->sendString("failed search configurations"));
 		}
 	} else if(string(type_information) == "configuration_db") {
-		extern bool useNewCONFIG;
 		extern int opt_mysqlloadconfig;
-		if(useNewCONFIG && opt_mysqlloadconfig) {
+		if(opt_mysqlloadconfig) {
 			SqlDb *sqlDb = createSqlObject();
 			sqlDb->setMaxQueryPass(1);
 			sqlDb->setDisableLogError();
@@ -5430,35 +5422,30 @@ int Mgmt_get_sensor_information(Mgmt_params *params) {
 			return(params->sendString("failed - need active new config and enable mysqlloadconfig"));
 		}
 	} else if(string(type_information) == "configuration_active") {
-		extern bool useNewCONFIG;
-		if(useNewCONFIG) {
-			extern cConfig CONFIG;
-			string contentConfig = CONFIG.getContentConfig(true, false);
-			vector<string> contentConfigSplit = split(contentConfig, '\n');
-			for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
-				size_t optionSeparatorPos = contentConfigSplit[i].find('=');
-				if(optionSeparatorPos != string::npos) {
-					string option = trim_str(contentConfigSplit[i].substr(0, optionSeparatorPos));
-					string value = trim_str(contentConfigSplit[i].substr(optionSeparatorPos + 1));
-					for(list<string>::iterator iter = hidePasswordForOptions.begin(); iter != hidePasswordForOptions.end(); iter++) {
-						if(option == *iter) {
-							contentConfigSplit[i] = option + " = ****";
-							break;
-						}
+		extern cConfig CONFIG;
+		string contentConfig = CONFIG.getContentConfig(true, false);
+		vector<string> contentConfigSplit = split(contentConfig, '\n');
+		for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
+			size_t optionSeparatorPos = contentConfigSplit[i].find('=');
+			if(optionSeparatorPos != string::npos) {
+				string option = trim_str(contentConfigSplit[i].substr(0, optionSeparatorPos));
+				string value = trim_str(contentConfigSplit[i].substr(optionSeparatorPos + 1));
+				for(list<string>::iterator iter = hidePasswordForOptions.begin(); iter != hidePasswordForOptions.end(); iter++) {
+					if(option == *iter) {
+						contentConfigSplit[i] = option + " = ****";
+						break;
 					}
 				}
 			}
-			contentConfig = "";
-			for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
-				if(i) {
-					contentConfig += '\n';
-				}
-				contentConfig += contentConfigSplit[i];
-			}
-			return(params->sendString(contentConfig));
-		} else {
-			return(params->sendString("failed - need active new config"));
 		}
+		contentConfig = "";
+		for(unsigned i = 0; i < contentConfigSplit.size(); i++) {
+			if(i) {
+				contentConfig += '\n';
+			}
+			contentConfig += contentConfigSplit[i];
+		}
+		return(params->sendString(contentConfig));
 	} else if(string(type_information) == "syslog_files_list" ||
 		  string(type_information) == "syslog_file") {
 		string syslog_dir = "/var/log";

@@ -58,9 +58,9 @@ public:
 	virtual bool enable_normalizeStringValuesForCmp() { return(false); }
 	virtual bool enableMultiValues() { return(false); }
 	virtual bool isPassword() { return(false); }
+	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 protected:
 	virtual bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
-	virtual bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false) = 0;
 	virtual bool setParamFromValuesStr(vector<string> /*list_value_str*/, bool /*enableInitBeforeSet*/ = true, bool /*enableClearBeforeFirstSet*/ = false) { return(false); }
 	bool existsInConfigFile(CSimpleIniA *ini);
 	string getValueFromConfigFile(CSimpleIniA *ini);
