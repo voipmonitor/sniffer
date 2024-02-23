@@ -120,7 +120,6 @@ struct sSnifferServerGuiTask {
 		state = _receive;
 		sensor_id = 0;
 		time_us = 0;
-		aes_missing = false;
 		gui_connection = NULL;
 	}
 	void setTimeId() {
@@ -139,7 +138,6 @@ struct sSnifferServerGuiTask {
 	string id;
 	cAesKey aes_key;
 	string aes_cipher;
-	bool aes_missing;
 	class cSnifferServerConnection *gui_connection;
 };
 
@@ -294,7 +292,7 @@ public:
 	}
 protected:
 	bool checkPassword(string password, string *rsltStr);
-	void cp_gui_command(int32_t sensor_id, string command, cAesKey *aes_key, const char *aes_cipher, bool aes_missing);
+	void cp_gui_command(int32_t sensor_id, string command, cAesKey *aes_key, const char *aes_cipher);
 	void cp_service();
 	void cp_respone(string gui_task_id, u_char *remainder, size_t remainder_length);
 	void cp_responses();

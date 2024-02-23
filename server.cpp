@@ -398,15 +398,11 @@ void cSnifferServerConnection::connection_process() {
 	string str;
 	cAesKey aes_key;
 	string aes_cipher;
-	bool aes_missing = false;
 	if(is_aes) {
 		if(endPos > 0) {
 			cManagerAes::decrypt(&readBuffer, &str, &aes_key, &aes_cipher);
 		}
 	} else {
-		if(cManagerAes::getAesKey(NULL)) {
-			aes_missing = true;
-		}
 		str = string((char*)readBuffer.data(), endPos > 0 ? endPos : readBuffer.size());
 	}
 	if(!str.empty()) {
@@ -424,7 +420,7 @@ void cSnifferServerConnection::connection_process() {
 	switch(typeConnection) {
 	case _tc_gui_command:
 		cp_gui_command(atol(jsonData.getValue("sensor_id").c_str()), jsonData.getValue("command"), 
-			       is_aes ? &aes_key : NULL, is_aes ? aes_cipher.c_str() : NULL, aes_missing);
+			       is_aes ? &aes_key : NULL, is_aes ? aes_cipher.c_str() : NULL);
 		break;
 	case _tc_service:
 		cp_service();
@@ -486,7 +482,7 @@ bool cSnifferServerConnection::checkPassword(string password, string *rsltStr) {
 	}
 }
 
-void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command, cAesKey *aes_key, const char *aes_cipher, bool aes_missing) {
+void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command, cAesKey *aes_key, const char *aes_cipher) {
 	if(SS_VERBOSE().connect_info) {
 		ostringstream verbstr;
 		verbstr << "GUI COMAND: "
@@ -508,17 +504,12 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 	}
 	sSnifferServerGuiTask task;
 	task.sensor_id = sensor_id;
-	if(aes_missing && !cManagerAes::notNeedAesForCommand((char*)command.c_str())) {
+	if(!aes_key && !cManagerAes::notNeedAesForCommand((char*)command.c_str()) && cManagerAes::getAesKey(NULL)) {
 		syslog(LOG_INFO, "Need AES for command %s", command.c_str());
+		task.command = "need_aes";
+	} else {
+		task.command = command;
 	}
-	/*
-	if(aes_missing && !cManagerAes::notNeedAesForCommand((char*)command.c_str())) {
-		cout << " *** need aes for command " << command << endl;
-	}
-	*/
-	task.command = !aes_missing || cManagerAes::notNeedAesForCommand((char*)command.c_str()) ?
-			command :
-			"need_aes";
 	task.setTimeId();
 	if(aes_key) {
 		task.aes_key = *aes_key;
@@ -526,7 +517,6 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 			task.aes_cipher = aes_cipher;
 		}
 	}
-	task.aes_missing = aes_missing;
 	task.gui_connection = this;
 	snifferServerGuiTasks.add(&task);
 	service_connection->addTask(task);

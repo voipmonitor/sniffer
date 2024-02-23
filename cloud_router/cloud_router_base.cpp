@@ -484,10 +484,14 @@ bool cSocket::connect(unsigned loopSleepS) {
 				}
 			}
 			if(CR_VERBOSE().socket_connect) {
+				sockaddr_in myaddr;
+				socklen_t len = sizeof(myaddr);
+				getsockname(handle, (sockaddr*)&myaddr, &len);
 				ostringstream verbstr;
 				verbstr << "OK connect (" << name << ")"
 					<< " - " << getHostPort()
-					<< " handle " << handle;
+					<< " handle " << handle
+					<< " local ip:port " << inet_ntoa(myaddr.sin_addr) << " : " << ntohs(myaddr.sin_port);
 				syslog(LOG_INFO, "%s", verbstr.str().c_str());
 			}
 			rslt = true;
