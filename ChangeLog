@@ -1,3 +1,10 @@
+2024.02.3  23.02.2024
+=====================
+- fix upgrading / enabling encryption on tcp manager socket - in some situations the socket hangs with 100% CPU 
+- encryption is disabled when old mirroring sender is used - please use the newer client/server for packet mirroring 
+- auto enable t2_boost_direct_rtp_delay_ms=2000 if t2_boost=high_traffic is enabled
+
+
 2024.02.2  20.02.2024
 =====================
 - Adding encryption support for communication between php and sniffer manager which is now by default (port 5029). New GUI is required for activate it. [VG-2751]
