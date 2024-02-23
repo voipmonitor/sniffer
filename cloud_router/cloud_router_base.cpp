@@ -1260,6 +1260,7 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 		if(timeout && getTimeUS() > startTime + timeout * 1000000ull) {
 			break;
 		}
+		USLEEP(1000);
 	}
 	delete [] buffer;
 	if(remainder) {
