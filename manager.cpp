@@ -2356,7 +2356,7 @@ int Mgmt_is_register_new(Mgmt_params* params) {
 
 int Mgmt_totalcalls(Mgmt_params* params) {
 	if (params->task == params->mgmt_task_DoInit) {
-		params->registerCommand("totalcalls", "return the number of total calls");
+		params->registerCommand("totalcalls", "return the number of total calls", true);
 		return(0);
 	}
 	return(params->sendString(calls_counter));
