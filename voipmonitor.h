@@ -103,6 +103,7 @@ bool is_load_pcap_via_client(const char *sensor_string);
 bool is_remote_chart_server();
 int check_set_rtp_threads(int num_rtp_threads);
 bool is_support_for_mysql_new_store();
+bool is_support_manager_aes();
 
 bool use_mysql_2();
 bool use_mysql_2_http();

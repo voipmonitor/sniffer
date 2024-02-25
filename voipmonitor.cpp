@@ -8473,6 +8473,7 @@ void set_context_config() {
 		opt_use_oneshot_buffer = 0;
 	} else if(is_sender()) {
 		sniffer_mode = snifferMode_sender;
+		opt_nocdr = true;
 	} else {
 		sniffer_mode = snifferMode_read_from_interface;
 	}
@@ -9362,6 +9363,10 @@ int check_set_rtp_threads(int num_rtp_threads) {
 bool is_support_for_mysql_new_store() {
 	return(!(opt_cdr_check_duplicity_callid_in_next_pass_insert ||
 		 opt_message_check_duplicity_callid_in_next_pass_insert));
+}
+
+bool is_support_manager_aes() {
+	return(!is_sender());
 }
 
 void dns_lookup_common_hostnames() {

@@ -1406,6 +1406,11 @@ void *manager_read_thread(void * arg) {
 
 
 bool cManagerAes::getAesKey(cAesKey *aes_key, bool force) {
+	if(!is_support_manager_aes()) {
+		cManagerAes::aes_key.ckey.clear();
+		cManagerAes::aes_key.ivec.clear();
+		return(false);
+	}
 	extern string opt_manager_aes_key;
 	extern string opt_manager_aes_iv;
 	if(!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty()) {
@@ -5646,7 +5651,7 @@ int Mgmt_aes(Mgmt_params *params) {
 	if(strstr(params->buf, "need_aes") != NULL) {
 		params->sendString("need aes!\n");
 	} else if(strstr(params->buf, "support_aes") != NULL) {
-		params->sendString(!is_sender() ? "yes" : "no");
+		params->sendString(is_support_manager_aes() ? "yes" : "no");
 	} else if(strstr(params->buf, "exists_aes_key") != NULL) {
 		params->sendString(cManagerAes::getAesKey(NULL, true) ? "yes" : "no");
 	}
