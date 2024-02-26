@@ -20,6 +20,8 @@ extern sCloudRouterVerbose& CR_VERBOSE();
 extern bool opt_socket_use_poll;
 extern cResolver resolver;
 
+extern void hexdump(u_char *data, unsigned size);
+
 cRsa::cRsa() {
 	#ifdef HAVE_OPENSSL
 	priv_rsa = NULL;
@@ -710,8 +712,12 @@ bool cSocket::_write(u_char *data, size_t *dataLen) {
 	return(true);
 }
 
-bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
+bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool debug) {
 	if(isError() || !okHandle()) {
+		if(debug) {
+			cout << "cSocket::read " << handle
+			     << " " << (isError() ? "error" : "bad handle") << "->skip" << endl;
+		}
 		*dataLen = 0;
 		setError(_se_bad_connection, "read");
 		return(false);
@@ -723,6 +729,11 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 		fds[0].fd = handle;
 		fds[0].events = POLLIN;
 		int rsltPool = poll(fds, 1, timeouts.read * 1000);
+		if(debug) {
+			cout << "cSocket::read " << handle
+			     << " pool rslt " << rsltPool 
+			     << " fds[0].revents " << fds[0].revents << endl;
+		}
 		if(rsltPool < 0) {
 			*dataLen = 0;
 			setError(_se_loss_connection, "failed poll()");
@@ -752,12 +763,23 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock) {
 	}
 	if(doRead) {
 		ssize_t recvLen = recv(handle, data, *dataLen, 0);
+		if(debug) {
+			cout << "cSocket::read " << handle
+			     << " recvLen " << recvLen << endl;
+		}
 		if(recvLen > 0) {
 			*dataLen = recvLen;
+			if(debug) {
+				hexdump(data, recvLen);
+			}
 		} else {
 			*dataLen = 0;
+			if(debug) {
+				cout << "cSocket::read " << handle
+				     << " errno " << errno << endl;
+			}
 			if(errno != EWOULDBLOCK) {
-				if(!quietEwouldblock && !(isTerminate() || CR_TERMINATE())) {
+				if(errno != 0 && !quietEwouldblock && !(isTerminate() || CR_TERMINATE())) {
 					setError(_se_loss_connection, "failed read()");
 				}
 				return(false);
@@ -1367,7 +1389,8 @@ void cServer::listen_process(int index) {
 					if(CR_VERBOSE().connect_info) {
 						ostringstream verbstr;
 						verbstr << "NEW CONNECTION FROM: " 
-							<< clientSocket->getIP() << " : " << clientSocket->getPort();
+							<< clientSocket->getIP() << " : " << clientSocket->getPort()
+							<< " / " << clientSocket->getHandle();
 						syslog(LOG_INFO, "%s", verbstr.str().c_str());
 					}
 					createConnection(clientSocket);

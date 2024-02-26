@@ -517,6 +517,9 @@ JsonItem::JsonItem(string name, string value, bool null) {
 
 void JsonItem::parse(string valStr) {
 	////cerr << "valStr: " << valStr << endl;
+	while(valStr.length() && (valStr[valStr.length() - 1] == '\r' || valStr[valStr.length() - 1] == '\n')) {
+		valStr.resize(valStr.length() - 1);
+	}
 	if(!((valStr[0] == '{' && valStr[valStr.length() - 1] == '}') ||
 	     (valStr[0] == '[' && valStr[valStr.length() - 1] == ']'))) {
 		return;

@@ -336,7 +336,7 @@ public:
 	bool write(const char *data);
 	bool write(string &data);
 	bool _write(u_char *data, size_t *dataLen);
-	bool read(u_char *data, size_t *dataLen, bool quietEwouldblock = false);
+	bool read(u_char *data, size_t *dataLen, bool quietEwouldblock = false, bool debug = false);
 	bool writeXorKeyEnc(u_char *data, size_t dataLen);
 	bool readXorKeyDec(u_char *data, size_t *dataLen);
 	bool writeAesEnc(u_char *data, size_t dataLen, bool final);
