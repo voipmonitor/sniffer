@@ -1,3 +1,8 @@
+2024.02.5  26.02.2024
+=====================
+- reset errno before call recv on tcp manager socket - fixes stuck in manager or 100% cpu usage
+
+
 2024.02.4  26.02.2024
 =====================
 - fix issue with nocdr vs mirror sender
