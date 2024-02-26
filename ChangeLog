@@ -1,3 +1,9 @@
+2024.02.4  26.02.2024
+=====================
+- fix issue with nocdr vs mirror sender
+- set the manager command 'totalcalls' as a command for which encryption is not necessary
+
+
 2024.02.3  23.02.2024
 =====================
 - fix upgrading / enabling encryption on tcp manager socket - in some situations the socket hangs with 100% CPU 
