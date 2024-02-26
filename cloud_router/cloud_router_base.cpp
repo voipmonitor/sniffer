@@ -762,6 +762,7 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 		}
 	}
 	if(doRead) {
+		errno = 0;
 		ssize_t recvLen = recv(handle, data, *dataLen, 0);
 		if(debug) {
 			cout << "cSocket::read " << handle
