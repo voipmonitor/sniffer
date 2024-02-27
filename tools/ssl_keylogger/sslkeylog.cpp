@@ -73,6 +73,8 @@ typedef size_t (*SSL_get_client_random_type)(const SSL *ssl, unsigned char *out,
 typedef size_t (*SSL_SESSION_get_master_key_type)(const SSL_SESSION *session, unsigned char *out, size_t outlen);
 }
 
+u_int64_t rdtsc_by_250ms = 0;
+
 #ifdef SSLKEYLOG_TCP
 static void keylog_tcp_socket_close();
 #endif
