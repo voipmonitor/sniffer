@@ -67,10 +67,14 @@
 //define BUFSIZE 20480
 #define BUFSIZE 4096		//block size?
 
+void init_management_functions(void);
+
 extern Calltable *calltable;
 extern volatile int terminating;
 extern int opt_manager_port;
 extern char opt_manager_ip[32];
+extern string opt_manager_socket;
+extern string opt_manager_socket_run_via_manager;
 extern int opt_manager_nonblock_mode;
 extern volatile int calls_counter;
 extern volatile int registers_counter;
@@ -1671,22 +1675,27 @@ void *manager_server(void *arg) {
 
 bool manager_file_server_start(string *file, string *error) {
 	if(manager_file_thread > 0) {
-		*error = "running";
+		*error = string("running (") + (!opt_manager_socket.empty() ? opt_manager_socket : opt_manager_socket_run_via_manager) + ")";
 		return(false);
 	}
-	*file = tmpnam();
+	init_management_functions();
+	string managersocket = file->empty() ? tmpnam() : *file;
 	sManagerServerArgs *managerServerArgs = new FILE_LINE(0) sManagerServerArgs;
-	managerServerArgs->file_socket = *file;
+	managerServerArgs->file_socket = managersocket;
 	managerServerArgs->non_block = true;
 	managerServerArgs->timeout = 1;
-	vm_pthread_create("manager file server",
+	vm_pthread_create("manager socket server",
 			  &manager_file_thread, NULL, manager_server, managerServerArgs, __FILE__, __LINE__);
+	*file = managersocket;
 	return(true);
 }
 
 bool manager_file_server_stop(string *error) {
 	if(manager_file_thread == 0) {
 		*error = "not running";
+		return(false);
+	} else if(!opt_manager_socket.empty()) {
+		*error = "manager enabled via the managersocket option cannot be terminated";
 		return(false);
 	}
 	manager_file_terminating = true;
@@ -5663,9 +5672,14 @@ int Mgmt_manager_file(Mgmt_params *params) {
 		params->registerCommand("manager_file", NULL, true);
 		return(0);
 	}
-	if(strstr(params->buf, "start") != NULL) {
+	char *p;
+	if((p = strstr(params->buf, "start")) != NULL) {
 		string file, error;
+		if(strlen(p) > 6 && p[5] == ' ') {
+			file = p + 6;
+		}
 		if(manager_file_server_start(&file, &error)) {
+			opt_manager_socket_run_via_manager = file;
 			params->sendString("OK (" + file + ")\n");
 		} else {
 			params->sendString(error + "\n");
@@ -5682,6 +5696,9 @@ int Mgmt_manager_file(Mgmt_params *params) {
 }
 
 void init_management_functions(void) {
+	if(!MgmtCmdsRegTable.empty()) {
+		return;
+	}
 	Mgmt_params params(NULL, 0, 0, NULL, NULL, NULL, NULL);
 	params.task = params.mgmt_task_DoInit;
 	for(unsigned i = 0; i < sizeof(MgmtFuncArray) / sizeof(MgmtFuncArray[0]); i++) {

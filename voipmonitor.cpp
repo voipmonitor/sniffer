@@ -291,6 +291,8 @@ bool opt_sip_msg_compare_vlan = false;
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
 char opt_manager_ip[32] = "127.0.0.1";	// manager api listen IP address
+string opt_manager_socket;
+string opt_manager_socket_run_via_manager;
 int opt_manager_nonblock_mode = 0;
 string opt_manager_aes_key;
 string opt_manager_aes_iv;
@@ -4159,15 +4161,23 @@ int main(int argc, char *argv[]) {
 		return 0;
 	}
 	
-	// start manager thread 	
-	if((opt_manager_port > 0 || is_client()) && !is_read_from_file_simple()) {
+	// start manager threads
+	if((opt_manager_port > 0 || !opt_manager_socket.empty() || is_client()) && !is_read_from_file_simple()) {
 		init_management_functions();
 		if(opt_manager_port > 0) {
 			vm_pthread_create("manager server",
 					  &manager_thread, NULL, manager_server, NULL, __FILE__, __LINE__);
 		}
+		if(!opt_manager_socket.empty()) {
+			sManagerServerArgs *managerServerArgs = new FILE_LINE(0) sManagerServerArgs;
+			managerServerArgs->file_socket = opt_manager_socket;
+			managerServerArgs->non_block = true;
+			managerServerArgs->timeout = 1;
+			vm_pthread_create("manager socket server",
+					  &manager_file_thread, NULL, manager_server, managerServerArgs, __FILE__, __LINE__);
+		}
 	}
-
+	
 	//cout << "SQL DRIVER: " << sql_driver << endl;
 	if(!opt_nocdr && !is_sender() && !is_client_packetbuffer_sender() && !is_terminating()) {
 		if(opt_fork) {
@@ -6255,6 +6265,8 @@ void cConfig::addConfigItems() {
 		addConfigItem((new FILE_LINE(42162) cConfigItem_string("managerip", opt_manager_ip, sizeof(opt_manager_ip)))
 			->setReadOnly());
 		addConfigItem((new FILE_LINE(42163) cConfigItem_integer("managerport", &opt_manager_port))
+			->setReadOnly());
+		addConfigItem((new FILE_LINE(42163) cConfigItem_string("managersocket", &opt_manager_socket))
 			->setReadOnly());
 		addConfigItem((new FILE_LINE(0) cConfigItem_string("manager_aes_key", &opt_manager_aes_key))
 			->setReadOnly());
