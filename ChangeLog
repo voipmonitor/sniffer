@@ -1,3 +1,10 @@
+2024.02.6  29.02.2024
+=====================
+- fix slow communication on TCP manager between sniffers (1 second delay per 1 MB)
+- fix ssl keylogger compilation
+- do not call dns_lookup_common_hostnames when reading file with -r
+
+
 2024.02.5  26.02.2024
 =====================
 - reset errno before call recv on tcp manager socket - fixes stuck in manager or 100% cpu usage
