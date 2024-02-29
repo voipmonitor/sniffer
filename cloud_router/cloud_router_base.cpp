@@ -1220,7 +1220,7 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 			verb_str += "header: " + intToString(remainder_length) + "/d:" + intToString(data_dec_len) + "; ";
 		}
 	}
-	size_t bufferLen = 1000;
+	size_t bufferLen = 10000;
 	u_char *buffer = new FILE_LINE(0) u_char[bufferLen];
 	unsigned counter = 0;
 	while(!CR_TERMINATE()) {
@@ -1251,6 +1251,8 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 				if(CR_VERBOSE().socket_decode) {
 					verb_str += "data: " + intToString(len) + "/d:" + intToString(data_dec_len) + "; ";
 				}
+			} else {
+				USLEEP(200);
 			}
 		} else {
 			u_char *data_dec;
@@ -1283,7 +1285,6 @@ void cSocketBlock::readDecodeAesAndResendTo(cSocketBlock *dest, u_char *remainde
 		if(timeout && getTimeUS() > startTime + timeout * 1000000ull) {
 			break;
 		}
-		USLEEP(1000);
 	}
 	delete [] buffer;
 	if(remainder) {
