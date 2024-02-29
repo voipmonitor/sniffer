@@ -4681,7 +4681,7 @@ int main_init_read() {
 	if(opt_fork) {
 		vm_pthread_create("defered service",
 				  &defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
-	} else {
+	} else if(!is_read_from_file_simple()) {
 		dns_lookup_common_hostnames();
 	}
 	
