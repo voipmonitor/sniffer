@@ -1166,7 +1166,8 @@ private:
 		return(id == STORE_PROC_ID_CHARTS_CACHE_REMOTE);
 	}
 	bool qfileConfigEnable(int id) {
-		return(idIsNotCharts(id) ? qfileConfig.enable :
+		return(id == STORE_PROC_ID_SAVE_PACKET_SQL ? false :
+		       idIsNotCharts(id) ? qfileConfig.enable :
 		       idIsCharts(id) ? qfileConfig.enable_charts :
 		       idIsChartsRemote(id) ? qfileConfig.enable_charts_remote : false);
 	}

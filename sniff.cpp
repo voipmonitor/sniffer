@@ -11027,25 +11027,22 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 					pushed = true;
 				}
 			}
-		} else if(opt_sip_register) {
-			preProcessPacket[ppt_pp_register]->push_packet(packetS);
-			pushed = true;
+			if(!pushed) {
+				if((packetS->is_options() && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
+				   (packetS->is_subscribe() && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
+				   (packetS->is_notify() && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
+					preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
+					pushed = true;
+				}
+			}
+		} else {
+			if(opt_sip_register || livesnifferfilterUseSipTypes.u_register) {
+				preProcessPacket[ppt_pp_register]->push_packet(packetS);
+				pushed = true;
+			}
 		}
 		if(!pushed) {
-			bool is_options = packetS->is_options();
-			bool is_subscribe = packetS->is_subscribe();
-			bool is_notify = packetS->is_notify();
-			if(is_options || is_subscribe || is_notify) {
-				if((is_options && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
-				   (is_subscribe && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
-				   (is_notify && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
-					preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
-				} else {
-					PACKET_S_PROCESS_DESTROY(&packetS);
-				}
-			} else {
-				PACKET_S_PROCESS_DESTROY(&packetS);
-			}
+			PACKET_S_PROCESS_DESTROY(&packetS);
 		}
 	} else if(packetS->typeContentIsSkinny()) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
@@ -11165,7 +11162,11 @@ void PreProcessPacket::process_REGISTER(packet_s_process *packetS) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		process_packet_sip_register(packetS);
+		if(opt_sip_register) {
+			process_packet_sip_register(packetS);
+		} else if(livesnifferfilterUseSipTypes.u_register) {
+			save_live_packet(packetS);
+		}
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 1);
 }
@@ -11493,7 +11494,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		return;
 	}
 	this->process_getSipMethod(&packetS);
-	if(packetS->is_register() && !opt_sip_register && !livesnifferfilterUseSipTypes.u_register) {
+	if(packetS->is_register() && !(opt_sip_register || livesnifferfilterUseSipTypes.u_register)) {
 		if(packetS->next_action == _ppna_set) {
 			packetS->next_action = _ppna_destroy;
 		} else {

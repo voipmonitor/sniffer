@@ -4119,7 +4119,7 @@ void MySqlStore::loadFromQFiles_start() {
 			this->addLoadFromQFile(STORE_PROC_ID_SIP_MSG, "sip_msg");
 			this->addLoadFromQFile(STORE_PROC_ID_CLEANSPOOL, "cleanspool");
 			this->addLoadFromQFile(STORE_PROC_ID_REGISTER, "register");
-			this->addLoadFromQFile(STORE_PROC_ID_SAVE_PACKET_SQL, "save_packet_sql");
+			//this->addLoadFromQFile(STORE_PROC_ID_SAVE_PACKET_SQL, "save_packet_sql"); // disable query_cache for live sniffer
 			this->addLoadFromQFile(STORE_PROC_ID_HTTP, "http", 0, 0,
 					       use_mysql_2_http() ? sqlStore_2 : NULL);
 			this->addLoadFromQFile(STORE_PROC_ID_WEBRTC, "webrtc");
