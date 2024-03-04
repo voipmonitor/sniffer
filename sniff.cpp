@@ -6405,7 +6405,7 @@ endsip:
 
 void process_packet_sip_other_sip_msg(packet_s_process *packetS) {
 	extern cSipMsgRelations *sipMsgRelations;
-	if(!sipMsgRelations) {
+	if(!sipMsgRelations || isCloud()) {
 		return;
 	}
 	int sipMsgType = packetS->is_options() ? smt_options :
