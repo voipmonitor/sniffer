@@ -163,12 +163,41 @@ extern u_int64_t rdtsc_by_250ms;
 
 inline void init_rdtsc_interval() {
 	#if defined(__i386__) or  defined(__x86_64__)
-	u_int64_t _rdtsc_1 = rdtsc();
-	usleep(250000);
-	u_int64_t _rdtsc_2 = rdtsc();
-	usleep(0);
-	u_int64_t _rdtsc_3 = rdtsc();
-	rdtsc_by_250ms = _rdtsc_2 - _rdtsc_1 - (_rdtsc_3 - _rdtsc_2);
+	u_int64_t rdtsc_by_250ms_v[2] = { 0, 0 };
+	for(int i = 0; i < 5; i++) {
+		u_int64_t _rdtsc_1 = rdtsc();
+		usleep(250000);
+		u_int64_t _rdtsc_2 = rdtsc();
+		usleep(0);
+		u_int64_t _rdtsc_3 = rdtsc();
+		extern sVerbose sverb;
+		if(sverb.rdtsc) {
+			ostringstream ostr;
+			ostr << _rdtsc_1 << " / " 
+			     << _rdtsc_2 << " / " 
+			     << _rdtsc_3 << " // "
+			     << (_rdtsc_2 > _rdtsc_1) << " / "
+			     << (_rdtsc_3 > _rdtsc_2) << " / "
+			     << ((_rdtsc_2 - _rdtsc_1) > (_rdtsc_3 - _rdtsc_2)) << " // "
+			     << _rdtsc_2 - _rdtsc_1 - (_rdtsc_3 - _rdtsc_2) << endl;
+			syslog(LOG_NOTICE, "init_rdtsc_interval iter %i : %s", (i + 1), ostr.str().c_str());
+		}
+		if(_rdtsc_2 > _rdtsc_1 && _rdtsc_3 >= _rdtsc_2 &&
+		   (_rdtsc_2 - _rdtsc_1) > (_rdtsc_3 - _rdtsc_2)) {
+			rdtsc_by_250ms_v[0] = rdtsc_by_250ms_v[1];
+			rdtsc_by_250ms_v[1] = _rdtsc_2 - _rdtsc_1 - (_rdtsc_3 - _rdtsc_2);
+			if(rdtsc_by_250ms_v[0] && rdtsc_by_250ms_v[1] &&
+			   fabs(1 - (double)rdtsc_by_250ms_v[0] / rdtsc_by_250ms_v[1]) < 0.01) {
+				rdtsc_by_250ms = (rdtsc_by_250ms_v[0] + rdtsc_by_250ms_v[1]) / 2;
+				if(sverb.rdtsc) {
+					ostringstream ostr;
+					ostr << rdtsc_by_250ms;
+					syslog(LOG_NOTICE, "init_rdtsc_interval set: %s", ostr.str().c_str());
+				}
+				break;
+			}
+		}
+	}
 	#endif
 }
 

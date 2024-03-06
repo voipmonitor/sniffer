@@ -7759,6 +7759,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "call_branches")			sverb.call_branches = 1;
 	else if(verbParam == "diameter_dump")			sverb.diameter_dump = 1;
 	else if(verbParam == "diameter_assign")			sverb.diameter_assign = 1;
+	else if(verbParam == "rdtsc")				sverb.rdtsc = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
