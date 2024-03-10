@@ -1,3 +1,9 @@
+2024.03.1  10.03.2024
+=====================
+- allow registrations in live sniffer even if sip-register=no, disable query_cache for live sniffer [VG-2771]
+- fix deadlock on some qemu virtualisations 
+
+
 2024.02.6  29.02.2024
 =====================
 - fix slow communication on TCP manager between sniffers (1 second delay per 1 MB)

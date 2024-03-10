@@ -2,7 +2,7 @@
 #define VOIPMONITOR_DEFINE_H
 
 
-#define RTPSENSOR_VERSION "2024.02.6"
+#define RTPSENSOR_VERSION "2024.03.1"
 #define RTPSENSOR_BUILD_NUMBER "local_build"
 #define NAT
 
