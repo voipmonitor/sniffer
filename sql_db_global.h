@@ -119,13 +119,17 @@ public:
 	void setUData(void *u_data);
 	void addCond(const char *field, const char *value);
 	void setAutoLoadPeriod(unsigned autoLoadPeriod);
+	void setReverse(bool reverse);
 	unsigned getId(const char *stringValue, bool enableInsert = false, bool enableAutoLoad = false,
 		       cSqlDbAutoIncrement *autoincrement = NULL, string *insertQuery = NULL, SqlDb *sqlDb = NULL);
+	unsigned convId(unsigned old_id, cSqlDbCodebook *cb_dst);
 	void load(SqlDb *sqlDb = NULL);
 	void loadInBackground();
 	void registerAutoincrement(cSqlDbAutoIncrement *autoincrement, SqlDb *sqlDb = NULL);
+	void merge(cSqlDbCodebook *dst, SqlDb *dst_db, const char *table_name);
 private:
 	void _load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb = NULL);
+	void _load(map<unsigned, string> *data_r, SqlDb *sqlDb = NULL);
 	static void *_loadInBackground(void *arg);
 	void lock_data() {
 		__SYNC_LOCK(_sync_data);
@@ -160,7 +164,9 @@ private:
 	void *u_data;
 	list<SqlDb_condField> cond;
 	unsigned autoLoadPeriod;
+	bool reverse;
 	map<string, unsigned> *data;
+	map<unsigned, string> *data_r;
 	bool loaded;
 	bool data_overflow;
 	volatile int _sync_data;
@@ -177,6 +183,7 @@ public:
 	~cSqlDbCodebooks();
 	void setUData(void *u_data);
 	void registerCodebook(cSqlDbCodebook *codebook);
+	void registerCodebooks(unsigned limitTableRows, bool reverse = false, bool caseSensitive = false);
 	unsigned getId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert = false, bool enableAutoLoad = false,
 		       cSqlDbAutoIncrement *autoincrement = NULL, string *insertQuery = NULL, SqlDb *sqlDb = NULL);
 	void loadAll(SqlDb *sqlDb = NULL);
@@ -185,6 +192,7 @@ public:
 	void destroyAll();
 	cSqlDbCodebook::eTypeCodebook getTypeForName(const char *name);
 	string getNameForType(cSqlDbCodebook::eTypeCodebook type);
+	cSqlDbCodebook *getCodebook(cSqlDbCodebook::eTypeCodebook type);
 private:
 	void *u_data;
 	map<cSqlDbCodebook::eTypeCodebook, cSqlDbCodebook*> codebooks;

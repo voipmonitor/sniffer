@@ -187,8 +187,10 @@ bool cCR_Client_response::start(string host, u_int16_t port) {
 }
 
 void cCR_Client_response::client_process() {
+	#ifdef CLOUD_ROUTER_CLIENT
 	extern int parse_command(string cmd, sClientInfo client, cClient *c_client, cAesKey *aes_key, const char *aes_cipher, bool aes_missing);
 	parse_command(command, 0, this, NULL, NULL, false);
+	#endif
 	if(response_sender) {
 		response_sender->add(gui_task_id, buffer);
 		buffer = NULL;

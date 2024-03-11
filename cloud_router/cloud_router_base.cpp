@@ -770,9 +770,11 @@ bool cSocket::read(u_char *data, size_t *dataLen, bool quietEwouldblock, bool de
 		}
 		if(recvLen > 0) {
 			*dataLen = recvLen;
+			#ifdef CLOUD_ROUTER_CLIENT
 			if(debug) {
 				hexdump(data, recvLen);
 			}
+			#endif
 		} else {
 			*dataLen = 0;
 			if(debug) {

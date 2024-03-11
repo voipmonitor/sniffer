@@ -129,7 +129,9 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 	this->caseSensitive = caseSensitive;
 	this->u_data = NULL;
 	data = new FILE_LINE(0) map<string, unsigned>;
+	data_r = new FILE_LINE(0) map<unsigned, string>;
 	autoLoadPeriod = 0;
+	reverse = false;
 	loaded = false;
 	data_overflow = false;
 	_sync_data = 0;
@@ -140,6 +142,7 @@ cSqlDbCodebook::cSqlDbCodebook(eTypeCodebook type, const char *name,
 
 cSqlDbCodebook::~cSqlDbCodebook() {
 	delete data;
+	delete data_r;
 }
 
 void cSqlDbCodebook::setUData(void *u_data) {
@@ -152,6 +155,10 @@ void cSqlDbCodebook::addCond(const char *field, const char *value) {
 
 void cSqlDbCodebook::setAutoLoadPeriod(unsigned autoLoadPeriod) {
 	this->autoLoadPeriod = autoLoadPeriod;
+}
+
+void cSqlDbCodebook::setReverse(bool reverse) {
+	this->reverse = reverse;
 }
 
 unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, bool enableAutoLoad,
@@ -210,7 +217,11 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 		#ifdef CLOUD_ROUTER_CLIENT
 			if(useSetId()) {
 				rslt = autoincrement->getId(this->table.c_str());
-				SqlDb *sqlDb = createSqlObject();
+				bool _createSqlObject = false;
+				if(!sqlDb) {
+					sqlDb = createSqlObject();
+					_createSqlObject = true;
+				}
 				SqlDb_row row;
 				row.add(rslt, columnId);
 				row.add(sqlEscapeString(stringValueInputSafe),  columnStringValue);
@@ -219,10 +230,16 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 				}
 				extern MySqlStore *sqlStore;
 				sqlStore->query_lock(MYSQL_ADD_QUERY_END(sqlDb->insertQuery(this->table, row)).c_str(), STORE_PROC_ID_OTHER, 0);
-				delete sqlDb;
+				if(_createSqlObject) {
+					delete sqlDb;
+				}
 				(*data)[stringValue] = rslt;
 			} else if(enableInsert) {
-				SqlDb *sqlDb = createSqlObject();
+				bool _createSqlObject = false;
+				if(!sqlDb) {
+					sqlDb = createSqlObject();
+					_createSqlObject = true;
+				}
 				list<SqlDb_condField> cond = this->cond;
 				cond.push_back(SqlDb_condField(columnStringValue, stringValue));
 				sqlDb->setDisableLogError();
@@ -251,7 +268,12 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 						rslt = rsltInsert;
 					}
 				}
-				delete sqlDb;
+				if(_createSqlObject) {
+					delete sqlDb;
+				}
+				if(rslt > 0) {
+					(*data)[stringValue] = rslt;
+				}
 			}
 		#endif
 		#ifdef CLOUD_ROUTER_SERVER
@@ -281,19 +303,33 @@ unsigned cSqlDbCodebook::getId(const char *stringValueInput, bool enableInsert, 
 
 void cSqlDbCodebook::load(SqlDb *sqlDb) {
 	if(lock_load(1000000)) {
-		map<string, unsigned> *data = new FILE_LINE(0) map<string, unsigned>;
-		bool data_overflow;
-		_load(data, &data_overflow, sqlDb);
-		if(data->size() || data_overflow) {
-			lock_data();
-			delete this->data;
-			this->data = data;
-			this->data_overflow = data_overflow;
-			unlock_data();
+		if(!reverse) {
+			map<string, unsigned> *data = new FILE_LINE(0) map<string, unsigned>;
+			bool data_overflow;
+			_load(data, &data_overflow, sqlDb);
+			if(data->size() || data_overflow) {
+				lock_data();
+				delete this->data;
+				this->data = data;
+				this->data_overflow = data_overflow;
+				unlock_data();
+			} else {
+				delete data;
+			}
+			loaded = true;
 		} else {
-			delete data;
+			map<unsigned, string> *data_r = new FILE_LINE(0) map<unsigned, string>;
+			_load(data_r, sqlDb);
+			if(data_r->size()) {
+				lock_data();
+				delete this->data_r;
+				this->data_r = data_r;
+				unlock_data();
+			} else {
+				delete data_r;
+			}
+			loaded = true;
 		}
-		loaded = true;
 		unlock_load();
 	}
 }
@@ -308,6 +344,41 @@ void cSqlDbCodebook::loadInBackground() {
 
 void cSqlDbCodebook::registerAutoincrement(cSqlDbAutoIncrement *autoincrement, SqlDb *sqlDb) {
 	autoincrement->set(table.c_str(), columnId.c_str(), sqlDb);
+}
+
+void cSqlDbCodebook::merge(cSqlDbCodebook *dst, SqlDb *dst_db, const char *table_name) {
+	#ifdef CLOUD_ROUTER_CLIENT
+	if(!reverse && data->size()) {
+		syslog(LOG_NOTICE, "merge %s - %lu", table_name, data->size());
+		unsigned counter = 0;
+		for(map<string, unsigned>::iterator iter = data->begin(); iter != data->end() && !is_terminating(); iter++) {
+			dst->getId(iter->first.c_str(), true, false, NULL, NULL, dst_db);
+			++counter;
+			if(!(counter % 10000)) {
+				syslog(LOG_NOTICE, "merge %s - %u / %lu", table_name, counter, data_r->size());
+			}
+		}
+	}
+	if(reverse && data_r->size()) {
+		syslog(LOG_NOTICE, "merge %s - %lu", table_name, data_r->size());
+		unsigned counter = 0;
+		for(map<unsigned, string>::iterator iter = data_r->begin(); iter != data_r->end() && !is_terminating(); iter++) {
+			dst->getId(iter->second.c_str(), true, false, NULL, NULL, dst_db);
+			++counter;
+			if(!(counter % 10000)) {
+				syslog(LOG_NOTICE, "merge %s - %u / %lu", table_name, counter, data_r->size());
+			}
+		}
+	}
+	#endif
+}
+
+unsigned cSqlDbCodebook::convId(unsigned old_id, cSqlDbCodebook *cb_dst) {
+	map<unsigned, string>::iterator iter = data_r->find(old_id);
+	if(iter == data_r->end()) {
+		return(0);
+	}
+	return(cb_dst->getId(iter->second.c_str()));
 }
 
 void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *sqlDb) {
@@ -372,6 +443,35 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 	lastEndLoadTime = getTimeS();
 }
 
+void cSqlDbCodebook::_load(map<unsigned, string> *data_r, SqlDb *sqlDb) {
+	#ifdef CLOUD_ROUTER_CLIENT
+	lastBeginLoadTime = getTimeS();
+	data_r->clear();
+	bool _createSqlObject = false;
+	if(!sqlDb) {
+		sqlDb = createSqlObject();
+		_createSqlObject = true;
+	}
+	if(sqlDb->select(table, NULL, &cond)) {
+		SqlDb_rows rows;
+		sqlDb->fetchRows(&rows);
+		SqlDb_row row;
+		while((row = rows.fetchRow())) {
+			string stringValue = row[columnStringValue];
+			unsigned id = atol(row[columnId].c_str());
+			if(!caseSensitive) {
+				std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
+			}
+			(*data_r)[id] = stringValue;
+		}
+	}
+	if(_createSqlObject) {
+		delete sqlDb;
+	}
+	lastEndLoadTime = getTimeS();
+	#endif
+}
+
 void *cSqlDbCodebook::_loadInBackground(void *arg) {
 	cSqlDbCodebook *me = (cSqlDbCodebook*)arg;
 	map<string, unsigned> *data = new FILE_LINE(0) map<string, unsigned>;
@@ -405,6 +505,31 @@ void cSqlDbCodebooks::setUData(void *u_data) {
 
 void cSqlDbCodebooks::registerCodebook(cSqlDbCodebook *codebook) {
 	codebooks[codebook->type] = codebook;
+}
+
+void cSqlDbCodebooks::registerCodebooks(unsigned limitTableRows, bool reverse, bool caseSensitive) {
+	cSqlDbCodebook *cb_ua = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_ua, "ua", "cdr_ua", "id", "ua", limitTableRows, caseSensitive);
+	cSqlDbCodebook *cb_sip_response = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_response, "sip_response", "cdr_sip_response", "id", "lastSIPresponse", limitTableRows, caseSensitive);
+	cSqlDbCodebook *cb_sip_request = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_request, "sip_request", "cdr_sip_request", "id", "request", limitTableRows, caseSensitive);
+	cSqlDbCodebook *cb_reason_sip = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_sip, "reason_sip", "cdr_reason", "id", "reason", limitTableRows, caseSensitive);
+	cb_reason_sip->addCond("type", "1");
+	cSqlDbCodebook *cb_reason_q850 = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_q850, "reason_q850", "cdr_reason", "id", "reason", limitTableRows, caseSensitive);
+	cb_reason_q850->addCond("type", "2");
+	cSqlDbCodebook *cb_contenttype = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_contenttype, "contenttype", "contenttype", "id", "contenttype", limitTableRows, caseSensitive);
+	if(reverse) {
+		cb_ua->setReverse(true);
+		cb_sip_response->setReverse(true);
+		cb_sip_request->setReverse(true);
+		cb_reason_sip->setReverse(true);
+		cb_reason_q850->setReverse(true);
+		cb_contenttype->setReverse(true);
+	}
+	registerCodebook(cb_ua);
+	registerCodebook(cb_sip_response);
+	registerCodebook(cb_sip_request);
+	registerCodebook(cb_reason_sip);
+	registerCodebook(cb_reason_q850);
+	registerCodebook(cb_contenttype);
 }
 
 unsigned cSqlDbCodebooks::getId(cSqlDbCodebook::eTypeCodebook type, const char *stringValue, bool enableInsert, bool enableAutoLoad,
@@ -457,6 +582,14 @@ string cSqlDbCodebooks::getNameForType(cSqlDbCodebook::eTypeCodebook type) {
 		}
 	}
 	return("");
+}
+
+cSqlDbCodebook *cSqlDbCodebooks::getCodebook(cSqlDbCodebook::eTypeCodebook type) {
+	map<cSqlDbCodebook::eTypeCodebook, cSqlDbCodebook*>::iterator iter = codebooks.find(type);
+	if(iter != codebooks.end()) {
+		return(iter->second);
+	}
+	return(NULL);
 }
 
 
@@ -555,20 +688,7 @@ string cSqlDbData::getCbNameForType(cSqlDbCodebook::eTypeCodebook type) {
 }
 
 void cSqlDbData::initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb) {
-	cSqlDbCodebook *cb_ua = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_ua, "ua", "cdr_ua", "id", "ua", limitTableRows);
-	cSqlDbCodebook *cb_sip_response = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_response, "sip_response", "cdr_sip_response", "id", "lastSIPresponse", limitTableRows);
-	cSqlDbCodebook *cb_sip_request = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_sip_request, "sip_request", "cdr_sip_request", "id", "request", limitTableRows);
-	cSqlDbCodebook *cb_reason_sip = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_sip, "reason_sip", "cdr_reason", "id", "reason", limitTableRows);
-	cb_reason_sip->addCond("type", "1");
-	cSqlDbCodebook *cb_reason_q850 = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_reason_q850, "reason_q850", "cdr_reason", "id", "reason", limitTableRows);
-	cb_reason_q850->addCond("type", "2");
-	cSqlDbCodebook *cb_contenttype = new FILE_LINE(0) cSqlDbCodebook(cSqlDbCodebook::_cb_contenttype, "contenttype", "contenttype", "id", "contenttype", limitTableRows);
-	codebooks->registerCodebook(cb_ua);
-	codebooks->registerCodebook(cb_sip_response);
-	codebooks->registerCodebook(cb_sip_request);
-	codebooks->registerCodebook(cb_reason_sip);
-	codebooks->registerCodebook(cb_reason_q850);
-	codebooks->registerCodebook(cb_contenttype);
+	codebooks->registerCodebooks(limitTableRows);
 	if(loadAll) {
 		#ifdef CLOUD_ROUTER_CLIENT
 		codebooks->setAutoLoadPeriodForAll(6 * 3600);

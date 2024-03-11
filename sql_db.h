@@ -99,6 +99,7 @@ public:
 	string operator [] (string fieldName);
 	string operator [] (int indexField);
 	operator int();
+	bool setContent(const char *fieldName, const char *newContent);
 	SqlDb_rowField *add(const char *content, string fieldName = "", int type = 0, unsigned long length = 0, eInternalFieldType ift = _ift_string) {
 		if(!ignoreCheckExistsField && fieldName != "") {
 			for(size_t i = 0; i < row.size(); i++) {
@@ -731,21 +732,33 @@ public:
 	string column_type_datetime_child_ms();
 	string column_type_duration_ms(const char *base_type = NULL);
 	bool checkSourceTables();
-	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc);
+	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc,
+				       cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit = 0, bool descDir = false,
 				      bool skipRegister = false,
-				      bool skipMissingTables = false);
+				      bool skipMissingTables = false,
+				      cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	void copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				 const char *tableName, 
-				 unsigned long limit, bool descDir = false);
+				 unsigned long limit, bool descDir = false,
+				 cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	void copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 				      const char *masterTableName, const char *slaveTableName,
 				      const char *slaveIdToMasterColumn, 
 				      const char *masterCalldateColumn, const char *slaveCalldateColumn,
 				      u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-				      unsigned long limit, bool descDir = false, u_int64_t limitMaxId = 0);
+				      unsigned long limit, bool descDir = false, u_int64_t limitMaxId = 0,
+				      cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
+	bool getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map);
+	bool convId(SqlDb_row *row, const char *table,
+		    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+		    map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map);
+	bool convId(SqlDb_row *row, const char *table, const char *column,
+		    cSqlDbCodebook::eTypeCodebook cb_type, cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst);
+	unsigned convId(unsigned id,
+			cSqlDbCodebook *cb_src, cSqlDbCodebook *cb_dst);
 	string getTypeDb() {
 		return("mysql");
 	}

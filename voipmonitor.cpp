@@ -532,6 +532,7 @@ int opt_database_backup_pass_rows = 0;
 bool opt_database_backup_desc_dir = false;
 bool opt_database_backup_skip_register = false;
 bool opt_database_backup_check_src_tables = false;
+bool opt_database_backup_merge_reference_tables = false;
 char opt_mos_lqo_bin[1024] = "pesq";
 char opt_mos_lqo_ref[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original.wav";
 char opt_mos_lqo_ref16[1024] = "/usr/local/share/voipmonitor/audio/mos_lqe_original_16khz.wav";
@@ -1717,7 +1718,20 @@ void *database_backup(void */*dummy*/) {
 					callCreateSchema = true;
 				}
 				
-				sqlDb_mysql->copyFromSourceTablesMinor(sqlDbSrc_mysql);
+				cSqlDbCodebooks *cb_src = NULL;
+				if(opt_database_backup_merge_reference_tables) {
+					cb_src = new FILE_LINE(0) cSqlDbCodebooks;
+					cb_src->registerCodebooks(0, true, true);
+					cb_src->loadAll(sqlDbSrc_mysql);
+				}
+				cSqlDbCodebooks *cb_dst = NULL;
+				if(opt_database_backup_merge_reference_tables) {
+					cb_dst = new FILE_LINE(0) cSqlDbCodebooks;
+					cb_dst->registerCodebooks(0);
+					cb_dst->loadAll(sqlDb);
+				}
+				
+				sqlDb_mysql->copyFromSourceTablesMinor(sqlDbSrc_mysql, cb_src, cb_dst);
 			
 				if(custom_headers_cdr) {
 					custom_headers_cdr->refresh(sqlDbSrc, false);
@@ -1752,7 +1766,16 @@ void *database_backup(void */*dummy*/) {
 								      opt_database_backup_pass_rows, 
 								      opt_database_backup_desc_dir, 
 								      opt_database_backup_skip_register,
-								      !opt_database_backup_check_src_tables);
+								      !opt_database_backup_check_src_tables,
+								      cb_src, cb_dst);
+				
+				if(cb_src) {
+					delete cb_src;
+				}
+				if(cb_dst) {
+					delete cb_dst;
+				}
+				
 			}
 		}
 		delete sqlDbSrc;
@@ -6091,6 +6114,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_desc_dir", &opt_database_backup_desc_dir));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_skip_register", &opt_database_backup_skip_register));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_check_src_tables", &opt_database_backup_check_src_tables));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_merge_reference_tables", &opt_database_backup_merge_reference_tables));
+					
 	group("sniffer mode");
 		// SNIFFER MODE
 		subgroup("main");

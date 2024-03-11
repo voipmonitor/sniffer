@@ -187,6 +187,15 @@ SqlDb_row::operator int() {
 	return(!this->isEmpty());
 }
 
+bool SqlDb_row::setContent(const char *fieldName, const char *newContent) {
+	int indexField = this->getIndexField(fieldName);
+	if(indexField >= 0 && (unsigned)indexField < row.size()) {
+		row[indexField].content = newContent;
+		return(true);
+	}
+	return(false);
+}
+
 void SqlDb_row::add(vmIP content, string fieldName, bool null, SqlDb *sqlDb, const char *table) {
 	if(!content.isSet() && null) {
 		this->add((const char*)NULL, fieldName, 0, 0, _ift_ip)
@@ -9837,29 +9846,61 @@ bool SqlDb_mysql::checkSourceTables() {
 	return(ok);
 }
 
-void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc) {
+void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc,
+					    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
 	vector<string> tablesMinor = getSourceTables(tt_minor);
 	for(size_t i = 0; i < tablesMinor.size() && !is_terminating(); i++) {
-		this->copyFromSourceTable(sqlDbSrc, tablesMinor[i].c_str(), 10000);
+		if(cb_src && cb_dst && tablesMinor[i] == "cdr_sip_response") {
+			cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cSqlDbCodebook::_cb_sip_response);
+			cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(cSqlDbCodebook::_cb_sip_response);
+			cb_src_tab->merge(cb_dst_tab, this, "cdr_sip_response");
+		} else if(cb_src && cb_dst && tablesMinor[i] == "cdr_sip_request") {
+			cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cSqlDbCodebook::_cb_sip_request);
+			cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(cSqlDbCodebook::_cb_sip_request);
+			cb_src_tab->merge(cb_dst_tab, this, "cdr_sip_request");
+		} else if(cb_src && cb_dst && tablesMinor[i] == "cdr_reason") {
+			for(int i = 0; i < 2; i++) {
+				cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(i == 0 ? cSqlDbCodebook::_cb_reason_sip : cSqlDbCodebook::_cb_reason_q850);
+				cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(i == 0 ? cSqlDbCodebook::_cb_reason_sip : cSqlDbCodebook::_cb_reason_q850);
+				cb_src_tab->merge(cb_dst_tab, this, i == 0 ? "cdr_reason - sip" : "cdr_reason - q850");
+			}
+		} else if(cb_src && cb_dst && tablesMinor[i] == "cdr_ua") {
+			cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cSqlDbCodebook::_cb_ua);
+			cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(cSqlDbCodebook::_cb_ua);
+			cb_src_tab->merge(cb_dst_tab, this, "cdr_ua");
+		} else if(cb_src && cb_dst && tablesMinor[i] == "contenttype") {
+			cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cSqlDbCodebook::_cb_contenttype);
+			cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(cSqlDbCodebook::_cb_contenttype);
+			cb_src_tab->merge(cb_dst_tab, this, "contenttype");
+		} else {
+			this->copyFromSourceTable(sqlDbSrc, tablesMinor[i].c_str(), 10000);
+		}
 	}
 }
 
 void SqlDb_mysql::copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 					   unsigned long limit, bool descDir,
 					   bool skipRegister,
-					   bool skipMissingTables) {
+					   bool skipMissingTables,
+					   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
 	vector<string> tablesMain = getSourceTables(tt_main);
 	for(size_t i = 0; i < tablesMain.size() && !is_terminating(); i++) {
 		if((!skipMissingTables || sqlDbSrc->existsTable(tablesMain[i].c_str())) &&
 		   (!skipRegister || !strstr(tablesMain[i].c_str(), "register"))) {
-			this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), limit ? limit : 10000, descDir);
+			this->copyFromSourceTable(sqlDbSrc, tablesMain[i].c_str(), limit ? limit : 10000, descDir,
+						  cb_src, cb_dst);
 		}
 	}
 }
 
 void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc, 
 				      const char *tableName, 
-				      unsigned long limit, bool descDir) {
+				      unsigned long limit, bool descDir,
+				      cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	map<string, cSqlDbCodebook::eTypeCodebook> reftable_map;
+	if(cb_src && cb_dst) {
+		getReferenceTablesMap(tableName, &reftable_map);
+	}
 	u_int64_t minIdSrc = 0;
 	extern char opt_database_backup_from_date[20];
 	extern char opt_database_backup_to_date[20];
@@ -9983,6 +10024,12 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 			unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 			while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
 				row.removeFieldsIfNotContainIn(&columnsDest);
+				if(cb_src && cb_dst) {
+					if(!convId(&row, tableName, cb_src, cb_dst, &reftable_map)) {
+						syslog(LOG_NOTICE, "%s", "missing record in reference table - continue after next sync reference tables");
+						break;
+					}
+				}
 				if(!descDir) {
 					useMaxIdInSrc = atoll(row["id"].c_str());
 				} else {
@@ -10025,14 +10072,16 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
 							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
-							       limit * 10, false, limitMaxId);
+							       limit * 10, false, limitMaxId,
+							       cb_src, cb_dst);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
 							       (minIdSrc < useMinIdInSrc ? useMinIdInSrc : minIdSrc) , 0,
-							       limit * 10, true, limitMaxId);
+							       limit * 10, true, limitMaxId,
+							       cb_src, cb_dst);
 			}
 		}
 	}
@@ -10043,7 +10092,12 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 					   const char *slaveIdToMasterColumn, 
 					   const char *masterCalldateColumn, const char *slaveCalldateColumn,
 					   u_int64_t useMinIdMaster, u_int64_t useMaxIdMaster,
-					   unsigned long limit, bool descDir, u_int64_t limitMaxId) {
+					   unsigned long limit, bool descDir, u_int64_t limitMaxId,
+					   cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	map<string, cSqlDbCodebook::eTypeCodebook> reftable_map;
+	if(cb_src && cb_dst) {
+		getReferenceTablesMap(slaveTableName, &reftable_map);
+	}
 	u_int64_t maxIdToMasterInSlaveSrc = 0;
 	sqlDbSrc->query(string("select max(") + slaveIdToMasterColumn + ") as max_id from " + slaveTableName);
 	SqlDb_row row = sqlDbSrc->fetchRow();
@@ -10157,8 +10211,14 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 		unsigned int insertThreads = opt_database_backup_insert_threads > 1 ? opt_database_backup_insert_threads : 1;
 		unsigned long counterRows = 0;
 		while(!is_terminating() && (row = sqlDbSrc->fetchRow())) {
-			++counterRows;
 			row.removeFieldsIfNotContainIn(&columnsDest);
+			if(cb_src && cb_dst) {
+				if(!convId(&row, slaveTableName, cb_src, cb_dst, &reftable_map)) {
+					syslog(LOG_NOTICE, "%s", "missing record in reference table - continue after next sync reference tables");
+					break;
+				}
+			}
+			++counterRows;
 			u_int64_t readMasterId = atoll(row[slaveIdToMasterColumn].c_str());
 			if(readMasterId != lastMasterId ||
 			   (descDir && readMasterId == minIdToMasterInSlaveSrc)) {
@@ -10328,6 +10388,78 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		}
 	}
 	return(tables);
+}
+
+bool SqlDb_mysql::getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map) {
+	if(!strcmp(table, "cdr")) {
+		(*reftable_map)["lastSIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
+		(*reftable_map)["a_ua_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["b_ua_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["reason_sip_text_id"] = cSqlDbCodebook::_cb_reason_sip;
+		(*reftable_map)["reason_q850_text_id"] = cSqlDbCodebook::_cb_reason_q850;
+	} else if(!strcmp(table, "cdr_next_branches")) {
+		(*reftable_map)["lastSIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
+		(*reftable_map)["a_ua_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["b_ua_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["reason_sip_text_id"] = cSqlDbCodebook::_cb_reason_sip;
+		(*reftable_map)["reason_q850_text_id"] = cSqlDbCodebook::_cb_reason_q850;
+	} else if(!strcmp(table, "cdr_sipresp")) {
+		(*reftable_map)["SIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
+	} else if(!strcmp(table, "cdr_siphistory")) {
+		(*reftable_map)["SIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
+		(*reftable_map)["SIPrequest_id"] = cSqlDbCodebook::_cb_sip_request;
+	} else if(!strcmp(table, "message")) {
+		(*reftable_map)["lastSIPresponse_id"] = cSqlDbCodebook::_cb_sip_response;
+		(*reftable_map)["a_ua_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["b_ua_id"] = cSqlDbCodebook::_cb_ua;
+	} else if(!strcmp(table, "register_state") || !strcmp(table, "register_failed")) {
+		(*reftable_map)["ua_id"] = cSqlDbCodebook::_cb_ua;
+	} else if(!strcmp(table, "sip_msg")) {
+		(*reftable_map)["response_id"] = cSqlDbCodebook::_cb_sip_response;
+		(*reftable_map)["ua_src_id"] = cSqlDbCodebook::_cb_ua;
+		(*reftable_map)["ua_dst_id"] = cSqlDbCodebook::_cb_ua;
+	}
+	return(reftable_map->size() > 0);
+}
+
+bool SqlDb_mysql::convId(SqlDb_row *row, const char *table,
+			 cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,
+			 map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map) {
+	bool rslt = true;
+	for(map<string, cSqlDbCodebook::eTypeCodebook>::iterator iter = reftable_map->begin(); iter != reftable_map->end(); iter++) {
+		if(!convId(row, table, iter->first.c_str(),
+			   iter->second, cb_src, cb_dst)) {
+			rslt = false;
+		}
+	}
+	return(rslt);
+}
+
+bool SqlDb_mysql::convId(SqlDb_row *row, const char *table, const char *column,
+			 cSqlDbCodebook::eTypeCodebook cb_type, cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	u_int64_t old_id = atoll((*row)[column].c_str());
+	if(!old_id) {
+		return(true);
+	}
+	cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cb_type);
+	cSqlDbCodebook *cb_dst_tab = cb_dst->getCodebook(cb_type);
+	u_int64_t new_id = convId(old_id, cb_src_tab, cb_dst_tab);
+	if(!new_id) {
+		return(false);
+	}
+	if(new_id != old_id) {
+		row->setContent(column, intToString(new_id).c_str());
+		/*
+		cout << " *** " << table << " " << column << " " << (*row)["id"] << " " 
+		     << old_id << "->" << new_id << endl;
+		*/
+	}
+	return(true);
+}
+
+unsigned SqlDb_mysql::convId(unsigned id,
+			      cSqlDbCodebook *cb_src, cSqlDbCodebook *cb_dst) {
+	return(cb_src->convId(id, cb_dst));
 }
 
 

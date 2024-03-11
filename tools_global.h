@@ -170,6 +170,7 @@ inline void init_rdtsc_interval() {
 		u_int64_t _rdtsc_2 = rdtsc();
 		usleep(0);
 		u_int64_t _rdtsc_3 = rdtsc();
+		#ifdef CLOUD_ROUTER_CLIENT
 		extern sVerbose sverb;
 		if(sverb.rdtsc) {
 			ostringstream ostr;
@@ -182,6 +183,7 @@ inline void init_rdtsc_interval() {
 			     << _rdtsc_2 - _rdtsc_1 - (_rdtsc_3 - _rdtsc_2) << endl;
 			syslog(LOG_NOTICE, "init_rdtsc_interval iter %i : %s", (i + 1), ostr.str().c_str());
 		}
+		#endif
 		if(_rdtsc_2 > _rdtsc_1 && _rdtsc_3 >= _rdtsc_2 &&
 		   (_rdtsc_2 - _rdtsc_1) > (_rdtsc_3 - _rdtsc_2)) {
 			rdtsc_by_250ms_v[0] = rdtsc_by_250ms_v[1];
@@ -189,11 +191,13 @@ inline void init_rdtsc_interval() {
 			if(rdtsc_by_250ms_v[0] && rdtsc_by_250ms_v[1] &&
 			   fabs(1 - (double)rdtsc_by_250ms_v[0] / rdtsc_by_250ms_v[1]) < 0.01) {
 				rdtsc_by_250ms = (rdtsc_by_250ms_v[0] + rdtsc_by_250ms_v[1]) / 2;
+				#ifdef CLOUD_ROUTER_CLIENT
 				if(sverb.rdtsc) {
 					ostringstream ostr;
 					ostr << rdtsc_by_250ms;
 					syslog(LOG_NOTICE, "init_rdtsc_interval set: %s", ostr.str().c_str());
 				}
+				#endif
 				break;
 			}
 		}
