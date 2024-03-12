@@ -9524,15 +9524,17 @@ bool set_eth_ringparam(const char *ifname, string *log) {
 	if(ringparam.rx_pending < ringparam.rx_max_pending) {
 		ringparam.cmd = ETHTOOL_SRINGPARAM;
 		ringparam.rx_pending = ringparam.rx_max_pending;
+		string log_set = "set rx_pending " + intToString(ringparam.rx_pending);
 		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
-			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno);
 			close(sock);
 			return(false);
 		} else {
-			if(log) *log = "OK set rx_pending " + intToString(ringparam.rx_pending);
+			if(log) *log = "OK " + log_set;
 		}
 	} else {
-		if(log) *log ="OK rx_pending " + intToString(ringparam.rx_pending);
+		string log_ok = "rx_pending " + intToString(ringparam.rx_pending);
+		if(log) *log = "OK " + log_ok;
 	}
 	close(sock);
 	return(true);
@@ -9560,15 +9562,18 @@ bool set_eth_coalesce(const char *ifname, string *log) {
 	if(coalesce.rx_coalesce_usecs < 500) {
 		coalesce.cmd = ETHTOOL_SCOALESCE;
 		coalesce.rx_coalesce_usecs = 1022;
+		string log_set = "set rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
 		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
-			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno) + 
+				" (This is not a fatal error. Some NICs don't support it.)";
 			close(sock);
 			return(false);
 		} else {
-			if(log) *log = "OK set rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
+			if(log) *log = "OK " + log_set;
 		}
 	} else {
-		if(log) *log = "OK rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
+		string log_ok = "rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
+		if(log) *log = "OK " + log_ok;
 	}
 	close(sock);
 	return(true);
@@ -9598,18 +9603,50 @@ bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
 	   channels.tx_count > limit ||
 	   channels.combined_count > limit) {
 		channels.cmd = ETHTOOL_SCHANNELS;
-		if(channels.rx_count > limit) channels.rx_count = limit;
-		if(channels.tx_count > limit) channels.tx_count = limit;
-		if(channels.combined_count > limit) channels.combined_count = limit;
+		string log_set = "set ";
+		int count_set = 0;
+		if(channels.rx_count > limit) {
+			channels.rx_count = limit;
+			log_set += "rx_count " + intToString(channels.rx_count);
+			++count_set;
+		}
+		if(channels.tx_count > limit) {
+			channels.tx_count = limit;
+			if(count_set) log_set += ", ";
+			log_set += "tx_count " + intToString(channels.tx_count);
+			++count_set;
+		}
+		if(channels.combined_count > limit) {
+			channels.combined_count = limit;
+			if(count_set) log_set += ", ";
+			log_set += "combined_count " + intToString(channels.combined_count);
+			++count_set;
+		}
 		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
-			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			if(log) *log = "failed ioctl (" + log_set + ") - " + strerror(errno);
 			close(sock);
 			return(false);
 		} else {
-			if(log) *log = "OK set limit " + intToString(limit);
+			if(log) *log = "OK " + log_set;
 		}
 	} else {
-		if(log) *log = "OK";
+		string log_ok;
+		int count_ok = 0;
+		if(channels.rx_count > 0) {
+			log_ok += "rx_count " + intToString(channels.rx_count);
+			++count_ok;
+		}
+		if(channels.tx_count > 0) {
+			if(count_ok) log_ok += ", ";
+			log_ok += "tx_count " + intToString(channels.tx_count);
+			++count_ok;
+		}
+		if(channels.combined_count > 0) {
+			if(count_ok) log_ok += ", ";
+			log_ok += "combined_count " + intToString(channels.combined_count);
+			++count_ok;
+		}
+		if(log) *log = "OK " + log_ok;
 	}
 	close(sock);
 	return(true);
