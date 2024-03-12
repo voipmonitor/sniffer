@@ -9574,6 +9574,7 @@ bool set_eth_coalesce(const char *ifname, string *log) {
 	return(true);
 }
 
+#ifdef ETHTOOL_GCHANNELS
 bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
 	if(log) *log = "";
 	int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -9613,6 +9614,7 @@ bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
 	close(sock);
 	return(true);
 }
+#endif
 
 #endif
 
@@ -9641,10 +9643,12 @@ void handleInterfaceOptions(void) {
 		syslog(LOG_NOTICE, "%s - set_eth_ringparam: %s", iface->c_str(), log.c_str());
 		set_eth_coalesce(iface->c_str(), &log);
 		syslog(LOG_NOTICE, "%s - set_eth_coalesce: %s", iface->c_str(), log.c_str());
+		#ifdef ETHTOOL_GCHANNELS
 		if(max_channels > 0) {
 			set_eth_channels(iface->c_str(), max_channels, &log);
 			syslog(LOG_NOTICE, "%s - set_eth_channels: %s", iface->c_str(), log.c_str());
 		}
+		#endif
 	}
 	#endif
 	/* obsolete
