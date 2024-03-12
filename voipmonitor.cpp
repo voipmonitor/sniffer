@@ -950,6 +950,7 @@ vector<vmIP> if_filter_ip;
 vector<vmIPmask> if_filter_net;
 bool opt_if_filter_ip_quick = true;
 bool opt_ifaces_optimize = true;
+int opt_eth_max_channels = 8;
 bool opt_use_dpdk = false;
 int opt_dpdk_init = 1;
 int opt_dpdk_read_thread = 2;
@@ -6137,6 +6138,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42133) cConfigItem_yesno("use_oneshot_buffer", &opt_use_oneshot_buffer));
 				addConfigItem(new FILE_LINE(42134) cConfigItem_integer("snaplen", &opt_snaplen));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("interfaces_optimize", &opt_ifaces_optimize));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("eth_max_channels", &opt_eth_max_channels));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk", &opt_use_dpdk));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_init", &opt_dpdk_init))

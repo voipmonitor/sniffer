@@ -59,6 +59,9 @@
 
 #ifndef FREEBSD
 #include <malloc.h>
+#include <linux/if.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 #endif
 
 #if HAVE_LIBTCMALLOC    
@@ -9394,6 +9397,7 @@ bool file_put_contents(const char *filename, SimpleBuffer *content, string *erro
 	return(true);
 }
 
+/* obsolete
 string getInterfaceOption(const char *param, const char *searchstr, const char *iface, const char *sep = " \t") {
 	char cmd[512];
 	snprintf(cmd, sizeof(cmd), "ethtool %s %s", param, iface);
@@ -9453,7 +9457,7 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 	#else
 	pexec((char*)(string(cmd) + " 2>&1").c_str(), &retval);
 	#endif
-	if (retval == 0 || (retval / 0xff) == 80 /* same value */) {
+	if (retval == 0 || (retval / 0xff) == 80) {
 		printf("'ethtool %s %s %s %i' successful.\n", param, iface, option, value);
 		syslog(LOG_NOTICE, "'ethtool %s %s %s %i' successful.", param, iface, option, value);
 	} else {
@@ -9461,11 +9465,190 @@ void setInterfaceOption(const char *param, const char *option, const char *iface
 		syslog(LOG_NOTICE, "Can't set interface 'ethtool %s %s %s %i': %i. This is not a fatal error. Some NICs don't support it.", param, iface, option, value, retval);
 	}
 }
+*/
+
+int count_cores_on_node(int node, string *error) {
+	if(error) *error = "";
+	char path[1024];
+	sprintf(path, "/sys/devices/system/node/node%d/cpulist", node);
+	FILE *fp = fopen(path, "r");
+	if(!fp) {
+		if(error) *error = string("failed to open file - ") + strerror(errno);
+		return -1;
+	}
+	char *line = NULL;
+	size_t len = 0;
+	if(getline(&line, &len, fp) == -1) {
+		if(error) *error = string("failed to read file - ") + strerror(errno);
+		free(line);
+		fclose(fp);
+		return -1;
+	}
+	int count = 0;
+	vector<string> cpus = split(line, ",");
+	for(unsigned i = 0; i < cpus.size(); i++) {
+		string cpus_i = trim(cpus[i]);
+		if(cpus_i.find('-') != string::npos) {
+			int start, end;
+			sscanf(cpus_i.c_str(), "%d-%d", &start, &end);
+			count += end - start + 1;
+		} else {
+			count++;
+		}
+	}
+	free(line);
+	fclose(fp);
+	return count;
+}
+
+#ifndef FREEBSD
+
+bool set_eth_ringparam(const char *ifname, string *log) {
+	if(log) *log = "";
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock < 0) {
+		if(log) *log = "cannot open socket";
+		return(false);
+	}
+	ifreq ifr;
+	ethtool_ringparam ringparam;
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&ringparam, 0, sizeof(ringparam));
+	ringparam.cmd = ETHTOOL_GRINGPARAM;
+	strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+	ifr.ifr_data = (caddr_t)&ringparam;
+	if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+		if(log) *log = string("failed ioctl (get) - ") + strerror(errno);
+		close(sock);
+		return(false);
+	}
+	if(ringparam.rx_pending < ringparam.rx_max_pending) {
+		ringparam.cmd = ETHTOOL_SRINGPARAM;
+		ringparam.rx_pending = ringparam.rx_max_pending;
+		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			close(sock);
+			return(false);
+		} else {
+			if(log) *log = "OK set rx_pending " + intToString(ringparam.rx_pending);
+		}
+	} else {
+		if(log) *log ="OK rx_pending " + intToString(ringparam.rx_pending);
+	}
+	close(sock);
+	return(true);
+}
+
+bool set_eth_coalesce(const char *ifname, string *log) {
+	if(log) *log = "";
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock < 0) {
+		if(log) *log = "cannot open socket";
+		return(false);
+	}
+	ifreq ifr;
+	ethtool_coalesce coalesce;
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&coalesce, 0, sizeof(coalesce));
+	coalesce.cmd = ETHTOOL_GCOALESCE;
+	strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+	ifr.ifr_data = (caddr_t)&coalesce;
+	if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+		if(log) *log = string("failed ioctl (get) - ") + strerror(errno);
+		close(sock);
+		return(false);
+	}
+	if(coalesce.rx_coalesce_usecs < 500) {
+		coalesce.cmd = ETHTOOL_SCOALESCE;
+		coalesce.rx_coalesce_usecs = 1022;
+		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			close(sock);
+			return(false);
+		} else {
+			if(log) *log = "OK set rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
+		}
+	} else {
+		if(log) *log = "OK rx_coalesce_usecs " + intToString(coalesce.rx_coalesce_usecs);
+	}
+	close(sock);
+	return(true);
+}
+
+bool set_eth_channels(const char *ifname, unsigned limit, string *log) {
+	if(log) *log = "";
+	int sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sock < 0) {
+		if(log) *log = "cannot open socket";
+		return(false);
+	}
+	ifreq ifr;
+	ethtool_channels channels;
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&channels, 0, sizeof(channels));
+	channels.cmd = ETHTOOL_GCHANNELS;
+	strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+	ifr.ifr_data = (caddr_t)&channels;
+	if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+		if(log) *log = string("failed ioctl (get) - ") + strerror(errno);
+		close(sock);
+		return(false);
+	}
+	if(channels.rx_count > limit ||
+	   channels.tx_count > limit ||
+	   channels.combined_count > limit) {
+		channels.cmd = ETHTOOL_SCHANNELS;
+		if(channels.rx_count > limit) channels.rx_count = limit;
+		if(channels.tx_count > limit) channels.tx_count = limit;
+		if(channels.combined_count > limit) channels.combined_count = limit;
+		if(ioctl(sock, SIOCETHTOOL, &ifr) < 0) {
+			if(log) *log = string("failed ioctl (set) - ") + strerror(errno);
+			close(sock);
+			return(false);
+		} else {
+			if(log) *log = "OK set limit " + intToString(limit);
+		}
+	} else {
+		if(log) *log = "OK";
+	}
+	close(sock);
+	return(true);
+}
+
+#endif
 
 void handleInterfaceOptions(void) {
 	if(!ifnamev.size()) {
 		return;
 	}
+	#ifndef FREEBSD
+	extern int opt_eth_max_channels;
+	int max_channels = opt_eth_max_channels;
+	if(max_channels > 0) {
+		int cores_on_node = count_cores_on_node(0, NULL);
+		if(cores_on_node > 0) {
+			if(max_channels > cores_on_node / 2) {
+				max_channels = max(cores_on_node / 2, 1);
+			}
+		} else {
+			if(max_channels > sysconf(_SC_NPROCESSORS_ONLN) / 2) {
+				max_channels = max((int)(sysconf(_SC_NPROCESSORS_ONLN) / 2), 1);
+			}
+		}
+	}
+	for(std::vector<string>::iterator iface = ifnamev.begin(); iface != ifnamev.end(); iface++) {
+		string log;
+		set_eth_ringparam(iface->c_str(), &log);
+		syslog(LOG_NOTICE, "%s - set_eth_ringparam: %s", iface->c_str(), log.c_str());
+		set_eth_coalesce(iface->c_str(), &log);
+		syslog(LOG_NOTICE, "%s - set_eth_coalesce: %s", iface->c_str(), log.c_str());
+		if(max_channels > 0) {
+			set_eth_channels(iface->c_str(), max_channels, &log);
+			syslog(LOG_NOTICE, "%s - set_eth_channels: %s", iface->c_str(), log.c_str());
+		}
+	}
+	#endif
+	/* obsolete
 	if(!isEthtoolInstalled()) {
 		printf("ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.\n");
 		syslog(LOG_NOTICE, "ethtool binary is not installed - NIC's parameters can't be set. This is not a fatal error.");
@@ -9488,6 +9671,7 @@ void handleInterfaceOptions(void) {
 			}
 		}
 	}
+	*/
 }
 
 long getSwapUsage(int pid) {
