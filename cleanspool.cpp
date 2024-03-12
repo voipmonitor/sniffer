@@ -1194,7 +1194,8 @@ void CleanSpool::cleanThreadProcess() {
 			criticalLowSpace = true;
 		}
 		if(freeSpacePercent < opt_other.autocleanspoolminpercent ||
-		   freeSpaceGB < opt_other.autocleanmingb) {
+		   freeSpaceGB < opt_other.autocleanmingb ||
+		   sverb.cleanspool) {
 			double usedSizeGB = 0;
 			if(opt_cleanspool_use_files) {
 				SqlDb *sqlDb = createSqlObject();
@@ -1234,7 +1235,7 @@ void CleanSpool::cleanThreadProcess() {
 			} else {
 				min_free_gb = min_free_gb_perc > 0 ? min_free_gb_perc : min_free_gb_abs;
 			}
-			maxpoolsize_autoclean = (usedSizeGB + freeSpaceGB - min_free_gb) * 1024;
+			long int _maxpoolsize_autoclean = (usedSizeGB + freeSpaceGB - min_free_gb) * 1024;
 			if(sverb.cleanspool) {
 				long long allsize_total;
 				long long sipsize_total;
@@ -1251,6 +1252,7 @@ void CleanSpool::cleanThreadProcess() {
 				       << "rtpsize_total: " << (rtpsize_total / (1024 * 1024)) << " MB , "
 				       << "graphsize_total: " << (graphsize_total / (1024 * 1024)) << " MB , "
 				       << "audiosize_total: " << (audiosize_total / (1024 * 1024)) << " MB , "
+				       << "freeSpacePercent: " << freeSpacePercent << " % , "
 				       << "freeSpaceGB: " << (freeSpaceGB * 1024) << " MB , "
 				       << "totalSpaceGB: " << (totalSpaceGB * 1024) << " MB, "
 				       << "min_free_gb_perc: " << (min_free_gb_perc * 1024) << " MB, "
@@ -1259,49 +1261,55 @@ void CleanSpool::cleanThreadProcess() {
 				syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - sizes : %s", spoolIndex, outStr.str().c_str());
 				outStr.str("");
 				outStr.clear();
-				outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
+				outStr << "set maxpoolsize to: " << _maxpoolsize_autoclean << " MB";
 				syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - %s", spoolIndex, outStr.str().c_str());
 			}
-			if(maxpoolsize_autoclean > 1000 &&
-			   (!opt_max.maxpoolsize || maxpoolsize_autoclean < opt_max.maxpoolsize)) {
-				if(opt_max.maxpoolsize && 
-				   opt_max.maxpoolsize < totalSpaceGB * 1024 * 1.05 &&
-				   maxpoolsize_autoclean < opt_max.maxpoolsize * 0.8) {
-					maxpoolsize_autoclean = opt_max.maxpoolsize * 0.8;
+			if(freeSpacePercent < opt_other.autocleanspoolminpercent ||
+			   freeSpaceGB < opt_other.autocleanmingb) {
+				maxpoolsize_autoclean = _maxpoolsize_autoclean;
+				if(maxpoolsize_autoclean > 1000 &&
+				   (!opt_max.maxpoolsize || maxpoolsize_autoclean < opt_max.maxpoolsize)) {
+					if(opt_max.maxpoolsize && 
+					   opt_max.maxpoolsize < totalSpaceGB * 1024 * 1.05 &&
+					   maxpoolsize_autoclean < opt_max.maxpoolsize * 0.8) {
+						maxpoolsize_autoclean = opt_max.maxpoolsize * 0.8;
+						if(sverb.cleanspool) {
+							ostringstream outStr;
+							outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
+							syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - %s (maxpoolsize reduction must not fall below 80%% of the value in the configuration (if set correctly))", spoolIndex, outStr.str().c_str());
+						}
+					}
+					syslog(LOG_NOTICE, "cleanspool[%i]: %s: %li MB", 
+					       spoolIndex,
+					       opt_max.maxpoolsize ?
+						"low spool disk space - maxpoolsize set to new value" :
+						"maxpoolsize set to value",
+					       maxpoolsize_autoclean);
+				} else {
+					u_int32_t actTime = getTimeS();
+					if(!autoclean_log_at ||
+					   autoclean_log_at + 3600 < actTime) {
+						char criticalLowSpoolSpace_str[1024];
+						snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
+							 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
+							 spoolIndex,
+							 getSpoolDir(tsf_main),
+							 usedSizeGB,
+							 freeSpaceGB);
+						cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
+						autoclean_log_at = actTime;
+					}
+					maxpoolsize_autoclean = 0;
 					if(sverb.cleanspool) {
 						ostringstream outStr;
 						outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
-						syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - %s (maxpoolsize reduction must not fall below 80%% of the value in the configuration (if set correctly))", spoolIndex, outStr.str().c_str());
+						syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - maxpoolsize reduction is cancelled", spoolIndex);
 					}
 				}
-				syslog(LOG_NOTICE, "cleanspool[%i]: %s: %li MB", 
-				       spoolIndex,
-				       opt_max.maxpoolsize ?
-					"low spool disk space - maxpoolsize set to new value" :
-					"maxpoolsize set to value",
-				       maxpoolsize_autoclean);
+				criticalLowSpace = true;
 			} else {
-				u_int32_t actTime = getTimeS();
-				if(!autoclean_log_at ||
-				   autoclean_log_at + 3600 < actTime) {
-					char criticalLowSpoolSpace_str[1024];
-					snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
-						 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
-						 spoolIndex,
-						 getSpoolDir(tsf_main),
-						 usedSizeGB,
-						 freeSpaceGB);
-					cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
-					autoclean_log_at = actTime;
-				}
-				maxpoolsize_autoclean = 0;
-				if(sverb.cleanspool) {
-					ostringstream outStr;
-					outStr << "set maxpoolsize to: " << maxpoolsize_autoclean << " MB";
-					syslog(LOG_NOTICE, "cleanspool[%i]: autoclean - maxpoolsize reduction is cancelled", spoolIndex);
-				}
+				autoclean_log_at = 0;
 			}
-			criticalLowSpace = true;
 		} else {
 			autoclean_log_at = 0;
 		}
