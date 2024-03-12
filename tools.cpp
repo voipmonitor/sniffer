@@ -59,7 +59,6 @@
 
 #ifndef FREEBSD
 #include <malloc.h>
-#include <linux/if.h>
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
 #endif
