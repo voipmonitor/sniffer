@@ -9406,7 +9406,8 @@ bool is_support_for_mysql_new_store() {
 }
 
 bool is_support_manager_aes() {
-	return(!is_sender());
+	return(!is_sender() && 
+	       (!opt_nocdr || (!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty())));
 }
 
 void dns_lookup_common_hostnames() {

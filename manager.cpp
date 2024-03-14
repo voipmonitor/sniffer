@@ -1386,7 +1386,9 @@ void *manager_read_thread(void * arg) {
 			}
 		}
 		if(cManagerAes::isAes(&command_buffer)) {
-			cManagerAes::decrypt(&command_buffer, &command, &aes_key, &aes_cipher);
+			if(!cManagerAes::decrypt(&command_buffer, &command, &aes_key, &aes_cipher)) {
+				command = "failed_aes_decrypt";
+			}
 		} else {
 			if(!clientInfo.file_socket && cManagerAes::getAesKey(NULL)) {
 				aes_missing = true;
@@ -5650,6 +5652,7 @@ int Mgmt_aes(Mgmt_params *params) {
 	if (params->task == params->mgmt_task_DoInit) {
 		commandAndHelp ch[] = {
 			{"need_aes", NULL, true},
+			{"failed_aes_decrypt", NULL, true},
 			{"support_aes", NULL, true},
 			{"exists_aes_key", NULL, true},
 			{NULL, NULL}
@@ -5659,6 +5662,8 @@ int Mgmt_aes(Mgmt_params *params) {
 	}
 	if(strstr(params->buf, "need_aes") != NULL) {
 		params->sendString("need aes!\n");
+	} else if(strstr(params->buf, "failed_aes_decrypt") != NULL) {
+		params->sendString("failed aes decrypt!\n");
 	} else if(strstr(params->buf, "support_aes") != NULL) {
 		params->sendString(is_support_manager_aes() ? "yes" : "no");
 	} else if(strstr(params->buf, "exists_aes_key") != NULL) {
