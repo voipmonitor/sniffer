@@ -1138,6 +1138,17 @@ void CleanSpool::cleanThread() {
 			if(force_reindex_spool_flag) {
 				break;
 			}
+			if(i && !(i % 60)) {
+				double freeSpacePercent = GetFreeDiskSpace_perc(getSpoolDir(tsf_main));
+				double freeSpaceGB = GetFreeDiskSpace_GB(getSpoolDir(tsf_main));
+				int _minPercentForAutoReindex = 1;
+				int _minGbForAutoReindex = 5;
+				if((freeSpacePercent < _minPercentForAutoReindex && freeSpaceGB < _minGbForAutoReindex) ||
+				   freeSpacePercent < opt_other.autocleanspoolminpercent ||
+				   freeSpaceGB < opt_other.autocleanmingb) {
+					break;
+				}
+			}
 			sleep(1);
 		}
 	}
@@ -1180,8 +1191,9 @@ void CleanSpool::cleanThreadProcess() {
 		double freeSpaceGB = GetFreeDiskSpace_GB(getSpoolDir(tsf_main));
 		int _minPercentForAutoReindex = 1;
 		int _minGbForAutoReindex = 5;
-		if(freeSpacePercent < _minPercentForAutoReindex && 
-		   freeSpaceGB < _minGbForAutoReindex) {
+		if((freeSpacePercent < _minPercentForAutoReindex && freeSpaceGB < _minGbForAutoReindex) ||
+		   freeSpacePercent < opt_other.autocleanspoolminpercent ||
+		   freeSpaceGB < opt_other.autocleanmingb) {
 			if(opt_cleanspool_use_files) {
 				syslog(LOG_NOTICE, "cleanspool[%i]: low spool disk space - executing reindex_all", spoolIndex);
 				reindex_all("call from clean_spooldir - low spool disk space");
@@ -1985,7 +1997,7 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 		return;
 	}
 	if(sverb.cleanspool)  {
-		cout << "clean_maxpoolsize\n";
+		syslog(LOG_NOTICE, "cleanspool[%i]: %s", spoolIndex, "clean_maxpoolsize");
 	}
 	if(opt_cleanspool_use_files) {
 		if(!sqlDb) {
@@ -2018,16 +2030,18 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 					(graph ? graphsize_total : 0) + 
 					(audio ? audiosize_total : 0)) / (double)(1024 * 1024);
 			if(sverb.cleanspool) {
-				cout << "total[" << total << "] = " 
-				     << (sip ? intToString(sipsize_total) : "na") << " + " 
-				     << (rtp ? intToString(rtpsize_total) : "na") << " + " 
-				     << (graph ? intToString(graphsize_total) : "na") << " + " 
-				     << (audio ? intToString(audiosize_total) : "na")
-				     << " maxpoolsize[" << maxpoolsize;
+				ostringstream outStr;
+				outStr << "total[" << total << "] = " 
+				       << (sip ? intToString(sipsize_total) : "na") << " + " 
+				       << (rtp ? intToString(rtpsize_total) : "na") << " + " 
+				       << (graph ? intToString(graphsize_total) : "na") << " + " 
+				       << (audio ? intToString(audiosize_total) : "na")
+				       << " maxpoolsize[" << maxpoolsize;
 				if(maxpoolsize_set) {
-					cout << " / reduk: " << maxpoolsize_set;
+					outStr << " / reduk: " << maxpoolsize_set;
 				}
-				cout << "]\n";
+				outStr << "]";
+				syslog(LOG_NOTICE, "cleanspool[%i]: %s", spoolIndex, outStr.str().c_str());
 			}
 			unsigned int reduk_maxpoolsize = sip && rtp && graph && audio ? 
 							  get_reduk_maxpoolsize(maxpoolsize) :
@@ -2152,16 +2166,18 @@ void CleanSpool::clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio) {
 					  (graph ? graphsize_total : 0) + 
 					  (audio ? audiosize_total : 0))) / (double)(1024 * 1024);
 			if(sverb.cleanspool) {
-				cout << "total[" << total << "] = " 
-				     << (sip ? intToString(sipsize_total) : "na") << " + " 
-				     << (rtp ? intToString(rtpsize_total) : "na") << " + " 
-				     << (graph ? intToString(graphsize_total) : "na") << " + " 
-				     << (audio ? intToString(audiosize_total) : "na")
-				     << " maxpoolsize[" << maxpoolsize;
+				ostringstream outStr;
+				outStr << "total[" << total << "] = " 
+				       << (sip ? intToString(sipsize_total) : "na") << " + " 
+				       << (rtp ? intToString(rtpsize_total) : "na") << " + " 
+				       << (graph ? intToString(graphsize_total) : "na") << " + " 
+				       << (audio ? intToString(audiosize_total) : "na")
+				       << " maxpoolsize[" << maxpoolsize;
 				if(maxpoolsize_set) {
-					cout << " / reduk: " << maxpoolsize_set;
+					outStr << " / reduk: " << maxpoolsize_set;
 				}
-				cout << "]\n";
+				outStr << "]";
+				syslog(LOG_NOTICE, "cleanspool[%i]: %s", spoolIndex, outStr.str().c_str());
 			}
 			unsigned int reduk_maxpoolsize = all ? 
 							  get_reduk_maxpoolsize(maxpoolsize) :
@@ -2206,7 +2222,7 @@ void CleanSpool::clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio) {
 		return;
 	}
 	if(sverb.cleanspool)  {
-		cout << "clean_maxpooldays\n";
+		syslog(LOG_NOTICE, "cleanspool[%i]: %s", spoolIndex, "clean_maxpooldays");
 	}
 	if(!sqlDb) {
 		sqlDb = createSqlObject();
