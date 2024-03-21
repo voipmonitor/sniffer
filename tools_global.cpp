@@ -959,6 +959,147 @@ void usleep_stats_clear() {
 #endif
 
 
+char *strnstr(const char *haystack, const char *needle, size_t len) {
+        int i;
+        size_t needle_len;
+
+        if (0 == (needle_len = strnlen(needle, len)))
+                return (char *)haystack;
+
+        for (i=0; i<=(int)(len-needle_len); i++)
+        {
+                if ((haystack[0] == needle[0]) &&
+                        (0 == strncmp(haystack, needle, needle_len)))
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
+char *strncasestr(const char *haystack, const char *needle, size_t len) {
+        int i;
+        size_t needle_len;
+
+        if (0 == (needle_len = strnlen(needle, len)))
+                return (char *)haystack;
+
+        char firstNeedleUpperChar = toupper(*needle);
+	
+        for (i=0; i<=(int)(len-needle_len); i++)
+        {
+                if ((toupper(haystack[0]) == firstNeedleUpperChar) &&
+                        (0 == strncasecmp(haystack, needle, needle_len)))
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
+char *strnchr(const char *haystack, char needle, size_t len) {
+        int i;
+
+        for (i=0; i<=(int)(len-1); i++)
+        {
+                if (haystack[0] == needle)
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
+char *strnrchr(const char *haystack, char needle, size_t len) {
+        int i;
+
+        for (i=(int)(len-1); i>=0; i--)
+        {
+                if (haystack[i] == needle)
+                        return (char *)(haystack + i);
+        }
+        return NULL;
+}
+
+char *strncasechr(const char *haystack, char needle, size_t len) {
+        int i;
+	
+	needle = toupper(needle);
+
+        for (i=0; i<=(int)(len-1); i++)
+        {
+                if (toupper(haystack[0]) == needle)
+                        return (char *)haystack;
+
+                haystack++;
+        }
+        return NULL;
+}
+
+int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard) {
+	return(strncasecmp_wildcard(str, pattern, SIZE_MAX, wildcard));
+}
+
+int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard) {
+	size_t wildcard_lenght = strlen(wildcard);
+	size_t cmp_len = 0;
+	while((*str || *pattern) && cmp_len < len) {
+		if(toupper(*str) != toupper(*pattern)) {
+			if(*str && *pattern) {
+				bool is_wildcard = false;
+				for(unsigned i = 0; i < wildcard_lenght; i++) {
+					if(*pattern == wildcard[i]) {
+						is_wildcard = true;
+					}
+				}
+				if(!is_wildcard) {
+					return(*str - *pattern);
+				}
+			} else {
+				return(*str - *pattern);
+			}
+		}
+		++str;
+		++pattern;
+		++cmp_len;
+	}
+	return(0);
+}
+
+size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength) {
+	if(eqMinLength) {
+		*eqMinLength = false;
+	}
+	size_t str1_len = strlen(str1);
+	size_t str2_len = strlen(str2);
+	if(!str1_len || !str2_len) {
+		return(0);
+	}
+	for(size_t i = 0; i < min(str1_len, str2_len); i++) {
+		if(toupper(str1[str1_len - i - 1]) != toupper(str2[str2_len - i - 1])) {
+			return(i);
+		}
+	}
+	if(eqMinLength) {
+		*eqMinLength = true;
+	}
+	return(min(str1_len, str2_len));
+}
+
+const char *strrstr(const char *haystack, const char *needle) {
+	if(*needle == '\0') {
+		return((char *)haystack + strlen(haystack));
+	}
+	const char *result = NULL;
+	const char *current;
+	while((current = strstr(haystack, needle)) != NULL) {
+		result = current;
+		haystack = current + 1;
+	}
+	return result;
+}
+
+
 static char base64[64];
 static char b2a[256];
 
@@ -2189,4 +2330,392 @@ bool cDbCalls::exists(const char *callid, sDbCallInfo *db_call_info) {
 		}
 	}
 	return(rslt);
+}
+
+
+string cNormReftabs::sip_response(string value, sParams *params, bool cmp_log) {
+	if(cmp_log) cout << value << " / ";
+	//
+	if(value.length() > 5 && 
+	   isdigit(value[0]) && isdigit(value[1]) && isdigit(value[2]) &&
+	   value[3] == ' ' && value[4] == '(') {
+		value = value.substr(0, 4) + value.substr(5);
+		rtrim(value, ")");
+	}
+	//
+	rtrim(value, "-_");
+	//
+	string rslt;
+	if(value.length() > 5 && 
+	   (value[0] == '4' || value[0] == '5') && isdigit(value[1]) && isdigit(value[2]) &&
+	   value[3] == ' ' &&
+	   !strncasecmp(value.c_str() + 4, "No target nodes for callid", 26)) {
+		rslt = value.substr(0, 3) +  " No target nodes for callid";
+	} else 
+	if(value.length() > 5 && 
+	   (value[0] == '4' || value[0] == '5') && isdigit(value[1]) && isdigit(value[2]) &&
+	   value[3] == ' ' &&
+	   !strncasecmp(value.c_str() + 4, "No target for callid", 20)) {
+		rslt = value.substr(0, 3) +  " No target for callid";
+	} else
+	if(value.length() > 5 && 
+	   value[0] == '4' && isdigit(value[1]) && isdigit(value[2]) &&
+	   value[3] == ' ' &&
+	   !strncasecmp(value.c_str() + 4, "Bad syntax", 10)) {
+		rslt = value.substr(0, 3) +  " Bad syntax";
+	} else
+	if(value.length() > 5 && 
+	   value[0] == '4' && isdigit(value[1]) && isdigit(value[2]) &&
+	   value[3] == ' ' &&
+	   !strncasecmp(value.c_str() + 4, "Content Length is Incorrect", 27)) {
+		rslt = value.substr(0, 3) +  " Content Length is Incorrect";
+	}
+	if(!rslt.empty()) {
+		if(cmp_log) cout << rslt << endl;
+		trim(rslt);
+		return(rslt);
+	}
+	//
+	vector<sStringDelim> sd;
+	split_string_with_delim(value, " ()", &sd);
+	unsigned c = sd.size();
+	bool x = false;
+	for(unsigned i = 2; i < c; i++) {
+		if(is_telnum(sd[i].str)) {
+			if(params && params->number_max_length) {
+				char border = 0;
+				if(sd[i].str[0] == '"') {
+					border = sd[i].str[0];
+				}
+				if(sd[i].str.length() - (border ? 2 : 0) > params->number_max_length) {
+					if(border) {
+						sd[i].str = border + sd[i].str.substr(1, params->number_max_length) + "..." + border;
+						x = true;
+					} else {
+						sd[i].str = sd[i].str.substr(0, params->number_max_length) + "...";
+						x = true;
+					}
+				}
+			} else {
+				sd[i].str = "";
+				x = true;
+			}
+		} else if(is_sip_uri(sd[i].str)) {
+			sd[i].str = "";
+			x = true;
+		}
+	}
+	if(x) {
+		value = join_string_with_delim(&sd);
+	}
+	//
+	rtrim(value, " -_:?");
+	trim(value);
+	if(cmp_log) cout << value << endl;
+	return(value);
+}
+
+string cNormReftabs::reason(string value, bool cmp_log) {
+	if(cmp_log) cout << value << " / ";
+	vector<sStringDelim> sd;
+	split_string_with_delim(value, " ;()", &sd);
+	unsigned c = sd.size();
+	bool x = false;
+	for(unsigned i = 0; i < c; i++) {
+		if(is_reason_tag(sd[i].str)) {
+			sd[i].str = "";
+			x = true;
+		}
+	}
+	if(x) {
+		value = join_string_with_delim(&sd);
+	}
+	rtrim(value, " -_:?");
+	trim(value);
+	if(cmp_log) cout << value << endl;
+	return(value);
+}
+
+string cNormReftabs::ua(string value, bool cmp_log) {
+	//value = "MidstreamRidge123|4347!00|20220504-166077/";
+	//value = "MidstreamRidge 20220504-166077-4554455-2454454-sdgsdgg-245";
+	//value = "CornwallHillEstate|356-b|20230119-17777/";
+	//value = "ENSR3.0.100.3-IS2-RMRG31-RG6102-CPI1-CPO11945";
+	//value = "Grandstream HT814 1.0.1-04-DF-C1-45-7D";
+	//value = "Yealink SIP-T26P 6.60.23.16 00:15:65:16:ea:60";
+	//value = "ENSR2.5.47.18-IS1-RMRG2551-RG8290-CPO10004";
+	//value = "PolycomVVX-VVX_250-UA/5.8.2.4732_64167feecc76";
+	if(!is_ok_ua(value)) return("");
+	if(cmp_log) cout << value << " / ";
+	//
+	const char *pos_rmr = strrstr(value.c_str(), "RMR");
+	if(pos_rmr) {
+		string rmr = pos_rmr + 3;
+		if(check_string(rmr, true, true, false, "-")) {
+			value = value.substr(0, pos_rmr - value.c_str());
+			rtrim(value, " -");
+		}
+	}
+	//
+	unsigned l = value.length();
+	while(l > 0 && (isdigit(value[l - 1]) || isalpha(value[l - 1]) || strchr("-_@", value[l - 1]))) --l;
+	if(l > 0) {
+		bool ok_sep = false;
+		if(strchr(" .,;/()", value[l - 1])) {
+			ok_sep = true;
+			--l;
+		} else if(l > 1 && value[l - 1] == '.' && isdigit(value[l - 2]) && isdigit(value[l])) {
+			unsigned l2 = l;
+			while(l2 < value.length() && isdigit(value[l2])) ++l2;
+			if(l2 - l < 5) {
+				l = l2;
+				ok_sep = true;
+			}
+		}
+		if(ok_sep) {
+			unsigned match_length = value.length() - l;
+			if(match_length >= 14) {
+				value = value.substr(0, l);
+				rtrim(value);
+			}
+		}
+	}
+	//
+	size_t pos;
+	if((pos = value.find('|')) != string::npos && pos > 0) {
+		l = value.length() - 1;
+		bool existsSep = false;
+		while(l > pos && (isdigit(value[l - 1]) || strchr("-|/", value[l - 1]))) {
+			if(value[l - 1] == '|') existsSep = true;
+			--l;
+		}
+		if(existsSep) {
+			if(l > 0) {
+				while(l < value.length() && value[l - 1] != '|') ++l;
+			}
+			if(l > 0 && value[l - 1] == '|' && l < value.length()) {
+				--l;
+				unsigned match_length = value.length() - l;
+				if(match_length >= 10) {
+					value = value.substr(0, l);
+					while(value.length() && value[value.length() - 1] == ' ') {
+						value = value.substr(0, value.length() - 1);
+						while(value.length() && value[value.length() - 1] == ' ') {
+							value = value.substr(0, value.length() - 1);
+						}
+					}
+				}
+			}
+		}
+	}
+	//
+	vector<sStringDelim> sd;
+	split_string_with_delim(value, " ()", &sd);
+	unsigned c = sd.size();
+	bool x = false;
+	if(c >= 3 && 
+	   (!strcasecmp(sd[c - 2].str.c_str(), "build") || 
+	    !strcasecmp(sd[c - 2].str.c_str(), "stamp") || 
+	    !strcasecmp(sd[c - 2].str.c_str(), "tag"))) {
+		sd.erase(sd.begin() + c - 1);
+		sd.erase(sd.begin() + c - 2);
+		x = true;
+		c = sd.size();
+	}
+	for(unsigned i = 1; i < c; i++) {
+		if((sd[i].str.length() >= 20 && check_string(sd[i].str, true, true, false, "@_-.:")) ||
+		   is_mac(sd[i].str) ||
+		   is_mac_with_prefix(sd[i].str) ||
+		   is_ip(sd[i].str) ||
+		   is_sn(sd[i].str)) {
+			sd[i].str = "";
+			x = true;
+		}
+	}
+	if(x) {
+		value = join_string_with_delim(&sd);
+	}
+	rtrim(value, " -_:?");
+	trim(value);
+	if(cmp_log) cout << value << endl;
+	return(value);
+}
+
+bool cNormReftabs::is_ok_ua(string &/*ua*/) {
+	return(true);
+	//return(ua.length() > 10 && isalpha(ua[0]));
+}
+
+void cNormReftabs::split_string_with_delim(string &str, const char *delims, vector<sStringDelim> *string_delim) {
+	unsigned len = str.length();
+	unsigned pos_begin = 0;
+	for(unsigned i = 0; i < len; i++) {
+		const char ch = str[i];
+		if(strchr(delims, ch)) {
+			unsigned pos_end = i - 1;
+			string delim;
+			delim += ch;
+			while(i < len - 1 && strchr(delims, str[i + 1])) {
+				delim += str[i + 1];
+				++i;
+			}
+			string_delim->push_back(sStringDelim(str.substr(pos_begin, pos_end - pos_begin + 1).c_str(), delim.c_str()));
+			pos_begin = i + 1;
+		}
+	}
+	if(pos_begin < len) {
+		string_delim->push_back(sStringDelim(str.substr(pos_begin).c_str(), NULL));
+	}
+}
+
+string cNormReftabs::join_string_with_delim(vector<sStringDelim> *string_delim) {
+	string rslt;
+	unsigned c = string_delim->size();
+	vector<string> delims;
+	string lastDelim;
+	for(unsigned i = 0; i < c; i++) {
+		if(!(*string_delim)[i].str.empty()) {
+			if(delims.size() && !rslt.empty()) {
+				rslt += delims[delims.size() - 1];
+				lastDelim = delims[delims.size() - 1];
+			}
+			delims.clear();
+			rslt += (*string_delim)[i].str;
+		}
+		if(!(*string_delim)[i].delim.empty()) {
+			delims.push_back((*string_delim)[i].delim);
+		}
+	}
+	if(delims.size() && !rslt.empty() &&
+	   (!(*string_delim)[c - 1].str.empty() ||
+	    (!lastDelim.empty() && lastDelim[lastDelim.length() - 1] == '(' && delims[delims.size() - 1] == ")"))) {
+		rslt += delims[delims.size() - 1];
+	}
+	return(rslt);
+}
+
+bool cNormReftabs::is_telnum(string v) {
+	unsigned l = v.length();
+	const char *enable_chars = "+*#";
+	if(l >= 8 && v[0] == '"' && v[l - 1] == '"') {
+		string v2 = v.substr(1, l - 2);
+		return(check_string(v2, false, true, false, enable_chars));
+	} else if(l >= 6) {
+		return(check_string(v, false, true, false, enable_chars));
+	}
+	return(false);
+}
+
+bool cNormReftabs::is_sip_uri(string &v) {
+	if(strncmp(v.c_str(), "sip:", 4)) {
+		return(false);
+	}
+	if(v.length() >= 20 && check_string(v, true, true, false, "@_-.:")) {
+		return(true);
+	}
+	return(false);
+}
+
+bool cNormReftabs::is_reason_tag(string &v) {
+	if(v.length() >= 20) {
+		bool check1 = v.find('-') != string::npos;
+		bool check2 = v.find('.') != string::npos;
+		if((check1 || check2) &&
+		   check_string(v, true, true, false, check1 ? "-" : ".")) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+bool cNormReftabs::is_mac(string &v) {
+	unsigned l = v.length();
+	if(l == 12 && check_string(v, false, true, true, NULL) && check_exists(v, false, true, false, NULL)) {
+		return(true);
+	} else if(l == 17 && check_string(v, false, true, true, ":")) {
+		for(unsigned i = 0; i < l; i++) {
+			if(((i + 1) % 3) ? v[i] == ':' : v[i] != ':') {
+				return(false);
+			}
+		}
+		return(true);
+	}
+	return(false);
+}
+
+bool cNormReftabs::is_mac_with_prefix(string &v) {
+	unsigned l = v.length();
+	unsigned p = 0;
+	while(p < l && (isalpha(v[p]) || strchr("-_/", v[p]))) ++p;
+	if(p <= 4) {
+		string v2 = v.substr(p);
+		return(is_mac(v2));
+	}
+	return(false);
+}
+
+bool cNormReftabs::is_ip(string &v) {
+	sockaddr_in sa;
+	return(inet_pton(AF_INET, v.c_str(), &sa.sin_addr) != 0);
+}
+
+bool cNormReftabs::is_sn(string &v) {
+	return(!strncasecmp(v.c_str(), "sn", 2) && strchr("/-", v[2]) && check_string(v.c_str() + 3, true, true));
+}
+
+bool cNormReftabs::check_string(const char *v, bool alpha, bool digit, bool hexalpha, const char *other) {
+	unsigned l = strlen(v);
+	for(unsigned i = 0; i < l; i++) {
+		if(!((digit && isdigit(v[i])) ||
+		     (alpha && isalpha(v[i])) ||
+		     (hexalpha && toupper(v[i]) >= 'A' && toupper(v[i]) <= 'F') ||
+		     (other && strchr(other, v[i])))) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+bool cNormReftabs::check_string(string &v, bool alpha, bool digit, bool hexalpha, const char *other) {
+	unsigned l = v.length();
+	for(unsigned i = 0; i < l; i++) {
+		if(!((digit && isdigit(v[i])) ||
+		     (alpha && isalpha(v[i])) ||
+		     (hexalpha && toupper(v[i]) >= 'A' && toupper(v[i]) <= 'F') ||
+		     (other && strchr(other, v[i])))) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+bool cNormReftabs::check_exists(string &v, bool alpha, bool digit, bool hexalpha, const char *other) {
+	unsigned l = v.length();
+	for(unsigned i = 0; i < l; i++) {
+		if((digit && isdigit(v[i])) ||
+		   (alpha && isalpha(v[i])) ||
+		   (hexalpha && toupper(v[i]) >= 'A' && toupper(v[i]) <= 'F') ||
+		   (other && strchr(other, v[i]))) {
+			return(true);
+		}
+	}
+	return(false);
+}
+
+void cNormReftabs::ltrim(string &v, const char *trim_chars) {
+	unsigned l = v.length();
+	unsigned t = 0;
+	while(t < l && strchr(trim_chars, v[t])) ++t;
+	if(t) {
+		v = v.substr(t);
+	}
+}
+
+void cNormReftabs::rtrim(string &v, const char *trim_chars) {
+	unsigned l = v.length();
+	unsigned t = 0;
+	while(t < l && strchr(trim_chars, v[l - t - 1])) ++t;
+	if(t) {
+		v = v.substr(0, l - t);
+	}
 }

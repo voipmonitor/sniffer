@@ -477,15 +477,6 @@ tm dateTimeAdd(tm dateTime, unsigned add_s, const char *timezone = NULL);
 double diffTime(tm time1, tm time0, const char *timezone = NULL);
 unsigned long getUptime();
 
-char *strnstr(const char *haystack, const char *needle, size_t len);
-char *strncasestr(const char *haystack, const char *needle, size_t len);
-char *strnchr(const char *haystack, char needle, size_t len);
-char *strnrchr(const char *haystack, char needle, size_t len);
-char *strncasechr(const char *haystack, char needle, size_t len);
-int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
-int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
-size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
-
 inline char* strncpy_null_term(char *dst, const char *src, size_t size) {
 	if(src) {
 		#if __GNUC__ >= 8

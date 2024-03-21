@@ -2735,12 +2735,9 @@ friend class RTPsecure;
 };
 
 
-void adjustSipResponse(string *sipResponse);
-const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool *adjustLength = NULL);
-void adjustReason(string *reason);
-const char *adjustReason(char *reason, bool *adjustLength = NULL);
-void adjustUA(string *ua);
-const char *adjustUA(char *ua, unsigned ua_size, bool *adjustLength = NULL);
+void adjustSipResponse(string &sipResponse);
+void adjustReason(string &reason);
+void adjustUA(string &ua);
 
 inline unsigned int tuplehash(u_int32_t addr, u_int16_t port) {
 	unsigned int key;

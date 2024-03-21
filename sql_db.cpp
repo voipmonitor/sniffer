@@ -11507,9 +11507,8 @@ void dbDataInit(SqlDb *sqlDb) {
 	extern int absolute_timeout;
 	cDbCalls *_dbCalls = new FILE_LINE(0) cDbCalls(opt_cdr_check_exists_callid_cache_max_size, absolute_timeout + 10 * 60);
 	if(!opt_nocdr) {
-		_dbData->init(!isCloud() && !is_client() && !is_sender() &&
-			     !is_read_from_file_simple(), 
-			     is_server() ? 0 : 1000000, sqlDb);
+		_dbData->init(!isCloud() && !is_client() && !is_sender() && !is_read_from_file_simple(), 
+			      is_server() ? 0 : 1000000, sqlDb);
 	}
 	dbData = _dbData;
 	dbCalls = _dbCalls;

@@ -784,7 +784,7 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 		return(0);
 	}
 	string adj_ua = REG_CONV_STR(state->ua == EQ_REG ? ua : state->ua);
-	adjustUA(&adj_ua);
+	adjustUA(adj_ua);
 	SqlDb_row reg;
 	u_int64_t flags = 0;
 	string register_table = state->state == rs_Failed ? "register_failed" : "register_state";

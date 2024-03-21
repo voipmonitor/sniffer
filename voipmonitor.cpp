@@ -287,6 +287,7 @@ bool opt_sip_msg_compare_number_dst = true;
 bool opt_sip_msg_compare_domain_src = true;
 bool opt_sip_msg_compare_domain_dst = true;
 bool opt_sip_msg_compare_vlan = false;
+bool opt_sip_msg_save_ua = false;
 
 int opt_audio_format = FORMAT_WAV;	// define format for audio writing (if -W option)
 int opt_manager_port = 5029;	// manager api TCP port
@@ -508,11 +509,17 @@ bool opt_csv_store_format = false;
 bool opt_mysql_mysql_redirect_cdr_queue = false;
 int opt_cdr_sip_response_number_max_length = 0;
 vector<string> opt_cdr_sip_response_reg_remove;
+bool opt_cdr_sip_response_normalisation = false;
+bool opt_cdr_sip_response_load_normalisation = false;
 int opt_cdr_reason_string_enable = 1;
 vector<string> opt_cdr_reason_reg_remove;
+bool opt_cdr_reason_normalisation = true;
+bool opt_cdr_reason_load_normalisation = false;
 int opt_cdr_ua_enable = 1;
 vector<string> opt_cdr_ua_reg_remove;
 vector<string> opt_cdr_ua_reg_whitelist;
+bool opt_cdr_ua_normalisation = false;
+bool opt_cdr_ua_load_normalisation = false;
 unsigned long long cachedirtransfered = 0;
 unsigned int opt_maxpcapsize_mb = 0;
 int opt_mosmin_f2 = 1;
@@ -6662,11 +6669,17 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42282) cConfigItem_integer("destination_number_mode", &opt_destination_number_mode));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cdr_sip_response_number_max_length", &opt_cdr_sip_response_number_max_length));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_sip_response_reg_remove", &opt_cdr_sip_response_reg_remove));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_sip_response_normalisation", &opt_cdr_sip_response_normalisation));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_sip_response_load_normalisation", &opt_cdr_sip_response_load_normalisation));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_reason_string_enable", &opt_cdr_reason_string_enable));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("cdr_reason_reg_remove", &opt_cdr_reason_reg_remove));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_reason_normalisation", &opt_cdr_reason_normalisation));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_reason_load_normalisation", &opt_cdr_reason_load_normalisation));
 				addConfigItem(new FILE_LINE(42283) cConfigItem_yesno("cdr_ua_enable", &opt_cdr_ua_enable));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_remove", &opt_cdr_ua_reg_remove));
 				addConfigItem(new FILE_LINE(42284) cConfigItem_string("cdr_ua_reg_whitelist", &opt_cdr_ua_reg_whitelist));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_ua_normalisation", &opt_cdr_ua_normalisation));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_ua_load_normalisation", &opt_cdr_ua_load_normalisation));
 				addConfigItem(new FILE_LINE(42285) cConfigItem_yesno("sipoverlap", &opt_sipoverlap));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("last_dest_number", &opt_last_dest_number));
 				addConfigItem(new FILE_LINE(42286) cConfigItem_yesno("update_dstnum_onanswer", &opt_update_dstnum_onanswer));
@@ -6754,6 +6767,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-src", &opt_sip_msg_compare_domain_src));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-domain-dst", &opt_sip_msg_compare_domain_dst));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-compare-vlan", &opt_sip_msg_compare_vlan));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sip-msg-save-ua", &opt_sip_msg_save_ua));
 		subgroup("MESSAGE");
 			addConfigItem(new FILE_LINE(42296) cConfigItem_yesno("hide_message_content", &opt_hide_message_content));
 			addConfigItem(new FILE_LINE(42297) cConfigItem_string("hide_message_content_secret", opt_hide_message_content_secret, sizeof(opt_hide_message_content_secret)));

@@ -20,6 +20,14 @@ extern char sql_driver[256];
 extern char odbc_driver[256];
 extern bool opt_charts_cache;
 
+extern bool opt_cdr_sip_response_normalisation;
+extern bool opt_cdr_sip_response_load_normalisation;
+extern bool opt_cdr_reason_normalisation;
+extern bool opt_cdr_reason_load_normalisation;
+extern bool opt_cdr_ua_normalisation;
+extern bool opt_cdr_ua_load_normalisation;
+extern int opt_cdr_sip_response_number_max_length;
+
 
 string SqlDb_condField::getCondStr(list<SqlDb_condField> *cond, const char *fieldBorder, const char *contentBorder, const char *typeDb) {
 	string condStr;
@@ -390,23 +398,49 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 		_createSqlObject = true;
 	}
 	#ifdef CLOUD_ROUTER_CLIENT
-		if(this->limitTableRows && sqlDb->rowsInTable(table, true) > this->limitTableRows) {
+		bool load_normalisation = (type == _cb_sip_response && opt_cdr_sip_response_normalisation && opt_cdr_sip_response_load_normalisation) ||
+					  (type == _cb_reason_sip && opt_cdr_reason_normalisation && opt_cdr_reason_load_normalisation) ||
+					  (type == _cb_reason_q850 && opt_cdr_reason_normalisation && opt_cdr_reason_load_normalisation) ||
+					  (type == _cb_ua && opt_cdr_ua_normalisation && opt_cdr_ua_load_normalisation);
+		if(!load_normalisation && this->limitTableRows && sqlDb->rowsInTable(table, true) > this->limitTableRows) {
 			*overflow = true;
 		} else {
+			*overflow = false;
 			if(sqlDb->select(table, NULL, &cond)) {
 				SqlDb_rows rows;
-				sqlDb->fetchRows(&rows);
+				if(!load_normalisation) {
+					sqlDb->fetchRows(&rows);
+				}
 				SqlDb_row row;
-				while((row = rows.fetchRow())) {
+				cNormReftabs::sParams params;
+				params.number_max_length = opt_cdr_sip_response_number_max_length ? opt_cdr_sip_response_number_max_length : 3;
+				while(load_normalisation ? (row = sqlDb->fetchRow()) : (row = rows.fetchRow())) {
 					string stringValue = row[columnStringValue];
+					if(load_normalisation) {
+						string stringValueNorm;
+						if(type == _cb_sip_response) {
+							stringValueNorm = cNormReftabs::sip_response(stringValue, &params);
+						} else if(type == _cb_reason_sip || type == _cb_reason_q850) {
+							stringValueNorm = cNormReftabs::reason(stringValue);
+						} else if(type == _cb_ua) {
+							stringValueNorm = cNormReftabs::ua(stringValue);
+						}
+						if(!stringValueNorm.empty() && stringValueNorm != stringValue) {
+							continue;
+						}
+					}
 					unsigned id = atol(row[columnId].c_str());
 					if(!caseSensitive) {
 						std::transform(stringValue.begin(), stringValue.end(), stringValue.begin(), ::toupper);
 					}
 					(*data)[stringValue] = id;
+					if(load_normalisation && this->limitTableRows && data->size() > this->limitTableRows) {
+						data->clear();
+						*overflow = true;
+						break;
+					}
 				}
 			}
-			*overflow = false;
 		}
 	#endif
 	#ifdef CLOUD_ROUTER_SERVER

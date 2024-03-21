@@ -428,6 +428,17 @@ private:
 int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice);
 
 
+char *strnstr(const char *haystack, const char *needle, size_t len);
+char *strncasestr(const char *haystack, const char *needle, size_t len);
+char *strnchr(const char *haystack, char needle, size_t len);
+char *strnrchr(const char *haystack, char needle, size_t len);
+char *strncasechr(const char *haystack, char needle, size_t len);
+int strcasecmp_wildcard(const char *str, const char *pattern, const char *wildcard);
+int strncasecmp_wildcard(const char *str, const char *pattern, size_t len, const char *wildcard);
+size_t strCaseEqLengthR(const char *str1, const char *str2, bool *eqMinLength);
+const char *strrstr(const char *haystack, const char *needle);
+
+
 void base64_init(void);
 int base64decode(unsigned char *dst, const char *src, int max);
 u_char *base64decode(const char *src, int *dst_length);
@@ -1357,6 +1368,50 @@ private:
 	queue<sDbCall> calls_queue;
 	map<string, sDbCallInfo> calls_map;
 	volatile int _sync;
+};
+
+
+class cNormReftabs {
+public:
+	struct sParams {
+		sParams() {
+			number_max_length = 0;
+		}
+		unsigned number_max_length;
+	};
+private:
+	struct sStringDelim {
+		sStringDelim(const char *str, const char *delim) {
+			this->str = str;
+			this->delim = delim ? delim  : "";
+		}
+		string str;
+		string delim;
+	};
+public:
+	static string sip_response(string value, sParams *params = NULL, bool cmp_log = false);
+	static string reason(string value, bool cmp_log = false);
+	static string ua(string value, bool cmp_log = false);
+	static void trim(string &v, const char *trim_chars = " ") {
+		ltrim(v, trim_chars);
+		rtrim(v, trim_chars);
+	}
+private:
+	static bool is_ok_ua(string &ua);
+	static void split_string_with_delim(string &str, const char *delims, vector<sStringDelim> *string_delim);
+	static string join_string_with_delim(vector<sStringDelim> *string_delim);
+	static bool is_telnum(string v);
+	static bool is_sip_uri(string &v);
+	static bool is_reason_tag(string &v);
+	static bool is_mac(string &v);
+	static bool is_mac_with_prefix(string &v);
+	static bool is_ip(string &v);
+	static bool is_sn(string &v);
+	static bool check_string(const char *v, bool alpha, bool digit =  false, bool hexalpha = false, const char *other = NULL);
+	static bool check_string(string &v, bool alpha, bool digit =  false, bool hexalpha = false, const char *other = NULL);
+	static bool check_exists(string &v, bool alpha, bool digit = false, bool hexalpha = false, const char *other = NULL);
+	static void ltrim(string &v, const char *trim_chars = " ");
+	static void rtrim(string &v, const char *trim_chars = " ");
 };
 
 

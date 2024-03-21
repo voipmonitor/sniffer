@@ -81,6 +81,7 @@ extern bool opt_sip_msg_compare_number_dst;
 extern bool opt_sip_msg_compare_domain_src;
 extern bool opt_sip_msg_compare_domain_dst;
 extern bool opt_sip_msg_compare_vlan;
+extern bool opt_sip_msg_save_ua;
 
 unsigned opt_default_qualify_limit = 2000;
 unsigned opt_cleanup_item_response_by_max_items = 5;
@@ -919,14 +920,16 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	}
 	unsigned flags = 0;
 	string adj_ua_src, adj_ua_dst;
-	adj_ua_src = requestResponse->request->ua;
-	if(!adj_ua_src.empty()) {
-		adjustUA(&adj_ua_src);
-	}
-	if(requestResponse->response) {
-		adj_ua_dst = requestResponse->response->ua;
-		if(!adj_ua_dst.empty()) {
-			adjustUA(&adj_ua_dst);
+	if(opt_sip_msg_save_ua) {
+		adj_ua_src = requestResponse->request->ua;
+		if(!adj_ua_src.empty()) {
+			adjustUA(adj_ua_src);
+		}
+		if(requestResponse->response) {
+			adj_ua_dst = requestResponse->response->ua;
+			if(!adj_ua_dst.empty()) {
+				adjustUA(adj_ua_dst);
+			}
 		}
 	}
 	SqlDb_row rec,
@@ -994,20 +997,22 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 	}
 	if(enableBatchIfPossible && isSqlDriver("mysql")) {
 		string query_str;
-		for(int i = 0; i < 2; i++) {
-			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
-			if(!adj_ua.empty()) {
-				string field = i == 0 ? "ua_src_id" : "ua_dst_id";
-				if(useSetId()) {
-					rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), field);
-				} else {
-					unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
-					if(_cb_id) {
-						rec.add(_cb_id, field);
+		if(opt_sip_msg_save_ua) {
+			for(int i = 0; i < 2; i++) {
+				string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
+				if(!adj_ua.empty()) {
+					string field = i == 0 ? "ua_src_id" : "ua_dst_id";
+					if(useSetId()) {
+						rec.add(MYSQL_CODEBOOK_ID(cSqlDbCodebook::_cb_ua, adj_ua), field);
 					} else {
-						query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
-							     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
-						rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
+						unsigned _cb_id = dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), false, true);
+						if(_cb_id) {
+							rec.add(_cb_id, field);
+						} else {
+							query_str += MYSQL_ADD_QUERY_END(string("set @" + field + " = ") +  
+								     "getIdOrInsertUA(" + sqlEscapeStringBorder(adj_ua) + ")");
+							rec.add(MYSQL_VAR_PREFIX + "@" + field, field);
+						}
 					}
 				}
 			}
@@ -1099,11 +1104,13 @@ void cSipMsgRelations::_saveToDb(cSipMsgRequestResponse *requestResponse, bool e
 				      0);
 		++counterSqlStore;
 	} else {
-		for(int i = 0; i < 2; i++) {
-			string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
-			if(!adj_ua.empty()) {
-				string field = i == 0 ? "ua_src_id" : "ua_dst_id";
-				rec.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), field);
+		if(opt_sip_msg_save_ua) {
+			for(int i = 0; i < 2; i++) {
+				string &adj_ua = i == 0 ? adj_ua_src : adj_ua_dst;
+				if(!adj_ua.empty()) {
+					string field = i == 0 ? "ua_src_id" : "ua_dst_id";
+					rec.add(dbData->getCbId(cSqlDbCodebook::_cb_ua, adj_ua.c_str(), true), field);
+				}
 			}
 		}
 		if(requestResponse->response && !requestResponse->response->response_string.empty()) {

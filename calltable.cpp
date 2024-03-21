@@ -148,11 +148,14 @@ extern int opt_filesclean;
 extern int opt_allow_zerossrc;
 extern int opt_cdr_sip_response_number_max_length;
 extern vector<string> opt_cdr_sip_response_reg_remove;
+extern bool opt_cdr_sip_response_normalisation;
 extern int opt_cdr_reason_string_enable;
 extern vector<string> opt_cdr_reason_reg_remove;
+extern bool opt_cdr_reason_normalisation;
 extern int opt_cdr_ua_enable;
 extern vector<string> opt_cdr_ua_reg_remove;
 extern vector<string> opt_cdr_ua_reg_whitelist;
+extern bool opt_cdr_ua_normalisation;
 extern unsigned int graph_delimiter;
 extern int opt_mosmin_f2;
 extern char opt_mos_lqo_bin[1024];
@@ -7227,7 +7230,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
-	adjustSipResponse(&c_branch->lastSIPresponse);
+	adjustSipResponse(c_branch->lastSIPresponse);
 	
 	if((useChartsCacheInProcessCall() && sverb.charts_cache_only) ||
 	   (useCdrStatInProcessCall() && sverb.cdr_stat_only)) {
@@ -8427,7 +8430,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch *n_branch, int indexRow, string &table, bool batch, string *query_str) {
 	string n_branch_var_suffix = "_nb_" + intToString(indexRow + 1);
 	
-	adjustSipResponse(&n_branch->lastSIPresponse);
+	adjustSipResponse(n_branch->lastSIPresponse);
 	adjustUA(n_branch);
 	adjustReason(n_branch);
 	
@@ -9605,10 +9608,10 @@ Call::applyRtcpXrDataToRtp() {
 void Call::adjustUA(CallBranch *c_branch) {
 	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
 		if(!c_branch->a_ua.empty()) {
-			::adjustUA(&c_branch->a_ua);
+			::adjustUA(c_branch->a_ua);
 		}
 		if(!c_branch->b_ua.empty()) {
-			::adjustUA(&c_branch->b_ua);
+			::adjustUA(c_branch->b_ua);
 		}
 	}
 }
@@ -9616,10 +9619,10 @@ void Call::adjustUA(CallBranch *c_branch) {
 void Call::adjustReason(CallBranch *c_branch) {
 	if(opt_cdr_reason_reg_remove.size()) {
 		if(!c_branch->reason_sip_text.empty()) {
-			::adjustReason(&c_branch->reason_sip_text);
+			::adjustReason(c_branch->reason_sip_text);
 		}
 		if(!c_branch->reason_q850_text.empty()) {
-			::adjustReason(&c_branch->reason_q850_text);
+			::adjustReason(c_branch->reason_q850_text);
 		}
 	}
 }
@@ -9927,222 +9930,122 @@ unsigned Call::getMaxRetransmissionInvite(CallBranch *c_branch) {
 	return(max_retrans);
 }
 
-void adjustSipResponse(string *sipResponse) {
-	bool adjustLength = false;
-	const char *new_sipResponse = adjustSipResponse((char*)sipResponse->c_str(), 0, &adjustLength);
-	if(new_sipResponse) {
-		*sipResponse = new_sipResponse;
-	} else if(adjustLength) {
-		sipResponse->resize(strlen(sipResponse->c_str()));
-	}
-	if(sipResponse->length() > 255) {
-		sipResponse->resize(255);
-	}
-}
-
-const char *adjustSipResponse(char *sipResponse, unsigned sipResponse_size, bool *adjustLength) {
+void adjustSipResponse(string &sipResponse) {
 	if(opt_cdr_sip_response_reg_remove.size()) {
-		bool adjust = false;
+		bool use_reg_remove = false;
 		for(unsigned i = 0; i < opt_cdr_sip_response_reg_remove.size(); i++) {
 			vector<string> matches;
-			if(reg_match(sipResponse, opt_cdr_sip_response_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+			if(reg_match(sipResponse.c_str(), opt_cdr_sip_response_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
 				for(unsigned j = 0; j < matches.size(); j++) {
-					char *str_pos = strstr(sipResponse, matches[j].c_str());
-					if(str_pos) {
-						char sipResponse_temp[1024];
-						strcpy_null_term(sipResponse_temp, str_pos + matches[j].size());
-						strcpy(str_pos, sipResponse_temp);
-						adjust = true;
-						if(adjustLength) {
-							*adjustLength = true;
-						}
+					size_t pos;
+					while((pos = sipResponse.find(matches[j].c_str())) != string::npos) {
+						sipResponse = sipResponse.substr(0, pos) + sipResponse.substr(pos + matches[j].length());
+						use_reg_remove = true;
 					}
 				}
 			}
 		}
-		if(adjust) {
-			int length = strlen(sipResponse);
-			while(sipResponse[length - 1] == ' ') {
-				sipResponse[length - 1] = 0;
-				--length;
+		if(use_reg_remove) {
+			size_t pos;
+			while((pos = sipResponse.find("  ")) != string::npos) {
+				sipResponse = sipResponse.substr(0, pos + 1) + sipResponse.substr(pos + 2);
 			}
-			int start = 0;
-			while(sipResponse[start] == ' ') {
-				++start;
-			}
-			if(start) {
-				char sipResponse_temp[1024];
-				strcpy_null_term(sipResponse_temp, sipResponse + start);
-				strcpy(sipResponse, sipResponse_temp);
-			}
-			if(adjustLength) {
-				*adjustLength = true;
+			trim(sipResponse);
+		}
+	}
+	if(opt_cdr_sip_response_number_max_length && !opt_cdr_sip_response_normalisation) {
+		unsigned l = sipResponse.length();
+		for(unsigned i = 4; i < l; i++) {
+			if((isdigit(sipResponse[i]) || strchr("+*#", sipResponse[i])) && !isalnum(sipResponse[i - 1])) {
+				unsigned numb_length = 1;
+				while(isdigit(sipResponse[i + numb_length]) || strchr("+*#", sipResponse[i + numb_length])) {
+					++numb_length;
+				}
+				if(numb_length > (unsigned)opt_cdr_sip_response_number_max_length && !isalnum(sipResponse[i + numb_length])) {
+					sipResponse = sipResponse.substr(0, i + opt_cdr_sip_response_number_max_length) + "..." + sipResponse.substr(i + numb_length);
+					i += numb_length;
+					l = sipResponse.length(); 
+				}
 			}
 		}
 	}
-	if(opt_cdr_sip_response_number_max_length) {
-		char *pointer = sipResponse;
-		while(*pointer) {
-			if(isdigit(*pointer)) {
-				unsigned number_length = 1;
-				while(isdigit(*(pointer + number_length))) {
-					++number_length;
-				}
-				if(number_length > (unsigned)opt_cdr_sip_response_number_max_length) {
-					char sipResponse_temp[1024];
-					strcpy_null_term(sipResponse_temp, pointer + number_length);
-					unsigned ellipsis_length = min(3u, number_length - opt_cdr_sip_response_number_max_length);
-					#if __GNUC__ >= 8
-					#pragma GCC diagnostic push
-					#pragma GCC diagnostic ignored "-Wstringop-truncation"
-					#endif
-					strncpy(pointer + opt_cdr_sip_response_number_max_length, "...", ellipsis_length);
-					#if __GNUC__ >= 8
-					#pragma GCC diagnostic pop
-					#endif
-					strcpy(pointer + opt_cdr_sip_response_number_max_length + ellipsis_length, sipResponse_temp);
-					pointer += opt_cdr_sip_response_number_max_length + ellipsis_length;
-					if(adjustLength) {
-						*adjustLength = true;
-					}
-				} else {
-					pointer += number_length;
-				}
-			} else {
-				++pointer;
-			}
-		}
+	if(opt_cdr_sip_response_normalisation) {
+		cNormReftabs::sParams params;
+		params.number_max_length = opt_cdr_sip_response_number_max_length ? opt_cdr_sip_response_number_max_length : 3;
+		sipResponse = cNormReftabs::sip_response(sipResponse, &params);
 	}
-	return(NULL);
-}
-
-void adjustReason(string *reason) {
-	bool adjustLength = false;
-	const char *new_reason = adjustReason((char*)reason->c_str(), &adjustLength);
-	if(new_reason) {
-		*reason = new_reason;
-	} else if(adjustLength) {
-		reason->resize(strlen(reason->c_str()));
-	}
-	if(reason->length() > 255) {
-		reason->resize(255);
+	if(sipResponse.length() > 255) {
+		sipResponse.resize(255);
 	}
 }
 
-const char *adjustReason(char *reason, bool *adjustLength) {
+void adjustReason(string &reason) {
 	if(opt_cdr_reason_reg_remove.size()) {
-		bool adjust = false;
+		bool use_reg_remove = false;
 		for(unsigned i = 0; i < opt_cdr_reason_reg_remove.size(); i++) {
 			vector<string> matches;
-			if(reg_match(reason, opt_cdr_reason_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+			if(reg_match(reason.c_str(), opt_cdr_reason_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
 				for(unsigned j = 0; j < matches.size(); j++) {
-					char *str_pos = strstr(reason, matches[j].c_str());
-					if(str_pos) {
-						char reson_temp[1024];
-						strcpy_null_term(reson_temp, str_pos + matches[j].size());
-						strcpy(str_pos, reson_temp);
-						adjust = true;
-						if(adjustLength) {
-							*adjustLength = true;
-						}
+					size_t pos;
+					while((pos = reason.find(matches[j].c_str())) != string::npos) {
+						reason = reason.substr(0, pos) + reason.substr(pos + matches[j].length());
+						use_reg_remove = true;
 					}
 				}
 			}
 		}
-		if(adjust) {
-			int length = strlen(reason);
-			while(reason[length - 1] == ' ') {
-				reason[length - 1] = 0;
-				--length;
+		if(use_reg_remove) {
+			size_t pos;
+			while((pos = reason.find("  ")) != string::npos) {
+				reason = reason.substr(0, pos + 1) + reason.substr(pos + 2);
 			}
-			int start = 0;
-			while(reason[start] == ' ') {
-				++start;
-			}
-			if(start) {
-				char reson_temp[1024];
-				strcpy_null_term(reson_temp, reason + start);
-				strcpy(reason, reson_temp);
-			}
-			if(adjustLength) {
-				*adjustLength = true;
-			}
+			trim(reason);
 		}
 	}
-	return(NULL);
-}
-
-void adjustUA(string *ua) {
-	bool adjustLength = false;
-	const char *new_ua = adjustUA((char*)ua->c_str(), 0, &adjustLength);
-	if(new_ua) {
-		*ua = new_ua;
-	} else if(adjustLength) {
-		ua->resize(strlen(ua->c_str()));
-	}
-	if(ua->length() > 512) {
-		ua->resize(512);
+	if(opt_cdr_reason_normalisation) {
+		reason = cNormReftabs::reason(reason);
 	}
 }
 
-const char *adjustUA(char *ua, unsigned ua_size, bool *adjustLength) {
+void adjustUA(string &ua) {
 	if(opt_cdr_ua_reg_remove.size()) {
-		bool adjust = false;
+		bool use_reg_remove = false;
 		for(unsigned i = 0; i < opt_cdr_ua_reg_remove.size(); i++) {
 			vector<string> matches;
-			if(reg_match(ua, opt_cdr_ua_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
+			if(reg_match(ua.c_str(), opt_cdr_ua_reg_remove[i].c_str(), &matches, true, __FILE__, __LINE__)) {
 				for(unsigned j = 0; j < matches.size(); j++) {
-					char *str_pos = strstr(ua, matches[j].c_str());
-					if(str_pos) {
-						char ua_temp[1024];
-						strcpy_null_term(ua_temp, str_pos + matches[j].size());
-						strcpy(str_pos, ua_temp);
-						adjust = true;
-						if(adjustLength) {
-							*adjustLength = true;
-						}
+					size_t pos;
+					while((pos = ua.find(matches[j].c_str())) != string::npos) {
+						ua = ua.substr(0, pos) + ua.substr(pos + matches[j].length());
+						use_reg_remove = true;
 					}
 				}
 			}
 		}
-		if(adjust) {
-			int length = strlen(ua);
-			while(ua[length - 1] == ' ') {
-				ua[length - 1] = 0;
-				--length;
+		if(use_reg_remove) {
+			size_t pos;
+			while((pos = ua.find("  ")) != string::npos) {
+				ua = ua.substr(0, pos + 1) + ua.substr(pos + 2);
 			}
-			int start = 0;
-			while(ua[start] == ' ') {
-				++start;
-			}
-			if(start) {
-				char ua_temp[1024];
-				strcpy_null_term(ua_temp, ua + start);
-				strcpy(ua, ua_temp);
-			}
-			if(adjustLength) {
-				*adjustLength = true;
-			}
+			trim(ua);
 		}
 	}
 	if(opt_cdr_ua_reg_whitelist.size()) {
 		bool match = false;
 		for(unsigned i = 0; i < opt_cdr_ua_reg_whitelist.size(); i++) {
-			if(reg_match(ua, opt_cdr_ua_reg_whitelist[i].c_str(),  __FILE__, __LINE__)) {
+			if(reg_match(ua.c_str(), opt_cdr_ua_reg_whitelist[i].c_str(),  __FILE__, __LINE__)) {
 				match = true;
 				break;
 			}
 		}
 		if(!match) {
-			const char *banned_ua_str = "banned UA";
-			if(ua_size) {
-				strncpy_null_term(ua, banned_ua_str, ua_size);
-			} else {
-				return(banned_ua_str);
-			}
+			ua = "banned UA";
+			return;
 		}
 	}
-	return(NULL);
+	if(opt_cdr_ua_normalisation) {
+		ua = cNormReftabs::ua(ua);
+	}
 }
 
 
