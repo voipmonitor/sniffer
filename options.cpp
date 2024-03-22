@@ -455,8 +455,8 @@ bool cSipMsgRelation::getDataRow(RecordArray *rec, u_int64_t limit_time_us, cSip
 	rec->fields[smf_id].set(id);
 	rec->fields[smf_id_sensor].set(id_sensor);
 	rec->fields[smf_type].set(type);
-	rec->fields[smf_ip_src].set(ip_src, RecordArrayField::tf_ip_n4);
-	rec->fields[smf_ip_dst].set(ip_dst, RecordArrayField::tf_ip_n4);
+	rec->fields[smf_ip_src].set(ip_src, RecordArrayField::tf_ip_n4_cmpstr);
+	rec->fields[smf_ip_dst].set(ip_dst, RecordArrayField::tf_ip_n4_cmpstr);
 	rec->fields[smf_port_src].set(port_src.getPort());
 	rec->fields[smf_port_dst].set(port_dst.getPort());
 	rec->fields[smf_number_src].set(number_src.c_str());

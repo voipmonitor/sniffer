@@ -12,6 +12,7 @@ string RecordArrayField::getJson() {
 	case tf_ip:
 		return("\"" + v_ip.getString() + "\"");
 	case tf_ip_n4:
+	case tf_ip_n4_cmpstr:
 		return(v_ip.is_v6() ?
 			"\"" + v_ip.getString() + "\"" :
 			intToString(v_ip.getIPv4()));

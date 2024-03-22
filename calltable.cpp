@@ -4459,10 +4459,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(branch_main()->b_ua.c_str());
 		break;
 	case cf_callerip:
-		rfield->set(getSipcallerip(branch_main(), true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcallerip(branch_main(), true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_calledip:
-		rfield->set(getSipcalledip(branch_main(), true, true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip(branch_main(), true, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_callerip_country:
 		rfield->set(getCountryByIP(getSipcallerip(branch_main(), true), true).c_str());
@@ -4471,10 +4471,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 		rfield->set(getCountryByIP(getSipcalledip(branch_main(), true, true), true).c_str());
 		break;
 	case cf_callerip_encaps:
-		rfield->set(getSipcallerip_encaps(branch_main(), true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcallerip_encaps(branch_main(), true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_calledip_encaps:
-		rfield->set(getSipcalledip_encaps(branch_main(), true, true), RecordArrayField::tf_ip_n4);
+		rfield->set(getSipcalledip_encaps(branch_main(), true, true), RecordArrayField::tf_ip_n4_cmpstr);
 		break;
 	case cf_callerip_encaps_prot:
 		rfield->set(getSipcallerip_encaps_prot(branch_main(), true));
@@ -4506,10 +4506,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	if(lastactivecallerrtp) {
 		switch(field) {
 		case cf_rtp_src:
-			rfield->set(lastactivecallerrtp->saddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecallerrtp->saddr, RecordArrayField::tf_ip_n4_cmpstr);
 			break;
 		case cf_rtp_dst:
-			rfield->set(lastactivecallerrtp->daddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecallerrtp->daddr, RecordArrayField::tf_ip_n4_cmpstr);
 			break;
 		case cf_rtp_src_country:
 			rfield->set(getCountryByIP(lastactivecallerrtp->saddr, true).c_str());
@@ -4523,10 +4523,10 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	} else if(lastactivecalledrtp) {
 		switch(field) {
 		case cf_rtp_src:
-			rfield->set(lastactivecalledrtp->daddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecalledrtp->daddr, RecordArrayField::tf_ip_n4_cmpstr);
 			break;
 		case cf_rtp_dst:
-			rfield->set(lastactivecalledrtp->saddr, RecordArrayField::tf_ip_n4);
+			rfield->set(lastactivecalledrtp->saddr, RecordArrayField::tf_ip_n4_cmpstr);
 			break;
 		case cf_rtp_src_country:
 			rfield->set(getCountryByIP(lastactivecalledrtp->daddr, true).c_str());
@@ -12353,6 +12353,11 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			int _sortByIndex = convCallFieldToFieldIndex(convCallFieldToFieldId(sortBy.c_str()));
 			if(_sortByIndex >= 0) {
 				sortByIndex = _sortByIndex;
+			} else {
+				int _sortByIndex = convCallFieldToFieldIndex(sortBy.c_str());
+				if(_sortByIndex >= 0) {
+					sortByIndex = _sortByIndex;
+				}
 			}
 		}
 		if(jsonParams.getItem("sort_dir")) {
@@ -12533,7 +12538,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		custom_headers_size = custom_headers_cdr->getSize();
 		custom_headers_reserve = 5;
 	}
-	list<RecordArray*> records;
+	list<RecordArray> records;
 	u_int32_t counter = 0;
 	map<int32_t, u_int32_t> sensor_map;
 	map<vmIP, u_int32_t> ip_src_map;
@@ -12551,11 +12556,10 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		}
 		if(okCallFilters) {
 			if(limit != 0) {
-				RecordArray *rec = new FILE_LINE(0) RecordArray(sizeof(callFields) / sizeof(callFields[0]) + 
-										custom_headers_size + custom_headers_reserve);
-				call->getRecordData(rec);
-				rec->sortBy = sortByIndex;
-				rec->sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
+				RecordArray rec(sizeof(callFields) / sizeof(callFields[0]) + custom_headers_size + custom_headers_reserve);
+				call->getRecordData(&rec);
+				rec.sortBy = sortByIndex;
+				rec.sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
 				records.push_back(rec);
 			} else {
 				++counter;
@@ -12631,13 +12635,13 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 		if(sortByIndex >= 0) {
 			records.sort();
 		}
-		list<RecordArray*>::iterator iter_rec = sortDesc ? records.end() : records.begin();
+		list<RecordArray>::iterator iter_rec = sortDesc ? records.end() : records.begin();
 		if(sortDesc) {
 			iter_rec--;
 		}
 		u_int32_t counter = 0;
 		while(counter < records.size() && iter_rec != records.end()) {
-			string rec_json = (*iter_rec)->getJson();
+			string rec_json = iter_rec->getJson();
 			extern cUtfConverter utfConverter;
 			if(!utfConverter.check(rec_json.c_str())) {
 				rec_json = utfConverter.remove_no_ascii(rec_json.c_str());
@@ -12661,9 +12665,8 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	} else {
 		table = total;
 	}
-	for(list<RecordArray*>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
-		(*iter_rec)->free();
-		delete *iter_rec;
+	for(list<RecordArray>::iterator iter_rec = records.begin(); iter_rec != records.end(); iter_rec++) {
+		iter_rec->free();
 	}
 	if(callFilters.size()) {
 		for(unsigned i = 0; i < callFilters.size(); i++) {
@@ -15591,6 +15594,26 @@ int convCallFieldToFieldIndex(eCallField field) {
 	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
 		if(callFields[i].fieldType == field) {
 			return(i);
+		}
+	}
+	return(-1);
+}
+
+int convCallFieldToFieldIndex(const char *field) {
+	unsigned i = 0;
+	for(; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		if(!strcmp(field, callFields[i].fieldName)) {
+			return(i);
+		}
+	}
+	if(custom_headers_cdr) {
+		list<string> headers;
+		custom_headers_cdr->getHeaders(&headers);
+		for(list<string>::iterator iter = headers.begin(); iter != headers.end(); iter++) {
+			if(!strcmp(field, iter->c_str())) {
+				return(i);
+			}
+			++i;
 		}
 	}
 	return(-1);

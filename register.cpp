@@ -1138,11 +1138,11 @@ bool Register::getDataRow(RecordArray *rec) {
 		return(false);
 	}
 	rec->fields[rf_id].set(id);
-	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4);
-	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4);
+	rec->fields[rf_sipcallerip].set(sipcallerip, RecordArrayField::tf_ip_n4_cmpstr);
+	rec->fields[rf_sipcalledip].set(sipcalledip, RecordArrayField::tf_ip_n4_cmpstr);
 	if(opt_save_ip_from_encaps_ipheader) {
-		rec->fields[rf_sipcallerip_encaps].set(sipcallerip_encaps, RecordArrayField::tf_ip_n4);
-		rec->fields[rf_sipcalledip_encaps].set(sipcalledip_encaps, RecordArrayField::tf_ip_n4);
+		rec->fields[rf_sipcallerip_encaps].set(sipcallerip_encaps, RecordArrayField::tf_ip_n4_cmpstr);
+		rec->fields[rf_sipcalledip_encaps].set(sipcalledip_encaps, RecordArrayField::tf_ip_n4_cmpstr);
 		rec->fields[rf_sipcallerip_encaps_prot].set(sipcallerip_encaps_prot);
 		rec->fields[rf_sipcalledip_encaps_prot].set(sipcalledip_encaps_prot);
 	}

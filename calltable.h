@@ -4048,6 +4048,7 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse = false);
 string printCallFlags(unsigned long int flags);
 eCallField convCallFieldToFieldId(const char *field);
 int convCallFieldToFieldIndex(eCallField field);
+int convCallFieldToFieldIndex(const char *field);
 
 void reset_counters();
 
