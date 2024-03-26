@@ -760,6 +760,7 @@ extern string opt_pcap_queue_disk_folder;
 extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
+bool opt_pcap_queue_receive_sensor_id_by_sender;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_need_blocks;
@@ -6218,6 +6219,7 @@ void cConfig::addConfigItems() {
 				->setMinor());
 					expert();
 					addConfigItem(new FILE_LINE(42140) cConfigItem_integer("mirror_bind_dlt", &opt_pcap_queue_receive_dlt));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mirror_bind_sensor_id_by_sender", &opt_pcap_queue_receive_sensor_id_by_sender));
 			normal();
 			setDisableIfBegin("sniffer_mode!" + snifferMode_read_from_files_str);
 			addConfigItem(new FILE_LINE(42141) cConfigItem_string("scanpcapdir", opt_scanpcapdir, sizeof(opt_scanpcapdir)));

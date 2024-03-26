@@ -12707,7 +12707,9 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 	if(dlt) {
 		newcall->useDlt = dlt;
 	}
-	if(sensorId > -1) {
+	
+	extern bool opt_pcap_queue_receive_sensor_id_by_sender;
+	if(sensorId > -1 && !(is_receiver() && opt_pcap_queue_receive_sensor_id_by_sender == 0)) {
 		newcall->useSensorId = sensorId;
 	}
 
@@ -12773,7 +12775,9 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 	if(dlt) {
 		newcall->useDlt = dlt;
 	}
-	if(sensorId > -1) {
+	
+	extern bool opt_pcap_queue_receive_sensor_id_by_sender;
+	if(sensorId > -1 && !(is_receiver() && opt_pcap_queue_receive_sensor_id_by_sender == 0)) {
 		newcall->useSensorId = sensorId;
 	}
 	newcall->mgcp_callid = request->parameters.call_id;
