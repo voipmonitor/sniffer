@@ -194,7 +194,11 @@ struct RecordArrayField {
 			case tf_ip_n4:
 				return(v_ip < other.v_ip);
 			case tf_ip_n4_cmpstr:
-				return(v_ip.getString() < other.v_ip.getString());
+				return(v_ip.v() != other.v_ip.v() ?
+					v_ip.v() < other.v_ip.v() :
+					(v_ip.v() == 4 ?
+					  v_ip < other.v_ip :
+					  v_ip.getString() < other.v_ip.getString()));
 			case tf_port:
 				return(v_port < other.v_port);
 			case tf_float:

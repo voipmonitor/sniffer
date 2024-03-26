@@ -15583,7 +15583,7 @@ string printCallFlags(unsigned long int flags) {
 
 eCallField convCallFieldToFieldId(const char *field) {
 	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
-		if(!strcmp(field, callFields[i].fieldName)) {
+		if(!strcasecmp(field, callFields[i].fieldName)) {
 			return(callFields[i].fieldType);
 		}
 	}
@@ -15602,7 +15602,7 @@ int convCallFieldToFieldIndex(eCallField field) {
 int convCallFieldToFieldIndex(const char *field) {
 	unsigned i = 0;
 	for(; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
-		if(!strcmp(field, callFields[i].fieldName)) {
+		if(!strcasecmp(field, callFields[i].fieldName)) {
 			return(i);
 		}
 	}
@@ -15610,7 +15610,7 @@ int convCallFieldToFieldIndex(const char *field) {
 		list<string> headers;
 		custom_headers_cdr->getHeaders(&headers);
 		for(list<string>::iterator iter = headers.begin(); iter != headers.end(); iter++) {
-			if(!strcmp(field, iter->c_str())) {
+			if(!strcasecmp(field, iter->c_str())) {
 				return(i);
 			}
 			++i;

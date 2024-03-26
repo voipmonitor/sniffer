@@ -1749,7 +1749,7 @@ eRegisterState convRegisterState(Call *call) {
 
 eRegisterField convRegisterFieldToFieldId(const char *field) {
 	for(unsigned i = 0; i < sizeof(registerFields) / sizeof(registerFields[0]); i++) {
-		if(!strcmp(field, registerFields[i].fieldName)) {
+		if(!strcasecmp(field, registerFields[i].fieldName)) {
 			return(registerFields[i].filedType);
 		}
 	}

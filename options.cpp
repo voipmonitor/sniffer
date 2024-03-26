@@ -1538,7 +1538,7 @@ void cSipMsgRelations::debug_out() {
 
 eSipMsgField convSipMsgFieldToFieldId(const char *field) {
 	for(unsigned i = 0; i < sizeof(sipMsgFields) / sizeof(sipMsgFields[0]); i++) {
-		if(!strcmp(field, sipMsgFields[i].fieldName)) {
+		if(!strcasecmp(field, sipMsgFields[i].fieldName)) {
 			return(sipMsgFields[i].filedType);
 		}
 	}
