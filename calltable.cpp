@@ -6474,6 +6474,17 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 	}
 	
+	bool rtp_dupl_seq = false;
+	for(int i = 0; i < rtp_size(); i++) {
+		if(rtp_stream_by_index(i)->dupl_check_seq.exists_dupl) {
+			rtp_dupl_seq = true;
+			break;
+		}
+	}
+	if(rtp_dupl_seq) {
+		cdr_flags |= CDR_RTP_DUPL_SEQ;
+	}
+	
 	set<vmIP> proxies_undup;
 	prepareSipIpForSave(c_branch, &proxies_undup);
 

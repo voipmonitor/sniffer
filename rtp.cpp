@@ -1376,6 +1376,10 @@ bool RTP::read(CallBranch *c_branch,
 	}
 
 	seq = getSeqNum();
+	if(!dupl_check_seq.exists_dupl && last_seq != -1 && seq != ROT_SEQ(last_seq + 1) && dupl_check_seq.check(seq)) {
+		dupl_check_seq.exists_dupl = true;
+	}
+	dupl_check_seq.push(seq);
 
 	if(seq == last_seq and !(last_markbit == 0 and getMarker() == 1)) {
 		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not

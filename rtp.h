@@ -319,6 +319,33 @@ class RTP {
 		u_int16_t prev_seq;
 		double jitter;
 	};
+	class cDuplCheckSeq {
+	public:
+		cDuplCheckSeq() {
+			memset(circ_buffer, 0, sizeof(circ_buffer));
+			circ_buffer_pos = 0;
+			exists_dupl = false;
+		}
+		inline void push(u_int16_t seq) {
+			circ_buffer[circ_buffer_pos] = seq;
+			circ_buffer_pos = (circ_buffer_pos + 1) % (sizeof(circ_buffer) / sizeof(circ_buffer[0]));
+		}
+		inline bool check(u_int16_t seq) {
+			if(seq) {
+				for(u_int16_t i = 0; i < (sizeof(circ_buffer) / sizeof(circ_buffer[0])); i++) {
+					if(seq == circ_buffer[i]) {
+						return(true);
+					}
+				}
+			}
+			return(false);
+		}
+	private:
+		u_int16_t circ_buffer[20];
+		u_int16_t circ_buffer_pos;
+	public:
+		bool exists_dupl;
+	};
 public: 
 	u_int32_t ssrc;		//!< ssrc of this RTP class
 	u_int32_t ssrc2;	//!< ssrc of this RTP class
@@ -855,6 +882,8 @@ private:
 	bool probably_unencrypted_payload;
 	
 	unsigned read_rtp_counter;
+	
+	cDuplCheckSeq dupl_check_seq;
 friend class Call;
 friend class RTPsecure;
 };
