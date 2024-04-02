@@ -77,22 +77,22 @@ public:
 	void init() {
 		switch(dedup_type) {
 		case _dedup_md5:
-			hash_size = sizeof(sPacketDuplCheck::md5);
+			hash_size = MD5_DIGEST_LENGTH;
 			break;
 		case _dedup_crc32_sw:
 		case _dedup_crc32_hw:
-			hash_size = sizeof(sPacketDuplCheck::crc32);
+			hash_size = sizeof(uint32_t);
 			break;
 		case _dedup_crc64:
-			hash_size = sizeof(sPacketDuplCheck::crc64);
+			hash_size = sizeof(uint64_t);
 			break;
 		#if HAVE_LIBBLAKE3
 		case _dedup_blake3:
-			hash_size = sizeof(sPacketDuplCheck::b3);
+			hash_size = BLAKE3_OUT_LEN;
 			break;
 		#endif
 		case _dedup_murmur:
-			hash_size = sizeof(sPacketDuplCheck::mm);
+			hash_size = 16;
 			break;
 		default:
 			hash_size = 4;
