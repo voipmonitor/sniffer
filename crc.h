@@ -6,11 +6,6 @@
 #include <sys/types.h>
 
 
-u_int32_t crc32buf(char *buf, size_t len);
-inline u_int32_t crc32buf(u_char *buf, size_t len) {
-	return(crc32buf((char*)buf, len));
-}
-
 #if defined(__x86_64__) or defined(__i386__)
 
 #if defined(__x86_64__)
@@ -86,5 +81,22 @@ inline uint32_t crc32_sse(uint32_t crc, const char *buf, size_t len) {
 #endif
 
 #endif
+
+
+void crc64_init();
+
+inline u_int64_t crc64_update(u_int64_t crc, u_char *data, size_t length) {
+	extern u_int64_t crc_64_tab_ecma182[256];
+	for(size_t i = 0; i < length; i++) {
+		uint8_t index = (uint8_t)(crc ^ data[i]);
+		crc = crc_64_tab_ecma182[index] ^ (crc >> 8);
+	}
+	return(crc);
+}
+
+#define crc64_prepare(crc) (crc) = 0xFFFFFFFFFFFFFFFFULL
+
+#define crc64_final(crc) (crc) = (crc) ^ 0xFFFFFFFFFFFFFFFFULL
+
 
 #endif

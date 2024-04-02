@@ -311,7 +311,10 @@ int opt_id_sensor_cleanspool = -1;
 bool opt_use_id_sensor_for_receiver_in_files = false;
 char opt_name_sensor[256] = "";
 volatile int readend = 0;
-int opt_dup_check = 0;
+int opt_dup_check_type = _dedup_na;
+int opt_dup_check_check_type = cPacketDuplBuffer::_simple;
+int opt_dup_check_hashtable_lifetime = 10;
+bool opt_dup_check_collision_test = false;
 int opt_dup_check_ipheader = 1;
 int opt_dup_check_ipheader_ignore_ttl = 1;
 int opt_dup_check_udpheader_ignore_checksum = 1;
@@ -3541,6 +3544,7 @@ int main(int argc, char *argv[]) {
 	regfailedcache = new FILE_LINE(42005) regcache;
 
 	base64_init();
+	crc64_init();
 
 /*
 	if(mysql_library_init(0, NULL, NULL)) {
@@ -5056,7 +5060,7 @@ int main_init_read() {
 						pcapQueueQ_outThread_defrag->start();
 					}
 				}
-				if(opt_dup_check && 
+				if(opt_dup_check_type != _dedup_na && 
 				   (is_receiver() || is_server() ?
 				     !opt_receiver_check_id_sensor :
 				     ifnamev.size() > 1)) {
@@ -6518,8 +6522,24 @@ void cConfig::addConfigItems() {
 				->addAlias("autocleanspoolmingb"));
 		setDisableIfEnd();
 	group("IP protocol");
-		addConfigItem((new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check))
-			->addValues("md5:1|crc:2"));
+		addConfigItem((new FILE_LINE(42246) cConfigItem_yesno("deduplicate", &opt_dup_check_type))
+			->addValues(("md5:" + intToString(_dedup_md5)+ 
+				     "|crc:" + intToString(_dedup_crc32_sw) +
+				     "|crc32:" + intToString(_dedup_crc32_sw) +
+				     "|crc64:" + intToString(_dedup_crc64) +
+				     #if HAVE_LIBBLAKE3
+				     "|blake3:" + intToString(_dedup_blake3) + 
+				     #endif
+				     "|murmur:" + intToString(_dedup_murmur)).c_str()));
+				expert();
+				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_check_type", &opt_dup_check_check_type))
+					->disableYes()
+					->disableNo()
+					->addValues(("simple:" + intToString(cPacketDuplBuffer::_simple) + 
+						     "|hashtable:" + intToString(cPacketDuplBuffer::_hashtable)).c_str()));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("deduplicate_hashtable_lifetime", &opt_dup_check_hashtable_lifetime));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("deduplicate_collision_test", &opt_dup_check_collision_test));
+		normal();
 		addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_ipheader", &opt_dup_check_ipheader))
 				->addValues("ip_only:2"));
 		addConfigItem(new FILE_LINE(42248) cConfigItem_yesno("udpfrag", &opt_udpfrag));
@@ -7980,7 +8000,7 @@ void get_command_line_arguments() {
 				opt_disableplc = 1;
 				break;
 			case 'L':
-				opt_dup_check = 1;
+				opt_dup_check_type = _dedup_md5;
 				break;
 			case 'K':
 				opt_norecord_dtmf = 1;
@@ -8269,7 +8289,7 @@ void get_command_line_arguments() {
 					exit(1);
 				}
 				opt_process_pcap_type = _pp_dedup;
-				opt_dup_check = 1;
+				opt_dup_check_type = _dedup_md5;
 				opt_dup_check_ipheader = 0;
 				opt_dup_check_ipheader_ignore_ttl = 1;
 				opt_dup_check_udpheader_ignore_checksum = 1;
@@ -8795,7 +8815,7 @@ void set_context_config() {
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set udpfrag in multiple interfaces");
 			}
 		}
-		if(opt_dup_check) {
+		if(opt_dup_check_type != _dedup_na) {
 			if(is_receiver() || is_server()) {
 				opt_pcap_queue_use_blocks = 1;
 				syslog(LOG_NOTICE, "enabling pcap_queue_use_blocks because set deduplicate in server/receiver mode");
@@ -8806,7 +8826,7 @@ void set_context_config() {
 		}
 	}
 	
-	if(opt_dup_check && opt_pcap_queue_use_blocks && (is_receiver() || is_server())) {
+	if(opt_dup_check_type != _dedup_na && opt_pcap_queue_use_blocks && (is_receiver() || is_server())) {
 		opt_receiver_check_id_sensor = false;
 		syslog(LOG_NOTICE, "disabling receiver_check_id_sensor because set deduplicate in server/receiver mode");
 	}
@@ -8987,13 +9007,18 @@ void set_context_config() {
 	}
 	
 	opt_kamailio = opt_kamailio_dstip.isSet();
+	
+	if(opt_dup_check_type == _dedup_murmur && opt_dup_check_ipheader == 2) {
+		opt_dup_check_type = _dedup_crc64;
+		syslog(LOG_ERR, "murmur type deduplication is not applicable if deduplicate_ipheader = ip_only is specified; it will be changed to crc64");
+	}
 
 	// force deduplication to crc32 always 
 	#if defined(__x86_64__) or defined(__i386__)
-	if(opt_dup_check == 2 && crc32_sse_is_available()) {
-		opt_dup_check = 3;
-	} else if(opt_dup_check == 3 && !crc32_sse_is_available()) {
-		opt_dup_check = 2;
+	if(opt_dup_check_type == _dedup_crc32_sw && crc32_sse_is_available()) {
+		opt_dup_check_type = _dedup_crc32_hw;
+	} else if(opt_dup_check_type == _dedup_crc32_hw && !crc32_sse_is_available()) {
+		opt_dup_check_type = _dedup_crc32_sw;
 	}
 	#endif
 }

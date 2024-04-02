@@ -600,6 +600,7 @@ LIBLZ4
 LIBZSTD
 LIBFFT
 LIBPNG
+LIBBLAKE3
 MYSQL_WITHOUT_SSL_SUPPORT
 NO_MYSQL_SSL_SUPPORT
 NO_MARIADB_SSL_SUPPORT
@@ -4289,6 +4290,49 @@ else
   as_fn_error $? "Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel" "$LINENO" 5
 fi
 
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for blake3_hasher_init in -lblake3" >&5
+printf %s "checking for blake3_hasher_init in -lblake3... " >&6; }
+if test ${ac_cv_lib_blake3_blake3_hasher_init+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lblake3  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+char blake3_hasher_init ();
+int
+main (void)
+{
+return blake3_hasher_init ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  ac_cv_lib_blake3_blake3_hasher_init=yes
+else $as_nop
+  ac_cv_lib_blake3_blake3_hasher_init=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_blake3_blake3_hasher_init" >&5
+printf "%s\n" "$ac_cv_lib_blake3_blake3_hasher_init" >&6; }
+if test "x$ac_cv_lib_blake3_blake3_hasher_init" = xyes
+then :
+  HAVE_LIBBLAKE3=1
+else $as_nop
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Unable to find blake3 library. yum install blake3-devel or compile from source" >&5
+printf "%s\n" "$as_me: Unable to find blake3 library. yum install blake3-devel or compile from source" >&6;}
+fi
+
 
 
 # Check whether --with-libc-dir was given.
@@ -5032,6 +5076,16 @@ $as_echo "#define HAVE_LIBDPDK 1" >>confdefs.h
 	DPDK_LDFLAGS=`"$PKGCONFIG" --libs libdpdk`
 
 	DPDK_T=yes
+fi
+
+HAVE_LIBBLAKE3_T=no
+if test "x$HAVE_LIBBLAKE3" = "x1"; then
+
+printf "%s\n" "#define HAVE_LIBBLAKE3 1" >>confdefs.h
+
+	LIBBLAKE3="-lblake3"
+
+	HAVE_LIBBLAKE3_T=yes
 fi
 
 # Checks for header files.

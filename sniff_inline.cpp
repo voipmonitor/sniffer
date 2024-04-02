@@ -43,10 +43,11 @@ extern unsigned opt_tcp_port_mgcp_gateway;
 extern unsigned opt_udp_port_mgcp_gateway;
 extern unsigned opt_tcp_port_mgcp_callagent;
 extern unsigned opt_udp_port_mgcp_callagent;
-extern int opt_dup_check;
+extern int opt_dup_check_type;
 extern int opt_dup_check_ipheader;
 extern int opt_dup_check_ipheader_ignore_ttl;
 extern int opt_dup_check_udpheader_ignore_checksum;
+extern bool opt_dup_check_collision_test;
 extern char *sipportmatrix;
 extern char *httpportmatrix;
 extern char *webrtcportmatrix;
@@ -866,7 +867,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	#endif
 	if(((ppf & ppf_calcMD5) || (ppf & ppf_dedup)) && ppd->header_ip) {
 		// check for duplicate packets (md5 is expensive operation - enable only if you really need it
-		if(opt_dup_check && 
+		if(opt_dup_check_type != _dedup_na && 
 		   ppd->dedup_buffer != NULL && 
 		   (((ppf & ppf_defragInPQout) && is_ip_frag == 1) ||
 		    (ppd->datalen > 0 && (opt_dup_check_ipheader || ppd->traillen < ppd->datalen))) &&
@@ -874,6 +875,9 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 		   !(ppd->flags.tcp && opt_enable_webrtc && (webrtcportmatrix[ppd->header_tcp->get_source()] || webrtcportmatrix[ppd->header_tcp->get_dest()])) &&
 		   !(ppd->flags.tcp && opt_enable_ssl && isSslIpPort(ppd->header_ip->get_saddr(), ppd->header_tcp->get_source(), ppd->header_ip->get_daddr(), ppd->header_tcp->get_dest()))) {
 			sPacketDuplCheck *_dc = header_packet ? &(*header_packet)->dc : &pcap_header_plus2->dc;
+			#if DEDUPLICATE_COLLISION_TEST
+			sPacketDuplCheck *_dc_ct_md5 = header_packet ? &(*header_packet)->dc_ct_md5 : &pcap_header_plus2->dc_ct_md5;
+			#endif
 			if(ppf & ppf_calcMD5) {
 				bool header_ip_set_orig = false;
 				u_int8_t header_ip_ttl_orig;
@@ -901,7 +905,10 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						header_udp_set_orig = true;
 					}
 				}
-				sPacketDuplCheckProc dcp(_dc, opt_dup_check);
+				sPacketDuplCheckProc dcp(_dc, (eDedupType)opt_dup_check_type);
+				#if DEDUPLICATE_COLLISION_TEST
+				sPacketDuplCheckProc dcp_ct_md5(_dc_ct_md5, _dedup_md5);
+				#endif
 				if((ppf & ppf_defragInPQout) && is_ip_frag == 1) {
 					u_int32_t caplen = header_packet ? HPH(*header_packet)->caplen : pcap_header_plus2->get_caplen();
 					int data_dedup_size = MIN(caplen - ppd->header_ip_offset, ppd->header_ip->get_tot_len());
@@ -912,6 +919,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						return(0);
 					}
 					dcp.data(ppd->header_ip, data_dedup_size);
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test) {
+						dcp_ct_md5.data(ppd->header_ip, data_dedup_size);
+					}
+					#endif
 				} else if(opt_dup_check_ipheader == 1) {
 					int data_dedup_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
 					if(data_dedup_size < 0 || data_dedup_size > 0xFFFFF) {
@@ -921,6 +933,11 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						return(0);
 					}
 					dcp.data(ppd->header_ip, data_dedup_size);
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test) {
+						dcp_ct_md5.data(ppd->header_ip, data_dedup_size);
+					}
+					#endif
 				} else if(opt_dup_check_ipheader == 2) {
 					u_int16_t header_ip_size = ppd->header_ip->get_hdr_size();
 					u_char *data_dedup = (u_char*)ppd->header_ip;
@@ -937,6 +954,12 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					}
 					dcp.data(data_dedup , data_dedup_size);
 					ppd->header_ip->md5_update_ip(&dcp);
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test) {
+						dcp_ct_md5.data(data_dedup , data_dedup_size);
+						ppd->header_ip->md5_update_ip(&dcp_ct_md5);
+					}
+					#endif
 				} else {
 					// check duplicates based only on data (without ip header and without UDP/TCP header). Duplicate packets 
 					// will be matched regardless on IP 
@@ -948,8 +971,18 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						return(0);
 					}
 					dcp.data(ppd->data, data_dedup_size);
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test) {
+						dcp_ct_md5.data(ppd->data, data_dedup_size);
+					}
+					#endif
 				}
 				dcp.final();
+				#if DEDUPLICATE_COLLISION_TEST
+				if(opt_dup_check_collision_test) {
+					dcp_ct_md5.final();
+				}
+				#endif
 				if(header_ip_set_orig) {
 					ppd->header_ip->set_ttl(header_ip_ttl_orig);
 					ppd->header_ip->set_check(header_ip_check_orig);
@@ -962,7 +995,29 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				#endif
 			}
 			if((ppf & ppf_dedup) && !_dc->is_empty()) {
-				if(_dc->check_dupl(ppd->dedup_buffer, opt_dup_check)) {
+				#if DEDUPLICATE_COLLISION_TEST
+				/*
+				if(!memcmp(_dc_ct_md5, "\x4d\x75\xec\x34\x5c\x76\x21\x90\x55\x83\x9c\x8c\xca\x5f\x9d\x6b", 16)) {
+					cout << " *** DUPL ***" << endl;
+					timeval ts = header_packet ? HPH(*header_packet)->ts : pcap_header_plus2->get_ts();
+					cout << ts.tv_sec << " . " << ts.tv_usec << endl;
+					int data_dedup_size = MIN(ppd->datalen + (ppd->data - (char*)ppd->header_ip), ppd->header_ip->get_tot_len());
+					hexdump((u_char*)ppd->header_ip, data_dedup_size);
+				}
+				*/
+				bool dupl_ct_md5 = false;
+				if(opt_dup_check_collision_test) {
+					dupl_ct_md5 = ppd->dedup_buffer_ct_md5->check_dupl(_dc_ct_md5, (eDedupType)opt_dup_check_type);
+				}
+				#endif
+				if(ppd->dedup_buffer->check_dupl(_dc, (eDedupType)opt_dup_check_type)) {
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test && !dupl_ct_md5) {
+						static unsigned ct_md5_counter;
+						cout << " *** COLLISION A *** " << (++ct_md5_counter) << endl;
+						ppd->dedup_buffer->print_hash(_dc);
+					}
+					#endif
 					//printf("dropping duplicate md5[%s]\n", md5);
 					extern unsigned int duplicate_counter;
 					duplicate_counter++;
@@ -977,7 +1032,6 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					#endif
 					return(0);
 				}
-				_dc->store(ppd->dedup_buffer, opt_dup_check);
 			}
 		}
 	}

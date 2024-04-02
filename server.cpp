@@ -598,12 +598,12 @@ void cSnifferServerConnection::cp_service() {
 		JsonExport ok_parameters;
 		ok_parameters.add("result", "OK");
 		extern int opt_pcap_queue_use_blocks;
-		extern int opt_dup_check;
+		extern int opt_dup_check_type;
 		if(opt_pcap_queue_use_blocks) {
 			ok_parameters.add("use_blocks_pb", true);
 		}
-		if(opt_dup_check) {
-			ok_parameters.add("deduplicate", opt_dup_check);
+		if(opt_dup_check_type != _dedup_na) {
+			ok_parameters.add("deduplicate", opt_dup_check_type);
 		}
 		if(useNewStore()) {
 			ok_parameters.add("mysql_new_store", useNewStore());
@@ -1413,7 +1413,7 @@ int cSnifferClientService::receive_process_loop_begin() {
 					rsltConnectData_okRead = true;
 					if(is_client_packetbuffer_sender()) {
 						extern int opt_pcap_queue_use_blocks;
-						extern int opt_dup_check;
+						extern int opt_dup_check_type;
 						bool change_config = false;
 						if(!rsltConnectData_json.getValue("use_blocks_pb").empty() &&
 						   !opt_pcap_queue_use_blocks) {
@@ -1422,17 +1422,17 @@ int cSnifferClientService::receive_process_loop_begin() {
 							change_config = true;
 						}
 						if(!rsltConnectData_json.getValue("deduplicate").empty()) {
-							int server_dup_check = atoi(rsltConnectData_json.getValue("deduplicate").c_str());
-							if(server_dup_check >= 0 && server_dup_check <= 3) {
+							int server_dup_check_type = atoi(rsltConnectData_json.getValue("deduplicate").c_str());
+							if(server_dup_check_type >= _dedup_na && server_dup_check_type <= _dedup_last) {
 								#if defined(__x86_64__) or defined(__i386__)
-								if(server_dup_check == 3 && !crc32_sse_is_available()) server_dup_check = 2; // do not force SSE 4.2 version if we do not have it
+								if(server_dup_check_type == _dedup_crc32_hw && !crc32_sse_is_available()) server_dup_check_type = _dedup_crc32_sw; // do not force SSE 4.2 version if we do not have it
 								#endif
-								if(opt_dup_check != server_dup_check) {
+								if(opt_dup_check_type != server_dup_check_type) {
 									syslog(LOG_NOTICE, 
-									       opt_dup_check ?
+									       opt_dup_check_type ?
 										"change the deduplication type because it is set differently on the server" :
 										"enabling deduplicate because it is enabled on server");
-									opt_dup_check = server_dup_check;
+									opt_dup_check_type = server_dup_check_type;
 									change_config = true;
 								}
 							}

@@ -30,11 +30,17 @@ struct sHeaderPacket {
 	u_int16_t eth_protocol;
 	sPacketInfoData pid;
 	sPacketDuplCheck dc;
+	#if DEDUPLICATE_COLLISION_TEST
+	sPacketDuplCheck dc_ct_md5;
+	#endif
 	pcap_pkthdr header;
 	u_char packet[1];
 	inline void clearPcapProcessData() {
 		detect_headers = 0;
 		dc.clear();
+		#if DEDUPLICATE_COLLISION_TEST
+		dc_ct_md5.clear();
+		#endif
 	}
 };
 #define HPH(hp) (&((hp)->header))

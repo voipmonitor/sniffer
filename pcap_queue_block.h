@@ -155,6 +155,20 @@ struct pcap_pkthdr_plus {
 			return(std ? this->header_std.ts.tv_usec : this->header_fix_size.ts_tv_usec);
 		#endif
 	}
+	inline timeval get_ts() {
+		#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+			return(this->header.ts);
+		#else
+			if(std) {
+				return(this->header_std.ts);
+			} else {
+				timeval ts;
+				ts.tv_sec = this->header_fix_size.ts_tv_sec;
+				ts.tv_usec = this->header_fix_size.ts_tv_usec;
+				return(ts);
+			}
+		#endif
+	}
 	inline u_int64_t get_time_ms() {
 		return(get_tv_sec() * 1000ull + get_tv_usec() / 1000);
 	}
@@ -185,12 +199,18 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 	inline void clear() {
 		detect_headers = 0;
 		dc.clear();
+		#if DEDUPLICATE_COLLISION_TEST
+		dc_ct_md5.clear();
+		#endif
 		ignore = false;
 		pid.clear();
 	}
 	u_int8_t detect_headers;
 	u_int16_t eth_protocol;
 	sPacketDuplCheck dc;
+	#if DEDUPLICATE_COLLISION_TEST
+	sPacketDuplCheck dc_ct_md5;
+	#endif
 	u_int8_t ignore;
 };
 

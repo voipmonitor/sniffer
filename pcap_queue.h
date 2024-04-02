@@ -397,17 +397,29 @@ friend void *_PcapQueue_writeThreadFunction(void *arg);
 struct pcapProcessData {
 	pcapProcessData() {
 		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
-		extern int opt_dup_check;
-		if(opt_dup_check) {
-			unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int16_t));
-			this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
-			memset(this->dedup_buffer, 0, dedup_buffer_size);
+		extern int opt_dup_check_type;
+		if(opt_dup_check_type != _dedup_na) {
+			extern int opt_dup_check_check_type;
+			this->dedup_buffer = new FILE_LINE(0) cPacketDuplBuffer((cPacketDuplBuffer::eType)opt_dup_check_check_type, (eDedupType)opt_dup_check_type);
+			#if DEDUPLICATE_COLLISION_TEST
+			extern bool opt_dup_check_collision_test;
+			if(opt_dup_check_collision_test) {
+				this->dedup_buffer_ct_md5 = new FILE_LINE(0) cPacketDuplBuffer(cPacketDuplBuffer::_hashtable, _dedup_md5);
+			} else {
+				this->dedup_buffer_ct_md5 = NULL;
+			}
+			#endif
 		}
 	}
 	~pcapProcessData() {
 		if(this->dedup_buffer) {
-			delete [] this->dedup_buffer;
+			delete this->dedup_buffer;
 		}
+		#if DEDUPLICATE_COLLISION_TEST
+		if(this->dedup_buffer_ct_md5) {
+			delete this->dedup_buffer_ct_md5;
+		}
+		#endif
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
 	ether_header *header_eth;
@@ -423,7 +435,10 @@ struct pcapProcessData {
 	int16_t traillen;
 	packet_flags flags;
 	sPacketInfoData pid;
-	unsigned char *dedup_buffer;
+	cPacketDuplBuffer *dedup_buffer;
+	#if DEDUPLICATE_COLLISION_TEST
+	cPacketDuplBuffer *dedup_buffer_ct_md5;
+	#endif
 	u_int ipfrag_lastprune;
 	ipfrag_data_s ipfrag_data;
 };
@@ -1132,7 +1147,10 @@ private:
 	ipfrag_data_s ipfrag_data;
 	unsigned ipfrag_lastprune;
 	unsigned defrag_counter;
-	u_char *dedup_buffer;
+	cPacketDuplBuffer *dedup_buffer;
+	#if DEDUPLICATE_COLLISION_TEST
+	cPacketDuplBuffer *dedup_buffer_ct_md5;
+	#endif
 	volatile bool initThreadOk;
 	volatile bool terminatingThread;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH

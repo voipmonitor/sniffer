@@ -83,8 +83,9 @@ extern int opt_udpfrag;
 extern int opt_skinny;
 extern int opt_ipaccount;
 extern int opt_pcapdump;
-extern int opt_dup_check;
+extern int opt_dup_check_type;
 extern int opt_dup_check_ipheader;
+extern bool opt_dup_check_collision_test;
 extern int opt_mirrorip;
 extern char opt_mirrorip_src[20];
 extern char opt_mirrorip_dst[20];
@@ -4932,7 +4933,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			dpdkConfig.callback.packet_completion = _dpdk_packet_completion;
 			dpdkConfig.callback.packet_process = _dpdk_packet_process;
 			dpdkConfig.callback.packet_process__mbufs_in_packetbuffer = _dpdk_packet_process__mbufs_in_packetbuffer;
-			if(opt_dup_check) {
+			if(opt_dup_check_type != _dedup_na) {
 				this->md1Thread = new FILE_LINE(15041) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this, this->parent);
 				this->md2Thread = new FILE_LINE(15042) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread, this->parent);
 				this->dedupThread = new FILE_LINE(15043) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), dedup, this, this->md2Thread, this->parent);
@@ -5373,11 +5374,11 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			POP_FROM_PREV_THREAD;
 			bool okPush = true;
 			if((this->typeThread == md1 && !(this->counter % 2)) ||
-			   (this->typeThread == md2 && (opt_dup_check ? hpii.header_packet->dc.is_empty() : !hpii.header_packet->detect_headers))) {
-				if(opt_dup_check || !hpii.header_packet->detect_headers) {
+			   (this->typeThread == md2 && (opt_dup_check_type != _dedup_na ? hpii.header_packet->dc.is_empty() : !hpii.header_packet->detect_headers))) {
+				if(opt_dup_check_type != _dedup_na || !hpii.header_packet->detect_headers) {
 					res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 								NULL, 0,
-								(opt_dup_check ? ppf_calcMD5 : 0) | ppf_returnZeroInCheckData);
+								(opt_dup_check_type != _dedup_na ? ppf_calcMD5 : 0) | ppf_returnZeroInCheckData);
 					if(res == -1) {
 						break;
 					} else if(res == 0) {
@@ -5397,7 +5398,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			POP_FROM_PREV_THREAD;
 			if(opt_pcap_queue_iface_dedup_separate_threads_extend) {
 				bool okPush = true;
-				if(opt_dup_check) {
+				if(opt_dup_check_type != _dedup_na) {
 					res = this->pcapProcess(&hpii.header_packet, this->typeThread,
 								NULL, 0,
 								ppf_dedup | ppf_dump | ppf_returnZeroInCheckData, _pcapDumpHandle);
@@ -6043,15 +6044,15 @@ void PcapQueue_readFromInterfaceThread::processBlock(pcap_block_store *block) {
 	pcap_dumper_t *_pcapDumpHandle = NULL;
 	switch(this->typeThread) {
 	case md1:
-		ppf = (opt_dup_check ? ppf_calcMD5 : ppf_na) |
+		ppf = (opt_dup_check_type != _dedup_na ? ppf_calcMD5 : ppf_na) |
 		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
 		break;
 	case md2:
-		ppf = (opt_dup_check ? ppf_calcMD5 : ppf_na) |
+		ppf = (opt_dup_check_type != _dedup_na ? ppf_calcMD5 : ppf_na) |
 		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
 		break;
 	case dedup:
-		ppf = (opt_dup_check ? ppf_dedup : ppf_na) |
+		ppf = (opt_dup_check_type != _dedup_na ? ppf_dedup : ppf_na) |
 		      (opt_udpfrag ? ppf_defragInPQout : ppf_returnZeroInCheckData);
 		if(opt_pcapdump && readThread) {
 			ppf |= ppf_dump;
@@ -8882,7 +8883,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		return(-1);
 	}
 	
-	if(opt_dup_check && pcapQueueQ_outThread_dedup &&
+	if(opt_dup_check_type != _dedup_na && pcapQueueQ_outThread_dedup &&
 	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag)) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		return(-1);
@@ -9261,11 +9262,21 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->defrag_counter = 0;
 	this->ipfrag_lastprune = 0;
 	if(typeOutputThread == dedup) {
-		unsigned dedup_buffer_size = 65536 * (opt_dup_check == 1 ? MD5_DIGEST_LENGTH : sizeof(u_int16_t));
-		this->dedup_buffer = new FILE_LINE(0) u_char[dedup_buffer_size];
-		memset(this->dedup_buffer, 0, dedup_buffer_size);
+		extern int opt_dup_check_check_type;
+		this->dedup_buffer = new FILE_LINE(0) cPacketDuplBuffer((cPacketDuplBuffer::eType)opt_dup_check_check_type, (eDedupType)opt_dup_check_type);
+		#if DEDUPLICATE_COLLISION_TEST
+		extern bool opt_dup_check_collision_test;
+		if(opt_dup_check_collision_test) {
+			this->dedup_buffer_ct_md5 = new FILE_LINE(0) cPacketDuplBuffer(cPacketDuplBuffer::_hashtable, _dedup_md5);
+		} else {
+			this->dedup_buffer_ct_md5 = NULL;
+		}
+		#endif
 	} else {
 		this->dedup_buffer = NULL;
+		#if DEDUPLICATE_COLLISION_TEST
+		this->dedup_buffer_ct_md5 = NULL;
+		#endif
 	}
 	this->initThreadOk = false;
 	this->terminatingThread = false;
@@ -9286,7 +9297,14 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
 	if(typeOutputThread == dedup) {
-		delete [] dedup_buffer;
+		if(dedup_buffer) {
+			delete dedup_buffer;
+		}
+		#if DEDUPLICATE_COLLISION_TEST
+		if(dedup_buffer_ct_md5) {
+			delete dedup_buffer_ct_md5;
+		}
+		#endif
 	}
 }
 
@@ -9622,8 +9640,15 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 	sPacketDuplCheck *_dc = NULL;
 	sPacketDuplCheck __dc;
+	#if DEDUPLICATE_COLLISION_TEST
+	sPacketDuplCheck *_dc_ct_md5 = NULL;
+	sPacketDuplCheck __dc_ct_md5;
+	#endif
 	if(hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && !((pcap_pkthdr_plus2*)hp->header)->dc.is_empty()) {
 		_dc = &((pcap_pkthdr_plus2*)hp->header)->dc;
+		#if DEDUPLICATE_COLLISION_TEST
+		_dc_ct_md5 = &((pcap_pkthdr_plus2*)hp->header)->dc_ct_md5;
+		#endif
 	} else {
 		if(hp->header->header_ip_offset) {
 			iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header->header_ip_offset);
@@ -9646,7 +9671,10 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 				return;
 			}
 			if(data && datalen) {
-				sPacketDuplCheckProc dcp(&__dc, opt_dup_check);
+				sPacketDuplCheckProc dcp(&__dc, (eDedupType)opt_dup_check_type);
+				#if DEDUPLICATE_COLLISION_TEST
+				sPacketDuplCheckProc dcp_ct_md5(&__dc_ct_md5, _dedup_md5);
+				#endif
 				if(opt_dup_check_ipheader) {
 					bool header_ip_set_orig = false;
 					u_int8_t header_ip_ttl_orig = 0;
@@ -9672,6 +9700,11 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 							return;
 						}
 						dcp.data(header_ip, data_dedup_size);
+						#if DEDUPLICATE_COLLISION_TEST
+						if(opt_dup_check_collision_test) {
+							dcp_ct_md5.data(header_ip, data_dedup_size);
+						}
+						#endif
 					} else if(opt_dup_check_ipheader == 2) {
 						u_int16_t header_ip_size = header_ip->get_hdr_size();
 						u_char *data_dedup = (u_char*)header_ip;
@@ -9686,6 +9719,12 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 						}
 						dcp.data(data_dedup , data_dedup_size);
 						header_ip->md5_update_ip(&dcp);
+						#if DEDUPLICATE_COLLISION_TEST
+						if(opt_dup_check_collision_test) {
+							dcp_ct_md5.data(data_dedup , data_dedup_size);
+							header_ip->md5_update_ip(&dcp_ct_md5);
+						}
+						#endif
 					}
 					if(header_ip_set_orig) {
 						header_ip->set_ttl(header_ip_ttl_orig);
@@ -9696,14 +9735,38 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 					}
 				} else {
 					dcp.data(data, datalen);
+					#if DEDUPLICATE_COLLISION_TEST
+					if(opt_dup_check_collision_test) {
+						dcp_ct_md5.data(data, datalen);
+					}
+					#endif
 				}
 				dcp.final();
 				_dc = &__dc;
+				#if DEDUPLICATE_COLLISION_TEST
+				if(opt_dup_check_collision_test) {
+					dcp_ct_md5.final();
+					_dc_ct_md5 = &__dc_ct_md5;
+				}
+				#endif
 			}
 		}
 	}
 	if(_dc) {
-		if(_dc->check_dupl(this->dedup_buffer, opt_dup_check)) {
+		#if DEDUPLICATE_COLLISION_TEST
+		bool dupl_ct_md5 = false;
+		if(opt_dup_check_collision_test) {
+			dupl_ct_md5 = this->dedup_buffer_ct_md5->check_dupl(_dc_ct_md5, (eDedupType)opt_dup_check_type);
+		}
+		#endif
+		if(this->dedup_buffer->check_dupl(_dc, (eDedupType)opt_dup_check_type)) {
+			#if DEDUPLICATE_COLLISION_TEST
+			if(opt_dup_check_collision_test && !dupl_ct_md5) {
+				static unsigned ct_md5_counter;
+				cout << " *** COLLISION B *** " << (++ct_md5_counter) << endl;
+				this->dedup_buffer->print_hash(_dc);
+			}
+			#endif
 			extern unsigned int duplicate_counter;
 			duplicate_counter++;
 			if(sverb.dedup) {
@@ -9712,7 +9775,6 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			hp->destroy_or_unlock_blockstore();
 			return;
 		}
-		_dc->store(this->dedup_buffer, opt_dup_check);
 	}
 	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
 		hp->destroy_or_unlock_blockstore();
