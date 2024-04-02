@@ -1,3 +1,17 @@
+2024.04.1  02.04.2024
+=====================
+- for each sniffing interface do not use ethtool but kernel api instead. Number of interrupt queues are lowered to 8 automatically (or less depending on cpu cores). New parameter eth_max_channels controls it. 
+- adding the ability to join reference crd tables when backing up (or migrating) the database (database_backup_merge_reference_tables = yes/NO)
+- fix keyloger compilation (add dl lib) [VS-1574]
+- using kernel api instead of ethtool and automatically set channels to 8 if set more 
+- checking every minute whether cleaning should occur due to autoclean parameters [VS-1576]
+- fix problem with manager encryption if opt_nocdr=yes is enabled
+- added support for column ordering in active calls [VG-2782]
+- sensor_id in cdr is assigned by receiver sensor id and not sender (fixes pcap downloads) [VG-2784]
+- added new cdr flag when RTP duplication is detected (so it can be searched in DB / GUI) [VS-1582]
+- normalize text in sip responses, s850 reason and user agents (removes unique strings) - helps to maintain database smaller. This can be controlled by new options cdr_sip_response_normalisation, cdr_reason_normalisation, cdr_ua_normalisation - if you want to enable it - set them to yes
+
+
 2024.03.1  10.03.2024
 =====================
 - allow registrations in live sniffer even if sip-register=no, disable query_cache for live sniffer [VG-2771]
