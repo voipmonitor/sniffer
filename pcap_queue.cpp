@@ -2917,6 +2917,17 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 	}
 	long unsigned int rss;
 	if(task == pcapStatLog) {
+		if(sverb.dedup_counter) {
+			extern u_int64_t duplicate_counter;
+			extern u_int64_t duplicate_counter_collisions;
+			if(duplicate_counter) {
+				outStrStat << "DUPL[" << duplicate_counter;
+				if(duplicate_counter_collisions) {
+					outStrStat << "/" << duplicate_counter_collisions;
+				}
+				outStrStat << "] ";
+			}
+		}
 		outStrStat << "RSS/VSZ[";
 		rss = this->getRssUsage(true);
 		if(rss > 0) {
@@ -9762,12 +9773,15 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 		if(this->dedup_buffer->check_dupl(_dc, (eDedupType)opt_dup_check_type)) {
 			#if DEDUPLICATE_COLLISION_TEST
 			if(opt_dup_check_collision_test && !dupl_ct_md5) {
-				static unsigned ct_md5_counter;
-				cout << " *** COLLISION B *** " << (++ct_md5_counter) << endl;
-				this->dedup_buffer->print_hash(_dc);
+				extern u_int64_t duplicate_counter_collisions;
+				++duplicate_counter_collisions;
+				if(sverb.dedup_collision) {
+					cout << " *** COLLISION B *** " << duplicate_counter_collisions << endl;
+					this->dedup_buffer->print_hash(_dc);
+				}
 			}
 			#endif
-			extern unsigned int duplicate_counter;
+			extern u_int64_t duplicate_counter;
 			duplicate_counter++;
 			if(sverb.dedup) {
 				cout << "*** DEDUP (processDedup) " << duplicate_counter << endl;

@@ -81,6 +81,8 @@ struct sVerbose {
 	int defrag;
 	int defrag_overflow;
 	int dedup;
+	int dedup_collision;
+	int dedup_counter;
 	int reassembly_sip;
 	int reassembly_sip_output;
 	int log_manager_cmd;

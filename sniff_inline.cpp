@@ -57,7 +57,7 @@ extern char *ss7_rudp_portmatrix;
 extern char *diameter_tcp_portmatrix;
 extern TcpReassembly *tcpReassemblyHttp;
 extern TcpReassembly *tcpReassemblyWebrtc;
-extern unsigned int defrag_counter;
+extern u_int64_t defrag_counter;
 extern int opt_save_ip_from_encaps_ipheader_only_gre;
 
 
@@ -1013,13 +1013,16 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 				if(ppd->dedup_buffer->check_dupl(_dc, (eDedupType)opt_dup_check_type)) {
 					#if DEDUPLICATE_COLLISION_TEST
 					if(opt_dup_check_collision_test && !dupl_ct_md5) {
-						static unsigned ct_md5_counter;
-						cout << " *** COLLISION A *** " << (++ct_md5_counter) << endl;
-						ppd->dedup_buffer->print_hash(_dc);
+						extern u_int64_t duplicate_counter_collisions;
+						++duplicate_counter_collisions;
+						if(sverb.dedup_collision) {
+							cout << " *** COLLISION A *** " << duplicate_counter_collisions << endl;
+							ppd->dedup_buffer->print_hash(_dc);
+						}
 					}
 					#endif
 					//printf("dropping duplicate md5[%s]\n", md5);
-					extern unsigned int duplicate_counter;
+					extern u_int64_t duplicate_counter;
 					duplicate_counter++;
 					if(sverb.dedup) {
 						cout << "*** DEDUP (pcapProcess) " << duplicate_counter << endl;
