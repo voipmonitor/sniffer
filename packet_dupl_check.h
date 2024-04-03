@@ -32,7 +32,7 @@ struct sPacketDuplCheck {
 		uint32_t crc32;
 		uint64_t crc64;
 		#if HAVE_LIBBLAKE3
-		uint8_t b3[BLAKE3_OUT_LEN];
+		uint8_t b3[16];
 		#endif
 		uint8_t mm[16];
 		uint16_t first_16_bits;
@@ -88,7 +88,7 @@ public:
 			break;
 		#if HAVE_LIBBLAKE3
 		case _dedup_blake3:
-			hash_size = BLAKE3_OUT_LEN;
+			hash_size = 16;
 			break;
 		#endif
 		case _dedup_murmur:
@@ -261,7 +261,9 @@ struct sPacketDuplCheckProc {
 	}
 	#endif
 	inline void data_murmur(u_char *data, unsigned len) {
-		MurmurHash3_x64_128(data, len, 64, dc->mm);
+		u_int32_t seed = len >= 8 ? *(u_int32_t*)(data + len/2) :
+				 len >= 4 ? *(u_int32_t*)(data + len - 4) : 64;
+		MurmurHash3_x64_128(data, len, seed, dc->mm);
 	}
 	inline void data(void *data, unsigned len) {
 		switch(dedup_type) {
@@ -297,7 +299,7 @@ struct sPacketDuplCheckProc {
 			break;
 		#if HAVE_LIBBLAKE3
 		case _dedup_blake3:
-			blake3_hasher_finalize(&b3h, dc->b3, BLAKE3_OUT_LEN);
+			blake3_hasher_finalize(&b3h, dc->b3, 16);
 			break;
 		#endif
 		default:

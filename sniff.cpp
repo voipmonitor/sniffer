@@ -7170,7 +7170,7 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
 		if(opt_dup_check_type != _dedup_na) {
-			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%u]\n", 
+			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d] skipped dupe pkts [%" PRIu64 "]\n", 
 				(int)calltable->getCountCalls(), (int)calltable->calls_queue.size(), duplicate_counter);
 		} else {
 			syslog(LOG_NOTICE, "Active calls [%d] calls in sql queue [%d]\n", 
