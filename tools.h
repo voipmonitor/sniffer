@@ -158,6 +158,52 @@ struct d_item2
 	type_item2 item2;
 };
 
+template <class type_item>
+struct item_count
+{
+	item_count() {
+		count = 0;
+	}
+	item_count(type_item item, u_int32_t count) {
+		this->item = item;
+		this->count = count;
+	}
+	bool operator == (const item_count<type_item>& other) const { 
+		return(this->item == other.item &&
+		       this->count == other.count); 
+	}
+	bool operator < (const item_count<type_item>& other) const { 
+		return(this->count < other.count ||
+		       (this->count == other.count && this->item < other.item)); 
+	}
+	type_item item;
+	u_int32_t count;
+};
+
+template <class type_item>
+void conv_item_map_count_to_item_count(map<type_item, u_int32_t> *src_map, list<item_count<type_item> > *dst_list, bool sort) {
+	for(typename map<type_item, u_int32_t>::iterator iter = src_map->begin(); iter != src_map->end(); iter++) {
+		dst_list->push_back(item_count<type_item>(iter->first, iter->second));
+	}
+	if(sort) {
+		dst_list->sort();
+	}
+}
+
+template <class type_item>
+void conv_item_map_count_to_json_export(map<type_item, u_int32_t> *src_map, JsonExport *json_export, unsigned top_n) {
+	list<item_count<type_item> > dst_list;
+	conv_item_map_count_to_item_count<type_item>(src_map, &dst_list, true);
+	unsigned counter = 0;
+	for(typename list<item_count<type_item> >::reverse_iterator iter = dst_list.rbegin(); iter != dst_list.rend(); iter++) {
+		json_export->add(((string)iter->item).c_str(), iter->count);
+		++counter;
+		if(top_n && counter >= top_n) {
+			break;
+		}
+	}
+}
+
 struct sStreamId {
 	sStreamId(vmIP sip, vmPort sport, vmIP cip, vmPort cport, bool sortSc = false) {
 		s = vmIPport(sip, sport);

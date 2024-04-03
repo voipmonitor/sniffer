@@ -12554,6 +12554,24 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	map<int32_t, u_int32_t> sensor_map;
 	map<vmIP, u_int32_t> ip_src_map;
 	map<vmIP, u_int32_t> ip_dst_map;
+	map<vmIP, u_int32_t> rtp_ip_src_map;
+	map<vmIP, u_int32_t> rtp_ip_dst_map;
+	map<string, u_int32_t> caller_map;
+	map<string, u_int32_t> called_map;
+	int ip_src_index = -1;
+	int ip_dst_index = -1;
+	int rtp_ip_src_index = -1;
+	int rtp_ip_dst_index = -1;
+	int caller_index = -1;
+	int called_index = -1;
+	if(needIpMap) {
+		ip_src_index = convCallFieldToFieldIndex(cf_callerip);
+		ip_dst_index = convCallFieldToFieldIndex(cf_calledip);
+		rtp_ip_src_index = convCallFieldToFieldIndex(cf_rtp_src);
+		rtp_ip_dst_index = convCallFieldToFieldIndex(cf_rtp_dst);
+		caller_index = convCallFieldToFieldIndex(cf_caller);
+		called_index = convCallFieldToFieldIndex(cf_called);
+	}
 	for(unsigned i = 0; i < active_calls_count; i++) {	
 		Call *call = active_calls[i];
 		bool okCallFilters = true;
@@ -12566,14 +12584,41 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			}
 		}
 		if(okCallFilters) {
+			vmIP ip_src;
+			vmIP ip_dst;
+			vmIP rtp_ip_src;
+			vmIP rtp_ip_dst;
+			string caller;
+			string called;
+			CallBranch *c_branch = NULL;
+			set<vmIP> proxies;
+			if(needIpMap) {
+				c_branch = call->branch_main();
+			}
 			if(limit != 0) {
 				RecordArray rec(sizeof(callFields) / sizeof(callFields[0]) + custom_headers_size + custom_headers_reserve);
 				call->getRecordData(&rec);
 				rec.sortBy = sortByIndex;
 				rec.sortBy2 = convCallFieldToFieldIndex(cf_calldate_num);
 				records.push_back(rec);
+				if(needIpMap) {
+					ip_src = rec.fields[ip_src_index].get_ip();
+					ip_dst = rec.fields[ip_dst_index].get_ip();
+					rtp_ip_src = rec.fields[rtp_ip_src_index].get_ip();
+					rtp_ip_dst = rec.fields[rtp_ip_dst_index].get_ip();
+					caller = rec.fields[caller_index].get_string();
+					called = rec.fields[called_index].get_string();
+				}
 			} else {
 				++counter;
+				if(needIpMap) {
+					ip_src = call->getSipcallerip(c_branch, true);
+					ip_dst = call->getSipcalledip(c_branch, true, true, NULL, &proxies);
+					rtp_ip_src = call->lastactivecallerrtp->saddr;
+					rtp_ip_dst = call->lastactivecallerrtp->daddr;
+					caller = c_branch->caller;
+					called = call->get_called(c_branch);
+				}
 			}
 			if(needSensorMap) {
 				if(sensor_map.find(call->useSensorId) == sensor_map.end()) {
@@ -12583,20 +12628,18 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				}
 			}
 			if(needIpMap) {
-				CallBranch *c_branch = call->branch_main();
-				vmIP sipcallerip = call->getSipcallerip(c_branch, true);
-				if(ip_src_map.find(sipcallerip) == ip_src_map.end()) {
-					ip_src_map[sipcallerip] = 1;
-				} else {
-					++ip_src_map[sipcallerip];
+				if(limit != 0) {
+					call->getSipcalledip(c_branch, true, true, NULL, &proxies);
 				}
-				vmPort sipcalledport;
-				set<vmIP> proxies;
-				vmIP sipcalledip = call->getSipcalledip(c_branch, true, true, NULL, &proxies);
-				if(ip_dst_map.find(sipcalledip) == ip_dst_map.end()) {
-					ip_dst_map[sipcalledip] = 1;
+				if(ip_src_map.find(ip_src) == ip_src_map.end()) {
+					ip_src_map[ip_src] = 1;
 				} else {
-					++ip_dst_map[sipcalledip];
+					++ip_src_map[ip_src];
+				}
+				if(ip_dst_map.find(ip_dst) == ip_dst_map.end()) {
+					ip_dst_map[ip_dst] = 1;
+				} else {
+					++ip_dst_map[ip_dst];
 				}
 				if(proxies.size()) {
 					for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); ++iter) {
@@ -12606,6 +12649,26 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 							++ip_dst_map[*iter];
 						}
 					}
+				}
+				if(rtp_ip_src_map.find(rtp_ip_src) == rtp_ip_src_map.end()) {
+					rtp_ip_src_map[rtp_ip_src] = 1;
+				} else {
+					++rtp_ip_src_map[rtp_ip_src];
+				}
+				if(rtp_ip_dst_map.find(rtp_ip_dst) == rtp_ip_dst_map.end()) {
+					rtp_ip_dst_map[rtp_ip_dst] = 1;
+				} else {
+					++rtp_ip_dst_map[rtp_ip_dst];
+				}
+				if(caller_map.find(caller) == caller_map.end()) {
+					caller_map[caller] = 1;
+				} else {
+					++caller_map[caller];
+				}
+				if(called_map.find(called) == called_map.end()) {
+					called_map[called] = 1;
+				} else {
+					++called_map[called];
 				}
 			}
 		}
@@ -12628,13 +12691,17 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 	}
 	if(needIpMap) {
 		JsonExport *jsonExport_ip_src_map = jsonExport.addObject("ip_src");
-		for(map<vmIP, u_int32_t>::iterator iter = ip_src_map.begin(); iter != ip_src_map.end(); iter++) {
-			jsonExport_ip_src_map->add(((vmIP)iter->first).getString().c_str(), iter->second);
-		}
+		conv_item_map_count_to_json_export<vmIP>(&ip_src_map, jsonExport_ip_src_map, 100);
 		JsonExport *jsonExport_ip_dst_map = jsonExport.addObject("ip_dst");
-		for(map<vmIP, u_int32_t>::iterator iter = ip_dst_map.begin(); iter != ip_dst_map.end(); iter++) {
-			jsonExport_ip_dst_map->add(((vmIP)iter->first).getString().c_str(), iter->second);
-		}
+		conv_item_map_count_to_json_export<vmIP>(&ip_dst_map, jsonExport_ip_dst_map, 100);
+		JsonExport *jsonExport_rtp_ip_src_map = jsonExport.addObject("rtp_ip_src");
+		conv_item_map_count_to_json_export<vmIP>(&rtp_ip_src_map, jsonExport_rtp_ip_src_map, 100);
+		JsonExport *jsonExport_rtp_ip_dst_map = jsonExport.addObject("rtp_ip_dst");
+		conv_item_map_count_to_json_export<vmIP>(&rtp_ip_dst_map, jsonExport_rtp_ip_dst_map, 100);
+		JsonExport *jsonExport_caller_map = jsonExport.addObject("caller_numbers");
+		conv_item_map_count_to_json_export<string>(&caller_map, jsonExport_caller_map, 100);
+		JsonExport *jsonExport_called_map = jsonExport.addObject("called_numbers");
+		conv_item_map_count_to_json_export<string>(&called_map, jsonExport_called_map, 100);
 	}
 	string total = jsonExport.getJson();
 	if(limit != 0) {
