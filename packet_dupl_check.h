@@ -169,8 +169,9 @@ public:
 					free(hi);
 					hi = next;
 					continue;
-				} else if(//*((u_char*)hash + 2) == hi->hash[0] &&
-					  !memcmp((u_char*)hash + 2, hi->hash, hash_size_simple_cmp)) {
+				} else if(*((u_char*)hash + 2) == hi->hash[0] &&
+					  !memcmp((u_char*)hash + 3, hi->hash + 1, hash_size_simple_cmp - 1)) {
+					hi->time = getTimeS_rdtsc();
 					return(true);
 				}
 				prev = hi;
