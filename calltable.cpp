@@ -12631,15 +12631,19 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				if(limit != 0) {
 					call->getSipcalledip(c_branch, true, true, NULL, &proxies);
 				}
-				if(ip_src_map.find(ip_src) == ip_src_map.end()) {
-					ip_src_map[ip_src] = 1;
-				} else {
-					++ip_src_map[ip_src];
+				if(ip_src.isSet()) {
+					if(ip_src_map.find(ip_src) == ip_src_map.end()) {
+						ip_src_map[ip_src] = 1;
+					} else {
+						++ip_src_map[ip_src];
+					}
 				}
-				if(ip_dst_map.find(ip_dst) == ip_dst_map.end()) {
-					ip_dst_map[ip_dst] = 1;
-				} else {
-					++ip_dst_map[ip_dst];
+				if(ip_dst.isSet()) {
+					if(ip_dst_map.find(ip_dst) == ip_dst_map.end()) {
+						ip_dst_map[ip_dst] = 1;
+					} else {
+						++ip_dst_map[ip_dst];
+					}
 				}
 				if(proxies.size()) {
 					for(set<vmIP>::iterator iter = proxies.begin(); iter != proxies.end(); ++iter) {
@@ -12650,25 +12654,33 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 						}
 					}
 				}
-				if(rtp_ip_src_map.find(rtp_ip_src) == rtp_ip_src_map.end()) {
-					rtp_ip_src_map[rtp_ip_src] = 1;
-				} else {
-					++rtp_ip_src_map[rtp_ip_src];
+				if(rtp_ip_src.isSet()) {
+					if(rtp_ip_src_map.find(rtp_ip_src) == rtp_ip_src_map.end()) {
+						rtp_ip_src_map[rtp_ip_src] = 1;
+					} else {
+						++rtp_ip_src_map[rtp_ip_src];
+					}
 				}
-				if(rtp_ip_dst_map.find(rtp_ip_dst) == rtp_ip_dst_map.end()) {
-					rtp_ip_dst_map[rtp_ip_dst] = 1;
-				} else {
-					++rtp_ip_dst_map[rtp_ip_dst];
+				if(rtp_ip_dst.isSet()) {
+					if(rtp_ip_dst_map.find(rtp_ip_dst) == rtp_ip_dst_map.end()) {
+						rtp_ip_dst_map[rtp_ip_dst] = 1;
+					} else {
+						++rtp_ip_dst_map[rtp_ip_dst];
+					}
 				}
-				if(caller_map.find(caller) == caller_map.end()) {
-					caller_map[caller] = 1;
-				} else {
-					++caller_map[caller];
+				if(!caller.empty()) {
+					if(caller_map.find(caller) == caller_map.end()) {
+						caller_map[caller] = 1;
+					} else {
+						++caller_map[caller];
+					}
 				}
-				if(called_map.find(called) == called_map.end()) {
-					called_map[called] = 1;
-				} else {
-					++called_map[called];
+				if(!called.empty()) {
+					if(called_map.find(called) == called_map.end()) {
+						called_map[called] = 1;
+					} else {
+						++called_map[called];
+					}
 				}
 			}
 		}
