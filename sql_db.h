@@ -1094,7 +1094,8 @@ public:
 	void queryToFiles(bool enable = true, const char *directory = NULL, int period = 0,
 			  bool enable_charts = false, bool enable_charts_remote = false);
 	void queryToFilesTerminate();
-	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0);
+	void loadFromQFiles(bool enable = true, const char *directory = NULL, int period = 0,
+			    bool enable_charts = false, bool enable_charts_remote = false);
 	void queryToFiles_start();
 	void loadFromQFiles_start();
 	void connect(int id_main, int id_2);

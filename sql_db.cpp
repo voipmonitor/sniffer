@@ -114,7 +114,7 @@ extern sSnifferClientOptions snifferClientOptions;
 extern sSnifferClientOptions snifferClientOptions_charts_cache;
 extern sSnifferServerClientOptions snifferServerClientOptions;
 
-extern int opt_load_query_from_files;
+extern int opt_load_query_main_from_files;
 
 extern bool opt_disable_cdr_fields_rtp;
 extern bool opt_disable_cdr_indexes_rtp;
@@ -2297,8 +2297,7 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 								}
 							}
 						}
-						extern int opt_load_query_from_files;
-						if(!opt_load_query_from_files && pass < this->maxQueryPass - 5) {
+						if(!opt_load_query_main_from_files && pass < this->maxQueryPass - 5) {
 							pass = this->maxQueryPass - 5;
 						}
 						if(pass < this->maxQueryPass - 1) {
@@ -3754,7 +3753,7 @@ void MySqlStore_process::_store(string beginProcedure, string endProcedure, list
 	if(sverb.store_process_query_compl_time) {
 		queries_size = queries->size();
 	}
-	if(useNewStore() || opt_load_query_from_files || is_server()) {
+	if(useNewStore() || opt_load_query_main_from_files || is_server()) {
 		string queries_str_old_store;
 		for(list<string>::iterator iter = queries->begin(); iter != queries->end(); ) {
 			if(strncmp(iter->c_str(), "csv", 3) &&
@@ -4045,7 +4044,7 @@ MySqlStore::~MySqlStore() {
 			iter2->second->waitForTerminate();
 		}
 	}
-	if(!qfileConfig.enableAny() && !loadFromQFileConfig.enable) {
+	if(!qfileConfig.enable && !loadFromQFileConfig.enable) {
 		extern bool opt_autoload_from_sqlvmexport;
 		if(opt_autoload_from_sqlvmexport &&
 		   this->getAllSize() &&
@@ -4066,7 +4065,7 @@ MySqlStore::~MySqlStore() {
 		closeAllQFiles();
 		clearAllQFiles();
 	}
-	if(loadFromQFileConfig.enable) {
+	if(loadFromQFileConfig.enableAny()) {
 		for(map<int, LoadFromQFilesThreadData>::iterator iter = loadFromQFilesThreadData.begin(); iter != loadFromQFilesThreadData.end(); iter++) {
 			if(iter->second.thread) {
 				pthread_join(iter->second.thread, NULL);
@@ -4104,8 +4103,11 @@ void MySqlStore::queryToFiles_start() {
 	}
 }
 
-void MySqlStore::loadFromQFiles(bool enable, const char *directory, int period) {
+void MySqlStore::loadFromQFiles(bool enable, const char *directory, int period,
+				bool enable_charts, bool enable_charts_remote) {
 	loadFromQFileConfig.enable = enable;
+	loadFromQFileConfig.enable_charts = enable_charts;
+	loadFromQFileConfig.enable_charts_remote = enable_charts_remote;
 	if(directory) {
 		loadFromQFileConfig.directory = directory;
 	}
@@ -4115,11 +4117,13 @@ void MySqlStore::loadFromQFiles(bool enable, const char *directory, int period) 
 }
 
 void MySqlStore::loadFromQFiles_start() {
-	if(loadFromQFileConfig.enable) {
-		extern bool opt_load_query_from_files_inotify;
+	extern bool opt_load_query_from_files_inotify;
+	if(loadFromQFileConfig.enableAny()) {
 		if(opt_load_query_from_files_inotify) {
 			this->enableInotifyForLoadFromQFile();
 		}
+	}
+	if(loadFromQFileConfig.enable) {
 		if(!isCloud()) {
 			extern MySqlStore *sqlStore_2;
 			this->addLoadFromQFile(STORE_PROC_ID_CDR, "cdr");
@@ -4144,12 +4148,22 @@ void MySqlStore::loadFromQFiles_start() {
 				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR_DAY, "ipacc_agreg_day");
 				this->addLoadFromQFile(STORE_PROC_ID_IPACC_AGR2_HOUR, "ipacc_agreg2");
 			}
-			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE, "charts_cache");
-			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE_REMOTE, "charts_cache_remote");
 		} else {
 			extern int opt_mysqlstore_concat_limit_cdr;
 			this->addLoadFromQFile(1, "cloud", 1, opt_mysqlstore_concat_limit_cdr);
 		}
+	}
+	if(loadFromQFileConfig.enable_charts) {
+		if(!isCloud()) {
+			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE, "charts_cache");
+		}
+	}
+	if(loadFromQFileConfig.enable_charts_remote) {
+		if(!isCloud()) {
+			this->addLoadFromQFile(STORE_PROC_ID_CHARTS_CACHE_REMOTE, "charts_cache_remote");
+		}
+	}
+	if(loadFromQFileConfig.enableAny()) {
 		if(opt_load_query_from_files_inotify) {
 			this->setInotifyReadyForLoadFromQFile();
 		}
@@ -4346,7 +4360,7 @@ void MySqlStore::clearAllQFiles() {
 void MySqlStore::enableInotifyForLoadFromQFile(bool enableINotify) {
 #ifndef FREEBSD
 	loadFromQFileConfig.inotify = enableINotify;
-	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
+	if(loadFromQFileConfig.enableAny() && loadFromQFileConfig.inotify) {
 		vm_pthread_create("query cache - inotify",
 				  &this->qfilesINotifyThread, NULL, this->threadINotifyQFiles, this, __FILE__, __LINE__);
 	}
@@ -4354,7 +4368,7 @@ void MySqlStore::enableInotifyForLoadFromQFile(bool enableINotify) {
 }
 
 void MySqlStore::setInotifyReadyForLoadFromQFile(bool iNotifyReady) {
-	if(loadFromQFileConfig.enable && loadFromQFileConfig.inotify) {
+	if(loadFromQFileConfig.enableAny() && loadFromQFileConfig.inotify) {
 		loadFromQFileConfig.inotify_ready = iNotifyReady;
 	}
 }
@@ -11380,7 +11394,7 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 	if(query_length < query.length()) {
 		query.resize(query_length);
 	}
-	if(enableSubstQueryEnd && (useNewStore() || opt_load_query_from_files || is_server())) {
+	if(enableSubstQueryEnd && (useNewStore() || opt_load_query_main_from_files || is_server())) {
 		find_and_replace(query, _MYSQL_QUERY_END_new, _MYSQL_QUERY_END_SUBST_new);
 	}
 	query += MYSQL_QUERY_END;

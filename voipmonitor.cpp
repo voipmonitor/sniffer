@@ -1288,15 +1288,17 @@ char opt_git_folder[1024];
 char opt_configure_param[1024];
 bool opt_upgrade_by_git;
 
-bool opt_save_query_to_files = true;
+bool opt_save_query_main_to_files = true;
 bool opt_save_query_charts_to_files = true;
-bool opt_save_query_charts_remote_to_files;
+bool opt_save_query_charts_remote_to_files = false;
 char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
 int opt_query_cache_speed;
 int opt_query_cache_check_utf;
 
-int opt_load_query_from_files = 1;
+int opt_load_query_main_from_files = 1;
+int opt_load_query_charts_from_files = 1;
+int opt_load_query_charts_remote_from_files = 0;
 char opt_load_query_from_files_directory[1024];
 int opt_load_query_from_files_period;
 bool opt_load_query_from_files_inotify = true;
@@ -4159,8 +4161,8 @@ int main(int argc, char *argv[]) {
 
 		//Override query_cache option in /etc/voipmonitor.conf  settings while in cloud mode always on:
 		if(opt_fork) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
+			opt_save_query_main_to_files = true;
+			opt_load_query_main_from_files = 1;
 		}
 	} else if(is_client()) {
 		snifferClientService = snifferClientStart(&snifferClientOptions, NULL, snifferClientService);
@@ -4259,7 +4261,7 @@ int main(int argc, char *argv[]) {
 			return(0);
 		}
 		
-		if(!opt_database_backup && opt_load_query_from_files != 2) {
+		if(!opt_database_backup && opt_load_query_main_from_files != 2) {
 			pthread_t store_crash_bt_to_db_thread;
 			vm_pthread_create_autodestroy("store_crash_bt_to_db",
 						      &store_crash_bt_to_db_thread, NULL, store_crash_bt_to_db_thread_fce, NULL, __FILE__, __LINE__);
@@ -4279,7 +4281,7 @@ int main(int argc, char *argv[]) {
 				vm_pthread_create("database backup",
 						  &database_backup_thread, NULL, database_backup, NULL, __FILE__, __LINE__);
 				pthread_join(database_backup_thread, NULL);
-			} else if(opt_load_query_from_files == 2) {
+			} else if(opt_load_query_main_from_files == 2) {
 				main_init_sqlstore();
 				loadFromQFiles->loadFromQFiles_start();
 				unsigned int counter = 0;
@@ -4634,14 +4636,17 @@ int main_init_read() {
 		initIpacc();
 	}
 	
-	if(opt_save_query_to_files || 
-	   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files) {
+	if(opt_save_query_main_to_files || 
+	   opt_save_query_charts_to_files || 
+	   opt_save_query_charts_remote_to_files) {
 		sqlStore->queryToFiles_start();
 		if(sqlStore_2) {
 			sqlStore_2->queryToFiles_start();
 		}
 	}
-	if(opt_load_query_from_files) {
+	if(opt_load_query_main_from_files ||
+	   opt_load_query_charts_from_files ||
+	   opt_load_query_charts_remote_from_files) {
 		loadFromQFiles->loadFromQFiles_start();
 	}
 	
@@ -5671,28 +5676,32 @@ void main_term_read() {
 
 void main_init_sqlstore() {
 	if(isSqlDriver("mysql")) {
-		if(opt_load_query_from_files != 2) {
+		if(opt_load_query_main_from_files != 2) {
 			sqlStore = new FILE_LINE(42037) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
 								   isCloud() ? cloud_host : NULL, cloud_token, cloud_router, &optMySsl);
-			if(opt_save_query_to_files || 
-			   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files) {
-				sqlStore->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period, 
+			if(opt_save_query_main_to_files || 
+			   opt_save_query_charts_to_files || 
+			   opt_save_query_charts_remote_to_files) {
+				sqlStore->queryToFiles(opt_save_query_main_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period, 
 						       opt_save_query_charts_to_files, opt_save_query_charts_remote_to_files);
 			}
 			if(use_mysql_2()) {
 				sqlStore_2 = new FILE_LINE(42038) MySqlStore(mysql_2_host, mysql_2_user, mysql_2_password, mysql_2_database, opt_mysql_2_port, mysql_2_socket,
 									     NULL, NULL, false, &optMySsl_2);
-				if(opt_save_query_to_files) {
-					sqlStore_2->queryToFiles(opt_save_query_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
+				if(opt_save_query_main_to_files) {
+					sqlStore_2->queryToFiles(opt_save_query_main_to_files, opt_save_query_to_files_directory, opt_save_query_to_files_period);
 				}
 			}
 		}
-		if(opt_load_query_from_files) {
+		if(opt_load_query_main_from_files ||
+		   opt_load_query_charts_from_files ||
+		   opt_load_query_charts_remote_from_files) {
 			loadFromQFiles = new FILE_LINE(42039) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
 									 isCloud() ? cloud_host : NULL, cloud_token, cloud_router, &optMySsl);
-			loadFromQFiles->loadFromQFiles(opt_load_query_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period);
+			loadFromQFiles->loadFromQFiles(opt_load_query_main_from_files, opt_load_query_from_files_directory, opt_load_query_from_files_period,
+						       opt_load_query_charts_from_files, opt_load_query_charts_remote_from_files);
 		}
-		if(opt_load_query_from_files != 2) {
+		if(opt_load_query_main_from_files != 2) {
 			if(!opt_nocdr) {
 				sqlStore->connect(STORE_PROC_ID_CDR, 0);
 				sqlStore->connect(STORE_PROC_ID_MESSAGE, 0);
@@ -7006,10 +7015,10 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42405) cConfigItem_yesno("cdr_partition", &opt_cdr_partition));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_partition_by_hours", &opt_cdr_partition_by_hours));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cdr_force_primary_index_in_all_tables", &opt_cdr_force_primary_index_in_all_tables));
-					addConfigItem(new FILE_LINE(42406) cConfigItem_yesno("save_query_to_files", &opt_save_query_to_files));
+					addConfigItem(new FILE_LINE(42406) cConfigItem_yesno("save_query_to_files", &opt_save_query_main_to_files));
 					addConfigItem(new FILE_LINE(42407) cConfigItem_string("save_query_to_files_directory", opt_save_query_to_files_directory, sizeof(opt_save_query_to_files_directory)));
 					addConfigItem(new FILE_LINE(42408) cConfigItem_integer("save_query_to_files_period", &opt_save_query_to_files_period));
-					addConfigItem((new FILE_LINE(42409) cConfigItem_yesno("load_query_from_files", &opt_load_query_from_files))
+					addConfigItem((new FILE_LINE(42409) cConfigItem_yesno("load_query_from_files", &opt_load_query_main_from_files))
 						->addValue("only", 2));
 					addConfigItem(new FILE_LINE(42410) cConfigItem_string("load_query_from_files_directory", opt_load_query_from_files_directory, sizeof(opt_load_query_from_files_directory)));
 					addConfigItem(new FILE_LINE(42411) cConfigItem_integer("load_query_from_files_period", &opt_load_query_from_files_period));
@@ -7413,26 +7422,29 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	}
 	if(configItem->config_name == "query_cache") {
 		if(configItem->getValueInt()) {
-			opt_save_query_to_files = true;
-			opt_load_query_from_files = 1;
+			opt_save_query_main_to_files = true;
+			opt_load_query_main_from_files = 1;
 		} else {
-			opt_save_query_to_files = false;
+			opt_save_query_main_to_files = false;
+			opt_load_query_main_from_files = 0;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_to_files = true;
-			opt_load_query_from_files = 1;
+			opt_load_query_charts_from_files = 1;
 		} else {
 			opt_save_query_charts_to_files = false;
+			opt_load_query_charts_from_files = 0;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts_remote") {
 		if(configItem->getValueInt()) {
 			opt_save_query_charts_remote_to_files = true;
-			opt_load_query_from_files = 1;
+			opt_load_query_charts_remote_from_files = 1;
 		} else {
 			opt_save_query_charts_remote_to_files = false;
+			opt_load_query_charts_remote_from_files = 0;
 		}
 	}
 	if(configItem->config_name == "cdr_ignore_response") {
@@ -8637,10 +8649,12 @@ void set_context_config() {
 			opt_gzipGRAPH = FileZipHandler::gzip;
 		}
 		opt_pcap_dump_asyncwrite = 0;
-		opt_save_query_to_files = false;
+		opt_save_query_main_to_files = false;
 		opt_save_query_charts_to_files = false;
 		opt_save_query_charts_remote_to_files = false;
-		opt_load_query_from_files = 0;
+		opt_load_query_main_from_files = 0;
+		opt_load_query_charts_from_files = 0;
+		opt_load_query_charts_remote_from_files = 0;
 		opt_t2_boost = false;
 		if(opt_process_pcap_type & _pp_prepare_rtcp_data) {
 			useIPv6 = true;
@@ -8659,10 +8673,12 @@ void set_context_config() {
 	}
 	
 	if(is_read_from_file_by_pb()) {
-		opt_save_query_to_files = false;
+		opt_save_query_main_to_files = false;
 		opt_save_query_charts_to_files = false;
 		opt_save_query_charts_remote_to_files = false;
-		opt_load_query_from_files = 0;
+		opt_load_query_main_from_files = 0;
+		opt_load_query_charts_from_files = 0;
+		opt_load_query_charts_remote_from_files = 0;
 	}
 	
 	if(is_read_from_file()) {
@@ -8710,9 +8726,7 @@ void set_context_config() {
 		opt_cleanspool_use_files = false;
 	}
 	
-	if(opt_save_query_to_files || 
-	   opt_save_query_charts_to_files || opt_save_query_charts_remote_to_files ||
-	   opt_load_query_from_files) {
+	if(opt_save_query_main_to_files || opt_load_query_main_from_files) {
 		opt_autoload_from_sqlvmexport = false;
 	}
 	

@@ -533,8 +533,8 @@ void HttpDataCache_link::writeQueryInsertToDb() {
 	if(queryInsert.empty()) {
 		return;
 	}
-	extern bool opt_save_query_to_files;
-	MySqlStore *sqlStore_http = use_mysql_2_http() && !opt_save_query_to_files ? sqlStore_2 : sqlStore;
+	extern bool opt_save_query_main_to_files;
+	MySqlStore *sqlStore_http = use_mysql_2_http() && !opt_save_query_main_to_files ? sqlStore_2 : sqlStore;
 	sqlStore_http->query_lock(queryInsert.c_str(),
 				  STORE_PROC_ID_HTTP,
 				  opt_mysqlstore_max_threads_http > 1 &&

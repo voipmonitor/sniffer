@@ -1789,7 +1789,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			lapTime.push_back(getTimeMS_rdtsc());
 			lapTimeDescr.push_back("packet counters");
 		}
-		extern bool opt_save_query_to_files;
+		extern bool opt_save_query_main_to_files;
 		if(loadFromQFiles) {
 			bool fill = false;
 			string stat = loadFromQFiles->getLoadFromQFilesStat();
@@ -1826,7 +1826,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				outStr << "] ";
 			}
 		}
-		if(!loadFromQFiles || !opt_save_query_to_files || sverb.force_log_sqlq) {
+		if(!loadFromQFiles || !opt_save_query_main_to_files || sverb.force_log_sqlq) {
 			outStr << "SQLq[";
 			if(isCloud()) {
 				int sizeSQLq = sqlStore->getSize(1, 0) +
