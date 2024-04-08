@@ -11,10 +11,6 @@
 #define LIBSSL_SONAME "libssl.so"
 #endif
 
-#if OPENSSL_VERSION_NUMBER >= 0x10101000L
-#define ONLY_KEYLOG_CALLBACK 1
-#endif
-
 #else
 
 #include <wolfssl/ssl.h>
@@ -23,8 +19,10 @@ typedef WOLFSSL_CTX SSL_CTX;
 typedef WOLFSSL_SESSION SSL_SESSION;
 #define SSL_MAX_MASTER_KEY_LENGTH WOLFSSL_MAX_MASTER_KEY_LENGTH
 #define SSL3_RANDOM_SIZE 32
+
+#ifndef LIBSSL_SONAME
 #define LIBSSL_SONAME "libwolfssl.so"
-//#define ONLY_KEYLOG_CALLBACK 1
+#endif
 
 #endif
 
@@ -45,6 +43,12 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #include "cloud_router_base.h"
 #endif
 
+
+#define BOTH_METHODS 0
+
+#if not defined HAVE_WOLFSSL and OPENSSL_VERSION_NUMBER >= 0x10101000L and not BOTH_METHODS
+#define ONLY_KEYLOG_CALLBACK 1
+#endif
 
 #define WRITE_THREAD 1
 
@@ -541,9 +545,11 @@ SSL_connect
 wolfSSL_connect
 #endif
 (SSL *ssl) {
+	#if not BOTH_METHODS
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_connect_orig(ssl));
 	}
+	#endif
 	//debug_printf("SSL_connect 1");
 	sMasterKey mk1(ssl);
 	int rslt = SSL_connect_orig(ssl);
@@ -564,9 +570,11 @@ SSL_do_handshake
 wolfSSL_do_handshake
 #endif
 (SSL *ssl) {
+	#if not BOTH_METHODS
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_do_handshake_orig(ssl));
 	}
+	#endif
 	//debug_printf("SSL_do_handshake_orig 1");
 	sMasterKey mk1(ssl);
 	int rslt = SSL_do_handshake_orig(ssl);
@@ -587,9 +595,11 @@ SSL_accept
 wolfSSL_accept
 #endif
 (SSL *ssl) {
+	#if not BOTH_METHODS
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_accept_orig(ssl));
 	}
+	#endif
 	//debug_printf("SSL_accept 1");
 	sMasterKey mk1(ssl);
 	int rslt = SSL_accept_orig(ssl);
@@ -610,9 +620,11 @@ SSL_read
 wolfSSL_read
 #endif
 (SSL *ssl, void *buf, int num) {
+	#if not BOTH_METHODS
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_read_orig(ssl, buf, num));
 	}
+	#endif
 	//debug_printf("SSL_read 1");
 	sMasterKey mk1(ssl);
 	int rslt = SSL_read_orig(ssl, buf, num);
@@ -633,9 +645,11 @@ SSL_write
 wolfSSL_write
 #endif
 (SSL *ssl, const void *buf, int num) {
+	#if not BOTH_METHODS
 	if(SSL_CTX_set_keylog_callback_orig) {
 		return(SSL_write_orig(ssl, buf, num));
 	}
+	#endif
 	//debug_printf("SSL_write 1");
 	sMasterKey mk1(ssl);
 	int rslt = SSL_write_orig(ssl, buf, num);
@@ -667,7 +681,8 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - abort!");
 		abort();
 	}
-	#else
+	#endif
+	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
 	SSL_connect_orig = (SSL_connect_type)lookup_symbol("SSL_connect", LIBSSL_SONAME);
 	if(SSL_connect_orig) {
 		debug_printf("OK detect pointer to function SSL_connect : 0x%lx", SSL_connect_orig);
