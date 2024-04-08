@@ -8022,10 +8022,6 @@ bool SqlDb_mysql::createSchema_alter_other(int connectId) {
 		}
 	}
 
-	//19.3
-	outStrAlter << "ALTER TABLE sensors \
-		ADD `cloud_router` tinyint;" << endl;
-	
 	//
 	outStrAlter << "end;" << endl;
 
@@ -8854,50 +8850,31 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 }
 
 void SqlDb_mysql::updateSensorState() {
-	if(opt_id_sensor > 0) {
+	if(isCloud() && opt_id_sensor > 0) {
 		this->query("select * from `sensors` where id_sensor=" + intToString(opt_id_sensor));
 		bool existsRowSensor = this->fetchRow();
-		if(isCloud()) {
-			bool existsColumnCloudRouter = this->existsColumn("sensors", "cloud_router");
-			if(existsRowSensor) {
-				SqlDb_row rowU;
-				if(existsColumnCloudRouter) {
-					rowU.add(isCloud(), "cloud_router");
-				}
-				if(isCloud()) {
-					extern cCR_Receiver_service *cloud_receiver;
-					rowU.add(cloud_receiver->getConnectFrom(), "host");
-				}
-				if(!rowU.isEmpty()) {
-					this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
-				}
-			} else if(isCloud()) {
-				SqlDb_row rowI;
-				rowI.add(opt_id_sensor, "id_sensor");
-				rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
-				if(existsColumnCloudRouter) {
-					rowI.add(true, "cloud_router");
-				}
-				extern cCR_Receiver_service *cloud_receiver;
-				rowI.add(cloud_receiver->getConnectFrom(), "host");
-				rowI.add(5029, "port");
-				this->insert("sensors", rowI);
+		bool existsColumnCloudRouter = this->existsColumn("sensors", "cloud_router");
+		if(existsRowSensor) {
+			SqlDb_row rowU;
+			if(existsColumnCloudRouter) {
+				rowU.add(true, "cloud_router");
 			}
-		}
-	} else {
-		if(isCloud()) {
-			this->query("select content from `system` where type='cloud_router_local_sensor'");
-			SqlDb_row row = this->fetchRow();
-			if(row) {
-				SqlDb_row rowU;
-				rowU.add(intToString(isCloud()), "content");
-				this->update("system", rowU, "type='cloud_router_local_sensor'");
-			} else {
-				SqlDb_row rowI;
-				rowI.add(intToString(isCloud()), "content");
-				rowI.add("cloud_router_local_sensor", "type");
-				this->insert("system", rowI);
+			extern cCR_Receiver_service *cloud_receiver;
+			rowU.add(cloud_receiver->getConnectFrom(), "host");
+			if(!rowU.isEmpty()) {
+				this->update("sensors", rowU, ("id_sensor=" + intToString(opt_id_sensor)).c_str());
 			}
+		} else {
+			SqlDb_row rowI;
+			rowI.add(opt_id_sensor, "id_sensor");
+			rowI.add("auto insert id " + intToString(opt_id_sensor), "name");
+			if(existsColumnCloudRouter) {
+				rowI.add(true, "cloud_router");
+			}
+			extern cCR_Receiver_service *cloud_receiver;
+			rowI.add(cloud_receiver->getConnectFrom(), "host");
+			rowI.add(5029, "port");
+			this->insert("sensors", rowI);
 		}
 	}
 }
