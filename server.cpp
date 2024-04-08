@@ -1423,7 +1423,7 @@ int cSnifferClientService::receive_process_loop_begin() {
 						}
 						if(!rsltConnectData_json.getValue("deduplicate").empty()) {
 							int server_dup_check_type = atoi(rsltConnectData_json.getValue("deduplicate").c_str());
-							if(server_dup_check_type >= _dedup_na && server_dup_check_type <= _dedup_last) {
+							if(server_dup_check_type >= _dedup_na && server_dup_check_type < _dedup_last) {
 								#if defined(__x86_64__) or defined(__i386__)
 								if(server_dup_check_type == _dedup_crc32_hw && !crc32_sse_is_available()) server_dup_check_type = _dedup_crc32_sw; // do not force SSE 4.2 version if we do not have it
 								#endif

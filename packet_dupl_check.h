@@ -8,8 +8,11 @@
 #endif
 
 #include "crc.h"
-#include "murmur_hash.h"
 #include "tools_rdtsc.h"
+
+#ifdef CLOUD_ROUTER_CLIENT
+#include "murmur_hash.h"
+#endif
 
 
 enum eDedupType {
@@ -21,8 +24,10 @@ enum eDedupType {
 	#if HAVE_LIBBLAKE3
 	_dedup_blake3,
 	#endif
+	#if MURMUR_HASH
 	_dedup_murmur,
-	_dedup_last = _dedup_murmur
+	#endif
+	_dedup_last
 };
 
 
@@ -91,9 +96,11 @@ public:
 			hash_size = 16;
 			break;
 		#endif
+		#if MURMUR_HASH
 		case _dedup_murmur:
 			hash_size = 16;
 			break;
+		#endif
 		default:
 			hash_size = 4;
 			break;
@@ -260,11 +267,13 @@ struct sPacketDuplCheckProc {
 		blake3_hasher_update(&b3h, data, len);
 	}
 	#endif
+	#if MURMUR_HASH
 	inline void data_murmur(u_char *data, unsigned len) {
 		u_int32_t seed = len >= 8 ? *(u_int32_t*)(data + len/2) :
 				 len >= 4 ? *(u_int32_t*)(data + len - 4) : 64;
 		MurmurHash3_x64_128(data, len, seed, dc->mm);
 	}
+	#endif
 	inline void data(void *data, unsigned len) {
 		switch(dedup_type) {
 		case _dedup_md5:
@@ -282,9 +291,11 @@ struct sPacketDuplCheckProc {
 			data_blake3((u_char*)data, len);
 			break;
 		#endif
+		#if MURMUR_HASH
 		case _dedup_murmur:
 			data_murmur((u_char*)data, len);
 			break;
+		#endif
 		default:
 			break;
 		}

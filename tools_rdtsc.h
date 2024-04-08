@@ -2,10 +2,13 @@
 #define TOOLS_RDTSC_H
 
 
+#include <unistd.h>
 #include <math.h>
 #include <sstream>
 
+#ifdef CLOUD_ROUTER_CLIENT
 #include "common.h"
+#endif
 
 
 #if defined(__i386__)

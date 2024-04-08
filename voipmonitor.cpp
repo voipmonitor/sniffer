@@ -6535,11 +6535,14 @@ void cConfig::addConfigItems() {
 			->addValues(("md5:" + intToString(_dedup_md5)+ 
 				     "|crc:" + intToString(_dedup_crc32_sw) +
 				     "|crc32:" + intToString(_dedup_crc32_sw) +
-				     "|crc64:" + intToString(_dedup_crc64) +
+				     "|crc64:" + intToString(_dedup_crc64)
 				     #if HAVE_LIBBLAKE3
-				     "|blake3:" + intToString(_dedup_blake3) + 
+				     + "|blake3:" + intToString(_dedup_blake3) 
 				     #endif
-				     "|murmur:" + intToString(_dedup_murmur)).c_str()));
+				     #if MURMUR_HASH
+				     + "|murmur:" + intToString(_dedup_murmur)
+				     #endif
+				     ).c_str()));
 				expert();
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("deduplicate_check_type", &opt_dup_check_check_type))
 					->disableYes()
