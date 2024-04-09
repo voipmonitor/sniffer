@@ -9888,6 +9888,9 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 				      const char *tableName, 
 				      unsigned long limit, bool descDir,
 				      cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	if(!sqlDbSrc->existsTable(tableName)) {
+		return;
+	}
 	map<string, cSqlDbCodebook::eTypeCodebook> reftable_map;
 	if(cb_src && cb_dst) {
 		getReferenceTablesMap(tableName, &reftable_map);
@@ -10058,12 +10061,16 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	for(size_t i = 0; i < slaveTables.size() && !is_terminating(); i++) {
 		if(sqlDbSrc->existsTable(slaveTables[i])) {
 			if(!descDir) {
+				extern int opt_database_backup_slave_record_safe_gap;
 				this->copyFromSourceTableSlave(sqlDbSrc,
 							       tableName, slaveTables[i].c_str(),
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
-							       minIdSrc, useMaxIdInSrc > 100 ? useMaxIdInSrc - 100 : 0,
-							       limit * 10, false, limitMaxId,
+							       minIdSrc, 
+							       opt_database_backup_slave_record_safe_gap > 0 ?
+								(useMaxIdInSrc > (unsigned)opt_database_backup_slave_record_safe_gap ? useMaxIdInSrc - opt_database_backup_slave_record_safe_gap : 0) :
+								useMaxIdInSrc,
+							       limit * 100, false, limitMaxId,
 							       cb_src, cb_dst);
 			} else {
 				this->copyFromSourceTableSlave(sqlDbSrc,
@@ -10071,7 +10078,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 							       slaveIdToMasterColumn.c_str(), 
 							       "calldate", "calldate",
 							       (minIdSrc < useMinIdInSrc ? useMinIdInSrc : minIdSrc) , 0,
-							       limit * 10, true, limitMaxId,
+							       limit * 100, true, limitMaxId,
 							       cb_src, cb_dst);
 			}
 		}
