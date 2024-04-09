@@ -7365,9 +7365,9 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		KEY `id_sensor` (`id_sensor`)" +
 		(opt_cdr_partition ?
 			"" :
-			",CONSTRAINT `sip_msg_ibfk_1` FOREIGN KEY (`lastSIPresponse_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
-			CONSTRAINT `sip_msg_ibfk_2` FOREIGN KEY (`a_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
-			CONSTRAINT `sip_msg_ibfk_3` FOREIGN KEY (`b_ua_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
+			",CONSTRAINT `sip_msg_ibfk_1` FOREIGN KEY (`response_id`) REFERENCES `cdr_sip_response` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `sip_msg_ibfk_2` FOREIGN KEY (`ua_src_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE,\
+			CONSTRAINT `sip_msg_ibfk_3` FOREIGN KEY (`ua_dst_id`) REFERENCES `cdr_ua` (`id`) ON UPDATE CASCADE") +
 	") ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress + 
 	(opt_cdr_partition ?
 		(opt_cdr_partition_by_hours ?
