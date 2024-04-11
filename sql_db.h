@@ -335,6 +335,35 @@ public:
 		_tq_store,
 		_tq_redirect
 	};
+	enum eTypePartition {
+		_tp_na,
+		_tp_day,
+		_tp_hour,
+		_tp_month
+	};
+	struct sPartition {
+		sPartition() {
+			file_size = -1;
+			/*
+			part_size = -1;
+			*/
+			type = _tp_na;
+			is_prev = false;
+		}
+		string name;
+		string table;
+		string file;
+		int64_t file_size;
+		/*  irrelevant - inaccurate results
+		int64_t part_size;
+		*/
+		eTypePartition type;
+		string time;
+		bool is_prev;
+		bool operator < (const sPartition& other) const { 
+			return(strcasecmp(this->name.c_str(), other.name.c_str()) < 0); 
+		}
+	};
 public:
 	SqlDb();
 	virtual ~SqlDb();
@@ -415,10 +444,10 @@ public:
 	static bool _isIPv4Column(string table, string column) {
 		return(!_isIPv6Column(table, column));
 	}
-	virtual int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true) = 0;
-	int getPartitions(string table, list<string> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
-	int getPartitions(const char *table, vector<string> *partitions, bool useCache = true);
-	int getPartitions(string table, vector<string> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
+	virtual int getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions = NULL, bool useCache = true) = 0;
+	int getPartitions(string table, list<sPartition> *partitions, bool useCache) { return(getPartitions(NULL, NULL, table.c_str(), partitions, useCache)); }
+	int getPartitions(const char *table, vector<sPartition> *partitions, bool useCache = true);
+	int getPartitions(string table, vector<sPartition> *partitions, bool useCache) { return(getPartitions(table.c_str(), partitions, useCache)); }
 	virtual bool existsPartition(const char *table, const char *partition, bool useCache = true) = 0;
 	bool existsPartition(string table, string partition, bool useCache) { return(existsPartition(table.c_str(), partition.c_str(), useCache)); }
 	bool existsDayPartition(string table, unsigned addDaysToNow, bool useCache = true);
@@ -525,6 +554,13 @@ public:
 	virtual string getDbName() {
 		return("");
 	}
+	virtual string getDbDatadir() {
+		return("");
+	}
+	virtual bool getDbDatadirStats(const char */*datadir*/, const char */*database*/, double */*total_MB*/, double */*free_MB*/, double */*free_perc*/, double */*files_sum_size_MB*/) {
+		return(false);
+	}
+	string getDatadirTab(const char *datadir, const char *database);
 	virtual int getMaximumPartitions() {
 		return(0);
 	}
@@ -611,7 +647,7 @@ protected:
 	volatile int existsColumn_cache_sync;
 	static map<string, map<string, string> > typeColumn_cache;  
 	static volatile int typeColumn_cache_sync;
-	map<string, list<string> > partitions_cache;
+	map<string, list<sPartition> > partitions_cache;
 	volatile int partitions_cache_sync;
 private:
 	unsigned int lastError;
@@ -679,7 +715,7 @@ public:
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	static bool existsColumnInTypeCache_static(const char *table, const char *column);
 	bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0);
-	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
+	int getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
@@ -708,6 +744,11 @@ public:
 	string getPartDayName(string *limitDay_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next_day, int hour);
+	void fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name);
+	string getPartitionFile(const char *datadir, const char *database, const char *table, const char *partition_name);
+	int64_t getPartitionSize(const char *database, const char *table, const char *partition_name);
+	eTypePartition getPartitionType(const char *partition_name);
+	string getPartitionTime(const char *partition_name);
 	void saveTimezoneInformation();
 	void createTable(const char *tableName);
 	void checkDbMode();
@@ -777,6 +818,8 @@ public:
 	static int _getDbMajorVersion(const char *db_version);
 	static int _getDbMinorVersion(const char *db_version, int minorLevel  = 0);
 	static string _getDbName(const char *db_version);
+	string getDbDatadir();
+	bool getDbDatadirStats(const char *datadir, const char *database, double *total_MB, double *free_MB, double *free_perc, double *files_sum_size_MB);
 	int getMaximumPartitions();
 	bool isSupportForDatetimeMs();
 	bool _getDbVersion();
@@ -802,6 +845,7 @@ private:
 	string dbVersion;
 	static string dbVersion_static;
 	static volatile int dbVersion_static_sync;
+	string dbDatadir;
 	unsigned long mysqlThreadId;
 	string selectedCompressType;
 	string selectedCompressSubtype;
@@ -856,7 +900,7 @@ public:
 	string getTypeColumn(const char *table, const char *column, bool toLower = true, bool useCache = false);
 	bool existsColumnInTypeCache(const char *table, const char *column);
 	bool existsIndex(const char *table, const char *indexColumn, int seqInIndex = 0);
-	int getPartitions(const char *table, list<string> *partitions = NULL, bool useCache = true);
+	int getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions = NULL, bool useCache = true);
 	bool existsPartition(const char *table, const char *partition, bool useCache = true);
 	bool emptyTable(const char *table, bool viaTableStatus = false);
 	int64_t rowsInTable(const char *table, bool viaTableStatus = false);
@@ -1503,6 +1547,38 @@ public:
 	bool dropBilling;
 	bool _runInThread;
 	static volatile int in_progress;
+};
+
+
+class cPartitions {
+public:
+	struct sTable {
+		sTable(const char *group, const char *table) {
+			this->group = group;
+			this->table = table;
+		}
+		string group;
+		string table;
+	};
+public:
+	void fill(SqlDb *sqlDb, const char *datadir = NULL, const char *database = NULL);
+	void fillTables(SqlDb *sqlDb);
+	void fillPartitions(SqlDb *sqlDb, const char *datadir = NULL, const char *database = NULL);
+	void sumByGroup(map<string, map<string, u_int64_t> > *sum, bool only_prev);
+	void sumByGroup(map<string, u_int64_t> *sum, bool only_prev);
+	u_int64_t sum(bool only_prev);
+	void countByGroup(map<string, unsigned> *count, bool only_prev);
+	void lastSizeByGroup(map<string, u_int64_t> *size, bool only_prev);
+	void getGroups(vector<string> *groups);
+	string dump(SqlDb *sqlDb, bool only_prev, const char *datadir = NULL, const char *database = NULL);
+private:
+	void addTable(const char *group, const char *table);
+	double dump_MB(u_int64_t B) {
+		return(((u_int64_t)((B / (1024 * 1024.)) * 100)) / 100.);
+	}
+private:
+	list<sTable> tables;
+	map<string, list<SqlDb::sPartition> > partitions;
 };
 
 

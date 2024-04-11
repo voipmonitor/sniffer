@@ -1355,11 +1355,11 @@ bool SqlDb::_isIPv6Column(string table, string column) {
 	return(isIPv6);
 }
 
-int SqlDb::getPartitions(const char *table, vector<string> *partitions, bool useCache) {
-	list<string> partitions_l;
+int SqlDb::getPartitions(const char *table, vector<sPartition> *partitions, bool useCache) {
+	list<sPartition> partitions_l;
 	int rslt = getPartitions(table, &partitions_l, useCache);
 	partitions->clear();
-	for(list<string>::iterator iter = partitions_l.begin(); iter != partitions_l.end(); iter++) {
+	for(list<sPartition>::iterator iter = partitions_l.begin(); iter != partitions_l.end(); iter++) {
 		partitions->push_back(*iter);
 	}
 	return(rslt);
@@ -1452,6 +1452,23 @@ bool SqlDb::ignoreLastError() {
 	       getLastError() == ER_NO_REFERENCED_ROW_2 ||
 	       getLastError() == ER_SAME_NAME_PARTITION ||
 	       getLastError() == ER_SP_DOES_NOT_EXIST);
+}
+
+string SqlDb::getDatadirTab(const char *datadir, const char *database) {
+	string datadir_tab;
+	if(datadir) {
+		datadir_tab = datadir;
+	} else {
+		datadir_tab = getDbDatadir();
+		if(datadir_tab.empty()) {
+			return("");
+		}
+		datadir_tab += (datadir_tab[datadir_tab.length() - 1] == '/' ? "" : "/") + string(database ? database : conn_database);
+	}
+	if(!file_exists(datadir_tab)) {
+		return("");
+	}
+	return(datadir_tab);
 }
 
 void SqlDb::setEnableSqlStringInContent(bool enableSqlStringInContent) {
@@ -2030,6 +2047,67 @@ string SqlDb_mysql::_getDbName(const char *db_version) {
 		rslt = strcasestr(db_version, "MariaDB") ? "mariadb" : "mysql";
 	}
 	return(rslt);
+}
+
+string SqlDb_mysql::getDbDatadir() {
+	if(isCloud()) {
+		return("");
+	}
+	if(this->dbDatadir.empty()) {
+		this->query("SHOW VARIABLES LIKE \"datadir\"");
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			this->dbDatadir = row[1];
+		}
+	}
+	return(this->dbDatadir);
+}
+
+bool SqlDb_mysql::getDbDatadirStats(const char *datadir, const char *database, double *total_MB, double *free_MB, double *free_perc, double *files_sum_size_MB) {
+	if(!database) {
+		database = conn_database.c_str();
+	}
+	*total_MB = 0;
+	*free_MB = 0;
+	*free_perc = 0;
+	*files_sum_size_MB = 0;
+	string datadir_tab = getDatadirTab(datadir, database);
+	if(datadir_tab.empty()) {
+		return(false);
+	}
+	long long total = GetTotalDiskSpace(datadir_tab.c_str());
+	if(total <= 0) {
+		return(false);
+	}
+	*total_MB = (double)total / (1024 * 1024);
+	long long free = GetFreeDiskSpace(datadir_tab.c_str());
+	if(free < 0) {
+		return(false);
+	}
+	*free_MB = (double)free / (1024 * 1024);
+	*free_perc = (double)free / total * 100;
+	u_int64_t files_sum_size = 0;
+	DIR* dp = opendir(datadir_tab.c_str());
+	if(dp) {
+		dirent* de;
+		while((de = readdir(dp)) != NULL) {
+			if(string(de->d_name) == ".." or string(de->d_name) == "." || 
+			   is_dir(de, datadir_tab.c_str())) {
+				continue;
+			}
+			long long fs = GetFileSize(datadir_tab + '/' + de->d_name);
+			if(fs < 0) {
+				closedir(dp);
+				return(false);
+			}
+			files_sum_size += fs;
+		}
+		closedir(dp);
+	} else {
+		return(false);
+	}
+	*files_sum_size_MB = (double)files_sum_size / (1024 * 1024);
+	return(true);
 }
 
 int SqlDb_mysql::getMaximumPartitions() {
@@ -2619,7 +2697,7 @@ bool SqlDb_mysql::existsIndex(const char *table, const char *indexColumn, int se
 	return(countIndex > 0);
 }
 
-int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool useCache) {
+int SqlDb_mysql::getPartitions(const char *datadir, const char *database, const char *table, list<sPartition> *partitions, bool useCache) {
 	if(useCache) {
 		bool existsInCache = false;
 		int sizeInCache = 0;
@@ -2636,7 +2714,7 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 			return(sizeInCache);
 		}
 	}
-	list<string> _partitions;
+	list<sPartition> _partitions;
 	int _size = 0;
 	if(partitions) {
 		partitions->clear();
@@ -2653,7 +2731,9 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 			_size = partitions_v.size();
 			if(partitions) {
 				for(unsigned i = 0; i < partitions_v.size(); i++) {
-					partitions->push_back(partitions_v[i]);
+					sPartition partition;
+					fillPartitionData(&partition, datadir, database, table, partitions_v[i].c_str());
+					partitions->push_back(partition);
 				}
 			}
 		}
@@ -2667,10 +2747,10 @@ int SqlDb_mysql::getPartitions(const char *table, list<string> *partitions, bool
 }
 
 bool SqlDb_mysql::existsPartition(const char *table, const char *partition, bool useCache) {
-	list<string> partitions;
-	if(getPartitions(table, &partitions, useCache) > 0) {
-		for(list<string>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
-			if(*iter == partition) {
+	list<sPartition> partitions;
+	if(getPartitions(NULL, NULL, table, &partitions, useCache) > 0) {
+		for(list<sPartition>::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
+			if(iter->name == partition) {
 				return(true);
 			}
 		}
@@ -3210,7 +3290,7 @@ bool SqlDb_odbc::existsIndex(const char */*table*/, const char */*indexColumn*/,
 	return(false);
 }
 
-int SqlDb_odbc::getPartitions(const char */*table*/, list<string> */*partitions*/, bool /*useCache*/) {
+int SqlDb_odbc::getPartitions(const char */*datadir*/, const char */*database*/, const char */*table*/, list<sPartition> */*partitions*/, bool /*useCache*/) {
 	// TODO
 	return(-1);
 }
@@ -6111,7 +6191,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 		for(size_t i = 0; i < cdrMainTables.size(); i++) {
 			if(existsTable(cdrMainTables[i].c_str())) {
 				tableIsExists = true;
-				if(getPartitions(cdrMainTables[i].c_str()) > 0) {
+				if(getPartitions(NULL, NULL, cdrMainTables[i].c_str()) > 0) {
 					partitionIsExists = true;
 				}
 			}
@@ -8630,6 +8710,114 @@ string SqlDb_mysql::getPartHourName(string *limitHour_str, int next_day, int hou
 	return(partHourName);
 }
 
+void SqlDb_mysql::fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name) {
+	partition->name = partition_name;
+	partition->table = table;
+	partition->file = getPartitionFile(datadir, database, table, partition_name);
+	partition->file_size = !partition->file.empty() ? GetFileSize(partition->file) : -1;
+	/*
+	partition->part_size = getPartitionSize(database, table, partition_name);
+	*/
+	partition->type = getPartitionType(partition_name);
+	partition->time = getPartitionTime(partition_name);
+	string act_part_time;
+	switch(partition->type) {
+	case SqlDb::_tp_day:
+		getPartDayName(&act_part_time);
+		break;
+	case SqlDb::_tp_hour:
+		getPartHourName(&act_part_time);
+		break;
+	case SqlDb::_tp_month:
+		getPartHourName(&act_part_time);
+		break;
+	default:
+		break;
+	}
+	if(!act_part_time.empty() && partition->time < act_part_time) {
+		partition->is_prev = true;
+	}
+}
+
+string SqlDb_mysql::getPartitionFile(const char *datadir, const char *database, const char *table, const char *partition_name) {
+	string datadir_tab = getDatadirTab(datadir, database);
+	if(datadir_tab.empty()) {
+		return("");
+	}
+	string file = datadir_tab + "/" + table + "#p#" + partition_name + ".ibd";
+	if(!file_exists(file)) {
+		return("");
+	}
+	return(file);
+}
+
+int64_t SqlDb_mysql::getPartitionSize(const char *database, const char *table, const char *partition_name) {
+	int64_t rslt = -1;
+	bool disableLogErrorOld = this->getDisableLogError();
+	unsigned int maxQueryPassOld = this->getMaxQueryPass();
+	this->setDisableLogError(true);
+	this->setMaxQueryPass(1);
+	if(this->query(string("select DATA_LENGTH + INDEX_LENGTH\
+			       from information_schema.PARTITIONS\
+			       where TABLE_SCHEMA = '") + (database ? database : conn_database) + 
+			       "' and TABLE_NAME = '" + table + 
+			       "' and PARTITION_NAME = '" + partition_name +  "'")) {
+		SqlDb_row row = this->fetchRow();
+		if(row) {
+			rslt= atoll(row[0].c_str());
+		}
+	}
+	this->setMaxQueryPass(maxQueryPassOld);
+	this->setDisableLogError(disableLogErrorOld);
+	return(rslt);
+}
+
+SqlDb::eTypePartition SqlDb_mysql::getPartitionType(const char *partition_name) {
+	if(partition_name && partition_name[0] == 'p') {
+		unsigned partition_name_length = strlen(partition_name);
+		if(partition_name_length == 7) {
+			return(_tp_day);
+		} else if(partition_name_length == 9) {
+			return(_tp_hour);
+		} else if(partition_name_length == 5) {
+			return(_tp_month);
+		}
+	}
+	return(_tp_na);
+}
+
+string SqlDb_mysql::getPartitionTime(const char *partition_name) {
+	unsigned partition_num = atoll(partition_name + 1);
+	struct tm partition_time;
+	memset(&partition_time, 0, sizeof(partition_time));
+	switch(getPartitionType(partition_name)) {
+	case _tp_day:
+		partition_time.tm_year = 2000 + partition_num / ((unsigned)1e4) - 1900;
+		partition_time.tm_mon = (partition_num % ((unsigned)1e4)) /  ((unsigned)1e2) - 1;
+		partition_time.tm_mday = partition_num % ((unsigned)1e2);
+		break;
+	case _tp_hour:
+		partition_time.tm_year = 2000 + partition_num /  ((unsigned)1e6) - 1900;
+		partition_time.tm_mon = (partition_num % ((unsigned)1e6)) / ((unsigned)1e4) - 1;
+		partition_time.tm_mday = (partition_num % ((unsigned)1e4)) / ((unsigned)1e2);
+		partition_time.tm_hour = partition_num % ((unsigned)1e2);
+		break;
+	case _tp_month:
+		partition_time.tm_year = 2000 + partition_num / ((unsigned)1e2) - 1900;
+		partition_time.tm_mon = partition_num % ((unsigned)1e2);
+		partition_time.tm_mday = 1;
+		break;
+	default:
+		break;
+	}
+	if(partition_time.tm_year) {
+		char partition_time_str[20] = "";
+		strftime(partition_time_str, sizeof(partition_time_str), "%Y-%m-%d %H:00:00", &partition_time);
+		return(partition_time_str);
+	}
+	return("");
+}
+
 void SqlDb_mysql::saveTimezoneInformation() {
 	string timezone_name = "UTC";
 	long timezone_offset = 0;
@@ -8688,7 +8876,7 @@ void SqlDb_mysql::checkDbMode() {
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
 		if(this->existsTable("cdr") &&
-		   this->getPartitions("cdr") > 0) {
+		   this->getPartitions(NULL, NULL, "cdr") > 0) {
 			syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
 			opt_cdr_partition = true;
 		}
@@ -8806,7 +8994,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	if(!opt_cdr_partition &&
 	   (isCloud() ||
 	    this->getDbMajorVersion() * 100 + this->getDbMinorVersion() > 500)) {
-		if(this->getPartitions("cdr") > 0) {
+		if(this->getPartitions(NULL, NULL, "cdr") > 0) {
 			syslog(LOG_INFO, "enable opt_cdr_partition (table cdr has partitions)");
 			opt_cdr_partition = true;
 		}
@@ -11010,19 +11198,19 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 			maximumPartitions = maximumDbPartitions;
 		}
 	}
-	vector<string> exists_partitions;
+	vector<SqlDb::sPartition> exists_partitions;
 	if(sqlDb->getPartitions(table, &exists_partitions) > 0) {
 		std::sort(exists_partitions.begin(), exists_partitions.end());
 		if(maximumPartitions ) {
 			if(exists_partitions.size() > maximumPartitions) {
 				for(size_t i = 0; i < (exists_partitions.size() - maximumPartitions); i++) {
-					partitions[exists_partitions[i]] = 1;
+					partitions[exists_partitions[i].name] = 1;
 				}
 			}
 		}
 		if(cleanParam > 0) {
-			for(size_t i = 0; i < exists_partitions.size() && exists_partitions[i].substr(0, limitPartName.length()) <= limitPartName; i++) {
-				partitions[exists_partitions[i]] = 1;
+			for(size_t i = 0; i < exists_partitions.size() && exists_partitions[i].name.substr(0, limitPartName.length()) <= limitPartName; i++) {
+				partitions[exists_partitions[i].name] = 1;
 			}
 		}
 	}
@@ -11493,6 +11681,230 @@ void sCreatePartitions::setIndicPartitionOperations(bool set) {
 		}
 	}
 	delete sqlDb;
+}
+
+
+void cPartitions::fill(SqlDb *sqlDb, const char *datadir, const char *database) {
+	extern string mysql_datadir;
+	if(!mysql_datadir.empty()) {
+		datadir = mysql_datadir.c_str();
+	}
+	fillTables(sqlDb);
+	fillPartitions(sqlDb, datadir, database);
+}
+
+void cPartitions::fillTables(SqlDb *sqlDb) {
+	extern int opt_cleandatabase_cdr;
+	extern int opt_cleandatabase_cdr_rtp_energylevels;
+	// CDR
+	addTable("cdr", "cdr");
+	addTable("cdr", "cdr_next");
+	if(existsColumns.cdr_next_branches) {
+		addTable("cdr", "cdr_next_branches");
+	}
+	addTable("cdr", "cdr_rtp");
+	if(opt_save_energylevels && (!opt_cleandatabase_cdr_rtp_energylevels || opt_cleandatabase_cdr_rtp_energylevels == opt_cleandatabase_cdr)) {
+		addTable("cdr", "cdr_rtp_energylevels");
+	}
+	addTable("cdr", "cdr_dtmf");
+	addTable("cdr", "cdr_sipresp");
+	if(_save_sip_history || sqlDb->existsTable("cdr_siphistory")) {
+		addTable("cdr", "cdr_siphistory");
+	}
+	addTable("cdr", "cdr_tar_part");
+	addTable("cdr", "cdr_country_code");
+	addTable("cdr", "cdr_sdp");
+	if(sqlDb->existsTable("cdr_conference")) {
+		addTable("cdr", "cdr_conference");
+	}
+	addTable("cdr", "cdr_txt");
+	addTable("cdr", "cdr_proxy");
+	addTable("cdr", "cdr_flags");
+	addTable("cdr", "message");
+	addTable("cdr", "message_proxy");
+	addTable("cdr", "message_country_code");
+	addTable("cdr", "message_flags");
+	if(custom_headers_cdr) {
+		list<string> nextTables = custom_headers_cdr->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			addTable("cdr", (*iter).c_str());
+		}
+	}
+	if(custom_headers_message) {
+		list<string> nextTables = custom_headers_message->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			addTable("cdr", (*iter).c_str());
+		}
+	}
+	//CDR_ENERGYLEVELS
+	if(opt_save_energylevels && opt_cleandatabase_cdr_rtp_energylevels && opt_cleandatabase_cdr_rtp_energylevels != opt_cleandatabase_cdr) {
+		addTable("cdr_energylevels", "cdr_rtp_energylevels");
+	}
+	// HTTP
+	if(opt_enable_http_enum_tables) {
+		addTable("http", "http_jj");
+		/* obsolete
+		addTable("http", "enum_jj");
+		*/
+	}
+	// WEBRTC
+	if(opt_enable_webrtc_table) {
+		addTable("http", "webrtc");
+	}
+	// REGISTER_STATE
+	addTable("register_state", "register_state");
+	if(opt_sip_register_save_eq_states_time && sqlDb->existsTable("register_state_eq_next")) {
+		addTable("register_state", "register_state_eq_next");
+	}
+	// REGISTER_FAILED
+	addTable("register_failed", "register_failed");
+	if(opt_sip_register_save_eq_states_time && sqlDb->existsTable("register_failed_eq_next")) {
+		addTable("register_failed", "register_failed_eq_next");
+	}
+	// REGISTER_TIME_INFO
+	addTable("register_time_info", "register_time_info");
+	// SIP_MSG
+	addTable("sip_msg", "sip_msg");
+	if(custom_headers_sip_msg) {
+		list<string> nextTables = custom_headers_sip_msg->getAllNextTables();
+		for(list<string>::iterator iter = nextTables.begin(); iter != nextTables.end(); iter++) {
+			addTable("sip_msg", (*iter).c_str());
+		}
+	}
+	// SS7
+	addTable("ss7", "ss7");
+	// CDR_STAT
+	if(opt_cdr_stat_values) {
+		for(int src_dst = 0; src_dst < 2; src_dst++) {
+			if(cCdrStat::enableBySrcDst(src_dst)) {
+				addTable("cdr_stat", ("cdr_stat_values" + cCdrStat::tableNameSuffix(src_dst)).c_str());
+			}
+		}
+	}
+	if(opt_cdr_stat_sources) {
+		for(int src_dst = 0; src_dst < 2; src_dst++) {
+			if(cCdrStat::enableBySrcDst(src_dst)) {
+				addTable("cdr_stat", ("cdr_stat_sources" + cCdrStat::tableNameSuffix(src_dst)).c_str());
+			}
+		}
+	}
+	// RTP_STAT
+	addTable("rtp_stat", "rtp_stat");
+	// LOG_SENSOR
+	addTable("log_sensor", "log_sensor");
+}
+
+void cPartitions::fillPartitions(SqlDb *sqlDb, const char *datadir, const char *database) {
+	for(list<sTable>::iterator iter_tables = tables.begin(); iter_tables != tables.end(); iter_tables++) {
+		list<SqlDb::sPartition> table_part;
+		if(sqlDb->existsTable(iter_tables->table)) {
+			sqlDb->getPartitions(datadir, database, iter_tables->table.c_str(), &table_part);
+			for(list<SqlDb::sPartition>::iterator iter_part = table_part.begin(); iter_part != table_part.end(); iter_part++) {
+				partitions[iter_tables->table].push_back(*iter_part);
+			}
+		}
+	}
+}
+
+void cPartitions::sumByGroup(map<string, map<string, u_int64_t> > *sum, bool only_prev) {
+	for(list<sTable>::iterator iter_tables = tables.begin(); iter_tables != tables.end(); iter_tables++) {
+		map<string, list<SqlDb::sPartition> >::iterator iter_part = partitions.find(iter_tables->table);
+		if(iter_part != partitions.end()) {
+			for(list<SqlDb::sPartition>::iterator iter_part2 = partitions[iter_tables->table].begin(); iter_part2 != partitions[iter_tables->table].end(); iter_part2++) {
+				if((only_prev && !iter_part2->is_prev) ||
+				   iter_part2->file_size < 0) {
+					continue;
+				}
+				(*sum)[iter_tables->group][iter_part2->time] += iter_part2->file_size;
+			}
+		}
+	}
+}
+
+void cPartitions::sumByGroup(map<string, u_int64_t> *sum, bool only_prev) {
+	map<string, map<string, u_int64_t> > _sum;
+	sumByGroup(&_sum, only_prev);
+	for(map<string, map<string, u_int64_t> >::iterator iter_sum = _sum.begin(); iter_sum != _sum.end(); iter_sum++) {
+		for(map<string, u_int64_t>::iterator iter_sum2 = iter_sum->second.begin(); iter_sum2 != iter_sum->second.end(); iter_sum2++) {
+			(*sum)[iter_sum->first] += iter_sum2->second;
+		}
+	}
+}
+
+u_int64_t cPartitions::sum(bool only_prev) {
+	u_int64_t sum = 0;
+	map<string, map<string, u_int64_t> > _sum;
+	sumByGroup(&_sum, only_prev);
+	for(map<string, map<string, u_int64_t> >::iterator iter_sum = _sum.begin(); iter_sum != _sum.end(); iter_sum++) {
+		for(map<string, u_int64_t>::iterator iter_sum2 = iter_sum->second.begin(); iter_sum2 != iter_sum->second.end(); iter_sum2++) {
+			sum += iter_sum2->second;
+		}
+	}
+	return(sum);
+}
+
+void cPartitions::countByGroup(map<string, unsigned> *count, bool only_prev) {
+	map<string, map<string, u_int64_t> > _sum;
+	sumByGroup(&_sum, only_prev);
+	for(map<string, map<string, u_int64_t> >::iterator iter_sum = _sum.begin(); iter_sum != _sum.end(); iter_sum++) {
+		(*count)[iter_sum->first] += iter_sum->second.size();
+	}
+}
+
+void cPartitions::lastSizeByGroup(map<string, u_int64_t> *size, bool only_prev) {
+	map<string, map<string, u_int64_t> > sum;
+	sumByGroup(&sum, only_prev);
+	for(map<string, map<string, u_int64_t> >::iterator iter_sum = sum.begin(); iter_sum != sum.end(); iter_sum++) {
+		(*size)[iter_sum->first] = iter_sum->second.begin()->second;
+	}
+}
+
+void cPartitions::getGroups(vector<string> *groups) {
+	set<string> _groups;
+	for(list<sTable>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		_groups.insert(iter->group);
+	}
+	for(set<string>::iterator iter = _groups.begin(); iter != _groups.end(); iter++) {
+		(*groups).push_back(*iter);
+	}
+}
+
+string cPartitions::dump(SqlDb *sqlDb, bool only_prev, const char *datadir, const char *database) {
+	extern string mysql_datadir;
+	if(!mysql_datadir.empty()) {
+		datadir = mysql_datadir.c_str();
+	}
+	ostringstream outStr;
+	double total_MB, free_MB, free_perc, files_sum_size_MB;
+	bool stat_rslt = sqlDb->getDbDatadirStats(datadir, database, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
+	outStr << "DATADIR STAT : " << (stat_rslt ? "OK" : "failed") << endl;
+	if(stat_rslt) {
+		outStr << "total: " << dump_MB(total_MB * 1024 * 1024) << " MB" << endl
+		       << "free: " << dump_MB(free_MB * 1024 * 1024) << " MB"
+		       << " / " << free_perc << " %" << endl
+		       << "files sum: " << dump_MB(files_sum_size_MB  * 1024 * 1024) << " MB" << endl;
+		vector<string> groups;
+		getGroups(&groups);
+		map<string, u_int64_t> groups_sum;
+		map<string, unsigned> groups_count;
+		map<string, u_int64_t> groups_last_size;
+		sumByGroup(&groups_sum, only_prev);
+		countByGroup(&groups_count, only_prev);
+		lastSizeByGroup(&groups_last_size, only_prev);
+		outStr << "GROUPS : size / count / last size" << endl;
+		for(unsigned i = 0; i < groups.size(); i++) {
+			outStr << groups[i] << " : "
+			       << dump_MB(groups_sum[groups[i]])  << " MB / "
+			       << groups_count[groups[i]] << " / "
+			       << dump_MB(groups_last_size[groups[i]]) << " MB" << endl;
+		}
+		outStr << "SUM : " << dump_MB(sum(only_prev)) << " MB" << endl;
+	}
+	return(outStr.str());
+}
+
+void cPartitions::addTable(const char *group, const char *table) {
+	tables.push_back(sTable(group, table));
 }
 
 

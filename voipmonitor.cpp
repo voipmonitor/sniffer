@@ -857,6 +857,7 @@ char mysql_user[256] = "root";
 char mysql_password[256] = "";
 int opt_mysql_port = 0; // 0 means use standard port
 char mysql_socket[256] = "";
+string mysql_datadir;
 mysqlSSLOptions optMySsl;
 
 char mysql_2_host[256] = "";
@@ -5998,6 +5999,9 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqlsslciphers_2", &optMySsl_2.ciphers))
 					->setReadOnly());
 				addConfigItem(new FILE_LINE(42077) cConfigItem_yesno("mysql_2_http",  &opt_mysql_2_http));
+					expert();
+					addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqldatadir", &mysql_datadir))
+						->setReadOnly());
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("yes"));

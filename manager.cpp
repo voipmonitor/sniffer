@@ -470,6 +470,7 @@ int Mgmt_quit(Mgmt_params *params);
 int Mgmt_pcapstat(Mgmt_params *params);
 int Mgmt_sniffer_threads(Mgmt_params *params);
 int Mgmt_sniffer_stat(Mgmt_params *params);
+int Mgmt_datadir_stat(Mgmt_params *params);
 int Mgmt_gitUpgrade(Mgmt_params *params);
 int Mgmt_login_screen_popup(Mgmt_params *params);
 int Mgmt_processing_limitations(Mgmt_params *params);
@@ -583,6 +584,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_pcapstat,
 	Mgmt_sniffer_threads,
 	Mgmt_sniffer_stat,
+	Mgmt_datadir_stat,
 	Mgmt_gitUpgrade,
 	Mgmt_login_screen_popup,
 	Mgmt_processing_limitations,
@@ -4620,6 +4622,19 @@ int Mgmt_sniffer_stat(Mgmt_params *params) {
 	outStrStat << endl;
 	string outStrStatStr = outStrStat.str();
 	return(params->sendString(&outStrStatStr));
+}
+
+int Mgmt_datadir_stat(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("datadir_stat", "return sniffer's mysql datadir statistics", true);
+		return(0);
+	}
+	cPartitions p;
+	SqlDb *sqlDb = createSqlObject();
+	p.fill(sqlDb);
+	string rslt = p.dump(sqlDb, false);
+	delete sqlDb;
+	return(params->sendString(rslt));
 }
 
 int Mgmt_sniffer_threads(Mgmt_params *params) {
