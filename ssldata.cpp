@@ -138,12 +138,22 @@ void SslData::processData(vmIP ip_src, vmIP ip_dst,
 		u_int32_t ssl_datalen;
 		bool alloc_ssl_data = false;
 		bool exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
+		bool ignore_remain_data = false;
 		if(exists_remain_data) {
 			reassemblyLink->cleanupRemainData(dataItem->getDirection(), dataItem->getTime().tv_sec);
 			exists_remain_data = reassemblyLink->existsRemainData(dataItem->getDirection());
+			SslHeader header(dataItem->getData(), dataItem->getDatalen());
+			if(header.isOk() && header.length && (u_int32_t)header.length + header.getDataOffsetLength() <= dataItem->getDatalen()) {
+				ok_first_ssl_header = true;
+				ignore_remain_data = true;
+				ssl_data = dataItem->getData();
+				ssl_datalen = dataItem->getDatalen();
+				if(debugStream) {
+					(*debugStream) << "SKIP REMAIN DATA" << endl;
+				}
+			}
 		}
-		bool ignore_remain_data = false;
-		if(exists_remain_data) {
+		if(exists_remain_data && !ignore_remain_data) {
 			u_int32_t remain_data_items = reassemblyLink->getRemainDataItems(dataItem->getDirection());
 			for(u_int32_t skip_first_remain_data_items = 0; skip_first_remain_data_items < remain_data_items; skip_first_remain_data_items++) {
 				if(alloc_ssl_data) {

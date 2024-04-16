@@ -458,6 +458,7 @@ bool opt_enable_diameter;
 bool opt_diameter_ignore_domain;
 bool opt_diameter_ignore_prefix;
 int opt_diameter_time_overlap = 10;
+bool opt_diameter_reassymbly_all_complete_after_zerodata_ack = false;
 int opt_enable_http = 0;
 bool opt_http_cleanup_ext = false;
 int opt_enable_webrtc = 0;
@@ -484,6 +485,7 @@ int opt_ssl_dtls_handshake_safe = false;
 bool opt_ssl_dtls_find_by_server_side = true;
 bool opt_ssl_dtls_find_by_client_side = false;
 int opt_ssl_dtls_boost = false;
+bool opt_ssl_reassymbly_all_complete_after_zerodata_ack = false;
 bool opt_ssl_enable_redirection_unencrypted_sip_content = false;
 int opt_tcpreassembly_thread = 1;
 char opt_tcpreassembly_http_log[1024];
@@ -4917,7 +4919,9 @@ int main_init_read() {
 		tcpReassemblySsl = new FILE_LINE(42029) TcpReassembly(TcpReassembly::ssl);
 		tcpReassemblySsl->setEnableIgnorePairReqResp();
 		tcpReassemblySsl->setEnableDestroyStreamsInComplete();
-		tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
+		if(opt_ssl_reassymbly_all_complete_after_zerodata_ack) {
+			tcpReassemblySsl->setEnableAllCompleteAfterZerodataAck();
+		}
 		tcpReassemblySsl->setIgnorePshInCheckOkData();
 		tcpReassemblySsl->setEnableValidateLastQueueDataViaCheckData();
 		if(opt_ssl_unlimited_reassembly_attempts) {
@@ -4984,7 +4988,9 @@ int main_init_read() {
 			tcpReassemblyDiameter = new FILE_LINE(0) TcpReassembly(TcpReassembly::diameter);
 			tcpReassemblyDiameter->setEnableIgnorePairReqResp();
 			tcpReassemblyDiameter->setEnableDestroyStreamsInComplete();
-			tcpReassemblyDiameter->setEnableAllCompleteAfterZerodataAck();
+			if(opt_diameter_reassymbly_all_complete_after_zerodata_ack) {
+				tcpReassemblyDiameter->setEnableAllCompleteAfterZerodataAck();
+			}
 			tcpReassemblyDiameter->setIgnorePshInCheckOkData();
 			tcpReassemblyDiameter->setEnableValidateLastQueueDataViaCheckData();
 			tcpReassemblyDiameter->setNeedValidateDataViaCheckData();
@@ -6651,6 +6657,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_server_side", &opt_ssl_dtls_find_by_server_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_find_by_client_side", &opt_ssl_dtls_find_by_client_side));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_dtls_boost", &opt_ssl_dtls_boost));
+				expert();
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("ssl_reassymbly_all_complete_after_zerodata_ack", &opt_ssl_reassymbly_all_complete_after_zerodata_ack));
 		setDisableIfEnd();
 	group("SKINNY");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6990,7 +6998,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_ignore_domain", &opt_diameter_ignore_domain));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_ignore_prefix", &opt_diameter_ignore_prefix));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("diameter_time_overlap", &opt_diameter_time_overlap));
-
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("diameter_reassymbly_all_complete_after_zerodata_ack", &opt_diameter_reassymbly_all_complete_after_zerodata_ack));
 	minorGroupIfNotSetBegin();
 	group("http");
 			advanced();

@@ -307,7 +307,7 @@ int TcpReassemblyStream::ok(bool crazySequence, bool enableSimpleCmpMaxNextSeq, 
 				} else if(enableDebug && ENABLE_DEBUG(link->reassembly->getType(), _debug_check_ok_process)) {
 					(*_debug_stream)
 						<< " --- failed cmp seq"
-						<< " (next_seq: " << next_seq << " !== " << (this->last_seq ? "last_seq" : "max_seq") << " : " << (this->last_seq ? this->last_seq : maxNextSeq) << ")"
+						<< " (next_seq: " << next_seq << " !== " << ("last_seq / max_seq / max_next_seq") << " : " << this->last_seq << " / " << maxNextSeq << " / " << this->max_next_seq << ")"
 						<< " (" << __FILE__ << ":" << __LINE__ << ")"
 						<< endl;
 				}
@@ -1357,6 +1357,7 @@ void TcpReassemblyLink::pushpacket(TcpReassemblyStream::eDirection direction,
 		this->queueStreams.push_back(stream);
 		if(ENABLE_DEBUG(reassembly->getType(), _debug_packet)) {
 			(*_debug_stream) 
+				<< endl
 				<< " -- NEW STREAM (" << stream->ack << ")"
 				<< " - first_seq: " << stream->first_seq
 				<< endl;
@@ -1548,8 +1549,8 @@ int TcpReassemblyLink::okQueue_normal(int final, bool enableDebug) {
 	int countIter = 0;
 	for(size_t i = 0; i < (allQueueStreams ? size : size - 1); i++) {
 		++countIter;
-		if(enableDebug && _debug_stream) {
-			(*_debug_stream) << "|";
+		if(enableDebug && _debug_stream && i) {
+			(*_debug_stream) << endl;
 		}
 		int rslt = this->queueStreams[i]->ok(false, 
 						     i == size - 1 && (finOrRst || final == 2), 
@@ -2144,7 +2145,7 @@ int TcpReassemblyLink::okQueue_crazy(int final, bool enableDebug) {
 				u_int32_t maxNextSeq = iter.getMaxNextSeq();
 				if(iter.stream->exists_data) {
 					if(enableDebug && _debug_stream) {
-						(*_debug_stream) << "|";
+						(*_debug_stream) << endl;
 					}
 					if(iter.stream->ok(true, maxNextSeq == 0, maxNextSeq,
 							   -1, -1, -1,
@@ -3678,6 +3679,7 @@ void TcpReassembly::_push(pcap_pkthdr *header, iphdr2 *header_ip, u_char *packet
 				if(ENABLE_DEBUG(type, _debug_packet)) {
 					(*_debug_stream) <<
 						fixed
+						<< endl
 						<< " ** NEW LINK " 
 						<< getTypeString(true)
 						<< " NORMAL: " 
