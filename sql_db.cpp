@@ -1456,14 +1456,14 @@ bool SqlDb::ignoreLastError() {
 
 string SqlDb::getDatadirTab(const char *datadir, const char *database) {
 	string datadir_tab;
-	if(datadir) {
+	if(datadir && *datadir) {
 		datadir_tab = datadir;
 	} else {
 		datadir_tab = getDbDatadir();
 		if(datadir_tab.empty()) {
 			return("");
 		}
-		datadir_tab += (datadir_tab[datadir_tab.length() - 1] == '/' ? "" : "/") + string(database ? database : conn_database);
+		datadir_tab += (datadir_tab[datadir_tab.length() - 1] == '/' ? "" : "/") + string(database && *database ? database : conn_database);
 	}
 	if(!file_exists(datadir_tab)) {
 		return("");
@@ -2064,9 +2064,6 @@ string SqlDb_mysql::getDbDatadir() {
 }
 
 bool SqlDb_mysql::getDbDatadirStats(const char *datadir, const char *database, double *total_MB, double *free_MB, double *free_perc, double *files_sum_size_MB) {
-	if(!database) {
-		database = conn_database.c_str();
-	}
 	*total_MB = 0;
 	*free_MB = 0;
 	*free_perc = 0;
@@ -11701,7 +11698,7 @@ void sCreatePartitions::setIndicPartitionOperations(bool set) {
 
 void cPartitions::fill(SqlDb *sqlDb, const char *datadir, const char *database) {
 	extern string mysql_datadir;
-	if(!mysql_datadir.empty()) {
+	if(!(datadir && *datadir) && !mysql_datadir.empty()) {
 		datadir = mysql_datadir.c_str();
 	}
 	fillTables(sqlDb);
@@ -11949,7 +11946,7 @@ void cPartitions::getTablesPartsforTime(vector<pair<string, string> > *tables_pa
 string cPartitions::dump(bool only_prev, const char *datadir, const char *database) {
 	SqlDb *sqlDb = createSqlObject();
 	extern string mysql_datadir;
-	if(!mysql_datadir.empty()) {
+	if(!(datadir && *datadir) && !mysql_datadir.empty()) {
 		datadir = mysql_datadir.c_str();
 	}
 	ostringstream outStr;
@@ -11986,7 +11983,7 @@ string cPartitions::dump(bool only_prev, const char *datadir, const char *databa
 bool cPartitions::cleanup_by_size(const char *datadir, const char *database) {
 	SqlDb *sqlDb = createSqlObject();
 	extern string mysql_datadir;
-	if(!mysql_datadir.empty()) {
+	if(!(datadir && *datadir) && !mysql_datadir.empty()) {
 		datadir = mysql_datadir.c_str();
 	}
 	double total_MB, free_MB, free_perc, files_sum_size_MB;

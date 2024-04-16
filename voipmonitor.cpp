@@ -809,6 +809,7 @@ int opt_cleandatabase_cdr_stat_size = 0;
 int opt_cleandatabase_rtp_stat_size = 0;
 int opt_cleandatabase_log_sensor_size = 0;
 int opt_cleandatabase_size_period = 10 * 60;
+bool opt_cleandatabase_size_force = false;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
@@ -6165,6 +6166,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_rtp_stat_size", &opt_cleandatabase_rtp_stat_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor_size", &opt_cleandatabase_log_sensor_size));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_size_period", &opt_cleandatabase_size_period));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("cleandatabase_size_force", &opt_cleandatabase_size_force));
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
@@ -9100,13 +9102,13 @@ void set_context_config() {
 		   is_client() || is_client_packetbuffer_sender() || is_sender() || 
 		   opt_nocdr || opt_disable_partition_operations || !opt_cdr_partition) {
 			clean_params_cleandatabase_by_size();
-		} else if(strcmp(mysql_host, "127.0.0.1") && strcmp(mysql_host, "localhost") && mysql_datadir.empty()) {
+		} else if(strcmp(mysql_host, "127.0.0.1") && strcmp(mysql_host, "localhost") && mysql_datadir.empty() && !opt_cleandatabase_size_force) {
 			syslog(LOG_ERR, "The condition \"If mysql is other than 127.0.0.1 / localhost, mysqldatadir must be specified\" must be met to clean the database by size.");
 			clean_params_cleandatabase_by_size();
 		} else {
 			double total_MB, free_MB, free_perc, files_sum_size_MB;
 			SqlDb *sqlDb = createSqlObject();
-			bool stat_rslt = sqlDb->getDbDatadirStats(NULL, NULL, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
+			bool stat_rslt = sqlDb->getDbDatadirStats(mysql_datadir.c_str(), NULL, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
 			delete sqlDb;
 			if(!stat_rslt) {
 				syslog(LOG_ERR, "Failed to get the necessary information to clean the database by size. Check access to the data folder of the database.");
