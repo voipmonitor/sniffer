@@ -8729,7 +8729,7 @@ void SqlDb_mysql::fillPartitionData(sPartition *partition, const char *datadir, 
 		getPartHourName(&act_part_time);
 		break;
 	case SqlDb::_tp_month:
-		getPartHourName(&act_part_time);
+		getPartMonthName(&act_part_time);
 		break;
 	default:
 		break;
@@ -8790,29 +8790,36 @@ string SqlDb_mysql::getPartitionTime(const char *partition_name) {
 	unsigned partition_num = atoll(partition_name + 1);
 	struct tm partition_time;
 	memset(&partition_time, 0, sizeof(partition_time));
+	const char *partition_time_format = NULL;
 	switch(getPartitionType(partition_name)) {
 	case _tp_day:
 		partition_time.tm_year = 2000 + partition_num / ((unsigned)1e4) - 1900;
 		partition_time.tm_mon = (partition_num % ((unsigned)1e4)) /  ((unsigned)1e2) - 1;
 		partition_time.tm_mday = partition_num % ((unsigned)1e2);
+		partition_time = getNextBeginDate(partition_time);
+		partition_time_format = "%Y-%m-%d 00:00:00";
 		break;
 	case _tp_hour:
 		partition_time.tm_year = 2000 + partition_num /  ((unsigned)1e6) - 1900;
 		partition_time.tm_mon = (partition_num % ((unsigned)1e6)) / ((unsigned)1e4) - 1;
 		partition_time.tm_mday = (partition_num % ((unsigned)1e4)) / ((unsigned)1e2);
 		partition_time.tm_hour = partition_num % ((unsigned)1e2);
+		partition_time = getNextBeginHour(partition_time);
+		partition_time_format = "%Y-%m-%d %H:00:00";
 		break;
 	case _tp_month:
 		partition_time.tm_year = 2000 + partition_num / ((unsigned)1e2) - 1900;
-		partition_time.tm_mon = partition_num % ((unsigned)1e2);
+		partition_time.tm_mon = partition_num % ((unsigned)1e2) - 1;
 		partition_time.tm_mday = 1;
+		partition_time = getNextBeginMonth(partition_time);
+		partition_time_format = "%Y-%m-01 00:00:00";
 		break;
 	default:
 		break;
 	}
-	if(partition_time.tm_year) {
+	if(partition_time.tm_year && partition_time_format) {
 		char partition_time_str[20] = "";
-		strftime(partition_time_str, sizeof(partition_time_str), "%Y-%m-%d %H:00:00", &partition_time);
+		strftime(partition_time_str, sizeof(partition_time_str), partition_time_format, &partition_time);
 		return(partition_time_str);
 	}
 	return("");
@@ -12080,12 +12087,16 @@ void cPartitions::cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb) {
 		sumByGroup(&groups_sum, true);
 		countByGroup(&groups_count, true);
 		if(groups_sum["sip_msg"] > groups_sum["cdr"]) {
+			syslog(LOG_NOTICE, "cleanup partitions by size - remove last partitions for group sip_msg");
 			dropLastPartitionsInGroup("sip_msg", sqlDb);
 		} else if(groups_sum["register_failed"] > groups_sum["cdr"]) {
+			syslog(LOG_NOTICE, "cleanup partitions by size - remove last partitions for group register_failed");
 			dropLastPartitionsInGroup("register_failed", sqlDb);
 		} else if(groups_sum["cdr_stat"] > groups_sum["cdr"] && groups_count["cdr_stat"] > 1) {
+			syslog(LOG_NOTICE, "cleanup partitions by size - remove last partitions for group cdr_stat");
 			dropLastPartitionsInGroup("cdr_stat", sqlDb);
 		} else if(groups_sum["rtp_stat"] > groups_sum["cdr"] && groups_count["rtp_stat"] > 1) {
+			syslog(LOG_NOTICE, "cleanup partitions by size - remove last partitions for group rtp_stat");
 			dropLastPartitionsInGroup("rtp_stat", sqlDb);
 		} else {
 			vector<string> times;
@@ -12094,6 +12105,7 @@ void cPartitions::cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb) {
 				vector<pair<string, string> > tables_parts;
 				getTablesPartsforTime(&tables_parts, times[0].c_str(), true);
 				if(tables_parts.size()) {
+					syslog(LOG_NOTICE, "cleanup partitions by size - remove partitions for time %s", times[0].c_str());
 					bool _createSqlObject = false;
 					if(!sqlDb) {
 						sqlDb = createSqlObject();
@@ -12121,6 +12133,7 @@ void cPartitions::cleanup_group_by_size(const char *group, unsigned limit_mb, Sq
 		sumByGroup(&groups_sum, true);
 		countByGroup(&groups_count, true);
 		if(groups_sum[group] > limit_mb * 1024 * 1024) {
+			syslog(LOG_NOTICE, "cleanup partitions by size for group %s", group);
 			dropLastPartitionsInGroup(group, sqlDb);
 		} else {
 			break;

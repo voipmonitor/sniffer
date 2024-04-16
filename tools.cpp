@@ -1386,12 +1386,7 @@ tm getNextBeginMonth(tm dateTime, const char *timezone) {
 		rslt.tm_mon = 0;
 		++rslt.tm_year;
 	}
-	time_t time_s = mktime(&rslt, timezone);
-	time_s += 60 * 60 * 36;
-	rslt = time_r(&time_s, timezone ? timezone : "local");
-	rslt.tm_hour = 0;
-	rslt.tm_min = 0;
-	rslt.tm_sec = 0;
+	rslt.tm_mday = 1;
 	return(rslt);
 }
 
