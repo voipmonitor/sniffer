@@ -12080,7 +12080,7 @@ void cPartitions::cleanup_by_size(unsigned limit_sum_mb, unsigned limit_min_free
 }
 
 void cPartitions::cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb) {
-	u_int64_t oversize = oversize_mb * 1024 * 1024;
+	u_int64_t oversize = (u_int64_t)oversize_mb * 1024 * 1024;
 	u_int64_t sum = this->sum(true);
 	u_int64_t sum_size_required = sum > oversize ? sum - oversize : 0;
 	while(sum > sum_size_required) {
@@ -12134,7 +12134,7 @@ void cPartitions::cleanup_group_by_size(const char *group, unsigned limit_mb, Sq
 		map<string, unsigned> groups_count;
 		sumByGroup(&groups_sum, true);
 		countByGroup(&groups_count, true);
-		if(groups_sum[group] > limit_mb * 1024 * 1024) {
+		if(groups_sum[group] > (u_int64_t)limit_mb * 1024ull * 1024) {
 			syslog(LOG_NOTICE, "cleanup partitions by size for group %s", group);
 			dropLastPartitionsInGroup(group, sqlDb);
 		} else {
