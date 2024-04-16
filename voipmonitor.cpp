@@ -792,6 +792,21 @@ int opt_cleandatabase_sip_msg = 0;
 int opt_cleandatabase_cdr_stat = 71;
 int opt_cleandatabase_rtp_stat = 2;
 int opt_cleandatabase_log_sensor = 30;
+int opt_cleandatabase_size = 0;
+int opt_cleandatabase_min_free_size = 0;
+int opt_cleandatabase_cdr_size = 0;
+int opt_cleandatabase_cdr_rtp_energylevels_size = 0;
+int opt_cleandatabase_ss7_size = 0;
+int opt_cleandatabase_http_enum_size = 0;
+int opt_cleandatabase_webrtc_size = 0;
+int opt_cleandatabase_register_state_size = 0;
+int opt_cleandatabase_register_failed_size = 0;
+int opt_cleandatabase_register_time_info_size = 0;
+int opt_cleandatabase_sip_msg_size = 0;
+int opt_cleandatabase_cdr_stat_size = 0;
+int opt_cleandatabase_rtp_stat_size = 0;
+int opt_cleandatabase_log_sensor_size = 0;
+int opt_cleandatabase_size_period = 10 * 60;
 unsigned int graph_delimiter = GRAPH_DELIMITER;
 unsigned int graph_version = GRAPH_VERSION;
 unsigned int graph_mark = GRAPH_MARK;
@@ -2099,6 +2114,8 @@ void *defered_service_fork(void *) {
 #define check_time_partition_operation(at) (firstIter || \
 					    ((!setEnableFromTo || timeOk) && ((actTime - at) > (setEnableFromTo ? 1 : 12) * 3600)) || \
 					    (actTime - at) > 24 * 3600)
+#define check_time_partition_by_size_operation(at) (firstIter || \
+						    (actTime - at) > opt_cleandatabase_size_period)
 
 sCreatePartitions  createPartitions;
 
@@ -2117,6 +2134,7 @@ void *storing_cdr( void */*dummy*/ ) {
 	time_t createPartitionIpaccAt = 0;
 	time_t createPartitionBillingAgregationAt = 0;
 	time_t dropPartitionBillingAgregationAt = 0;
+	time_t dropPartitionBySizeAt = 0;
 	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	storing_cdr_tid = get_unix_tid();
@@ -2213,6 +2231,12 @@ void *storing_cdr( void */*dummy*/ ) {
 				if(check_time_partition_operation(dropPartitionBillingAgregationAt)) {
 					createPartitions.dropBilling = true;
 					dropPartitionBillingAgregationAt = actTime;
+				}
+			}
+			if(opt_cdr_partition && is_set_cleandatabase_by_size()) {
+				if(check_time_partition_by_size_operation(dropPartitionBySizeAt)) {
+					createPartitions.dropBySize = true;
+					dropPartitionBySizeAt = actTime;
 				}
 			}
 			if(createPartitions.isSet()) {
@@ -6119,6 +6143,22 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat", &opt_cleandatabase_cdr_stat));
 			addConfigItem(new FILE_LINE(42122) cConfigItem_integer("cleandatabase_rtp_stat", &opt_cleandatabase_rtp_stat));
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor", &opt_cleandatabase_log_sensor));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_size", &opt_cleandatabase_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_min_free_size", &opt_cleandatabase_min_free_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_size", &opt_cleandatabase_cdr_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_rtp_energylevels_size", &opt_cleandatabase_cdr_rtp_energylevels_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_ss7_size", &opt_cleandatabase_ss7_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_http_enum_size", &opt_cleandatabase_http_enum_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_webrtc_size", &opt_cleandatabase_webrtc_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_state_size", &opt_cleandatabase_register_state_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_failed_size", &opt_cleandatabase_register_failed_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_register_time_info_size", &opt_cleandatabase_register_time_info_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_sip_msg_size", &opt_cleandatabase_sip_msg_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_cdr_stat_size", &opt_cleandatabase_cdr_stat_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_rtp_stat_size", &opt_cleandatabase_rtp_stat_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_log_sensor_size", &opt_cleandatabase_log_sensor_size));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("cleandatabase_size_period", &opt_cleandatabase_size_period));
 		subgroup("backup");
 				advanced();
 				addConfigItem(new FILE_LINE(42123) cConfigItem_string("database_backup_from_date", opt_database_backup_from_date, sizeof(opt_database_backup_from_date)));
@@ -7845,6 +7885,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "diameter_dump")			sverb.diameter_dump = 1;
 	else if(verbParam == "diameter_assign")			sverb.diameter_assign = 1;
 	else if(verbParam == "rdtsc")				sverb.rdtsc = 1;
+	else if(verbParam == "suppress_drop_partitions")	sverb.suppress_drop_partitions = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;
@@ -9045,6 +9086,26 @@ void set_context_config() {
 		opt_dup_check_type = _dedup_crc32_sw;
 	}
 	#endif
+	
+	if(is_set_cleandatabase_by_size()) {
+		if(isCloud() ||
+		   is_client() || is_client_packetbuffer_sender() || is_sender() || 
+		   opt_nocdr || opt_disable_partition_operations || !opt_cdr_partition) {
+			clean_params_cleandatabase_by_size();
+		} else if(strcmp(mysql_host, "127.0.0.1") && strcmp(mysql_host, "localhost") && mysql_datadir.empty()) {
+			syslog(LOG_ERR, "The condition \"If mysql is other than 127.0.0.1 / localhost, mysqldatadir must be specified\" must be met to clean the database by size.");
+			clean_params_cleandatabase_by_size();
+		} else {
+			double total_MB, free_MB, free_perc, files_sum_size_MB;
+			SqlDb *sqlDb = createSqlObject();
+			bool stat_rslt = sqlDb->getDbDatadirStats(NULL, NULL, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
+			delete sqlDb;
+			if(!stat_rslt) {
+				syslog(LOG_ERR, "Failed to get the necessary information to clean the database by size. Check access to the data folder of the database.");
+				clean_params_cleandatabase_by_size();
+			}
+		}
+	}
 }
 
 void check_context_config() {
@@ -9473,6 +9534,40 @@ bool is_support_for_mysql_new_store() {
 bool is_support_manager_aes() {
 	return(!is_sender() && 
 	       (!opt_nocdr || (!opt_manager_aes_key.empty() && !opt_manager_aes_iv.empty())));
+}
+
+bool is_set_cleandatabase_by_size() {
+	return(opt_cleandatabase_size ||
+	       opt_cleandatabase_min_free_size ||
+	       opt_cleandatabase_cdr_size ||
+	       opt_cleandatabase_cdr_rtp_energylevels_size ||
+	       opt_cleandatabase_ss7_size ||
+	       opt_cleandatabase_http_enum_size ||
+	       opt_cleandatabase_webrtc_size ||
+	       opt_cleandatabase_register_state_size ||
+	       opt_cleandatabase_register_failed_size ||
+	       opt_cleandatabase_register_time_info_size ||
+	       opt_cleandatabase_sip_msg_size ||
+	       opt_cleandatabase_cdr_stat_size ||
+	       opt_cleandatabase_rtp_stat_size ||
+	       opt_cleandatabase_log_sensor_size);
+}
+
+void clean_params_cleandatabase_by_size() {
+	opt_cleandatabase_size = 0;
+	opt_cleandatabase_min_free_size = 0;
+	opt_cleandatabase_cdr_size = 0;
+	opt_cleandatabase_cdr_rtp_energylevels_size = 0;
+	opt_cleandatabase_ss7_size = 0;
+	opt_cleandatabase_http_enum_size = 0;
+	opt_cleandatabase_webrtc_size = 0;
+	opt_cleandatabase_register_state_size = 0;
+	opt_cleandatabase_register_failed_size = 0;
+	opt_cleandatabase_register_time_info_size = 0;
+	opt_cleandatabase_sip_msg_size = 0;
+	opt_cleandatabase_cdr_stat_size = 0;
+	opt_cleandatabase_rtp_stat_size = 0;
+	opt_cleandatabase_log_sensor_size = 0;
 }
 
 void dns_lookup_common_hostnames() {

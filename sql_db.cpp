@@ -2732,7 +2732,7 @@ int SqlDb_mysql::getPartitions(const char *datadir, const char *database, const 
 			if(partitions) {
 				for(unsigned i = 0; i < partitions_v.size(); i++) {
 					sPartition partition;
-					fillPartitionData(&partition, datadir, database, table, partitions_v[i].c_str());
+					fillPartitionData(&partition, datadir, database, table, partitions_v[i].c_str(), i == partitions_v.size() - 1);
 					partitions->push_back(partition);
 				}
 			}
@@ -8710,7 +8710,7 @@ string SqlDb_mysql::getPartHourName(string *limitHour_str, int next_day, int hou
 	return(partHourName);
 }
 
-void SqlDb_mysql::fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name) {
+void SqlDb_mysql::fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name, bool last) {
 	partition->name = partition_name;
 	partition->table = table;
 	partition->file = getPartitionFile(datadir, database, table, partition_name);
@@ -8734,7 +8734,7 @@ void SqlDb_mysql::fillPartitionData(sPartition *partition, const char *datadir, 
 	default:
 		break;
 	}
-	if(!act_part_time.empty() && partition->time < act_part_time) {
+	if(!last && !act_part_time.empty() && partition->time < act_part_time) {
 		partition->is_prev = true;
 	}
 }
@@ -11223,7 +11223,9 @@ void _dropMysqlPartitions(const char *table, int cleanParam, unsigned maximumPar
 			partitions_list_str += iter->first;
 		}
 		syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, partitions_list_str.c_str());
-		sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + partitions_list_str);
+		if(!sverb.suppress_drop_partitions) {
+			sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + partitions_list_str);
+		}
 	}
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -11662,6 +11664,10 @@ void sCreatePartitions::doDropPartitions() {
 	if(this->dropBilling) {
 		dropMysqlPartitionsBillingAgregation();
 	}
+	if(this->dropBySize) {
+		cPartitions p;
+		p.cleanup_by_size();
+	}
 }
 
 void sCreatePartitions::setIndicPartitionOperations(bool set) {
@@ -11694,6 +11700,7 @@ void cPartitions::fill(SqlDb *sqlDb, const char *datadir, const char *database) 
 }
 
 void cPartitions::fillTables(SqlDb *sqlDb) {
+	tables.clear();
 	extern int opt_cleandatabase_cdr;
 	extern int opt_cleandatabase_cdr_rtp_energylevels;
 	// CDR
@@ -11742,14 +11749,14 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 	}
 	// HTTP
 	if(opt_enable_http_enum_tables) {
-		addTable("http", "http_jj");
+		addTable("http_enum", "http_jj");
 		/* obsolete
-		addTable("http", "enum_jj");
+		addTable("http_enum", "enum_jj");
 		*/
 	}
 	// WEBRTC
 	if(opt_enable_webrtc_table) {
-		addTable("http", "webrtc");
+		addTable("webrtc", "webrtc");
 	}
 	// REGISTER_STATE
 	addTable("register_state", "register_state");
@@ -11795,6 +11802,7 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 }
 
 void cPartitions::fillPartitions(SqlDb *sqlDb, const char *datadir, const char *database) {
+	partitions.clear();
 	for(list<sTable>::iterator iter_tables = tables.begin(); iter_tables != tables.end(); iter_tables++) {
 		list<SqlDb::sPartition> table_part;
 		if(sqlDb->existsTable(iter_tables->table)) {
@@ -11860,16 +11868,77 @@ void cPartitions::lastSizeByGroup(map<string, u_int64_t> *size, bool only_prev) 
 }
 
 void cPartitions::getGroups(vector<string> *groups) {
-	set<string> _groups;
+	string group_prev;
 	for(list<sTable>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
-		_groups.insert(iter->group);
-	}
-	for(set<string>::iterator iter = _groups.begin(); iter != _groups.end(); iter++) {
-		(*groups).push_back(*iter);
+		if(iter->group != group_prev &&
+		   find(groups->begin(), groups->end(), iter->group) == groups->end()) {
+			groups->push_back(iter->group);
+			group_prev = iter->group;
+		}
 	}
 }
 
-string cPartitions::dump(SqlDb *sqlDb, bool only_prev, const char *datadir, const char *database) {
+void cPartitions::getGroups(set<string> *groups) {
+	for(list<sTable>::iterator iter = tables.begin(); iter != tables.end(); iter++) {
+		groups->insert(iter->group);
+	}
+}
+
+void cPartitions::getTablesInGroup(vector<string> *tables, const char *group) {
+	for(list<sTable>::iterator iter = this->tables.begin(); iter != this->tables.end(); iter++) {
+		if(!group || group == iter->group) {
+			tables->push_back(iter->table);
+		}
+	}
+}
+
+void cPartitions::getTablesInGroup(set<string> *tables, const char *group) {
+	for(list<sTable>::iterator iter = this->tables.begin(); iter != this->tables.end(); iter++) {
+		if(!group || group == iter->group) {
+			tables->insert(iter->table);
+		}
+	}
+}
+
+void cPartitions::getPartitionsTimes(vector<string> *times, bool only_prev, const char *group) {
+	set<string> tablesInGroup;
+	if(group) {
+		getTablesInGroup(&tablesInGroup, group);
+	}
+	set<string> times_set;
+	for(map<string, list<SqlDb::sPartition> >::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
+		if(!group || tablesInGroup.find(iter->first) != tablesInGroup.end()) {
+			for(list<SqlDb::sPartition>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+				if(!only_prev || iter2->is_prev) {
+					times_set.insert(iter2->time);
+				}
+			}
+		}
+	}
+	for(set<string>::iterator iter = times_set.begin(); iter != times_set.end(); iter++) {
+		times->push_back(*iter);
+	}
+}
+
+void cPartitions::getTablesPartsforTime(vector<pair<string, string> > *tables_parts, const char *time, bool only_prev, const char *group) {
+	set<string> tablesInGroup;
+	if(group) {
+		getTablesInGroup(&tablesInGroup, group);
+	}
+	for(map<string, list<SqlDb::sPartition> >::iterator iter = partitions.begin(); iter != partitions.end(); iter++) {
+		if(!group || tablesInGroup.find(iter->first) != tablesInGroup.end()) {
+			for(list<SqlDb::sPartition>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+				if(iter2->time == time &&
+				   (!only_prev || iter2->is_prev)) {
+					tables_parts->push_back(make_pair(iter->first, iter2->name));
+				}
+			}
+		}
+	}
+}
+
+string cPartitions::dump(bool only_prev, const char *datadir, const char *database) {
+	SqlDb *sqlDb = createSqlObject();
 	extern string mysql_datadir;
 	if(!mysql_datadir.empty()) {
 		datadir = mysql_datadir.c_str();
@@ -11883,6 +11952,7 @@ string cPartitions::dump(SqlDb *sqlDb, bool only_prev, const char *datadir, cons
 		       << "free: " << dump_MB(free_MB * 1024 * 1024) << " MB"
 		       << " / " << free_perc << " %" << endl
 		       << "files sum: " << dump_MB(files_sum_size_MB  * 1024 * 1024) << " MB" << endl;
+		this->fill(sqlDb);
 		vector<string> groups;
 		getGroups(&groups);
 		map<string, u_int64_t> groups_sum;
@@ -11900,7 +11970,203 @@ string cPartitions::dump(SqlDb *sqlDb, bool only_prev, const char *datadir, cons
 		}
 		outStr << "SUM : " << dump_MB(sum(only_prev)) << " MB" << endl;
 	}
+	delete sqlDb;
 	return(outStr.str());
+}
+
+bool cPartitions::cleanup_by_size(const char *datadir, const char *database) {
+	SqlDb *sqlDb = createSqlObject();
+	extern string mysql_datadir;
+	if(!mysql_datadir.empty()) {
+		datadir = mysql_datadir.c_str();
+	}
+	double total_MB, free_MB, free_perc, files_sum_size_MB;
+	bool stat_rslt = sqlDb->getDbDatadirStats(datadir, database, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
+	if(!stat_rslt) {
+		delete sqlDb;
+		return(false);
+	}
+	this->fill(sqlDb);
+	extern int opt_cleandatabase_size;
+	extern int opt_cleandatabase_min_free_size;
+	extern int opt_cleandatabase_cdr_size;
+	extern int opt_cleandatabase_cdr_rtp_energylevels_size;
+	extern int opt_cleandatabase_ss7_size;
+	extern int opt_cleandatabase_http_enum_size;
+	extern int opt_cleandatabase_webrtc_size;
+	extern int opt_cleandatabase_register_state_size;
+	extern int opt_cleandatabase_register_failed_size;
+	extern int opt_cleandatabase_register_time_info_size;
+	extern int opt_cleandatabase_sip_msg_size;
+	extern int opt_cleandatabase_cdr_stat_size;
+	extern int opt_cleandatabase_rtp_stat_size;
+	extern int opt_cleandatabase_log_sensor_size;
+	if(opt_cleandatabase_size || opt_cleandatabase_min_free_size) {
+		 cleanup_by_size(opt_cleandatabase_size, opt_cleandatabase_min_free_size, sqlDb, datadir, database);
+	}
+	if(opt_cleandatabase_cdr_size) {
+		cleanup_group_by_size("cdr", opt_cleandatabase_cdr_size, sqlDb);
+	}
+	if(opt_cleandatabase_cdr_rtp_energylevels_size) {
+		cleanup_group_by_size("cdr_energylevels", opt_cleandatabase_cdr_rtp_energylevels_size, sqlDb);
+	}
+	if(opt_cleandatabase_ss7_size) {
+		cleanup_group_by_size("ss7", opt_cleandatabase_ss7_size, sqlDb);
+	}
+	if(opt_cleandatabase_http_enum_size) {
+		cleanup_group_by_size("http_enum", opt_cleandatabase_http_enum_size, sqlDb);
+	}
+	if(opt_cleandatabase_webrtc_size) {
+		cleanup_group_by_size("webrtc", opt_cleandatabase_webrtc_size, sqlDb);
+	}
+	if(opt_cleandatabase_register_state_size) {
+		cleanup_group_by_size("register_state", opt_cleandatabase_register_state_size, sqlDb);
+	}
+	if(opt_cleandatabase_register_failed_size) {
+		cleanup_group_by_size("register_failed", opt_cleandatabase_register_failed_size, sqlDb);
+	}
+	if(opt_cleandatabase_register_time_info_size) {
+		cleanup_group_by_size("register_time_info", opt_cleandatabase_register_time_info_size, sqlDb);
+	}
+	if(opt_cleandatabase_sip_msg_size) {
+		cleanup_group_by_size("sip_msg", opt_cleandatabase_sip_msg_size, sqlDb);
+	}
+	if(opt_cleandatabase_cdr_stat_size) {
+		cleanup_group_by_size("cdr_stat", opt_cleandatabase_cdr_stat_size, sqlDb);
+	}
+	if(opt_cleandatabase_rtp_stat_size) {
+		cleanup_group_by_size("rtp_stat", opt_cleandatabase_rtp_stat_size, sqlDb);
+	}
+	if(opt_cleandatabase_log_sensor_size) {
+		cleanup_group_by_size("log_sensor", opt_cleandatabase_log_sensor_size, sqlDb);
+	}
+	delete sqlDb;
+	return(true);
+}
+
+void cPartitions::cleanup_by_size(unsigned limit_sum_mb, unsigned limit_min_free_size, SqlDb *sqlDb, 
+				  const char *datadir, const char *database) {
+	double total_MB, free_MB, free_perc, files_sum_size_MB;
+	bool stat_rslt = sqlDb->getDbDatadirStats(datadir, database, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
+	if(!stat_rslt) {
+		return;
+	}
+	unsigned oversize_mb = 0;
+	if((limit_sum_mb && files_sum_size_MB > limit_sum_mb) || 
+	   (limit_min_free_size && free_MB < limit_min_free_size)) {
+		if(limit_sum_mb && files_sum_size_MB > limit_sum_mb) {
+			oversize_mb = files_sum_size_MB - limit_sum_mb;
+		}
+		if(limit_min_free_size && free_MB < limit_min_free_size && 
+		   (limit_min_free_size - free_MB) > oversize_mb) {
+			oversize_mb = limit_min_free_size - free_MB;
+		}
+	}
+	if(oversize_mb > 0) {
+		u_int64_t cleanable_max_size = sum(true);
+		if(cleanable_max_size > 0) {
+			cleanup_by_oversize(oversize_mb, sqlDb);
+		}
+	}
+}
+
+void cPartitions::cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb) {
+	u_int64_t oversize = oversize_mb * 1024 * 1024;
+	u_int64_t sum = this->sum(true);
+	u_int64_t sum_size_required = sum > oversize ? sum - oversize : 0;
+	while(sum > sum_size_required) {
+		map<string, u_int64_t> groups_sum;
+		map<string, unsigned> groups_count;
+		sumByGroup(&groups_sum, true);
+		countByGroup(&groups_count, true);
+		if(groups_sum["sip_msg"] > groups_sum["cdr"]) {
+			dropLastPartitionsInGroup("sip_msg", sqlDb);
+		} else if(groups_sum["register_failed"] > groups_sum["cdr"]) {
+			dropLastPartitionsInGroup("register_failed", sqlDb);
+		} else if(groups_sum["cdr_stat"] > groups_sum["cdr"] && groups_count["cdr_stat"] > 1) {
+			dropLastPartitionsInGroup("cdr_stat", sqlDb);
+		} else if(groups_sum["rtp_stat"] > groups_sum["cdr"] && groups_count["rtp_stat"] > 1) {
+			dropLastPartitionsInGroup("rtp_stat", sqlDb);
+		} else {
+			vector<string> times;
+			getPartitionsTimes(&times, true);
+			if(times.size()) {
+				vector<pair<string, string> > tables_parts;
+				getTablesPartsforTime(&tables_parts, times[0].c_str(), true);
+				if(tables_parts.size()) {
+					bool _createSqlObject = false;
+					if(!sqlDb) {
+						sqlDb = createSqlObject();
+						_createSqlObject = true;
+					}
+					for(vector<pair<string, string> >::iterator iter = tables_parts.begin(); iter != tables_parts.end(); iter++) {
+						dropPartition(iter->first.c_str(), iter->second.c_str(), sqlDb);
+					}
+					if(_createSqlObject) {
+						delete sqlDb;
+					}
+				}
+			} else {
+				break;
+			}
+		}
+		sum = this->sum(true);
+	}
+}
+
+void cPartitions::cleanup_group_by_size(const char *group, unsigned limit_mb, SqlDb *sqlDb) {
+	while(true) {
+		map<string, u_int64_t> groups_sum;
+		map<string, unsigned> groups_count;
+		sumByGroup(&groups_sum, true);
+		countByGroup(&groups_count, true);
+		if(groups_sum[group] > limit_mb * 1024 * 1024) {
+			dropLastPartitionsInGroup(group, sqlDb);
+		} else {
+			break;
+		}
+	}
+}
+
+void cPartitions::dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb) {
+	vector<string> times;
+	getPartitionsTimes(&times, true, group);
+	if(times.size()) {
+		vector<pair<string, string> > tables_parts;
+		getTablesPartsforTime(&tables_parts, times[0].c_str(), true, group);
+		if(tables_parts.size()) {
+			bool _createSqlObject = false;
+			if(!sqlDb) {
+				sqlDb = createSqlObject();
+				_createSqlObject = true;
+			}
+			for(vector<pair<string, string> >::iterator iter = tables_parts.begin(); iter != tables_parts.end(); iter++) {
+				dropPartition(iter->first.c_str(), iter->second.c_str(), sqlDb);
+			}
+			if(_createSqlObject) {
+				delete sqlDb;
+			}
+		}
+	}
+}
+
+bool cPartitions::dropPartition(const char *table, const char *partition, SqlDb *sqlDb) {
+	map<string, list<SqlDb::sPartition> >::iterator iter = partitions.find(table);
+	if(iter != partitions.end()) {
+		for(list<SqlDb::sPartition>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(iter2->name == partition) {
+				iter->second.erase(iter2);
+				syslog(LOG_NOTICE, "DROP PARTITION %s : %s", table, partition);
+				sqlDb->setDisableLogError();
+				sqlDb->setDisableNextAttemptIfError();
+				if(!sverb.suppress_drop_partitions) {
+					sqlDb->query(string("ALTER TABLE ") + sqlDb->escapeTableName(table) + " DROP PARTITION " + partition);
+				}
+				return(true);
+			}
+		}
+	}
+	return(false);
 }
 
 void cPartitions::addTable(const char *group, const char *table) {

@@ -4630,10 +4630,7 @@ int Mgmt_datadir_stat(Mgmt_params *params) {
 		return(0);
 	}
 	cPartitions p;
-	SqlDb *sqlDb = createSqlObject();
-	p.fill(sqlDb);
-	string rslt = p.dump(sqlDb, false);
-	delete sqlDb;
+	string rslt = p.dump(false);
 	return(params->sendString(rslt));
 }
 

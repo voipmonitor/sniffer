@@ -152,6 +152,7 @@ struct sVerbose {
 	int diameter_dump;
 	int diameter_assign;
 	int rdtsc;
+	int suppress_drop_partitions;
 	int _debug1;
 	int _debug2;
 	int _debug3;

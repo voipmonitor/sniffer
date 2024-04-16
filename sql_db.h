@@ -6,6 +6,7 @@
 #include <vector>
 #include <queue>
 #include <map>
+#include <set>
 #include <mysql.h>
 #include <sql.h>
 #include <sqlext.h>
@@ -744,7 +745,7 @@ public:
 	string getPartDayName(string *limitDay_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next = 0);
 	string getPartHourName(string *limitHour_str, int next_day, int hour);
-	void fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name);
+	void fillPartitionData(sPartition *partition, const char *datadir, const char *database, const char *table, const char *partition_name, bool last);
 	string getPartitionFile(const char *datadir, const char *database, const char *table, const char *partition_name);
 	int64_t getPartitionSize(const char *database, const char *table, const char *partition_name);
 	eTypePartition getPartitionType(const char *partition_name);
@@ -1512,6 +1513,7 @@ public:
 		createIpacc = false;
 		createBilling = false;
 		dropBilling = false;
+		dropBySize = false;
 		_runInThread = false;
 	}
 	bool isSet() {
@@ -1521,7 +1523,8 @@ public:
 		       createRtpStat || dropRtpStat ||
 		       createLogSensor || dropLogSensor ||
 		       createIpacc || 
-		       createBilling || dropBilling);
+		       createBilling || dropBilling ||
+		       dropBySize);
 	}
 	void createPartitions(bool inThread = false);
 	static void *_createPartitions(void *arg);
@@ -1545,6 +1548,7 @@ public:
 	bool createIpacc;
 	bool createBilling;
 	bool dropBilling;
+	bool dropBySize;
 	bool _runInThread;
 	static volatile int in_progress;
 };
@@ -1570,8 +1574,19 @@ public:
 	void countByGroup(map<string, unsigned> *count, bool only_prev);
 	void lastSizeByGroup(map<string, u_int64_t> *size, bool only_prev);
 	void getGroups(vector<string> *groups);
-	string dump(SqlDb *sqlDb, bool only_prev, const char *datadir = NULL, const char *database = NULL);
+	void getGroups(set<string> *groups);
+	void getTablesInGroup(vector<string> *tables, const char *group);
+	void getTablesInGroup(set<string> *tables, const char *group);
+	void getPartitionsTimes(vector<string> *times, bool only_prev, const char *group = NULL);
+	void getTablesPartsforTime(vector<pair<string, string> > *tables_parts, const char *time, bool only_prev, const char *group = NULL);
+	string dump(bool only_prev, const char *datadir = NULL, const char *database = NULL);
+	bool cleanup_by_size(const char *datadir = NULL, const char *database = NULL);
+	void cleanup_by_size(unsigned limit_sum_mb, unsigned limit_min_free_size, SqlDb *sqlDb = NULL, const char *datadir = NULL, const char *database = NULL);
+	void cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb = NULL);
+	void cleanup_group_by_size(const char *group, unsigned limit_mb, SqlDb *sqlDb = NULL);
 private:
+	void dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb);
+	bool dropPartition(const char *table, const char *partition, SqlDb *sqlDb);
 	void addTable(const char *group, const char *table);
 	double dump_MB(u_int64_t B) {
 		return(((u_int64_t)((B / (1024 * 1024.)) * 100)) / 100.);
