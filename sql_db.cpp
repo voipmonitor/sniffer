@@ -8744,11 +8744,13 @@ string SqlDb_mysql::getPartitionFile(const char *datadir, const char *database, 
 	if(datadir_tab.empty()) {
 		return("");
 	}
-	string file = datadir_tab + "/" + table + "#p#" + partition_name + ".ibd";
-	if(!file_exists(file)) {
-		return("");
-	}
-	return(file);
+	for(int i = 0; i < 2; i++) {
+               string file = datadir_tab + "/" + table + (i == 0 ? "#p#" : "#P#") + partition_name + ".ibd";
+               if(file_exists(file)) {
+                       return(file);
+               }
+        }
+	return("");
 }
 
 int64_t SqlDb_mysql::getPartitionSize(const char *database, const char *table, const char *partition_name) {
