@@ -295,10 +295,12 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 		ppd.header_udp = NULL;
 		ppd.header_tcp = NULL;
 		ppd.datalen = 0;
-		pcapProcess(&header_packet, -1,
-			    NULL, 0,
-			    ppf_all,
-			    &ppd, dlink, NULL, NULL);
+		if(!pcapProcess(&header_packet, -1,
+				NULL, 0,
+				ppf_all,
+				&ppd, dlink, NULL, NULL)) {
+			continue;
+		}
 		u_int32_t caplen = HPH(header_packet)->caplen;
 		u_char *packet = HPP(header_packet);
 		if(ppd.header_ip) {
