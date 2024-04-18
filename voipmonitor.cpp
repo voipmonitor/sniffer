@@ -1157,6 +1157,7 @@ bool opt_sip_only_tcp = false;
 unsigned opt_max_sip_packets_in_call = 20000;
 unsigned opt_max_invite_packets_in_call = 10000;
 int opt_enable_semicolon_in_number = false;
+bool opt_response_time_from_first_invite = true;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
@@ -6801,6 +6802,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("max_invite_packets_in_call", &opt_max_invite_packets_in_call));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("enable_semicolon_in_number", &opt_enable_semicolon_in_number))
 						->addValues("force:2"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("response_time_from_first_invite", &opt_response_time_from_first_invite));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
 				->addValues("old:2|o:2"));

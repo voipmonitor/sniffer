@@ -397,6 +397,18 @@ struct sCseq {
 
 class CallStructs {
 public:
+	struct sInviteCseqData {
+		sInviteCseqData(u_int64_t time_us = 0) {
+			this->time_us = time_us;
+			first_response_100_time_us = 0;
+			first_response_200_time_us = 0;
+			first_response_xxx_time_us = 0;
+		}
+		u_int64_t time_us;
+		u_int64_t first_response_100_time_us;
+		u_int64_t first_response_200_time_us;
+		u_int64_t first_response_xxx_time_us;
+	};
 	struct sInviteSD_Addr {
 		sInviteSD_Addr() {
 			confirmed = false;
@@ -416,6 +428,7 @@ public:
 		unsigned counter_reverse;
 		map<u_int32_t, u_int32_t> counter_by_cseq;
 		map<u_int32_t, u_int32_t> counter_reverse_by_cseq;
+		map<u_int32_t, sInviteCseqData> cseq_data;
 		string caller;
 		string called;
 		string called_invite;
@@ -548,6 +561,8 @@ public:
 	void proxies_unlock() {
 		__SYNC_UNLOCK(this->_proxies_lock);
 	}
+	int64_t get_min_response_100_time_us();
+	int64_t get_min_response_xxx_time_us();
 public:
 
 	Call *call;
@@ -556,7 +571,9 @@ public:
 	string branch_fbasename;
 
 	vector<sInviteSD_Addr> invite_sdaddr;
+	map<vmIPportLink, unsigned> invite_sdaddr_map;
 	vector<sInviteSD_Addr> rinvite_sdaddr;
+	map<vmIPportLink, unsigned> rinvite_sdaddr_map;
 	vector<sInviteSD_OrderItem> invite_sdaddr_order;
 	u_int64_t invite_sdaddr_last_ts;
 	int8_t invite_sdaddr_all_confirmed;

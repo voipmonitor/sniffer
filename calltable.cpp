@@ -604,6 +604,42 @@ void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies
 	if(need_lock) proxies_unlock();
 }
 
+int64_t CallBranch::get_min_response_100_time_us() {
+	int64_t rslt = -1;
+	invite_list_lock();
+	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+		for(map<u_int32_t, sInviteCseqData>::iterator iter2 = iter->cseq_data.begin(); iter2 != iter->cseq_data.end(); iter2++) {
+			if(iter2->second.time_us && iter2->second.first_response_100_time_us && 
+			   iter2->second.first_response_100_time_us >= iter2->second.time_us) {
+				int64_t diff_us = iter2->second.first_response_100_time_us - iter2->second.time_us;
+				if(rslt == -1 || diff_us < rslt) {
+					rslt = diff_us;
+				}
+			}
+		}
+	}
+	invite_list_unlock();
+	return(rslt);
+}
+
+int64_t CallBranch::get_min_response_xxx_time_us(){
+	int64_t rslt = -1;
+	invite_list_lock();
+	for(vector<Call::sInviteSD_Addr>::iterator iter = invite_sdaddr.begin(); iter != invite_sdaddr.end(); iter++) {
+		for(map<u_int32_t, sInviteCseqData>::iterator iter2 = iter->cseq_data.begin(); iter2 != iter->cseq_data.end(); iter2++) {
+			if(iter2->second.time_us && iter2->second.first_response_xxx_time_us && 
+			   iter2->second.first_response_xxx_time_us >= iter2->second.time_us) {
+				int64_t diff_us = iter2->second.first_response_xxx_time_us - iter2->second.time_us;
+				if(rslt == -1 || diff_us < rslt) {
+					rslt = diff_us;
+				}
+			}
+		}
+	}
+	invite_list_unlock();
+	return(rslt);
+}
+
 /* constructor */
 Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative, u_int64_t time_us) :
  Call_abstract(call_type, time_us),
@@ -4721,8 +4757,12 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 		v = 1;
 		break;
 	case _chartType_response_time_100:
+		extern bool opt_response_time_from_first_invite;
 		if(first_response_100_time_us) {
-			v = MIN(65535, round((first_response_100_time_us - first_invite_time_us) / 1000.0));
+			v = MIN(65535, 
+				opt_response_time_from_first_invite ?
+				 round((first_response_100_time_us - first_invite_time_us) / 1000.0) :
+				 round(branch_main()->get_min_response_100_time_us() / 1000.0));
 		} else {
 			setNull = true;
 		}
@@ -6697,11 +6737,20 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	
 	if(this->first_invite_time_us) {
+		extern bool opt_response_time_from_first_invite;
 		if(existsColumns.cdr_response_time_100 && this->first_response_100_time_us) {
-			cdr.add(MIN(65535, round((this->first_response_100_time_us - this->first_invite_time_us) / 1000.0)), "response_time_100");
+			cdr.add(MIN(65535,
+				    opt_response_time_from_first_invite ?
+				     round((this->first_response_100_time_us - this->first_invite_time_us) / 1000.0) :
+				     round(c_branch->get_min_response_100_time_us() / 1000.0)),
+				    "response_time_100");
 		}
 		if(existsColumns.cdr_response_time_xxx && this->first_response_xxx_time_us) {
-			cdr.add(MIN(65535, round((this->first_response_xxx_time_us - this->first_invite_time_us) / 1000.0)), "response_time_xxx");
+			cdr.add(MIN(65535,
+				    opt_response_time_from_first_invite ?
+				     round((this->first_response_xxx_time_us - this->first_invite_time_us) / 1000.0) :
+				     round(c_branch->get_min_response_xxx_time_us() / 1000.0)),
+				    "response_time_xxx");
 		}
 	}
 

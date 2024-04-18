@@ -1124,6 +1124,27 @@ struct vmIPport {
 };
 
 
+struct vmIPportLink {
+	inline vmIPportLink() {
+	}
+	inline vmIPportLink(vmIP src_ip, vmPort src_port,
+			    vmIP dst_ip, vmPort dst_port) 
+		: src(src_ip, src_port),
+		  dst(dst_ip, dst_port) {
+	}
+	inline bool operator == (const vmIPportLink& other) const {
+		return(this->src == other.src &&
+		       this->dst == other.dst);
+	}
+	inline bool operator < (const vmIPportLink& other) const { 
+		return(this->src < other.src ||
+		       (this->src == other.src && this->dst < other.dst));
+	}
+	vmIPport src;
+	vmIPport dst;
+};
+
+
 struct vmIPmask_ {
 	vmIPmask_() {
 		ip.clear();
