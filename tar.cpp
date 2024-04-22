@@ -537,6 +537,13 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 			}
 			tryNextDecompressBlock = findNextDecompressBlock;
 		}
+		if(!this->readData.end &&
+		   ((this->readData.filename.length() > TAR_FILENAME_LENGTH - 1 ?
+		      !strncmp(this->readData.fileHeader.name, this->readData.filename.c_str(), TAR_FILENAME_LENGTH - 1) :
+		      this->readData.fileHeader.name == this->readData.filename) ||
+		    (!this->readData.hash_filename.empty() && this->readData.fileHeader.name == this->readData.hash_filename))){
+			this->tar_read_file_ev(this->readData.fileHeader, NULL, 0, 0);
+		}
 	}
 	delete [] read_buffer;
 	delete decompressStream;

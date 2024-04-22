@@ -4000,9 +4000,11 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	char *tarPosI = new FILE_LINE(13011) char[1000000];
 	unsigned spool_index = 0;
 	int type_spool_file = (int)tsf_na;
+	char end_string[100] = "";
 	*tarPosI = 0;
 
-	sscanf(params->buf, zip ? "getfile_in_tar_zip %s %s %s %u %s %s %u %i" : "getfile_in_tar %s %s %s %u %s %s %u %i", tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index, &type_spool_file);
+	sscanf(params->buf, (string(zip ? "getfile_in_tar_zip" : "getfile_in_tar") + " %s %s %s %u %s %s %u %i %s").c_str(), 
+	       tar_filename, filename, dateTimeKey, &recordId, tableType, tarPosI, &spool_index, &type_spool_file, end_string);
 	if(type_spool_file == tsf_na) {
 		type_spool_file = findTypeSpoolFile(spool_index, tar_filename);
 	}
@@ -4017,6 +4019,9 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 		tar.tar_read_send_parameters(params);
 		tar.tar_read(filename_conv.c_str(), recordId, tableType, tarPosI);
 		if(tar.isReadEnd()) {
+			if(end_string[0]) {
+				params->_send(end_string, strlen(end_string));
+			}
 			getfile_in_tar_completed.add(tar_filename, filename, dateTimeKey);
 		}
 	} else {
@@ -4067,7 +4072,7 @@ int Mgmt_file_exists(Mgmt_params *params) {
 		return(params->sendString("mirror"));
 	}
 
-	char filename[2048];
+	char *filename = new FILE_LINE(0) char[1024 * 100];
 	unsigned spool_index = 0;
 	int type_spool_file = (int)tsf_na;
 	u_int64_t size;
@@ -4078,25 +4083,64 @@ int Mgmt_file_exists(Mgmt_params *params) {
 		type_spool_file = findTypeSpoolFile(spool_index, filename);
 	}
 
-	int error_code;
-	if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
-		size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
-		rslt = intToString(size);
-		if(size > 0 && strstr(filename, "tar")) {
-			for(int i = 1; i <= 5; i++) {
-				string nextfilename = filename;
-				nextfilename += "." + intToString(i);
-				u_int64_t nextsize = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
-				if(nextsize > 0) {
-					rslt += ";" + nextfilename + ":" + intToString(nextsize);
-				} else {
-					break;
+	if(strchr(filename, '|')) {
+		vector<string> filenames = explode(filename, '|');
+		int error_code_rslt = 0;
+		vector<string> rslts;
+		for(unsigned i = 0; i < filenames.size(); i++) {
+			int error_code;
+			string filename = filenames[i];
+			if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
+				size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
+				string rslt_i = filename + ":" + intToString(size);
+				if(size > 0 && filename.find("tar") != string::npos) {
+					for(int i = 1; i <= 5; i++) {
+						string nextfilename = filename;
+						nextfilename += "." + intToString(i);
+						u_int64_t nextsize = i; // file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
+						if(nextsize > 0) {
+							rslt_i += ";" + nextfilename + ":" + intToString(nextsize);
+						} else {
+							break;
+						}
+					}
+				}
+				rslts.push_back(rslt_i);
+			} else {
+				if(error_code) {
+					error_code_rslt =error_code;
 				}
 			}
 		}
+		if(rslts.size()) {
+			rslt = "ok\n" + implode(rslts, "\n");
+		} else {
+			rslt = error_code_rslt == EACCES ? "permission_denied" : "not_exists";
+		}
 	} else {
-		rslt = error_code == EACCES ? "permission_denied" : "not_exists";
+		int error_code;
+		if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
+			size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
+			rslt = intToString(size);
+			if(size > 0 && strstr(filename, "tar")) {
+				for(int i = 1; i <= 5; i++) {
+					string nextfilename = filename;
+					nextfilename += "." + intToString(i);
+					u_int64_t nextsize = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
+					if(nextsize > 0) {
+						rslt += ";" + nextfilename + ":" + intToString(nextsize);
+					} else {
+						break;
+					}
+				}
+			}
+		} else {
+			rslt = error_code == EACCES ? "permission_denied" : "not_exists";
+		}
 	}
+	
+	delete [] filename;
+	
 	return(params->sendString(&rslt));
 }
 
