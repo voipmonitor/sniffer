@@ -4097,7 +4097,7 @@ int Mgmt_file_exists(Mgmt_params *params) {
 					for(int i = 1; i <= 5; i++) {
 						string nextfilename = filename;
 						nextfilename += "." + intToString(i);
-						u_int64_t nextsize = i; // file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
+						u_int64_t nextsize = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
 						if(nextsize > 0) {
 							rslt_i += ";" + nextfilename + ":" + intToString(nextsize);
 						} else {
