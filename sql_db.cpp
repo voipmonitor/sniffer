@@ -12116,6 +12116,8 @@ void cPartitions::cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb) {
 					if(_createSqlObject) {
 						delete sqlDb;
 					}
+				} else {
+					break;
 				}
 			} else {
 				break;
@@ -12129,18 +12131,20 @@ void cPartitions::cleanup_group_by_size(const char *group, unsigned limit_mb, Sq
 	while(true) {
 		map<string, u_int64_t> groups_sum;
 		map<string, unsigned> groups_count;
-		sumByGroup(&groups_sum, true);
+		sumByGroup(&groups_sum, false);
 		countByGroup(&groups_count, true);
-		if(groups_sum[group] > (u_int64_t)limit_mb * 1024ull * 1024) {
+		if(groups_sum[group] > (u_int64_t)limit_mb * 1024ull * 1024 && groups_count[group] > 0) {
 			syslog(LOG_NOTICE, "cleanup partitions by size for group %s", group);
-			dropLastPartitionsInGroup(group, sqlDb);
+			if(!dropLastPartitionsInGroup(group, sqlDb)) {
+				break;
+			}
 		} else {
 			break;
 		}
 	}
 }
 
-void cPartitions::dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb) {
+bool cPartitions::dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb) {
 	vector<string> times;
 	getPartitionsTimes(&times, true, group);
 	if(times.size()) {
@@ -12158,8 +12162,10 @@ void cPartitions::dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb) {
 			if(_createSqlObject) {
 				delete sqlDb;
 			}
+			return(true);
 		}
 	}
+	return(false);
 }
 
 bool cPartitions::dropPartition(const char *table, const char *partition, SqlDb *sqlDb) {

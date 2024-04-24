@@ -7487,6 +7487,8 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		} else {
 			opt_save_query_main_to_files = false;
 			opt_load_query_main_from_files = 0;
+			opt_save_query_charts_to_files = false;
+			opt_load_query_charts_from_files = 0;
 		}
 	}
 	if(configItem->config_name == "query_cache_charts") {
@@ -9105,7 +9107,7 @@ void set_context_config() {
 		   opt_nocdr || opt_disable_partition_operations || !opt_cdr_partition) {
 			clean_params_cleandatabase_by_size();
 		} else if(strcmp(mysql_host, "127.0.0.1") && strcmp(mysql_host, "localhost") && mysql_datadir.empty() && !opt_cleandatabase_size_force) {
-			syslog(LOG_ERR, "The condition \"If mysql is other than 127.0.0.1 / localhost, mysqldatadir must be specified\" must be met to clean the database by size.");
+			cLogSensor::log(cLogSensor::error, "The requirement to clean the database by size is that if the MySQL server is set to an address other than 127.0.0.1 or 'localhost', the 'mysqldatadir' must be specified.");
 			clean_params_cleandatabase_by_size();
 		} else {
 			double total_MB, free_MB, free_perc, files_sum_size_MB;
@@ -9113,7 +9115,7 @@ void set_context_config() {
 			bool stat_rslt = sqlDb->getDbDatadirStats(mysql_datadir.c_str(), NULL, &total_MB, &free_MB, &free_perc, &files_sum_size_MB);
 			delete sqlDb;
 			if(!stat_rslt) {
-				syslog(LOG_ERR, "Failed to get the necessary information to clean the database by size. Check access to the data folder of the database.");
+				cLogSensor::log(cLogSensor::error, "Failed to retrieve the required information for database size management. Please verify access to the database's data folder.");
 				clean_params_cleandatabase_by_size();
 			}
 		}

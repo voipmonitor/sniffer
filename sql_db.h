@@ -1585,7 +1585,7 @@ public:
 	void cleanup_by_oversize(unsigned oversize_mb, SqlDb *sqlDb = NULL);
 	void cleanup_group_by_size(const char *group, unsigned limit_mb, SqlDb *sqlDb = NULL);
 private:
-	void dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb);
+	bool dropLastPartitionsInGroup(const char *group, SqlDb *sqlDb);
 	bool dropPartition(const char *table, const char *partition, SqlDb *sqlDb);
 	void addTable(const char *group, const char *table);
 	double dump_MB(u_int64_t B) {
