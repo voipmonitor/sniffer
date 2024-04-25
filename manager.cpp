@@ -1405,6 +1405,8 @@ void *manager_read_thread(void * arg) {
 	}
 	if(!command.empty()) {
 		parse_command(command, clientInfo, NULL, &aes_key, aes_cipher.c_str(), aes_missing);
+	} else if(clientInfo.handler) {
+		close(clientInfo.handler);
 	}
 	
 	termTimeCacheForThread();
@@ -1644,7 +1646,11 @@ void *manager_server(void *arg) {
 		}
 		if(doAccept) {
 			vmIP clientIP;
-			int clientHandler = socket_accept(*manager_socket, &clientIP, NULL);
+			vmPort clientPort;
+			int clientHandler = socket_accept(*manager_socket, &clientIP, &clientPort);
+			if(sverb.manager) {
+				syslog(LOG_NOTICE, "manager connect from: %s %u", clientIP.getString().c_str(), clientPort.getPort());
+			}
 			if(is_terminating_without_error()) {
 				close(clientHandler);
 				close(*manager_socket);
