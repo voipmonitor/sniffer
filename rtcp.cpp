@@ -9,6 +9,9 @@
 #include "calltable.h"
 #include "rtp.h"
 
+#define NTP_TIMEDIFF1970TO2036SEC 2085978496ul
+
+
 //#include "rtcp.h"
 
 /*
@@ -914,4 +917,68 @@ void parseRtcpParams(string &rtcp_params_string, sPrepareRtcpDataParams *rtcp_pa
 void parseRtcpParams(string &rtcp_params_string) {
 	prepare_rtcp_data_params = new FILE_LINE(0) sPrepareRtcpDataParams;
 	parseRtcpParams(rtcp_params_string, prepare_rtcp_data_params);
+}
+
+bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer) {
+	if(!isJsonObject(json)) {
+		return(false);
+	}
+	JsonItem jsonData;
+	jsonData.parse(json);
+	
+	rtcp_header header;
+	header.version = 2;
+	header.padding = 0;
+	header.rc_sc = atoi(jsonData.getValue("report_count").c_str());
+	header.packet_type = atoi(jsonData.getValue("type").c_str());
+	header.length = 0;
+	
+	JsonItem *jsonData_sender_info;
+	jsonData_sender_info = jsonData.getItem("sender_information");
+	if(!jsonData_sender_info) {
+		return(false);
+	}
+	
+	rtcp_sr_senderinfo sender_info;
+	sender_info.sender_ssrc = htonl(atoll(jsonData.getValue("ssrc").c_str()));
+	u_int32_t ntp_sec = atoll(jsonData_sender_info->getValue("ntp_timestamp_sec").c_str());
+	u_int32_t ntp_usec = atoll(jsonData_sender_info->getValue("ntp_timestamp_usec").c_str());
+	u_int32_t ntp_fract = (u_int32_t)((double)ntp_usec / 1e6 * ((1ul<<32)-1));
+	sender_info.timestamp_MSW = htonl(ntp_sec - NTP_TIMEDIFF1970TO2036SEC);
+	sender_info.timestamp_LSW = htonl(ntp_fract);
+	sender_info.timestamp_RTP = htonl(atoll(jsonData_sender_info->getValue("rtp_timestamp").c_str()));
+	sender_info.sender_pkt_cnt = htonl(atoll(jsonData_sender_info->getValue("packets").c_str()));
+	sender_info.sender_octet_cnt = htonl(atoll(jsonData_sender_info->getValue("octets").c_str()));
+	
+	JsonItem *jsonData_report_blocks;
+	jsonData_report_blocks = jsonData.getItem("report_blocks");
+	if(!jsonData_report_blocks) {
+		return(false);
+	}
+	unsigned report_blocks_count = jsonData_report_blocks->getLocalCount();
+	if(report_blocks_count != header.rc_sc) {
+		return(false);
+	}
+	
+	header.length = htons((sizeof(sender_info) + report_blocks_count * sizeof(rtcp_sr_reportblock)) / 4);
+	buffer->add(&header, sizeof(header));
+	buffer->add(&sender_info, sizeof(sender_info));
+	
+	for(unsigned int i = 0; i < report_blocks_count; i++) {
+		JsonItem *jsonData_report_block = jsonData_report_blocks->getLocalItem(i);
+		rtcp_sr_reportblock report_block;
+		report_block.ssrc = htonl(atoll(jsonData_report_block->getValue("source_ssrc").c_str()));
+		report_block.frac_lost = atoi(jsonData_report_block->getValue("fraction_lost").c_str());
+		u_int32_t packets_lost = atoll(jsonData_report_block->getValue("packets_lost").c_str());
+		report_block.packets_lost[0] = (packets_lost >> 16) & 0xFF;
+		report_block.packets_lost[1] = (packets_lost >> 8) & 0xFF;
+		report_block.packets_lost[2] = packets_lost & 0xFF;
+		report_block.ext_seqno_recvd = htonl(atoll(jsonData_report_block->getValue("highest_seq_no").c_str()));
+		report_block.jitter = htonl(atoll(jsonData_report_block->getValue("ia_jitter").c_str()));
+		report_block.lsr = htonl(atoll(jsonData_report_block->getValue("lsr").c_str()));
+		report_block.delay_since_lsr = htonl(atoll(jsonData_report_block->getValue("dlsr").c_str()));
+		buffer->add(&report_block, sizeof(report_block));
+	}
+	
+	return(true);
 }

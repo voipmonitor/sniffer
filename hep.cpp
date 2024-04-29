@@ -94,6 +94,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 		memset(&header_eth, 0, sizeof(header_eth));
 		header_eth.ether_type = htons(hepData.ip_protocol_family == PF_INET6 ? ETHERTYPE_IPV6 : ETHERTYPE_IP);
 		string payload_str;
+		SimpleBuffer payload_buf;
 		u_char *payload_data = hepData.captured_packet_payload.data();
 		unsigned payload_len = hepData.captured_packet_payload.data_len();
 		if(hepData.protocol_type == _hep_prot_SIP && 
@@ -105,6 +106,13 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				payload_str = payload_value;
 				payload_data = (u_char*)payload_str.c_str();
 				payload_len = payload_str.length();
+			}
+		} else if(hepData.protocol_type == _hep_prot_RTCP_JSON && 
+			  payload_len > 0 && payload_data[0] == '{' && payload_data[payload_len - 1] == '}') {
+			extern bool createRtcpPayloadFromJson(const char *json, SimpleBuffer *buffer);
+			if(createRtcpPayloadFromJson((const char*)payload_data, &payload_buf)) {
+				payload_data = payload_buf.data();
+				payload_len = payload_buf.size();
 			}
 		}
 		if(hepData.ip_protocol_id == IPPROTO_TCP) {
@@ -613,7 +621,7 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 		if(ppd.header_ip) {
 			if(ppd.header_ip->get_protocol() == IPPROTO_UDP) {
 				ppd.header_udp = (udphdr2*)((char*)ppd.header_ip + ppd.header_ip->get_hdr_size());
-				ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, pcap_next_ex_header->caplen);
+				ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, caplen);
 			} else if(ppd.header_ip->get_protocol() == IPPROTO_TCP) {
 				ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + ppd.header_ip->get_hdr_size());
 				ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);

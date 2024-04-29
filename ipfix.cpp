@@ -306,7 +306,7 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 		if(ppd.header_ip) {
 			if(ppd.header_ip->get_protocol() == IPPROTO_UDP) {
 				ppd.header_udp = (udphdr2*)((char*)ppd.header_ip + ppd.header_ip->get_hdr_size());
-				ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, pcap_next_ex_header->caplen);
+				ppd.datalen = get_udp_data_len(ppd.header_ip, ppd.header_udp, &ppd.data, packet, caplen);
 			} else if(ppd.header_ip->get_protocol() == IPPROTO_TCP) {
 				ppd.header_tcp = (tcphdr2*) ((char*) ppd.header_ip + ppd.header_ip->get_hdr_size());
 				ppd.datalen = get_tcp_data_len(ppd.header_ip, ppd.header_tcp, &ppd.data, packet, caplen);
