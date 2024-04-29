@@ -1326,7 +1326,14 @@ int Call::add_ip_port(CallBranch *c_branch,
 		      char *sessid, char *sdp_label, 
 		      list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 		      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch, 
-		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+		      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
+	/*
+	cout << "** add_ip_port "
+	     << addr.getString() << ":" << port.getString() << " -> "
+	     << (iscaller ? "caller" : "called") << " - "
+	     << ptime
+	     << endl;
+	*/
 	if(c_branch->end_call_rtp) {
 		return(-1);
 	}
@@ -1339,7 +1346,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 		if(this->refresh_data_ip_port(c_branch,
 					      addr, port, ts, 
 					      srtp_crypto_config_list, srtp_fingerprint,
-					      iscaller, rtpmap, sdp_flags)) {
+					      iscaller, rtpmap, sdp_flags, ptime)) {
 			return 1;
 		}
 	}
@@ -1363,6 +1370,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 	c_branch->ip_port[c_branch->ipport_n].port = port;
 	c_branch->ip_port[c_branch->ipport_n].iscaller = iscaller;
 	c_branch->ip_port[c_branch->ipport_n].sdp_flags = sdp_flags;
+	c_branch->ip_port[c_branch->ipport_n].ptime = ptime;
 	if(sessid) {
 		c_branch->ip_port[c_branch->ipport_n].sessid = sessid;
 	}
@@ -1409,7 +1417,7 @@ int Call::add_ip_port(CallBranch *c_branch,
 bool Call::refresh_data_ip_port(CallBranch *c_branch,
 				vmIP addr, vmPort port, struct timeval *ts, 
 				list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
-				int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+				int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
 	for(int i = 0; i < c_branch->ipport_n; i++) {
 		if(c_branch->ip_port[i].addr == addr && c_branch->ip_port[i].port == port) {
 			// reinit rtpmap
@@ -1462,6 +1470,7 @@ bool Call::refresh_data_ip_port(CallBranch *c_branch,
 					sdp_flags.media_type |= sdp_media_type_image;
 				}
 				c_branch->ip_port[i].sdp_flags = sdp_flags;
+				c_branch->ip_port[i].ptime = ptime;
 				calltable->lock_calls_hash();
 				node_call_rtp *n_call = calltable->hashfind_by_ip_port(addr, port, false);
 				if(n_call) {
@@ -1504,7 +1513,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			    char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			    list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 			    char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags) {
+			    int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime) {
 	if(c_branch->end_call_rtp) {
 		return;
 	}
@@ -1535,7 +1544,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			}
 			this->refresh_data_ip_port(c_branch, addr, port, ts, 
 						   srtp_crypto_config_list, srtp_fingerprint,
-						   iscaller, rtpmap, sdp_flags);
+						   iscaller, rtpmap, sdp_flags, ptime);
 			return;
 		}
 	}
@@ -1543,7 +1552,7 @@ void Call::add_ip_port_hash(CallBranch *c_branch,
 			     sessid, sdp_label, 
 			     srtp_crypto_config_list, srtp_fingerprint,
 			     to, to_uri, domain_to, domain_to_uri, branch,
-			     iscaller, rtpmap, sdp_flags) != -1) {
+			     iscaller, rtpmap, sdp_flags, ptime) != -1) {
 		((Calltable*)calltable)->hashAdd(addr, port, getTimeUS(ts), c_branch, iscaller, 0, sdp_flags);
 		if(opt_rtcp && !sdp_flags.rtcp_mux) {
 			((Calltable*)calltable)->hashAdd(addr, port.inc(), getTimeUS(ts), c_branch, iscaller, 1, sdp_flags);
@@ -2358,6 +2367,18 @@ read:
 						    this->checkKnownIP_inSipCallerdIP(NULL,find_by_dest ? packetS->daddr_() : packetS->saddr_()));
 		rtp_new->index_call_ip_port = index_call_ip_port_find_side;
 		rtp_new->index_call_ip_port_other_side = index_call_ip_port_other_side;
+		rtp_new->sdp_ptime = find_by_dest && index_call_ip_port_other_side >= 0 ? c_branch->ip_port[index_call_ip_port_other_side].ptime :
+				     !find_by_dest && index_call_ip_port_find_side >= 0 ? c_branch->ip_port[index_call_ip_port_find_side].ptime : 0;
+		/*
+		cout << "** RTP " << rtp_new->ssrc_index << " "
+		     << packetS->saddr_().getString() << ":" << packetS->source_().getString() << " -> "
+		     << packetS->daddr_().getString() << ":" << packetS->dest_().getString() << " - "
+		     << index_call_ip_port_find_side << " / " << index_call_ip_port_other_side << " - "
+		     << (iscaller ? "caller" : "called") << " - "
+		     << "find_by_dest: " << find_by_dest << " - "
+		     << rtp_new->sdp_ptime
+		     << endl;
+		*/
 		if(rtp_new->index_call_ip_port >= 0) {
 			rtp_new->index_call_ip_port_by_dest = find_by_dest;
 		}
@@ -5680,17 +5701,17 @@ bool Call::sqlFormulaOperandReplace(cEvalFormula::sValue *value, string *table, 
 				break;
 			case _t_cdr_sdp:
 				if(*column == "ip") {
-					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.ip);
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].ip_port.ip);
 					column_index = 1;
 					return(true);
 				}
 				if(*column == "port") {
-					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item1.port);
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].ip_port.port);
 					column_index = 2;
 					return(true);
 				}
 				if(*column == "is_caller") {
-					*value = cEvalFormula::sValue(sdp_rows_list[child_index].item2);
+					*value = cEvalFormula::sValue(sdp_rows_list[child_index].is_caller);
 					column_index = 3;
 					return(true);
 				}
@@ -6516,7 +6537,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	
 	bool rtp_dupl_seq = false;
 	for(int i = 0; i < rtp_size(); i++) {
-		if(rtp_stream_by_index(i)->dupl_check_seq.exists_dupl) {
+		RTP *rtp_i = rtp_stream_by_index(i);
+		if((rtp_i->find_by_dest && rtp_i->index_call_ip_port >= 0) || 
+		   (!rtp_i->find_by_dest && rtp_i->index_call_ip_port_other_side >= 0)) {
+			u_int16_t sdp_ptime = rtp_i->find_by_dest && rtp_i->index_call_ip_port_other_side >= 0 ? c_branch->ip_port[rtp_i->index_call_ip_port_other_side].ptime :
+					      !rtp_i->find_by_dest && rtp_i->index_call_ip_port >= 0 ? c_branch->ip_port[rtp_i->index_call_ip_port].ptime : 0;
+			if(sdp_ptime > 0 && sdp_ptime != rtp_i->sdp_ptime) {
+				rtp_i->sdp_ptime = sdp_ptime;
+			}
+		}
+		if(rtp_i->dupl_check_seq.exists_dupl) {
 			rtp_dupl_seq = true;
 			break;
 		}
@@ -6551,9 +6581,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			   c_branch->ip_port[i].type_addr == ip_port_call_info::_ta_base &&
 			   (opt_save_sdp_ipport == 2 ||
 			    (c_branch->ip_port[i].iscaller ? !save_iscaller : !save_iscalled))) {
-				d_item2<vmIPport, bool> ipPortIscaller(vmIPport(c_branch->ip_port[i].addr, c_branch->ip_port[i].port), c_branch->ip_port[i].iscaller);
-				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), ipPortIscaller) == sdp_rows_list.end()) {
-					sdp_rows_list.push_back(ipPortIscaller);
+				s_sdp_store_data sdp_s_data;
+				sdp_s_data.ip_port = vmIPport(c_branch->ip_port[i].addr, c_branch->ip_port[i].port);
+				sdp_s_data.is_caller = c_branch->ip_port[i].iscaller;
+				sdp_s_data.ptime = c_branch->ip_port[i].ptime;
+				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), sdp_s_data) == sdp_rows_list.end()) {
+					sdp_rows_list.push_back(sdp_s_data);
 					if(opt_save_sdp_ipport == 1) {
 						if(c_branch->ip_port[i].iscaller) {
 							save_iscaller = true;
@@ -6569,10 +6602,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		}
 		for(int i = 0; i < 2; i++) {
 			for(list<vmPort>::iterator iter = sdp_ip0_ports[i].begin(); iter != sdp_ip0_ports[i].end(); iter++) {
-				d_item2<vmIPport, bool> ipPortIscaller(vmIPport(0, *iter), iscaller_inv_index(i));
-				if(std::find(sdp_rows_list.begin(), sdp_rows_list.end(), ipPortIscaller) == sdp_rows_list.end()) {
-					sdp_rows_list.push_back(ipPortIscaller);
-				}
+				s_sdp_store_data sdp_s_data;
+				sdp_s_data.ip_port = vmIPport(0, *iter);
+				sdp_s_data.is_caller = iscaller_inv_index(i);
+				sdp_s_data.ptime = 0;
 			}
 		}
 	}
@@ -7679,6 +7712,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
+			if(existsColumns.cdr_rtp_sdp_ptime) {
+				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
+			}
+			if(existsColumns.cdr_rtp_rtp_ptime) {
+				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
+			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -7780,13 +7819,16 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		if(opt_save_sdp_ipport) {
 			vector<SqlDb_row> sdp_rows;
 			if(sdp_rows_list.size()) {
-				for(vector<d_item2<vmIPport, bool> >::iterator iter = sdp_rows_list.begin(); iter != sdp_rows_list.end(); iter++) {
+				for(vector<s_sdp_store_data>::iterator iter = sdp_rows_list.begin(); iter != sdp_rows_list.end(); iter++) {
 					SqlDb_row sdp;
 					sdp.setIgnoreCheckExistsField();
 					sdp.add(MYSQL_VAR_PREFIX + MYSQL_MAIN_INSERT_ID, "cdr_ID");
-					sdp.add(iter->item1.ip, "ip", false, sqlDbSaveCall, sql_cdr_sdp_table.c_str());
-					sdp.add(iter->item1.port.getPort(), "port");
-					sdp.add(iter->item2, "is_caller");
+					sdp.add(iter->ip_port.ip, "ip", false, sqlDbSaveCall, sql_cdr_sdp_table.c_str());
+					sdp.add(iter->ip_port.port.getPort(), "port");
+					sdp.add(iter->is_caller, "is_caller");
+					if(existsColumns.cdr_sdp_ptime) {
+						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
 					}
@@ -8288,6 +8330,12 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			if(existsColumns.cdr_rtp_index) {
 				rtps.add(i + 1, "index");
 			}
+			if(existsColumns.cdr_rtp_sdp_ptime) {
+				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
+			}
+			if(existsColumns.cdr_rtp_rtp_ptime) {
+				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
+			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
@@ -8354,12 +8402,15 @@ Call::saveToDb(bool enableBatchIfPossible) {
 
 		if(opt_save_sdp_ipport) {
 			if(sdp_rows_list.size()) {
-				for(vector<d_item2<vmIPport, bool> >::iterator iter = sdp_rows_list.begin(); iter != sdp_rows_list.end(); iter++) {
+				for(vector<s_sdp_store_data>::iterator iter = sdp_rows_list.begin(); iter != sdp_rows_list.end(); iter++) {
 					SqlDb_row sdp;
 					sdp.add(cdrID, "cdr_ID");
-					sdp.add(iter->item1.ip, "ip", false, sqlDbSaveCall, sql_cdr_sdp_table.c_str());
-					sdp.add(iter->item1.port.getPort(), "port");
-					sdp.add(iter->item2, "is_caller");
+					sdp.add(iter->ip_port.ip, "ip", false, sqlDbSaveCall, sql_cdr_sdp_table.c_str());
+					sdp.add(iter->ip_port.port.getPort(), "port");
+					sdp.add(iter->is_caller, "is_caller");
+					if(existsColumns.cdr_sdp_ptime) {
+						sdp.add(LIMIT_TINYINT_UNSIGNED(iter->ptime), "ptime", !iter->ptime);
+					}
 					if(existsColumns.cdr_sdp_calldate) {
 						sdp.add_calldate(calltime_us(), "calldate", existsColumns.cdr_child_sdp_calldate_ms);
 					}

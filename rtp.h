@@ -358,6 +358,7 @@ public:
 	bool change_src_port;
 	bool find_by_dest;
 	bool ok_other_ip_side_by_sip;
+	u_int16_t sdp_ptime;
 	u_int16_t avg_ptime;
 	u_int32_t avg_ptime_count;
 	RtpGraphSaver graph;

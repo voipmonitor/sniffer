@@ -398,6 +398,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	this->_last_ifname[0] = 0;
 	
 	lastTimeSyslog = 0;
+	sdp_ptime = 0;
 	avg_ptime = 0;
 	avg_ptime_count = 0;
 

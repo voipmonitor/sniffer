@@ -287,6 +287,7 @@ struct s_sdp_media_data {
 		srtp_crypto_config_list = NULL;
 		srtp_fingerprint = NULL;
 		exists_payload_televent = false;
+		ptime = 0;
 	}
 	vmIP ip;
 	vmPort port;
@@ -297,6 +298,17 @@ struct s_sdp_media_data {
 	string *srtp_fingerprint;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	bool exists_payload_televent;
+	u_int16_t ptime;
+};
+
+struct s_sdp_store_data {
+	vmIPport ip_port;
+	bool is_caller;
+	u_int16_t ptime;
+	inline const bool operator == (const s_sdp_store_data &other) {
+		return(this->ip_port == other.ip_port &&
+		       this->is_caller == other.is_caller);
+	}
 };
 
 struct ip_port_call_info {
@@ -371,6 +383,7 @@ struct ip_port_call_info {
 	string branch;
 	vmIP sip_src_addr;
 	s_sdp_flags sdp_flags;
+	u_int16_t ptime;
 	ip_port_call_info_rtp rtp[2];
 	bool canceled;
 };
@@ -1617,17 +1630,17 @@ public:
 			char *sessid, char *sdp_label, 
 			list<srtp_crypto_config> *srtp_crypto_config_list, string *srtp_fingerprint,
 			char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime);
 	bool refresh_data_ip_port(CallBranch *c_branch,
 				  vmIP addr, vmPort port, struct timeval *ts, 
 				  list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
-				  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+				  int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime);
 	void add_ip_port_hash(CallBranch *c_branch,
 			      vmIP sip_src_addr, vmIP addr, ip_port_call_info::eTypeAddr type_addr, vmPort port, struct timeval *ts, 
 			      char *sessid, char *sdp_label, bool multipleSdpMedia, 
 			      list<srtp_crypto_config> *srtp_crypto_config_list, string *rtp_fingerprint,
 			      char *to, char *to_uri, char *domain_to, char *domain_to_uri, char *branch,
-			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags);
+			      int iscaller, RTPMAP *rtpmap, s_sdp_flags sdp_flags, u_int16_t ptime);
 	void cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to, char *branch);
 	
 	/**
@@ -2743,7 +2756,7 @@ private:
 	unsigned rtp_rows_indexes[MAX_SSRC_PER_CALL_FIX];
 	#endif
 	unsigned rtp_rows_count;
-	vector<d_item2<vmIPport, bool> > sdp_rows_list;
+	vector<s_sdp_store_data> sdp_rows_list;
 	bool set_call_counter;
 	bool set_register_counter;
 	double price_customer;

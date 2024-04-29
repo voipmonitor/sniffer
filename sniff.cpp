@@ -2808,6 +2808,11 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 			sdp_media_data_item->inactive_ip0 = true;
 		}
 		
+		s = _gettag(sdp_media_text, sdp_media_text_len, "a=ptime:", &l);
+		if(l > 0) {
+			sdp_media_data_item->ptime =  atoi(s);
+		}
+		
 		if(sdp_media_type[sdp_media_i] != sdp_media_type_application) {
 			get_rtpmap_from_sdp(sdp_media_text, sdp_media_text_len, sdp_media_type[sdp_media_i] == sdp_media_type_video, sdp_media_data_item->rtpmap, &sdp_media_data_item->exists_payload_televent);
 		}
@@ -4142,7 +4147,7 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 								       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 								       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 								       to, to_uri, domain_to, domain_to_uri, branch,
-								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
 						// check if the IP address is listed in nat_aliases
 						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
 						if(alias.isSet()) {
@@ -4150,14 +4155,14 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, to_uri, domain_to, domain_to_uri, branch,
-									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
 						}
 						if(opt_sdp_reverse_ipport) {
 							call->add_ip_port_hash(c_branch, packetS->saddr_(), packetS->saddr_(), ip_port_call_info::_ta_sdp_reverse_ipport, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
 									       sdp_media_data_item->srtp_crypto_config_list, sdp_media_data_item->srtp_fingerprint,
 									       to, to_uri, domain_to, domain_to_uri, branch,
-									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags);
+									       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
 						}
 					}
 				}
@@ -6779,13 +6784,13 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 			       NULL, NULL, false, 
 			       NULL, NULL,
 			       NULL, NULL, NULL, NULL, NULL,
-			       1, rtpmap, s_sdp_flags());
+			       1, rtpmap, s_sdp_flags(), 0);
 	call->add_ip_port_hash(c_branch,
 			       saddr, saddr, ip_port_call_info::_ta_base, source, &header->ts, 
 			       NULL, NULL, false, 
 			       NULL, NULL,
 			       NULL, NULL, NULL, NULL, NULL,
-			       0, rtpmap, s_sdp_flags());
+			       0, rtpmap, s_sdp_flags(), 0);
 	
 	return(call);
 

@@ -758,6 +758,7 @@ public:
 	void checkColumns_cdr(bool log = false);
 	void checkColumns_cdr_next(bool log = false);
 	void checkColumns_cdr_next_branches(bool log = false);
+	void checkColumns_cdr_sdp(bool log = false);
 	void checkColumns_cdr_rtp(bool log = false);
 	void checkColumns_cdr_dtmf(bool log = false);
 	void checkColumns_cdr_conference(bool log = false);
@@ -1359,6 +1360,8 @@ struct sExistsColumns {
 	bool cdr_rtp_sport;
 	bool cdr_rtp_dport;
 	bool cdr_rtp_index;
+	bool cdr_rtp_sdp_ptime;
+	bool cdr_rtp_rtp_ptime;
 	bool cdr_rtp_flags;
 	bool cdr_rtp_duration;
 	bool cdr_rtcp_fraclost_pktcount;
@@ -1371,6 +1374,7 @@ struct sExistsColumns {
 	bool cdr_tar_part_calldate;
 	bool cdr_country_code_calldate;
 	bool cdr_sdp_calldate;
+	bool cdr_sdp_ptime;
 	bool cdr_txt_calldate;
 	bool cdr_ab_rtcp_loss_is_smallint_type[2];
 	bool cdr_ab_rtcp_loss_is_signed_type[2];

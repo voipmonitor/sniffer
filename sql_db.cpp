@@ -6445,6 +6445,8 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`payload` smallint unsigned DEFAULT NULL,\
 			`maxjitter_mult10` smallint unsigned DEFAULT NULL,\
 			`index` tinyint unsigned DEFAULT NULL,\
+			`sdp_ptime` tinyint unsigned DEFAULT NULL,\
+			`rtp_ptime` tinyint unsigned DEFAULT NULL,\
 			`flags` bigint unsigned DEFAULT NULL,\
 			`duration` " + column_type_duration_ms("float") + " DEFAULT NULL,\
 		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
@@ -6677,6 +6679,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			"`ip` " + VM_IPV6_TYPE_MYSQL_COLUMN + " DEFAULT NULL,\
 			`port` smallint unsigned DEFAULT NULL,\
 			`is_caller` tinyint unsigned DEFAULT NULL,\
+			`ptime` tinyint unsigned DEFAULT NULL,\
 		" + (opt_cdr_force_primary_index_in_all_tables ? string("PRIMARY KEY (`ID`") + (opt_cdr_partition ? ",`calldate`" : "") + ")," : "") + "\
 		KEY (`cdr_ID`)" + 
 		(opt_cdr_partition ? 
@@ -9009,6 +9012,7 @@ void SqlDb_mysql::checkSchema(int connectId, bool checkColumnsSilentLog) {
 	this->checkColumns_cdr(!checkColumnsSilentLog);
 	this->checkColumns_cdr_next(!checkColumnsSilentLog);
 	this->checkColumns_cdr_next_branches(!checkColumnsSilentLog);
+	this->checkColumns_cdr_sdp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_rtp(!checkColumnsSilentLog);
 	this->checkColumns_cdr_dtmf(!checkColumnsSilentLog);
 	this->checkColumns_cdr_conference(!checkColumnsSilentLog);
@@ -9432,6 +9436,14 @@ void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
 	}
 }
 
+void SqlDb_mysql::checkColumns_cdr_sdp(bool log) {
+	map<string, u_int64_t> tableSize;
+	this->checkNeedAlterAdd("cdr_sdp", "ptime", true,
+				log, &tableSize, &existsColumns.cdr_sdp_ptime,
+				"ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+}
+ 
 void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	map<string, u_int64_t> tableSize;
 	this->checkNeedAlterAdd("cdr_rtp", "rtp destination port", opt_cdr_rtpport,
@@ -9445,6 +9457,14 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 	this->checkNeedAlterAdd("cdr_rtp", "rtp index of stream", true,
 				log, &tableSize, &existsColumns.cdr_rtp_index,
 				"index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr_rtp", "sdp ptime", true,
+				log, &tableSize, &existsColumns.cdr_rtp_sdp_ptime,
+				"sdp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
+				NULL_CHAR_PTR);
+	this->checkNeedAlterAdd("cdr_rtp", "rtp ptime", true,
+				log, &tableSize, &existsColumns.cdr_rtp_rtp_ptime,
+				"rtp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "flags", true,
 				log, &tableSize, &existsColumns.cdr_rtp_flags,
