@@ -628,7 +628,7 @@ void load_rtp_pcap(const char *pcap) {
 			       (char*)"", (char*)"", false,
 			       &srtp_crypto_config_list, NULL,
 			       (char*)"", (char*)"", (char*)"", (char*)"", (char*)"",
-			       1, rtpmap, sdp_flags);
+			       1, rtpmap, sdp_flags, 0);
 	
 	string error;
 	if(!open_global_pcap_handle(pcap, &error)) {
@@ -788,6 +788,74 @@ void test() {
 	} break;
 	 
 	case 1: {
+	 
+		cPartitions p;
+		cout << p.dump(false);
+		
+		//extern int opt_cleandatabase_cdr_size;
+		//opt_cleandatabase_cdr_size = 100;
+		//p.cleanup_by_size();
+		
+		extern int opt_cleandatabase_size;
+		opt_cleandatabase_size = 1600;
+		p.cleanup_by_size();
+		
+		break;
+	 
+		void adjustSipResponse(string &sipResponse);
+		//extern int opt_cdr_sip_response_number_max_length;
+		//opt_cdr_sip_response_number_max_length = 0;
+		//extern bool opt_cdr_sip_response_normalisation;
+		//opt_cdr_sip_response_normalisation = true;
+		//extern vector<string> opt_cdr_sip_response_reg_remove;
+		//opt_cdr_sip_response_reg_remove.push_back("Not");
+		string resp[] = {
+			 "503 No target nodes for callid --8HbHDnHLOSe:L4@35.199.111.118",
+			 "404 Did 551131812966 Not Found.",
+			 "400 Bad syntax: ValueError(\"SipAddress: cannot find name-addr or addr-spec; input='!#dT) <sip:!#dT)@187.60.60.39:5060>;tag=0083"
+		};
+		for(unsigned i = 0; i < sizeof(resp) / sizeof(resp[0]); i++) {
+			string s = resp[i];
+			adjustSipResponse(s);
+			cout << " *RESP* " << resp[i] << " -> " << s << endl;
+		}
+		//
+		void adjustReason(string &reason);
+		//extern bool opt_cdr_reason_normalisation;
+		//opt_cdr_reason_normalisation = true;
+		string reas[] = {
+			 "00000ab3-fb29-4139-a6ca-d5b6bb2da949;LocalUserInitiated",
+			 "0031f80c-cc4a-4a38-816d-a48299e8759d;Callee did not pickup.",
+			 "1241e184-86c8-44be-bf56-c09486922be4;EstablishmentTimeout"
+		};
+		for(unsigned i = 0; i < sizeof(reas) / sizeof(reas[0]); i++) {
+			string s = reas[i];
+			adjustReason(s);
+			cout << " *REAS* " << reas[i] << " -> " << s << endl;
+		}
+		//
+		void adjustUA(string &ua);
+		//extern bool opt_cdr_ua_normalisation;
+		//opt_cdr_ua_normalisation = true;
+		//extern vector<string> opt_cdr_ua_reg_whitelist;
+		//opt_cdr_ua_reg_whitelist.push_back("Magnus");
+		//opt_cdr_ua_reg_whitelist.push_back("GPT");
+		//extern vector<string> opt_cdr_ua_reg_remove;
+		//opt_cdr_ua_reg_remove.push_back("-N2");
+		//opt_cdr_ua_reg_remove.push_back("b18");
+		string ua[] = {
+			 "MagnusBilling --40Q3vmCyV6k4h-@200.201.235.196",
+			 "ENSR3.0.100.6-IS2-RMRG31-RG7152-CPI1-CPO10094",
+			 "GPT-2731GN2A4P-N2 c03dd90c13b0 BR_SV_1.11(WVK.0)b18",
+			 "AUDC-IPPhone/1.6.0.44.43 (310HD; 00908F3BAB6E)"
+		};
+		for(unsigned i = 0; i < sizeof(ua) / sizeof(ua[0]); i++) {
+			string s = ua[i];
+			adjustUA(s);
+			cout << " *UA* " << ua[i] << " -> " << s << endl;
+		}
+		
+		break;
 	 
 		#if defined(__x86_64__) or defined(__i386__)
 		unsigned int c = 1e7;
