@@ -1595,7 +1595,8 @@ bool SqlDb::logNeedAlter(string table, string reason, vector<string> alters,
 				}
 			}
 		}
-		if((*tableSize)[table] < 1000 && !sverb.suppress_auto_alter) {
+		extern int opt_alter_rows_limit;
+		if((*tableSize)[table] < (unsigned)opt_alter_rows_limit && !sverb.suppress_auto_alter) {
 			int sql_disable_next_attempt_if_error_old = sql_disable_next_attempt_if_error;
 			sql_disable_next_attempt_if_error = 1;
 			unsigned okAlterCount = 0;
@@ -9438,7 +9439,7 @@ void SqlDb_mysql::checkColumns_cdr_next_branches(bool log) {
 
 void SqlDb_mysql::checkColumns_cdr_sdp(bool log) {
 	map<string, u_int64_t> tableSize;
-	this->checkNeedAlterAdd("cdr_sdp", "ptime", true,
+	this->checkNeedAlterAdd("cdr_sdp", "sdp ptime", true,
 				log, &tableSize, &existsColumns.cdr_sdp_ptime,
 				"ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
@@ -9458,12 +9459,9 @@ void SqlDb_mysql::checkColumns_cdr_rtp(bool log) {
 				log, &tableSize, &existsColumns.cdr_rtp_index,
 				"index", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "sdp ptime", true,
+	this->checkNeedAlterAdd("cdr_rtp", "rtp & sdp ptime", true,
 				log, &tableSize, &existsColumns.cdr_rtp_sdp_ptime,
 				"sdp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
-				NULL_CHAR_PTR);
-	this->checkNeedAlterAdd("cdr_rtp", "rtp ptime", true,
-				log, &tableSize, &existsColumns.cdr_rtp_rtp_ptime,
 				"rtp_ptime", "tinyint unsigned DEFAULT NULL", NULL_CHAR_PTR,
 				NULL_CHAR_PTR);
 	this->checkNeedAlterAdd("cdr_rtp", "flags", true,

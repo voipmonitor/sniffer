@@ -7714,8 +7714,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(existsColumns.cdr_rtp_sdp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
-			}
-			if(existsColumns.cdr_rtp_rtp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
 			}
 			if(existsColumns.cdr_rtp_flags) {
@@ -8332,8 +8330,6 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(existsColumns.cdr_rtp_sdp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
-			}
-			if(existsColumns.cdr_rtp_rtp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
 			}
 			if(existsColumns.cdr_rtp_flags) {

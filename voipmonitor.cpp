@@ -889,6 +889,8 @@ mysqlSSLOptions optMySsl_2;
 
 bool opt_mysql_2_http = false;
 
+int opt_alter_rows_limit = 1000;
+
 char opt_mysql_timezone[256] = "";
 int opt_mysql_client_compress = 0;
 char opt_timezone[256] = "";
@@ -6034,6 +6036,7 @@ void cConfig::addConfigItems() {
 					expert();
 					addConfigItem((new FILE_LINE(0) cConfigItem_string("mysqldatadir", &mysql_datadir))
 						->setReadOnly());
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("alter_rows_limit", &opt_alter_rows_limit));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("yes"));
