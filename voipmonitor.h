@@ -429,6 +429,8 @@ bool useCdrStatProcessThreads();
 
 int cleanup_calls_period();
 
+void set_all_ports_for_tcp();
+
 inline bool useChartsCacheOrCdrStatInProcessCall() {
 	return(useChartsCacheInProcessCall() || useCdrStatInProcessCall());
 }

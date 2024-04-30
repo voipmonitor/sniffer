@@ -85,7 +85,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 		     << hepData.dump() << endl;
 	}
 	if((hepData.ip_protocol_family == PF_INET || hepData.ip_protocol_family == PF_INET6) &&
-	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP)) {
+	   (hepData.ip_protocol_id == IPPROTO_UDP || hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP)) {
 		extern int opt_id_sensor;
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		int dlink = PcapDumper::get_global_pcap_dlink_en10();
@@ -115,7 +115,7 @@ void cHEP_ProcessData::processHep(u_char *data, size_t dataLen) {
 				payload_len = payload_buf.size();
 			}
 		}
-		if(hepData.ip_protocol_id == IPPROTO_TCP) {
+		if(hepData.ip_protocol_id == IPPROTO_TCP || hepData.ip_protocol_id == IPPROTO_ESP) {
 			pcap_pkthdr *tcpHeader;
 			u_char *tcpPacket;
 			createSimpleTcpDataPacket(sizeof(header_eth), &tcpHeader,  &tcpPacket,
@@ -576,6 +576,7 @@ void HEP_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vmIP
 		fprintf(stderr, "Couldn't open pcap file '%s': %s\n", pcap, errbuf);
 		return;
 	}
+	set_all_ports_for_tcp();
 	int dlink = pcap_datalink(handle);
 	pcap_pkthdr *pcap_next_ex_header;
 	const u_char *pcap_next_ex_packet;

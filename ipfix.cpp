@@ -264,6 +264,7 @@ void IPFix_client_emulation(const char *pcap, vmIP client_ip, vmIP server_ip, vm
 		fprintf(stderr, "Couldn't open pcap file '%s': %s\n", pcap, errbuf);
 		return;
 	}
+	set_all_ports_for_tcp();
 	int dlink = pcap_datalink(handle);
 	pcap_pkthdr *pcap_next_ex_header;
 	const u_char *pcap_next_ex_packet;

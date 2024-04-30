@@ -9746,6 +9746,13 @@ int cleanup_calls_period() {
 }
 
 
+void set_all_ports_for_tcp() {
+	for(unsigned i = 0; i < 0xFFFF; i++) {
+		sipportmatrix[i] = true;
+	}
+}
+
+
 #ifdef HAVE_LIBGNUTLS
 #include <gcrypt.h>
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
