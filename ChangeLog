@@ -1,3 +1,22 @@
+2024.05.1  02.05.2024
+=====================
+- ptime implementation - parsed from SDP and analysed from RTP (store ptime for both caller/called) - database alter is required (GUI -> tools -> check mysql schema) [VG-1091]
+- new fast deduplication algorithm - murmur
+- added to active calls: number of calls by rtp ip src / dst, number of calls by caller / called numbers [VG-2129]
+- delay between INVITE and TRYING was measured from the first INVITE - this is now changed to the corresponding INVITE and not the first INVITE. The old behaviour can be changed by new option response_time_from_first_invite [VG-2798]
+- add support for cleandatabase by size [VS-1586]
+- create RTCP payload from HEP3. Fix IP defrag in hep client emulation [VS-1594]
+- number of required connections between gui and sniffer was optimised 
+- HEP3: accept protocol_id ESP, enable all TCP ports in client emaulation [VS-1597]
+- ssl keylogger - add define option BOTH_METHODS to allow simultaneous use of SSL_CTX_set_keylog_callback and SSL function hooking [VS-1588]
+- suppress load query cache files if set query_cache=no [VS-1585]
+- backup/migration - skip non-existing tables in the source, adding a parameter database_backup_slave_record_safe_gap to allow specifying (or disabling) safe gaps for slave records
+- fix problem with the availability of the last pcap in the zstd archive before it is closed
+- fix typo in constraint creating in sip_msg table (case no db partition) [VS-1587]
+- fix tcp reassemble for some corner cases 
+- fix crash in hep3/ipfix client emulation
+
+
 2024.04.1  02.04.2024
 =====================
 - for each sniffing interface do not use ethtool but kernel api instead. Number of interrupt queues are lowered to 8 automatically (or less depending on cpu cores). New parameter eth_max_channels controls it. 

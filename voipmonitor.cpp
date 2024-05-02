@@ -1159,7 +1159,7 @@ bool opt_sip_only_tcp = false;
 unsigned opt_max_sip_packets_in_call = 20000;
 unsigned opt_max_invite_packets_in_call = 10000;
 int opt_enable_semicolon_in_number = false;
-bool opt_response_time_from_first_invite = true;
+bool opt_response_time_from_first_invite = false;
 map<vmIPport, string> ssl_ipport;
 map<vmIPmask_port, string> ssl_netport;
 bool opt_ssl_ipport_reverse_enable;
