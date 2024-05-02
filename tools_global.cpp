@@ -3,7 +3,6 @@
 #include <limits.h>
 #include <sstream>
 #include <syslog.h>
-#include <stdint.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/resource.h>
@@ -24,6 +23,11 @@ cThreadMonitor threadMonitor;
 static volatile int ares_flag = 0;
 pthread_mutex_t resolve_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
+
+#if not defined SIZE_MAX
+#define SIZE_MAX ((size_t)-1)
+#endif
+
 
 struct vm_pthread_struct {
 	void *(*start_routine)(void *arg);
