@@ -3,6 +3,7 @@
 #include <limits.h>
 #include <sstream>
 #include <syslog.h>
+#include <stdint.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/resource.h>
