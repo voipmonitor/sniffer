@@ -1,3 +1,8 @@
+2024.05.2  04.05.2024
+=====================
+- fix crash in manager command listcalls (if parameters contain ip_map:yes without set limit)
+
+
 2024.05.1  02.05.2024
 =====================
 - ptime implementation - parsed from SDP and analysed from RTP (store ptime for both caller/called) - database alter is required (GUI -> tools -> check mysql schema) [VG-1091]
