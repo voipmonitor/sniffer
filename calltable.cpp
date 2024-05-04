@@ -12710,8 +12710,13 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 				if(needIpMap) {
 					ip_src = call->getSipcallerip(c_branch, true);
 					ip_dst = call->getSipcalledip(c_branch, true, true, NULL, &proxies);
-					rtp_ip_src = call->lastactivecallerrtp->saddr;
-					rtp_ip_dst = call->lastactivecallerrtp->daddr;
+					if(call->lastactivecallerrtp) {
+						rtp_ip_src = call->lastactivecallerrtp->saddr;
+						rtp_ip_dst = call->lastactivecallerrtp->daddr;
+					} else if(call->lastactivecalledrtp) {
+						rtp_ip_src = call->lastactivecalledrtp->daddr;
+						rtp_ip_dst = call->lastactivecalledrtp->saddr;
+					}
 					caller = c_branch->caller;
 					called = call->get_called(c_branch);
 				}
