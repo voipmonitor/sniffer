@@ -4597,7 +4597,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 				int first_thread_qtSize = 0;
 				bool next_threads_exists = false;
 				bool next_threads_filled = false;
-				int next_threds_limit = 1000;
+				int next_threads_limit = 100;
 				int id_2 = 0;
 				ssize_t id_2_minSize = -1;
 				for(int i = 0; i < loadFromQFilesThreadData[id_main].storeThreads; i++) {
@@ -4621,7 +4621,7 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 					}
 				}
 				if(id_2 && !loadFromQFilesThreadData[id_main].storeThreadsSet &&
-				   first_thread_qtSize < next_threds_limit && (!next_threads_exists || !next_threads_filled)) {
+				   first_thread_qtSize < next_threads_limit && (!next_threads_exists || !next_threads_filled)) {
 					id_2 = 0;
 				}
 				if(!check(id_main, id_2)) {
