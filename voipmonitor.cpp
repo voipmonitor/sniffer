@@ -8623,7 +8623,7 @@ void set_context_config() {
 		}
 	}
 	
-	opt_mysqlstore_max_threads_cdr_set = CONFIG.isSet("mysqlstore_max_threads_cdr_set");
+	opt_mysqlstore_max_threads_cdr_set = CONFIG.isSet("mysqlstore_max_threads_cdr");
 	opt_mysqlstore_max_threads_message_set = CONFIG.isSet("mysqlstore_max_threads_message");
 	opt_mysqlstore_max_threads_sip_msg_set = CONFIG.isSet("mysqlstore_max_threads_sip_msg");
 	opt_mysqlstore_max_threads_register_set = CONFIG.isSet("mysqlstore_max_threads_register");
