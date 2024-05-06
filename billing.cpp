@@ -1984,14 +1984,12 @@ void refreshBilling() {
 void revaluationBilling(const char *params) {
 	JsonItem jsonData;
 	jsonData.parse(params);
-	string select_cdr = jsonData.getValue("select_cdr");
 	unsigned force_operator_id = atol(jsonData.getValue("operator").c_str());
 	unsigned force_customer_id = atol(jsonData.getValue("customer").c_str());
 	bool use_exclude_rules = atoi(jsonData.getValue("use_exclude_rules").c_str()) > 0;
 	string loop =jsonData.getValue("loop");
 	if(is_true(loop.c_str())) {
-		revaluationBillingLoop(select_cdr,
-				       force_operator_id, force_customer_id,
+		revaluationBillingLoop(force_operator_id, force_customer_id,
 				       use_exclude_rules);
 	} else {
 		JsonItem *json_ids = jsonData.getItem("ids");
@@ -2011,18 +2009,18 @@ void revaluationBilling(const char *params) {
 		if(!ids.size()) {
 			return;
 		}
-		revaluationBilling(select_cdr, &ids,
+		revaluationBilling(&ids,
 				   force_operator_id, force_customer_id,
 				   use_exclude_rules);
 	}
 }
 
-void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
+void revaluationBilling(list<u_int64_t> *ids,
 			unsigned force_operator_id, unsigned force_customer_id,
 			bool use_exclude_rules) {
 	map<int, SqlDb_rows*> sensor_rows;
 	SqlDb *sqlDb = createSqlObject();
-	string queryStr = select_cdr + " where id in(" + implode(ids, ",") + ")";
+	string queryStr = "select * from cdr where id in(" + implode(ids, ",") + ")";
 	sqlDb->query(queryStr);
 	SqlDb_rows rows;
 	sqlDb->fetchRows(&rows);
@@ -2046,9 +2044,12 @@ void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
 	delete sqlDb;
 }
 
-void revaluationBillingLoop(string select_cdr,
-			    unsigned force_operator_id, unsigned force_customer_id,
+void revaluationBillingLoop(unsigned force_operator_id, unsigned force_customer_id,
 			    bool use_exclude_rules) {
+	cout << "revaluation - "
+	     << "operator_id: " << force_operator_id << ", "
+	     << "customer_id: " << force_customer_id << ", "
+	     << "use_exclude_rules: " << use_exclude_rules << endl;
 	cout << "ready\n" << flush;
 	SqlDb *sqlDb = createSqlObject();
 	map<int, cBilling*> billing_sensor;
@@ -2062,7 +2063,7 @@ void revaluationBillingLoop(string select_cdr,
 		if(!strncmp(gets_buffer, "ids:", 4)) {
 			vector<int> ids = split2int(gets_buffer + 4, ',');
 			if(ids.size()) {
-				string queryStr = select_cdr + " where id in(" + implode(ids, ",") + ")";
+				string queryStr = "select * from cdr where id in(" + implode(ids, ",") + ")";
 				sqlDb->query(queryStr);
 				SqlDb_rows rows;
 				sqlDb->fetchRows(&rows);

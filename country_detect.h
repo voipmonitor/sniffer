@@ -366,5 +366,8 @@ string getContinentByCountry(const char *country);
 void CountryDetectPrepareReload();
 void CountryDetectApplyReload();
 
+void reassignCountries(const char *params);
+void reassignCountriesLoop(bool by_src_number, bool by_dst_number, bool by_src_ip, bool by_dst_ip);
+
 
 #endif //COUNTRY_DETECT_H

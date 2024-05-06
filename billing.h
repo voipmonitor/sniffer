@@ -408,11 +408,10 @@ void termBilling();
 void refreshBilling();
 
 void revaluationBilling(const char *params);
-void revaluationBilling(string select_cdr, list<u_int64_t> *ids,
+void revaluationBilling(list<u_int64_t> *ids,
 			unsigned force_operator_id = 0, unsigned force_customer_id = 0,
 			bool use_exclude_rules = true);
-void revaluationBillingLoop(string select_cdr,
-			    unsigned force_operator_id, unsigned force_customer_id,
+void revaluationBillingLoop(unsigned force_operator_id, unsigned force_customer_id,
 			    bool use_exclude_rules);
 
 

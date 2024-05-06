@@ -1144,3 +1144,159 @@ void CountryDetectApplyReload() {
 		return(countryDetect->applyReload());
 	}
 }
+
+
+void reassignCountries(const char *params) {
+	JsonItem jsonData;
+	jsonData.parse(params);
+	bool by_src_number = atoi(jsonData.getValue("by_src_number").c_str());
+	bool by_dst_number = atoi(jsonData.getValue("by_dst_number").c_str());
+	bool by_src_ip = atoi(jsonData.getValue("by_src_ip").c_str());
+	bool by_dst_ip = atoi(jsonData.getValue("by_dst_ip").c_str());
+	reassignCountriesLoop(by_src_number, by_dst_number, by_src_ip, by_dst_ip);
+}
+
+void reassignCountriesLoop(bool by_src_number, bool by_dst_number, bool by_src_ip, bool by_dst_ip) {
+	CountryDetectInit();
+	cout << "reassign_countries - "
+	     << "by_src_number: " << by_src_number << ", "
+	     << "by_dst_number: " << by_dst_number << ", "
+	     << "by_src_ip: " << by_src_ip << ", "
+	     << "by_dst_ip: " << by_dst_ip << endl;
+	cout << "ready\n" << flush;
+	SqlDb *sqlDb = createSqlObject();
+	char gets_buffer[1000*20];
+	bool existsColumnCdrCalldate = sqlDb->existsColumn("cdr", "calldate");
+	bool existsColumnCdrCountryCodeCalldate = sqlDb->existsColumn("cdr_country_code", "calldate");
+	while(fgets(gets_buffer, sizeof(gets_buffer) - 1, stdin)) {
+		int gets_buffer_length = strlen(gets_buffer);
+		while(gets_buffer[gets_buffer_length - 1] == '\n') {
+			gets_buffer[gets_buffer_length - 1] = 0;
+			--gets_buffer_length;
+		}
+		if(!strncmp(gets_buffer, "ids:", 4)) {
+			vector<int> ids = split2int(gets_buffer + 4, ',');
+			if(ids.size()) {
+				string queryStr = string(
+						  "select cdr.id, cdr.sipcallerip, cdr.sipcalledip, cdr.caller, cdr.called,\
+							  cdr_country_code.* from cdr\
+						   left join cdr_country_code on (cdr_country_code.cdr_id = cdr.id") + 
+						  (existsColumnCdrCalldate && existsColumnCdrCountryCodeCalldate ? " && cdr_country_code.calldate = cdr.calldate" : "") + 
+						  ")\
+						   where id in(" + implode(ids, ",") + ")";
+				sqlDb->query(queryStr);
+				SqlDb_rows rows;
+				sqlDb->fetchRows(&rows);
+				SqlDb_row row;
+				while((row = rows.fetchRow())) {
+					vmIP ip_src;
+					vmIP ip_dst;
+					ip_src.setIP(&row, "sipcallerip");
+					ip_dst.setIP(&row, "sipcalledip");
+					string number_src = row["caller"];
+					string number_dst = row["called"];
+					u_int64_t id = atoll(row["id"].c_str());
+					string sipcallerip_country_code;
+					string sipcalledip_country_code;
+					string caller_number_country_code;
+					string called_number_country_code;
+					string sipcallerip_country_code_new;
+					string sipcalledip_country_code_new;
+					string caller_number_country_code_new;
+					string called_number_country_code_new;
+					unsigned int sipcallerip_country_code_id = 0;
+					unsigned int sipcalledip_country_code_id = 0;
+					unsigned int caller_number_country_code_id = 0;
+					unsigned int called_number_country_code_id = 0;
+					unsigned int sipcallerip_country_code_id_new = 0;
+					unsigned int sipcalledip_country_code_id_new = 0;
+					unsigned int caller_number_country_code_id_new = 0;
+					unsigned int called_number_country_code_id_new = 0;
+					SqlDb_row row_update;
+					extern int opt_cdr_country_code;
+					if(opt_cdr_country_code == 2) {
+						sipcallerip_country_code_id = atol(row["sipcallerip_country_code"].c_str());
+						sipcalledip_country_code_id = atol(row["sipcalledip_country_code"].c_str());
+						caller_number_country_code_id = atol(row["caller_number_country_code"].c_str());
+						called_number_country_code_id = atol(row["called_number_country_code"].c_str());
+						if(by_src_ip) {
+							sipcallerip_country_code_id_new = getCountryIdByIP(ip_src);
+							if(sipcallerip_country_code_id_new != sipcallerip_country_code_id) {
+								row_update.add(sipcallerip_country_code_id_new, "sipcallerip_country_code", !sipcallerip_country_code_id_new);
+							}
+						}
+						if(by_dst_ip) {
+							sipcalledip_country_code_id_new = getCountryIdByIP(ip_dst);
+							if(sipcalledip_country_code_id_new != sipcalledip_country_code_id) {
+								row_update.add(sipcalledip_country_code_id_new, "sipcalledip_country_code", !sipcalledip_country_code_id_new);
+							}
+						}
+						if(by_src_number) {
+							caller_number_country_code_id_new = getCountryIdByPhoneNumber(number_src.c_str(), ip_src);
+							if(caller_number_country_code_id_new != caller_number_country_code_id) {
+								row_update.add(caller_number_country_code_id_new, "caller_number_country_code", !caller_number_country_code_id_new);
+							}
+						}
+						if(by_dst_number) {
+							called_number_country_code_id_new = getCountryIdByPhoneNumber(number_dst.c_str(), ip_dst);
+							if(called_number_country_code_id_new != called_number_country_code_id) {
+								row_update.add(called_number_country_code_id_new, "called_number_country_code", !called_number_country_code_id_new);
+							}
+						}
+						cout << "reassign countries cdr.id: " << id << " - "
+						     << ip_src.getString() << ": " << sipcallerip_country_code_id_new << ", "
+						     << ip_dst.getString() << ": " << sipcalledip_country_code_id_new << ", "
+						     << number_src << ": " << caller_number_country_code_id_new << ", "
+						     << number_dst << ": " << called_number_country_code_id_new << endl;
+					} else {
+						sipcallerip_country_code = row["sipcallerip_country_code"];
+						sipcalledip_country_code = row["sipcalledip_country_code"];
+						caller_number_country_code = row["caller_number_country_code"];
+						called_number_country_code = row["called_number_country_code"];
+						if(by_src_ip) {
+							sipcallerip_country_code_new = getCountryByIP(ip_src, true);
+							if(sipcallerip_country_code_new != sipcallerip_country_code) {
+								row_update.add(sipcallerip_country_code_new, "sipcallerip_country_code", sipcallerip_country_code_new.empty());
+							}
+						}
+						if(by_dst_ip) {
+							sipcalledip_country_code_new = getCountryByIP(ip_dst, true);
+							if(sipcalledip_country_code_new != sipcalledip_country_code) {
+								row_update.add(sipcalledip_country_code_new, "sipcalledip_country_code", sipcalledip_country_code_new.empty());
+							}
+						}
+						if(by_src_number) {
+							caller_number_country_code_new = getCountryByPhoneNumber(number_src.c_str(), ip_src, true);
+							if(caller_number_country_code_new != caller_number_country_code) {
+								row_update.add(caller_number_country_code_new, "caller_number_country_code", caller_number_country_code_new.empty());
+							}
+						}
+						if(by_dst_number) {
+							called_number_country_code_new = getCountryByPhoneNumber(number_dst.c_str(), ip_dst, true);
+							if(called_number_country_code_new != called_number_country_code) {
+								row_update.add(called_number_country_code_new, "called_number_country_code", called_number_country_code_new.empty());
+							}
+						}
+						cout << "reassign countries cdr.id: " << id << " - "
+						     << ip_src.getString() << ": " << sipcallerip_country_code_new << ", "
+						     << ip_dst.getString() << ": " << sipcalledip_country_code_new << ", "
+						     << number_src << ": " << caller_number_country_code_new << ", "
+						     << number_dst << ": " << called_number_country_code_new << endl;
+					}
+					if(!row_update.isEmpty()) {
+						SqlDb_row row_cond;
+						row_cond.add(id, "cdr_id");
+						if(existsColumnCdrCountryCodeCalldate) {
+							row_cond.add(row["calldate"], "calldate");
+						}
+						sqlDb->update("cdr_country_code", row_update, row_cond);
+					}
+				}
+			}
+		} else if(!strncmp(gets_buffer, "end", 3)) {
+			break;
+		}
+		cout << "ready\n" << flush;
+	}
+	delete sqlDb;
+}

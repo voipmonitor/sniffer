@@ -1352,6 +1352,7 @@ char *opt_test_regexp_gui_params = NULL;
 char *opt_read_pcap_gui_params = NULL;
 char *opt_cmp_config_params = NULL;
 char *opt_revaluation_params = NULL;
+char *opt_reassign_countries_params = NULL;
 bool is_gui_param = false;
 char opt_test_str[1024];
 
@@ -3346,6 +3347,7 @@ bool is_set_gui_params() {
 	       opt_read_pcap_gui_params ||
 	       opt_cmp_config_params ||
 	       opt_revaluation_params ||
+	       opt_reassign_countries_params ||
 	       is_gui_param);
 }
 
@@ -4009,6 +4011,10 @@ int main(int argc, char *argv[]) {
 	}
 	if(opt_revaluation_params) {
 		revaluationBilling(opt_revaluation_params);
+		return(0);
+	}
+	if(opt_reassign_countries_params) {
+		reassignCountries(opt_reassign_countries_params);
 		return(0);
 	}
 	if(opt_process_pcap_fname[0]) {
@@ -7689,6 +7695,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"process_pcap", 1, 0, _param_process_pcap},
 	    {"heap-profiler", 1, 0, _param_heap_profiler},
 	    {"revaluation", 1, 0, _param_revaluation},
+	    {"reassign_countries", 1, 0, _param_reassign_countries},
 	    {"eval-formula", 1, 0, _param_eval_formula},
 	    {"ipfix-client-emulation", 1, 0, _param_ipfix_client_emulation},
 	    {"hep-client-emulation", 1, 0, _param_hep_client_emulation},
@@ -8404,6 +8411,12 @@ void get_command_line_arguments() {
 				if(!opt_revaluation_params) {
 					opt_revaluation_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_revaluation_params, optarg);
+				}
+				break;
+			case _param_reassign_countries:
+				if(!opt_reassign_countries_params) {
+					opt_reassign_countries_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_reassign_countries_params, optarg);
 				}
 				break;
 			case _param_eval_formula:
