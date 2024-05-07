@@ -22,6 +22,7 @@
 #include <sys/resource.h>
 #include <net/if.h>
 #include <dirent.h>
+#include <mysqld_error.h>
 
 #include <iostream>
 #include <iomanip>
@@ -14604,7 +14605,13 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 		this->createTablesIfNotExists(sqlDb, true);
 		extern bool opt_disable_partition_operations;
 		if(!opt_disable_partition_operations && !is_client()) {
+			sqlDb->setIgnoreErrorCode(ER_SAME_NAME_PARTITION);
+			sqlDb->setIgnoreErrorCode(ER_RANGE_NOT_INCREASING_ERROR);
+			sqlDb->setIgnoreErrorCode(ER_NO_SUCH_TABLE);
 			this->createMysqlPartitions(sqlDb);
+			if(!_createSqlObject) {
+				sqlDb->clearIgnoreErrorCodes();
+			}
 		}
 	}
 	if(_createSqlObject) {
