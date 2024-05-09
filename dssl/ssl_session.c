@@ -30,7 +30,10 @@
 #include "tls_ticket_table.h"
 #include "compression.h"
 #include <openssl/evp.h>
+
+#if defined(HAVE_LIBGNUTLS)
 #include <gcrypt.h>
+#endif
 
 #include "../config.h"
 
