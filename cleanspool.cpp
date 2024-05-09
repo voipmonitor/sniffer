@@ -177,13 +177,13 @@ void CleanSpool::cSpoolData::removeLastDateHours(int hours) {
 	if(!data.size()) {
 		return;
 	}
-	map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter = data.end();
-	--iter;
-	while(iter != data.begin()) {
+	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::reverse_iterator iter = data.rbegin(); iter != data.rend(); ) {
 		if(getNumberOfHourToNow(iter->first.date.c_str(), iter->first.hour) > hours) {
 			break;
 		} else {
-			data.erase(iter--);
+			sSpoolDataDirIndex data_dir_index = iter->first;
+			iter++;
+			data.erase(data_dir_index);
 		}
 	}
 }
@@ -2734,6 +2734,7 @@ void CleanSpool::force_reindex_spool() {
 }
 
 string CleanSpool::print_spool() {
+	updateSpoolDataForCleanThreadProcess();
 	return(intToString(spoolData.getSumSize() / (1024 * 1024)) + " MB\r\n\r\n" + 
 	       printSumSizeByDate() + "\r\n" + 
 	       printSumSizeByType() + "\r\n");

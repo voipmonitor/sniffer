@@ -90,6 +90,9 @@ extern int terminated_async;
 extern int terminated_tar_flush_queue[2];
 extern int terminated_tar[2];
 
+extern int opt_tar_move;
+extern string opt_tar_move_destination_path;
+
 
 void data_tar::set(int typeSpoolFile, Call_abstract *call, const char *fileName) {
 	this->sensorName = call->get_sensordir();
@@ -2211,6 +2214,11 @@ void TarCopy::setMaxThreads(unsigned max_threads) {
 void TarCopy::addTarsFromSpool() {
 	map<string, bool> spooldirs;
 	for(int spoolIndex = 0; spoolIndex < 2; spoolIndex++) {
+		if(spoolIndex == 1 &&
+		   opt_tar_move && !opt_tar_move_destination_path.empty() &&
+		   opt_tar_move_destination_path == getSpoolDir(tsf_main, spoolIndex)) {
+			break;
+		}
 		for(int typeSpoolFile = tsf_na + 1; typeSpoolFile <= MAX_TYPE_SPOOL_FILE; typeSpoolFile++) {
 			string spooldir = getSpoolDir((eTypeSpoolFile)typeSpoolFile, spoolIndex);
 			if(!spooldir.empty() && spooldirs.find(spooldir) == spooldirs.end()) {
@@ -2334,7 +2342,13 @@ bool TarCopy::copy(string src_filePathName) {
 
 bool TarCopy::copy(string src_filePathName, string dst_filePathName) {
 	string syserror;
-	int64_t rslt_copy = copy_file(src_filePathName.c_str(), dst_filePathName.c_str(), move, true, &syserror);
+	string dst_filePathName_tmp;
+	if(move) {
+		dst_filePathName_tmp = dst_filePathName + "_tmp_move";
+	}
+	int64_t rslt_copy = copy_file(src_filePathName.c_str(),
+				      move ? dst_filePathName_tmp.c_str() : dst_filePathName.c_str(),
+				      move, true, &syserror);
 	syslog(LOG_NOTICE, "tar %s %s : %s -> %s",
 	       move ? 
 		"move" : 
@@ -2344,6 +2358,12 @@ bool TarCopy::copy(string src_filePathName, string dst_filePathName) {
 		("failed (" + copy_file_err_type_str(rslt_copy) + (!syserror.empty() ? ", error: " + syserror : "") + ")").c_str(),
 	       src_filePathName.c_str(),
 	       dst_filePathName.c_str());
+	if(rslt_copy >= 0 && move) {
+		if(file_exists(dst_filePathName)) {
+			unlink(dst_filePathName.c_str());
+		}
+		rename(dst_filePathName_tmp.c_str(), dst_filePathName.c_str());
+	}
 	return(rslt_copy >= 0 || rslt_copy == _copyfile_src_missing);
 }
 

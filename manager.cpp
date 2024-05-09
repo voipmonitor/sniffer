@@ -110,6 +110,9 @@ extern volatile bool cloud_activecheck_sshclose;
 extern char opt_call_id_alternative[256];
 extern string binaryNameWithPath;
 
+extern int opt_tar_move;
+extern string opt_tar_move_destination_path;
+
 int opt_blocktarwrite = 0;
 int opt_blockasyncprocess = 0;
 int opt_blockprocesspacket = 0;
@@ -4017,9 +4020,27 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 	if(strstr(tar_filename, "../")) {
 		return(params->sendString("access denied"));
 	}
-
+	
+	string tar_filepathname;
+	for(int spool_tar_move = (opt_tar_move && !opt_tar_move_destination_path.empty() ? 1 : 0); spool_tar_move >= 0; spool_tar_move--) {
+		string spooldir = spool_tar_move ?
+				   opt_tar_move_destination_path :
+				   getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index);
+		if(file_exists(spooldir + '/' + tar_filename)) {
+			tar_filepathname = spooldir + '/' + tar_filename;
+			break;
+		}
+	}
+	if(tar_filepathname.empty()) {
+		char buf_output[2048 + 100];
+		snprintf(buf_output, sizeof(buf_output), "error: missing file [%s]", tar_filename);
+		params->sendString(buf_output);
+		delete [] tarPosI;
+		return -1;
+	}
+	
 	Tar tar;
-	if(!tar.tar_open(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + tar_filename, O_RDONLY)) {
+	if(!tar.tar_open(tar_filepathname, O_RDONLY)) {
 		string filename_conv = filename;
 		prepare_string_to_filename((char*)filename_conv.c_str());
 		tar.tar_read_send_parameters(params);
@@ -4037,6 +4058,7 @@ int Mgmt_getfile_in_tar(Mgmt_params *params) {
 		delete [] tarPosI;
 		return -1;
 	}
+	
 	delete [] tarPosI;
 	return 0;
 }
@@ -4093,28 +4115,33 @@ int Mgmt_file_exists(Mgmt_params *params) {
 		vector<string> filenames = explode(filename, '|');
 		int error_code_rslt = 0;
 		vector<string> rslts;
-		for(unsigned i = 0; i < filenames.size(); i++) {
-			int error_code;
-			string filename = filenames[i];
-			if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
-				size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
-				string rslt_i = filename + ":" + intToString(size);
-				if(size > 0 && filename.find("tar") != string::npos) {
-					for(int i = 1; i <= 5; i++) {
-						string nextfilename = filename;
-						nextfilename += "." + intToString(i);
-						u_int64_t nextsize = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + nextfilename);
-						if(nextsize > 0) {
-							rslt_i += ";" + nextfilename + ":" + intToString(nextsize);
-						} else {
-							break;
+		for(int spool_tar_move = (opt_tar_move && !opt_tar_move_destination_path.empty() ? 1 : 0); spool_tar_move >= 0; spool_tar_move--) {
+			string spooldir = spool_tar_move ?
+					   opt_tar_move_destination_path :
+					   getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index);
+			for(unsigned i = 0; i < filenames.size(); i++) {
+				int error_code;
+				string filename = filenames[i];
+				if(file_exists(spooldir + '/' + filename, &error_code)) {
+					size = file_size(spooldir + '/' + filename);
+					string rslt_i = filename + ":" + intToString(size);
+					if(size > 0 && filename.find("tar") != string::npos) {
+						for(int i = 1; i <= 5; i++) {
+							string nextfilename = filename;
+							nextfilename += "." + intToString(i);
+							u_int64_t nextsize = file_size(spooldir + '/' + nextfilename);
+							if(nextsize > 0) {
+								rslt_i += ";" + nextfilename + ":" + intToString(nextsize);
+							} else {
+								break;
+							}
 						}
 					}
-				}
-				rslts.push_back(rslt_i);
-			} else {
-				if(error_code) {
-					error_code_rslt =error_code;
+					rslts.push_back(rslt_i);
+				} else {
+					if(error_code) {
+						error_code_rslt =error_code;
+					}
 				}
 			}
 		}
