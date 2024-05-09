@@ -31,11 +31,11 @@
 #include "compression.h"
 #include <openssl/evp.h>
 
+#include "../config.h"
+
 #if defined(HAVE_LIBGNUTLS)
 #include <gcrypt.h>
 #endif
-
-#include "../config.h"
 
 #include "tls-ext.h"
 
