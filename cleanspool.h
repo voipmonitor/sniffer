@@ -211,7 +211,7 @@ public:
 	static void run_check_filesindex(int spoolIndex = -1);
 	static void run_check_spooldir_filesindex(const char *dirfilter = NULL, int spoolIndex = -1);
 	static void run_reindex_spool(int spoolIndex = -1);
-	static string run_print_spool(int spoolIndex = -1);
+	static string run_print_spool(int spoolIndex = -1, bool refresh = false);
 	static string get_oldest_date(int spoolIndex = -1);
 	static bool suspend(int spoolIndex = -1);
 	static bool resume(int spoolIndex = -1);
@@ -284,7 +284,7 @@ private:
 	void test_load(string type);
 	void check_spooldir_filesindex(const char *dirfilter);
 	void force_reindex_spool();
-	string print_spool();
+	string print_spool(bool refresh = false);
 	unsigned int get_reduk_maxpoolsize(unsigned int maxpoolsize);
 	bool fileIsOpenTar(list<string> &listOpenTars, string &file);
 	void readSpoolDateDirs(list<string> *dirs);

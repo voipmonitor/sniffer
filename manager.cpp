@@ -2539,7 +2539,7 @@ int Mgmt_printspool(Mgmt_params *params) {
 	}
 	string rslt;
 	if(is_enable_cleanspool()) {
-		rslt = CleanSpool::run_print_spool();
+		rslt = CleanSpool::run_print_spool(-1, strstr(params->buf, "refresh") != NULL);
 	} else {
 		rslt = "cleanspool is disable\r\n";
 	}

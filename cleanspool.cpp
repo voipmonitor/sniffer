@@ -174,16 +174,13 @@ bool CleanSpool::cSpoolData::existsFileIndex(CleanSpool::sSpoolDataDirIndex *dir
 }
 
 void CleanSpool::cSpoolData::removeLastDateHours(int hours) {
-	if(!data.size()) {
-		return;
-	}
-	for(map<sSpoolDataDirIndex, sSpoolDataDirItem>::reverse_iterator iter = data.rbegin(); iter != data.rend(); ) {
-		if(getNumberOfHourToNow(iter->first.date.c_str(), iter->first.hour) > hours) {
-			break;
-		} else {
-			sSpoolDataDirIndex data_dir_index = iter->first;
-			iter++;
-			data.erase(data_dir_index);
+	while(data.size()) {
+		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter_last = data.end();
+		--iter_last;
+		if(getNumberOfHourToNow(iter_last->first.date.c_str(), iter_last->first.hour) > hours) {
+ 			break;
+ 		} else {
+			data.erase(iter_last);
 		}
 	}
 }
@@ -654,7 +651,7 @@ void CleanSpool::run_reindex_spool(int spoolIndex) {
 	}
 }
 
-string CleanSpool::run_print_spool(int spoolIndex) {
+string CleanSpool::run_print_spool(int spoolIndex, bool refresh) {
 	if(opt_cleanspool_use_files) {
 		return("");
 	}
@@ -662,7 +659,7 @@ string CleanSpool::run_print_spool(int spoolIndex) {
 	for(int i = 0; i < 2; i++) {
 		if(cleanSpool[i] &&
 		   (spoolIndex == -1 || spoolIndex == cleanSpool[i]->spoolIndex)) {
-			rslt += cleanSpool[i]->print_spool();
+			rslt += cleanSpool[i]->print_spool(refresh);
 		}
 	}
 	return(rslt);
@@ -2733,8 +2730,10 @@ void CleanSpool::force_reindex_spool() {
 	force_reindex_spool_flag = true;
 }
 
-string CleanSpool::print_spool() {
-	updateSpoolDataForCleanThreadProcess();
+string CleanSpool::print_spool(bool refresh) {
+	if(refresh) {
+		updateSpoolDataForCleanThreadProcess();
+	}
 	return(intToString(spoolData.getSumSize() / (1024 * 1024)) + " MB\r\n\r\n" + 
 	       printSumSizeByDate() + "\r\n" + 
 	       printSumSizeByType() + "\r\n");
