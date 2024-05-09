@@ -2427,8 +2427,10 @@ bool RTP::read(CallBranch *c_branch,
 	last_seq = seq;
 	lastcng = 0;
 
-	avg_ptime_count++;
-	avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
+	if(packetization > 0) {
+		avg_ptime_count++;
+		avg_ptime = (avg_ptime * (avg_ptime_count - 1) + packetization) / avg_ptime_count;
+	}
 
 	// write MOS to .graph every 10 seconds and reset jitter last mos interval
 	if((last_save_mos_graph_ms ? last_save_mos_graph_ms : TIME_US_TO_MS(first_packet_time_us)) + 10000 < TIME_US_TO_MS(last_packet_time_us) || 

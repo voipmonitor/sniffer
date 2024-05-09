@@ -7134,7 +7134,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 						cdr.add(rtpab[i]->rtcp.fraclost_pkt_counter, c+"_rtcp_fraclost_pktcount");
 				}
 				if(existsColumns.cdr_rtp_ptime) {
-					cdr.add(LIMIT_TINYINT_UNSIGNED(rtpab[i]->avg_ptime), c+"_rtp_ptime");
+					cdr.add(LIMIT_TINYINT_UNSIGNED(round(rtpab[i]->avg_ptime)), c+"_rtp_ptime", round(rtpab[i]->avg_ptime) == 0);
 				}
 				if(existsColumns.cdr_rtcp_rtd && rtpab[i]->rtcp.rtd_count) {
 					cdr.add(LIMIT_SMALLINT_UNSIGNED(rtpab[i]->rtcp.rtd_max * 10000 / 65536), c+"_rtcp_maxrtd_mult10");
@@ -7715,7 +7715,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(existsColumns.cdr_rtp_sdp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
-				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
+				rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
@@ -8331,7 +8331,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			}
 			if(existsColumns.cdr_rtp_sdp_ptime) {
 				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->sdp_ptime), "sdp_ptime", !rtp_i->sdp_ptime);
-				rtps.add(LIMIT_TINYINT_UNSIGNED(rtp_i->avg_ptime), "rtp_ptime", !rtp_i->avg_ptime);
+				rtps.add(LIMIT_TINYINT_UNSIGNED(round(rtp_i->avg_ptime)), "rtp_ptime", round(rtp_i->avg_ptime) == 0);
 			}
 			if(existsColumns.cdr_rtp_flags) {
 				u_int64_t flags = 0;
