@@ -79,6 +79,10 @@ static sChartTypeDef ChartTypeDef[] = {
 	{ _chartType_IP_dst,			0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
 	{ _chartType_domain_src,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
 	{ _chartType_domain_dst,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
+	{ _chartType_caller_countries,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
+	{ _chartType_called_countries,		0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
+	{ _chartType_SIP_src_IP_countries,	0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
+	{ _chartType_SIP_dst_IP_countries,	0,	1,	_chartPercType_NA,	0,	_chartSubType_area },
 	{ _chartType_price_customer,		0,	1,	_chartPercType_NA,	0,	_chartSubType_value },
 	{ _chartType_price_operator,		0,	1,	_chartPercType_NA,	0,	_chartSubType_value }
 };
@@ -2494,6 +2498,10 @@ eChartType chartTypeFromString(string chartType) {
 	       chartType == "TCH_IP_dst" ? _chartType_IP_dst :
 	       chartType == "TCH_domain_src" ? _chartType_domain_src :
 	       chartType == "TCH_domain_dst" ? _chartType_domain_dst :
+	       chartType == "TCH_caller_countries" ? _chartType_caller_countries :
+	       chartType == "TCH_called_countries" ? _chartType_called_countries :
+	       chartType == "TCH_SIP_src_IP_countries" ? _chartType_SIP_src_IP_countries :
+	       chartType == "TCH_SIP_dst_IP_countries" ? _chartType_SIP_dst_IP_countries :
 	       chartType == "TCH_price_customer" ? _chartType_price_customer :
 	       chartType == "TCH_price_operator" ? _chartType_price_operator :
 	       _chartType_na);

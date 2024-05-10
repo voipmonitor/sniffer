@@ -5247,6 +5247,26 @@ void Call::getChartCacheValue(int type, double *value, string *value_str, bool *
 	case _chartType_domain_dst:
 		v_str = get_called_domain(branch_main());
 		break;
+	case _chartType_caller_countries:
+		v_str = opt_cdr_country_code == 2 ?
+			 intToString(getCountryIdByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main()))) :
+			 getCountryByPhoneNumber(branch_main()->caller.c_str(), getSipcallerip(branch_main()), true);
+		break;
+	case _chartType_called_countries:
+		v_str = opt_cdr_country_code == 2 ?
+			 intToString(getCountryIdByPhoneNumber(get_called(branch_main()), branch_main()->sipcalledip_rslt)) :
+			 getCountryByPhoneNumber(get_called(branch_main()), branch_main()->sipcalledip_rslt, true);
+		break;
+	case _chartType_SIP_src_IP_countries:
+		v_str = opt_cdr_country_code == 2 ?
+			 intToString(getCountryIdByIP(getSipcallerip(branch_main()))) :
+			 getCountryByIP(getSipcallerip(branch_main()), true);
+		break;
+	case _chartType_SIP_dst_IP_countries:
+		v_str = opt_cdr_country_code == 2 ?
+			 intToString(getCountryIdByIP(branch_main()->sipcalledip_rslt)) :
+			 getCountryByIP(branch_main()->sipcalledip_rslt, true);
+		break;
 	case _chartType_price_customer:
 		if(price_customer > 0) {
 			v = price_customer;
@@ -5564,6 +5584,18 @@ void Call::getChartCacheValue(cDbTablesContent *tablesContent,
 		break;
 	case _chartType_domain_dst:
 		v_str = tablesContent->getValue_string(_t_cdr, "called_domain");
+		break;
+	case _chartType_caller_countries:
+		v_str = tablesContent->getValue_string(_t_cdr_country_code, "caller_number_country_code");
+		break;
+	case _chartType_called_countries:
+		v_str = tablesContent->getValue_string(_t_cdr_country_code, "called_number_country_code");
+		break;
+	case _chartType_SIP_src_IP_countries:
+		v_str = tablesContent->getValue_string(_t_cdr_country_code, "sipcallerip_country_code");
+		break;
+	case _chartType_SIP_dst_IP_countries:
+		v_str = tablesContent->getValue_string(_t_cdr_country_code, "sipcalledip_country_code");
 		break;
 	case _chartType_price_customer:
 		if(tablesContent->existsColumn(_t_cdr, "price_customer_mult1000000")) {

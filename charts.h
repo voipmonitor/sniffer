@@ -83,6 +83,10 @@ enum eChartType {
 	_chartType_IP_dst,
 	_chartType_domain_src,
 	_chartType_domain_dst,
+	_chartType_caller_countries,
+	_chartType_called_countries,
+	_chartType_SIP_src_IP_countries,
+	_chartType_SIP_dst_IP_countries,
 	_chartType_price_customer,
 	_chartType_price_operator
 };
