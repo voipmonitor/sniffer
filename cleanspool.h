@@ -184,10 +184,12 @@ public:
 			enable_cache_load = false;
 			enable_cache_save = false;
 			no_cache_last_hours = 0;
+			clean_orphan_dirs_older_than = 0;
 		}
 		bool enable_cache_load;
 		bool enable_cache_save;
 		int no_cache_last_hours;
+		int clean_orphan_dirs_older_than;
 	};
 public:
 	CleanSpool(int spoolIndex);
@@ -246,6 +248,7 @@ private:
 	void erase_dir(string dir, sSpoolDataDirIndex index, string callFrom);
 	void erase_dir_if_empty(string dir, string callFrom = "");
 	bool dir_is_empty(string dir, bool enableRecursion = false);
+	bool dir_is_empty(string dir, list<string> *exclude);
 	string reduk_dir(string dir, string *last_dir);
 	void clean_spooldir_run();
 	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio);

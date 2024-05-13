@@ -30,6 +30,8 @@ extern int opt_newdir;
 extern int opt_pcap_split;
 extern int opt_pcap_dump_tar;
 extern bool opt_cleanspool_use_files;
+extern int opt_tar_move;
+extern string opt_tar_move_destination_path;
 
 
 #define DISABLE_CLEANSPOOL ((suspended && !critical_low_space) || do_convert_filesindex_flag)
@@ -864,10 +866,38 @@ void CleanSpool::loadSpoolDataDir(cSpoolData *spoolData, sSpoolDataDirIndex inde
 				sSpoolDataDirIndex _index = index;
 				_index.date = *iter_dir;
 				this->loadSpoolDataDir(spoolData, _index, path + '/' + *iter_dir, params);
+				if(params.clean_orphan_dirs_older_than) {
+					int hoursToNow = getNumberOfHourToNow(iter_dir->c_str(), 0);
+					if(hoursToNow > params.clean_orphan_dirs_older_than) {
+						string pathHour = path + '/' + *iter_dir;
+						list<string> exclude;
+						exclude.push_back(CACHE_NAME);
+						if(dir_is_empty(pathHour, &exclude)) {
+							if(rmdir_r(pathHour.c_str(), true, false, __FILE__, __LINE__) == 0) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: clean orphan dir %s", spoolIndex, pathHour.c_str());
+							}
+						}
+					}
+					continue;
+				}
 			} else if(index.getSettedItems() & sSpoolDataDirIndex::_ti_date &&
 				  !(index.getSettedItems() & sSpoolDataDirIndex::_ti_hour) &&
 				  check_hour_dir(iter_dir->c_str())) {
 				unsigned hour = atoi(iter_dir->c_str());
+				if(params.clean_orphan_dirs_older_than) {
+					int hoursToNow = getNumberOfHourToNow(index.date.c_str(), hour);
+					if(hoursToNow > params.clean_orphan_dirs_older_than) {
+						string pathHour = path + '/' + *iter_dir;
+						list<string> exclude;
+						exclude.push_back(CACHE_NAME);
+						if(dir_is_empty(pathHour, &exclude)) {
+							if(rmdir_r(pathHour.c_str(), true, false, __FILE__, __LINE__) == 0) {
+								syslog(LOG_NOTICE, "cleanspool[%i]: clean orphan dir %s", spoolIndex, pathHour.c_str());
+							}
+						}
+					}
+					continue;
+				}
 			    #if true // speed optimization
 				string pathHour = path + '/' + *iter_dir;
 				sSpoolDataDirIndex indexHour = index;
@@ -1890,6 +1920,36 @@ bool CleanSpool::dir_is_empty(string dir, bool enableRecursion) {
 	return(empty);
 }
 
+bool CleanSpool::dir_is_empty(string dir, list<string> *exclude) {
+	bool empty = true;
+	char *fts_path[2] = { (char*)dir.c_str(), NULL };
+	FTS *tree = fts_open(fts_path, FTS_COMFOLLOW | FTS_NOCHDIR, 0);
+	if(!tree) {
+		return(false);
+	}
+	FTSENT *node;
+	while((node = fts_read(tree)) && empty) {
+		if(node->fts_info == FTS_F) {
+			if(exclude) {
+				bool ok_exclude = false;
+				for(list<string>::iterator iter = exclude->begin(); iter != exclude->end(); iter++) {
+					if(strcasestr(node->fts_name, iter->c_str())) {
+						ok_exclude = true;
+						break;
+					}
+				}
+				if(!ok_exclude) {
+					empty = false;
+				}
+			} else {
+				empty = false;
+			}
+		}
+	}
+	fts_close(tree);
+	return(empty);
+}
+
 string CleanSpool::reduk_dir(string dir, string *last_dir) {
 	size_t lastDirSep = dir.rfind('/');
 	if(lastDirSep == string::npos) {
@@ -1972,6 +2032,14 @@ void CleanSpool::clean_spooldir_run() {
 
 	if(opt_other.maxpool_clean_obsolete) {
 		clean_obsolete_dirs();
+	}
+	
+	if(spoolIndex == 0 &&
+	   opt_tar_move && !opt_tar_move_destination_path.empty()) {
+		sLoadParams params;
+		params.clean_orphan_dirs_older_than = 12;
+		sSpoolDataDirIndex index;
+		loadSpoolDataDir(&spoolData, index, "", params);
 	}
 	
 	clean_spooldir_run_processing = 0;
