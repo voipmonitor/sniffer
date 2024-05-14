@@ -4107,21 +4107,25 @@ int Mgmt_file_exists(Mgmt_params *params) {
 	string rslt;
 
 	sscanf(params->buf, "file_exists %s %u %i", filename, &spool_index, &type_spool_file);
-	if(type_spool_file == tsf_na) {
-		type_spool_file = findTypeSpoolFile(spool_index, filename);
-	}
+	int type_spool_file_orig = type_spool_file;
 
 	if(strchr(filename, '|')) {
 		vector<string> filenames = explode(filename, '|');
 		int error_code_rslt = 0;
 		vector<string> rslts;
-		for(int spool_tar_move = (opt_tar_move && !opt_tar_move_destination_path.empty() ? 1 : 0); spool_tar_move >= 0; spool_tar_move--) {
-			string spooldir = spool_tar_move ?
-					   opt_tar_move_destination_path :
-					   getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index);
-			for(unsigned i = 0; i < filenames.size(); i++) {
+		for(unsigned i = 0; i < filenames.size(); i++) {
+			for(int spool_tar_move = (opt_tar_move && !opt_tar_move_destination_path.empty() ? 1 : 0); spool_tar_move >= 0; spool_tar_move--) {
 				int error_code;
 				string filename = filenames[i];
+				string spooldir;
+				if(spool_tar_move) {
+					spooldir = opt_tar_move_destination_path;
+				} else {
+					if(type_spool_file_orig == tsf_na) {
+						type_spool_file = findTypeSpoolFile(spool_index, filename.c_str());
+					}
+					spooldir = getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index);
+				}
 				if(file_exists(spooldir + '/' + filename, &error_code)) {
 					size = file_size(spooldir + '/' + filename);
 					string rslt_i = filename + ":" + intToString(size);
@@ -4138,9 +4142,12 @@ int Mgmt_file_exists(Mgmt_params *params) {
 						}
 					}
 					rslts.push_back(rslt_i);
+					if(spool_tar_move) {
+						break;
+					}
 				} else {
 					if(error_code) {
-						error_code_rslt =error_code;
+						error_code_rslt = error_code;
 					}
 				}
 			}
@@ -4151,6 +4158,9 @@ int Mgmt_file_exists(Mgmt_params *params) {
 			rslt = error_code_rslt == EACCES ? "permission_denied" : "not_exists";
 		}
 	} else {
+		if(type_spool_file == tsf_na) {
+			type_spool_file = findTypeSpoolFile(spool_index, filename);
+		}
 		int error_code;
 		if(file_exists(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename, &error_code)) {
 			size = file_size(string(getSpoolDir((eTypeSpoolFile)type_spool_file, spool_index)) + '/' + filename);
