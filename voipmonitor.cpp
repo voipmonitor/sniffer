@@ -4300,6 +4300,11 @@ int main(int argc, char *argv[]) {
 		}
 		
 		if(!opt_database_backup && opt_load_query_main_from_files != 2) {
+			bool storedRunningConfig = false;
+			if(!opt_nocdr && !is_sender() && !is_read_from_file_simple() && !is_terminating()) {
+				storeRunningConfig(true);
+				storedRunningConfig= true;
+			}
 			pthread_t store_crash_bt_to_db_thread;
 			vm_pthread_create_autodestroy("store_crash_bt_to_db",
 						      &store_crash_bt_to_db_thread, NULL, store_crash_bt_to_db_thread_fce, NULL, __FILE__, __LINE__);
@@ -4309,6 +4314,9 @@ int main(int argc, char *argv[]) {
 				return(rslt_main_init_read);
 			}
 			main_term_read();
+			if(storedRunningConfig) {
+				storeRunningConfig(false);
+			}
 		} else {
 			if(opt_database_backup) {
 				sqlStore = new FILE_LINE(42010) MySqlStore(mysql_host, mysql_user, mysql_password, mysql_database, opt_mysql_port, mysql_socket,
@@ -8594,6 +8602,10 @@ void set_context_config() {
 		if(!CONFIG.isSet("packetbuffer_block_maxsize")) {
 			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
 		}
+	}
+	
+	if(is_read_from_file_simple() && opt_mysql_enable_set_id) {
+		opt_mysql_enable_set_id = false;
 	}
 	
 	if(!isCloud()) {

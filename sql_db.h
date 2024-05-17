@@ -1604,5 +1604,7 @@ void dbDataInit(SqlDb *sqlDb);
 void dbDataTerm();
 bool dbDataIsSet();
 
+void storeRunningConfig(bool start);
+
 
 #endif

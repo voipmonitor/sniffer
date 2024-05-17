@@ -29,6 +29,7 @@
 #include "cleanspool.h"
 #include "server.h"
 #include "charts.h"
+#include "config_param.h"
 
 #define QFILE_PREFIX "qoq"
 
@@ -5745,6 +5746,17 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 	"CREATE TABLE IF NOT EXISTS `sensor_config` (\
 			`id` int NOT NULL AUTO_INCREMENT,\
 			`id_sensor` int unsigned DEFAULT NULL,\
+		PRIMARY KEY (`id`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
+	
+	this->query(
+	"CREATE TABLE IF NOT EXISTS `sensor_running_config` (\
+			`id` int NOT NULL AUTO_INCREMENT,\
+			`id_sensor` int unsigned DEFAULT NULL,\
+			`start_at` datetime default NULL,\
+			`stop_at` datetime default NULL,\
+			`version` varchar(100) default NULL,\
+			`config` mediumtext default NULL,\
 		PRIMARY KEY (`id`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1;");
 	
@@ -12239,6 +12251,56 @@ void dbDataTerm() {
 
 bool dbDataIsSet() {
 	return(dbData != NULL);
+}
+
+
+void storeRunningConfig(bool start) {
+	string table_sensor_running_config = "sensor_running_config";
+	SqlDb *sqlDb = createSqlObject();
+	if(!sqlDb->existsTable(table_sensor_running_config)) {
+		delete sqlDb;
+		return;
+	}
+	sqlDb->setMaxQueryPass(1);
+	sqlDb->setDisableLogError();
+	if(!sqlDb->select(table_sensor_running_config, NULL, "id_sensor", intToString(opt_id_sensor).c_str())) {
+		delete sqlDb;
+		return;
+	}
+	SqlDb_row row = sqlDb->fetchRow();
+	unsigned row_id = 0;
+	if(row) {
+		row_id = atoi(row["id"].c_str());
+	}
+	if(start) {
+		SqlDb_row row;
+		if(!row_id) {
+			row.add(opt_id_sensor, "id_sensor");
+		}
+		row.add(sqlDateTimeString(time(NULL)), "start_at");
+		row.add_null("stop_at");
+		row.add(getVersionWithBuild(), "version");
+		string config_json;
+		extern cConfig CONFIG;
+		if(CONFIG.isSet()) {
+			config_json = CONFIG.getJson(true);
+		} else {
+			cConfig config;
+			config.addConfigItems();
+			config_json = config.getJson(true);
+		}
+		row.add(config_json, "config");
+		if(row_id) {
+			sqlDb->update(table_sensor_running_config, row, ("id = " + intToString(row_id)).c_str());
+		} else {
+			sqlDb->insert(table_sensor_running_config, row);
+		}
+	} else if(row_id) {
+		SqlDb_row row;
+		row.add(sqlDateTimeString(time(NULL)), "stop_at");
+		sqlDb->update(table_sensor_running_config, row, ("id = " + intToString(row_id)).c_str());
+	}
+	delete sqlDb;
 }
 
 
