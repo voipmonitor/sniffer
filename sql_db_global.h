@@ -132,7 +132,7 @@ private:
 	void _load(map<unsigned, string> *data_r, SqlDb *sqlDb = NULL);
 	static void *_loadInBackground(void *arg);
 	void lock_data() {
-		__SYNC_LOCK(_sync_data);
+		__SYNC_LOCK_USLEEP(_sync_data, 10);
 	}
 	void unlock_data() {
 		__SYNC_UNLOCK(_sync_data);
