@@ -342,6 +342,13 @@ public:
 		_tp_hour,
 		_tp_month
 	};
+	enum eQueryByRemoteSocketRslt {
+		_qbrs_na,
+		_qbrs_ok,
+		_qbrs_mysql_error,
+		_qbrs_mysql_error_disable_next_attempt,
+		_qbrs_failed_connect
+	};
 	struct sPartition {
 		sPartition() {
 			file_size = -1;
@@ -380,11 +387,10 @@ public:
 	bool reconnect();
 	void setCsvInRemoteResult(bool useCsvInRemoteResult = true);
 	virtual bool query(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL) = 0;
-	bool queryByCurl(string query, bool callFromStoreProcessWithFixDeadlock = false);
 	bool queryByRemoteSocket(string query, bool callFromStoreProcessWithFixDeadlock = false, const char *dropProcQuery = NULL);
-	int _queryByRemoteSocket(string query, unsigned int pass);
-	int processResponseFromQueryBy(const char *response, const char *query, unsigned pass);
-	int processResponseFromCsv(const char *response);
+	eQueryByRemoteSocketRslt _queryByRemoteSocket(string query);
+	eQueryByRemoteSocketRslt processResponseFromQueryBy(const char *response, const char *query);
+	eQueryByRemoteSocketRslt processResponseFromCsv(const char *response);
 	virtual string prepareQuery(string query, bool nextPass);
 	virtual SqlDb_row fetchRow() = 0;
 	string fetchValue(int indexField = 0);

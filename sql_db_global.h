@@ -219,7 +219,7 @@ private:
 	void initCodebooks(bool loadAll, unsigned limitTableRows, SqlDb *sqlDb);
 	void initAutoIncrement(SqlDb *sqlDb);
 	void lock_data() {
-		__SYNC_LOCK(_sync_data);
+		__SYNC_LOCK_USLEEP(_sync_data, 10);
 	}
 	void unlock_data() {
 		__SYNC_UNLOCK(_sync_data);

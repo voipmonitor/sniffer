@@ -111,6 +111,9 @@ u_int64_t cSqlDbAutoIncrement::get_last_id(const char *table, const char *idColu
 		++tryCounter;
 		if(sqlDb->query(string("select ") + idColumn + " from " + sqlDb->escapeTableName(table) + " order by id desc limit 1")) {
 			break;
+		} else if(sqlDb->getErrorCode() == ER_ACCESS_DENIED_ERROR ||
+			  sqlDb->getErrorCode() == ER_NO_SUCH_TABLE) {
+			break;
 		}
 	}
 	#endif
@@ -455,6 +458,9 @@ void cSqlDbCodebook::_load(map<string, unsigned> *data, bool *overflow, SqlDb *s
 			}
 			++tryCounter;
 			if(sqlDb->query("select * from " + table + (!condStr.empty() ? " where " + condStr : ""))) {
+				break;
+			} else if(sqlDb->getErrorCode() == ER_ACCESS_DENIED_ERROR ||
+				  sqlDb->getErrorCode() == ER_NO_SUCH_TABLE) {
 				break;
 			}
 		}

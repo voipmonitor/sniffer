@@ -1031,7 +1031,7 @@ void test() {
 		#else
 		string rslt = sqlDb->getJsonResult();
 		cout << rslt <<  endl;
-		sqlDb->processResponseFromQueryBy(rslt.c_str(), NULL, 0);
+		sqlDb->processResponseFromQueryBy(rslt.c_str(), NULL);
 		#endif
 		sqlDb->setCloudParameters("c", "c", "c");
 		
