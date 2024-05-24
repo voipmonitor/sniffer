@@ -1528,8 +1528,9 @@ struct gre_hdr {
 #define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
 #define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))
 #define enable_save_audio(call)		((call->flags & FLAG_SAVEAUDIO) || opt_savewav_force)
-#define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call))
-#define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call))
+#define enable_audio_transcribe(call)	(call->flags & FLAG_AUDIOTRANSCRIBE)
+#define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call) || enable_audio_transcribe(call))
+#define enable_save_any(call)		(enable_save_packet(call) || enable_save_audio(call) || enable_audio_transcribe(call))
 
 
 void trace_call(u_char *packet, unsigned caplen, int pcapLinkHeaderType,

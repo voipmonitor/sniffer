@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <math.h>
 
+#include "config.h"
+
 #include "audio_convert.h"
 #include "tools_global.h"
 
@@ -96,6 +98,83 @@ cAudioConvert::eResult cAudioConvert::readRaw(sAudioInfo *audioInfo) {
 	}
 	delete [] readbuffer;
 	return(rslt_write);
+}
+
+cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const char *fileNameDst, unsigned sampleRateDst) {
+	FILE *infile = fopen(fileName.c_str(), "rb");
+	if(!infile) {
+		return(_rslt_open_for_read_failed);
+	}
+	FILE *outfile = fopen(fileNameDst, "wb");
+	if(!outfile) {
+		fclose(infile);
+		return(_rslt_open_for_write_failed);
+	}
+	double src_ratio = (double)sampleRateDst / audioInfo->sampleRate;
+	unsigned input_buffer_len = 1024;
+	unsigned output_buffer_len = input_buffer_len * ((int)src_ratio + 1);
+	int16_t input_buffer[input_buffer_len];
+	int16_t output_buffer[output_buffer_len * 4];
+#if HAVE_LIBSAMPLERATE
+	float input_buffer_float[input_buffer_len];
+	float output_buffer_float[output_buffer_len * 4];
+	SRC_STATE *src_state = src_new(SRC_LINEAR, audioInfo->channels, NULL);
+	if(!src_state) {
+		fclose(infile);
+		fclose(outfile);
+		return(_rslt_samplerate_failed);
+	}
+	SRC_DATA src_data;
+	src_data.data_in = input_buffer_float;
+	src_data.data_out = output_buffer_float;
+	src_data.input_frames = 0;
+	src_data.output_frames = output_buffer_len / audioInfo->channels;
+	src_data.src_ratio = src_ratio;
+	src_data.end_of_input = 0;
+	size_t readcount;
+	while((readcount = fread(input_buffer, sizeof(int16_t), input_buffer_len, infile)) > 0) {
+		for (size_t i = 0; i < readcount; i++) {
+			input_buffer_float[i] = input_buffer[i] / 32768.0;
+		}
+		src_data.input_frames = readcount / audioInfo->channels;
+		src_data.data_in = input_buffer_float;
+		int error = src_process(src_state, &src_data);
+		if(error) {
+			src_delete(src_state);
+			fclose(infile);
+			fclose(outfile);
+			return(_rslt_samplerate_failed);
+		}
+		for(int i = 0; i < src_data.output_frames_gen * audioInfo->channels; i++) {
+			float sample = output_buffer_float[i];
+			if(sample > 1.0) sample = 1.0;
+			if(sample < -1.0) sample = -1.0;
+			output_buffer[i] = (int16_t)(sample * 32767.0);
+		}
+		if(fwrite(output_buffer, sizeof(int16_t), src_data.output_frames_gen * audioInfo->channels, outfile) != (size_t)src_data.output_frames_gen) {
+			src_delete(src_state);
+			fclose(infile);
+			fclose(outfile);
+			return(_rslt_write_failed);
+		}
+	}
+	src_delete(src_state);
+#else 
+	size_t readcount;
+	while((readcount = fread(input_buffer, sizeof(int16_t), input_buffer_len, infile)) > 0) {
+		int output_len = (int)(readcount * src_ratio) / audioInfo->channels;
+		linear_resample(input_buffer, output_buffer, readcount, src_ratio, audioInfo->channels);
+		if(fwrite(output_buffer, sizeof(int16_t), output_len * audioInfo->channels, outfile) != (size_t)(output_len * audioInfo->channels)) {
+			fclose(infile);
+			fclose(outfile);
+			return(_rslt_write_failed);
+		}
+	}
+	
+#endif
+	fclose(infile);
+	fclose(outfile);
+	return(_rslt_ok);
 }
 
 cAudioConvert::eResult cAudioConvert::readWav() {
@@ -621,6 +700,43 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 		}
 	}
 	return(_rslt_ok);
+}
+
+void cAudioConvert::linear_resample(int16_t* input, int16_t* output, int input_len, double ratio, int channels) {
+	int output_len = (int)(input_len * ratio) / channels;
+	for(int ch = 0; ch < channels; ++ch) {
+		if(ratio >= 1) {
+			for(int i = 0; i < output_len; ++i) {
+				double src_index = i / ratio;
+				int index = (int)src_index;
+				double frac = src_index - index;
+				if(index + 1 < input_len / channels) {
+					output[i * channels + ch] = (int16_t)((1.0 - frac) * input[(index * channels) + ch] + frac * input[((index + 1) * channels) + ch]);
+				} else {
+					output[i * channels + ch] = input[(index * channels) + ch];
+				}
+			}
+		} else {
+			double inv_ratio = 1 / ratio;
+			for(int i = 0; i < output_len; ++i) {
+				double src_index_start = i * inv_ratio;
+				double src_index_end = (i + 1) * inv_ratio;
+				int index_start = (int)src_index_start;
+				int index_end = (int)src_index_end;
+				double sum = 0.0;
+				int count = 0;
+				for(int j = index_start; j < index_end && j < input_len / channels; ++j) {
+					sum += input[(j * channels) + ch];
+					count++;
+				}
+				if(count > 0) {
+					output[i * channels + ch] = (int16_t)(sum / count);
+				} else {
+					output[i * channels + ch] = input[(index_start * channels) + ch];
+				}
+			}
+		}
+	}
 }
 
 void cAudioConvert::test() {

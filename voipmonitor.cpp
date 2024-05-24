@@ -101,6 +101,7 @@
 #include "hep.h"
 #include "separate_processing.h"
 #include "crc.h"
+#include "transcribe.h"
 
 #if HAVE_LIBTCMALLOC_HEAPPROF
 #include <gperftools/heap-profiler.h>
@@ -242,6 +243,14 @@ int opt_saveRAW = 0;		// save RTP packets to pcap file?
 int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;
+int opt_audio_transcribe = 0;
+int opt_audio_transcribe_threads = 2;
+int opt_audio_transcribe_queue_length_max = 100;
+string opt_whisper_model = "base";
+string opt_whisper_language = "auto";
+int opt_whisper_timeout = 5 * 60;
+bool opt_whisper_deterministic_mode = true;
+string opt_whisper_python;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -2362,11 +2371,16 @@ void *storing_cdr( void */*dummy*/ ) {
 					Call *call = *iter_call;
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
-					if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
-					    call->getAllReceivedRtpPackets()) {
+					if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
+					   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
+					   call->getAllReceivedRtpPackets()) {
 						if(is_read_from_file()) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-							call->convertRawToWav();
+							Transcribe::sCall *transcribe_call;
+							call->convertRawToWav((void**)&transcribe_call);
+							if(enable_audio_transcribe(call) && transcribe_call) {
+								transcribeCall(transcribe_call);
+							}
 						} else {
 							needConvertToWavInThread = true;
 						}
@@ -2516,11 +2530,16 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			Call *call = *iter_call;
 			bool needConvertToWavInThread = false;
 			call->closeRawFiles();
-			if( (opt_savewav_force || (call->flags & FLAG_SAVEAUDIO)) && (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
-			    call->getAllReceivedRtpPackets()) {
+			if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
+			   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
+			   call->getAllReceivedRtpPackets()) {
 				if(is_read_from_file()) {
 					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-					call->convertRawToWav();
+					Transcribe::sCall *transcribe_call;
+					call->convertRawToWav((void**)&transcribe_call);
+					if(enable_audio_transcribe(call) && transcribe_call) {
+						transcribeCall(transcribe_call);
+					}
 				} else {
 					needConvertToWavInThread = true;
 				}
@@ -4534,6 +4553,7 @@ int main_init_read() {
 		preProcessPacketCallX_count = opt_t2_boost_call_threads;
 	}
 	calltable = new FILE_LINE(42013) Calltable(sqlDbInit);
+	createTranscribe();
 	#if DEBUG_ASYNC_TAR_WRITE
 	destroy_calls_info = new FILE_LINE(0) cDestroyCallsInfo(2e6);
 	#endif
@@ -5628,6 +5648,7 @@ void main_term_read() {
 	}
 	delete calltable;
 	calltable = NULL;
+	destroyTranscribe();
 	#if DEBUG_ASYNC_TAR_WRITE
 	delete destroy_calls_info;
 	destroy_calls_info = NULL;
@@ -6558,6 +6579,7 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42225) cConfigItem_yesno("saveaudio"))
 				->addValues("wav:1|w:1|ogg:2|o:2")
 				->setDefaultValueStr("no"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audio_transcribe", &opt_audio_transcribe));
 			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("liveaudio", &opt_liveaudio));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_answeronly", &opt_saveaudio_answeronly));
@@ -6572,6 +6594,14 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_threads", &opt_audio_transcribe_threads));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_queue_length_max", &opt_audio_transcribe_queue_length_max));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_language", &opt_whisper_language));
+					// auto | by_number | {language}
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("whisper_timeout", &opt_whisper_timeout));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_deterministic_mode", &opt_whisper_deterministic_mode));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("opt_whisper_python", &opt_whisper_python));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
@@ -7921,6 +7951,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "diameter_assign")			sverb.diameter_assign = 1;
 	else if(verbParam == "rdtsc")				sverb.rdtsc = 1;
 	else if(verbParam == "suppress_drop_partitions")	sverb.suppress_drop_partitions = 1;
+	else if(verbParam == "whisper")				sverb.whisper = 1;
 	//
 	else if(verbParam == "debug1")				sverb._debug1 = 1;
 	else if(verbParam == "debug2")				sverb._debug2 = 1;

@@ -6767,6 +6767,34 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
 		""));
 	
+	this->query(string(
+	"CREATE TABLE IF NOT EXISTS `cdr_audio_transcribe` (\
+			`ID` bigint unsigned NOT NULL AUTO_INCREMENT,\
+			`calldate` " + column_type_datetime_child_ms() + " NOT NULL,\
+			`fbasename` varchar(255) DEFAULT NULL,\
+			`a_language` varchar(10) DEFAULT NULL,\
+			`b_language` varchar(10) DEFAULT NULL,\
+			`a_text` mediumtext DEFAULT NULL,\
+			`b_text` mediumtext DEFAULT NULL,\
+			`a_segments` mediumtext DEFAULT NULL,\
+			`b_segments` mediumtext DEFAULT NULL,") +
+		(opt_cdr_partition ? 
+			"PRIMARY KEY (`ID`, `calldate`)," :
+			"PRIMARY KEY (`ID`),") +
+		"KEY `fbasename` (`fbasename`)\
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8 " + compress +  
+	(opt_cdr_partition ?
+		(opt_cdr_partition_by_hours ?
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partHourName + " VALUES LESS THAN ('" + limitHour + "') engine innodb,\
+				 PARTITION " + partHourNextName + " VALUES LESS THAN ('" + limitHourNext + "') engine innodb)" :
+		 opt_cdr_partition_oldver ? 
+			string(" PARTITION BY RANGE (to_days(calldate))(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN (to_days('" + limitDay + "')) engine innodb)" :
+			string(" PARTITION BY RANGE COLUMNS(calldate)(\
+				 PARTITION ") + partDayName + " VALUES LESS THAN ('" + limitDay + "') engine innodb)") :
+		""));
+	
 	if(opt_cdr_stat_values) {
 	for(int src_dst = 0; src_dst < 2; src_dst++) {
 	if(cCdrStat::enableBySrcDst(src_dst)) {
@@ -9526,6 +9554,7 @@ void SqlDb_mysql::checkColumns_cdr_child(bool log) {
 	}
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_txt_calldate_ms, "cdr_txt"));
 	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_child_flags_calldate_ms, "cdr_flags"));
+	childTablesCalldateMsIndik.push_back(sTableCalldateMsIndik(&existsColumns.cdr_audio_transcribe_calldate_ms, "cdr_audio_transcribe"));
 	for(unsigned i = 0; i < childTablesCalldateMsIndik.size(); i++) {
 		for(int pass = 0; pass < 2; pass++) {
 			string alter_ms;
@@ -10486,6 +10515,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				}
 				tables.push_back("cdr_txt");
 				tables.push_back("cdr_flags");
+				tables.push_back("cdr_audio_transcribe");
 			}
 		}
 		if(opt_enable_http_enum_tables && 
@@ -11027,6 +11057,7 @@ void dropMysqlPartitionsCdr() {
 	_dropMysqlPartitions("cdr_txt", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_proxy", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("cdr_flags", opt_cleandatabase_cdr, 0, sqlDb);
+	_dropMysqlPartitions("cdr_audio_transcribe", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message_proxy", opt_cleandatabase_cdr, 0, sqlDb);
 	_dropMysqlPartitions("message_country_code", opt_cleandatabase_cdr, 0, sqlDb);

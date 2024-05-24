@@ -66,6 +66,7 @@
 #include "separate_processing.h"
 #include "ssl_dssl.h"
 #include "diameter.h"
+#include "transcribe.h"
 #include "heap_chunk.h"
 
 #if HAVE_LIBJEMALLOC
@@ -1971,7 +1972,7 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 	     rtp->call_ipport_n_orig != c_branch->ipport_n)) &&
 	   (opt_srtp_rtp_decrypt || 
 	    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-	    (opt_srtp_rtp_audio_decrypt && (flags & FLAG_SAVEAUDIO)) || 
+	    (opt_srtp_rtp_audio_decrypt && (enable_save_audio(this) || enable_audio_transcribe(this))) || 
 	    opt_saveRAW || opt_savewav_force)) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
 		if(opt_srtp_rtp_local_instances) {
@@ -3290,7 +3291,7 @@ void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, vo
 }
 
 int
-Call::convertRawToWav() {
+Call::convertRawToWav(void **transcribe_call) {
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
  
@@ -4053,60 +4054,65 @@ Call::convertRawToWav() {
 			bdir = 0;
 		}
 	}
-	if(adir == 1 && bdir == 1) {
-		// merge caller and called 
-		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-			if(!opt_saveaudio_reversestereo) {
-				wav_mix(wav0, wav1, out, maxsamplerate, 0, opt_saveaudio_stereo);
+	if(enable_save_audio(this)) {
+		if(adir == 1 && bdir == 1) {
+			// merge caller and called 
+			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
+				if(!opt_saveaudio_reversestereo) {
+					wav_mix(wav0, wav1, out, maxsamplerate, 0, opt_saveaudio_stereo);
+				} else {
+					wav_mix(wav1, wav0, out, maxsamplerate, 0, opt_saveaudio_stereo);
+				}
 			} else {
-				wav_mix(wav1, wav0, out, maxsamplerate, 0, opt_saveaudio_stereo);
+				if(!opt_saveaudio_reversestereo) {
+					ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
+				} else {
+					ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
+				}
 			}
-		} else {
-			if(!opt_saveaudio_reversestereo) {
-				ogg_mix(wav0, wav1, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
+			if(!sverb.noaudiounlink) unlink(wav0);
+			if(!sverb.noaudiounlink) unlink(wav1);
+		} else if(adir == 1) {
+			// there is only caller sound
+			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
+				wav_mix(wav0, NULL, out, maxsamplerate, 0, opt_saveaudio_stereo);
 			} else {
-				ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
+				ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
+			}
+			if(!sverb.noaudiounlink) unlink(wav0);
+		} else if(bdir == 1) {
+			// there is only called sound
+			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
+				wav_mix(wav1, NULL, out, maxsamplerate, 1, opt_saveaudio_stereo);
+			} else {
+				ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 1);
+			}
+			if(!sverb.noaudiounlink) unlink(wav1);
+		}
+		string tmp;
+		tmp.append(out);
+		addtofilesqueue(tsf_audio, tmp, 0);
+		if(opt_cachedir[0] != '\0') {
+			Call::_addtocachequeue(tmp);
+		}
+		// Here we put our CURL hook
+		// And use it only if cacheing is turned off
+		if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] == '\0') {
+			SimpleBuffer responseBuffer;
+			s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_json);
+			curl_params.addParam("voipmonitor", "true");
+			curl_params.addParam("stereo", opt_saveaudio_stereo ? "false" : "true");
+			curl_params.addParam("wav_file_name_with_path", out);
+			curl_params.addParam("call_id", this->call_id.c_str());
+			if (!get_curl_response(opt_curl_hook_wav, &responseBuffer, &curl_params)) {
+				if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), curl_params.error.c_str());
+			} else {
+				if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
 			}
 		}
-		if(!sverb.noaudiounlink) unlink(wav0);
-		if(!sverb.noaudiounlink) unlink(wav1);
-	} else if(adir == 1) {
-		// there is only caller sound
-		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-			wav_mix(wav0, NULL, out, maxsamplerate, 0, opt_saveaudio_stereo);
-		} else {
-			ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
-		}
-		if(!sverb.noaudiounlink) unlink(wav0);
-	} else if(bdir == 1) {
-		// there is only called sound
-		if(!(flags & FLAG_FORMATAUDIO_OGG)) {
-			wav_mix(wav1, NULL, out, maxsamplerate, 1, opt_saveaudio_stereo);
-		} else {
-			ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 1);
-		}
-		if(!sverb.noaudiounlink) unlink(wav1);
 	}
-	string tmp;
-	tmp.append(out);
-	addtofilesqueue(tsf_audio, tmp, 0);
-	if(opt_cachedir[0] != '\0') {
-		Call::_addtocachequeue(tmp);
-	}
-	// Here we put our CURL hook
-	// And use it only if cacheing is turned off
-	if (opt_curl_hook_wav[0] != '\0' && opt_cachedir[0] == '\0') {
-		SimpleBuffer responseBuffer;
-		s_get_curl_response_params curl_params(s_get_curl_response_params::_rt_json);
-		curl_params.addParam("voipmonitor", "true");
-		curl_params.addParam("stereo", opt_saveaudio_stereo ? "false" : "true");
-		curl_params.addParam("wav_file_name_with_path", out);
-		curl_params.addParam("call_id", this->call_id.c_str());
-		if (!get_curl_response(opt_curl_hook_wav, &responseBuffer, &curl_params)) {
-			if(verbosity > 1) syslog(LOG_ERR, "FAIL: Send event to hook[%s] for call_id[%s], error[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), curl_params.error.c_str());
-		} else {
-			if(verbosity > 1) syslog(LOG_INFO, "SUCCESS: Send event to hook[%s] for call_id[%s], response[%s]\n", opt_curl_hook_wav, this->call_id.c_str(), (char*)responseBuffer);
-		}
+	if(enable_audio_transcribe(this) && transcribe_call && (adir || bdir)) {
+		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
 	}
 	
 #endif
@@ -12054,7 +12060,11 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		calltable->unlock_calls_audioqueue();
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
-			call->convertRawToWav();
+			Transcribe::sCall *transcribe_call;
+			call->convertRawToWav((void**)&transcribe_call);
+			if(enable_audio_transcribe(call) && transcribe_call) {
+				transcribePushCall(transcribe_call);
+			}
 			if(useChartsCacheOrCdrStatInProcessCall()) {
 				calltable->lock_calls_charts_cache_queue();
 				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
@@ -15794,6 +15804,7 @@ string printCallFlags(unsigned long int flags) {
 	if(flags & FLAG_SAVEAUDIO)		outStr << "saveaudio ";
 	if(flags & FLAG_FORMATAUDIO_WAV)	outStr << "format_wav ";
 	if(flags & FLAG_FORMATAUDIO_OGG)	outStr << "format_ogg ";
+	if(flags & FLAG_AUDIOTRANSCRIBE)	outStr << "audio_transcribe ";
 	if(flags & FLAG_SAVEGRAPH)		outStr << "savegraph ";
 	if(flags & FLAG_SAVERTPHEADER)		outStr << "savertpheader ";
 	if(flags & FLAG_SAVERTP_VIDEO_HEADER)	outStr << "savertp_video_header ";

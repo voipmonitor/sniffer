@@ -1313,6 +1313,7 @@ struct sExistsColumns {
 	bool cdr_child_conference_calldate_ms;
 	bool cdr_child_txt_calldate_ms;
 	bool cdr_child_flags_calldate_ms;
+	bool cdr_audio_transcribe_calldate_ms;
 	bool cdr_callend_ms;
 	bool cdr_duration_ms;
 	bool cdr_connect_duration_ms;

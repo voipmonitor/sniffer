@@ -34,6 +34,8 @@
 #define _FLAG_AUDIO_WAV			(((u_int64_t)1) << 18)
 #define _FLAG_AUDIO_OGG			(((u_int64_t)1) << 19)
 #define _FLAG_NOWAV      		(((u_int64_t)1) << 20)
+#define _FLAG_AUDIO_TRANSCRIBE      	(((u_int64_t)1) << 49)
+#define _FLAG_NO_AUDIO_TRANSCRIBE      	(((u_int64_t)1) << 50)
 #define _FLAG_SKIP       		(((u_int64_t)1) << 21)
 #define _FLAG_NOSKIP     		(((u_int64_t)1) << 22)
 #define _FLAG_SCRIPT     		(((u_int64_t)1) << 23)
@@ -76,6 +78,7 @@ struct filter_db_row_base {
 		reg = 0;
 		graph = 0;
 		wav = 0;
+		audio_transcribe = 0;
 		skip = 0;
 		mos_lqo = 0;
 		script = 0;
@@ -95,6 +98,7 @@ struct filter_db_row_base {
 	int reg;
 	int graph;
 	int wav;
+	int audio_transcribe;
 	int skip;
 	int mos_lqo;
 	int script;
@@ -368,6 +372,7 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_saveMRCP;
 	extern int opt_saveRTCP;
 	extern int opt_saveWAV;
+	extern int opt_audio_transcribe;
 	extern int opt_audio_format;
 	extern int opt_saveGRAPH;
 	extern int opt_skipdefault;
@@ -408,6 +413,9 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	}
 	if(opt_saveWAV) {
 		flags |= (opt_audio_format == FORMAT_OGG ? FLAG_SAVEAUDIO_OGG : FLAG_SAVEAUDIO_WAV);
+	}
+	if(opt_audio_transcribe) {
+		flags |= FLAG_AUDIOTRANSCRIBE;
 	}
 	if(opt_saveGRAPH) {
 		flags |= FLAG_SAVEGRAPH;

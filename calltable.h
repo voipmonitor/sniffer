@@ -124,6 +124,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define FLAG_SAVENOTIFYPCAP		(1 << 25)
 #define FLAG_SAVESUBSCRIBEDB		(1 << 26)
 #define FLAG_SAVESUBSCRIBEPCAP		(1 << 27)
+#define FLAG_AUDIOTRANSCRIBE		(1 << 28)
 
 #define CDR_CHANGE_SRC_PORT_CALLER	(1 << 0)
 #define CDR_CHANGE_SRC_PORT_CALLED	(1 << 1)
@@ -1719,7 +1720,7 @@ public:
 	 * @brief convert raw files to one WAV
 	 *
 	*/
-	int convertRawToWav();
+	int convertRawToWav(void **transcribe_call);
 	
 	void selectRtpAB();
  

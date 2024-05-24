@@ -1292,7 +1292,7 @@ bool RTP::read(CallBranch *c_branch,
 	bool save_audio = 
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
-		 ((owner->flags & FLAG_SAVEAUDIO) ||
+		 (enable_save_audio(owner) || enable_audio_transcribe(owner) ||
 		  owner->audioBufferData[0].audiobuffer || owner->audioBufferData[1].audiobuffer));
 	bool energylevels = 
 		opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));

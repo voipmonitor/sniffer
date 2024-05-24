@@ -53,6 +53,7 @@ void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, 
 	baseRow->dtmf = _value_is_null(sqlRow, row, "dtmf") ? -1 : _value(sqlRow, row, "dtmf");
 	baseRow->graph = _value_is_null(sqlRow, row, "graph") ? -1 : _value(sqlRow, row, "graph");
 	baseRow->wav = _value_is_null(sqlRow, row, "wav") ? -1 : _value(sqlRow, row, "wav");
+	baseRow->audio_transcribe = _value_is_null(sqlRow, row, "audio_transcribe") ? -1 : _value(sqlRow, row, "audio_transcribe");
 	baseRow->skip = _value_is_null(sqlRow, row, "skip") ? -1 : _value(sqlRow, row, "skip");
 	baseRow->script = _value_is_null(sqlRow, row, "script") ? -1 : _value(sqlRow, row, "script");
 	baseRow->mos_lqo = _value_is_null(sqlRow, row, "mos_lqo") ? -1 : _value(sqlRow, row, "mos_lqo");
@@ -107,6 +108,9 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	else if(baseRow->wav == 2)		flags |= _FLAG_AUDIO_WAV;
 	else if(baseRow->wav == 3)		flags |= _FLAG_AUDIO_OGG;
 	else if(baseRow->wav == 0)		flags |= _FLAG_NOWAV;
+	
+	if(baseRow->audio_transcribe == 1)	flags |= _FLAG_AUDIO_TRANSCRIBE;
+	else if(baseRow->audio_transcribe == 0)	flags |= _FLAG_NO_AUDIO_TRANSCRIBE;
 	
 	if(baseRow->skip == 1)			flags |= _FLAG_SKIP;
 	else if(baseRow->skip == 0)		flags |= _FLAG_NOSKIP;
@@ -174,6 +178,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & _FLAG_AUDIO_WAV)		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
 	if(filterFlags & _FLAG_AUDIO_OGG)		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
 	if(filterFlags & _FLAG_NOWAV)			*callFlags &= ~FLAG_SAVEAUDIO;
+	
+	if(filterFlags & _FLAG_AUDIO_TRANSCRIBE)	*callFlags |= FLAG_AUDIOTRANSCRIBE;
+	if(filterFlags & _FLAG_NO_AUDIO_TRANSCRIBE)	*callFlags &= ~FLAG_AUDIOTRANSCRIBE;
 	
 	if(filterFlags & _FLAG_GRAPH)			*callFlags |= FLAG_SAVEGRAPH;
 	if(filterFlags & _FLAG_NOGRAPH)			*callFlags &= ~FLAG_SAVEGRAPH;

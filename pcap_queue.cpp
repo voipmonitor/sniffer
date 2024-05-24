@@ -40,6 +40,7 @@
 #include "ssl_dssl.h"
 #include "tcmalloc_hugetables.h"
 #include "heap_chunk.h"
+#include "transcribe.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -1595,9 +1596,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		size_t audioQueueSize = calltable->audio_queue.size();
 		if(audioQueueSize) {
 			size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
-			outStr << "[" << audioQueueSize << "/" << audioQueueThreads <<"]";
+			outStr << " audio[" << audioQueueSize << "/" << audioQueueThreads <<"]";
 		}
 		calltable->unlock_calls_audioqueue();
+		string trabscribe_queue_log = transcribeQueueLog();
+		if(!trabscribe_queue_log.empty()) {
+			outStr << " transcribe[" << trabscribe_queue_log <<"]";
+		}
 		if(sverb.log_profiler) {
 			lapTime.push_back(getTimeMS_rdtsc());
 			lapTimeDescr.push_back("calls");

@@ -4533,6 +4533,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if((call->flags & FLAG_SAVEAUDIO) && !(flags & FLAG_SAVEAUDIO)) {
 				call->flags &= ~FLAG_SAVEAUDIO;
 			}
+			if((call->flags & FLAG_AUDIOTRANSCRIBE) && !(flags & FLAG_AUDIOTRANSCRIBE)) {
+				call->flags &= ~FLAG_AUDIOTRANSCRIBE;
+			}
 			if(flags & FLAG_SKIPCDR) {
 				call->flags |= FLAG_SKIPCDR;
 			}
