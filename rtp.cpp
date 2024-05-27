@@ -84,6 +84,7 @@ extern bool opt_rtp_count_all_sequencegap_as_loss;
 extern bool opt_check_diff_ssrc_on_same_ip_port;
 extern int opt_ignore_mos_degradation_in_rtp_pause_without_seq_gap;
 extern bool opt_disable_rtp_seq_probation;
+extern bool opt_disable_rtp_seq_check;
 
 extern sStreamAnalysisData *rtp_stream_analysis_data;
 
@@ -1382,7 +1383,7 @@ bool RTP::read(CallBranch *c_branch,
 	}
 	dupl_check_seq.push(seq);
 
-	if(seq == last_seq and !(last_markbit == 0 and getMarker() == 1)) {
+	if(seq == last_seq && !(last_markbit == 0 && getMarker() == 1) && !opt_disable_rtp_seq_check) {
 		// ignore duplicated RTP packets unless the second packet has mark bit set but the previous not
 		return(false);
 	}
