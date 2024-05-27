@@ -2374,7 +2374,8 @@ void *storing_cdr( void */*dummy*/ ) {
 					if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
 					   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
 					   call->getAllReceivedRtpPackets()) {
-						if(is_read_from_file()) {
+						if(is_read_from_file_simple() ||
+						   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 							Transcribe::sCall *transcribe_call;
 							call->convertRawToWav((void**)&transcribe_call);
@@ -2533,7 +2534,8 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
 			   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
 			   call->getAllReceivedRtpPackets()) {
-				if(is_read_from_file()) {
+				if(is_read_from_file_simple() ||
+				   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
 					Transcribe::sCall *transcribe_call;
 					call->convertRawToWav((void**)&transcribe_call);

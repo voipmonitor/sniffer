@@ -122,7 +122,7 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 	if(!src_state) {
 		fclose(infile);
 		fclose(outfile);
-		return(_rslt_samplerate_failed);
+		return(_rslt_failed_libsamplerate_init);
 	}
 	SRC_DATA src_data;
 	src_data.data_in = input_buffer_float;
@@ -143,7 +143,7 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 			src_delete(src_state);
 			fclose(infile);
 			fclose(outfile);
-			return(_rslt_samplerate_failed);
+			return(_rslt_failed_libsamplerate_process);
 		}
 		for(int i = 0; i < src_data.output_frames_gen * audioInfo->channels; i++) {
 			float sample = output_buffer_float[i];
@@ -737,6 +737,30 @@ void cAudioConvert::linear_resample(int16_t* input, int16_t* output, int input_l
 			}
 		}
 	}
+}
+
+string cAudioConvert::getRsltStr(eResult rslt) {
+	switch(rslt) {
+	case _rslt_ok: return("ok");
+	case _rslt_write_failed: return("failed write");
+	case _rslt_open_for_read_failed: return("failed open for read");
+	case _rslt_open_for_write_failed: return("failed open for write");
+	case _rslt_wav_read_header_failed: return("failed read wav header");
+	case _rslt_wav_bad_header: return("bad wav header");
+	case _rslt_ogg_bad_ogg_file: return("bad ogg file");
+	case _rslt_ogg_bad_bitstream: return("bad ogg bitstrean");
+	case _rslt_ogg_bad_first_page: return("bad ogg first page");
+	case _rslt_ogg_bad_initial_header_packet: return("bad ogg initial header");
+	case _rslt_ogg_missing_vorbis_audiodata: return("missing vorbis audiodata");
+	case _rslt_ogg_corrupt_secondary_header: return("corrupt ogg secondary header");
+	case _rslt_ogg_missing_vorbis_headers: return("missing vorbis header");
+	case _rslt_ogg_failed_encode_initialization: return("failed ogg encode initialization");
+	case _rslt_failed_libsamplerate_init: return("failed libsamplerate init");
+	case _rslt_failed_libsamplerate_process: return("failed libsamplerate process");
+	case _rslt_unknown_format: return("unknown format");
+	case _rslt_no_library_needed: return("no library needed");
+	}
+	return("");
 }
 
 void cAudioConvert::test() {

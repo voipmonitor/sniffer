@@ -42,7 +42,8 @@ public:
 		_rslt_ogg_corrupt_secondary_header,
 		_rslt_ogg_missing_vorbis_headers,
 		_rslt_ogg_failed_encode_initialization,
-		_rslt_samplerate_failed,
+		_rslt_failed_libsamplerate_init,
+		_rslt_failed_libsamplerate_process,
 		_rslt_unknown_format,
 		_rslt_no_library_needed
 	};
@@ -167,6 +168,7 @@ public:
 	eResult _writeOgg();
 	eResult write(u_char *data, unsigned datalen);
 	void linear_resample(int16_t* input, int16_t* output, int input_len, double ratio, int channels);
+	static std::string getRsltStr(eResult rslt);
 	void test();
 public:
 	eSrcDstType srcDstType;

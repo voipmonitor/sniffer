@@ -4054,6 +4054,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			bdir = 0;
 		}
 	}
+	bool _enable_audio_transcribe = enable_audio_transcribe(this) && transcribe_call && (adir || bdir);
 	if(enable_save_audio(this)) {
 		if(adir == 1 && bdir == 1) {
 			// merge caller and called 
@@ -4070,8 +4071,8 @@ Call::convertRawToWav(void **transcribe_call) {
 					ogg_mix(wav1, wav0, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
 				}
 			}
-			if(!sverb.noaudiounlink) unlink(wav0);
-			if(!sverb.noaudiounlink) unlink(wav1);
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav0);
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav1);
 		} else if(adir == 1) {
 			// there is only caller sound
 			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
@@ -4079,7 +4080,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			} else {
 				ogg_mix(wav0, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 0);
 			}
-			if(!sverb.noaudiounlink) unlink(wav0);
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav0);
 		} else if(bdir == 1) {
 			// there is only called sound
 			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
@@ -4087,7 +4088,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			} else {
 				ogg_mix(wav1, NULL, out, opt_saveaudio_stereo, maxsamplerate, opt_saveaudio_oggquality, 1);
 			}
-			if(!sverb.noaudiounlink) unlink(wav1);
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav1);
 		}
 		string tmp;
 		tmp.append(out);
@@ -4111,7 +4112,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			}
 		}
 	}
-	if(enable_audio_transcribe(this) && transcribe_call && (adir || bdir)) {
+	if(_enable_audio_transcribe) {
 		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
 	}
 	

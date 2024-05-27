@@ -86,7 +86,8 @@ public:
 	}
 	bool runWhisper(string wav, string script, string python,
 			string model, string language, int timeout, bool deterministic,
-			string &rslt_language, string &rslt_text, string &rslt_segments);
+			string &rslt_language, string &rslt_text, string &rslt_segments,
+			string *error = NULL);
 	string createWhisperScript();
 	static string countryToLanguage(const char *country);
 private:

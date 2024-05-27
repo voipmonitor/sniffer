@@ -65,14 +65,12 @@ Transcribe::~Transcribe() {
 }
 
 void Transcribe::pushCall(sCall *call) {
-	lock_calls();
-	if(calls.size() < callsMax) {
+	if(getQueueSize() < callsMax) {
 		calls.push_back(call);
 		processCall();
 	} else {
 		destroyCall(call);
 	}
-	unlock_calls();
 }
 
 Transcribe::sCall *Transcribe::createTranscribeCall(Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate) {
@@ -104,10 +102,12 @@ void Transcribe::processCall() {
 	if(calls.size() && 
 	   calls.size() > threads.size() * 2 && 
 	   threads.size() < threadsMax) {
+		lock_threads();
 		sThread *new_hread = new FILE_LINE(0) sThread();
 		threads.push_back(new_hread);
 		vm_pthread_create_autodestroy("audio convert",
 					      &new_hread->thread_handle, NULL, this->processThread, new_hread, __FILE__, __LINE__);
+		unlock_threads();
 	}
 	unlock_calls();
 }
@@ -153,9 +153,10 @@ void Transcribe::transcribeCall(sCall *call) {
 			ai.sampleRate = call->channels[i].samplerate;
 			ai.channels = 1;
 			ai.bitsPerSample = 16;
-			if(ac.resampleRaw(&ai, call->channels[i].pcm_16.c_str(), 16000) != cAudioConvert::_rslt_ok) {
+			cAudioConvert::eResult rslt = ac.resampleRaw(&ai, call->channels[i].pcm_16.c_str(), 16000);
+			if(rslt != cAudioConvert::_rslt_ok) {
 				call->channels[i].ok = false;
-				call->channels[i].error = "failed resample to 16kHz";
+				call->channels[i].error = "failed resample to 16kHz - " + cAudioConvert::getRsltStr(rslt);
 				continue;
 			}
 		}
@@ -171,9 +172,10 @@ void Transcribe::transcribeCall(sCall *call) {
 		ai.sampleRate = 16000;
 		ai.channels = 1;
 		ai.bitsPerSample = 16;
-		if(src.readRaw(&ai) != cAudioConvert::_rslt_ok) {
+		cAudioConvert::eResult rslt = src.readRaw(&ai);
+		if(rslt != cAudioConvert::_rslt_ok) {
 			call->channels[i].ok = false;
-			call->channels[i].error = "failed convert to wav";
+			call->channels[i].error = "failed convert to wav - " + cAudioConvert::getRsltStr(rslt);
 			continue;
 		}
 	}
@@ -184,9 +186,11 @@ void Transcribe::transcribeCall(sCall *call) {
 			string rslt_segments;
 			string language = opt_whisper_language == "auto" ? "" : 
 					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
+			string error;
 			if(runWhisper(call->channels[i].wav, "", opt_whisper_python,
 				      opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode,
-				      rslt_language, rslt_text, rslt_segments) &&
+				      rslt_language, rslt_text, rslt_segments,
+				      &error) &&
 			   !rslt_language.empty() &&
 			   !rslt_text.empty() &&
 			   !rslt_segments.empty()) {
@@ -195,8 +199,10 @@ void Transcribe::transcribeCall(sCall *call) {
 				call->channels[i].rslt_segments = rslt_segments;
 			} else {
 				call->channels[i].ok = false;
-				call->channels[i].error = "failed transcribe via whisper";
+				call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper";
 			}
+		} else {
+			syslog(LOG_ERR, "transcribe call [%s]: %s", call->callid.c_str(), call->channels[i].error.c_str());
 		}
 	}
 	saveCallToDb(call);
@@ -205,7 +211,8 @@ void Transcribe::transcribeCall(sCall *call) {
 
 bool Transcribe::runWhisper(string wav, string script, string python,
 			    string model, string language, int timeout, bool deterministic_mode,
-			    string &rslt_language, string &rslt_text, string &rslt_segments) {
+			    string &rslt_language, string &rslt_text, string &rslt_segments,
+			    string *error) {
 	bool createdWhisperScript = false;
 	if(script.empty()) {
 		script = createWhisperScript();
@@ -217,7 +224,7 @@ bool Transcribe::runWhisper(string wav, string script, string python,
 	string cmd = (!python.empty() ? python + " " + escapeShellArgument(script) : script) + " " + 
 		     escapeShellArgument(wav) + " " +
 		     (!model.empty() ? "--model " + escapeShellArgument(model) + " " : "") +
-		     (!language.empty() ? "--language '" + escapeShellArgument(language) + "' " : "") +
+		     (!language.empty() ? "--language " + escapeShellArgument(language) + " " : "") +
 		     (deterministic_mode ? "--deterministic " : "");
 	if(sverb.whisper) {
 		cout << "whisper cmd: " << cmd << endl;
@@ -230,7 +237,7 @@ bool Transcribe::runWhisper(string wav, string script, string python,
 		unlink(script.c_str());
 	}
 	if(sverb.whisper) {
-		cout << "whisper exit code: " << cmd << endl;
+		cout << "whisper exit code: " << exitCode << endl;
 		if(out.size()) {
 			cout << "whisper stdout: " << (char*)out << endl;
 		}
@@ -250,6 +257,13 @@ bool Transcribe::runWhisper(string wav, string script, string python,
 			}
 		}
 		return(true);
+	} else if(error) {
+		ostringstream outStr;
+		outStr << "whisper error " << exitCode;
+		if(err.size()) {
+			outStr << " - " << (char*)err;
+		}
+		*error = outStr.str();
 	}
 	return(false);
 }
