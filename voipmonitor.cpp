@@ -244,6 +244,7 @@ int opt_saveWAV = 0;		// save RTP packets to pcap file?
 int opt_saveGRAPH = 0;		// save GRAPH data to *.graph file? 
 FileZipHandler::eTypeCompress opt_gzipGRAPH = FileZipHandler::compress_na;
 int opt_audio_transcribe = 0;
+int opt_audio_transcribe_connect_duration_min = 10;
 int opt_audio_transcribe_threads = 2;
 int opt_audio_transcribe_queue_length_max = 100;
 string opt_whisper_model = "base";
@@ -251,6 +252,7 @@ string opt_whisper_language = "auto";
 int opt_whisper_timeout = 5 * 60;
 bool opt_whisper_deterministic_mode = true;
 string opt_whisper_python;
+int opt_whisper_threads = 2;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -2377,7 +2379,7 @@ void *storing_cdr( void */*dummy*/ ) {
 						if(is_read_from_file_simple() ||
 						   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-							Transcribe::sCall *transcribe_call;
+							Transcribe::sCall *transcribe_call = NULL;
 							call->convertRawToWav((void**)&transcribe_call);
 							if(enable_audio_transcribe(call) && transcribe_call) {
 								transcribeCall(transcribe_call);
@@ -2537,7 +2539,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 				if(is_read_from_file_simple() ||
 				   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-					Transcribe::sCall *transcribe_call;
+					Transcribe::sCall *transcribe_call = NULL;
 					call->convertRawToWav((void**)&transcribe_call);
 					if(enable_audio_transcribe(call) && transcribe_call) {
 						transcribeCall(transcribe_call);
@@ -6596,6 +6598,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_resync_jitterbuffer", &opt_saveaudio_resync_jitterbuffer));
 				addConfigItem(new FILE_LINE(42228) cConfigItem_float("ogg_quality", &opt_saveaudio_oggquality));
 				addConfigItem(new FILE_LINE(42229) cConfigItem_integer("audioqueue_threads_max", &opt_audioqueue_threads_max));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_connect_duration_min", &opt_audio_transcribe_connect_duration_min));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_threads", &opt_audio_transcribe_threads));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_queue_length_max", &opt_audio_transcribe_queue_length_max));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
@@ -6603,7 +6606,8 @@ void cConfig::addConfigItems() {
 					// auto | by_number | {language}
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("whisper_timeout", &opt_whisper_timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_deterministic_mode", &opt_whisper_deterministic_mode));
-				addConfigItem(new FILE_LINE(0) cConfigItem_string("opt_whisper_python", &opt_whisper_python));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_python", &opt_whisper_python));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("whisper_threads", &opt_whisper_threads));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));

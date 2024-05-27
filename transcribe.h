@@ -85,7 +85,7 @@ public:
 		threadsTerminating = 1;
 	}
 	bool runWhisper(string wav, string script, string python,
-			string model, string language, int timeout, bool deterministic,
+			string model, string language, int timeout, bool deterministic, int threads,
 			string &rslt_language, string &rslt_text, string &rslt_segments,
 			string *error = NULL);
 	string createWhisperScript();

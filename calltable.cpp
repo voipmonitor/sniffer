@@ -4054,7 +4054,10 @@ Call::convertRawToWav(void **transcribe_call) {
 			bdir = 0;
 		}
 	}
-	bool _enable_audio_transcribe = enable_audio_transcribe(this) && transcribe_call && (adir || bdir);
+	extern int opt_audio_transcribe_connect_duration_min;
+	bool _enable_audio_transcribe = enable_audio_transcribe(this) && transcribe_call && (adir || bdir) &&
+					(!opt_audio_transcribe_connect_duration_min ||
+					 this->connect_duration_s() >= (unsigned)opt_audio_transcribe_connect_duration_min);
 	if(enable_save_audio(this)) {
 		if(adir == 1 && bdir == 1) {
 			// merge caller and called 
@@ -4114,6 +4117,8 @@ Call::convertRawToWav(void **transcribe_call) {
 	}
 	if(_enable_audio_transcribe) {
 		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
+	} else if(transcribe_call) {
+		*transcribe_call = NULL;
 	}
 	
 #endif
@@ -12061,7 +12066,7 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		calltable->unlock_calls_audioqueue();
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
-			Transcribe::sCall *transcribe_call;
+			Transcribe::sCall *transcribe_call = NULL;
 			call->convertRawToWav((void**)&transcribe_call);
 			if(enable_audio_transcribe(call) && transcribe_call) {
 				transcribePushCall(transcribe_call);

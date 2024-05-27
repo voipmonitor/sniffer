@@ -17,6 +17,7 @@ extern string opt_whisper_language;
 extern int opt_whisper_timeout;
 extern bool opt_whisper_deterministic_mode;
 extern string opt_whisper_python;
+extern int opt_whisper_threads;
 
 static Transcribe *transcribe;
 static SqlDb *sqlDbSave;
@@ -188,7 +189,7 @@ void Transcribe::transcribeCall(sCall *call) {
 					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
 			string error;
 			if(runWhisper(call->channels[i].wav, "", opt_whisper_python,
-				      opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode,
+				      opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
 				      rslt_language, rslt_text, rslt_segments,
 				      &error) &&
 			   !rslt_language.empty() &&
@@ -210,7 +211,7 @@ void Transcribe::transcribeCall(sCall *call) {
 }
 
 bool Transcribe::runWhisper(string wav, string script, string python,
-			    string model, string language, int timeout, bool deterministic_mode,
+			    string model, string language, int timeout, bool deterministic_mode, int threads,
 			    string &rslt_language, string &rslt_text, string &rslt_segments,
 			    string *error) {
 	bool createdWhisperScript = false;
@@ -225,7 +226,8 @@ bool Transcribe::runWhisper(string wav, string script, string python,
 		     escapeShellArgument(wav) + " " +
 		     (!model.empty() ? "--model " + escapeShellArgument(model) + " " : "") +
 		     (!language.empty() ? "--language " + escapeShellArgument(language) + " " : "") +
-		     (deterministic_mode ? "--deterministic " : "");
+		     (deterministic_mode ? "--deterministic " : "") + 
+		     (threads > 0 ? "--threads " + intToString(threads) + " " : "");
 	if(sverb.whisper) {
 		cout << "whisper cmd: " << cmd << endl;
 	}
@@ -287,6 +289,7 @@ import numpy as np\n\
 import random\n\
 import sys\n\
 import argparse\n\
+import os\n\
 \n\
 def set_seed(seed):\n\
     torch.manual_seed(seed)\n\
@@ -314,8 +317,15 @@ if __name__ == \"__main__\":\n\
     parser.add_argument(\"--model\", type=str, default=\"base\", help=\"Whisper model to use (e.g., tiny, base, small, medium, large)\")\n\
     parser.add_argument(\"--language\", type=str, help=\"Language code (ISO 639-1) for the transcription\")\n\
     parser.add_argument(\"--deterministic\", action='store_true', help=\"Enable deterministic behavior\")\n\
+    parser.add_argument(\"--threads\", type=int, help=\"Limit the number of threads used by PyTorch and other libraries\")\n\
 \n\
     args = parser.parse_args()\n\
+\n\
+    if args.threads:\n\
+        os.environ[\"OMP_NUM_THREADS\"] = str(args.threads)\n\
+        os.environ[\"MKL_NUM_THREADS\"] = str(args.threads)\n\
+        torch.set_num_threads(args.threads)\n\
+        torch.set_num_interop_threads(args.threads)\n\
 \n\
     text, segments, language = transcribe(args.audio_path, args.language, args.model, args.deterministic)\n\
     print(f\"LANG: {language}\")\n\
@@ -413,8 +423,8 @@ void transcribeCall(Transcribe::sCall *call) {
 string transcribeQueueLog() {
 	if(transcribe) {
 		unsigned queue_size = transcribe->getQueueSize();
-		unsigned count_threads = transcribe->getCountThreads();
-		if(queue_size || count_threads) {
+		if(queue_size) {
+			unsigned count_threads = transcribe->getCountThreads();
 			ostringstream outStr;
 			outStr << queue_size << "/" << count_threads;
 			return(outStr.str());
