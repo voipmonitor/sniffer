@@ -1720,7 +1720,7 @@ public:
 	 * @brief convert raw files to one WAV
 	 *
 	*/
-	int convertRawToWav(void **transcribe_call);
+	int convertRawToWav(void **transcribe_call = NULL);
 	
 	void selectRtpAB();
  

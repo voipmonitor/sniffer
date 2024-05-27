@@ -2380,10 +2380,13 @@ void *storing_cdr( void */*dummy*/ ) {
 						if(is_read_from_file_simple() ||
 						   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 							if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-							Transcribe::sCall *transcribe_call = NULL;
-							call->convertRawToWav((void**)&transcribe_call);
-							if(enable_audio_transcribe(call) && transcribe_call) {
-								transcribeCall(transcribe_call);
+							if(enable_audio_transcribe(call)) {
+								Transcribe::sCall *transcribe_call = NULL;
+								if(!call->convertRawToWav((void**)&transcribe_call) && transcribe_call) {
+									transcribeCall(transcribe_call);
+								}
+							} else {
+								call->convertRawToWav();
 							}
 						} else {
 							needConvertToWavInThread = true;
@@ -2540,10 +2543,13 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 				if(is_read_from_file_simple() ||
 				   (is_read_from_file_by_pb() && !opt_continue_after_read)) {
 					if(verbosity > 0) printf("converting RAW file to WAV Queue[%d]\n", (int)calltable->calls_queue.size());
-					Transcribe::sCall *transcribe_call = NULL;
-					call->convertRawToWav((void**)&transcribe_call);
-					if(enable_audio_transcribe(call) && transcribe_call) {
-						transcribeCall(transcribe_call);
+					if(enable_audio_transcribe(call)) {
+						Transcribe::sCall *transcribe_call = NULL;
+						if(!call->convertRawToWav((void**)&transcribe_call) && transcribe_call) {
+							transcribeCall(transcribe_call);
+						}
+					} else {
+						call->convertRawToWav();
 					}
 				} else {
 					needConvertToWavInThread = true;

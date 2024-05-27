@@ -3295,15 +3295,48 @@ Call::convertRawToWav(void **transcribe_call) {
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
  
+	if(transcribe_call) {
+		*transcribe_call = NULL;
+	}
+	
+	char rawInfo[1024];
+	FILE *pl;
+	char line[1024];
+	int ssrc_index, codec, frame_size;
+	struct timeval tv0, tv1;
+	unsigned long int rawiterator;
+	
+	extern int opt_audio_transcribe_connect_duration_min;
+	if(!enable_save_audio(this) &&
+	   enable_audio_transcribe(this) && transcribe_call &&
+	   this->connect_duration_s() < (unsigned)opt_audio_transcribe_connect_duration_min) {
+		for(int i = 0; i <= 1; i++) {
+			char rawinfo_extension[100];
+			snprintf(rawinfo_extension, sizeof(rawinfo_extension), "i%d.rawInfo", i);
+			strcpy_null_term(rawInfo, get_pathfilename(tsf_audio, rawinfo_extension).c_str());
+			pl = fopen(rawInfo, "r");
+			if(!pl) {
+				continue;
+			}
+			while(fgets(line, 256, pl)) {
+				line[strlen(line)] = '\0'; // remove '\n' which is last character
+				sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+				char raw_extension[1024];
+				snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
+				string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
+				if(file_exists(raw_pathfilename)) {
+					unlink(raw_pathfilename.c_str());
+				}
+			}
+			fclose(pl);
+			unlink(rawInfo);
+		}
+		return(0);
+	}
+	
 	char wav0[1024] = "";
 	char wav1[1024] = "";
 	char out[1024];
-	char rawInfo[1024];
-	char line[1024];
-	struct timeval tv0, tv1;
-	FILE *pl;
-	int ssrc_index, codec, frame_size;
-	unsigned long int rawiterator;
 	FILE *wav = NULL;
 	int adir = 0;
 	int bdir = 0;
@@ -4054,7 +4087,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			bdir = 0;
 		}
 	}
-	extern int opt_audio_transcribe_connect_duration_min;
+	
 	bool _enable_audio_transcribe = enable_audio_transcribe(this) && transcribe_call && (adir || bdir) &&
 					(!opt_audio_transcribe_connect_duration_min ||
 					 this->connect_duration_s() >= (unsigned)opt_audio_transcribe_connect_duration_min);
@@ -4115,10 +4148,9 @@ Call::convertRawToWav(void **transcribe_call) {
 			}
 		}
 	}
+	
 	if(_enable_audio_transcribe) {
 		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
-	} else if(transcribe_call) {
-		*transcribe_call = NULL;
 	}
 	
 #endif
@@ -12066,10 +12098,13 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		calltable->unlock_calls_audioqueue();
 		if(call) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
-			Transcribe::sCall *transcribe_call = NULL;
-			call->convertRawToWav((void**)&transcribe_call);
-			if(enable_audio_transcribe(call) && transcribe_call) {
-				transcribePushCall(transcribe_call);
+			if(enable_audio_transcribe(call)) {
+				Transcribe::sCall *transcribe_call = NULL;
+				if(!call->convertRawToWav((void**)&transcribe_call) && transcribe_call) {
+					transcribePushCall(transcribe_call);
+				}
+			} else {
+				call->convertRawToWav();
 			}
 			if(useChartsCacheOrCdrStatInProcessCall()) {
 				calltable->lock_calls_charts_cache_queue();
