@@ -727,7 +727,7 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 	float max_sample = 0;
 	for(size_t i = 0; i < pcm_data_samples; i++) {
 		if(fabs(pcm_data[i]) > max_sample) {
-			max_sample = abs(pcm_data[i]);
+			max_sample = fabs(pcm_data[i]);
 		}
 	}
 	if(sverb.whisper) {
