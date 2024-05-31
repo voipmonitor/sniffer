@@ -103,6 +103,9 @@
 /* Define to 1 if you have the `blake3' library (-lblake3). */
 #undef HAVE_LIBBLAKE3
 
+/* Define to 1 if you have the `whisper' library (-lwhisper). */
+#undef HAVE_LIBWHISPER
+
 /* Define to the address where bug reports for this package should be sent. */
 #undef PACKAGE_BUGREPORT
 
