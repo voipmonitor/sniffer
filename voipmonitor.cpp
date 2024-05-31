@@ -247,12 +247,14 @@ int opt_audio_transcribe = 0;
 int opt_audio_transcribe_connect_duration_min = 10;
 int opt_audio_transcribe_threads = 2;
 int opt_audio_transcribe_queue_length_max = 100;
+bool opt_whisper_native = false;
 string opt_whisper_model = "base";
 string opt_whisper_language = "auto";
 int opt_whisper_timeout = 5 * 60;
 bool opt_whisper_deterministic_mode = true;
 string opt_whisper_python;
 int opt_whisper_threads = 2;
+string opt_whisper_native_lib;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -1358,6 +1360,7 @@ char *opt_unlzo_gui_params = NULL;
 char *opt_waveform_gui_params = NULL;
 char *opt_spectrogram_gui_params = NULL;
 char *opt_audioconvert_params = NULL;
+char *opt_audio_transcribe_params = NULL;
 char *opt_rtp_stream_analysis_params = NULL;
 sStreamAnalysisData *rtp_stream_analysis_data = NULL;
 char *opt_check_regexp_gui_params = NULL;
@@ -3374,6 +3377,7 @@ bool is_set_gui_params() {
 	       opt_waveform_gui_params ||
 	       opt_spectrogram_gui_params ||
 	       opt_audioconvert_params ||
+	       opt_audio_transcribe_params ||
 	       opt_rtp_stream_analysis_params ||
 	       opt_check_regexp_gui_params ||
 	       opt_test_regexp_gui_params ||
@@ -3963,6 +3967,21 @@ int main(int argc, char *argv[]) {
 		}
 		cerr << "audio-convert: unknown request" << endl;
 		return(1);
+	}
+	if(opt_audio_transcribe_params) {
+		char wavFileName[1024];
+		char jsonParams[1024];
+		if(sscanf(opt_audio_transcribe_params, "%s %[^\n]", 
+			  wavFileName, jsonParams) < 2) {
+			cerr << "audio-transcribe: bad arguments" << endl;
+			return(1);
+		}
+		Transcribe::initNativeLib();
+		Transcribe *transcribe = new FILE_LINE(0) Transcribe();
+		string error;
+		transcribe->transcribeWav(wavFileName, jsonParams, true, NULL, NULL);
+		delete transcribe;
+		return(0);
 	}
 	if(opt_rtp_stream_analysis_params) {
 		char pcapFileName[1024];
@@ -6608,6 +6627,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_connect_duration_min", &opt_audio_transcribe_connect_duration_min));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_threads", &opt_audio_transcribe_threads));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_queue_length_max", &opt_audio_transcribe_queue_length_max));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_native", &opt_whisper_native));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_language", &opt_whisper_language));
 					// auto | by_number | {language}
@@ -6615,6 +6635,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_deterministic_mode", &opt_whisper_deterministic_mode));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_python", &opt_whisper_python));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("whisper_threads", &opt_whisper_threads));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_native_lib", &opt_whisper_native_lib));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("saveaudio_dedup_seq", &opt_saveaudio_dedup_seq));
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
@@ -7695,6 +7716,7 @@ void parse_command_line_arguments(int argc, char *argv[]) {
 	    {"waveform-gui", 1, 0, _param_waveform_gui},
 	    {"spectrogram-gui", 1, 0, _param_spectrogram_gui},
 	    {"audio-convert", 1, 0, _param_audio_convert},
+	    {"audio-transcribe", 1, 0, _param_audio_transcribe},
 	    {"rtp-streams-analysis", 1, 0, _param_rtp_streams_analysis},
 	    {"disable-rtp-seq-probation", 0, 0, _param_disable_rtp_seq_probation},
 	    {"saveaudio-from-rtp", 0, 0, _param_saveaudio_from_rtp},
@@ -8044,6 +8066,12 @@ void get_command_line_arguments() {
 				if(!opt_audioconvert_params) {
 					opt_audioconvert_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
 					strcpy(opt_audioconvert_params, optarg);
+				}
+				break;
+			case _param_audio_transcribe:
+				if(!opt_audio_transcribe_params) {
+					opt_audio_transcribe_params =  new FILE_LINE(0) char[strlen(optarg) + 1];
+					strcpy(opt_audio_transcribe_params, optarg);
 				}
 				break;
 			case _param_rtp_streams_analysis:

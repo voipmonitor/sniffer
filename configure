@@ -601,6 +601,7 @@ LIBZSTD
 LIBFFT
 LIBPNG
 LIBBLAKE3
+LIBWHISPER
 MYSQL_WITHOUT_SSL_SUPPORT
 NO_MYSQL_SSL_SUPPORT
 NO_MARIADB_SSL_SUPPORT
@@ -4333,6 +4334,45 @@ else $as_nop
 printf "%s\n" "$as_me: Unable to find blake3 library. yum install blake3-devel or compile from source" >&6;}
 fi
 
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for main in -lwhisper" >&5
+printf %s "checking for main in -lwhisper... " >&6; }
+if test ${ac_cv_lib_whisper_main+y}
+then :
+  printf %s "(cached) " >&6
+else $as_nop
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lwhisper  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+
+int
+main (void)
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  ac_cv_lib_whisper_main=yes
+else $as_nop
+  ac_cv_lib_whisper_main=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_whisper_main" >&5
+printf "%s\n" "$ac_cv_lib_whisper_main" >&6; }
+if test "x$ac_cv_lib_whisper_main" = xyes
+then :
+  HAVE_LIBWHISPER=1
+else $as_nop
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&5
+printf "%s\n" "$as_me: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&6;}
+fi
 
 
 # Check whether --with-libc-dir was given.
@@ -5086,6 +5126,16 @@ printf "%s\n" "#define HAVE_LIBBLAKE3 1" >>confdefs.h
 	LIBBLAKE3="-lblake3"
 
 	HAVE_LIBBLAKE3_T=yes
+fi
+
+HAVE_LIBWHISPER_T=no
+if test "x$HAVE_LIBWHISPER" = "x1"; then
+
+printf "%s\n" "#define HAVE_LIBWHISPER 1" >>confdefs.h
+
+	LIBWHISPER="-lwhisper"
+
+	HAVE_LIBWHISPER_T=yes
 fi
 
 # Checks for header files.

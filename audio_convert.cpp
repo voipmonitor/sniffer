@@ -35,6 +35,7 @@ cAudioConvert::cAudioConvert() {
 	oggQuality = 0.4;
 	headerIsWrited = false;
 	onlyGetAudioInfo = false;
+	resample_chunk_length = 100 * 1024;
 }
 
 cAudioConvert::~cAudioConvert() {
@@ -76,19 +77,16 @@ string cAudioConvert::jsonAudioInfo() {
 }
 
 cAudioConvert::eResult cAudioConvert::readRaw(sAudioInfo *audioInfo) {
-	if(!fileHandle) {
-		fileHandle = fopen(fileName.c_str(), "r");
-		if(!fileHandle) {
-			return(_rslt_open_for_read_failed);
-		}
+	if(!open()) {
+		return(_rslt_open_for_read_failed);
 	}
 	this->audioInfo = *audioInfo;
 	unsigned readbuffer_size = 1024;
-	u_char *readbuffer = new u_char[readbuffer_size];
+	u_char *readbuffer = new FILE_LINE(0) u_char[readbuffer_size];
         int read_length;
 	eResult rslt_write = _rslt_ok;
 	while((read_length = fread(readbuffer, 1, readbuffer_size, fileHandle)) > 0) {
-		rslt_write = write(readbuffer, readbuffer_size);
+		rslt_write = write(readbuffer, read_length);
 		if(rslt_write != _rslt_ok) {
 			break;
 		}
@@ -111,14 +109,14 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 		return(_rslt_open_for_write_failed);
 	}
 	double src_ratio = (double)sampleRateDst / audioInfo->sampleRate;
-	unsigned input_buffer_len = 1024;
-	unsigned output_buffer_len = input_buffer_len * ((int)src_ratio + 1);
-	int16_t input_buffer[input_buffer_len];
-	int16_t output_buffer[output_buffer_len * 4];
+	unsigned input_buffer_len = resample_chunk_length;
+	unsigned output_buffer_len = input_buffer_len * src_ratio + 1024;
+	int16_t *input_buffer = new FILE_LINE(0) int16_t[input_buffer_len];
+	int16_t *output_buffer = new FILE_LINE(0) int16_t[output_buffer_len];
 #if HAVE_LIBSAMPLERATE
-	float input_buffer_float[input_buffer_len];
-	float output_buffer_float[output_buffer_len * 4];
-	SRC_STATE *src_state = src_new(SRC_LINEAR, audioInfo->channels, NULL);
+	float *input_buffer_float = new FILE_LINE(0) float[input_buffer_len];
+	float *output_buffer_float = new FILE_LINE(0) float[output_buffer_len];
+	SRC_STATE *src_state = src_new(SRC_SINC_BEST_QUALITY, audioInfo->channels, NULL);
 	if(!src_state) {
 		fclose(infile);
 		fclose(outfile);
@@ -133,7 +131,7 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 	src_data.end_of_input = 0;
 	size_t readcount;
 	while((readcount = fread(input_buffer, sizeof(int16_t), input_buffer_len, infile)) > 0) {
-		for (size_t i = 0; i < readcount; i++) {
+		for(size_t i = 0; i < readcount; i++) {
 			input_buffer_float[i] = input_buffer[i] / 32768.0;
 		}
 		src_data.input_frames = readcount / audioInfo->channels;
@@ -143,6 +141,10 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 			src_delete(src_state);
 			fclose(infile);
 			fclose(outfile);
+			delete [] input_buffer_float;
+			delete [] output_buffer_float;
+			delete [] input_buffer;
+			delete [] output_buffer;
 			return(_rslt_failed_libsamplerate_process);
 		}
 		for(int i = 0; i < src_data.output_frames_gen * audioInfo->channels; i++) {
@@ -155,10 +157,16 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 			src_delete(src_state);
 			fclose(infile);
 			fclose(outfile);
+			delete [] input_buffer_float;
+			delete [] output_buffer_float;
+			delete [] input_buffer;
+			delete [] output_buffer;
 			return(_rslt_write_failed);
 		}
 	}
 	src_delete(src_state);
+	delete [] input_buffer_float;
+	delete [] output_buffer_float;
 #else 
 	size_t readcount;
 	while((readcount = fread(input_buffer, sizeof(int16_t), input_buffer_len, infile)) > 0) {
@@ -170,19 +178,17 @@ cAudioConvert::eResult cAudioConvert::resampleRaw(sAudioInfo *audioInfo, const c
 			return(_rslt_write_failed);
 		}
 	}
-	
 #endif
+	delete [] input_buffer;
+	delete [] output_buffer;
 	fclose(infile);
 	fclose(outfile);
 	return(_rslt_ok);
 }
 
 cAudioConvert::eResult cAudioConvert::readWav() {
-	if(!fileHandle) {
-		fileHandle = fopen(fileName.c_str(), "r");
-		if(!fileHandle) {
-			return(_rslt_open_for_read_failed);
-		}
+	if(!open()) {
+		return(_rslt_open_for_read_failed);
 	}
 	sWavHeader wavHeader;
 	if(!readWavHeader(&wavHeader)) {
@@ -197,11 +203,11 @@ cAudioConvert::eResult cAudioConvert::readWav() {
 		}
 	}
 	unsigned readbuffer_size = 1024;
-	u_char *readbuffer = new u_char[readbuffer_size];
-        int read_length;
+	u_char *readbuffer = new FILE_LINE(0) u_char[readbuffer_size];
+        size_t read_length;
 	eResult rslt_write = _rslt_ok;
 	while((read_length = fread(readbuffer, 1, readbuffer_size, fileHandle)) > 0) {
-		rslt_write = write(readbuffer, readbuffer_size);
+		rslt_write = write(readbuffer, read_length);
 		if(rslt_write != _rslt_ok) {
 			break;
 		}
@@ -213,7 +219,54 @@ cAudioConvert::eResult cAudioConvert::readWav() {
 	return(rslt_write);
 }
 
+cAudioConvert::eResult cAudioConvert::loadWav(u_char **data, size_t *samples, bool pcm_float) {
+	*data = NULL;
+	*samples = 0;
+	if(!open()) {
+		return(_rslt_open_for_read_failed);
+	}
+	fseek(fileHandle, 0, SEEK_END);
+	long file_size = ftell(fileHandle);
+	fseek(fileHandle, 0, SEEK_SET);
+	sWavHeader wavHeader;
+	if(!readWavHeader(&wavHeader)) {
+		return(_rslt_wav_read_header_failed);
+	} else {
+		if(!wavHeader.checkHeader()) {
+			return(_rslt_wav_bad_header);
+		}
+		wavHeader.setAudioInfo(&audioInfo);
+		if(onlyGetAudioInfo) {
+			return(_rslt_ok);
+		}
+	}
+	size_t data_size = (pcm_float ? sizeof(float) / sizeof(int16_t) : 1) * file_size;
+	*data = new FILE_LINE(0) u_char[data_size];
+	size_t data_pos = 0;
+	size_t readbuffer_size = 1024;
+	u_char *readbuffer = new FILE_LINE(0) u_char[readbuffer_size];
+        size_t read_length;
+	eResult rslt_write = _rslt_ok;
+	while((read_length = fread(readbuffer, 1, readbuffer_size, fileHandle)) > 0) {
+		if(pcm_float) {
+			for(size_t i = 0; i < read_length; i += 2) {
+				*(float*)(*data + data_pos) = *(int16_t*)(readbuffer + i) / 32768.0;
+				data_pos += sizeof(float);
+			}
+		} else {
+			memcpy(*data + data_pos, readbuffer, read_length);
+			data_pos += read_length;
+		}
+	}
+	*samples = data_pos / (pcm_float ? sizeof(float) : sizeof(int16_t));
+	delete [] readbuffer;
+	return(rslt_write);
+}
+
 bool cAudioConvert::readWavHeader(sWavHeader *wavHeader) {
+	if(!open()) {
+		return(false);
+	}
 	wavHeader->null();
 	size_t readSize = fread(wavHeader, 1, sizeof(sWavHeader), fileHandle);
 	if(readSize == sizeof(sWavHeader)) {
@@ -250,11 +303,8 @@ cAudioConvert::eResult cAudioConvert::writeWavEnd() {
 }
 
 cAudioConvert::eResult cAudioConvert::readOgg() {
-	if(!fileHandle) {
-		fileHandle = fopen(fileName.c_str(), "r");
-		if(!fileHandle) {
-			return(_rslt_open_for_read_failed);
-		}
+	if(!open()) {
+		return(_rslt_open_for_read_failed);
 	}
  
 	sOggDecode oggDecode(4096);
@@ -380,7 +430,7 @@ cAudioConvert::eResult cAudioConvert::readOgg() {
 		}
 
 		int convsize = oggDecode.sync_buffer_size / ogg.vi.channels;
-		oggDecode.conv_buffer = new ogg_int16_t[convsize];
+		oggDecode.conv_buffer = new FILE_LINE(0) ogg_int16_t[convsize];
 
 		/* OK, got and parsed all three headers. Initialize the Vorbis
 		   packet->PCM decoder. */
@@ -687,11 +737,8 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 		}
 	}
 	if(srcDstType == _dst && !fileName.empty()) {
-		if(!fileHandle) {
-			fileHandle = fopen(fileName.c_str(), "w");
-			if(!fileHandle) {
-				return(_rslt_open_for_write_failed);
-			}
+		if(!open_for_write()) {
+			return(_rslt_open_for_write_failed);
 		}
 		if(fileHandle) {
 			return(fwrite(data, 1, datalen, fileHandle) == datalen ?
@@ -700,6 +747,35 @@ cAudioConvert::eResult cAudioConvert::write(u_char *data, unsigned datalen) {
 		}
 	}
 	return(_rslt_ok);
+}
+
+bool cAudioConvert::open() {
+	if(!fileHandle) {
+		fileHandle = fopen(fileName.c_str(), "r");
+		if(!fileHandle) {
+			return(false);
+		}
+	} else {
+		fseek(fileHandle, 0, SEEK_SET);
+	}
+	return(true);
+}
+
+bool cAudioConvert::open_for_write() {
+	if(!fileHandle) {
+		fileHandle = fopen(fileName.c_str(), "w");
+		if(!fileHandle) {
+			return(false);
+		}
+	}
+	return(true);
+}
+
+void cAudioConvert::close() {
+	if(fileHandle) {
+		fclose(fileHandle);
+		fileHandle = NULL;
+	}
 }
 
 void cAudioConvert::linear_resample(int16_t* input, int16_t* output, int input_len, double ratio, int channels) {

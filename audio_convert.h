@@ -157,6 +157,7 @@ public:
 	eResult readRaw(sAudioInfo *audioInfo);
 	eResult resampleRaw(sAudioInfo *audioInfo, const char *fileNameDst, unsigned sampleRateDst);
 	eResult readWav();
+	eResult loadWav(u_char **data, size_t *samples, bool pcm_float = false);
 	bool readWavHeader(sWavHeader *wavHeader);
 	eResult writeWavHeader(long int size = 0);
 	eResult writeWavData(u_char *data, unsigned datalen);
@@ -167,6 +168,9 @@ public:
 	eResult writeOggEnd();
 	eResult _writeOgg();
 	eResult write(u_char *data, unsigned datalen);
+	bool open();
+	bool open_for_write();
+	void close();
 	void linear_resample(int16_t* input, int16_t* output, int input_len, double ratio, int channels);
 	static std::string getRsltStr(eResult rslt);
 	void test();
@@ -182,6 +186,7 @@ public:
 	sOgg ogg;
 	bool headerIsWrited;
 	bool onlyGetAudioInfo;
+	unsigned resample_chunk_length;
 };
 
 

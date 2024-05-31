@@ -1,5 +1,12 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <dlfcn.h>
+
+#include "config.h"
+
+#if HAVE_LIBWHISPER
+#include <whisper.h>
+#endif
 
 #include "calltable.h"
 #include "audio_convert.h"
@@ -12,12 +19,16 @@
 
 extern int opt_audio_transcribe_threads;
 extern int opt_audio_transcribe_queue_length_max;
+extern bool opt_whisper_native;
 extern string opt_whisper_model;
 extern string opt_whisper_language;
 extern int opt_whisper_timeout;
 extern bool opt_whisper_deterministic_mode;
 extern string opt_whisper_python;
 extern int opt_whisper_threads;
+extern string opt_whisper_native_lib;
+
+extern sVerbose sverb;
 
 static Transcribe *transcribe;
 static SqlDb *sqlDbSave;
@@ -46,6 +57,51 @@ static const char* country_language_map[][2] = {
 };
 
 
+bool Transcribe::sWhisperLib::init(const char *lib) {
+	lib_handle = dlopen(lib, RTLD_LAZY);
+	if(!lib_handle) {
+		return(false);
+	}
+	whisper_log_set = (_Whisper_log_set) dlsym(lib_handle, "whisper_log_set");
+	whisper_print_timings = (_Whisper_print_timings) dlsym(lib_handle, "whisper_print_timings");
+	whisper_lang_id = (_Whisper_lang_id) dlsym(lib_handle, "whisper_lang_id");
+	whisper_lang_str = (_Whisper_lang_str) dlsym(lib_handle, "whisper_lang_str");
+	whisper_full_lang_id = (_Whisper_full_lang_id) dlsym(lib_handle, "whisper_full_lang_id");
+	whisper_full_n_segments = (_Whisper_full_n_segments) dlsym(lib_handle, "whisper_full_n_segments");
+	whisper_full_get_segment_t0 = (_Whisper_full_get_segment_t0) dlsym(lib_handle, "whisper_full_get_segment_t0");
+	whisper_full_get_segment_t1 = (_Whisper_full_get_segment_t1) dlsym(lib_handle, "whisper_full_get_segment_t1");
+	whisper_full_get_segment_text = (_Whisper_full_get_segment_text) dlsym(lib_handle, "whisper_full_get_segment_text");
+	whisper_init_from_file = (_Whisper_init_from_file) dlsym(lib_handle, "whisper_init_from_file");
+	whisper_ctx_init_openvino_encoder = (_Whisper_ctx_init_openvino_encoder) dlsym(lib_handle, "whisper_ctx_init_openvino_encoder");
+	whisper_full_parallel_params_by_ref = (_Whisper_full_parallel_params_by_ref) dlsym(lib_handle, "whisper_full_parallel_params_by_ref");
+	whisper_free = (_Whisper_free) dlsym(lib_handle, "whisper_free");
+	return(ok());
+}
+
+void Transcribe::sWhisperLib::term() {
+	if(lib_handle) {
+		dlclose(lib_handle);
+		lib_handle = NULL;
+	}
+}
+
+bool Transcribe::sWhisperLib::ok() {
+	return(lib_handle != NULL &&
+	       whisper_log_set != NULL &&
+	       whisper_print_timings != NULL &&
+	       whisper_lang_id != NULL &&
+	       whisper_lang_str != NULL &&
+	       whisper_full_lang_id != NULL &&
+	       whisper_full_n_segments != NULL &&
+	       whisper_full_get_segment_t0 != NULL &&
+	       whisper_full_get_segment_t1 != NULL &&
+	       whisper_full_get_segment_text != NULL &&
+	       whisper_init_from_file != NULL &&
+	       whisper_ctx_init_openvino_encoder != NULL &&
+	       whisper_full_parallel_params_by_ref != NULL &&
+	       whisper_free != NULL);
+}
+
 Transcribe::Transcribe() {
 	callsMax = opt_audio_transcribe_queue_length_max;
 	threadsMax = opt_audio_transcribe_threads;
@@ -63,6 +119,205 @@ Transcribe::~Transcribe() {
 		}
 		USLEEP(100000);
 	}
+}
+
+bool Transcribe::transcribeWav(const char *wav, const char *json_params, bool output_to_stdout, map<unsigned, sRslt> *rslt, string *error) {
+	JsonItem jsonParams;
+	jsonParams.parse(json_params);
+	string language_type_ch[2];
+	string language_ch[2];
+	string country_ch[2];
+	for(unsigned i = 0; i < 2; i++) {
+		language_type_ch[i] = jsonParams.getValue("ch_" + intToString(i + 1) + "_language_type");
+		language_ch[i] = jsonParams.getValue("ch_" + intToString(i + 1) + "_language");
+		country_ch[i] = jsonParams.getValue("ch_" + intToString(i + 1) + "_country");
+		if(language_ch[i].empty() && !country_ch[i].empty()) {
+			language_ch[i] = countryToLanguage(country_ch[i].c_str());
+		}
+	}
+	cAudioConvert ac;
+	ac.fileName = wav;
+	cAudioConvert::sWavHeader wavHeader;
+	if(!ac.readWavHeader(&wavHeader)) {
+		string error_str = "failed load wav header";
+		if(output_to_stdout) {
+			cout << "ERROR: " << error_str;
+		}
+		if(error) {
+			*error = error_str;
+		}
+		return(false);
+	}
+	int16_t *data_wav;
+	size_t data_wav_samples;
+	if(ac.loadWav((u_char**)&data_wav, &data_wav_samples) != cAudioConvert::_rslt_ok) {
+		string error_str = "failed load wav";
+		if(output_to_stdout) {
+			cout << "ERROR: " << error_str;
+		}
+		if(error) {
+			*error = error_str;
+		}
+		return(false);
+	}
+	int reserve_samples = 10;
+	if(wavHeader.sampleRate != 16000) {
+		double ratio = 16000. / wavHeader.sampleRate;
+		size_t data_wav_16_samples = data_wav_samples * ratio;
+		int16_t *data_wav_16 = new FILE_LINE(0) int16_t[data_wav_16_samples + reserve_samples];
+		size_t pos_src = 0;
+		while(pos_src < data_wav_samples) {
+			size_t pos_dst = pos_src * ratio;
+			size_t block_size = min((size_t)ac.resample_chunk_length, data_wav_samples - pos_src);
+			ac.linear_resample(data_wav + pos_src, data_wav_16 + pos_dst, block_size, ratio, wavHeader.channels);
+			pos_src += block_size;
+		}
+		delete [] data_wav;
+		data_wav = data_wav_16;
+		data_wav_samples = data_wav_16_samples;
+	}
+
+	/*
+	cAudioConvert ac2;
+	ac2.fileName = "...";
+	cAudioConvert::sWavHeader wavHeader2;
+	if(!ac2.readWavHeader(&wavHeader2)) {
+		return(false);
+	}
+	int16_t *data_wav_2;
+	size_t data_wav_samples_2;
+	if(ac2.loadWav((u_char**)&data_wav_2, &data_wav_samples_2) != cAudioConvert::_rslt_ok) {
+		return(false);
+	}
+	if(wavHeader2.sampleRate != 16000) {
+		double ratio = 16000. / wavHeader2.sampleRate;
+		size_t data_wav_16_samples = data_wav_samples_2 * ratio;
+		int16_t *data_wav_16 = new FILE_LINE(0) int16_t[data_wav_16_samples + reserve_samples];
+		ac2.linear_resample(data_wav_2, data_wav_16, data_wav_samples, ratio, wavHeader2.channels);
+		delete [] data_wav_2;
+		data_wav_2 = data_wav_16;
+		data_wav_samples_2 = data_wav_16_samples;
+	}
+	for(size_t i = 0; i < min(data_wav_samples, data_wav_samples_2); i++) {
+		if(data_wav[i] != data_wav_2[i]) {
+			cout << i << " " << data_wav[i] << " " << data_wav_2[i] << endl;
+		}
+	}
+	*/
+	
+	bool rslt_rslt = false;
+	string last_rslt_error;
+	for(unsigned chi = 0; chi < wavHeader.channels; chi++) {
+		size_t data_wav_channel_samples = data_wav_samples / wavHeader.channels;
+		int16_t *data_wav_channel = opt_whisper_native ?
+					     (int16_t*)(new FILE_LINE(0) float[data_wav_channel_samples + reserve_samples]) :
+					     new FILE_LINE(0) int16_t[data_wav_channel_samples + reserve_samples];
+		for(size_t i = 0; i < data_wav_channel_samples; i++) {
+			int16_t sample = data_wav[i * wavHeader.channels + chi];
+			if(opt_whisper_native) {
+				((float*)data_wav_channel)[i] = sample / 32768.0;
+			} else {
+				data_wav_channel[i] = sample;
+			}
+		}
+		
+		/*
+		extern float *g_pcm_data;
+		extern size_t g_pcm_data_samples;
+		if(data_wav_channel_samples != g_pcm_data_samples) {
+			cout << "data_wav_channel_samples != g_pcm_data_samples" << endl;
+		}
+		for(size_t i = 0; i < min(data_wav_channel_samples, g_pcm_data_samples); i++) {
+			if(((float*)data_wav_channel)[i] != g_pcm_data[i]) {
+				cout << i << " " << ((float*)data_wav_channel)[i] << " " << g_pcm_data[i] << endl;
+			}
+		}
+		if(data_wav_channel_samples < g_pcm_data_samples) {
+			for(size_t i = data_wav_channel_samples; i < g_pcm_data_samples; i++) {
+				cout << g_pcm_data[i] << " ";
+			}
+			cout << endl;
+		}
+		*/
+		
+		string language;
+		if(!language_type_ch[chi].empty()) {
+			language = language_type_ch[chi] == "auto" ? "" : 
+				   language_type_ch[chi] == "by_number" ? language_ch[chi] :
+				   language_type_ch[chi] == "set" ? language_ch[chi] :
+				   opt_whisper_language;
+		} else {
+			language = opt_whisper_language == "auto" ? "" : 
+				   opt_whisper_language == "by_number" ? language_ch[chi] : 
+				   opt_whisper_language;
+		}
+		bool rslt_ok;
+		string rslt_language;
+		string rslt_text;
+		string rslt_segments;
+		string rslt_error;
+		if(opt_whisper_native) {
+			list<sSegment> segments;
+			rslt_ok = runWhisperNative((float*)data_wav_channel, data_wav_channel_samples,
+						   language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
+						   &rslt_language, &segments, &rslt_error, sverb.whisper);
+			if(rslt_ok && segments.size()) {
+				convertSegmentsToText(&segments, &rslt_text, &rslt_segments);
+			}
+		} else {
+			rslt_ok = runWhisperPython(data_wav_channel, data_wav_channel_samples, 16000,
+						   "", opt_whisper_python,
+						   opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
+						   rslt_language, rslt_text, rslt_segments,
+						   &rslt_error);
+		}
+		if(rslt_ok) {
+			if(!rslt_language.empty() && !rslt_text.empty() && !rslt_segments.empty()) {
+				rslt_rslt = true;
+				if(output_to_stdout) {
+					cout << "CH_" << (chi + 1) << "_LANG: " << rslt_language << endl
+					     << "CH_" << (chi + 1) << "_TEXT: " << find_and_replace_all(rslt_text, "\n", "\\n") << endl
+					     << "CH_" << (chi + 1) << "_SEGM: " << find_and_replace_all(rslt_segments, "\n", "\\n") << endl;
+				}
+				if(rslt) {
+					sRslt rslt_transcribe;
+					rslt_transcribe.language = rslt_language;
+					rslt_transcribe.text = rslt_text;
+					rslt_transcribe.segments = rslt_segments;
+					(*rslt)[chi] = rslt_transcribe;
+				}
+			} else {
+				rslt_ok = false;
+			}
+		} else {
+			if(rslt_error.empty()) {
+				rslt_error = "unknown error in call whisper";
+			}
+			last_rslt_error = rslt_error;
+			if(error) {
+				*error = rslt_error;
+			}
+			if(output_to_stdout) {
+				cout << "CH_" << (chi + 1) << "_ERROR: " << find_and_replace_all(rslt_error, "\n", "\\n")  << endl;
+			}
+			if(rslt) {
+				sRslt rslt_transcribe;
+				rslt_transcribe.error = rslt_error;
+				(*rslt)[chi] = rslt_transcribe;
+			}
+		}
+		delete [] data_wav_channel;
+	}
+	if(!rslt_rslt) {
+		if(output_to_stdout) {
+			cout << "ERROR: " << find_and_replace_all(last_rslt_error, "\n", "\\n");
+		}
+		if(error) {
+			*error = last_rslt_error;
+		}
+	}
+	delete [] data_wav;
+	return(rslt_rslt);
 }
 
 void Transcribe::pushCall(sCall *call) {
@@ -188,21 +443,34 @@ void Transcribe::transcribeCall(sCall *call) {
 			string language = opt_whisper_language == "auto" ? "" : 
 					  opt_whisper_language == "by_number" ? call->channels[i].language : opt_whisper_language;
 			string error;
-			if(runWhisper(call->channels[i].wav, "", opt_whisper_python,
-				      opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
-				      rslt_language, rslt_text, rslt_segments,
-				      &error) &&
-			   !rslt_language.empty() &&
-			   !rslt_text.empty() &&
-			   !rslt_segments.empty()) {
-				call->channels[i].rslt_language = rslt_language;
-				call->channels[i].rslt_text = rslt_text;
-				call->channels[i].rslt_segments = rslt_segments;
+			if(opt_whisper_native) {
+				list<sSegment> segments;
+				if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
+						    &rslt_language, &segments, &error, sverb.whisper) && segments.size()) {
+					call->channels[i].rslt_language = rslt_language;
+					convertSegmentsToText(&segments, &call->channels[i].rslt_text, &call->channels[i].rslt_segments);
+				} else {
+					call->channels[i].ok = false;
+					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (native)";
+				}
 			} else {
-				call->channels[i].ok = false;
-				call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper";
+				if(runWhisperPython(call->channels[i].wav, "", opt_whisper_python,
+						    opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
+						    rslt_language, rslt_text, rslt_segments,
+						    &error) &&
+				   !rslt_language.empty() &&
+				   !rslt_text.empty() &&
+				   !rslt_segments.empty()) {
+					call->channels[i].rslt_language = rslt_language;
+					call->channels[i].rslt_text = rslt_text;
+					call->channels[i].rslt_segments = rslt_segments;
+				} else {
+					call->channels[i].ok = false;
+					call->channels[i].error = !error.empty() ? error : "failed transcribe via whisper (python)";
+				}
 			}
-		} else {
+		}
+		if(!call->channels[i].ok) {
 			syslog(LOG_ERR, "transcribe call [%s]: %s", call->callid.c_str(), call->channels[i].error.c_str());
 		}
 	}
@@ -210,13 +478,66 @@ void Transcribe::transcribeCall(sCall *call) {
 	destroyCall(call);
 }
 
-bool Transcribe::runWhisper(string wav, string script, string python,
-			    string model, string language, int timeout, bool deterministic_mode, int threads,
-			    string &rslt_language, string &rslt_text, string &rslt_segments,
-			    string *error) {
+bool Transcribe::runWhisperPython(int16_t *pcm_data, size_t pcm_data_samples, int pcm_data_samplerate,
+				  string script, string python,
+				  string model, string language, int timeout, bool deterministic, int threads,
+				  string &rslt_language, string &rslt_text, string &rslt_segments,
+				  string *error) {
+	string wav_file = tmpnam();
+	if(wav_file.empty()) {
+		if(error) {
+			*error = "failed create wav file";
+		}
+		return("");
+	}
+	wav_file = wav_file + ".wav";
+	cAudioConvert ac;
+	ac.fileName = wav_file;
+	ac.audioInfo.sampleRate = pcm_data_samplerate;
+	ac.audioInfo.channels = 1;
+	ac.audioInfo.bitsPerSample = 16;
+	ac.srcDstType = cAudioConvert::_dst;
+	if(!ac.open_for_write()) {
+		if(error) {
+			*error = "failed create template wav";
+		}
+		return(false);
+	}
+	if(ac.writeWavHeader() != cAudioConvert::_rslt_ok) {
+		if(error) {
+			*error = "failed write header to template wav";
+		}
+		return(false);
+	}
+	if(ac.writeWavData((u_char*)pcm_data, pcm_data_samples * sizeof(int16_t) / sizeof(u_char)) != cAudioConvert::_rslt_ok) {
+		if(error) {
+			*error = "failed write header to template wav";
+		}
+		return(false);
+	}
+	if(ac.writeWavEnd() != cAudioConvert::_rslt_ok) {
+		if(error) {
+			*error = "failed write header to template wav";
+		}
+		return(false);
+	}
+	ac.close();
+	//cout << ac.fileName << endl;
+	bool rslt = runWhisperPython(wav_file, script, python,
+				     model, language, timeout, deterministic, threads,
+				     rslt_language, rslt_text, rslt_segments,
+				     error);
+	unlink(wav_file.c_str());
+	return(rslt);
+}
+
+bool Transcribe::runWhisperPython(string wav, string script, string python,
+				  string model, string language, int timeout, bool deterministic_mode, int threads,
+				  string &rslt_language, string &rslt_text, string &rslt_segments,
+				  string *error) {
 	bool createdWhisperScript = false;
 	if(script.empty()) {
-		script = createWhisperScript();
+		script = createWhisperPythonScript();
 		if(script.empty()) {
 			return(false);
 		}
@@ -270,7 +591,7 @@ bool Transcribe::runWhisper(string wav, string script, string python,
 	return(false);
 }
 
-string Transcribe::createWhisperScript() {
+string Transcribe::createWhisperPythonScript() {
 	string scriptName = tmpnam();
 	if(scriptName.empty()) {
 		return("");
@@ -342,6 +663,202 @@ if __name__ == \"__main__\":\n\
 	return(scriptName);
 }
 
+#if HAVE_LIBWHISPER
+static string to_timestamp(int64_t t, bool comma = false) {
+	int64_t msec = t * 10;
+	int64_t hr = msec / (1000 * 60 * 60);
+	msec = msec - hr * (1000 * 60 * 60);
+	int64_t min = msec / (1000 * 60);
+	msec = msec - min * (1000 * 60);
+	int64_t sec = msec / 1000;
+	msec = msec - sec * 1000;
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%02d:%02d:%02d%s%03d", (int) hr, (int) min, (int) sec, comma ? "," : ".", (int) msec);
+	return string(buf);
+}
+static void whisper_native_print_segment_callback(struct whisper_context * ctx, struct whisper_state * /*state*/, int n_new, void * user_data) {
+	const int n_segments = whisper_full_n_segments(ctx);
+	int64_t t0 = 0;
+	int64_t t1 = 0;
+	const int s0 = n_segments - n_new;
+	if(s0 == 0) {
+		printf("\n");
+	}
+	for(int i = s0; i < n_segments; i++) {
+		t0 = whisper_full_get_segment_t0(ctx, i);
+		t1 = whisper_full_get_segment_t1(ctx, i);
+		printf("[%s --> %s]  ", to_timestamp(t0).c_str(), to_timestamp(t1).c_str());
+		const char * text = whisper_full_get_segment_text(ctx, i);
+		printf("%s", text);
+		printf("\n");
+		fflush(stdout);
+	}
+}
+#endif
+
+#if HAVE_LIBWHISPER
+static void whisper_native_cb_log_disable(enum ggml_log_level , const char * , void * ) {
+}
+#endif
+static void _whisper_native_cb_log_disable(enum Transcribe::_Whisper_ggml_log_level , const char * , void * ) {
+}
+
+bool Transcribe::runWhisperNative(const char *wav, const char *language, const char *model, int threads, 
+				  string *language_detect, list<sSegment> *segments, string *error, 
+				  bool log) {
+	float *pcm_data;
+	size_t pcm_data_samples;
+	cAudioConvert src;
+	src.fileName = wav;
+	if(src.loadWav((u_char**)&pcm_data, &pcm_data_samples, true) != cAudioConvert::_rslt_ok) {
+		*error = "failed load wav";
+		return(false);
+	}
+	bool rslt = runWhisperNative(pcm_data, pcm_data_samples, language, model, threads, 
+				     language_detect, segments, error, 
+				     log);
+	delete [] pcm_data;
+	return(rslt);
+}
+
+bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, const char *language, const char *model, int threads, 
+				  string *language_detect, list<sSegment> *segments, string *error, 
+				  bool log) {
+	float max_sample = 0;
+	for(size_t i = 0; i < pcm_data_samples; i++) {
+		if(abs(pcm_data[i]) > max_sample) {
+			max_sample = abs(pcm_data[i]);
+		}
+	}
+	if(sverb.whisper) {
+		cout << "max sample: " << max_sample << endl;
+	}
+	if(max_sample > 0.001) {
+		if(opt_whisper_native_lib.empty()) {
+			#if HAVE_LIBWHISPER
+			if(!log) {
+				whisper_log_set(whisper_native_cb_log_disable, NULL);
+			}
+			if(strcasecmp(language, "auto") && whisper_lang_id(language) == -1) {
+				*error = "unknown language";
+				return(false);
+			}
+			struct whisper_context_params cparams = whisper_context_default_params();
+			struct whisper_context *ctx = whisper_init_from_file_with_params(model, cparams);
+			if(!ctx) {
+				*error = "failed to initialize whisper context";
+				return(false);
+			}
+			whisper_ctx_init_openvino_encoder(ctx, NULL, "cpu", NULL);
+			whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+			wparams.n_threads = threads;
+			wparams.language = language;
+			wparams.print_progress = false;
+			if(log) {
+				wparams.new_segment_callback = whisper_native_print_segment_callback;
+				wparams.new_segment_callback_user_data = NULL;
+			}
+			if(whisper_full_parallel(ctx, wparams, pcm_data, pcm_data_samples, 1) != 0) {
+				whisper_free(ctx);
+				*error = "failed to process audio";
+				return(false);
+			}
+			*language_detect = whisper_lang_str(whisper_full_lang_id(ctx));
+			const int n_segments = whisper_full_n_segments(ctx);
+			for(int i = 0; i < n_segments; ++i) {
+				sSegment segment;
+				segment.start = whisper_full_get_segment_t0(ctx, i);
+				segment.stop = whisper_full_get_segment_t1(ctx, i);
+				segment.text = whisper_full_get_segment_text(ctx, i);
+				segments->push_back(segment);
+			}
+			if(log) {
+				whisper_print_timings(ctx);
+			}
+			whisper_free(ctx);
+			#else
+			*error = "missing whisper library";
+			return(false);
+			#endif
+		} else {
+			if(!nativeLib.ok()) {
+				*error = "initialization of the specified whisper library failed";
+				return(false);
+			}
+			if(!log) {
+				nativeLib.whisper_log_set(_whisper_native_cb_log_disable, NULL);
+			}
+			if(strcasecmp(language, "auto") && nativeLib.whisper_lang_id(language) == -1) {
+				*error = "unknown language";
+				return(false);
+			}
+			struct whisper_context *ctx = nativeLib.whisper_init_from_file(model);
+			if(!ctx) {
+				*error = "failed to initialize whisper context";
+				return(false);
+			}
+			nativeLib.whisper_ctx_init_openvino_encoder(ctx, NULL, "cpu", NULL);
+			map<string, string> next_params;
+			next_params["n_threads"] = intToString(threads);
+			next_params["language"] = language;
+			next_params["print_progress"] = "0";
+			if(nativeLib.whisper_full_parallel_params_by_ref(ctx, NULL, pcm_data, pcm_data_samples, 1, &next_params) != 0) {
+				nativeLib.whisper_free(ctx);
+				*error = "failed to process audio";
+				return(false);
+			}
+			*language_detect = nativeLib.whisper_lang_str(nativeLib.whisper_full_lang_id(ctx));
+			const int n_segments = nativeLib.whisper_full_n_segments(ctx);
+			for(int i = 0; i < n_segments; ++i) {
+				sSegment segment;
+				segment.start = nativeLib.whisper_full_get_segment_t0(ctx, i);
+				segment.stop = nativeLib.whisper_full_get_segment_t1(ctx, i);
+				segment.text = nativeLib.whisper_full_get_segment_text(ctx, i);
+				segments->push_back(segment);
+			}
+			if(log) {
+				nativeLib.whisper_print_timings(ctx);
+			}
+			nativeLib.whisper_free(ctx);
+		}
+	} else {
+		if(log) {
+			cout << "max sample: " << max_sample << " - BLANK DATA" << endl;
+		}
+		*language_detect = "--";
+		sSegment segment;
+		segment.start = 0;
+		segment.stop = 0;
+		segment.text = "[blank data]";
+		segments->push_back(segment);
+	}
+	return(true);
+}
+
+void Transcribe::convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json) {
+	for(list<sSegment>::iterator iter = segments->begin(); iter != segments->end(); iter++) {
+		if(!iter->text.empty()) {
+			if(!text->empty()) {
+				*text += " ";
+			}
+			*text += iter->text;
+			if(segments_json->empty()) {
+				*segments_json += "[";
+			} else {
+				*segments_json += ",";
+			}
+			JsonExport json_export;
+			json_export.add("start", iter->start);
+			json_export.add("stop", iter->stop);
+			json_export.add("text", iter->text);
+			*segments_json += json_export.getJson();
+		}
+	}
+	if(!segments_json->empty()) {
+		*segments_json += "]";
+	}
+}
+
 string Transcribe::countryToLanguage(const char *country) {
 	if(!country || !*country) {
 		return("");
@@ -352,6 +869,14 @@ string Transcribe::countryToLanguage(const char *country) {
 		}
 	}
 	return("");
+}
+
+bool Transcribe::initNativeLib() {
+	return(nativeLib.init(opt_whisper_native_lib.c_str()));
+}
+
+void Transcribe::termNativeLib() {
+	return(nativeLib.term());
 }
 
 void Transcribe::saveCallToDb(sCall *call) {
@@ -395,17 +920,22 @@ void Transcribe::saveCallToDb(sCall *call) {
 }
 
 void Transcribe::destroyCall(sCall *call) {
-	for(unsigned i = 0; i < call->channels_count; i++) {
-		unlink(call->channels[i].pcm.c_str());
-		if(!call->channels[i].pcm_16.empty()) {
-			unlink(call->channels[i].pcm_16.c_str());
-		}
-		if(!call->channels[i].wav.empty()) {
-			unlink(call->channels[i].wav.c_str());
+	if(!sverb.noaudiounlink) {
+		for(unsigned i = 0; i < call->channels_count; i++) {
+			unlink(call->channels[i].pcm.c_str());
+			if(!call->channels[i].pcm_16.empty()) {
+				unlink(call->channels[i].pcm_16.c_str());
+			}
+			if(!call->channels[i].wav.empty()) {
+				unlink(call->channels[i].wav.c_str());
+			}
 		}
 	}
 	delete call;
 }
+
+
+Transcribe::sWhisperLib Transcribe::nativeLib;
 
 
 void transcribePushCall(Transcribe::sCall *call) {
@@ -435,10 +965,14 @@ string transcribeQueueLog() {
 
 void createTranscribe() {
 	transcribe = new FILE_LINE(0) Transcribe;
+	if(!opt_whisper_native_lib.empty()) {
+		Transcribe::initNativeLib();
+	}
 }
 
 void destroyTranscribe() {
 	if(transcribe) {
 		delete transcribe;
 	}
+	Transcribe::termNativeLib();
 }

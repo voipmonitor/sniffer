@@ -106,6 +106,7 @@ AC_CHECK_LIB([rrd], [main], , AC_MSG_ERROR([Unable to find librrd library. apt-g
 AC_CHECK_LIB([glib-2.0], [main], , AC_MSG_ERROR([Unable to find libglib library. apt-get install  libglib2.0-dev | yum install glib2-devel]))
 AC_CHECK_LIB([xml2], [main], , AC_MSG_ERROR([Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel]))
 AC_CHECK_LIB([blake3], [blake3_hasher_init], HAVE_LIBBLAKE3=1, AC_MSG_NOTICE([Unable to find blake3 library. yum install blake3-devel or compile from source]))
+AC_CHECK_LIB([whisper], [main], HAVE_LIBWHISPER=1, AC_MSG_NOTICE([Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp]))
 
 AC_ARG_WITH(libc-dir, [  --with-libc-dir=PATH path to explicit libc directory (for static building)], [
 	TMPLIBCDIRLIB=-L$withval/lib
@@ -306,6 +307,13 @@ if test "x$HAVE_LIBBLAKE3" = "x1"; then
 	AC_DEFINE([HAVE_LIBBLAKE3], [1], [Define if using libblake3])
 	AC_SUBST([LIBBLAKE3],["-lblake3"])
 	HAVE_LIBBLAKE3_T=yes
+fi
+
+HAVE_LIBWHISPER_T=no
+if test "x$HAVE_LIBWHISPER" = "x1"; then 
+	AC_DEFINE([HAVE_LIBWHISPER], [1], [Define if using libwhisper])
+	AC_SUBST([LIBWHISPER],["-lwhisper"])
+	HAVE_LIBWHISPER_T=yes
 fi
 
 # Checks for header files.
