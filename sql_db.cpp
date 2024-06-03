@@ -11748,6 +11748,7 @@ void cPartitions::fillTables(SqlDb *sqlDb) {
 	addTable("cdr", "cdr_txt");
 	addTable("cdr", "cdr_proxy");
 	addTable("cdr", "cdr_flags");
+	addTable("cdr", "cdr_audio_transcribe");
 	addTable("cdr", "message");
 	addTable("cdr", "message_proxy");
 	addTable("cdr", "message_country_code");
