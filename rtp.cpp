@@ -502,6 +502,11 @@ RTP::save_mos_graph(bool delimiter) {
 			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 				this->graph.write((char*)&last_interval_mosf1, 1);
 			}
+		} else {
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				char zero = 0;
+				this->graph.write(&zero, 1);
+			}
 		}
 	}
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
@@ -544,6 +549,11 @@ RTP::save_mos_graph(bool delimiter) {
 			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 				this->graph.write((char*)&last_interval_mosf2, 1);
 			}
+		} else {
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				char zero = 0;
+				this->graph.write(&zero, 1);
+			}
 		}
 	}
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
@@ -585,6 +595,11 @@ RTP::save_mos_graph(bool delimiter) {
 			mosAD_avg = 45;
 			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 				this->graph.write((char*)&last_interval_mosAD, 1);
+			}
+		} else {
+			if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+				char zero = 0;
+				this->graph.write(&zero, 1);
 			}
 		}
 	}
@@ -629,11 +644,10 @@ RTP::save_mos_graph(bool delimiter) {
 		}
 	}
 
-
-	// align to 4 byte
-	char zero = 0;
+	// write end zero byte after mos
 	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
-		this->graph.write((char*)&zero, 1);
+		char zero = 0;
+		this->graph.write(&zero, 1);
 	}
 	
 	if(delimiter) {
@@ -2769,7 +2783,8 @@ RTP::update_seq(u_int16_t seq) {
 		return 0;
 	} else if (udelta < MAX_DROPOUT) {
 		/* in order, with permissible gap */
-		if (seq < s->max_seq) {
+		if (seq < s->max_seq && 
+		    (!opt_disable_rtp_seq_probation || s->received > 0)) {
 			/*
 			* Sequence number wrapped - count another 64K cycle.
 			*/
