@@ -8624,6 +8624,7 @@ void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, Pc
 			}
 		}
 
+		ppd.null();
 		if(!pcapProcess(&header_packet, -1,
 				NULL, 0,
 				ppf_params,

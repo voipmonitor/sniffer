@@ -396,7 +396,7 @@ friend void *_PcapQueue_writeThreadFunction(void *arg);
 
 struct pcapProcessData {
 	pcapProcessData() {
-		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
+		null();
 		extern int opt_dup_check_type;
 		if(opt_dup_check_type != _dedup_na) {
 			extern int opt_dup_check_check_type;
@@ -421,6 +421,9 @@ struct pcapProcessData {
 		}
 		#endif
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
+	}
+	void null() {
+		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
 	}
 	ether_header *header_eth;
 	iphdr2 *header_ip;
