@@ -94,6 +94,7 @@ extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	// compress GRAPH data to gr
 extern bool opt_srtp_rtp_decrypt;
 extern bool opt_srtp_rtp_dtls_decrypt;
 extern bool opt_srtp_rtp_audio_decrypt;
+extern bool opt_srtp_rtp_dtmf_decrypt;
 extern bool opt_srtp_rtcp_decrypt;
 extern int opt_savewav_force;
 extern int opt_save_sdp_ipport;
@@ -1969,8 +1970,10 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 	if((new_rtp ||
 	    (!rtp->srtp_decrypt &&
 	     rtp->find_by_dest &&
-	     rtp->call_ipport_n_orig != c_branch->ipport_n)) &&
+	     (rtp->call_ipport_n_orig != c_branch->ipport_n ||
+	      (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT)))) &&
 	   (opt_srtp_rtp_decrypt || 
+	    (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT) ||
 	    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
 	    (opt_srtp_rtp_audio_decrypt && (enable_save_audio(this) || enable_audio_transcribe(this))) || 
 	    opt_saveRAW || opt_savewav_force)) {

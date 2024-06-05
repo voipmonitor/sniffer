@@ -47,6 +47,7 @@ extern int opt_saveWAV;                //save RTP payload RAW data?
 extern int opt_saveGRAPH;	//save GRAPH data?
 extern bool opt_srtp_rtp_decrypt;
 extern bool opt_srtp_rtp_dtls_decrypt;
+extern bool opt_srtp_rtp_dtmf_decrypt;
 extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
@@ -1333,6 +1334,7 @@ bool RTP::read(CallBranch *c_branch,
 		}
 		++decrypt_rtp_attempt[0];
 		if(opt_srtp_rtp_decrypt || 
+		   (opt_srtp_rtp_dtmf_decrypt && codec == PAYLOAD_TELEVENT) ||
 		   (opt_srtp_rtp_dtls_decrypt && srtp_decrypt->is_dtls())
 		   #if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 		   || use_channel_record
