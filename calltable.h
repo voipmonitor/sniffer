@@ -3898,6 +3898,7 @@ public:
 		eSpecialType specialType;
 		vector<string> header;
 		vector<string> header_find;
+		string name;
 		bool doNotAddColon;
 		unsigned db_id;
 		string leftBorder;
@@ -3949,6 +3950,7 @@ public:
 	void getHeaders(list<string> *rslt);
 	void getValues(Call *call, int type, list<string> *rslt);
 	void getHeaderValues(Call *call, int type, map<string, string> *rslt);
+	void getNameValues(Call *call, int type, map<string, string> *rslt);
 	string getValue(Call *call, int type, const char *header);
 	static string tCH_Content_value(tCH_Content *ch_content, int i1, int i2);
 	unsigned getSize();

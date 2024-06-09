@@ -51,6 +51,7 @@ struct sSciInfo {
 	u_int16_t counter;
 	sSciPacketInfo packet_info;
 	bool packet_info_set;
+	map<string, string> custHeaders;
 };
 
 class SendCallInfoItem {
@@ -104,6 +105,7 @@ private:
 	ListPhoneNumber_wb phoneNumberCalledFilter;
 	ListCheckString_wb domainCallerFilter;
 	ListCheckString_wb domainCalledFilter;
+	vector<string> custHeaderNames;
 };
 
 class SendCallInfo {
@@ -115,6 +117,7 @@ public:
 	void refresh();
 	void stopPopCallInfoThread(bool wait = false);
 	void evCall(class CallBranch *c_branch, eTypeSci typeSci, u_int64_t at, u_int16_t counter, sSciPacketInfo *packet_info);
+	bool isSetCustHeaders;
 private:
 	void initPopCallInfoThread();
 	void popCallInfoThread();

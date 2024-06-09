@@ -14610,6 +14610,7 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				if(!ch_data.doNotAddColon) {
 					ch_data.setHeaderFindSuffix();
 				}
+				ch_data.name = row["name"];
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
@@ -15294,6 +15295,23 @@ void CustomHeaders::getHeaderValues(Call *call, int type, map<string, string> *r
 				(*rslt)["custom_header__" + iter2->second.first_header()] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			} else {
 				(*rslt)["custom_header_" + intToString(iter->first) + "_" + intToString(iter2->first)] = tCH_Content_value(ch_content, iter->first, iter2->first);
+			}
+		}
+	}
+	call->custom_headers_content_unlock();
+	unlock_custom_headers();
+}
+
+void CustomHeaders::getNameValues(Call *call, int type, map<string, string> *rslt) {
+	lock_custom_headers();
+	call->custom_headers_content_lock();
+	tCH_Content *ch_content = getCustomHeadersCallContent(call, type);
+	for(map<int, map<int, sCustomHeaderData> >::iterator iter = custom_headers.begin(); iter != custom_headers.end(); iter++) {
+		for(map<int, sCustomHeaderData>::iterator iter2 = iter->second.begin(); iter2 != iter->second.end(); iter2++) {
+			if(!iter->first) {
+				(*rslt)[iter2->second.name] = tCH_Content_value(ch_content, iter->first, iter2->first);
+			} else {
+				(*rslt)[iter2->second.name] = tCH_Content_value(ch_content, iter->first, iter2->first);
 			}
 		}
 	}
