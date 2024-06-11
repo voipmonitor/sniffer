@@ -1815,10 +1815,6 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				outStr << setprecision(3) << (double)avgDelayQuery / 1000 << "s";
 				fill = true;
-				if(opt_rrd) {
-					rrd_set_value(RRD_VALUE_SQLf_D, avgDelayQuery);
-					rrd_set_value(RRD_VALUE_SQLf_C, countFilesQuery);
-				}
 			}
 			if(!stat_proc.empty()) {
 				if(fill) {
@@ -1829,6 +1825,10 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(fill) {
 				outStr << "] ";
+			}
+			if(opt_rrd && (avgDelayQuery || countFilesQuery)) {
+				rrd_set_value(RRD_VALUE_SQLf_D, avgDelayQuery);
+				rrd_set_value(RRD_VALUE_SQLf_C, countFilesQuery);
 			}
 		}
 		if(!loadFromQFiles || !opt_save_query_main_to_files || sverb.force_log_sqlq) {
