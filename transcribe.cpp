@@ -635,7 +635,7 @@ def transcribe(audio_path, language=None, model_name=\"large\", deterministic=Fa
 if __name__ == \"__main__\":\n\
     parser = argparse.ArgumentParser(description=\"Transcribe audio using Whisper with optional deterministic behavior\")\n\
     parser.add_argument(\"audio_path\", type=str, help=\"Path to the audio file\")\n\
-    parser.add_argument(\"--model\", type=str, default=\"base\", help=\"Whisper model to use (e.g., tiny, base, small, medium, large)\")\n\
+    parser.add_argument(\"--model\", type=str, default=\"small\", help=\"Whisper model to use (e.g., tiny, base, small, medium, large)\")\n\
     parser.add_argument(\"--language\", type=str, help=\"Language code (ISO 639-1) for the transcription\")\n\
     parser.add_argument(\"--deterministic\", action='store_true', help=\"Enable deterministic behavior\")\n\
     parser.add_argument(\"--threads\", type=int, help=\"Limit the number of threads used by PyTorch and other libraries\")\n\
