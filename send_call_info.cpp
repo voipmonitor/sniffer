@@ -3,6 +3,7 @@
 
 
 extern int opt_nocdr;
+extern CustomHeaders *custom_headers_cdr;
 
 SendCallInfo *sendCallInfo = NULL;
 volatile int _sendCallInfo_ready = 0;
@@ -131,6 +132,10 @@ bool SendCallInfoItem::load(SqlDb *sqlDb) {
 		_sendCallInfo_useAdditionalPacketInformation = 1;
 	}
 	jsonOutput = atoi(dbRow["json_output"].c_str());
+	if(!dbRow["cust_headers"].empty()) {
+		custHeaderNames = explode(dbRow["cust_headers"].c_str(), ',');
+		sendCallInfo->isSetCustHeaders = true;
+	}
 	authUser = dbRow["auth_user"];
 	authPassword = dbRow["auth_password"];
 	for(unsigned i = 0; i < 2; i++) {
@@ -225,6 +230,14 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 			requestData.push_back(dstring("packet_src_port", sci->packet_info.src_port.getString()));
 			requestData.push_back(dstring("packet_dst_port", sci->packet_info.dst_port.getString()));
 		}
+		if(custHeaderNames.size() && sendCallInfo->isSetCustHeaders) {
+			for(unsigned i = 0; i < custHeaderNames.size(); i++) {
+				map<string, string>::iterator iter = sci->custHeaders.find(custHeaderNames[i]);
+				if(iter != sci->custHeaders.end() && sci->custHeaders[custHeaderNames[i]].size()) {
+					requestData.push_back(dstring(custHeaderNames[i], sci->custHeaders[custHeaderNames[i]]));
+				}
+			}
+		}
 		if(fields.size()) {
 			for(unsigned i = 0; i < fields.size(); i++) {
 				requestData.push_back(fields[i]);
@@ -266,6 +279,7 @@ SendCallInfo::SendCallInfo() {
 	threadPopCallInfo = 0;
 	runPopCallInfoThread = false;
 	termPopCallInfoThread = false;
+	isSetCustHeaders = false;
 	_sync = 0;
 	initPopCallInfoThread();
 }
@@ -376,6 +390,9 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch,
 		sci->packet_info_set = true;
 	} else {
 		sci->packet_info_set = false;
+	}
+	if(sendCallInfo->isSetCustHeaders) {
+		custom_headers_cdr->getNameValues(call, INVITE, &sci->custHeaders);
 	}
 }
 

@@ -1,3 +1,24 @@
+2024.06.1  08.06.2024
+=====================
+- Add support for audio transcription using OpenAI Whisper https://openai.com/index/whisper/ [VS-1603]
+- Add support to change country assignment for existing CDR [VS-1130]
+- Add configuration parameter srtp_rtp_dtmf to decrypt only RTP-DTMF [VG-2820]
+- Add TOP countries charts in chart templates [VG-2808]
+- Add definition of ignored errors for creating partitions for tables cdr_next_N
+- tar_move: Enable using the destination path on a remote sensor to get PCAP/graph from GUI. Enable spool cleanup in the destination path (if spooldir_2 is set to the same path as tar_move_destination_path and if maxpoolsize_2 is set)
+- Fix rtp->avg_ptime calculation [VS-1598]
+- Fix detection if mysqlstore_max_threads_cdr is set
+- Reduce the limit for starting the next saving (to MySQL) thread from 1000 to 100
+- cleanspool: Fix printspool manager command for when there is only one hour of data in the spool
+- Compilation fix if libgcrypt is missing [VS-1312]
+- Fix possible crash when using reverse_iterator in CleanSpool::cSpoolData::removeLastDateHours
+- Add 'refresh' sub-parameter to printspool manager command
+- New disable_rtp_seq_check parameter which ignores rtp.seq duplication check [VS-1604]
+- Fix false seq rotation credit if disable_rtp_seq_probation is enabled
+- Fix writing MOS charts if jitterbuffer configuration options are set to 'null'
+- Anonymization fix (TCP/UDP protocol detection was inconsistent) [VG-2816]
+
+
 2024.05.2  04.05.2024
 =====================
 - fix crash in manager command listcalls (if parameters contain ip_map:yes without set limit)
