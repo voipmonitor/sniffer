@@ -9955,3 +9955,52 @@ void jeMallocStat_save() {
 void jeMallocStat_save() {
 }
 #endif //HAVE_LIBJEMALLOC
+
+
+void cpuid(int info[4], int infoType, int ecxValue) {
+	__asm__ __volatile__(
+		"cpuid":
+		"=a"(info[0]), "=b"(info[1]), "=c"(info[2]), "=d"(info[3]) :
+		"a"(infoType), "c"(ecxValue)
+	);
+}
+
+int check_sse3() {
+	int info[4];
+	cpuid(info, 1, 0);
+	return (info[2] & (1 << 0)) != 0;
+}
+
+int check_ssse3() {
+	int info[4];
+	cpuid(info, 1, 0);
+	return (info[2] & (1 << 9)) != 0;
+}
+
+int check_avx() {
+	int info[4];
+	cpuid(info, 1, 0);
+	return (info[2] & (1 << 28)) != 0;
+}
+
+int check_f16c() {
+	int info[4];
+	cpuid(info, 1, 0);
+	return (info[2] & (1 << 29)) != 0;
+}
+
+int check_fma() {
+	int info[4];
+	cpuid(info, 1, 0);
+	return (info[2] & (1 << 12)) != 0;
+}
+
+int check_avx2() {
+	int info[4];
+	cpuid(info, 0, 0);
+	if(info[0] >= 7) {
+		cpuid(info, 7, 0);
+		return (info[1] & (1 << 5)) != 0;
+	}
+	return 0;
+}

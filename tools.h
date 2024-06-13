@@ -4722,5 +4722,12 @@ public:
 string jeMallocStat(bool full);
 void jeMallocStat_save();
 
+int check_sse3();
+int check_ssse3();
+int check_avx();
+int check_f16c();
+int check_fma();
+int check_avx2();
+
 
 #endif

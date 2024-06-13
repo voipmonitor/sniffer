@@ -736,6 +736,18 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 	if(max_sample > 0.001) {
 		if(opt_whisper_native_lib.empty()) {
 			#if HAVE_LIBWHISPER
+			if(!check_sse3() || !check_ssse3() || !check_avx() || !check_f16c() || !check_fma() || !check_avx2()) {
+				ostringstream outStr;
+				outStr << "too old cpu" << endl
+				       << " - sse3: " << (check_sse3() ? "ok" : "missing") << endl
+				       << " - ssse3: " << (check_ssse3() ? "ok" : "missing") << endl
+				       << " - avx: " << (check_avx() ? "ok" : "missing") << endl
+				       << " - f16c: " << (check_f16c() ? "ok" : "missing") << endl
+				       << " - fma: " << (check_fma() ? "ok" : "missing") << endl
+				       << " - avx2: " << (check_avx2() ? "ok" : "missing") << endl;
+				*error = outStr.str();
+				return(false);
+			}
 			if(!log) {
 				whisper_log_set(whisper_native_cb_log_disable, NULL);
 			}
