@@ -736,6 +736,7 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 	if(max_sample > 0.001) {
 		if(opt_whisper_native_lib.empty()) {
 			#if HAVE_LIBWHISPER
+			#if defined(__x86_64__)
 			if(!check_sse3() || !check_ssse3() || !check_avx() || !check_f16c() || !check_fma() || !check_avx2()) {
 				ostringstream outStr;
 				outStr << "too old cpu" << endl
@@ -748,6 +749,10 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 				*error = outStr.str();
 				return(false);
 			}
+			#else
+			*error = "whisper.cpp is only available on x86_64";
+			return(false);
+			#endif
 			if(!log) {
 				whisper_log_set(whisper_native_cb_log_disable, NULL);
 			}
