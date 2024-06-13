@@ -9957,6 +9957,7 @@ void jeMallocStat_save() {
 #endif //HAVE_LIBJEMALLOC
 
 
+#if defined(__x86_64__)
 void cpuid(int info[4], int infoType, int ecxValue) {
 	__asm__ __volatile__(
 		"cpuid":
@@ -10004,3 +10005,4 @@ int check_avx2() {
 	}
 	return 0;
 }
+#endif
