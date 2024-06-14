@@ -28,6 +28,7 @@ extern bool opt_whisper_deterministic_mode;
 extern string opt_whisper_python;
 extern int opt_whisper_threads;
 extern string opt_whisper_native_lib;
+extern string opt_audio_transcribe_progress_file;
 
 extern sVerbose sverb;
 
@@ -109,6 +110,7 @@ Transcribe::Transcribe() {
 	threadsTerminating = 0;
 	calls_sync = 0;
 	threads_sync= 0;
+	progress_file_sync = 0;
 }
 
 Transcribe::~Transcribe() {
@@ -236,7 +238,7 @@ bool Transcribe::transcribeWav(const char *wav, const char *json_params, bool ou
 	return(rslt_rslt);
 }
 
-bool Transcribe::transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples, int channels, int process_channel_i, string language, bool output_to_stdout, sRslt *rslt) {
+bool Transcribe::transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples, int channels, int process_channel_i, string language, bool output_to_stdout, sRslt *rslt, sTranscribeWavChannelParams *params) {
 	int reserve_samples = 10;
 	size_t data_wav_channel_samples = data_wav_samples / channels;
 	int16_t *data_wav_channel = opt_whisper_native ?
@@ -259,17 +261,17 @@ bool Transcribe::transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples
 	if(opt_whisper_native) {
 		list<sSegment> segments;
 		rslt_whisper = runWhisperNative((float*)data_wav_channel, data_wav_channel_samples,
-					   language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
-					   &rslt_language, &segments, &rslt_error, sverb.whisper);
+						language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
+						&rslt_language, &segments, &rslt_error, sverb.whisper, params);
 		if(rslt_whisper && segments.size()) {
 			convertSegmentsToText(&segments, &rslt_text, &rslt_segments);
 		}
 	} else {
 		rslt_whisper = runWhisperPython(data_wav_channel, data_wav_channel_samples, 16000,
-					   "", opt_whisper_python,
-					   opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
-					   rslt_language, rslt_text, rslt_segments,
-					   &rslt_error);
+						"", opt_whisper_python,
+						opt_whisper_model, language, opt_whisper_timeout, opt_whisper_deterministic_mode, opt_whisper_threads,
+						rslt_language, rslt_text, rslt_segments,
+						&rslt_error);
 	}
 	if(rslt_whisper  &&
 	   !rslt_language.empty() && !rslt_text.empty() && !rslt_segments.empty()) {
@@ -306,7 +308,8 @@ bool Transcribe::transcribeWavChannel(sTranscribeWavChannelParams *params) {
 				    params->process_channel_i, 
 				    params->language, 
 				    params->output_to_stdout, 
-				    &params->rslt));
+				    &params->rslt,
+				    params));
 }
 
 void *Transcribe::transcribeWavChannel_thread(void *params) {
@@ -441,7 +444,7 @@ void Transcribe::transcribeCall(sCall *call) {
 			if(opt_whisper_native) {
 				list<sSegment> segments;
 				if(runWhisperNative(call->channels[i].wav.c_str(), language.empty() ? "auto" : language.c_str(), opt_whisper_model.c_str(), opt_whisper_threads, 
-						    &rslt_language, &segments, &error, sverb.whisper) && segments.size()) {
+						    &rslt_language, &segments, &error, sverb.whisper, NULL) && segments.size()) {
 					call->channels[i].rslt_language = rslt_language;
 					convertSegmentsToText(&segments, &call->channels[i].rslt_text, &call->channels[i].rslt_segments);
 				} else {
@@ -672,21 +675,25 @@ static string to_timestamp(int64_t t, bool comma = false) {
 	return string(buf);
 }
 static void whisper_native_print_segment_callback(struct whisper_context * ctx, struct whisper_state * /*state*/, int n_new, void * user_data) {
+	Transcribe::sTranscribeWavChannelParams *params = (Transcribe::sTranscribeWavChannelParams*)user_data;
 	const int n_segments = whisper_full_n_segments(ctx);
-	int64_t t0 = 0;
-	int64_t t1 = 0;
 	const int s0 = n_segments - n_new;
-	if(s0 == 0) {
+	if(s0 == 0 && (!params || params->log)) {
 		printf("\n");
 	}
 	for(int i = s0; i < n_segments; i++) {
-		t0 = whisper_full_get_segment_t0(ctx, i);
-		t1 = whisper_full_get_segment_t1(ctx, i);
-		printf("[%s --> %s]  ", to_timestamp(t0).c_str(), to_timestamp(t1).c_str());
-		const char * text = whisper_full_get_segment_text(ctx, i);
-		printf("%s", text);
-		printf("\n");
-		fflush(stdout);
+		int64_t t0 = whisper_full_get_segment_t0(ctx, i);
+		int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+		const char *text = whisper_full_get_segment_text(ctx, i);
+		if(!params || params->log) {
+			printf("[%s --> %s]  ", to_timestamp(t0).c_str(), to_timestamp(t1).c_str());
+			printf("%s", text);
+			printf("\n");
+			fflush(stdout);
+		}
+		if(params && !opt_audio_transcribe_progress_file.empty()) {
+			params->me->saveProgress(params, t0, t1, text);
+		}
 	}
 }
 #endif
@@ -700,7 +707,7 @@ static void _whisper_native_cb_log_disable(enum Transcribe::_Whisper_ggml_log_le
 
 bool Transcribe::runWhisperNative(const char *wav, const char *language, const char *model, int threads, 
 				  string *language_detect, list<sSegment> *segments, string *error, 
-				  bool log) {
+				  bool log, sTranscribeWavChannelParams *params) {
 	float *pcm_data;
 	size_t pcm_data_samples;
 	cAudioConvert src;
@@ -711,14 +718,14 @@ bool Transcribe::runWhisperNative(const char *wav, const char *language, const c
 	}
 	bool rslt = runWhisperNative(pcm_data, pcm_data_samples, language, model, threads, 
 				     language_detect, segments, error, 
-				     log);
+				     log, params);
 	delete [] pcm_data;
 	return(rslt);
 }
 
 bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, const char *language, const char *model, int threads, 
 				  string *language_detect, list<sSegment> *segments, string *error, 
-				  bool log) {
+				  bool log, sTranscribeWavChannelParams *params) {
 	float max_sample = 0;
 	for(size_t i = 0; i < pcm_data_samples; i++) {
 		if(fabs(pcm_data[i]) > max_sample) {
@@ -766,9 +773,13 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 			wparams.n_threads = threads;
 			wparams.language = language;
 			wparams.print_progress = false;
-			if(log) {
+			if(log || 
+			   (!opt_audio_transcribe_progress_file.empty() && params)) {
+				if(params) {
+					params->log = log;
+				}
 				wparams.new_segment_callback = whisper_native_print_segment_callback;
-				wparams.new_segment_callback_user_data = NULL;
+				wparams.new_segment_callback_user_data = !opt_audio_transcribe_progress_file.empty() ? params : NULL;
 			}
 			if(whisper_full_parallel(ctx, wparams, pcm_data, pcm_data_samples, 1) != 0) {
 				whisper_free(ctx);
@@ -889,6 +900,30 @@ bool Transcribe::initNativeLib() {
 
 void Transcribe::termNativeLib() {
 	return(nativeLib.term());
+}
+
+void Transcribe::saveProgress(sTranscribeWavChannelParams *params, int64_t t0, int64_t t1, const char *text) {
+	if(opt_audio_transcribe_progress_file.empty()) {
+		return;
+	}
+	lock_progress_file();
+	FILE *file = fopen(opt_audio_transcribe_progress_file.c_str(), "a");
+	if(file) {
+		if(t0 || t1 || text) {
+			fprintf(file, 
+				"[CH%i,"
+				int_64_format_prefix "%li,"
+				int_64_format_prefix "%li] "
+				"%s\n", 
+				params->process_channel_i + 1, t0, t1, text);
+		} else {
+			fprintf(file, 
+				"[CH%i_END]",
+				params->process_channel_i + 1);
+		}
+		fclose(file);
+	}
+	unlock_progress_file();
 }
 
 void Transcribe::saveCallToDb(sCall *call) {

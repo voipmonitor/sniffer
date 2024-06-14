@@ -87,6 +87,7 @@ public:
 		sRslt rslt;
 		pthread_t thread;
 		Transcribe *me;
+		bool log;
 	};
 	enum _Whisper_ggml_log_level {
 		_GGML_LOG_LEVEL_ERROR = 2,
@@ -134,7 +135,7 @@ public:
 	Transcribe();
 	~Transcribe();
 	bool transcribeWav(const char *wav, const char *json_params, bool output_to_stdout, map<unsigned, sRslt> *rslt, string *error);
-	bool transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples, int channels, int process_channel_i, string language, bool output_to_stdout, sRslt *rslt);
+	bool transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples, int channels, int process_channel_i, string language, bool output_to_stdout, sRslt *rslt, sTranscribeWavChannelParams *params);
 	bool transcribeWavChannel(sTranscribeWavChannelParams *params);
 	static void *transcribeWavChannel_thread(void *params);
 	void pushCall(sCall *call);
@@ -169,14 +170,15 @@ public:
 	string createWhisperPythonScript();
 	bool runWhisperNative(const char *wav, const char *language, const char *model, int threads, 
 			      string *language_detect, list<sSegment> *segments, string *error, 
-			      bool log);
+			      bool log, sTranscribeWavChannelParams *params);
 	bool runWhisperNative(float *pcm_data, size_t pcm_data_samples, const char *language, const char *model, int threads, 
 			      string *language_detect, list<sSegment> *segments, string *error, 
-			      bool log);
+			      bool log, sTranscribeWavChannelParams *params);
 	void convertSegmentsToText(list<sSegment> *segments, string *text, string *segments_json);
 	static string countryToLanguage(const char *country);
 	static bool initNativeLib();
 	static void termNativeLib();
+	void saveProgress(sTranscribeWavChannelParams *params, int64_t t0, int64_t t1, const char *text);
 private:
 	void saveCallToDb(sCall *call);
 	void destroyCall(sCall *call);
@@ -192,6 +194,12 @@ private:
 	void unlock_threads() {
 		__SYNC_UNLOCK(threads_sync);
 	}
+	void lock_progress_file() {
+		__SYNC_LOCK_USLEEP(progress_file_sync, 20);
+	}
+	void unlock_progress_file() {
+		__SYNC_UNLOCK(progress_file_sync);
+	}
 private:
 	deque<sCall*> calls;
 	volatile int calls_sync;
@@ -200,6 +208,7 @@ private:
 	unsigned int callsMax;
 	unsigned int threadsMax;
 	int threadsTerminating;
+	volatile int progress_file_sync;
 	static sWhisperLib nativeLib;
 };
 
