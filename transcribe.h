@@ -71,6 +71,22 @@ public:
 		string text;
 		string segments;
 		string error;
+		bool isOk() {
+			return(!language.empty() &&
+			       !text.empty() &&
+			       !segments.empty());
+		}
+	};
+	struct sTranscribeWavChannelParams {
+		int16_t *data_wav;
+		size_t data_wav_samples;
+		int channels;
+		int process_channel_i;
+		string language;
+		bool output_to_stdout;
+		sRslt rslt;
+		pthread_t thread;
+		Transcribe *me;
 	};
 	enum _Whisper_ggml_log_level {
 		_GGML_LOG_LEVEL_ERROR = 2,
@@ -118,6 +134,9 @@ public:
 	Transcribe();
 	~Transcribe();
 	bool transcribeWav(const char *wav, const char *json_params, bool output_to_stdout, map<unsigned, sRslt> *rslt, string *error);
+	bool transcribeWavChannel(int16_t *data_wav, size_t data_wav_samples, int channels, int process_channel_i, string language, bool output_to_stdout, sRslt *rslt);
+	bool transcribeWavChannel(sTranscribeWavChannelParams *params);
+	static void *transcribeWavChannel_thread(void *params);
 	void pushCall(sCall *call);
 	static sCall *createTranscribeCall(class Call *call, const char *chanel1_pcm, const char *chanel2_pcm, unsigned samplerate);
 	void processCall();

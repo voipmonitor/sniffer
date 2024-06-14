@@ -248,6 +248,7 @@ int opt_audio_transcribe = 0;
 int opt_audio_transcribe_connect_duration_min = 10;
 int opt_audio_transcribe_threads = 2;
 int opt_audio_transcribe_queue_length_max = 100;
+bool opt_audio_transcribe_parallel_channel_processing = false;
 bool opt_whisper_native = false;
 string opt_whisper_model = "";
 string opt_whisper_language = "auto";
@@ -6629,6 +6630,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_connect_duration_min", &opt_audio_transcribe_connect_duration_min));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_threads", &opt_audio_transcribe_threads));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audio_transcribe_queue_length_max", &opt_audio_transcribe_queue_length_max));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("audio_transcribe_parallel_channel_processing", &opt_audio_transcribe_parallel_channel_processing));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("whisper_native", &opt_whisper_native));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_model", &opt_whisper_model));
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("whisper_language", &opt_whisper_language));
