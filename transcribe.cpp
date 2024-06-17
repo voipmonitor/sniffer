@@ -1,6 +1,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <dlfcn.h>
+#include <signal.h>
 
 #include "config.h"
 
@@ -29,11 +30,13 @@ extern string opt_whisper_python;
 extern int opt_whisper_threads;
 extern string opt_whisper_native_lib;
 extern string opt_audio_transcribe_progress_file;
+extern string opt_audio_transcribe_control_file;
 
 extern sVerbose sverb;
 
 static Transcribe *transcribe;
 static SqlDb *sqlDbSave;
+static unsigned int transcribe_pid;
 
 static const char* country_language_map[][2] = {
  { "AF", "ps" }, { "AL", "sq" }, { "DZ", "ar" }, { "AS", "en" }, { "AD", "ca" }, { "AO", "pt" }, { "AI", "en" }, { "AG", "en" }, { "AR", "es" }, { "AM", "hy" }, 
@@ -127,6 +130,12 @@ Transcribe::~Transcribe() {
 bool Transcribe::transcribeWav(const char *wav, const char *json_params, bool output_to_stdout, map<unsigned, sRslt> *rslt, string *error) {
 	setpriority(PRIO_PROCESS, get_unix_tid(), 20);
 	JsonItem jsonParams;
+	if(!opt_audio_transcribe_control_file.empty()) {
+		transcribe_pid = getpid();
+		pthread_t control_thread;
+		vm_pthread_create("transcribe_control",
+				  &control_thread, NULL, transcribeControlThread, NULL, __FILE__, __LINE__);
+	}
 	jsonParams.parse(json_params);
 	string language_type_ch[2];
 	string language_ch[2];
@@ -929,6 +938,32 @@ void Transcribe::saveProgress(sTranscribeWavChannelParams *params, int64_t t0, i
 		fclose(file);
 	}
 	unlock_progress_file();
+}
+
+void *Transcribe::transcribeControlThread(void *) {
+	u_int32_t last_activity = 0;
+	u_int32_t last_activity_at = 0;
+	while(true) {
+		u_int32_t act_time_s = getTimeS();
+		FILE *file = fopen(opt_audio_transcribe_control_file.c_str(), "r");
+		if(file) {
+			char row[1024] = "";
+			fgets(row, sizeof(row), file);
+			if(!strncmp(row, "last_activity: ", 15)) {
+				u_int32_t new_activity = atoll(row + 15);
+				if(new_activity != last_activity) {
+					last_activity = new_activity;
+					last_activity_at = act_time_s;
+				}
+			}
+			fclose(file);
+		}
+		if(last_activity_at && act_time_s > last_activity_at + 10) {
+			kill(transcribe_pid, 9);
+		}
+		sleep(2);
+	}
+	return(NULL);
 }
 
 void Transcribe::saveCallToDb(sCall *call) {

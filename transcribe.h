@@ -179,6 +179,7 @@ public:
 	static bool initNativeLib();
 	static void termNativeLib();
 	void saveProgress(sTranscribeWavChannelParams *params, int64_t t0, int64_t t1, const char *text);
+	static void *transcribeControlThread(void *);
 private:
 	void saveCallToDb(sCall *call);
 	void destroyCall(sCall *call);
