@@ -736,9 +736,18 @@ bool Transcribe::runWhisperNative(const char *wav, const char *language, const c
 bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, const char *language, const char *model, int threads, 
 				  string *language_detect, list<sSegment> *segments, string *error, 
 				  bool log, sTranscribeWavChannelParams *params) {
-	if(strcasecmp(language, "auto") && whisper_lang_id(language) == -1) {
-		*error = "unknown language";
-		return(false);
+	if(opt_whisper_native_lib.empty()) {
+		#if HAVE_LIBWHISPER
+		if(strcasecmp(language, "auto") && whisper_lang_id(language) == -1) {
+			*error = "unknown language";
+			return(false);
+		}
+		#endif
+	} else {
+		if(strcasecmp(language, "auto") && nativeLib.whisper_lang_id(language) == -1) {
+			*error = "unknown language";
+			return(false);
+		}
 	}
 	float max_sample = 0;
 	for(size_t i = 0; i < pcm_data_samples; i++) {
@@ -820,10 +829,6 @@ bool Transcribe::runWhisperNative(float *pcm_data, size_t pcm_data_samples, cons
 			}
 			if(!log) {
 				nativeLib.whisper_log_set(_whisper_native_cb_log_disable, NULL);
-			}
-			if(strcasecmp(language, "auto") && nativeLib.whisper_lang_id(language) == -1) {
-				*error = "unknown language";
-				return(false);
 			}
 			struct whisper_context *ctx = nativeLib.whisper_init_from_file(model);
 			if(!ctx) {
