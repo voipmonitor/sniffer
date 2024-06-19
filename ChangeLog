@@ -1,4 +1,4 @@
-2024.06.1  08.06.2024
+2024.06.1  18.06.2024
 =====================
 - Add support for audio transcription using OpenAI Whisper https://openai.com/index/whisper/ [VS-1603]
 - Add support to change country assignment for existing CDR [VS-1130]
@@ -17,6 +17,8 @@
 - Fix false seq rotation credit if disable_rtp_seq_probation is enabled
 - Fix writing MOS charts if jitterbuffer configuration options are set to 'null'
 - Anonymization fix (TCP/UDP protocol detection was inconsistent) [VG-2816]
+- fix saving values for rrd graph 'sql cache files' in server/client mode on client sid
+- add custom headers into send call information [VG-2108]
 
 
 2024.05.2  04.05.2024
