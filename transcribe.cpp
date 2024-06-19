@@ -933,7 +933,7 @@ void Transcribe::saveProgress(sTranscribeWavChannelParams *params, int64_t t0, i
 				"%s\n",
 				params->process_channel_i + 1,
 				t0, t1,
-				t1 * 10 / (params->data_wav_samples / 16000. / params->channels * 1000),
+				min(100., t1 * 10 / (params->data_wav_samples / 16000. / params->channels * 1000)),
 				text);
 		} else {
 			fprintf(file, 
