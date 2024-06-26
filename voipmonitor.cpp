@@ -1337,6 +1337,7 @@ char opt_save_query_to_files_directory[1024];
 int opt_save_query_to_files_period;
 int opt_query_cache_speed;
 int opt_query_cache_check_utf;
+int opt_query_cache_max_mb_utf = 0;
 
 int opt_load_query_main_from_files = 1;
 int opt_load_query_charts_from_files = 1;
@@ -6119,6 +6120,7 @@ void cConfig::addConfigItems() {
 					->setDefaultValueStr("no"));
 				addConfigItem(new FILE_LINE(42079) cConfigItem_yesno("query_cache_speed", &opt_query_cache_speed));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("query_cache_check_utf", &opt_query_cache_check_utf));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("query_cache_max_mb_utf", &opt_query_cache_max_mb_utf));
 			normal();
 			addConfigItem((new FILE_LINE(42080) cConfigItem_yesno("utc", &opt_sql_time_utc))
 				->addAlias("sql_time_utc"));

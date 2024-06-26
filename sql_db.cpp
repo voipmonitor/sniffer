@@ -4591,10 +4591,13 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 					cout << " ** send query id: " << id_main << " to thread: " << id_main << "_" << id_2 << " / " << getSize(id_main, id_2) << endl;
 				}*/
 				extern int opt_query_cache_check_utf;
-				if(opt_query_cache_check_utf) {
+				extern int opt_query_cache_max_mb_utf;
+				if(opt_query_cache_check_utf || opt_query_cache_max_mb_utf) {
 					extern cUtfConverter utfConverter;
-					if(!utfConverter.check(query.c_str())) {
-						utfConverter._remove_no_ascii(query.c_str());
+					if(!utfConverter.check2(query.c_str())) {
+						query = utfConverter.replace_exceeding_utf8_mb(query.c_str(), 1);
+					} else if(opt_query_cache_max_mb_utf && utfConverter.get_max_mb(query.c_str()) > opt_query_cache_max_mb_utf) {
+						query = utfConverter.replace_exceeding_utf8_mb(query.c_str(), opt_query_cache_max_mb_utf);
 					}
 				}
 				query_lock(query.c_str(), id_main, id_2);

@@ -994,10 +994,14 @@ public:
 	cUtfConverter();
 	~cUtfConverter();
 	bool check(const char *str);
+	bool check2(const char *str);
 	string reverse(const char *str);
 	bool is_ascii(const char *str);
 	string remove_no_ascii(const char *str, const char subst = '_');
 	void _remove_no_ascii(const char *str, const char subst = '_');
+	int get_max_mb(const char *str);
+	void _replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst = '_');
+	string replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst = '_');
 private:
 	bool init();
 	void term();

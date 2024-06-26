@@ -6,6 +6,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/resource.h>
+#include <unicode/utf8.h>
+#include <unicode/ustring.h>
 
 #include "tools_global.h"
 
@@ -2175,6 +2177,16 @@ bool cUtfConverter::check(const char *str) {
 	return(okUtf);
 }
 
+
+bool cUtfConverter::check2(const char *str) {
+	if(!str || !*str || is_ascii(str)) {
+		return(true);
+	}
+	UErrorCode status = U_ZERO_ERROR;
+	u_strFromUTF8(NULL, 0, NULL, str, -1, &status);
+	return(status == U_BUFFER_OVERFLOW_ERROR);
+}
+
 string cUtfConverter::reverse(const char *str) {
 	if(!str || !*str) {
 		return("");
@@ -2257,6 +2269,108 @@ void cUtfConverter::_remove_no_ascii(const char *str, const char subst) {
 		}
 		++str;
 	}
+}
+
+int cUtfConverter::get_max_mb(const char *str) {
+	unsigned max_mb = 0;
+	unsigned char *p = (unsigned char *)str;
+	while(*p) {
+	       if(*p < 0x80) {
+			// 1 byte (ASCII)
+			if(max_mb < 1) max_mb = 1;
+			p++;
+		} else if((*p & 0xe0) == 0xc0) {
+			// 2 bytes
+			if((*(p + 1) & 0xc0) != 0x80) return(-1);
+			if(max_mb < 2) max_mb = 2;
+			p += 2;
+		} else if ((*p & 0xf0) == 0xe0) {
+			// 3 bytes
+			if((*(p + 1) & 0xc0) != 0x80 || 
+			   (*(p + 2) & 0xc0) != 0x80) return (-1);
+			if(max_mb < 3) max_mb = 3;
+			p += 3;
+		} else if ((*p & 0xf8) == 0xf0) {
+			// 4 bytes
+			if((*(p + 1) & 0xc0) != 0x80 || 
+			   (*(p + 2) & 0xc0) != 0x80 ||
+			   (*(p + 3) & 0xc0) != 0x80) return (-1);
+			if(max_mb < 4) max_mb = 4;
+			p += 4;
+		} else {
+			// Invalid UTF-8 sequence
+			return(-1);
+		}
+	}
+	return(max_mb);
+}
+
+void cUtfConverter::_replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst) {
+	unsigned char *p = (unsigned char *)str;
+	unsigned char *output = p;
+	while(*p) {
+		if(*p < 0x80) {
+			// 1 byte (ASCII)
+			if(max_mb < 1) {
+				*output++ = subst;
+			} else {
+				*output++ = *p;
+			}
+			p++;
+		} else if((*p & 0xe0) == 0xc0) {
+			// 2 bytes
+			if(max_mb < 2 ||
+			   (*(p + 1) & 0xc0) != 0x80) {
+				*output++ = subst;
+			} else {
+				*output++ = *p;
+				*output++ = *(p + 1);
+			}
+			for(unsigned i = 0; *p && i < 2; i++) p++;
+		} else if ((*p & 0xf0) == 0xe0) {
+			// 3 bytes
+			if(max_mb < 3 ||
+			   (*(p + 1) & 0xc0) != 0x80 || 
+			   (*(p + 2) & 0xc0) != 0x80) {
+				*output++ = subst;
+			} else {
+				*output++ = *p;
+				*output++ = *(p + 1);
+				*output++ = *(p + 2);
+			}
+			for(unsigned i = 0; *p && i < 3; i++) p++;
+		} else if ((*p & 0xf8) == 0xf0) {
+			// 4 bytes
+			if(max_mb < 4 ||
+			   (*(p + 1) & 0xc0) != 0x80 || 
+			   (*(p + 2) & 0xc0) != 0x80 ||
+			   (*(p + 3) & 0xc0) != 0x80) {
+				*output++ = subst;
+			} else {
+				*output++ = *p;
+				*output++ = *(p + 1);
+				*output++ = *(p + 2);
+				*output++ = *(p + 3);
+			}
+			for(unsigned i = 0; *p && i < 4; i++) p++;
+		} else {
+			*output++ = '_';
+			p++;
+		}
+	}
+	*output = '\0';
+}
+
+string cUtfConverter::replace_exceeding_utf8_mb(const char *str, unsigned max_mb, const char subst) {
+	if(!str || !*str) {
+		return("");
+	}
+	char *str_new = new FILE_LINE(0) char[strlen(str) + 1];
+	strcpy(str_new, str);
+	_replace_exceeding_utf8_mb(str_new, max_mb, subst);
+	string str_rslt = str_new;
+	delete [] str_new;
+	return(str_rslt);
 }
 
 bool cUtfConverter::init() {
