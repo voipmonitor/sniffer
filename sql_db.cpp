@@ -2139,8 +2139,11 @@ bool SqlDb_mysql::createRoutine(string routine, string routineName, string routi
 		syslog(LOG_NOTICE, "%s %s %s", diff ? "update" : "create",(routineType == procedure ? "procedure" : "function"), routineName.c_str());
 		this->query(string("drop ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") +
 			    " if exists " + routineName);
+		extern bool opt_mysql_security_invoker_routines;
 		bool rslt = this->query(string("create ") + (routineType == procedure ? "PROCEDURE" : "FUNCTION") + " " +
-					routineName + routineParamsAndReturn + " " + routine);
+					routineName + routineParamsAndReturn + 
+					(opt_mysql_security_invoker_routines ? " SQL SECURITY INVOKER " : " ") + 
+					routine);
 		if(!rslt && abortIfFailed) {
 			string errorString1 = string("create routine ") + routineName + " failed";
 			string errorString2 = "tip: SET GLOBAL log_bin_trust_function_creators = 1  or put it in my.cnf configuration or grant SUPER privileges to your voipmonitor mysql user.";
