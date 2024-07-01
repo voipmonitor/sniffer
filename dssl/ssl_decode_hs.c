@@ -99,7 +99,7 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 	
 	if( !sess->ssl_si->pkeys && sess->get_keys_fce )
 	{
-		sess->get_keys_fce(sess->client_random, &sess->get_keys_rslt_data, sess);
+		sess->get_keys_fce(sess->client_random, NULL, 0, &sess->get_keys_rslt_data, sess);
 		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && isSetKey(&sess->get_keys_rslt_data.client_random)) 
 		{
 			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random.key, sess->get_keys_rslt_data.client_random.length);
@@ -180,6 +180,17 @@ static int ssl3_decode_client_hello( DSSL_Session* sess, u_char* data, uint32_t 
 		data += ext_len + 4;
 		if(data > org_data + len) return NM_ERROR(DSSL_E_SSL_INVALID_RECORD_LENGTH);
 		t_len -= ext_len + 4;
+	}
+	
+	if( !sess->get_keys_rslt_data.set && 
+	    !sess->ssl_si->pkeys && sess->get_keys_fce && 
+	    sess->session_ticket && sess->session_ticket_len)
+	{
+		sess->get_keys_fce(NULL, sess->session_ticket, sess->session_ticket_len, &sess->get_keys_rslt_data, sess);
+		if(sess->get_keys_rslt_data.set && sess->version != TLS1_3_VERSION && isSetKey(&sess->get_keys_rslt_data.client_random)) 
+		{
+			memcpy(sess->master_secret, sess->get_keys_rslt_data.client_random.key, sess->get_keys_rslt_data.client_random.length);
+		}
 	}
 
 	return DSSL_RC_OK;

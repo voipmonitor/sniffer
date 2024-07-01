@@ -45,6 +45,7 @@ cSslDsslSession::cSslDsslSession(vmIP ips, vmPort ports, string keyfile, string 
 	process_error = false;
 	process_error_code = 0;
 	get_keys_ok = false;
+	key_items = NULL;
 	stored_at = 0;
 	restored = false;
 	lastTimeSyslog = 0;
@@ -69,6 +70,10 @@ void cSslDsslSession::init() {
 void cSslDsslSession::term() {
 	termSession();
 	termServer();
+	if(key_items) {
+		delete (cSslDsslSessionKeys::cSslDsslSessionKeyItems*)key_items;
+		key_items = NULL;
+	}
 }
 
 bool cSslDsslSession::initServer() {
@@ -180,7 +185,7 @@ void cSslDsslSession::termSession() {
 
 void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
 				  vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
-				  struct timeval ts, bool init, class cSslDsslSessions *sessions,
+				  timeval ts, bool init, class cSslDsslSessions *sessions,
 				  bool forceTryIfExistsError) {
 	rslt_decrypt->clear();
 	if(!session) {
@@ -222,6 +227,22 @@ void cSslDsslSession::processData(vector<string> *rslt_decrypt, char *data, unsi
 				break;
 			}
 		}
+		if(this->get_keys_ok && !this->process_data_counter) {
+			uint8_t record_type = data[0];
+			uint16_t record_len = ntohs(*(uint16_t*)(data + 3));
+		        if(record_type == 22 && record_len + 5u == datalen) {
+				uint8_t handshake_type = data[5];
+				uint16_t handshake_len = ntohs(*(uint16_t*)(data + 7));
+				if(handshake_type == 4 && handshake_len + 9u == datalen) {
+					u_char *session_ticket_data = (u_char*)data + 9;
+					u_int16_t session_ticket_data_len = datalen - 9;
+					if(key_items) {
+						SslDsslSessions->setKeysToTicket(session_ticket_data, session_ticket_data_len, ts.tv_sec,
+										 (cSslDsslSessionKeys::cSslDsslSessionKeyItems*)key_items);
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -236,6 +257,13 @@ bool cSslDsslSession::isClientHello(char *data, unsigned int datalen, NM_PacketD
 		NM_ERROR_ENABLE_LOG;
 	}
 	return(isClientHello);
+}
+
+void cSslDsslSession::setKeyItems(void *key_items) {
+	if(this->key_items) {
+		delete (cSslDsslSessionKeys::cSslDsslSessionKeyItems*)this->key_items;
+	}
+	this->key_items = key_items;
 }
 
 NM_PacketDir cSslDsslSession::getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
@@ -276,15 +304,26 @@ int cSslDsslSession::password_calback_direct(char *buf, int size, int /*rwflag*/
 	return(length);
 }
 
-int cSslDsslSession::get_keys(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session) {
-	if(((cSslDsslSessions*)session->get_keys_fce_call_data[1])->keysGet(client_random, get_keys_data, session->last_packet->pcap_header.ts)) {
+int cSslDsslSession::get_keys(u_char *client_random, u_char *ticket, u_int32_t ticket_len,
+			      DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session) {
+	cSslDsslSessionKeys::cSslDsslSessionKeyItems *key_items_clone = NULL;
+	if(((cSslDsslSessions*)session->get_keys_fce_call_data[1])->keysGet(client_random, ticket, ticket_len, 
+									    get_keys_data, session->last_packet->pcap_header.ts, true,
+									    &key_items_clone)) {
 		((cSslDsslSession*)session->get_keys_fce_call_data[0])->get_keys_ok = true;
+		if(key_items_clone) {
+			((cSslDsslSession*)session->get_keys_fce_call_data[0])->setKeyItems(key_items_clone);
+		}
 		return(1);
+	} else {
+		if(key_items_clone) {
+			delete key_items_clone;
+		}
 	}
 	return(0);
 }
 
-string cSslDsslSession::get_session_data(struct timeval ts) {
+string cSslDsslSession::get_session_data(timeval ts) {
 	JsonExport json;
 	json.add("version", session->version);
 	json.add("cipher_suite", session->cipher_suite);
@@ -373,7 +412,7 @@ bool cSslDsslSession::restore_session_data(const char *data) {
 	return(false);
 }
 
-void cSslDsslSession::store_session(cSslDsslSessions *sessions, struct timeval ts, bool force) {
+void cSslDsslSession::store_session(cSslDsslSessions *sessions, timeval ts, bool force) {
 	if(opt_ssl_store_sessions && !opt_nocdr && sessions->exists_sessions_table &&
 	   this->process_data_counter > 0 &&
 	   this->session->c_dec.version && this->session->s_dec.version &&
@@ -410,12 +449,83 @@ cSslDsslSessionKeys::cSslDsslSessionKeyIndex::cSslDsslSessionKeyIndex(u_char *cl
 	}
 }
 
+cSslDsslSessionKeys::cSslDsslSessionKeyItem::cSslDsslSessionKeyItem(cSslDsslSessionKeyItem *orig) {
+	memcpy(this->key, orig->key, orig->key_length);
+	this->key_length = orig->key_length;
+	set_at = orig->set_at;
+}
+
 cSslDsslSessionKeys::cSslDsslSessionKeyItem::cSslDsslSessionKeyItem(u_char *key, unsigned key_length) {
 	if(key) {
 		memcpy(this->key, key, key_length);
 		this->key_length = key_length;
 		set_at = getTimeS();
 	}
+}
+
+void cSslDsslSessionKeys::cSslDsslSessionKeyItems::clear() {
+	for(map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter = keys.begin(); iter != keys.end(); iter++) {
+		if(iter->second) {
+			delete iter->second;
+			iter->second = NULL;
+		}
+	}
+}
+
+cSslDsslSessionKeys::cSslDsslSessionKeyItems *cSslDsslSessionKeys::cSslDsslSessionKeyItems::clone() {
+	cSslDsslSessionKeyItems *clone = new FILE_LINE(0) cSslDsslSessionKeyItems;
+	for(map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter = keys.begin(); iter != keys.end(); iter++) {
+		if(iter->second) {
+			clone->keys[iter->first] = new FILE_LINE(0) cSslDsslSessionKeyItem(iter->second);
+		}
+	}
+	return(clone);
+}
+
+cSslDsslSessionKeys::cSslDsslSessionTicket::cSslDsslSessionTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, bool ticket_only) {
+	init();
+	if(ticket_data && ticket_data_len) {
+		if(ticket_only) {
+			ticket_len = ticket_data_len;
+			ticket = new FILE_LINE(0) u_char[ticket_len];
+			memcpy(ticket, ticket_data, ticket_len);
+		} else {
+			ticket_len = ntohs(*(u_int16_t*)(ticket_data + 4));
+			if(ticket_len == ticket_data_len - 6) {
+				lifetime = ntohl(*(u_int32_t*)ticket_data);
+				ticket = new FILE_LINE(0) u_char[ticket_len];
+				memcpy(ticket, ticket_data + 6, ticket_len);
+			} else {
+				ticket_len = 0;
+			}
+			set_at = ts_s;
+		}
+	}
+}
+
+void cSslDsslSessionKeys::cSslDsslSessionTicket::clone(const cSslDsslSessionTicket& orig) {
+	destroy();
+	if(orig.ticket && orig.ticket_len) {
+		this->ticket = new FILE_LINE(0) u_char[orig.ticket_len];
+		memcpy(this->ticket, orig.ticket, orig.ticket_len);
+		this->ticket_len = orig.ticket_len;
+	}
+	this->lifetime = orig.lifetime;
+	this->set_at = orig.set_at;
+}
+
+void cSslDsslSessionKeys::cSslDsslSessionTicket::destroy() {
+	if(ticket) {
+		delete [] ticket;
+	}
+	init();
+}
+
+void cSslDsslSessionKeys::cSslDsslSessionTicket::init() {
+	ticket = NULL;
+	ticket_len = 0;
+	lifetime = 0;
+	set_at = 0;
 }
 
 cSslDsslSessionKeys::sSessionKeyType cSslDsslSessionKeys::session_key_types[] = {
@@ -429,7 +539,8 @@ cSslDsslSessionKeys::sSessionKeyType cSslDsslSessionKeys::session_key_types[] = 
 };
 
 cSslDsslSessionKeys::cSslDsslSessionKeys() {
-	_sync_map = 0;
+	_sync_map_keys = 0;
+	_sync_map_tickets = 0;
 	last_cleanup_at = 0;
 	for(unsigned i = 0; session_key_types[i].str; i++) {
 		session_key_types[i].length = strlen(session_key_types[i].str);
@@ -451,15 +562,18 @@ void cSslDsslSessionKeys::set(const char *type, u_char *client_random, u_char *k
 void cSslDsslSessionKeys::set(eSessionKeyType type, u_char *client_random, u_char *key, unsigned key_length) {
 	cSslDsslSessionKeyIndex index(client_random);
 	cSslDsslSessionKeyItem *item = new FILE_LINE(0) cSslDsslSessionKeyItem(key, key_length);
-	lock_map();
-	if(keys[index][type]) {
-		delete keys[index][type];
+	lock_map_keys();
+	if(keys.find(index) == keys.end()) {
+		keys[index] = new FILE_LINE(0) cSslDsslSessionKeyItems;
 	}
-	keys[index][type] = item;
-	unlock_map();
+	if(keys[index]->keys[type]) {
+		delete keys[index]->keys[type];
+	}
+	keys[index]->keys[type] = item;
+	unlock_map_keys();
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, timeval ts, bool use_wait) {
 	extern int opt_disable_wait_for_ssl_key;
 	if(opt_disable_wait_for_ssl_key && use_wait) {
 		use_wait = false;
@@ -483,17 +597,17 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 		}
 	}
 	do {
-		lock_map();
-		map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> >::iterator iter1 = keys.find(index);
+		lock_map_keys();
+		map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*>::iterator iter1 = keys.find(index);
 		if(iter1 != keys.end()) {
-			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2 = iter1->second.find(type);
-			if(iter2 != iter1->second.end()) {
+			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2 = iter1->second->keys.find(type);
+			if(iter2 != iter1->second->keys.end()) {
 				memcpy(key, iter2->second->key, iter2->second->key_length);
 				*key_length = iter2->second->key_length;
 				rslt = true;
 			}
 		}
-		unlock_map();
+		unlock_map_keys();
 		if(!rslt) {
 			if(waitUS >= 0 && waitUS < ssl_client_random_maxwait_ms * 1000ll) {
 				USLEEP(1000);
@@ -516,25 +630,40 @@ bool cSslDsslSessionKeys::get(u_char *client_random, eSessionKeyType type, u_cha
 	return(rslt);
 }
 
-bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait) {
+bool cSslDsslSessionKeys::get(u_char *client_random, u_char *ticket, u_int32_t ticket_len, 
+			      DSSL_Session_get_keys_data *keys, timeval ts, bool use_wait,
+			      cSslDsslSessionKeyItems **key_items_clone) {
+	/*
+	static u_char _client_random[SSL3_RANDOM_SIZE];
+	if(!_client_random[0]) {
+		mempcpy(_client_random, client_random, SSL3_RANDOM_SIZE);
+	} else {
+		client_random = _client_random;
+	}
+	*/
 	extern int opt_disable_wait_for_ssl_key;
 	if(opt_disable_wait_for_ssl_key && use_wait) {
 		use_wait = false;
 	}
 	string log_ssl_sessionkey;
 	if(ssl_sessionkey_enable()) {
-		log_ssl_sessionkey = 
-			string("find clientrandom for all type ") +
-			"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
+		if(client_random) {
+			log_ssl_sessionkey = 
+				string("find clientrandom for all type ") +
+				"; clientrandom: " + hexdump_to_string(client_random, SSL3_RANDOM_SIZE);
+		} else {
+			log_ssl_sessionkey = 
+				string("find ticket for all type ") +
+				"; ticket: " + hexdump_to_string(ticket, min(ticket_len, 50u)) + (ticket_len > 50 ? "..." : "");
+		}
 	}
-	if(sverb.ssl_stats) {
+	if(sverb.ssl_stats && client_random) {
 		stats.delay_keys_get_begin.add_delay_from_act(getTimeUS(ts));
 	}
 	bool rslt = false;
-	cSslDsslSessionKeyIndex index(client_random);
 	int64_t waitUS = -1;
 	extern int ssl_client_random_maxwait_ms;
-	if(ssl_client_random_maxwait_ms > 0 && use_wait) {
+	if(ssl_client_random_maxwait_ms > 0 && use_wait && client_random) {
 		extern PcapQueue_readFromFifo *pcapQueueQ;
 		if(pcapQueueQ) {
 			u_int64_t pcapQueueQ_lastUS = pcapQueueQ->getLastUS();
@@ -543,13 +672,28 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 		}
 	}
 	do {
-		lock_map();
-		map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> >::iterator iter1 = this->keys.find(index);
-		if(iter1 != this->keys.end() && iter1->second.size()) {
-			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2;
-			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); iter2++) {
+		cSslDsslSessionKeyItems *key_items = NULL;
+		if(client_random) {
+			lock_map_keys();
+			cSslDsslSessionKeyIndex index(client_random);
+			map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*>::iterator iter = this->keys.find(index);
+			if(iter != this->keys.end() && iter->second->keys.size()) {
+				key_items = iter->second;
+			}
+		} else {
+			lock_map_tickets();
+			cSslDsslSessionTicket index(ticket, ticket_len, 0, true);
+			map<cSslDsslSessionTicket, cSslDsslSessionKeyItems*>::iterator iter = this->tickets.find(index);
+			if(iter != this->tickets.end() && iter->second->keys.size() &&
+			   ts.tv_sec < iter->first.set_at + iter->first.lifetime) {
+				key_items = iter->second;
+			}
+		}
+		if(key_items) {
+			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter;
+			for(iter = key_items->keys.begin(); iter != key_items->keys.end(); iter++) {
 				DSSL_Session_get_keys_data_item *key_dst = NULL;
-				switch(iter2->first) {
+				switch(iter->first) {
 				case _skt_client_random:
 					key_dst = &keys->client_random;
 					break;
@@ -572,19 +716,26 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 					break;
 				}
 				if(key_dst) {
-					memcpy(key_dst->key, iter2->second->key, iter2->second->key_length);
-					key_dst->length = iter2->second->key_length;
+					memcpy(key_dst->key, iter->second->key, iter->second->key_length);
+					key_dst->length = iter->second->key_length;
 				}
 			}
 			if(isSetKey(&keys->client_random) ||
 			   (isSetKey(&keys->client_traffic_secret_0) && isSetKey(&keys->server_traffic_secret_0))) {
 				rslt =true;
 				keys->set = true;
+				if(key_items_clone) {
+					*key_items_clone = key_items->clone();
+				}
 			}
 		}
-		unlock_map();
+		if(client_random) {
+			unlock_map_keys();
+		} else {
+			unlock_map_tickets();
+		}
 		if(!rslt) {
-			if(waitUS >= 0 && waitUS < ssl_client_random_maxwait_ms * 1000ll) {
+			if(waitUS >= 0 && waitUS < ssl_client_random_maxwait_ms * 1000ll && client_random) {
 				USLEEP(1000);
 				waitUS += 1000;
 			} else {
@@ -602,7 +753,7 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 		}
 		ssl_sessionkey_log(log_ssl_sessionkey);
 	}
-	if(sverb.ssl_stats) {
+	if(sverb.ssl_stats && client_random) {
 		stats.delay_keys_get_end.add_delay_from_act(getTimeUS(ts));
 	}
 	return(rslt);
@@ -610,53 +761,64 @@ bool cSslDsslSessionKeys::get(u_char *client_random, DSSL_Session_get_keys_data 
 
 void cSslDsslSessionKeys::erase(u_char *client_random) {
 	cSslDsslSessionKeyIndex index(client_random);
-	lock_map();
-	map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> >::iterator iter1 = keys.find(index);
-	if(iter1 != keys.end()) {
-		map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2;
-		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); iter2++) {
-			delete iter2->second;
-		}
-		keys.erase(iter1);
+	lock_map_keys();
+	map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*>::iterator iter = keys.find(index);
+	if(iter != keys.end()) {
+		delete iter->second;
+		keys.erase(iter);
 	}
-	unlock_map();
+	unlock_map_keys();
 }
 
 void cSslDsslSessionKeys::cleanup() {
 	u_int32_t now = getTimeS();
 	if(!last_cleanup_at || last_cleanup_at + 600 < now) {
-		lock_map();
-		for(map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> >::iterator iter1 = keys.begin(); iter1 != keys.end();) {
+		lock_map_keys();
+		for(map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*>::iterator iter1 = keys.begin(); iter1 != keys.end();) {
 			map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2;
-			for(iter2 = iter1->second.begin(); iter2 != iter1->second.end();) {
+			for(iter2 = iter1->second->keys.begin(); iter2 != iter1->second->keys.end();) {
 				if(iter2->second->set_at + 3600 < now) {
 					delete iter2->second;
-					iter1->second.erase(iter2++);
+					iter1->second->keys.erase(iter2++);
 				} else {
 					iter2++;
 				}
 			}
-			if(!iter1->second.size()) {
+			if(!iter1->second->keys.size()) {
+				delete iter1->second;
 				keys.erase(iter1++);
 			} else {
 				iter1++;
 			}
 		}
-		unlock_map();
+		unlock_map_keys();
+		lock_map_tickets();
+		for(map<cSslDsslSessionTicket, cSslDsslSessionKeyItems*>::iterator iter1 = tickets.begin(); iter1 != tickets.end();) {
+			if(iter1->first.set_at + iter1->first.lifetime + 600 < now) {
+				delete iter1->second;
+				tickets.erase(iter1++);
+			} else {
+				iter1++;
+			}
+		}
+		unlock_map_tickets();
 		last_cleanup_at = now;
 	}
 }
 
 void cSslDsslSessionKeys::clear() {
-	lock_map();
-	for(map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> >::iterator iter1 = keys.begin(); iter1 != keys.end(); iter1++) {
-		map<eSessionKeyType, cSslDsslSessionKeyItem*>::iterator iter2;
-		for(iter2 = iter1->second.begin(); iter2 != iter1->second.end(); iter2++) {
-			delete iter2->second;
-		}
+	lock_map_keys();
+	for(map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*>::iterator iter = keys.begin(); iter != keys.end(); iter++) {
+		delete iter->second;
 	}
 	keys.clear();
-	unlock_map();
+	unlock_map_keys();
+	lock_map_tickets();
+	for(map<cSslDsslSessionTicket, cSslDsslSessionKeyItems*>::iterator iter = tickets.begin(); iter != tickets.end(); iter++) {
+		delete iter->second;
+	}
+	tickets.clear();
+	unlock_map_tickets();
 }
 
 cSslDsslSessionKeys::eSessionKeyType cSslDsslSessionKeys::strToEnumType(const char *type) {
@@ -677,6 +839,20 @@ const char *cSslDsslSessionKeys::enumToStrType(eSessionKeyType type) {
 	return("");
 }
 
+void cSslDsslSessionKeys::setKeysToTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, cSslDsslSessionKeyItems *key_items) {
+	if(!ticket_data || !ticket_data_len || !key_items) {
+		return;
+	}
+	cSslDsslSessionTicket ticket(ticket_data, ticket_data_len, ts_s, false);
+	if(ticket.ticket) {
+		lock_map_tickets();
+		if(tickets.find(ticket) != tickets.end() && tickets[ticket]) {
+			delete tickets[ticket];
+		}
+		tickets[ticket] = key_items->clone();
+		unlock_map_tickets();
+	}
+}
 
 cSslDsslSessions::cSslDsslSessions() {
 	_sync_sessions = 0;
@@ -695,7 +871,7 @@ cSslDsslSessions::~cSslDsslSessions() {
 	term();
 }
 
-void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+void cSslDsslSessions::processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, timeval ts,
 				   bool forceTryIfExistsError) {
 	/*
 	if(!(sport == 50404 || dport == 50404)) {
@@ -882,12 +1058,14 @@ void cSslDsslSessions::keySet(const char *type, u_char *client_random, u_char *k
 	this->session_keys.set(type, client_random, key, key_length);
 }
 
-bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait) {
+bool cSslDsslSessions::keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, timeval ts, bool use_wait) {
 	return(this->session_keys.get(client_random, type, key, key_length, ts, use_wait));
 }
 
-bool cSslDsslSessions::keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait) {
-	return(this->session_keys.get(client_random, get_keys_data, ts, use_wait));
+bool cSslDsslSessions::keysGet(u_char *client_random, u_char *ticket, u_int32_t ticket_len,
+			       DSSL_Session_get_keys_data *get_keys_data, timeval ts, bool use_wait,
+			       cSslDsslSessionKeys::cSslDsslSessionKeyItems **key_items_clone) {
+	return(this->session_keys.get(client_random, ticket, ticket_len, get_keys_data, ts, use_wait, key_items_clone));
 }
 
 void cSslDsslSessions::keyErase(u_char *client_random) {
@@ -899,6 +1077,10 @@ void cSslDsslSessions::keyErase(u_char *client_random) {
 
 void cSslDsslSessions::keysCleanup() {
 	this->session_keys.cleanup();
+}
+
+void cSslDsslSessions::setKeysToTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, cSslDsslSessionKeys::cSslDsslSessionKeyItems *key_items) {
+	this->session_keys.setKeysToTicket(ticket_data, ticket_data_len, ts_s, key_items);
 }
 
 void cSslDsslSessions::storeSessions() {
@@ -975,7 +1157,7 @@ void cSslDsslSessions::loadSessions() {
 	}
 }
 
-void cSslDsslSessions::deleteOldSessions(struct timeval ts) {
+void cSslDsslSessions::deleteOldSessions(timeval ts) {
 	if(!opt_ssl_store_sessions || opt_nocdr || !exists_sessions_table) {
 		return;
 	}
@@ -1114,7 +1296,7 @@ void ssl_dssl_clean() {
 }
 
 
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, timeval ts,
 		      bool forceTryIfExistsError) {
 	#if defined(HAVE_OPENSSL101) and defined(HAVE_LIBGNUTLS)
 	SslDsslSessions->processData(rslt_decrypt, data, datalen, saddr, daddr, sport, dport, ts,

@@ -52,18 +52,20 @@ public:
 	void termSession();
 	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, 
 			 vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, 
-			 struct timeval ts, bool init, class cSslDsslSessions *sessions,
+			 timeval ts, bool init, class cSslDsslSessions *sessions,
 			 bool forceTryIfExistsError = false);
 	bool isClientHello(char *data, unsigned int datalen, NM_PacketDir dir);
+	void setKeyItems(void *key_items);
 private:
 	NM_PacketDir getDirection(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 	static void dataCallback(NM_PacketDir dir, void* user_data, u_char* data, uint32_t len, DSSL_Pkt* pkt);
 	static void errorCallback(void* user_data, int error_code);
 	static int password_calback_direct(char *buf, int size, int rwflag, void *userdata);
-	static int get_keys(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
-	string get_session_data(struct timeval ts);
+	static int get_keys(u_char *client_random, u_char *ticket, u_int32_t ticket_len, 
+			    DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
+	string get_session_data(timeval ts);
 	bool restore_session_data(const char *data);
-	void store_session(class cSslDsslSessions *sessions, struct timeval ts, bool force = false);
+	void store_session(class cSslDsslSessions *sessions, timeval ts, bool force = false);
 private:
 	vmIP ips;
 	vmPort ports;
@@ -80,6 +82,7 @@ private:
 	int process_error_code;
 	vector<string> *decrypted_data;
 	bool get_keys_ok;
+	void *key_items;
 	u_long stored_at;
 	bool restored;
 	u_int64_t lastTimeSyslog;
@@ -117,10 +120,53 @@ public:
 	};
 	class cSslDsslSessionKeyItem {
 	public:
+		cSslDsslSessionKeyItem(cSslDsslSessionKeyItem *orig);
 		cSslDsslSessionKeyItem(u_char *key = NULL, unsigned key_length = 0);
 	public:
 		u_char key[SSL3_MASTER_SECRET_SIZE];
 		unsigned key_length;
+		u_int32_t set_at;
+	};
+	class cSslDsslSessionKeyItems {
+	public:
+		~cSslDsslSessionKeyItems() {
+			clear();
+		}
+		void clear();
+		cSslDsslSessionKeyItems *clone();
+	public:
+		map<eSessionKeyType, cSslDsslSessionKeyItem*> keys;
+	};
+	class cSslDsslSessionTicket {
+	public:
+		cSslDsslSessionTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, bool ticket_only);
+		cSslDsslSessionTicket(const cSslDsslSessionTicket& orig) {
+			init();
+			clone(orig);
+		}
+		~cSslDsslSessionTicket() {
+			destroy();
+		}
+		cSslDsslSessionTicket& operator = (const cSslDsslSessionTicket& orig) {
+			clone(orig);
+			return(*this);
+		}
+		bool operator == (const cSslDsslSessionTicket& other) const { 
+			return(this->ticket_len == other.ticket_len &&
+			       !memcmp(this->ticket, other.ticket, this->ticket_len)); 
+		}
+		bool operator < (const cSslDsslSessionTicket& other) const { 
+			return(this->ticket_len != other.ticket_len ?
+				this->ticket_len < other.ticket_len :
+				memcmp(this->ticket, other.ticket, this->ticket_len) < 0); 
+		}
+		void clone(const cSslDsslSessionTicket& orig);
+		void destroy();
+		void init();
+	public:
+		u_char *ticket;
+		u_int32_t ticket_len;
+		u_int32_t lifetime;
 		u_int32_t set_at;
 	};
 public:
@@ -128,23 +174,34 @@ public:
 	~cSslDsslSessionKeys();
 	void set(const char *type, u_char *client_random, u_char *key, unsigned key_length);
 	void set(eSessionKeyType type, u_char *client_random, u_char *key, unsigned key_length);
-	bool get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait = true);
-	bool get(u_char *client_random, DSSL_Session_get_keys_data *keys, struct timeval ts, bool use_wait = true);
+	bool get(u_char *client_random, eSessionKeyType type, u_char *key, unsigned *key_length, timeval ts, bool use_wait = true);
+	bool get(u_char *client_random, u_char *ticket, u_int32_t ticket_len,
+		 DSSL_Session_get_keys_data *keys, timeval ts, bool use_wait,
+		 cSslDsslSessionKeyItems **key_items_clone);
 	void erase(u_char *client_random);
 	void cleanup();
 	void clear();
 	eSessionKeyType strToEnumType(const char *type);
 	const char *enumToStrType(eSessionKeyType type);
+	void setKeysToTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, cSslDsslSessionKeyItems *key_items);
 private:
-	void lock_map() {
-		__SYNC_LOCK(this->_sync_map);
+	void lock_map_keys() {
+		__SYNC_LOCK(this->_sync_map_keys);
 	}
-	void unlock_map() {
-		__SYNC_UNLOCK(this->_sync_map);
+	void unlock_map_keys() {
+		__SYNC_UNLOCK(this->_sync_map_keys);
+	}
+	void lock_map_tickets() {
+		__SYNC_LOCK(this->_sync_map_tickets);
+	}
+	void unlock_map_tickets() {
+		__SYNC_UNLOCK(this->_sync_map_tickets);
 	}
 private:
-	map<cSslDsslSessionKeyIndex, map<eSessionKeyType, cSslDsslSessionKeyItem*> > keys;
-	volatile int _sync_map;
+	map<cSslDsslSessionKeyIndex, cSslDsslSessionKeyItems*> keys;
+	map<cSslDsslSessionTicket, cSslDsslSessionKeyItems*> tickets;
+	volatile int _sync_map_keys;
+	volatile int _sync_map_tickets;
 	u_int32_t last_cleanup_at;
 public:
 	static sSessionKeyType session_key_types[];
@@ -159,16 +216,19 @@ public:
 	cSslDsslSessions();
 	~cSslDsslSessions();
 public:
-	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+	void processData(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, timeval ts,
 			 bool forceTryIfExistsError = false);
 	void destroySession(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 	bool keySet(const char *data, unsigned data_length);
 	bool keySet(const char *type, const char *client_random, const char *key);
 	void keySet(const char *type, u_char *client_random, u_char *key, unsigned key_length);
-	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, struct timeval ts, bool use_wait = true);
-	bool keysGet(u_char *client_random, DSSL_Session_get_keys_data *get_keys_data, struct timeval ts, bool use_wait = true);
+	bool keyGet(u_char *client_random, cSslDsslSessionKeys::eSessionKeyType type, u_char *key, unsigned *key_length, timeval ts, bool use_wait = true);
+	bool keysGet(u_char *client_random, u_char *ticket, u_int32_t ticket_len, 
+		     DSSL_Session_get_keys_data *get_keys_data, timeval ts, bool use_wait,
+		     cSslDsslSessionKeys::cSslDsslSessionKeyItems **key_items_clone);
 	void keyErase(u_char *client_random);
 	void keysCleanup();
+	void setKeysToTicket(u_char *ticket_data, u_int32_t ticket_data_len, u_int32_t ts_s, cSslDsslSessionKeys::cSslDsslSessionKeyItems *key_items);
 	void storeSessions();
 private:
 	cSslDsslSession *addSession(vmIP ips, vmPort ports, string keyfile);
@@ -176,7 +236,7 @@ private:
 	void init();
 	void term();
 	void loadSessions();
-	void deleteOldSessions(struct timeval ts);
+	void deleteOldSessions(timeval ts);
 	string storeSessionsTableName();
 	void lock_sessions() {
 		__SYNC_LOCK(this->_sync_sessions);
@@ -271,7 +331,7 @@ struct sSslDsslStats {
 
 void ssl_dssl_init();
 void ssl_dssl_clean();
-void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, struct timeval ts,
+void decrypt_ssl_dssl(vector<string> *rslt_decrypt, char *data, unsigned int datalen, vmIP saddr, vmIP daddr, vmPort sport, vmPort dport, timeval ts,
 		      bool forceTryIfExistsError = false);
 void end_decrypt_ssl_dssl(vmIP saddr, vmIP daddr, vmPort sport, vmPort dport);
 bool ssl_parse_client_random(u_char *data, unsigned datalen);

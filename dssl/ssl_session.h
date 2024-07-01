@@ -146,7 +146,8 @@ struct DSSL_Session_
 	void 			*handshake_data;
 	uint32_t		handshake_data_size;
 	
-	int (*get_keys_fce)(u_char *client_random, struct DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
+	int (*get_keys_fce)(u_char *client_random, u_char *ticket, u_int32_t ticket_len, 
+			    struct DSSL_Session_get_keys_data *get_keys_data, DSSL_Session *session);
 	void *get_keys_fce_call_data[2];
 	struct DSSL_Session_get_keys_data get_keys_rslt_data;
 	
