@@ -1085,6 +1085,17 @@ private:
 		vmIP ips, ipd;
 		string number;
 	};
+	struct sCountData {
+		sCountData() {
+			start_interval = 0;
+			count = 0;
+		}
+		u_int64_t start_interval;
+		u_int64_t count;
+		string country_code_caller_ip;
+		string country_code_called_ip;
+		string country_code_called_number;
+	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
 			this->count = count;
@@ -1095,6 +1106,7 @@ private:
 	};
 public:
 	FraudAlert_seq(unsigned int dbId);
+	~FraudAlert_seq();
 	void evCall(sFraudCallInfo *callInfo);
 	bool needEvCall_call();
 protected:
@@ -1110,9 +1122,9 @@ protected:
 private:
 	bool checkOkAlert(sIpNumber ipNumber, u_int64_t count, u_int64_t at);
 private:
-	map<sIpNumber, u_int64_t> count;
-	u_int64_t start_interval;
+	map<sIpNumber, sCountData*> count;
 	map<sIpNumber, sAlertInfo> alerts;
+	u_int64_t last_check_us;
 };
 
 class FraudAlertInfo_reg : public FraudAlertInfo {

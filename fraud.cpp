@@ -936,6 +936,9 @@ FraudAlertReg::~FraudAlertReg() {
 }
 
 void FraudAlertReg::evRegister(sFraudRegisterInfo *registerInfo) {
+	if(!registerInfo) {
+		return;
+	}
 	map<u_int32_t, FraudAlertReg_filter*>::iterator iter;
 	for(iter = filters.begin(); iter != filters.end(); iter++) {
 		iter->second->evRegister(registerInfo);
@@ -1728,6 +1731,9 @@ FraudAlert_rcc::FraudAlert_rcc(unsigned int dbId)
 }
 
 void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
+	if(!callInfo) {
+		return;
+	}
 	if(callInfo->call_type != INVITE ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
@@ -1740,6 +1746,9 @@ void FraudAlert_rcc::evCall(sFraudCallInfo *callInfo) {
 }
 
 void FraudAlert_rcc::evRtpStream(sFraudRtpStreamInfo *rtpStreamInfo) {
+	if(!rtpStreamInfo) {
+		return;
+	}
 	if(!this->okFilter(rtpStreamInfo) ||
 	   !this->okDayHour(rtpStreamInfo)) {
 		return;
@@ -1848,6 +1857,9 @@ FraudAlert_chc::FraudAlert_chc(unsigned int dbId)
 }
 
 void FraudAlert_chc::evCall(sFraudCallInfo *callInfo) {
+	if(!callInfo) {
+		return;
+	}
 	if(callInfo->call_type == REGISTER ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
@@ -1915,6 +1927,9 @@ FraudAlert_chcr::FraudAlert_chcr(unsigned int dbId)
 }
 
 void FraudAlert_chcr::evCall(sFraudCallInfo *callInfo) {
+	if(!callInfo) {
+		return;
+	}
 	if(callInfo->call_type != REGISTER ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
@@ -2024,6 +2039,9 @@ FraudAlert_d::FraudAlert_d(unsigned int dbId)
 }
 
 void FraudAlert_d::evCall(sFraudCallInfo *callInfo) {
+	if(!callInfo) {
+		return;
+	}
 	if(callInfo->call_type == REGISTER ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
@@ -2112,6 +2130,9 @@ FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
+	if(!eventInfo) {
+		return;
+	}
 	if(eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
@@ -2194,6 +2215,9 @@ FraudAlert_rc::~FraudAlert_rc() {
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
+	if(!eventInfo) {
+		return;
+	}
 	vmIP ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
 	if((withResponse ?
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_registerResponse :
@@ -2363,11 +2387,18 @@ string FraudAlertInfo_seq::getJson() {
 
 FraudAlert_seq::FraudAlert_seq(unsigned int dbId)
  : FraudAlert(_seq, dbId) {
-	start_interval = 0;
+	last_check_us = 0;
+}
+
+FraudAlert_seq::~FraudAlert_seq() {
+	for(map<sIpNumber, sCountData*>::iterator iter = count.begin(); iter != count.end(); iter++) {
+		delete iter->second;
+	}
 }
 
 void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
-	if(callInfo->call_type != REGISTER &&
+	if(callInfo &&
+	   callInfo->call_type != REGISTER &&
 	   (callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_connectCall ||
 	    (includeSessionCanceled && callInfo->typeCallInfo == sFraudCallInfo::typeCallInfo_sessionCanceledCall)) &&
 	   (!filterInternational || !callInfo->local_called_number) &&
@@ -2376,33 +2407,45 @@ void FraudAlert_seq::evCall(sFraudCallInfo *callInfo) {
 		sIpNumber ipNumber(typeByIP != _typeByIP_dst ? callInfo->caller_ip : 0,
 				   typeByIP == _typeByIP_dst || typeByIP == _typeByIP_both ? callInfo->called_ip : 0,
 				   callInfo->called_number.c_str());
-		map<sIpNumber, u_int64_t>::iterator iter = count.find(ipNumber);
+		map<sIpNumber, sCountData*>::iterator iter = count.find(ipNumber);
 		if(iter == count.end()) {
-			count[ipNumber] = 1;
+			sCountData *cd = new FILE_LINE(0) sCountData();
+			cd->count = 1;
+			cd->start_interval = callInfo->at_last;
+			cd->country_code_caller_ip = callInfo->country_code_caller_ip;
+			cd->country_code_called_ip = callInfo->country_code_called_ip;
+			cd->country_code_called_number = callInfo->country_code_called_number;
+			count[ipNumber] = cd;
 		} else {
-			++count[ipNumber];
+			++count[ipNumber]->count;
 		}
 	}
-	if(!start_interval) {
-		start_interval = callInfo->at_last;
-	} else if(callInfo->at_last - start_interval > TIME_S_TO_US(intervalLength)) {
-		map<sIpNumber, u_int64_t>::iterator iter;
-		for(iter = count.begin(); iter != count.end(); iter++) {
-			if(iter->second >= intervalLimit &&
-			   this->checkOkAlert(iter->first, iter->second, callInfo->at_last)) {
-				FraudAlertInfo_seq *alertInfo = new FILE_LINE(7017) FraudAlertInfo_seq(this);
-				alertInfo->set(iter->first.ips,
-					       iter->first.ipd,
-					       iter->first.number.c_str(),
-					       iter->second,
-					       callInfo->country_code_caller_ip.c_str(),
-					       callInfo->country_code_called_ip.c_str(),
-					       callInfo->country_code_called_number.c_str());
-				this->evAlert(alertInfo);
+	u_int64_t check_time = callInfo ? callInfo->at_last : getTimeUS();
+	if(!last_check_us) {
+		last_check_us = check_time;
+	} else if(check_time > last_check_us + TIME_S_TO_US(1)) {
+		map<sIpNumber, sCountData*>::iterator iter;
+		for(iter = count.begin(); iter != count.end(); ) {
+			if(check_time > iter->second->start_interval + TIME_S_TO_US(intervalLength)) {
+				if(iter->second->count >= intervalLimit &&
+				   this->checkOkAlert(iter->first, iter->second->count, check_time)) {
+					FraudAlertInfo_seq *alertInfo = new FILE_LINE(7017) FraudAlertInfo_seq(this);
+					alertInfo->set(iter->first.ips,
+						       iter->first.ipd,
+						       iter->first.number.c_str(),
+						       iter->second->count,
+						       iter->second->country_code_caller_ip.c_str(),
+						       iter->second->country_code_called_ip.c_str(),
+						       iter->second->country_code_called_number.c_str());
+					this->evAlert(alertInfo);
+				}
+				delete iter->second;
+				count.erase(iter++);
+			} else {
+				iter++;
 			}
 		}
-		count.clear();
-		start_interval = callInfo->at_last;
+		last_check_us = check_time;
 	}
 }
 
@@ -2515,6 +2558,9 @@ FraudAlert_ccd::FraudAlert_ccd(unsigned int dbId)
 }
 
 void FraudAlert_ccd::evCall(sFraudCallInfo *callInfo) {
+	if(!callInfo) {
+		return;
+	}
 	if(callInfo->call_type != INVITE ||
 	   !this->okFilter(callInfo) ||
 	   !this->okDayHour(callInfo)) {
@@ -3027,6 +3073,7 @@ void FraudAlerts::popCallInfoThread(eTypeEvents type_events) {
 	sFraudRtpStreamInfo *rtpStreamInfo;
 	sFraudEventInfo *eventInfo;
 	sFraudRegisterInfo *registerInfo;
+	u_int64_t usleepSum = 0;
 	while(!is_terminating() && !termPopCallInfoThread[type_events]) {
 		bool okPop = false;
 		switch(type_events) {
@@ -3105,7 +3152,46 @@ void FraudAlerts::popCallInfoThread(eTypeEvents type_events) {
 			break;
 		}
 		if(!okPop) {
-			USLEEP(1000);
+			unsigned usleep_us = 1000;
+			USLEEP(usleep_us);
+			usleepSum += usleep_us;
+			if(usleepSum >= TIME_S_TO_US(10)) {
+				if(_fraudAlerts_ready) {
+					lock_alerts();
+					vector<FraudAlert*>::iterator iter;
+					for(iter = alerts.begin(); iter != alerts.end(); iter++) {
+						switch(type_events) {
+						case _call:
+							if((*iter)->needEvCall_register() ||
+							   (*iter)->needEvCall_call()) {
+								(*iter)->evCall(NULL);
+							}
+							break;
+						case _rtpStream:
+							if((*iter)->needEvRtpStream()) {
+								(*iter)->evRtpStream(NULL);
+							}
+							break;
+						case _event:
+							if((*iter)->needEvEvent()) {
+								(*iter)->evEvent(NULL);
+							}
+							break;
+						case _register:
+							if((*iter)->needEvRegister()) {
+								(*iter)->evRegister(NULL);
+							}
+							break;
+						case __end:
+							break;
+						}
+					}
+					unlock_alerts();
+				}
+				usleepSum = 0;
+			}
+		} else {
+			usleepSum = 0;
 		}
 	}
 	runPopCallInfoThread[type_events] = false;
