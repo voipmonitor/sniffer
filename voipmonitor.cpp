@@ -909,7 +909,7 @@ mysqlSSLOptions optMySsl_2;
 bool opt_mysql_2_http = false;
 
 int opt_alter_rows_limit = 1000;
-bool opt_mysql_security_invoker_routines = false;
+bool opt_mysql_security_invoker_routines = true;
 
 char opt_mysql_timezone[256] = "";
 int opt_mysql_client_compress = 0;
