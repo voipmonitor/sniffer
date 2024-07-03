@@ -3197,6 +3197,7 @@ bool WDT::createScript() {
 	FILE *fileHandle = fopen(getScriptFileName().c_str(), "wt");
 	if(fileHandle) {
 		fputs(SCRIPT_SHELL, fileHandle);
+		fprintf(fileHandle, "rm '%s'\n", getScriptFileName().c_str());
 		fputs("while [ true ]\n", fileHandle);
 		fputs("do\n", fileHandle);
 		fputs("sleep 5\n", fileHandle);
