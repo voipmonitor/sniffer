@@ -4532,12 +4532,16 @@ bool MySqlStore::loadFromQFile(const char *filename, int id_main, bool onlyCheck
 			   sscanf(buffLineQuery, "%i/%u:", &idQueryProcess, &queryLength) != 2 ||
 			   !idQueryProcess ||
 			   !queryLength) {
-				syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffLineQuery);
+				if(sverb.qfiles) {
+					syslog(LOG_ERR, "bad string in qfile %s: %s", filename, buffLineQuery);
+				}
 				ok = false;
 				continue;
 			}
 			if(queryLength != strlen(posSeparator + 1)) {
-				syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
+				if(sverb.qfiles) {
+					syslog(LOG_ERR, "bad query length in qfile %s: %s", filename, buffLineQuery);
+				}
 				if(sverb.qfiles && !copyBadFileToTemp) {
 					char *baseFileName = (char*)strrchr(filename, '/');
 					copy_file(filename, (string("/tmp") + baseFileName).c_str());
