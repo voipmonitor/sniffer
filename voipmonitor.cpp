@@ -1428,6 +1428,7 @@ bool cloud_db = false;
 
 WDT *wdt;
 bool enable_wdt = true;
+string wdt_run_command;
 string cmdline;
 string rundir;
 string appname;
@@ -7298,6 +7299,7 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(0) cConfigItem_integer("charts_cache_remote_concat_limit", &opt_charts_cache_remote_concat_limit));
 				advanced();
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("watchdog", &enable_wdt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_string("watchdog_run_command", &wdt_run_command));
 				addConfigItem(new FILE_LINE(42460) cConfigItem_yesno("printinsertid", &opt_printinsertid));
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));

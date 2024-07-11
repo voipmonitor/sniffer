@@ -3194,6 +3194,7 @@ void WDT::killOtherScript() {
 }
 
 bool WDT::createScript() {
+	extern string wdt_run_command;
 	FILE *fileHandle = fopen(getScriptFileName().c_str(), "wt");
 	if(fileHandle) {
 		fputs(SCRIPT_SHELL, fileHandle);
@@ -3203,11 +3204,12 @@ bool WDT::createScript() {
 		fputs("sleep 5\n", fileHandle);
 		fprintf(fileHandle, 
 			"if [[ \"`ps -p %i -o comm,pid | grep %i`\" != \"%s\"* ]]; "
-			"then cd '%s'; %s; "
+			"then %s; "
 			"fi\n", 
 			getpid(), getpid(), appname.c_str(),
-			getRunDir().c_str(), 
-			getCmdLine().c_str());
+			wdt_run_command.empty() ?
+			 ("cd '" + getRunDir() + "'; " + getCmdLine()).c_str() :
+			 wdt_run_command.c_str());
 		fputs("done\n", fileHandle);
 		fclose(fileHandle);
 		if(!chmod(getScriptFileName().c_str(), 0755)) {
