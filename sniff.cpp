@@ -373,7 +373,7 @@ pthread_t usersniffer_checksize_thread;
 #include "sniff_inline.h"
 
 
-unsigned long process_packet__last_cleanup_calls = 0;
+u_int64_t process_packet__last_cleanup_calls_ms = 0;
 unsigned long process_packet__last_destroy_calls = 0;
 unsigned long process_packet__last_cleanup_registers = 0;
 unsigned long process_packet__last_destroy_registers = 0;
@@ -7191,16 +7191,15 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 
 inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, int line) {
 	bool doQuickCleanup = false;
-	if(opt_quick_save_cdr &&
+	if(opt_quick_save_cdr == 2 &&
 	   (count_sip_bye != process_packet__last_cleanup_calls__count_sip_bye ||
 	    count_sip_bye_confirmed != process_packet__last_cleanup_calls__count_sip_bye_confirmed ||
 	    count_sip_cancel != process_packet__last_cleanup_calls__count_sip_cancel ||
 	    count_sip_cancel_confirmed != process_packet__last_cleanup_calls__count_sip_cancel_confirmed)) {
 		doQuickCleanup = true;
 	}
-	u_int64_t actTimeS = getTimeS_rdtsc();
-	if(!doQuickCleanup &&
-	   actTimeS <= (process_packet__last_cleanup_calls + cleanup_calls_period())) {
+	u_int64_t actTimeMS = getTimeMS_rdtsc();
+	if(!(actTimeMS > (process_packet__last_cleanup_calls_ms + (doQuickCleanup ? 100 : cleanup_calls_period() * 1000)))) {
 		return;
 	}
 	if(verbosity > 0 && is_read_from_file_simple()) {
@@ -7213,7 +7212,7 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 		}
 	}
 	if(packetS || opt_safe_cleanup_calls != 2) {
-		process_packet__last_cleanup_calls = actTimeS;
+		process_packet__last_cleanup_calls_ms = actTimeMS;
 		calltable->cleanup_calls(false, packetS ? packetS->getTime_s() : 0, file, line);
 	}
 	listening_cleanup();
@@ -7237,9 +7236,9 @@ inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, i
 	extern int opt_hugepages_overcommit_max;
 	if(opt_memory_purge_interval &&
 	   ((!opt_hugepages_max && !opt_hugepages_overcommit_max) || opt_hugepages_anon) &&
-	   actTimeS - __last_memory_purge >= (unsigned)opt_memory_purge_interval) {
+	   (actTimeMS / 1000) >= __last_memory_purge + opt_memory_purge_interval) {
 		bool firstRun = __last_memory_purge == 0;
-		__last_memory_purge = actTimeS;
+		__last_memory_purge = actTimeMS / 1000;
 		if(!firstRun) {
 			rss_purge();
                 }
@@ -7272,7 +7271,7 @@ inline void process_packet__cleanup_ss7(packet_s *packetS) {
 }
 
 void reset_cleanup_variables() {
-	process_packet__last_cleanup_calls = 0;
+	process_packet__last_cleanup_calls_ms = 0;
 	process_packet__last_destroy_calls = 0;
 	process_packet__last_cleanup_registers = 0;
 	process_packet__last_destroy_registers = 0;
