@@ -2049,12 +2049,16 @@ void destroy_dpdk_handle(sDpdkHandle *dpdk) {
 }
 
 int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
-	*error = "not supported";
+	if(error) {
+		*error = "dpdk not supported";
+	}
 	return(-1);
 }
 
 int dpdk_do_pre_init(std::string *error) {
-	*error = "not supported";
+	if(error) {
+		*error = "dpdk not supported";
+	}
 	return(-1);
 }
 
