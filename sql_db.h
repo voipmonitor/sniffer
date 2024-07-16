@@ -673,7 +673,7 @@ public:
 		function
 	};
 	enum eTypeTables {
-		tt_minor = 1,
+		tt_reftabs = 1,
 		tt_main  = 2,
 		tt_child = 4,
 		tt_all   = 7
@@ -781,8 +781,8 @@ public:
 	string column_type_datetime_child_ms();
 	string column_type_duration_ms(const char *base_type = NULL);
 	bool checkSourceTables();
-	void copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc,
-				       cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
+	void copyFromSourceTablesReftabs(SqlDb_mysql *sqlDbSrc,
+					 cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	void copyFromSourceTablesMain(SqlDb_mysql *sqlDbSrc,
 				      unsigned long limit = 0, bool descDir = false,
 				      bool skipRegister = false,
@@ -800,6 +800,7 @@ public:
 				      unsigned long limit, bool descDir = false, u_int64_t limitMaxId = 0,
 				      cSqlDbCodebooks *cb_src = NULL, cSqlDbCodebooks *cb_dst = NULL);
 	vector<string> getSourceTables(int typeTables = tt_all, int typeTables2 = tt2_na);
+	string getTimeColumn(string table);
 	bool getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map);
 	bool convId(SqlDb_row *row, const char *table,
 		    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst,

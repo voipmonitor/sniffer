@@ -10054,9 +10054,9 @@ bool SqlDb_mysql::checkSourceTables() {
 	return(ok);
 }
 
-void SqlDb_mysql::copyFromSourceTablesMinor(SqlDb_mysql *sqlDbSrc,
-					    cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
-	vector<string> tablesMinor = getSourceTables(tt_minor);
+void SqlDb_mysql::copyFromSourceTablesReftabs(SqlDb_mysql *sqlDbSrc,
+					      cSqlDbCodebooks *cb_src, cSqlDbCodebooks *cb_dst) {
+	vector<string> tablesMinor = getSourceTables(tt_reftabs);
 	for(size_t i = 0; i < tablesMinor.size() && !is_terminating(); i++) {
 		if(cb_src && cb_dst && tablesMinor[i] == "cdr_sip_response") {
 			cSqlDbCodebook *cb_src_tab = cb_src->getCodebook(cSqlDbCodebook::_cb_sip_response);
@@ -10116,11 +10116,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	extern char opt_database_backup_from_date[20];
 	extern char opt_database_backup_to_date[20];
 	if(opt_database_backup_from_date[0]) {
-		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" : 
-				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" : 
-				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
-				    (string(tableName) == "sip_msg") ? "time" :
-				    "";
+		string timeColumn = getTimeColumn(tableName);
 		if(!timeColumn.empty()) {
 			sqlDbSrc->query(string("select min(id) as min_id from ") + tableName +
 					" where " + timeColumn + " = " + 
@@ -10137,11 +10133,7 @@ void SqlDb_mysql::copyFromSourceTable(SqlDb_mysql *sqlDbSrc,
 	u_int64_t maxIdSrc = 0;
 	u_int64_t limitMaxId = 0;
 	if(opt_database_backup_to_date[0]) {
-		string timeColumn = (string(tableName) == "cdr" || string(tableName) == "message") ? "calldate" :
-				    (string(tableName) == "http_jj" || string(tableName) == "enum_jj") ? "timestamp" :
-				    (string(tableName) == "register_state" || string(tableName) == "register_failed") ? "created_at" :
-				    (string(tableName) == "sip_msg") ? "time" :
-				    "";
+		string timeColumn = getTimeColumn(tableName);
 		if(!timeColumn.empty()) {
 			sqlDbSrc->query(string("select max(id) as max_id from ") + tableName +
 					" where " + timeColumn + " = " +
@@ -10474,7 +10466,7 @@ void SqlDb_mysql::copyFromSourceTableSlave(SqlDb_mysql *sqlDbSrc,
 
 vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 	vector<string> tables;
-	if(typeTables & tt_minor) {
+	if(typeTables & tt_reftabs) {
 		tables.push_back("cdr_sip_response");
 		if(_save_sip_history) {
 			tables.push_back("cdr_sip_request");
@@ -10487,6 +10479,7 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		if(typeTables2 == tt2_na || typeTables2 & tt2_cdr_static) {
 			if(typeTables & tt_main) {
 				tables.push_back("cdr");
+				tables.push_back("cdr_audio_transcribe");
 			}
 			if(typeTables & tt_child) {
 				tables.push_back("cdr_next");
@@ -10525,7 +10518,6 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 				}
 				tables.push_back("cdr_txt");
 				tables.push_back("cdr_flags");
-				tables.push_back("cdr_audio_transcribe");
 			}
 		}
 		if(opt_enable_http_enum_tables && 
@@ -10604,6 +10596,14 @@ vector<string> SqlDb_mysql::getSourceTables(int typeTables, int typeTables2) {
 		}
 	}
 	return(tables);
+}
+
+string SqlDb_mysql::getTimeColumn(string table) {
+	return((table == "cdr" || table == "cdr_audio_transcribe" || table == "message") ? "calldate" : 
+	       (table == "http_jj" || table == "enum_jj") ? "timestamp" : 
+	       (table == "register_state" || table == "register_failed") ? "created_at" :
+	       (table == "sip_msg") ? "time" :
+	       "");
 }
 
 bool SqlDb_mysql::getReferenceTablesMap(const char *table, map<string, cSqlDbCodebook::eTypeCodebook> *reftable_map) {

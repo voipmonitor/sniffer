@@ -1792,7 +1792,7 @@ void *database_backup(void */*dummy*/) {
 					cb_dst->loadAll(sqlDb);
 				}
 				
-				sqlDb_mysql->copyFromSourceTablesMinor(sqlDbSrc_mysql, cb_src, cb_dst);
+				sqlDb_mysql->copyFromSourceTablesReftabs(sqlDbSrc_mysql, cb_src, cb_dst);
 			
 				if(custom_headers_cdr) {
 					custom_headers_cdr->refresh(sqlDbSrc, false);
