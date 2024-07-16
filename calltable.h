@@ -60,6 +60,7 @@ typedef vector<RTP*> CALL_RTP_DYNAMIC_ARRAY_TYPE;
 #define MAXLEN_SDP_LABEL 20
 
 #define INVITE 1
+#define REINVITE 1000
 #define BYE 2
 #define CANCEL 3
 #define RES10X 100

@@ -4262,6 +4262,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	char lastSIPresponse[128];
 	int lastSIPresponseNum = 0;
 	bool existInviteSdaddr = false;
+	bool existRInviteSdaddr = false;
 	bool reverseInviteSdaddr = false;
 	bool reverseInviteSdaddr_ignore_port = false;
 	bool reverseInviteConfirmSdaddr = false;
@@ -4319,12 +4320,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		contenttype_is_app_csta_xml = strcasestr(contenttypestr, "application/csta+xml") != NULL;
 	}
 	
-	if(opt_enable_fraud && isFraudReady()) {
-		char *ua = NULL;
-		unsigned long ua_len = 0;
-		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
-		fraudSipPacket(packetS->saddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
-	}
 #if 0
 //this block was moved at the end so it will mirror only relevant SIP belonging to real calls 
 	if(sipSendSocket && !opt_sip_send_before_packetbuffer) {
@@ -4349,6 +4344,12 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	
 	if(!call) {
 		save_live_packet(packetS);
+		if(opt_enable_fraud && isFraudReady()) {
+			char *ua = NULL;
+			unsigned long ua_len = 0;
+			ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+			fraudSipPacket(packetS->saddr_(), packetS->daddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
+		}
 		if(logPacketSipMethodCall_enable) {
 			logPacketSipMethodCallDescr = "SIP packet does not belong to any call and it is not INVITE";
 		}
@@ -4613,7 +4614,6 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				c_branch->invite_sdaddr_map[vmIPportLink(invite_sd.saddr, invite_sd.sport, invite_sd.daddr, invite_sd.dport)] = inviteSdaddrIndex;
 				c_branch->invite_sdaddr_all_confirmed = -1;
 			} else if(opt_sdp_check_direction_ext) {
-				bool existRInviteSdaddr = false;
 				map<vmIPportLink, unsigned>::iterator riter_index = c_branch->rinvite_sdaddr_map.find(vmIPportLink(packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_()));
 				if(riter_index != c_branch->rinvite_sdaddr_map.end() && riter_index->second < c_branch->rinvite_sdaddr.size()) {
 					vector<Call::sInviteSD_Addr>::iterator riter = c_branch->rinvite_sdaddr.begin() + riter_index->second;
@@ -4710,6 +4710,15 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			c_branch->invite_list_unlock();
 		}
+	}
+	
+	if(opt_enable_fraud && isFraudReady()) {
+		char *ua = NULL;
+		unsigned long ua_len = 0;
+		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
+		fraudSipPacket(packetS->saddr_(), packetS->daddr_(),
+			       packetS->sip_method == INVITE && (existInviteSdaddr || existRInviteSdaddr) ? REINVITE : packetS->sip_method,
+			       packetS->getTimeval(), ua, ua_len);
 	}
 
 	call->check_reset_oneway(c_branch, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
@@ -6124,7 +6133,7 @@ void process_packet_sip_register(packet_s_process *packetS) {
 		char *ua = NULL;
 		unsigned long ua_len = 0;
 		ua = gettag_sip(packetS, "\nUser-Agent:", &ua_len);
-		fraudSipPacket(packetS->saddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
+		fraudSipPacket(packetS->saddr_(), packetS->daddr_(), packetS->sip_method, packetS->getTimeval(), ua, ua_len);
 	}
 			
 	if(sverb.dump_sip) {

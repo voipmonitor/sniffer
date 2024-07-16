@@ -377,6 +377,7 @@ FraudAlert::FraudAlert(eFraudAlertType type, unsigned int dbId) {
 	use_user_restriction = false;
 	userRestriction = NULL;
 	storePcaps = false;
+	useSipPacketTypes = false;
 	verbLog = NULL;
 }
 
@@ -619,6 +620,13 @@ bool FraudAlert::loadAlert(bool *useUserRestriction, bool *useUserRestriction_cu
 		storePcaps = atoi(dbRow["fraud_store_pcaps"].c_str());
 		storePcapsToPaths = dbRow["fraud_store_pcaps_to_path"];
 	}
+	if(defSipPacketTypes() && !dbRow["fraud_sip_packet_types"].empty()) {
+		useSipPacketTypes = atoi(dbRow["fraud_use_sip_packet_types"].c_str());
+		vector<int> sipPacketTypes = split2int(dbRow["fraud_sip_packet_types"], ',');
+		for(unsigned i = 0; i < sipPacketTypes.size(); i++) {
+			this->sipPacketTypes.insert(sipPacketTypes[i]);
+		}
+	}
 	loadAlertVirt();
 	if(_createSqlObject) {
 		delete sqlDb;
@@ -799,6 +807,10 @@ bool FraudAlert::okFilter(sFraudEventInfo *eventInfo) {
 		return(false);
 	}
 	if(this->defFilterUA() && !this->uaFilter.checkUA(eventInfo->ua.c_str())) {
+		return(false);
+	}
+	if(this->defSipPacketTypes() && this->useSipPacketTypes && this->sipPacketTypes.size() &&
+	   this->sipPacketTypes.find(eventInfo->sip_method) == this->sipPacketTypes.end()) {
 		return(false);
 	}
 	return(true);
@@ -2126,52 +2138,66 @@ string FraudAlertInfo_spc::getJson() {
 
 FraudAlert_spc::FraudAlert_spc(unsigned int dbId)
  : FraudAlert(_spc, dbId) {
-	start_interval = 0;
+	last_check_us = 0;
+}
+
+FraudAlert_spc::~FraudAlert_spc() {
+	for(map<vmIP, sCountData*>::iterator iter = count.begin(); iter != count.end(); iter++) {
+		delete iter->second;
+	}
 }
 
 void FraudAlert_spc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!eventInfo) {
-		return;
-	}
-	if(eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
+	if(eventInfo &&
+	   eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_sipPacket &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<vmIP, sCounts>::iterator iter = count.find(eventInfo->src_ip);
+		map<vmIP, sCountData*>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
-			count[eventInfo->src_ip].count = 1;
+			sCountData *cd = new FILE_LINE(0) sCountData();
+			cd->count = 1;
+			cd->start_interval = eventInfo->at;
+			count[eventInfo->src_ip] = cd;
 		} else {
-			++count[eventInfo->src_ip].count;
+			++count[eventInfo->src_ip]->count;
 		}
 		switch(eventInfo->sip_method) {
 		case INVITE:
-			++count[eventInfo->src_ip].count_invite;
+		case REINVITE:
+			++count[eventInfo->src_ip]->count_invite;
 			break;
 		case MESSAGE:
-			++count[eventInfo->src_ip].count_message;
+			++count[eventInfo->src_ip]->count_message;
 			break;
 		case REGISTER:
-			++count[eventInfo->src_ip].count_register;
+			++count[eventInfo->src_ip]->count_register;
 			break;
 		}
 	}
-	if(!start_interval) {
-		start_interval = eventInfo->at;
-	} else if(eventInfo->at - start_interval > TIME_S_TO_US(intervalLength)) {
-		map<vmIP, sCounts>::iterator iter;
-		for(iter = count.begin(); iter != count.end(); iter++) {
-			if(iter->second.count >= intervalLimit &&
-			   this->checkOkAlert(iter->first, iter->second.count, eventInfo->at)) {
-				FraudAlertInfo_spc *alertInfo = new FILE_LINE(7014) FraudAlertInfo_spc(this);
-				alertInfo->set(iter->first,
-					       iter->second.count,
-					       iter->second.count_invite,
-					       iter->second.count_message,
-					       iter->second.count_register);
-				this->evAlert(alertInfo);
+	u_int64_t check_time = eventInfo ? eventInfo->at : getTimeUS();
+	if(!last_check_us) {
+		last_check_us = check_time;
+	} else if(check_time > last_check_us + TIME_S_TO_US(1)) {
+		map<vmIP, sCountData*>::iterator iter;
+		for(iter = count.begin(); iter != count.end(); ) {
+			if(check_time > iter->second->start_interval + TIME_S_TO_US(intervalLength)) {
+				if(iter->second->count >= intervalLimit &&
+				   this->checkOkAlert(iter->first, iter->second->count, check_time)) {
+					FraudAlertInfo_spc *alertInfo = new FILE_LINE(7014) FraudAlertInfo_spc(this);
+					alertInfo->set(iter->first,
+						       iter->second->count,
+						       iter->second->count_invite,
+						       iter->second->count_message,
+						       iter->second->count_register);
+					this->evAlert(alertInfo);
+				}
+				delete iter->second;
+				count.erase(iter++);
+			} else {
+				iter++;
 			}
 		}
-		count.clear();
-		start_interval = eventInfo->at;
+		last_check_us = check_time;
 	}
 }
 
@@ -2201,10 +2227,13 @@ bool FraudAlert_spc::checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at) {
 FraudAlert_rc::FraudAlert_rc(unsigned int dbId)
  : FraudAlert(_rc, dbId) {
 	withResponse = false;
-	start_interval = 0;
+	last_check_us = 0;
 }
 
 FraudAlert_rc::~FraudAlert_rc() {
+	for(map<vmIP, sCountData*>::iterator iter = count.begin(); iter != count.end(); iter++) {
+		delete iter->second;
+	}
 	while(this->dumpers.size()) {
 		map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.begin();
 		if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
@@ -2215,54 +2244,65 @@ FraudAlert_rc::~FraudAlert_rc() {
 }
 
 void FraudAlert_rc::evEvent(sFraudEventInfo *eventInfo) {
-	if(!eventInfo) {
-		return;
+	vmIP ip;
+	bool enable_dump = false;
+	if(eventInfo) {
+		ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
+		enable_dump = eventInfo->block_store != NULL;
 	}
-	vmIP ip = typeBy == _typeBy_source_ip ? eventInfo->src_ip : eventInfo->dst_ip;
-	if((withResponse ?
+	if(eventInfo &&
+	   (withResponse ?
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_registerResponse :
 	     eventInfo->typeEventInfo == sFraudEventInfo::typeEventInfo_register) &&
 	   this->okFilter(eventInfo) &&
 	   this->okDayHour(eventInfo)) {
-		map<vmIP, u_int64_t>::iterator iter = count.find(ip);
+		map<vmIP, sCountData*>::iterator iter = count.find(eventInfo->src_ip);
 		if(iter == count.end()) {
-			count[ip] = 1;
+			sCountData *cd = new FILE_LINE(0) sCountData();
+			cd->count = 1;
+			cd->start_interval = eventInfo->at;
+			count[eventInfo->src_ip] = cd;
 		} else {
-			++count[ip];
+			++count[eventInfo->src_ip]->count;
 		}
 	}
 	bool enable_store_pcap = this->storePcaps;
-	bool enable_dump = eventInfo->block_store != NULL;
-	if(!start_interval) {
-		start_interval = eventInfo->at;
-	} else if(eventInfo->at - start_interval > TIME_S_TO_US(intervalLength)) {
-		map<vmIP, u_int64_t>::iterator iter;
-		for(iter = count.begin(); iter != count.end(); iter++) {
-			if(iter->second >= intervalLimit) {
-				if(this->checkOkAlert(iter->first, iter->second, eventInfo->at)) {
-					FraudAlertInfo_spc *alertInfo = new FILE_LINE(7015) FraudAlertInfo_spc(this);
-					alertInfo->set(iter->first,
-						       iter->second);
-					this->evAlert(alertInfo);
-				}
-				if(enable_store_pcap) {
+	u_int64_t check_time = eventInfo ? eventInfo->at : getTimeUS();
+	if(!last_check_us) {
+		last_check_us = check_time;
+	} else if(check_time > last_check_us + TIME_S_TO_US(1)) {
+		map<vmIP, sCountData*>::iterator iter;
+		for(iter = count.begin(); iter != count.end(); ) {
+			if(check_time > iter->second->start_interval + TIME_S_TO_US(intervalLength)) {
+				if(iter->second->count >= intervalLimit) {
+					if(this->checkOkAlert(iter->first, iter->second->count, check_time)) {
+						FraudAlertInfo_spc *alertInfo = new FILE_LINE(7015) FraudAlertInfo_spc(this);
+						alertInfo->set(iter->first,
+							       iter->second->count);
+						this->evAlert(alertInfo);
+					}
+					if(enable_store_pcap) {
+						map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
+						if(iter_dumper == this->dumpers.end()) {
+							this->dumpers[iter->first] = (PcapDumper*)1;
+						}
+					}
+				} else if(enable_store_pcap) {
 					map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
-					if(iter_dumper == this->dumpers.end()) {
-						this->dumpers[iter->first] = (PcapDumper*)1;
+					if(iter_dumper != this->dumpers.end()) {
+						if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
+							delete iter_dumper->second;
+						}
+						this->dumpers.erase(iter_dumper);
 					}
 				}
-			} else if(enable_store_pcap) {
-				map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(iter->first);
-				if(iter_dumper != this->dumpers.end()) {
-					if(iter_dumper->second && iter_dumper->second != (PcapDumper*)1) {
-						delete iter_dumper->second;
-					}
-					this->dumpers.erase(iter_dumper);
-				}
+				delete iter->second;
+				count.erase(iter++);
+			} else {
+				iter++;
 			}
 		}
-		count.clear();
-		start_interval = eventInfo->at;
+		last_check_us = check_time;
 	}
 	if(enable_store_pcap && enable_dump) {
 		map<vmIP, PcapDumper*>::iterator iter_dumper = this->dumpers.find(ip);
@@ -2847,11 +2887,12 @@ void FraudAlerts::endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort
 	}
 }
 
-void FraudAlerts::evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
+void FraudAlerts::evSipPacket(vmIP src_ip, vmIP dst_ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len) {
 	if(!checkIfEventQueueIsFull()) {
 		sFraudEventInfo *eventInfo = new FILE_LINE(0) sFraudEventInfo;
 		eventInfo->typeEventInfo = sFraudEventInfo::typeEventInfo_sipPacket;
-		eventInfo->src_ip = ip;
+		eventInfo->src_ip = src_ip;
+		eventInfo->dst_ip = dst_ip;
 		eventInfo->sip_method = sip_method;
 		eventInfo->at = at;
 		if(ua && ua_len) {
@@ -3643,11 +3684,11 @@ void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_por
 	}
 }
 
-void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
+void fraudSipPacket(vmIP src_ip, vmIP dst_ip, unsigned sip_method, timeval tv, const char *ua, int ua_len) {
 	if(isFraudReady() &&
 	   _needFraudEvEvent) {
 		fraudAlerts_lock();
-		fraudAlerts->evSipPacket(ip, sip_method, getTimeUS(tv), ua, ua_len);
+		fraudAlerts->evSipPacket(src_ip, dst_ip, sip_method, getTimeUS(tv), ua, ua_len);
 		fraudAlerts_unlock();
 	}
 }

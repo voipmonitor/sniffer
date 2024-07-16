@@ -492,6 +492,7 @@ protected:
 	virtual bool defOnlyConnected() { return(false); }
 	virtual bool defSuppressRepeatingAlerts() { return(false); }
 	virtual bool defStorePcaps() { return(false); }
+	virtual bool defSipPacketTypes() { return(false); }
 	virtual bool supportVerbLog() { return(false); }
 	virtual int8_t needTimer() { return(0); }
 	virtual void dump(string */*dump*/) {}
@@ -537,6 +538,8 @@ protected:
 	bool use_user_restriction;
 	class cUserRestriction *userRestriction;
 	bool storePcaps;
+	bool useSipPacketTypes;
+	set<int> sipPacketTypes;
 	string storePcapsToPaths;
 	FILE *verbLog;
 friend class FraudAlerts;
@@ -986,7 +989,15 @@ private:
 
 class FraudAlert_spc : public FraudAlert {
 private:
-	struct sCounts {
+	struct sCountData {
+		sCountData() {
+			start_interval = 0;
+			count = 0;
+			count_invite = 0;
+			count_message = 0;
+			count_register = 0;
+		}
+		u_int64_t start_interval;
 		u_int64_t count;
 		u_int64_t count_invite;
 		u_int64_t count_message;
@@ -1002,23 +1013,35 @@ private:
 	};
 public:
 	FraudAlert_spc(unsigned int dbId);
+	~FraudAlert_spc();
 	void evEvent(sFraudEventInfo *eventInfo);
 	bool needEvEvent();
 protected:
 	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
+	bool defFilterIpCondition12() { return(true); }
 	bool defFilterUA() { return(true); }
 	bool defInterval() { return(true); }
 	bool defSuppressRepeatingAlerts() { return(true); }
+	bool defSipPacketTypes() { return(true); }
 private:
 	bool checkOkAlert(vmIP ip, u_int64_t count, u_int64_t at);
 private:
-	map<vmIP, sCounts> count;
-	u_int64_t start_interval;
+	map<vmIP, sCountData*> count;
 	map<vmIP, sAlertInfo> alerts;
+	u_int64_t last_check_us;
 };
 
 class FraudAlert_rc : public FraudAlert {
 private:
+	struct sCountData {
+		sCountData() {
+			start_interval = 0;
+			count = 0;
+		}
+		u_int64_t start_interval;
+		u_int64_t count;
+	};
 	struct sAlertInfo {
 		sAlertInfo(u_int64_t count = 0, u_int64_t at = 0) {
 			this->count = count;
@@ -1034,6 +1057,8 @@ public:
 	bool needEvEvent();
 protected:
 	bool defFilterIp() { return(true); }
+	bool defFilterIp2() { return(true); }
+	bool defFilterIpCondition12() { return(true); }
 	bool defFilterUA() { return(true); }
 	bool defInterval() { return(true); }
 	bool defTypeBy() { return(true); }
@@ -1045,10 +1070,10 @@ private:
 	string getDumpName(vmIP ip, u_int64_t at);
 private:
 	bool withResponse;
-	map<vmIP, u_int64_t> count;
+	map<vmIP, sCountData*> count;
 	map<vmIP, PcapDumper*> dumpers;
-	u_int64_t start_interval;
 	map<vmIP, sAlertInfo> alerts;
+	u_int64_t last_check_us;
 };
 
 class FraudAlertInfo_seq : public FraudAlertInfo {
@@ -1249,7 +1274,7 @@ public:
 			    Call *call, u_int64_t at);
 	void endRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 			  Call *call, u_int64_t at);
-	void evSipPacket(vmIP ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
+	void evSipPacket(vmIP src_ip, vmIP dst_ip, unsigned sip_method, u_int64_t at, const char *ua, int ua_len);
 	void evRegister(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len,
 			pcap_block_store *block_store, u_int32_t block_store_index, u_int16_t dlt);
 	void evRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
@@ -1390,7 +1415,7 @@ void fraudBeginRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_p
 			 Call *call, time_t time);
 void fraudEndRtpStream(vmIP src_ip, vmPort src_port, vmIP dst_ip, vmPort dst_port,
 		       Call *call, time_t time);
-void fraudSipPacket(vmIP ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
+void fraudSipPacket(vmIP src_ip, vmIP dst_ip, unsigned sip_method, timeval tv, const char *ua, int ua_len);
 void fraudRegister(vmIP src_ip, vmIP dst_ip, timeval tv, const char *ua, int ua_len,
 		   struct packet_s *packetS);
 void fraudRegisterResponse(vmIP src_ip, vmIP dst_ip, u_int64_t at, const char *ua, int ua_len);
