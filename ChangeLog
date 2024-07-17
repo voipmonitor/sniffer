@@ -1,3 +1,17 @@
+2024.07.1 16.7.2024
+===================
+- new query_cache_max_mb_utf parameter to limit the length of utf characters [VS-1602]
+- new configuration option mysql_security_invoker_routines = YES/no to allow creation of functions and procedures without dependency on the definer
+- tls: add support for session resumption in keylogger decryption mode [VS-1600]
+- better monitoring of fraud-seq alert intervals [VG-2835]
+- remove watchog script file after it has been run [VG-2824]
+- application of the usleep_minimal parameter also in the usleep function without progressive usleep increase
+- extend sip flood alert - sip packet type option, condition for destination ip addres [VG-1184]
+- ensure that in quick_save_cdr=quick mode call cleanup_calls is not triggered more often than once every 100ms
+- fix table list in SqlDb_mysql::getSourceTables (table cdr_audio_transcribe is not 'child') [VS-1616]
+- fix crash if dpdk is enabled in configuration but not supported in build
+
+
 2024.06.2  19.06.2024
 =====================
 - fix illegal instruction introduced in 2024.06.1
