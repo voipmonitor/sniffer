@@ -666,13 +666,13 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	bool dllRun = false;
 	rrd_lock();
 	if(cmd_args[0] == "create") {
-		rrd_create(_cmd_args_length, (const char**)_cmd_args);
+		rrd_create(_cmd_args_length, _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "update") {
-		rrd_update(_cmd_args_length, (const char**)_cmd_args);
+		rrd_update(_cmd_args_length, _cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "tune") {
-		rrd_tune(_cmd_args_length, (const char**)_cmd_args);
+		rrd_tune(_cmd_args_length, _cmd_args);
 		dllRun = true;
 	}
 	rrd_unlock();
