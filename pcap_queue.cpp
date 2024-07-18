@@ -3668,6 +3668,7 @@ bool PcapQueue_readFromInterface_base::startCapture(string *error, sDpdkConfig *
 	if(opt_use_dpdk && dpdkConfig && dpdkConfig->device[0]) {
 		this->dpdkHandle = create_dpdk_handle();
 		if(!dpdk_activate(dpdkConfig, this->dpdkHandle, error)) {
+			__SYNC_UNLOCK(_sync_start_capture);
 			pcapLinklayerHeaderType = DLT_EN10MB;
 			return(true);
 		} else {
@@ -5722,10 +5723,10 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 			dpdk_set_initialized(dpdkHandle);
 			if(dpdk_config(dpdkHandle)->type_read_thread == _dpdk_trt_std) {
 				dpdk_reset_statistics(dpdkHandle, true);
-				printf(" * DPDK READ THREAD: %i\n", get_unix_tid());
+				syslog(LOG_INFO, "DPDK - READ THREAD: %i\n", get_unix_tid());
 				while(!(is_terminating() || this->threadDoTerminate)) {
 					if(!dpdk_read_proc(dpdkHandle)) {
-						sDpdkConfig *_dpdk_config = dpdk_config(readThread->dpdkHandle);
+						sDpdkConfig *_dpdk_config = dpdk_config(dpdkHandle);
 						if(_dpdk_config->read_usleep_if_no_packet) {
 							USLEEP(_dpdk_config->read_usleep_if_no_packet);
 						}
@@ -5854,7 +5855,7 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	}
 	
 	if(this->typeThread == dpdk_worker) {
-		printf(" * DPDK WORKER (std) THREAD %i\n", get_unix_tid());
+		syslog(LOG_INFO, "DPDK - WORKER (std) THREAD %i\n", get_unix_tid());
 		while(!(is_terminating() || this->threadDoTerminate)) {
 			if(!dpdk_worker_proc(readThread->dpdkHandle)) {
 				sDpdkConfig *_dpdk_config = dpdk_config(readThread->dpdkHandle);
@@ -9841,10 +9842,10 @@ double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, double *percF
 	return(-1);
 }
 
-volatile int dpdk_init;
+static volatile int _dpdk_init;
 static void *dpdk_main_thread_fce(void *arg) {
 	dpdk_do_pre_init(NULL);
-	dpdk_init = true;
+	_dpdk_init = true;
 	while(!is_terminating()) {
 		USLEEP(100000);
 	}
@@ -9862,7 +9863,7 @@ void PcapQueue_init() {
 						      &dpdk_main_thread, NULL,
 						      dpdk_main_thread_fce, NULL, 
 						      __FILE__, __LINE__);
-			while(!dpdk_init) {
+			while(!_dpdk_init) {
 				USLEEP(100000);
 			}
 		}

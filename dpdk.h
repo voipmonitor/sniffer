@@ -89,5 +89,8 @@ void dpdk_memcpy(void *dst, void *src, size_t size);
 void dpdk_check_configuration();
 void dpdk_check_affinity();
 
+void init_dpdk();
+void term_dpdk();
+
 
 #endif //DPDK_H

@@ -1042,6 +1042,7 @@ bool opt_thread_affinity_ht = true;
 bool opt_other_thread_affinity_check = true;
 bool opt_other_thread_affinity_set = false;
 int opt_dpdk_timer_reset_interval = 60;
+vector<string> opt_dpdk_vdev;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
 bool opt_scanpcapdir_disable_inotify = false;
@@ -4733,6 +4734,10 @@ int main_init_read() {
 
 	_parse_packet_global_process_packet.clearNodes();
 	_parse_packet_global_process_packet.setStdParse();
+	
+	if(opt_use_dpdk) {
+		init_dpdk();
+	}
 
 	if(is_enable_sip_msg()) {
 		initSipMsg();
@@ -5782,6 +5787,10 @@ void main_term_read() {
 		bogusDumper = NULL;
 	}
 	
+	if(opt_use_dpdk) {
+		term_dpdk();
+	}
+	
 	thread_cleanup();
 }
 
@@ -6353,6 +6362,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
+					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_vdev", &opt_dpdk_vdev));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
 			addConfigItem(new FILE_LINE(42136) cConfigItem_string("filter", user_filter, sizeof(user_filter)));
