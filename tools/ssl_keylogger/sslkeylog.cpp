@@ -473,6 +473,26 @@ static void write_keylog(const SSL *ssl, const char *key) {
 	if(!ssl || !key) {
 		return;
 	}
+	const char *keys_types[] = {
+		"CLIENT_RANDOM ",
+		"CLIENT_HANDSHAKE_TRAFFIC_SECRET ",
+		"SERVER_HANDSHAKE_TRAFFIC_SECRET ",
+		"EXPORTER_SECRET ",
+		"CLIENT_TRAFFIC_SECRET_0 ",
+		"SERVER_TRAFFIC_SECRET_0 "
+	};
+	bool key_ok = false;
+	for(unsigned i = 0; i < sizeof(keys_types) / sizeof(keys_types[0]); i++) {
+		const char *p = strcasestr(key, keys_types[i]);
+		if(p) {
+			key = p;
+			key_ok = true;
+			break;
+		}
+	}
+	if(!key_ok) {
+		return;
+	}
 	#if WRITE_THREAD
 		write_keylog_to_queue(key);
 	#else
