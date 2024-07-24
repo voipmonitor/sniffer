@@ -1312,6 +1312,7 @@ static int dpdk_pre_init(string *error_str) {
 	string _opt_dpdk_cpu_cores;
 	string _opt_dpdk_memory_channels;
 	string _opt_dpdk_force_max_simd_bitwidth;
+	vector<string> _opt_dpdk_pci_devices;
 	cDpdkTools tools;
 	#endif
 	if(is_dpdk_pre_inited != 0) {
@@ -1361,8 +1362,11 @@ static int dpdk_pre_init(string *error_str) {
 		dargv[dargv_cnt++] = (char*)_opt_dpdk_memory_channels.c_str();
 	}
 	if(!opt_dpdk_pci_device.empty()) {
-		dargv[dargv_cnt++] = (char*)"-a";
-		dargv[dargv_cnt++] = (char*)opt_dpdk_pci_device.c_str();
+		_opt_dpdk_pci_devices = split(opt_dpdk_pci_device.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+		for(unsigned i = 0; i < _opt_dpdk_pci_devices.size(); i++) {
+			dargv[dargv_cnt++] = (char*)"-a";
+			dargv[dargv_cnt++] = (char*)_opt_dpdk_pci_devices[i].c_str();
+		}
 	}
 	if(opt_dpdk_force_max_simd_bitwidth) {
 		dargv[dargv_cnt++] = (char*)"--force-max-simd-bitwidth";
@@ -1500,15 +1504,17 @@ static int dpdk_pre_init_error(int error_no, string *error_str) {
 		_error_str = "dpdk_pre_init failed";
 		break;
 	}
-	string _error_str_rte = rte_strerror(error_no); 
-	*error_str = "DPDK error:";
-	if(!_error_str_rte.empty()) {
-		*error_str += " " + _error_str_rte;
-		if(!_error_str.empty()) {
-			*error_str += " / " + _error_str;
+	if(error_str) {
+		string _error_str_rte = rte_strerror(error_no); 
+		*error_str = "DPDK error:";
+		if(!_error_str_rte.empty()) {
+			*error_str += " " + _error_str_rte;
+			if(!_error_str.empty()) {
+				*error_str += " / " + _error_str;
+			}
+		} else {
+			*error_str += " " + _error_str;
 		}
-	} else {
-		*error_str += " " + _error_str;
 	}
 	return(rslt_error_no);
 }

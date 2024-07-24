@@ -8698,7 +8698,9 @@ void set_context_config() {
 	}
 	
 	if(opt_use_dpdk) {
-		opt_t2_boost = true;
+		if(!opt_t2_boost) {
+			opt_t2_boost = true;
+		}
 		if(!CONFIG.isSet("packetbuffer_block_maxsize")) {
 			opt_pcap_queue_block_max_size = 4 * 1024 * 1024;
 		}
