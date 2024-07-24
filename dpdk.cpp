@@ -430,7 +430,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		return(PCAP_ERROR);
 	}
 	if(config->type_worker_thread != _dpdk_twt_na) {
-		dpdk->rx_to_worker_ring = rte_ring_create((string("rx_to_worker") + "_" + config->device).c_str(), 1024 /*RING_SIZE*/, rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
+		dpdk->rx_to_worker_ring = rte_ring_create((string("rx_to_worker") + "_" + config->device).c_str(), RING_SIZE, rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
 		dpdk_eval_res(dpdk->rx_to_worker_ring == NULL ? rte_errno : 0, NULL, 2, error,
 			      "dpdk_activate(%s) - rte_ring_create(rx_to_worker)",
 			      config->device);
