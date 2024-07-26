@@ -557,6 +557,7 @@ char opt_database_backup_from_mysql_socket[256] = "";
 mysqlSSLOptions optMySSLBackup;
 int opt_database_backup_pause = 300;
 int opt_database_backup_insert_threads = 1;
+bool opt_database_backup_cleandatabase = false;
 int opt_database_backup_pass_rows = 0;
 bool opt_database_backup_desc_dir = false;
 bool opt_database_backup_skip_register = false;
@@ -1524,6 +1525,8 @@ bool opt_use_thread_setname = false;
 
 bool opt_manager_enable_unencrypted = false;
 
+static cCreatePartitions CreatePartitions;
+
 
 #include <stdio.h>
 #include <pthread.h>
@@ -1853,6 +1856,15 @@ void *database_backup(void */*dummy*/) {
 			printMemoryStat();
 		}
 		
+		extern volatile int partitionsServiceIsInProgress;
+		if(!opt_nocdr && !opt_disable_partition_operations &&
+		   !is_client() && 
+		   isSqlDriver("mysql") &&
+		   !sCreatePartitions::in_progress && !partitionsServiceIsInProgress &&
+		   opt_database_backup_cleandatabase) {
+			CreatePartitions.run();
+		}
+		
 		for(int i = 0; i < opt_database_backup_pause && !is_terminating(); i++) {
 			sleep(1);
 		}
@@ -2099,76 +2111,15 @@ void *moving_cache( void */*dummy*/ ) {
 	return NULL;
 }
 
-class sCheckIdCdrChildTables {
-public:
-	sCheckIdCdrChildTables() {
-		init();
-	}
-	void init() {
-		check = false;
-	}
-	bool isSet() {
-		return(check);
-	}
-	void checkIdCdrChildTables(bool inThread = false) {
-		if(isSet()) {
-			if(inThread) {
-				pthread_t thread;
-				vm_pthread_create_autodestroy("check child cdr id",
-							      &thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
-			} else {
-				_checkIdCdrChildTables(this);
-			}
-		}
-	}
-	static void *_checkIdCdrChildTables(void *arg);
-public:
-	bool check;
-	static volatile int in_progress;
-} checkIdCdrChildTables;
-
-volatile int sCheckIdCdrChildTables::in_progress = 0;
-
-void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
-	sCheckIdCdrChildTables::in_progress = 1;
-	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
-	if(checkIdCdrChildTables->check) {
-		checkMysqlIdCdrChildTables();
-	}
-	sCheckIdCdrChildTables::in_progress = 0;
-	return(NULL);
-}
 
 void *defered_service_fork(void *) {
 	dns_lookup_common_hostnames();
 	return(NULL);
 }
 
-#define check_time_partition_operation(at) (firstIter || \
-					    ((!setEnableFromTo || timeOk) && ((actTime - at) > (setEnableFromTo ? 1 : 12) * 3600)) || \
-					    (actTime - at) > 24 * 3600)
-#define check_time_partition_by_size_operation(at) (firstIter || \
-						    (actTime - at) > opt_cleandatabase_size_period)
-
-sCreatePartitions  createPartitions;
 
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
-	time_t createPartitionCdrAt = 0;
-	time_t dropPartitionCdrAt = 0;
-	time_t createPartitionSs7At = 0;
-	time_t dropPartitionSs7At = 0;
-	time_t createPartitionCdrStatAt = 0;
-	time_t dropPartitionCdrStatAt = 0;
-	time_t createPartitionRtpStatAt = 0;
-	time_t dropPartitionRtpStatAt = 0;
-	time_t createPartitionLogSensorAt = 0;
-	time_t dropPartitionLogSensorAt = 0;
-	time_t createPartitionIpaccAt = 0;
-	time_t createPartitionBillingAgregationAt = 0;
-	time_t dropPartitionBillingAgregationAt = 0;
-	time_t dropPartitionBySizeAt = 0;
-	time_t checkMysqlIdCdrChildTablesAt = 0;
 	bool firstIter = true;
 	storing_cdr_tid = get_unix_tid();
 	while(1) {
@@ -2177,115 +2128,7 @@ void *storing_cdr( void */*dummy*/ ) {
 		   !is_client() && 
 		   isSqlDriver("mysql") &&
 		   !sCreatePartitions::in_progress && !partitionsServiceIsInProgress) {
-			bool setEnableFromTo = false;
-			bool timeOk = false;
-			if(opt_partition_operations_enable_run_hour_from >= 0 &&
-			   opt_partition_operations_enable_run_hour_to >= 0) {
-				setEnableFromTo = true;
-				time_t now;
-				time(&now);
-				struct tm dateTime = time_r(&now);
-				if(opt_partition_operations_enable_run_hour_to >= opt_partition_operations_enable_run_hour_from) {
-					if(dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from &&
-					   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
-						timeOk = true;
-					}
-				} else {
-					if((dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from && dateTime.tm_hour < 24) ||
-					   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
-						timeOk = true;
-					}
-				}
-			}
-			time_t actTime = time(NULL);
-			createPartitions.init();
-			if(opt_cdr_partition) {
-				if(check_time_partition_operation(createPartitionCdrAt)) {
-					createPartitions.createCdr = true;
-					createPartitionCdrAt = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionCdrAt)) {
-					createPartitions.dropCdr = true;
-					dropPartitionCdrAt = actTime;
-				}
-			}
-			if(opt_enable_ss7) {
-				if(check_time_partition_operation(createPartitionSs7At)) {
-					createPartitions.createSs7 = true;
-					createPartitionSs7At = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionSs7At)) {
-					createPartitions.dropSs7 = true;
-					dropPartitionSs7At = actTime;
-				}
-			}
-			if(true /* cdr_stat */) {
-				if(check_time_partition_operation(createPartitionCdrStatAt)) {
-					createPartitions.createCdrStat = true;
-					createPartitionCdrStatAt = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionCdrStatAt)) {
-					createPartitions.dropCdrStat = true;
-					dropPartitionCdrStatAt = actTime;
-				}
-			}
-			if(true /* rtp_stat */) {
-				if(check_time_partition_operation(createPartitionRtpStatAt)) {
-					createPartitions.createRtpStat = true;
-					createPartitionRtpStatAt = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionRtpStatAt)) {
-					createPartitions.dropRtpStat = true;
-					dropPartitionRtpStatAt = actTime;
-				}
-			}
-			if(true /* log_sensor */) {
-				if(check_time_partition_operation(createPartitionLogSensorAt)) {
-					createPartitions.createLogSensor = true;
-					createPartitionLogSensorAt = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionLogSensorAt)) {
-					createPartitions.dropLogSensor = true;
-					dropPartitionLogSensorAt = actTime;
-				}
-			}
-			if(opt_ipaccount) {
-				if(check_time_partition_operation(createPartitionIpaccAt)) {
-					createPartitions.createIpacc = true;
-					createPartitionIpaccAt = actTime;
-				}
-			}
-			if(true /* billing agregation */) {
-				time_t actTime = time(NULL);
-				if(check_time_partition_operation(createPartitionBillingAgregationAt)) {
-					createPartitions.createBilling = true;
-					createPartitionBillingAgregationAt = actTime;
-				}
-				if(check_time_partition_operation(dropPartitionBillingAgregationAt)) {
-					createPartitions.dropBilling = true;
-					dropPartitionBillingAgregationAt = actTime;
-				}
-			}
-			if(opt_cdr_partition && is_set_cleandatabase_by_size()) {
-				if(check_time_partition_by_size_operation(dropPartitionBySizeAt)) {
-					createPartitions.dropBySize = true;
-					dropPartitionBySizeAt = actTime;
-				}
-			}
-			if(createPartitions.isSet()) {
-				createPartitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
-			}
-			if(opt_cdr_partition && !sCheckIdCdrChildTables::in_progress) {
-				time_t actTime = time(NULL);
-				checkIdCdrChildTables.init();
-				if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
-					checkIdCdrChildTables.check = true;
-					checkMysqlIdCdrChildTablesAt = actTime;
-				}
-				if(checkIdCdrChildTables.isSet()) {
-					checkIdCdrChildTables.checkIdCdrChildTables(!firstIter && opt_partition_operations_in_thread);
-				}
-			}
+			CreatePartitions.run(firstIter);
 		}
 		
 		if(verbosity > 0 && is_read_from_file_simple()) { 
@@ -6274,6 +6117,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_string("database_backup_from_mysqlsslciphers", &optMySSLBackup.ciphers));
 				addConfigItem(new FILE_LINE(42129) cConfigItem_integer("database_backup_pause", &opt_database_backup_pause));
 				addConfigItem(new FILE_LINE(42130) cConfigItem_integer("database_backup_insert_threads", &opt_database_backup_insert_threads));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_cleandatabase", &opt_database_backup_cleandatabase));
 					expert();
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("database_backup_pass_rows", &opt_database_backup_pass_rows));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("database_backup_desc_dir", &opt_database_backup_desc_dir));

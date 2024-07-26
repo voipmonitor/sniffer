@@ -11607,6 +11607,39 @@ string MYSQL_ADD_QUERY_END(string query, bool enableSubstQueryEnd) {
 }
 
 
+sCreatePartitions::sCreatePartitions() {
+	init();
+}
+
+void sCreatePartitions::init() {
+	createCdr = false;
+	dropCdr = false;
+	createSs7 = false;
+	dropSs7 = false;
+	createCdrStat = false;
+	dropCdrStat = false;
+	createRtpStat = false;
+	dropRtpStat = false;
+	createLogSensor = false;
+	dropLogSensor = false;
+	createIpacc = false;
+	createBilling = false;
+	dropBilling = false;
+	dropBySize = false;
+	_runInThread = false;
+}
+
+bool sCreatePartitions::isSet() {
+	return(createCdr || dropCdr || 
+	       createSs7 || dropSs7 ||
+	       createCdrStat || dropCdrStat ||
+	       createRtpStat || dropRtpStat ||
+	       createLogSensor || dropLogSensor ||
+	       createIpacc || 
+	       createBilling || dropBilling ||
+	       dropBySize);
+}
+
 void sCreatePartitions::createPartitions(bool inThread) {
 	if(isSet()) {
 		sCreatePartitions::in_progress = 1;
@@ -11718,6 +11751,208 @@ void sCreatePartitions::setIndicPartitionOperations(bool set) {
 		}
 	}
 	delete sqlDb;
+}
+
+void sCreatePartitions::unsetIndicPartitionOperations() {
+	setIndicPartitionOperations(false);
+}
+
+sCheckIdCdrChildTables::sCheckIdCdrChildTables() {
+	init();
+}
+
+void sCheckIdCdrChildTables::init() {
+	check = false;
+}
+
+bool sCheckIdCdrChildTables::isSet() {
+	return(check);
+}
+
+void sCheckIdCdrChildTables::checkIdCdrChildTables(bool inThread) {
+	if(isSet()) {
+		if(inThread) {
+			pthread_t thread;
+			vm_pthread_create_autodestroy("check child cdr id",
+						      &thread, NULL, _checkIdCdrChildTables, this, __FILE__, __LINE__);
+		} else {
+			_checkIdCdrChildTables(this);
+		}
+	}
+}
+	
+void *sCheckIdCdrChildTables::_checkIdCdrChildTables(void *arg) {
+	sCheckIdCdrChildTables::in_progress = 1;
+	sCheckIdCdrChildTables *checkIdCdrChildTables = (sCheckIdCdrChildTables*)arg;
+	if(checkIdCdrChildTables->check) {
+		checkMysqlIdCdrChildTables();
+	}
+	sCheckIdCdrChildTables::in_progress = 0;
+	return(NULL);
+}
+
+volatile int sCheckIdCdrChildTables::in_progress = 0;
+
+
+cCreatePartitions::cCreatePartitions() {
+	createPartitionCdrAt = 0;
+	dropPartitionCdrAt = 0;
+	createPartitionSs7At = 0;
+	dropPartitionSs7At = 0;
+	createPartitionCdrStatAt = 0;
+	dropPartitionCdrStatAt = 0;
+	createPartitionRtpStatAt = 0;
+	dropPartitionRtpStatAt = 0;
+	createPartitionLogSensorAt = 0;
+	dropPartitionLogSensorAt = 0;
+	createPartitionIpaccAt = 0;
+	createPartitionBillingAgregationAt = 0;
+	dropPartitionBillingAgregationAt = 0;
+	dropPartitionBySizeAt = 0;
+	checkMysqlIdCdrChildTablesAt = 0;
+	_sync_run = 0;
+}
+
+
+void cCreatePartitions::run(bool firstIter) {
+	if(_sync_run) {
+		return;
+	}
+	lock_run();
+	extern int opt_partition_operations_enable_run_hour_from;
+	extern int opt_partition_operations_enable_run_hour_to;
+	this->firstIter = firstIter;
+	setEnableFromTo = false;
+	timeOk = false;
+	if(opt_partition_operations_enable_run_hour_from >= 0 &&
+	   opt_partition_operations_enable_run_hour_to >= 0) {
+		setEnableFromTo = true;
+		time_t now;
+		time(&now);
+		struct tm dateTime = time_r(&now);
+		if(opt_partition_operations_enable_run_hour_to >= opt_partition_operations_enable_run_hour_from) {
+			if(dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from &&
+			   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
+				timeOk = true;
+			}
+		} else {
+			if((dateTime.tm_hour >= opt_partition_operations_enable_run_hour_from && dateTime.tm_hour < 24) ||
+			   dateTime.tm_hour <= opt_partition_operations_enable_run_hour_to) {
+				timeOk = true;
+			}
+		}
+	}
+	actTime = time(NULL);
+	create_partitions.init();
+	if(opt_cdr_partition) {
+		if(check_time_partition_operation(createPartitionCdrAt)) {
+			create_partitions.createCdr = true;
+			createPartitionCdrAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionCdrAt)) {
+			create_partitions.dropCdr = true;
+			dropPartitionCdrAt = actTime;
+		}
+	}
+	if(opt_enable_ss7) {
+		if(check_time_partition_operation(createPartitionSs7At)) {
+			create_partitions.createSs7 = true;
+			createPartitionSs7At = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionSs7At)) {
+			create_partitions.dropSs7 = true;
+			dropPartitionSs7At = actTime;
+		}
+	}
+	if(true /* cdr_stat */) {
+		if(check_time_partition_operation(createPartitionCdrStatAt)) {
+			create_partitions.createCdrStat = true;
+			createPartitionCdrStatAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionCdrStatAt)) {
+			create_partitions.dropCdrStat = true;
+			dropPartitionCdrStatAt = actTime;
+		}
+	}
+	if(true /* rtp_stat */) {
+		if(check_time_partition_operation(createPartitionRtpStatAt)) {
+			create_partitions.createRtpStat = true;
+			createPartitionRtpStatAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionRtpStatAt)) {
+			create_partitions.dropRtpStat = true;
+			dropPartitionRtpStatAt = actTime;
+		}
+	}
+	if(true /* log_sensor */) {
+		if(check_time_partition_operation(createPartitionLogSensorAt)) {
+			create_partitions.createLogSensor = true;
+			createPartitionLogSensorAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionLogSensorAt)) {
+			create_partitions.dropLogSensor = true;
+			dropPartitionLogSensorAt = actTime;
+		}
+	}
+	if(opt_ipaccount) {
+		if(check_time_partition_operation(createPartitionIpaccAt)) {
+			create_partitions.createIpacc = true;
+			createPartitionIpaccAt = actTime;
+		}
+	}
+	if(true /* billing agregation */) {
+		if(check_time_partition_operation(createPartitionBillingAgregationAt)) {
+			create_partitions.createBilling = true;
+			createPartitionBillingAgregationAt = actTime;
+		}
+		if(check_time_partition_operation(dropPartitionBillingAgregationAt)) {
+			create_partitions.dropBilling = true;
+			dropPartitionBillingAgregationAt = actTime;
+		}
+	}
+	if(opt_cdr_partition && is_set_cleandatabase_by_size()) {
+		if(check_time_partition_by_size_operation(dropPartitionBySizeAt)) {
+			create_partitions.dropBySize = true;
+			dropPartitionBySizeAt = actTime;
+		}
+	}
+	if(create_partitions.isSet()) {
+		extern bool opt_partition_operations_in_thread;
+		create_partitions.createPartitions(!firstIter && opt_partition_operations_in_thread);
+	}
+	if(opt_cdr_partition && !sCheckIdCdrChildTables::in_progress) {
+		actTime = time(NULL);
+		check_id_cdr_child_tables.init();
+		if(actTime - checkMysqlIdCdrChildTablesAt > 1 * 3600) {
+			check_id_cdr_child_tables.check = true;
+			checkMysqlIdCdrChildTablesAt = actTime;
+		}
+		if(check_id_cdr_child_tables.isSet()) {
+			extern bool opt_partition_operations_in_thread;
+			check_id_cdr_child_tables.checkIdCdrChildTables(!firstIter && opt_partition_operations_in_thread);
+		}
+	}
+	unlock_run();
+}
+
+bool cCreatePartitions::check_time_partition_operation(time_t at) {
+	return(firstIter ||
+	       ((!setEnableFromTo || timeOk) && ((actTime - at) > (setEnableFromTo ? 1 : 12) * 3600)) ||
+	       (actTime - at) > 24 * 3600);
+}
+
+bool cCreatePartitions::check_time_partition_by_size_operation(time_t at) {
+	extern int opt_cleandatabase_size_period;
+	return(firstIter ||
+	       (actTime - at) > opt_cleandatabase_size_period);
+}
+
+void cCreatePartitions::lock_run() {
+	__SYNC_LOCK_USLEEP(_sync_run, 100);
+}
+
+void cCreatePartitions::unlock_run() {
+	__SYNC_UNLOCK(_sync_run);
 }
 
 

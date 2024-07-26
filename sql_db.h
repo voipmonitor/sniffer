@@ -1507,44 +1507,15 @@ private:
 
 class sCreatePartitions {
 public:
-	sCreatePartitions() {
-		init();
-	}
-	void init() {
-		createCdr = false;
-		dropCdr = false;
-		createSs7 = false;
-		dropSs7 = false;
-		createCdrStat = false;
-		dropCdrStat = false;
-		createRtpStat = false;
-		dropRtpStat = false;
-		createLogSensor = false;
-		dropLogSensor = false;
-		createIpacc = false;
-		createBilling = false;
-		dropBilling = false;
-		dropBySize = false;
-		_runInThread = false;
-	}
-	bool isSet() {
-		return(createCdr || dropCdr || 
-		       createSs7 || dropSs7 ||
-		       createCdrStat || dropCdrStat ||
-		       createRtpStat || dropRtpStat ||
-		       createLogSensor || dropLogSensor ||
-		       createIpacc || 
-		       createBilling || dropBilling ||
-		       dropBySize);
-	}
+	sCreatePartitions();
+	void init();
+	bool isSet();
 	void createPartitions(bool inThread = false);
 	static void *_createPartitions(void *arg);
 	void doCreatePartitions();
 	void doDropPartitions();
 	void setIndicPartitionOperations(bool set = true);
-	void unsetIndicPartitionOperations() {
-		setIndicPartitionOperations(false);
-	}
+	void unsetIndicPartitionOperations();
 public:
 	bool createCdr;
 	bool dropCdr;
@@ -1562,6 +1533,52 @@ public:
 	bool dropBySize;
 	bool _runInThread;
 	static volatile int in_progress;
+};
+
+class sCheckIdCdrChildTables {
+public:
+	sCheckIdCdrChildTables();
+	void init();
+	bool isSet();
+	void checkIdCdrChildTables(bool inThread = false);
+	static void *_checkIdCdrChildTables(void *arg);
+public:
+	bool check;
+	static volatile int in_progress;
+};
+
+class cCreatePartitions {
+public:
+	cCreatePartitions();
+	void run(bool firstIter = false);
+private:
+	bool check_time_partition_operation(time_t at);
+	bool check_time_partition_by_size_operation(time_t at);
+	void lock_run();
+	void unlock_run();
+private:
+	time_t createPartitionCdrAt;
+	time_t dropPartitionCdrAt;
+	time_t createPartitionSs7At;
+	time_t dropPartitionSs7At;
+	time_t createPartitionCdrStatAt;
+	time_t dropPartitionCdrStatAt;
+	time_t createPartitionRtpStatAt;
+	time_t dropPartitionRtpStatAt;
+	time_t createPartitionLogSensorAt;
+	time_t dropPartitionLogSensorAt;
+	time_t createPartitionIpaccAt;
+	time_t createPartitionBillingAgregationAt;
+	time_t dropPartitionBillingAgregationAt;
+	time_t dropPartitionBySizeAt;
+	time_t checkMysqlIdCdrChildTablesAt;
+	volatile int _sync_run;
+	bool firstIter;
+	bool setEnableFromTo;
+	bool timeOk;
+	time_t actTime;
+	sCreatePartitions create_partitions;
+	sCheckIdCdrChildTables check_id_cdr_child_tables;
 };
 
 
