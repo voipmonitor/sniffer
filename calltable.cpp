@@ -8720,6 +8720,8 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 
 	if(n_branch->whohanged == 0 || n_branch->whohanged == 1) {
 		next_branch_row.add(n_branch->whohanged ? 2/*"callee"*/ : 1/*"caller"*/, "whohanged");
+	} else {
+		next_branch_row.add_null("whohanged");
 	}
 	
 	int bye = -1;
@@ -8737,12 +8739,8 @@ void Call::prepareDbRow_cdr_next_branches(SqlDb_row &next_branch_row, CallBranch
 	}
 	
 	next_branch_row.add(n_branch->lastSIPresponseNum, "lastSIPresponseNum");
-	if(n_branch->reason_sip_cause) {
-		next_branch_row.add(n_branch->reason_sip_cause, "reason_sip_cause");
-	}
-	if(n_branch->reason_q850_cause) {
-		next_branch_row.add(n_branch->reason_q850_cause, "reason_q850_cause");
-	}
+	next_branch_row.add(n_branch->reason_sip_cause, "reason_sip_cause", !n_branch->reason_sip_cause);
+	next_branch_row.add(n_branch->reason_q850_cause, "reason_q850_cause", !n_branch->reason_q850_cause);
 	
 	if(batch) {
 		if(useSetId()) {
