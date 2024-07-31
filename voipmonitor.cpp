@@ -1145,6 +1145,7 @@ bool cleanup_calls_separate_processing_terminating;
 
 pthread_t scanpcapdir_thread;
 pthread_t defered_service_fork_thread;
+pthread_t check_activity_or_crash_thread;
 //pthread_t destroy_calls_thread;
 pthread_t manager_thread = 0;	// ID of worker manager thread 
 pthread_t manager_file_thread = 0;
@@ -2117,6 +2118,24 @@ void *defered_service_fork(void *) {
 	return(NULL);
 }
 
+static volatile u_int64_t last_pcap_stat_activity_at = 0;
+static volatile u_int64_t call_bt_sighandler_at = 0;
+void *check_activity_or_crash(void *) {
+	while(!is_terminating()) {
+		u_int64_t time_ms = getTimeMS_rdtsc();
+		if((last_pcap_stat_activity_at && time_ms > last_pcap_stat_activity_at + 300000) ||
+		   (call_bt_sighandler_at && time_ms > call_bt_sighandler_at + 10000)) {
+			semaphoreUnlink();
+			semaphoreClose();
+			kill(getpid(), 9);
+		}
+		for(int i = 0; i < 10 && !is_terminating(); i++) {
+			usleep(100000);
+		}
+	}
+	return(NULL);
+}
+
 
 /* cycle calls_queue and save it to MySQL */
 void *storing_cdr( void */*dummy*/ ) {
@@ -2891,6 +2910,7 @@ void reload_capture_rules() {
 #ifdef BACKTRACE
 void bt_sighandler(int sig, siginfo_t */*info*/, void *secret)
 {
+	call_bt_sighandler_at = getTimeMS_rdtsc();
 	void *crash_pnt = NULL;
 	if(secret) {
 		#if defined(__x86_64__)
@@ -4676,6 +4696,8 @@ int main_init_read() {
 	if(opt_fork) {
 		vm_pthread_create("defered service",
 				  &defered_service_fork_thread, NULL, defered_service_fork, NULL, __FILE__, __LINE__);
+		vm_pthread_create("check pcap stat activity thread",
+				  &check_activity_or_crash_thread, NULL, check_activity_or_crash, NULL, __FILE__, __LINE__);
 	} else if(!is_read_from_file_simple()) {
 		dns_lookup_common_hostnames();
 	}
@@ -5148,6 +5170,7 @@ int main_init_read() {
 				}
 			}
 			++_counterLog;
+			last_pcap_stat_activity_at = getTimeMS_rdtsc();
 
 			#if DEBUG_PACKET_COUNT
 			extern volatile int __xc_inv;
