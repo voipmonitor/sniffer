@@ -147,6 +147,32 @@ void cRegisterFilter::setFilter(const char *filter) {
 			addFilter(&gItems);
 		}
 	}
+	if(!filterData["from_num_group_id"].empty() &&
+	   filterData["numFTC_group_id_type"] == "0") {
+		cRecordFilterItem_CheckString *filter1 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_num);
+		filter1->addWhite("cb_number_groups", "number", filterData["from_num_group_id"].c_str());
+		cRecordFilterItem_CheckString *filter2 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_to_num);
+		filter2->addWhite("cb_number_groups", "number", filterData["from_num_group_id"].c_str());
+		cRecordFilterItem_CheckString *filter3 = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_contact_num);
+		filter3->addWhite("cb_number_groups", "number", filterData["from_num_group_id"].c_str());
+		addFilter(filter1, filter2, filter3);
+	} else {
+		if(!filterData["from_num_group_id"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_num);
+			filter->addWhite("cb_number_groups", "number", filterData["from_num_group_id"].c_str());
+			addFilter(filter);
+		}
+		if(!filterData["to_num_group_id"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_to_num);
+			filter->addWhite("cb_number_groups", "number", filterData["to_num_group_id"].c_str());
+			addFilter(filter);
+		}
+		if(!filterData["contact_num_group_id"].empty()) {
+			cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_contact_num);
+			filter->addWhite("cb_number_groups", "number", filterData["contact_num_group_id"].c_str());
+			addFilter(filter);
+		}
+	}
 	if(!filterData["from_name"].empty()) {
 		cRecordFilterItem_CheckString *filter = new FILE_LINE(0) cRecordFilterItem_CheckString(this, rf_from_name);
 		filter->addWhite(filterData["from_name"].c_str());
