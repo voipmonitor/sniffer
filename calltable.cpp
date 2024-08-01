@@ -9791,24 +9791,20 @@ Call::applyRtcpXrDataToRtp() {
 }
 
 void Call::adjustUA(CallBranch *c_branch) {
-	if(opt_cdr_ua_reg_remove.size() || opt_cdr_ua_reg_whitelist.size()) {
-		if(!c_branch->a_ua.empty()) {
-			::adjustUA(c_branch->a_ua);
-		}
-		if(!c_branch->b_ua.empty()) {
-			::adjustUA(c_branch->b_ua);
-		}
+	if(!c_branch->a_ua.empty()) {
+		::adjustUA(c_branch->a_ua);
+	}
+	if(!c_branch->b_ua.empty()) {
+		::adjustUA(c_branch->b_ua);
 	}
 }
 
 void Call::adjustReason(CallBranch *c_branch) {
-	if(opt_cdr_reason_reg_remove.size()) {
-		if(!c_branch->reason_sip_text.empty()) {
-			::adjustReason(c_branch->reason_sip_text);
-		}
-		if(!c_branch->reason_q850_text.empty()) {
-			::adjustReason(c_branch->reason_q850_text);
-		}
+	if(!c_branch->reason_sip_text.empty()) {
+		::adjustReason(c_branch->reason_sip_text);
+	}
+	if(!c_branch->reason_q850_text.empty()) {
+		::adjustReason(c_branch->reason_q850_text);
 	}
 }
 
