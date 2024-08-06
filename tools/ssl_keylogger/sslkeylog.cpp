@@ -57,6 +57,8 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 #define DEBUG_TO_SYSLOG 0
 //#define DEBUG_TO_FILE "/tmp/sslkeylog.log"
 
+#define ABORT_IF_FAILURE false
+
 #define min(a, b) (a < b ? a : b)
 
 #define __SYNC_LOCK(vint) while(__sync_lock_test_and_set(&vint, 1)) {};
@@ -162,6 +164,16 @@ static void ucharToHex(unsigned char *data, unsigned datalen, char *rslt) {
 	for(unsigned i = 0; i < datalen; i++) {
 		sprintf(rslt + i * 2, "%.2x", data[i]);
 	}
+}
+
+
+void _exit(int status) {
+	#ifdef ABORT_IF_FAILURE
+	if(status && ABORT_IF_FAILURE) {
+		abort();
+	}
+	#endif
+	exit(status);
 }
 
 
@@ -689,8 +701,8 @@ __attribute__((constructor)) static void setup(void) {
 	if(SSL_new_orig) {
 		debug_printf("OK detect pointer to function SSL_new : 0x%lx", SSL_new_orig);
 	} else {
-		debug_printf("FAILED detect pointer to function SSL_new - abort!");
-		abort();
+		debug_printf("FAILED detect pointer to function SSL_new - exit!");
+		_exit(EXIT_FAILURE);
 	}
 	SSL_CTX_set_keylog_callback_orig = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", LIBSSL_SONAME);
 	if(SSL_CTX_set_keylog_callback_orig) {
@@ -698,8 +710,8 @@ __attribute__((constructor)) static void setup(void) {
 	}
 	#if ONLY_KEYLOG_CALLBACK
 	if(!SSL_CTX_set_keylog_callback_orig) {
-		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - abort!");
-		abort();
+		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - exit!");
+		_exit(EXIT_FAILURE);
 	}
 	#endif
 	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
@@ -736,13 +748,13 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("OK detect pointer to function SSL_SESSION_get_master_key : 0x%lx", SSL_SESSION_get_master_key_orig);
 	}
 	if(!SSL_CTX_set_keylog_callback_orig && !SSL_connect_orig) {
-		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback and SSL_connect - abort!");
-		abort();
+		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback and SSL_connect - exit!");
+		_exit(EXIT_FAILURE);
 	}
 	#endif
 	if(!init_keylog()) {
-		debug_printf("FAILED init_keylog - abort!");
-		abort();
+		debug_printf("FAILED init_keylog - exit!");
+		_exit(EXIT_FAILURE);
 	}
 }
 
