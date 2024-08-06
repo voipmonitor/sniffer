@@ -1,3 +1,14 @@
+2024.08.1 06.8.2024
+===================
+- dpdk: fix support for multiple dpdk interfaces, support for virtual interfaces (example settings: dpdk_vdev=net_pcap_1:iface=eth0;net_pcap_2:iface=eth1; interface=net_pcap_1,net_pcap_2)
+- rework the activation of the cleandatabase process so that it can be used for database_backup. If cleandatabase is to be used for database_backup, database_backup_cleandatabase = yes [VS-1619]
+- fix the same number of columns when storing multiple records in the cdr_next_branches table [VS-1621]
+- support for groups of numbers in the registration filter [VG-1124]
+- enhance watchdog 
+- store statistics from PUBLISH even if we don't have rtp [VS-552]
+- ssl keylogger - use exit instead of abort if initialization fails [VS-1622]
+
+
 2024.07.1 16.7.2024
 ===================
 - new query_cache_max_mb_utf parameter to limit the length of utf characters [VS-1602]
