@@ -2239,6 +2239,7 @@ public:
 			memset(&std, 0, sizeof(std));
 			memset(&custom, 0, sizeof(custom));
 			doubleEndLine = NULL;
+			doubleEndLineSize = 0;
 			contentLength = -1;
 			parseDataPtr = NULL;
 			sip = false;
@@ -2291,6 +2292,7 @@ public:
 		ppContentItemX std[ParsePacket_std_max];
 		ppContentItemX custom[ParsePacket_custom_max];
 		char *doubleEndLine;
+		u_int8_t doubleEndLineSize;
 		int32_t contentLength;
 		const char *parseDataPtr;
 		bool sip;

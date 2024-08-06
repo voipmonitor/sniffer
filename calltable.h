@@ -1028,27 +1028,83 @@ public:
 		_sf_charts_cache = 2
 	};
 	struct sRtcpXrDataItem {
+		u_int16_t branch_id;
+		vmIPport ip_port_local;
+		vmIPport ip_port_remote;
+		u_int32_t ssrc[2];
 		timeval tv;
 		int16_t moslq;
 		int16_t nlr;
-		vmIP ip_local;
-		vmIP ip_remote;
 	};
-	struct sRtcpXrDataSsrc : public list<sRtcpXrDataItem> {
-		void add(timeval tv, int16_t moslq, int16_t nlr, vmIP ip_local, vmIP ip_remote) {
+	struct sRtcpXrData : public list<sRtcpXrDataItem> {
+		void add(u_int16_t branch_id, vmIPport ip_port_local, vmIPport ip_port_remote, u_int32_t ssrc[], timeval tv, int16_t moslq, int16_t nlr) {
 			sRtcpXrDataItem dataItem;
+			dataItem.branch_id = branch_id;
+			dataItem.ip_port_local = ip_port_local;
+			dataItem.ip_port_remote = ip_port_remote;
+			dataItem.ssrc[0] = ssrc[0];
+			dataItem.ssrc[1] = ssrc[1];
 			dataItem.tv = tv;
 			dataItem.moslq = moslq;
 			dataItem.nlr = nlr;
-			dataItem.ip_local = ip_local;
-			dataItem.ip_remote = ip_remote;
 			this->push_back(dataItem);
 		}
 	};
-	struct sRtcpXrData : public map<u_int32_t, sRtcpXrDataSsrc> {
-		void add(u_int32_t ssrc, timeval tv, int16_t moslq, int16_t nlr, vmIP ip_local, vmIP ip_remote) {
-			(*this)[ssrc].add(tv, moslq, nlr, ip_local, ip_remote);
+	struct sRtcpXrStreamIndex {
+		sRtcpXrStreamIndex(vmIPport ip_port_local, vmIPport ip_port_remote, u_int32_t ssrc[]) {
+			this->ip_port_local = ip_port_local;
+			this->ip_port_remote = ip_port_remote;
+			this->ssrc[0] = ssrc[0];
+			this->ssrc[1] = ssrc[1];
 		}
+		bool operator == (const sRtcpXrStreamIndex& other) const { 
+			return(this->ip_port_local == other.ip_port_local &&
+			       this->ip_port_remote == other.ip_port_remote &&
+			       this->ssrc[0] == other.ssrc[0] &&
+			       this->ssrc[1] == other.ssrc[1]); 
+		}
+		bool operator < (const sRtcpXrStreamIndex& other) const { 
+			return(this->ip_port_local < other.ip_port_local ? true : !(this->ip_port_local == other.ip_port_local) ? false :
+			       this->ip_port_remote < other.ip_port_remote ? true : !(this->ip_port_remote == other.ip_port_remote) ? false :
+			       this->ssrc[0] < other.ssrc[0] ? true : this->ssrc[0] != other.ssrc[0] ? false :
+			       this->ssrc[1] < other.ssrc[1]);
+		}
+		vmIPport ip_port_local;
+		vmIPport ip_port_remote;
+		u_int32_t ssrc[2];
+	};
+	struct sRtcpXrStreamData {
+		sRtcpXrStreamData() {
+			ssrc[0] = 0;
+			ssrc[1] = 0;
+			ok_by_sdp = false;
+			iscaller = -1;
+			counter = 0;
+			fr_max = 0;
+			fr_avg = 0;
+			fr_counter = 0;
+			mos_min = 45;
+			mos_avg = 0;
+			mos_counter = 0;
+		}
+		void add_mos(int16_t moslq);
+		void add_fr(int16_t nlr);
+		vmIPport ip_port_local;
+		vmIPport ip_port_remote;
+		u_int32_t ssrc[2];
+		bool ok_by_sdp;
+		int iscaller;
+		unsigned counter;
+		uint8_t fr_max;
+		double fr_avg;
+		unsigned fr_counter;
+		uint8_t mos_min;
+		double mos_avg;
+		unsigned int mos_counter;
+	};
+	struct sRtcpXrStreams {
+		void findAB(sRtcpXrStreamData *ab[]);
+		map<sRtcpXrStreamIndex, sRtcpXrStreamData> streams;
 	};
 	struct sUdptlDumper {
 		sUdptlDumper() {
@@ -2046,6 +2102,7 @@ public:
 	}
 	
 	void applyRtcpXrDataToRtp();
+	void prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK);
 	
 	void adjustUA(CallBranch *c_branch);
 	void adjustReason(CallBranch *c_branch);

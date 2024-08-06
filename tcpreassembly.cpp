@@ -2970,6 +2970,15 @@ list<d_u_int32_t> *TcpReassemblyLink::getSipOffsets() {
 	return(&sip_offsets);
 }
 
+void TcpReassemblyLink::joinSipOffsets() {
+	u_int32_t max = 0;
+	for(list<d_u_int32_t>::iterator iter = sip_offsets.begin(); iter != sip_offsets.end(); iter++) {
+		max += (*iter)[1];
+	}
+	sip_offsets.clear();
+	sip_offsets.push_back(d_u_int32_t(0, max));
+}
+
 void TcpReassemblyLink::clearCompleteStreamsData() {
 	map<uint32_t, TcpReassemblyStream*>::iterator iter;
 	for(iter = this->queue_by_ack.begin(); iter != this->queue_by_ack.end(); iter++) {

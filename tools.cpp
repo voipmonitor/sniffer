@@ -4090,17 +4090,20 @@ u_int32_t ParsePacket::parseData(char *data, unsigned long datalen, ppContentsX 
 	for(unsigned long i = 0; i < datalen; i++) {
 		if(!contents->doubleEndLine && 
 		   datalen > 3 &&
-		   data[i] == '\r' && i < datalen - 3 && 
-		   data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') {
+		   ((data[i] == '\r' &&
+		     i < datalen - 3 && data[i + 1] == '\n' && data[i + 2] == '\r' && data[i + 3] == '\n') ||
+		    (data[i] == '\n' &&
+		     i < datalen - 1 && data[i + 1] == '\n'))) {
 			contents->doubleEndLine = data + i;
+			contents->doubleEndLineSize = data[i] == '\r' ? 4 : 2;
 			if(contents->contentLength > -1) {
-				unsigned long modify_datalen = contents->doubleEndLine + 4 - data + contents->contentLength;
+				unsigned long modify_datalen = contents->doubleEndLine + contents->doubleEndLineSize - data + contents->contentLength;
 				if(modify_datalen < datalen) {
 					datalen = modify_datalen;
 					rsltDataLen = datalen;
 				}
 			} else {
-				rsltDataLen = contents->doubleEndLine + 4 - data;
+				rsltDataLen = contents->doubleEndLine + contents->doubleEndLineSize - data;
 				break;
 			}
 			i += 2;

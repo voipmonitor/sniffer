@@ -863,6 +863,7 @@ public:
 	bool existsRemainData(TcpReassemblyDataItem::eDirection direction);
 	bool existsAllAckSeq(TcpReassemblyDataItem::eDirection direction);
 	list<d_u_int32_t> *getSipOffsets();
+	void joinSipOffsets();
 	void clearCompleteStreamsData();
 	bool checkDuplicitySeq(u_int32_t newSeq);
 private:

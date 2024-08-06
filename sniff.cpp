@@ -305,6 +305,7 @@ extern int opt_ssl_dtls_handshake_safe;
 extern unsigned opt_max_sip_packets_in_call;
 extern unsigned opt_max_invite_packets_in_call;
 extern int opt_enable_semicolon_in_number;
+extern bool opt_redirect_publish_to_call;
 
 extern cProcessingLimitations processing_limitations;
 
@@ -4228,7 +4229,7 @@ void fillSciPacketInfo(packet_s_process *packetS, int sip_method, sSciPacketInfo
 	packet_info->dst_port = packetS->dest_();
 }
 
-static inline void process_packet__parse_rtcpxr(Call *call, packet_s_process *packetS, timeval tv);
+static inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process *packetS, timeval tv);
 static inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, int line);
 static inline void process_packet__cleanup_registers(packet_s *packetS);
 static inline void process_packet__cleanup_ss7(packet_s *packetS);
@@ -5778,7 +5779,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	call->shift_destroy_call_at(c_branch, packetS->getTime_s(), lastSIPresponseNum);
 	
 	if(packetS->sip_method == PUBLISH && contenttype_is_rtcpxr) {
-		process_packet__parse_rtcpxr(call, packetS, packetS->getTimeval());
+		process_packet__parse_rtcpxr(c_branch, packetS, packetS->getTimeval());
 	}
 
 	// SDP examination
@@ -7102,10 +7103,12 @@ inline void process_packet__parse_custom_headers(Call *call, packet_s_process *p
 	packetS->_customHeadersDone = true;
 }
 
-inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, timeval tv) {
+inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process *packetS, timeval tv) {
 	string ssrc;
 	vmIP ipLocal;
+	vmPort portLocal;
 	vmIP ipRemote;
+	vmPort portRemote;
 	unsigned long localAddrLen;
 	char *localAddrPtr = gettag_sip(packetS, "\nLocalAddr:", &localAddrLen);
 	if(localAddrPtr && localAddrLen) {
@@ -7133,6 +7136,11 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 				ipLocal.setFromString(string(ipPtr, ipLen).c_str());
 			}
 		}
+		char *portPtr = strcasestr(localAddrPtr, "PORT=");
+		if(portPtr) {
+			portPtr += 5;
+			portLocal = atoi(portPtr);
+		}
 		localAddrPtr[localAddrLen] = endChar;
 	}
 	if(ssrc.empty()) {
@@ -7153,6 +7161,11 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 			if(ipLen) {
 				ipRemote.setFromString(string(ipPtr, ipLen).c_str());
 			}
+		}
+		char *portPtr = strcasestr(remoteAddrPtr, "PORT=");
+		if(portPtr) {
+			portPtr += 5;
+			portRemote = atoi(portPtr);
 		}
 		remoteAddrPtr[remoteAddrLen] = endChar;
 	}
@@ -7180,13 +7193,25 @@ inline void process_packet__parse_rtcpxr(Call* call, packet_s_process *packetS, 
 		}
 		packetLossPtr[packetLossLen] = endChar;
 	}
-	u_int32_t ssrc_int;
+	int ssrc_is_hex = false;
+	int ssrc_is_dec = false;
+	u_int32_t ssrc_int[2];
 	if(ssrc.length() > 2 && ssrc[0] == '0' && ssrc[1] == 'x') {
-		sscanf(ssrc.c_str() + 2, "%x", &ssrc_int);
+		ssrc_is_hex = 2;
 	} else {
-		ssrc_int = strtol(ssrc.c_str(), 0, 16);
+		for(unsigned i = 0; i < ssrc.length(); i++) {
+			if(ssrc[i] > '9') {
+				ssrc_is_hex = true;
+				break;
+			}
+		}
 	}
-	call->rtcpXrData.add(ssrc_int, tv, moslq, nlr, ipLocal, ipRemote);
+	if(!ssrc_is_hex && ssrc.length() > 8) {
+		ssrc_is_dec = true;
+	}
+	ssrc_int[0] = ssrc_is_dec ? 0 : strtoul(ssrc.c_str() + (ssrc_is_hex == 2 ? 2 : 0), 0, 16);
+	ssrc_int[1] = ssrc_is_hex ? 0 : atoll(ssrc.c_str());
+	c_branch->call->rtcpXrData.add(c_branch->branch_id, vmIPport(ipLocal, portLocal), vmIPport(ipRemote, portRemote), ssrc_int, tv, moslq, nlr);
 }
 
 inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, int line) {
@@ -11037,19 +11062,17 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	#endif
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
-		bool pushed = false;
+		int push_to_thread = -1;
 		if(!packetS->is_register()) {
 			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find &&
 			   preProcessPacketCallFindX[0]->isActiveOutThread()) {
-				preProcessPacketCallFindX[packetS->get_callid_sipextx_index()]->push_packet(packetS);
-				pushed = true;
+				push_to_thread = packetS->get_callid_sipextx_index();
 			} else {
 				this->process_findCall(&packetS);
 				this->process_createCall(&packetS);
 				if(packetS->_findCall && packetS->call) {
 					if(packetS->call->isAllocFlagOK() && !packetS->call->stopProcessing) {
-						preProcessPacket[ppt_pp_call]->push_packet(packetS);
-						pushed = true;
+						push_to_thread = ppt_pp_call;
 					} else {
 						if(!packetS->call->stopProcessing && !packetS->call->bad_flags_warning[0]) {
 							syslog(LOG_WARNING, "WARNING: bad flags in call: %s: alloc_flag: %i, stop_processing: %i (process_SIP_EXTEND)", 
@@ -11059,25 +11082,24 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 						}
 					}
 				} else if(packetS->_createCall && packetS->call_created) {
-					preProcessPacket[ppt_pp_call]->push_packet(packetS);
-					pushed = true;
+					push_to_thread = ppt_pp_call;
 				}
 			}
-			if(!pushed) {
+			if(push_to_thread < 0) {
 				if((packetS->is_options() && (opt_sip_options || livesnifferfilterUseSipTypes.u_options)) ||
 				   (packetS->is_subscribe() && (opt_sip_subscribe || livesnifferfilterUseSipTypes.u_subscribe)) ||
 				   (packetS->is_notify() && (opt_sip_notify || livesnifferfilterUseSipTypes.u_notify))) {
-					preProcessPacket[ppt_pp_sip_other]->push_packet(packetS);
-					pushed = true;
+					push_to_thread = ppt_pp_sip_other;
 				}
 			}
 		} else {
 			if(opt_sip_register || livesnifferfilterUseSipTypes.u_register) {
-				preProcessPacket[ppt_pp_register]->push_packet(packetS);
-				pushed = true;
+				push_to_thread = ppt_pp_register;
 			}
 		}
-		if(!pushed) {
+		if(push_to_thread >= 0) {
+			preProcessPacket[push_to_thread]->push_packet(packetS);
+		} else {
 			PACKET_S_PROCESS_DESTROY(&packetS);
 		}
 	} else if(packetS->typeContentIsSkinny()) {
@@ -11314,7 +11336,7 @@ void PreProcessPacket::process_parseSipData(packet_s_process **packetS_ref, pack
 										     packetS->datalen_() - (packetS->sipDataOffset + packetS->sipDataLen), 
 										     SIP_DBLLINE_SEPARATOR(pass_line_separator == 1), 
 										     SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1));
-						if(doubleEndLineSize) {
+						if(pointToDoubleEndLine) {
 							doubleEndLineSize = SIP_DBLLINE_SEPARATOR_SIZE(pass_line_separator == 1);
 						}
 					}
@@ -11520,6 +11542,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		}
 	}
 	#endif
+	this->process_getSipMethod(&packetS);
 	packetS->_getCallID = true;
 	if(!this->process_getCallID(&packetS)) {
 		if(packetS->next_action == _ppna_set) {
@@ -11529,16 +11552,7 @@ void PreProcessPacket::process_sip(packet_s_process **packetS_ref) {
 		}
 		return;
 	}
-	this->process_getSipMethod(&packetS);
 	if(packetS->is_register() && !(opt_sip_register || livesnifferfilterUseSipTypes.u_register)) {
-		if(packetS->next_action == _ppna_set) {
-			packetS->next_action = _ppna_destroy;
-		} else {
-			PACKET_S_PROCESS_DESTROY(&packetS);
-		}
-		return;
-	}
-	if(!this->process_getCallID_publish(&packetS)) {
 		if(packetS->next_action == _ppna_set) {
 			packetS->next_action = _ppna_destroy;
 		} else {
@@ -11673,6 +11687,16 @@ bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 		packetS->set_callid(s, l);
 		exists_callid = true;
 	}
+	if(packetS->sip_method == PUBLISH && opt_redirect_publish_to_call && packetS->okContentLength()) {
+		s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
+		if(s && l <= 1023 && strncasestr(s, "application/vq-rtcpxr", l)) {
+			s = _gettag(packetS->parseContents.doubleEndLine + packetS->parseContents.doubleEndLineSize, packetS->parseContents.contentLength, "\nCallID:", &l);
+			if(s && l <= 1023) {
+				packetS->set_callid(s, l);
+				exists_callid = true;
+			}
+		}
+	}
 	if(opt_call_id_alternative[0]) {
 		for(unsigned i = 0; i < opt_call_id_alternative_v.size(); i++) {
 			s = gettag_sip(packetS, ("\n" + opt_call_id_alternative_v[i]).c_str(), &l);
@@ -11683,25 +11707,6 @@ bool PreProcessPacket::process_getCallID(packet_s_process **packetS_ref) {
 		}
 	}
 	return(exists_callid);
-}
-
-bool PreProcessPacket::process_getCallID_publish(packet_s_process **packetS_ref) {
-	packet_s_process *packetS = *packetS_ref;
-	if(packetS->sip_method == PUBLISH) {
-		char *s;
-		unsigned long l;
-		s = gettag_sip(packetS, "\nContent-Type:", "\nc:", &l);
-		if(s && l <= 1023 &&
-		   strncasestr(s, "application/vq-rtcpxr", l)) {
-			s = gettag_sip(packetS, "\nCallID:", &l);
-			if(s && l <= 1023) {
-				packetS->set_callid(s, l);
-			} else {
-				return(false);
-			}
-		}
-	}
-	return(true);
 }
 
 void PreProcessPacket::process_getSipMethod(packet_s_process **packetS_ref) {

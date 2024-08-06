@@ -938,6 +938,12 @@ struct packet_s_process : public packet_s_process_0 {
 	inline bool is_subscribe() {
 		return(sip_method == SUBSCRIBE || cseq.method == SUBSCRIBE);
 	}
+	bool okContentLength() {
+		return(parseContents.contentLength > 0 &&
+		       parseContents.doubleEndLine &&
+		       parseContents.doubleEndLine > (data_()+ sipDataOffset) &&
+		       parseContents.doubleEndLine - (data_()+ sipDataOffset) + parseContents.doubleEndLineSize + parseContents.contentLength == sipDataLen);
+	}
 };
 
 

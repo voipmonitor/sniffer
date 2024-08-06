@@ -1732,7 +1732,6 @@ private:
 	void process_diameterExt(packet_s_process **packetS_ref, packet_s_process *packetS_orig);
 	inline void process_diameter(packet_s_process **packetS_ref);
 	inline bool process_getCallID(packet_s_process **packetS_ref);
-	inline bool process_getCallID_publish(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
 	inline void process_getLastSipResponse(packet_s_process **packetS_ref);
 	inline void process_findCall(packet_s_process **packetS_ref);
