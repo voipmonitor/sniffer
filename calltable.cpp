@@ -1577,16 +1577,16 @@ void Call::cancel_ip_port_hash(CallBranch *c_branch, vmIP sip_src_addr, char *to
 	}
 }
 
-int Call::get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr, bool rtcp) {
+int Call::get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr, bool rtcp, bool *rtcp_mux) {
 	if(!c_branch) {
-		int rslt = get_index_by_ip_port(&first_branch, addr, port, use_sip_src_addr, rtcp);
+		int rslt = get_index_by_ip_port(&first_branch, addr, port, use_sip_src_addr, rtcp, rtcp_mux);
 		if(rslt >= 0) {
 			return(rslt);
 		}
 		if(next_branches.size()) {
 			branches_lock();
 			for(unsigned i = 0; i < next_branches.size(); i++) {
-				rslt = get_index_by_ip_port(next_branches[i], addr, port, use_sip_src_addr, rtcp);
+				rslt = get_index_by_ip_port(next_branches[i], addr, port, use_sip_src_addr, rtcp, rtcp_mux);
 				if(rslt >= 0) {
 					break;
 				}
@@ -1599,6 +1599,9 @@ int Call::get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, boo
 		if((use_sip_src_addr ? c_branch->ip_port[i].sip_src_addr : c_branch->ip_port[i].addr) == addr &&
 		   c_branch->ip_port[i].port == (rtcp && !c_branch->ip_port[i].sdp_flags.rtcp_mux ? port.dec() : port)) {
 			// we have found it
+			if(rtcp_mux) {
+				*rtcp_mux = rtcp && c_branch->ip_port[i].sdp_flags.rtcp_mux;
+			}
 			return i;
 		}
 	}
@@ -1806,7 +1809,8 @@ bool Call::read_rtcp(CallBranch *c_branch, packet_s_process_0 *packetS, int isca
 		packetS->set_datalen_(datalen);
 	}
 
-	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), this, packetS->saddr_(), packetS->daddr_());
+	parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), c_branch, 
+		   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_());
 	
 	if(enable_save_packet) {
 		save_packet(this, packetS, _t_packet_rtcp, packetS->datalen_() != datalen_orig, 0, __FILE__, __LINE__);
@@ -6990,7 +6994,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	sRtcpXrStreamData *rtcp_xr_streams_ab[2] = { NULL, NULL };
 	if(rtp_size() > 0) {
 		selectRtpAB();
-	} else if(rtcpXrData.size() > 0) {
+	} else if(rtcpData.size() > 0) {
 		prepareRtcpXrData(&rtcp_xr_streams, true);
 		rtcp_xr_streams.findAB(rtcp_xr_streams_ab);
 	}
@@ -7322,13 +7326,13 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		for(int i = 0; i < 2; i++) {
 			if(!rtcp_xr_streams_ab[i]) continue;
 			string c = i == 0 ? "a" : "b";
-			cdr.add(rtcp_xr_streams_ab[i]->ip_port_local.ip, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
-			if(existsColumns.cdr_mos_xr and rtcp_xr_streams_ab[i]->mos_counter > 0) {
-				if(rtcp_xr_streams_ab[i]->mos_min > 0) {
-					cdr.add(LIMIT_TINYINT_UNSIGNED(rtcp_xr_streams_ab[i]->mos_min), c+"_mos_xr_min_mult10");
+			cdr.add(rtcp_xr_streams_ab[i]->ip_port_src.ip, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
+			if(existsColumns.cdr_mos_xr and rtcp_xr_streams_ab[i]->mos_lq_counter > 0) {
+				if(rtcp_xr_streams_ab[i]->mos_lq_min > 0) {
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtcp_xr_streams_ab[i]->mos_lq_min), c+"_mos_xr_min_mult10");
 				}
-				if(rtcp_xr_streams_ab[i]->mos_avg > 0) {
-					cdr.add(LIMIT_TINYINT_UNSIGNED(rtcp_xr_streams_ab[i]->mos_avg), c+"_mos_xr_mult10");
+				if(rtcp_xr_streams_ab[i]->mos_lq_avg > 0) {
+					cdr.add(LIMIT_TINYINT_UNSIGNED(rtcp_xr_streams_ab[i]->mos_lq_avg), c+"_mos_xr_mult10");
 				}
 			}
 		}
@@ -7336,7 +7340,7 @@ Call::saveToDb(bool enableBatchIfPossible) {
 			for(int i = 0; i < 2; i++) {
 				if(!rtcp_xr_streams_ab[i]) continue;
 				string c = i == 0 ? "b" : "a";
-				cdr.add(rtcp_xr_streams_ab[i]->ip_port_remote.ip, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
+				cdr.add(rtcp_xr_streams_ab[i]->ip_port_dst.ip, c+"_saddr", false, sqlDbSaveCall, sql_cdr_table);
 			}
 		}
 	}
@@ -9789,27 +9793,31 @@ void
 Call::applyRtcpXrDataToRtp() {
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < rtp_size(); i++) { RTP *rtp_i = rtp_stream_by_index(i);
-		for(list<sRtcpXrDataItem>::iterator iter_rtcp_xr = this->rtcpXrData.begin(); iter_rtcp_xr != this->rtcpXrData.end(); iter_rtcp_xr++) {
-			if(rtp_i->ssrc && (iter_rtcp_xr->ssrc[0] || iter_rtcp_xr->ssrc[1]) ?
-			    ((rtp_i->ssrc == iter_rtcp_xr->ssrc[0] || rtp_i->ssrc == iter_rtcp_xr->ssrc[1]) &&
-			     ((!iter_rtcp_xr->ip_port_local.ip.isSet() || iter_rtcp_xr->ip_port_local.ip == rtp_i->saddr) ||
-			      (!iter_rtcp_xr->ip_port_remote.ip.isSet() || iter_rtcp_xr->ip_port_remote.ip == rtp_i->daddr))) :
-			    ((iter_rtcp_xr->ip_port_local.ip.isSet() || iter_rtcp_xr->ip_port_remote.ip.isSet()) &&
-			     ((!iter_rtcp_xr->ip_port_local.ip.isSet() || (iter_rtcp_xr->ip_port_local.ip == rtp_i->saddr && iter_rtcp_xr->ip_port_local.port == rtp_i->sport)) ||
-			      (!iter_rtcp_xr->ip_port_remote.ip.isSet() || (iter_rtcp_xr->ip_port_remote.ip == rtp_i->daddr && iter_rtcp_xr->ip_port_remote.port == rtp_i->dport))))) {
-				if(iter_rtcp_xr->moslq >= 0) {
-					rtp_i->rtcp_xr.counter_mos++;
-					if(iter_rtcp_xr->moslq < rtp_i->rtcp_xr.minmos) {
-						rtp_i->rtcp_xr.minmos = iter_rtcp_xr->moslq;
+		bool exists_rtcp_xr_mos = rtp_i->rtcp_xr.counter_mos > 0;
+		bool exists_rtcp_xr_fr = rtp_i->rtcp_xr.counter_fr > 0;
+		if(!exists_rtcp_xr_mos || !exists_rtcp_xr_fr) {
+			for(list<sRtcpDataItem>::iterator iter_rtcp = this->rtcpData.begin(); iter_rtcp != this->rtcpData.end(); iter_rtcp++) {
+				if(rtp_i->ssrc && (iter_rtcp->ssrc[0] || iter_rtcp->ssrc[1]) ?
+				    ((rtp_i->ssrc == iter_rtcp->ssrc[0] || rtp_i->ssrc == iter_rtcp->ssrc[1]) &&
+				     ((!iter_rtcp->ip_port_src.ip.isSet() || iter_rtcp->ip_port_src.ip == rtp_i->saddr) ||
+				      (!iter_rtcp->ip_port_dst.ip.isSet() || iter_rtcp->ip_port_dst.ip == rtp_i->daddr))) :
+				    ((iter_rtcp->ip_port_src.ip.isSet() || iter_rtcp->ip_port_dst.ip.isSet()) &&
+				     ((!iter_rtcp->ip_port_src.ip.isSet() || (iter_rtcp->ip_port_src.ip == rtp_i->saddr && iter_rtcp->ip_port_src.port == rtp_i->sport)) ||
+				      (!iter_rtcp->ip_port_dst.ip.isSet() || (iter_rtcp->ip_port_dst.ip == rtp_i->daddr && iter_rtcp->ip_port_dst.port == rtp_i->dport))))) {
+					if(!exists_rtcp_xr_mos && iter_rtcp->mos_lq_set) {
+						rtp_i->rtcp_xr.counter_mos++;
+						if(iter_rtcp->mos_lq < rtp_i->rtcp_xr.minmos) {
+							rtp_i->rtcp_xr.minmos = iter_rtcp->mos_lq;
+						}
+						rtp_i->rtcp_xr.avgmos = (rtp_i->rtcp_xr.avgmos * (rtp_i->rtcp_xr.counter_mos - 1) + iter_rtcp->mos_lq) / rtp_i->rtcp_xr.counter_mos;
 					}
-					rtp_i->rtcp_xr.avgmos = (rtp_i->rtcp_xr.avgmos * (rtp_i->rtcp_xr.counter_mos - 1) + iter_rtcp_xr->moslq) / rtp_i->rtcp_xr.counter_mos;
-				}
-				if(iter_rtcp_xr->nlr >= 0) {
-					rtp_i->rtcp_xr.counter_fr++;
-					if(iter_rtcp_xr->nlr > rtp_i->rtcp_xr.maxfr) {
-						rtp_i->rtcp_xr.maxfr = iter_rtcp_xr->nlr;
+					if(!exists_rtcp_xr_fr && iter_rtcp->fr_lost_set) {
+						rtp_i->rtcp_xr.counter_fr++;
+						if(iter_rtcp->fr_lost > rtp_i->rtcp_xr.maxfr) {
+							rtp_i->rtcp_xr.maxfr = iter_rtcp->fr_lost;
+						}
+						rtp_i->rtcp_xr.avgfr = (rtp_i->rtcp_xr.avgfr * (rtp_i->rtcp_xr.counter_fr - 1) + iter_rtcp->fr_lost) / rtp_i->rtcp_xr.counter_fr;
 					}
-					rtp_i->rtcp_xr.avgfr = (rtp_i->rtcp_xr.avgfr * (rtp_i->rtcp_xr.counter_fr - 1) + iter_rtcp_xr->nlr) / rtp_i->rtcp_xr.counter_fr;
 				}
 			}
 		}
@@ -9817,34 +9825,32 @@ Call::applyRtcpXrDataToRtp() {
 	#endif
 }
 
-void Call::sRtcpXrStreamData::add_mos(int16_t moslq) {
-	if(moslq >= 0) {
-		mos_counter++;
-		if(moslq < mos_min) {
-			mos_min = moslq;
-		}
-		mos_avg = (mos_avg * (mos_counter - 1) + moslq) / mos_counter;
+void Call::sRtcpXrStreamData::add_mos_lq(int16_t mos_lq) {
+	mos_lq_counter++;
+	if(mos_lq < mos_lq_min) {
+		mos_lq_min = mos_lq;
 	}
+	mos_lq_avg = (mos_lq_avg * (mos_lq_counter - 1) + mos_lq) / mos_lq_counter;
 }
 
-void Call::sRtcpXrStreamData::add_fr(int16_t nlr) {
-	if(nlr >= 0) {
-		fr_counter++;
-		if(nlr > fr_max) {
-			fr_max = nlr;
-		}
-		fr_avg = (fr_avg * (fr_counter - 1) + nlr) / fr_counter;
+void Call::sRtcpXrStreamData::add_fr_lost(int16_t fr_lost) {
+	fr_lost_counter++;
+	if(fr_lost > fr_lost_max) {
+		fr_lost_max = fr_lost;
 	}
+	fr_lost_avg = (fr_lost_avg * (fr_lost_counter - 1) + fr_lost) / fr_lost_counter;
 }
 
 void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
-	if(streams.size() == 0) {
+	if(by_type.size() == 0) {
 		return;
 	}
-	sRtcpXrStreamData *data[streams.size()];
+	sRtcpXrStreamData *data[by_type.size()];
 	unsigned data_c = 0;
-	for(map<sRtcpXrStreamIndex, sRtcpXrStreamData>::iterator iter = streams.begin(); iter != streams.end(); iter++) {
-		data[data_c++] = &iter->second;
+	for(map<sRtcpStreamIndex, sRtcpXrStreamDataByType>::iterator iter_index = by_type.begin(); iter_index != by_type.end(); iter_index++) {
+		for(map<eRtcpDataItemType, sRtcpXrStreamData>::iterator iter_type = iter_index->second.data.begin(); iter_type != iter_index->second.data.end(); iter_type++) {
+			data[data_c++] = &iter_type->second;
+		}
 	}
 	if(data_c == 1) {
 		ab[data[0]->iscaller ? 0 : 1] = data[0];
@@ -9860,8 +9866,8 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 				ab[1] = data[0];
 			}
 			return;
-		} else if(data[0]->ip_port_local.ip == data[1]->ip_port_remote.ip &&
-			  data[1]->ip_port_local.ip == data[0]->ip_port_remote.ip) {
+		} else if(data[0]->ip_port_src.ip == data[1]->ip_port_dst.ip &&
+			  data[1]->ip_port_src.ip == data[0]->ip_port_dst.ip) {
 			ab[0] = data[0];
 			ab[1] = data[1];
 			ab[1]->iscaller = !ab[0]->iscaller;
@@ -9891,8 +9897,8 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 			ab[1] = data[indexes[0]];
 		}
 		return;
-	} else if(data[indexes[0]]->ip_port_local.ip == data[indexes[1]]->ip_port_remote.ip &&
-		  data[indexes[1]]->ip_port_local.ip == data[indexes[0]]->ip_port_remote.ip) {
+	} else if(data[indexes[0]]->ip_port_src.ip == data[indexes[1]]->ip_port_dst.ip &&
+		  data[indexes[1]]->ip_port_src.ip == data[indexes[0]]->ip_port_dst.ip) {
 		ab[0] = data[indexes[0]];
 		ab[1] = data[indexes[1]];
 		ab[1]->iscaller = !ab[0]->iscaller;
@@ -9911,43 +9917,61 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 
 void Call::prepareRtcpXrData(sRtcpXrStreams *streams, bool checkOK) {
 	CallBranch *c_branch = branch_main();
-	for(list<sRtcpXrDataItem>::iterator iter_rtcp_xr = this->rtcpXrData.begin(); iter_rtcp_xr != this->rtcpXrData.end(); iter_rtcp_xr++) {
-		if(iter_rtcp_xr->branch_id == c_branch->branch_id) {
-			sRtcpXrStreamIndex index(iter_rtcp_xr->ip_port_local, iter_rtcp_xr->ip_port_remote, iter_rtcp_xr->ssrc);
-			if(streams->streams.find(index) == streams->streams.end()) {
-				sRtcpXrStreamData data;
-				data.ip_port_local = index.ip_port_local;
-				data.ip_port_remote = index.ip_port_remote;
-				data.ssrc[0] = index.ssrc[0];
-				data.ssrc[1] = index.ssrc[1];
-				streams->streams[index] = data;
+	for(list<sRtcpDataItem>::iterator iter_rtcp = this->rtcpData.begin(); iter_rtcp != this->rtcpData.end(); iter_rtcp++) {
+		if(iter_rtcp->branch_id == c_branch->branch_id) {
+			sRtcpStreamIndex index(iter_rtcp->ip_port_src, iter_rtcp->ip_port_dst, iter_rtcp->ssrc);
+			sRtcpXrStreamDataByType *data_by_type = &streams->by_type[index];
+			sRtcpXrStreamData *data = &data_by_type->data[iter_rtcp->type];
+			if(iter_rtcp->mos_lq_set) {
+				data->add_mos_lq(iter_rtcp->mos_lq);
 			}
-			streams->streams[index].add_mos(iter_rtcp_xr->moslq);
-			streams->streams[index].add_fr(iter_rtcp_xr->nlr);
-			++streams->streams[index].counter;
+			if(iter_rtcp->fr_lost_set) {
+				data->add_fr_lost(iter_rtcp->fr_lost);
+			}
+			++data->counter;
 		}
 	}
-	for(map<sRtcpXrStreamIndex, sRtcpXrStreamData>::iterator iter = streams->streams.begin(); iter != streams->streams.end(); iter++) {
-		int index_ip_port = get_index_by_ip_port(c_branch, iter->first.ip_port_remote.ip, iter->first.ip_port_remote.port);
-		if(index_ip_port >= 0) {
-			iter->second.ok_by_sdp = true;
-			iter->second.iscaller = c_branch->ip_port[index_ip_port].iscaller;
-		} else {
-			int index_ip_port = get_index_by_ip_port(c_branch, iter->first.ip_port_local.ip, iter->first.ip_port_local.port);
+	for(map<sRtcpStreamIndex, sRtcpXrStreamDataByType>::iterator iter_index = streams->by_type.begin(); iter_index != streams->by_type.end(); iter_index++) {
+		for(map<eRtcpDataItemType, sRtcpXrStreamData>::iterator iter_type = iter_index->second.data.begin(); iter_type != iter_index->second.data.end(); iter_type++) {
+			bool is_rtcp = iter_type->first == _rtcp_data_type_rtcp_xr;
+			bool rtcp_mux;
+			int index_ip_port = get_index_by_ip_port(c_branch, iter_index->first.ip_port_dst.ip, iter_index->first.ip_port_dst.port, false, is_rtcp, &rtcp_mux);
 			if(index_ip_port >= 0) {
-				iter->second.ok_by_sdp = true;
-				iter->second.iscaller = iscaller_is_set(c_branch->ip_port[index_ip_port].iscaller) ?
-							 iscaller_inv_index(c_branch->ip_port[index_ip_port].iscaller) :
-							 -1;
+				iter_type->second.ok_by_sdp = true;
+				iter_type->second.iscaller = c_branch->ip_port[index_ip_port].iscaller;
+			} else {
+				int index_ip_port = get_index_by_ip_port(c_branch, iter_index->first.ip_port_src.ip, iter_index->first.ip_port_src.port, false, is_rtcp, &rtcp_mux);
+				if(index_ip_port >= 0) {
+					iter_type->second.ok_by_sdp = true;
+					iter_type->second.iscaller = iscaller_is_set(c_branch->ip_port[index_ip_port].iscaller) ?
+								      iscaller_inv_index(c_branch->ip_port[index_ip_port].iscaller) :
+								      -1;
+				}
+			}
+			iter_type->second.ip_port_src = iter_index->first.ip_port_src;
+			iter_type->second.ip_port_dst = iter_index->first.ip_port_dst;
+			iter_type->second.ssrc[0] = iter_index->first.ssrc[0];
+			iter_type->second.ssrc[1] = iter_index->first.ssrc[1];
+			iter_type->second.type = iter_type->first;
+			if(is_rtcp && !rtcp_mux) {
+				iter_type->second.ip_port_src.port.port--;
+				iter_type->second.ip_port_dst.port.port--;
 			}
 		}
 	}
 	if(checkOK) {
-		for(map<sRtcpXrStreamIndex, sRtcpXrStreamData>::iterator iter = streams->streams.begin(); iter != streams->streams.end(); ) {
-			if(iter->second.ok_by_sdp && iter->second.iscaller >= 0) {
-				++iter;
+		for(map<sRtcpStreamIndex, sRtcpXrStreamDataByType>::iterator iter_index = streams->by_type.begin(); iter_index != streams->by_type.end(); ) {
+			for(map<eRtcpDataItemType, sRtcpXrStreamData>::iterator iter_type = iter_index->second.data.begin(); iter_type != iter_index->second.data.end(); ) {
+				if(iter_type->second.ok_by_sdp && iter_type->second.iscaller >= 0) {
+					++iter_type;
+				} else {
+					iter_index->second.data.erase(iter_type++);
+				}
+			}
+			if(iter_index->second.data.size()) {
+				++iter_index;
 			} else {
-				streams->streams.erase(iter++);
+				streams->by_type.erase(iter_index++);
 			}
 		}
 	}

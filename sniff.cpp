@@ -6633,7 +6633,8 @@ inline int process_packet__rtp_call_info(packet_s_process_calls_info *call_info,
 							srtcp = true;
 						}
 					}
-					parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), call, packetS->saddr_(), packetS->daddr_(), srtcp);
+					parse_rtcp((char*)packetS->data_(), packetS->datalen_(), packetS->getTimeval_pt(), c_branch,
+						   packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), srtcp);
 				}
 			}
 			if(rslt_read_rtp) {
@@ -7169,7 +7170,8 @@ inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process 
 		}
 		remoteAddrPtr[remoteAddrLen] = endChar;
 	}
-	int16_t moslq = -1;
+	bool moslq_set = false;
+	int16_t moslq = 0;
 	unsigned long qualityEstLen;
 	char *qualityEstPtr = gettag_sip(packetS, "\nQualityEst:", &qualityEstLen);
 	if(qualityEstPtr && qualityEstLen) {
@@ -7178,10 +7180,12 @@ inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process 
 		char *moslqPtr = strcasestr(qualityEstPtr, "MOSLQ=");
 		if(moslqPtr) {
 			moslq = round(atof(moslqPtr + 6) * 10);
+			moslq_set = true;
 		}
 		qualityEstPtr[qualityEstLen] = endChar;
 	}
-	int16_t nlr = -1;
+	bool nlr_set = false;
+	int16_t nlr = 0;
 	unsigned long packetLossLen;
 	char *packetLossPtr = gettag_sip(packetS, "\nPacketLoss:", &packetLossLen);
 	if(packetLossPtr && packetLossLen) {
@@ -7190,6 +7194,7 @@ inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process 
 		char *nlrPtr = strcasestr(packetLossPtr, "NLR=");
 		if(nlrPtr) {
 			nlr= round(atof(nlrPtr + 4) * 255 / 100);
+			nlr_set = true;
 		}
 		packetLossPtr[packetLossLen] = endChar;
 	}
@@ -7211,7 +7216,10 @@ inline void process_packet__parse_rtcpxr(CallBranch *c_branch, packet_s_process 
 	}
 	ssrc_int[0] = ssrc_is_dec ? 0 : strtoul(ssrc.c_str() + (ssrc_is_hex == 2 ? 2 : 0), 0, 16);
 	ssrc_int[1] = ssrc_is_hex ? 0 : atoll(ssrc.c_str());
-	c_branch->call->rtcpXrData.add(c_branch->branch_id, vmIPport(ipLocal, portLocal), vmIPport(ipRemote, portRemote), ssrc_int, tv, moslq, nlr);
+	if(moslq_set || nlr_set) {
+		c_branch->call->rtcpData.add_publish(c_branch->branch_id, vmIPport(ipLocal, portLocal), vmIPport(ipRemote, portRemote), ssrc_int, 
+						     tv, moslq_set, moslq, nlr_set, nlr);
+	}
 }
 
 inline void process_packet__cleanup_calls(packet_s *packetS, const char *file, int line) {

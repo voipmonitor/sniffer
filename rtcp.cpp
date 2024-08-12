@@ -323,7 +323,8 @@ static inline int find_rtp_index(u_int32_t ssrc, u_int32_t ssrc_sender, vmIP ip_
 	return(-1);
 }
  
-char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst, bool srtcp)
+char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_branch, struct timeval *ts,
+		   vmIP ip_src, vmPort port_src, vmIP ip_dst, vmPort port_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_sr_senderinfo_t senderinfo;
@@ -352,8 +353,8 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 	u_int32_t last_lsr_delay = 0;
 	RTP *rtp_sender = NULL;
 	for(int find_pass = 0; find_pass < 2 && !rtp_sender; find_pass++) {
-		for(int i = 0; i < call->rtp_size(); i++) { 
-			RTP *rtp_i = call->rtp_stream_by_index(i);
+		for(int i = 0; i < c_branch->call->rtp_size(); i++) { 
+			RTP *rtp_i = c_branch->call->rtp_stream_by_index(i);
 			if(rtp_i->ssrc == senderinfo.sender_ssrc &&
 			   ((find_pass == 0 && 
 			     ((rtp_i->saddr == ip_src && rtp_i->daddr == ip_dst) ||
@@ -401,7 +402,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 
 		if(!prepare_rtcp_data_params) {
 			int rtp_find_type;
-			RTP *rtp = find_rtp(call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
+			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
 				int32_t loss = ntoh24(reportblock.packets_lost);
 				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
@@ -469,7 +470,7 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 			if(stream_index >= 0) {
 				cout << "rtcp,"
 				     << stream_index << ","
-				     << TIME_US_TO_SF(call->getRelTime(ts)) << ","
+				     << TIME_US_TO_SF(c_branch->call->getRelTime(ts)) << ","
 				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
 				     << (srtcp ? "1" : "")
@@ -491,7 +492,8 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, Call *call, stru
 **----------------------------------------------------------------------------
 */
 
-char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeval *ts, vmIP ip_src, vmIP ip_dst, bool srtcp)
+char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, struct timeval *ts,
+		   vmIP ip_src, vmPort port_src, vmIP ip_dst, vmPort port_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_sr_reportblock_t reportblock;
@@ -535,7 +537,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 		if(!prepare_rtcp_data_params) {
 
 			int rtp_find_type;
-			RTP *rtp = find_rtp(call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
+			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
 			if(rtp) {
 				int32_t loss = ntoh24(reportblock.packets_lost);
 				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
@@ -591,7 +593,7 @@ char *dump_rtcp_rr(char *data, int datalen, int count, Call *call, struct timeva
 			if(stream_index >= 0) {
 				cout << "rtcp,"
 				     << stream_index << ","
-				     << TIME_US_TO_SF(call->getRelTime(ts)) << ","
+				     << TIME_US_TO_SF(c_branch->call->getRelTime(ts)) << ","
 				     <<	(opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter ? intToString(reportblock.jitter) : "") << ","
 				     << (reportblock.frac_lost ? intToString(reportblock.frac_lost) : "") << ","
 				     << (srtcp ? "1" : "")
@@ -704,7 +706,8 @@ char *dump_rtcp_sdes(char *data, unsigned int datalen, int count)
 **----------------------------------------------------------------------------
 */
 
-void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *call)
+void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBranch *c_branch, struct timeval *ts,
+		  vmIP ip_src, vmPort port_src, vmIP ip_dst, vmPort port_dst)
 {
 	char *pkt = data;
 	int reports_seen;
@@ -741,7 +744,7 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 	
 		unsigned count_use_rtp = 0;
 		#if not EXPERIMENTAL_LITE_RTP_MOD
-		for(int i = 0; i < call->rtp_size(); i++) { RTP *rtp_i = call->rtp_stream_by_index(i);
+		for(int i = 0; i < c_branch->call->rtp_size(); i++) { RTP *rtp_i = c_branch->call->rtp_stream_by_index(i);
 			if(rtp_i->ssrc == ntohl(xr->ssrc)) {
 				RTP *rtp = rtp_i;
 				rtp->rtcp_xr.counter_fr++;
@@ -781,6 +784,8 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 		}
 		#endif
 		if(!count_use_rtp) {
+			c_branch->call->rtcpData.add_rtcp_xr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), ntohl(xr->ssrc), 
+							     *ts, xr->mos_lq != 0x7F, xr->mos_lq, true, xr->loss_rate);
 			if(sverb.debug_rtcp) {
 				cout << "identifier: " << hex << ntohl(xr->ssrc) << dec 
 				     << " skipped (no rtp stream with this ssrc)" 
@@ -803,13 +808,14 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, Call *ca
 **----------------------------------------------------------------------------
 */
 
-void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, vmIP ip_dst, bool srtcp)
+void parse_rtcp(char *data, int datalen, timeval *ts, CallBranch* c_branch, 
+		vmIP ip_src, vmPort port_src, vmIP ip_dst, vmPort port_dst, bool srtcp)
 {
 	char *pkt = data;
 	rtcp_header_t *rtcp;
 	
 	if(sverb.debug_rtcp) {
-		cout << "RTCP PACKET " << call->fbasename
+		cout << "RTCP PACKET " << c_branch->call->fbasename
 		     << " ts: " << ts->tv_sec << "." 
 				<< setfill('0') << setw(6) << ts->tv_usec
 		     << " " << ip_src.getString() << "->" << ip_dst.getString()
@@ -856,10 +862,12 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, v
 			
 		switch(rtcp->packet_type) {
 		case RTCP_PACKETTYPE_SR:
-			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst, srtcp);
+			dump_rtcp_sr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, c_branch, ts, 
+				     ip_src, port_src, ip_dst, port_dst, srtcp);
 			break;
 		case RTCP_PACKETTYPE_RR:
-			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, call, ts, ip_src, ip_dst, srtcp);
+			dump_rtcp_rr(rtcp_data, data + datalen - rtcp_data, rtcp->rc_sc, c_branch, ts,
+				     ip_src, port_src, ip_dst, port_dst, srtcp);
 			break;
 		case RTCP_PACKETTYPE_SDES:
 			// we do not need to parse it
@@ -869,7 +877,8 @@ void parse_rtcp(char *data, int datalen, timeval *ts, Call* call, vmIP ip_src, v
 			}
 			break;
 		case RTCP_PACKETTYPE_XR:
-			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp_size, call);
+			dump_rtcp_xr(pkt, data + datalen - rtcp_data, rtcp_size, c_branch, ts,
+				     ip_src, port_src, ip_dst, port_dst);
 			break;
 		default:
 			if(sverb.debug_rtcp) {

@@ -1027,50 +1027,86 @@ public:
 		_sf_db = 1,
 		_sf_charts_cache = 2
 	};
-	struct sRtcpXrDataItem {
-		u_int16_t branch_id;
-		vmIPport ip_port_local;
-		vmIPport ip_port_remote;
+	enum eRtcpDataItemType {
+		_rtcp_data_type_na,
+		_rtcp_data_type_publish,
+		_rtcp_data_type_rtcp_xr
+	};
+	struct sRtcpDataItem_data {
+		sRtcpDataItem_data() {
+			memset(this, 0, sizeof(*this));
+		}
 		u_int32_t ssrc[2];
 		timeval tv;
-		int16_t moslq;
-		int16_t nlr;
+		bool mos_lq_set : 1;
+		bool fr_lost_set : 1;
+		u_int8_t mos_lq;
+		u_int8_t fr_lost;
 	};
-	struct sRtcpXrData : public list<sRtcpXrDataItem> {
-		void add(u_int16_t branch_id, vmIPport ip_port_local, vmIPport ip_port_remote, u_int32_t ssrc[], timeval tv, int16_t moslq, int16_t nlr) {
-			sRtcpXrDataItem dataItem;
+	struct sRtcpDataItem : public sRtcpDataItem_data {
+		sRtcpDataItem() {
+			type = _rtcp_data_type_na;
+			branch_id = 0;
+		}
+		eRtcpDataItemType type;
+		u_int16_t branch_id;
+		vmIPport ip_port_src;
+		vmIPport ip_port_dst;
+	};
+	struct sRtcpData : public list<sRtcpDataItem> {
+		void add_publish(u_int16_t branch_id, vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc[], 
+				 timeval tv, bool mos_lq_set, u_int8_t mos_lq, bool fr_lost_set, u_int8_t fr_lost) {
+			sRtcpDataItem dataItem;
+			dataItem.type = _rtcp_data_type_publish;
 			dataItem.branch_id = branch_id;
-			dataItem.ip_port_local = ip_port_local;
-			dataItem.ip_port_remote = ip_port_remote;
+			dataItem.ip_port_src = ip_port_src;
+			dataItem.ip_port_dst = ip_port_dst;
 			dataItem.ssrc[0] = ssrc[0];
 			dataItem.ssrc[1] = ssrc[1];
 			dataItem.tv = tv;
-			dataItem.moslq = moslq;
-			dataItem.nlr = nlr;
+			dataItem.mos_lq_set = mos_lq_set;
+			dataItem.mos_lq = mos_lq;
+			dataItem.fr_lost_set = fr_lost_set;
+			dataItem.fr_lost = fr_lost;
+			this->push_back(dataItem);
+		}
+		void add_rtcp_xr(u_int16_t branch_id, vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc,
+				 timeval tv, bool mos_lq_set, u_int8_t mos_lq, bool fr_lost_set, u_int8_t fr_lost) {
+			sRtcpDataItem dataItem;
+			dataItem.type = _rtcp_data_type_rtcp_xr;
+			dataItem.branch_id = branch_id;
+			dataItem.ip_port_src = ip_port_src;
+			dataItem.ip_port_dst = ip_port_dst;
+			dataItem.ssrc[0] = ssrc;
+			dataItem.tv = tv;
+			dataItem.mos_lq_set = mos_lq_set;
+			dataItem.mos_lq = mos_lq;
+			dataItem.fr_lost_set = fr_lost_set;
+			dataItem.fr_lost = fr_lost;
 			this->push_back(dataItem);
 		}
 	};
-	struct sRtcpXrStreamIndex {
-		sRtcpXrStreamIndex(vmIPport ip_port_local, vmIPport ip_port_remote, u_int32_t ssrc[]) {
-			this->ip_port_local = ip_port_local;
-			this->ip_port_remote = ip_port_remote;
+	struct sRtcpStreamIndex {
+		sRtcpStreamIndex(vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc[]) {
+			this->ip_port_src = ip_port_src;
+			this->ip_port_dst = ip_port_dst;
 			this->ssrc[0] = ssrc[0];
 			this->ssrc[1] = ssrc[1];
 		}
-		bool operator == (const sRtcpXrStreamIndex& other) const { 
-			return(this->ip_port_local == other.ip_port_local &&
-			       this->ip_port_remote == other.ip_port_remote &&
+		bool operator == (const sRtcpStreamIndex& other) const { 
+			return(this->ip_port_src == other.ip_port_src &&
+			       this->ip_port_dst == other.ip_port_dst &&
 			       this->ssrc[0] == other.ssrc[0] &&
 			       this->ssrc[1] == other.ssrc[1]); 
 		}
-		bool operator < (const sRtcpXrStreamIndex& other) const { 
-			return(this->ip_port_local < other.ip_port_local ? true : !(this->ip_port_local == other.ip_port_local) ? false :
-			       this->ip_port_remote < other.ip_port_remote ? true : !(this->ip_port_remote == other.ip_port_remote) ? false :
+		bool operator < (const sRtcpStreamIndex& other) const { 
+			return(this->ip_port_src < other.ip_port_src ? true : !(this->ip_port_src == other.ip_port_src) ? false :
+			       this->ip_port_dst < other.ip_port_dst ? true : !(this->ip_port_dst == other.ip_port_dst) ? false :
 			       this->ssrc[0] < other.ssrc[0] ? true : this->ssrc[0] != other.ssrc[0] ? false :
 			       this->ssrc[1] < other.ssrc[1]);
 		}
-		vmIPport ip_port_local;
-		vmIPport ip_port_remote;
+		vmIPport ip_port_src;
+		vmIPport ip_port_dst;
 		u_int32_t ssrc[2];
 	};
 	struct sRtcpXrStreamData {
@@ -1080,31 +1116,35 @@ public:
 			ok_by_sdp = false;
 			iscaller = -1;
 			counter = 0;
-			fr_max = 0;
-			fr_avg = 0;
-			fr_counter = 0;
-			mos_min = 45;
-			mos_avg = 0;
-			mos_counter = 0;
+			mos_lq_min = 45;
+			mos_lq_avg = 0;
+			mos_lq_counter = 0;
+			fr_lost_max = 0;
+			fr_lost_avg = 0;
+			fr_lost_counter = 0;
 		}
-		void add_mos(int16_t moslq);
-		void add_fr(int16_t nlr);
-		vmIPport ip_port_local;
-		vmIPport ip_port_remote;
+		void add_mos_lq(int16_t mos_lq);
+		void add_fr_lost(int16_t fr_lost);
+		vmIPport ip_port_src;
+		vmIPport ip_port_dst;
 		u_int32_t ssrc[2];
+		eRtcpDataItemType type;
 		bool ok_by_sdp;
-		int iscaller;
+		int8_t iscaller;
 		unsigned counter;
-		uint8_t fr_max;
-		double fr_avg;
-		unsigned fr_counter;
-		uint8_t mos_min;
-		double mos_avg;
-		unsigned int mos_counter;
+		uint8_t mos_lq_min;
+		double mos_lq_avg;
+		unsigned mos_lq_counter;
+		uint8_t fr_lost_max;
+		double fr_lost_avg;
+		unsigned fr_lost_counter;
+	};
+	struct sRtcpXrStreamDataByType {
+		map<eRtcpDataItemType, sRtcpXrStreamData> data;
 	};
 	struct sRtcpXrStreams {
 		void findAB(sRtcpXrStreamData *ab[]);
-		map<sRtcpXrStreamIndex, sRtcpXrStreamData> streams;
+		map<sRtcpStreamIndex, sRtcpXrStreamDataByType> by_type;
 	};
 	struct sUdptlDumper {
 		sUdptlDumper() {
@@ -1556,7 +1596,7 @@ public:
 
 	bool rtp_zeropackets_stored;
 	
-	sRtcpXrData rtcpXrData;
+	sRtcpData rtcpData;
 	
 	map<d_item<vmIPport>, unsigned> last_udptl_seq;
 
@@ -1616,7 +1656,7 @@ public:
 	*/
 	~Call();
 
-	int get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false);
+	int get_index_by_ip_port(CallBranch *c_branch, vmIP addr, vmPort port, bool use_sip_src_addr = false, bool rtcp = false, bool *rtcp_mux = NULL);
 	inline int get_index_by_ip_port_by_src(CallBranch *c_branch, vmIP addr, vmPort port, int iscaller, bool rtcp = false) {
 		int index_call_ip_port_by_src = get_index_by_ip_port(c_branch, addr, port, false, rtcp);
 		if(index_call_ip_port_by_src < 0) {
