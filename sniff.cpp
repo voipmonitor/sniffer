@@ -4957,6 +4957,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 				packet_info = new FILE_LINE(0) sSciPacketInfo;
 				fillSciPacketInfo(packetS, INVITE, packet_info);
 			}
+			process_packet__parse_custom_headers(call, packetS);
 			sendCallInfoEvCall(c_branch, sci_invite, packetS->getTimeval(), call->onInvite_counter, packet_info);
 			if(packet_info) {
 				delete packet_info;
