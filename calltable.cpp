@@ -14795,6 +14795,16 @@ void CustomHeaders::load(SqlDb *sqlDb, bool enableCreatePartitions, bool lock) {
 				ch_data.leftBorder = row["left_border"];
 				ch_data.rightBorder = row["right_border"];
 				ch_data.regularExpression = row["regular_expression"];
+				if(!ch_data.regularExpression.empty() && reg_pattern_contain_subresult(ch_data.regularExpression.c_str())) {
+					size_t posSeparatorReplacePattern = ch_data.regularExpression.find("=>");
+					if(posSeparatorReplacePattern != string::npos) {
+						string replacePattern = ch_data.regularExpression.substr(posSeparatorReplacePattern + 2);
+						if(reg_match(replacePattern.c_str(), "\\$[0-9]")) {
+							ch_data.regularExpression = ch_data.regularExpression.substr(0, posSeparatorReplacePattern);
+							ch_data.regularExpressionReplacePattern = replacePattern;
+						}
+					}
+				}
 				ch_data.screenPopupField = atoi(row["screen_popup_field"].c_str());
 				ch_data.reqRespDirection = row["direction"] == "request" ? dir_request :
 							   row["direction"] == "response" ? dir_response :
@@ -15029,8 +15039,11 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 								}
 							}
 							if(!iter2->second.regularExpression.empty()) {
-								if(reg_pattern_contain_subresult(iter2->second.regularExpression.c_str())) {
-									string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), "$1", __FILE__, __LINE__);
+								if(!iter2->second.regularExpressionReplacePattern.empty() ||
+								   reg_pattern_contain_subresult(iter2->second.regularExpression.c_str())) {
+									string customHeader = reg_replace(customHeaderBegin, iter2->second.regularExpression.c_str(), 
+													  !iter2->second.regularExpressionReplacePattern.empty() ? iter2->second.regularExpressionReplacePattern.c_str() : "$1",
+													  __FILE__, __LINE__);
 									if(customHeader.empty()) {
 										delete [] customHeaderContent;
 										continue;

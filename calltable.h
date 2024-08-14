@@ -4002,6 +4002,7 @@ public:
 		string leftBorder;
 		string rightBorder;
 		string regularExpression;
+		string regularExpressionReplacePattern;
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
 		bool useLastValue;
