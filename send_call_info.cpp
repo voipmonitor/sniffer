@@ -217,6 +217,12 @@ void SendCallInfoItem::evSci(sSciInfo *sci) {
 		requestData.push_back(dstring("ip_dst", sci->called_ip.getString()));
 		requestData.push_back(dstring("callid", sci->callid));
 		requestData.push_back(dstring("time", sqlDateTimeString(sci->at / 1000000ull)));
+		if(!sci->caller_ua.empty()) {
+			requestData.push_back(dstring("caller_ua", sci->caller_ua));
+		}
+		if(!sci->called_ua.empty()) {
+			requestData.push_back(dstring("called_ua", sci->called_ua));
+		}
 		if(additionalPacketInformation && sci->packet_info_set) {
 			requestData.push_back(dstring("packet_caller_number", sci->packet_info.caller_number));
 			requestData.push_back(dstring("packet_called_number_to", sci->packet_info.called_number_to));
@@ -382,6 +388,8 @@ void SendCallInfo::getSciFromCall(sSciInfo *sci, CallBranch *c_branch,
 	sci->called_domain_final = call->get_called_domain(c_branch);
 	sci->caller_ip = call->getSipcallerip(c_branch);
 	sci->called_ip = call->getSipcalledip(c_branch);
+	sci->caller_ua = c_branch->a_ua;
+	sci->called_ua = c_branch->b_ua;
 	sci->typeSci = typeSci;
 	sci->at = at;
 	sci->counter = counter;

@@ -45,6 +45,8 @@ struct sSciInfo {
 	string called_domain_to;
 	string called_domain_uri;
 	string called_domain_final;
+	string caller_ua;
+	string called_ua;
 	vmIP caller_ip;
 	vmIP called_ip;
 	u_int64_t at;
