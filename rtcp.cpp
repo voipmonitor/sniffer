@@ -403,9 +403,9 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 		if(!prepare_rtcp_data_params) {
 			int rtp_find_type;
 			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, senderinfo.sender_ssrc, ip_src, ip_dst, &rtp_find_type);
+			int32_t loss = ntoh24(reportblock.packets_lost);
+			loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 			if(rtp) {
-				int32_t loss = ntoh24(reportblock.packets_lost);
-				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;
 				rtp->rtcp.loss = loss;
@@ -459,6 +459,11 @@ char *dump_rtcp_sr(char *data, unsigned int datalen, int count, CallBranch *c_br
 					     << endl;
 				}
 			} else {
+				c_branch->call->rtcpData.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
+									*ts,
+									true, loss,
+									opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter, reportblock.jitter,
+									true /*reportblock.frac_lost != 0*/, reportblock.frac_lost);
 				if(sverb.debug_rtcp) {
 					cout << "sSSRC: " << hex << reportblock.ssrc << dec 
 					     << " skipped (no rtp stream with this ssrc)" 
@@ -538,9 +543,9 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 
 			int rtp_find_type;
 			RTP *rtp = find_rtp(c_branch->call, reportblock.ssrc, 0, ip_src, ip_dst, &rtp_find_type);
+			int32_t loss = ntoh24(reportblock.packets_lost);
+			loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 			if(rtp) {
-				int32_t loss = ntoh24(reportblock.packets_lost);
-				loss = loss & 0x800000 ? 0xff000000 | loss : loss;
 				#if not EXPERIMENTAL_LITE_RTP_MOD
 				rtp->rtcp.counter++;
 				rtp->rtcp.loss = loss;
@@ -582,6 +587,11 @@ char *dump_rtcp_rr(char *data, int datalen, int count, CallBranch *c_branch, str
 					     << endl;
 				}
 			} else {
+				c_branch->call->rtcpData.add_rtcp_sr_rr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), reportblock.ssrc,
+									*ts,
+									true, loss,
+									opt_ignoreRTCPjitter == 0 || reportblock.jitter < opt_ignoreRTCPjitter, reportblock.jitter,
+									true /*reportblock.frac_lost != 0*/, reportblock.frac_lost);
 				if(sverb.debug_rtcp) {
 					cout << "sSSRC: " << hex << reportblock.ssrc << dec 
 					     << " skipped (no rtp stream with this ssrc)" 
@@ -785,7 +795,9 @@ void dump_rtcp_xr(char *data, unsigned int datalen, int all_block_size, CallBran
 		#endif
 		if(!count_use_rtp) {
 			c_branch->call->rtcpData.add_rtcp_xr(c_branch->branch_id, vmIPport(ip_dst, port_dst), vmIPport(ip_src, port_src), ntohl(xr->ssrc), 
-							     *ts, xr->mos_lq != 0x7F, xr->mos_lq, true, xr->loss_rate);
+							     *ts,
+							     xr->mos_lq != 0x7F, xr->mos_lq,
+							     true, xr->loss_rate);
 			if(sverb.debug_rtcp) {
 				cout << "identifier: " << hex << ntohl(xr->ssrc) << dec 
 				     << " skipped (no rtp stream with this ssrc)" 

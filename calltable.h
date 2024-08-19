@@ -1030,7 +1030,8 @@ public:
 	enum eRtcpDataItemType {
 		_rtcp_data_type_na,
 		_rtcp_data_type_publish,
-		_rtcp_data_type_rtcp_xr
+		_rtcp_data_type_rtcp_xr,
+		_rtcp_data_type_rtcp_sr_rr
 	};
 	struct sRtcpDataItem_data {
 		sRtcpDataItem_data() {
@@ -1040,8 +1041,12 @@ public:
 		timeval tv;
 		bool mos_lq_set : 1;
 		bool fr_lost_set : 1;
+		bool loss_set : 1;
+		bool jitter_set : 1;
 		u_int8_t mos_lq;
 		u_int8_t fr_lost;
+		int32_t loss;
+		u_int32_t jitter;
 	};
 	struct sRtcpDataItem : public sRtcpDataItem_data {
 		sRtcpDataItem() {
@@ -1052,6 +1057,15 @@ public:
 		u_int16_t branch_id;
 		vmIPport ip_port_src;
 		vmIPport ip_port_dst;
+		void dump() {
+			cout << ip_port_src.getString() << " -> " << ip_port_dst.getString()
+			     << " ssrc: " << hex << ssrc[0] << "/" << ssrc[1] << dec
+			     << " type: " << type;
+			if(mos_lq_set) cout << " mos_lq: " << (int)mos_lq;
+			if(fr_lost_set) cout << " fr_lost: " << (int)fr_lost;
+			if(loss_set) cout << " loss: " << loss;
+			if(jitter_set) cout << " jitter: " << jitter;
+		}
 	};
 	struct sRtcpData : public list<sRtcpDataItem> {
 		void add_publish(u_int16_t branch_id, vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc[], 
@@ -1085,6 +1099,23 @@ public:
 			dataItem.fr_lost = fr_lost;
 			this->push_back(dataItem);
 		}
+		void add_rtcp_sr_rr(u_int16_t branch_id, vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc,
+				    timeval tv, bool loss_set, int32_t loss, bool jitter_set, u_int32_t jitter, bool fr_lost_set, u_int8_t fr_lost) {
+			sRtcpDataItem dataItem;
+			dataItem.type = _rtcp_data_type_rtcp_sr_rr;
+			dataItem.branch_id = branch_id;
+			dataItem.ip_port_src = ip_port_src;
+			dataItem.ip_port_dst = ip_port_dst;
+			dataItem.ssrc[0] = ssrc;
+			dataItem.tv = tv;
+			dataItem.loss_set = loss_set;
+			dataItem.loss = loss;
+			dataItem.jitter_set = jitter_set;
+			dataItem.jitter = jitter;
+			dataItem.fr_lost_set = fr_lost_set;
+			dataItem.fr_lost = fr_lost;
+			this->push_back(dataItem);
+		}
 	};
 	struct sRtcpStreamIndex {
 		sRtcpStreamIndex(vmIPport ip_port_src, vmIPport ip_port_dst, u_int32_t ssrc[]) {
@@ -1105,6 +1136,10 @@ public:
 			       this->ssrc[0] < other.ssrc[0] ? true : this->ssrc[0] != other.ssrc[0] ? false :
 			       this->ssrc[1] < other.ssrc[1]);
 		}
+		void dump() {
+			cout << ip_port_src.getString() << " -> " << ip_port_dst.getString()
+			     << " ssrc: "<< hex << ssrc[0] << "/" << ssrc[1] << dec;
+		}
 		vmIPport ip_port_src;
 		vmIPport ip_port_dst;
 		u_int32_t ssrc[2];
@@ -1115,6 +1150,7 @@ public:
 			ssrc[1] = 0;
 			ok_by_sdp = false;
 			iscaller = -1;
+			rtcp_mux = false;
 			counter = 0;
 			mos_lq_min = 45;
 			mos_lq_avg = 0;
@@ -1122,15 +1158,26 @@ public:
 			fr_lost_max = 0;
 			fr_lost_avg = 0;
 			fr_lost_counter = 0;
+			loss = 0;
+			loss_counter = 0;
+			jitter_max = 0;
+			jitter_avg = 0;
+			jitter_counter = 0;
+			ticks_bycodec = 0;
 		}
 		void add_mos_lq(int16_t mos_lq);
 		void add_fr_lost(int16_t fr_lost);
+		void add_loss(int32_t loss);
+		void add_jitter(u_int32_t jitter);
+		vmIPport ip_port_src_orig;
+		vmIPport ip_port_dst_orig;
 		vmIPport ip_port_src;
 		vmIPport ip_port_dst;
 		u_int32_t ssrc[2];
 		eRtcpDataItemType type;
 		bool ok_by_sdp;
 		int8_t iscaller;
+		bool rtcp_mux;
 		unsigned counter;
 		uint8_t mos_lq_min;
 		double mos_lq_avg;
@@ -1138,12 +1185,19 @@ public:
 		uint8_t fr_lost_max;
 		double fr_lost_avg;
 		unsigned fr_lost_counter;
+		int32_t loss;
+		unsigned loss_counter;
+		u_int32_t jitter_max;
+		double jitter_avg;
+		unsigned jitter_counter;
+		u_int8_t ticks_bycodec;
 	};
 	struct sRtcpXrStreamDataByType {
 		map<eRtcpDataItemType, sRtcpXrStreamData> data;
 	};
 	struct sRtcpXrStreams {
 		void findAB(sRtcpXrStreamData *ab[]);
+		sRtcpXrStreamData *getOtherType(sRtcpXrStreamData *stream);
 		map<sRtcpStreamIndex, sRtcpXrStreamDataByType> by_type;
 	};
 	struct sUdptlDumper {
@@ -1998,6 +2052,20 @@ public:
 			}
 		}
 		return(false);
+	}
+	int getTicksByCodecIfEq(CallBranch *c_branch, int index) {
+		int ticks = 0;
+		for(int i = 0; i < MAX_RTPMAP; i++) {
+			if(c_branch->rtpmap[index][i].is_set()) {
+				int ticks_codec = get_ticks_bycodec(c_branch->rtpmap[index][i].codec);
+				if(!ticks) {
+					ticks = ticks_codec;
+				} else if(ticks != ticks_codec) {
+					return(0);
+				}
+			}
+		}
+		return(ticks);
 	}
 	int getFillRtpMapByCallerd(CallBranch *c_branch, bool iscaller) {
 		for(int i = c_branch->ipport_n - 1; i >= 0; i--) {
