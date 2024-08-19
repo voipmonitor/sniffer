@@ -4247,6 +4247,29 @@ static inline void parse_packet__message_content(char *message, unsigned int mes
 static inline Call *process_packet__merge(packet_s_process *packetS, char *callidstr, int *merged, bool preprocess);
 static inline bool checkEqNumbers(Call::sInviteSD_Addr *item1, Call::sInviteSD_Addr *item2);
 
+void process_ua(Call *call, CallBranch *c_branch, packet_s_process *packetS, int iscaller, int iscalled) {
+	unsigned long l;
+	char *s;
+	if(iscaller > 0 && c_branch->b_ua.empty()) {
+		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		if(s) {
+			c_branch->b_ua = string(s, l);
+			if(sverb.set_ua) {
+					cout << "set b_ua " << c_branch->b_ua << endl;
+			}
+		}
+	}
+	if(iscalled > 0 && c_branch->a_ua.empty()) {
+		s = gettag_sip(packetS, "\nUser-Agent:", &l);
+		if(s) {
+			c_branch->a_ua = string(s, l);
+			if(sverb.set_ua) {
+				cout << "set a_ua " << c_branch->a_ua << endl;
+			}
+		}
+	}
+}
+
 void process_packet_sip_call(packet_s_process *packetS) {
 	
 	Call *call = NULL;
@@ -4952,6 +4975,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		}
 		++call->onInvite_counter;
 		if(isSendCallInfoReady()) {
+			if(call && c_branch && detectCallerd) {
+				process_ua(call, c_branch, packetS, iscaller, iscalled);
+			}
 			sSciPacketInfo *packet_info = NULL;
 			if(useAdditionalPacketInformationInSendCallInfo()) {
 				packet_info = new FILE_LINE(0) sSciPacketInfo;
@@ -6012,27 +6038,10 @@ endsip:
 				       packetS->data_(), packetS->datalen_());
 	}
 
-	if(call && c_branch && detectCallerd &&
-	   (iscaller > 0 ||
-	    (iscalled > 0 && c_branch->a_ua.empty()))) {
-		s = gettag_sip(packetS, "\nUser-Agent:", &l);
-		if(s) {
-			//cout << "**** " << call->call_id << " " << (iscaller > 0 ? "b" : "a") << " / " << string(s, l) << endl;
-			if(iscaller > 0) {
-				c_branch->b_ua = string(s, l);
-				if(sverb.set_ua) {
-					cout << "set b_ua " << c_branch->b_ua << endl;
-				}
-			}
-			if(iscalled > 0) {
-				c_branch->a_ua = string(s, l);
-				if(sverb.set_ua) {
-					cout << "set a_ua " << c_branch->a_ua << endl;
-				}
-			}
-		}
+	if(call && c_branch && detectCallerd) {
+		process_ua(call, c_branch, packetS, iscaller, iscalled);
 	}
-	
+
 	if(logPacketSipMethodCall_enable) {
 		logPacketSipMethodCall(
 			#if USE_PACKET_NUMBER
