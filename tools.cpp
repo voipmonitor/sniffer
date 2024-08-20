@@ -26,6 +26,7 @@
 #include <curl/curl.h>
 #include <cerrno>
 #include <iomanip>
+#include <json.h>
 #ifdef HAVE_OPENSSL
 #include <openssl/sha.h>
 #endif
@@ -5618,8 +5619,18 @@ string strlwr(string str) {
 	return(rslt);
 }
 
-bool isJsonObject(string str) {
-	return(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}');
+bool isJsonObject(string str, bool check) {
+	if(!str.empty() && str[0] == '{' && str[str.length() - 1] == '}') {
+		if(check) {
+			json_object * object = json_tokener_parse(str.c_str());
+			if(!object) {
+				return(false);
+			}
+			json_object_put(object);
+		}
+		return(true);
+	}
+	return(false);
 }
 
 AutoDeleteAtExit GlobalAutoDeleteAtExit;

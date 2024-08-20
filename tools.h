@@ -564,7 +564,7 @@ string hexencode(unsigned char *src, int src_length);
 int hexdecode(unsigned char *dst, const char *src, int max);
 char *strlwr(char *string, u_int32_t maxLength = 0);
 string strlwr(string str);
-bool isJsonObject(string str);
+bool isJsonObject(string str, bool check = false);
 
 class CircularBuffer
 {

@@ -372,7 +372,8 @@ void cSnifferServerConnection::connection_process() {
 	while((rsltRead = socket->read(buffer, &readLength))) {
 		if(readLength) {
 			readBuffer.add(buffer, readLength);
-			if(cManagerAes::existsEnd(&readBuffer, &endPos)) {
+			if(cManagerAes::existsEnd(&readBuffer, &endPos) ||
+			   isJsonObject((char*)readBuffer, true)) {
 				break;
 			}
 		} else {
