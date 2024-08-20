@@ -373,7 +373,7 @@ void cSnifferServerConnection::connection_process() {
 		if(readLength) {
 			readBuffer.add(buffer, readLength);
 			if(cManagerAes::existsEnd(&readBuffer, &endPos) ||
-			   isJsonObject((char*)readBuffer, true)) {
+			   (readBuffer.data()[0] == '{' && isJsonObject(trim_str((char*)readBuffer, "\r\n"), true))) {
 				break;
 			}
 		} else {
