@@ -53,6 +53,11 @@ static int debug = 0;
 
 #define RESYNCH_V1 1
 
+//#define JB_PUT_LOG 1
+#if JB_PUT_LOG
+static unsigned jb_put_log_counter;
+#endif
+
 /*! \brief private fixed_jb structure */
 struct fixed_jb
 {
@@ -64,6 +69,8 @@ struct fixed_jb
 	long next_delivery;
 	int force_resynch;
 	struct ast_channel *chan;
+	long long skew_sum;
+	long skew_counter;
 };
 
 
@@ -127,6 +134,9 @@ struct fixed_jb *fixed_jb_new(struct fixed_jb_conf *conf, struct ast_channel *ch
 	/* Set the constant delay to the jitterbuf */
 	jb->delay = conf->jbsize;
 	
+	jb->skew_sum = 0;
+	jb->skew_counter = 0;
+	
 	return jb;
 }
 
@@ -149,6 +159,14 @@ void fixed_jb_destroy(struct fixed_jb *jb)
 
 static inline int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, long now, const char *debug_str)
 {
+	#if JB_PUT_LOG
+	fprintf(stdout,
+		"RESYNC,%s"
+		"\n",
+		debug_str);
+	fflush(stdout);
+	#endif
+	
 	long diff, offset;
 	struct fixed_jb_frame *frame;
 
@@ -214,10 +232,18 @@ static inline int resynch_jb(struct fixed_jb *jb, void *data, long ms, long ts, 
 				now, ts, now - ts, jb->rxcore, jb->delay,
 				jb->rxcore + ts, jb->next_delivery, jb->rxcore + ts - jb->next_delivery);
 		if (!jb->force_resynch) {
-			if(offset < 0 || 
-			   jb->rxcore + ts > jb->next_delivery + jb->delay + jb->conf.resync_threshold) {
+			if(!jb->chan->audio_decode && jb->skew_counter > 10 && llabs(jb->skew_sum / jb->skew_counter) > jb->delay / 2) {
+				//fprintf(stdout, "SKEW %lli!\n", jb->skew_sum / jb->skew_counter);
+				jb->skew_sum = 0;
+				jb->skew_counter = 0;
+				jb_fixed_flush_deliver(jb->chan);
+				return fixed_jb_put_first(jb, data, ms, ts, now, 0);
+			} else if(offset < 0 ||
+				  now - ts < jb->rxcore - jb->delay) {
+				//fprintf(stdout, "DROP %lli!\n", jb->skew_sum / jb->skew_counter);
 				return FIXED_JB_DROP;
 			} else {
+				//fprintf(stdout, "RESYNC %lli!\n", jb->skew_sum / jb->skew_counter);
 				jb_fixed_flush_deliver(jb->chan);
 				return fixed_jb_put_first(jb, data, ms, ts, now, 0);
 			}
@@ -264,6 +290,7 @@ int fixed_jb_put_first(struct fixed_jb *jb, void *data, long ms, long ts, long n
 {
 	/* this is our first frame - set the base of the receivers time */
 	jb->rxcore = now - ts;
+	//if(debug) fprintf(stdout, "SET rxcore: %ld\n", jb->rxcore);
 	
 	/* init next for a first time - it should be the time the first frame should be played */
 	jb->next_delivery = now + jb->delay;
@@ -305,11 +332,34 @@ int fixed_jb_put(struct fixed_jb *jb, void *data, long ms, long ts, long now, ch
 	}
         // TODO: implement pcap reordering queue, ASSERT(now >= 0);
 	
-	
 	delivery = jb->rxcore + jb->delay + ts;
 	
+	jb->skew_sum += ts - (now - jb->rxcore);
+	++jb->skew_counter;
+	
 	/* check if the new frame is not too late */
-	//if(debug) fprintf(stdout, "delivery: %d, jb->next_delivery: %d\n", delivery, jb->next_delivery);
+	//if(debug) fprintf(stdout, "delivery: %ld, jb->next_delivery: %ld, diff: %ld, rxcore: %ld\n", delivery, jb->next_delivery, delivery - jb->next_delivery, jb->rxcore);
+	
+	#if JB_PUT_LOG
+	if(!jb_put_log_counter) {
+		fprintf(stdout,
+			"ts,now,rxcore,now_c,"
+			"delivery,next_delivery,tail_delivery,"
+			"skew"
+			"\n");
+	}
+	fprintf(stdout,
+		"%li,%li,%li,%li,"
+		"%li,%li,%li,"
+		"%lli"
+		"\n",
+		ts, now, jb->rxcore, now - jb->rxcore,
+		delivery, jb->next_delivery, jb->tail ? jb->tail->delivery : 0,
+		jb->skew_sum / jb->skew_counter);
+	fflush(stdout);
+	++jb_put_log_counter;
+	#endif
+	
 	if (delivery < jb->next_delivery) {
 		/* should drop the frame, but let first resynch_jb() check if this is not a jump in ts, or
 		   the force resynch flag was not set. */
