@@ -539,6 +539,7 @@ Register::Register(Call *call) {
 	rrd_sum = 0;
 	rrd_count = 0;
 	reg_call_id = call->call_id;
+	flags = call->flags;
 	if(call->reg.reg_tcp_seq) {
 		reg_tcp_seq = *call->reg.reg_tcp_seq;
 	}
@@ -608,6 +609,7 @@ void Register::update(Call *call) {
 	sipcalledport = c_branch->sipcalledport[0];
 	vlan = c_branch->vlan;
 	reg_call_id = call->call_id;
+	flags = call->flags;
 	if(call->reg.reg_tcp_seq) {
 		reg_tcp_seq = *call->reg.reg_tcp_seq;
 	} else {
@@ -615,7 +617,13 @@ void Register::update(Call *call) {
 	}
 }
 
+bool Register::needSaveToDb()
+{
+	return(flags & FLAG_SAVEREGISTERDB);
+}
+
 void Register::addState(Call *call) {
+	flags = call->flags;
 	lock_states();
 	bool isFailed = convRegisterState(call) != rs_Failed;
 	RegisterStates *states = isFailed ? &states_state : &states_failed;
@@ -624,20 +632,20 @@ void Register::addState(Call *call) {
 		if(!exp_state) {
 			updateLastState(call, states);
 		} else {
-			saveStateToDb(states->last(), _ss_exp_state, 0, 
+			saveStateToDb(states->last(), _ss_exp_state, 0,
 				      __FILE__, __LINE__);
 			resetLastState(call, states);
-			saveStateToDb(states->last(), _ss_reset, 0, 
+			saveStateToDb(states->last(), _ss_reset, 0,
 				      __FILE__, __LINE__);
 		}
 	} else {
 		states->add(new FILE_LINE(20002) RegisterState(call, this));
 		RegisterState *prevState = states->prev();
 		if(prevState) {
-			saveStateToDb(prevState, _ss_end, 0, 
+			saveStateToDb(prevState, _ss_end, 0,
 				      __FILE__, __LINE__);
 		}
-		saveStateToDb(states->last(), _ss_init, 0, 
+		saveStateToDb(states->last(), _ss_init, 0,
 			      __FILE__, __LINE__);
 	}
 	if(!isFailed) {
@@ -660,7 +668,7 @@ void Register::expire(bool need_lock_states) {
 	}
 	RegisterState *lastState = states_state.last();
 	if(lastState && lastState->isOK()) {
-		saveStateToDb(lastState, _ss_update_force, 0, 
+		saveStateToDb(lastState, _ss_update_force, 0,
 			      __FILE__, __LINE__);
 		RegisterState *newState = new FILE_LINE(20003) RegisterState(NULL, NULL);
 		newState->copyFrom(lastState);
@@ -672,7 +680,7 @@ void Register::expire(bool need_lock_states) {
 		newState->next_states.clear();
 		newState->next_states_saved = 0;
 		states_state.add(newState);
-		saveStateToDb(newState, _ss_save, 0, 
+		saveStateToDb(newState, _ss_save, 0,
 			      __FILE__, __LINE__);
 		if(opt_enable_fraud && isFraudReady()) {
 			RegisterState *prevState = states_state.prev();
@@ -1020,9 +1028,12 @@ string Register::getQueryStringForSaveEqNext(RegisterState *state) {
 	return(query_str);
 }
 
-void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS, 
+void Register::saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS,
 			     const char *file, int line) {
 	string registers_info;
+	if(!needSaveToDb()) {
+		return;
+	}
 	if(sverb.registers_save) {
 		ostringstream outStr;
 		outStr << (state->state == rs_Failed ? "failed" : "state")

@@ -3744,7 +3744,7 @@ inline bool init_call_branch(Call *call, CallBranch *c_branch, packet_s_process 
 				u_int32_t seq = packetS->tcp_seq();
 				if(seq) {
 					extern Registers registers;
-					if(opt_sip_register == 1 && registers.existsDuplTcpSeqInRegOK(call, seq)) {
+					if(enable_register_engine && registers.existsDuplTcpSeqInRegOK(call, seq)) {
 						if(sverb.dump_sip) {
 							cout << " - skip duplicate tcp seq " << seq
 							     << " in register " << call->call_id << endl;
@@ -3951,7 +3951,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	}
 
 	// opening dump file
-	if(call->typeIs(REGISTER) && enable_save_register(call)) {
+	if(call->typeIs(REGISTER) && enable_save_register_pcap(call)) {
 		call->fname_register = packetS->getTimeUS();
 		string pathfilename = call->get_pathfilename(tsf_reg);
 		PcapDumper *dumper = enable_pcap_split ? call->getPcapSip() : call->getPcap();
@@ -7296,7 +7296,7 @@ inline void process_packet__cleanup_registers(packet_s *packetS) {
 	}
 	if(packetS || opt_safe_cleanup_calls != 2) {
 		calltable->cleanup_registers(false, packetS ? packetS->getTime_s() : 0);
-		if(opt_sip_register == 1) {
+		if(enable_register_engine) {
 			extern Registers registers;
 			registers.cleanup(false, 30);
 		}

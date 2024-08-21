@@ -1513,7 +1513,9 @@ struct gre_hdr {
 
 
 #define enable_save_sip(call)		(call->flags & FLAG_SAVESIP)
-#define enable_save_register(call)	(call->flags & FLAG_SAVEREGISTER)
+#define enable_save_register_pcap(call)	(call->flags & FLAG_SAVEREGISTERPCAP)
+#define enable_save_register_db(call)	(call->flags & FLAG_SAVEREGISTERDB)
+#define enable_register_engine	(opt_sip_register & 1)
 #define enable_save_rtcp(call)		((call->flags & FLAG_SAVERTCP) || (opt_saveudptl && call->is_fax()))
 #define enable_save_mrcp(call)		((call->flags & FLAG_SAVEMRCP) || (opt_saveudptl && call->is_fax()))
 #define enable_save_application(call)	(enable_save_mrcp(call))
@@ -1532,7 +1534,7 @@ struct gre_hdr {
 					(type == _t_packet_mrcp ? enable_save_mrcp(call) : enable_save_rtp_av(call))
 #define enable_save_sip_rtp(call)	(enable_save_sip(call) || enable_save_rtp(call))
 #define processing_rtp_video(call)	(call->flags & (FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO))
-#define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register(call) || enable_save_rtp(call))
+#define enable_save_packet(call)	(enable_save_sip(call) || enable_save_register_pcap(call) || enable_save_rtp(call))
 #define enable_save_audio(call)		((call->flags & FLAG_SAVEAUDIO) || opt_savewav_force)
 #define enable_audio_transcribe(call)	(call->flags & FLAG_AUDIOTRANSCRIBE)
 #define enable_save_sip_rtp_audio(call)	(enable_save_sip_rtp(call) || enable_save_audio(call) || enable_audio_transcribe(call))

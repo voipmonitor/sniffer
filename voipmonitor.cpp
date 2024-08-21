@@ -295,6 +295,7 @@ int opt_sip_notify = 0;
 int opt_save_sip_options = 0;
 int opt_save_sip_subscribe = 0;
 int opt_save_sip_notify = 0;
+int opt_save_sip_register = 0;
 bool opt_sip_msg_compare_ip_src = true;
 bool opt_sip_msg_compare_ip_dst = true;
 bool opt_sip_msg_compare_port_src = true;
@@ -2574,7 +2575,7 @@ void *storing_registers( void */*dummy*/ ) {
 				
 					regfailedcache->prunecheck(TIME_US_TO_S(call->first_packet_time_us));
 					if(!opt_nocdr) {
-						if(call->typeIs(REGISTER)) {
+						if(call->typeIs(REGISTER) && enable_save_register_db(call)) {
 							call->saveRegisterToDb();
 						}
 					}
@@ -4665,7 +4666,7 @@ int main_init_read() {
 	if(!is_sender() && !is_client_packetbuffer_sender()) {
 		CountryDetectInit(sqlDbInit);
 		
-		if(opt_sip_register == 1) {
+		if(enable_register_engine) {
 			initRegisters();
 		}
 		
@@ -5398,7 +5399,7 @@ void main_term_read() {
 	set_terminating();
 
 	regfailedcache->prune(0);
-	if(opt_sip_register == 1) {
+	if(enable_register_engine) {
 		extern Registers registers;
 		registers.clean_all();
 	}
@@ -5433,7 +5434,7 @@ void main_term_read() {
 	
 	cFilters::freeActive();
 	
-	if(opt_sip_register == 1) {
+	if(enable_register_engine) {
 		termRegisters();
 	}
 	
@@ -6781,7 +6782,8 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("redirect_publish_to_call", &opt_redirect_publish_to_call));
 		subgroup("REGISTER");
 			addConfigItem((new FILE_LINE(42290) cConfigItem_yesno("sip-register", &opt_sip_register))
-				->addValues("old:2|o:2"));
+				->addValues("old:2|o:2|nodb:3"));
+			addConfigItem(new FILE_LINE(0) cConfigItem_yesno("save-sip-register", &opt_save_sip_register));
 			addConfigItem(new FILE_LINE(42291) cConfigItem_integer("sip-register-timeout", &opt_register_timeout));
 			addConfigItem(new FILE_LINE(42292) cConfigItem_yesno("sip-register-timeout-disable_save_failed", &opt_register_timeout_disable_save_failed));
 				advanced();
