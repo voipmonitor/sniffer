@@ -3895,12 +3895,16 @@ int Mgmt_custom_headers_refresh(Mgmt_params *params) {
 	}
 	extern CustomHeaders *custom_headers_cdr;
 	extern CustomHeaders *custom_headers_message;
+	extern CustomHeaders *custom_headers_sip_msg;
 	extern NoHashMessageRules *no_hash_message_rules;
 	if(custom_headers_cdr) {
 		custom_headers_cdr->refresh();
 	}
 	if(custom_headers_message) {
 		custom_headers_message->refresh();
+	}
+	if(custom_headers_sip_msg) {
+		custom_headers_sip_msg->refresh();
 	}
 	if(no_hash_message_rules) {
 		no_hash_message_rules->refresh();
