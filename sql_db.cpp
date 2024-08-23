@@ -8222,6 +8222,7 @@ bool SqlDb_mysql::createSchema_procedures_other(int connectId) {
 			    call `") + mysql_database + "`.create_partitions_ipacc('" + mysql_database + "', 1);\
 			 end");
 		}
+		this->query("set global event_scheduler = 1");
 	}
 	this->createFunction( // double space after begin for invocation rebuild function if change parameter - createRoutine compare only body
 	"BEGIN  \

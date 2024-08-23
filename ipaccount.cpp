@@ -131,6 +131,7 @@ void Ipacc::s_cache::init() {
 		}
 	} else {
 		custIpCustomerCache = new FILE_LINE(0) CustIpCustomerCache();
+		custIpCustomerCache->load(true, true);
 	}
 	if(isSqlDriver("mysql")) {
 		nextIpCache = new FILE_LINE(12005) NextIpCache();
