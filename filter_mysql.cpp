@@ -93,8 +93,10 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	if(baseRow->sip == 1)			flags |= _FLAG_SIP;
 	else if(baseRow->sip == 0)		flags |= _FLAG_NOSIP;
 	
-	if(baseRow->reg == 1)			flags |= _FLAG_REGISTER;
-	else if(baseRow->reg == 0)		flags |= _FLAG_NOREGISTER;
+	if (baseRow->reg == 0)		flags |= _FLAG_NOREGISTER_DB | _FLAG_NOREGISTER_PCAP;
+	else if (baseRow->reg == 1)		flags |= _FLAG_REGISTER_DB | _FLAG_REGISTER_PCAP;
+	else if (baseRow->reg == 2)		flags |= _FLAG_REGISTER_DB | _FLAG_NOREGISTER_PCAP;
+	else if (baseRow->reg == 3)		flags |= _FLAG_NOREGISTER_DB | _FLAG_REGISTER_PCAP;
 
 	if(baseRow->dtmf == 1)			flags |= _FLAG_DTMF_DB | _FLAG_DTMF_PCAP;
 	else if(baseRow->dtmf == 0)		flags |= _FLAG_NODTMF_DB | _FLAG_NODTMF_PCAP;
@@ -166,8 +168,10 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & _FLAG_RTCP)			*callFlags |= FLAG_SAVERTCP;
 	if(filterFlags & _FLAG_NORTCP)			*callFlags &= ~FLAG_SAVERTCP;
 	
-	if(filterFlags & _FLAG_REGISTER)		*callFlags |= FLAG_SAVEREGISTER;
-	if(filterFlags & _FLAG_NOREGISTER)		*callFlags &= ~FLAG_SAVEREGISTER;
+	if(filterFlags & _FLAG_REGISTER_DB)		*callFlags |= FLAG_SAVEREGISTERDB;
+	if(filterFlags & _FLAG_NOREGISTER_DB)	*callFlags &= ~FLAG_SAVEREGISTERDB;
+	if(filterFlags & _FLAG_REGISTER_PCAP)	*callFlags |= FLAG_SAVEREGISTERPCAP;
+	if(filterFlags & _FLAG_NOREGISTER_PCAP)	*callFlags &= ~FLAG_SAVEREGISTERPCAP;
 
 	if(filterFlags & _FLAG_DTMF_DB)			*callFlags |= FLAG_SAVEDTMFDB;
 	if(filterFlags & _FLAG_NODTMF_DB)		*callFlags &= ~FLAG_SAVEDTMFDB;

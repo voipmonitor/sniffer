@@ -26,8 +26,8 @@
 #define _FLAG_NORTCP     		(((u_int64_t)1) << 10)
 #define _FLAG_SIP			(((u_int64_t)1) << 11)
 #define _FLAG_NOSIP      		(((u_int64_t)1) << 12)
-#define _FLAG_REGISTER			(((u_int64_t)1) << 13)
-#define _FLAG_NOREGISTER		(((u_int64_t)1) << 14)
+#define _FLAG_REGISTER_DB			(((u_int64_t)1) << 13)
+#define _FLAG_NOREGISTER_DB		(((u_int64_t)1) << 14)
 #define _FLAG_GRAPH			(((u_int64_t)1) << 15)
 #define _FLAG_NOGRAPH    		(((u_int64_t)1) << 16)
 #define _FLAG_AUDIO			(((u_int64_t)1) << 17)
@@ -64,6 +64,8 @@
 #define _FLAG_NOSUBSCRIBE_DB		(((u_int64_t)1) << 46)
 #define _FLAG_SUBSCRIBE_PCAP		(((u_int64_t)1) << 47)
 #define _FLAG_NOSUBSCRIBE_PCAP		(((u_int64_t)1) << 48)
+#define _FLAG_REGISTER_PCAP			(((u_int64_t)1) << 49)
+#define _FLAG_NOREGISTER_PCAP		(((u_int64_t)1) << 50)
 
 #define MAX_PREFIX 64
 
@@ -386,6 +388,8 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	extern int opt_save_sip_options;
 	extern int opt_save_sip_subscribe;
 	extern int opt_save_sip_notify;
+	extern int opt_save_sip_register;
+	extern int opt_sip_register;
 
 	if(opt_saveSIP) {
 		flags |= FLAG_SAVESIP;
@@ -426,14 +430,20 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	if(opt_hide_message_content) {
 		flags |= FLAG_HIDEMESSAGE;
 	}
-	if(opt_sip_register_save_all) {
-		flags |= FLAG_SAVEREGISTER;
-	}
 	if (opt_dbdtmf) {
 		flags |= FLAG_SAVEDTMFDB;
 	}
 	if (opt_pcapdtmf) {
 		flags |= FLAG_SAVEDTMFPCAP;
+	}
+	if (opt_sip_register == 1) {
+		flags |= FLAG_SAVEREGISTERDB;
+	}
+	if (opt_sip_register && opt_save_sip_register) {
+		flags |= FLAG_SAVEREGISTERPCAP;
+	}
+	if(opt_sip_register_save_all) {
+		flags |=  FLAG_SAVEREGISTERDB | FLAG_SAVEREGISTERPCAP;
 	}
 	if (opt_sip_options == 1) {
 		flags |= FLAG_SAVEOPTIONSDB;

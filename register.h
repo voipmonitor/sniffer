@@ -252,8 +252,9 @@ public:
 	inline u_int8_t saveDeferredStateToDb(RegisterState *state);
 	inline u_int8_t saveUpdateStateToDb(RegisterState *state);
 	string getQueryStringForSaveEqNext(RegisterState *state);
-	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0, 
+	inline void saveStateToDb(RegisterState *state, eTypeSaveState typeSaveState, u_int32_t actTimeS = 0,
 				  const char *file = NULL, int line = 0);
+	inline bool needSaveToDb();
 	inline RegisterState* getLastState();
 	inline eRegisterState getState();
 	inline bool stateIsOK();
@@ -303,6 +304,7 @@ public:
 	volatile int _sync_states;
 	static volatile u_int64_t _id;
 	static volatile int _sync_id;
+	unsigned long int flags;
 };
 
 

@@ -13985,7 +13985,7 @@ Calltable::cleanup_registers(bool closeAll, u_int32_t packet_time_s) {
 				syslog(LOG_WARNING,"try to duplicity push call %s to registers_queue", reg->call_id.c_str());
 			} else {
 				reg->push_register_to_registers_queue = 1;
-				if(opt_sip_register == 1) {
+				if(enable_register_engine) {
 					extern Registers registers;
 					if(reg->reg.msgcount <= 1 || 
 					   !r_branch->lastSIPresponseNum ||
@@ -14197,7 +14197,7 @@ void Call::saveregister(struct timeval *currtime) {
 		syslog(LOG_WARNING,"try to duplicity push call %s / %i to registers_queue", call_id.c_str(), getTypeBase());
 	} else {
 		push_register_to_registers_queue = 1;
-		if(opt_sip_register == 1) {
+		if(enable_register_engine) {
 			extern Registers registers;
 			registers.add(this);
 			((Calltable*)calltable)->lock_registers_deletequeue();
@@ -16143,7 +16143,8 @@ string printCallFlags(unsigned long int flags) {
 	if(flags & FLAG_SAVERTP_VIDEO)		outStr << "savertp_video ";
 	if(flags & FLAG_SAVERTCP)		outStr << "savertcp ";
 	if(flags & FLAG_SAVESIP)		outStr << "savesip ";
-	if(flags & FLAG_SAVEREGISTER)		outStr << "saveregister ";
+	if(flags & FLAG_SAVEREGISTERPCAP)		outStr << "saveregisterpcap ";
+	if(flags & FLAG_SAVEREGISTERDB)		outStr << "saveregisterdb ";
 	if(flags & FLAG_SAVEAUDIO)		outStr << "saveaudio ";
 	if(flags & FLAG_FORMATAUDIO_WAV)	outStr << "format_wav ";
 	if(flags & FLAG_FORMATAUDIO_OGG)	outStr << "format_ogg ";

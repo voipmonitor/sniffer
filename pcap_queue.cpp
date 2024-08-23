@@ -4352,7 +4352,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 						calltable->cleanup_registers(true);
 						calltable->cleanup_ss7(true);
 						extern int opt_sip_register;
-						if(opt_sip_register == 1) {
+						if(enable_register_engine) {
 							extern Registers registers;
 							registers.cleanup(false);
 						}
@@ -4381,7 +4381,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					}
 					if(sleepCounter > 300) {
 						extern int opt_sip_register;
-						if(opt_sip_register == 1) {
+						if(enable_register_engine) {
 							extern Registers registers;
 							registers.cleanup(true);
 						}
@@ -4422,7 +4422,7 @@ void PcapQueue_readFromInterface_base::terminatingAtEndOfReadPcap() {
 					calltable->cleanup_registers(true);
 					calltable->cleanup_ss7(true);
 					extern int opt_sip_register;
-					if(opt_sip_register == 1) {
+					if(enable_register_engine) {
 						extern Registers registers;
 						registers.cleanup(true);
 					}

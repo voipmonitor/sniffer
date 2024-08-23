@@ -9785,7 +9785,7 @@ void SqlDb_mysql::checkColumns_register(bool log) {
 		}
 		break;
 	}
-	if(opt_sip_register == 1) {
+	if(enable_register_engine) {
 		bool registerStateIdIsBig = true;
 		bool registerStateIdIsAutoIncrement = true;
 		this->query("show columns from register_state like 'id'");

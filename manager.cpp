@@ -2342,7 +2342,7 @@ int Mgmt_expire_registers(Mgmt_params* params) {
 		return(0);
 	}
 	extern int opt_sip_register;
-	if(opt_sip_register == 1) {
+	if(enable_register_engine) {
 		char parameter[100] = "";
 		sscanf(params->buf + params->command.length() + 1, "%s", parameter);
 		bool force = parameter[0] && !strncasecmp(parameter, "force", 5);
