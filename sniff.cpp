@@ -4308,6 +4308,8 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	bool domain_to_uri_detected = false;
 	char domain_to[1024] = "";
 	bool domain_to_detected = false;
+	char tag_content_to[1024] = "";
+	bool tag_content_to_detected = false;
 	bool in_dialog_invite = false;
 	bool dont_save = false;
 	u_int64_t packet_time_us = packetS->getTimeUS();
@@ -4607,12 +4609,21 @@ void process_packet_sip_call(packet_s_process *packetS) {
 						}
 						break;
 					} else {
+						if(packetS->cseq != c_branch->invitecseq) {
+							if(!tag_content_to_detected) {
+								get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+								tag_content_to_detected = true;
+							}
+							if(tag_content_to[0]) {
+								in_dialog_invite = true;
+							}
+						}
 						reverseInviteSdaddr_ignore_port = true;
 					}
 				}
 			}
 		}
-		if(!existInviteSdaddr) {
+		if(!(existInviteSdaddr || (in_dialog_invite && reverseInviteSdaddr_ignore_port))) {
 		        if(!reverseInviteSdaddr) {
 				Call::sInviteSD_Addr invite_sd;
 				invite_sd.saddr = packetS->saddr_();
@@ -4951,8 +4962,10 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			if(!c_branch->invitecseq.is_set()) {
 				c_branch->invitecseq = packetS->cseq;
 			} else if(packetS->cseq != c_branch->invitecseq) {
-				char tag_content_to[1024];
-				get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+				if(!tag_content_to_detected) {
+					get_sip_peertag(packetS, "\nTo:", "\nt:", tag_content_to, sizeof(tag_content_to), ppntt_to, ppndt_called_tag);
+					tag_content_to_detected = true;
+				}
 				if(tag_content_to[0]) {
 					c_branch->invitecseq_in_dialog.push_back(packetS->cseq);
 					if(c_branch->invitecseq_in_dialog.size() > 10) {
