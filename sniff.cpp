@@ -4880,51 +4880,51 @@ void process_packet_sip_call(packet_s_process *packetS) {
 		if(reason) {
 			char oldEndChar = reason[l];
 			reason[l] = 0;
+			char *pointerToFirstSemicolon = strchr(reason, ';');
 			char *pointerToCause = strcasestr(reason, ";cause=");
-			if(pointerToCause && (pointerToCause - reason) < 10) {
+			char *pointerToText = strcasestr(reason, ";text=\"");
+			if(pointerToFirstSemicolon && pointerToFirstSemicolon - reason < 10 &&
+			   (pointerToCause || pointerToText)) {
 				char type[10];
-				memcpy(type, reason, pointerToCause - reason);
-				type[pointerToCause - reason] = 0;
-				//remove spaces from end of string type
-				for(int i = pointerToCause - reason - 1; i > 0; i--) {
-					if(type[i] == ' ') {
-						type[i] = 0;
-					} else {
-						break;
-					}
+				memcpy(type, reason, pointerToFirstSemicolon - reason);
+				type[pointerToFirstSemicolon - reason] = 0;
+				unsigned type_length = strlen(type);
+				while(type_length > 0 && type[type_length - 1] == ' ') {
+					type[type_length - 1] = 0;
+					--type_length;
 				}
-				int cause = atoi(pointerToCause + 7);
-				char text[1024];
-				char *pointerToText = strcasestr(pointerToCause, ";text=\"");
-				if(pointerToText && (pointerToText - pointerToCause - 7) < 5) {
+				int cause = pointerToCause ? atoi(pointerToCause + 7) : 0;
+				char text[1024] = "";
+				if(pointerToText) {
 					pointerToText += 7;
-					char *pointerToQmark = strchr(pointerToText, '"');
-					unsigned int lengthText;
-					if (pointerToQmark)
-						lengthText = pointerToQmark - pointerToText;
-					else
-						lengthText = MIN(l - (pointerToText - reason), sizeof(text) - 1);
-
+					char *pointerToEndText = strstr(pointerToText, "\";");
+					unsigned int lengthText = MIN(pointerToEndText ?
+								       pointerToEndText - pointerToText :
+								       l - (pointerToText - reason),
+								      sizeof(text) - 1);
 					memcpy(text, pointerToText, lengthText);
 					text[lengthText] = 0;
 					if(lengthText > 0 && text[lengthText - 1] == '"') {
 						--lengthText;
 						text[lengthText] = 0;
 					}
-				} else {
-					snprintf(text, sizeof(text), "%i (text missing)", cause);
 				}
-				if(!strcasecmp(type, "SIP")) {
-					if(!opt_get_reason_from_bye_cancel || c_branch->reason_sip_cause == 0 || 
-					   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
-						c_branch->reason_sip_cause = cause;
-						c_branch->reason_sip_text = text;
+				if(cause > 0 || text[0]) {
+					if(!text[0]) {
+						snprintf(text, sizeof(text), "%i (text missing)", cause);
 					}
-				} else if(!strcasecmp(type, "Q.850")) {
-					if(!opt_get_reason_from_bye_cancel || c_branch->reason_q850_cause == 0 || 
-					   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
-						c_branch->reason_q850_cause = cause;
-						c_branch->reason_q850_text = text;
+					if(!strcasecmp(type, "SIP")) {
+						if(!opt_get_reason_from_bye_cancel || c_branch->reason_sip_cause == 0 || 
+						   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
+							c_branch->reason_sip_cause = cause;
+							c_branch->reason_sip_text = text;
+						}
+					} else if(!strcasecmp(type, "Q.850")) {
+						if(!opt_get_reason_from_bye_cancel || c_branch->reason_q850_cause == 0 || 
+						   (opt_get_reason_from_bye_cancel && (packetS->sip_method == BYE || packetS->sip_method == CANCEL))) {
+							c_branch->reason_q850_cause = cause;
+							c_branch->reason_q850_text = text;
+						}
 					}
 				}
 			}
