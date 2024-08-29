@@ -245,6 +245,6 @@ source: clean
 	tar -czf voipmonitor-${version}-src.tar.gz voipmonitor-${version}-src
 
 
+BIN_PATH = $(if @exec_prefix@, @exec_prefix@, /usr/local/sbin)
 install: 
-	install voipmonitor /usr/local/sbin/
-
+	install voipmonitor $(BIN_PATH)/
