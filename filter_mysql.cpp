@@ -18,16 +18,14 @@ using namespace std;
 extern int opt_nocdr;
 
 
-bool is_number(const std::string& s) {
-	for (unsigned int i = 0; i < s.length(); i++) {
-		if (!std::isdigit(s[i]))
-			return false;
-		}
-	return true;
-}
-
 bool isStringNull(string &str) {
 	return(str == "" || str == "\\N");
+}
+
+string filter_base::_string(SqlDb_row *sqlRow, map<string, string> *row, const char *column) {
+	return(sqlRow ?
+		(*sqlRow)[column].c_str() :
+		(*row)[column].c_str());
 }
 
 bool filter_base::_value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column) {
@@ -62,6 +60,8 @@ void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, 
 	baseRow->options = _value_is_null(sqlRow, row, "options") ? -1 : _value(sqlRow, row, "options");
 	baseRow->notify = _value_is_null(sqlRow, row, "notify") ? -1 : _value(sqlRow, row, "notify");
 	baseRow->subscribe = _value_is_null(sqlRow, row, "subscribe") ? -1 : _value(sqlRow, row, "subscribe");
+	baseRow->natalias = _string(sqlRow, row, "natalias");
+	baseRow->natalias_inheritance = _value(sqlRow, row, "natalias_inheritance");
 }
 
 void filter_base::loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow) {
@@ -93,7 +93,7 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	if(baseRow->sip == 1)			flags |= _FLAG_SIP;
 	else if(baseRow->sip == 0)		flags |= _FLAG_NOSIP;
 	
-	if (baseRow->reg == 0)		flags |= _FLAG_NOREGISTER_DB | _FLAG_NOREGISTER_PCAP;
+	if (baseRow->reg == 0)			flags |= _FLAG_NOREGISTER_DB | _FLAG_NOREGISTER_PCAP;
 	else if (baseRow->reg == 1)		flags |= _FLAG_REGISTER_DB | _FLAG_REGISTER_PCAP;
 	else if (baseRow->reg == 2)		flags |= _FLAG_REGISTER_DB | _FLAG_NOREGISTER_PCAP;
 	else if (baseRow->reg == 3)		flags |= _FLAG_NOREGISTER_DB | _FLAG_REGISTER_PCAP;
@@ -149,6 +149,29 @@ u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32
 	return(flags);
 }
 
+void filter_base::parseNatAliases(filter_db_row_base *baseRow, nat_aliases_t **nat_aliases) {
+	if(!baseRow->natalias.empty()) {
+		*nat_aliases = new FILE_LINE(0) nat_aliases_t;
+		vector<string> nat_aliases_str = split(baseRow->natalias, '\n');
+		for(unsigned i = 0; i < nat_aliases_str.size(); i++) {
+			vmIP ip_nat[2];
+			const char *ip_nat_2_str;
+			if(ip_nat[0].setFromString(nat_aliases_str[i].c_str(), &ip_nat_2_str)) {
+				while(*ip_nat_2_str == ' ' || *ip_nat_2_str == '\t' || *ip_nat_2_str == ':' || *ip_nat_2_str == '=') {
+					++ip_nat_2_str;
+				}
+				if(ip_nat[1].setFromString(ip_nat_2_str, NULL)) {
+					(**nat_aliases)[ip_nat[0]] = ip_nat[1];
+				}
+			}
+		}
+		if(!(*nat_aliases)->size()) {
+			delete *nat_aliases;
+			*nat_aliases = NULL;
+		}
+	}
+}
+
 void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure) {
 	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
 	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
@@ -169,9 +192,9 @@ void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFl
 	if(filterFlags & _FLAG_NORTCP)			*callFlags &= ~FLAG_SAVERTCP;
 	
 	if(filterFlags & _FLAG_REGISTER_DB)		*callFlags |= FLAG_SAVEREGISTERDB;
-	if(filterFlags & _FLAG_NOREGISTER_DB)	*callFlags &= ~FLAG_SAVEREGISTERDB;
-	if(filterFlags & _FLAG_REGISTER_PCAP)	*callFlags |= FLAG_SAVEREGISTERPCAP;
-	if(filterFlags & _FLAG_NOREGISTER_PCAP)	*callFlags &= ~FLAG_SAVEREGISTERPCAP;
+	if(filterFlags & _FLAG_NOREGISTER_DB)		*callFlags &= ~FLAG_SAVEREGISTERDB;
+	if(filterFlags & _FLAG_REGISTER_PCAP)		*callFlags |= FLAG_SAVEREGISTERPCAP;
+	if(filterFlags & _FLAG_NOREGISTER_PCAP)		*callFlags &= ~FLAG_SAVEREGISTERPCAP;
 
 	if(filterFlags & _FLAG_DTMF_DB)			*callFlags |= FLAG_SAVEDTMFDB;
 	if(filterFlags & _FLAG_NODTMF_DB)		*callFlags &= ~FLAG_SAVEDTMFDB;
@@ -281,12 +304,14 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	}
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		node = new(t_node);
+		node = new FILE_LINE(0) t_node;
 		node->direction = vectDbRow[i].direction;
-		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		node->next = NULL;
 		node->network = vectDbRow[i].ip.network(vectDbRow[i].mask);
 		node->mask = vectDbRow[i].mask;
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		this->parseNatAliases(&vectDbRow[i], &node->nat_aliases);
+		node->nat_aliases_inheritance = vectDbRow[i].natalias_inheritance;
 
 		// add node to the first position
 		node->next = first_node;
@@ -294,7 +319,7 @@ void IPfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	}
 };
 
-int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure) {
+int IPfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -303,30 +328,36 @@ int IPfilter::_add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmI
 
 	int last_mask = 0;
 	char found = 0;
-
+	map<int, t_node*> nat_aliases_node_mask;
 	t_node *node;
 	for(node = first_node; node != NULL; node = node->next) {
-
-		// unsigned long int origflags = *flags;
-
 		if((!node->network.isSet() && !node->mask) ||
 		   ((node->direction == 0 or node->direction == 2) and (daddr.network(node->mask) == node->network)) || 
 		   ((node->direction == 0 or node->direction == 1) and (saddr.network(node->mask) == node->network))) {
-
-			// *flags = origflags;
-
-			if(node->mask < last_mask) {
+			int mask = node->network.isSet() && !node->mask ? node->network.bits() : node->mask;
+			if(mask < last_mask) {
+				if(node->nat_aliases) {
+					nat_aliases_node_mask[node->mask] = node;
+				}
 				continue;
 			}
-
-			last_mask = node->mask;
-			
+			last_mask = mask;
 			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
-
+			if(node->nat_aliases) {
+				nat_aliases_node_mask[mask] = node;
+			}
 			found = 1;
 		}
 	}
-
+	if(nat_aliases_node_mask.size()) {
+		unsigned counter = 0;
+		for(map<int, t_node*>::reverse_iterator iter = nat_aliases_node_mask.rbegin(); iter != nat_aliases_node_mask.rend(); iter++) {
+			if(!counter || iter->second->nat_aliases_inheritance) {
+				comb_nat_aliases(iter->second->nat_aliases, nat_aliases);
+			}
+			++counter;
+		}
+	}
 	return found;
 }
 
@@ -339,11 +370,11 @@ void IPfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int IPfilter::add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure) {
+int IPfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, saddr, daddr, reconfigure);
+		rslt = filter_active->_add_call_flags(flags, nat_aliases, saddr, daddr, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -403,7 +434,7 @@ volatile int IPfilter::_sync_reload = 0;
 
 // constructor
 TELNUMfilter::TELNUMfilter() {
-        first_node = new(t_node_tel);
+        first_node = new FILE_LINE(0) t_node_tel;
         first_node->payload = NULL;
         for(int i = 0; i < 256; i++) {
                 first_node->nodes[i] = NULL;
@@ -451,7 +482,7 @@ void TELNUMfilter::add_payload(t_payload *payload) {
 
 	for(unsigned int i = 0; i < strlen(payload->prefix); i++) {
 		if(!tmp->nodes[(int)payload->prefix[i]]) {
-			t_node_tel *node = new(t_node_tel);
+			t_node_tel *node = new FILE_LINE(0) t_node_tel;
 			node->payload = NULL;
 			for(int j = 0; j < 256; j++) {
 				node->nodes[j] = NULL;
@@ -493,7 +524,7 @@ void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 			continue;
 		}
 		count++;
-		db_row* filterRow = new(db_row);
+		db_row* filterRow = new FILE_LINE(0) db_row;
 		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
@@ -503,10 +534,11 @@ void TELNUMfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		t_payload *np = new(t_payload);
+		t_payload *np = new FILE_LINE(0) t_payload;
 		np->direction = vectDbRow[i].direction;
-		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		this->parseNatAliases(&vectDbRow[i], &np->nat_aliases);
 		add_payload(np);
 	}
 };
@@ -525,22 +557,23 @@ void TELNUMfilter::loadFile(u_int32_t *global_flags) {
 		map<string, string> row;
 		csv.getRow(i, &row);
 		count++;
-		db_row* filterRow = new(db_row);
+		db_row* filterRow = new FILE_LINE(0) db_row;
 		strcpy_null_term(filterRow->prefix, trim_str(row["prefix"]).c_str());
 		this->loadBaseDataRow(&row, filterRow);
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		t_payload *np = new(t_payload);
+	for(size_t i = 0; i < vectDbRow.size(); ++i) {
+		t_payload *np = new FILE_LINE(0) t_payload;
 		np->direction = vectDbRow[i].direction;
-		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		strcpy_null_term(np->prefix, vectDbRow[i].prefix);
+		np->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		this->parseNatAliases(&vectDbRow[i], &np->nat_aliases);
 		add_payload(np);
 	}
 }
 
-int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
+int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 
 	if (this->count == 0) {
 		// no filters, return 
@@ -549,6 +582,7 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char 
 	
 	unsigned found_length = 0;
 	u_int64_t found_flags = 0;
+	nat_aliases_t *found_nat_aliases;
 	for(int src_dst = 1; src_dst <= 2; src_dst++) {
 		const char *telnum = src_dst == 1 ? telnum_src : telnum_dst;
 		unsigned telnum_length = strlen(telnum);
@@ -569,76 +603,15 @@ int TELNUMfilter::_add_call_flags(volatile unsigned long int *flags, const char 
 			   (i + 1) > found_length) {
 				found_length = i + 1;
 				found_flags = node->payload->flags;
+				found_nat_aliases = node->payload->nat_aliases;
 			}
 		}
 	}
 	if(found_length > 0) {
 		this->setCallFlagsFromFilterFlags(flags, found_flags, reconfigure);
+		comb_nat_aliases(found_nat_aliases, nat_aliases);
 	}
 	return(found_length > 0);
-	
-	/* obsolete
-	int lastdirection = 0;
-	
-	if (this->count == 0) {
-		// no filters, return 
-		return 0;
-	}
-
-        //search src telnum
-        t_node_tel *tmp = first_node;
-        t_payload *lastpayload = NULL;
-        for(unsigned int i = 0; i < strlen(telnum_src); i++) {
-		unsigned char checkChar = telnum_src[i];
-		if(checkChar == '%' && !strncmp(telnum_src + i, "%23", 3)) {
-			checkChar = '#';
-			i += 2;
-		}
-                if(!tmp->nodes[checkChar]) {
-                        break;
-                }
-                tmp = tmp->nodes[checkChar];
-                if(tmp && tmp->payload) {
-			lastdirection = tmp->payload->direction;
-                        lastpayload = tmp->payload;
-                }
-        }
-	if(lastdirection == 2) {
-		//src found but we want only dst 
-		lastpayload = NULL;
-	}
-	if(!lastpayload) {
-		tmp = first_node;
-		lastpayload = NULL;
-		//src not found or src found , try dst
-		for(unsigned int i = 0; i < strlen(telnum_dst); i++) {
-			unsigned char checkChar = telnum_dst[i];
-			if(checkChar == '%' && !strncmp(telnum_dst + i, "%23", 3)) {
-				checkChar = '#';
-				i += 2;
-			}
-			if(!tmp->nodes[checkChar]) {
-				break;
-			}
-			tmp = tmp->nodes[checkChar];
-			if(tmp && tmp->payload) {
-				lastdirection = tmp->payload->direction;
-				lastpayload = tmp->payload;
-			}
-		}
-		if(lastdirection == 1) {
-			// dst found but we want only src
-			lastpayload = NULL;
-		}
-	}
-
-        if(lastpayload) {
-		this->setCallFlagsFromFilterFlags(flags, lastpayload->flags, reconfigure);
-		return 1;
-        }
-
-	return 0;
-	*/
 }
 
 void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
@@ -658,11 +631,11 @@ void TELNUMfilter::dump2man(ostringstream &oss, t_node_tel *node) {
 		unlock();
 }
 
-int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
+int TELNUMfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, telnum_src, telnum_dst, reconfigure);
+		rslt = filter_active->_add_call_flags(flags, nat_aliases, telnum_src, telnum_dst, reconfigure);
 	}
 	unlock();
 	return(rslt);
@@ -774,11 +747,12 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 	}
 	t_node *node;
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		node = new(t_node);
+		node = new FILE_LINE(0) t_node;
 		node->direction = vectDbRow[i].direction;
-		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
 		node->next = NULL;
 		node->domain = vectDbRow[i].domain;
+		node->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		this->parseNatAliases(&vectDbRow[i], &node->nat_aliases);
 
 		// add node to the first position
 		node->next = first_node;
@@ -787,7 +761,7 @@ void DOMAINfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 };
 
 int
-DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure) {
+DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
@@ -800,6 +774,7 @@ DOMAINfilter::_add_call_flags(volatile unsigned long int *flags, const char *dom
 		if(((node->direction == 0 or node->direction == 2) and (domain_dst == node->domain)) || 
 			((node->direction == 0 or node->direction == 1) and (domain_src == node->domain))) {
 			this->setCallFlagsFromFilterFlags(flags, node->flags, reconfigure);
+			comb_nat_aliases(node->nat_aliases, nat_aliases);
 			return 1;
 		}
 	}
@@ -816,11 +791,11 @@ void DOMAINfilter::dump2man(ostringstream &oss) {
 	unlock();
 }
 
-int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure) {
+int DOMAINfilter::add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(flags, domain_src, domain_dst);
+		rslt = filter_active->_add_call_flags(flags, nat_aliases, domain_src, domain_dst);
 	}
 	unlock();
 	return(rslt);
@@ -887,6 +862,9 @@ SIP_HEADERfilter::SIP_HEADERfilter() {
 
 // destructor
 SIP_HEADERfilter::~SIP_HEADERfilter() {
+	for(map<string, header_data>::iterator iter = data.begin(); iter != data.end(); iter++) {
+		iter->second.clean();
+	}
 }
 
 void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
@@ -929,12 +907,13 @@ void SIP_HEADERfilter::load(u_int32_t *global_flags, SqlDb *sqlDb) {
 		delete sqlDb;
 	}
 	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		item_data item;
-		item.direction = 0;
-		item.prefix = vectDbRow[i].prefix;
-		item.regexp = vectDbRow[i].regexp;
-		item.flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
-		if(item.regexp) {
+		item_data *item = new FILE_LINE(0) item_data;
+		item->direction = 0;
+		item->prefix = vectDbRow[i].prefix;
+		item->regexp = vectDbRow[i].regexp;
+		item->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		this->parseNatAliases(&vectDbRow[i], &item->nat_aliases);
+		if(item->regexp) {
 			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
 		} else {
 			data[vectDbRow[i].header].strict_prefix[vectDbRow[i].content] = item;
@@ -957,7 +936,7 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	csv.load(opt_capture_rules_sip_header_file);
 	unsigned rowsCount = csv.getRowsCount();
 	vector<db_row> vectDbRow;
-	for (unsigned i = 1; i <= rowsCount; i++) {
+	for(unsigned i = 1; i <= rowsCount; i++) {
 		map<string, string> row;
 		csv.getRow(i, &row);
 		count++;
@@ -970,13 +949,13 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 		vectDbRow.push_back(*filterRow);
 		delete filterRow;
 	}
-	for (size_t i = 0; i < vectDbRow.size(); ++i) {
-		item_data item;
-		item.direction = 0;
-		item.prefix = vectDbRow[i].prefix;
-		item.regexp = vectDbRow[i].regexp;
-		item.flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
-		if (item.regexp) {
+	for(size_t i = 0; i < vectDbRow.size(); ++i) {
+		item_data *item = new FILE_LINE(0) item_data;
+		item->direction = 0;
+		item->prefix = vectDbRow[i].prefix;
+		item->regexp = vectDbRow[i].regexp;
+		item->flags = this->getFlagsFromBaseData(&vectDbRow[i], global_flags);
+		if(item->regexp) {
 			data[vectDbRow[i].header].regexp[vectDbRow[i].content] = item;
 		} else {
 			data[vectDbRow[i].header].strict_prefix[vectDbRow[i].content] = item;
@@ -985,24 +964,25 @@ void SIP_HEADERfilter::loadFile(u_int32_t *global_flags) {
 	}
 }
 
-int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure) {
+int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure) {
 	
 	if (this->count == 0) {
 		// no filters, return 
 		return 0;
 	}
 	
-	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+	for(map<string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
 		header_data *data = &it_header->second;
 		string content = parseContents->getContentString((it_header->first + ":").c_str());
 		if(content.empty()) {
 			continue;
 		}
 		if(data->strict_prefix.size()) {
-			map<std::string, item_data>::iterator it_content = data->strict_prefix.lower_bound(content);
+			map<string, item_data*>::iterator it_content = data->strict_prefix.lower_bound(content);
 			if(it_content != data->strict_prefix.end() &&
 			   it_content->first == content) {
-				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
+				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
+				comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - strict (eq) : %s",  it_content->first.c_str());
 				}
@@ -1011,9 +991,10 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			if(it_content != data->strict_prefix.begin()) {
 				--it_content;
 			}
-			if(it_content->second.prefix &&
+			if(it_content->second->prefix &&
 			   !strncmp(it_content->first.c_str(), content.c_str(), it_content->first.length())) {
-				this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
+				this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
+				comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
 				if(sverb.capture_filter) {
 					syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - prefix : %s",  it_content->first.c_str());
 				}
@@ -1021,9 +1002,10 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 			}
 		}
 		if(data->regexp.size()) {
-			for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+			for(map<string, item_data*>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
 				if(reg_match(content.c_str(), it_content->first.c_str(), __FILE__, __LINE__)) {
-					this->setCallFlagsFromFilterFlags(flags, it_content->second.flags, reconfigure);
+					this->setCallFlagsFromFilterFlags(flags, it_content->second->flags, reconfigure);
+					comb_nat_aliases(it_content->second->nat_aliases, nat_aliases);
 					if(sverb.capture_filter) {
 						syslog(LOG_NOTICE, "SIP_HEADERfilter::add_call_flags - regexp : %s",  it_content->first.c_str());
 					}
@@ -1031,7 +1013,6 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 				}
 			}
 		}
-	 
 	}
 	
 	return 0;
@@ -1039,29 +1020,29 @@ int SIP_HEADERfilter::_add_call_flags(ParsePacket::ppContentsX *parseContents, v
 
 void SIP_HEADERfilter::dump2man(ostringstream &oss) {
 	lock();
-	for(map<std::string, header_data>::iterator it_header = filter_active->data.begin(); it_header != filter_active->data.end(); it_header++) {
+	for(map<string, header_data>::iterator it_header = filter_active->data.begin(); it_header != filter_active->data.end(); it_header++) {
 		header_data *data = &it_header->second;
-		for(map<std::string, item_data>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
-			oss << "Regex header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second.direction << "] flags[0x" << hex << it_content->second.flags << "]" << endl;
+		for(map<string, item_data*>::iterator it_content = data->regexp.begin(); it_content != data->regexp.end(); it_content++) {
+			oss << "Regex header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second->direction << "] flags[0x" << hex << it_content->second->flags << "]" << endl;
 		}
-		for(map<std::string, item_data>::iterator it_content = data->strict_prefix.begin(); it_content != data->strict_prefix.end(); it_content++) {
-			oss << "Prefix header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second.direction << "] flags[0x" << hex << it_content->second.flags << "]" << endl;
+		for(map<string, item_data*>::iterator it_content = data->strict_prefix.begin(); it_content != data->strict_prefix.end(); it_content++) {
+			oss << "Prefix header[" << it_header->first << "] content[" << it_content->first << "] direction[" << it_content->second->direction << "] flags[0x" << hex << it_content->second->flags << "]" << endl;
 		}
 	}
 	unlock();
 }
 
 void SIP_HEADERfilter::_prepareCustomNodes(ParsePacket *parsePacket) {
-	for(map<std::string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
+	for(map<string, header_data>::iterator it_header = this->data.begin(); it_header != this->data.end(); it_header++) {
 		parsePacket->prepareCustomNode((it_header->first + ":").c_str());
 	}
 }
 
-int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure) {
+int SIP_HEADERfilter::add_call_flags(ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure) {
 	int rslt = 0;
 	lock();
 	if(filter_active) {
-		rslt = filter_active->_add_call_flags(parseContents, flags, reconfigure);
+		rslt = filter_active->_add_call_flags(parseContents, flags, nat_aliases, reconfigure);
 	}
 	unlock();
 	return(rslt);

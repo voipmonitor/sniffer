@@ -353,6 +353,7 @@ Call_abstract::Call_abstract(int call_type, u_int64_t time_us) {
 	useDlt = global_pcap_dlink;
 	useHandle = global_pcap_handle;
 	flags = 0;
+	nat_aliases = NULL;
 	user_data = NULL;
 	user_data_type = 0;
 	#if DEBUG_ASYNC_TAR_WRITE

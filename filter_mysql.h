@@ -12,6 +12,7 @@
 #include <deque>
 
 #include "calltable.h"
+#include "sniff.h"
 
 #define _FLAG_RTP_ALL			(((u_int64_t)1) << 0)
 #define _FLAG_RTP_HEADER		(((u_int64_t)1) << 1)
@@ -26,7 +27,7 @@
 #define _FLAG_NORTCP     		(((u_int64_t)1) << 10)
 #define _FLAG_SIP			(((u_int64_t)1) << 11)
 #define _FLAG_NOSIP      		(((u_int64_t)1) << 12)
-#define _FLAG_REGISTER_DB			(((u_int64_t)1) << 13)
+#define _FLAG_REGISTER_DB		(((u_int64_t)1) << 13)
 #define _FLAG_NOREGISTER_DB		(((u_int64_t)1) << 14)
 #define _FLAG_GRAPH			(((u_int64_t)1) << 15)
 #define _FLAG_NOGRAPH    		(((u_int64_t)1) << 16)
@@ -64,7 +65,7 @@
 #define _FLAG_NOSUBSCRIBE_DB		(((u_int64_t)1) << 46)
 #define _FLAG_SUBSCRIBE_PCAP		(((u_int64_t)1) << 47)
 #define _FLAG_NOSUBSCRIBE_PCAP		(((u_int64_t)1) << 48)
-#define _FLAG_REGISTER_PCAP			(((u_int64_t)1) << 49)
+#define _FLAG_REGISTER_PCAP		(((u_int64_t)1) << 49)
 #define _FLAG_NOREGISTER_PCAP		(((u_int64_t)1) << 50)
 
 #define MAX_PREFIX 64
@@ -110,16 +111,20 @@ struct filter_db_row_base {
 	int options;
 	int notify;
 	int subscribe;
+	string natalias;
+	bool natalias_inheritance;
 };
 
 class filter_base {
 protected:
+	string _string(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
 	bool _value_is_null(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
 	int _value(SqlDb_row *sqlRow, map<string, string> *row, const char *column);
 	void _loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, filter_db_row_base *baseRow);
 	void loadBaseDataRow(SqlDb_row *sqlRow, filter_db_row_base *baseRow);
 	void loadBaseDataRow(map<string, string> *row, filter_db_row_base *baseRow);
 	u_int64_t getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags);
+	void parseNatAliases(filter_db_row_base *baseRow, nat_aliases_t **nat_aliases);
 	void setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure = false);
 };
 
@@ -134,10 +139,25 @@ private:
 		int mask;
 	};
         struct t_node {
+		t_node() {
+			mask = 0;
+			direction = 0;
+			flags = 0;
+			nat_aliases = NULL;
+			nat_aliases_inheritance = false;
+			next = NULL;
+		}
+		~t_node() {
+			if(nat_aliases) {
+				delete nat_aliases;
+			}
+		}
 		vmIP network;
 		int mask;
 		int direction;
 		u_int64_t flags;
+		nat_aliases_t *nat_aliases;
+		bool nat_aliases_inheritance;
                 t_node *next;
         };
         t_node *first_node;
@@ -145,9 +165,9 @@ public:
         IPfilter();
         ~IPfilter();
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure = false);
+	int _add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, vmIP saddr, vmIP daddr, bool reconfigure = false);
+	static int add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, vmIP saddr, vmIP daddr, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -182,11 +202,20 @@ private:
 		char prefix[MAX_PREFIX];
 	};
 	struct t_payload {
+		t_payload() {
+			direction = 0;
+			flags = 0;
+			nat_aliases = NULL;
+		}
+		~t_payload() {
+			if(nat_aliases) {
+				delete nat_aliases;
+			}
+		}
 		char prefix[MAX_PREFIX];
 		int direction;
-		unsigned int ip;
-		int mask;
 		u_int64_t flags;
+		nat_aliases_t *nat_aliases;
 	};
         struct t_node_tel {
                 t_node_tel *nodes[256];
@@ -199,9 +228,9 @@ public:
         void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
 	void add_payload(t_payload *payload);
-	int _add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
+	int _add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
         static void dump2man(ostringstream &oss, t_node_tel *node = NULL);
-	static int add_call_flags(volatile unsigned long int *flags, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
+	static int add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *telnum_src, const char *telnum_dst, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -235,9 +264,21 @@ private:
 		std::string domain;
 	};
         struct t_node {
+		t_node() {
+			direction = 0;
+			flags = 0;
+			nat_aliases = NULL;
+			next = NULL;
+		}
+		~t_node() {
+			if(nat_aliases) {
+				delete nat_aliases;
+			}
+		}
 		std::string domain;
 		int direction;
 		u_int64_t flags;
+		nat_aliases_t *nat_aliases;
 		t_node *next;
 	};
 	t_node *first_node;
@@ -245,9 +286,9 @@ public:
 	DOMAINfilter();
 	~DOMAINfilter();
 	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
-	int _add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure = false);
+	int _add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
-	static int add_call_flags(volatile unsigned long int *flags, const char *domain_src, const char *domain_dst, bool reconfigure = false);
+	static int add_call_flags(volatile unsigned long int *flags, nat_aliases_t **nat_aliases, const char *domain_src, const char *domain_dst, bool reconfigure = false);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
 	static void prepareReload(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
@@ -284,14 +325,35 @@ private:
 		bool regexp;
 	};
         struct item_data {
+		item_data() {
+			direction = 0;
+			prefix = false;
+			regexp = false;
+			flags = 0;
+			nat_aliases = NULL;
+		}
+		~item_data() {
+			if(nat_aliases) {
+				delete nat_aliases;
+			}
+		}
 		int direction;
 		bool prefix;
 		bool regexp;
 		u_int64_t flags;
+		nat_aliases_t *nat_aliases;
 	};
 	struct header_data {
-		std::map<std::string, item_data> strict_prefix;
-		std::map<std::string, item_data> regexp;
+		void clean() {
+			for(map<std::string, item_data*>::iterator iter = strict_prefix.begin(); iter != strict_prefix.end(); iter++) {
+				delete iter->second;
+			}
+			for(map<std::string, item_data*>::iterator iter = regexp.begin(); iter != regexp.end(); iter++) {
+				delete iter->second;
+			}
+		}
+		std::map<std::string, item_data*> strict_prefix;
+		std::map<std::string, item_data*> regexp;
 	};
 	std::map<std::string, header_data> data;
 public: 
@@ -299,10 +361,10 @@ public:
 	~SIP_HEADERfilter();
 	void load(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	void loadFile(u_int32_t *global_flags);
-	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
+	int _add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure = false);
         static void dump2man(ostringstream &oss);
 	void _prepareCustomNodes(ParsePacket *parsePacket);
-	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, bool reconfigure = false);
+	static int add_call_flags(struct ParsePacket::ppContentsX *parseContents, volatile unsigned long int *flags, nat_aliases_t **nat_aliases, bool reconfigure = false);
 	static void prepareCustomNodes(ParsePacket *parsePacket);
 	static void loadActive(u_int32_t *global_flags, SqlDb *sqlDb = NULL);
 	static void freeActive();
@@ -462,6 +524,19 @@ inline void set_global_flags(volatile unsigned long int &flags) {
 	}
 	if (opt_sip_subscribe && opt_save_sip_subscribe) {
 		flags |= FLAG_SAVESUBSCRIBEPCAP;
+	}
+}
+
+
+inline void comb_nat_aliases(nat_aliases_t *src, nat_aliases_t **dst) {
+	if(!src || !dst) {
+		return;
+	}
+	if(!*dst) {
+		*dst = new FILE_LINE(0) nat_aliases_t;
+	}
+	for(nat_aliases_t::iterator iter = src->begin(); iter != src->end(); iter++) {
+		(**dst)[iter->first] = iter->second;
 	}
 }
 

@@ -454,7 +454,7 @@ void __ftcp_sip(const char *callid, const char *req, const char *stat) {
 
 
 // return IP from nat_aliases[ip] or 0 if not found
-vmIP match_nat_aliases(vmIP ip) {
+inline vmIP match_nat_aliases(vmIP ip) {
 	nat_aliases_t::iterator iter;
         iter = nat_aliases.find(ip);
         if(iter == nat_aliases.end()) {
@@ -3600,33 +3600,74 @@ void detect_branch_extern(packet_s_process *packetS, char *branch, unsigned bran
 	detect_branch(packetS, branch, branch_length, detected);
 }
 
-inline unsigned int setCallFlags(unsigned long int flags,
+inline unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
 				 vmIP ip_src, vmIP ip_dst,
 				 const char *caller, const char *called,
 				 const char *caller_domain, const char *called_domain,
 				 ParsePacket::ppContentsX *parseContents,
 				 bool reconfigure) {
 	unsigned long int flags_old = flags;
+	unsigned nat_aliases_count_old = 0;
 	cFilters::applyReload();
-	IPfilter::add_call_flags(&flags, ip_src, ip_dst, reconfigure);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
+	IPfilter::add_call_flags(&flags, nat_aliases, ip_src, ip_dst, reconfigure);
+	if(sverb.dump_call_flags) {
+		if(flags != flags_old) {
+			cout << "set flags for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : " << printCallFlags(flags) << endl;
+			flags_old = flags;
+		}
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
+			cout << "nat_aliases for ip " << ip_src.getString() << " -> " << ip_dst.getString() << " : ";
+			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
+				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+			}
+			cout << endl;
+			nat_aliases_count_old = (*nat_aliases)->size();
+		}
 	}
-	TELNUMfilter::add_call_flags(&flags, caller, called, reconfigure);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
+	TELNUMfilter::add_call_flags(&flags, nat_aliases, caller, called, reconfigure);
+	if(sverb.dump_call_flags) {
+		if(flags != flags_old) {
+			cout << "set flags for number " << caller << " -> " << called << " : " << printCallFlags(flags) << endl;
+			flags_old = flags;
+		}
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
+			cout << "nat_aliases for number " << caller << " -> " << called << " : ";
+			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
+				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+			}
+			cout << endl;
+			nat_aliases_count_old = (*nat_aliases)->size();
+		}
 	}
-	DOMAINfilter::add_call_flags(&flags, caller_domain, called_domain, reconfigure);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
-		flags_old = flags;
+	DOMAINfilter::add_call_flags(&flags, nat_aliases, caller_domain, called_domain, reconfigure);
+	if(sverb.dump_call_flags) {
+		if(flags != flags_old) {
+			cout << "set flags for domain " << caller_domain << " -> " << called_domain << " : " << printCallFlags(flags) << endl;
+			flags_old = flags;
+		}
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
+			cout << "nat_aliases for domain " << caller_domain << " -> " << called_domain << " : ";
+			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
+				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+			}
+			cout << endl;
+			nat_aliases_count_old = (*nat_aliases)->size();
+		}
 	}
-	SIP_HEADERfilter::add_call_flags(parseContents, &flags, reconfigure);
-	if(sverb.dump_call_flags && flags != flags_old) {
-		cout << "set flags for headers : " << printCallFlags(flags) << endl;
-		flags_old = flags;
+	SIP_HEADERfilter::add_call_flags(parseContents, &flags, nat_aliases, reconfigure);
+	if(sverb.dump_call_flags) {
+		if(flags != flags_old) {
+			cout << "set flags for headers : " << printCallFlags(flags) << endl;
+			flags_old = flags;
+		}
+		if(nat_aliases && *nat_aliases && (*nat_aliases)->size() && nat_aliases_count_old != (*nat_aliases)->size()) {
+			cout << "nat_aliases for headers : ";
+			for(nat_aliases_t::iterator iter = (*nat_aliases)->begin(); iter != (*nat_aliases)->end(); iter++) {
+				cout << iter->first.getString() << "->" << iter->second.getString() << "; ";
+			}
+			cout << endl;
+			nat_aliases_count_old = (*nat_aliases)->size();
+		}
 	}
 	return(flags);
 }
@@ -3858,18 +3899,22 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	
 	//flags
 	unsigned long int flags = 0;
+	nat_aliases_t *nat_aliases = NULL;
 	set_global_flags(flags);
 	if(sverb.dump_call_flags) {
 		cout << "flags init " << callidstr << " : " << printCallFlags(flags) << endl;
 	}
 	
-	flags = setCallFlags(flags,
+	flags = setCallFlags(flags, &nat_aliases,
 			     packetS->saddr_(), packetS->daddr_(),
 			     data_callerd.caller.c_str(), data_callerd.called().c_str(),
 			     data_callerd.caller_domain.c_str(), data_callerd.called_domain().c_str(),
 			     &packetS->parseContents);
 	
 	if(flags & FLAG_SKIPCDR) {
+		if(nat_aliases) {
+			delete nat_aliases;
+		}
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
 		return NULL;
@@ -3921,6 +3966,7 @@ inline Call *new_invite_register(packet_s_process *packetS, int sip_method, char
 	
 	call->set_first_packet_time_us(packetS->getTimeUS());
 	call->flags = flags;
+	call->nat_aliases = nat_aliases;
 	
 	if(!init_call_branch(call, c_branch, packetS, sip_method, &data_callerd)) {
 		return(NULL);
@@ -4150,7 +4196,17 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 								       to, to_uri, domain_to, domain_to_uri, branch,
 								       iscaller, sdp_media_data_item->rtpmap, sdp_media_data_item->sdp_flags, sdp_media_data_item->ptime);
 						// check if the IP address is listed in nat_aliases
-						vmIP alias = match_nat_aliases(sdp_media_data_item->ip);
+						vmIP alias;
+						if(call->nat_aliases) {
+							nat_aliases_t::iterator iter;
+							iter = nat_aliases.find(sdp_media_data_item->ip);
+							if(iter != nat_aliases.end()) {
+								alias = iter->second;
+							}
+						}
+						if(nat_aliases.size() && !alias.isSet()) {
+							alias = match_nat_aliases(sdp_media_data_item->ip);
+						}
 						if(alias.isSet()) {
 							call->add_ip_port_hash(c_branch, packetS->saddr_(), alias, ip_port_call_info::_ta_natalias, sdp_media_data_item->port, packetS->getTimeval_pt(), 
 									       sessid, sdp_media_data_item->label, sdp_media_data_count > 1, 
@@ -4553,7 +4609,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 	
 	if(!packetS->_createCall) {
 		unsigned long int flags = call->flags;
-		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags)) {
+		if(SIP_HEADERfilter::add_call_flags(&packetS->parseContents, &flags, NULL)) {
 			if((call->flags & FLAG_SAVERTP) && !(flags & FLAG_SAVERTP)) {
 				call->flags &= ~FLAG_SAVERTP;
 			}
@@ -5662,7 +5718,7 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 		}
 		if(!packetS->_createCall && !existInviteSdaddr && !reverseInviteSdaddr) {
-			call->flags = setCallFlags(call->flags,
+			call->flags = setCallFlags(call->flags, &call->nat_aliases,
 						   packetS->saddr_(), packetS->daddr_(),
 						   c_branch->caller.c_str(), call->get_called(c_branch),
 						   c_branch->caller_domain.c_str(), call->get_called_domain(c_branch),
@@ -6761,8 +6817,9 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 #if not EXPERIMENTAL_LITE_RTP_MOD
 
 	unsigned long int flags = 0;
+	nat_aliases_t *nat_aliases = NULL;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, saddr, daddr);
+	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -6793,6 +6850,7 @@ Call *process_packet__rtp_nosip(vmIP saddr, vmPort source, vmIP daddr, vmPort de
 	call->setSipcallerip(c_branch, saddr, vmIP(0), 0xFF, source);
 	call->setSipcalledip(c_branch, daddr, vmIP(0), 0xFF, dest);
 	call->flags = flags;
+	call->nat_aliases = nat_aliases;
 	strcpy_null_term(call->fbasename, s);
 	c_branch->seeninvite = true;
 	c_branch->callername = "RTP";

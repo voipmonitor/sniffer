@@ -1342,8 +1342,9 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	}
 
 	unsigned long int flags = 0;
+	nat_aliases_t *nat_aliases = NULL;
 	set_global_flags(flags);
-	IPfilter::add_call_flags(&flags, saddr, daddr);
+	IPfilter::add_call_flags(&flags, &nat_aliases, saddr, daddr);
 	if(flags & FLAG_SKIPCDR) {
 		if(verbosity > 1)
 			syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -1359,6 +1360,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	call->setSipcallerip(c_branch, saddr, vmIP(0), 0xFF, source);
 	call->setSipcalledip(c_branch, daddr, vmIP(0), 0xFF, dest);
 	call->flags = flags;
+	call->nat_aliases = nat_aliases;
 	strcpy_null_term(call->fbasename, callidstr);
 	
 	// add saddr|daddr into map

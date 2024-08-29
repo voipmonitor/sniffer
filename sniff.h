@@ -28,6 +28,9 @@
 #define RTP_FIXED_HEADERLEN 12
 
 
+typedef std::map<vmIP, vmIP> nat_aliases_t;
+
+
 void *rtp_read_thread_func(void *arg);
 bool add_rtp_read_thread();
 bool set_remove_rtp_read_thread();
@@ -54,15 +57,12 @@ bool open_global_pcap_handle(const char *pcap, string *error = NULL);
 bool process_pcap(const char *pcap_source, const char *pcap_destination, int process_pcap_type, string *error = NULL);
 void readdump_libpcap(pcap_t *handle, u_int16_t handle_index, int handle_dlt, PcapDumper *destination, int process_pcap_type);
 
-unsigned int setCallFlags(unsigned long int flags,
+unsigned int setCallFlags(unsigned long int flags, nat_aliases_t **nat_aliases,
 			  vmIP ip_src, vmIP ip_dst,
 			  const char *caller, const char *called,
 			  const char *caller_domain, const char *called_domain,
 			  ParsePacket::ppContentsX *parseContents,
 			  bool reconfigure = false);
-
-typedef std::map<vmIP, vmIP> nat_aliases_t; //!< 
-
 
 extern bool opt_audiocodes;
 extern bool opt_kamailio;

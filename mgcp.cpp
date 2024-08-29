@@ -191,8 +191,9 @@ void *handle_mgcp(packet_s_process *packetS) {
 					calltable->unlock_calls_listMAP();
 				}
 				unsigned long int flags = 0;
+				nat_aliases_t *nat_aliases = NULL;
 				set_global_flags(flags);
-				IPfilter::add_call_flags(&flags, packetS->saddr_(), packetS->daddr_());
+				IPfilter::add_call_flags(&flags, &nat_aliases, packetS->saddr_(), packetS->daddr_());
 				if(flags & FLAG_SKIPCDR) {
 					if(verbosity > 1)
 						syslog(LOG_NOTICE, "call skipped due to ip or tel capture rules\n");
@@ -206,6 +207,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call->setSipcallerip(c_branch, packetS->saddr_(), packetS->saddr_(true), packetS->header_ip_protocol(true), packetS->source_());
 				call->setSipcalledip(c_branch, packetS->daddr_(), packetS->daddr_(true), packetS->header_ip_protocol(true), packetS->dest_());
 				call->flags = flags;
+				call->nat_aliases = nat_aliases;
 				strcpy_null_term(call->fbasename, request.call_id().c_str());
 				if(enable_save_sip_rtp_audio(call)) {
 					if(enable_pcap_split) {

@@ -848,6 +848,9 @@ public:
 	Call_abstract(int call_type, u_int64_t time_us);
 	virtual ~Call_abstract() {
 		alloc_flag = 0;
+		if(nat_aliases) {
+			delete nat_aliases;
+		}
 	}
 	int getTypeBase() { return(type_base); }
 	bool typeIs(int type) { return(type_base == type || (type_next && type_next == type)); }
@@ -994,6 +997,7 @@ public:
 	pcap_t *useHandle;
 	string force_spool_path;
 	volatile unsigned long int flags;
+	map<vmIP, vmIP> *nat_aliases;
 	void *user_data;
 	int user_data_type;
 protected:
