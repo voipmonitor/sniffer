@@ -58,6 +58,7 @@ typedef WOLFSSL_SESSION SSL_SESSION;
 //#define DEBUG_TO_FILE "/tmp/sslkeylog.log"
 
 #define ABORT_IF_FAILURE false
+#define EXIT_IF_FAILURE false
 
 #define min(a, b) (a < b ? a : b)
 
@@ -167,13 +168,13 @@ static void ucharToHex(unsigned char *data, unsigned datalen, char *rslt) {
 }
 
 
-void _exit(int status) {
-	#ifdef ABORT_IF_FAILURE
-	if(status && ABORT_IF_FAILURE) {
-		abort();
-	}
+void exit_failure() {
+	#if ABORT_IF_FAILURE
+	abort();
 	#endif
-	exit(status);
+	#if EXIT_IF_FAILURE
+	exit(EXIT_FAILURE);
+	#endif
 }
 
 
@@ -702,7 +703,8 @@ __attribute__((constructor)) static void setup(void) {
 		debug_printf("OK detect pointer to function SSL_new : 0x%lx", SSL_new_orig);
 	} else {
 		debug_printf("FAILED detect pointer to function SSL_new - exit!");
-		_exit(EXIT_FAILURE);
+		exit_failure();
+		return;
 	}
 	SSL_CTX_set_keylog_callback_orig = (SSL_CTX_set_keylog_callback_type)lookup_symbol("SSL_CTX_set_keylog_callback", LIBSSL_SONAME);
 	if(SSL_CTX_set_keylog_callback_orig) {
@@ -711,7 +713,8 @@ __attribute__((constructor)) static void setup(void) {
 	#if ONLY_KEYLOG_CALLBACK
 	if(!SSL_CTX_set_keylog_callback_orig) {
 		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback - exit!");
-		_exit(EXIT_FAILURE);
+		exit_failure();
+		return;
 	}
 	#endif
 	#if not ONLY_KEYLOG_CALLBACK or BOTH_METHODS
@@ -749,12 +752,14 @@ __attribute__((constructor)) static void setup(void) {
 	}
 	if(!SSL_CTX_set_keylog_callback_orig && !SSL_connect_orig) {
 		debug_printf("FAILED detect pointer to function SSL_CTX_set_keylog_callback and SSL_connect - exit!");
-		_exit(EXIT_FAILURE);
+		exit_failure();
+		return;
 	}
 	#endif
 	if(!init_keylog()) {
 		debug_printf("FAILED init_keylog - exit!");
-		_exit(EXIT_FAILURE);
+		exit_failure();
+		return;
 	}
 }
 
