@@ -1635,22 +1635,26 @@ void CustIpCustomerCache::_load(map<vmIP, u_int32_t> *custCacheMap, list<custome
 		string customers_table = "cust_customers";
 		string users_table = "users";
 		string table;
+		string wherecond;
 		if(pass == 0) {
 			if(sqlDb->existsTable(customers_table) && !sqlDb->emptyTable(customers_table)) {
 				table = customers_table;
 			}
 		} else {
 			if(sqlDb->existsTable(users_table) && !sqlDb->emptyTable(users_table) &&
-			   sqlDb->existsColumn(users_table, "customer_id")) {
+			   sqlDb->existsColumn(users_table, "customer_id") &&
+			   sqlDb->existsColumn(users_table, "type_rec")) {
 				table = users_table;
-			}
+				wherecond = "type_rec = 'customer'";
+			   }
 		}
 		if(table.empty()) {
 			continue;
 		}
 		custCacheMap->clear();
 		custCache->clear();
-		sqlDb->query("select ip, customer_id, id from " + table + " where ip is not null and trim(ip) <> ''");
+		sqlDb->query("select ip, customer_id, id from " + table + " where ip is not null and trim(ip) <> ''" + 
+			     (!wherecond.empty() ? " and " + wherecond : ""));
 		SqlDb_row row;
 		while((row = sqlDb->fetchRow())) {
 			u_int32_t customer_id = atol(row["customer_id"].c_str());
@@ -1658,7 +1662,7 @@ void CustIpCustomerCache::_load(map<vmIP, u_int32_t> *custCacheMap, list<custome
 				customer_id = atol(row["id"].c_str());;
 			}
 			ListIP list_ip;
-			list_ip.add(row["ip"].c_str());
+			list_ip.addComb(row["ip"].c_str());
 			customer cust;
 			cust.list_ip = list_ip;
 			cust.id = customer_id;
