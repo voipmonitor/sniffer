@@ -269,7 +269,7 @@ struct RecordArray {
 	void free();
 	void freeFields();
 	void freeRecord();
-	string getJson();
+	string getJson(vector<string> *header = NULL);
 	bool operator == (const RecordArray& other) const {  
 		return(fields[sortBy] == other.fields[sortBy] &&
 		       (sortBy2 == -1 || fields[sortBy2] == other.fields[sortBy2]));

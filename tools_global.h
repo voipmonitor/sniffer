@@ -476,7 +476,9 @@ public:
 	void add(const char *name, long unsigned int content) { add_int(name, content); } 
 	void add(const char *name, long long int content) { add_int(name, content); } 
 	void add(const char *name, long long unsigned int content) { add_int(name, content); } 
+	void add(const char *name, double content) { add_float(name, content); } 
 	void add_int(const char *name, int64_t content);
+	void add_float(const char *name, double content);
 	void add(const char *name);
 	JsonExport *addArray(const char *name);
 	JsonExport *addObject(const char *name);

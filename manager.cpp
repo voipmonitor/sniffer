@@ -437,6 +437,7 @@ int Mgmt_getactivesniffers(Mgmt_params *params);
 int Mgmt_readaudio(Mgmt_params *params);
 int Mgmt_listen(Mgmt_params *params);
 int Mgmt_listen_stop(Mgmt_params *params);
+int Mgmt_active_call_info(Mgmt_params *params);
 int Mgmt_options_qualify_refresh(Mgmt_params *params);
 int Mgmt_send_call_info_refresh(Mgmt_params *params);
 int Mgmt_fraud_refresh(Mgmt_params *params);
@@ -551,6 +552,7 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_readaudio,
 	Mgmt_listen,
 	Mgmt_listen_stop,
+	Mgmt_active_call_info,
 	Mgmt_options_qualify_refresh,
 	Mgmt_send_call_info_refresh,
 	Mgmt_fraud_refresh,
@@ -3748,6 +3750,65 @@ int Mgmt_readaudio(Mgmt_params *params) {
 			"error: " + error :
 			"information: " + information;
 		if(params->sendString(&data) == -1) {
+			rslt = -1;
+		}
+	}
+	return(rslt);
+}
+
+int Mgmt_active_call_info(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("active_call_info", "get ative call packet info");
+		return(0);
+	}
+	if(!calltable) {
+		return(-1);
+	}
+	int rslt = 0;
+	string error;
+	extern bool opt_active_call_info;
+	if(opt_active_call_info) {
+		long long callreference = 0;
+		string callreference_str;
+		bool zip = false;
+		char params_str[1000];
+		sscanf(params->buf, "active_call_info %[^\n\r]", params_str);
+		if(isJsonObject(params_str)) {
+			JsonItem jsonParams;
+			jsonParams.parse(params_str);
+			callreference_str = jsonParams.getValue("callreference");
+			string zip_str = jsonParams.getValue("zip");
+			zip = yesno(zip_str.c_str()) || is_true(zip_str.c_str());
+		} else {
+			callreference_str = params_str;
+		}
+		sscanf(callreference_str.c_str(), "%llu", &callreference);
+		if(!callreference) {
+			sscanf(callreference_str.c_str(), "%llx", &callreference);
+		}
+		params->zip = zip;
+		calltable->lock_calls_listMAP();
+		Call *call = calltable->find_by_reference(callreference, false);
+		if(call) {
+			JsonExport json_export;
+			json_export.addJson("call", call->getJsonData());
+			string sip_packets = call->branch_main()->get_sip_packets_info_json();
+			json_export.addJson("sip_packets", sip_packets);
+			string rtp_streams = call->get_rtp_streams_info_json();
+			json_export.addJson("rtp_streams", rtp_streams);
+			string json_rslt = json_export.getJson();
+			if(params->sendString(&json_rslt) == -1) {
+				rslt = -1;
+			}
+		} else {
+			error = "call not found";
+		}
+		calltable->unlock_calls_listMAP();
+	} else {
+		error = "active call info is disabled (option active_call_info)";
+	}
+	if(!error.empty()) {
+		if(params->sendString(&error) == -1) {
 			rslt = -1;
 		}
 	}

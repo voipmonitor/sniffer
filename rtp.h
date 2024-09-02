@@ -834,6 +834,8 @@ public:
 		return(channel_is_adaptive(channel_record));
 	}
 	
+	string getJson();
+	
 private: 
 	/*
 	* Per-source state information

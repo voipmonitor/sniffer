@@ -66,14 +66,27 @@ void RecordArray::freeRecord() {
 	delete [] fields;
 }
 
-string RecordArray::getJson() {
-	string json = "[";
-	for(unsigned i = 0; i < max_fields; i++) {
-		if(i) {
-			json += ",";
+string RecordArray::getJson(vector<string> *header) {
+	if(header) {
+		string json = "{";
+		for(unsigned i = 0; i < min((unsigned)header->size(), max_fields); i++) {
+			if(i) {
+				json += ",";
+			}
+			json += "\"" + (*header)[i] + "\":" + 
+				fields[i].getJson();
 		}
-		json += fields[i].getJson();
+		json += "}";
+		return(json);
+	} else {
+		string json = "[";
+		for(unsigned i = 0; i < max_fields; i++) {
+			if(i) {
+				json += ",";
+			}
+			json += fields[i].getJson();
+		}
+		json += "]";
+		return(json);
 	}
-	json += "]";
-	return(json);
 }

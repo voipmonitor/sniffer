@@ -273,6 +273,7 @@ extern bool _save_sip_history;
 extern bool _save_sip_history_request_types[1000];
 extern bool _save_sip_history_all_requests;
 extern bool _save_sip_history_all_responses;
+extern bool opt_active_call_info;
 extern int opt_rtpfromsdp_onlysip;
 extern int opt_rtpfromsdp_onlysip_skinny;
 extern int opt_t2_boost;
@@ -6097,6 +6098,30 @@ endsip:
 					_request,
 					_lastSIPresponse, _lastSIPresponseNum));
 			}
+		}
+	}
+	if(opt_active_call_info) {
+		char *sip_data = packetS->data_()+ packetS->sipDataOffset;
+		unsigned sip_data_len = packetS->sipDataLen;
+		char *endFirstSipLine = NULL;
+		for(int i = 0; i < 2; i++) {
+			char *sep = strnchr(sip_data, i == 0 ? '\r' : '\n', sip_data_len);
+			if(sep && (!endFirstSipLine || sep < endFirstSipLine)) {
+				endFirstSipLine = sep;
+			}
+		}
+		if(endFirstSipLine) {
+			Call::sSipPacketInfo *sipPacketInfo = new FILE_LINE(0) Call::sSipPacketInfo;
+			sipPacketInfo->time_us = packet_time_us;
+			sipPacketInfo->src.ip = packetS->saddr_();
+			sipPacketInfo->src.port = packetS->source_();
+			sipPacketInfo->dst.ip = packetS->daddr_();
+			sipPacketInfo->dst.port = packetS->dest_();
+			sipPacketInfo->sip_first_line = string(sip_data, endFirstSipLine - sip_data);
+			sipPacketInfo->sip_length = packetS->sipDataLen;
+			sipPacketInfo->packet_length = packetS->header_pt->len;
+			sipPacketInfo->cseq = packetS->cseq;
+			c_branch->SIPpacketInfoList.push_back(sipPacketInfo);
 		}
 	}
 	

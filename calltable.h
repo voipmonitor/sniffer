@@ -486,6 +486,16 @@ public:
 		string SIPresponse;
 		int SIPresponseNum;
 	};
+	struct sSipPacketInfo {
+		u_int64_t time_us;
+		vmIPport src;
+		vmIPport dst;
+		string sip_first_line;
+		u_int32_t sip_length;
+		u_int32_t packet_length;
+		sCseq cseq;
+		string getJson();
+	};
 	struct sSipcalleRD_IP {
 		sSipcalleRD_IP() {
 			for(unsigned i = 0; i < MAX_SIPCALLERDIP; i++) {
@@ -543,6 +553,7 @@ public:
 class CallBranch : public CallStructs {
 public:
 	CallBranch(Call *call = NULL, unsigned branch_id = 0);
+	virtual ~CallBranch();
 	inline void invite_list_lock() {
 		__SYNC_LOCK_USLEEP(_invite_list_lock, 50);
 	}
@@ -579,6 +590,7 @@ public:
 	}
 	int64_t get_min_response_100_time_us();
 	int64_t get_min_response_xxx_time_us();
+	string get_sip_packets_info_json();
 public:
 
 	Call *call;
@@ -665,6 +677,7 @@ public:
 	int lastSIPresponseNum;
 	list<sSipResponse> SIPresponse;
 	list<sSipHistory> SIPhistory;
+	list<sSipPacketInfo*> SIPpacketInfoList;
 	bool new_invite_after_lsr487;
 	bool cancel_lsr487;
 	
@@ -2714,6 +2727,7 @@ public:
 	
 	void getValue(eCallField field, RecordArrayField *rfield);
 	static string getJsonHeader();
+	static void getJsonHeader(vector<string> *header);
 	void getRecordData(RecordArray *rec);
 	string getJsonData();
 	void setRtpThreadNum();
@@ -2797,6 +2811,7 @@ public:
 	inline int rtp_size() {
 		return(ssrc_n);
 	}
+	string get_rtp_streams_info_json();
 	
 	inline bool existsSrtp() {
 		return(exists_srtp);

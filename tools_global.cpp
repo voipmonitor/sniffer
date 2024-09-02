@@ -687,6 +687,14 @@ void JsonExport::add_int(const char *name, int64_t content) {
 	items.push_back(item);
 }
 
+void JsonExport::add_float(const char *name, double content) {
+	JsonExport_template<double> *item = new FILE_LINE(0) JsonExport_template<double>;
+	item->setTypeItem(_number);
+	item->setName(name);
+	item->setContent(content);
+	items.push_back(item);
+}
+
 void JsonExport::add(const char *name) {
 	JsonExport_template<string> *item = new FILE_LINE(38011) JsonExport_template<string>;
 	item->setTypeItem(_null);

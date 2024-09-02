@@ -735,6 +735,7 @@ bool _save_sip_history;
 bool _save_sip_history_request_types[1000];
 bool _save_sip_history_all_requests;
 bool _save_sip_history_all_responses;
+bool opt_active_call_info;
 bool opt_disable_sdp_multiplication_warning = false;
 bool opt_enable_content_type_application_csta_xml = false;
 bool opt_cdr_sipresp = false;
@@ -6756,6 +6757,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42288) cConfigItem_yesno("save_sip_responses", &opt_cdr_sipresp));
 				addConfigItem((new FILE_LINE(42289) cConfigItem_string("save_sip_history", &opt_save_sip_history))
 					->addStringItems("invite|bye|cancel|register|message|info|subscribe|options|notify|ack|prack|publish|refer|update|REQUESTS|RESPONSES|ALL"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("active_call_info", &opt_active_call_info));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("disable_sdp_multiplication_warning", &opt_disable_sdp_multiplication_warning));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("enable_content_type_application_csta_xml", &opt_enable_content_type_application_csta_xml));
 					expert();

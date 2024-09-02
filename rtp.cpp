@@ -3242,6 +3242,23 @@ bool RTP::channel_is_adaptive(struct ast_channel *channel) {
 	return(channel && channel->jitter_impl);
 }
 
+string RTP::getJson() {
+	JsonExport json;
+	json.add("src_ip", saddr.getString());
+	json.add("src_port", sport.getString());
+	json.add("dst_ip", daddr.getString());
+	json.add("dst_port", dport.getString());
+	json.add("time", first_packet_time_us);
+	json.add("time_last", last_packet_time_us);
+	json.add("ssrc", ssrc);
+	json.add("codec", codec);
+	json.add("received", stats.received);
+	json.add("lost", stats.lost);
+	json.add("jitter_avg", (double)stats.avgjitter);
+	json.add("jitter_max", (double)stats.maxjitter);
+	return(json.getJson());
+}
+
 #endif // not EXPERIMENTAL_LITE_RTP_MOD
 
 extern "C" {

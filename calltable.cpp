@@ -511,6 +511,21 @@ Call_abstract::addTarPos(u_int64_t pos, int type) {
 	}
 }
 
+string CallStructs::sSipPacketInfo::getJson() {
+	JsonExport json;
+	json.add("time", time_us);
+	json.add("src_ip", src.ip.getString());
+	json.add("src_port", src.port.getString());
+	json.add("dst_ip", dst.ip.getString());
+	json.add("dst_port", dst.port.getString());
+	json.add("sip", sip_first_line);
+	json.add("sip_len", sip_length);
+	json.add("packet_len", packet_length);
+	json.add("cseq_m", cseq.method);
+	json.add("cseq_n", cseq.number);
+	return(json.getJson());
+}
+
 CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	this->call = call;
 	this->branch_id = branch_id;
@@ -593,6 +608,12 @@ CallBranch::CallBranch(Call *call, unsigned branch_id) {
 	updateDstnumFromMessage = false;
 }
 
+CallBranch::~CallBranch() {
+	for(list<sSipPacketInfo*>::iterator iter = SIPpacketInfoList.begin(); iter != SIPpacketInfoList.end(); iter++) {
+		delete *iter;
+	}
+}
+
 void CallBranch::proxies_undup(set<vmIP> *proxies_undup, list<vmIPport> *proxies, vmIPport *exclude) {
 	bool need_lock = !proxies;
 	if(need_lock) proxies_lock();
@@ -641,6 +662,20 @@ int64_t CallBranch::get_min_response_xxx_time_us(){
 		}
 	}
 	invite_list_unlock();
+	return(rslt);
+}
+
+string CallBranch::get_sip_packets_info_json() {
+	string rslt = "[";
+	unsigned counter = 0;
+	for(list<sSipPacketInfo*>::iterator iter = SIPpacketInfoList.begin(); iter != SIPpacketInfoList.end(); iter++) {
+		if(counter) {
+			rslt += ",";
+		}
+		rslt += (*iter)->getJson();
+		++counter;
+	}
+	rslt += "]";
 	return(rslt);
 }
 
@@ -4740,22 +4775,30 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 }
 
 string Call::getJsonHeader() {
-	string header = "[";
-	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+	vector<string> header;
+	getJsonHeader(&header);
+	string header_str = "[";
+	for(unsigned i = 0; i < header.size(); i++) {
 		if(i) {
-			header += ",";
+			header_str += ",";
 		}
-		header += '"' + string(callFields[i].fieldName) + '"';
+		header_str += '"' + header[i] + '"';
+	}
+	header_str += "]";
+	return(header_str);
+}
+
+void Call::getJsonHeader(vector<string> *header) {
+	for(unsigned i = 0; i < sizeof(callFields) / sizeof(callFields[0]); i++) {
+		header->push_back(callFields[i].fieldName);
 	}
 	if(custom_headers_cdr) {
 		list<string> headers;
 		custom_headers_cdr->getHeaders(&headers);
 		for(list<string>::iterator iter = headers.begin(); iter != headers.end(); iter++) {
-			header += ",\"" + *iter + '"';
+			header->push_back(*iter);
 		}
 	}
-	header += "]";
-	return(header);
 }
 
 void Call::getRecordData(RecordArray *rec) {
@@ -4773,9 +4816,17 @@ void Call::getRecordData(RecordArray *rec) {
 }
 
 string Call::getJsonData() {
-	RecordArray rec(sizeof(callFields) / sizeof(callFields[0]));
+	unsigned custom_headers_size = 0;
+	unsigned custom_headers_reserve = 0;
+	if(custom_headers_cdr) {
+		custom_headers_size = custom_headers_cdr->getSize();
+		custom_headers_reserve = 5;
+	}
+	RecordArray rec(sizeof(callFields) / sizeof(callFields[0]) + custom_headers_size + custom_headers_reserve);
 	getRecordData(&rec);
-	string data = rec.getJson();
+	vector<string> header;
+	getJsonHeader(&header);
+	string data = rec.getJson(&header);
 	rec.free();
 	return(data);
 }
@@ -14595,6 +14646,23 @@ void Call::srvcc_check_pre(CallBranch *c_branch) {
 		srvcc_flag = _srvcc_pre;
 		srvcc_call_id = call_id;
 	}
+}
+
+string Call::get_rtp_streams_info_json() {
+	string rslt = "[";
+	unsigned counter = 0;
+	for(int i = 0; i < min(ssrc_n, MAX_SSRC_PER_CALL_FIX); i++) {
+		RTP *rtp = rtp_fix[i];
+		if(rtp) {
+			if(counter) {
+				rslt += ",";
+			}
+			rslt += rtp->getJson();
+			++counter;
+		}
+	}
+	rslt += "]";
+	return(rslt);
 }
 
 void Call::dtls_keys_add(cDtlsLink::sSrtpKeys* keys_item) {
