@@ -1,3 +1,21 @@
+2024.09.1 04.9.2024
+===================
+- add support for call information / sip history in active calls
+- fixed-jitterbuffer modification - add skew tracking to evaluate whether to drop or resync in resync_jb function [VS-1627]
+- use rtpc_xr even when there are no rtp streams [VS-552]
+- use rtpc sr / rr even if there are no rtp streams [VS-1608]
+- process the custom headers before send call info processes first invite [VG-2108]
+- allow specifying a replace pattern as part of a regular expression in the custom header definition [VS-1623]
+- add user agent into send call info [VS-1476]
+- allow nodb value in sip-register option [VS-1289]
+- add missing sip_msg custom header refresh when processing manager command custom_headers_refresh [VG-2859]
+- fix saving time in custom header tables for option/notify/subscribe if saving times in ms is enabled (fix detecting presence of column for ms) [VG-2859]
+- fix sip dst ip detection if there are reverse in-dialog invites with port change
+- add nat alias to capture rules [VS-1624]
+- add support for ./configure --exec_prefix [VS-1628]
+- use sip reason if missing cause [VS-1630]
+
+
 2024.08.1 06.8.2024
 ===================
 - dpdk: fix support for multiple dpdk interfaces, support for virtual interfaces (example settings: dpdk_vdev=net_pcap_1:iface=eth0;net_pcap_2:iface=eth1; interface=net_pcap_1,net_pcap_2)
