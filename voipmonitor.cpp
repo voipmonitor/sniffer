@@ -9126,6 +9126,10 @@ void set_context_config() {
 	}
 	
 	opt_pcap_queue_receive_sensor_id_by_sender_set = CONFIG.isSet("mirror_bind_sensor_id_by_sender");
+	
+	if(!CONFIG.isSet("sip-msg-save-ua") && opt_cdr_ua_normalisation) {
+		opt_sip_msg_save_ua = true;
+	}
 }
 
 void check_context_config() {
