@@ -99,6 +99,7 @@ bool is_sender();
 bool is_server();
 bool is_client();
 bool is_client_packetbuffer_sender();
+bool enable_set_sensor_id_by_client_or_sender();
 bool is_load_pcap_via_client(const char *sensor_string);
 bool is_remote_chart_server();
 int check_set_rtp_threads(int num_rtp_threads);
