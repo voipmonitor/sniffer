@@ -224,9 +224,8 @@ void cSipMsgRequestResponse::openPcap(packet_s_process *packetS, int type) {
 	cdp.call_data = new FILE_LINE(0) Call_abstract(type, time_us);
 	cdp.call_data->useHandle = get_pcap_handle(packetS->handle_index);
 	cdp.call_data->useDlt = packetS->dlt;
-	extern bool opt_pcap_queue_receive_sensor_id_by_sender;
 	extern int opt_id_sensor;
-	cdp.call_data->useSensorId = !(is_receiver() && opt_pcap_queue_receive_sensor_id_by_sender == 0) ?
+	cdp.call_data->useSensorId = enable_set_sensor_id_by_client_or_sender() ?
 				      packetS->sensor_id_() :
 				      opt_id_sensor;
 	cdp.call_data->user_data = this;

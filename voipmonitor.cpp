@@ -788,6 +788,7 @@ extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
 bool opt_pcap_queue_receive_sensor_id_by_sender;
+bool opt_pcap_queue_receive_sensor_id_by_sender_set;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_need_blocks;
@@ -9123,6 +9124,12 @@ void set_context_config() {
 			}
 		}
 	}
+	
+	opt_pcap_queue_receive_sensor_id_by_sender_set = CONFIG.isSet("mirror_bind_sensor_id_by_sender");
+	
+	if(!CONFIG.isSet("sip-msg-save-ua") && opt_cdr_ua_normalisation) {
+		opt_sip_msg_save_ua = true;
+	}
 }
 
 void check_context_config() {
@@ -9527,6 +9534,17 @@ bool is_client() {
 
 bool is_client_packetbuffer_sender() {
 	return(snifferClientOptions.isEnablePacketBufferSender());
+}
+
+bool enable_set_sensor_id_by_client_or_sender() {
+	if(is_receiver()) {
+		if(opt_pcap_queue_receive_sensor_id_by_sender_set) {
+			return(opt_pcap_queue_receive_sensor_id_by_sender);
+		} else {
+			return(opt_id_sensor <= 0);
+		}
+	}
+	return(true);
 }
 
 bool is_load_pcap_via_client(const char *sensor_string) {
