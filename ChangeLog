@@ -14,6 +14,8 @@
 - add nat alias to capture rules [VS-1624]
 - add support for ./configure --exec_prefix [VS-1628]
 - use sip reason if missing cause [VS-1630]
+- optimization of the decision whether to use receiver or sender id in mirror modes [VS-1632]
+- automatic enable of opt_sip_msg_save_ua if not present in the configuration and if cdr_ua_normalisation is enabled [VS-1631]
 
 
 2024.08.1 06.8.2024
