@@ -29,6 +29,8 @@
 #define _FLAG_NOSIP      		(((u_int64_t)1) << 12)
 #define _FLAG_REGISTER_DB		(((u_int64_t)1) << 13)
 #define _FLAG_NOREGISTER_DB		(((u_int64_t)1) << 14)
+#define _FLAG_REGISTER_PCAP		(((u_int64_t)1) << 51)
+#define _FLAG_NOREGISTER_PCAP		(((u_int64_t)1) << 52)
 #define _FLAG_GRAPH			(((u_int64_t)1) << 15)
 #define _FLAG_NOGRAPH    		(((u_int64_t)1) << 16)
 #define _FLAG_AUDIO			(((u_int64_t)1) << 17)
@@ -65,8 +67,6 @@
 #define _FLAG_NOSUBSCRIBE_DB		(((u_int64_t)1) << 46)
 #define _FLAG_SUBSCRIBE_PCAP		(((u_int64_t)1) << 47)
 #define _FLAG_NOSUBSCRIBE_PCAP		(((u_int64_t)1) << 48)
-#define _FLAG_REGISTER_PCAP		(((u_int64_t)1) << 49)
-#define _FLAG_NOREGISTER_PCAP		(((u_int64_t)1) << 50)
 
 #define MAX_PREFIX 64
 
