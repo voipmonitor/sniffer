@@ -1,3 +1,8 @@
+2024.09.2 10.9.2024
+===================
+- fix 2024.09.1 crashing when SIP REGISTER stora to pcap is enabled 
+
+
 2024.09.1 04.9.2024
 ===================
 - add support for call information / sip history in active calls
