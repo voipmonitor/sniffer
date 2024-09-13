@@ -6807,6 +6807,7 @@ bool cPng::_write(const char *filePathName, SimpleBuffer *png, string *error) {
 #endif //HAVE_LIBPNG
 }
 
+#ifdef HAVE_LIBJPEG
 struct _jpeg_dest_buffer : jpeg_destination_mgr {
 	SimpleBuffer *buffer;
 };
@@ -6831,6 +6832,7 @@ static void _jpeg_term_destination(j_compress_ptr jpeg_ptr) {
 	SimpleBuffer *buffer = ((_jpeg_dest_buffer*)jpeg_ptr->dest)->buffer;
 	buffer->set_data_len(buffer->data_capacity() - jpeg_ptr->dest->free_in_buffer);
 }
+#endif
 
 bool cPng::_write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality, string *error) {
 #ifdef HAVE_LIBJPEG
