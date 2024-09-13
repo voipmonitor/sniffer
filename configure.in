@@ -95,6 +95,7 @@ fi
 AC_CHECK_LIB([json], [main], LIBJSON_NAME='json')
 AC_CHECK_LIB([json-c], [main], LIBJSON_NAME='json-c')
 AC_CHECK_LIB([png], [main], HAVE_LIBPNG=1, AC_MSG_WARN([Unable to find libpng library. apt-get install libpng-dev | yum install libpng-devel]))
+AC_CHECK_LIB([jpeg], [main], HAVE_LIBJPEG=1, AC_MSG_NOTICE([Unable to find jpeg library. apt-get install libjpeg-dev | yum install libjpeg-devel]))
 AC_CHECK_LIB([fftw3], [main], HAVE_LIBFFT=1, AC_MSG_WARN([Unable to find libfftw3 library. apt-get install libfftw3-dev | yum install fftw-devel]))
 if test "x$LIBJSON_NAME" = "x"; then
 	AC_MSG_ERROR([Unable to find json(-c) library. apt-get install libjson-c-dev | yum install json-c-devel (RPM from EPEL) | pkg install json-c | or compile from source: git clone https://github.com/json-c/json-c.git; cd json-c; sh autogen.sh; ./configure; make; make install;ldconfig])
@@ -218,9 +219,16 @@ AS_IF([test "x$enable_dpdk" != "xno"], [AC_CHECK_LIB([rte_net], [main], HAVE_LIB
 
 HAVE_LIBPNG_T=no
 if test "x$HAVE_LIBPNG" = "x1"; then 
-	AC_DEFINE([HAVE_LIBPNG], [1], [Define if using liblpng])
+	AC_DEFINE([HAVE_LIBPNG], [1], [Define if using libpng])
 	AC_SUBST([LIBPNG],["-lpng"])
 	HAVE_LIBPNG_T=yes
+fi
+
+HAVE_LIBJPEG_T=no
+if test "x$HAVE_LIBJPEG" = "x1"; then 
+	AC_DEFINE([HAVE_LIBJPEG], [1], [Define if using libjpeg])
+	AC_SUBST([LIBJPEG],["-ljpeg"])
+	HAVE_LIBJPEG_T=yes
 fi
 
 HAVE_LIBFFT_T=no
@@ -421,6 +429,7 @@ lzma compression enabled               : $HAVE_LIBLZMA_T
 gnutls library enabled (SIP TLS)       : $LIBGNUTLS_T
 tcmalloc (faster *alloc) lib found     : $TCMALLOC_T
 libpng lib found     		       : $HAVE_LIBPNG_T
+libjpeg lib found     		       : $HAVE_LIBJPEG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T

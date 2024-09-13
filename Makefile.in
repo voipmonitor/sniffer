@@ -58,6 +58,7 @@ CURLLIBSTATIC =$(shell pkg-config --libs --static libcurl)
 PCAPLIBSTATIC =$(shell pkg-config --libs --static libpcap)
 
 LIBPNG=@LIBPNG@
+LIBJPEG=@LIBJPEG@
 LIBFFT=@LIBFFT@
 LIBLD=@LIBLD@
 LIBLZMA=@LIBLZMA@
@@ -67,8 +68,8 @@ LIBGNUTLS=@LIBGNUTLS@
 LIBBLAKE3=@LIBBLAKE3@
 LIBWHISPER=@LIBWHISPER@
 LIBGNUTLSSTATIC=-lgcrypt -lgpg-error $(shell pkg-config gnutls --libs --static)
-SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER}
-STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER}
+SHARED_LIBS = ${LIBLD} -licuuc -licudata -lpthread -lpcap -lz -lvorbis -lvorbisenc -logg -lodbc ${MYSQLLIB} -lrt -lsnappy -lcurl -lssl -lcrypto ${JSONLIB} -lxml2 -lrrd ${LIBGNUTLS} @LIBTCMALLOC@ ${GLIBLIB} ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} @DPDK_LDFLAGS@ ${SS7} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER}
+STATIC_LIBS = -static @LIBCDIRLIB@ @LIBTCMALLOC@ -licuuc -licudata -lodbc -lltdl -lrt -lz -lcrypt -lm ${CURLLIBSTATIC} -lssl -lcrypto -static-libstdc++ -static-libgcc ${PCAPLIBSTATIC} -lpthread ${MYSQLLIB} -lpthread -lz -lc -lvorbis -lvorbisenc -logg -lrt -lsnappy ${JSONLIB} -lrrd -lxml2 ${GLIBLIBSTATIC} -lpcre -lz -ldbi ${LIBLZMA} ${LIBZSTD} ${LIBLZ4} ${LIBGNUTLSSTATIC} ${LIBGNUTLSSTATIC} -llzo2 ${LIBPNG} ${LIBJPEG} ${LIBFFT} -lpthread ${SS7} ${LIBLD} @FLTO@ ${LIBBLAKE3} ${LIBWHISPER}
 INCLUDES = @LIBCDIRINC@ ${DPDKINC} -I/usr/local/include ${MYSQLINC} -I jitterbuffer/ ${JSONCFLAGS} ${GLIBCFLAGS} @OPENSSLDIRINC@
 LIBS_PATH = ${DPDKLIB} -L/usr/local/lib/ @OPENSSLDIRLIB@ ${GLIBLIBPATH}
 CXXFLAGS +=  -Wall -fPIC -g3 -O3 @FLTO@ -march=$(GCCARCH) ${MTUNE} ${INCLUDES} ${FBSDDEF} ${MYSQL_WITHOUT_SSL_SUPPORT} @HEAPPROF_CXXFLAG@ @DPDK_CFLAGS@

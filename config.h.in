@@ -58,8 +58,11 @@
 /* Define to 1 if you have the `pcap' library (-lpcap). */
 #undef HAVE_LIBPCAP
 
-/* Define if using liblpng */
+/* Define if using libpng */
 #undef HAVE_LIBPNG
+
+/* Define if using libjpeg */
+#undef HAVE_LIBJPEG
 
 /* Define to 1 if you have the `pthread' library (-lpthread). */
 #undef HAVE_LIBPTHREAD
