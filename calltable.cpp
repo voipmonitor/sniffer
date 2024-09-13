@@ -2015,7 +2015,7 @@ void Call::_read_rtp_srtp(CallBranch *c_branch, packet_s_process_0 *packetS, RTP
 	   (opt_srtp_rtp_decrypt || 
 	    (opt_srtp_rtp_dtmf_decrypt && rtp->codec == PAYLOAD_TELEVENT) ||
 	    (opt_srtp_rtp_dtls_decrypt && (exists_srtp_fingerprint || !exists_srtp_crypto_config)) ||
-	    (opt_srtp_rtp_audio_decrypt && (enable_save_audio(this) || enable_audio_transcribe(this))) || 
+	    (opt_srtp_rtp_audio_decrypt && enable_audio_any(this)) || 
 	    opt_saveRAW || opt_savewav_force)) {
 		int index_call_ip_port_by_src = get_index_by_ip_port_by_src(c_branch, packetS->saddr_(), packetS->source_(), iscaller);
 		if(opt_srtp_rtp_local_instances) {
@@ -2998,7 +2998,11 @@ public:
 	void setStartTime(u_int64_t start_time);
 	bool addWav(const char *wavFileName, u_int64_t start,
 		    unsigned bytes_per_sample = 0, unsigned samplerate = 0);
-	void mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt);
+	void mixToFile(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt);
+	void mixToBuffer(bool withoutEndSilence, bool withoutEndSilenceInRslt);
+	u_char *getMixBuffer(u_int32_t *mix_buffer_length_samples);
+	unsigned getSampleRate();
+	unsigned getBytesPerSample();
 private:
 	void mix(bool withoutEndSilence, bool withoutEndSilenceInRslt);
 	void mix(cWav *wav, bool withoutEndSilence);
@@ -3174,7 +3178,7 @@ bool cWavMix::addWav(const char *wavFileName, u_int64_t start,
 	}
 }
 
-void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+void cWavMix::mixToFile(const char *wavOutFileName, bool withoutEndSilence, bool withoutEndSilenceInRslt) {
 	mix(withoutEndSilence, withoutEndSilenceInRslt);
 	if(mix_buffer_length_samples) {
 		FILE *file = fopen(wavOutFileName, "w");
@@ -3187,6 +3191,23 @@ void cWavMix::mixTo(const char *wavOutFileName, bool withoutEndSilence, bool wit
 			fclose(file);
 		}
 	}
+}
+
+void cWavMix::mixToBuffer(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
+	mix(withoutEndSilence, withoutEndSilenceInRslt);
+}
+
+u_char *cWavMix::getMixBuffer(u_int32_t *mix_buffer_length_samples) {
+	*mix_buffer_length_samples = this->mix_buffer_length_samples;
+	return(mix_buffer);
+}
+
+unsigned cWavMix::getSampleRate() {
+	return(samplerate);
+}
+
+unsigned cWavMix::getBytesPerSample() {
+	return(bytes_per_sample);
 }
 
 void cWavMix::mix(bool withoutEndSilence, bool withoutEndSilenceInRslt) {
@@ -3350,7 +3371,7 @@ Call::convertRawToWav(void **transcribe_call) {
 	unsigned long int rawiterator;
 	
 	extern int opt_audio_transcribe_connect_duration_min;
-	if(!enable_save_audio(this) &&
+	if(!enable_save_audio(this) && !enable_save_audiograph(this) &&
 	   enable_audio_transcribe(this) && transcribe_call &&
 	   this->connect_duration_s() < (unsigned)opt_audio_transcribe_connect_duration_min) {
 		for(int i = 0; i <= 1; i++) {
@@ -3639,6 +3660,14 @@ Call::convertRawToWav(void **transcribe_call) {
 		}
 	}
 
+	cPng *spectrogram[2] = { NULL, NULL };
+	u_int8_t *peaks[2] = { NULL, NULL };
+	size_t peaks_count[2] = { 0, 0 };
+	double wav_duration_s[2] = { 0, 0 };
+	extern int opt_audiograph_ms_per_pixel;
+	int ms_per_pixel = opt_audiograph_ms_per_pixel ?
+			    opt_audiograph_ms_per_pixel :
+			    get_audiograph_ms_per_pixel(duration_sf());
 	/* process all files in playlist for each direction */
 	for(int i = 0; i <= 1; i++) {
 		char *wav = NULL;
@@ -4108,18 +4137,103 @@ Call::convertRawToWav(void **transcribe_call) {
 		if(!sverb.noaudiounlink) unlink(rawInfo);
 		
 		if(wavMix) {
-			wavMix->mixTo(wav, true, false);
+			if(enable_save_audio(this) || enable_audio_transcribe(this)) {
+				wavMix->mixToFile(wav, true, false);
+			} else if(enable_save_audiograph(this)) {
+				wavMix->mixToBuffer(true, false);
+			}
+			if(enable_save_audiograph(this)) {
+				u_char *wav_raw;
+				u_int32_t wav_raw_samples;
+				wav_raw = wavMix->getMixBuffer(&wav_raw_samples);
+				spectrogram[i] = new FILE_LINE(0) cPng;
+				extern int opt_audiograph_spectrogram_height;
+				create_spectrogram_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2, 
+							    ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i]);
+				create_waveform_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2,
+							 ms_per_pixel, &peaks[i], &peaks_count[i]);
+				wav_duration_s[i] = (double)wav_raw_samples / maxsamplerate;
+			}
 			delete wavMix;
 			wavMix = NULL;
+		} else if(enable_save_audiograph(this)) {
+			size_t rawSamples = 0;
+			spectrogram[i] = new FILE_LINE(0) cPng;
+			extern int opt_audiograph_spectrogram_height;
+			create_spectrogram_from_raw(wav, samplerate, 2,
+						    ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i],
+						    false);
+			create_waveform_from_raw(wav, samplerate, 2,
+						 ms_per_pixel, &peaks[i], &peaks_count[i],
+						 false, &rawSamples);
+			wav_duration_s[i] = (double)rawSamples / samplerate;
 		}
 		
-		if(i == 0 and opt_mos_lqo and adir == 1 and flags & FLAG_RUNAMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
-			a_mos_lqo = mos_lqo(wav0, samplerate);
+		if(opt_mos_lqo) {
+			int _samplerate = wavMix ? maxsamplerate : samplerate;
+			if(_samplerate == 8000 || _samplerate == 16000) {
+				if(i == 0 && (flags & FLAG_RUNAMOSLQO) && file_exists(wav0)) {
+					a_mos_lqo = mos_lqo(wav0, _samplerate);
+				}
+				if(i == 1 && (flags & FLAG_RUNBMOSLQO) && file_exists(wav1)) {
+					b_mos_lqo = mos_lqo(wav1, _samplerate);
+				}
+			}
 		}
-		if(i == 1 and opt_mos_lqo and bdir == 1 and flags & FLAG_RUNBMOSLQO and (samplerate == 8000 or samplerate == 16000)) {
-			b_mos_lqo = mos_lqo(wav1, samplerate);
+	}
+	
+	if(enable_save_audiograph(this)) {
+		SimpleBuffer complete;
+		for(int i = 0; i <= 1; i++) {
+			if(spectrogram[i]) {
+				SimpleBuffer buffer;
+				#ifdef HAVE_LIBJPEG
+				extern int opt_audiograph_spectrogram_jpeg_quality;
+				spectrogram[i]->write_jpeg(&buffer, opt_audiograph_spectrogram_jpeg_quality);
+				#else
+				spectrogram[i]->write(&buffer);
+				#endif
+				if(buffer.size() > 0) {
+					complete.add(("S" + intToString(i + 1) + ":" +
+						      intToString(buffer.size()) + "/" +
+						      floatToString(wav_duration_s[i]) + "/" +
+						      intToString(ms_per_pixel) + ":").c_str());
+					complete.add(&buffer);
+				}
+				delete spectrogram[i];
+			}
+			if(peaks[i]) {
+				if(peaks_count[i] > 0) {
+					complete.add(("P" + intToString(i + 1) + ":" +
+						      intToString(peaks_count[i]) + "/" +
+						      floatToString(wav_duration_s[i]) + "/" +
+						      intToString(ms_per_pixel) + ":").c_str());
+					complete.add(peaks[i], peaks_count[i]);
+				}
+				delete [] peaks[i];
+			}
 		}
-
+		if(complete.size() > 0) {
+			extern int opt_pcap_dump_bufflength;
+			extern int opt_pcap_dump_asyncwrite;
+			extern FileZipHandler::eTypeCompress opt_gzip_audiograph;
+			FileZipHandler *handle = new FILE_LINE(0) FileZipHandler(opt_pcap_dump_bufflength, opt_pcap_dump_asyncwrite, opt_gzip_audiograph,
+										 false, this,
+										 FileZipHandler::audiograph, 0);
+			string audiograph_extension = string("audiograph") + (opt_gzip_audiograph == FileZipHandler::gzip ? ".gz" : "");
+			handle->open(tsf_audiograph, this->get_pathfilename(tsf_audiograph, audiograph_extension.c_str()).c_str());
+			if(opt_pcap_dump_tar) {
+				handle->initTarbuffer();
+			}
+			handle->write((char*)complete.data(), complete.size());
+			if(opt_pcap_dump_asyncwrite) {
+				extern AsyncClose *asyncClose;
+				asyncClose->add(handle);
+			} else {
+				handle->close();
+				delete handle;
+			}
+		}
 	}
 
 	if(adir == 1 && bdir == 1) {
@@ -4131,10 +4245,12 @@ Call::convertRawToWav(void **transcribe_call) {
 		}
 	}
 	
+	bool _enable_save_audio = enable_save_audio(this);
 	bool _enable_audio_transcribe = enable_audio_transcribe(this) && transcribe_call && (adir || bdir) &&
 					(!opt_audio_transcribe_connect_duration_min ||
 					 this->connect_duration_s() >= (unsigned)opt_audio_transcribe_connect_duration_min);
-	if(enable_save_audio(this)) {
+	
+	if(_enable_save_audio) {
 		if(adir == 1 && bdir == 1) {
 			// merge caller and called 
 			if(!(flags & FLAG_FORMATAUDIO_OGG)) {
@@ -4194,6 +4310,15 @@ Call::convertRawToWav(void **transcribe_call) {
 	
 	if(_enable_audio_transcribe) {
 		*transcribe_call = Transcribe::createTranscribeCall(this, adir ? wav0 : NULL, bdir ? wav1 : NULL, maxsamplerate);
+	}
+	
+	if(!_enable_save_audio && !_enable_audio_transcribe) {
+		if(adir == 1) {
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav0);
+		}
+		if(bdir == 1) {
+			if(!sverb.noaudiounlink && !_enable_audio_transcribe) unlink(wav1);
+		}
 	}
 	
 #endif
@@ -13306,8 +13431,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 		newcall->useDlt = dlt;
 	}
 	
-	extern bool opt_pcap_queue_receive_sensor_id_by_sender;
-	if(sensorId > -1 && !(is_receiver() && opt_pcap_queue_receive_sensor_id_by_sender == 0)) {
+	if(sensorId > -1 && enable_set_sensor_id_by_client_or_sender()) {
 		newcall->useSensorId = sensorId;
 	}
 
@@ -13374,8 +13498,7 @@ Calltable::add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort
 		newcall->useDlt = dlt;
 	}
 	
-	extern bool opt_pcap_queue_receive_sensor_id_by_sender;
-	if(sensorId > -1 && !(is_receiver() && opt_pcap_queue_receive_sensor_id_by_sender == 0)) {
+	if(sensorId > -1 && enable_set_sensor_id_by_client_or_sender()) {
 		newcall->useSensorId = sensorId;
 	}
 	newcall->mgcp_callid = request->parameters.call_id;
@@ -16208,34 +16331,35 @@ const char *sip_request_int_to_name(int requestCode, bool withResponse) {
 
 string printCallFlags(unsigned long int flags) {
 	ostringstream outStr;
-	if(flags & FLAG_SAVERTP)		outStr << "savertp ";
-	if(flags & FLAG_SAVERTP_VIDEO)		outStr << "savertp_video ";
-	if(flags & FLAG_SAVERTCP)		outStr << "savertcp ";
-	if(flags & FLAG_SAVESIP)		outStr << "savesip ";
+	if(flags & FLAG_SAVERTP)			outStr << "savertp ";
+	if(flags & FLAG_SAVERTP_VIDEO)			outStr << "savertp_video ";
+	if(flags & FLAG_SAVERTCP)			outStr << "savertcp ";
+	if(flags & FLAG_SAVESIP)			outStr << "savesip ";
 	if(flags & FLAG_SAVEREGISTERPCAP)		outStr << "saveregisterpcap ";
-	if(flags & FLAG_SAVEREGISTERDB)		outStr << "saveregisterdb ";
-	if(flags & FLAG_SAVEAUDIO)		outStr << "saveaudio ";
-	if(flags & FLAG_FORMATAUDIO_WAV)	outStr << "format_wav ";
-	if(flags & FLAG_FORMATAUDIO_OGG)	outStr << "format_ogg ";
-	if(flags & FLAG_AUDIOTRANSCRIBE)	outStr << "audio_transcribe ";
-	if(flags & FLAG_SAVEGRAPH)		outStr << "savegraph ";
-	if(flags & FLAG_SAVERTPHEADER)		outStr << "savertpheader ";
-	if(flags & FLAG_SAVERTP_VIDEO_HEADER)	outStr << "savertp_video_header ";
-	if(flags & FLAG_PROCESSING_RTP_VIDEO)	outStr << "processing_rtp_video ";
-	if(flags & FLAG_SKIPCDR)		outStr << "skipcdr ";
-	if(flags & FLAG_RUNSCRIPT)		outStr << "runscript ";
-	if(flags & FLAG_RUNAMOSLQO)		outStr << "runamoslqo ";
-	if(flags & FLAG_RUNBMOSLQO)		outStr << "runbmoslqo ";
-	if(flags & FLAG_HIDEMESSAGE)		outStr << "hidemessage ";
-	if(flags & FLAG_USE_SPOOL_2)		outStr << "use_spool_2 ";
-	if(flags & FLAG_SAVEDTMFDB)		outStr << "savedtmfdb ";
-	if(flags & FLAG_SAVEDTMFPCAP)		outStr << "savedtmfpcap ";
-	if(flags & FLAG_SAVEOPTIONSDB)		outStr << "saveoptionsdb ";
-	if(flags & FLAG_SAVEOPTIONSPCAP)	outStr << "saveoptionspcap ";
-	if(flags & FLAG_SAVENOTIFYDB)		outStr << "savenotifydb ";
-	if(flags & FLAG_SAVENOTIFYPCAP)		outStr << "savenotifypcap ";
-	if(flags & FLAG_SAVESUBSCRIBEDB)	outStr << "savesubscribedb ";
-	if(flags & FLAG_SAVESUBSCRIBEPCAP)	outStr << "savesubscribepcap ";
+	if(flags & FLAG_SAVEREGISTERDB)			outStr << "saveregisterdb ";
+	if(flags & FLAG_SAVEAUDIO)			outStr << "saveaudio ";
+	if(flags & FLAG_FORMATAUDIO_WAV)		outStr << "format_wav ";
+	if(flags & FLAG_FORMATAUDIO_OGG)		outStr << "format_ogg ";
+	if(flags & FLAG_SAVEAUDIOGRAPH)			outStr << "save_audio_graph";
+	if(flags & FLAG_AUDIOTRANSCRIBE)		outStr << "audio_transcribe ";
+	if(flags & FLAG_SAVEGRAPH)			outStr << "savegraph ";
+	if(flags & FLAG_SAVERTPHEADER)			outStr << "savertpheader ";
+	if(flags & FLAG_SAVERTP_VIDEO_HEADER)		outStr << "savertp_video_header ";
+	if(flags & FLAG_PROCESSING_RTP_VIDEO)		outStr << "processing_rtp_video ";
+	if(flags & FLAG_SKIPCDR)			outStr << "skipcdr ";
+	if(flags & FLAG_RUNSCRIPT)			outStr << "runscript ";
+	if(flags & FLAG_RUNAMOSLQO)			outStr << "runamoslqo ";
+	if(flags & FLAG_RUNBMOSLQO)			outStr << "runbmoslqo ";
+	if(flags & FLAG_HIDEMESSAGE)			outStr << "hidemessage ";
+	if(flags & FLAG_USE_SPOOL_2)			outStr << "use_spool_2 ";
+	if(flags & FLAG_SAVEDTMFDB)			outStr << "savedtmfdb ";
+	if(flags & FLAG_SAVEDTMFPCAP)			outStr << "savedtmfpcap ";
+	if(flags & FLAG_SAVEOPTIONSDB)			outStr << "saveoptionsdb ";
+	if(flags & FLAG_SAVEOPTIONSPCAP)		outStr << "saveoptionspcap ";
+	if(flags & FLAG_SAVENOTIFYDB)			outStr << "savenotifydb ";
+	if(flags & FLAG_SAVENOTIFYPCAP)			outStr << "savenotifypcap ";
+	if(flags & FLAG_SAVESUBSCRIBEDB)		outStr << "savesubscribedb ";
+	if(flags & FLAG_SAVESUBSCRIBEPCAP)		outStr << "savesubscribepcap ";
 	return(outStr.str());
 }
 

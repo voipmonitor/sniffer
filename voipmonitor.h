@@ -99,6 +99,7 @@ bool is_sender();
 bool is_server();
 bool is_client();
 bool is_client_packetbuffer_sender();
+bool enable_set_sensor_id_by_client_or_sender();
 bool is_load_pcap_via_client(const char *sensor_string);
 bool is_remote_chart_server();
 int check_set_rtp_threads(int num_rtp_threads);
@@ -129,6 +130,7 @@ enum eTypeSpoolFile {
 	tsf_rtp,
 	tsf_graph,
 	tsf_audio,
+	tsf_audiograph,
 	tsf_all
 };
 
@@ -232,13 +234,15 @@ inline bool isSetSpoolDir2() {
 inline bool isSetSpoolDir(int spoolIndex) {
 	return(spoolIndex == 0 || isSetSpoolDir2());
 }
-inline const char *getSpoolDir(eTypeSpoolFile typeSpoolFile, const char *main, const char *rtp, const char *graph, const char *audio) {
+inline const char *getSpoolDir(eTypeSpoolFile typeSpoolFile, const char *main, const char *rtp, const char *graph, const char *audio, const char *audiograph) {
 	if(typeSpoolFile == tsf_rtp && rtp && rtp[0]) {
 		return(rtp);
 	} else if(typeSpoolFile == tsf_graph && graph && graph[0]) {
 		return(graph);
 	} else if(typeSpoolFile == tsf_audio && audio && audio[0]) {
 		return(audio);
+	} else if(typeSpoolFile == tsf_audiograph && audiograph && audiograph[0]) {
+		return(audiograph);
 	}
 	return(main);
 }
@@ -247,14 +251,16 @@ inline const char *getSpoolDir(eTypeSpoolFile typeSpoolFile, int spoolIndex) {
 	extern char opt_spooldir_rtp[1024];
 	extern char opt_spooldir_graph[1024];
 	extern char opt_spooldir_audio[1024];
+	extern char opt_spooldir_audiograph[1024];
 	extern char opt_spooldir_2_main[1024];
 	extern char opt_spooldir_2_rtp[1024];
 	extern char opt_spooldir_2_graph[1024];
 	extern char opt_spooldir_2_audio[1024];
+	extern char opt_spooldir_2_audiograph[1024];
 	if(spoolIndex == 1 && opt_spooldir_2_main[0]) {
-		return(getSpoolDir(typeSpoolFile, opt_spooldir_2_main, opt_spooldir_2_rtp, opt_spooldir_2_graph, opt_spooldir_2_audio));
+		return(getSpoolDir(typeSpoolFile, opt_spooldir_2_main, opt_spooldir_2_rtp, opt_spooldir_2_graph, opt_spooldir_2_audio, opt_spooldir_2_audiograph));
 	} else {
-		return(getSpoolDir(typeSpoolFile, opt_spooldir_main, opt_spooldir_rtp, opt_spooldir_graph, opt_spooldir_audio));
+		return(getSpoolDir(typeSpoolFile, opt_spooldir_main, opt_spooldir_rtp, opt_spooldir_graph, opt_spooldir_audio, opt_spooldir_audiograph));
 	}
 }
 inline const char *skipSpoolDir(eTypeSpoolFile typeSpoolFile, int spoolIndex, const char *spoolDirFile) {
@@ -310,6 +316,7 @@ const char *getSpoolTypeDir(eTypeSpoolFile typeSpoolFile) {
 	       typeSpoolFile == tsf_rtp ? (enable_pcap_split ? "RTP" : "ALL") :
 	       typeSpoolFile == tsf_graph ? "GRAPH" :
 	       typeSpoolFile == tsf_audio ? "AUDIO" : 
+	       typeSpoolFile == tsf_audiograph ? "AUDIOGRAPH" : 
 	       NULL);
 }
 
@@ -326,6 +333,7 @@ eTypeSpoolFile getSpoolTypeFile(const char *typeDir) {
 		{ "RTP", tsf_rtp },
 		{ "GRAPH", tsf_graph },
 		{ "AUDIO", tsf_audio },
+		{ "AUDIOGRAPH", tsf_audiograph },
 		{ "ALL", tsf_all }
 	};
 	for(unsigned i = 0; i < sizeof(dir_type) / sizeof(dir_type[0]); i++) {
@@ -348,7 +356,8 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_ss7 ? "sip" : 
 		typeSpoolFile == tsf_rtp ? "rtp" :
 		typeSpoolFile == tsf_graph ? "graph" :
-		typeSpoolFile == tsf_audio ? "audio" : 
+		typeSpoolFile == tsf_audio ? "audio" :
+		typeSpoolFile == tsf_audiograph ? "audiograph" :
 		NULL :
 	       addFileConv && !enable_pcap_split ?
 		typeSpoolFile == tsf_sip ? "sip" :
@@ -358,7 +367,8 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_ss7 ? "ss7" : 
 		typeSpoolFile == tsf_rtp ? "sip" :
 		typeSpoolFile == tsf_graph ? "graph" :
-		typeSpoolFile == tsf_audio ? "audio" : 
+		typeSpoolFile == tsf_audio ? "audio" :
+		typeSpoolFile == tsf_audiograph ? "audiograph" :
 		NULL :
 		//
 		typeSpoolFile == tsf_sip ? "sip" :
@@ -369,6 +379,7 @@ const char *getSpoolTypeFilesIndex(eTypeSpoolFile typeSpoolFile, bool addFileCon
 		typeSpoolFile == tsf_rtp ? "rtp" :
 		typeSpoolFile == tsf_graph ? "graph" :
 		typeSpoolFile == tsf_audio ? "audio" :
+		typeSpoolFile == tsf_audiograph ? "audiograph" :
 		typeSpoolFile == tsf_all ? "all" :
 		NULL);
 }
@@ -382,6 +393,7 @@ const char *getFileTypeExtension(eTypeSpoolFile typeSpoolFile) {
 	       typeSpoolFile == tsf_rtp ? "pcap" :
 	       typeSpoolFile == tsf_graph ? "graph" :
 	       typeSpoolFile == tsf_audio ? "wav" : 
+	       typeSpoolFile == tsf_audiograph ? "audiograph" : 
 	       NULL);
 }
 eTypeSpoolFile getTypeSpoolFile(const char *filePathName);

@@ -72,12 +72,17 @@ extern int opt_pcap_dump_tar_compress_graph;
 extern int opt_pcap_dump_tar_graph_level_gzip;
 extern int opt_pcap_dump_tar_graph_level_lzma;
 extern int opt_pcap_dump_tar_graph_level_zstd;
+extern int opt_pcap_dump_tar_compress_audiograph;
+extern int opt_pcap_dump_tar_audiograph_level_gzip;
+extern int opt_pcap_dump_tar_audiograph_level_lzma;
+extern int opt_pcap_dump_tar_audiograph_level_zstd;
 extern int opt_pcap_dump_tar_threads;
 extern int absolute_timeout;
 
 extern int opt_pcap_dump_tar_sip_zstdstrategy;
 extern int opt_pcap_dump_tar_rtp_zstdstrategy;
 extern int opt_pcap_dump_tar_graph_zstdstrategy;
+extern int opt_pcap_dump_tar_audiograph_zstdstrategy;
 
 extern int opt_filesclean;
 extern int opt_nocdr;
@@ -399,7 +404,8 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 					get_hashcomb_long_filename(filename) :
 					"";
 	this->readData.init(T_BLOCKSIZE * 64);
-	CompressStream *decompressStream = new FILE_LINE(34001) CompressStream(reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) ?
+	CompressStream *decompressStream = new FILE_LINE(34001) CompressStream(
+									reg_match(this->pathname.c_str(), "tar\\.gz", __FILE__, __LINE__) ?
 									 CompressStream::gzip :
 									reg_match(this->pathname.c_str(), "tar\\.xz", __FILE__, __LINE__) ?
 									 CompressStream::lzma :
@@ -432,7 +438,8 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 					recordId, row["calldate"].c_str(),
 					strstr(this->pathname.c_str(), "/SIP/") ? 1 :
 					strstr(this->pathname.c_str(), "/RTP/") ? 2 :
-					strstr(this->pathname.c_str(), "/GRAPH/") ? 3 : 0);
+					strstr(this->pathname.c_str(), "/GRAPH/") ? 3 :
+					strstr(this->pathname.c_str(), "/AUDIOGRAPH/") ? 4 : 0);
 				sqlDb->query(queryBuff);
 				while((row = sqlDb->fetchRow())) {
 					cout << "fetch tar position: " << atoll(row["pos"].c_str()) << endl;
@@ -539,6 +546,10 @@ Tar::tar_read(const char *filename, u_int32_t recordId, const char *tableType, c
 				break;
 			}
 			tryNextDecompressBlock = findNextDecompressBlock;
+		}
+		if(decompressStream->getTypeCompress() == CompressStream::zstd &&
+		   this->readData.fileSize < this->readData.fileHeader.get_size()) {
+			decompressStream->decompress((char*)"\x01\x00\x00", 3, 0, false, this);
 		}
 		if(!this->readData.end &&
 		   ((this->readData.filename.length() > TAR_FILENAME_LENGTH - 1 ?
@@ -1043,6 +1054,25 @@ Tar::tar_block_write(const char *buf, u_int32_t len){
 			break;
 		}
 		break;
+	case 4:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_audiograph)) {
+		case _gzip_force:
+			gziplevel = opt_pcap_dump_tar_audiograph_level_gzip;
+			zip = true;
+			break;
+		case _lzma:
+			lzmalevel = opt_pcap_dump_tar_audiograph_level_lzma;
+			lzma = true;
+			break;
+		case _zstd:
+			zstdlevel = opt_pcap_dump_tar_audiograph_level_zstd;
+			zstdstrategy = opt_pcap_dump_tar_audiograph_zstdstrategy != INT_MIN ? opt_pcap_dump_tar_audiograph_zstdstrategy : 0;
+			zstd = true;
+			break;
+		default:
+			break;
+		}
+		break;
 	}
 	
 	if(zip) {
@@ -1232,6 +1262,9 @@ TarQueue::add(data_tar *tar_data, ChunkBuffer *buffer, unsigned int time){
 	case tsf_graph:
 		queue_data_index = 3;
 		break;
+	case tsf_audiograph:
+		queue_data_index = 4;
+		break;
 	}
 	if(queue_data_index >= 0) {
 		if(queue_data[queue_data_index].find(data) == queue_data[queue_data_index].end()) {
@@ -1248,6 +1281,7 @@ qtype2str(int qtype) {
 	if(qtype == 1) return "sip";
 	else if(qtype == 2) return "rtp";
 	else if(qtype == 3) return "graph";
+	else if(qtype == 4) return "audiograph";
 	else return "all";
 }
 
@@ -1256,6 +1290,7 @@ qtype2strC(int qtype) {
 	if(qtype == 1) return "SIP";
 	else if(qtype == 2) return "RTP";
 	else if(qtype == 3) return "GRAPH";
+	else if(qtype == 4) return "AUDIOGRAPH";
 	else return "ALL";
 }
 
@@ -1264,6 +1299,7 @@ qtype2typeSpoolFile(int qtype) {
 	if(qtype == 1) return tsf_sip;
 	else if(qtype == 2) return tsf_rtp;
 	else if(qtype == 3) return tsf_graph;
+	else if(qtype == 4) return tsf_audiograph;
 	else return tsf_all;
 }
 
@@ -1322,6 +1358,21 @@ TarQueue::write(int qtype, data_t data) {
 		break;
 	case 3:
 		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_graph)) {
+		case Tar::_gzip_force:
+			tar_name << ".gz";
+			break;
+		case Tar::_lzma:
+			tar_name << ".xz";
+			break;
+		case Tar::_zstd:
+			tar_name << ".zst";
+			break;
+		default:
+			break;
+		}
+		break;
+	case 4:
+		switch(Tar::checkCompressType(opt_pcap_dump_tar_compress_audiograph)) {
 		case Tar::_gzip_force:
 			tar_name << ".gz";
 			break;
@@ -1800,7 +1851,7 @@ TarQueue::flushQueue() {
 		lock();
 		winner = NULL;
 		maxlen = 0;
-		for(int i = 0; i < 4; i++) {
+		for(unsigned i = 0; i < (sizeof(queue_data) / sizeof(queue_data[0])); i++) {
 			//walk map
 			for(it = queue_data[i].begin(); it != queue_data[i].end(); it++) {
 				vector<data_t>::iterator itv;
@@ -1839,7 +1890,7 @@ TarQueue::flushQueue() {
 int
 TarQueue::queuelen() {
 	int len = 0;
-	for(int i = 0; i < 4; i++) {
+	for(unsigned i = 0; i < (sizeof(queue_data) / sizeof(queue_data[0])); i++) {
 		len += queue_data[i].size();
 	}
 	return len;
@@ -1880,7 +1931,7 @@ TarQueue::TarQueue(int spoolIndex) {
 	terminate = false;
 	maxthreads = opt_pcap_dump_tar_threads;
 	
-	for(int i = 0; i < 4; i++) {
+	for(unsigned i = 0; i < (sizeof(tarThreadCounter) / sizeof(tarThreadCounter[0])); i++) {
 		tarThreadCounter[i] = i;
 	}
 

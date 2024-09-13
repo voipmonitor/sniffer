@@ -13,6 +13,7 @@ public:
 		string rtp;
 		string graph;
 		string audio;
+		string audiograph;
 	};
 	struct CleanSpoolOptMax {
 		unsigned int maxpoolsize;
@@ -25,6 +26,8 @@ public:
 		unsigned int maxpoolgraphdays;
 		unsigned int maxpoolaudiosize;
 		unsigned int maxpoolaudiodays;
+		unsigned int maxpoolaudiographsize;
+		unsigned int maxpoolaudiographdays;
 	};
 	struct CleanSpoolOptOther {
 		int maxpool_clean_obsolete;
@@ -140,10 +143,10 @@ public:
 			data[index] = item;
 		}
 		long long getSumSize();
-		long long getSplitSumSize(long long *sip, long long *rtp, long long *graph, long long *audio);
+		long long getSplitSumSize(long long *sip, long long *rtp, long long *graph, long long *audio, long long *audiograph);
 		void getSumSizeByDate(map<string, long long> *sizeByDate);
 		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getBegin();
-		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getMin(bool sip, bool rtp, bool graph, bool audio);
+		map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator getMin(bool sip, bool rtp, bool graph, bool audio, bool audiograph);
 		bool existsFileIndex(sSpoolDataDirIndex *dirIndex);
 		void erase(map<sSpoolDataDirIndex, sSpoolDataDirItem>::iterator iter) {
 			data.erase(iter);
@@ -244,44 +247,50 @@ private:
 	long long reindex_date_hour_type(string date, int h, string type, bool readOnly, bool quickCheck, 
 					 map<unsigned, bool> *fillMinutes, bool *existsDhDir);
 	void unlinkfileslist(eTypeSpoolFile typeSpoolFile, string fname, string callFrom);
-	void unlink_dirs(string datehour, int sip, int reg, int skinny, int mgcp, int ss7, int rtp, int graph, int audio, string callFrom);
+	void unlink_dirs(string datehour, int sip, int reg, int skinny, int mgcp, int ss7, int rtp, int graph, int audio, int audiograph, string callFrom);
 	void erase_dir(string dir, sSpoolDataDirIndex index, string callFrom);
 	void erase_dir_if_empty(string dir, string callFrom = "");
 	bool dir_is_empty(string dir, bool enableRecursion = false);
 	bool dir_is_empty(string dir, list<string> *exclude);
 	string reduk_dir(string dir, string *last_dir);
 	void clean_spooldir_run();
-	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio);
+	void clean_maxpoolsize(bool sip, bool rtp, bool graph, bool audio, bool audiograph);
 	void clean_maxpoolsize_all() {
-		clean_maxpoolsize(true, true, true, true);
+		clean_maxpoolsize(true, true, true, true, true);
 	}
 	void clean_maxpoolsize_sip() {
-		clean_maxpoolsize(true, false, false, false);
+		clean_maxpoolsize(true, false, false, false, false);
 	}
 	void clean_maxpoolsize_rtp() {
-		clean_maxpoolsize(false, true, false, false);
+		clean_maxpoolsize(false, true, false, false, false);
 	}
 	void clean_maxpoolsize_graph() {
-		clean_maxpoolsize(false, false, true, false);
+		clean_maxpoolsize(false, false, true, false, false);
 	}
 	void clean_maxpoolsize_audio() {
-		clean_maxpoolsize(false, false, false, true);
+		clean_maxpoolsize(false, false, false, true, false);
 	}
-	void clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio);
+	void clean_maxpoolsize_audiograph() {
+		clean_maxpoolsize(false, false, false, false, true);
+	}
+	void clean_maxpooldays(bool sip, bool rtp, bool graph, bool audio, bool audiograph);
 	void clean_maxpooldays_all() {
-		clean_maxpooldays(true, true, true, true);
+		clean_maxpooldays(true, true, true, true, true);
 	}
 	void clean_maxpooldays_sip() {
-		clean_maxpooldays(true, false, false, false);
+		clean_maxpooldays(true, false, false, false, false);
 	}
 	void clean_maxpooldays_rtp() {
-		clean_maxpooldays(false, true, false, false);
+		clean_maxpooldays(false, true, false, false, false);
 	}
 	void clean_maxpooldays_graph() {
-		clean_maxpooldays(false, false, true, false);
+		clean_maxpooldays(false, false, true, false, false);
 	}
 	void clean_maxpooldays_audio() {
-		clean_maxpooldays(false, false, false, true);
+		clean_maxpooldays(false, false, false, true, false);
+	}
+	void clean_maxpooldays_audiograph() {
+		clean_maxpooldays(false, false, false, false, true);
 	}
 	void clean_obsolete_dirs();
 	void test_load(string type);

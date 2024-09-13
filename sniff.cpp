@@ -122,12 +122,6 @@ cDestroyCallsInfo *destroy_calls_info = NULL;
 #endif
 extern volatile int calls_counter;
 extern volatile int registers_counter;
-extern int opt_saveSIP;		// save SIP packets to pcap file?
-extern int opt_saveRTP;		// save RTP packets to pcap file?
-extern int opt_saveRTCP;	// save RTCP packets to pcap file?
-extern int opt_saveRAW;
-extern int opt_saveWAV;
-extern int opt_saveGRAPH;
 extern int opt_packetbuffered;	  // Make .pcap files writing ‘‘packet-buffered’’
 extern int opt_rtcp;		  // Make .pcap files writing ‘‘packet-buffered’’
 extern int verbosity;
@@ -4616,6 +4610,9 @@ void process_packet_sip_call(packet_s_process *packetS) {
 			}
 			if((call->flags & FLAG_SAVEAUDIO) && !(flags & FLAG_SAVEAUDIO)) {
 				call->flags &= ~FLAG_SAVEAUDIO;
+			}
+			if((call->flags & FLAG_SAVEAUDIOGRAPH) && !(flags & FLAG_SAVEAUDIOGRAPH)) {
+				call->flags &= ~FLAG_SAVEAUDIOGRAPH;
 			}
 			if((call->flags & FLAG_AUDIOTRANSCRIBE) && !(flags & FLAG_AUDIOTRANSCRIBE)) {
 				call->flags &= ~FLAG_AUDIOTRANSCRIBE;

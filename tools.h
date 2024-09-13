@@ -635,7 +635,8 @@ public:
 		na,
 		pcap_sip,
 		pcap_rtp,
-		graph_rtp
+		graph_rtp,
+		audiograph
 	};
 	enum eTypeCompress {
 		compress_na,
@@ -3087,13 +3088,27 @@ public:
 		u_int8_t blue;
 	};
 public:
-	cPng(size_t width, size_t height);
+	cPng(size_t width = 0, size_t height = 0);
 	~cPng();
+	void setWidthHeight(size_t width, size_t height);
 	void setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue);
 	void setPixel(size_t x, size_t y, pixel p);
 	pixel getPixel(size_t x, size_t y);
 	pixel *getPixelPointer(size_t x, size_t y);
-	bool write(const char *filePathName, std::string *error = NULL);
+	bool write(const char *filePathName, std::string *error = NULL) {
+		return(_write(filePathName, NULL, error));
+	}
+	bool write(SimpleBuffer *png, std::string *error = NULL) {
+		return(_write(NULL, png, error));
+	}
+	bool _write(const char *filePathName, SimpleBuffer *png, std::string *error = NULL);
+	bool write_jpeg(const char *filePathName, int quality, std::string *error = NULL) {
+		return(_write_jpeg(filePathName, NULL, quality, error));
+	}
+	bool write_jpeg(SimpleBuffer *jpeg, int quality, std::string *error = NULL) {
+		return(_write_jpeg(NULL, jpeg, quality, error));
+	}
+	bool _write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality, string *error = NULL);
 	size_t getWidth() {
 		return(width);
 	}
@@ -3109,11 +3124,28 @@ private:
 };
 
 bool create_waveform_from_raw(const char *rawInput,
-			      size_t sampleRate, size_t msPerPixel, u_int8_t channels,
+			      size_t sampleRate, size_t msPerPixel, unsigned channels,
 			      const char waveformOutput[][1024]);
+bool create_waveform_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int16_t **peaks, size_t *peaks_count);
+bool create_waveform_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int8_t **peaks, size_t *peaks_count);
+bool create_waveform_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int8_t **peaks, size_t *peaks_count,
+			      bool loadFullRawToMemory = false, size_t *rawSamplesOutput = NULL);
 bool create_spectrogram_from_raw(const char *rawInput,
-				 size_t sampleRate, size_t msPerPixel, size_t height, u_int8_t channels,
+				 size_t sampleRate, size_t msPerPixel, size_t height, unsigned channels,
 				 const char spectrogramOutput[][1024]);
+bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+				 unsigned msPerPixel, unsigned height, cPng *png);
+bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
+				 unsigned msPerPixel, unsigned height, cPng *png,
+				 bool loadFullRawToMemory = false, size_t *rawSamplesOutput = NULL);
+void set_spectrogram_palette(cPng::pixel palette[]);
+u_char *load_raw(const char *rawInput, unsigned bytesPerSample, size_t *rawSamples);
+bool load_raw(const char *rawInput, unsigned bytesPerSample, unsigned channels, u_char *raw[], size_t *rawSamples);
+unsigned get_audiograph_ms_per_pixel(size_t samples, unsigned sampleRate);
+unsigned get_audiograph_ms_per_pixel(double duration_s);
 
 string getSystemTimezone(int method = 0);
 

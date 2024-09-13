@@ -492,8 +492,8 @@ public:
 	}
 private:
 	int spoolIndex;
-	map<data_tar_time, vector<data_t>* > queue_data[4]; //queue for all, sip, rtp, graph
-	unsigned long tarThreadCounter[4];
+	map<data_tar_time, vector<data_t>* > queue_data[5]; //queue for all, sip, rtp, graph, audiograph
+	unsigned long tarThreadCounter[5];
 	pthread_mutex_t mutexlock;
 	pthread_mutex_t flushlock;
 	pthread_mutex_t tarslock;

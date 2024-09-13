@@ -48,7 +48,6 @@ extern int opt_saveGRAPH;	//save GRAPH data?
 extern bool opt_srtp_rtp_decrypt;
 extern bool opt_srtp_rtp_dtls_decrypt;
 extern bool opt_srtp_rtp_dtmf_decrypt;
-extern FileZipHandler::eTypeCompress opt_gzipGRAPH;	//save gzip GRAPH data?
 extern int opt_jitterbuffer_f1;            // turns off/on jitterbuffer simulator to compute MOS score mos_f1
 extern int opt_jitterbuffer_f2;            // turns off/on jitterbuffer simulator to compute MOS score mos_f2
 extern int opt_jitterbuffer_adapt;         // turns off/on jitterbuffer simulator to compute MOS score mos_adapt
@@ -747,15 +746,21 @@ const int RTP::get_payload_len() {
 		* algorithms with fixed block sizes or for carrying several RTP
 		* packets in a lower-layer protocol data unit.
 		*/
-		payload_len -= ((u_int8_t *)data)[len - 1];
-		padding_len = ((u_int8_t *)data)[len - 1];
+		u_int8_t padding = ((u_int8_t *)data)[len - 1];
+		if(padding > 0 && padding < payload_len) {
+			payload_len -= padding;
+			padding_len = padding;
+		}
 	}
 	if(getCC() > 0) {
 		/*
 		* The number of CSRC identifiers that follow the fixed header.
 		*/
-		payload_data += 4 * getCC();
-		payload_len -= 4 * getCC();
+		int cc = 4 * getCC();
+		if(cc > 0 && cc < payload_len) {
+			payload_data += cc;
+			payload_len -= cc;
+		}
 	}
 	if(getExtension()) {
 		/*
@@ -1308,7 +1313,7 @@ bool RTP::read(CallBranch *c_branch,
 	bool save_audio = 
 		opt_saveRAW || opt_savewav_force || 
 		(owner && 
-		 (enable_save_audio(owner) || enable_audio_transcribe(owner) ||
+		 (enable_audio_any(owner) ||
 		  owner->audioBufferData[0].audiobuffer || owner->audioBufferData[1].audiobuffer));
 	bool energylevels = 
 		opt_save_energylevels && (!opt_energylevelheader[0] || (owner && owner->save_energylevels));
@@ -2306,7 +2311,7 @@ bool RTP::read(CallBranch *c_branch,
 			       !energylevels_via_jb;
 	bool do_silencedetect = opt_silencedetect && this == lastactivertp;
 	if(owner and (opt_inbanddtmf or opt_faxt30detect or do_silencedetect or opt_clippingdetect or do_fasdetect or do_energylevels)
-		and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8)) {
+	   and frame->frametype == AST_FRAME_VOICE and (codec == 0 or codec == 8) and payload_len > 0) {
 
 		int res;
 		if (!DSP) {

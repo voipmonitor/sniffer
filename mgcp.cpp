@@ -209,7 +209,7 @@ void *handle_mgcp(packet_s_process *packetS) {
 				call->flags = flags;
 				call->nat_aliases = nat_aliases;
 				strcpy_null_term(call->fbasename, request.call_id().c_str());
-				if(enable_save_sip_rtp_audio(call)) {
+				if(enable_save_sip_rtp(call)) {
 					if(enable_pcap_split) {
 						if(enable_save_sip(call)) {
 							string pathfilename = call->get_pathfilename(tsf_mgcp);

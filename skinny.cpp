@@ -1371,7 +1371,7 @@ Call *new_skinny_channel(int state, char */*data*/, int /*datalen*/, struct pcap
 	calltable->skinny_ipTuples[ip2] = call;
 	calltable->unlock_skinny_maps();
 
-	if(enable_save_sip_rtp_audio(call)) {
+	if(enable_save_sip_rtp(call)) {
                 // open one pcap for all packets or open SKINNY and RTP separatly
                 if(enable_pcap_split) {
                         //SKINNY

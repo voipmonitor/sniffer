@@ -52,6 +52,7 @@ void filter_base::_loadBaseDataRow(SqlDb_row *sqlRow, map<string, string> *row, 
 	baseRow->graph = _value_is_null(sqlRow, row, "graph") ? -1 : _value(sqlRow, row, "graph");
 	baseRow->wav = _value_is_null(sqlRow, row, "wav") ? -1 : _value(sqlRow, row, "wav");
 	baseRow->audio_transcribe = _value_is_null(sqlRow, row, "audio_transcribe") ? -1 : _value(sqlRow, row, "audio_transcribe");
+	baseRow->audiograph = _value_is_null(sqlRow, row, "audiograph") ? -1 : _value(sqlRow, row, "audiograph");
 	baseRow->skip = _value_is_null(sqlRow, row, "skip") ? -1 : _value(sqlRow, row, "skip");
 	baseRow->script = _value_is_null(sqlRow, row, "script") ? -1 : _value(sqlRow, row, "script");
 	baseRow->mos_lqo = _value_is_null(sqlRow, row, "mos_lqo") ? -1 : _value(sqlRow, row, "mos_lqo");
@@ -75,76 +76,79 @@ void filter_base::loadBaseDataRow(map<string, string> *row, filter_db_row_base *
 u_int64_t filter_base::getFlagsFromBaseData(filter_db_row_base *baseRow, u_int32_t *global_flags) {
 	u_int64_t flags = 0;
 	
-	if(baseRow->rtp == 1)			flags |= _FLAG_RTP_ALL;
-	else if(baseRow->rtp == 2)		flags |= _FLAG_RTP_HEADER;
-	else if(baseRow->rtp == 0)		flags |= _FLAG_NORTP;
+	if(baseRow->rtp == 1)			flags |= CAPT_FLAG(_CAPT_BIT_RTP_ALL);
+	else if(baseRow->rtp == 2)		flags |= CAPT_FLAG(_CAPT_BIT_RTP_HEADER);
+	else if(baseRow->rtp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NORTP);
 	
-	if(baseRow->rtp_video == 1)		flags |= _FLAG_RTP_VIDEO_ALL;
-	else if(baseRow->rtp_video == 2)	flags |= _FLAG_RTP_VIDEO_HEADER;
-	else if(baseRow->rtp_video == 3)	flags |= _FLAG_RTP_VIDEO_CDR_ONLY;
-	else if(baseRow->rtp_video == 0)	flags |= _FLAG_NORTP_VIDEO;
+	if(baseRow->rtp_video == 1)		flags |= CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_ALL);
+	else if(baseRow->rtp_video == 2)	flags |= CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_HEADER);
+	else if(baseRow->rtp_video == 3)	flags |= CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_CDR_ONLY);
+	else if(baseRow->rtp_video == 0)	flags |= CAPT_FLAG(_CAPT_BIT_NORTP_VIDEO);
 	
-	if(baseRow->mrcp == 1)			{ flags |= _FLAG_MRCP; *global_flags |= cFilters::_gf_mrcp; }
-	else if(baseRow->mrcp == 0)		flags |= _FLAG_NOMRCP;
+	if(baseRow->mrcp == 1)			{ flags |= CAPT_FLAG(_CAPT_BIT_MRCP); *global_flags |= cFilters::_gf_mrcp; }
+	else if(baseRow->mrcp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOMRCP);
 	
-	if(baseRow->rtcp == 1)			flags |= _FLAG_RTCP;
-	else if(baseRow->rtcp == 0)		flags |= _FLAG_NORTCP;
+	if(baseRow->rtcp == 1)			flags |= CAPT_FLAG(_CAPT_BIT_RTCP);
+	else if(baseRow->rtcp == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NORTCP);
 	
-	if(baseRow->sip == 1)			flags |= _FLAG_SIP;
-	else if(baseRow->sip == 0)		flags |= _FLAG_NOSIP;
+	if(baseRow->sip == 1)			flags |= CAPT_FLAG(_CAPT_BIT_SIP);
+	else if(baseRow->sip == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOSIP);
 	
-	if (baseRow->reg == 0)			flags |= _FLAG_NOREGISTER_DB | _FLAG_NOREGISTER_PCAP;
-	else if (baseRow->reg == 1)		flags |= _FLAG_REGISTER_DB | _FLAG_REGISTER_PCAP;
-	else if (baseRow->reg == 2)		flags |= _FLAG_REGISTER_DB | _FLAG_NOREGISTER_PCAP;
-	else if (baseRow->reg == 3)		flags |= _FLAG_NOREGISTER_DB | _FLAG_REGISTER_PCAP;
+	if (baseRow->reg == 0)			flags |= CAPT_FLAG(_CAPT_BIT_NOREGISTER_DB) | CAPT_FLAG(_CAPT_BIT_NOREGISTER_PCAP);
+	else if (baseRow->reg == 1)		flags |= CAPT_FLAG(_CAPT_BIT_REGISTER_DB) | CAPT_FLAG(_CAPT_BIT_REGISTER_PCAP);
+	else if (baseRow->reg == 2)		flags |= CAPT_FLAG(_CAPT_BIT_REGISTER_DB) | CAPT_FLAG(_CAPT_BIT_NOREGISTER_PCAP);
+	else if (baseRow->reg == 3)		flags |= CAPT_FLAG(_CAPT_BIT_NOREGISTER_DB) | CAPT_FLAG(_CAPT_BIT_REGISTER_PCAP);
 
-	if(baseRow->dtmf == 1)			flags |= _FLAG_DTMF_DB | _FLAG_DTMF_PCAP;
-	else if(baseRow->dtmf == 0)		flags |= _FLAG_NODTMF_DB | _FLAG_NODTMF_PCAP;
-	else if(baseRow->dtmf == 2)		flags |= _FLAG_DTMF_DB | _FLAG_NODTMF_PCAP;
-	else if(baseRow->dtmf == 3)		flags |= _FLAG_DTMF_PCAP | _FLAG_NODTMF_DB;
+	if(baseRow->dtmf == 1)			flags |= CAPT_FLAG(_CAPT_BIT_DTMF_DB) | CAPT_FLAG(_CAPT_BIT_DTMF_PCAP);
+	else if(baseRow->dtmf == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NODTMF_DB) | CAPT_FLAG(_CAPT_BIT_NODTMF_PCAP);
+	else if(baseRow->dtmf == 2)		flags |= CAPT_FLAG(_CAPT_BIT_DTMF_DB) | CAPT_FLAG(_CAPT_BIT_NODTMF_PCAP);
+	else if(baseRow->dtmf == 3)		flags |= CAPT_FLAG(_CAPT_BIT_DTMF_PCAP) | CAPT_FLAG(_CAPT_BIT_NODTMF_DB);
 	
-	if(baseRow->graph == 1)			flags |= _FLAG_GRAPH;
-	else if(baseRow->graph == 0)		flags |= _FLAG_NOGRAPH;
+	if(baseRow->graph == 1)			flags |= CAPT_FLAG(_CAPT_BIT_GRAPH);
+	else if(baseRow->graph == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOGRAPH);
 	
-	if(baseRow->wav == 1)			flags |= _FLAG_AUDIO;
-	else if(baseRow->wav == 2)		flags |= _FLAG_AUDIO_WAV;
-	else if(baseRow->wav == 3)		flags |= _FLAG_AUDIO_OGG;
-	else if(baseRow->wav == 0)		flags |= _FLAG_NOWAV;
+	if(baseRow->wav == 1)			flags |= CAPT_FLAG(_CAPT_BIT_AUDIO);
+	else if(baseRow->wav == 2)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_WAV);
+	else if(baseRow->wav == 3)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_OGG);
+	else if(baseRow->wav == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOWAV);
 	
-	if(baseRow->audio_transcribe == 1)	flags |= _FLAG_AUDIO_TRANSCRIBE;
-	else if(baseRow->audio_transcribe == 0)	flags |= _FLAG_NO_AUDIO_TRANSCRIBE;
+	if(baseRow->audio_transcribe == 1)	flags |= CAPT_FLAG(_CAPT_BIT_AUDIO_TRANSCRIBE);
+	else if(baseRow->audio_transcribe == 0)	flags |= CAPT_FLAG(_CAPT_BIT_NO_AUDIO_TRANSCRIBE);
 	
-	if(baseRow->skip == 1)			flags |= _FLAG_SKIP;
-	else if(baseRow->skip == 0)		flags |= _FLAG_NOSKIP;
+	if(baseRow->audiograph == 1)		flags |= CAPT_FLAG(_CAPT_BIT_AUDIOGRAPH);
+	else if(baseRow->audiograph == 0)	flags |= CAPT_FLAG(_CAPT_BIT_NO_AUDIOGRAPH);
 	
-	if(baseRow->script == 1)		flags |= _FLAG_SCRIPT;
-	else if(baseRow->script == 0)		flags |= _FLAG_NOSCRIPT;
+	if(baseRow->skip == 1)			flags |= CAPT_FLAG(_CAPT_BIT_SKIP);
+	else if(baseRow->skip == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOSKIP);
 	
-	if(baseRow->mos_lqo == 1)		flags |= _FLAG_AMOSLQO;
-	else if(baseRow->mos_lqo == 2)		flags |= _FLAG_BMOSLQO;
-	else if(baseRow->mos_lqo == 3)		flags |= _FLAG_ABMOSLQO;
-	else if(baseRow->mos_lqo == 0)		flags |= _FLAG_NOMOSLQO;
+	if(baseRow->script == 1)		flags |= CAPT_FLAG(_CAPT_BIT_SCRIPT);
+	else if(baseRow->script == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOSCRIPT);
 	
-	if(baseRow->hide_message == 1)		flags |= _FLAG_HIDEMSG;
-	else if(baseRow->hide_message == 0)	flags |= _FLAG_SHOWMSG;
+	if(baseRow->mos_lqo == 1)		flags |= CAPT_FLAG(_CAPT_BIT_AMOSLQO);
+	else if(baseRow->mos_lqo == 2)		flags |= CAPT_FLAG(_CAPT_BIT_BMOSLQO);
+	else if(baseRow->mos_lqo == 3)		flags |= CAPT_FLAG(_CAPT_BIT_ABMOSLQO);
+	else if(baseRow->mos_lqo == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOMOSLQO);
 	
-	if(baseRow->spool_2 == 1)		flags |= _FLAG_SPOOL_2_SET;
-	else if(baseRow->spool_2 == 0)		flags |= _FLAG_SPOOL_2_UNSET;
+	if(baseRow->hide_message == 1)		flags |= CAPT_FLAG(_CAPT_BIT_HIDEMSG);
+	else if(baseRow->hide_message == 0)	flags |= CAPT_FLAG(_CAPT_BIT_SHOWMSG);
+	
+	if(baseRow->spool_2 == 1)		flags |= CAPT_FLAG(_CAPT_BIT_SPOOL_2_SET);
+	else if(baseRow->spool_2 == 0)		flags |= CAPT_FLAG(_CAPT_BIT_SPOOL_2_UNSET);
 
-	if (baseRow->options == 0)		flags |= _FLAG_NOOPTIONS_DB | _FLAG_NOOPTIONS_PCAP;
-	else if (baseRow->options == 1)		flags |= _FLAG_OPTIONS_DB | _FLAG_OPTIONS_PCAP;
-	else if (baseRow->options == 2)		flags |= _FLAG_OPTIONS_DB | _FLAG_NOOPTIONS_PCAP;
-	else if (baseRow->options == 3)		flags |= _FLAG_NOOPTIONS_DB | _FLAG_OPTIONS_PCAP;
+	if (baseRow->options == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOOPTIONS_DB) | CAPT_FLAG(_CAPT_BIT_NOOPTIONS_PCAP);
+	else if (baseRow->options == 1)		flags |= CAPT_FLAG(_CAPT_BIT_OPTIONS_DB) | CAPT_FLAG(_CAPT_BIT_OPTIONS_PCAP);
+	else if (baseRow->options == 2)		flags |= CAPT_FLAG(_CAPT_BIT_OPTIONS_DB) | CAPT_FLAG(_CAPT_BIT_NOOPTIONS_PCAP);
+	else if (baseRow->options == 3)		flags |= CAPT_FLAG(_CAPT_BIT_NOOPTIONS_DB) | CAPT_FLAG(_CAPT_BIT_OPTIONS_PCAP);
 
-	if (baseRow->notify == 0)		flags |= _FLAG_NONOTIFY_DB | _FLAG_NONOTIFY_PCAP;
-	else if (baseRow->notify == 1)		flags |= _FLAG_NOTIFY_DB | _FLAG_NOTIFY_PCAP;
-	else if (baseRow->notify == 2)		flags |= _FLAG_NOTIFY_DB | _FLAG_NONOTIFY_PCAP;
-	else if (baseRow->notify == 3)		flags |= _FLAG_NONOTIFY_DB | _FLAG_NOTIFY_PCAP;
+	if (baseRow->notify == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NONOTIFY_DB) | CAPT_FLAG(_CAPT_BIT_NONOTIFY_PCAP);
+	else if (baseRow->notify == 1)		flags |= CAPT_FLAG(_CAPT_BIT_NOTIFY_DB) | CAPT_FLAG(_CAPT_BIT_NOTIFY_PCAP);
+	else if (baseRow->notify == 2)		flags |= CAPT_FLAG(_CAPT_BIT_NOTIFY_DB) | CAPT_FLAG(_CAPT_BIT_NONOTIFY_PCAP);
+	else if (baseRow->notify == 3)		flags |= CAPT_FLAG(_CAPT_BIT_NONOTIFY_DB) | CAPT_FLAG(_CAPT_BIT_NOTIFY_PCAP);
 
-	if (baseRow->subscribe == 0)		flags |= _FLAG_NOSUBSCRIBE_DB | _FLAG_NOSUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 1)	flags |= _FLAG_SUBSCRIBE_DB | _FLAG_SUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 2)	flags |= _FLAG_SUBSCRIBE_DB | _FLAG_NOSUBSCRIBE_PCAP;
-	else if (baseRow->subscribe == 3)	flags |= _FLAG_NOSUBSCRIBE_DB | _FLAG_SUBSCRIBE_PCAP;
+	if (baseRow->subscribe == 0)		flags |= CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_DB) | CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_PCAP);
+	else if (baseRow->subscribe == 1)	flags |= CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_DB) | CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_PCAP);
+	else if (baseRow->subscribe == 2)	flags |= CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_DB) | CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_PCAP);
+	else if (baseRow->subscribe == 3)	flags |= CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_DB) | CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_PCAP);
 
 	return(flags);
 }
@@ -173,78 +177,81 @@ void filter_base::parseNatAliases(filter_db_row_base *baseRow, nat_aliases_t **n
 }
 
 void filter_base::setCallFlagsFromFilterFlags(volatile unsigned long int *callFlags, u_int64_t filterFlags, bool reconfigure) {
-	if(filterFlags & _FLAG_SIP)			*callFlags |= FLAG_SAVESIP;
-	if(filterFlags & _FLAG_NOSIP)			*callFlags &= ~FLAG_SAVESIP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SIP))			*callFlags |= FLAG_SAVESIP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOSIP))			*callFlags &= ~FLAG_SAVESIP;
 	
-	if(filterFlags & _FLAG_RTP_ALL)			{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
-	if(filterFlags & _FLAG_RTP_HEADER)		{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
-	if(filterFlags & _FLAG_NORTP) 			{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTP_ALL))			{*callFlags |= FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTP_HEADER))		{*callFlags |= FLAG_SAVERTPHEADER; *callFlags &= ~FLAG_SAVERTP;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NORTP)) 			{*callFlags &= ~FLAG_SAVERTP; *callFlags &= ~FLAG_SAVERTPHEADER;}
 	
-	if(filterFlags & _FLAG_RTP_VIDEO_ALL)		{*callFlags |= (FLAG_SAVERTP_VIDEO | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO_HEADER;}
-	if(filterFlags & _FLAG_RTP_VIDEO_HEADER)	{*callFlags |= (FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO;}
-	if(filterFlags & _FLAG_RTP_VIDEO_CDR_ONLY)	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
-	if(filterFlags & _FLAG_NORTP_VIDEO) 		{*callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO);}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_ALL))		{*callFlags |= (FLAG_SAVERTP_VIDEO | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO_HEADER;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_HEADER))		{*callFlags |= (FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO); *callFlags &= ~FLAG_SAVERTP_VIDEO;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTP_VIDEO_CDR_ONLY))	{*callFlags |= FLAG_PROCESSING_RTP_VIDEO; *callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER);}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NORTP_VIDEO)) 		{*callFlags &= ~(FLAG_SAVERTP_VIDEO | FLAG_SAVERTP_VIDEO_HEADER | FLAG_PROCESSING_RTP_VIDEO);}
 	
-	if(filterFlags & _FLAG_MRCP)			*callFlags |= FLAG_SAVEMRCP;
-	if(filterFlags & _FLAG_NOMRCP)			*callFlags &= ~FLAG_SAVEMRCP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_MRCP))			*callFlags |= FLAG_SAVEMRCP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOMRCP))			*callFlags &= ~FLAG_SAVEMRCP;
 	
-	if(filterFlags & _FLAG_RTCP)			*callFlags |= FLAG_SAVERTCP;
-	if(filterFlags & _FLAG_NORTCP)			*callFlags &= ~FLAG_SAVERTCP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_RTCP))			*callFlags |= FLAG_SAVERTCP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NORTCP))			*callFlags &= ~FLAG_SAVERTCP;
 	
-	if(filterFlags & _FLAG_REGISTER_DB)		*callFlags |= FLAG_SAVEREGISTERDB;
-	if(filterFlags & _FLAG_NOREGISTER_DB)		*callFlags &= ~FLAG_SAVEREGISTERDB;
-	if(filterFlags & _FLAG_REGISTER_PCAP)		*callFlags |= FLAG_SAVEREGISTERPCAP;
-	if(filterFlags & _FLAG_NOREGISTER_PCAP)		*callFlags &= ~FLAG_SAVEREGISTERPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_REGISTER_DB))		*callFlags |= FLAG_SAVEREGISTERDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOREGISTER_DB))		*callFlags &= ~FLAG_SAVEREGISTERDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_REGISTER_PCAP))		*callFlags |= FLAG_SAVEREGISTERPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOREGISTER_PCAP))		*callFlags &= ~FLAG_SAVEREGISTERPCAP;
 
-	if(filterFlags & _FLAG_DTMF_DB)			*callFlags |= FLAG_SAVEDTMFDB;
-	if(filterFlags & _FLAG_NODTMF_DB)		*callFlags &= ~FLAG_SAVEDTMFDB;
-	if(filterFlags & _FLAG_DTMF_PCAP)		*callFlags |= FLAG_SAVEDTMFPCAP;
-	if(filterFlags & _FLAG_NODTMF_PCAP)		*callFlags &= ~FLAG_SAVEDTMFPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_DTMF_DB))			*callFlags |= FLAG_SAVEDTMFDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NODTMF_DB))		*callFlags &= ~FLAG_SAVEDTMFDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_DTMF_PCAP))		*callFlags |= FLAG_SAVEDTMFPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NODTMF_PCAP))		*callFlags &= ~FLAG_SAVEDTMFPCAP;
 	
-	if(filterFlags & _FLAG_AUDIO)			*callFlags |= FLAG_SAVEAUDIO;
-	if(filterFlags & _FLAG_AUDIO_WAV)		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
-	if(filterFlags & _FLAG_AUDIO_OGG)		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
-	if(filterFlags & _FLAG_NOWAV)			*callFlags &= ~FLAG_SAVEAUDIO;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO))			*callFlags |= FLAG_SAVEAUDIO;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_WAV))		{*callFlags |= FLAG_SAVEAUDIO_WAV; *callFlags &= ~FLAG_FORMATAUDIO_OGG;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_OGG))		{*callFlags |= FLAG_SAVEAUDIO_OGG; *callFlags &= ~FLAG_FORMATAUDIO_WAV;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOWAV))			*callFlags &= ~FLAG_SAVEAUDIO;
 	
-	if(filterFlags & _FLAG_AUDIO_TRANSCRIBE)	*callFlags |= FLAG_AUDIOTRANSCRIBE;
-	if(filterFlags & _FLAG_NO_AUDIO_TRANSCRIBE)	*callFlags &= ~FLAG_AUDIOTRANSCRIBE;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIO_TRANSCRIBE))		*callFlags |= FLAG_AUDIOTRANSCRIBE;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NO_AUDIO_TRANSCRIBE))	*callFlags &= ~FLAG_AUDIOTRANSCRIBE;
 	
-	if(filterFlags & _FLAG_GRAPH)			*callFlags |= FLAG_SAVEGRAPH;
-	if(filterFlags & _FLAG_NOGRAPH)			*callFlags &= ~FLAG_SAVEGRAPH;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AUDIOGRAPH))		*callFlags |= FLAG_SAVEAUDIOGRAPH;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NO_AUDIOGRAPH))		*callFlags &= ~FLAG_SAVEAUDIOGRAPH;
 	
-	if(filterFlags & _FLAG_SKIP)			*callFlags |= FLAG_SKIPCDR;
-	if(filterFlags & _FLAG_NOSKIP)			*callFlags &= ~FLAG_SKIPCDR;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_GRAPH))			*callFlags |= FLAG_SAVEGRAPH;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOGRAPH))			*callFlags &= ~FLAG_SAVEGRAPH;
 	
-	if(filterFlags & _FLAG_SCRIPT)			*callFlags |= FLAG_RUNSCRIPT;
-	if(filterFlags & _FLAG_NOSCRIPT)		*callFlags &= ~FLAG_RUNSCRIPT;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SKIP))			*callFlags |= FLAG_SKIPCDR;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOSKIP))			*callFlags &= ~FLAG_SKIPCDR;
+	
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SCRIPT))			*callFlags |= FLAG_RUNSCRIPT;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOSCRIPT))			*callFlags &= ~FLAG_RUNSCRIPT;
 
-	if(filterFlags & _FLAG_AMOSLQO)			{*callFlags |= FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
-	if(filterFlags & _FLAG_BMOSLQO)			{*callFlags |= FLAG_RUNBMOSLQO; *callFlags &= ~FLAG_RUNAMOSLQO;}
-	if(filterFlags & _FLAG_ABMOSLQO)		{*callFlags |= FLAG_RUNAMOSLQO|FLAG_RUNBMOSLQO;}
-	if(filterFlags & _FLAG_NOMOSLQO) 		{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_AMOSLQO))			{*callFlags |= FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_BMOSLQO))			{*callFlags |= FLAG_RUNBMOSLQO; *callFlags &= ~FLAG_RUNAMOSLQO;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_ABMOSLQO))			{*callFlags |= FLAG_RUNAMOSLQO|FLAG_RUNBMOSLQO;}
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOMOSLQO)) 		{*callFlags &= ~FLAG_RUNAMOSLQO; *callFlags &= ~FLAG_RUNBMOSLQO;}
 	
-	if(filterFlags & _FLAG_HIDEMSG)			*callFlags |= FLAG_HIDEMESSAGE;
-	if(filterFlags & _FLAG_SHOWMSG)			*callFlags &= ~FLAG_HIDEMESSAGE;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_HIDEMSG))			*callFlags |= FLAG_HIDEMESSAGE;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SHOWMSG))			*callFlags &= ~FLAG_HIDEMESSAGE;
 	
 	if(!reconfigure) {
-	if(filterFlags & _FLAG_SPOOL_2_SET)		*callFlags |= FLAG_USE_SPOOL_2;
-	if(filterFlags & _FLAG_SPOOL_2_UNSET)		*callFlags &= ~FLAG_USE_SPOOL_2;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SPOOL_2_SET))		*callFlags |= FLAG_USE_SPOOL_2;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SPOOL_2_UNSET))		*callFlags &= ~FLAG_USE_SPOOL_2;
 	}
 
-	if(filterFlags & _FLAG_OPTIONS_DB)		*callFlags |= FLAG_SAVEOPTIONSDB;
-	if(filterFlags & _FLAG_NOOPTIONS_DB)		*callFlags &= ~FLAG_SAVEOPTIONSDB;
-	if(filterFlags & _FLAG_OPTIONS_PCAP)		*callFlags |= FLAG_SAVEOPTIONSPCAP;
-	if(filterFlags & _FLAG_NOOPTIONS_PCAP)		*callFlags &= ~FLAG_SAVEOPTIONSPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_OPTIONS_DB))		*callFlags |= FLAG_SAVEOPTIONSDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOOPTIONS_DB))		*callFlags &= ~FLAG_SAVEOPTIONSDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_OPTIONS_PCAP))		*callFlags |= FLAG_SAVEOPTIONSPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOOPTIONS_PCAP))		*callFlags &= ~FLAG_SAVEOPTIONSPCAP;
 
-	if(filterFlags & _FLAG_NOTIFY_DB)		*callFlags |= FLAG_SAVENOTIFYDB;
-	if(filterFlags & _FLAG_NONOTIFY_DB)		*callFlags &= ~FLAG_SAVENOTIFYDB;
-	if(filterFlags & _FLAG_NOTIFY_PCAP)		*callFlags |= FLAG_SAVENOTIFYPCAP;
-	if(filterFlags & _FLAG_NONOTIFY_PCAP)		*callFlags &= ~FLAG_SAVENOTIFYPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOTIFY_DB))		*callFlags |= FLAG_SAVENOTIFYDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NONOTIFY_DB))		*callFlags &= ~FLAG_SAVENOTIFYDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOTIFY_PCAP))		*callFlags |= FLAG_SAVENOTIFYPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NONOTIFY_PCAP))		*callFlags &= ~FLAG_SAVENOTIFYPCAP;
 
-	if(filterFlags & _FLAG_SUBSCRIBE_DB)		*callFlags |= FLAG_SAVESUBSCRIBEDB;
-	if(filterFlags & _FLAG_NOSUBSCRIBE_DB)		*callFlags &= ~FLAG_SAVESUBSCRIBEDB;
-	if(filterFlags & _FLAG_SUBSCRIBE_PCAP)		*callFlags |= FLAG_SAVESUBSCRIBEPCAP;
-	if(filterFlags & _FLAG_NOSUBSCRIBE_PCAP)	*callFlags &= ~FLAG_SAVESUBSCRIBEPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_DB))		*callFlags |= FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_DB))		*callFlags &= ~FLAG_SAVESUBSCRIBEDB;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_SUBSCRIBE_PCAP))		*callFlags |= FLAG_SAVESUBSCRIBEPCAP;
+	if(filterFlags & CAPT_FLAG(_CAPT_BIT_NOSUBSCRIBE_PCAP))		*callFlags &= ~FLAG_SAVESUBSCRIBEPCAP;
 }
 
 /* IPfilter class */

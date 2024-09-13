@@ -259,6 +259,11 @@ bool opt_whisper_deterministic_mode = true;
 string opt_whisper_python;
 int opt_whisper_threads = 2;
 string opt_whisper_native_lib;
+int opt_save_audiograph;
+int opt_audiograph_ms_per_pixel = 0;
+int opt_audiograph_spectrogram_height = 32;
+int opt_audiograph_spectrogram_jpeg_quality = 10;
+FileZipHandler::eTypeCompress opt_gzip_audiograph = FileZipHandler::compress_na;
 int opt_save_sdp_ipport = 1;
 int opt_save_ip_from_encaps_ipheader = 0;
 int opt_save_ip_from_encaps_ipheader_only_gre = 0;
@@ -637,6 +642,8 @@ unsigned int opt_maxpoolgraphsize = 0;
 unsigned int opt_maxpoolgraphdays = 0;
 unsigned int opt_maxpoolaudiosize = 0;
 unsigned int opt_maxpoolaudiodays = 0;
+unsigned int opt_maxpoolaudiographsize = 0;
+unsigned int opt_maxpoolaudiographdays = 0;
 unsigned int opt_maxpoolsize_2 = 0;
 unsigned int opt_maxpooldays_2 = 0;
 unsigned int opt_maxpoolsipsize_2 = 0;
@@ -647,6 +654,8 @@ unsigned int opt_maxpoolgraphsize_2 = 0;
 unsigned int opt_maxpoolgraphdays_2 = 0;
 unsigned int opt_maxpoolaudiosize_2 = 0;
 unsigned int opt_maxpoolaudiodays_2 = 0;
+unsigned int opt_maxpoolaudiographsize_2 = 0;
+unsigned int opt_maxpoolaudiographdays_2 = 0;
 int opt_maxpool_clean_obsolete = 0;
 int opt_autocleanspoolminpercent = 1;
 int opt_autocleanmingb = 5;
@@ -668,6 +677,7 @@ FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp =
 int opt_pcap_dump_compresslevel_sip = INT_MIN;
 int opt_pcap_dump_compresslevel_rtp = INT_MIN;
 int opt_pcap_dump_compresslevel_graph = INT_MIN;
+int opt_pcap_dump_compresslevel_audiograph = INT_MIN;
 int opt_pcap_dump_compresslevel_sip_gzip = 1;
 int opt_pcap_dump_compresslevel_sip_lzma = 1;
 int opt_pcap_dump_compresslevel_sip_zstd = 1;
@@ -677,9 +687,13 @@ int opt_pcap_dump_compresslevel_rtp_zstd = 1;
 int opt_pcap_dump_compresslevel_graph_gzip = 1;
 int opt_pcap_dump_compresslevel_graph_lzma = 1;
 int opt_pcap_dump_compresslevel_graph_zstd = 1;
+int opt_pcap_dump_compresslevel_audiograph_gzip = 1;
+int opt_pcap_dump_compresslevel_audiograph_lzma = 1;
+int opt_pcap_dump_compresslevel_audiograph_zstd = 1;
 int opt_pcap_dump_compress_sip_zstdstrategy = INT_MIN;
 int opt_pcap_dump_compress_rtp_zstdstrategy = INT_MIN;
 int opt_pcap_dump_compress_graph_zstdstrategy = INT_MIN;
+int opt_pcap_dump_compress_audiograph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_writethreads = 1;
 int opt_pcap_dump_writethreads_max = 32;
 int opt_pcap_dump_asyncwrite_maxsize = 100; //MB
@@ -714,12 +728,25 @@ int opt_pcap_dump_tar_graph_level_lzma = 5;
 int opt_pcap_dump_tar_graph_level_zstd = 1;
 int opt_pcap_dump_tar_graph_zstdstrategy = INT_MIN;
 int opt_pcap_dump_tar_graph_use_pos = 0;
+int opt_pcap_dump_tar_compress_audiograph =
+	#if HAVE_LIBZSTD
+		Tar::_zstd;
+	#else
+		Tar::_gzip_force;
+	#endif
+int opt_pcap_dump_tar_audiograph_level_gzip = 6;
+int opt_pcap_dump_tar_audiograph_level_lzma = 5;
+int opt_pcap_dump_tar_audiograph_level_zstd = 1;
+int opt_pcap_dump_tar_audiograph_zstdstrategy = INT_MIN;
+int opt_pcap_dump_tar_audiograph_use_pos = 0;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp = CompressStream::compress_na;
 CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph = CompressStream::compress_na;
+CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_audiograph = CompressStream::compress_na;
 int opt_pcap_dump_tar_internal_gzip_sip_level = -1;
 int opt_pcap_dump_tar_internal_gzip_rtp_level = -1;
 int opt_pcap_dump_tar_internal_gzip_graph_level = -1;
+int opt_pcap_dump_tar_internal_gzip_audiograph_level = -1;
 int opt_pcap_ifdrop_limit = 20;
 int opt_pcap_dpdk_ifdrop_limit = 0;
 int swapDelayCount = 0;
@@ -788,6 +815,7 @@ extern ip_port opt_pcap_queue_send_to_ip_port;
 extern ip_port opt_pcap_queue_receive_from_ip_port;
 extern int opt_pcap_queue_receive_dlt;
 bool opt_pcap_queue_receive_sensor_id_by_sender;
+bool opt_pcap_queue_receive_sensor_id_by_sender_set;
 extern int opt_pcap_queue_iface_qring_size;
 extern int opt_pcap_queue_dequeu_window_length;
 extern int opt_pcap_queue_dequeu_need_blocks;
@@ -1095,10 +1123,12 @@ char opt_spooldir_main[1024];
 char opt_spooldir_rtp[1024];
 char opt_spooldir_graph[1024];
 char opt_spooldir_audio[1024];
+char opt_spooldir_audiograph[1024];
 char opt_spooldir_2_main[1024];
 char opt_spooldir_2_rtp[1024];
 char opt_spooldir_2_graph[1024];
 char opt_spooldir_2_audio[1024];
+char opt_spooldir_2_audiograph[1024];
 char opt_spooldir_file_permission[10];
 unsigned opt_spooldir_file_permission_int = 0666;
 char opt_spooldir_dir_permission[10];
@@ -2250,7 +2280,7 @@ void *storing_cdr( void */*dummy*/ ) {
 					Call *call = *iter_call;
 					bool needConvertToWavInThread = false;
 					call->closeRawFiles();
-					if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
+					if(enable_audio_any(call) &&
 					   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
 					   call->getAllReceivedRtpPackets()) {
 						if(is_read_from_file_simple() ||
@@ -2413,7 +2443,7 @@ void *storing_cdr_next_thread( void *_indexNextThread ) {
 			Call *call = *iter_call;
 			bool needConvertToWavInThread = false;
 			call->closeRawFiles();
-			if((enable_save_audio(call) || enable_audio_transcribe(call)) &&
+			if(enable_audio_any(call) &&
 			   (call->typeIs(INVITE) || call->typeIs(SKINNY_NEW) || call->typeIs(MGCP)) &&
 			   call->getAllReceivedRtpPackets()) {
 				if(is_read_from_file_simple() ||
@@ -3878,6 +3908,7 @@ int main(int argc, char *argv[]) {
 		opt_saveGRAPH = 0;
 		opt_saveRAW = 0;
 		opt_saveWAV = 0;
+		opt_save_audiograph = 0;
 		sverb.process_rtp_header = 1;
 		for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 			preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
@@ -6384,6 +6415,8 @@ void cConfig::addConfigItems() {
 				->setReadOnly());
 			addConfigItem((new FILE_LINE(42183) cConfigItem_string("spooldir_audio", opt_spooldir_audio, sizeof(opt_spooldir_audio)))
 				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("spooldir_audiograph", opt_spooldir_audiograph, sizeof(opt_spooldir_audiograph)))
+				->setReadOnly());
 			addConfigItem((new FILE_LINE(42184) cConfigItem_string("spooldir_2", opt_spooldir_2_main, sizeof(opt_spooldir_2_main)))
 				->setReadOnly());
 			addConfigItem((new FILE_LINE(42185) cConfigItem_string("spooldir_2_rtp", opt_spooldir_2_rtp, sizeof(opt_spooldir_2_rtp)))
@@ -6391,6 +6424,8 @@ void cConfig::addConfigItems() {
 			addConfigItem((new FILE_LINE(42186) cConfigItem_string("spooldir_2_graph", opt_spooldir_2_graph, sizeof(opt_spooldir_2_graph)))
 				->setReadOnly());
 			addConfigItem((new FILE_LINE(42187) cConfigItem_string("spooldir_2_audio", opt_spooldir_2_audio, sizeof(opt_spooldir_2_audio)))
+				->setReadOnly());
+			addConfigItem((new FILE_LINE(0) cConfigItem_string("spooldir_2_audiograph", opt_spooldir_2_audiograph, sizeof(opt_spooldir_2_audiograph)))
 				->setReadOnly());
 			addConfigItem(new FILE_LINE(42188) cConfigItem_yesno("tar", &opt_pcap_dump_tar));
 				advanced();
@@ -6534,6 +6569,27 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(42230) cConfigItem_yesno("plcdisable", &opt_disableplc));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("fix_packetization_in_create_audio", &opt_fix_packetization_in_create_audio));
 					addConfigItem(new FILE_LINE(1162) cConfigItem_string("curl_hook_wav", opt_curl_hook_wav, sizeof(opt_curl_hook_wav)));
+			normal();
+			addConfigItem((new FILE_LINE(0) cConfigItem_yesno("save_audiograph"))
+				->addValues("plain:1|p:1|gzip:2|g:2")
+				->setDefaultValueStr("no"));
+				advanced();
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audiograph_ms_per_pixel", &opt_audiograph_ms_per_pixel));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audiograph_spectrogram_height", &opt_audiograph_spectrogram_height));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("audiograph_spectrogram_jpeg_quality", &opt_audiograph_spectrogram_jpeg_quality));
+					expert();
+					addConfigItem(new FILE_LINE(0) cConfigItem_type_compress("pcap_dump_zip_audiograph", &opt_gzip_audiograph));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pcap_dump_ziplevel_audiograph", &opt_pcap_dump_compresslevel_audiograph))
+						->addAlias("pcap_dump_compresslevel_audiograph"));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("pcap_dump_compress_strategy_audiograph", &opt_pcap_dump_compress_audiograph_zstdstrategy));
+					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("tar_compress_audiograph", &opt_pcap_dump_tar_compress_audiograph))
+						->addValues(Tar::getTarCompressConfigValues().c_str()));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_gzip", &opt_pcap_dump_tar_audiograph_level_gzip));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_lzma", &opt_pcap_dump_tar_audiograph_level_lzma));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_level_zstd", &opt_pcap_dump_tar_audiograph_level_zstd));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_audiograph_strategy_zstd", &opt_pcap_dump_tar_audiograph_zstdstrategy));
+					addConfigItem(new FILE_LINE(0) cConfigItem_type_compress("tar_internalcompress_audiograph", &opt_pcap_dump_tar_internalcompress_audiograph));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("tar_internal_audiograph_level", &opt_pcap_dump_tar_internal_gzip_audiograph_level));
 		setDisableIfEnd();
 	group("data spool directory cleaning");
 		setDisableIfBegin("sniffer_mode=" + snifferMode_sender_str);
@@ -6554,6 +6610,8 @@ void cConfig::addConfigItems() {
 			addConfigItem(new FILE_LINE(42240) cConfigItem_integer(("maxpoolgraphdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolgraphdays : &opt_maxpoolgraphdays_2));
 			addConfigItem(new FILE_LINE(42241) cConfigItem_integer(("maxpoolaudiosize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiosize : &opt_maxpoolaudiosize_2));
 			addConfigItem(new FILE_LINE(42242) cConfigItem_integer(("maxpoolaudiodays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiodays : &opt_maxpoolaudiodays_2));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer(("maxpoolaudiographsize" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiographsize : &opt_maxpoolaudiographsize_2));
+			addConfigItem(new FILE_LINE(0) cConfigItem_integer(("maxpoolaudiographdays" + string(i == 0 ? "" : "_2")).c_str(), i == 0 ? &opt_maxpoolaudiographdays : &opt_maxpoolaudiographdays_2));
 		}
 			advanced();
 			addConfigItem(new FILE_LINE(42243) cConfigItem_yesno("maxpool_clean_obsolete", &opt_maxpool_clean_obsolete));
@@ -7415,6 +7473,28 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 			break;
 		}
 	}
+	if(configItem->config_name == "save_audiograph") {
+		switch(configItem->getValueInt()) {
+		case 0:
+			opt_save_audiograph = 0;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzip_audiograph = FileZipHandler::compress_na;
+			}
+			break;
+		case 1:
+			opt_save_audiograph = 1;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzip_audiograph = FileZipHandler::compress_na;
+			}
+			break;
+		case 2:
+			opt_save_audiograph = 1;
+			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+				opt_gzip_audiograph = FileZipHandler::gzip;
+			}
+			break;
+		}
+	}
 	if(configItem->config_name == "packetbuffer_compress_method") {
 		switch(configItem->getValueInt()) {
 		case 0:
@@ -7454,7 +7534,8 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 	if(configItem->config_name == "pcap_dump_zip_all") {
 		opt_pcap_dump_zip_sip =
 		opt_pcap_dump_zip_rtp = 
-		opt_gzipGRAPH = (FileZipHandler::eTypeCompress)configItem->getValueInt();;
+		opt_gzipGRAPH = 
+		opt_gzip_audiograph = (FileZipHandler::eTypeCompress)configItem->getValueInt();
 	}
 	if(configItem->config_name == "sip_send_ip") {
 		sipSendSocket_ip_port.set_ip(configItem->getValueStr());
@@ -8714,6 +8795,10 @@ void set_context_config() {
 		   opt_gzipGRAPH == FileZipHandler::lzo) {
 			opt_gzipGRAPH = FileZipHandler::gzip;
 		}
+		if(opt_gzip_audiograph == FileZipHandler::compress_default ||
+		   opt_gzip_audiograph == FileZipHandler::lzo) {
+			opt_gzip_audiograph = FileZipHandler::gzip;
+		}
 		opt_pcap_dump_asyncwrite = 0;
 		opt_save_query_main_to_files = false;
 		opt_save_query_charts_to_files = false;
@@ -8730,6 +8815,7 @@ void set_context_config() {
 			opt_saveGRAPH = 0;
 			opt_saveRAW = 0;
 			opt_saveWAV = 0;
+			opt_save_audiograph = 0;
 			for(int i = (opt_t2_boost_direct_rtp ? PreProcessPacket::ppt_detach_x : PreProcessPacket::ppt_detach); i < PreProcessPacket::ppt_end_base; i++) {
 				preProcessPacket[i] = new FILE_LINE(0) PreProcessPacket((PreProcessPacket::eTypePreProcessThread)i);
 			}
@@ -8773,6 +8859,9 @@ void set_context_config() {
 		if(opt_pcap_dump_tar_compress_graph) {
 			opt_gzipGRAPH = FileZipHandler::compress_na;
 		}
+		if(opt_pcap_dump_tar_compress_audiograph) {
+			opt_gzip_audiograph = FileZipHandler::compress_na;
+		}
 	}
 	
 	if(opt_spooldir_2_main[0] && opt_cachedir[0]) {
@@ -8787,6 +8876,7 @@ void set_context_config() {
 	opt_pcap_dump_tar_sip_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_sip;
 	opt_pcap_dump_tar_rtp_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_rtp;
 	opt_pcap_dump_tar_graph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_graph;
+	opt_pcap_dump_tar_audiograph_use_pos = opt_pcap_dump_tar && !opt_pcap_dump_tar_compress_audiograph;
 	
 	if(opt_pcap_dump_tar && !CONFIG.isSet("cleanspool_use_files")) {
 		opt_cleanspool_use_files = false;
@@ -9123,6 +9213,12 @@ void set_context_config() {
 			}
 		}
 	}
+	
+	opt_pcap_queue_receive_sensor_id_by_sender_set = CONFIG.isSet("mirror_bind_sensor_id_by_sender");
+	
+	if(!CONFIG.isSet("sip-msg-save-ua") && opt_cdr_ua_normalisation) {
+		opt_sip_msg_save_ua = true;
+	}
 }
 
 void check_context_config() {
@@ -9191,6 +9287,9 @@ void create_spool_dirs() {
 	if(opt_spooldir_audio[0]) {
 		spooldir_mkdir(opt_spooldir_audio);
 	}
+	if(opt_spooldir_audiograph[0]) {
+		spooldir_mkdir(opt_spooldir_audiograph);
+	}
 	if(opt_spooldir_2_main[0]) {
 		spooldir_mkdir(opt_spooldir_2_main);
 	}
@@ -9202,6 +9301,9 @@ void create_spool_dirs() {
 	}
 	if(opt_spooldir_2_audio[0]) {
 		spooldir_mkdir(opt_spooldir_2_audio);
+	}
+	if(opt_spooldir_2_audiograph[0]) {
+		spooldir_mkdir(opt_spooldir_2_audiograph);
 	}
 }
 
@@ -9527,6 +9629,17 @@ bool is_client() {
 
 bool is_client_packetbuffer_sender() {
 	return(snifferClientOptions.isEnablePacketBufferSender());
+}
+
+bool enable_set_sensor_id_by_client_or_sender() {
+	if(is_receiver()) {
+		if(opt_pcap_queue_receive_sensor_id_by_sender_set) {
+			return(opt_pcap_queue_receive_sensor_id_by_sender);
+		} else {
+			return(opt_id_sensor <= 0);
+		}
+	}
+	return(true);
 }
 
 bool is_load_pcap_via_client(const char *sensor_string) {

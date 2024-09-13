@@ -680,6 +680,11 @@ public:
 		memcpy(buffer + bufferLength, data, dataLength);
 		bufferLength += dataLength;
 	}
+	void add(SimpleBuffer *data) {
+		if(data->bufferLength > 0) {
+			add(data->buffer, data->bufferLength);
+		}
+	}
 	void set(const char *data) {
 		clear();
 		add(data);

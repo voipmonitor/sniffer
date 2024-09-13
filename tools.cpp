@@ -40,6 +40,9 @@
 #ifdef HAVE_LIBPNG
 #include <png.h>
 #endif //HAVE_LIBPNG
+#ifdef HAVE_LIBJPEG
+#include <jpeglib.h>
+#endif //HAVE_LIBJPEG
 #ifdef HAVE_LIBFFT
 #include <fftw3.h>
 #endif //HAVE_LIBFFT
@@ -109,9 +112,11 @@ extern int opt_pcap_dump_asyncwrite;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_sip;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_rtp;
 extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_graph;
+extern FileZipHandler::eTypeCompress opt_pcap_dump_zip_audiograph;
 extern int opt_pcap_dump_compresslevel_sip;
 extern int opt_pcap_dump_compresslevel_rtp;
 extern int opt_pcap_dump_compresslevel_graph;
+extern int opt_pcap_dump_compresslevel_audiograph;
 extern int opt_pcap_dump_compresslevel_sip_gzip;
 extern int opt_pcap_dump_compresslevel_sip_lzma;
 extern int opt_pcap_dump_compresslevel_sip_zstd;
@@ -121,9 +126,13 @@ extern int opt_pcap_dump_compresslevel_rtp_zstd;
 extern int opt_pcap_dump_compresslevel_graph_gzip;
 extern int opt_pcap_dump_compresslevel_graph_lzma;
 extern int opt_pcap_dump_compresslevel_graph_zstd;
+extern int opt_pcap_dump_compresslevel_audiograph_gzip;
+extern int opt_pcap_dump_compresslevel_audiograph_lzma;
+extern int opt_pcap_dump_compresslevel_audiograph_zstd;
 extern int opt_pcap_dump_compress_sip_zstdstrategy;
 extern int opt_pcap_dump_compress_rtp_zstdstrategy;
 extern int opt_pcap_dump_compress_graph_zstdstrategy;
+extern int opt_pcap_dump_compress_audiograph_zstdstrategy;
 extern int opt_pcap_dump_tar;
 extern int opt_active_check;
 extern int opt_cloud_activecheck_period;
@@ -4627,25 +4636,31 @@ void FileZipHandler::initCompress() {
 								     this->bufferLength :
 								     8 * 1024, 
 								    0);
-	this->compressStream->setCompressLevel(typeFile == pcap_sip ? 
+	this->compressStream->setCompressLevel(typeFile == pcap_sip ?
 						(opt_pcap_dump_compresslevel_sip != INT_MIN ? opt_pcap_dump_compresslevel_sip :
 						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_sip_gzip :
 						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_sip_lzma :
 						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_sip_zstd : INT_MIN) :
-					       typeFile == pcap_rtp ? 
+					       typeFile == pcap_rtp ?
 						(opt_pcap_dump_compresslevel_rtp != INT_MIN ? opt_pcap_dump_compresslevel_rtp :
 						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_rtp_gzip :
 						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_rtp_lzma :
 						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_rtp_zstd : INT_MIN) :
-					       typeFile == graph_rtp ? 
+					       typeFile == graph_rtp ?
 						(opt_pcap_dump_compresslevel_graph != INT_MIN ? opt_pcap_dump_compresslevel_graph :
 						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_graph_gzip :
 						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_graph_lzma :
 						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_graph_zstd : INT_MIN) :
+					       typeFile == audiograph ?
+						(opt_pcap_dump_compresslevel_audiograph != INT_MIN ? opt_pcap_dump_compresslevel_audiograph :
+						 this->typeCompress == gzip ? opt_pcap_dump_compresslevel_audiograph_gzip :
+						 this->typeCompress == lzma ? opt_pcap_dump_compresslevel_audiograph_lzma :
+						 this->typeCompress == zstd ? opt_pcap_dump_compresslevel_audiograph_zstd : INT_MIN) :
 						INT_MIN);
 	this->compressStream->setCompressZstdStrategy(typeFile == pcap_sip ? opt_pcap_dump_compress_sip_zstdstrategy : 
 						      typeFile == pcap_rtp ? opt_pcap_dump_compress_rtp_zstdstrategy : 
-						      typeFile == graph_rtp ? opt_pcap_dump_compress_graph_zstdstrategy : INT_MIN);
+						      typeFile == graph_rtp ? opt_pcap_dump_compress_graph_zstdstrategy : 
+						      typeFile == audiograph ? opt_pcap_dump_compress_audiograph_zstdstrategy : INT_MIN);
 	this->compressStream->enableAutoPrefixFile();
 	this->compressStream->enableForceStream();
 }
@@ -4671,7 +4686,8 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 	this->tarBuffer = new FILE_LINE(38019) ChunkBuffer(this->time, this->tar_data, this->needTarPos(),
 							   typeFile == pcap_sip ? 8 * 1024 : 
 							   typeFile == pcap_rtp ? 32 * 1024 : 
-							   typeFile == graph_rtp ? 16 * 1024 : 8 * 1024,
+							   typeFile == graph_rtp ? 16 * 1024 : 
+							   typeFile == audiograph ? 16 * 1024 : 8 * 1024,
 							   call, typeFile, indexFile,
 							   this->fileName.c_str());
 	if(sverb.tar > 2) {
@@ -4683,9 +4699,11 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_sip;
 		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_rtp;
 		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_graph;
+		extern CompressStream::eTypeCompress opt_pcap_dump_tar_internalcompress_audiograph;
 		extern int opt_pcap_dump_tar_internal_gzip_sip_level;
 		extern int opt_pcap_dump_tar_internal_gzip_rtp_level;
 		extern int opt_pcap_dump_tar_internal_gzip_graph_level;
+		extern int opt_pcap_dump_tar_internal_gzip_audiograph_level;
 		switch(typeFile) {
 		case pcap_sip:
 			if(opt_pcap_dump_tar_internalcompress_sip != CompressStream::compress_na) {
@@ -4703,6 +4721,12 @@ void FileZipHandler::initTarbuffer(bool useFileZipHandlerCompress) {
 			if(opt_pcap_dump_tar_internalcompress_graph != CompressStream::compress_na) {
 				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_graph, 8 * 1024, this->bufferLength);
 				this->tarBuffer->setCompressLevel(opt_pcap_dump_tar_internal_gzip_graph_level);
+			}
+			break;
+		case audiograph:
+			if(opt_pcap_dump_tar_internalcompress_audiograph != CompressStream::compress_na) {
+				this->tarBuffer->setTypeCompress(opt_pcap_dump_tar_internalcompress_audiograph, 8 * 1024, this->bufferLength);
+				this->tarBuffer->setCompressLevel(opt_pcap_dump_tar_internal_gzip_audiograph_level);
 			}
 			break;
 		case na:
@@ -4846,6 +4870,8 @@ FileZipHandler::eTypeCompress FileZipHandler::getTypeCompressDefault() {
 		#else
 		return(gzip);
 		#endif
+	case audiograph:
+		return(gzip);
 	default:
 		return(gzip);
 	}
@@ -6657,15 +6683,34 @@ void cPng::pixel::setFromHsv(pixel_hsv p_hsv) {
 }
 
 cPng::cPng(size_t width, size_t height) {
-	this->width = width;
-	this->height = height;
-	pixels = new FILE_LINE(38032) pixel[width * height];
+	pixels = NULL;
+	if(width && height) {
+		setWidthHeight(width, height);
+	} else {
+		this->width = 0;
+		this->height = 0;
+	}
 	pixel_size = 3;
 	depth = 8;
 }
 
 cPng::~cPng() {
-	delete [] pixels;
+	if(pixels) {
+		delete [] pixels;
+	}
+}
+
+void cPng::setWidthHeight(size_t width, size_t height) {
+	if(pixels) {
+		if(width == this->width || height == this->height) {
+			return;
+		} else {
+			delete [] pixels;
+		}
+	}
+	this->width = width;
+	this->height = height;
+	pixels = new FILE_LINE(0) pixel[width * height];
 }
 
 void cPng::setPixel(size_t x, size_t y, u_int8_t red, u_int8_t green, u_int8_t blue) {
@@ -6684,68 +6729,75 @@ cPng::pixel *cPng::getPixelPointer(size_t x, size_t y) {
 	return(pixels + width * y + x);
 }
 
-bool cPng::write(const char *filePathName, string *error) {
-#ifdef HAVE_LIBPNG
-	FILE *fp = fopen (filePathName, "wb");
-	if(!fp) {
-		if(error) {
-			*error = string("open file ") + filePathName + " failed";
-		}
-		return(false);
-	}
+static void _png_write_to_buffer(png_structp png_ptr, png_bytep data, png_size_t length) {
+	SimpleBuffer *png = (SimpleBuffer*)png_get_io_ptr(png_ptr);
+	png->add(data, length);
+}
 
+bool cPng::_write(const char *filePathName, SimpleBuffer *png, string *error) {
+#ifdef HAVE_LIBPNG
+	FILE *fp = NULL;
+	if(filePathName) {
+		fp = fopen (filePathName, "wb");
+		if(!fp) {
+			if(error) {
+				*error = string("open file ") + filePathName + " failed";
+			}
+			return(false);
+		}
+	}
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
 	if(png_ptr == NULL) {
 		if(error) {
 			*error = "png_create_write_struct failed";
 		}
-		fclose(fp);
+		if(fp) fclose(fp);
 		return(false);
 	}
-	
 	png_infop info_ptr = png_create_info_struct (png_ptr);
 	if(info_ptr == NULL) {
 		if(error) {
 			*error = "png_create_info_struct failed";
 		}
 		png_destroy_write_struct(&png_ptr, NULL);
-		fclose(fp);
+		if(fp) fclose(fp);
 		return(false);
 	}
-	
-	png_set_IHDR (png_ptr,
-		      info_ptr,
-		      this->width,
-		      this->height,
-		      depth,
-		      PNG_COLOR_TYPE_RGB,
-		      PNG_INTERLACE_NONE,
-		      PNG_COMPRESSION_TYPE_DEFAULT,
-		      PNG_FILTER_TYPE_DEFAULT);
-	
-	png_byte ** row_pointers = (png_byte**)png_malloc (png_ptr, this->height * sizeof(png_byte*));
+	png_set_IHDR(png_ptr,
+		     info_ptr,
+		     this->width,
+		     this->height,
+		     depth,
+		     PNG_COLOR_TYPE_RGB,
+		     PNG_INTERLACE_NONE,
+		     PNG_COMPRESSION_TYPE_DEFAULT,
+		     PNG_FILTER_TYPE_DEFAULT);
+	png_byte ** row_pointers = (png_byte**)png_malloc(png_ptr, this->height * sizeof(png_byte*));
 	for(size_t y = 0; y < this->height; y++) {
-		png_byte *row = (png_byte*)png_malloc (png_ptr, sizeof (u_int8_t) * this->width * pixel_size);
-		row_pointers[y] = row;
+		png_byte *row_p = (png_byte*)png_malloc (png_ptr, sizeof (u_int8_t) * this->width * pixel_size);
+		row_pointers[y] = row_p;
 		for(size_t x = 0; x < this->width; x++) {
-			pixel * pp = this->getPixelPointer(x, y);
-			*row++ = pp->red;
-			*row++ = pp->green;
-			*row++ = pp->blue;
-	    }
+			pixel *pp = this->getPixelPointer(x, y);
+			*row_p++ = pp->red;
+			*row_p++ = pp->green;
+			*row_p++ = pp->blue;
+		}
 	}
-	
-	png_init_io(png_ptr, fp);
+	if(fp) {
+		png_init_io(png_ptr, fp);
+	} else {
+		png_set_write_fn(png_ptr, png, _png_write_to_buffer, NULL);
+	}
 	png_set_rows(png_ptr, info_ptr, row_pointers);
 	png_write_png(png_ptr, info_ptr, PNG_TRANSFORM_IDENTITY, NULL);
-
 	for(size_t y = 0; y < this->height; y++) {
 		png_free(png_ptr, row_pointers[y]);
 	}
 	png_free(png_ptr, row_pointers);
-	
 	png_destroy_write_struct(&png_ptr, &info_ptr);
-	
+	if(fp) {
+		fclose(fp);
+	}
 	return(true);
 #else
 	if(error) {
@@ -6755,129 +6807,305 @@ bool cPng::write(const char *filePathName, string *error) {
 #endif //HAVE_LIBPNG
 }
 
+struct _jpeg_dest_buffer : jpeg_destination_mgr {
+	SimpleBuffer *buffer;
+};
+
+static void _jpeg_init_destination(j_compress_ptr jpeg_ptr) {
+	SimpleBuffer *buffer = ((_jpeg_dest_buffer*)jpeg_ptr->dest)->buffer;
+	buffer->set_data_capacity(16 * 1024);
+	jpeg_ptr->dest->next_output_byte = buffer->data();
+	jpeg_ptr->dest->free_in_buffer = buffer->data_capacity();
+}
+
+static boolean _jpeg_empty_output_buffer(j_compress_ptr jpeg_ptr) {
+	SimpleBuffer *buffer = ((_jpeg_dest_buffer*)jpeg_ptr->dest)->buffer;
+	buffer->set_data_len(buffer->data_capacity());
+	buffer->set_data_capacity(buffer->data_capacity() + 16 * 1024);
+	jpeg_ptr->dest->next_output_byte = buffer->data() + buffer->size();
+	jpeg_ptr->dest->free_in_buffer = buffer->data_capacity() - buffer->size();
+	return true;
+}
+
+static void _jpeg_term_destination(j_compress_ptr jpeg_ptr) {
+	SimpleBuffer *buffer = ((_jpeg_dest_buffer*)jpeg_ptr->dest)->buffer;
+	buffer->set_data_len(buffer->data_capacity() - jpeg_ptr->dest->free_in_buffer);
+}
+
+bool cPng::_write_jpeg(const char *filePathName, SimpleBuffer *jpeg, int quality, string *error) {
+#ifdef HAVE_LIBJPEG
+	FILE *fp = NULL;
+	if(filePathName) {
+		fp = fopen (filePathName, "wb");
+		if(!fp) {
+			if(error) {
+				*error = string("open file ") + filePathName + " failed";
+			}
+			return(false);
+		}
+	}
+	jpeg_compress_struct jpeg_ptr;
+	jpeg_create_compress(&jpeg_ptr);
+	jpeg_error_mgr jpeg_err;
+	jpeg_ptr.err = jpeg_std_error(&jpeg_err);
+	_jpeg_dest_buffer dest_buffer;
+	if(fp) {
+		jpeg_stdio_dest(&jpeg_ptr, fp);
+	} else {
+		dest_buffer.buffer = jpeg;
+		jpeg_ptr.dest = &dest_buffer;
+		jpeg_ptr.dest->init_destination = _jpeg_init_destination;
+		jpeg_ptr.dest->empty_output_buffer = _jpeg_empty_output_buffer;
+		jpeg_ptr.dest->term_destination = _jpeg_term_destination;
+	}
+	jpeg_ptr.image_width = this->width;
+	jpeg_ptr.image_height = this->height;
+	jpeg_ptr.input_components = 3;
+	jpeg_ptr.in_color_space = JCS_RGB;
+	jpeg_set_defaults(&jpeg_ptr);
+	jpeg_set_quality(&jpeg_ptr, quality, TRUE);
+	jpeg_start_compress(&jpeg_ptr, TRUE);
+	u_char *row_buffer = new FILE_LINE(0) u_char[this->width * 3];
+	for(size_t y = 0; y < this->height; y++) {
+		u_char *row_p = row_buffer;
+		for(size_t x = 0; x < this->width; x++) {
+			pixel *pp = this->getPixelPointer(x, y);
+			*row_p++ = pp->red;
+			*row_p++ = pp->green;
+			*row_p++ = pp->blue;
+		}
+		jpeg_write_scanlines(&jpeg_ptr, &row_buffer, 1);
+	}
+	delete [] row_buffer;
+	jpeg_finish_compress(&jpeg_ptr);
+	jpeg_destroy_compress(&jpeg_ptr);
+	if(fp) {
+		fclose(fp);
+	}
+	return(true);
+#else
+	if(error) {
+		*error = "missing jpeg library";
+	}
+	return(false);
+#endif //HAVE_LIBJPEG
+}
+
 
 bool create_waveform_from_raw(const char *rawInput,
-			      size_t sampleRate, size_t msPerPixel, u_int8_t channels,
+			      size_t sampleRate, size_t msPerPixel, unsigned channels,
 			      const char waveformOutput[][1024]) {
-	u_int8_t bytesPerSample = 2;
-	
-	long long int rawInputSize = GetFileSize(rawInput);
-	if(rawInputSize <= 0) {
-		return(false);
+	unsigned bytesPerSample = 2;
+	size_t rawSamples = 0;
+	u_char *raw[2] = { NULL, NULL };
+	if(load_raw(rawInput, bytesPerSample, channels, raw, &rawSamples)) {
+		bool rsltWrite = false;
+		for(unsigned ch = 0; ch < channels; ch++) {
+			u_int16_t *peaks;
+			size_t peaks_count = 0;
+			if(!create_waveform_from_raw(raw[ch], rawSamples, sampleRate, bytesPerSample,
+						     msPerPixel, &peaks, &peaks_count)) {
+				break;
+			}
+			FILE *waveformOutputHandle = fopen(waveformOutput[ch], "wb");
+			if(waveformOutputHandle) {
+				fwrite(peaks, sizeof(u_int16_t), peaks_count, waveformOutputHandle);
+				fclose(waveformOutputHandle);
+				rsltWrite = true;
+			} else {
+				rsltWrite = false;
+			}
+			delete [] peaks;
+			if(!rsltWrite) {
+				break;
+			}
+		}
+		for(unsigned ch = 0; ch < channels; ch++) {
+			delete [] raw[ch];
+		}
+		return(rsltWrite);
 	}
-	size_t rawSamples = rawInputSize / bytesPerSample / channels;
+	return(false);
+}
+
+bool create_waveform_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int16_t **peaks, size_t *peaks_count) {
 	if(rawSamples < 1) {
 		return(false);
 	}
-	
-	int16_t *raw[2] = { NULL, NULL };
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new FILE_LINE(38033) int16_t[rawSamples];
+	if(!msPerPixel) {
+		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
 	}
- 
-	FILE *inputRawHandle = fopen(rawInput, "rb");
-	char inputBuff[20000];
-	size_t readLen;
-	size_t counterSamples = 0;
-	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
-		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
-			for(u_int8_t ch = 0; ch < channels; ch++) {
-				if(counterSamples < rawSamples) {
-					raw[ch][counterSamples] = *(int16_t*)(inputBuff + i * bytesPerSample + ch * bytesPerSample);
-				}
-			}
-			++counterSamples;
-		}
-	}
-	fclose(inputRawHandle);
-	
 	size_t stepSamples = sampleRate * msPerPixel / 1000;
 	size_t width = rawSamples / stepSamples;
-	
-	bool rsltWrite = false;
-	
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-	 
-		FILE *waveformOutputHandle = fopen(waveformOutput[ch], "wb");
-		if(waveformOutputHandle) {
-			u_int16_t *peaks = new FILE_LINE(38034) u_int16_t[width + 10];
-			size_t peaks_count = 0;
-			u_int16_t peak = 0;
-			int16_t v;
-			for(size_t i = 0; i < rawSamples; i++) {
-				if(!(i % stepSamples) && i) {
-				       peaks[peaks_count++] = peak;
-				       peak = 0;
-				}
-				v = raw[ch][i];
-				if(v < 0) {
-					v = -v;
-				}
-				if(v > peak) {
-					peak = v;
-				}
+	*peaks = new FILE_LINE(0) u_int16_t[width + 10];
+	*peaks_count = 0;
+	u_int16_t peak = 0;
+	int16_t v;
+	for(size_t i = 0; i < rawSamples; i++) {
+		if(!(i % stepSamples) && i) {
+			(*peaks)[(*peaks_count)++] = peak;
+			peak = 0;
+		}
+		u_char *raw_p = raw + i * bytesPerSample;
+		v = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p);
+		if(v < 0) {
+			v = -v;
+		}
+		if(v > peak) {
+			peak = v;
+		}
+	}
+	return(true);
+}
+
+bool create_waveform_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int8_t **peaks, size_t *peaks_count) {
+	if(rawSamples < 1) {
+		return(false);
+	}
+	if(!msPerPixel) {
+		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+	}
+	size_t stepSamples = sampleRate * msPerPixel / 1000;
+	size_t width = rawSamples / stepSamples;
+	*peaks = new FILE_LINE(0) u_int8_t[width + 10];
+	*peaks_count = 0;
+	u_int16_t peak = 0;
+	int16_t v;
+	for(size_t i = 0; i < rawSamples; i++) {
+		if(!(i % stepSamples) && i) {
+			if(bytesPerSample == 2) {
+				peak = peak * 0x7F / 0x7FFF;
 			}
-			fwrite(peaks, sizeof(u_int16_t), peaks_count, waveformOutputHandle);
-			fclose(waveformOutputHandle);
-			delete [] peaks;
-			rsltWrite = true;
-		} else {
-			rsltWrite = false;
+			(*peaks)[(*peaks_count)++] = peak;
+			peak = 0;
 		}
-		
-		if(!rsltWrite) {
-			break;
+		u_char *raw_p = raw + i * bytesPerSample;
+		v = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p);
+		if(v < 0) {
+			v = -v;
 		}
-		
-	}
-	
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-		if(raw[ch]) {
-			delete [] raw[ch];
+		if(v > peak) {
+			peak = v;
 		}
 	}
-	
-	return(rsltWrite);
+	return(true);
+}
+
+bool create_waveform_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
+			      unsigned msPerPixel, u_int8_t **peaks, size_t *peaks_count,
+			      bool loadFullRawToMemory, size_t *rawSamplesOutput) {
+	if(rawSamplesOutput) {
+		*rawSamplesOutput = 0;
+	}
+	if(loadFullRawToMemory) {
+		size_t rawSamples = 0;
+		u_char *raw = load_raw(rawInput, bytesPerSample, &rawSamples);
+		if(!raw) {
+			return(false);
+		}
+		bool rslt = create_waveform_from_raw(raw, rawSamples, sampleRate, bytesPerSample,
+						     msPerPixel, peaks, peaks_count);
+		delete [] raw;
+		if(rawSamplesOutput) {
+			*rawSamplesOutput = rawSamples;
+		}
+		return(rslt);
+	} else {
+		size_t rawSamples = 0;
+		long long int rawInputSize = GetFileSize(rawInput);
+		if(rawInputSize <= 0) {
+			return(false);
+		}
+		rawSamples = rawInputSize / bytesPerSample;
+		if(rawSamples < 1) {
+			return(false);
+		}
+		FILE *inputRawHandle = fopen(rawInput, "rb");
+		if(!inputRawHandle) {
+			return(false);
+		}
+		if(!msPerPixel) {
+			msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+		}
+		size_t stepSamples = sampleRate * msPerPixel / 1000;
+		size_t width = rawSamples / stepSamples;
+		*peaks = new FILE_LINE(0) u_int8_t[width + 10];
+		*peaks_count = 0;
+		u_int16_t peak = 0;
+		int16_t v;
+		u_char inputBuff[16 * 1024];
+		size_t readLen;
+		size_t counterSamples = 0;
+		while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
+			for(size_t i = 0; i < readLen / bytesPerSample; ++i) {
+				if(counterSamples < rawSamples) {
+					if(!(i % stepSamples) && i) {
+						if(bytesPerSample == 2) {
+							peak = peak * 0x7F / 0x7FFF;
+						}
+						(*peaks)[(*peaks_count)++] = peak;
+						peak = 0;
+					}
+					u_char *raw_p = inputBuff + i * bytesPerSample;
+					v = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p);
+					if(v < 0) {
+						v = -v;
+					}
+					if(v > peak) {
+						peak = v;
+					}
+				}
+				++counterSamples;
+			}
+		}
+		fclose(inputRawHandle);
+		if(rawSamplesOutput) {
+			*rawSamplesOutput = rawSamples;
+		}
+		return(true);
+	}
 }
 
 
 bool create_spectrogram_from_raw(const char *rawInput,
-				 size_t sampleRate, size_t msPerPixel, size_t height, u_int8_t channels,
+				 size_t sampleRate, size_t msPerPixel, size_t height, unsigned channels,
 				 const char spectrogramOutput[][1024]) {
 #ifdef HAVE_LIBFFT
-	u_int8_t bytesPerSample = 2;
-	bool debug_out = false;
- 
-	long long int rawInputSize = GetFileSize(rawInput);
-	if(rawInputSize <= 0) {
-		return(false);
+	unsigned bytesPerSample = 2;
+	size_t rawSamples = 0;
+	u_char *raw[2] = { NULL, NULL };
+	if(load_raw(rawInput, bytesPerSample, channels, raw, &rawSamples)) {
+		bool rsltWrite = false;
+		for(unsigned ch = 0; ch < channels; ch++) {
+			cPng png;
+			if(!create_spectrogram_from_raw((u_char*)raw[ch], rawSamples, sampleRate, bytesPerSample,
+							msPerPixel, height, &png)) {
+				break;
+			}
+			rsltWrite = png.write(spectrogramOutput[ch]);
+			if(!rsltWrite) {
+				break;
+			}
+		}
+		for(unsigned ch = 0; ch < channels; ch++) {
+			delete [] raw[ch];
+		}
+		return(rsltWrite);
 	}
-	size_t rawSamples = rawInputSize / bytesPerSample / channels;
+	return(false);
+#else
+	return(false);
+#endif //HAVE_LIBFFT
+}
+
+bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+				 unsigned msPerPixel, unsigned height, cPng *png) {
+#ifdef HAVE_LIBFFT
 	if(rawSamples < 1) {
 		return(false);
 	}
-	
-	int16_t *raw[2] = { NULL, NULL };
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-		raw[ch] = new FILE_LINE(38035) int16_t[rawSamples];
-	}
- 
-	FILE *inputRawHandle = fopen(rawInput, "rb");
-	char inputBuff[20000];
-	size_t readLen;
-	size_t counterSamples = 0;
-	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
-		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
-			for(u_int8_t ch = 0; ch < channels; ch++) {
-				if(counterSamples < rawSamples) {
-					raw[ch][counterSamples] = *(int16_t*)(inputBuff + i * bytesPerSample + ch * bytesPerSample);
-				}
-			}
-			++counterSamples;
-		}
-	}
-	fclose(inputRawHandle);
-	
 	size_t fftSize;
 	if(height) {
 		fftSize = height * 2;
@@ -6885,143 +7113,256 @@ bool create_spectrogram_from_raw(const char *rawInput,
 		fftSize = 128;
 		height = fftSize / 2;
 	}
+	if(!msPerPixel) {
+		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+	}
 	size_t stepSamples = sampleRate * msPerPixel / 1000;
 	size_t width = rawSamples / stepSamples;
-	
-	bool rsltWrite = false;
-	
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-	
-		map<size_t, map<size_t, u_int8_t> >  image;
-
-		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
-		
-		cPng::pixel palette[256];
-		for (int i=0; i < 32; i++)  {
-		   palette[i].red = 0;
-		   palette[i].green = 0;
-		   palette[i].blue = i * 4;
-		    
-		   palette[i+32].red = 0;
-		   palette[i+32].green = 0;
-		   palette[i+32].blue = 128 + i * 4;
-		    
-		   palette[i+64].red = 0;
-		   palette[i+64].green = i * 4;
-		   palette[i+64].blue = 255;
-		    
-		   palette[i+96].red = 0;
-		   palette[i+96].green = 128 + i * 4;
-		   palette[i+96].blue = 255;
-		    
-		   palette[i+128].red = 0;
-		   palette[i+128].green = 255;
-		   palette[i+128].blue = 255 - i * 8;
-		    
-		   palette[i+160].red = i * 8;
-		   palette[i+160].green = 255;
-		   palette[i+160].blue = 0;
-		    
-		   palette[i+192].red = 255;
-		   palette[i+192].green = 255 - i * 8;
-		   palette[i+192].blue = 0;
-		    
-		   palette[i+224].red = 255;
-		   palette[i+224].green = 0;
-		   palette[i+224].blue = 0;
-		}
-		
-		/*cPng::pixel palette[256];
-		for(int i = 0; i < 255; i++) {
-			cPng::pixel_hsv p_hsv(255 - i, 100, (int)(40 + 60 * i / 255.));
-			palette[i].setFromHsv(p_hsv);
-		}*/
-		
-		/*cPng::pixel palette[11];
-		palette[1] = cPng::pixel(0,0,180);
-		palette[2] = cPng::pixel(0,0,255);
-		palette[3] = cPng::pixel(0,50,255);
-		palette[4] = cPng::pixel(0,100,255);
-		palette[5] = cPng::pixel(0,150,255);
-		palette[6] = cPng::pixel(0,255,0);
-		palette[7] = cPng::pixel(255,150,0);
-		palette[8] = cPng::pixel(255,100,0);
-		palette[9] = cPng::pixel(255,50,0);
-		palette[10] = cPng::pixel(255,0,0);*/
-		
-		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
-		
-		double *multipliers = new FILE_LINE(38036) double[fftSize];
+	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+	cPng::pixel palette[256];
+	set_spectrogram_palette(palette);
+	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+	double *multipliers = new FILE_LINE(0) double[fftSize];
+	for(size_t i = 0; i < fftSize; i++) {
+		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+	}
+	png->setWidthHeight(width, height);
+	for(size_t x = 0; x < width; x++) {
 		for(size_t i = 0; i < fftSize; i++) {
-			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+			u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
+			fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
 		}
-		
-		double maxout = 0;
-		double minout = 0;
-		double maxout1 = 0;
-		size_t maxout1i = 0;
-		
-		cPng png(width, height);
-		
-		for(size_t x = 0; x < width; x++) {
-		 
-			for(size_t i = 0; i < fftSize; i++) {
-				fftw_in[i] = raw[ch][x * stepSamples + i] * multipliers[i];
-			}
-			fftw_execute(fftw_pl);
-			
-			for(size_t i = 0; i < height; i++) {
-				double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
-				out = log(max(1., out));
-				if(debug_out) {
-					if(out > maxout) {
-						maxout = out;
-					}
-					if(out < minout) {
-						minout = out;
-					}
-					if(out > maxout1) {
-						maxout1 = out;
-						maxout1i = i;
-					}
-					cout << out << ",";
-				}
-				png.setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
-			}
-			if(debug_out) {
-				cout << endl << minout << " - " << maxout << " / " << maxout1 << " / " << maxout1i << endl;
-			}
-		} 
-		if(debug_out) {
-			cout << maxout << endl;
+		fftw_execute(fftw_pl);
+		for(size_t i = 0; i < height; i++) {
+			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+			out = log(max(1., out));
+			png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
 		}
-		
-		rsltWrite = png.write(spectrogramOutput[ch]);
-
-		fftw_destroy_plan(fftw_pl);
-		fftw_free(fftw_in); 
-		fftw_free(fftw_out);
-		
-		delete [] multipliers;
-		
-		if(!rsltWrite) {
-			break;
-		}
-		
-	}
-	
-	for(u_int8_t ch = 0; ch < channels; ch++) {
-		if(raw[ch]) {
-			delete [] raw[ch];
-		}
-	}
-	
-	return(rsltWrite);
+	} 
+	delete [] multipliers;
+	fftw_destroy_plan(fftw_pl);
+	fftw_free(fftw_in); 
+	fftw_free(fftw_out);
+	return(true);
 #else
 	return(false);
 #endif //HAVE_LIBFFT
+}
+
+bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
+				 unsigned msPerPixel, unsigned height, cPng *png,
+				 bool loadFullRawToMemory, size_t *rawSamplesOutput) {
+	if(rawSamplesOutput) {
+		*rawSamplesOutput = 0;
+	}
+#ifdef HAVE_LIBFFT
+	if(loadFullRawToMemory) {
+		size_t rawSamples = 0;
+		u_char *raw = load_raw(rawInput, bytesPerSample, &rawSamples);
+		if(!raw) {
+			return(false);
+		}
+		bool rslt = create_spectrogram_from_raw(raw, rawSamples, sampleRate, bytesPerSample,
+							msPerPixel, height, png);
+		delete [] raw;
+		if(rawSamplesOutput) {
+			*rawSamplesOutput = rawSamples;
+		}
+		return(rslt);
+	} else {
+		size_t rawSamples = 0;
+		long long int rawInputSize = GetFileSize(rawInput);
+		if(rawInputSize <= 0) {
+			return(false);
+		}
+		rawSamples = rawInputSize / bytesPerSample;
+		if(rawSamples < 1) {
+			return(false);
+		}
+		FILE *inputRawHandle = fopen(rawInput, "rb");
+		if(!inputRawHandle) {
+			return(false);
+		}
+		size_t fftSize;
+		if(height) {
+			fftSize = height * 2;
+		} else {
+			fftSize = 128;
+			height = fftSize / 2;
+		}
+		if(!msPerPixel) {
+			msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
+		}
+		size_t stepSamples = sampleRate * msPerPixel / 1000;
+		size_t width = rawSamples / stepSamples;
+		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+		cPng::pixel palette[256];
+		set_spectrogram_palette(palette);
+		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+		double *multipliers = new FILE_LINE(0) double[fftSize];
+		for(size_t i = 0; i < fftSize; i++) {
+			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
+		}
+		png->setWidthHeight(width, height);
+		for(size_t x = 0; x < width; x++) {
+			fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
+			u_char inputBuff[fftSize * bytesPerSample];
+			if(fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle) == fftSize * bytesPerSample) {
+				for(size_t i = 0; i < fftSize; i++) {
+					u_char *raw_p = inputBuff + i * bytesPerSample;
+					fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
+				}
+				fftw_execute(fftw_pl);
+				for(size_t i = 0; i < height; i++) {
+					double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
+					out = log(max(1., out));
+					png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
+				}
+			} else {
+				break;
+			}
+		} 
+		delete [] multipliers;
+		fftw_destroy_plan(fftw_pl);
+		fftw_free(fftw_in); 
+		fftw_free(fftw_out);
+		fclose(inputRawHandle);
+		if(rawSamplesOutput) {
+			*rawSamplesOutput = rawSamples;
+		}
+		return(true);
+	}
+#else
+	return(false);
+#endif //HAVE_LIBFFT
+}
+
+void set_spectrogram_palette(cPng::pixel palette[]) {
+	for(int i = 0; i < 32; i++)  {
+		palette[i    ].red = 0;
+		palette[i    ].green = 0;
+		palette[i    ].blue = i * 4;
+		palette[i+ 32].red = 0;
+		palette[i+ 32].green = 0;
+		palette[i+ 32].blue = 128 + i * 4;
+		palette[i+ 64].red = 0;
+		palette[i+ 64].green = i * 4;
+		palette[i+ 64].blue = 255;
+		palette[i+ 96].red = 0;
+		palette[i+ 96].green = 128 + i * 4;
+		palette[i+ 96].blue = 255;
+		palette[i+128].red = 0;
+		palette[i+128].green = 255;
+		palette[i+128].blue = 255 - i * 8;
+		palette[i+160].red = i * 8;
+		palette[i+160].green = 255;
+		palette[i+160].blue = 0;
+		palette[i+192].red = 255;
+		palette[i+192].green = 255 - i * 8;
+		palette[i+192].blue = 0;
+		palette[i+224].red = 255;
+		palette[i+224].green = 0;
+		palette[i+224].blue = 0;
+	}
+}
+
+
+u_char *load_raw(const char *rawInput, unsigned bytesPerSample, size_t *rawSamples) {
+	long long int rawInputSize = GetFileSize(rawInput);
+	if(rawInputSize <= 0) {
+		*rawSamples = 0;
+		return(NULL);
+	}
+	*rawSamples = rawInputSize / bytesPerSample;
+	if(*rawSamples < 1) {
+		return(NULL);
+	}
+	FILE *inputRawHandle = fopen(rawInput, "rb");
+	if(!inputRawHandle) {
+		*rawSamples = 0;
+		return(NULL);
+	}
+	u_char *raw = new FILE_LINE(0) u_char[*rawSamples * bytesPerSample];
+	u_char inputBuff[16 * 1024];
+	size_t readLen;
+	size_t counterSamples = 0;
+	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
+		for(size_t i = 0; i < readLen / bytesPerSample; ++i) {
+			if(counterSamples < *rawSamples) {
+				if(bytesPerSample == 2) {
+					((int16_t*)raw)[counterSamples] = *(int16_t*)(inputBuff + i * bytesPerSample);
+				} else {
+					((int8_t*)raw)[counterSamples] = *(int8_t*)(inputBuff + i * bytesPerSample);
+				}
+			}
+			++counterSamples;
+		}
+	}
+	fclose(inputRawHandle);
+	return(raw);
+}
+
+bool load_raw(const char *rawInput, unsigned bytesPerSample, unsigned channels, u_char *raw[], size_t *rawSamples) {
+	long long int rawInputSize = GetFileSize(rawInput);
+	if(rawInputSize <= 0) {
+		for(unsigned i = 0; i < channels; i++) {
+			raw[i] = NULL;
+		}
+		*rawSamples = 0;
+		return(false);
+	}
+	*rawSamples = rawInputSize / bytesPerSample / channels;
+	if(*rawSamples < 1) {
+		for(unsigned i = 0; i < channels; i++) {
+			raw[i] = NULL;
+		}
+		return(false);
+	}
+	FILE *inputRawHandle = fopen(rawInput, "rb");
+	if(!inputRawHandle) {
+		for(unsigned i = 0; i < channels; i++) {
+			raw[i] = NULL;
+		}
+		*rawSamples = 0;
+		return(false);
+	}
+	for(unsigned i = 0; i < channels; i++) {
+		raw[i] = new FILE_LINE(0) u_char[*rawSamples * bytesPerSample];
+	}
+	u_char inputBuff[16 * 1024];
+	size_t readLen;
+	size_t counterSamples = 0;
+	while((readLen = fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle)) > 0) {
+		for(size_t i = 0; i < readLen / bytesPerSample; i += channels) {
+			if(counterSamples < *rawSamples) {
+				for(unsigned ch = 0; ch < channels; ch++) {
+					if(bytesPerSample == 2) {
+						((int16_t*)(raw)[ch])[counterSamples] = *(int16_t*)(inputBuff + (i + ch) * bytesPerSample);
+					} else {
+						((int8_t*)(raw)[ch])[counterSamples] = *(int8_t*)(inputBuff + (i + ch) * bytesPerSample);
+					}
+				}
+			}
+			++counterSamples;
+		}
+	}
+	fclose(inputRawHandle);
+	return(true);
+}
+
+
+unsigned get_audiograph_ms_per_pixel(size_t samples, unsigned sampleRate) {
+	return(get_audiograph_ms_per_pixel((double)samples / sampleRate));
+}
+
+unsigned get_audiograph_ms_per_pixel(double duration_s) {
+	return(duration_s > 30 * 60 ? 160 :
+	       duration_s > 10 * 60 ? 80 :
+	       duration_s > 5 * 60 ? 40 : 20);
 }
 
 

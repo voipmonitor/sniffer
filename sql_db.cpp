@@ -9981,6 +9981,11 @@ void SqlDb_mysql::checkColumns_other(bool log) {
 			"ALTER TABLE `files`\
 			 ADD COLUMN `ss7size` bigint unsigned DEFAULT 0");
 	}
+	if(!this->existsColumn("files", "audiographsize")) {
+		this->query(
+			"ALTER TABLE `files`\
+			 ADD COLUMN `audiographsize` bigint unsigned DEFAULT 0");
+	}
 	if(opt_ssl_store_sessions) {
 		string ssl_sessions_table = opt_ssl_store_sessions == 1 ? "ssl_sessions_mem" : "ssl_sessions";
 		string ssl_sessions_id_type = this->getTypeColumn(ssl_sessions_table.c_str(), "id_sensor", true);
