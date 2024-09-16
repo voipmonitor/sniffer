@@ -330,7 +330,9 @@ void *Transcribe::transcribeWavChannel_thread(void *params) {
 
 void Transcribe::pushCall(sCall *call) {
 	if(getQueueSize() < callsMax) {
+		lock_calls();
 		calls.push_back(call);
+		unlock_calls();
 		processCall();
 	} else {
 		destroyCall(call);
