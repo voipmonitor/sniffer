@@ -10067,18 +10067,27 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 	if(by_type.size() == 0) {
 		return;
 	}
-	sRtcpXrStreamData *data[by_type.size()];
+	unsigned data_size = 0;
+	for(map<sRtcpStreamIndex, sRtcpXrStreamDataByType>::iterator iter_index = by_type.begin(); iter_index != by_type.end(); iter_index++) {
+		for(map<eRtcpDataItemType, sRtcpXrStreamData>::iterator iter_type = iter_index->second.data.begin(); iter_type != iter_index->second.data.end(); iter_type++) {
+			++data_size;
+		}
+	}
+	if(data_size == 0) {
+		return;
+	}
+	sRtcpXrStreamData *data[data_size];
 	unsigned data_c = 0;
 	for(map<sRtcpStreamIndex, sRtcpXrStreamDataByType>::iterator iter_index = by_type.begin(); iter_index != by_type.end(); iter_index++) {
 		for(map<eRtcpDataItemType, sRtcpXrStreamData>::iterator iter_type = iter_index->second.data.begin(); iter_type != iter_index->second.data.end(); iter_type++) {
 			data[data_c++] = &iter_type->second;
 		}
 	}
-	if(data_c == 1) {
+	if(data_size == 1) {
 		ab[data[0]->iscaller ? 0 : 1] = data[0];
 		return;
 	}
-	if(data_c == 2) {
+	if(data_size == 2) {
 		if(data[0]->iscaller != data[1]->iscaller) {
 			if(data[0]->iscaller) {
 				ab[0] = data[0];
@@ -10098,11 +10107,11 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 	}
 	map<unsigned, unsigned> indexes;
 	int j = 0;
-	for(unsigned i = 0; i < data_c; i++) {
+	for(unsigned i = 0; i < data_size; i++) {
 		indexes[j++] = i;
 	}
-	for(unsigned i = 0; i < data_c - 1; i++) {
-		for(unsigned j = 0; j < data_c - i - 1; j++) {
+	for(unsigned i = 0; i < data_size - 1; i++) {
+		for(unsigned j = 0; j < data_size - i - 1; j++) {
 			if(data[indexes[j + 1]]->counter > data[indexes[j]]->counter) {
 				int tmp = indexes[j];
 				indexes[j] = indexes[j + 1];
@@ -10128,7 +10137,7 @@ void Call::sRtcpXrStreams::findAB(sRtcpXrStreamData *ab[]) {
 	}
 	for(int i = 0; i < 2; i++) {
 		bool _iscaller = i == 0 ? 1 : 0;
-		for(unsigned j = 0; j < data_c; j++) {
+		for(unsigned j = 0; j < data_size; j++) {
 			if(data[indexes[j]]->iscaller == _iscaller) {
 				ab[i] = data[indexes[j]];
 				break;
