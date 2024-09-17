@@ -33,8 +33,10 @@ void cHEP_ProcessData::processData(u_char *data, size_t dataLen) {
 			if(processed < dataLen) {
 				hep_buffer.add(data + processed, dataLen - processed);
 			}
+		} else {
+			hep_buffer.add(data, dataLen);
 		}
-	} else {
+	} else if(!hep_buffer.empty()) {
 		hep_buffer.add(data, dataLen);
 		if(isCompleteHep(hep_buffer.data(), hep_buffer.data_len())) {
 			unsigned processed = processHeps(hep_buffer.data(), hep_buffer.data_len());
@@ -43,6 +45,10 @@ void cHEP_ProcessData::processData(u_char *data, size_t dataLen) {
 			} else if(processed < dataLen) {
 				hep_buffer.removeDataFromLeft(processed);
 			}
+		}
+		if(hep_buffer.size() > 1024 * 1024) {
+			hep_buffer.clear();
+			syslog(LOG_NOTICE, "HEP data exceeded the limit of 1MB. Check the HEP data sent.");
 		}
 	}
 }
