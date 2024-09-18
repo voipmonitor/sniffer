@@ -1,3 +1,11 @@
+2024.09.3 18.9.2024
+===================
+- implement separate audio graphs files to spool/.../AUDIOGRAPH/ (spectrogram + wave) which allows to show it in GUI without needs to store RTP packets. New opeionts save_audiograph, audiograph*, maxpoolaudiographsize, maxpoolaudiographdays [VG-2874]
+- fix race in transcribe calls
+- fix potential stack overflow in sRtcpXrStreams::findAB
+- adding buffer overflow protection for hep data [VG-2882]
+
+
 2024.09.2 10.9.2024
 ===================
 - fix 2024.09.1 crashing when SIP REGISTER stora to pcap is enabled 
