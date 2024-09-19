@@ -6215,10 +6215,10 @@ void cConfig::addConfigItems() {
 						->disableYes()
 						->disableNo()
 						->addValues("std:1|rte:2")
-						->setDefaultValueStr("std"));
+						->setDefaultValueStr("rte"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker_thread", &opt_dpdk_worker_thread))
 						->addValues("std:1|rte:2")
-						->setDefaultValueStr("std"));
+						->setDefaultValueStr("rte"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_yesno("dpdk_worker2_thread", &opt_dpdk_worker2_thread))
 						->addValues("rte:1")
 						->setDefaultValueStr("no"));
