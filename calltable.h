@@ -3986,6 +3986,10 @@ public:
 	
 	void addSystemCommand(const char *command);
 	
+	unsigned int getAudioQueueThreadsMax() {
+		return(audioQueueThreadsMax);
+	}
+	
 private:
 	/*
 	pthread_mutex_t qlock;		//!< mutex locking calls_queue

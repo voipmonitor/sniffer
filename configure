@@ -5055,7 +5055,7 @@ if test "x$HAVE_LIBFFT" = "x1"; then
 
 $as_echo "#define HAVE_LIBFFT 1" >>confdefs.h
 
-	LIBFFT="-lfftw3"
+	LIBFFT="-lfftw3 -lfftw3_threads"
 
 	HAVE_LIBFFT_T=yes
 fi

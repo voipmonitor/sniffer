@@ -234,7 +234,7 @@ fi
 HAVE_LIBFFT_T=no
 if test "x$HAVE_LIBFFT" = "x1"; then 
 	AC_DEFINE([HAVE_LIBFFT], [1], [Define if using libfftw3])
-	AC_SUBST([LIBFFT],["-lfftw3"])
+	AC_SUBST([LIBFFT],["-lfftw3 -lfftw3_threads"])
 	HAVE_LIBFFT_T=yes
 fi
 

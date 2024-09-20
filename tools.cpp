@@ -7102,12 +7102,15 @@ bool create_spectrogram_from_raw(const char *rawInput,
 #endif //HAVE_LIBFFT
 }
 
+static void fftw_multithread_init();
+
 bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
 				 unsigned msPerPixel, unsigned height, cPng *png) {
 #ifdef HAVE_LIBFFT
 	if(rawSamples < 1) {
 		return(false);
 	}
+	fftw_multithread_init();
 	size_t fftSize;
 	if(height) {
 		fftSize = height * 2;
@@ -7187,6 +7190,7 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		if(!inputRawHandle) {
 			return(false);
 		}
+		fftw_multithread_init();
 		size_t fftSize;
 		if(height) {
 			fftSize = height * 2;
@@ -7241,6 +7245,27 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 #else
 	return(false);
 #endif //HAVE_LIBFFT
+}
+
+void fftw_multithread_init() {
+	extern bool is_set_gui_params();
+	if(is_read_from_file_simple() || is_set_gui_params()) {
+		return;
+	}
+	static volatile int fftw_init = 0;
+	static volatile int fftw_lock = 0;
+	__SYNC_LOCK_USLEEP(fftw_lock, 50);
+	if(!fftw_init) {
+		extern Calltable *calltable;
+		if(calltable && calltable->getAudioQueueThreadsMax() > 1) {
+			#ifdef HAVE_LIBFFT
+			fftw_init_threads();
+			fftw_plan_with_nthreads(calltable->getAudioQueueThreadsMax());
+			#endif
+		}
+		__SYNC_SET(fftw_init);
+	}
+	__SYNC_UNLOCK(fftw_lock);
 }
 
 void set_spectrogram_palette(cPng::pixel palette[]) {
