@@ -1,3 +1,10 @@
+2024.09.4 20.9.2024
+===================
+- set usleep_minimal to 50us when vmware is detected (lowers CPU usage signifficantly) 
+- change default values for dpdk_read_thread and dpdk_worker_thread parameters from 'std' to 'rte'
+- fix crashes in fftw library (initialization for multithreads use)
+
+
 2024.09.3 18.9.2024
 ===================
 - implement separate audio graphs files to spool/.../AUDIOGRAPH/ (spectrogram + wave) which allows to show it in GUI without needs to store RTP packets. New opeionts save_audiograph, audiograph*, maxpoolaudiographsize, maxpoolaudiographdays [VG-2874]
