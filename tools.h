@@ -4763,6 +4763,7 @@ int check_avx();
 int check_f16c();
 int check_fma();
 int check_avx2();
+bool is_vmware();
 #endif
 
 

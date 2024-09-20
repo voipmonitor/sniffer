@@ -10390,4 +10390,66 @@ int check_avx2() {
 	}
 	return 0;
 }
+
+#include <cpuid.h>
+bool check_vmware_cpuid() {
+	unsigned int eax, ebx, ecx, edx;
+	// Kontrola přítomnosti hypervizoru
+	if(!__get_cpuid(1, &eax, &ebx, &ecx, &edx)) {
+		// Instrukce CPUID není podporována
+		return false;
+	}
+	if(!(ecx & (1 << 31))) {
+		// Bit 31 v registru ECX není nastaven, hypervizor není přítomen
+		return false;
+	}
+	// Získání Hypervisor Vendor ID
+	__cpuid(0x40000000, eax, ebx, ecx, edx);
+	char hyper_vendor[13];
+	memcpy(hyper_vendor, &ebx, 4);
+	memcpy(hyper_vendor + 4, &ecx, 4);
+	memcpy(hyper_vendor + 8, &edx, 4);
+	hyper_vendor[12] = '\0';
+	if(strcmp(hyper_vendor, "VMwareVMware") == 0) {
+		return true;
+	}
+	return false;
+}
+bool check_vmware_dmi() {
+	const char* dmi_paths[] = {
+		"/sys/class/dmi/id/sys_vendor",
+		"/sys/class/dmi/id/product_name",
+		"/sys/class/dmi/id/board_vendor",
+		"/sys/class/dmi/id/bios_vendor"
+	};
+	for(unsigned i = 0; i < sizeof(dmi_paths) / sizeof(dmi_paths[0]); i++) {
+		std::ifstream file(dmi_paths[i]);
+		if(file.is_open()) {
+			std::string content;
+			std::getline(file, content);
+			if(content.find("VMware") != std::string::npos) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+bool check_vmware_cpuinfo() {
+	std::ifstream file("/proc/cpuinfo");
+	if(file.is_open()) {
+		std::string line;
+		while(std::getline(file, line)) {
+			if(line.find("vendor_id") != std::string::npos &&
+			   line.find("VMware") != std::string::npos) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+bool is_vmware() {
+	return(check_vmware_cpuid() ||
+	       check_vmware_dmi() ||
+	       check_vmware_cpuinfo());
+}
 #endif

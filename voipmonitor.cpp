@@ -9219,6 +9219,13 @@ void set_context_config() {
 	if(!CONFIG.isSet("sip-msg-save-ua") && opt_cdr_ua_normalisation) {
 		opt_sip_msg_save_ua = true;
 	}
+	
+	
+	#if defined(__x86_64__)
+	if(!CONFIG.isSet("usleep_minimal") && is_vmware()) {
+		opt_usleep_minimal = 50;
+	}
+	#endif
 }
 
 void check_context_config() {
