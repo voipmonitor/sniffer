@@ -13,6 +13,7 @@
 #include "tools.h"
 #include "ssl.h"
 #include "ssl-test.h"
+#include "ssldata.h"
 #include "heap_safe.h"
 
 using namespace std;
@@ -3805,6 +3806,7 @@ ssl_init() {
 	map<d_u_int32_t, string>::iterator it;
 
 	//init keys
+	ssl_ipport_lock();
 	for(it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		ssl_keys_t *key = new(ssl_keys_t);
 		
@@ -3814,8 +3816,8 @@ ssl_init() {
 		key->filename = it->second;
 
 		ssl_keys.push_back(key);
-
 	}
+	ssl_ipport_unlock();
 }
 
 void

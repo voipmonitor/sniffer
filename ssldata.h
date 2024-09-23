@@ -93,5 +93,12 @@ u_int32_t _checkOkSslData(u_char *data, u_int32_t datalen);
 bool checkOkSslHeader(u_char *data, u_int32_t datalen);
 int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport);
 
+void ssl_ipport_lock();
+void ssl_ipport_unlock();
+string ssl_ipport_list();
+bool ssl_ipport_set(const char *set);
+bool ssl_ipport_add(const char *add);
+bool ssl_ipport_del(const char *del);
+
 
 #endif

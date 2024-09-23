@@ -235,7 +235,7 @@ u_int16_t ip6hdr2::get_ext_header_offset(u_int8_t header_id) {
 }
 #endif
 
-std::string vmPort::getString() {
+std::string vmPort::getString() const {
 	return(intToString(port));
 }
 

@@ -51,6 +51,7 @@
 #include "filter_mysql.h"
 #include "charts.h"
 #include "diameter.h"
+#include "ssldata.h"
 
 #ifndef FREEBSD
 #include <malloc.h>
@@ -510,6 +511,7 @@ int Mgmt_packetbuffer_log(Mgmt_params *params);
 int Mgmt_diameter_packets_stack(Mgmt_params *params);
 int Mgmt_aes(Mgmt_params *params);
 int Mgmt_manager_file(Mgmt_params *params);
+int Mgmt_ssl_ipport(Mgmt_params *params);
 
 int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_help,
@@ -624,7 +626,8 @@ int (* MgmtFuncArray[])(Mgmt_params *params) = {
 	Mgmt_packetbuffer_log,
 	Mgmt_diameter_packets_stack,
 	Mgmt_aes,
-	Mgmt_manager_file
+	Mgmt_manager_file,
+	Mgmt_ssl_ipport
 };
 
 struct listening_worker_arg {
@@ -4859,6 +4862,7 @@ int Mgmt_sipports(Mgmt_params *params) {
 	ostringstream outStrSipPorts;
 	extern char *sipportmatrix;
 	outStrSipPorts << cConfigItem_ports::getPortString(sipportmatrix) << ',';
+	ssl_ipport_lock();
 	extern map<vmIPport, string> ssl_ipport;
 	for(map<vmIPport, string>::iterator it = ssl_ipport.begin(); it != ssl_ipport.end(); it++) {
 		outStrSipPorts << it->first.port << ',';
@@ -4867,6 +4871,7 @@ int Mgmt_sipports(Mgmt_params *params) {
 	for(map<vmIPmask_port, string>::iterator it = ssl_netport.begin(); it != ssl_netport.end(); it++) {
 		outStrSipPorts << it->first.port << ',';
 	}
+	ssl_ipport_unlock();
 	outStrSipPorts << endl;
 	string strSipPorts = outStrSipPorts.str();
 	return(params->sendString(&strSipPorts));
@@ -5860,6 +5865,42 @@ int Mgmt_manager_file(Mgmt_params *params) {
 		} else {
 			params->sendString(error + "\n");
 		}
+	}
+	return(0);
+}
+
+int Mgmt_ssl_ipport(Mgmt_params *params) {
+	if (params->task == params->mgmt_task_DoInit) {
+		params->registerCommand("ssl_ipport", "modification of the ssl_ipport parameter (list, set, add, del)", false);
+		return(0);
+	}
+	unsigned command_length = 10;
+	if(strlen(params->buf + command_length) > 1) {
+		if(!strcmp(params->buf + command_length + 1, "list")) {
+			params->sendString(ssl_ipport_list());
+		} else if(!strncmp(params->buf + command_length + 1, "set", 3)) {
+			command_length += 1 + 3;
+			if(strlen(params->buf + command_length) > 1) {
+				bool rslt = ssl_ipport_set(params->buf + command_length + 1);
+				params->sendString(rslt ? "OK\n" : "FAILED\n");
+			}
+		} else if(!strncmp(params->buf + command_length + 1, "add", 3)) {
+			command_length += 1 + 3;
+			if(strlen(params->buf + command_length) > 1) {
+				bool rslt = ssl_ipport_add(params->buf + command_length + 1);
+				params->sendString(rslt ? "OK\n" : "FAILED\n");
+			}
+		} else if(!strncmp(params->buf + command_length + 1, "del", 3)) {
+			command_length += 1 + 3;
+			if(strlen(params->buf + command_length) > 1) {
+				bool rslt = ssl_ipport_del(params->buf + command_length + 1);
+				params->sendString(rslt ? "OK\n" : "FAILED\n");
+			}
+		} else {
+			params->sendString("bad command - commands: list, set, add, del\n");
+		}
+	} else {
+		params->sendString("missing command - commands: list, set, add, del\n");
 	}
 	return(0);
 }

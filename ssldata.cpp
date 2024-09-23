@@ -5,6 +5,7 @@
 #include "sql_db.h"
 #include "ssl_dssl.h"
 #include "websocket.h"
+#include "config_param.h"
 
 #ifdef FREEBSD
 #include <sys/socket.h>
@@ -26,6 +27,8 @@ extern map<vmIPport, string> ssl_ipport;
 extern map<vmIPmask_port, string> ssl_netport;
 extern bool opt_ssl_ipport_reverse_enable;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
+
+static volatile int ssl_ipport_sync = 0;
 
 
 SslData::SslData() {
@@ -564,18 +567,23 @@ bool checkOkSslHeader(u_char *data, u_int32_t datalen) {
 
 
 int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
+			ssl_ipport_unlock();
 			return(1);
 		}
 		if(ssl_ipport.find(vmIPport(sip, sport)) != ssl_ipport.end()) {
+			ssl_ipport_unlock();
 			return(2);
 		}
 		if(opt_ssl_ipport_reverse_enable) {
 			if(ssl_ipport.find(vmIPport(sip, dport)) != ssl_ipport.end()) {
+				ssl_ipport_unlock();
 				return(1);
 			}
 			if(ssl_ipport.find(vmIPport(dip, sport)) != ssl_ipport.end()) {
+				ssl_ipport_unlock();
 				return(2);
 			}
 		}
@@ -585,26 +593,32 @@ int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 			if(dport == iter->first.port) {
 				if(check_ip(dip, iter->first.ip_mask) ||
 				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					ssl_ipport_unlock();
 					return(1);
 				}
 			} else if(sport == iter->first.port) {
 				if(check_ip(sip, iter->first.ip_mask) ||
 				   (opt_ssl_ipport_reverse_enable && check_ip(dip, iter->first.ip_mask))) {
+					ssl_ipport_unlock();
 					return(2);
 				}
 			}
 		}
 	}
+	ssl_ipport_unlock();
 	return(0);
 }
 
 int isSslIpPort_server_side(vmIP sip, vmPort /*sport*/, vmIP dip, vmPort dport) {
+	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
+			ssl_ipport_unlock();
 			return(1);
 		}
 		if(opt_ssl_ipport_reverse_enable) {
 			if(ssl_ipport.find(vmIPport(sip, dport)) != ssl_ipport.end()) {
+				ssl_ipport_unlock();
 				return(1);
 			}
 		}
@@ -614,31 +628,38 @@ int isSslIpPort_server_side(vmIP sip, vmPort /*sport*/, vmIP dip, vmPort dport) 
 			if(dport == iter->first.port) {
 				if(check_ip(dip, iter->first.ip_mask) ||
 				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					ssl_ipport_unlock();
 					return(1);
 				}
 			}
 		}
 	}
+	ssl_ipport_unlock();
 	return(0);
 }
 
 string sslIpPort_get_keyfile(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(dip, dport));
 		if(iter != ssl_ipport.end()) {
+			ssl_ipport_unlock();
 			return(iter->second);
 		}
 		iter = ssl_ipport.find(vmIPport(sip, sport));
 		if(iter != ssl_ipport.end()) {
+			ssl_ipport_unlock();
 			return(iter->second);
 		}
 		if(opt_ssl_ipport_reverse_enable) {
 			iter = ssl_ipport.find(vmIPport(sip, dport));
 			if(iter != ssl_ipport.end()) {
+				ssl_ipport_unlock();
 				return(iter->second);
 			}
 			iter = ssl_ipport.find(vmIPport(dip, sport));
 			if(iter != ssl_ipport.end()) {
+				ssl_ipport_unlock();
 				return(iter->second);
 			}
 		}
@@ -648,15 +669,115 @@ string sslIpPort_get_keyfile(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 			if(dport == iter->first.port) {
 				if(check_ip(dip, iter->first.ip_mask) ||
 				   (opt_ssl_ipport_reverse_enable && check_ip(sip, iter->first.ip_mask))) {
+					ssl_ipport_unlock();
 					return(iter->second);
 				}
 			} else if(sport == iter->first.port) {
 				if(check_ip(sip, iter->first.ip_mask) ||
 				   (opt_ssl_ipport_reverse_enable && check_ip(dip, iter->first.ip_mask))) {
+					ssl_ipport_unlock();
 					return(iter->second);
 				}
 			}
 		}
 	}
+	ssl_ipport_unlock();
 	return("");
+}
+
+void ssl_ipport_lock() {
+	__SYNC_LOCK_USLEEP(ssl_ipport_sync, 10);
+}
+
+void ssl_ipport_unlock() {
+	__SYNC_UNLOCK(ssl_ipport_sync);
+}
+
+string ssl_ipport_list() {
+	string rslt;
+	ssl_ipport_lock();
+	if(ssl_ipport.size()) {
+		for(map<vmIPport, string>::iterator iter = ssl_ipport.begin(); iter != ssl_ipport.end(); iter++) {
+			rslt += iter->first.getString(true);
+			if(!iter->second.empty()) {
+				rslt += " " + iter->second;
+			}
+			rslt += "\n";
+		}
+	}
+	if(ssl_netport.size()) {
+		for(map<vmIPmask_port, string>::iterator iter = ssl_netport.begin(); iter != ssl_netport.end(); iter++) {
+			rslt += iter->first.getString(true);
+			if(!iter->second.empty()) {
+				rslt += " " + iter->second;
+			}
+			rslt += "\n";
+		}
+	}
+	ssl_ipport_unlock();
+	return rslt;
+}
+
+bool ssl_ipport_set(const char *set) {
+	ssl_ipport_lock();
+	ssl_ipport.clear();
+	ssl_netport.clear();
+	ssl_ipport_unlock();
+	return(ssl_ipport_add(set));
+}
+
+bool ssl_ipport_add(const char *add) {
+	unsigned counter_ok = 0;
+	ssl_ipport_lock();
+	vector<string> add_list = split(add, split(",|;|\n", "|"), true);
+	for(unsigned i = 0; i < add_list.size(); i++) {
+		vmIP ip;
+		u_int16_t mask = 0;
+		unsigned port = 0;
+		string str;
+		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str)) {
+			if(ip.isSet() && port > 0) {
+				if(!mask) {
+					ssl_ipport[vmIPport(ip, port)] = str;
+					++counter_ok;
+				} else {
+					ssl_netport[vmIPmask_port(vmIPmask(ip, mask), port)] = str;
+					++counter_ok;
+				}
+			}
+		}
+	}
+	ssl_ipport_unlock();
+	return(counter_ok > 0);
+}
+
+bool ssl_ipport_del(const char *del) {
+	unsigned counter_ok = 0;
+	ssl_ipport_lock();
+	vector<string> add_list = split(del, split(",|;|\n", "|"), true);
+	for(unsigned i = 0; i < add_list.size(); i++) {
+		vmIP ip;
+		u_int16_t mask = 0;
+		unsigned port = 0;
+		string str;
+		if(cConfigItem_net_port_str_map::parse(add_list[i].c_str(), ip, mask, port, str)) {
+			if(ip.isSet() && port > 0) {
+				if(!mask) {
+					vmIPport index(ip, port);
+					if(ssl_ipport.find(index) != ssl_ipport.end()) {
+						ssl_ipport.erase(index);
+						++counter_ok;
+					}
+				} else {
+					vmIPmask_port index(vmIPmask(ip, mask), port);
+					if(ssl_netport.find(index) != ssl_netport.end()) {
+						ssl_netport.erase(index);
+						++counter_ok;
+					}
+				}
+			}
+		}
+	}
+	ssl_ipport_unlock();
+	return(counter_ok > 0);
 }

@@ -985,7 +985,7 @@ struct vmPort {
 		}
 		return(*this);
 	}
-	std::string getString();
+	std::string getString() const;
 	inline bool operator == (const vmPort& other) const {
 		return(this->port == other.port);
 	}
@@ -1116,7 +1116,7 @@ struct vmIPport {
 		return(this->ip > other.ip ||
 		       (this->ip == other.ip && this->port > other.port));
 	}
-	std::string getString(bool ipv6_in_brackets = false) {
+	std::string getString(bool ipv6_in_brackets = false) const {
 		return(ip.getString(ipv6_in_brackets) + ":" + port.getString());
 	}
 	vmIP ip;
@@ -1279,7 +1279,7 @@ struct vmIPmask_port {
 		return(this->ip_mask > other.ip_mask ||
 		       (this->ip_mask == other.ip_mask && this->port > other.port));
 	}
-	std::string getString(bool ipv6_in_brackets = false) {
+	std::string getString(bool ipv6_in_brackets = false) const {
 		return(ip_mask.getString(ipv6_in_brackets) + ":" + port.getString());
 	}
 	vmIPmask ip_mask;

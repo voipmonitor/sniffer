@@ -520,6 +520,7 @@ public:
 	list<string> getValueListStr();
 	string normalizeStringValueForCmp(string value);
 	bool enableMultiValues() { return(true); }
+	static bool parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str);
 protected:
 	bool setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);
 	bool setParamFromValueStr(string value_str, bool enableInitBeforeSet = true, bool enableClearBeforeFirstSet = false);

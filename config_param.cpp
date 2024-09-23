@@ -1790,6 +1790,50 @@ string cConfigItem_net_port_str_map::normalizeStringValueForCmp(string value) {
 	return(value);
 }
 
+bool cConfigItem_net_port_str_map::parse(const char *str_input, vmIP &ip, u_int16_t &mask, unsigned &port, string &str) {
+	ip.clear();
+	mask = 0;
+	port = 0;
+	str.clear();
+	const char *after_ip_str;
+	if(ip.setFromString(str_input, &after_ip_str)) {
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
+		}
+		if(*after_ip_str == '/') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
+			}
+			if(isdigit(*after_ip_str)) {
+				mask = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		if(*after_ip_str == ':') {
+			++after_ip_str;
+			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+				++after_ip_str;
+			}
+			if(isdigit(*after_ip_str)) {
+				port = atoi(after_ip_str);
+				while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
+					++after_ip_str;
+				}
+			}
+		}
+		while(*after_ip_str == ' ' || *after_ip_str == '\t') {
+			++after_ip_str;
+		}
+		if(*after_ip_str) {
+			str = trim_str(after_ip_str);
+		}
+	}
+	return(ip.isSet());
+}
+
 bool cConfigItem_net_port_str_map::setParamFromConfigFile(CSimpleIniA *ini, bool enableInitBeforeSet, bool enableClearBeforeFirstSet) {
 	return(setParamFromValuesStr(getValuesFromConfigFile(ini, enableInitBeforeSet), enableInitBeforeSet, enableClearBeforeFirstSet));
 }
@@ -1814,44 +1858,10 @@ bool cConfigItem_net_port_str_map::setParamFromValuesStr(vector<string> list_val
 	}
 	for(vector<string>::iterator iter = list_values_str.begin(); iter != list_values_str.end(); iter++) {
 		vmIP ip;
-		const char *after_ip_str;
-		if(ip.setFromString(iter->c_str(), &after_ip_str)) {
-			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
-				++after_ip_str;
-			}
-			u_int16_t mask = 0;
-			if(*after_ip_str == '/') {
-				++after_ip_str;
-				while(*after_ip_str == ' ' || *after_ip_str == '\t') {
-					++after_ip_str;
-				}
-				if(isdigit(*after_ip_str)) {
-					mask = atoi(after_ip_str);
-					while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
-						++after_ip_str;
-					}
-				}
-			}
-			unsigned port = 0;
-			if(*after_ip_str == ':') {
-				++after_ip_str;
-				while(*after_ip_str == ' ' || *after_ip_str == '\t') {
-					++after_ip_str;
-				}
-				if(isdigit(*after_ip_str)) {
-					port = atoi(after_ip_str);
-					while(isdigit(*after_ip_str) || *after_ip_str == ' ' || *after_ip_str == '\t') {
-						++after_ip_str;
-					}
-				}
-			}
-			string str;
-			while(*after_ip_str == ' ' || *after_ip_str == '\t') {
-				++after_ip_str;
-			}
-			if(*after_ip_str) {
-				str = trim_str(after_ip_str);
-			}
+		u_int16_t mask = 0;
+		unsigned port = 0;
+		string str;
+		if(parse(iter->c_str(), ip, mask, port, str)) {
 			if(ip.isSet() && port > 0) {
 				if(!ok && enableClearBeforeFirstSet) {
 					doClearBeforeFirstSet();
