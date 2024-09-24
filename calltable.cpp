@@ -324,13 +324,33 @@ sCallField callFields[] = {
 	{ cf_callercodec, "callercodec" },
 	{ cf_calledcodec, "calledcodec" },
 	{ cf_src_mosf1, "src_mosf1" },
+	{ cf_src_mosf1_avg, "src_mosf1_avg" },
+	{ cf_src_mosf1_min, "src_mosf1_min" },
 	{ cf_src_mosf2, "src_mosf2" },
+	{ cf_src_mosf2_avg, "src_mosf2_avg" },
+	{ cf_src_mosf2_min, "src_mosf2_min" },
 	{ cf_src_mosAD, "src_mosAD" },
+	{ cf_src_mosAD_avg, "src_mosAD_avg" },
+	{ cf_src_mosAD_min, "src_mosAD_min" },
 	{ cf_dst_mosf1, "dst_mosf1" },
+	{ cf_dst_mosf1_avg, "dst_mosf1_avg" },
+	{ cf_dst_mosf1_min, "dst_mosf1_min" },
 	{ cf_dst_mosf2, "dst_mosf2" },
+	{ cf_dst_mosf2_avg, "dst_mosf2_avg" },
+	{ cf_dst_mosf2_min, "dst_mosf2_min" },
 	{ cf_dst_mosAD, "dst_mosAD" },
+	{ cf_dst_mosAD_avg, "dst_mosAD_avg" },
+	{ cf_dst_mosAD_min, "dst_mosAD_min" },
 	{ cf_src_jitter, "src_jitter" },
+	{ cf_src_jitter_avg, "src_jitter_avg" },
+	{ cf_src_jitter_max, "src_jitter_max" },
 	{ cf_dst_jitter, "dst_jitter" },
+	{ cf_dst_jitter_avg, "dst_jitter_avg" },
+	{ cf_dst_jitter_max, "dst_jitter_max" },
+	{ cf_src_received, "src_received" },
+	{ cf_dst_received, "dst_received" },
+	{ cf_src_loss_abs, "src_loss_abs" },
+	{ cf_dst_loss_abs, "dst_loss_abs" },
 	{ cf_src_loss, "src_loss" },
 	{ cf_dst_loss, "dst_loss" },
 	{ cf_src_loss_last10sec, "src_loss_last10sec" },
@@ -4808,39 +4828,58 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 			break;
 		}
 	}
+	#if not EXPERIMENTAL_LITE_RTP_MOD
 	if(lastactivecallerrtp) {
 		switch(field) {
 		case cf_src_mosf1:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecallerrtp->last_interval_mosf1);
-			#endif
+			break;
+		case cf_src_mosf1_avg:
+			rfield->set((int)lastactivecallerrtp->mosf1_avg);
+			break;
+		case cf_src_mosf1_min:
+			rfield->set((int)lastactivecallerrtp->mosf1_min);
 			break;
 		case cf_src_mosf2:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecallerrtp->last_interval_mosf2);
-			#endif
+			break;
+		case cf_src_mosf2_avg:
+			rfield->set((int)lastactivecallerrtp->mosf2_avg);
+			break;
+		case cf_src_mosf2_min:
+			rfield->set((int)lastactivecallerrtp->mosf2_min);
 			break;
 		case cf_src_mosAD:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecallerrtp->last_interval_mosAD);
-			#endif
+			break;
+		case cf_src_mosAD_avg:
+			rfield->set((int)lastactivecallerrtp->mosAD_avg);
+			break;
+		case cf_src_mosAD_min:
+			rfield->set((int)lastactivecallerrtp->mosAD_min);
 			break;
 		case cf_src_jitter:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(round(lastactivecallerrtp->jitter));
-			#endif
+			rfield->set(lastactivecallerrtp->jitter);
+			break;
+		case cf_src_jitter_avg:
+			rfield->set((double)lastactivecallerrtp->stats.avgjitter);
+			break;
+		case cf_src_jitter_max:
+			rfield->set((double)lastactivecallerrtp->stats.maxjitter);
+			break;
+		case cf_src_received:
+			rfield->set(lastactivecallerrtp->stats.received);
+			break;
+		case cf_src_loss_abs:
+			rfield->set(lastactivecallerrtp->stats.lost);
 			break;
 		case cf_src_loss:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(lastactivecallerrtp->stats.received + lastactivecallerrtp->stats.lost) {
 				rfield->set((double)lastactivecallerrtp->stats.lost / (lastactivecallerrtp->stats.received + lastactivecallerrtp->stats.lost) * 100.0);
 			}
-			#endif
 			break;
 		case cf_src_loss_last10sec:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecallerrtp->last_stat_loss_perc_mult10);
-			#endif
 			break;
 		default:
 			break;
@@ -4849,41 +4888,60 @@ void Call::getValue(eCallField field, RecordArrayField *rfield) {
 	if(lastactivecalledrtp) {
 		switch(field) {
 		case cf_dst_mosf1:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecalledrtp->last_interval_mosf1);
-			#endif
+			break;
+		case cf_dst_mosf1_avg:
+			rfield->set((int)lastactivecalledrtp->mosf1_avg);
+			break;
+		case cf_dst_mosf1_min:
+			rfield->set((int)lastactivecalledrtp->mosf1_min);
 			break;
 		case cf_dst_mosf2:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecalledrtp->last_interval_mosf2);
-			#endif
+			break;
+		case cf_dst_mosf2_avg:
+			rfield->set((int)lastactivecalledrtp->mosf2_avg);
+			break;
+		case cf_dst_mosf2_min:
+			rfield->set((int)lastactivecalledrtp->mosf2_min);
 			break;
 		case cf_dst_mosAD:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecalledrtp->last_interval_mosAD);
-			#endif
+			break;
+		case cf_dst_mosAD_avg:
+			rfield->set((int)lastactivecalledrtp->mosAD_avg);
+			break;
+		case cf_dst_mosAD_min:
+			rfield->set((int)lastactivecalledrtp->mosAD_min);
 			break;
 		case cf_dst_jitter:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
-			rfield->set(round(lastactivecalledrtp->jitter));
-			#endif
+			rfield->set(lastactivecalledrtp->jitter);
+			break;
+		case cf_dst_jitter_avg:
+			rfield->set((double)lastactivecalledrtp->stats.avgjitter);
+			break;
+		case cf_dst_jitter_max:
+			rfield->set((double)lastactivecalledrtp->stats.maxjitter);
+			break;
+		case cf_dst_received:
+			rfield->set(lastactivecalledrtp->stats.received);
+			break;
+		case cf_dst_loss_abs:
+			rfield->set(lastactivecalledrtp->stats.lost);
 			break;
 		case cf_dst_loss:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			if(lastactivecalledrtp->stats.received + lastactivecalledrtp->stats.lost) {
 				rfield->set((double)lastactivecalledrtp->stats.lost / (lastactivecalledrtp->stats.received + lastactivecalledrtp->stats.lost) * 100.0);
 			}
-			#endif
 			break;
 		case cf_dst_loss_last10sec:
-			#if not EXPERIMENTAL_LITE_RTP_MOD
 			rfield->set(lastactivecalledrtp->last_stat_loss_perc_mult10);
-			#endif
 			break;
 		default:
 			break;
 		}
 	}
+	#endif
 	if(!rfield->isSet()) {
 		switch(field) {
 		case cf_src_mosf1:
