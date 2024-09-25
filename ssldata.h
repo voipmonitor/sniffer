@@ -99,6 +99,7 @@ string ssl_ipport_list();
 bool ssl_ipport_set(const char *set);
 bool ssl_ipport_add(const char *add);
 bool ssl_ipport_del(const char *del);
+void fill_ssl_portmatrix();
 
 
 #endif

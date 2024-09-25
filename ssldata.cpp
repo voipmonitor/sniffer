@@ -28,6 +28,8 @@ extern map<vmIPmask_port, string> ssl_netport;
 extern bool opt_ssl_ipport_reverse_enable;
 extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 
+extern char *ssl_portmatrix;
+
 static volatile int ssl_ipport_sync = 0;
 
 
@@ -567,6 +569,9 @@ bool checkOkSslHeader(u_char *data, u_int32_t datalen) {
 
 
 int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	if(!ssl_portmatrix[sport] && !ssl_portmatrix[dport]) {
+		return(0);
+	}
 	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
@@ -610,6 +615,9 @@ int isSslIpPort(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
 }
 
 int isSslIpPort_server_side(vmIP sip, vmPort /*sport*/, vmIP dip, vmPort dport) {
+	if(!ssl_portmatrix[dport]) {
+		return(0);
+	}
 	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		if(ssl_ipport.find(vmIPport(dip, dport)) != ssl_ipport.end()) {
@@ -639,6 +647,9 @@ int isSslIpPort_server_side(vmIP sip, vmPort /*sport*/, vmIP dip, vmPort dport) 
 }
 
 string sslIpPort_get_keyfile(vmIP sip, vmPort sport, vmIP dip, vmPort dport) {
+	if(!ssl_portmatrix[sport] && !ssl_portmatrix[dport]) {
+		return("");
+	}
 	ssl_ipport_lock();
 	if(ssl_ipport.size()) {
 		map<vmIPport, string>::iterator iter = ssl_ipport.find(vmIPport(dip, dport));
@@ -748,6 +759,9 @@ bool ssl_ipport_add(const char *add) {
 		}
 	}
 	ssl_ipport_unlock();
+	if(counter_ok > 0) {
+		fill_ssl_portmatrix();
+	}
 	return(counter_ok > 0);
 }
 
@@ -779,5 +793,27 @@ bool ssl_ipport_del(const char *del) {
 		}
 	}
 	ssl_ipport_unlock();
+	if(counter_ok > 0) {
+		fill_ssl_portmatrix();
+	}
 	return(counter_ok > 0);
+}
+
+void fill_ssl_portmatrix() {
+	map<unsigned, bool> ssl_ports;
+	ssl_ipport_lock();
+	if(ssl_ipport.size()) {
+		for(map<vmIPport, string>::iterator iter = ssl_ipport.begin(); iter != ssl_ipport.end(); iter++) {
+			ssl_ports[iter->first.port] = true;
+		}
+	}
+	if(ssl_netport.size()) {
+		for(map<vmIPmask_port, string>::iterator iter = ssl_netport.begin(); iter != ssl_netport.end(); iter++) {
+			ssl_ports[iter->first.port] = true;
+		}
+	}
+	for(unsigned port = 0; port < 65536; port++) {
+		ssl_portmatrix[port] = ssl_ports.find(port) != ssl_ports.end() && ssl_ports[port];
+	}
+	ssl_ipport_unlock();
 }

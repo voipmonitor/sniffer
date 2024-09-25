@@ -1206,6 +1206,7 @@ char *ss7portmatrix;
 char *ss7_rudp_portmatrix;
 char *diameter_tcp_portmatrix;
 char *diameter_udp_portmatrix;
+char *ssl_portmatrix;
 vector<vmIP> httpip;
 vector<vmIPmask> httpnet;
 vector<vmIP> webrtcip;
@@ -3563,6 +3564,8 @@ int main(int argc, char *argv[]) {
 	memset(diameter_tcp_portmatrix, 0, 65537);
 	diameter_udp_portmatrix = new FILE_LINE(0) char[65537];
 	memset(diameter_udp_portmatrix, 0, 65537);
+	ssl_portmatrix = new FILE_LINE(0) char[65537];
+	memset(ssl_portmatrix, 0, 65537);
 	ssl_client_random_portmatrix = new FILE_LINE(0) char[65537];
 	memset(ssl_client_random_portmatrix, 0, 65537);
 
@@ -4424,6 +4427,7 @@ int main(int argc, char *argv[]) {
 	delete [] ss7_rudp_portmatrix;
 	delete [] diameter_tcp_portmatrix;
 	delete [] diameter_udp_portmatrix;
+	delete [] ssl_portmatrix;
 	delete [] ssl_client_random_portmatrix;
 	
 	delete regfailedcache;
@@ -9014,6 +9018,8 @@ void set_context_config() {
 		opt_message_check_duplicity_callid_in_next_pass_insert = true;
 		opt_ssl_store_sessions = 2;
 	}
+	
+	fill_ssl_portmatrix();
 	
 	#ifndef HAVE_OPENSSL101
 	if(opt_enable_ssl == 1) {
