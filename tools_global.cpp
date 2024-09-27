@@ -4,6 +4,7 @@
 #include <sstream>
 #include <fstream>
 #include <syslog.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/resource.h>
@@ -555,7 +556,7 @@ int getNumaNodeForPciDevice(const char *pci_device) {
 	}
 	int numa_node = -1;
 	string path = string("/sys/bus/pci/devices/") + pci_device + "/numa_node";
-	ifstream numa_node_file(path, ios::binary);
+	ifstream numa_node_file(path.c_str(), ios::binary);
 	if(numa_node_file.is_open()) {
 		numa_node_file >> numa_node;
 		numa_node_file.close();
@@ -608,7 +609,7 @@ bool cHugePagesTools::setHugePagesNumber(unsigned number, bool gtIsOk, int numa_
 	bool rslt = false;
 	dropCachesAndCompactMemory();
 	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
-	ofstream file_stream(config_file, ios::binary);
+	ofstream file_stream(config_file.c_str(), ios::binary);
 	if(file_stream.is_open()) {
 		file_stream << number;
 		file_stream.close();
@@ -625,7 +626,7 @@ bool cHugePagesTools::setHugePagesNumber(unsigned number, bool gtIsOk, int numa_
 int64_t cHugePagesTools::getHugePagesNumber(int numa_node, bool overcommit, unsigned page_size_kb) {
 	int64_t rslt = -1;
 	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
-	ifstream file_stream(config_file, ios::binary);
+	ifstream file_stream(config_file.c_str(), ios::binary);
 	if(file_stream.is_open()) {
 		file_stream >> rslt;
 		file_stream.close();
