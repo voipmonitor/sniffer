@@ -2161,6 +2161,7 @@ void cGlobalDpdkTools::getPlannedMemoryConsumptionByNumaNodes(map<unsigned, unsi
 }
 
 void cGlobalDpdkTools::getCountInterfacesByNumaNodes(map<unsigned, unsigned> *ci) {
+	extern vector<string> opt_dpdk_vdev;
 	vector<string> ports;
 	getPorts(&ports);
 	if(ports.size() > 0) {
