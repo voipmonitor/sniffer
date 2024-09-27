@@ -312,6 +312,19 @@ string implode(list<u_int64_t> *items, const char *sep) {
 	return(rslt);
 }
 
+string implode(list<unsigned> *items, const char *sep) {
+	string rslt;
+	unsigned i = 0;
+	for(list<unsigned>::iterator iter = items->begin(); iter != items->end(); iter++) {
+		if(i) {
+			rslt += sep;
+		}
+		rslt += intToString(*iter);
+		++i;
+	}
+	return(rslt);
+}
+
 int getUpdDifTime(struct timeval *before)
 {
 	int dif = getDifTime(before);

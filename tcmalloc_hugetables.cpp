@@ -193,64 +193,26 @@ void* HugetlbSysAllocator::AllocInternal(size_t size, size_t* actual_size,
 }
 
 bool HugetlbSysAllocator::Initialize() {
- 
-	char path[PATH_MAX];
-	strcpy(path, "/dev/hugepages/voipmonitor");
-	strcat(path, ".XXXXXX");
-
-	int hugetlb_fd = mkstemp(path);
-	if (hugetlb_fd == -1) {
-		syslog(LOG_WARNING, "hugepages error: unable to create memfs_malloc_path");
-		return false;
+	if(!cHugePagesTools::initHugePages(&hugetlb_fd_, &big_page_size_)) {
+		return(false);
 	}
-
-	// Cleanup memory on process exit
-	if (unlink(path) == -1) {
-		syslog(LOG_WARNING, "hugepages error: failed unlinking memfs_malloc_path '%s' error: '%s'", path, strerror(errno));
-		return false;
-	}
-
-	// Use fstatfs to figure out the default page size for memfs
-	struct statfs sfs;
-	if (fstatfs(hugetlb_fd, &sfs) == -1) {
-		syslog(LOG_WARNING, "hugepages error: failed fstatfs of memfs_malloc_path '%s'", strerror(errno));
-		return false;
-	}
-	int64_t page_size = sfs.f_bsize;
-
-	hugetlb_fd_ = hugetlb_fd;
-	big_page_size_ = page_size;
 	failed_ = false;
-	
+	bool rslt = true;
 	if(!opt_hugepages_anon) {
-		for(int type_max = 0; type_max < 2; type_max++) {
-			int need_hugepages_max = ((u_int64_t)(type_max == 0 ? opt_hugepages_max : opt_hugepages_overcommit_max) * 1024ull * 1024 / big_page_size_);
-			int act_hugepages_max = 0;
-			const char *hugepages_config_max = type_max == 0 ? "/proc/sys/vm/nr_hugepages" : "/proc/sys/vm/nr_overcommit_hugepages";
-			for(int pass = 0; pass < 2; pass++) {
-				FILE *f = fopen(hugepages_config_max, pass == 0 ? "r" : "w");
-				if (f) {
-					if(pass == 0) {
-						fscanf(f, "%i", &act_hugepages_max);
-					} else {
-						system("echo 3 > /proc/sys/vm/drop_caches");
-						system("echo 1 > /proc/sys/vm/compact_memory");
-						fprintf(f, "%i", (int)need_hugepages_max);
-					}
-					fclose(f);
-					if(pass == 0 && need_hugepages_max <= act_hugepages_max) {
-						break;
-					}
-				} else {
-					syslog(LOG_WARNING, "hugepages error: failed open for %s: '%s' error: '%s'", 
-					       pass == 0 ? "read" : "write", hugepages_config_max, strerror(errno));
-					return false;
-				}
+		if(opt_hugepages_max > 0) {
+			unsigned hugepages_number = (u_int64_t)opt_hugepages_max * 1024ull * 1024 / big_page_size_;
+			if(!cHugePagesTools::setHugePagesNumber(hugepages_number)) {
+				rslt = false;
+			}
+		}
+		if(opt_hugepages_overcommit_max > 0) {
+			unsigned hugepages_number = (u_int64_t)opt_hugepages_overcommit_max * 1024ull * 1024 / big_page_size_;
+			if(!cHugePagesTools::setHugePagesNumber(hugepages_number, true, -1, true)) {
+				rslt = false;
 			}
 		}
 	}
- 
-	return true;
+	return(rslt);
 }
 
 bool HugetlbSysAllocator_init() {
@@ -287,27 +249,12 @@ u_int64_t HugetlbSysAllocator_base() {
 
 #if defined(PROT_READ) && defined(PROT_WRITE) && defined(MAP_PRIVATE) && defined(MAP_ANONYMOUS) && defined(MADV_HUGEPAGE)
 
-bool init_hugepages(int *fd, int64_t *page_size) {
-	char path[PATH_MAX] = "/dev/hugepages/XXXXXX";
-	strcat(path, ".XXXXXX");
-	int _fd = mkstemp(path);
-	if(_fd == -1) {
-		syslog(LOG_WARNING, "hugepages error: unable to create memfs_malloc_path");
-		return(false);
+bool init_hugepages(int *fd, u_int64_t *page_size) {
+	bool rslt = cHugePagesTools::initHugePages(fd, page_size);
+	if(rslt) {
+		syslog(LOG_WARNING, "hugepages initialize: OK");
 	}
-	if(unlink(path) == -1) {
-		syslog(LOG_WARNING, "hugepages error: failed unlinking memfs_malloc_path '%s' error: '%s'", path, strerror(errno));
-		return(false);
-	}
-	struct statfs sfs;
-	if(fstatfs(_fd, &sfs) == -1) {
-		syslog(LOG_WARNING, "hugepages error: failed fstatfs of memfs_malloc_path '%s'", strerror(errno));
-		return(false);
-	}
-	*fd = _fd;
-	*page_size = sfs.f_bsize;
-	syslog(LOG_WARNING, "hugepages initialize: OK");
-	return(true);
+	return(rslt);
 }
 
 void *mmap_hugepage(int mmap_fd, long int mmap_offset, bool use_ftruncate,

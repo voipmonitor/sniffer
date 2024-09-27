@@ -93,4 +93,23 @@ void init_dpdk();
 void term_dpdk();
 
 
+class cGlobalDpdkTools {
+public:
+	static void getPlannedMemoryConsumptionByNumaNodes(map<unsigned, unsigned> *pmc);
+	static void getCountInterfacesByNumaNodes(map<unsigned, unsigned> *ci);
+	static void getPorts(vector<string> *ports);
+	static bool setHugePages();
+	static bool setThreadsAffinity(string *read, string *worker, string *worker2);
+	static bool setThreadsAffinity();
+	static void getThreadsAffinity(string *read, string *worker, string *worker2);
+	static void clearThreadsAffinity();
+private:
+	static unsigned get_planned_memory_consumption_mb(string *log = NULL);
+private:
+	static string dpdk_read_thread_lcore;
+	static string dpdk_worker_thread_lcore;
+	static string dpdk_worker2_thread_lcore;
+};
+
+
 #endif //DPDK_H

@@ -3307,7 +3307,7 @@ private:
 	bool initHugepages();
 private:
 	int hugepage_fd;
-	int64_t hugepage_size;
+	u_int64_t hugepage_size;
 };
 
 
@@ -4080,6 +4080,13 @@ int main(int argc, char *argv[]) {
 		pthread_set_affinity(main_thread, &cpu_cores, NULL);
 	}
 	
+	if(opt_use_dpdk) {
+		cGlobalDpdkTools::clearThreadsAffinity();
+		if(opt_dpdk_read_thread_lcore.empty() && opt_dpdk_worker_thread_lcore.empty() && opt_dpdk_worker2_thread_lcore.empty()) {
+			cGlobalDpdkTools::setThreadsAffinity();
+		}
+	}
+	
 	if(!opt_coredump_filter.empty()) {
 		SimpleBuffer content;
 		string error;
@@ -4637,6 +4644,11 @@ int main_init_read() {
 	_parse_packet_global_process_packet.setStdParse();
 	
 	if(opt_use_dpdk) {
+		cGlobalDpdkTools::setHugePages();
+		cGlobalDpdkTools::clearThreadsAffinity();
+		if(opt_dpdk_read_thread_lcore.empty() && opt_dpdk_worker_thread_lcore.empty() && opt_dpdk_worker2_thread_lcore.empty()) {
+			cGlobalDpdkTools::setThreadsAffinity();
+		}
 		init_dpdk();
 	}
 

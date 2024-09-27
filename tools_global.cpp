@@ -2,10 +2,12 @@
 #include <json.h>
 #include <limits.h>
 #include <sstream>
+#include <fstream>
 #include <syslog.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/resource.h>
+#include <sys/statfs.h>
 #include <unicode/utf8.h>
 #include <unicode/ustring.h>
 
@@ -404,6 +406,38 @@ int cCpuCoreInfo::getHT_index(int cpu) {
 	return(-1);
 }
 
+int cCpuCoreInfo::getFreeCpu(int node, bool no_ht, bool set_use) {
+	for(map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.begin(); iter != map_cpu_core_info.end(); iter++) {
+		if((used.find(iter->first) == used.end() || !used[iter->first]) &&
+		   iter->second.Node == node &&
+		   (!no_ht || getHT_index(iter->first) == 0)) {
+			if(set_use) {
+				used[iter->first] = true;
+			}
+			return(iter->first);
+		}
+	}
+	return(-1);
+}
+
+void cCpuCoreInfo::setUseCpu(int cpu) {
+	used[cpu] = true;
+}
+
+void cCpuCoreInfo::clearUsed() {
+	used.clear();
+}
+
+int cCpuCoreInfo::getCountNode() {
+	int node_max = 0;
+	for(map<int, sCpuCoreInfo>::iterator iter = map_cpu_core_info.begin(); iter != map_cpu_core_info.end(); iter++) {
+		if(iter->second.Node > node_max) {
+			node_max = iter->second.Node;
+		}
+	}
+	return(node_max + 1);
+}
+
 
 int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice) {
 	int main_pid = getpid();
@@ -512,6 +546,142 @@ int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bo
 	return(only_check ? 
 		conflict_processes_count == 0 :
 		conflict_processes_count == 0 || conflict_processes_ok_set_count == conflict_processes_count);
+}
+
+int getNumaNodeForPciDevice(const char *pci_device) {
+	cCpuCoreInfo coreInfo;
+	if(coreInfo.getCountNode() <= 1) {
+		return(0);
+	}
+	int numa_node = -1;
+	string path = string("/sys/bus/pci/devices/") + pci_device + "/numa_node";
+	ifstream numa_node_file(path, ios::binary);
+	if(numa_node_file.is_open()) {
+		numa_node_file >> numa_node;
+		numa_node_file.close();
+	}
+	return(-1);
+}
+
+bool cHugePagesTools::initHugePages(int *hugetlb_fd, u_int64_t *page_size) {
+	char path[PATH_MAX];
+	strcpy(path, "/dev/hugepages/voipmonitor");
+	strcat(path, ".XXXXXX");
+	int fd = mkstemp(path);
+	if(fd == -1) {
+		syslog(LOG_WARNING, "hugepages error: unable to create memfs_malloc_path");
+		return(false);
+	}
+	if(unlink(path) == -1) {
+		syslog(LOG_WARNING, "hugepages error: failed unlinking memfs_malloc_path '%s' error: '%s'", path, strerror(errno));
+		return(false);
+	}
+	if(hugetlb_fd) {
+		*hugetlb_fd = fd;
+	}
+	if(page_size) {
+		struct statfs sfs;
+		if(fstatfs(fd, &sfs) == -1) {
+			syslog(LOG_WARNING, "hugepages error: failed fstatfs of memfs_malloc_path '%s'", strerror(errno));
+			return(false);
+		}
+		*page_size = sfs.f_bsize;
+	}
+	return(true);
+}
+
+bool cHugePagesTools::setHugePagesNumber(map<unsigned, unsigned> number_by_numa_node, bool gtIsOk, unsigned page_size_kb) {
+	bool rslt = true;
+	for(map<unsigned, unsigned>::iterator iter = number_by_numa_node.begin(); iter != number_by_numa_node.end(); iter++) {
+		if(!setHugePagesNumber(iter->second, gtIsOk, iter->first, false, page_size_kb)) {
+			rslt = false;
+		}
+	}
+	return(rslt);
+}
+
+bool cHugePagesTools::setHugePagesNumber(unsigned number, bool gtIsOk, int numa_node, bool overcommit, unsigned page_size_kb) {
+	unsigned _number = getHugePagesNumber(numa_node, overcommit, page_size_kb);
+	if(gtIsOk ? _number >= number : _number == number) {
+		return(true);
+	}
+	bool rslt = false;
+	dropCachesAndCompactMemory();
+	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
+	ofstream file_stream(config_file, ios::binary);
+	if(file_stream.is_open()) {
+		file_stream << number;
+		file_stream.close();
+		if(!file_stream.fail()) {
+			rslt = getHugePagesNumber(numa_node, overcommit, page_size_kb) >= number;
+		}
+	}
+	if(!rslt) {
+		syslog(LOG_WARNING, "hugepages error: failed set hugepages number (%u) to file %s", number, config_file.c_str());
+	}
+	return(rslt);
+}
+
+int64_t cHugePagesTools::getHugePagesNumber(int numa_node, bool overcommit, unsigned page_size_kb) {
+	int64_t rslt = -1;
+	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
+	ifstream file_stream(config_file, ios::binary);
+	if(file_stream.is_open()) {
+		file_stream >> rslt;
+		file_stream.close();
+	}
+	if(rslt < 0) {
+		syslog(LOG_WARNING, "hugepages error: failed get hugepages number from file %s", config_file.c_str());
+	}
+	return(rslt);
+}
+
+string cHugePagesTools::getHugePagesConfigFile(int numa_node, bool overcommit, unsigned page_size_kb) {
+	if(numa_node >= 0 && !page_size_kb) {
+		page_size_kb = getHugePageSize_kB();
+	}
+	return(numa_node < 0 ?
+		(!overcommit ?
+		  "/proc/sys/vm/nr_hugepages" :
+		  "/proc/sys/vm/nr_overcommit_hugepages") :
+		"/sys/devices/system/node/node" + intToString(numa_node) + "/hugepages/hugepages-" + intToString(page_size_kb) + "kB/nr_hugepages");
+}
+
+unsigned cHugePagesTools::getHugePageSize_kB() {
+	ifstream meminfo_stream("/proc/meminfo");
+	if(!meminfo_stream.is_open()) {
+		return(0);
+	}
+	unsigned rslt = 0;
+	string line;
+	while(getline(meminfo_stream, line) && !rslt) {
+		if(strcasestr(line.c_str(), "Hugepagesize:")) {
+			string::size_type pos = line.find(':');
+			if(pos != string::npos) {
+				while(pos < line.size() - 1 && !isdigit(line[pos])) {
+					++pos;
+				}
+				if(pos < line.size() - 1 && isdigit(line[pos])) {
+					rslt = atoi(line.c_str() + pos);
+				}
+			}
+		}
+	}
+	meminfo_stream.close();
+	return(rslt);
+}
+
+void cHugePagesTools::dropCaches() {
+	system("echo 3 > /proc/sys/vm/drop_caches");
+}
+
+void cHugePagesTools::compactMemory() {
+	system("echo 1 > /proc/sys/vm/compact_memory");
+}
+
+void cHugePagesTools::dropCachesAndCompactMemory() {
+	dropCaches();
+	compactMemory();
 }
 
 

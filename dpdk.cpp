@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "pstat.h"
+#include "tools.h"
 #include "tools_global.h"
 #include "sync.h"
 
@@ -147,14 +148,14 @@ public:
 	cDpdkTools();
 	void init();
 	void setLCoresMap();
-	int getFreeLcore(eTypeLcore type);
+	int getFreeLcore(eTypeLcore type, int numa_node);
 	void setUseLcore(int lcore);
 	void setFreeLcore(int lcore);
 	string getAllCores(bool without_main, bool detect_ht);
 	string getCoresMap();
 	int getMainThreadLcore();
 private:
-	int getFreeLcore(map<int, bool> &main_map);
+	int getFreeLcore(map<int, bool> &main_map, int numa_node);
 	bool lcoreIsUsed(int lcore);
 	bool lcoreIsInAny(int lcore);
 private:
@@ -281,7 +282,6 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	int ret = PCAP_ERROR;
 	uint16_t nb_ports = 0;
 	uint16_t portid = DPDK_PORTID_MAX;
-	unsigned nb_mbufs = DPDK_NB_MBUFS;
 	struct rte_eth_rxconf rxq_conf;
 	struct rte_eth_txconf txq_conf;
 	// port_conf.rxmode.split_hdr_size = 0; // obsolete
@@ -316,11 +316,15 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			      config->device);
 		return(PCAP_ERROR);
 	}
-	ret = rte_eth_dev_get_port_by_name(config->device, &portid);
-	dpdk_eval_res(ret, NULL, 2, error,
-		      "dpdk_activate(%s) - rte_eth_dev_get_port_by_name(%s)",
-		      config->device,
-		      config->device);
+	if(opt_dpdk_vdev.size()) {
+		ret = rte_eth_dev_get_port_by_name(config->device, &portid);
+		dpdk_eval_res(ret, NULL, 2, error,
+			      "dpdk_activate(%s) - rte_eth_dev_get_port_by_name(%s)",
+			      config->device,
+			      config->device);
+	} else {
+		ret = -1;
+	}
 	if(ret < 0) {
 		portid = portid_by_device(config->device);
 		if(portid == DPDK_PORTID_MAX) {
@@ -331,13 +335,19 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 			return(PCAP_ERROR_NO_SUCH_DEVICE);
 		}
 	}
+	int numa_node = rte_eth_dev_socket_id(portid);
+	dpdk_eval_res(numa_node < 0 ? rte_errno : 0, NULL, 2, error,
+		      "dpdk_activate(%s) - rte_eth_dev_socket_id(%i) - rslt (numa_node): %i",
+		      config->device,
+		      portid,
+		      numa_node);
 	dpdk->portid = portid;
 	dpdk->portid_set = true;
 	if(config->snapshot <= 0 || config->snapshot > MAXIMUM_SNAPLEN) {
 		config->snapshot = MAXIMUM_SNAPLEN;
 	}
 	// create the mbuf pool
-	dpdk->pktmbuf_pool = rte_pktmbuf_pool_create((string(MBUF_POOL_NAME) + "_" + config->device).c_str(), nb_mbufs,
+	dpdk->pktmbuf_pool = rte_pktmbuf_pool_create((string(MBUF_POOL_NAME) + "_" + config->device).c_str(), DPDK_NB_MBUFS,
 						     MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE,
 						     rte_socket_id());
 	dpdk_eval_res(dpdk->pktmbuf_pool == NULL ? rte_errno : 0, NULL, 2, error,
@@ -451,7 +461,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	#endif
 	dpdk->config = *config;
 	if(config->type_worker_thread == _dpdk_twt_rte) {
-		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_worker);
+		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_worker, numa_node);
 		dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for worker thread" : NULL, 2, error,
 			      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_worker)",
 			      config->device);
@@ -471,7 +481,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	#if WORKER2_THREAD_SUPPORT
 	if(config->type_worker2_thread == _dpdk_tw2t_rte) {
-		int lcore_id = dpdk->tools->getFreeLcore(cDpdkTools::_tlc_worker2);
+		int lcore_id = dpdk->tools->getFreeLcore(cDpdkTools::_tlc_worker2, numa_node);
 		dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for worker2 thread" : NULL, 2, error,
 			      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_worker2)",
 			      config->device);
@@ -491,7 +501,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	#endif
 	if(config->type_read_thread == _dpdk_trt_rte) {
-		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_read);
+		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_read, numa_node);
 		dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for read thread" : NULL, 2, error,
 			      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_read)",
 			      config->device);
@@ -1653,15 +1663,21 @@ void cDpdkTools::init() {
 	read_lcores.clear();
 	worker_lcores.clear();
 	worker2_lcores.clear();
-	vector<string> read_lcores_str = split(opt_dpdk_read_thread_lcore.c_str(), ",", true);
+	string dpdk_read_thread_lcore = opt_dpdk_read_thread_lcore;
+	string dpdk_worker_thread_lcore = opt_dpdk_worker_thread_lcore;
+	string dpdk_worker2_thread_lcore = opt_dpdk_worker2_thread_lcore;
+	if(opt_dpdk_read_thread_lcore.empty() && opt_dpdk_worker_thread_lcore.empty() && opt_dpdk_worker2_thread_lcore.empty()) {
+		cGlobalDpdkTools::getThreadsAffinity(&dpdk_read_thread_lcore, &dpdk_worker_thread_lcore, &dpdk_worker2_thread_lcore);
+	}
+	vector<string> read_lcores_str = split(dpdk_read_thread_lcore.c_str(), ",", true);
 	for(unsigned i = 0; i < read_lcores_str.size(); i++) {
 		read_lcores[atoi(read_lcores_str[i].c_str())] = true;
 	}
-	vector<string> worker_lcores_str = split(opt_dpdk_worker_thread_lcore.c_str(), ",", true);
+	vector<string> worker_lcores_str = split(dpdk_worker_thread_lcore.c_str(), ",", true);
 	for(unsigned i = 0; i < worker_lcores_str.size(); i++) {
 		worker_lcores[atoi(worker_lcores_str[i].c_str())] = true;
 	}
-	vector<string> worker2_lcores_str = split(opt_dpdk_worker2_thread_lcore.c_str(), ",", true);
+	vector<string> worker2_lcores_str = split(dpdk_worker2_thread_lcore.c_str(), ",", true);
 	for(unsigned i = 0; i < worker2_lcores_str.size(); i++) {
 		worker2_lcores[atoi(worker2_lcores_str[i].c_str())] = true;
 	}
@@ -1772,18 +1788,18 @@ void cDpdkTools::setLCoresMap() {
 	}
 }
 
-int cDpdkTools::getFreeLcore(eTypeLcore type) {
+int cDpdkTools::getFreeLcore(eTypeLcore type, int numa_node) {
 	__SYNC_LOCK(_sync_lcore);
 	int lcore_id = -1;
 	switch(type) {
 	case _tlc_read:
-		lcore_id = getFreeLcore(read_lcores);
+		lcore_id = getFreeLcore(read_lcores, numa_node);
 		break;
 	case _tlc_worker:
-		lcore_id = getFreeLcore(worker_lcores);
+		lcore_id = getFreeLcore(worker_lcores, numa_node);
 		break;
 	case _tlc_worker2:
-		lcore_id = getFreeLcore(worker2_lcores);
+		lcore_id = getFreeLcore(worker2_lcores, numa_node);
 		break;
 	}
 	if(lcore_id == -1) {
@@ -1881,13 +1897,24 @@ int cDpdkTools::getMainThreadLcore() {
 	return(main_thread_lcore >= 0 ? main_thread_lcore  : opt_dpdk_main_thread_lcore);
 }
 
-int cDpdkTools::getFreeLcore(map<int, bool> &main_map) {
+int cDpdkTools::getFreeLcore(map<int, bool> &main_map, int numa_node) {
+	bool check_numa_node = numa_node >= 0 && opt_dpdk_cpu_cores_map.empty();
 	int main_lcore_id = rte_get_main_lcore();
-	for(map<int, bool>::iterator iter = main_map.begin(); iter != main_map.end(); iter++) {
-		if(rte_lcore_is_enabled(iter->first) && 
-		   iter->first != main_lcore_id && 
-		   !lcoreIsUsed(iter->first)) {
-			return(iter->first);
+	for(int pass = 0; pass < (check_numa_node ? 2 : 1); pass++) {
+		for(map<int, bool>::iterator iter = main_map.begin(); iter != main_map.end(); iter++) {
+			if(rte_lcore_is_enabled(iter->first) && 
+			   iter->first != main_lcore_id && 
+			   !lcoreIsUsed(iter->first)) {
+				if(pass == 0 && check_numa_node) {
+					cCpuCoreInfo coreInfo;
+					cCpuCoreInfo::sCpuCoreInfo *cpu = coreInfo.get(iter->first);
+					if(cpu && cpu->Node == numa_node) {
+						return(iter->first);
+					}
+				} else {
+					return(iter->first);
+				}
+			}
 		}
 	}
 	return(-1);
@@ -2041,6 +2068,10 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	return(-1);
 }
 
+unsigned get_planned_memory_consumption_mb(string *log) {
+	return(0);
+}
+
 int dpdk_do_pre_init(std::string *error) {
 	if(error) {
 		*error = "DPDK ERROR - dpdk is not supported in your build";
@@ -2114,3 +2145,180 @@ void term_dpdk() {
 
 
 #endif //HAVE_LIBDPDK
+
+
+void cGlobalDpdkTools::getPlannedMemoryConsumptionByNumaNodes(map<unsigned, unsigned> *pmc) {
+	map<unsigned, unsigned> ci;
+	getCountInterfacesByNumaNodes(&ci);
+	if(ci.size()) {
+		string mc_log;
+		unsigned mc = get_planned_memory_consumption_mb(&mc_log);
+		syslog(LOG_INFO, "DPDK - planned memory consumption per interface: %s", mc_log.c_str());
+		for(map<unsigned, unsigned>::iterator iter = ci.begin(); iter != ci.end(); iter++) {
+			(*pmc)[iter->first] = mc * iter->second;
+		}
+	}
+}
+
+void cGlobalDpdkTools::getCountInterfacesByNumaNodes(map<unsigned, unsigned> *ci) {
+	vector<string> ports;
+	getPorts(&ports);
+	if(ports.size() > 0) {
+		for(unsigned i = 0; i < ports.size(); i++) {
+			int numa_node = getNumaNodeForPciDevice(ports[i].c_str());
+			if(numa_node >= 0) {
+				(*ci)[numa_node]++;
+			} else {
+				(*ci)[0]++;
+			}
+		}
+	} else if(opt_dpdk_vdev.size()) {
+		(*ci)[0] = opt_dpdk_vdev.size();
+	}
+}
+
+void cGlobalDpdkTools::getPorts(vector<string> *ports) {
+	extern string opt_dpdk_pci_device;
+	*ports = split(opt_dpdk_pci_device.c_str(), split(",|;| |\t|\r|\n", "|"), true);
+}
+
+bool cGlobalDpdkTools::setHugePages() {
+	bool rslt = true;
+	map<unsigned, unsigned> pmc;
+	getPlannedMemoryConsumptionByNumaNodes(&pmc);
+	if(pmc.size()) {
+		unsigned hugePageSize_kB = cHugePagesTools::getHugePageSize_kB();
+		if(!hugePageSize_kB) {
+			return(false);
+		}
+		for(map<unsigned, unsigned>::iterator iter = pmc.begin(); iter != pmc.end(); iter++) {
+			unsigned hp_number = iter->second * 1024 / hugePageSize_kB * 1.5;
+			if(!cHugePagesTools::setHugePagesNumber(hp_number, true, iter->first, false,hugePageSize_kB)) {
+				rslt = false;
+			}
+		}
+	}
+	return(rslt);
+}
+
+bool cGlobalDpdkTools::setThreadsAffinity(string *read, string *worker, string *worker2) {
+	map<unsigned, unsigned> ci;
+	getCountInterfacesByNumaNodes(&ci);
+	if(!ci.size()) {
+		return(true);
+	}
+	extern int opt_dpdk_read_thread;
+	extern int opt_dpdk_worker_thread;
+	extern int opt_dpdk_worker2_thread;
+	list<unsigned> read_affinity;
+	list<unsigned> worker_affinity;
+	list<unsigned> worker2_affinity;
+	cCpuCoreInfo coreInfo;
+	bool rslt = true;
+	for(map<unsigned, unsigned>::iterator iter = ci.begin(); iter != ci.end() && rslt; iter++) {
+		if(opt_dpdk_read_thread == 2) {
+			for(unsigned i = 0; i< iter->second && rslt; i++) {
+				int cpu = coreInfo.getFreeCpu(iter->first, true);
+				if(cpu >= 0) {
+					read_affinity.push_back(cpu);
+				} else {
+					rslt = false;
+				}
+			}
+		}
+		if(opt_dpdk_worker_thread == 2) {
+			for(unsigned i = 0; i< iter->second && rslt; i++) {
+				int cpu = coreInfo.getFreeCpu(iter->first, true);
+				if(cpu >= 0) {
+					worker_affinity.push_back(cpu);
+				} else {
+					rslt = false;
+				}
+			}
+		}
+		if(opt_dpdk_worker2_thread == 2) {
+			for(unsigned i = 0; i< iter->second && rslt; i++) {
+				int cpu = coreInfo.getFreeCpu(iter->first, true);
+				if(cpu >= 0) {
+					worker2_affinity.push_back(cpu);
+				} else {
+					rslt = false;
+				}
+			}
+		}
+	}
+	if(rslt) {
+		*read = implode(&read_affinity, ",");
+		*worker = implode(&worker_affinity, ",");
+		*worker2 = implode(&worker2_affinity, ",");
+	}
+	return(rslt);
+}
+
+bool cGlobalDpdkTools::setThreadsAffinity() {
+	return(setThreadsAffinity(&dpdk_read_thread_lcore, &dpdk_worker_thread_lcore, &dpdk_worker2_thread_lcore));
+}
+
+void cGlobalDpdkTools::getThreadsAffinity(string *read, string *worker, string *worker2) {
+	*read = dpdk_read_thread_lcore;
+	*worker = dpdk_worker_thread_lcore;
+	*worker2 = dpdk_worker2_thread_lcore;
+}
+
+void cGlobalDpdkTools::clearThreadsAffinity() {
+	dpdk_read_thread_lcore.clear();
+	dpdk_worker_thread_lcore.clear();
+	dpdk_worker2_thread_lcore.clear();
+}
+
+unsigned cGlobalDpdkTools::get_planned_memory_consumption_mb(string *log) {
+	u_int64_t memory_consumption_sum = 0;
+#if HAVE_LIBDPDK
+	// mbuf pool
+	u_int64_t memory_consumption_mbuf_pool = ((u_int64_t)(DPDK_NB_MBUFS)) * (RTE_MBUF_DEFAULT_BUF_SIZE + 128);
+	memory_consumption_sum += memory_consumption_mbuf_pool;
+	if(log) {
+		*log += "mbuf pool: " + intToString(memory_consumption_mbuf_pool / 1024 / 1024) + "MB; ";
+	}
+	// rx & tx queue
+	extern int opt_dpdk_nb_rx;
+	extern int opt_dpdk_nb_tx;
+	u_int64_t memory_consumption_rx_tx_queue = (opt_dpdk_nb_rx + opt_dpdk_nb_tx) * 64;
+	memory_consumption_sum += memory_consumption_rx_tx_queue;
+	if(log) {
+		*log += "rx & tx queue: " + intToString(memory_consumption_rx_tx_queue / 1024 / 1024) + "MB; ";
+	}
+	// tx buffer
+	u_int64_t memory_consumption_tx_buffer = RTE_ETH_TX_BUFFER_SIZE(MAX_PKT_BURST);
+	memory_consumption_sum += memory_consumption_tx_buffer;
+	if(log) {
+		*log += "tx buffer: " + intToString(memory_consumption_tx_buffer / 1024 / 1024) + "MB; ";
+	}
+	// ring buffer for worker thread
+	extern int opt_dpdk_worker_thread;
+	if(opt_dpdk_worker_thread == 2) {
+		u_int64_t memory_consumption_ring_buffer_worker_thread = RING_SIZE * 8;
+		memory_consumption_sum += memory_consumption_ring_buffer_worker_thread;
+		if(log) {
+			*log += "ring buffer for worker thread: " + intToString(memory_consumption_ring_buffer_worker_thread / 1024 / 1024) + "MB; ";
+		}
+	}
+	#if WORKER2_THREAD_SUPPORT
+	// ring buffer for worker2 thread
+	extern int opt_dpdk_worker2_thread;
+	if(opt_dpdk_worker2_thread == 2) {
+		u_int64_t memory_consumption_ring_buffer_worker2_thread = RING_SIZE * 8;
+		memory_consumption_sum += memory_consumption_ring_buffer_worker2_thread;
+		if(log) {
+			*log += "ring buffer for worker2 thread: " + intToString(memory_consumption_ring_buffer_worker2_thread / 1024 / 1024) + "MB; ";
+		}
+	}
+	#endif
+	*log += "SUM: " + intToString(memory_consumption_sum / 1024 / 1024) + "MB";
+#endif
+	return(memory_consumption_sum / 1024 / 1024);
+}
+
+string cGlobalDpdkTools::dpdk_read_thread_lcore;
+string cGlobalDpdkTools::dpdk_worker_thread_lcore;
+string cGlobalDpdkTools::dpdk_worker2_thread_lcore;

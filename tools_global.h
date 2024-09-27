@@ -331,12 +331,32 @@ public:
 	sCpuCoreInfo *get(int cpu);
 	bool getHT_cpus(int cpu, vector<int> *ht_cpus);
 	int getHT_index(int cpu);
+	int getFreeCpu(int node, bool no_ht, bool set_use = true);
+	void setUseCpu(int cpu);
+	void clearUsed();
+	int getCountNode();
 private:
 	map<int, sCpuCoreInfo> map_cpu_core_info;
+	map<int, bool> used;
 };
 
 
 int setAffinityForOtherProcesses(vector<int> *excluded_cpus, bool only_check, bool log, const char *log_prefix, bool isolcpus_advice);
+int getNumaNodeForPciDevice(const char *pci_device);
+
+
+class cHugePagesTools {
+public:
+	static bool initHugePages(int *hugetlb_fd, u_int64_t *page_size);
+	static bool setHugePagesNumber(map<unsigned, unsigned> number_by_numa_node, bool gtIsOk = true, unsigned page_size_kb = 0);
+	static bool setHugePagesNumber(unsigned number, bool gtIsOk = true, int numa_node = -1, bool overcommit = false, unsigned page_size_kb = 0);
+	static int64_t getHugePagesNumber(int numa_node = -1, bool overcommit = false, unsigned page_size_kb = 0);
+	static string getHugePagesConfigFile(int numa_node = -1, bool overcommit = false, unsigned page_size_kb = 0);
+	static unsigned getHugePageSize_kB();
+	static void dropCaches();
+	static void compactMemory();
+	static void dropCachesAndCompactMemory();
+};
 
 
 char *strnstr(const char *haystack, const char *needle, size_t len);
