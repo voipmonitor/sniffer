@@ -63,6 +63,7 @@ static void ws_set_params();
 static bool ws_set_param(string param, string value);
 static void ws_set_dissectors();
 static bool ws_set_disector(const char *table, unsigned port, const char *new_dissector);
+static void ws_local_data_init();
 
 static bool ws_init_ok;
 static epan_t *ws_epan;
@@ -91,6 +92,7 @@ void ws_epan_init() {
 		ws_epan = ws_epan_new(NULL);
 		ws_set_params();
 		ws_set_dissectors();
+		ws_local_data_init();
 	}
 }
 
@@ -199,6 +201,12 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 	FILE *file = fmemopen(buff, buff_size, "w");
 	if(file) {
 		output_fields_t* output_fields  = NULL;
+		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
+		json_dumper json_dump;
+		memset(&json_dump, 0, sizeof(json_dump));
+		json_dump.output_file = file;
+		write_json_proto_tree(output_fields, print_dissections_expanded, false, edt, NULL, proto_node_group_children_by_unique, &json_dump);
+		#else
 		gchar **protocolfilter = NULL;
 		#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 30000
 		json_dumper json_dump;
@@ -219,6 +227,7 @@ void ws_gener_json(epan_dissect_t *edt, string *rslt) {
 			pf_flags protocolfilter_flags = PF_NONE;
 			write_json_proto_tree(output_fields, &print_args, protocolfilter, protocolfilter_flags, edt, file);
 			#endif
+		#endif
 		#endif
 		fclose(file);
 		*rslt = buff;
@@ -306,6 +315,27 @@ void ws_dissect_packet(pcap_pkthdr* header, const u_char* packet, int dlt, strin
 
 
 // -----------------------------------------------------------------------------
+
+
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
+struct _e_addr_resolve {
+	gboolean mac_name;
+	gboolean network_name;
+	gboolean transport_name;
+	gboolean dns_pkt_addr_resolution;
+	gboolean use_external_net_name_resolver;
+	gboolean vlan_name;
+	gboolean ss7pc_name;
+	gboolean maxmind_geoip;
+};
+#endif
+
+void ws_local_data_init() {
+	#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
+	extern _e_addr_resolve gbl_resolv_flags;
+	gbl_resolv_flags.maxmind_geoip = 0;
+	#endif
+}
 
 
 // epan/tvbuff-int.h
