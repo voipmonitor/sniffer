@@ -9,6 +9,14 @@
 
 #define WS_NORETURN 
 
+#if defined(__GNUC__) && (__GNUC__ >= 5)
+#if defined(LIBWIRESHARK_VERSION) and LIBWIRESHARK_VERSION >= 40000
+	#if not __has_include(<wireshark/epan/dfilter/dfilter-loc.h>)
+	#error "The header file 'epan/dfilter/dfilter-loc.h' is not available. Use the header from the wireshark source."
+	#endif
+#endif
+#endif
+
 #include <stdlib.h>
 #include <iostream>
 #include <ostream>
