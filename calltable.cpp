@@ -4166,13 +4166,18 @@ Call::convertRawToWav(void **transcribe_call) {
 				u_char *wav_raw;
 				u_int32_t wav_raw_samples;
 				wav_raw = wavMix->getMixBuffer(&wav_raw_samples);
-				spectrogram[i] = new FILE_LINE(0) cPng;
-				extern int opt_audiograph_spectrogram_height;
-				create_spectrogram_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2, 
-							    ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i]);
-				create_waveform_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2,
-							 ms_per_pixel, &peaks[i], &peaks_count[i]);
-				wav_duration_s[i] = (double)wav_raw_samples / maxsamplerate;
+				if(wav_raw && wav_raw_samples) {
+					spectrogram[i] = new FILE_LINE(0) cPng;
+					extern int opt_audiograph_spectrogram_height;
+					if(!create_spectrogram_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2, 
+									ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i])) {
+						delete spectrogram[i];
+						spectrogram[i] = NULL;
+					}
+					create_waveform_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2,
+								 ms_per_pixel, &peaks[i], &peaks_count[i]);
+					wav_duration_s[i] = (double)wav_raw_samples / maxsamplerate;
+				}
 			}
 			delete wavMix;
 			wavMix = NULL;
@@ -4180,9 +4185,12 @@ Call::convertRawToWav(void **transcribe_call) {
 			size_t rawSamples = 0;
 			spectrogram[i] = new FILE_LINE(0) cPng;
 			extern int opt_audiograph_spectrogram_height;
-			create_spectrogram_from_raw(wav, samplerate, 2,
-						    ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i],
-						    false);
+			if(!create_spectrogram_from_raw(wav, samplerate, 2,
+							ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i],
+							false)) {
+				delete spectrogram[i];
+				spectrogram[i] = NULL;
+			}
 			create_waveform_from_raw(wav, samplerate, 2,
 						 ms_per_pixel, &peaks[i], &peaks_count[i],
 						 false, &rawSamples);
@@ -4233,7 +4241,7 @@ Call::convertRawToWav(void **transcribe_call) {
 				delete [] peaks[i];
 			}
 		}
-		if(complete.size() > 0) {
+		if(complete.size() > 0 && !sverb.test_fftw) {
 			extern int opt_pcap_dump_bufflength;
 			extern int opt_pcap_dump_asyncwrite;
 			extern FileZipHandler::eTypeCompress opt_gzip_audiograph;
@@ -12587,7 +12595,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 		lock_calls_audioqueue();
 	}
 	if(audio_queue.size() && 
-	   audio_queue.size() > audioQueueThreads.size() * 2 && 
+	   (audio_queue.size() > audioQueueThreads.size() * 2 || sverb.test_fftw) && 
 	   audioQueueThreads.size() < audioQueueThreadsMax) {
 		sAudioQueueThread *audioQueueThread = new FILE_LINE(1010) sAudioQueueThread();
 		audioQueueThreads.push_back(audioQueueThread);
@@ -12608,7 +12616,9 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		Call *call = NULL;
 		if(calltable->audio_queue.size()) {
 			call = calltable->audio_queue.front();
-			calltable->audio_queue.pop_front();
+			if(!sverb.test_fftw) {
+				calltable->audio_queue.pop_front();
+			}
 		}
 		calltable->unlock_calls_audioqueue();
 		if(call) {
@@ -12621,14 +12631,16 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 			} else {
 				call->convertRawToWav();
 			}
-			if(useChartsCacheOrCdrStatInProcessCall()) {
-				calltable->lock_calls_charts_cache_queue();
-				calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
-				calltable->unlock_calls_charts_cache_queue();
-			} else {
-				calltable->lock_calls_deletequeue();
-				calltable->calls_deletequeue.push_back(call);
-				calltable->unlock_calls_deletequeue();
+			if(!sverb.test_fftw) {
+				if(useChartsCacheOrCdrStatInProcessCall()) {
+					calltable->lock_calls_charts_cache_queue();
+					calltable->calls_charts_cache_queue.push_back(sChartsCallData(sChartsCallData::_call, call));
+					calltable->unlock_calls_charts_cache_queue();
+				} else {
+					calltable->lock_calls_deletequeue();
+					calltable->calls_deletequeue.push_back(call);
+					calltable->unlock_calls_deletequeue();
+				}
 			}
 			last_use_at = getTimeS();
 		} else {

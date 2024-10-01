@@ -54,6 +54,7 @@ struct sVerbose {
 	unsigned long int ssrc;
 	int jitter;
 	int noaudiounlink;
+	int test_fftw;
 	int capture_filter;
 	int pcap_stat_period;
 	int pcap_stat_to_stdout;

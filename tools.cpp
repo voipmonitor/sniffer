@@ -7117,6 +7117,8 @@ bool create_spectrogram_from_raw(const char *rawInput,
 
 static void fftw_multithread_init();
 
+static volatile int _fftw_planner_sync = 0;
+
 bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
 				 unsigned msPerPixel, unsigned height, cPng *png) {
 #ifdef HAVE_LIBFFT
@@ -7136,9 +7138,6 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 	}
 	size_t stepSamples = sampleRate * msPerPixel / 1000;
 	size_t width = rawSamples / stepSamples;
-	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 	cPng::pixel palette[256];
 	set_spectrogram_palette(palette);
 	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
@@ -7147,6 +7146,11 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 	}
 	png->setWidthHeight(width, height);
+	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+	__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
+	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+	__SYNC_UNLOCK(_fftw_planner_sync);
 	for(size_t x = 0; x < width; x++) {
 		for(size_t i = 0; i < fftSize; i++) {
 			u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
@@ -7159,10 +7163,13 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 			png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
 		}
 	} 
-	delete [] multipliers;
+	__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
 	fftw_destroy_plan(fftw_pl);
+	fftw_cleanup_threads();
+	__SYNC_UNLOCK(_fftw_planner_sync);
 	fftw_free(fftw_in); 
 	fftw_free(fftw_out);
+	delete [] multipliers;
 	return(true);
 #else
 	return(false);
@@ -7216,9 +7223,6 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 		}
 		size_t stepSamples = sampleRate * msPerPixel / 1000;
 		size_t width = rawSamples / stepSamples;
-		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 		cPng::pixel palette[256];
 		set_spectrogram_palette(palette);
 		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
@@ -7227,6 +7231,11 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 		}
 		png->setWidthHeight(width, height);
+		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+		__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
+		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+		__SYNC_UNLOCK(_fftw_planner_sync);
 		for(size_t x = 0; x < width; x++) {
 			fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
 			u_char inputBuff[fftSize * bytesPerSample];
@@ -7245,10 +7254,13 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 				break;
 			}
 		} 
-		delete [] multipliers;
+		__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
 		fftw_destroy_plan(fftw_pl);
+		fftw_cleanup_threads();
+		__SYNC_UNLOCK(_fftw_planner_sync);
 		fftw_free(fftw_in); 
 		fftw_free(fftw_out);
+		delete [] multipliers;
 		fclose(inputRawHandle);
 		if(rawSamplesOutput) {
 			*rawSamplesOutput = rawSamples;

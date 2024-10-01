@@ -2331,8 +2331,15 @@ void *storing_cdr( void */*dummy*/ ) {
 				counter = 0;
 				for(list<Call*>::iterator iter_call = calls_for_store.begin(); iter_call != calls_for_store.end(); iter_call++) {
 					if(useConvertToWav && counter < indikConvertToWavSize && indikConvertToWav[counter]) {
-						calltable->audio_queue.push_back(*iter_call);
-						calltable->processCallsInAudioQueue(false);
+						if(!sverb.test_fftw) {
+							calltable->audio_queue.push_back(*iter_call);
+							calltable->processCallsInAudioQueue(false);
+						} else {
+							for(int x = 0; x < 10; x++) {
+								calltable->audio_queue.push_back(*iter_call);
+								calltable->processCallsInAudioQueue(false);
+							}
+						}
 					} else {
 						if(opt_destroy_calls_in_storing_cdr) {
 							Call *call = *iter_call;
@@ -7493,19 +7500,19 @@ void cConfig::evSetConfigItem(cConfigItem *configItem) {
 		switch(configItem->getValueInt()) {
 		case 0:
 			opt_save_audiograph = 0;
-			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+			if(!CONFIG.isSet("pcap_dump_zip_audiograph")) {
 				opt_gzip_audiograph = FileZipHandler::compress_na;
 			}
 			break;
 		case 1:
 			opt_save_audiograph = 1;
-			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+			if(!CONFIG.isSet("pcap_dump_zip_audiograph")) {
 				opt_gzip_audiograph = FileZipHandler::compress_na;
 			}
 			break;
 		case 2:
 			opt_save_audiograph = 1;
-			if(!CONFIG.isSet("pcap_dump_zip_graph")) {
+			if(!CONFIG.isSet("pcap_dump_zip_audiograph")) {
 				opt_gzip_audiograph = FileZipHandler::gzip;
 			}
 			break;
@@ -7869,6 +7876,7 @@ void parse_verb_param(string verbParam) {
 	else if(verbParam == "jitter_nf1")			opt_jitterbuffer_f1 = 0;
 	else if(verbParam == "jitter_nf2")			opt_jitterbuffer_f2 = 0;
 	else if(verbParam == "noaudiounlink")			sverb.noaudiounlink = 1;
+	else if(verbParam == "test_fftw")			{ sverb.test_fftw = 1; sverb.noaudiounlink = 1; }
 	else if(verbParam == "capture_filter")			sverb.capture_filter = 1;
 	else if(verbParam.substr(0, 17) == "pcap_stat_period=")	sverb.pcap_stat_period = atoi(verbParam.c_str() + 17);
 	else if(verbParam == "pcap_stat_to_stdout")		sverb.pcap_stat_to_stdout = 1;
