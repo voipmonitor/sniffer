@@ -1,3 +1,14 @@
+2024.10.1 02.10.2024
+====================
+- fix crash when there are multiple c threads spawn (broken since 2024.08
+- fix crashes in fftw library [VS-1639]
+- fix compatibility with wireshark >= 4.2.3
+- dpdk: detection of binding of interfaces and numa nodes, automatic creation of necessary hugepages, automatic assignment of rte threads to cpu cores
+- add manager command for modify ssl_ipport - lock optimisations [VG-2866]
+- adding values for displaying mos/jitter/loss items to active calls in gui [VG-2871]
+- add manager command for modify ssl_ipport list,set,add,del which allows to change ssl_ipport without sniffer restart [VG-2866] 
+
+
 2024.09.4 20.9.2024
 ===================
 - set usleep_minimal to 50us when vmware is detected (lowers CPU usage signifficantly) 
