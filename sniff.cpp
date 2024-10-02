@@ -11177,7 +11177,8 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		if(!packetS->is_register()) {
 			if(opt_t2_boost && preProcessPacketCallX_state == PreProcessPacket::callx_find &&
 			   preProcessPacketCallFindX[0]->isActiveOutThread()) {
-				push_to_thread = packetS->get_callid_sipextx_index();
+				preProcessPacketCallFindX[packetS->get_callid_sipextx_index()]->push_packet(packetS);
+				return;
 			} else {
 				this->process_findCall(&packetS);
 				this->process_createCall(&packetS);
