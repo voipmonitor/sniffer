@@ -1469,7 +1469,7 @@ void test() {
 		call->type_base = INVITE;
 		call->force_spool_path = opt_test_arg;
 		sverb.noaudiounlink = true;
-		call->convertRawToWav(NULL);
+		call->convertRawToWav(NULL, 0);
 		}
 		break;
 	case _param_find_country_for_number:
