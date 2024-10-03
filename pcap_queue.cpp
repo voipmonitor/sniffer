@@ -1595,7 +1595,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		calltable->lock_calls_audioqueue();
 		size_t audioQueueSize = calltable->audio_queue.size();
 		if(audioQueueSize) {
-			size_t audioQueueThreads = calltable->getCountAudioQueueThreads();
+			size_t audioQueueThreads = calltable->getCountActiveAudioQueueThreads(false);
 			outStr << " audio[" << audioQueueSize << "/" << audioQueueThreads <<"]";
 		}
 		calltable->unlock_calls_audioqueue();

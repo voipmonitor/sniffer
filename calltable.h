@@ -188,6 +188,15 @@ enum eCallBitFlag {
 #define CDR_PCAP_DUMP_ERROR_CAPLEN	(1 << 21)
 #define CDR_RTP_DUPL_SEQ		(1 << 22)
 
+#define CDR_SAVE_FLAGS			(1 << 23)
+#define CDR_SAVE_SIP_PCAP		(1 << 24)
+#define CDR_SAVE_RTP_PCAP		(1 << 25)
+#define CDR_SAVE_RTP_PAYLOAD_PCAP	(1 << 26)
+#define CDR_SAVE_RTCP_PCAP		(1 << 27)
+#define CDR_SAVE_RTP_GRAPH		(1 << 28)
+#define CDR_SAVE_AUDIO			(1 << 29)
+#define CDR_SAVE_AUDIOGRAPH		(1 << 30)
+
 #define CDR_RTP_STREAM_IN_MULTIPLE_CALLS	(1 << 0)
 #define CDR_RTP_STREAM_IS_AB			(1 << 1)
 #define CDR_RTP_STREAM_IS_CALLER		(1 << 2)
@@ -1945,7 +1954,7 @@ public:
 	 * @brief convert raw files to one WAV
 	 *
 	*/
-	int convertRawToWav(void **transcribe_call = NULL);
+	int convertRawToWav(void **transcribe_call, int thread_index);
 	
 	void selectRtpAB();
  
@@ -2988,6 +2997,11 @@ public:
 	#if CALL_DEBUG_RTP
 	volatile int8_t debug_rtp;
 	#endif
+	bool save_sip_pcap : 1;
+	bool save_rtp_pcap : 1;
+	bool save_rtp_payload_pcap : 1;
+	bool save_rtcp_pcap : 1;
+	bool save_rtp_graph : 1;
 private:
 	SqlDb_row cdr;
 	SqlDb_row cdr_next;
@@ -3214,12 +3228,14 @@ struct sChartsCallData {
 class Calltable {
 private:
 	struct sAudioQueueThread {
-		sAudioQueueThread() {
+		sAudioQueueThread(int thread_index) {
 			thread_handle = 0;
 			thread_id = 0;
+			this->thread_index = thread_index;
 		}
 		pthread_t thread_handle;
 		int thread_id;
+		int thread_index;
 	};
 	enum eHashModifyOper {
 		hmo_add,
@@ -3966,9 +3982,7 @@ public:
 	
 	void processCallsInAudioQueue(bool lock = true);
 	static void *processAudioQueueThread(void *);
-	size_t getCountAudioQueueThreads() {
-		return(audioQueueThreads.size());
-	}
+	size_t getCountActiveAudioQueueThreads(bool lock = true);
 	void setAudioQueueTerminating() {
 		audioQueueTerminating = 1;
 	}
@@ -4055,7 +4069,7 @@ private:
 	volatile int _sync_lock_process_ss7_listmap;
 	volatile int _sync_lock_process_ss7_queue;
 	
-	list<sAudioQueueThread*> audioQueueThreads;
+	vector<sAudioQueueThread*> audioQueueThreads;
 	unsigned int audioQueueThreadsMax;
 	int audioQueueTerminating;
 	

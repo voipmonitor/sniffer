@@ -105,6 +105,7 @@ struct sll2_header {
 enum e_packet_type {
 	_t_packet_sip = 1,
 	_t_packet_rtp,
+	_t_packet_rtp_payload,
 	_t_packet_rtcp,
 	_t_packet_dtls,
 	_t_packet_mrcp,

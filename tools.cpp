@@ -7086,7 +7086,8 @@ bool create_waveform_from_raw(const char *rawInput, unsigned sampleRate, unsigne
 
 bool create_spectrogram_from_raw(const char *rawInput,
 				 size_t sampleRate, size_t msPerPixel, size_t height, unsigned channels,
-				 const char spectrogramOutput[][1024]) {
+				 const char spectrogramOutput[][1024],
+				 int thread_index) {
 #ifdef HAVE_LIBFFT
 	unsigned bytesPerSample = 2;
 	size_t rawSamples = 0;
@@ -7096,7 +7097,8 @@ bool create_spectrogram_from_raw(const char *rawInput,
 		for(unsigned ch = 0; ch < channels; ch++) {
 			cPng png;
 			if(!create_spectrogram_from_raw((u_char*)raw[ch], rawSamples, sampleRate, bytesPerSample,
-							msPerPixel, height, &png)) {
+							msPerPixel, height, &png,
+							thread_index)) {
 				break;
 			}
 			rsltWrite = png.write(spectrogramOutput[ch]);
@@ -7115,58 +7117,159 @@ bool create_spectrogram_from_raw(const char *rawInput,
 #endif //HAVE_LIBFFT
 }
 
-static void fftw_multithread_init();
-
-static volatile int _fftw_planner_sync = 0;
-
-bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
-				 unsigned msPerPixel, unsigned height, cPng *png) {
-#ifdef HAVE_LIBFFT
-	if(rawSamples < 1) {
-		return(false);
-	}
-	fftw_multithread_init();
+struct s_fftw_thread_data {
+	unsigned height;
 	size_t fftSize;
+	#ifdef HAVE_LIBFFT
+	double *fftw_in;
+	fftw_complex *fftw_out;
+	fftw_plan fftw_pl;
+	#endif
+	void init(unsigned height);
+	void term();
+};
+
+void s_fftw_thread_data::init(unsigned height) {
+	#ifdef HAVE_LIBFFT
 	if(height) {
 		fftSize = height * 2;
 	} else {
 		fftSize = 128;
 		height = fftSize / 2;
 	}
+	this->height = height;
+	fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+	fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+	fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+	#endif
+}
+
+void s_fftw_thread_data::term() {
+	#ifdef HAVE_LIBFFT
+	fftw_destroy_plan(fftw_pl);
+	fftw_free(fftw_in); 
+	fftw_free(fftw_out);
+	#endif
+}
+
+static s_fftw_thread_data *fftw_thread_data = NULL;
+static unsigned fftw_thread_data_size = 0;
+static volatile int fftw_init = 0;
+static volatile int fftw_lock_init_sync = 0;
+static volatile int fftw_planner_sync = 0;
+
+static void fftw_multithread_init() {
+	extern bool is_set_gui_params();
+	if(is_read_from_file_simple() || is_set_gui_params()) {
+		return;
+	}
+	__SYNC_LOCK_USLEEP(fftw_lock_init_sync, 50);
+	if(!fftw_init) {
+		extern Calltable *calltable;
+		unsigned max_audio_threads = calltable->getAudioQueueThreadsMax();
+		if(calltable && max_audio_threads > 1) {
+			#ifdef HAVE_LIBFFT
+			fftw_init_threads();
+			fftw_plan_with_nthreads(max_audio_threads);
+			extern bool opt_fftw_multithread_mode;
+			if(opt_fftw_multithread_mode) {
+				fftw_thread_data = new FILE_LINE(0) s_fftw_thread_data[max_audio_threads];
+				for(unsigned i = 0; i < max_audio_threads; i++) {
+					extern int opt_audiograph_spectrogram_height;
+					fftw_thread_data[i].init(opt_audiograph_spectrogram_height);
+				}
+				fftw_thread_data_size = max_audio_threads;
+			} else {
+				fftw_thread_data = NULL;
+				fftw_thread_data_size = 0;
+			}
+			#endif
+		}
+		__SYNC_SET(fftw_init);
+	}
+	__SYNC_UNLOCK(fftw_lock_init_sync);
+}
+
+void fftw_multithread_term() {
+	#ifdef HAVE_LIBFFT
+	if(fftw_thread_data) {
+		for(unsigned i = 0; i < fftw_thread_data_size; i++) {
+			fftw_thread_data[i].term();
+		}
+		delete [] fftw_thread_data;
+	}
+	fftw_thread_data_size = 0;
+	fftw_cleanup_threads();
+	#endif
+	fftw_init = 0;
+}
+
+bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
+				 unsigned msPerPixel, unsigned height, cPng *png,
+				 int thread_index) {
+#ifdef HAVE_LIBFFT
+	if(rawSamples < 1) {
+		return(false);
+	}
+	fftw_multithread_init();
+	cPng::pixel palette[256];
+	set_spectrogram_palette(palette);
+	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
 	if(!msPerPixel) {
 		msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
 	}
 	size_t stepSamples = sampleRate * msPerPixel / 1000;
 	size_t width = rawSamples / stepSamples;
-	cPng::pixel palette[256];
-	set_spectrogram_palette(palette);
-	size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+	size_t fftSize;
+	double *fftw_in;
+	fftw_complex *fftw_out;
+	fftw_plan *fftw_pl, _fftw_pl;
+	if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
+		height = fftw_thread_data[thread_index].height;
+		fftSize = fftw_thread_data[thread_index].fftSize;
+		fftw_in = fftw_thread_data[thread_index].fftw_in;
+		fftw_out = fftw_thread_data[thread_index].fftw_out;
+		fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+	} else {
+		if(height) {
+			fftSize = height * 2;
+		} else {
+			fftSize = 128;
+			height = fftSize / 2;
+		}
+		fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+		fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+		__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
+		_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+		fftw_pl = &_fftw_pl;
+	}
 	double *multipliers = new FILE_LINE(0) double[fftSize];
 	for(size_t i = 0; i < fftSize; i++) {
 		multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 	}
 	png->setWidthHeight(width, height);
-	double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-	fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-	__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
-	fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 	for(size_t x = 0; x < width; x++) {
+		if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+			break;
+		}
 		for(size_t i = 0; i < fftSize; i++) {
 			u_char *raw_p = raw + (x * stepSamples + i) * bytesPerSample;
 			fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
 		}
-		fftw_execute(fftw_pl);
+		fftw_execute(*fftw_pl);
 		for(size_t i = 0; i < height; i++) {
 			double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
 			out = log(max(1., out));
 			png->setPixel(x, height - (i + 1), palette[(int)min((int)(out / 13.86 * palette_size), (int)palette_size - 1)]);
 		}
-	} 
-	fftw_destroy_plan(fftw_pl);
-	fftw_cleanup_threads();
-	__SYNC_UNLOCK(_fftw_planner_sync);
-	fftw_free(fftw_in); 
-	fftw_free(fftw_out);
+	}
+	if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
+		fftw_destroy_plan(*fftw_pl);
+		fftw_cleanup_threads();
+		__SYNC_UNLOCK(fftw_planner_sync);
+		fftw_free(fftw_in); 
+		fftw_free(fftw_out);
+	}
 	delete [] multipliers;
 	return(true);
 #else
@@ -7176,6 +7279,7 @@ bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sample
 
 bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
 				 unsigned msPerPixel, unsigned height, cPng *png,
+				 int thread_index,
 				 bool loadFullRawToMemory, size_t *rawSamplesOutput) {
 	if(rawSamplesOutput) {
 		*rawSamplesOutput = 0;
@@ -7188,7 +7292,8 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 			return(false);
 		}
 		bool rslt = create_spectrogram_from_raw(raw, rawSamples, sampleRate, bytesPerSample,
-							msPerPixel, height, png);
+							msPerPixel, height, png,
+							thread_index);
 		delete [] raw;
 		if(rawSamplesOutput) {
 			*rawSamplesOutput = rawSamples;
@@ -7209,31 +7314,46 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 			return(false);
 		}
 		fftw_multithread_init();
-		size_t fftSize;
-		if(height) {
-			fftSize = height * 2;
-		} else {
-			fftSize = 128;
-			height = fftSize / 2;
-		}
+		cPng::pixel palette[256];
+		set_spectrogram_palette(palette);
+		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
 		if(!msPerPixel) {
 			msPerPixel = get_audiograph_ms_per_pixel(rawSamples, sampleRate);
 		}
 		size_t stepSamples = sampleRate * msPerPixel / 1000;
 		size_t width = rawSamples / stepSamples;
-		cPng::pixel palette[256];
-		set_spectrogram_palette(palette);
-		size_t palette_size = sizeof(palette) / sizeof(cPng::pixel);
+		size_t fftSize;
+		double *fftw_in;
+		fftw_complex *fftw_out;
+		fftw_plan *fftw_pl, _fftw_pl;
+		if(fftw_thread_data && thread_index >= 0 && thread_index < (int)fftw_thread_data_size) {
+			height = fftw_thread_data[thread_index].height;
+			fftSize = fftw_thread_data[thread_index].fftSize;
+			fftw_in = fftw_thread_data[thread_index].fftw_in;
+			fftw_out = fftw_thread_data[thread_index].fftw_out;
+			fftw_pl = &fftw_thread_data[thread_index].fftw_pl;
+		} else {
+			if(height) {
+				fftSize = height * 2;
+			} else {
+				fftSize = 128;
+				height = fftSize / 2;
+			}
+			fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
+			fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
+			__SYNC_LOCK_USLEEP(fftw_planner_sync, 20);
+			_fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
+			fftw_pl = &_fftw_pl;
+		}
 		double *multipliers = new FILE_LINE(0) double[fftSize];
 		for(size_t i = 0; i < fftSize; i++) {
 			multipliers[i] = 0.5 * (1 - cos(2. * M_PI * i / (fftSize - 1)));
 		}
 		png->setWidthHeight(width, height);
-		double *fftw_in = (double*)fftw_malloc(sizeof(double) * fftSize);
-		fftw_complex *fftw_out = (fftw_complex*)fftw_malloc(sizeof(fftw_complex) * fftSize);
-		__SYNC_LOCK_USLEEP(_fftw_planner_sync, 20);
-		fftw_plan fftw_pl = fftw_plan_dft_r2c_1d(fftSize, fftw_in, fftw_out, FFTW_ESTIMATE);
 		for(size_t x = 0; x < width; x++) {
+			if((x * stepSamples + (fftSize - 1)) >= rawSamples) {
+				break;
+			}
 			fseek(inputRawHandle, x * stepSamples * bytesPerSample, SEEK_SET);
 			u_char inputBuff[fftSize * bytesPerSample];
 			if(fread(inputBuff, 1, sizeof(inputBuff), inputRawHandle) == fftSize * bytesPerSample) {
@@ -7241,7 +7361,7 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 					u_char *raw_p = inputBuff + i * bytesPerSample;
 					fftw_in[i] = (bytesPerSample == 1 ? *(int8_t*)raw_p : *(int16_t*)raw_p) * multipliers[i];
 				}
-				fftw_execute(fftw_pl);
+				fftw_execute(*fftw_pl);
 				for(size_t i = 0; i < height; i++) {
 					double out = sqrt(fftw_out[i][0]*fftw_out[i][0] + fftw_out[i][1]*fftw_out[i][1]);
 					out = log(max(1., out));
@@ -7251,11 +7371,13 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 				break;
 			}
 		}
-		fftw_destroy_plan(fftw_pl);
-		fftw_cleanup_threads();
-		__SYNC_UNLOCK(_fftw_planner_sync);
-		fftw_free(fftw_in); 
-		fftw_free(fftw_out);
+		if(!(thread_index >= 0 && thread_index < (int)fftw_thread_data_size)) {
+			fftw_destroy_plan(*fftw_pl);
+			fftw_cleanup_threads();
+			__SYNC_UNLOCK(fftw_planner_sync);
+			fftw_free(fftw_in); 
+			fftw_free(fftw_out);
+		}
 		delete [] multipliers;
 		fclose(inputRawHandle);
 		if(rawSamplesOutput) {
@@ -7266,27 +7388,6 @@ bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsi
 #else
 	return(false);
 #endif //HAVE_LIBFFT
-}
-
-void fftw_multithread_init() {
-	extern bool is_set_gui_params();
-	if(is_read_from_file_simple() || is_set_gui_params()) {
-		return;
-	}
-	static volatile int fftw_init = 0;
-	static volatile int fftw_lock = 0;
-	__SYNC_LOCK_USLEEP(fftw_lock, 50);
-	if(!fftw_init) {
-		extern Calltable *calltable;
-		if(calltable && calltable->getAudioQueueThreadsMax() > 1) {
-			#ifdef HAVE_LIBFFT
-			fftw_init_threads();
-			fftw_plan_with_nthreads(calltable->getAudioQueueThreadsMax());
-			#endif
-		}
-		__SYNC_SET(fftw_init);
-	}
-	__SYNC_UNLOCK(fftw_lock);
 }
 
 void set_spectrogram_palette(cPng::pixel palette[]) {

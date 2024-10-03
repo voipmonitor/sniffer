@@ -458,6 +458,7 @@ RTP::save_mos_graph(bool delimiter) {
 
 	if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
 		this->graph.write((char*)&graph_mos, 4);
+		owner->save_rtp_graph = true;
 	}
 
 	u_int64_t new_mos_time_ms = TIME_US_TO_MS(last_packet_time_us - first_packet_time_us);
@@ -2544,11 +2545,13 @@ RTP::update_stats() {
 					return;
 				}
 
-				uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
-				this->graph.write((char*)&graph_event, 4);
-				this->graph.write((char*)&diff, 4);
-				if(verbosity > 1) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
-
+				if(owner and (owner->flags & FLAG_SAVEGRAPH) and this->graph.isOpenOrEnableAutoOpen()) {
+					uint32_t diff = timeval_subtract(&tsdiff, header_ts, last_voice_frame_ts) ? -timeval2micro(tsdiff)/1000.0 : timeval2micro(tsdiff)/1000.0;
+					this->graph.write((char*)&graph_event, 4);
+					this->graph.write((char*)&diff, 4);
+					if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms ip[%s] DTMF\n", this, getSSRC(), seq, diff, saddr.getString().c_str());
+					owner->save_rtp_graph = true;
+				}
 
 				//s->fdelay = s->avgdelay;
 	/*
@@ -2599,6 +2602,7 @@ RTP::update_stats() {
 			this->graph.write((char*)&graph_mark, 4);
 			this->graph.write((char*)&diff, 4);
 			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms transit[%Lf] avgdelay[%f] mark\n", this, getSSRC(), seq, diff, transit, s->avgdelay);
+			owner->save_rtp_graph = true;
 
 			//s->fdelay = 0;
 			//s->fdelay -= transit;
@@ -2609,6 +2613,7 @@ RTP::update_stats() {
 			this->graph.write((char*)&graph_silence, 4);
 			this->graph.write((char*)&diff, 4);
 			if(sverb.graph) printf("rtp[%p] ssrc[%x] seq[%u] silence[%u]ms avgdelay[%f]\n", this, getSSRC(), seq, diff, s->avgdelay);
+			owner->save_rtp_graph = true;
 
 			//s->fdelay = 0;
 			s->fdelay = s->avgdelay;

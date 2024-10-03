@@ -3136,17 +3136,21 @@ bool create_waveform_from_raw(const char *rawInput, unsigned sampleRate, unsigne
 			      bool loadFullRawToMemory = false, size_t *rawSamplesOutput = NULL);
 bool create_spectrogram_from_raw(const char *rawInput,
 				 size_t sampleRate, size_t msPerPixel, size_t height, unsigned channels,
-				 const char spectrogramOutput[][1024]);
+				 const char spectrogramOutput[][1024],
+				 int thread_index);
 bool create_spectrogram_from_raw(u_char *raw, size_t rawSamples, unsigned sampleRate, unsigned bytesPerSample,
-				 unsigned msPerPixel, unsigned height, cPng *png);
+				 unsigned msPerPixel, unsigned height, cPng *png,
+				 int thread_index);
 bool create_spectrogram_from_raw(const char *rawInput, unsigned sampleRate, unsigned bytesPerSample,
 				 unsigned msPerPixel, unsigned height, cPng *png,
+				 int thread_index,
 				 bool loadFullRawToMemory = false, size_t *rawSamplesOutput = NULL);
 void set_spectrogram_palette(cPng::pixel palette[]);
 u_char *load_raw(const char *rawInput, unsigned bytesPerSample, size_t *rawSamples);
 bool load_raw(const char *rawInput, unsigned bytesPerSample, unsigned channels, u_char *raw[], size_t *rawSamples);
 unsigned get_audiograph_ms_per_pixel(size_t samples, unsigned sampleRate);
 unsigned get_audiograph_ms_per_pixel(double duration_s);
+void fftw_multithread_term();
 
 string getSystemTimezone(int method = 0);
 

@@ -957,11 +957,18 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	
 	sip_packets_counter = 0;
 	invite_packets_counter = 0;
-	
 	process_rtp_counter = 0;
+	
 	#if CALL_DEBUG_RTP
 	debug_rtp = false;
 	#endif
+	
+	save_sip_pcap = false;
+	save_rtp_pcap = false;
+	save_rtp_payload_pcap = false;
+	save_rtcp_pcap = false;
+	save_rtp_graph = false;
+
 }
 
 u_int64_t Call::counter_s = 0;
@@ -2733,7 +2740,7 @@ Call::_save_rtp(packet_s_process_0 *packetS, s_sdp_flags_base sdp_flags, char en
 		} else if((this->flags & (sdp_flags.is_video() ? FLAG_SAVERTP_VIDEO : FLAG_SAVERTP)) || 
 			  (this->is_fax() && this->is_fax_packet(packetS)) || 
 			  record_dtmf) {
-			save_packet(this, packetS, _t_packet_rtp, forceVirtualUdp, 0, __FILE__, __LINE__);
+			save_packet(this, packetS, _t_packet_rtp_payload, forceVirtualUdp, 0, __FILE__, __LINE__);
 		}
 	}
 }
@@ -3375,7 +3382,7 @@ void convertRawToWav_vmcodecs_callback(SimpleBuffer *out, string str, int fd, vo
 }
 
 int
-Call::convertRawToWav(void **transcribe_call) {
+Call::convertRawToWav(void **transcribe_call, int thread_index) {
  
 #if not EXPERIMENTAL_LITE_RTP_MOD
  
@@ -4170,7 +4177,8 @@ Call::convertRawToWav(void **transcribe_call) {
 					spectrogram[i] = new FILE_LINE(0) cPng;
 					extern int opt_audiograph_spectrogram_height;
 					if(!create_spectrogram_from_raw(wav_raw, wav_raw_samples, maxsamplerate, 2, 
-									ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i])) {
+									ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i],
+									thread_index)) {
 						delete spectrogram[i];
 						spectrogram[i] = NULL;
 					}
@@ -4187,7 +4195,7 @@ Call::convertRawToWav(void **transcribe_call) {
 			extern int opt_audiograph_spectrogram_height;
 			if(!create_spectrogram_from_raw(wav, samplerate, 2,
 							ms_per_pixel, opt_audiograph_spectrogram_height, spectrogram[i],
-							false)) {
+							thread_index, false)) {
 				delete spectrogram[i];
 				spectrogram[i] = NULL;
 			}
@@ -6880,6 +6888,29 @@ Call::saveToDb(bool enableBatchIfPossible) {
 	}
 	if(rtp_dupl_seq) {
 		cdr_flags |= CDR_RTP_DUPL_SEQ;
+	}
+	
+	cdr_flags |= CDR_SAVE_FLAGS;
+	if(this->save_sip_pcap) {
+		cdr_flags |= CDR_SAVE_SIP_PCAP;
+	}
+	if(this->save_rtp_pcap) {
+		cdr_flags |= CDR_SAVE_RTP_PCAP;
+	}
+	if(this->save_rtp_payload_pcap) {
+		cdr_flags |= CDR_SAVE_RTP_PAYLOAD_PCAP;
+	}
+	if(this->save_rtcp_pcap) {
+		cdr_flags |= CDR_SAVE_RTCP_PCAP;
+	}
+	if(this->save_rtp_graph) {
+		cdr_flags |= CDR_SAVE_RTP_GRAPH;
+	}
+	if(enable_save_audio(this)) {
+		cdr_flags |= CDR_SAVE_AUDIO;
+	}
+	if(enable_save_audiograph(this)) {
+		cdr_flags |= CDR_SAVE_AUDIOGRAPH;
 	}
 	
 	set<vmIP> proxies_undup;
@@ -12594,13 +12625,28 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 	if(lock) {
 		lock_calls_audioqueue();
 	}
+	unsigned countActiveThreads = getCountActiveAudioQueueThreads(false);
 	if(audio_queue.size() && 
-	   (audio_queue.size() > audioQueueThreads.size() * 2 || sverb.test_fftw) && 
-	   audioQueueThreads.size() < audioQueueThreadsMax) {
-		sAudioQueueThread *audioQueueThread = new FILE_LINE(1010) sAudioQueueThread();
-		audioQueueThreads.push_back(audioQueueThread);
-		vm_pthread_create_autodestroy("audio convert",
-					      &audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread, __FILE__, __LINE__);
+	   (audio_queue.size() > countActiveThreads * 2 || sverb.test_fftw) &&
+	   countActiveThreads < audioQueueThreadsMax) {
+		int threadIndex = -1;
+		for(unsigned i = 0; i < audioQueueThreads.size(); i++) {
+			if(!audioQueueThreads[i]) {
+				threadIndex = i;
+			}
+		}
+		if(threadIndex < 0 && audioQueueThreads.size() < audioQueueThreadsMax) {
+			threadIndex = audioQueueThreads.size();
+		}
+		if(threadIndex >= 0 && threadIndex < (int)audioQueueThreadsMax) {
+			sAudioQueueThread *audioQueueThread = new FILE_LINE(1010) sAudioQueueThread(threadIndex);
+			while(threadIndex >= (int)audioQueueThreads.size()) {
+				audioQueueThreads.push_back(NULL);
+			}
+			audioQueueThreads[threadIndex] = audioQueueThread;
+			vm_pthread_create_autodestroy("audio convert",
+						      &audioQueueThread->thread_handle, NULL, this->processAudioQueueThread, audioQueueThread, __FILE__, __LINE__);
+		}
 	}
 	if(lock) {
 		unlock_calls_audioqueue();
@@ -12610,6 +12656,7 @@ void Calltable::processCallsInAudioQueue(bool lock) {
 void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 	((sAudioQueueThread*)audioQueueThread)->thread_id = get_unix_tid();
 	setpriority(PRIO_PROCESS, ((sAudioQueueThread*)audioQueueThread)->thread_id, 20);
+	int thread_index = ((sAudioQueueThread*)audioQueueThread)->thread_index;
 	u_long last_use_at = getTimeS();
 	while(!calltable->audioQueueTerminating) {
 		calltable->lock_calls_audioqueue();
@@ -12625,11 +12672,11 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 			if(verbosity > 0) printf("converting RAW file to WAV %s\n", call->fbasename);
 			if(enable_audio_transcribe(call)) {
 				Transcribe::sCall *transcribe_call = NULL;
-				if(!call->convertRawToWav((void**)&transcribe_call) && transcribe_call) {
+				if(!call->convertRawToWav((void**)&transcribe_call, thread_index) && transcribe_call) {
 					transcribePushCall(transcribe_call);
 				}
 			} else {
-				call->convertRawToWav();
+				call->convertRawToWav(NULL, thread_index);
 			}
 			if(!sverb.test_fftw) {
 				if(useChartsCacheOrCdrStatInProcessCall()) {
@@ -12652,10 +12699,26 @@ void *Calltable::processAudioQueueThread(void *audioQueueThread) {
 		}
 	}
 	calltable->lock_calls_audioqueue();
-	calltable->audioQueueThreads.remove((sAudioQueueThread*)audioQueueThread);
+	calltable->audioQueueThreads[thread_index] = NULL;
 	calltable->unlock_calls_audioqueue();
 	delete (sAudioQueueThread*)audioQueueThread;
 	return(NULL);
+}
+
+size_t Calltable::getCountActiveAudioQueueThreads(bool lock) {
+	unsigned count = 0;
+	if(lock) {
+		lock_calls_audioqueue();
+	}
+	for(unsigned i = 0; i < audioQueueThreads.size(); i++) {
+		if(audioQueueThreads[i]) {
+			++count;
+		}
+	}
+	if(lock) {
+		unlock_calls_audioqueue();
+	}
+	return(count);
 }
 
 void Calltable::processCallsInChartsCache_start() {
