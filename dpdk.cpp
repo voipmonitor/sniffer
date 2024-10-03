@@ -37,7 +37,10 @@
 #include <rte_mempool.h>
 #include <rte_mbuf.h>
 #include <rte_bus.h>
+
+#if HAVE_LIBDPDK_VDEV
 #include <rte_bus_vdev.h>
+#endif
 
 
 extern string opt_dpdk_cpu_cores;
@@ -1414,6 +1417,7 @@ static int dpdk_pre_init(string *error_str) {
 	}
 	#endif
 	if(opt_dpdk_vdev.size()) {
+		#if HAVE_LIBDPDK_VDEV
 		for(unsigned i = 0; i < opt_dpdk_vdev.size(); i++) {
 			size_t separator_pos = opt_dpdk_vdev[i].find(':');
 			if(separator_pos != string::npos) {
@@ -1425,6 +1429,9 @@ static int dpdk_pre_init(string *error_str) {
 					      opt_dpdk_vdev[i].c_str());
 			}
 		}
+		#else
+		syslog(LOG_ERR, "DPDK error: dpdk vdev is not supported in your build");
+		#endif
 	}
 	is_dpdk_pre_inited = 1;
 	return(1);
