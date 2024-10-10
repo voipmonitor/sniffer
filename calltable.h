@@ -1707,6 +1707,7 @@ public:
 	map<int, map<int, dstring> > custom_headers_content_cdr;
 	map<int, map<int, dstring> > custom_headers_content_message;
 	volatile int _custom_headers_content_sync;
+	map<int, map<int, int> > first_custom_header_search;
 
 	u_int16_t onInvite_counter;
 	u_int16_t onCall_2XX_counter;
@@ -4138,6 +4139,7 @@ public:
 			screenPopupField = false;
 			reqRespDirection = dir_na;
 			useLastValue = false;
+			allowMissingHeader = false;
 		}
 		inline string first_header() {
 			return(header.size() ? header[0] : "");
@@ -4168,6 +4170,7 @@ public:
 		bool screenPopupField;
 		eReqRespDirection reqRespDirection;
 		bool useLastValue;
+		bool allowMissingHeader;
 		std::vector<int> cseqMethod;
 		std::vector<pair<int, int> > sipResponseCodeInfo;
 	};
