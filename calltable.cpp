@@ -15437,8 +15437,10 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 				    std::find(iter2->second.cseqMethod.begin(), iter2->second.cseqMethod.end(), packetS->cseq.method) == iter2->second.cseqMethod.end()) {
 					continue;
 				}
-				if (iter2->second.allowMissingHeader && call->first_custom_header_search[iter->first][iter2->first]) {
-					continue;
+				if(call) {
+					if (iter2->second.allowMissingHeader && call->first_custom_header_search[iter->first][iter2->first]) {
+						continue;
+					}
 				}
 				for(unsigned i = 0; i < iter2->second.header_find.size(); i++) {
 					if(iter2->second.header_find[i].length()) {
@@ -15501,7 +15503,9 @@ void CustomHeaders::parse(Call *call, int type, tCH_Content *ch_content, packet_
 						}
 					}
 				}
-				call->first_custom_header_search[iter->first][iter2->first] = 1;
+				if(call) {
+					call->first_custom_header_search[iter->first][iter2->first] = 1;
+				}
 			}
 		}
 	}
