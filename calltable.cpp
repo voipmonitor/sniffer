@@ -3393,7 +3393,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	char rawInfo[1024];
 	FILE *pl;
 	char line[1024];
-	int ssrc_index, codec, frame_size;
+	int ssrc_index, codec, frame_size, bit_rate;
 	struct timeval tv0, tv1;
 	unsigned long int rawiterator;
 	
@@ -3411,7 +3411,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 			}
 			while(fgets(line, 256, pl)) {
 				line[strlen(line)] = '\0'; // remove '\n' which is last character
-				sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+				sscanf(line, "%d:%lu:%d:%d:%ld:%ld:%d", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec, &bit_rate);
 				char raw_extension[1024];
 				snprintf(raw_extension, sizeof(raw_extension), "i%d.%d.%lu.%d.%ld.%ld.raw", i, ssrc_index, rawiterator, codec, tv0.tv_sec, tv0.tv_usec);
 				string raw_pathfilename = this->get_pathfilename(tsf_audio, raw_extension);
@@ -3444,7 +3444,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 			if(pl) {
 				while(fgets(line, 256, pl)) {
 					line[strlen(line)] = '\0'; // remove '\n' which is last character
-					sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+					sscanf(line, "%d:%lu:%d:%d:%ld:%ld:%d", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec, &bit_rate);
 					int samplerate = 1000 * get_ticks_bycodec(codec);
 					if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 					if(maxsamplerate < samplerate) {
@@ -3516,7 +3516,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
-			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld:%d", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec, &bit_rate);
 			if(!force_convert_raw_to_wav &&
 			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || 
 			    rtp_stream_by_index(ssrc_index)->skip || !rtp_stream_by_index(ssrc_index)->stats.received)) {
@@ -3534,7 +3534,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 	pl = fopen(rawInfo, "r");
 	if(pl) {
 		while(fgets(line, sizeof(line), pl)) {
-			sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv1.tv_sec, &tv1.tv_usec);
+			sscanf(line, "%d:%lu:%d:%d:%ld:%ld:%d", &ssrc_index, &rawiterator, &codec, &frame_size, &tv1.tv_sec, &tv1.tv_usec, &bit_rate);
 			if(!force_convert_raw_to_wav &&
 			   (ssrc_index < 0 || ssrc_index >= rtp_size() || !rtp_stream_by_index(ssrc_index) || 
 			    rtp_stream_by_index(ssrc_index)->skip || !rtp_stream_by_index(ssrc_index)->stats.received)) {
@@ -3676,7 +3676,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 		if(pl) {
 			while(fgets(line, 256, pl)) {
 				line[strlen(line)] = '\0'; // remove '\n' which is last character
-				sscanf(line, "%d:%lu:%d:%d:%ld:%ld", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec);
+				sscanf(line, "%d:%lu:%d:%d:%ld:%ld:%d", &ssrc_index, &rawiterator, &codec, &frame_size, &tv0.tv_sec, &tv0.tv_usec, &bit_rate);
 				samplerate = 1000 * get_ticks_bycodec(codec);
 				if(codec == PAYLOAD_G722) samplerate = 1000 * 16;
 				if(maxsamplerate < samplerate) {
@@ -3751,6 +3751,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 				rawl.tv.tv_usec = tv0.tv_usec;
 				rawl.codec = codec;
 				rawl.frame_size = frame_size;
+				rawl.bit_rate = bit_rate;
 				rawl.filename = raw_pathfilename.c_str();
 				rawl.rtp = rtp_stream_by_index(ssrc_index);
 				if(!rawl.rtp) {
@@ -3869,6 +3870,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 			}
 			string codec_decoder_name;
 			int codec_decoder_samplerate = 0;
+			int codec_bit_rate = 0;
 			switch(rawf->codec) {
 			case PAYLOAD_PCMA:
 				codec_decoder_name = "pcma";
@@ -3897,6 +3899,7 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 			case PAYLOAD_G722132:
 				codec_decoder_name = "siren";
 				codec_decoder_samplerate = 32000;
+				codec_bit_rate = bit_rate ? bit_rate : 0;
 				samplerate = 32000;
 				break;
 			case PAYLOAD_GSM:
@@ -4105,16 +4108,19 @@ Call::convertRawToWav(void **transcribe_call, int thread_index) {
 					vmcodecs_cmd += "vmcodecs";
 					string cmd;
 					if(opt_keycheck[0] != '\0' || keycheck_remote) {
-						cmd += vmcodecs_cmd + " " + (keycheck_remote ? "remote" : opt_keycheck) + " " + codec_decoder_name + " ";
+						cmd += vmcodecs_cmd + " -k " + (keycheck_remote ? "remote" : opt_keycheck) + " -c " + codec_decoder_name + " ";
 					} else {
 						cmd = string("voipmonitor-") + codec_decoder_name + " ";
 					}
-					cmd += "\"" + rawf->filename + "\" \"" + wav + "\"";
+					cmd += "-s \"" + rawf->filename + "\" -d \"" + wav + "\"";
 					if(codec_decoder_samplerate > 0) {
-						cmd += " " + intToString(codec_decoder_samplerate);
+						cmd += " -r " + intToString(codec_decoder_samplerate);
+					}
+					if(codec_bit_rate > 0) {
+						cmd += " -b " + intToString(codec_bit_rate);
 					}
 					if(keycheck_remote) {
-						cmd += " r";
+						cmd += " --remote_keycheck";
 					}
 					if(verbosity > 2) {
 						syslog(LOG_NOTICE, "Converting %s to WAV ssrc[%x] wav[%s] index[%u] cmd[%s]\n", 

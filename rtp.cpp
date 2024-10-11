@@ -369,6 +369,7 @@ RTP::RTP(int sensor_id, vmIP sensor_ip)
 	payload2 = -1;
 	codec = -1;
 	frame_size = 0;
+	bit_rate = 0;
 	#if not EXPERIMENTAL_SUPPRESS_AST_CHANNELS
 	gfileRAW_buffer = NULL;
 	#endif
@@ -1451,6 +1452,7 @@ bool RTP::read(CallBranch *c_branch,
 					if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
 						codec = _rtpmap[i].codec;
 						frame_size = _rtpmap[i].frame_size;
+						bit_rate = _rtpmap[i].bit_rate;
 						found = 1;
 						break;
 					}
@@ -1463,6 +1465,7 @@ bool RTP::read(CallBranch *c_branch,
 						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
 							codec = _rtpmap[i].codec;
 							frame_size = _rtpmap[i].frame_size;
+							bit_rate = _rtpmap[i].bit_rate;
 							found = 1;
 							break;
 						}
@@ -1476,6 +1479,7 @@ bool RTP::read(CallBranch *c_branch,
 							if(c_branch->rtpmap[i][j].is_set() && curpayload == c_branch->rtpmap[i][j].payload) {
 								codec = c_branch->rtpmap[i][j].codec;
 								frame_size = c_branch->rtpmap[i][j].frame_size;
+								bit_rate = c_branch->rtpmap[i][j].bit_rate;
 								found = 1;
 								break;
 							}
@@ -1495,6 +1499,7 @@ bool RTP::read(CallBranch *c_branch,
 					for(int i = 0; i < MAX_RTPMAP; i++) {
 						if(_rtpmap[i].is_set() && curpayload == _rtpmap[i].payload) {
 							frame_size = _rtpmap[i].frame_size;
+							bit_rate = _rtpmap[i].bit_rate;
 							break;
 						}
 					}
@@ -1904,7 +1909,7 @@ bool RTP::read(CallBranch *c_branch,
 				if(!gfileRAWInfo_exists) {
 					spooldir_file_chmod_own(rawinfo_filename);
 				}
-				fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld\n", ssrc_index, raw_unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec);
+				fprintf(gfileRAWInfo, "%d:%lu:%d:%d:%ld:%ld:%d\n", ssrc_index, raw_unique, codec, frame_size, header->ts.tv_sec, header->ts.tv_usec, bit_rate);
 				fclose(gfileRAWInfo);
 			} else {
 				syslog(LOG_ERR, "Cannot open file %s.rawInfo for writing\n", basefilename);

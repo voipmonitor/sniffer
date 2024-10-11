@@ -2544,11 +2544,20 @@ int get_rtpmap_from_sdp(char *sdp_text, unsigned long len, bool is_video, RTPMAP
 		if(codec || payload) {
 			rtpmap[i].codec = codec;
 			rtpmap[i].payload = payload;
-			if(codec == PAYLOAD_ILBC) {
+			if(codec == PAYLOAD_ILBC || (codec >= PAYLOAD_G72218 && codec <= PAYLOAD_G722148)) {
 				char tagFmtpWithPayload[100];
 				snprintf(tagFmtpWithPayload, sizeof(tagFmtpWithPayload), "a=fmtp:%i", payload);
 				char *s = _gettag(sdp_text, len, tagFmtpWithPayload , &l);
-				rtpmap[i].frame_size = s && strncasestr(s, "mode=20", l) ? 20 : 30;
+				if(codec == PAYLOAD_ILBC) {
+					rtpmap[i].frame_size = s && strncasestr(s, "mode=20", l) ? 20 : 30;
+				} else {
+					if(s) {
+						s = _gettag(s, len - (s - sdp_text), "bitrate=", &l);
+						if(s) {
+							rtpmap[i].bit_rate = atoi(s);
+						}
+					}
+				}
 			}
 			i++;
 			//printf("PAYLOAD: rtpmap[%d]:%d payload:%d, mimeSubtype [%d] [%s]\n", i, rtpmap[i], payload, codec, mimeSubtype);

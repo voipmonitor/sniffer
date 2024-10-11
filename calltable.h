@@ -789,6 +789,7 @@ struct raws_t {
 	int rawiterator;
 	int codec;
 	int frame_size;
+	int bit_rate;
 	struct timeval tv;
 	string filename;
 	class RTP *rtp;

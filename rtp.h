@@ -184,10 +184,12 @@ struct RTPMAP {
 		payload = 0;
 		codec = 0;
 		frame_size = 0;
+		bit_rate = 0;
 	}
 	u_int16_t payload;
 	u_int16_t codec;
 	u_int16_t frame_size;
+	u_int16_t bit_rate;
 };
 
 
@@ -394,6 +396,7 @@ public:
 	int codec;
 	s_sdp_flags_base sdp_flags;
 	int frame_size;
+	int bit_rate;
 	RTPMAP rtpmap[MAX_RTPMAP];
 	RTPMAP rtpmap_other_side[MAX_RTPMAP];
 	int rtpmap_call_index;
