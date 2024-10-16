@@ -618,7 +618,8 @@ bool CompressStream::compress(char *data, u_int32_t len, bool flush, CompressStr
 	return(true);
 }
 
-bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len) {
+bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv,
+				u_int32_t *use_len, u_int32_t *decompress_len_out) {
 	if(sverb.chunk_buffer > 2) {
 		cout << "decompress data " << len << " " << decompress_len << endl;
 		for(u_int32_t i = 0; i < min(len, (u_int32_t)max(sverb.chunk_buffer, 200)); i++) {
@@ -651,6 +652,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			this->typeCompress = compress_na;
 		}
 	}
+	u_int32_t have_sum = 0;
 	switch(this->typeCompress) {
 	case compress_na:
 		if(!baseEv->decompress_ev(data, len)) {
@@ -674,6 +676,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			int inflateRslt = inflate(this->zipStreamDecompress, Z_NO_FLUSH);
 			if(inflateRslt == Z_OK || inflateRslt == Z_STREAM_END || inflateRslt == Z_BUF_ERROR) {
 				int have = this->decompressBufferLength - this->zipStreamDecompress->avail_out;
+				have_sum += have;
 				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
 					this->setError("zip decompress_ev failed");
 					return(false);
@@ -689,6 +692,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		if(use_len) {
 			*use_len = len - this->zipStreamDecompress->avail_in;
 		}
+		if(decompress_len_out) {
+			*decompress_len_out = have_sum;
+		}
 		break;
 	case lzma:
 		#ifdef HAVE_LIBLZMA
@@ -703,6 +709,7 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 			int rslt = lzma_code(this->lzmaStreamDecompress, flush ? LZMA_FINISH : LZMA_RUN);
 			if(rslt == LZMA_OK || rslt == LZMA_STREAM_END) {
 				int have = this->decompressBufferLength - this->lzmaStreamDecompress->avail_out;
+				have_sum += have;
 				if(!baseEv->decompress_ev(this->decompressBuffer, have)) {
 					this->setError("lzma decompress_ev failed");
 					return(false);
@@ -714,6 +721,9 @@ bool CompressStream::decompress(char *data, u_int32_t len, u_int32_t decompress_
 		} while(this->lzmaStreamDecompress->avail_out == 0);
 		if(use_len) {
 			*use_len = len - this->lzmaStreamDecompress->avail_in;
+		}
+		if(decompress_len_out) {
+			*decompress_len_out = have_sum;
 		}
 		#endif
 		break;
@@ -1255,6 +1265,12 @@ void ChunkBuffer::setCompressLevel(int compressLevel) {
 	}
 }
 
+CompressStream::eTypeCompress ChunkBuffer::getTypeCompress() {
+	return(compressStream ?
+		compressStream->typeCompress :
+		CompressStream::compress_na);
+}
+
 #include <stdio.h>
 
 void ChunkBuffer::add(char *data, u_int32_t datalen, bool flush, u_int32_t decompress_len, bool directAdd) {
@@ -1577,14 +1593,16 @@ void ChunkBuffer::chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bo
 					}
 				}
 			} else {
+				u_int32_t decompress_len = 0;
 				if(!this->compressStream->decompress(it->chunk, it->len, it->decompress_len, 
 								     this->closed && counterIterator == sizeChunkBuffer,
-								     this)) {
+								     this,
+								     NULL, &decompress_len)) {
 					syslog(LOG_ERR, "chunkbuffer decompress error in %s", this->getName().c_str());
 					this->decompressError = true;
 					return;
 				}
-				this->chunkIterateProceedLen += it->decompress_len;
+				this->chunkIterateProceedLen += it->decompress_len ? it->decompress_len : decompress_len;
 				if(freeChunks) {
 					it->deleteChunk(this);
 				}
@@ -1666,6 +1684,18 @@ void ChunkBuffer::deleteChunks() {
 			break;
 		}
 	}
+}
+
+bool ChunkBuffer::allChunksIsEmpty() {
+	size_t counterIterator = 0;
+	size_t sizeChunkBuffer = chunkBuffer_countItems;
+	for(list<sChunk>::iterator it = chunkBuffer.begin(); counterIterator < sizeChunkBuffer;) {
+		if(counterIterator++) ++it;
+		if(it->chunk) {
+			return(false);
+		}
+	}
+	return(true);
 }
 
 u_int32_t ChunkBuffer::getChunkIterateSafeLimitLength(u_int32_t limitLength) {

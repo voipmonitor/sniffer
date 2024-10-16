@@ -1558,6 +1558,11 @@ void *TarQueue::tarthreadworker(void *arg) {
 						unsigned long long __prof_begin2 = rdtsc();
 						#endif
 						size_t lenForProceed = data.buffer->getChunkIterateLenForProceed();
+						if(isClosed && lenForProceed > 0 &&
+						   data.buffer->getTypeCompress() != CompressStream::compress_na &&
+						   data.buffer->allChunksIsEmpty()) {
+							lenForProceed = 0;
+						}
 						if(isClosed || lenForProceed > TAR_CHUNK_KB * 1024) {
 							#if TAR_PROF
 							unsigned long long __prof_i1 = rdtsc();

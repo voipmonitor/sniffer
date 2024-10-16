@@ -72,7 +72,8 @@ public:
 	void termCompress();
 	void termDecompress();
 	bool compress(char *data, u_int32_t len, bool flush, CompressStream_baseEv *baseEv);
-	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, u_int32_t *use_len = NULL);
+	bool decompress(char *data, u_int32_t len, u_int32_t decompress_len, bool flush, CompressStream_baseEv *baseEv, 
+			u_int32_t *use_len = NULL, u_int32_t *decompress_len_out = NULL);
 	bool isNativeStream() {
 		return(typeCompress == compress_na ||
 		       typeCompress == zip ||
@@ -238,6 +239,7 @@ public:
 	virtual ~ChunkBuffer();
 	void setTypeCompress(CompressStream::eTypeCompress typeCompress, u_int32_t compressBufferLength, u_int32_t maxDataLength);
 	void setCompressLevel(int compressLevel);
+	CompressStream::eTypeCompress getTypeCompress();
 	int getTime() {
 		return(time);
 	}
@@ -286,6 +288,7 @@ public:
 	virtual bool decompress_ev(char *data, u_int32_t len);
 	void chunkIterate(ChunkBuffer_baseIterate *chunkbufferIterateEv, bool freeChunks = false, bool enableContinue = false, u_int32_t limitLength = 0);
 	void deleteChunks();
+	bool allChunksIsEmpty();
 	u_int32_t getChunkIterateSafeLimitLength(u_int32_t limitLength);
 	void lock_chunkBuffer() {
 		__SYNC_LOCK(this->_sync_chunkBuffer);
