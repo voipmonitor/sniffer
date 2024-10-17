@@ -238,7 +238,6 @@ static inline void dpdk_process_packet_2__mbufs_in_packetbuffer(sDpdk *dpdk, rte
 								);
 static inline u_int64_t get_timestamp_us(sDpdk *dpdk);
 static int dpdk_pre_init(string *error_str);
-static int dpdk_pre_init_error(int error_no, string *error_str);
 static uint16_t portid_by_device(const char * device);
 #if DPDK_ENV_CFG
 static int parse_dpdk_cfg(char* dpdk_cfg,char** dargv);
@@ -339,7 +338,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		}
 	}
 	int numa_node = rte_eth_dev_socket_id(portid);
-	dpdk_eval_res(numa_node < 0 ? rte_errno : 0, NULL, 2, error,
+	dpdk_eval_res(numa_node < 0 ? -rte_errno : 0, NULL, 2, error,
 		      "dpdk_activate(%s) - rte_eth_dev_socket_id(%i) - rslt (numa_node): %i",
 		      config->device,
 		      portid,
@@ -353,7 +352,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	dpdk->pktmbuf_pool = rte_pktmbuf_pool_create((string(MBUF_POOL_NAME) + "_" + config->device).c_str(), DPDK_NB_MBUFS,
 						     MEMPOOL_CACHE_SIZE, 0, RTE_MBUF_DEFAULT_BUF_SIZE,
 						     rte_socket_id());
-	dpdk_eval_res(dpdk->pktmbuf_pool == NULL ? rte_errno : 0, NULL, 2, error,
+	dpdk_eval_res(dpdk->pktmbuf_pool == NULL ? -rte_errno : 0, dpdk->pktmbuf_pool == NULL && !rte_errno ? "failed allocation mbuf pool" : NULL, 2, error,
 		      "dpdk_activate(%s) - rte_pktmbuf_pool_create",
 		      config->device);
 	if(dpdk->pktmbuf_pool == NULL) {
@@ -429,7 +428,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(DPDK_TX_BUF_NAME,
 							       RTE_ETH_TX_BUFFER_SIZE(MAX_PKT_BURST), 0,
 							       rte_eth_dev_socket_id(portid));
-	dpdk_eval_res(tx_buffer == NULL ? rte_errno : 0, NULL, 2, error,
+	dpdk_eval_res(tx_buffer == NULL ? -rte_errno : 0, NULL, 2, error,
 		      "dpdk_activate(%s) - rte_zmalloc_socket",
 		      config->device);
 	if(tx_buffer == NULL) {
@@ -444,7 +443,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	}
 	if(config->type_worker_thread != _dpdk_twt_na) {
 		dpdk->rx_to_worker_ring = rte_ring_create((string("rx_to_worker") + "_" + config->device).c_str(), RING_SIZE, rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
-		dpdk_eval_res(dpdk->rx_to_worker_ring == NULL ? rte_errno : 0, NULL, 2, error,
+		dpdk_eval_res(dpdk->rx_to_worker_ring == NULL ? -rte_errno : 0, NULL, 2, error,
 			      "dpdk_activate(%s) - rte_ring_create(rx_to_worker)",
 			      config->device);
 		if(dpdk->rx_to_worker_ring == NULL) {
@@ -454,7 +453,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 	#if WORKER2_THREAD_SUPPORT
 	if(config->type_worker_thread == _dpdk_twt_rte && config->type_worker2_thread == _dpdk_tw2t_rte) {
 		dpdk->worker_to_worker2_ring = rte_ring_create((string("worker_to_worker2") + "_" + config->device).c_str(), RING_SIZE, rte_socket_id(), RING_F_SP_ENQ | RING_F_SC_DEQ);
-		dpdk_eval_res(dpdk->worker_to_worker2_ring == NULL ? rte_errno : 0, NULL, 2, error,
+		dpdk_eval_res(dpdk->worker_to_worker2_ring == NULL ? -rte_errno : 0, NULL, 2, error,
 			      "dpdk_activate(%s) - rte_ring_create(worker_to_worker2)",
 			      config->device);
 		if(dpdk->rx_to_worker_ring == NULL) {
@@ -537,11 +536,27 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		rte_eth_promiscuous_enable(portid);
 	}
 	// check link status
-	is_port_up = check_link_status(portid, &link);
-	dpdk_eval_res(is_port_up, is_port_up == 0 ? "link is down" : NULL, 2, error,
-		      "dpdk_activate(%s) - check_link_status(%i)",
-		      config->device,
-		      portid);
+	for(int i = 0; i < (opt_dpdk_vdev.size() ? 2 : 1); i++) {
+		if(i == 1) {
+			if(opt_dpdk_vdev.size()) {
+				ret = rte_eth_dev_set_link_up(portid);
+				dpdk_eval_res(ret, NULL, 2, error,
+					      "dpdk_activate(%s) - rte_eth_dev_set_link_up(%i)",
+					      config->device,
+					      portid);
+			} else {
+				break;
+			}
+		}
+		is_port_up = check_link_status(portid, &link);
+		dpdk_eval_res(is_port_up, is_port_up == 0 ? "link is down" : NULL, 2, error,
+			      "dpdk_activate(%s) - check_link_status(%i)",
+			      config->device,
+			      portid);
+		if(is_port_up) {
+			break;
+		}
+	}
 	if(!is_port_up) {
 		return(PCAP_ERROR_IFACE_NOT_UP);
 	}
@@ -1330,10 +1345,10 @@ static int dpdk_pre_init(string *error_str) {
 	#endif
 	if(is_dpdk_pre_inited != 0) {
 		// already inited; did that succeed?
-		if(is_dpdk_pre_inited < 0) {
-			return(dpdk_pre_init_error(-is_dpdk_pre_inited, error_str));
-		} else {
+		if(is_dpdk_pre_inited > 0) {
 			return(1);
+		} else {
+			return(is_dpdk_pre_inited == -ENOTSUP ? 0 : is_dpdk_pre_inited);
 		}
 	}
 	#if DPDK_ENV_CFG
@@ -1393,15 +1408,17 @@ static int dpdk_pre_init(string *error_str) {
 		dargs += dargv[i];
 	}
 	ret = rte_eal_init(dargv_cnt, dargv);
-	dpdk_eval_res(ret, NULL, 2, NULL, 
+	dpdk_eval_res(ret, NULL, 2, error_str, 
 		      "dpdk_pre_init - rte_eal_init(%s)",
 		      dargs.c_str());
-	if(ret == -1) {
-		// Indicate that we've called rte_eal_init() by setting
-		// is_dpdk_pre_inited to the negative of the error code,
-		// and process the error.
-		is_dpdk_pre_inited = -rte_errno;
-		return(dpdk_pre_init_error(-is_dpdk_pre_inited, error_str));
+	if(ret < 0) {
+		if(rte_errno == EALREADY) {
+			is_dpdk_pre_inited = 1;
+			return(1);
+		} else {
+			is_dpdk_pre_inited = -rte_errno;
+			return(rte_errno == ENOTSUP ? 0 : -rte_errno);
+		}
 	}
 	// init succeeded, so we do not need to do it again later.
 	#if DPDK_TIMESTAMP_IN_MBUF == 1
@@ -1409,11 +1426,12 @@ static int dpdk_pre_init(string *error_str) {
 	timestamp_dynfield_desc.size = sizeof(u_int64_t);
 	timestamp_dynfield_desc.align = __alignof__(u_int64_t);
 	timestamp_dynfield_offset = rte_mbuf_dynfield_register(&timestamp_dynfield_desc);
-	dpdk_eval_res(timestamp_dynfield_offset, NULL, 2, NULL,
-		      "dpdk_pre_init - rte_mbuf_dynfield_register(%s)", 
+	dpdk_eval_res(timestamp_dynfield_offset, NULL, 2, error_str,
+		      "dpdk_pre_init - rte_mbuf_dynfield_register(%s)",
 		      timestamp_dynfield_desc.name);
 	if(timestamp_dynfield_offset < 0) {
-		return(dpdk_pre_init_error(-is_dpdk_pre_inited, error_str));
+		is_dpdk_pre_inited = -rte_errno;
+		return(-rte_errno);
 	}
 	#endif
 	if(opt_dpdk_vdev.size()) {
@@ -1423,10 +1441,14 @@ static int dpdk_pre_init(string *error_str) {
 			if(separator_pos != string::npos) {
 				string vdev_name = trim_str(opt_dpdk_vdev[i].substr(0, separator_pos));
 				string vdev_args = trim_str(opt_dpdk_vdev[i].substr(separator_pos + 1));
-				int ret_vdev = rte_vdev_init(vdev_name.c_str(), vdev_args.c_str());
-				dpdk_eval_res(ret_vdev, NULL, 2, NULL,
+				ret = rte_vdev_init(vdev_name.c_str(), vdev_args.c_str());
+				dpdk_eval_res(ret, NULL, 2, error_str,
 					      "dpdk_pre_init - rte_vdev_init(%s)", 
 					      opt_dpdk_vdev[i].c_str());
+				if(ret < 0) {
+					is_dpdk_pre_inited = -rte_errno;
+					return(-rte_errno);
+				}
 			}
 		}
 		#else
@@ -1435,105 +1457,6 @@ static int dpdk_pre_init(string *error_str) {
 	}
 	is_dpdk_pre_inited = 1;
 	return(1);
-}
-
-
-static int dpdk_pre_init_error(int error_no, string *error_str) {
-	int rslt_error_no = PCAP_ERROR;
-	string _error_str;
-	switch(error_no) {
-	case EALREADY:
-		// This "indicates that the rte_eal_init
-		// function has already been called, and
-		// cannot be called again."
-		// That's not an error; set the "we've
-		// been here before" flag and return
-		// success.
-		is_dpdk_pre_inited = 1;
-		return 1;
-	case ENOTSUP:
-		// This "indicates that the EAL cannot
-		// initialize on this system."  We treat
-		// that as meaning DPDK isn't available
-		// on this machine, rather than as a
-		// fatal error, and let our caller decide
-		// whether that's a fatal error (if trying
-		// to activate a DPDK device) or not (if
-		// trying to enumerate devices).
-		return 0;
-	case EACCES:
-		// This "indicates a permissions issue.".
-		_error_str = "permission denied (dpdk needs root access) or no hugepages available";
-		rslt_error_no = PCAP_ERROR_PERM_DENIED;
-		break;
-	case EAGAIN:
-		// This "indicates either a bus or system
-		// resource was not available, setup may
-		// be attempted again."
-		// There's no such error in pcap, so I'm
-		// not sure what we should do here.
-		_error_str = "bus or system resource was not available";
-		break;
-	case EFAULT:
-		// This "indicates the tailq configuration
-		// name was not found in memory configuration."
-		_error_str = "the tailq configuration name was not found in the memory configuration";
-		break;
-	case EINVAL:
-		// This "indicates invalid parameters were
-		// passed as argv/argc."  Those came from
-		// the configuration file.
-		_error_str = "the configuration file has invalid parameters";
-		break;
-	case ENOMEM:
-		// This "indicates failure likely caused by
-		// an out-of-memory condition."
-		_error_str = "out of memory";
-		break;
-	case ENODEV:
-		// This "indicates memory setup issues."
-		_error_str = "an error occurred setting up memory";
-		break;
-	case EPROTO:
-		// This "indicates that the PCI bus is
-		// either not present, or is not readable
-		// by the eal."  Does "the PCI bus is not
-		// present" mean "this machine has no PCI
-		// bus", which strikes me as a "not available"
-		// case?  If so, should "is not readable by
-		// the EAL" also something we should treat
-		// as a "not available" case?  If not, we
-		// can't distinguish between the two, so
-		// we're stuck.
-		_error_str = "PCI bus is not present or not readable by the EAL";
-		break;
-	case ENOEXEC:
-		// This "indicates that a service core
-		// failed to launch successfully."
-		_error_str = "a service core failed to launch successfully";
-		break;
-	default:
-		//
-		// That's not in the list of errors in
-		// the documentation; let it be reported
-		// as an error.
-		//
-		_error_str = "dpdk_pre_init failed";
-		break;
-	}
-	if(error_str) {
-		string _error_str_rte = rte_strerror(error_no); 
-		*error_str = "DPDK error:";
-		if(!_error_str_rte.empty()) {
-			*error_str += " " + _error_str_rte;
-			if(!_error_str.empty()) {
-				*error_str += " / " + _error_str;
-			}
-		} else {
-			*error_str += " " + _error_str;
-		}
-	}
-	return(rslt_error_no);
 }
 
 
@@ -1607,7 +1530,11 @@ static void dpdk_eval_res(int res_no, const char *cust_error,
 		_error_str += string(" - ERROR: ") + 
 			      (cust_error ?
 				cust_error :
-				string(rte_strerror(res_no)) + " (" + intToString(res_no) + ")");
+				string(rte_strerror(rte_errno)) + 
+				" (" + 
+				(-res_no != rte_errno ? "r:" + intToString(res_no) + "/" : "") + 
+				"e:" + intToString(rte_errno) + 
+				")");
 	} else {
 		_error_str += " - OK (" + intToString(res_no) + ")";
 	}
@@ -2283,7 +2210,9 @@ unsigned cGlobalDpdkTools::get_planned_memory_consumption_mb(string *log) {
 	u_int64_t memory_consumption_sum = 0;
 #if HAVE_LIBDPDK
 	// mbuf pool
-	u_int64_t memory_consumption_mbuf_pool = ((u_int64_t)(DPDK_NB_MBUFS)) * (RTE_MBUF_DEFAULT_BUF_SIZE + 128);
+	int dynfield_size = DPDK_TIMESTAMP_IN_MBUF == 1 ? sizeof(u_int64_t) : 0;
+	size_t mbuf_size = sizeof(struct rte_mbuf) + RTE_MBUF_DEFAULT_BUF_SIZE + dynfield_size;
+	size_t memory_consumption_mbuf_pool = DPDK_NB_MBUFS * (mbuf_size + sizeof(struct rte_mempool_objhdr)) + MEMPOOL_CACHE_SIZE * sizeof(void*);
 	memory_consumption_sum += memory_consumption_mbuf_pool;
 	if(log) {
 		*log += "mbuf pool: " + intToString(memory_consumption_mbuf_pool / 1024 / 1024) + "MB; ";
