@@ -53,6 +53,7 @@ extern int opt_dpdk_memory_channels;
 extern string opt_dpdk_pci_device;
 extern int opt_dpdk_force_max_simd_bitwidth;
 extern int opt_dpdk_nb_mbufs;
+extern bool opt_dpdk_nb_mbufs_strictly;
 extern int opt_dpdk_pkt_burst;
 extern int opt_dpdk_ring_size;
 extern int opt_dpdk_mempool_cache_size;
@@ -73,7 +74,7 @@ extern vector<string> opt_dpdk_vdev;
 #define DPDK_CFG_MAX_LEN 1024
 #endif
 #define DPDK_PORTID_MAX (64 * 1024U - 1)
-#define DPDK_NB_MBUFS ((opt_dpdk_nb_mbufs ? opt_dpdk_nb_mbufs : 1024) * 1024)
+#define DPDK_NB_MBUFS ((opt_dpdk_nb_mbufs ? opt_dpdk_nb_mbufs : 1024) * (opt_dpdk_nb_mbufs_strictly ? 1 : 1024))
 #define DPDK_DEF_MAC_ADDR "00:00:00:00:00:00"
 #define DPDK_TX_BUF_NAME "tx_buffer"
 #define DPDK_PREFIX "dpdk:"

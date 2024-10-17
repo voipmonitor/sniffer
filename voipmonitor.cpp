@@ -1049,6 +1049,7 @@ int opt_dpdk_worker_usleep_type = 0;
 int opt_dpdk_nb_rx = 4096;
 int opt_dpdk_nb_tx = 1024;
 int opt_dpdk_nb_mbufs = 1024;
+bool opt_dpdk_nb_mbufs_strictly = false;
 int opt_dpdk_pkt_burst = 32;
 int opt_dpdk_ring_size = 0;
 int opt_dpdk_mempool_cache_size = 512;
@@ -6259,6 +6260,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_rx", &opt_dpdk_nb_rx));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_tx", &opt_dpdk_nb_tx));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_nb_mbufs", &opt_dpdk_nb_mbufs));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("dpdk_nb_mbufs_strictly", &opt_dpdk_nb_mbufs_strictly));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_pkt_burst", &opt_dpdk_pkt_burst));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_ring_size", &opt_dpdk_ring_size));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mempool_cache_size", &opt_dpdk_mempool_cache_size));
