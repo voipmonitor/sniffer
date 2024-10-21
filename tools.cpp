@@ -3530,7 +3530,17 @@ void ListPhoneNumber::addComb(string &number, ListPhoneNumber *negList) {
 }
 
 void ListPhoneNumber::addComb(const char *number, ListPhoneNumber *negList) {
-	vector<string>number_elems = split(number, split(" |,|;|\t|\r|\n", "|"), true);
+	vector<string>number_elems;
+	vector<string>number_elems2 = split(number, split("\t|\r|\n", "|"), true);
+	for(size_t i = 0; i < number_elems2.size(); i++) {
+		if((number_elems2[i][0] == '[' || number_elems2[i][1] == '[') && number_elems2[i].back() == ']') {
+			number_elems.push_back(number_elems2[i]);
+		} else {
+			vector<string>number_elems_tmp = split(number_elems2[i].c_str(), split(" |,|;", "|"), true);
+			number_elems.insert(number_elems.end(), number_elems_tmp.begin(), number_elems_tmp.end());
+		}
+	}
+
 	for(size_t i = 0; i < number_elems.size(); i++) {
 		if(number_elems[i][0] == '!') {
 			if(negList) {
@@ -10577,3 +10587,39 @@ bool is_vmware() {
 	       check_vmware_cpuinfo());
 }
 #endif
+
+cRegExp *number2Regex(const char *number) {
+	string reg = string(number);
+	bool addStart = false;
+	bool addEnd = false;
+	if(reg[0] == '[') {
+		reg.erase(0, 1);
+	}
+	if(reg[reg.length() - 1] == ']') {
+		reg.erase(reg.length() - 1, 1);
+	}
+	if(reg[0] == '%') {
+		reg.erase(0, 1);
+		addEnd = true;
+	}
+	if(reg[reg.length() - 1] == '%') {
+		reg.erase(reg.length() - 1, 1);
+		addStart = true;
+	}
+	if(reg.find('_', 0) != string::npos) {
+		addEnd = true;
+		addStart = true;
+		replace(reg.begin(), reg.end(), '_', '.');
+	}
+	if(addStart) {
+		reg.insert(reg.begin(), 1, '^');
+	}
+	if(addEnd) {
+		reg.append(1, '$');
+	}
+	if(check_regexp(reg.c_str())) {
+		cRegExp *regexp = new FILE_LINE(0) cRegExp(reg.c_str());
+		return(regexp);
+	}
+	return(NULL);
+}

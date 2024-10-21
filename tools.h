@@ -379,6 +379,7 @@ int rmdir_r(std::string dir, bool enableSubdir = false, bool withoutRemoveRoot =
 int rmdir_if_r(std::string dir, bool if_r, bool enableSubdir = false, bool withoutRemoveRoot = false, const char *file_src_code = NULL, int line_src_code = 0);
 int unlink(const char *pathname, const char *file_src_code, int line_src_code);
 int rmdir(const char *path, const char *file_src_code, int line_src_code);
+cRegExp * number2Regex(const char *number);
 int64_t cp_r(const char *src, const char *dst, bool move = false);
 inline int64_t mv_r(const char *src, const char *dst) { return(cp_r(src, dst, true)); }  
 
@@ -1902,6 +1903,11 @@ public:
 		if(number[0] == 'R' && number[1] == '(' && number[strlen(number) - 1] == ')') {
 			if(check_regexp(number)) {
 				cRegExp *regexp = new FILE_LINE(0) cRegExp(string(number).substr(2, strlen(number) - 3).c_str());
+				listRegExp.push_back(regexp);
+			}
+		} else if (strpbrk(number, "%_[")) {
+			cRegExp *regexp = number2Regex(number);
+			if(regexp) {
 				listRegExp.push_back(regexp);
 			}
 		} else if(!prefix) {
