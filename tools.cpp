@@ -2559,10 +2559,12 @@ bool RestartUpgrade::runRestart(int socket1, int socket2, cClient *c_client) {
 	extern bool opt_autoload_from_sqlvmexport;
 	if(!opt_nocdr) {
 		extern MySqlStore *sqlStore;
-		if(opt_autoload_from_sqlvmexport) {
-			sqlStore->exportToFile(NULL, "auto", false, true);
+		if(sqlStore) {
+			if(opt_autoload_from_sqlvmexport) {
+				sqlStore->exportToFile(NULL, "auto", false, true);
+			}
+			sqlStore->queryToFilesTerminate();
 		}
-		sqlStore->queryToFilesTerminate();
 	}
 	set_readend();
 	if(is_read_from_file_by_pb()) {
