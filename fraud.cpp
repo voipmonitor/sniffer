@@ -1094,7 +1094,8 @@ FraudAlert_rcc_rtpStreamInfo::FraudAlert_rcc_rtpStreamInfo() {
 FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr, 
 						       int concurentCallsLimitLocal, 
 						       int concurentCallsLimitInternational, 
-						       int concurentCallsLimitBoth, 
+						       int concurentCallsLimitBoth,
+						       bool gui_timezone,
 						       unsigned int dbId,
 						       FraudAlert_rcc *parent,
 						       SqlDb *sqlDb)
@@ -1103,6 +1104,7 @@ FraudAlert_rcc_timePeriods::FraudAlert_rcc_timePeriods(const char *descr,
 	this->concurentCallsLimitLocal_tp = concurentCallsLimitLocal;
 	this->concurentCallsLimitInternational_tp = concurentCallsLimitInternational;
 	this->concurentCallsLimitBoth_tp = concurentCallsLimitBoth;
+	this->tp_gui_timezone = gui_timezone;
 	this->dbId = dbId;
 	this->parent = parent;
 	this->loadTimePeriods(sqlDb);
@@ -1130,9 +1132,21 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods(SqlDb *sqlDb) {
 	}
 }
 
+bool FraudAlert_rcc_timePeriods::checkTime(u_int64_t time) {
+	vector<TimePeriod>::iterator iter = timePeriods.begin();
+	while(iter != timePeriods.end()) {
+		if((*iter).checkTime(time, tp_gui_timezone ? fraudAlerts->getGuiTimezone() : NULL)) {
+			return(true);
+		}
+		++iter;
+	}
+	return(false);
+}
+
 FraudAlert_rcc_base::FraudAlert_rcc_base(FraudAlert_rcc *parent) {
 	this->parent = parent;
 	last_cleanup_at = 0;
+	tp_gui_timezone = false;
 }
 
 FraudAlert_rcc_base::~FraudAlert_rcc_base() {
@@ -1733,6 +1747,7 @@ void FraudAlert_rcc::addFraudDef(SqlDb_row *row, SqlDb *sqlDb) {
 				atoi((*row)["concurent_calls_limit_local"].c_str()),
 				atoi((*row)["concurent_calls_limit_international"].c_str()),
 				atoi((*row)["concurent_calls_limit"].c_str()),
+				atoi((*row)["gui_timezone"].c_str()),
 				atol((*row)["id"].c_str()),
 				this,
 				sqlDb));

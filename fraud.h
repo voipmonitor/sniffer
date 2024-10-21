@@ -33,16 +33,19 @@ extern timeval t;
 class TimePeriod {
 public:
 	TimePeriod(SqlDb_row *dbRow = NULL);
-	bool checkTime(const char *time) {
-		return(checkTime(getDateTime(time)));
+	bool checkTime(const char *time, const char *gui_timezone) {
+		return(checkTime(getDateTime(time), gui_timezone));
 	}
-	bool checkTime(u_int64_t time) {
-		return(checkTime(getDateTime(time)));
+	bool checkTime(u_int64_t time, const char *gui_timezone) {
+		return(checkTime(getDateTime(time), gui_timezone));
 	}
-	bool checkTime(time_t time) {
-		return(checkTime(getDateTime(time)));
+	bool checkTime(time_t time, const char *gui_timezone) {
+		return(checkTime(getDateTime(time), gui_timezone));
 	}
-	bool checkTime(struct tm time) {
+	bool checkTime(struct tm time, const char *gui_timezone) {
+		if(gui_timezone) {
+			time = time_r(TIME_S_TO_US(mktime(&time)), gui_timezone);
+		}
 		bool rslt = true;
 		if(is_hourmin) {
 			if(from_hour * 100 + from_minute > to_hour * 100 + to_minute) {
@@ -735,6 +738,7 @@ protected:
 	unsigned int concurentCallsLimitLocal_tp;
 	unsigned int concurentCallsLimitInternational_tp;
 	unsigned int concurentCallsLimitBoth_tp;
+	bool tp_gui_timezone;
 	FraudAlert_rcc_callInfo calls_summary;
 	map<vmIP, FraudAlert_rcc_callInfo*> calls_by_ip;
 	map<string, FraudAlert_rcc_callInfo*> calls_by_number;
@@ -768,21 +772,13 @@ public:
 				   int concurentCallsLimitLocal, 
 				   int concurentCallsLimitInternational, 
 				   int concurentCallsLimitBoth,
+				   bool gui_timezone,
 				   unsigned int dbId,
 				   class FraudAlert_rcc *parent,
 				   SqlDb *sqlDb = NULL);
 	void loadTimePeriods(SqlDb *sqlDb = NULL);
 protected: 
-	bool checkTime(u_int64_t time) {
-		vector<TimePeriod>::iterator iter = timePeriods.begin();
-		while(iter != timePeriods.end()) {
-			if((*iter).checkTime(time)) {
-				return(true);
-			}
-			++iter;
-		}
-		return(false);
-	}
+	bool checkTime(u_int64_t time);
 	string getDescr() {
 		return(descr);
 	}
