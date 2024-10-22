@@ -1,3 +1,16 @@
+2024.10.2 22.10.2024
+====================
+- better detection of rtp/audiograf using CDR.flags
+- add multithread support without locks for fftw - can be enabled with audiograph_fftw_multithread_mode = yes
+- dpdk: fix undefined reference to `rte_vdev_init'
+- add option to allow write empty header's value if header is missing in first packet and is present in next packets [VG-2175]
+- fix data availability detection in chunkbuffer if internal compression is enabled (tar_internalcompress_...) [VS-1642]
+- add parameter dpdk_nb_mbufs_strictly=yes/NO to suppress the increase of the specified number of mbufs by a multiple of 1024
+- fix potential crash in restart sensor in client mode
+- allow to use %_ wildcards in conditions for numbers in fraud alerts [VG-1724]
+- rcc fraud alert - time period rules table - apply new gui checkbox to specify whether to convert time zone to gui time [VG-2898]
+
+
 2024.10.1 02.10.2024
 ====================
 - fix crash when there are multiple c threads spawn (broken since 2024.08
