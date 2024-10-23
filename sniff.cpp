@@ -2617,34 +2617,41 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 	unsigned sdp_media_start_max = 10;
 	unsigned sdp_media_start_count = 0;
 	char *sdp_media_start[sdp_media_start_max];
+	char *sdp_media_stop[sdp_media_start_max];
 	e_sdp_media_type sdp_media_type[sdp_media_start_max];
 	vmPort sdp_media_port[sdp_media_start_max];
+	char *sdp_text_pointer = sdp_text;
 	while(sdp_media_start_count < sdp_media_start_max) {
-		s = _gettag(sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 : sdp_text,
-			    sdp_text_len - (sdp_media_start_count ? sdp_media_start[sdp_media_start_count - 1] + 1 - sdp_text: 0), 
+		s = _gettag(sdp_text_pointer,
+			    sdp_text_len - (sdp_media_start_count > 0 ? sdp_text_pointer - sdp_text: 0), 
 			    "\nm=", &l);
 		if(l > 0) {
+			if(sdp_media_start_count > 0 && !sdp_media_stop[sdp_media_start_count - 1]) {
+				sdp_media_stop[sdp_media_start_count - 1] = s;
+			}
 			e_sdp_media_type media_type = l > 5 ? 
 						       (!strncasecmp(s, "audio", 5) ? sdp_media_type_audio :
 							!strncasecmp(s, "image", 5) ? sdp_media_type_image :
 							!strncasecmp(s, "video", 5) ? sdp_media_type_video :
 							l > 11 && !strncasecmp(s, "application", 11) ? sdp_media_type_application : sdp_media_type_na) :
 						       sdp_media_type_na;
-			while(isalpha(*s)) {
-				++s;
+			if(media_type != sdp_media_type_na) {
+				while(isalpha(*s)) {
+					++s;
+				}
+				while(*s == ' ') {
+					++s;
+				}
+				vmPort port;
+				if(port.setFromString(s).isSet()) {
+					sdp_media_start[sdp_media_start_count] = s;
+					sdp_media_stop[sdp_media_start_count] = NULL;
+					sdp_media_type[sdp_media_start_count] = media_type;
+					sdp_media_port[sdp_media_start_count] = port;
+					++sdp_media_start_count;
+				}
 			}
-			if(*s == ' ') {
-				++s;
-			}
-			vmPort port;
-			if(port.setFromString(s).isSet()) {
-				sdp_media_start[sdp_media_start_count] = s;
-				sdp_media_type[sdp_media_start_count] = media_type;
-				sdp_media_port[sdp_media_start_count] = port;
-				++sdp_media_start_count;
-			} else {
-				break;
-			}
+			sdp_text_pointer = s + 1;
 		} else {
 			break;
 		}
@@ -2673,7 +2680,9 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 		
 		char *sdp_media_text = sdp_media_start[sdp_media_i];
 		unsigned sdp_media_text_len = sdp_media_i < sdp_media_start_count - 1 ?
-					       sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i] :
+					       (sdp_media_stop[sdp_media_i] ?
+						 sdp_media_stop[sdp_media_i] - sdp_media_start[sdp_media_i] :
+						 sdp_media_start[sdp_media_i + 1] - sdp_media_start[sdp_media_i]) :
 					       sdp_text_len - (sdp_media_start[sdp_media_i] - sdp_text);
 					       
 		e_sdp_protocol sdp_protocol = sdp_proto_na;
@@ -4167,7 +4176,6 @@ void process_sdp(Call *call, CallBranch *c_branch, packet_s_process *packetS, in
 			sdplen = datalen - (sdp - from_data);
 		}
 	}
-
 	char sessid[MAXLEN_SDP_SESSID];
 	s_sdp_media_data sdp_media_data;
 	list<s_sdp_media_data*> *next_sdp_media_data = NULL;
