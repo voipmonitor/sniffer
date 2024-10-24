@@ -2295,6 +2295,30 @@ bool SqlDb_mysql::query(string query, bool callFromStoreProcessWithFixDeadlock, 
 						if(pass < this->maxQueryPass - 1) {
 							this->reconnect();
 						}
+					} else if(this->getLastError() == ER_TOO_BIG_ROWSIZE) {
+						vector<string> matches;
+						if(reg_match(query.c_str(), "ALTER TABLE ([a-z0-9_~]+)", &matches, true) && matches.size() >= 2) {
+							bool alterOK = false;
+							string table = matches[1];
+							if(this->existsTable(table)) {
+								if(!mysql_query(this->hMysqlConn, ("alter table " + table + " row_format=dynamic").c_str())) {
+									syslog(LOG_NOTICE, "success change row_format to dynamic for table %s", table.c_str());
+									MYSQL_RES *res = mysql_use_result(this->hMysqlConn);
+									if(res) {
+										while(mysql_fetch_row(res));
+										mysql_free_result(res);
+									}
+									alterOK = true;
+								} else {
+									syslog(LOG_NOTICE, "failed change row_format to dynamic for table %s with error: %s", table.c_str(), mysql_error(this->hMysqlConn));
+								}
+								if(!alterOK) {
+									break;
+								}
+							}
+						} else {
+							break;
+						}
 					} else if(sql_disable_next_attempt_if_error || 
 						  this->disableNextAttemptIfError ||
 						  this->ignoreLastError() ||
