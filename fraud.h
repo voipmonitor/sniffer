@@ -33,19 +33,8 @@ extern timeval t;
 class TimePeriod {
 public:
 	TimePeriod(SqlDb_row *dbRow = NULL);
-	bool checkTime(const char *time, const char *gui_timezone) {
-		return(checkTime(getDateTime(time), gui_timezone));
-	}
-	bool checkTime(u_int64_t time, const char *gui_timezone) {
-		return(checkTime(getDateTime(time), gui_timezone));
-	}
-	bool checkTime(time_t time, const char *gui_timezone) {
-		return(checkTime(getDateTime(time), gui_timezone));
-	}
-	bool checkTime(struct tm time, const char *gui_timezone) {
-		if(gui_timezone) {
-			time = time_r(TIME_S_TO_US(mktime(&time)), gui_timezone);
-		}
+	bool checkTime(time_t at, const char *gui_timezone) {
+		tm time = time_r(&at, gui_timezone);
 		bool rslt = true;
 		if(is_hourmin) {
 			if(from_hour * 100 + from_minute > to_hour * 100 + to_minute) {
@@ -725,7 +714,7 @@ public:
 	void evCall_rcc(sFraudCallInfo *callInfo, class FraudAlert_rcc *alert, bool timeperiod);
 	void evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, class FraudAlert_rcc *alert, bool timeperiod);
 protected:
-	virtual bool checkTime(u_int64_t /*time*/) { return(true); }
+	virtual bool checkTime(time_t /*at*/) { return(true); }
 	virtual string getDescr() { return(""); }
 	FraudAlert::eTypeBy getTypeBy();
 private:
@@ -778,7 +767,7 @@ public:
 				   SqlDb *sqlDb = NULL);
 	void loadTimePeriods(SqlDb *sqlDb = NULL);
 protected: 
-	bool checkTime(u_int64_t time);
+	bool checkTime(time_t at);
 	string getDescr() {
 		return(descr);
 	}

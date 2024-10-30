@@ -1132,10 +1132,10 @@ void FraudAlert_rcc_timePeriods::loadTimePeriods(SqlDb *sqlDb) {
 	}
 }
 
-bool FraudAlert_rcc_timePeriods::checkTime(u_int64_t time) {
+bool FraudAlert_rcc_timePeriods::checkTime(time_t at) {
 	vector<TimePeriod>::iterator iter = timePeriods.begin();
 	while(iter != timePeriods.end()) {
-		if((*iter).checkTime(time, tp_gui_timezone ? fraudAlerts->getGuiTimezone() : NULL)) {
+		if((*iter).checkTime(at, tp_gui_timezone ? fraudAlerts->getGuiTimezone() : NULL)) {
 			return(true);
 		}
 		++iter;
@@ -1178,7 +1178,7 @@ void FraudAlert_rcc_base::evCall_rcc(sFraudCallInfo *callInfo, FraudAlert_rcc *a
 	map<string, FraudAlert_rcc_callInfo*>::iterator callsIter_by_number;
 	switch(callInfo->typeCallInfo) {
 	case sFraudCallInfo::typeCallInfo_connectCall:
-		if(this->checkTime(callInfo->at_connect)) {
+		if(this->checkTime(TIME_US_TO_S(callInfo->at_connect))) {
 			sIdAlert idAlert;
 			switch(parent->typeBy) {
 			case FraudAlert::_typeBy_source_ip:
@@ -1382,7 +1382,7 @@ void FraudAlert_rcc_base::evRtpStream_rcc(sFraudRtpStreamInfo *rtpStreamInfo, cl
 	sIdAlert idAlert;
 	switch(rtpStreamInfo->typeRtpStreamInfo) {
 	case sFraudRtpStreamInfo::typeRtpStreamInfo_beginStream:
-		if(this->checkTime(rtpStreamInfo->at)) {
+		if(this->checkTime(TIME_US_TO_S(rtpStreamInfo->at))) {
 			switch(parent->typeBy) {
 			case FraudAlert::_typeBy_rtp_stream_ip:
 				idAlert.rtp_stream_ip = rtp_stream_ip;
