@@ -2257,7 +2257,9 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
+			#if not CALLX_MOD_1
 			double call_t2cpu_preprocess_packet_out_thread = -2;
+			#endif
 			double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
 			int count_t2cpu = 1;
 			sum_t2cpu = t2cpu;
@@ -2310,7 +2312,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								}
 								++count_t2cpu;
 								sum_t2cpu += t2cpu_preprocess_packet_out_thread;
-								if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								if(
+								   #if CALLX_MOD_1
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_find_call &&
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_process_call &&
+								   #else
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								   #endif
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
@@ -2318,10 +2326,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 									last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
 								}
+								#if not CALLX_MOD_1
 								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
 									call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 								}
-								if(preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								#endif
+								if(
+								   #if CALLX_MOD_1
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_find_call &&
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_process_call &&
+								   #else
+								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_call &&
+								   #endif
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_register && 
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_sip_other && 
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_diameter && 
@@ -2348,7 +2364,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						if(opt_t2_boost &&
 						   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach_x ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
-						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip)) {
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip
+						    #if CALLX_MOD_1
+						    ||
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_find_call ||
+						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_process_call
+						    #endif
+						    )) {
 							static int do_add_thread_counter[PreProcessPacket::ppt_end_base];
 							static int do_remove_thread_counter[PreProcessPacket::ppt_end_base];
 							if((t2cpu_preprocess_packet_next_threads_count < 2 ?
@@ -2375,6 +2397,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(opt_t2_boost) {
+				#if not CALLX_MOD_1
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 						double percFullQring = 0;
@@ -2436,6 +2459,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						}
 					}
 				}
+				#endif
 			}
 			if(task == pcapStatLog && opt_rrd) {
 				rrd_set_value(RRD_VALUE_tCPU_t2, sum_t2cpu);
@@ -2547,6 +2571,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						do_stop_last_level_counter = 0;
 					}
 				}
+				#if not CALLX_MOD_1
 				static int do_add_thread_callx_counter = 0;
 				if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
 				   heap_pb_used_perc > opt_heap_limit_new_thread &&
@@ -2558,6 +2583,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				} else {
 					do_add_thread_callx_counter = 0;
 				}
+				#endif
 				static int do_add_process_rtp_counter = 0;
 				if(last_t2cpu_preprocess_packet_out_thread_rtp > opt_cpu_limit_new_thread &&
 				   heap_pb_used_perc > opt_heap_limit_new_thread) {

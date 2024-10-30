@@ -2355,14 +2355,14 @@ public:
 	
 	void calls_counter_inc() {
 		extern volatile int calls_counter;
-		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
+		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_INC(calls_counter);
 			set_call_counter = true;
 		}
 	}
 	void calls_counter_dec() {
 		extern volatile int calls_counter;
-		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP)) {
+		if(typeIs(INVITE) || typeIs(MESSAGE) || typeIs(MGCP) || typeIs(SKINNY_NEW)) {
 			__SYNC_DEC(calls_counter);
 			set_call_counter = false;
 		}
@@ -3345,7 +3345,9 @@ public:
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
+	#if not CALLX_MOD_1
 	map<string, Call*> *calls_listMAP_X;
+	#endif
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
 	map<sStreamId2, Call*> calls_by_stream_id2_listMAP;
 	map<sStreamId, Call*> calls_by_stream_listMAP;
@@ -3421,10 +3423,12 @@ public:
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_listMAPlock);*/
 	}
+	#if not CALLX_MOD_1
 	void lock_calls_listMAP_X(u_int8_t ci) {
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP_X[ci], opt_lock_calls_usleep);
 	}
+	#endif
 	void lock_calls_mergeMAP() {
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_mergeMAP, opt_lock_calls_usleep);
@@ -3484,7 +3488,9 @@ public:
 	void unlock_registers_deletequeue() { __SYNC_UNLOCK(this->_sync_lock_registers_deletequeue); }
 	void unlock_files_queue() { __SYNC_UNLOCK(this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
 	void unlock_calls_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
+	#if not CALLX_MOD_1
 	void unlock_calls_listMAP_X(u_int8_t ci) { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP_X[ci]); }
+	#endif
 	void unlock_calls_mergeMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
 	void unlock_calls_diameter_from_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_from_sip_listMAP); }
 	void unlock_calls_diameter_to_sip_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_diameter_to_sip_listMAP); }
@@ -3509,16 +3515,19 @@ public:
 	*/
 	Call *add(int call_type, char *call_id, unsigned long call_id_len, vector<string> *call_id_alternative,
 		  u_int64_t time_us, vmIP saddr, vmPort port, 
-		  pcap_t *handle, int dlt, int sensorId, int8_t ci = -1);
+		  pcap_t *handle, int dlt, int sensorId, int8_t ci = -1, map<string, Call*> *map_calls = NULL);
 	Ss7 *add_ss7(packet_s_stack *packetS, Ss7::sParseData *data);
 	Call *add_mgcp(sMgcpRequest *request, u_int64_t time_us, vmIP saddr, vmPort sport, vmIP daddr, vmPort dport,
 		       pcap_t *handle, int dlt, int sensorId);
 	
 	size_t getCountCalls();
+	
+	#if not CALLX_MOD_1
 	bool enableCallX();
 	bool useCallX();
 	bool enableCallFindX();
 	bool useCallFindX();
+	#endif
 
 	/**
 	 * @brief find Call by call_id
@@ -3576,6 +3585,26 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
+	Call *find_by_call_id_alter_map(char *call_id, unsigned long call_id_len, time_t time, map<string, Call*> *map_calls) {
+		Call *rslt_call = NULL;
+		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
+		map<string, Call*>::iterator callMAPIT = map_calls->find(call_idS);
+		if(callMAPIT != map_calls->end()) {
+			rslt_call = callMAPIT->second;
+			if(time && !rslt_call->stopProcessing) {
+				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
+					     << rslt_call->call_id << " : "
+					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				#endif
+				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+			}
+		}
+		return(rslt_call);
+	}
+	#if not CALLX_MOD_1
 	Call *find_by_call_id_x(u_int8_t ci, char *call_id, unsigned long call_id_len, time_t time) {
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
@@ -3597,6 +3626,7 @@ public:
 		unlock_calls_listMAP_X(ci);
 		return(rslt_call);
 	}
+	#endif
 	Call *find_by_stream_callid(vmIP sip, vmPort sport, vmIP dip, vmPort dport, const char *callid) {
 		Call *rslt_call = NULL;
 		lock_calls_listMAP();
@@ -3679,6 +3709,7 @@ public:
 					break;
 				}
 			}
+			#if not CALLX_MOD_1
 			if(!rslt_call && useCallFindX()) {
 				extern int preProcessPacketCallX_count;
 				for(int i = 0; i < preProcessPacketCallX_count && !rslt_call; i++) {
@@ -3692,6 +3723,7 @@ public:
 					if(lock) unlock_calls_listMAP_X(i);
 				}
 			}
+			#endif
 		}
 		if(lock) unlock_calls_listMAP();
 		return(rslt_call);
@@ -4051,7 +4083,9 @@ private:
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
+	#if not CALLX_MOD_1
 	volatile int *_sync_lock_calls_listMAP_X;
+	#endif
 	volatile int _sync_lock_calls_mergeMAP;
 	volatile int _sync_lock_calls_diameter_from_sip_listMAP;
 	volatile int _sync_lock_calls_diameter_to_sip_listMAP;

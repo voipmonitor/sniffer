@@ -384,15 +384,22 @@ public:
 		ppt_detach,
 		ppt_sip,
 		ppt_extend,
+		#if CALLX_MOD_1
+		ppt_pp_find_call,
+		ppt_pp_process_call,
+		#else
 		ppt_pp_call,
+		#endif
 		ppt_pp_register,
 		ppt_pp_sip_other,
 		ppt_pp_diameter,
 		ppt_pp_rtp,
 		ppt_pp_other,
 		ppt_end_base,
+		#if not CALLX_MOD_1
 		ppt_pp_callx,
 		ppt_pp_callfindx
+		#endif
 	};
 	enum eCallX_state {
 		callx_na,
@@ -543,7 +550,9 @@ public:
 		volatile int thread_index;
 		volatile int data_ready;
 		volatile int processing;
-		void null() {
+		volatile int mode;
+		map<string, Call*> map_calls;
+		void null(bool null_map_calls = false) {
 			batch = NULL;
 			start = 0;
 			end = 0;
@@ -551,6 +560,10 @@ public:
 			thread_index = 0;
 			data_ready = 0;
 			processing = 0;
+			mode = 0;
+			if(null_map_calls) {
+				map_calls.clear();
+			}
 		}
 	};
 	struct s_next_thread {
@@ -1030,6 +1043,14 @@ public:
 					case ppt_extend:
 						this->process_SIP_EXTEND(_packetS);
 						break;
+					#if CALLX_MOD_1
+					case ppt_pp_find_call:
+						this->process_FIND_CALL(_packetS);
+						break;
+					case ppt_pp_process_call:
+						this->process_PROCESS_CALL(_packetS);
+						break;
+					#else
 					case ppt_pp_call:
 						this->process_CALL(_packetS);
 						break;
@@ -1039,6 +1060,7 @@ public:
 					case ppt_pp_callfindx:
 						this->process_CallFindX(_packetS);
 						break;
+					#endif
 					case ppt_pp_register:
 						this->process_REGISTER(_packetS);
 						break;
@@ -1073,6 +1095,14 @@ public:
 			case ppt_extend:
 				this->process_SIP_EXTEND(packetS);
 				break;
+			#if CALLX_MOD_1
+			case ppt_pp_find_call:
+				this->process_FIND_CALL(packetS);
+				break;
+			case ppt_pp_process_call:
+				this->process_PROCESS_CALL(packetS);
+				break;
+			#else
 			case ppt_pp_call:
 				this->process_CALL(packetS);
 				break;
@@ -1082,6 +1112,7 @@ public:
 			case ppt_pp_callfindx:
 				this->process_CallFindX(packetS);
 				break;
+			#endif
 			case ppt_pp_register:
 				this->process_REGISTER(packetS);
 				break;
@@ -1224,7 +1255,9 @@ public:
 	void addNextThread();
 	void removeNextThread();
 	static void autoStartNextLevelPreProcessPacket();
+	#if not CALLX_MOD_1
 	static void autoStartCallX_PreProcessPacket();
+	#endif
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
 	double getQringFillingPerc() {
 		unsigned int _readit = readit;
@@ -1448,12 +1481,19 @@ public:
 			return("sip");
 		case ppt_extend:
 			return("extend");
+		#if CALLX_MOD_1
+		case ppt_pp_find_call:
+			return("find_call");
+		case ppt_pp_process_call:
+			return("process_call");
+		#else
 		case ppt_pp_call:
 			return("call");
 		case ppt_pp_callx:
 			return("callx");
 		case ppt_pp_callfindx:
 			return("callfindx");
+		#endif
 		case ppt_pp_register:
 			return("register");
 		case ppt_pp_sip_other:
@@ -1479,12 +1519,19 @@ public:
 			return("s");
 		case ppt_extend:
 			return("e");
+		#if CALLX_MOD_1
+		case ppt_pp_find_call:
+			return("cf");
+		case ppt_pp_process_call:
+			return("cp");
+		#else
 		case ppt_pp_call:
 			return("c");
 		case ppt_pp_callx:
 			return("cx");
 		case ppt_pp_callfindx:
 			return("cfx");
+		#endif
 		case ppt_pp_register:
 			return("g");
 		case ppt_pp_sip_other:
@@ -1711,9 +1758,15 @@ private:
 	}
 	void process_SIP(packet_s_process *packetS, bool parallel_threads = false);
 	void process_SIP_EXTEND(packet_s_process *packetS);
+	#if CALLX_MOD_1
+	void process_FIND_CALL(packet_s_process *packetS);
+	void _process_FIND_CALL_push(packet_s_process *packetS);
+	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0);
+	#else
 	void process_CALL(packet_s_process *packetS);
 	void process_CALLX(packet_s_process *packetS);
 	void process_CallFindX(packet_s_process *packetS);
+	#endif
 	void process_REGISTER(packet_s_process *packetS);
 	void process_SIP_OTHER(packet_s_process *packetS);
 	void process_DIAMETER(packet_s_process *packetS);
@@ -1734,8 +1787,8 @@ private:
 	inline bool process_getCallID(packet_s_process **packetS_ref);
 	inline void process_getSipMethod(packet_s_process **packetS_ref);
 	inline void process_getLastSipResponse(packet_s_process **packetS_ref);
-	inline void process_findCall(packet_s_process **packetS_ref);
-	inline void process_createCall(packet_s_process **packetS_ref);
+	inline void process_findSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls = NULL);
+	inline void process_createSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls = NULL);
 	void runOutThread();
 	void endOutThread(bool force = false);
 	void *outThreadFunction();

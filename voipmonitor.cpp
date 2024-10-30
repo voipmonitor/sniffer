@@ -440,6 +440,8 @@ int opt_enable_process_rtp_packet = 1;
 int opt_enable_process_rtp_packet_max = -1;
 volatile int process_rtp_packets_distribute_threads_use = 0;
 int opt_pre_process_packets_next_thread = -1;
+int opt_pre_process_packets_next_thread_find_call = -1;
+int opt_pre_process_packets_next_thread_process_call = -1;
 int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
@@ -4826,6 +4828,7 @@ int main_init_read() {
 			}
 		}
 		
+		#if not CALLX_MOD_1
 		if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
 			bool autoStartCallX = false;
 			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
@@ -4852,6 +4855,7 @@ int main_init_read() {
 				preProcessPacketCallX_state = PreProcessPacket::callx_find;
 			}
 		}
+		#endif
 		
 		//autostart for fork mode if t2cpu > 50%
 		if(
@@ -6354,6 +6358,14 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
+					#if CALLX_MOD_1
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_find_call", &opt_pre_process_packets_next_thread_find_call))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_process_call", &opt_pre_process_packets_next_thread_process_call))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					#endif
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_max", &opt_pre_process_packets_next_thread_max))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS));
 					addConfigItem((new FILE_LINE(42156) cConfigItem_integer("process_rtp_packets_hash_next_thread", &opt_process_rtp_packets_hash_next_thread))

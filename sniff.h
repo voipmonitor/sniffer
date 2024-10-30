@@ -910,6 +910,20 @@ struct packet_s_process : public packet_s_process_0 {
 			return((unsigned int)_callid[0] % preProcessPacketCallX_count);
 		}
 	}
+	inline u_int32_t get_callid_hash() {
+		char *_callid = callid_long ? callid_long : callid;
+		unsigned length = 0;
+		while(length < 6 && _callid[length]) {
+			++length;
+		}
+		if(length == 6) {
+			return(((u_int32_t)_callid[0] * (u_int32_t)_callid[1]) ^
+			       ((u_int32_t)_callid[2] * (u_int32_t)_callid[3]) ^
+			       ((u_int32_t)_callid[4] * (u_int32_t)_callid[5]));
+		} else {
+			return((u_int32_t)_callid[0]);
+		}
+	}
 	inline void register_child_packet(packet_s_process *child) {
 		if(!child_packets) {
 			child_packets = child;
