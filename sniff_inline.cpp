@@ -247,6 +247,11 @@ bool parseEtherHeader(int pcapLinklayerHeaderType, u_char* packet,
 			int link_header_offset = pcapLinklayerHeaderType == DLT_ATM_RFC1483 ? 10 : 0;
 			ether_header *_header_eth = (ether_header*)((char*)packet + link_header_offset);
 			u_int16_t ether_type = htons(_header_eth->ether_type);
+			if(ether_type == 0x8903) { // Cisco FabricPath
+				link_header_offset += 20;
+				_header_eth = (ether_header*)((char*)packet + link_header_offset);
+				ether_type = htons(_header_eth->ether_type);
+			}
 			switch(ether_type) {
 			case 0x8100:
 				// VLAN tag
