@@ -1835,6 +1835,7 @@ private:
 	volatile int next_threads_count;
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	volatile int next_threads_completed;
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
 	volatile int8_t *items_flag;

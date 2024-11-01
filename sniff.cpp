@@ -10070,7 +10070,42 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 				break;
 			#if CALLX_MOD_1
 			case ppt_pp_find_call: {
-				if(next_thread_data->mode == 1) {
+				if(next_thread_data->mode == 2) {
+					packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
+					for(unsigned batch_index = 0; 
+					    batch_index < batch_index_end; 
+					    batch_index += batch_index_skip) {
+						if(!this->items_flag[batch_index] &&
+						   this->items_thread_index[batch_index] == next_thread_data->thread_index) {
+							packet_s_process *packetS = batch[batch_index];
+							if(packetS->typeContentIsSip()) {
+								packetS->call = calltable->find_by_call_id_simple(packetS->get_callid(), 0, packetS->getTime_s());
+							}
+						}
+					}
+					__SYNC_INC(this->next_threads_completed);
+					for(unsigned batch_index = 0; 
+					    batch_index < batch_index_end; 
+					    batch_index += batch_index_skip) {
+						if(!this->items_flag[batch_index] &&
+						   this->items_thread_index[batch_index] == next_thread_data->thread_index) {
+							packet_s_process *packetS = batch[batch_index];
+							if(packetS->typeContentIsSip()) {
+								if(!packetS->call) {
+									packetS->call = calltable->find_by_call_id_alter_map(packetS->get_callid(), 0, packetS->getTime_s(), &next_thread_data->map_calls);
+								}
+								if(!packetS->call &&
+								   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
+								    (opt_detect_alone_bye && packetS->sip_method == BYE))) { // TODO - !inline funkce pro vyhodnocení zda se může dělat hovor
+									packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls);
+									packetS->_createCall = true;
+								}
+								packetS->_findCall = true;
+							}
+							this->items_flag[batch_index] = 1;
+						}
+					}
+				} else if(next_thread_data->mode == 1) {
 					packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
 					for(unsigned batch_index = 0; 
 					    batch_index < batch_index_end; 
@@ -10613,6 +10648,12 @@ void *PreProcessPacket::outThreadFunction() {
 							packet_s_process *packetS = batch->batch[batch_index];
 							this->items_thread_index[batch_index] = packetS->get_callid_hash() % thread_index_modulo;
 						}
+						bool _lock_calls_listMAP = false;
+						if(_process_only_in_next_threads) {
+							__SYNC_NULL(this->next_threads_completed);
+							calltable->lock_calls_listMAP();
+							_lock_calls_listMAP = true;
+						}
 						for(int i = 0; i < _next_threads_count; i++) {
 							this->next_threads[i].next_data.null(true);
 							if(_process_only_in_next_threads) {
@@ -10620,7 +10661,7 @@ void *PreProcessPacket::outThreadFunction() {
 								this->next_threads[i].next_data.end = count;
 								this->next_threads[i].next_data.skip = 1;
 								this->next_threads[i].next_data.thread_index = i;
-								this->next_threads[i].next_data.mode = 1;
+								this->next_threads[i].next_data.mode = 2;
 							} else {
 								this->next_threads[i].next_data.start = 0;
 								this->next_threads[i].next_data.end = count;
@@ -10639,6 +10680,11 @@ void *PreProcessPacket::outThreadFunction() {
 						if(_process_only_in_next_threads) {
 							while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
 							      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+								if(this->next_threads_completed == _next_threads_count && 
+								   _lock_calls_listMAP) {
+									calltable->unlock_calls_listMAP();
+									_lock_calls_listMAP = false;
+								}
 								packet_s_process *packetS = batch->batch[completed];
 								if(completed < count &&
 								   this->items_flag[completed] != 0 &&
@@ -10688,26 +10734,26 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							}
 						}
-						if(map_calls.size()) {
+						if(!_lock_calls_listMAP) {
 							calltable->lock_calls_listMAP();
+						}
+						if(map_calls.size()) {
 							for(map<string, Call*>::iterator iter = map_calls.begin();
 							    iter != map_calls.end();
 							    iter++) {
 								calltable->calls_listMAP[iter->first] = iter->second;
 							}
-							calltable->unlock_calls_listMAP();
 						}
 						for(int i = 0; i < _next_threads_count; i++) {
 							if(this->next_threads[i].next_data.map_calls.size()) {
-								calltable->lock_calls_listMAP();
 								for(map<string, Call*>::iterator iter = this->next_threads[i].next_data.map_calls.begin();
 								    iter != this->next_threads[i].next_data.map_calls.end();
 								    iter++) {
 									calltable->calls_listMAP[iter->first] = iter->second;
 								}
-								calltable->unlock_calls_listMAP();
 							}
 						}
+						calltable->unlock_calls_listMAP();
 						for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 							this->_process_FIND_CALL_push(batch->batch[batch_index]);
 						}
