@@ -761,6 +761,9 @@ Call::Call(int call_type, char *call_id, unsigned long call_id_len, vector<strin
 	hold_status = false;
 	is_fas_detected = false;
 	is_zerossrc_detected = false;
+
+	protocol_is_tcp = false;
+	protocol_is_udp = false;
 	
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	for(int i = 0; i < MAX_SSRC_PER_CALL_FIX; i++) {
@@ -6744,6 +6747,10 @@ Call::saveToDb(bool enableBatchIfPossible) {
 		cdr_flags |= CDR_ZEROSSRC_DETECTED;
 	if (c_branch->is_sipalg_detected)
 		cdr_flags |= CDR_SIPALG_DETECTED;
+	if (protocol_is_tcp)
+		cdr_flags |= CDR_PROTO_TCP;
+	if (protocol_is_udp)
+		cdr_flags |= CDR_PROTO_UDP;
 	#if not EXPERIMENTAL_LITE_RTP_MOD
 	if(opt_srtp_rtp_local_instances) {
 		for(int i = 0; i < rtp_size(); i++) {

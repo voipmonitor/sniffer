@@ -11786,6 +11786,11 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 					packetS->call->bad_flags_warning[0] = true;
 				}
 			}
+			if(packetS->pflags.tcp) {
+				packetS->call->protocol_is_tcp = true;
+			} else {
+				packetS->call->protocol_is_udp = true;
+			}
 		} else if(packetS->_createCall && packetS->call_created) {
 			push_to_thread = ppt_pp_process_call;
 		}
@@ -11884,6 +11889,11 @@ void PreProcessPacket::process_CALL(packet_s_process *packetS) {
 					     << packetS->call->call_id << " : "
 					     << packetS->call->in_preprocess_queue_before_process_packet << endl;
 				#endif
+				if(packetS->pflags.tcp) {
+					packetS->call->protocol_is_tcp = true;
+				} else {
+					packetS->call->protocol_is_udp = true;
+				}
 			}
 			if(packetS->_createCall && packetS->call_created) {
 				__SYNC_DEC(packetS->call_created->in_preprocess_queue_before_process_packet);
