@@ -3585,6 +3585,25 @@ public:
 		unlock_calls_listMAP();
 		return(rslt_call);
 	}
+	Call *find_by_call_id_simple(char *call_id, unsigned long call_id_len, time_t time) {
+		Call *rslt_call = NULL;
+		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
+		map<string, Call*>::iterator callMAPIT = calls_listMAP.find(call_idS);
+		if(callMAPIT != calls_listMAP.end()) {
+			rslt_call = callMAPIT->second;
+			if(time && !rslt_call->stopProcessing) {
+				__SYNC_INC(rslt_call->in_preprocess_queue_before_process_packet);
+				#if DEBUG_PREPROCESS_QUEUE
+					cout << " *** ++ in_preprocess_queue_before_process_packet (1) : "
+					     << rslt_call->call_id << " : "
+					     << rslt_call->in_preprocess_queue_before_process_packet << endl;
+				#endif
+				rslt_call->in_preprocess_queue_before_process_packet_at[0] = time;
+				rslt_call->in_preprocess_queue_before_process_packet_at[1] = getTimeMS_rdtsc() / 1000;
+			}
+		}
+		return(rslt_call);
+	}
 	Call *find_by_call_id_alter_map(char *call_id, unsigned long call_id_len, time_t time, map<string, Call*> *map_calls) {
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
