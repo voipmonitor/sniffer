@@ -12573,8 +12573,6 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 	this->outThreadId = 0;
 	this->term_processRtp = false;
 	this->_sync_count = 0;
-	vm_pthread_create((string("t2 rtp preprocess ") + (type == hash ? "hash" : "distribute")).c_str(),
-			  &this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this, __FILE__, __LINE__);
 	for(int i = 0; i < MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 		this->hash_next_threads[i].null();
 	}
@@ -12590,6 +12588,8 @@ ProcessRtpPacket::ProcessRtpPacket(eType type, int indexThread) {
 					  &this->hash_next_threads[i].thread_handle, NULL, _ProcessRtpPacket_nextThreadFunction, arg, __FILE__, __LINE__);
 		}
 	}
+	vm_pthread_create((string("t2 rtp preprocess ") + (type == hash ? "hash" : "distribute")).c_str(),
+			  &this->out_thread_handle, NULL, _ProcessRtpPacket_outThreadFunction, this, __FILE__, __LINE__);
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	push_thread = 0;
 	last_race_log[0] = 0;
