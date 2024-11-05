@@ -196,6 +196,14 @@ struct sHeaderPacketPQout {
 	vmIP sensor_ip;
 	bool block_store_locked;
 	u_int16_t header_ip_last_offset;
+	//
+	u_int16_t header_ip_offset;
+	u_int16_t header_ip_encaps_offset;
+	u_int8_t header_ip_protocol;
+	packet_flags pflags;
+	vmPort sport, dport;
+	u_int16_t data_offset;
+	u_int32_t datalen;
 	sHeaderPacketPQout() {
 	}
 	sHeaderPacketPQout(pcap_pkthdr *header, u_char *packet,
@@ -211,6 +219,15 @@ struct sHeaderPacketPQout {
 		this->sensor_ip = sensor_ip;
 		this->block_store_locked = false;
 		this->header_ip_last_offset = 0xFFFF;
+		//
+		this->header_ip_offset = 0xFFFF;
+		this->header_ip_encaps_offset = 0xFFFF;
+		this->header_ip_protocol = 0;
+		this->pflags.init();
+		this->sport = 0;
+		this->dport = 0;
+		this->data_offset = 0;
+		this->datalen = 0;
 	}
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
@@ -1016,7 +1033,9 @@ protected:
 private:
 	void createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort);
 	void cleanupConnections(bool all = false);
-	int processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
+	inline void processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
+	inline bool processPacket_analysis(sHeaderPacketPQout *hp);
+	inline bool processPacket_push(sHeaderPacketPQout *hp);
 	void pushBatchProcessPacket();
 	void checkFreeSizeCachedir();
 	void cleanupBlockStoreTrash(bool all = false);
@@ -1101,6 +1120,54 @@ public:
 		volatile int used;
 		unsigned max_count;
 	};
+	struct arg_next_thread {
+		PcapQueue_outputThread *me;
+		int next_thread_id;
+	};
+	struct s_next_thread_data {
+		volatile void *batch;
+		volatile unsigned start;
+		volatile unsigned end;
+		volatile unsigned skip;
+		volatile int data_ready;
+		volatile int processing;
+		void null() {
+			batch = NULL;
+			start = 0;
+			end = 0;
+			skip = 0;
+			data_ready = 0;
+			processing = 0;
+		}
+	};
+	struct s_next_thread {
+		volatile int thread_id;
+		pthread_t thread_handle;
+		pstat_data thread_pstat_data[2][2];
+		s_next_thread_data next_data;
+		sem_t sem_sync[2];
+		volatile int terminate;
+		void null() {
+			thread_id = 0;
+			thread_handle = 0;
+			memset(thread_pstat_data, 0, sizeof(thread_pstat_data));
+			next_data.null();
+			memset(sem_sync, 0, sizeof(sem_sync));
+			terminate = 0;
+		}
+		void sem_init() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				::sem_init(&sem_sync[i], 0, 0);
+			}
+		}
+		void sem_term() {
+			extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+			for(int i = 0; i < opt_process_rtp_packets_hash_next_thread_sem_sync; i++) {
+				sem_destroy(&sem_sync[i]);
+			}
+		}
+	};
 	PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue);
 	~PcapQueue_outputThread();
 	void start();
@@ -1108,9 +1175,16 @@ public:
 	void terminate() {
 		this->stop();
 	}
+	void addNextThread();
+	void removeNextThread();
 	inline void push(sHeaderPacketPQout *hp);
 	void push_batch();
+	static void *_outThreadFunction(void *arg);
 	void *outThreadFunction();
+	static void *_nextThreadFunction(void *arg);
+	void *nextThreadFunction(int next_thread_index_plus);
+	void createNextThread();
+	void termNextThread();
 	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDefrag(sHeaderPacketPQout *hp);
 	inline void processDedup(sHeaderPacketPQout *hp);
@@ -1128,8 +1202,21 @@ public:
 		}
 		return("");
 	}
-	void preparePstatData(int pstatDataIndex);
-	double getCpuUsagePerc(int pstatDataIndex, double *percFullQring, bool preparePstatData = true);
+	void preparePstatData(int nextThreadId, int pstatDataIndex);
+	double getCpuUsagePerc(int nextThreadId, int pstatDataIndex, double *percFullQring, bool preparePstatData = true);
+	bool existsNextThread(int next_thread_index) {
+		return(next_thread_index < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
+		       this->next_threads[next_thread_index].thread_id);
+	}
+private:
+	bool isNextThreadsGt2Processing(int next_threads) {
+		for(int i = 2; i < next_threads; i++) {
+			if(this->next_threads[i].next_data.processing) {
+				return(true);
+			}
+		}
+		return(false);
+	}
 private:
 	eTypeOutputThread typeOutputThread;
 	PcapQueue_readFromFifo *pcapQueue;
@@ -1156,6 +1243,10 @@ private:
 	#endif
 	volatile bool initThreadOk;
 	volatile bool terminatingThread;
+	volatile int next_threads_count;
+	volatile int next_threads_count_mod;
+	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
+	volatile int8_t *items_flag;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
 	u_int64_t last_race_log[2];

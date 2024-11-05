@@ -10182,7 +10182,13 @@ void *PreProcessPacket::outThreadFunction() {
 		if(this->next_threads_count_mod &&
 		   (this->typePreProcessThread == ppt_detach_x ||
 		    this->typePreProcessThread == ppt_detach ||
-		    this->typePreProcessThread == ppt_sip)) {
+		    this->typePreProcessThread == ppt_sip
+		    #if CALLX_MOD_1
+		    ||
+		    this->typePreProcessThread == ppt_pp_find_call ||
+		    this->typePreProcessThread == ppt_pp_process_call
+		    #endif
+		   )) {
 			if(this->next_threads_count_mod > 0) {
 				createNextThread();
 			} else if(this->next_threads_count_mod < 0) {

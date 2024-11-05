@@ -2208,7 +2208,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(pcapQueueQ_outThread_detach) {
 				double percFullQring = 0;
-				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(pstatDataIndex, &percFullQring);
+				double detach_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach:" << setprecision(1) << detach_cpu;
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
@@ -2218,7 +2218,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(pcapQueueQ_outThread_defrag) {
 				double percFullQring = 0;
-				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(pstatDataIndex, &percFullQring);
+				double defrag_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && defrag_cpu >= 0) {
 					outStrStat << "/defrag:" << setprecision(1) << defrag_cpu;
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
@@ -2228,7 +2228,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(pcapQueueQ_outThread_dedup) {
 				double percFullQring = 0;
-				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(pstatDataIndex, &percFullQring);
+				double dedup_cpu = pcapQueueQ_outThread_dedup->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && dedup_cpu >= 0) {
 					outStrStat << "/dedup:" << setprecision(1) << dedup_cpu;
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
@@ -2238,11 +2238,40 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 			}
 			if(pcapQueueQ_outThread_detach2) {
 				double percFullQring = 0;
-				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(pstatDataIndex, &percFullQring);
+				double detach_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(0, pstatDataIndex, &percFullQring);
 				if(task == pcapStatLog && detach_cpu >= 0) {
 					outStrStat << "/detach2:" << setprecision(1) << detach_cpu;
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
 						outStrStat << "#" << percFullQring;
+					}
+					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+						if(pcapQueueQ_outThread_detach2->existsNextThread(i)) {
+							double next_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
+							if(next_cpu >= 0) {
+								outStrStat << ";" << setprecision(1) << next_cpu;
+							}
+						}
+					}
+				}
+				if(task == pcapStatCpuCheck) {
+					static int do_add_thread_counter;
+					static int do_remove_thread_counter;
+					if(detach_cpu > opt_cpu_limit_new_thread &&
+					   heap_pb_used_perc > opt_heap_limit_new_thread) {
+						if((++do_add_thread_counter) >= 2) {
+							pcapQueueQ_outThread_detach2->addNextThread();
+							do_add_thread_counter = 0;
+						}
+						do_remove_thread_counter = 0;
+					} else if(detach_cpu < opt_cpu_limit_delete_thread) {
+						if((++do_remove_thread_counter) >= 2) {
+							pcapQueueQ_outThread_detach2->removeNextThread();
+							do_remove_thread_counter = 0;
+						}
+						do_add_thread_counter = 0;
+					} else {
+						do_add_thread_counter = 0;
+						do_remove_thread_counter = 0;
 					}
 				}
 			}
@@ -8888,7 +8917,7 @@ void PcapQueue_readFromFifo::cleanupConnections(bool all) {
 	this->unlock_packetServerConnections();
 }
 
-int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
+void PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state) {
  
 	if(hp_state == _hppq_out_state_NA) {
 		sumPacketsSizeOut[0] += hp->header->get_caplen();
@@ -8904,7 +8933,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	   opt_blockprocesspacket ||
 	   (hp_state == _hppq_out_state_NA &&
 	    hp->block_store && hp->block_store->hm == pcap_block_store::plus2 && ((pcap_pkthdr_plus2*)hp->header)->ignore)) {
-		return(0);
+		return;
 	}
 
 	/*
@@ -8914,28 +8943,18 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	}
 	*/
 	
-	if(opt_t2_boost_pb_detach_thread && opt_t2_boost && pcapQueueQ_outThread_detach &&
-	   hp_state == _hppq_out_state_NA) {
+	if(pcapQueueQ_outThread_detach) {
 		pcapQueueQ_outThread_detach->push(hp);
-		return(-1);
-	}
-	
-	if(opt_udpfrag && pcapQueueQ_outThread_defrag &&
-	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach)) {
+		return;
+	} else if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
-		return(-1);
-	}
-	
-	if(opt_dup_check_type != _dedup_na && pcapQueueQ_outThread_dedup &&
-	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag)) {
+		return;
+	} else if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
-		return(-1);
-	}
-	
-	if(opt_t2_boost_pb_detach_thread == 2 && opt_t2_boost && pcapQueueQ_outThread_detach2 &&
-	   (hp_state == _hppq_out_state_NA || hp_state == _hppq_out_state_detach || hp_state == _hppq_out_state_defrag || hp_state == _hppq_out_state_dedup)) {
+		return;
+	} else if(pcapQueueQ_outThread_detach2) {
 		pcapQueueQ_outThread_detach2->push(hp);
-		return(-1);
+		return;
 	}
 	 
 	/*
@@ -8944,10 +8963,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		cout << "break 2" << endl;
 	}
 	*/
- 
-	static u_int64_t packet_counter_all;
-	++packet_counter_all;
 	
+	if(processPacket_analysis(hp)) {
+		processPacket_push(hp);
+	}
+}
+
+bool PcapQueue_readFromFifo::processPacket_analysis(sHeaderPacketPQout* hp) {
+
 	pcap_pkthdr *header = hp->header->convertToStdHeader();
 	
 	if(header->caplen > header->len) {
@@ -8963,7 +8986,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				lastTimeSyslog = actTime;
 			}
 		}
-		return(0);
+		return(false);
 	}
 	
 	if(!this->_last_ts.tv_sec) {
@@ -9000,14 +9023,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			if(next_header_ip_offset == 0) {
 				break;
 			} else if(next_header_ip_offset < 0) {
-				return(0);
+				return(false);
 			} else {
 				header_ip = (iphdr2*)((u_char*)header_ip + next_header_ip_offset);
 				hp->header->header_ip_offset += next_header_ip_offset;
 			}
 		}
 	}
-
+	
 	char *data = NULL;
 	int datalen = 0;
 	packet_flags pflags;
@@ -9017,7 +9040,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 	u_int8_t header_ip_protocol = 0;
 	if(header_ip) {
 		if(hp->header->get_caplen() <= hp->header->header_ip_offset) {
-			return(0);
+			return(false);
 		}
 		header_ip_protocol = header_ip->get_protocol(hp->header->get_caplen() - hp->header->header_ip_offset);
 		if(header_ip_protocol == IPPROTO_UDP) {
@@ -9042,7 +9065,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			datalen = get_sctp_data_len(header_ip, &data, hp->packet, header->caplen);
 		} else {
 			//packet is not UDP and is not TCP, we are not interested, go to the next packet
-			return(0);
+			return(false);
 		}
 	} else if(opt_enable_ss7) {
 		data = (char*)hp->packet;
@@ -9050,7 +9073,7 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		pflags.ss7 = 1;
 	}
 	
-	if(datalen < 0 || datalen > 0xFFFFF ||
+	if(!data || datalen < 0 || datalen > 0xFFFFF ||
 	   (data - (char*)hp->packet) > header->caplen) {
 		extern BogusDumper *bogusDumper;
 		if(bogusDumper) {
@@ -9065,14 +9088,14 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				lastTimeSyslog = actTime;
 			}
 		}
-		return(0);
+		return(false);
 	}
 	
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	if(separate_processing()) {
 		bool is_rtp = datalen > 2 && IS_RTP(data, datalen);
 		if(separate_processing() == 1 ? is_rtp : !is_rtp) {
-			return(0);
+			return(false);
 		}
 	}
 	#endif
@@ -9094,34 +9117,58 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 			   __FILE__, __LINE__, __FUNCTION__, "process packet");
 	}
 	#endif
+	
+	hp->header_ip_offset = header_ip ? (u_int16_t)((u_char*)header_ip - hp->packet) : 0xFFFF;
+	hp->header_ip_encaps_offset = header_ip_encaps ? (u_int16_t)((u_char*)header_ip_encaps - hp->packet) : 0xFFFF;
+	hp->header_ip_protocol = header_ip_protocol;
+	hp->pflags =  pflags;
+	hp->sport = sport;
+	hp->dport = dport;
+	hp->data_offset = data ? (u_int16_t)((u_char*)data - hp->packet) : 0xFFFF;;
+	hp->datalen = datalen;
 
-	if(opt_mirrorip && (sipportmatrix[sport] || sipportmatrix[dport])) {
+	return(true);
+}
+
+bool PcapQueue_readFromFifo::processPacket_push(sHeaderPacketPQout *hp) {
+
+	#if USE_PACKET_NUMBER
+	static u_int64_t packet_counter_all;
+	++packet_counter_all;
+	#endif
+	
+	pcap_pkthdr *header = hp->header->convertToStdHeader();
+	
+	iphdr2 *header_ip_encaps = hp->header_ip_encaps_offset != 0xFFFF ? (iphdr2*)(hp->packet + hp->header_ip_encaps_offset) : NULL;
+	iphdr2 *header_ip = hp->header_ip_offset != 0xFFFF ? (iphdr2*)(hp->packet + hp->header_ip_offset) : NULL;
+	
+	if(opt_mirrorip && header_ip && (sipportmatrix[hp->sport] || sipportmatrix[hp->dport])) {
 		mirrorip->send((char *)header_ip, (int)(header->caplen - ((u_char*)header_ip - hp->packet)));
 	}
-
-	if(header_ip && header_ip_protocol == IPPROTO_TCP) {
-		if(opt_enable_http && (httpportmatrix[sport] || httpportmatrix[dport]) && 
+	
+	if(hp->header_ip_protocol == IPPROTO_TCP) {
+		if(opt_enable_http && (httpportmatrix[hp->sport] || httpportmatrix[hp->dport]) && 
 		   tcpReassemblyHttp->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyHttp->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						    hp->block_store, hp->block_store_index, hp->block_store_locked,
 						    this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
-			return(1);
-		} else if(opt_enable_webrtc && (webrtcportmatrix[sport] || webrtcportmatrix[dport]) &&
+			return(true);
+		} else if(opt_enable_webrtc && (webrtcportmatrix[hp->sport] || webrtcportmatrix[hp->dport]) &&
 			  tcpReassemblyWebrtc->check_ip(header_ip->get_saddr(), header_ip->get_daddr())) {
 			tcpReassemblyWebrtc->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						      hp->block_store, hp->block_store_index, hp->block_store_locked,
 						      this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
-			return(1);
+			return(true);
 		} else if(opt_enable_ssl && 
-			  isSslIpPort(header_ip->get_saddr(), sport, header_ip->get_daddr(), dport)) {
+			  isSslIpPort(header_ip->get_saddr(), hp->sport, header_ip->get_daddr(), hp->dport)) {
 			tcpReassemblySsl->push_tcp(header, header_ip, hp->packet, !hp->block_store,
 						   hp->block_store, hp->block_store_index, hp->block_store_locked,
 						   this->getPcapHandleIndex(hp->dlt), hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid);
-			return(1);
+			return(true);
 		} else if(opt_ipaccount &&
-			  !(sipportmatrix[sport] || sipportmatrix[dport]) &&
-			  !(opt_enable_diameter && (diameter_tcp_portmatrix[sport] || diameter_tcp_portmatrix[dport]))) {
-			return(0);
+			  !(sipportmatrix[hp->sport] || sipportmatrix[hp->dport]) &&
+			  !(opt_enable_diameter && (diameter_tcp_portmatrix[hp->sport] || diameter_tcp_portmatrix[hp->dport]))) {
+			return(false);
 		}
 	}
 
@@ -9133,30 +9180,30 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 		extern bool ssl_client_random_portmatrix_set;
 		extern vector<vmIP> ssl_client_random_ip;
 		extern vector<vmIPmask> ssl_client_random_net;
-		if(header_ip && header_ip_protocol == IPPROTO_UDP &&
+		if(hp->header_ip_protocol == IPPROTO_UDP &&
 		   ssl_client_random_enable &&
 		   (!ssl_client_random_portmatrix_set || 
-		    ssl_client_random_portmatrix[dport]) &&
+		    ssl_client_random_portmatrix[hp->dport]) &&
 		   ((!ssl_client_random_ip.size() && !ssl_client_random_net.size()) ||
 		    check_ip_in(header_ip->get_daddr(), &ssl_client_random_ip, &ssl_client_random_net, true)) &&
-		   datalen) {
-			if(ssl_parse_client_random((u_char*)data, datalen)) {
-				return(0);
+		   hp->datalen) {
+			if(ssl_parse_client_random((u_char*)(hp->packet + hp->data_offset), hp->datalen)) {
+				return(false);
 			}
 		}
 		if(opt_t2_boost_direct_rtp) {
-			if(hp_state == _hppq_out_state_NA && hp && hp->block_store && !hp->block_store_locked) {
+			if(hp->block_store && !hp->block_store_locked) {
 				hp->block_store->lock_packet(hp->block_store_index, 1 /*pb lock flag*/);
 				hp->block_store_locked = true;
 			}
 			preProcessPacket[PreProcessPacket::ppt_detach_x]->push_packet(
 				header_ip ? (u_char*)header_ip - hp->packet : 0,
 				header_ip_encaps ? (u_char*)header_ip_encaps - hp->packet : 0xFFFF,
-				(u_char*)data - hp->packet,
-				datalen,
-				header_ip ? sport.getPort() : 0,
-				header_ip ? dport.getPort() : 0,
-				pflags,
+				hp->data_offset,
+				hp->datalen,
+				header_ip ? hp->sport.getPort() : 0,
+				header_ip ? hp->dport.getPort() : 0,
+				hp->pflags,
 				hp,
 				this->getPcapHandleIndex(hp->dlt));
 		} else {
@@ -9164,17 +9211,17 @@ int PcapQueue_readFromFifo::processPacket(sHeaderPacketPQout *hp, eHeaderPacketP
 				#if USE_PACKET_NUMBER
 				packet_counter_all,
 				#endif
-				header_ip ? header_ip->get_saddr() : 0, header_ip ? sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? dport.getPort() : 0,
-				datalen, data - (char*)hp->packet,
+				header_ip ? header_ip->get_saddr() : 0, header_ip ? hp->sport.getPort() : 0, header_ip ? header_ip->get_daddr() : 0, header_ip ? hp->dport.getPort() : 0,
+				hp->datalen, hp->data_offset,
 				this->getPcapHandleIndex(hp->dlt), header, hp->packet, hp->block_store ? _t_packet_alloc_na : _t_packet_alloc_header_plus,
-				pflags, header_ip_encaps, header_ip,
+				hp->pflags, header_ip_encaps, header_ip,
 				hp->block_store, hp->block_store_index, hp->dlt, hp->sensor_id, hp->sensor_ip, hp->header->pid,
 				hp->block_store_locked ? 2 : 1 /*blockstore_lock*/);
 		}
-		return(1);
+		return(true);
 	}
 	
-	return(0);
+	return(false);
 }
 
 void PcapQueue_readFromFifo::pushBatchProcessPacket() {
@@ -9274,10 +9321,6 @@ void *_PcapQueue_readFromFifo_connectionThreadFunction(void *arg) {
 }
 
 
-inline void *_PcapQueue_outputThread_outThreadFunction(void *arg) {
-	return(((PcapQueue_outputThread*)arg)->outThreadFunction());
-}
-
 PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThread, PcapQueue_readFromFifo *pcapQueue) {
 	extern unsigned int opt_preprocess_packets_qring_length;
 	extern unsigned int opt_preprocess_packets_qring_item_length;
@@ -9296,6 +9339,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 		this->qring[i] = new FILE_LINE(15060) sBatchHP(this->qring_batch_item_length);
 		this->qring[i]->used = 0;
 	}
+	this->items_flag = new FILE_LINE(0) volatile int8_t[this->qring_batch_item_length];
 	this->qring_push_index = 0;
 	this->qring_push_index_count = 0;
 	memset(this->threadPstatData, 0, sizeof(this->threadPstatData));
@@ -9328,6 +9372,23 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	last_race_log[0] = 0;
 	last_race_log[1] = 0;
 	#endif
+	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+		this->next_threads[i].null();
+	}
+	extern int opt_pre_process_packets_next_thread_detach2;
+	extern int opt_pre_process_packets_next_thread_max;
+	this->next_threads_count = typeOutputThread == detach2 ? 
+				    min(max(opt_pre_process_packets_next_thread_detach2, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
+				    0;
+	this->next_threads_count_mod = 0;
+	for(int i = 0; i < this->next_threads_count; i++) {
+		this->next_threads[i].sem_init();
+		arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+		arg->me = this;
+		arg->next_thread_id = i + 1;
+		vm_pthread_create(("t2 out thread next - " + getNameOutputThread()).c_str(),
+				  &this->next_threads[i].thread_handle, NULL, PcapQueue_outputThread::_nextThreadFunction, arg, __FILE__, __LINE__);
+	}
 }
 
 PcapQueue_outputThread::~PcapQueue_outputThread() {
@@ -9336,6 +9397,7 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 		delete this->qring[i];
 	}
 	delete [] this->qring;
+	delete [] this->items_flag;
 	if(typeOutputThread == defrag) {
 		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
 	}
@@ -9353,7 +9415,7 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 
 void PcapQueue_outputThread::start() {
 	vm_pthread_create(("t2 out thread " + getNameOutputThread()).c_str(),
-			  &this->out_thread_handle, NULL, _PcapQueue_outputThread_outThreadFunction, this, __FILE__, __LINE__);
+			  &this->out_thread_handle, NULL, PcapQueue_outputThread::_outThreadFunction, this, __FILE__, __LINE__);
 }
 
 void PcapQueue_outputThread::stop() {
@@ -9362,6 +9424,22 @@ void PcapQueue_outputThread::stop() {
 		pthread_join(this->out_thread_handle, NULL);
 		this->initThreadOk = false;
 		this->terminatingThread = false;
+	}
+}
+
+void PcapQueue_outputThread::addNextThread() {
+	extern int opt_pre_process_packets_next_thread_max;
+	if(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
+	   (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max)) {
+		this->next_threads_count_mod = 1;
+	}
+}
+
+void PcapQueue_outputThread::removeNextThread() {
+	extern int opt_pre_process_packets_next_thread_detach2;
+	if(this->next_threads_count > 0 &&
+	   (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2)) {
+		this->next_threads_count_mod = -1;
 	}
 }
 
@@ -9455,6 +9533,10 @@ void PcapQueue_outputThread::push_batch() {
 	}
 }
 
+void *PcapQueue_outputThread::_outThreadFunction(void *arg) {
+	return(((PcapQueue_outputThread*)arg)->outThreadFunction());
+}
+
 void *PcapQueue_outputThread::outThreadFunction() {
 	extern string opt_sched_pol_pb;
 	pthread_set_priority(opt_sched_pol_pb);
@@ -9467,22 +9549,117 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	unsigned long usleepSumTime = 0;
 	unsigned long usleepSumTime_lastPush = 0;
 	while(!is_terminating() && !this->terminatingThread) {
+		if(this->next_threads_count_mod &&
+		   (typeOutputThread == detach2)) {
+			if(this->next_threads_count_mod > 0) {
+				createNextThread();
+			} else if(this->next_threads_count_mod < 0) {
+				termNextThread();
+			}
+			this->next_threads_count_mod = 0;
+		}
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
-			for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
-				switch(typeOutputThread) {
-				case detach:
-					this->processDetach(&batch->batch[batch_index]);
-					break;
-				case defrag:
-					this->processDefrag(&batch->batch[batch_index]);
-					break;
-				case dedup:
-					this->processDedup(&batch->batch[batch_index]);
-					break;
-				case detach2:
-					this->processDetach2(&batch->batch[batch_index]);
-					break;
+			if(typeOutputThread == detach2 && this->next_threads[0].thread_handle) {
+				extern int opt_pre_process_packets_next_thread_sem_sync;
+				unsigned count = batch->count;
+				unsigned completed = 0;
+				int _next_threads_count = this->next_threads_count;
+				bool _process_only_in_next_threads = _next_threads_count > 1;
+				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+					this->items_flag[batch_index] = 0;
+				}
+				for(int i = 0; i < _next_threads_count; i++) {
+					this->next_threads[i].next_data.null();
+					if(_process_only_in_next_threads) {
+						this->next_threads[i].next_data.start = i;
+						this->next_threads[i].next_data.end = count;
+						this->next_threads[i].next_data.skip = _next_threads_count;
+					} else {
+						this->next_threads[i].next_data.start = count / (_next_threads_count + 1) * (i + 1);
+						this->next_threads[i].next_data.end = i == (_next_threads_count - 1) ? count : count / (_next_threads_count + 1) * (i + 2);
+						this->next_threads[i].next_data.skip = 1;
+					}
+					this->next_threads[i].next_data.batch = batch->batch;
+					this->next_threads[i].next_data.processing = 1;
+					if(opt_pre_process_packets_next_thread_sem_sync) {
+						sem_post(&this->next_threads[i].sem_sync[0]);
+					} else {
+						this->next_threads[i].next_data.data_ready = 1;
+					}
+				}
+				if(_process_only_in_next_threads) {
+					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						if(completed < count &&
+						   this->items_flag[completed] != 0) {
+							bool destroy = false;
+							if(this->items_flag[completed] < 0) {
+								destroy = true;
+							} else {
+								destroy = !this->pcapQueue->processPacket_push(&batch->batch[completed]);
+							}
+							if(destroy) {
+								batch->batch[completed].destroy_or_unlock_blockstore();
+							}
+							++completed;
+						} else {
+							extern unsigned int opt_sip_batch_usleep;
+							if(opt_sip_batch_usleep) {
+								USLEEP(opt_sip_batch_usleep);
+							} else {
+								__ASM_PAUSE;
+							}
+						}
+					}
+				} else {
+					for(unsigned batch_index = 0; 
+					    batch_index < count / (_next_threads_count + 1); 
+					    batch_index++) {
+						this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch->batch[batch_index]) ? 1 : -1;
+					}
+				}
+				for(int i = 0; i < _next_threads_count; i++) {
+					if(opt_pre_process_packets_next_thread_sem_sync == 2) {
+						sem_wait(&this->next_threads[i].sem_sync[1]);
+					} else {
+						while(this->next_threads[i].next_data.processing) { 
+							extern unsigned int opt_sip_batch_usleep;
+							if(opt_sip_batch_usleep) {
+								USLEEP(opt_sip_batch_usleep);
+							} else {
+								__ASM_PAUSE;
+							}
+						}
+					}
+				}
+				for(unsigned batch_index = completed; batch_index < batch->count; batch_index++) {
+					bool destroy = false;
+					if(this->items_flag[batch_index] < 0) {
+						destroy = true;
+					} else {
+						destroy = !this->pcapQueue->processPacket_push(&batch->batch[batch_index]);
+					}
+					if(destroy) {
+						batch->batch[batch_index].destroy_or_unlock_blockstore();
+					}
+				}
+			} else {
+				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+					switch(typeOutputThread) {
+					case detach:
+						this->processDetach(&batch->batch[batch_index]);
+						break;
+					case defrag:
+						this->processDefrag(&batch->batch[batch_index]);
+						break;
+					case dedup:
+						this->processDedup(&batch->batch[batch_index]);
+						break;
+					case detach2:
+						this->processDetach2(&batch->batch[batch_index]);
+						break;
+					}
 				}
 			}
 			batch->count = 0;
@@ -9539,6 +9716,111 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	return(NULL);
 }
 
+void *PcapQueue_outputThread::_nextThreadFunction(void *arg) {
+	PcapQueue_outputThread::arg_next_thread *_arg = (PcapQueue_outputThread::arg_next_thread*)arg;
+	void *rsltThread = _arg->me->nextThreadFunction(_arg->next_thread_id);
+	delete _arg;
+	return(rsltThread);
+}
+
+void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
+	this->next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	syslog(LOG_NOTICE, "start next thread t2_%s/%i", this->getNameOutputThread().c_str(), this->next_threads[next_thread_index_plus - 1].thread_id);
+	unsigned int usleepCounter = 0;
+	while(!is_terminating() && !this->terminatingThread) {
+		s_next_thread *next_thread = &this->next_threads[next_thread_index_plus - 1];
+		s_next_thread_data *next_thread_data = &next_thread->next_data;
+		extern int opt_pre_process_packets_next_thread_sem_sync;
+		if(opt_pre_process_packets_next_thread_sem_sync) {
+			sem_wait(&next_thread->sem_sync[0]);
+		} else {
+			while(!this->terminatingThread && !next_thread_data->data_ready && !next_thread->terminate) {
+				extern unsigned int opt_sip_batch_usleep;
+				if(opt_sip_batch_usleep) {
+					USLEEP(opt_sip_batch_usleep);
+				} else {
+					__ASM_PAUSE;
+				}
+			}
+			next_thread_data->data_ready = 0;
+		}
+		if(this->terminatingThread || next_thread->terminate) {
+			break;
+		}
+		if(next_thread_data->batch) {
+			unsigned batch_index_start = next_thread_data->start;
+			unsigned batch_index_end = next_thread_data->end;
+			unsigned batch_index_skip = next_thread_data->skip;
+			switch(typeOutputThread) {
+			case detach2: {
+				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					this->items_flag[batch_index] = this->pcapQueue->processPacket_analysis(&batch[batch_index]) ? 1 : -1;
+				} }
+				break;
+			default:
+				break;
+			}
+			next_thread_data->processing = 0;
+			usleepCounter = 0;
+			if(opt_pre_process_packets_next_thread_sem_sync == 2) {
+				sem_post(&next_thread->sem_sync[1]);
+			}
+		} else {
+			extern unsigned int opt_sip_batch_usleep;
+			if(opt_sip_batch_usleep) {
+				USLEEP_C(opt_sip_batch_usleep, usleepCounter++);
+			} else {
+				__ASM_PAUSE;
+			}
+		}
+	}
+	return(NULL);
+}
+
+void PcapQueue_outputThread::createNextThread() {
+	extern int opt_pre_process_packets_next_thread_max;
+	if(!(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
+	     (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max))) {
+		return;
+	}
+	this->next_threads[this->next_threads_count].null();
+	this->next_threads[this->next_threads_count].sem_init();
+	arg_next_thread *arg = new FILE_LINE(0) arg_next_thread;
+	arg->me = this;
+	arg->next_thread_id = this->next_threads_count + 1;
+	vm_pthread_create(("t2 out thread next - " + getNameOutputThread()).c_str(),
+			  &this->next_threads[this->next_threads_count].thread_handle, NULL, PcapQueue_outputThread::_nextThreadFunction, arg, __FILE__, __LINE__);
+	while(!this->next_threads[this->next_threads_count].thread_id) {
+		extern unsigned int opt_sip_batch_usleep;
+		if(opt_sip_batch_usleep) {
+			USLEEP(opt_sip_batch_usleep);
+		} else {
+			__ASM_PAUSE;
+		}
+	}
+	++this->next_threads_count;
+}
+
+void PcapQueue_outputThread::termNextThread() {
+	extern int opt_pre_process_packets_next_thread_detach2;
+	extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
+	if(!(this->next_threads_count > 0 &&
+	     (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2))) {
+		return;
+	}
+	--this->next_threads_count;
+	this->next_threads[this->next_threads_count].terminate = true;
+	if(opt_process_rtp_packets_hash_next_thread_sem_sync) {
+		sem_post(&this->next_threads[this->next_threads_count].sem_sync[0]);
+	}
+	pthread_join(this->next_threads[this->next_threads_count].thread_handle, NULL);
+	this->next_threads[this->next_threads_count].sem_term();
+	this->next_threads[this->next_threads_count].null();
+}
+
 void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
 	if(opt_t2_boost_pb_detach_thread == 2 &&
 	   hp->header->header_ip_offset != 0xFFFF && hp->header_ip_last_offset == 0xFFFF) {
@@ -9560,9 +9842,21 @@ void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
 			}
 		}
 	}
-	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach) == 0) {
-		hp->destroy_or_unlock_blockstore();
+	if(pcapQueueQ_outThread_defrag) {
+		pcapQueueQ_outThread_defrag->push(hp);
+		return;
+	} else if(pcapQueueQ_outThread_dedup) {
+		pcapQueueQ_outThread_dedup->push(hp);
+		return;
+	} else if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		return;
 	}
+	if(this->pcapQueue->processPacket_analysis(hp) &&
+	   this->pcapQueue->processPacket_push(hp)) {
+		return;
+	}
+	hp->destroy_or_unlock_blockstore();
 }
 
 void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
@@ -9667,17 +9961,24 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp) {
 			}
 		}
 	}
-	
-	if(this->pcapQueue->processPacket(hp, _hppq_out_state_defrag) == 0) {
-		hp->destroy_or_unlock_blockstore();
-	}
-	
 	if((ipfrag_lastprune + 2) < headerTimeS) {
 		if(ipfrag_lastprune) {
 			ipfrag_prune(headerTimeS, false, &this->ipfrag_data, -1, 2);
 		}
 		ipfrag_lastprune = headerTimeS;
 	}
+	if(pcapQueueQ_outThread_dedup) {
+		pcapQueueQ_outThread_dedup->push(hp);
+		return;
+	} else if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		return;
+	}
+	if(this->pcapQueue->processPacket_analysis(hp) &&
+	   this->pcapQueue->processPacket_push(hp)) {
+		return;
+	}
+	hp->destroy_or_unlock_blockstore();
 }
 
 void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
@@ -9822,35 +10123,47 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 			return;
 		}
 	}
-	if(this->pcapQueue->processPacket(hp, _hppq_out_state_dedup) == 0) {
-		hp->destroy_or_unlock_blockstore();
+	if(pcapQueueQ_outThread_detach2) {
+		pcapQueueQ_outThread_detach2->push(hp);
+		return;
 	}
+	if(this->pcapQueue->processPacket_analysis(hp) &&
+	   this->pcapQueue->processPacket_push(hp)) {
+		return;
+	}
+	hp->destroy_or_unlock_blockstore();
 }
 
 void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
-	if(this->pcapQueue->processPacket(hp, _hppq_out_state_detach2) == 0) {
-		hp->destroy_or_unlock_blockstore();
+	if(this->pcapQueue->processPacket_analysis(hp) &&
+	   this->pcapQueue->processPacket_push(hp)) {
+		return;
 	}
+	hp->destroy_or_unlock_blockstore();
 }
 
-void PcapQueue_outputThread::preparePstatData(int pstatDataIndex) {
-	if(this->outThreadId) {
-		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time) {
-			this->threadPstatData[pstatDataIndex][1] = this->threadPstatData[pstatDataIndex][0];
+void PcapQueue_outputThread::preparePstatData(int nextThreadIndexPlus, int pstatDataIndex) {
+	int thread_id = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+	if(thread_id) {
+		pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+		if(thread_pstat_data[pstatDataIndex][0].cpu_total_time) {
+			thread_pstat_data[pstatDataIndex][1] = thread_pstat_data[pstatDataIndex][0];
 		}
-		pstat_get_data(this->outThreadId, this->threadPstatData[pstatDataIndex]);
+		pstat_get_data(thread_id, thread_pstat_data[pstatDataIndex]);
 	}
 }
 
-double PcapQueue_outputThread::getCpuUsagePerc(int pstatDataIndex, double *percFullQring, bool preparePstatData) {
+double PcapQueue_outputThread::getCpuUsagePerc(int nextThreadIndexPlus, int pstatDataIndex, double *percFullQring, bool preparePstatData) {
 	if(preparePstatData) {
-		this->preparePstatData(pstatDataIndex);
+		this->preparePstatData(nextThreadIndexPlus, pstatDataIndex);
 	}
-	if(this->outThreadId) {
+	int thread_id = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_id : this->outThreadId;
+	if(thread_id) {
 		double ucpu_usage, scpu_usage;
-		if(this->threadPstatData[pstatDataIndex][0].cpu_total_time && this->threadPstatData[pstatDataIndex][1].cpu_total_time) {
+		pstat_data (*thread_pstat_data)[2] = nextThreadIndexPlus ? this->next_threads[nextThreadIndexPlus - 1].thread_pstat_data : this->threadPstatData;
+		if(thread_pstat_data[pstatDataIndex][0].cpu_total_time && thread_pstat_data[pstatDataIndex][1].cpu_total_time) {
 			pstat_calc_cpu_usage_pct(
-				&this->threadPstatData[pstatDataIndex][0], &this->threadPstatData[pstatDataIndex][1],
+				&thread_pstat_data[pstatDataIndex][0], &thread_pstat_data[pstatDataIndex][1],
 				&ucpu_usage, &scpu_usage);
 			if(percFullQring) {
 				*percFullQring = qringPushCounter ? 100. * qringPushCounter_full / qringPushCounter : -1;
