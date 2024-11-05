@@ -554,6 +554,11 @@ struct packet_s {
 
 struct packet_s_stack : public packet_s {
 	cHeapItemsPointerStack *stack;
+	volatile u_int8_t use_reuse_counter;
+	volatile u_int8_t reuse_counter_c;
+	volatile u_int8_t reuse_counter_sync;
+	u_int8_t type_content;
+	u_int8_t next_action;
 	inline packet_s_stack() {
 		__type = _t_packet_s_stack; 
 		init();
@@ -561,9 +566,33 @@ struct packet_s_stack : public packet_s {
 	inline void init() {
 		packet_s::init();
 		stack = NULL;
+		use_reuse_counter = 0;
+	}
+	inline void init_reuse() {
+		if(__type >= _t_packet_s_stack) {
+			use_reuse_counter = 0;
+			reuse_counter_c = 0;
+			reuse_counter_sync = 0;
+		}
 	}
 	inline void term() {
 		packet_s::term();
+	}
+	inline bool is_use_reuse_counter() {
+		return(use_reuse_counter);
+	}
+	inline void reuse_counter_set(u_int8_t inc = 1) {
+		use_reuse_counter = 1;
+		__SYNC_ADD(reuse_counter_c, inc);
+	}
+	inline void reuse_counter_dec() {
+		__SYNC_DEC(reuse_counter_c);
+	}
+	inline void reuse_counter_lock() {
+		__SYNC_LOCK(reuse_counter_sync);
+	}
+	inline void reuse_counter_unlock() {
+		__SYNC_UNLOCK(reuse_counter_sync);
 	}
 };
 
@@ -633,11 +662,6 @@ enum packet_s_process_next_action {
 };
 
 struct packet_s_process_0 : public packet_s_stack {
-	volatile u_int8_t use_reuse_counter;
-	volatile u_int8_t reuse_counter;
-	volatile u_int8_t reuse_counter_sync;
-	u_int8_t type_content;
-	u_int8_t next_action;
 	void *insert_packets;
 	union {
 		u_int8_t i;
@@ -679,14 +703,11 @@ struct packet_s_process_0 : public packet_s_stack {
 	}
 	inline void init() {
 		packet_s_stack::init();
-		use_reuse_counter = 0;
 		insert_packets = NULL;
 	}
 	inline void init_reuse() {
+		packet_s_stack::init_reuse();
 		if(__type >= _t_packet_s_process_0) {
-			use_reuse_counter = 0;
-			reuse_counter = 0;
-			reuse_counter_sync = 0;
 			insert_packets = NULL;
 			flags.i = 0;
 			decrypt_sync = 0;
@@ -731,22 +752,6 @@ struct packet_s_process_0 : public packet_s_stack {
 			}
 		}
 		reuse_counter_unlock();
-	}
-	inline bool is_use_reuse_counter() {
-		return(use_reuse_counter);
-	}
-	inline void reuse_counter_set(u_int8_t inc = 1) {
-		use_reuse_counter = 1;
-		__SYNC_ADD(reuse_counter, inc);
-	}
-	inline void reuse_counter_dec() {
-		__SYNC_DEC(reuse_counter);
-	}
-	inline void reuse_counter_lock() {
-		__SYNC_LOCK(reuse_counter_sync);
-	}
-	inline void reuse_counter_unlock() {
-		__SYNC_UNLOCK(reuse_counter_sync);
 	}
 	inline bool typeContentIsSip() {
 		return(type_content == _pptc_sip);

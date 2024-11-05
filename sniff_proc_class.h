@@ -1319,7 +1319,7 @@ public:
 			bool enable = false;
 			packetS->reuse_counter_lock();
 			packetS->reuse_counter_dec();
-			enable = packetS->reuse_counter == 0;
+			enable = packetS->reuse_counter_c == 0;
 			packetS->reuse_counter_unlock();
 			return(enable);
 		}
