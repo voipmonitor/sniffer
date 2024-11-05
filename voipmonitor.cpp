@@ -442,6 +442,7 @@ volatile int process_rtp_packets_distribute_threads_use = 0;
 int opt_pre_process_packets_next_thread = -1;
 int opt_pre_process_packets_next_thread_find_call = -1;
 int opt_pre_process_packets_next_thread_process_call = -1;
+int opt_pre_process_packets_next_thread_detach = -1;
 int opt_pre_process_packets_next_thread_detach2 = -1;
 int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
@@ -6367,6 +6368,9 @@ void cConfig::addConfigItems() {
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					#endif
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_detach", &opt_pre_process_packets_next_thread_detach))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_detach2", &opt_pre_process_packets_next_thread_detach2))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));

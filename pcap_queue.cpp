@@ -2214,6 +2214,35 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
 						outStrStat << "#" << percFullQring;
 					}
+					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
+						if(pcapQueueQ_outThread_detach->existsNextThread(i)) {
+							double next_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
+							if(next_cpu >= 0) {
+								outStrStat << ";" << setprecision(1) << next_cpu;
+							}
+						}
+					}
+				}
+				if(task == pcapStatCpuCheck) {
+					static int do_add_thread_counter;
+					static int do_remove_thread_counter;
+					if(detach_cpu > opt_cpu_limit_new_thread &&
+					   heap_pb_used_perc > opt_heap_limit_new_thread) {
+						if((++do_add_thread_counter) >= 2) {
+							pcapQueueQ_outThread_detach->addNextThread();
+							do_add_thread_counter = 0;
+						}
+						do_remove_thread_counter = 0;
+					} else if(detach_cpu < opt_cpu_limit_delete_thread) {
+						if((++do_remove_thread_counter) >= 2) {
+							pcapQueueQ_outThread_detach->removeNextThread();
+							do_remove_thread_counter = 0;
+						}
+						do_add_thread_counter = 0;
+					} else {
+						do_add_thread_counter = 0;
+						do_remove_thread_counter = 0;
+					}
 				}
 			}
 			if(pcapQueueQ_outThread_defrag) {
@@ -9375,9 +9404,12 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
 		this->next_threads[i].null();
 	}
+	extern int opt_pre_process_packets_next_thread_detach;
 	extern int opt_pre_process_packets_next_thread_detach2;
 	extern int opt_pre_process_packets_next_thread_max;
-	this->next_threads_count = typeOutputThread == detach2 ? 
+	this->next_threads_count = typeOutputThread == detach ?
+				    min(max(opt_pre_process_packets_next_thread_detach, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
+				   typeOutputThread == detach2 ?
 				    min(max(opt_pre_process_packets_next_thread_detach2, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
@@ -9436,9 +9468,11 @@ void PcapQueue_outputThread::addNextThread() {
 }
 
 void PcapQueue_outputThread::removeNextThread() {
+	extern int opt_pre_process_packets_next_thread_detach;
 	extern int opt_pre_process_packets_next_thread_detach2;
 	if(this->next_threads_count > 0 &&
-	   (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2)) {
+	   ((typeOutputThread == detach && (opt_pre_process_packets_next_thread_detach <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach)) ||
+	    (typeOutputThread == detach2 && (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2)))) {
 		this->next_threads_count_mod = -1;
 	}
 }
@@ -9560,7 +9594,77 @@ void *PcapQueue_outputThread::outThreadFunction() {
 		}
 		if(this->qring[this->readit]->used == 1) {
 			batch = this->qring[this->readit];
-			if(typeOutputThread == detach2 && this->next_threads[0].thread_handle) {
+			if(typeOutputThread == detach && this->next_threads[0].thread_handle) {
+				extern int opt_pre_process_packets_next_thread_sem_sync;
+				unsigned count = batch->count;
+				unsigned completed = 0;
+				int _next_threads_count = this->next_threads_count;
+				bool _process_only_in_next_threads = _next_threads_count > 1;
+				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
+					this->items_flag[batch_index] = 0;
+				}
+				for(int i = 0; i < _next_threads_count; i++) {
+					this->next_threads[i].next_data.null();
+					if(_process_only_in_next_threads) {
+						this->next_threads[i].next_data.start = i;
+						this->next_threads[i].next_data.end = count;
+						this->next_threads[i].next_data.skip = _next_threads_count;
+					} else {
+						this->next_threads[i].next_data.start = count / (_next_threads_count + 1) * (i + 1);
+						this->next_threads[i].next_data.end = i == (_next_threads_count - 1) ? count : count / (_next_threads_count + 1) * (i + 2);
+						this->next_threads[i].next_data.skip = 1;
+					}
+					this->next_threads[i].next_data.batch = batch->batch;
+					this->next_threads[i].next_data.processing = 1;
+					if(opt_pre_process_packets_next_thread_sem_sync) {
+						sem_post(&this->next_threads[i].sem_sync[0]);
+					} else {
+						this->next_threads[i].next_data.data_ready = 1;
+					}
+				}
+				if(_process_only_in_next_threads) {
+					while(this->next_threads[0].next_data.processing || this->next_threads[1].next_data.processing ||
+					      (_next_threads_count > 2 && this->isNextThreadsGt2Processing(_next_threads_count))) {
+						if(completed < count &&
+						   this->items_flag[completed] != 0) {
+							this->processDetach_push(&batch->batch[completed]);
+							++completed;
+						} else {
+							extern unsigned int opt_sip_batch_usleep;
+							if(opt_sip_batch_usleep) {
+								USLEEP(opt_sip_batch_usleep);
+							} else {
+								__ASM_PAUSE;
+							}
+						}
+					}
+				} else {
+					for(unsigned batch_index = 0; 
+					    batch_index < count / (_next_threads_count + 1); 
+					    batch_index++) {
+						if(opt_t2_boost_pb_detach_thread == 2) {
+							this->processDetach_findHeaderIp(&batch->batch[batch_index]);
+						}
+					}
+				}
+				for(int i = 0; i < _next_threads_count; i++) {
+					if(opt_pre_process_packets_next_thread_sem_sync == 2) {
+						sem_wait(&this->next_threads[i].sem_sync[1]);
+					} else {
+						while(this->next_threads[i].next_data.processing) { 
+							extern unsigned int opt_sip_batch_usleep;
+							if(opt_sip_batch_usleep) {
+								USLEEP(opt_sip_batch_usleep);
+							} else {
+								__ASM_PAUSE;
+							}
+						}
+					}
+				}
+				for(unsigned batch_index = completed; batch_index < batch->count; batch_index++) {
+					this->processDetach_push(&batch->batch[batch_index]);
+				}
+			} else if(typeOutputThread == detach2 && this->next_threads[0].thread_handle) {
 				extern int opt_pre_process_packets_next_thread_sem_sync;
 				unsigned count = batch->count;
 				unsigned completed = 0;
@@ -9752,6 +9856,17 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 			unsigned batch_index_end = next_thread_data->end;
 			unsigned batch_index_skip = next_thread_data->skip;
 			switch(typeOutputThread) {
+			case detach: {
+				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
+				for(unsigned batch_index = batch_index_start; 
+				    batch_index < batch_index_end; 
+				    batch_index += batch_index_skip) {
+					if(opt_t2_boost_pb_detach_thread == 2) {
+						this->processDetach_findHeaderIp(&batch[batch_index]);
+					}
+					this->items_flag[batch_index] = 1;
+				} }
+				break;
 			case detach2: {
 				sHeaderPacketPQout *batch = (sHeaderPacketPQout*)next_thread_data->batch;
 				for(unsigned batch_index = batch_index_start; 
@@ -9805,10 +9920,12 @@ void PcapQueue_outputThread::createNextThread() {
 }
 
 void PcapQueue_outputThread::termNextThread() {
+	extern int opt_pre_process_packets_next_thread_detach;
 	extern int opt_pre_process_packets_next_thread_detach2;
 	extern int opt_process_rtp_packets_hash_next_thread_sem_sync;
 	if(!(this->next_threads_count > 0 &&
-	     (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2))) {
+	     ((typeOutputThread == detach && (opt_pre_process_packets_next_thread_detach <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach)) ||
+	      (typeOutputThread == detach2 && (opt_pre_process_packets_next_thread_detach2 <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread_detach2))))) {
 		return;
 	}
 	--this->next_threads_count;
@@ -9822,8 +9939,14 @@ void PcapQueue_outputThread::termNextThread() {
 }
 
 void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
-	if(opt_t2_boost_pb_detach_thread == 2 &&
-	   hp->header->header_ip_offset != 0xFFFF && hp->header_ip_last_offset == 0xFFFF) {
+	if(opt_t2_boost_pb_detach_thread == 2) {
+		processDetach_findHeaderIp(hp);
+	}
+	processDetach_push(hp);
+}
+
+void PcapQueue_outputThread::processDetach_findHeaderIp(sHeaderPacketPQout *hp) {
+	if(hp->header->header_ip_offset != 0xFFFF && hp->header_ip_last_offset == 0xFFFF) {
 		hp->header_ip_last_offset = hp->header->header_ip_offset;
 		iphdr2 *header_ip = (iphdr2*)(hp->packet + hp->header_ip_last_offset);
 		if(header_ip) {
@@ -9842,6 +9965,9 @@ void PcapQueue_outputThread::processDetach(sHeaderPacketPQout *hp) {
 			}
 		}
 	}
+}
+
+void PcapQueue_outputThread::processDetach_push(sHeaderPacketPQout *hp) {
 	if(pcapQueueQ_outThread_defrag) {
 		pcapQueueQ_outThread_defrag->push(hp);
 		return;

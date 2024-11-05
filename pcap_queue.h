@@ -1186,6 +1186,8 @@ public:
 	void createNextThread();
 	void termNextThread();
 	inline void processDetach(sHeaderPacketPQout *hp);
+	inline void processDetach_findHeaderIp(sHeaderPacketPQout *hp);
+	inline void processDetach_push(sHeaderPacketPQout *hp);
 	inline void processDefrag(sHeaderPacketPQout *hp);
 	inline void processDedup(sHeaderPacketPQout *hp);
 	inline void processDetach2(sHeaderPacketPQout *hp);
