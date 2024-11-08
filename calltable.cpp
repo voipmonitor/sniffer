@@ -10709,10 +10709,10 @@ void adjustSipResponse(string &sipResponse) {
 		for(unsigned i = 4; i < l; i++) {
 			if((isdigit(sipResponse[i]) || strchr("+*#", sipResponse[i])) && !isalnum(sipResponse[i - 1])) {
 				unsigned numb_length = 1;
-				while(isdigit(sipResponse[i + numb_length]) || strchr("+*#", sipResponse[i + numb_length])) {
+				while(i + numb_length < l && (isdigit(sipResponse[i + numb_length]) || strchr("+*#", sipResponse[i + numb_length]))) {
 					++numb_length;
 				}
-				if(numb_length > (unsigned)opt_cdr_sip_response_number_max_length && !isalnum(sipResponse[i + numb_length])) {
+				if(i + numb_length < l && numb_length > (unsigned)opt_cdr_sip_response_number_max_length && !isalnum(sipResponse[i + numb_length])) {
 					sipResponse = sipResponse.substr(0, i + opt_cdr_sip_response_number_max_length) + "..." + sipResponse.substr(i + numb_length);
 					i += numb_length;
 					l = sipResponse.length(); 
