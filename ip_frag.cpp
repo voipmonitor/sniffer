@@ -3,6 +3,8 @@
 #include "ip_frag.h"
 
 
+#if DEFRAG_MOD_1
+
 cIpFrag::cIpFrag(unsigned fdata_size) {
 	this->fdata_size = fdata_size > 1 ? fdata_size : 1;
 	fdata = new sDefrag[this->fdata_size];
@@ -38,3 +40,5 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 		}
 	}
 }
+
+#endif
