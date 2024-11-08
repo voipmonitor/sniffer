@@ -799,7 +799,8 @@ u_int8_t Register::saveNewStateToDb(RegisterState *state) {
 	reg.add_calldate(state->state_from_us, "created_at", state->state == rs_Failed ? existsColumns.register_failed_created_at_ms : existsColumns.register_state_created_at_ms);
 	reg.add(sipcallerip, "sipcallerip", false, sqlDbSaveRegister, register_table.c_str());
 	reg.add(sipcalledip, "sipcalledip", false, sqlDbSaveRegister, register_table.c_str());
-	if(opt_save_ip_from_encaps_ipheader && existsColumns.register_state_sipcallerdip_encaps) {
+	if(opt_save_ip_from_encaps_ipheader && 
+	   (state->state == rs_Failed ? existsColumns.register_failed_sipcallerdip_encaps : existsColumns.register_state_sipcallerdip_encaps)) {
 		reg.add(sipcallerip_encaps, "sipcallerip_encaps", !sipcallerip_encaps.isSet(), sqlDbSaveRegister, register_table.c_str());
 		reg.add(sipcalledip_encaps, "sipcalledip_encaps", !sipcalledip_encaps.isSet(), sqlDbSaveRegister, register_table.c_str());
 		reg.add(sipcallerip_encaps_prot, "sipcallerip_encaps_prot", sipcallerip_encaps_prot == 0xFF);
