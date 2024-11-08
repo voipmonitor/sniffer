@@ -178,99 +178,6 @@ private:
 friend class PcapQueue_readFromFifo;
 };
 
-enum eHeaderPacketPQoutState {
-	_hppq_out_state_NA = 0,
-	_hppq_out_state_detach = 1,
-	_hppq_out_state_defrag = 2,
-	_hppq_out_state_dedup = 3,
-	_hppq_out_state_detach2 = 4
-};
-
-struct sHeaderPacketPQout {
-	pcap_pkthdr_plus *header;
-	u_char *packet;
-	pcap_block_store *block_store;
-	u_int32_t block_store_index;
-	u_int16_t dlt; 
-	int16_t sensor_id; 
-	vmIP sensor_ip;
-	bool block_store_locked;
-	u_int16_t header_ip_last_offset;
-	//
-	u_int16_t header_ip_offset;
-	u_int16_t header_ip_encaps_offset;
-	u_int8_t header_ip_protocol;
-	packet_flags pflags;
-	vmPort sport, dport;
-	u_int16_t data_offset;
-	u_int32_t datalen;
-	sHeaderPacketPQout() {
-	}
-	sHeaderPacketPQout(pcap_pkthdr *header, u_char *packet,
-			   u_int16_t dlt, int16_t sensor_id, vmIP sensor_ip) {
-		this->header = new FILE_LINE(0) pcap_pkthdr_plus;
-		this->header->convertFromStdHeaderToStd(header);
-		delete header;
-		this->packet = packet;
-		this->block_store = NULL;
-		this->block_store_index = 0;
-		this->dlt = dlt;
-		this->sensor_id = sensor_id;
-		this->sensor_ip = sensor_ip;
-		this->block_store_locked = false;
-		this->header_ip_last_offset = 0xFFFF;
-		//
-		this->header_ip_offset = 0xFFFF;
-		this->header_ip_encaps_offset = 0xFFFF;
-		this->header_ip_protocol = 0;
-		this->pflags.init();
-		this->sport = 0;
-		this->dport = 0;
-		this->data_offset = 0;
-		this->datalen = 0;
-	}
-	void destroy_or_unlock_blockstore() {
-		if(block_store) {
-			if(block_store_locked) {
-				block_store->unlock_packet(block_store_index);
-				block_store_locked = false;
-			}
-		} else {
-			delete header;
-			delete [] packet;
-		}
-	}
-	void alloc_and_copy_blockstore() {
-		if(block_store) {
-			pcap_pkthdr_plus *alloc_header = new FILE_LINE(16001) pcap_pkthdr_plus;
-			u_char *alloc_packet = new FILE_LINE(16002) u_char[header->get_caplen()];
-			memcpy(alloc_header, header, sizeof(pcap_pkthdr_plus));
-			memcpy(alloc_packet, packet, header->get_caplen());
-			header = alloc_header;
-			packet = alloc_packet;
-			if(block_store_locked) {
-				block_store->unlock_packet(block_store_index);
-				block_store_locked = false;
-			}
-			block_store = NULL;
-			block_store_index = 0;
-		}
-	}
-	#if DEBUG_SYNC_PCAP_BLOCK_STORE
-	inline void blockstore_addflag(int flag) {
-	#else
-	inline void blockstore_addflag(int /*flag*/) {
-	#endif
-		#if DEBUG_SYNC_PCAP_BLOCK_STORE
-		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
-		if(block_store) {
-			block_store->add_flag(block_store_index, flag);
-		}
-		#endif
-		#endif
-	}
-};
-
 class PcapQueue {
 public:
 	enum eTypeQueue {
@@ -427,6 +334,14 @@ struct pcapProcessData {
 			}
 			#endif
 		}
+		#if DEFRAG_MOD_1
+		extern int opt_udpfrag;
+		if(opt_udpfrag) {
+			ip_defrag = new FILE_LINE(0) cIpFrag();
+		} else {
+			ip_defrag = 0;
+		}
+		#endif
 	}
 	~pcapProcessData() {
 		if(this->dedup_buffer) {
@@ -437,10 +352,21 @@ struct pcapProcessData {
 			delete this->dedup_buffer_ct_md5;
 		}
 		#endif
-		ipfrag_prune(0, true, &ipfrag_data, -1, 0);
+		extern int opt_udpfrag;
+		if(opt_udpfrag) {
+			#if DEFRAG_MOD_1
+			delete ip_defrag;
+			#else
+			ipfrag_prune(0, true, &ipfrag_data, -1, 0);
+			#endif
+		}
 	}
 	void null() {
+		#if DEFRAG_MOD_1
+		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ip_defrag));
+		#else
 		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
+		#endif
 	}
 	ether_header *header_eth;
 	iphdr2 *header_ip;
@@ -460,7 +386,11 @@ struct pcapProcessData {
 	cPacketDuplBuffer *dedup_buffer_ct_md5;
 	#endif
 	u_int ipfrag_lastprune;
+	#if DEFRAG_MOD_1
+	cIpFrag *ip_defrag;
+	#else
 	ipfrag_data_s ipfrag_data;
+	#endif
 };
 
 class PcapQueue_readFromInterface_base {
@@ -1033,7 +963,7 @@ protected:
 private:
 	void createConnection(int socketClient, vmIP socketClientIP, vmPort socketClientPort);
 	void cleanupConnections(bool all = false);
-	inline void processPacket(sHeaderPacketPQout *hp, eHeaderPacketPQoutState hp_state);
+	inline void processPacket(sHeaderPacketPQout *hp);
 	inline bool processPacket_analysis(sHeaderPacketPQout *hp);
 	inline bool processPacket_push(sHeaderPacketPQout *hp);
 	void pushBatchProcessPacket();
@@ -1129,6 +1059,7 @@ public:
 		volatile unsigned start;
 		volatile unsigned end;
 		volatile unsigned skip;
+		volatile int thread_index;
 		volatile int data_ready;
 		volatile int processing;
 		void null() {
@@ -1136,6 +1067,7 @@ public:
 			start = 0;
 			end = 0;
 			skip = 0;
+			thread_index = 0;
 			data_ready = 0;
 			processing = 0;
 		}
@@ -1188,7 +1120,10 @@ public:
 	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDetach_findHeaderIp(sHeaderPacketPQout *hp);
 	inline void processDetach_push(sHeaderPacketPQout *hp);
-	inline void processDefrag(sHeaderPacketPQout *hp);
+	inline void processDefrag(sHeaderPacketPQout *hp, int f_index);
+	inline bool processDefrag_defrag(sHeaderPacketPQout *hp, int f_index);
+	inline void processDefrag_push(sHeaderPacketPQout *hp);
+	inline void processDefrag_cleanup(u_int32_t time_s);
 	inline void processDedup(sHeaderPacketPQout *hp);
 	inline void processDetach2(sHeaderPacketPQout *hp);
 	string getNameOutputThread() {
@@ -1236,8 +1171,12 @@ private:
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
 	int outThreadId;
+	#if DEFRAG_MOD_1
+	cIpFrag *ip_defrag;
+	#else
 	ipfrag_data_s ipfrag_data;
-	unsigned ipfrag_lastprune;
+	#endif
+	unsigned ipfrag_lastcleanup;
 	unsigned defrag_counter;
 	cPacketDuplBuffer *dedup_buffer;
 	#if DEDUPLICATE_COLLISION_TEST
@@ -1249,6 +1188,8 @@ private:
 	volatile int next_threads_count_mod;
 	s_next_thread next_threads[MAX_PRE_PROCESS_PACKET_NEXT_THREADS];
 	volatile int8_t *items_flag;
+	u_int8_t *items_index;
+	u_int8_t *items_thread_index;
 	#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 	unsigned push_thread;
 	u_int64_t last_race_log[2];

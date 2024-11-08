@@ -554,4 +554,113 @@ struct pcap_block_store {
 };
 
 
+
+struct packet_flags {
+	u_int8_t tcp : 2;
+	u_int8_t ss7 : 1;
+	u_int8_t mrcp : 1;
+	u_int8_t ssl : 1;
+	u_int8_t skinny : 1;
+	u_int8_t mgcp: 1;
+	u_int8_t dtls_handshake: 1;
+	u_int8_t diameter: 1;
+	inline void init() {
+		for(unsigned i = 0; i < sizeof(*this); i++) {
+			((u_char*)this)[i] = 0;
+		}
+	}
+	inline bool other_processing() {
+		return(ss7);
+	}
+	inline bool rtp_processing() {
+		return(mrcp);
+	}
+};
+
+struct sHeaderPacketPQout {
+	pcap_pkthdr_plus *header;
+	u_char *packet;
+	pcap_block_store *block_store;
+	u_int32_t block_store_index;
+	u_int16_t dlt; 
+	int16_t sensor_id; 
+	vmIP sensor_ip;
+	bool block_store_locked;
+	u_int16_t header_ip_last_offset;
+	//
+	u_int16_t header_ip_offset;
+	u_int16_t header_ip_encaps_offset;
+	u_int8_t header_ip_protocol;
+	packet_flags pflags;
+	vmPort sport, dport;
+	u_int16_t data_offset;
+	u_int32_t datalen;
+	sHeaderPacketPQout() {
+	}
+	sHeaderPacketPQout(pcap_pkthdr *header, u_char *packet,
+			   u_int16_t dlt, int16_t sensor_id, vmIP sensor_ip) {
+		this->header = new FILE_LINE(0) pcap_pkthdr_plus;
+		this->header->convertFromStdHeaderToStd(header);
+		delete header;
+		this->packet = packet;
+		this->block_store = NULL;
+		this->block_store_index = 0;
+		this->dlt = dlt;
+		this->sensor_id = sensor_id;
+		this->sensor_ip = sensor_ip;
+		this->block_store_locked = false;
+		this->header_ip_last_offset = 0xFFFF;
+		//
+		this->header_ip_offset = 0xFFFF;
+		this->header_ip_encaps_offset = 0xFFFF;
+		this->header_ip_protocol = 0;
+		this->pflags.init();
+		this->sport = 0;
+		this->dport = 0;
+		this->data_offset = 0;
+		this->datalen = 0;
+	}
+	void destroy_or_unlock_blockstore() {
+		if(block_store) {
+			if(block_store_locked) {
+				block_store->unlock_packet(block_store_index);
+				block_store_locked = false;
+			}
+		} else {
+			delete header;
+			delete [] packet;
+		}
+	}
+	void alloc_and_copy_blockstore() {
+		if(block_store) {
+			pcap_pkthdr_plus *alloc_header = new FILE_LINE(16001) pcap_pkthdr_plus;
+			u_char *alloc_packet = new FILE_LINE(16002) u_char[header->get_caplen()];
+			memcpy(alloc_header, header, sizeof(pcap_pkthdr_plus));
+			memcpy(alloc_packet, packet, header->get_caplen());
+			header = alloc_header;
+			packet = alloc_packet;
+			if(block_store_locked) {
+				block_store->unlock_packet(block_store_index);
+				block_store_locked = false;
+			}
+			block_store = NULL;
+			block_store_index = 0;
+		}
+	}
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	inline void blockstore_addflag(int flag) {
+	#else
+	inline void blockstore_addflag(int /*flag*/) {
+	#endif
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		if(block_store) {
+			block_store->add_flag(block_store_index, flag);
+		}
+		#endif
+		#endif
+	}
+};
+
+
 #endif

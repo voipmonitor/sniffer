@@ -1810,6 +1810,26 @@ private:
 	void unlock_push() {
 		__SYNC_UNLOCK(this->_sync_push);
 	}
+	int get_opt_pre_process_packets_next_thread() {
+		extern int opt_pre_process_packets_next_thread;
+		extern int opt_pre_process_packets_next_thread_find_call;
+		extern int opt_pre_process_packets_next_thread_process_call;
+		return(typePreProcessThread == ppt_detach_x || 
+		       typePreProcessThread == ppt_detach || 
+		       typePreProcessThread == ppt_sip ? 
+			opt_pre_process_packets_next_thread :
+		       #if CALLX_MOD_1
+		       typePreProcessThread == ppt_pp_find_call ?
+			opt_pre_process_packets_next_thread_find_call :
+		       typePreProcessThread == ppt_pp_process_call ?
+			opt_pre_process_packets_next_thread_process_call :
+		       #endif
+			-1);
+	}
+	int get_opt_pre_process_packets_next_thread_max() {
+		extern int opt_pre_process_packets_next_thread_max;
+		return(opt_pre_process_packets_next_thread_max);
+	}
 private:
 	eTypePreProcessThread typePreProcessThread;
 	bool needLockPush;

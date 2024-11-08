@@ -8264,6 +8264,10 @@ void readdump_libnids(pcap_t *handle) {
 #endif
 */
 
+
+#if not DEFRAG_MOD_1
+
+
 inline void ipfrag_delete_node(ip_frag_s *node, int pushToStack_queue_index) {
 	if(node->header_packet) {
 		PUSH_HP(&node->header_packet, pushToStack_queue_index);
@@ -8425,21 +8429,6 @@ inline int _ipfrag_dequeue(ip_frag_queue *queue,
 	}
 	
 	return 1;
-}
-
-inline int ipfrag_dequeue(ip_frag_queue *queue,
-			  sHeaderPacket **header_packet,
-			  int pushToStack_queue_index) {
-	return(_ipfrag_dequeue(queue,
-			       header_packet, NULL,
-			       pushToStack_queue_index));
-}
-
-inline int ipfrag_dequeue(ip_frag_queue *queue,
-			  sHeaderPacketPQout *header_packet_pqout) {
-	return(_ipfrag_dequeue(queue,
-			       NULL, header_packet_pqout,
-			       -1));
 }
 
 inline int _ipfrag_add(ip_frag_queue *queue, 
@@ -8622,6 +8611,10 @@ void ipfrag_prune(unsigned int tv_sec, bool all, ipfrag_data_s *ipfrag_data,
 		}
 	}
 }
+
+
+#endif
+
 
 bool open_global_pcap_handle(const char *pcap, string *error) {
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -9868,14 +9861,14 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 	this->next_threads_count = opt_t2_boost &&
 				   (typePreProcessThread == ppt_detach_x || 
 				    typePreProcessThread == ppt_detach || 
-				    typePreProcessThread == ppt_sip) ? 
-				    min(max(opt_pre_process_packets_next_thread, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) : 
-				   #if CALLX_MOD_1
-				   typePreProcessThread == ppt_pp_find_call ?
-				    min(max(opt_pre_process_packets_next_thread_find_call, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
-				   typePreProcessThread == ppt_pp_process_call ?
-				    min(max(opt_pre_process_packets_next_thread_process_call, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
-				   #endif
+				    typePreProcessThread == ppt_sip
+				    #if CALLX_MOD_1
+				    ||
+				    typePreProcessThread == ppt_pp_find_call ||
+				    typePreProcessThread == ppt_pp_process_call
+				    #endif
+				    ) ?
+				    min(max(get_opt_pre_process_packets_next_thread(), 0), min(get_opt_pre_process_packets_next_thread_max(), MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				    0;
 	this->next_threads_count_mod = 0;
 	for(int i = 0; i < this->next_threads_count; i++) {
@@ -11233,7 +11226,7 @@ void *PreProcessPacket::outThreadFunction() {
 
 void PreProcessPacket::createNextThread() {
 	if(!(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
-	     (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max))) {
+	     (get_opt_pre_process_packets_next_thread_max() <= 0 || this->next_threads_count < get_opt_pre_process_packets_next_thread_max()))) {
 		return;
 	}
 	this->next_threads[this->next_threads_count].null();
@@ -11256,7 +11249,7 @@ void PreProcessPacket::createNextThread() {
 
 void PreProcessPacket::termNextThread() {
 	if(!(this->next_threads_count > 0 &&
-	     (opt_pre_process_packets_next_thread <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread))) {
+	     (get_opt_pre_process_packets_next_thread() <= 0 || this->next_threads_count > get_opt_pre_process_packets_next_thread()))) {
 		return;
 	}
 	--this->next_threads_count;
@@ -11492,14 +11485,14 @@ void PreProcessPacket::terminate() {
 
 void PreProcessPacket::addNextThread() {
 	if(this->next_threads_count < MAX_PRE_PROCESS_PACKET_NEXT_THREADS &&
-	   (opt_pre_process_packets_next_thread_max <= 0 || this->next_threads_count < opt_pre_process_packets_next_thread_max)) {
+	   (get_opt_pre_process_packets_next_thread_max() <= 0 || this->next_threads_count < get_opt_pre_process_packets_next_thread_max())) {
 		this->next_threads_count_mod = 1;
 	}
 }
 
 void PreProcessPacket::removeNextThread() {
 	if(this->next_threads_count > 0 &&
-	   (opt_pre_process_packets_next_thread <= 0 || this->next_threads_count > opt_pre_process_packets_next_thread)) {
+	   (get_opt_pre_process_packets_next_thread() <= 0 || this->next_threads_count > get_opt_pre_process_packets_next_thread())) {
 		this->next_threads_count_mod = -1;
 	}
 }

@@ -128,28 +128,6 @@ enum e_packet_alloc_type {
 	_t_packet_alloc_header_plus = 2
 };
 
-struct packet_flags {
-	u_int8_t tcp : 2;
-	u_int8_t ss7 : 1;
-	u_int8_t mrcp : 1;
-	u_int8_t ssl : 1;
-	u_int8_t skinny : 1;
-	u_int8_t mgcp: 1;
-	u_int8_t dtls_handshake: 1;
-	u_int8_t diameter: 1;
-	inline void init() {
-		for(unsigned i = 0; i < sizeof(*this); i++) {
-			((u_char*)this)[i] = 0;
-		}
-	}
-	inline bool other_processing() {
-		return(ss7);
-	}
-	inline bool rtp_processing() {
-		return(mrcp);
-	}
-};
-
 struct packet_s_kamailio_subst {
 	vmIP saddr;
 	vmIP daddr;

@@ -444,6 +444,7 @@ int opt_pre_process_packets_next_thread_find_call = -1;
 int opt_pre_process_packets_next_thread_process_call = -1;
 int opt_pre_process_packets_next_thread_detach = -1;
 int opt_pre_process_packets_next_thread_detach2 = -1;
+int opt_pre_process_packets_next_thread_defrag = -1;
 int opt_pre_process_packets_next_thread_max = 2;
 int opt_process_rtp_packets_hash_next_thread = 1;
 int opt_process_rtp_packets_hash_next_thread_max = -1;
@@ -6372,6 +6373,9 @@ void cConfig::addConfigItems() {
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_detach2", &opt_pre_process_packets_next_thread_detach2))
+						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
+						->addValues("yes:1|y:1|no:0|n:0"));
+					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_defrag", &opt_pre_process_packets_next_thread_defrag))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_max", &opt_pre_process_packets_next_thread_max))
