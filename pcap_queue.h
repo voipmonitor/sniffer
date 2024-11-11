@@ -334,7 +334,7 @@ struct pcapProcessData {
 			}
 			#endif
 		}
-		#if DEFRAG_MOD_1
+		#if not DEFRAG_MOD_OLDVER
 		extern int opt_udpfrag;
 		if(opt_udpfrag) {
 			ip_defrag = new FILE_LINE(0) cIpFrag();
@@ -354,7 +354,7 @@ struct pcapProcessData {
 		#endif
 		extern int opt_udpfrag;
 		if(opt_udpfrag) {
-			#if DEFRAG_MOD_1
+			#if not DEFRAG_MOD_OLDVER
 			delete ip_defrag;
 			#else
 			ipfrag_prune(0, true, &ipfrag_data, -1, 0);
@@ -362,7 +362,7 @@ struct pcapProcessData {
 		}
 	}
 	void null() {
-		#if DEFRAG_MOD_1
+		#if not DEFRAG_MOD_OLDVER
 		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ip_defrag));
 		#else
 		memset((void*)this, 0, sizeof(pcapProcessData) - sizeof(ipfrag_data_s));
@@ -386,7 +386,7 @@ struct pcapProcessData {
 	cPacketDuplBuffer *dedup_buffer_ct_md5;
 	#endif
 	u_int ipfrag_lastprune;
-	#if DEFRAG_MOD_1
+	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
 	#else
 	ipfrag_data_s ipfrag_data;
@@ -1171,7 +1171,7 @@ private:
 	u_int64_t qringPushCounter;
 	u_int64_t qringPushCounter_full;
 	int outThreadId;
-	#if DEFRAG_MOD_1
+	#if not DEFRAG_MOD_OLDVER
 	cIpFrag *ip_defrag;
 	#else
 	ipfrag_data_s ipfrag_data;

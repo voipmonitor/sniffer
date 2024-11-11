@@ -384,7 +384,7 @@ public:
 		ppt_detach,
 		ppt_sip,
 		ppt_extend,
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		ppt_pp_find_call,
 		ppt_pp_process_call,
 		#else
@@ -396,7 +396,7 @@ public:
 		ppt_pp_rtp,
 		ppt_pp_other,
 		ppt_end_base,
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		ppt_pp_callx,
 		ppt_pp_callfindx
 		#endif
@@ -1043,7 +1043,7 @@ public:
 					case ppt_extend:
 						this->process_SIP_EXTEND(_packetS);
 						break;
-					#if CALLX_MOD_1
+					#if not CALLX_MOD_OLDVER
 					case ppt_pp_find_call:
 						this->process_FIND_CALL(_packetS);
 						break;
@@ -1095,7 +1095,7 @@ public:
 			case ppt_extend:
 				this->process_SIP_EXTEND(packetS);
 				break;
-			#if CALLX_MOD_1
+			#if not CALLX_MOD_OLDVER
 			case ppt_pp_find_call:
 				this->process_FIND_CALL(packetS);
 				break;
@@ -1255,7 +1255,7 @@ public:
 	void addNextThread();
 	void removeNextThread();
 	static void autoStartNextLevelPreProcessPacket();
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	static void autoStartCallX_PreProcessPacket();
 	#endif
 	static void autoStopLastLevelPreProcessPacket(bool force = false);
@@ -1481,7 +1481,7 @@ public:
 			return("sip");
 		case ppt_extend:
 			return("extend");
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		case ppt_pp_find_call:
 			return("find_call");
 		case ppt_pp_process_call:
@@ -1519,7 +1519,7 @@ public:
 			return("s");
 		case ppt_extend:
 			return("e");
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		case ppt_pp_find_call:
 			return("cf");
 		case ppt_pp_process_call:
@@ -1758,7 +1758,7 @@ private:
 	}
 	void process_SIP(packet_s_process *packetS, bool parallel_threads = false);
 	void process_SIP_EXTEND(packet_s_process *packetS);
-	#if CALLX_MOD_1
+	#if not CALLX_MOD_OLDVER
 	void process_FIND_CALL(packet_s_process *packetS);
 	void _process_FIND_CALL_push(packet_s_process *packetS);
 	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0);
@@ -1812,13 +1812,15 @@ private:
 	}
 	int get_opt_pre_process_packets_next_thread() {
 		extern int opt_pre_process_packets_next_thread;
+		#if not CALLX_MOD_OLDVER
 		extern int opt_pre_process_packets_next_thread_find_call;
 		extern int opt_pre_process_packets_next_thread_process_call;
+		#endif
 		return(typePreProcessThread == ppt_detach_x || 
 		       typePreProcessThread == ppt_detach || 
 		       typePreProcessThread == ppt_sip ? 
 			opt_pre_process_packets_next_thread :
-		       #if CALLX_MOD_1
+		       #if not CALLX_MOD_OLDVER
 		       typePreProcessThread == ppt_pp_find_call ?
 			opt_pre_process_packets_next_thread_find_call :
 		       typePreProcessThread == ppt_pp_process_call ?

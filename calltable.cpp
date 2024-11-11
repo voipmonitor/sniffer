@@ -11149,7 +11149,7 @@ Calltable::Calltable(SqlDb *sqlDb) {
 	_sync_lock_process_ss7_listmap = 0;
 	_sync_lock_process_ss7_queue = 0;
 	
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	if(preProcessPacketCallX_count > 0) {
 		calls_listMAP_X = new FILE_LINE(0) map<string, Call*>[preProcessPacketCallX_count];
 		_sync_lock_calls_listMAP_X = new FILE_LINE(0) volatile int[preProcessPacketCallX_count];
@@ -11215,7 +11215,7 @@ Calltable::~Calltable() {
 	pthread_mutex_destroy(&registers_listMAPlock);
 	*/
 	
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	if(calls_listMAP_X) {
 		delete [] calls_listMAP_X;
 	}
@@ -13225,7 +13225,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 			active_calls_count = 0;
 			for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 				int typeCall = passTypeCall == 0 ? INVITE : MGCP;
-				#if not CALLX_MOD_1
+				#if CALLX_MOD_OLDVER
 				for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
 				#endif
 					map<string, Call*> *_calls_listMAP;
@@ -13237,7 +13237,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 							lock_calls_listMAP();
 							callIT1 = calltable->calls_list.begin();
 						} else {
-							#if CALLX_MOD_1
+							#if not CALLX_MOD_OLDVER
 							lock_calls_listMAP();
 							_calls_listMAP = &calls_listMAP;
 							#else
@@ -13295,7 +13295,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 						if(opt_call_id_alternative[0]) {
 							unlock_calls_listMAP();
 						} else {
-							#if CALLX_MOD_1
+							#if not CALLX_MOD_OLDVER
 							unlock_calls_listMAP();
 							#else
 							if(passListMap == -1) {
@@ -13309,7 +13309,7 @@ Calltable::getCallTableJson(char *params, bool *zip) {
 						unlock_calls_listMAP();
 					}
 				}
-			#if not CALLX_MOD_1
+			#if CALLX_MOD_OLDVER
 			}
 			#endif
 		}
@@ -13620,7 +13620,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 		newcall->registers_counter_inc();
 		unlock_registers_listMAP();
 	} else {
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		if(ci >= 0) {
 			lock_calls_listMAP_X(ci);
 			calls_listMAP_X[ci][call_idS] = newcall;
@@ -13645,7 +13645,7 @@ Calltable::add(int call_type, char *call_id, unsigned long call_id_len, vector<s
 				newcall->calls_counter_inc();
 				unlock_calls_listMAP();
 			}
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		}
 		#endif
 	}
@@ -13839,7 +13839,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 	int rejectedCalls_count = 0;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		for(int passListMap = -1; passListMap < (typeCall == INVITE && useCallFindX() ? preProcessPacketCallX_count : 0); passListMap++) {
 		#endif
 			map<string, Call*> *_calls_listMAP = NULL;
@@ -13851,7 +13851,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 					lock_calls_listMAP();
 					callIT1 = calltable->calls_list.begin();
 				} else {
-					#if CALLX_MOD_1
+					#if not CALLX_MOD_OLDVER
 					lock_calls_listMAP();
 					_calls_listMAP = &calls_listMAP;
 					#else
@@ -14106,7 +14106,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 				if(opt_call_id_alternative[0]) {
 					unlock_calls_listMAP();
 				} else {
-					#if CALLX_MOD_1
+					#if not CALLX_MOD_OLDVER
 					unlock_calls_listMAP();
 					#else
 					if(passListMap == -1) {
@@ -14119,7 +14119,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 			} else {
 				unlock_calls_listMAP();
 			}
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		}
 		#endif
 	}
@@ -14138,7 +14138,7 @@ Calltable::cleanup_calls(bool closeAll, u_int32_t packet_time_s, const char *fil
 		}
 		// Close RTP dump file ASAP to save file handles
 		if((closeAll && is_terminating())
-		   #if not CALLX_MOD_1
+		   #if CALLX_MOD_OLDVER
 		   ||
 		   (useCallX() && preProcessPacketCallX && preProcessPacketCallX[0]->isActiveOutThread())
 		   #endif
@@ -14454,7 +14454,7 @@ size_t Calltable::getCountCalls() {
 	size_t count = 0;
 	for(int passTypeCall = 0; passTypeCall < 2; passTypeCall++) {
 		int typeCall = passTypeCall == 0 ? INVITE : MGCP;
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		if(typeCall == INVITE) {
 			if(opt_call_id_alternative[0]) {
 				count += calls_list.size();
@@ -14487,7 +14487,7 @@ size_t Calltable::getCountCalls() {
 	return(count);
 }
 
-#if not CALLX_MOD_1
+#if CALLX_MOD_OLDVER
 bool Calltable::enableCallX() {
 	#if EXPERIMENTAL_SEPARATE_PROCESSSING
 	if(separate_processing() == cSeparateProcessing::_rtp) {

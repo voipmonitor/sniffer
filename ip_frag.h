@@ -7,7 +7,7 @@
 #include "header_packet.h"
 
 
-#if not DEFRAG_MOD_1
+#if DEFRAG_MOD_OLDVER
 
 struct ip_frag_s {
 	sHeaderPacket *header_packet;
@@ -44,7 +44,7 @@ int handle_defrag(iphdr2 *header_ip, void *header_packet_pqout, ipfrag_data_s *i
 #endif
 
 
-#if DEFRAG_MOD_1
+#if not DEFRAG_MOD_OLDVER
 
 #define DEFRAG_SIZE 16
 
@@ -80,24 +80,15 @@ public:
 public:
 	cIpFrag(unsigned fdata_size = 0);
 	~cIpFrag();
-	inline int defrag(iphdr2 *header_ip, sHeaderPacket **header_packet,
-			  int f_index, int pushToStack_queue_index) {
-		return(defrag(header_ip, header_packet, NULL,
-			      f_index, pushToStack_queue_index));
-	}
-	inline int defrag(iphdr2 *header_ip, void *header_packet_pqout,
-			  int f_index) {
-		return(defrag(header_ip, NULL, (sHeaderPacketPQout*)header_packet_pqout,
-			      f_index, -1));
-	}
 	void cleanup(unsigned int tv_sec, bool all,
 		     int pushToStack_queue_index, int cleanup_limit);
-private:
 	inline int defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout, 
 			  int f_index, int pushToStack_queue_index) {
  
 		if(f_index < 0) {
-			f_index = header_ip->get_saddr().getHashNumber() % fdata_size;
+			f_index = fdata_size > 1 ?
+				   (header_ip->get_saddr().getHashNumber() % fdata_size) :
+				   0;
 		}
 	 
 		#if DEFRAG_HEADER_IP_COPY
@@ -138,6 +129,7 @@ private:
 		
 		return res;
 	}
+private:
 	inline int add(sFrags *frags, sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout,
 		       unsigned int header_ip_offset, unsigned int len,
 		       int pushToStack_queue_index) {

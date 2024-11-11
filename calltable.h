@@ -3389,7 +3389,7 @@ public:
 	queue<string> files_sqlqueue; //!< this queue is used for asynchronous storing CDR by the worker thread
 	list<Call*> calls_list;
 	map<string, Call*> calls_listMAP;
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	map<string, Call*> *calls_listMAP_X;
 	#endif
 	map<sStreamIds2, Call*> calls_by_stream_callid_listMAP;
@@ -3467,7 +3467,7 @@ public:
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP, opt_lock_calls_usleep);
 		/*pthread_mutex_lock(&calls_listMAPlock);*/
 	}
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	void lock_calls_listMAP_X(u_int8_t ci) {
 		extern unsigned int opt_lock_calls_usleep;
 		__SYNC_LOCK_USLEEP(this->_sync_lock_calls_listMAP_X[ci], opt_lock_calls_usleep);
@@ -3532,7 +3532,7 @@ public:
 	void unlock_registers_deletequeue() { __SYNC_UNLOCK(this->_sync_lock_registers_deletequeue); }
 	void unlock_files_queue() { __SYNC_UNLOCK(this->_sync_lock_files_queue); /*pthread_mutex_unlock(&flock);*/ }
 	void unlock_calls_listMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP); /*pthread_mutex_unlock(&calls_listMAPlock);*/ }
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	void unlock_calls_listMAP_X(u_int8_t ci) { __SYNC_UNLOCK(this->_sync_lock_calls_listMAP_X[ci]); }
 	#endif
 	void unlock_calls_mergeMAP() { __SYNC_UNLOCK(this->_sync_lock_calls_mergeMAP); /*pthread_mutex_unlock(&calls_mergeMAPlock);*/ }
@@ -3566,7 +3566,7 @@ public:
 	
 	size_t getCountCalls();
 	
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	bool enableCallX();
 	bool useCallX();
 	bool enableCallFindX();
@@ -3667,7 +3667,7 @@ public:
 		}
 		return(rslt_call);
 	}
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	Call *find_by_call_id_x(u_int8_t ci, char *call_id, unsigned long call_id_len, time_t time) {
 		Call *rslt_call = NULL;
 		string call_idS = call_id_len ? string(call_id, call_id_len) : string(call_id);
@@ -3772,7 +3772,7 @@ public:
 					break;
 				}
 			}
-			#if not CALLX_MOD_1
+			#if CALLX_MOD_OLDVER
 			if(!rslt_call && useCallFindX()) {
 				extern int preProcessPacketCallX_count;
 				for(int i = 0; i < preProcessPacketCallX_count && !rslt_call; i++) {
@@ -4146,7 +4146,7 @@ private:
 	#endif
 	volatile int _sync_lock_calls_hash;
 	volatile int _sync_lock_calls_listMAP;
-	#if not CALLX_MOD_1
+	#if CALLX_MOD_OLDVER
 	volatile int *_sync_lock_calls_listMAP_X;
 	#endif
 	volatile int _sync_lock_calls_mergeMAP;

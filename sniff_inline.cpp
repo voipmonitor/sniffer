@@ -679,8 +679,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					return(0);
 				}
 				// packet is fragmented
-				#if DEFRAG_MOD_1
-				if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, pushToStack_queue_index, 0) > 0) {
+				#if not DEFRAG_MOD_OLDVER
+				if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, NULL, 0, pushToStack_queue_index) > 0) {
 				#else
 				if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 				#endif
@@ -689,7 +689,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 					ppd->pid.flags |= FLAG_FRAGMENTED;
 					if(sverb.defrag) {
 						defrag_counter++;
-						cout << "*** DEFRAG 1 " << defrag_counter << endl;
+						cout << "*** DEFRAG (sniff_inline) 1 " << defrag_counter << endl;
 					}
 					is_ip_frag = 2;
 				} else {
@@ -732,8 +732,8 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 			if(ppd->header_ip->is_more_frag(frag_data) || ppd->header_ip->get_frag_offset(frag_data)) {
 				is_ip_frag = 1;
 				if((ppf & ppf_defrag) && opt_udpfrag) {
-					#if DEFRAG_MOD_1
-					if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, pushToStack_queue_index, 0) > 0) {
+					#if not DEFRAG_MOD_OLDVER
+					if(ppd->ip_defrag->defrag(ppd->header_ip, header_packet, NULL, 0, pushToStack_queue_index) > 0) {
 					#else
 					if(handle_defrag(ppd->header_ip, header_packet, &ppd->ipfrag_data, pushToStack_queue_index) > 0) {
 					#endif
@@ -747,7 +747,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 						ppd->pid.flags |= FLAG_FRAGMENTED;
 						if(sverb.defrag) {
 							defrag_counter++;
-							cout << "*** DEFRAG 2 " << defrag_counter << endl;
+							cout << "*** DEFRAG (sniff_inline) 2 " << defrag_counter << endl;
 						}
 						is_ip_frag = 2;
 					} else {
@@ -772,7 +772,7 @@ int pcapProcess(sHeaderPacket **header_packet, int pushToStack_queue_index,
 	if((ppf & ppf_defrag) && ppd->header_ip) {
 		// if IP defrag is enabled, run each 10 seconds cleaning 
 		if(opt_udpfrag && (ppd->ipfrag_lastprune + 10) < HPH(*header_packet)->ts.tv_sec) {
-			#if DEFRAG_MOD_1
+			#if not DEFRAG_MOD_OLDVER
 			ppd->ip_defrag->cleanup(HPH(*header_packet)->ts.tv_sec, false, pushToStack_queue_index, -1);
 			#else
 			ipfrag_prune(HPH(*header_packet)->ts.tv_sec, false, &ppd->ipfrag_data, pushToStack_queue_index, -1);

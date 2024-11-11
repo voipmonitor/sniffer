@@ -3,7 +3,7 @@
 #include "ip_frag.h"
 
 
-#if DEFRAG_MOD_1
+#if not DEFRAG_MOD_OLDVER
 
 cIpFrag::cIpFrag(unsigned fdata_size) {
 	this->fdata_size = fdata_size > 1 ? fdata_size : 1;

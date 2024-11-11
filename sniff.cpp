@@ -8265,7 +8265,7 @@ void readdump_libnids(pcap_t *handle) {
 */
 
 
-#if not DEFRAG_MOD_1
+#if DEFRAG_MOD_OLDVER
 
 
 inline void ipfrag_delete_node(ip_frag_s *node, int pushToStack_queue_index) {
@@ -9862,7 +9862,7 @@ PreProcessPacket::PreProcessPacket(eTypePreProcessThread typePreProcessThread, u
 				   (typePreProcessThread == ppt_detach_x || 
 				    typePreProcessThread == ppt_detach || 
 				    typePreProcessThread == ppt_sip
-				    #if CALLX_MOD_1
+				    #if not CALLX_MOD_OLDVER
 				    ||
 				    typePreProcessThread == ppt_pp_find_call ||
 				    typePreProcessThread == ppt_pp_process_call
@@ -10061,7 +10061,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 					}
 				} }
 				break;
-			#if CALLX_MOD_1
+			#if not CALLX_MOD_OLDVER
 			case ppt_pp_find_call: {
 				if(next_thread_data->mode == 2) {
 					packet_s_process **batch = (packet_s_process**)next_thread_data->batch;
@@ -10176,7 +10176,7 @@ void *PreProcessPacket::outThreadFunction() {
 		   (this->typePreProcessThread == ppt_detach_x ||
 		    this->typePreProcessThread == ppt_detach ||
 		    this->typePreProcessThread == ppt_sip
-		    #if CALLX_MOD_1
+		    #if not CALLX_MOD_OLDVER
 		    ||
 		    this->typePreProcessThread == ppt_pp_find_call ||
 		    this->typePreProcessThread == ppt_pp_process_call
@@ -10623,7 +10623,7 @@ void *PreProcessPacket::outThreadFunction() {
 					tcpReassemblySipExt->cleanup_simple();
 				}
 			}
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		} else if(this->typePreProcessThread == ppt_pp_find_call) {
 			if(this->qring[this->readit]->used == 1) {
 				exists_used = true;
@@ -11011,13 +11011,13 @@ void *PreProcessPacket::outThreadFunction() {
 							this->process_SIP_EXTEND(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
 							   batch_index == count - 1) {
-								#if CALLX_MOD_1
+								#if not CALLX_MOD_OLDVER
 								preProcessPacket[ppt_pp_find_call]->push_batch();
 								#else
 								preProcessPacket[ppt_pp_call]->push_batch();
 								#endif
 								preProcessPacket[ppt_pp_register]->push_batch();
-								#if not CALLX_MOD_1
+								#if CALLX_MOD_OLDVER
 								preProcessPacket[ppt_pp_sip_other]->push_batch();
 								#endif
 								preProcessPacket[ppt_pp_diameter]->push_batch();
@@ -11026,7 +11026,7 @@ void *PreProcessPacket::outThreadFunction() {
 								}
 							}
 							break;
-						#if CALLX_MOD_1
+						#if not CALLX_MOD_OLDVER
 						case ppt_pp_find_call:
 							this->process_FIND_CALL(packetS);
 							if(opt_preprocess_packets_qring_force_push &&
@@ -11121,13 +11121,13 @@ void *PreProcessPacket::outThreadFunction() {
 					preProcessPacket[ppt_pp_other]->push_batch();
 					break;
 				case ppt_extend:
-					#if CALLX_MOD_1
+					#if not CALLX_MOD_OLDVER
 					preProcessPacket[ppt_pp_find_call]->push_batch();
 					#else
 					preProcessPacket[ppt_pp_call]->push_batch();
 					#endif
 					preProcessPacket[ppt_pp_register]->push_batch();
-					#if not CALLX_MOD_1
+					#if CALLX_MOD_OLDVER
 					preProcessPacket[ppt_pp_sip_other]->push_batch();
 					#endif
 					preProcessPacket[ppt_pp_diameter]->push_batch();
@@ -11141,7 +11141,7 @@ void *PreProcessPacket::outThreadFunction() {
 						}
 					}
 					break;
-				#if CALLX_MOD_1
+				#if not CALLX_MOD_OLDVER
 				case ppt_pp_find_call:
 					preProcessPacket[ppt_pp_process_call]->push_batch();
 					preProcessPacket[ppt_pp_sip_other]->push_batch();
@@ -11317,7 +11317,7 @@ void PreProcessPacket::push_batch_nothread() {
 		}
 		break;
 	case ppt_extend:
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		if(!preProcessPacket[ppt_pp_find_call]->outThreadState) {
 			preProcessPacket[ppt_pp_find_call]->push_batch();
 		}
@@ -11329,7 +11329,7 @@ void PreProcessPacket::push_batch_nothread() {
 		if(!preProcessPacket[ppt_pp_register]->outThreadState) {
 			preProcessPacket[ppt_pp_register]->push_batch();
 		}
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		if(!preProcessPacket[ppt_pp_sip_other]->outThreadState) {
 			preProcessPacket[ppt_pp_sip_other]->push_batch();
 		}
@@ -11350,7 +11350,7 @@ void PreProcessPacket::push_batch_nothread() {
 			}
 		}
 		break;
-	#if CALLX_MOD_1
+	#if not CALLX_MOD_OLDVER
 	case ppt_pp_find_call:
 		if(!preProcessPacket[ppt_pp_process_call]->outThreadState) {
 			preProcessPacket[ppt_pp_process_call]->push_batch();
@@ -11690,7 +11690,7 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	#endif
 	if(packetS->typeContentIsSip()) {
 		packetS->blockstore_addflag(101 /*pb lock flag*/);
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		if(!packetS->is_register()) {
 			preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		} else {
@@ -11741,14 +11741,14 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 		#endif
 	} else if(packetS->typeContentIsSkinny()) {
 		packetS->blockstore_addflag(102 /*pb lock flag*/);
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		#else
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
 		#endif
 	} else if(packetS->typeContentIsMgcp()) {
 		//packetS->blockstore_addflag(102 /*pb lock flag*/);
-		#if CALLX_MOD_1
+		#if not CALLX_MOD_OLDVER
 		preProcessPacket[ppt_pp_find_call]->push_packet(packetS);
 		#else
 		preProcessPacket[ppt_pp_call]->push_packet(packetS);
@@ -11761,7 +11761,7 @@ void PreProcessPacket::process_SIP_EXTEND(packet_s_process *packetS) {
 	}
 }
 
-#if CALLX_MOD_1
+#if not CALLX_MOD_OLDVER
 
 void PreProcessPacket::process_FIND_CALL(packet_s_process *packetS) {
 	if(packetS->typeContentIsSip()) {
@@ -12511,7 +12511,7 @@ void PreProcessPacket::autoStartNextLevelPreProcessPacket() {
 	}
 }
 
-#if not CALLX_MOD_1
+#if CALLX_MOD_OLDVER
 void PreProcessPacket::autoStartCallX_PreProcessPacket() {
 	if(opt_t2_boost) {
 		for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {

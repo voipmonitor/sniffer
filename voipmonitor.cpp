@@ -4831,7 +4831,7 @@ int main_init_read() {
 			}
 		}
 		
-		#if not CALLX_MOD_1
+		#if CALLX_MOD_OLDVER
 		if(opt_t2_boost && opt_t2_boost_call_threads > 0) {
 			bool autoStartCallX = false;
 			preProcessPacketCallX = new FILE_LINE(0) PreProcessPacket*[preProcessPacketCallX_count + 1];
@@ -6361,7 +6361,7 @@ void cConfig::addConfigItems() {
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread", &opt_pre_process_packets_next_thread))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));
-					#if CALLX_MOD_1
+					#if not CALLX_MOD_OLDVER
 					addConfigItem((new FILE_LINE(0) cConfigItem_integer("pre_process_packets_next_thread_find_call", &opt_pre_process_packets_next_thread_find_call))
 						->setMaximum(MAX_PRE_PROCESS_PACKET_NEXT_THREADS)
 						->addValues("yes:1|y:1|no:0|n:0"));

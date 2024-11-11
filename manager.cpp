@@ -5181,7 +5181,7 @@ int Mgmt_thread(Mgmt_params *params) {
 	} else if(!strcasecmp(thread_params[0], "sip_t2")) {
 		if(!strcasecmp(thread_params[1], "add")) {
 			if(opt_t2_boost) {
-				#if CALLX_MOD_1
+				#if not CALLX_MOD_OLDVER
 				return(params->sendString("not supported in t2_boost mode\n"));
 				#else
 				PreProcessPacket::autoStartCallX_PreProcessPacket();
@@ -5231,7 +5231,7 @@ int Mgmt_thread(Mgmt_params *params) {
 				return(params->sendString("ok\n"));
 			}
 		}
-	#if CALLX_MOD_1
+	#if not CALLX_MOD_OLDVER
 	} else if(!strcasecmp(thread_params[0], "sip_find_callc")) {
 		extern PreProcessPacket *preProcessPacket[PreProcessPacket::ppt_end_base];
 		if(preProcessPacket[PreProcessPacket::ppt_pp_find_call]) {

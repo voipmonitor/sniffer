@@ -2218,7 +2218,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						if(pcapQueueQ_outThread_detach->existsNextThread(i)) {
 							double next_cpu = pcapQueueQ_outThread_detach->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
 							if(next_cpu >= 0) {
-								outStrStat << ";" << setprecision(1) << next_cpu;
+								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
 						}
 					}
@@ -2253,18 +2253,18 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					if(sverb.qring_full && percFullQring > sverb.qring_full) {
 						outStrStat << "#" << percFullQring;
 					}
-					#if DEFRAG_MOD_1
+					#if not DEFRAG_MOD_OLDVER
 					for(int i = 0; i < MAX_PRE_PROCESS_PACKET_NEXT_THREADS; i++) {
 						if(pcapQueueQ_outThread_defrag->existsNextThread(i)) {
 							double next_cpu = pcapQueueQ_outThread_defrag->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
 							if(next_cpu >= 0) {
-								outStrStat << ";" << setprecision(1) << next_cpu;
+								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
 						}
 					}
 					#endif
 				}
-				#if DEFRAG_MOD_1
+				#if not DEFRAG_MOD_OLDVER
 				if(task == pcapStatCpuCheck) {
 					static int do_add_thread_counter;
 					static int do_remove_thread_counter;
@@ -2310,7 +2310,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						if(pcapQueueQ_outThread_detach2->existsNextThread(i)) {
 							double next_cpu = pcapQueueQ_outThread_detach2->getCpuUsagePerc(i + 1, pstatDataIndex, NULL);
 							if(next_cpu >= 0) {
-								outStrStat << ";" << setprecision(1) << next_cpu;
+								outStrStat << "|" << setprecision(1) << next_cpu;
 							}
 						}
 					}
@@ -2348,7 +2348,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			double last_t2cpu_preprocess_packet_out_thread_check_next_level = -2;
-			#if not CALLX_MOD_1
+			#if CALLX_MOD_OLDVER
 			double call_t2cpu_preprocess_packet_out_thread = -2;
 			#endif
 			double last_t2cpu_preprocess_packet_out_thread_rtp = -2;
@@ -2361,6 +2361,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 					double t2cpu_preprocess_packet_thread_max = 0;
 					double t2cpu_preprocess_packet_next_threads_sum = 0;
 					int t2cpu_preprocess_packet_next_threads_count = 0;
+					unsigned countOutPerc = 0;
 					for(int j = 0; j < 1 + MAX_PRE_PROCESS_PACKET_NEXT_THREADS; j++) {
 						if(j == 0 || preProcessPacket[i]->existsNextThread(j - 1)) {
 							double percFullQring = 0;
@@ -2374,9 +2375,14 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 									++t2cpu_preprocess_packet_next_threads_count;
 								}
 								if(task == pcapStatLog) {
-									outStrStat << "/" 
-										   << preProcessPacket[i]->getShortcatTypeThread() << ":"
-										   << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+									if(!countOutPerc) {
+										outStrStat << "/" 
+											   << preProcessPacket[i]->getShortcatTypeThread() << ":";
+									} else {
+										outStrStat << "|";
+									}
+									outStrStat << setprecision(1) << t2cpu_preprocess_packet_out_thread;
+									++countOutPerc;
 									if(sverb.qring_stat) {
 										double qringFillingPerc = preProcessPacket[i]->getQringFillingPerc();
 										if(qringFillingPerc > 0) {
@@ -2404,7 +2410,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								++count_t2cpu;
 								sum_t2cpu += t2cpu_preprocess_packet_out_thread;
 								if(
-								   #if CALLX_MOD_1
+								   #if not CALLX_MOD_OLDVER
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_find_call &&
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_process_call &&
 								   #else
@@ -2417,13 +2423,13 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_other) {
 									last_t2cpu_preprocess_packet_out_thread_check_next_level = t2cpu_preprocess_packet_out_thread;
 								}
-								#if not CALLX_MOD_1
+								#if CALLX_MOD_OLDVER
 								if(preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_call) {
 									call_t2cpu_preprocess_packet_out_thread = t2cpu_preprocess_packet_out_thread;
 								}
 								#endif
 								if(
-								   #if CALLX_MOD_1
+								   #if not CALLX_MOD_OLDVER
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_find_call &&
 								   preProcessPacket[i]->getTypePreProcessThread() != PreProcessPacket::ppt_pp_process_call &&
 								   #else
@@ -2456,7 +2462,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						   (preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach_x ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_detach ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_sip
-						    #if CALLX_MOD_1
+						    #if not CALLX_MOD_OLDVER
 						    ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_find_call ||
 						    preProcessPacket[i]->getTypePreProcessThread() == PreProcessPacket::ppt_pp_process_call
@@ -2488,7 +2494,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 			}
 			if(opt_t2_boost) {
-				#if not CALLX_MOD_1
+				#if CALLX_MOD_OLDVER
 				if(preProcessPacketCallX && calltable->useCallX()) {
 					for(int i = 0; i < preProcessPacketCallX_count + 1; i++) {
 						double percFullQring = 0;
@@ -2564,14 +2570,20 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				double t2cpu_rh_max = 0;
 				double t2cpu_rh_next_sum = 0;
 				double t2cpu_rh_next_count = 0;
+				unsigned countOutPerc = 0;
 				for(int i = 0; i < 1 + MAX_PROCESS_RTP_PACKET_HASH_NEXT_THREADS; i++) {
 					if(i == 0 || processRtpPacketHash->existsNextThread(i - 1)) {
 						double percFullQring;
 						double t2cpu_process_rtp_packet_out_thread = processRtpPacketHash->getCpuUsagePerc(i, i == 0 ? &percFullQring : NULL, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
-								outStrStat << "/" << (i == 0 ? "rm:" : "rh:")
-									   << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								if(!countOutPerc) {
+									outStrStat << "/" << "rh:";
+								} else {
+									outStrStat << "|";
+								}
+								outStrStat << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								++countOutPerc;
 								if(i == 0 && sverb.qring_stat) {
 									double qringFillingPerc = processRtpPacketHash->getQringFillingPerc();
 									if(qringFillingPerc > 0) {
@@ -2608,13 +2620,20 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 				}
 				double t2cpu_rd_sum = 0;
 				double t2cpu_rd_count = 0;
+				countOutPerc = 0;
 				for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
 					if(processRtpPacketDistribute[i]) {
 						double percFullQring;
 						double t2cpu_process_rtp_packet_out_thread = processRtpPacketDistribute[i]->getCpuUsagePerc(0, &percFullQring, pstatDataIndex);
 						if(t2cpu_process_rtp_packet_out_thread >= 0) {
 							if(task == pcapStatLog) {
-								outStrStat << "/" << "rd:" << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								if(!countOutPerc) {
+									outStrStat << "/" << "rd:";
+								} else {
+									outStrStat << "|";
+								}
+								outStrStat << setprecision(1) << t2cpu_process_rtp_packet_out_thread;
+								++countOutPerc;
 								if(sverb.qring_stat) {
 									double qringFillingPerc = processRtpPacketDistribute[i]->getQringFillingPerc();
 									if(qringFillingPerc > 0) {
@@ -2662,7 +2681,7 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 						do_stop_last_level_counter = 0;
 					}
 				}
-				#if not CALLX_MOD_1
+				#if CALLX_MOD_OLDVER
 				static int do_add_thread_callx_counter = 0;
 				if(call_t2cpu_preprocess_packet_out_thread > opt_cpu_limit_new_thread_high &&
 				   heap_pb_used_perc > opt_heap_limit_new_thread &&
@@ -9428,7 +9447,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	}
 	this->initThreadOk = false;
 	this->terminatingThread = false;
-	#if DEFRAG_MOD_1
+	#if not DEFRAG_MOD_OLDVER
 	if(typeOutputThread == defrag) {
 		this->ip_defrag = new FILE_LINE(0) cIpFrag(DEFRAG_SIZE);
 	} else {
@@ -9445,13 +9464,15 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	}
 	extern int opt_pre_process_packets_next_thread_detach;
 	extern int opt_pre_process_packets_next_thread_detach2;
+	#if not DEFRAG_MOD_OLDVER
 	extern int opt_pre_process_packets_next_thread_defrag;
+	#endif
 	extern int opt_pre_process_packets_next_thread_max;
 	this->next_threads_count = typeOutputThread == detach ?
 				    min(max(opt_pre_process_packets_next_thread_detach, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				   typeOutputThread == detach2 ?
 				    min(max(opt_pre_process_packets_next_thread_detach2, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
-				   #if DEFRAG_MOD_1
+				   #if not DEFRAG_MOD_OLDVER
 				   typeOutputThread == defrag ?
 				    min(max(opt_pre_process_packets_next_thread_defrag, 0), min(opt_pre_process_packets_next_thread_max, MAX_PRE_PROCESS_PACKET_NEXT_THREADS)) :
 				   #endif
@@ -9477,7 +9498,7 @@ PcapQueue_outputThread::~PcapQueue_outputThread() {
 	delete [] this->items_index;
 	delete [] this->items_thread_index;
 	if(typeOutputThread == defrag) {
-		#if DEFRAG_MOD_1
+		#if not DEFRAG_MOD_OLDVER
 		if(ip_defrag) {
 			delete ip_defrag;
 		}
@@ -9804,7 +9825,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					}
 				}
 			}
-			#if DEFRAG_MOD_1 
+			#if not DEFRAG_MOD_OLDVER 
 			else if(typeOutputThread == defrag && this->next_threads[0].thread_handle) {
 				extern int opt_pre_process_packets_next_thread_sem_sync;
 				unsigned count = batch->count;
@@ -10150,7 +10171,7 @@ void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp, int f_index) 
 }
 
 bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_index) {
-	#if DEFRAG_MOD_1
+	#if not DEFRAG_MOD_OLDVER
 	if(f_index < 0) {
 		if(hp->header->header_ip_encaps_offset != 0xFFFF) {
 			iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header_ip_encaps_offset);
@@ -10188,8 +10209,8 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 			return(false);
 		}
 		// packet is fragmented
-		#if DEFRAG_MOD_1
-		int rsltDefrag = ip_defrag->defrag(header_ip, (void*)hp, f_index);
+		#if not DEFRAG_MOD_OLDVER
+		int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, f_index, -1);
 		#else
 		int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 		#endif
@@ -10199,7 +10220,7 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 			hp->header->pid.flags |= FLAG_FRAGMENTED;
 			if(sverb.defrag) {
 				defrag_counter++;
-				cout << "*** DEFRAG 1 " << defrag_counter << endl;
+				cout << "*** DEFRAG (pcap_queue) 1 " << defrag_counter << endl;
 			}
 		} else {
 			if(rsltDefrag < 0) {
@@ -10227,8 +10248,8 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 		int frag_data = header_ip->get_frag_data();
 		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 			// packet is fragmented
-			#if DEFRAG_MOD_1
-			int rsltDefrag = ip_defrag->defrag(header_ip, (void*)hp, f_index);
+			#if not DEFRAG_MOD_OLDVER
+			int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, f_index, -1);
 			#else
 			int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 			#endif
@@ -10259,7 +10280,7 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 				hp->header->pid.flags |= FLAG_FRAGMENTED;
 				if(sverb.defrag) {
 					defrag_counter++;
-					cout << "*** DEFRAG 2 " << defrag_counter << endl;
+					cout << "*** DEFRAG (pcap_queue) 2 " << defrag_counter << endl;
 				}
 			} else {
 				if(rsltDefrag < 0) {
@@ -10291,7 +10312,7 @@ void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
 void PcapQueue_outputThread::processDefrag_cleanup(u_int32_t time_s) {
 	if((ipfrag_lastcleanup + 2) < time_s) {
 		if(ipfrag_lastcleanup) {
-			#if DEFRAG_MOD_1
+			#if not DEFRAG_MOD_OLDVER
 			ip_defrag->cleanup(time_s, false, -1, 2);
 			#else
 			ipfrag_prune(time_s, false, &this->ipfrag_data, -1, 2);
