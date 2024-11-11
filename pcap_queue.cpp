@@ -9659,7 +9659,9 @@ void *PcapQueue_outputThread::outThreadFunction() {
 	unsigned long usleepSumTime_lastPush = 0;
 	while(!is_terminating() && !this->terminatingThread) {
 		if(this->next_threads_count_mod &&
-		   (typeOutputThread == detach2)) {
+		   (typeOutputThread == detach ||
+		    typeOutputThread == detach2 ||
+		    typeOutputThread == defrag)) {
 			if(this->next_threads_count_mod > 0) {
 				createNextThread();
 			} else if(this->next_threads_count_mod < 0) {
