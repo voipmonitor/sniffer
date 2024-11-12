@@ -10087,9 +10087,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 								if(!packetS->call) {
 									packetS->call = calltable->find_by_call_id_alter_map(packetS->get_callid(), 0, packetS->getTime_s(), &next_thread_data->map_calls);
 								}
-								if(!packetS->call &&
-								   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
-								    (opt_detect_alone_bye && packetS->sip_method == BYE))) { // TODO - !inline funkce pro vyhodnocení zda se může dělat hovor
+								if(packetS->enableCreateCall()) {
 									packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, &next_thread_data->map_calls);
 									packetS->_createCall = true;
 								}
@@ -11950,9 +11948,7 @@ void PreProcessPacket::process_CALLX(packet_s_process *packetS) {
 void PreProcessPacket::process_CallFindX(packet_s_process *packetS) {
 	packetS->call = calltable->find_by_call_id_x(idPreProcessThread, packetS->get_callid(), 0, packetS->getTime_s());
 	packetS->_findCall = true;
-	if(!packetS->call &&
-	   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
-	    (opt_detect_alone_bye && packetS->sip_method == BYE))) {
+	if(packetS->enableCreateCall()) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), idPreProcessThread);
 		packetS->_createCall = true;
 	}
@@ -12491,9 +12487,7 @@ void PreProcessPacket::process_findSipCall(packet_s_process **packetS_ref, map<s
 
 void PreProcessPacket::process_createSipCall(packet_s_process **packetS_ref, map<string, Call*> *map_calls) {
 	packet_s_process *packetS = *packetS_ref;
-	if(packetS->_findCall && !packetS->call &&
-	   (packetS->sip_method == INVITE || (opt_sip_message && packetS->sip_method == MESSAGE) ||
-	    (opt_detect_alone_bye && packetS->sip_method == BYE))) {
+	if(packetS->_findCall && packetS->enableCreateCall()) {
 		packetS->call_created = new_invite_register(packetS, packetS->sip_method, packetS->get_callid(), -1, map_calls);
 		packetS->_createCall = true;
 	}

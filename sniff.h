@@ -936,11 +936,19 @@ struct packet_s_process : public packet_s_process_0 {
 	inline bool is_subscribe() {
 		return(sip_method == SUBSCRIBE || cseq.method == SUBSCRIBE);
 	}
-	bool okContentLength() {
+	inline bool okContentLength() {
 		return(parseContents.contentLength > 0 &&
 		       parseContents.doubleEndLine &&
 		       parseContents.doubleEndLine > (data_()+ sipDataOffset) &&
 		       parseContents.doubleEndLine - (data_()+ sipDataOffset) + parseContents.doubleEndLineSize + parseContents.contentLength == sipDataLen);
+	}
+	inline bool enableCreateCall() {
+		extern bool opt_sip_message;
+		extern bool opt_detect_alone_bye;
+		return(!call &&
+		       (sip_method == INVITE ||
+			(opt_sip_message && sip_method == MESSAGE) ||
+			(opt_detect_alone_bye && sip_method == BYE)));
 	}
 };
 
