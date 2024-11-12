@@ -9271,6 +9271,23 @@ void set_context_config() {
 		opt_sip_msg_save_ua = true;
 	}
 	
+	if(opt_pre_process_packets_next_thread > 0) {
+		if(!CONFIG.isSet("pre_process_packets_next_thread_find_call")) {
+			opt_pre_process_packets_next_thread_find_call = opt_pre_process_packets_next_thread;
+		}
+		if(!CONFIG.isSet("pre_process_packets_next_thread_process_call")) {
+			opt_pre_process_packets_next_thread_process_call = opt_pre_process_packets_next_thread;
+		}
+		if(!CONFIG.isSet("pre_process_packets_next_thread_detach")) {
+			opt_pre_process_packets_next_thread_detach = opt_pre_process_packets_next_thread;
+		}
+		if(!CONFIG.isSet("pre_process_packets_next_thread_detach2")) {
+			opt_pre_process_packets_next_thread_detach2 = opt_pre_process_packets_next_thread;
+		}
+		if(!CONFIG.isSet("pre_process_packets_next_thread_defrag")) {
+			opt_pre_process_packets_next_thread_defrag = opt_pre_process_packets_next_thread;
+		}
+	}
 	
 	#if defined(__x86_64__)
 	if(!CONFIG.isSet("usleep_minimal") && is_vmware()) {
