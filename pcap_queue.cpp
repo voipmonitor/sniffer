@@ -9449,7 +9449,7 @@ PcapQueue_outputThread::PcapQueue_outputThread(eTypeOutputThread typeOutputThrea
 	this->terminatingThread = false;
 	#if not DEFRAG_MOD_OLDVER
 	if(typeOutputThread == defrag) {
-		this->ip_defrag = new FILE_LINE(0) cIpFrag(DEFRAG_SIZE);
+		this->ip_defrag = new FILE_LINE(0) cIpFrag(DEFRAG_THREADS_SPLIT);
 	} else {
 		this->ip_defrag = NULL;
 	}
@@ -9839,7 +9839,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 					sHeaderPacketPQout *hp = &batch->batch[batch_index];
 					if(hp->header->header_ip_encaps_offset != 0xFFFF) {
 						iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
-						this->items_index[batch_index] = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_SIZE;
+						this->items_index[batch_index] = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_THREADS_SPLIT;
 						this->items_thread_index[batch_index] = this->items_index[batch_index] % (_next_threads_count + (_process_only_in_next_threads ? 0 : 1));
 					} else {
 						this->items_index[batch_index] = 0;
@@ -10165,21 +10165,21 @@ void PcapQueue_outputThread::processDetach_push(sHeaderPacketPQout *hp) {
 	hp->destroy_or_unlock_blockstore();
 }
 
-void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp, int f_index) {
-	if(!processDefrag_defrag(hp, f_index)) {
+void PcapQueue_outputThread::processDefrag(sHeaderPacketPQout *hp, int fdata_thread_index) {
+	if(!processDefrag_defrag(hp, fdata_thread_index)) {
 		return;
 	}
 	processDefrag_push(hp);
 }
 
-bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_index) {
+bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fdata_thread_index) {
 	#if not DEFRAG_MOD_OLDVER
-	if(f_index < 0) {
+	if(fdata_thread_index < 0) {
 		if(hp->header->header_ip_encaps_offset != 0xFFFF) {
-			iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header_ip_encaps_offset);
-			f_index = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_SIZE;
+			iphdr2 *header_ip_encaps = (iphdr2*)(hp->packet + hp->header->header_ip_encaps_offset);
+			fdata_thread_index = header_ip_encaps->get_saddr().getHashNumber() % DEFRAG_THREADS_SPLIT;
 		} else {
-			f_index = 0;
+			fdata_thread_index = 0;
 		}
 	}
 	#endif
@@ -10212,7 +10212,7 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 		}
 		// packet is fragmented
 		#if not DEFRAG_MOD_OLDVER
-		int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, f_index, -1);
+		int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, fdata_thread_index, -1);
 		#else
 		int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 		#endif
@@ -10251,7 +10251,7 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int f_
 		if(header_ip->is_more_frag(frag_data) || header_ip->get_frag_offset(frag_data)) {
 			// packet is fragmented
 			#if not DEFRAG_MOD_OLDVER
-			int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, f_index, -1);
+			int rsltDefrag = ip_defrag->defrag(header_ip, NULL, hp, fdata_thread_index, -1);
 			#else
 			int rsltDefrag = handle_defrag(header_ip, (void*)hp, &this->ipfrag_data);
 			#endif

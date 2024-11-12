@@ -1120,8 +1120,8 @@ public:
 	inline void processDetach(sHeaderPacketPQout *hp);
 	inline void processDetach_findHeaderIp(sHeaderPacketPQout *hp);
 	inline void processDetach_push(sHeaderPacketPQout *hp);
-	inline void processDefrag(sHeaderPacketPQout *hp, int f_index);
-	inline bool processDefrag_defrag(sHeaderPacketPQout *hp, int f_index);
+	inline void processDefrag(sHeaderPacketPQout *hp, int fdata_thread_index);
+	inline bool processDefrag_defrag(sHeaderPacketPQout *hp, int fdata_thread_index);
 	inline void processDefrag_push(sHeaderPacketPQout *hp);
 	inline void processDefrag_cleanup(u_int32_t time_s);
 	inline void processDedup(sHeaderPacketPQout *hp);

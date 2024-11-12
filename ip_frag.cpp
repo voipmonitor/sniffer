@@ -5,9 +5,9 @@
 
 #if not DEFRAG_MOD_OLDVER
 
-cIpFrag::cIpFrag(unsigned fdata_size) {
-	this->fdata_size = fdata_size > 1 ? fdata_size : 1;
-	fdata = new sDefrag[this->fdata_size];
+cIpFrag::cIpFrag(unsigned fdata_threads_split) {
+	this->fdata_threads_split = fdata_threads_split > 1 ? fdata_threads_split : 1;
+	fdata = new sDefrag[this->fdata_threads_split];
 }
 
 cIpFrag::~cIpFrag() {
@@ -20,8 +20,8 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 	if(cleanup_limit < 0) {
 		cleanup_limit = 30;
 	}
-	for(unsigned f_index = 0; f_index < fdata_size; f_index++) {
-		for(map<pair<vmIP, u_int32_t>, sFrags*>::iterator it_d = fdata[f_index].begin(); it_d != fdata[f_index].end(); ) {
+	for(unsigned fdata_thread_index = 0; fdata_thread_index < fdata_threads_split; fdata_thread_index++) {
+		for(map<pair<vmIP, u_int32_t>, sFrags*>::iterator it_d = fdata[fdata_thread_index].begin(); it_d != fdata[fdata_thread_index].end(); ) {
 			sFrags *frags = it_d->second;
 			if(frags->size() &&
 			   (all ||
@@ -32,7 +32,7 @@ void cIpFrag::cleanup(unsigned int tv_sec, bool all,
 				frags->clear();
 			}
 			if(!frags->size()) {
-				fdata[f_index].erase(it_d++);
+				fdata[fdata_thread_index].erase(it_d++);
 				delete frags;
 			} else {
 				it_d++;

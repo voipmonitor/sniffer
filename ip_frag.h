@@ -46,7 +46,7 @@ int handle_defrag(iphdr2 *header_ip, void *header_packet_pqout, ipfrag_data_s *i
 
 #if not DEFRAG_MOD_OLDVER
 
-#define DEFRAG_SIZE 16
+#define DEFRAG_THREADS_SPLIT 16
 
 class cIpFrag {
 public:
@@ -78,17 +78,17 @@ public:
 	struct sDefrag : map<pair<vmIP, u_int32_t>, sFrags*> {
 	};
 public:
-	cIpFrag(unsigned fdata_size = 0);
+	cIpFrag(unsigned fdata_threads_split = 0);
 	~cIpFrag();
 	void cleanup(unsigned int tv_sec, bool all,
 		     int pushToStack_queue_index, int cleanup_limit);
 	inline int defrag(iphdr2 *header_ip, sHeaderPacket **header_packet, sHeaderPacketPQout *header_packet_pqout, 
-			  int f_index, int pushToStack_queue_index) {
+			  int fdata_thread_index, int pushToStack_queue_index) {
  
-		if(f_index < 0) {
-			f_index = fdata_size > 1 ?
-				   (header_ip->get_saddr().getHashNumber() % fdata_size) :
-				   0;
+		if(fdata_thread_index < 0) {
+			fdata_thread_index = fdata_threads_split > 1 ?
+					      (header_ip->get_saddr().getHashNumber() % fdata_threads_split) :
+					      0;
 		}
 	 
 		#if DEFRAG_HEADER_IP_COPY
@@ -101,13 +101,13 @@ public:
 		#endif
 		
 		pair<vmIP, u_int32_t> frags_index(header_ip_orig->get_saddr(), header_ip_orig->get_frag_id());
-		sFrags *frags = fdata[f_index][frags_index];
+		sFrags *frags = fdata[fdata_thread_index][frags_index];
 
 		// get queue from ip_frag_stream based on source ip address and ip->id identificator (2-dimensional map array)
 		if(!frags) {
 			// queue does not exists yet - create it and assign to map 
 			frags = new FILE_LINE(0) sFrags;
-			fdata[f_index][frags_index] = frags;
+			fdata[fdata_thread_index][frags_index] = frags;
 		}
 		
 		int res = header_packet ?
@@ -119,7 +119,7 @@ public:
 			       -1);
 		if(res > 0) {
 			// packet was created from all pieces - delete queue and remove it from map
-			fdata[f_index].erase(frags_index);
+			fdata[fdata_thread_index].erase(frags_index);
 			delete frags;
 		}
 		
@@ -353,7 +353,7 @@ private:
 	}
 private:
 	sDefrag *fdata;
-	unsigned fdata_size;
+	unsigned fdata_threads_split;
 };
 
 #endif
