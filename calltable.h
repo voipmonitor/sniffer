@@ -4336,7 +4336,7 @@ private:
 	map<int, map<int, sCustomHeaderData> > custom_headers;
 	list<string> allNextTables;
 	map<int, bool> calldate_ms;
-	unsigned loadTime;
+	unsigned long loadTime;
 	unsigned lastTimeSaveUseInfo;
 	volatile int _sync_custom_headers;
 };
