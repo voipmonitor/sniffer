@@ -47,7 +47,7 @@
 #define MCB_STACK  (HeapSafeCheck & _HeapSafeStack)
 #define SIZEOF_MCB (MCB_PLUS ? sizeof(sHeapSafeMemoryControlBlockPlus) : \
 		    MCB_STACK ? sizeof(sHeapSafeMemoryControlBlockEx) : \
-		    sizeof(sHeapSafeMemoryControlBlock))
+		    16 /*sizeof(sHeapSafeMemoryControlBlock)*/) // to optimize -Ox the offset must be aligned to 16 bytes
  
 
 enum eHeapSafeErrors {
