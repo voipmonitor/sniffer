@@ -315,8 +315,8 @@ bool RrdChart::alterIfNeed(list<RrdChartValue> *valuesFromInfo, RrdCharts *rrdCh
 		}
 		unlink(dbFilename.c_str());
 		string createString = this->createString();
-		extern RrdCharts rrd_charts;
-		if(!rrd_charts.doRrdCmd(createString)) {
+		extern RrdCharts *rrd_charts;
+		if(!rrd_charts->doRrdCmd(createString)) {
 			syslog(LOG_NOTICE, "ALTER RRD %s - failed create rrd table", dbFilename.c_str());
 			unlink(tmpXml.c_str());
 			return(false);
@@ -666,13 +666,13 @@ bool RrdCharts::doRrdCmd(string cmd, string *error, bool syslogError) {
 	bool dllRun = false;
 	rrd_lock();
 	if(cmd_args[0] == "create") {
-		rrd_create(_cmd_args_length, _cmd_args);
+		rrd_create(_cmd_args_length, (const char**)_cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "update") {
-		rrd_update(_cmd_args_length, _cmd_args);
+		rrd_update(_cmd_args_length, (const char**)_cmd_args);
 		dllRun = true;
 	} else if(cmd_args[0] == "tune") {
-		rrd_tune(_cmd_args_length, _cmd_args);
+		rrd_tune(_cmd_args_length, (const char**)_cmd_args);
 		dllRun = true;
 	}
 	rrd_unlock();
@@ -806,15 +806,28 @@ void RrdCharts::createMapValues() {
 volatile int RrdCharts::sync_rrd = 0;
 
 
-RrdCharts rrd_charts;
+RrdCharts *rrd_charts;
 
+
+void rrd_init() {
+	if(!rrd_charts) {
+		rrd_charts = new FILE_LINE(0) RrdCharts;
+	}
+}
+
+void rrd_term() {
+	if(rrd_charts) {
+		delete rrd_charts;
+		rrd_charts = NULL;
+	}
+}
 
 void rrd_charts_init() {
 	RrdChart *ch;
 	RrdChartSeriesGroup *g;
 	
 	// *tCPU
-	ch = rrd_charts.addChart(RRD_CHART_tCPU, "CPU usage");
+	ch = rrd_charts->addChart(RRD_CHART_tCPU, "CPU usage");
 	ch->setStdDb();
 	ch->setVerticalLabel("percent[%]");
 	ch->addValue(RRD_VALUE_tCPU_t0, "t0 CPU Usage %", "0000FF", 0, 120)
@@ -825,21 +838,21 @@ void rrd_charts_init() {
 			->setPrecision(1, 1);
 	
 	// * heap
-	ch = rrd_charts.addChart(RRD_CHART_heap, "Buffer usage");
+	ch = rrd_charts->addChart(RRD_CHART_heap, "Buffer usage");
 	ch->setStdDb();
 	ch->setVerticalLabel("percent[%]");
 	ch->addValue(RRD_VALUE_buffer, "Packet buffer %", "0000FF", 0, 1000000);
 	ch->addValue(RRD_VALUE_ratio, "I/O buffer usage %", "FF0000", 0, 10000000);
 	
 	// * drop
-	ch = rrd_charts.addChart(RRD_CHART_drop, "Packet drops");
+	ch = rrd_charts->addChart(RRD_CHART_drop, "Packet drops");
 	ch->setStdDb();
 	ch->setVerticalLabel("packtets");
 	ch->addValue(RRD_VALUE_exceeded, "Buffer overloaded", "0000FF", 0, 1000000);
 	ch->addValue(RRD_VALUE_packets, "Packets dropped", "00FF00", 0, 1000000);
 	
 	// * callscounter
-	ch = rrd_charts.addChart(RRD_CHART_callscounter, "Number of calls");
+	ch = rrd_charts->addChart(RRD_CHART_callscounter, "Number of calls");
 	ch->setStdDb();
 	ch->setVerticalLabel("calls");
 	ch->addValue(RRD_VALUE_inv, "INVs", "00FF00", 0, 500000);
@@ -854,7 +867,7 @@ void rrd_charts_init() {
 	ch->addSeriesGroup(NULL, g);
 	
 	// * tacCPU
-	ch = rrd_charts.addChart(RRD_CHART_tacCPU, "Compression");
+	ch = rrd_charts->addChart(RRD_CHART_tacCPU, "Compression");
 	ch->setStdDb();
 	ch->setVerticalLabel("Total consumption");
 	ch->addValue(RRD_VALUE_zipCPU, "Zip compression %", "0000FF", 0, 10000)
@@ -863,21 +876,21 @@ void rrd_charts_init() {
 			->setPrecision(1, 1);
 	
 	// * db-memusage
-	ch = rrd_charts.addChart(RRD_CHART_memusage, "Memory usage");
+	ch = rrd_charts->addChart(RRD_CHART_memusage, "Memory usage");
 	ch->setStdDb();
 	ch->setVerticalLabel("MB");
 	ch->addValue(RRD_VALUE_RSS, "Used memory (RSS)", "00FF00", 0, 1000000)
 			->setType("AREA");
 	
 	// * speedmbs
-	ch = rrd_charts.addChart(RRD_CHART_speedmbs, "Network throughput");
+	ch = rrd_charts->addChart(RRD_CHART_speedmbs, "Network throughput");
 	ch->setStdDb();
 	ch->setVerticalLabel("MB/s");
 	ch->addValue(RRD_VALUE_mbs, "speed (Mb/s)", "00FF00", 0, 100000)
 			->setType("AREA");
 	
 	// * SQL
-	ch = rrd_charts.addChart(RRD_CHART_SQL);
+	ch = rrd_charts->addChart(RRD_CHART_SQL);
 	ch->setStdDb();
 	ch->addValue(RRD_VALUE_SQLf_D, NULL, NULL, 0, 100000);
 	ch->addValue(RRD_VALUE_SQLf_C, NULL, NULL, 0, 100000);
@@ -913,7 +926,7 @@ void rrd_charts_init() {
 	ch->addSeriesGroup(RRD_CHART_SERIES_SQLq, g);
 	
 	// * PS
-	ch = rrd_charts.addChart(RRD_CHART_PS, "Packet Counter");
+	ch = rrd_charts->addChart(RRD_CHART_PS, "Packet Counter");
 	ch->setStdDb();
 	ch->setVerticalLabel("number of packets");
 	ch->addValue(RRD_VALUE_PS_C, "calls/second", "0000FF", 0, 1000000);
@@ -962,7 +975,7 @@ void rrd_charts_init() {
 	ch->addSeriesGroup(RRD_CHART_SERIES_PSA, g);
 	
 	// * LA
-	ch = rrd_charts.addChart(RRD_CHART_LA, "Load averages");
+	ch = rrd_charts->addChart(RRD_CHART_LA, "Load averages");
 	ch->setStdDb();
 	ch->setVerticalLabel("Load");
 	ch->addValue(RRD_VALUE_LA_m1, "1 minute avg", "00AA00", 0, 256)
@@ -972,49 +985,49 @@ void rrd_charts_init() {
 	ch->addValue(RRD_VALUE_LA_m15, "15 minute avg", "FF0000", 0, 256)
 			->setPrecision(2, 2);
 			
-	rrd_charts.createMapValues();
+	rrd_charts->createMapValues();
 }
 
 void rrd_charts_term() {
 	if(opt_rrd) {
-		rrd_charts.clearCharts();
+		rrd_charts->clearCharts();
 	}
 }
 
 void rrd_charts_create() {
 	if(opt_rrd) {
-		rrd_charts.createAll();
+		rrd_charts->createAll();
 	}
 }
 
 void rrd_charts_alter() {
 	if(opt_rrd) {
-		rrd_charts.alterAll();
+		rrd_charts->alterAll();
 	}
 }
 
 void rrd_set_value(const char *valuename, double value, const char *dbname) {
 	if(opt_rrd) {
-		rrd_charts.setValue(valuename, value, dbname);
+		rrd_charts->setValue(valuename, value, dbname);
 	}
 }
 
 void rrd_add_value(const char *valuename, double value, const char *dbname) {
 	if(opt_rrd) {
-		rrd_charts.addValue(valuename, value, dbname);
+		rrd_charts->addValue(valuename, value, dbname);
 	}
 }
 
 void rrd_update() {
 	if(opt_rrd) {
-		rrd_charts.updateAll();
-		rrd_charts.clearValues();
+		rrd_charts->updateAll();
+		rrd_charts->clearValues();
 	}
 }
 
 void rrd_add_to_queue(RrdChartQueueItem *queueItem) {
 	if(opt_rrd) {
-		rrd_charts.addToQueue(queueItem);
+		rrd_charts->addToQueue(queueItem);
 	} else {
 		queueItem->error = "rrd is disabled";
 		queueItem->completed = true;
@@ -1026,7 +1039,7 @@ string rrd_chart_graphString(const char *dbname,
 			     const char *dstfile, const char *fromTime, const char *toTime, 
 			     const char *backgroundColor, unsigned resx, unsigned resy, 
 			     bool slope, bool icon) {
-	return(rrd_charts.graphString(dbname,
+	return(rrd_charts->graphString(dbname,
 				      seriesGroupName,
 				      dstfile, fromTime, toTime, 
 				      backgroundColor, resx, resy, 

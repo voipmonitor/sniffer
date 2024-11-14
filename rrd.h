@@ -251,6 +251,8 @@ private:
 };
 
 
+void rrd_init();
+void rrd_term();
 void rrd_charts_init();
 void rrd_charts_term();
 void rrd_charts_create();

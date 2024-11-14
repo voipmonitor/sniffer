@@ -4997,8 +4997,8 @@ int Mgmt_list_active_clients(Mgmt_params *params) {
 		params->registerCommand("list_active_clients", "list of active clients");
 		return(0);
 	}
-	extern sSnifferServerServices snifferServerServices;
-	string rslt = snifferServerServices.listJsonServices();
+	extern sSnifferServerServices *snifferServerServices;
+	string rslt = snifferServerServices->listJsonServices();
 	return(params->sendString(&rslt));
 }
 

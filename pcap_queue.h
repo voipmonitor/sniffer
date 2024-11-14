@@ -876,7 +876,7 @@ public:
 	size_t getQueueSize() {
 		return(this->pcapStoreQueue.getQueueSize());
 	}
-	bool addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter, bool *require_confirmation);
+	bool addBlockStoreToPcapStoreQueue(u_char *buffer, u_char *buffer_alloc_begin, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter, bool *require_confirmation);
 	inline void addBlockStoreToPcapStoreQueue(pcap_block_store *blockStore);
 	inline unsigned long long getLastUS() {
 		return(getTimeUS(_last_ts));

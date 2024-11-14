@@ -575,6 +575,9 @@ public:
 			writeBlock(SOCKET_END_STR, cSocket::_te_aes);
 		}
 	}
+	u_char *getReadBufferAllocBegin() {
+		return(readBuffer.buffer);
+	}
 protected:
 	bool checkSumReadBuffer();
 	u_int32_t dataSum(u_char *data, size_t dataLen);

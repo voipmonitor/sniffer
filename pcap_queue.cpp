@@ -677,7 +677,7 @@ void pcap_block_store::restoreFromSaveBuffer(u_char *saveBuffer) {
 	#endif
 }
 
-int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offset, bool restoreFromStore, string *error) {
+int pcap_block_store::addRestoreChunk(u_char *buffer, u_char *buffer_alloc_begin, size_t size, size_t *offset, bool restoreFromStore, string *error) {
 	u_char *_buffer = buffer + (offset ? *offset : 0);
 	size_t _size = size - (offset ? *offset : 0);
 	if(_size <= 0) {
@@ -694,7 +694,7 @@ int pcap_block_store::addRestoreChunk(u_char *buffer, size_t size, size_t *offse
 		this->restoreBuffer = restoreBufferNew;
 	}
 	memcpy_heapsafe(this->restoreBuffer + this->restoreBufferSize, this->restoreBuffer,
-			_buffer, buffer,
+			_buffer, buffer_alloc_begin,
 			_size,
 			__FILE__, __LINE__);
 	this->restoreBufferSize += _size;
@@ -1040,7 +1040,7 @@ bool pcap_file_store::pop(pcap_block_store *blockStore) {
 	size_t readed;
 	int rsltRestoreChunk = 0;
 	while((readed = fread(readBuff, 1, readBuffSize, this->fileHandlePop)) > 0) {
-		rsltRestoreChunk = blockStore->addRestoreChunk(readBuff, readed, NULL, true);
+		rsltRestoreChunk = blockStore->addRestoreChunk(readBuff, readBuff, readed, NULL, true);
 		if(rsltRestoreChunk != 0) {
 			break;
 		}
@@ -3032,8 +3032,8 @@ void PcapQueue::pcapStat(pcapStatTask task, int statPeriod) {
 		}
 		if(task == pcapStatLog) {
 			if(opt_rrd) {
-				extern RrdCharts rrd_charts;
-				double rrd_charts_cpu = rrd_charts.getCpuUsageQueueThreadPerc(pstatDataIndex);
+				extern RrdCharts *rrd_charts;
+				double rrd_charts_cpu = rrd_charts->getCpuUsageQueueThreadPerc(pstatDataIndex);
 				if(rrd_charts_cpu > 0) {
 					 outStrStat << "RRD[" << setprecision(1) << rrd_charts_cpu << "%] ";
 				}
@@ -7390,11 +7390,11 @@ void PcapQueue_readFromFifo::setPacketServer(ip_port ipPort, ePacketServerDirect
 	}
 }
 
-bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter, bool *require_confirmation) {
+bool PcapQueue_readFromFifo::addBlockStoreToPcapStoreQueue(u_char *buffer, u_char *buffer_alloc_begin, size_t bufferLen, string *error, string *warning, u_int32_t *block_counter, bool *require_confirmation) {
 	*error = "";
 	*warning = "";
 	pcap_block_store *blockStore = new FILE_LINE(0) pcap_block_store;
-	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, NULL, false, error);
+	int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, buffer_alloc_begin, bufferLen, NULL, false, error);
 	if(bufferLen >= sizeof(pcap_block_store::pcap_block_store_header)) {
 		*require_confirmation = ((pcap_block_store::pcap_block_store_header*)buffer)->require_confirmation;
 	}
@@ -7822,7 +7822,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 						offsetBuffer = 0;
 						while(offsetBuffer < bufferLen) {
 							string error;
-							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, bufferLen, &offsetBuffer, false, &error); 
+							int rsltAddRestoreChunk = blockStore->addRestoreChunk(buffer, buffer, bufferLen, &offsetBuffer, false, &error); 
 							if(rsltAddRestoreChunk > 0) {
 								string *check_headers_error = NULL;
 								if(!blockStore->check_offsets()) {

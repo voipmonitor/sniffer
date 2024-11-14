@@ -394,6 +394,8 @@ private:
 };
 
 
+void snifferServerInit();
+void snifferServerTerm();
 void snifferServerStart();
 void snifferServerStop();
 void snifferServerSetSqlStore(MySqlStore *sqlStore);

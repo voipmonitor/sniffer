@@ -4049,6 +4049,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if(!opt_test) {
+		snifferServerInit();
+		rrd_init();
 		if(opt_rrd) {
 			checkRrdVersion();
 			rrd_charts_init();
@@ -4107,8 +4109,8 @@ int main(int argc, char *argv[]) {
 	}
 	
 	if(opt_rrd) {
-		extern RrdCharts rrd_charts;
-		rrd_charts.startQueueThread();
+		extern RrdCharts *rrd_charts;
+		rrd_charts->startQueueThread();
 	}
 	
 	if(opt_hugepages_anon || opt_hugepages_max || opt_hugepages_overcommit_max) {
@@ -4476,6 +4478,10 @@ int main(int argc, char *argv[]) {
 	#endif
 	
 	termTimeCacheForThread();
+	
+	rrd_term();
+	
+	snifferServerTerm();
 	
 	return(0);
 }

@@ -14,7 +14,7 @@ extern Calltable *calltable;
 sSnifferServerOptions snifferServerOptions;
 sSnifferServerClientOptions snifferServerClientOptions;
 sSnifferServerGuiTasks snifferServerGuiTasks;
-sSnifferServerServices snifferServerServices;
+sSnifferServerServices *snifferServerServices;
 cSnifferServer *snifferServer;
 
 static bool opt_enable_responses_sender;
@@ -491,7 +491,7 @@ void cSnifferServerConnection::cp_gui_command(int32_t sensor_id, string command,
 			<< "command: " << command;
 		syslog(LOG_INFO, "%s", verbstr.str().c_str());
 	}
-	cSnifferServerConnection *service_connection = snifferServerServices.getServiceConnection(sensor_id, NULL);
+	cSnifferServerConnection *service_connection = snifferServerServices->getServiceConnection(sensor_id, NULL);
 	if(!service_connection) {
 		socket->write("missing sniffer service - connect sensor?");
 		delete this;
@@ -579,7 +579,7 @@ void cSnifferServerConnection::cp_service() {
 		return;
 	}
 	if(jsonPasswordAesKeys.getValue("restore").empty() &&
-	   snifferServerServices.existsService(sensor_id, sensor_string.c_str())) {
+	   snifferServerServices->existsService(sensor_id, sensor_string.c_str())) {
 		sleep(5);
 		string error = "client with sensor_id " + intToString(sensor_id) + " is already connected, refusing connection";
 		socket->writeBlock(error);
@@ -654,7 +654,7 @@ void cSnifferServerConnection::cp_service() {
 	service.aes_ckey = aes_ckey;
 	service.aes_ivec = aes_ivec;
 	service.remote_chart_server = remote_chart_server;
-	snifferServerServices.add(&service);
+	snifferServerServices->add(&service);
 	u_int64_t lastWriteTimeUS = 0;
 	u_int64_t wait_remote_chart_server_processing_to_time_ms = 0;
 	unsigned errors_counter = 0;
@@ -694,7 +694,7 @@ void cSnifferServerConnection::cp_service() {
 		   (!wait_remote_chart_server_processing_to_time_ms ||
 		    getTimeMS() > wait_remote_chart_server_processing_to_time_ms)) {
 			wait_remote_chart_server_processing_to_time_ms = 0;
-			string *rchs_query = snifferServerServices.get_rchs_query();
+			string *rchs_query = snifferServerServices->get_rchs_query();
 			if(rchs_query) {
 				bool okSend = true;
 				if(snifferServerOptions.type_compress == _cs_compress_gzip) {
@@ -775,7 +775,7 @@ void cSnifferServerConnection::cp_service() {
 		USLEEP(1000);
 	}
 	if(!orphan) {
-		snifferServerServices.remove(&service);
+		snifferServerServices->remove(&service);
 	}
 	delete this;
 }
@@ -799,7 +799,7 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 	sSnifferServerGuiTask task = snifferServerGuiTasks.getTask(gui_task_id);
 	int32_t sensor_id = snifferServerGuiTasks.getSensorId(gui_task_id);
 	string aes_ckey, aes_ivec;
-	snifferServerServices.getAesKeys(sensor_id, NULL, &aes_ckey, &aes_ivec);
+	snifferServerServices->getAesKeys(sensor_id, NULL, &aes_ckey, &aes_ivec);
 	if(aes_ckey.empty() || aes_ivec.empty()) {
 		if(remainder) {
 			delete [] remainder;
@@ -816,7 +816,7 @@ void cSnifferServerConnection::cp_respone(string gui_task_id, u_char *remainder,
 					 &task.aes_key, task.aes_cipher.c_str());
 	if(needStopServiceIfResponseOk &&
 	   rsltBuffer.data_len() >= 2 && !strncasecmp(rsltBuffer, "ok", 2)) {
-		snifferServerServices.stopServiceBySensorId(sensor_id);
+		snifferServerServices->stopServiceBySensorId(sensor_id);
 	}
 	snifferServerGuiTasks.setTaskState(gui_task_id, sSnifferServerGuiTask::_complete);
 	delete this;
@@ -1089,7 +1089,7 @@ void cSnifferServerConnection::cp_packetbuffer_block() {
 		string errorAddBlock;
 		string warningAddBlock;
 		bool require_confirmation = true;
-		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, blockLength, &errorAddBlock, &warningAddBlock, &block_counter, &require_confirmation);
+		bool rsltAddBlock = pcapQueueQ->addBlockStoreToPcapStoreQueue(block, socket->getReadBufferAllocBegin(), blockLength, &errorAddBlock, &warningAddBlock, &block_counter, &require_confirmation);
 		if(require_confirmation) {
 			if(rsltAddBlock) {
 				socket->writeBlock("OK", cSocket::_te_aes);
@@ -1125,7 +1125,7 @@ void cSnifferServerConnection::cp_manager_command(string command) {
 	}
 	string rslt;
 	if(command == "active") {
-		rslt = snifferServerServices.listJsonServices();
+		rslt = snifferServerServices->listJsonServices();
 	} else {
 		rslt = "unknown command: " + command;
 	}
@@ -1783,6 +1783,20 @@ void cSnifferClientResponseSender::sendProcess() {
 }
 
 
+void snifferServerInit() {
+	if(!snifferServerServices) {
+		snifferServerServices = new FILE_LINE(0) sSnifferServerServices;
+	}
+}
+
+void snifferServerTerm() {
+	if(snifferServerServices) {
+		delete snifferServerServices;
+		snifferServerServices = NULL;
+	}
+}
+
+
 void snifferServerStart() {
 	if(snifferServer) {
 		delete snifferServer;
@@ -1790,7 +1804,6 @@ void snifferServerStart() {
 	snifferServer =  new FILE_LINE(0) cSnifferServer;
 	snifferServer->listen_start("sniffer_server", snifferServerOptions.host, snifferServerOptions.port);
 }
-
 
 void snifferServerStop() {
 	if(snifferServer) {
@@ -1839,19 +1852,19 @@ void snifferClientStop(cSnifferClientService *snifferClientService) {
 
 
 bool existsRemoteChartServer() {
-	return(snifferServerServices.remote_chart_server);
+	return(snifferServerServices->remote_chart_server);
 }
 
 
 size_t getRemoteChartServerQueueSize() {
-	return(snifferServerServices.rchs_query_queue.size());
+	return(snifferServerServices->rchs_query_queue.size());
 }
 
 
 bool add_rchs_query(const char *query, bool checkMaxSize) {
-	return(snifferServerServices.add_rchs_query(query, checkMaxSize));
+	return(snifferServerServices->add_rchs_query(query, checkMaxSize));
 }
 
 bool add_rchs_query(string *query, bool checkMaxSize) {
-	return(snifferServerServices.add_rchs_query(query, checkMaxSize));
+	return(snifferServerServices->add_rchs_query(query, checkMaxSize));
 }
