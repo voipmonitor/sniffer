@@ -42,6 +42,7 @@ struct sSnifferServerOptions {
 		mysql_redirect_queue_limit = 0;
 		mysql_concat_limit = 1000;
 		type_compress = _cs_compress_gzip;
+		cp_store_simple_connect_response = false;
 	}
 	bool isEnable() {
 		return(!host.empty() && port);
@@ -52,6 +53,7 @@ struct sSnifferServerOptions {
 	unsigned mysql_redirect_queue_limit;
 	unsigned mysql_concat_limit;
 	eServerClientTypeCompress type_compress;
+	bool cp_store_simple_connect_response;
 };
 
 

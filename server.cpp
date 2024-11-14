@@ -938,11 +938,17 @@ void cSnifferServerConnection::cp_store() {
 		delete this;
 		return;
 	}
-	JsonExport json_ok;
-	json_ok.add("rslt", "OK");
-	json_ok.add("check_store", 1);
-	json_ok.add("check_time", 1);
-	if(!socket->writeBlock(json_ok.getJson())) {
+	if(!snifferServerOptions.cp_store_simple_connect_response) {
+		JsonExport json_ok;
+		json_ok.add("rslt", "OK");
+		json_ok.add("check_store", 1);
+		json_ok.add("check_time", 1);
+		if(!socket->writeBlock(json_ok.getJson())) {
+			socket->setError("failed send ok");
+			delete this;
+			return;
+		}
+	} else if(!socket->writeBlock("OK")) {
 		socket->setError("failed send ok");
 		delete this;
 		return;

@@ -7276,6 +7276,7 @@ void cConfig::addConfigItems() {
 				addConfigItem((new FILE_LINE(0) cConfigItem_yesno("server_type_compress", (int*)&snifferServerOptions.type_compress))
 					->addValues("gzip:1|zip:1|lzo:2")
 					->setDefaultValueStr("yes"));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("server_cp_store_simple_connect_response", &snifferServerOptions.cp_store_simple_connect_response));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_connect_maximum_time_diff_s", &opt_client_server_connect_maximum_time_diff_s));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("client_server_sleep_ms_if_queue_is_full", &opt_client_server_sleep_ms_if_queue_is_full));
 		subgroup("other");
