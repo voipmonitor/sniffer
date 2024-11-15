@@ -3532,7 +3532,7 @@ void MySqlStore_process::queryByRemoteSocket(const char *query_str) {
 						" - " + (connectError.empty() ? "unknown error" : connectError)).c_str());
 					delete this->remote_socket;
 					this->remote_socket = NULL;
-					break;
+					continue;
 				} else {
 					syslog(LOG_ERR, "send store query error: %s", "failed read ok");
 					continue;

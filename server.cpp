@@ -948,10 +948,12 @@ void cSnifferServerConnection::cp_store() {
 			delete this;
 			return;
 		}
-	} else if(!socket->writeBlock("OK")) {
-		socket->setError("failed send ok");
-		delete this;
-		return;
+	} else {
+		if(!socket->writeBlock("OK")) {
+			socket->setError("failed send ok");
+			delete this;
+			return;
+		}
 	}
 	u_char *query;
 	size_t queryLength;
