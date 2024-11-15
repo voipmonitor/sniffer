@@ -6843,7 +6843,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`updated_at` datetime,\
 			`updated_counter` smallint unsigned,\
 			" + cdr_stat_fields_str + "\
-			UNIQUE KEY `comb_1` (`from_time`,`addr`,`sensor_id`,`created_at`)\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`addr`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_stat_values_partition_oldver[src_dst] ? 
@@ -6868,7 +6868,7 @@ bool SqlDb_mysql::createSchema_tables_other(int connectId) {
 			`count_all` int unsigned,\
 			`count_connected` int unsigned,\
 			`data` mediumtext,\
-			UNIQUE KEY `comb_1` (`from_time`,`addr`,`series`,`sensor_id`,`created_at`)\
+			" + (opt_cdr_force_primary_index_in_all_tables ? "PRIMARY KEY" : "UNIQUE KEY `comb_1`") + "(`from_time`,`addr`,`series`,`sensor_id`,`created_at`)\
 	) ENGINE=InnoDB DEFAULT CHARSET=latin1 " + compress +
 	(supportPartitions != _supportPartitions_na ?
 		(opt_cdr_stat_sources_partition_oldver[src_dst] ? 
