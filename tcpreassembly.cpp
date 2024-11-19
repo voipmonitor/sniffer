@@ -3276,7 +3276,7 @@ void* TcpReassembly::cleanupThreadFunction(void*) {
 		ostringstream outStr;
 		this->cleanupThreadId = get_unix_tid();
 		outStr << "start cleanup thread t" << getTypeString()
-		       << " - pid: " << this->cleanupThreadId << endl;
+		       << " /" << this->cleanupThreadId << endl;
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	unsigned counter = 0;
@@ -3298,7 +3298,7 @@ void* TcpReassembly::packetThreadFunction(void*) {
 		ostringstream outStr;
 		this->packetThreadId = get_unix_tid();
 		outStr << "start packet thread t" << getTypeString()
-		       << " - pid: " << this->packetThreadId << endl;
+		       << " /" << this->packetThreadId << endl;
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	sPacket packet;

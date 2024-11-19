@@ -9948,7 +9948,8 @@ void PreProcessPacket::endOutThread(bool force) {
 }
 
 void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
-	this->next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	unsigned int tid = get_unix_tid();
+	this->next_threads[next_thread_index_plus - 1].thread_id = tid;
 	syslog(LOG_NOTICE, "start PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), this->next_threads[next_thread_index_plus - 1].thread_id);
 	unsigned int usleepCounter = 0;
 	while(!this->term_preProcess) {
@@ -10155,6 +10156,7 @@ void *PreProcessPacket::nextThreadFunction(int next_thread_index_plus) {
 			}
 		}
 	}
+	syslog(LOG_NOTICE, "stop PreProcessPacket next thread %s/%i", this->getNameTypeThread().c_str(), tid);
 	return(NULL);
 }
 
@@ -11263,17 +11265,23 @@ void PreProcessPacket::termNextThread() {
 void PreProcessPacket::processNextAction(packet_s_process *packetS) {
 	switch(packetS->next_action) {
 	case _ppna_push_to_extend:
-		preProcessPacket[ppt_extend]->push_packet(packetS);
+		if(!preProcessPacket[ppt_extend]->push_packet(packetS)) {
+			return;
+		}
 		break;
 	case _ppna_push_to_rtp:
 		if(opt_t2_boost_direct_rtp) {
 			packetS->next_action = _ppna_destroy;
 		} else {
-			preProcessPacket[ppt_pp_rtp]->push_packet(packetS);
+			if(!preProcessPacket[ppt_pp_rtp]->push_packet(packetS)) {
+				return;
+			}
 		}
 		break;
 	case _ppna_push_to_other:
-		preProcessPacket[ppt_pp_other]->push_packet(packetS);
+		if(!preProcessPacket[ppt_pp_other]->push_packet(packetS)) {
+			return;
+		}
 		break;
 	}
 	if(packetS->__type == _t_packet_s_process && packetS->child_packets) {
@@ -12742,11 +12750,13 @@ void *ProcessRtpPacket::outThreadFunction() {
 			}
 		}
 	}
+	syslog(LOG_NOTICE, "stop ProcessRtpPacket out thread %s/%i", this->getNameTypeThread().c_str(), this->outThreadId);
 	return(NULL);
 }
 
 void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
-	this->hash_next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	unsigned int tid = get_unix_tid();
+	this->hash_next_threads[next_thread_index_plus - 1].thread_id = tid;
 	syslog(LOG_NOTICE, "start ProcessRtpPacket next thread %s/%i", this->type == hash ? "hash" : "distribute", this->hash_next_threads[next_thread_index_plus - 1].thread_id);
 	extern string opt_sched_pol_rtp_prep;
 	pthread_set_priority(opt_sched_pol_rtp_prep);
@@ -12872,6 +12882,7 @@ void *ProcessRtpPacket::nextThreadFunction(int next_thread_index_plus) {
 			}
 		}
 	}
+	syslog(LOG_NOTICE, "stop ProcessRtpPacket next thread %s/%i", this->getNameTypeThread().c_str(), tid);
 	return(NULL);
 }
 

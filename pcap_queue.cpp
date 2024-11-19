@@ -5033,7 +5033,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 		ostringstream outStr;
 		outStr << "start thread t0i_" 
 		       << getTypeThreadName()
-		       << " (" << this->getInterfaceName() << ") - pid: " << this->threadId << endl;
+		       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
 		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 	}
 	if(this->typeThread == read) {
@@ -5184,6 +5184,14 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 	
 	if(opt_pcap_queue_use_blocks) {
 		threadFunction_blocks();
+		this->threadTerminated = true;
+		if(VERBOSE) {
+			ostringstream outStr;
+			outStr << "stop thread t0i_" 
+			       << getTypeThreadName()
+			       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+		}
 		return(NULL);
 	}
 	
@@ -5608,6 +5616,13 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 	}
 	this->restoreOneshotBuffer();
 	this->threadTerminated = true;
+	if(VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t0i_" 
+		       << getTypeThreadName()
+		       << " (" << this->getInterfaceName() << ") /" << this->threadId << endl;
+		syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+	}
 	return(NULL);
 }
 
@@ -6436,7 +6451,7 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	this->mainThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		outStr << "start thread t0 (" << this->nameQueue << ") - pid: " << this->mainThreadId << endl;
+		outStr << "start thread t0 (" << this->nameQueue << ") /" << this->mainThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -6497,6 +6512,16 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	
 	if(opt_pcap_queue_use_blocks) {
 		threadFunction_blocks();
+		this->threadTerminated = true;
+		if(VERBOSE || DEBUG_VERBOSE) {
+			ostringstream outStr;
+			outStr << "stop thread t0 (" << this->nameQueue << ") /" << this->mainThreadId << endl;
+			if(DEBUG_VERBOSE) {
+				cout << outStr.str();
+			} else {
+				syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+			}
+		}
 		return(NULL);
 	}
 	
@@ -6784,6 +6809,17 @@ void* PcapQueue_readFromInterface::threadFunction(void *arg, unsigned int arg2) 
 	this->restoreOneshotBuffer();
 	
 	this->threadTerminated = true;
+	
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t0 (" << this->nameQueue << ") /" << this->mainThreadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+		}
+	}
+	
 	return(NULL);
 }
 
@@ -6846,7 +6882,7 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 	this->writeThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		outStr << "start thread t0 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
+		outStr << "start thread t0 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -6887,6 +6923,16 @@ void *PcapQueue_readFromInterface::writeThreadFunction(void *arg, unsigned int a
 			} else {
 				USLEEP_C(100, usleepCounter++);
 			}
+		}
+	}
+	this->writeThreadId = get_unix_tid();
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t0 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	return(NULL);
@@ -7629,7 +7675,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 				outStr << " " << this->packetServerConnections[arg2]->socketClientIP.getString() << ":" << this->packetServerConnections[arg2]->socketClientPort.getPort();
 			}
 		}
-		outStr << ") - pid: " << tid << endl;
+		outStr << ") /" << tid << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -7952,6 +7998,23 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	if(this->packetServerDirection == directionRead && arg2) {
 		cleanupConnections();
 	}
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t1 (" << this->nameQueue;
+		if(this->packetServerDirection == directionRead && arg2) {
+			if(arg2 == (unsigned int)-1) {
+				outStr << " socket server";
+			} else {
+				outStr << " " << this->packetServerConnections[arg2]->socketClientIP.getString() << ":" << this->packetServerConnections[arg2]->socketClientPort.getPort();
+			}
+		}
+		outStr << ") /" << tid << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+		}
+	}
 	return(NULL);
 }
 
@@ -7963,7 +8026,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 	this->writeThreadId = get_unix_tid();
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") - pid: " << this->writeThreadId << endl;
+		outStr << "start thread t2 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -8307,6 +8370,15 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 		}
 	}
 	this->writeThreadTerminated = true;
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t2 (" << this->nameQueue << " / write" << ") /" << this->writeThreadId << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
+		}
+	}
 	return(NULL);
 }
 
@@ -8315,7 +8387,7 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 	this->nextThreadsId[destroyBlocksThread - nextThread1] = tid;
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
-		outStr << "start thread t2 (" << this->nameQueue << " / destroy blocks" << ") - pid: " << tid << endl;
+		outStr << "start thread t2 (" << this->nameQueue << " / destroy blocks" << ") /" << tid << endl;
 		if(DEBUG_VERBOSE) {
 			cout << outStr.str();
 		} else {
@@ -8384,6 +8456,15 @@ void *PcapQueue_readFromFifo::destroyBlocksThreadFunction(void */*arg*/, unsigne
 		} else {
 			USLEEP(1000);
 			continue;
+		}
+	}
+	if(VERBOSE || DEBUG_VERBOSE) {
+		ostringstream outStr;
+		outStr << "stop thread t2 (" << this->nameQueue << " / destroy blocks" << ") /" << tid << endl;
+		if(DEBUG_VERBOSE) {
+			cout << outStr.str();
+		} else {
+			syslog(LOG_NOTICE, "%s", outStr.str().c_str());
 		}
 	}
 	return(NULL);
@@ -9985,6 +10066,7 @@ void *PcapQueue_outputThread::outThreadFunction() {
 			}
 		}
 	}
+	syslog(LOG_NOTICE, "stop thread t2_%s/%i", this->getNameOutputThread().c_str(), this->outThreadId);
 	return(NULL);
 }
 
@@ -9996,7 +10078,8 @@ void *PcapQueue_outputThread::_nextThreadFunction(void *arg) {
 }
 
 void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
-	this->next_threads[next_thread_index_plus - 1].thread_id = get_unix_tid();
+	unsigned int tid = get_unix_tid();
+	this->next_threads[next_thread_index_plus - 1].thread_id = tid;
 	syslog(LOG_NOTICE, "start next thread t2_%s/%i", this->getNameOutputThread().c_str(), this->next_threads[next_thread_index_plus - 1].thread_id);
 	unsigned int usleepCounter = 0;
 	while(!is_terminating() && !this->terminatingThread) {
@@ -10070,6 +10153,7 @@ void *PcapQueue_outputThread::nextThreadFunction(int next_thread_index_plus) {
 			}
 		}
 	}
+	syslog(LOG_NOTICE, "stop next thread t2_%s/%i", this->getNameOutputThread().c_str(), tid);
 	return(NULL);
 }
 

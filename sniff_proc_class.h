@@ -950,7 +950,7 @@ public:
 		qring_push_index = 0;
 		qring_push_index_count = 0;
 	}
-	inline void push_packet(packet_s_process *packetS) {
+	inline bool push_packet(packet_s_process *packetS) {
 		#if EXPERIMENTAL_CHECK_TID_IN_PUSH
 		static __thread unsigned _tid = 0;
 		if(!_tid) {
@@ -969,7 +969,7 @@ public:
 		#endif
 		if(is_terminating()) {
 			this->packetS_destroy(packetS);
-			return;
+			return(false);
 		}
 		extern bool use_push_batch_limit_ms;
 		u_int64_t time_us = use_push_batch_limit_ms ? packetS->getTimeUS() : 0;
@@ -1135,6 +1135,7 @@ public:
 		if(_lock) {
 			unlock_push();
 		}
+		return(true);
 	}
 	inline void push_packet_to_direct_rtp_queue(packet_s_process *packetS) {
 		extern bool use_push_batch_limit_ms;

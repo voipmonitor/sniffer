@@ -5354,21 +5354,6 @@ void terminate_processpacket() {
 		delete processRtpPacketHash;
 		processRtpPacketHash = NULL;
 	}
-	for(int termPass = 0; termPass < 2; termPass++) {
-		for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
-			if(processRtpPacketDistribute[i]) {
-				if(termPass == 0) {
-					processRtpPacketDistribute[i]->terminate();
-				} else {
-					delete processRtpPacketDistribute[i];
-					processRtpPacketDistribute[i] = NULL;
-				}
-			}
-		}
-		if(termPass == 0) {
-			USLEEP(100000);
-		}
-	}
 	
 	for(int termPass = 0; termPass < 2; termPass++) {
 		if(preProcessPacketCallX) {
@@ -5418,6 +5403,22 @@ void terminate_processpacket() {
 			}
 			preProcessPacketCallX_count = 0;
 			preProcessPacketCallX_state = PreProcessPacket::callx_na;
+		}
+	}
+	
+	for(int termPass = 0; termPass < 2; termPass++) {
+		for(int i = 0; i < MAX_PROCESS_RTP_PACKET_THREADS; i++) {
+			if(processRtpPacketDistribute[i]) {
+				if(termPass == 0) {
+					processRtpPacketDistribute[i]->terminate();
+				} else {
+					delete processRtpPacketDistribute[i];
+					processRtpPacketDistribute[i] = NULL;
+				}
+			}
+		}
+		if(termPass == 0) {
+			USLEEP(100000);
 		}
 	}
 	
