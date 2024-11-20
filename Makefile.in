@@ -183,7 +183,7 @@ targz64ivybridge: core2
 	chmod +x voipmonitor-amd64-${version}-ivybridge-static/etc/init.d/voipmonitor 
 	cp scripts/install-script.sh voipmonitor-amd64-${version}-ivybridge-static/
 	chmod +x voipmonitor-amd64-${version}-ivybridge-static/install-script.sh
-	tar -czf voipmonitor-amd64-${version}-ivybridge-static.tar.gz voipmonitor-amd64-${version}-static
+	tar -czf voipmonitor-amd64-${version}-ivybridge-static.tar.gz voipmonitor-amd64-${version}-ivybridge-static
 	rm -rf voipmonitor-amd64-${version}-ivybridge-static
 
 targz64heapprof: core2
