@@ -495,4 +495,12 @@ string getVersionWithBuild() {
 }
 
 
+#if DEBUG_ALLOC_PACKETS
+void debug_alloc_packet_alloc(const void *packet, const char *set = NULL);
+void debug_alloc_packet_free(const void *packet);
+void debug_alloc_packet_set(const void *packet, const char *set = NULL);
+void debug_alloc_packet_list();
+#endif
+
+
 #endif //VOIPMONITOR_H

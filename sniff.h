@@ -490,6 +490,9 @@ struct packet_s {
 			} else if(_packet_alloc_type &_t_packet_alloc_header_std) {
 				delete (pcap_pkthdr*)header_pt;
 			}
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_free(packet);
+			#endif
 			delete [] packet;
 			_packet_alloc_type = _t_packet_alloc_na;
 		}
@@ -710,6 +713,9 @@ struct packet_s_process_0 : public packet_s_stack {
 	inline void new_alloc_packet_header() {
 		pcap_pkthdr *header_pt_new = new FILE_LINE(27001) pcap_pkthdr;
 		u_char *packet_new = new FILE_LINE(27002) u_char[header_pt->caplen];
+		#if DEBUG_ALLOC_PACKETS
+		debug_alloc_packet_alloc(packet_new, "packet_s_process_0::new_alloc_packet_header");
+		#endif
 		*header_pt_new = *header_pt;
 		memcpy(packet_new, packet, header_pt->caplen);
 		header_pt = header_pt_new;

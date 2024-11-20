@@ -429,6 +429,9 @@ public:
 		}
 		~batch_pcap_queue_packet_data() {
 			for(unsigned i = 0; i < max_count; i++) {
+				if(i < count) {
+					batch[i]->hp.destroy_or_unlock_blockstore();
+				}
 				delete batch[i];
 			}
 			delete [] batch;
@@ -983,6 +986,13 @@ public:
 			if(!qring_push_index) {
 				unsigned int usleepCounter = 0;
 				while(this->qring[this->writeit]->used != 0) {
+					if(is_terminating()) {
+						this->packetS_destroy(packetS);
+						if(_lock) {
+							unlock_push();
+						}
+						return(false);
+					}
 					if(usleepCounter == 0) {
 						++qringPushCounter_full;
 						#if EXPERIMENTAL_T2_QUEUE_FULL_STAT
@@ -1384,6 +1394,9 @@ public:
 			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
 				delete (pcap_pkthdr*)(*packetS)->header_pt;
 			}
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_free((*packetS)->packet);
+			#endif
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();
@@ -1412,6 +1425,9 @@ public:
 			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
 				delete (pcap_pkthdr*)(*packetS)->header_pt;
 			}
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_free((*packetS)->packet);
+			#endif
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();
@@ -1437,6 +1453,9 @@ public:
 			} else if((*packetS)->_packet_alloc_type &_t_packet_alloc_header_std) {
 				delete (pcap_pkthdr*)(*packetS)->header_pt;
 			}
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_free((*packetS)->packet);
+			#endif
 			delete [] (*packetS)->packet;
 		}
 		(*packetS)->term();
@@ -2117,6 +2136,10 @@ public:
 			++qringPushCounter;
 			unsigned int usleepCounter = 0;
 			while(this->qring[this->writeit]->used != 0) {
+				if(is_terminating()) {
+					PACKET_S_PROCESS_DESTROY(&packetS);
+					return;
+				}
 				if(usleepCounter == 0) {
 					++qringPushCounter_full;
 					#if EXPERIMENTAL_T2_QUEUE_FULL_STAT

@@ -619,6 +619,11 @@ struct sHeaderPacketPQout {
 		this->dport = 0;
 		this->data_offset = 0;
 		this->datalen = 0;
+		#if DEBUG_ALLOC_PACKETS
+		if(!block_store) {
+			debug_alloc_packet_alloc(packet, "sHeaderPacketPQout::sHeaderPacketPQout");
+		}
+		#endif
 	}
 	void destroy_or_unlock_blockstore() {
 		if(block_store) {
@@ -628,6 +633,9 @@ struct sHeaderPacketPQout {
 			}
 		} else {
 			delete header;
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_free(packet);
+			#endif
 			delete [] packet;
 		}
 	}
@@ -635,6 +643,9 @@ struct sHeaderPacketPQout {
 		if(block_store) {
 			pcap_pkthdr_plus *alloc_header = new FILE_LINE(16001) pcap_pkthdr_plus;
 			u_char *alloc_packet = new FILE_LINE(16002) u_char[header->get_caplen()];
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_alloc(alloc_packet, "sHeaderPacketPQout::alloc_and_copy_blockstore");
+			#endif
 			memcpy(alloc_header, header, sizeof(pcap_pkthdr_plus));
 			memcpy(alloc_packet, packet, header->get_caplen());
 			header = alloc_header;

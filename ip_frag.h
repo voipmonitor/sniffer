@@ -284,6 +284,9 @@ private:
 		} else {
 			header_packet_pqout->header = new FILE_LINE(26012) pcap_pkthdr_plus;
 			header_packet_pqout->packet = new FILE_LINE(26013) u_char[totallen];
+			#if DEBUG_ALLOC_PACKETS
+			debug_alloc_packet_alloc(header_packet_pqout->packet, "cIpFrag::dequeue");
+			#endif
 			header_packet_pqout->block_store = NULL;
 			header_packet_pqout->block_store_index = 0;
 			header_packet_pqout->block_store_locked = false;

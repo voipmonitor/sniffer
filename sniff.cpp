@@ -12562,6 +12562,9 @@ packet_s_process *PreProcessPacket::clonePacketS(u_char *newData, unsigned newDa
 	new_header->caplen = newLen;
 	new_header->len = newLen;
 	u_char *new_packet = new FILE_LINE(0) u_char[newLen];
+	#if DEBUG_ALLOC_PACKETS
+	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (1)");
+	#endif
 	memcpy(new_packet, newPacketS->packet, newPacketS->dataoffset_());
 	memcpy(new_packet + newPacketS->dataoffset_(), newData, newDataLength);
 	//u_char *newDataInNewPacket = new_packet + newPacketS->dataoffset_();
@@ -12584,6 +12587,9 @@ packet_s_process *PreProcessPacket::clonePacketS(packet_s_process *packetS) {
 	pcap_pkthdr *new_header = new FILE_LINE(0) pcap_pkthdr;
 	*new_header = *newPacketS->header_pt;
 	u_char *new_packet = new FILE_LINE(0) u_char[new_header->caplen];
+	#if DEBUG_ALLOC_PACKETS
+	debug_alloc_packet_alloc(new_packet, "PreProcessPacket::clonePacketS (2)");
+	#endif
 	memcpy(new_packet, newPacketS->packet, new_header->caplen);
 	newPacketS->header_pt = new_header;
 	newPacketS->packet = new_packet;

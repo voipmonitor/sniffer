@@ -9296,6 +9296,12 @@ bool PcapQueue_readFromFifo::processPacket_push(sHeaderPacketPQout *hp) {
 	++packet_counter_all;
 	#endif
 	
+	#if DEBUG_ALLOC_PACKETS
+	if(!hp->block_store) {
+		debug_alloc_packet_set(hp->packet, "PcapQueue_readFromFifo::processPacket_push");
+	}
+	#endif
+	
 	pcap_pkthdr *header = hp->header->convertToStdHeader();
 	
 	iphdr2 *header_ip_encaps = hp->header_ip_encaps_offset != 0xFFFF ? (iphdr2*)(hp->packet + hp->header_ip_encaps_offset) : NULL;
@@ -9650,6 +9656,10 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		push_thread = _tid;
 	}
 	#endif
+	if(is_terminating()) {
+		hp->destroy_or_unlock_blockstore();
+		return;
+	}
 	extern bool use_push_batch_limit_ms;
 	u_int64_t time_us = use_push_batch_limit_ms ? hp->header->get_time_us() : 0;
 	if(hp && hp->block_store && !hp->block_store_locked) {
@@ -9661,6 +9671,7 @@ void PcapQueue_outputThread::push(sHeaderPacketPQout *hp) {
 		unsigned int usleepCounter = 0;
 		while(this->qring[this->writeit]->used != 0) {
 			if(is_terminating()) {
+				hp->destroy_or_unlock_blockstore();
 				return;
 			}
 			if(usleepCounter == 0) {
@@ -9832,6 +9843,13 @@ void *PcapQueue_outputThread::outThreadFunction() {
 				for(unsigned batch_index = 0; batch_index < count; batch_index++) {
 					this->items_flag[batch_index] = 0;
 				}
+				#if DEBUG_ALLOC_PACKETS
+				for(unsigned batch_index = 0; batch_index < batch->count; batch_index++) {
+					if(!batch->batch[batch_index].block_store) {
+						debug_alloc_packet_set(batch->batch[batch_index].packet, "PcapQueue_outputThread::outThreadFunction - detach2");
+					}
+				}
+				#endif
 				for(int i = 0; i < _next_threads_count; i++) {
 					this->next_threads[i].next_data.null();
 					if(_process_only_in_next_threads) {
@@ -10380,10 +10398,20 @@ bool PcapQueue_outputThread::processDefrag_defrag(sHeaderPacketPQout *hp, int fd
 }
 
 void PcapQueue_outputThread::processDefrag_push(sHeaderPacketPQout *hp) {
+	#if DEBUG_ALLOC_PACKETS
+	if(!hp->block_store) {
+		debug_alloc_packet_set(hp->packet, "PcapQueue_outputThread::processDefrag_push (1)");
+	}
+	#endif
 	if(pcapQueueQ_outThread_dedup) {
 		pcapQueueQ_outThread_dedup->push(hp);
 		return;
 	} else if(pcapQueueQ_outThread_detach2) {
+		#if DEBUG_ALLOC_PACKETS
+		if(!hp->block_store) {
+			debug_alloc_packet_set(hp->packet, "PcapQueue_outputThread::processDefrag_push (2)");
+		}
+		#endif
 		pcapQueueQ_outThread_detach2->push(hp);
 		return;
 	}
@@ -10562,6 +10590,11 @@ void PcapQueue_outputThread::processDedup(sHeaderPacketPQout *hp) {
 }
 
 void PcapQueue_outputThread::processDetach2(sHeaderPacketPQout *hp) {
+	#if DEBUG_ALLOC_PACKETS
+	if(!hp->block_store) {
+		debug_alloc_packet_set(hp->packet, "PcapQueue_outputThread::processDetach2");
+	}
+	#endif
 	if(this->pcapQueue->processPacket_analysis(hp) &&
 	   this->pcapQueue->processPacket_push(hp)) {
 		return;

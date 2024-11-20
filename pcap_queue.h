@@ -1043,6 +1043,11 @@ public:
 			this->max_count = max_count;
 		}
 		~sBatchHP() {
+			if(count) {
+				for(unsigned i = 0; i < count; i++) {
+					batch[i].destroy_or_unlock_blockstore();
+				}
+			}
 			delete [] batch;
 		}
 		sHeaderPacketPQout *batch;

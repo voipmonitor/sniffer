@@ -4483,6 +4483,10 @@ int main(int argc, char *argv[]) {
 	
 	snifferServerTerm();
 	
+	#if DEBUG_ALLOC_PACKETS
+	debug_alloc_packet_list();
+	#endif
+	
 	return(0);
 }
 
@@ -10004,4 +10008,53 @@ bool init_lib_srtp() {
 	__SYNC_UNLOCK(_init_lib_srtp_sync);
 	return(_init_lib_srtp_rslt);
 }
+#endif
+
+
+#if DEBUG_ALLOC_PACKETS
+
+static map<const void*, string> debug_alloc_packet_map;
+static volatile int debug_alloc_packet_sync = 0;
+
+void debug_alloc_packet_alloc(const void *packet, const char *set) {
+	__SYNC_LOCK(debug_alloc_packet_sync);
+	if(debug_alloc_packet_map.find(packet) == debug_alloc_packet_map.end()) {
+		debug_alloc_packet_map[packet] = set;
+	} else {
+		cout << "*** debug_alloc_packet_alloc - duplicity in list " << hex << packet << " : " << dec << debug_alloc_packet_map[packet] << endl;
+	}
+	__SYNC_UNLOCK(debug_alloc_packet_sync);
+}
+
+void debug_alloc_packet_free(const void *packet) {
+	__SYNC_LOCK(debug_alloc_packet_sync);
+	if(debug_alloc_packet_map.find(packet) != debug_alloc_packet_map.end()) {
+		debug_alloc_packet_map.erase(packet);
+	} else {
+		cout << "*** debug_alloc_packet_free - missing in list " << hex << packet << dec << endl;
+	}
+	__SYNC_UNLOCK(debug_alloc_packet_sync);
+}
+
+void debug_alloc_packet_set(const void *packet, const char *set) {
+	__SYNC_LOCK(debug_alloc_packet_sync);
+	if(debug_alloc_packet_map.find(packet) != debug_alloc_packet_map.end()) {
+		debug_alloc_packet_map[packet] = set;
+	} else {
+		cout << "*** debug_alloc_packet_set - missing in list " << hex << packet << dec << endl;
+	}
+	__SYNC_UNLOCK(debug_alloc_packet_sync);
+}
+
+void debug_alloc_packet_list() {
+	__SYNC_LOCK(debug_alloc_packet_sync);
+	if(debug_alloc_packet_map.size()) {
+		cout << "*** debug_alloc_packet_list - leaks" << endl;
+		for(map<const void*, string>::iterator iter = debug_alloc_packet_map.begin(); iter != debug_alloc_packet_map.end(); iter++) {
+			cout << hex << iter->first << " : " << dec << iter->second << endl;
+		}
+	}
+	__SYNC_UNLOCK(debug_alloc_packet_sync);
+}
+
 #endif
