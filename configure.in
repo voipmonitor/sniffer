@@ -307,6 +307,7 @@ if test "x$HAVE_LIBDPDK" = "x1"; then
 	AC_DEFINE([HAVE_LIBDPDK], [1], [Define if using dpdk])
 	AC_SUBST([DPDK_CFLAGS],[`"$PKGCONFIG" --cflags libdpdk`])
 	AC_SUBST([DPDK_LDFLAGS],[`"$PKGCONFIG" --libs libdpdk`])
+	AC_SUBST([DPDK_LDFLAGSSTATIC],[`"$PKGCONFIG" --static --libs libdpdk`])
 	DPDK_T=yes
 fi
 
@@ -433,6 +434,7 @@ libjpeg lib found     		       : $HAVE_LIBJPEG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+dpdk lib found			       : DPDK_T
 
 shared binary: run make 
 static binary: run make static
