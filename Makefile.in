@@ -170,6 +170,21 @@ targz64: core2
 	chmod +x voipmonitor-amd64-${version}-static/install-script.sh
 	tar -czf voipmonitor-amd64-${version}-static.tar.gz voipmonitor-amd64-${version}-static
 	rm -rf voipmonitor-amd64-${version}-static
+targz64ivybridge: core2
+	rm -rf voipmonitor-amd64-${version}-ivybridge-static*
+	mkdir -p voipmonitor-amd64-${version}-ivybridge-static/usr/local/sbin
+	cp voipmonitor voipmonitor-amd64-${version}-ivybridge-static/usr/local/sbin/
+	chmod +x voipmonitor-amd64-${version}-ivybridge-static/usr/local/sbin/voipmonitor
+	mkdir -p voipmonitor-amd64-${version}-ivybridge-static/usr/local/share/voipmonitor/audio
+	cp samples/audio/* voipmonitor-amd64-${version}-ivybridge-static/usr/local/share/voipmonitor/audio/
+	mkdir -p voipmonitor-amd64-${version}-ivybridge-static/etc/init.d
+	cp config/voipmonitor.conf voipmonitor-amd64-${version}-ivybridge-static/etc/
+	cp config/init.d/voipmonitor voipmonitor-amd64-${version}-ivybridge-static/etc/init.d/
+	chmod +x voipmonitor-amd64-${version}-ivybridge-static/etc/init.d/voipmonitor 
+	cp scripts/install-script.sh voipmonitor-amd64-${version}-ivybridge-static/
+	chmod +x voipmonitor-amd64-${version}-ivybridge-static/install-script.sh
+	tar -czf voipmonitor-amd64-${version}-ivybridge-static.tar.gz voipmonitor-amd64-${version}-static
+	rm -rf voipmonitor-amd64-${version}-ivybridge-static
 
 targz64heapprof: core2
 	rm -rf voipmonitor-heapprof-amd64-${version}-static*
