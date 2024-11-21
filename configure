@@ -588,6 +588,9 @@ ac_unique_file="voipmonitor.cpp"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 FLTO
+LIBWHISPER
+LIBBLAKE3
+DPDK_LDFLAGSSTATIC
 DPDK_LDFLAGS
 DPDK_CFLAGS
 HEAPPROF_CXXFLAG
@@ -599,10 +602,8 @@ LIBLZMA
 LIBLZ4
 LIBZSTD
 LIBFFT
-LIBPNG
 LIBJPEG
-LIBBLAKE3
-LIBWHISPER
+LIBPNG
 MYSQL_WITHOUT_SSL_SUPPORT
 NO_MYSQL_SSL_SUPPORT
 NO_MARIADB_SSL_SUPPORT
@@ -4329,12 +4330,11 @@ else
   as_fn_error $? "Unable to find xml2 library. apt-get install libxml2-dev | yum install libxml2-devel" "$LINENO" 5
 fi
 
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for blake3_hasher_init in -lblake3" >&5
-printf %s "checking for blake3_hasher_init in -lblake3... " >&6; }
-if test ${ac_cv_lib_blake3_blake3_hasher_init+y}
-then :
-  printf %s "(cached) " >&6
-else $as_nop
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for blake3_hasher_init in -lblake3" >&5
+$as_echo_n "checking for blake3_hasher_init in -lblake3... " >&6; }
+if ${ac_cv_lib_blake3_blake3_hasher_init+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
   ac_check_lib_save_LIBS=$LIBS
 LIBS="-lblake3  $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
@@ -4343,41 +4343,41 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* Override any GCC internal prototype to avoid an error.
    Use char because int might match the return type of a GCC
    builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
 char blake3_hasher_init ();
 int
-main (void)
+main ()
 {
 return blake3_hasher_init ();
   ;
   return 0;
 }
 _ACEOF
-if ac_fn_c_try_link "$LINENO"
-then :
+if ac_fn_c_try_link "$LINENO"; then :
   ac_cv_lib_blake3_blake3_hasher_init=yes
-else $as_nop
+else
   ac_cv_lib_blake3_blake3_hasher_init=no
 fi
-rm -f core conftest.err conftest.$ac_objext conftest.beam \
+rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_blake3_blake3_hasher_init" >&5
-printf "%s\n" "$ac_cv_lib_blake3_blake3_hasher_init" >&6; }
-if test "x$ac_cv_lib_blake3_blake3_hasher_init" = xyes
-then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_blake3_blake3_hasher_init" >&5
+$as_echo "$ac_cv_lib_blake3_blake3_hasher_init" >&6; }
+if test "x$ac_cv_lib_blake3_blake3_hasher_init" = xyes; then :
   HAVE_LIBBLAKE3=1
-else $as_nop
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Unable to find blake3 library. yum install blake3-devel or compile from source" >&5
-printf "%s\n" "$as_me: Unable to find blake3 library. yum install blake3-devel or compile from source" >&6;}
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find blake3 library. yum install blake3-devel or compile from source" >&5
+$as_echo "$as_me: Unable to find blake3 library. yum install blake3-devel or compile from source" >&6;}
 fi
 
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for main in -lwhisper" >&5
-printf %s "checking for main in -lwhisper... " >&6; }
-if test ${ac_cv_lib_whisper_main+y}
-then :
-  printf %s "(cached) " >&6
-else $as_nop
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lwhisper" >&5
+$as_echo_n "checking for main in -lwhisper... " >&6; }
+if ${ac_cv_lib_whisper_main+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
   ac_check_lib_save_LIBS=$LIBS
 LIBS="-lwhisper  $LIBS"
 cat confdefs.h - <<_ACEOF >conftest.$ac_ext
@@ -4385,31 +4385,29 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 
 
 int
-main (void)
+main ()
 {
 return main ();
   ;
   return 0;
 }
 _ACEOF
-if ac_fn_c_try_link "$LINENO"
-then :
+if ac_fn_c_try_link "$LINENO"; then :
   ac_cv_lib_whisper_main=yes
-else $as_nop
+else
   ac_cv_lib_whisper_main=no
 fi
-rm -f core conftest.err conftest.$ac_objext conftest.beam \
+rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_whisper_main" >&5
-printf "%s\n" "$ac_cv_lib_whisper_main" >&6; }
-if test "x$ac_cv_lib_whisper_main" = xyes
-then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_whisper_main" >&5
+$as_echo "$ac_cv_lib_whisper_main" >&6; }
+if test "x$ac_cv_lib_whisper_main" = xyes; then :
   HAVE_LIBWHISPER=1
-else $as_nop
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&5
-printf "%s\n" "$as_me: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&6;}
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&5
+$as_echo "$as_me: Unable to find whisper library. You can compile it from https://github.com/ggerganov/whisper.cpp" >&6;}
 fi
 
 
@@ -5164,13 +5162,15 @@ $as_echo "#define HAVE_LIBDPDK 1" >>confdefs.h
 
 	DPDK_LDFLAGS=`"$PKGCONFIG" --libs libdpdk`
 
+	DPDK_LDFLAGSSTATIC=`"$PKGCONFIG" --static --libs libdpdk`
+
 	DPDK_T=yes
 fi
 
 HAVE_LIBBLAKE3_T=no
 if test "x$HAVE_LIBBLAKE3" = "x1"; then
 
-printf "%s\n" "#define HAVE_LIBBLAKE3 1" >>confdefs.h
+$as_echo "#define HAVE_LIBBLAKE3 1" >>confdefs.h
 
 	LIBBLAKE3="-lblake3"
 
@@ -5180,7 +5180,7 @@ fi
 HAVE_LIBWHISPER_T=no
 if test "x$HAVE_LIBWHISPER" = "x1"; then
 
-printf "%s\n" "#define HAVE_LIBWHISPER 1" >>confdefs.h
+$as_echo "#define HAVE_LIBWHISPER 1" >>confdefs.h
 
 	LIBWHISPER="-lwhisper"
 
@@ -6591,6 +6591,7 @@ libjpeg lib found     		       : $HAVE_LIBJPEG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+dpdk lib found			       : DPDK_T
 
 shared binary: run make
 static binary: run make static
@@ -6621,6 +6622,7 @@ libjpeg lib found     		       : $HAVE_LIBJPEG_T
 fftw3 lib found     		       : $HAVE_LIBFFT_T
 openssl >= 1.0.1 found		       : $OPENSSL101_T
 openssl >= 1.1.1 found tls 1.3 enabled : $OPENSSL111_T
+dpdk lib found			       : DPDK_T
 
 shared binary: run make
 static binary: run make static
