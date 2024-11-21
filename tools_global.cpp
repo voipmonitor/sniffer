@@ -602,13 +602,16 @@ bool cHugePagesTools::setHugePagesNumber(map<unsigned, unsigned> number_by_numa_
 }
 
 bool cHugePagesTools::setHugePagesNumber(unsigned number, bool gtIsOk, int numa_node, bool overcommit, unsigned page_size_kb) {
+	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
 	unsigned _number = getHugePagesNumber(numa_node, overcommit, page_size_kb);
 	if(gtIsOk ? _number >= number : _number == number) {
+		syslog(LOG_INFO, "hugepages info: ok hugepages number (%u >= %u) in file %s", _number, number, config_file.c_str());
 		return(true);
 	}
 	bool rslt = false;
+	syslog(LOG_INFO, "hugepages info: try drop caches and compact memory");
 	dropCachesAndCompactMemory();
-	string config_file = getHugePagesConfigFile(numa_node, overcommit, page_size_kb);
+	syslog(LOG_INFO, "hugepages info: try set hugepages number (%u) to file %s", number, config_file.c_str());
 	ofstream file_stream(config_file.c_str(), ios::binary);
 	if(file_stream.is_open()) {
 		file_stream << number;
@@ -617,8 +620,10 @@ bool cHugePagesTools::setHugePagesNumber(unsigned number, bool gtIsOk, int numa_
 			rslt = getHugePagesNumber(numa_node, overcommit, page_size_kb) >= number;
 		}
 	}
-	if(!rslt) {
-		syslog(LOG_WARNING, "hugepages error: failed set hugepages number (%u) to file %s", number, config_file.c_str());
+	if(rslt) {
+		syslog(LOG_INFO, "hugepages info: ok set hugepages number (%u) to file %s", number, config_file.c_str());
+	} else {
+		syslog(LOG_ERR, "hugepages error: failed set hugepages number (%u) to file %s", number, config_file.c_str());
 	}
 	return(rslt);
 }
