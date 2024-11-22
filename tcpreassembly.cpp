@@ -3976,6 +3976,22 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 							iterStream = link->queueStreams.erase(iterStream);
 							link->queue_by_ack.erase(stream->ack);
 							delete stream;
+						} else if(stream->queuePacketVars.size() > 1000) {
+							map<uint32_t, TcpReassemblyStream_packet_var>::iterator iterPacketVars;
+							for(iterPacketVars = stream->queuePacketVars.begin(); iterPacketVars != stream->queuePacketVars.end(); ) {
+								if(act_time > iterPacketVars->second.last_packet_at_from_header + linkTimeout * 1000) {
+									stream->queuePacketVars.erase(iterPacketVars++);
+								} else {
+									++iterPacketVars;
+								}
+							}
+							if(!stream->queuePacketVars.size()) {
+								iterStream = link->queueStreams.erase(iterStream);
+								link->queue_by_ack.erase(stream->ack);
+								delete stream;
+							} else {
+								++iterStream;
+							}
 						} else {
 							++iterStream;
 						}
