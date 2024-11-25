@@ -3022,6 +3022,7 @@ TcpReassembly::TcpReassembly(eType type) {
 	this->enableValidateDataViaCheckData = false;
 	this->unlimitedReassemblyAttempts = false;
 	this->maxReassemblyAttempts = 50;
+	this->maxStreamLength = 0;
 	this->enableValidateLastQueueDataViaCheckData = false;
 	this->enableStrictValidateDataViaCheckData = false;
 	this->needValidateDataViaCheckData = false;
@@ -3930,7 +3931,7 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 	if(lock) lock_cleanup();
 		
 	if(!all) {
-		if(this->act_time_from_header - this->last_cleanup_call_time_from_header <= cleanupPeriod * 1000) {
+		if(this->act_time_from_header < this->last_cleanup_call_time_from_header + cleanupPeriod * 1000) {
 			if(lock) unlock_cleanup();
 			return;
 		}
@@ -3976,7 +3977,7 @@ void TcpReassembly::cleanup_simple(bool all, bool lock) {
 							iterStream = link->queueStreams.erase(iterStream);
 							link->queue_by_ack.erase(stream->ack);
 							delete stream;
-						} else if(stream->queuePacketVars.size() > 1000) {
+						} else if(maxStreamLength > 0 && stream->queuePacketVars.size() > (unsigned)maxStreamLength) {
 							map<uint32_t, TcpReassemblyStream_packet_var>::iterator iterPacketVars;
 							for(iterPacketVars = stream->queuePacketVars.begin(); iterPacketVars != stream->queuePacketVars.end(); ) {
 								if(act_time > iterPacketVars->second.last_packet_at_from_header + linkTimeout * 1000) {

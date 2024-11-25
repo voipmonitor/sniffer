@@ -1394,6 +1394,7 @@ bool opt_load_query_from_files_inotify = true;
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_stream_max_attempts = 200;
+int opt_sip_tcp_reassembly_stream_max_length = 0;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
@@ -4975,6 +4976,9 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
+		if(opt_sip_tcp_reassembly_stream_max_length > 0) {
+			tcpReassemblySipExt->setMaxStreamLength(opt_sip_tcp_reassembly_stream_max_length);
+		}
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
 		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
 			if(!is_read_from_file()) {
@@ -7305,6 +7309,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_length", &opt_sip_tcp_reassembly_stream_max_length));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));
