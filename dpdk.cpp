@@ -1230,6 +1230,7 @@ static int rte_worker_thread(void *arg) {
 				}
 				uint16_t pkts_i = 0;
 				while(pkts_i < nb_rx) {
+					__SYNC_SET_TO(dpdk->worker_slave_state, 0);
 					u_int32_t batch_count = 0;
 					bool filled = false;
 					dpdk->config.callback.packets_get_pointers(dpdk->config.callback.packet_user, pkts_i, nb_rx, dpdk->pkts_len, dpdk->config.snapshot,
@@ -1237,7 +1238,7 @@ static int rte_worker_thread(void *arg) {
 					dpdk->batch_start = pkts_i;
 					dpdk->batch_count = batch_count;
 					//if(enable_slave) {
-						dpdk->worker_slave_state = 1;
+						__SYNC_SET_TO(dpdk->worker_slave_state, 1);
 					//}
 					for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
 						if(!(i % 2)/* || !enable_slave*/) {
@@ -1371,7 +1372,7 @@ static int rte_worker_slave_thread(void *arg) {
 									     &checkProtocolData);
 			}
 		}
-		dpdk->worker_slave_state = 2;
+		__SYNC_SET_TO(dpdk->worker_slave_state, 2);
 	}
 	return 0;
 }
