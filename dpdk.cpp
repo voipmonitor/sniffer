@@ -8,6 +8,7 @@
 #include "tools.h"
 #include "tools_global.h"
 #include "sync.h"
+#include "pcap_queue.h"
 
 #include "dpdk.h"
 
@@ -58,6 +59,7 @@ extern int opt_dpdk_pkt_burst;
 extern int opt_dpdk_ring_size;
 extern int opt_dpdk_mempool_cache_size;
 extern int opt_dpdk_batch_read;
+extern int opt_dpdk_copy_packetbuffer;
 extern int opt_dpdk_mbufs_in_packetbuffer;
 extern int opt_dpdk_timer_reset_interval;
 extern vector<string> opt_dpdk_vdev;
@@ -106,6 +108,10 @@ extern vector<string> opt_dpdk_vdev;
 #define DEBUG_CYCLES false
 #define DEBUG_CYCLES_MAX_LT_MS 100
 #define DEBUG_EXT_STAT false
+
+#define ENABLE_WORKER_SLAVE (MAX_PKT_BURST > 1000 && opt_dpdk_copy_packetbuffer && !opt_dpdk_mbufs_in_packetbuffer)
+
+#define MIN(a,b) (((a)<(b))?(a):(b))
 
 
 #if DEBUG_CYCLES
@@ -201,11 +207,13 @@ struct sDpdk {
 	bool terminating;
 	int rte_read_thread_pid;
 	int rte_worker_thread_pid;
+	int rte_worker_slave_thread_pid;
 	#if WORKER2_THREAD_SUPPORT
 	int rte_worker2_thread_pid;
 	#endif
 	pstat_data rte_read_thread_pstat_data[2];
 	pstat_data rte_worker_thread_pstat_data[2];
+	pstat_data rte_worker_slave_thread_pstat_data[2];
 	#if WORKER2_THREAD_SUPPORT
 	pstat_data rte_worker2_thread_pstat_data[2];
 	#endif
@@ -214,18 +222,53 @@ struct sDpdk {
 	sDpdk_cycles cycles[10];
 	#endif
 	bool cycles_reset;
+	rte_mbuf **pkts_burst;
+	u_int32_t *pkts_len;
+	void **pb_headers;
+	void **pb_packets;
+	volatile u_int32_t batch_start;
+	volatile u_int32_t batch_count;
+	volatile int worker_slave_state;
+	u_int64_t timestamp_us;
 	sDpdk() {
 		memset((void*)this, 0, sizeof(*this));
+	}
+	void worker_alloc() {
+		pkts_burst = new FILE_LINE(0) rte_mbuf*[MAX_PKT_BURST];
+		if(ENABLE_WORKER_SLAVE) {
+			if(!pkts_len) {
+				pkts_len = new FILE_LINE(0) u_int32_t[MAX_PKT_BURST];
+			}
+			if(!pb_headers) {
+				pb_headers = new FILE_LINE(0) void*[MAX_PKT_BURST];
+			}
+			if(!pb_packets) {
+				pb_packets = new FILE_LINE(0) void*[MAX_PKT_BURST];
+			}
+		}
+	}
+	void worker_free() {
+		if(pkts_len) {
+			delete [] pkts_len;
+		}
+		if(pb_headers) {
+			delete [] pb_headers;
+		}
+		if(pb_packets) {
+			delete [] pb_packets;
+		}
+		delete [] pkts_burst;
 	}
 };
 
 
 static int rte_read_thread(void *arg);
 static int rte_worker_thread(void *arg);
+static int rte_worker_slave_thread(void *arg);
 #if WORKER2_THREAD_SUPPORT
 static int rte_worker2_thread(void *arg);
 #endif
-static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t len, struct rte_mbuf *mbuf);
+static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf);
 static inline void dpdk_process_packet(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us);
 static inline void dpdk_process_packet_2__std(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
 					      #if WORKER2_THREAD_SUPPORT
@@ -473,7 +516,27 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		} else {
 			ret = rte_eal_remote_launch(rte_worker_thread, dpdk, lcore_id);
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i)",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker",
+				      config->device,
+				      lcore_id);
+			if(ret < 0) {
+				return(PCAP_ERROR);
+			}
+			dpdk_tools->setUseLcore(lcore_id);
+		}
+	}
+	if(config->type_worker_thread == _dpdk_twt_rte &&
+	   ENABLE_WORKER_SLAVE) {
+		int lcore_id = dpdk_tools->getFreeLcore(cDpdkTools::_tlc_worker, numa_node);
+		dpdk_eval_res(lcore_id, lcore_id < 0 ? "not available free lcore for worker slave thread" : NULL, 2, error,
+			      "dpdk_activate(%s) - getFreeLcore(cDpdkTools::_tlc_worker)",
+			      config->device);
+		if(lcore_id < 0) {
+			return(PCAP_ERROR);
+		} else {
+			ret = rte_eal_remote_launch(rte_worker_slave_thread, dpdk, lcore_id);
+			dpdk_eval_res(ret, NULL, 2, error,
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker slave",
 				      config->device,
 				      lcore_id);
 			if(ret < 0) {
@@ -493,7 +556,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		} else {
 			ret = rte_eal_remote_launch(rte_worker2_thread, dpdk, lcore_id);
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i)",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / worker 2",
 				      config->device,
 				      lcore_id);
 			if(ret < 0) {
@@ -513,7 +576,7 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 		} else {
 			ret = rte_eal_remote_launch(rte_read_thread, dpdk, lcore_id);
 			dpdk_eval_res(ret, NULL, 2, error,
-				      "dpdk_activate(%s) - rte_eal_remote_launch(%i)",
+				      "dpdk_activate(%s) - rte_eal_remote_launch(%i) / read",
 				      config->device,
 				      lcore_id);
 			if(ret < 0) {
@@ -843,7 +906,6 @@ double rte_read_thread_cpu_usage(sDpdk *dpdk) {
 	return(-1);
 }
 
-
 double rte_worker_thread_cpu_usage(sDpdk *dpdk) {
 	if(!dpdk->rte_worker_thread_pid) {
 		return(-1);
@@ -862,6 +924,23 @@ double rte_worker_thread_cpu_usage(sDpdk *dpdk) {
 	return(-1);
 }
 
+double rte_worker_slave_thread_cpu_usage(sDpdk *dpdk) {
+	if(!dpdk->rte_worker_slave_thread_pid) {
+		return(-1);
+	}
+	if(dpdk->rte_worker_slave_thread_pstat_data[0].cpu_total_time) {
+		dpdk->rte_worker_slave_thread_pstat_data[1] = dpdk->rte_worker_slave_thread_pstat_data[0];
+	}
+	pstat_get_data(dpdk->rte_worker_thread_pid, dpdk->rte_worker_slave_thread_pstat_data);
+	double ucpu_usage, scpu_usage;
+	if(dpdk->rte_worker_slave_thread_pstat_data[0].cpu_total_time && dpdk->rte_worker_slave_thread_pstat_data[1].cpu_total_time) {
+		pstat_calc_cpu_usage_pct(
+			&dpdk->rte_worker_slave_thread_pstat_data[0], &dpdk->rte_worker_slave_thread_pstat_data[1],
+			&ucpu_usage, &scpu_usage);
+		return(ucpu_usage + scpu_usage);
+	}
+	return(-1);
+}
 
 double rte_worker2_thread_cpu_usage(sDpdk *dpdk) {
 	#if WORKER2_THREAD_SUPPORT
@@ -1125,30 +1204,102 @@ static int rte_worker_thread(void *arg) {
 		opt_dpdk_mbufs_in_packetbuffer ?
 		 dpdk_process_packet_2__mbufs_in_packetbuffer :
 		 dpdk_process_packet_2__std;
-	rte_mbuf *pkts_burst[MAX_PKT_BURST];
 	uint16_t nb_rx;
-	#if not DPDK_TIMESTAMP_IN_MBUF
-	u_int64_t timestamp_us;
-	#endif
+	pcap_pkthdr header;
+	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
+	dpdk->worker_alloc();
+	//bool enable_slave = false;
 	while(!dpdk->terminating) {
-		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)pkts_burst, MAX_PKT_BURST, NULL);
+		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
 			#if not DPDK_TIMESTAMP_IN_MBUF
-			timestamp_us = get_timestamp_us(dpdk);
+			dpdk->timestamp_us = get_timestamp_us(dpdk);
 			#endif
-			for(uint16_t i = 0; i < nb_rx; i++) {
-				dpdk_process_packet_2(dpdk, pkts_burst[i], 
-						      #if DPDK_TIMESTAMP_IN_MBUF == 1
-						      *RTE_MBUF_DYNFIELD(pkts_burst[i], timestamp_dynfield_offset, u_int64_t*)
-						      #elif DPDK_TIMESTAMP_IN_MBUF == 2
-						      *(u_int64_t*)&pkts_burst[i]->dynfield1[0]
-						      #else
-						      timestamp_us
-						      #endif
-						      #if WORKER2_THREAD_SUPPORT
-						      ,dpdk->config.type_worker2_thread != _dpdk_tw2t_rte
-						      #endif
-						      );
+			if(ENABLE_WORKER_SLAVE && nb_rx > 20/* && enable_slave*/) {
+				for(uint16_t i = 0; i < nb_rx; i++) {
+					if(dpdk->pkts_burst[i]->nb_segs == 1) {
+						dpdk->pkts_len[i] = rte_pktmbuf_pkt_len(dpdk->pkts_burst[i]);
+					} else {
+						dpdk->pkts_len[i] = 0;
+						rte_mbuf *mbuf = dpdk->pkts_burst[i];
+						while(mbuf) {
+							dpdk->pkts_len[i] += rte_pktmbuf_pkt_len(mbuf);
+							mbuf = mbuf->next;
+						}
+					}
+				}
+				uint16_t pkts_i = 0;
+				while(pkts_i < nb_rx) {
+					u_int32_t batch_count = 0;
+					bool filled = false;
+					dpdk->config.callback.packets_get_pointers(dpdk->config.callback.packet_user, pkts_i, nb_rx, dpdk->pkts_len, dpdk->config.snapshot,
+										   dpdk->pb_headers, dpdk->pb_packets, &batch_count, &filled);
+					dpdk->batch_start = pkts_i;
+					dpdk->batch_count = batch_count;
+					//if(enable_slave) {
+						dpdk->worker_slave_state = 1;
+					//}
+					for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
+						if(!(i % 2)/* || !enable_slave*/) {
+							rte_mbuf *mbuff = dpdk->pkts_burst[i];
+							rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+							if(mbuff->nb_segs == 1) {
+								rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot));
+							} else {
+								dpdk_gather_data((u_char*)dpdk->pb_packets[i], dpdk->config.snapshot, mbuff);
+							}
+							rte_pktmbuf_free(mbuff);
+							u_int64_t _timestamp_us = 
+										  #if DPDK_TIMESTAMP_IN_MBUF == 1
+										  *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*);
+										  #elif DPDK_TIMESTAMP_IN_MBUF == 2
+										  *(u_int64_t*)&pkts_burst[i]->dynfield1[0];
+										  #else
+										  dpdk->timestamp_us;
+										  #endif
+							header.ts.tv_sec = _timestamp_us / 1000000;
+							header.ts.tv_usec = _timestamp_us % 1000000;
+							header.caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
+							header.len = dpdk->pkts_len[i];
+							dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
+												     &checkProtocolData);
+						}
+					}
+					//if(enable_slave) {
+						while(dpdk->worker_slave_state != 2) {
+							if(dpdk->terminating) {
+								dpdk->worker_free();
+								return(0);
+							}
+							if(dpdk->config.worker_usleep_type == _dpdk_usleep_type_rte) {
+								rte_delay_us_block(dpdk->config.worker_usleep_if_no_packet);
+							} else if(dpdk->config.worker_usleep_type == _dpdk_usleep_type_rte_pause) {
+								rte_pause();
+							} else {
+								USLEEP(dpdk->config.worker_usleep_if_no_packet);
+							}
+						}
+					//}
+					if(filled) {
+						dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
+					}
+					pkts_i += batch_count;
+				}
+			} else {
+				for(uint16_t i = 0; i < nb_rx; i++) {
+					dpdk_process_packet_2(dpdk, dpdk->pkts_burst[i], 
+							      #if DPDK_TIMESTAMP_IN_MBUF == 1
+							      *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*)
+							      #elif DPDK_TIMESTAMP_IN_MBUF == 2
+							      *(u_int64_t*)&pkts_burst[i]->dynfield1[0]
+							      #else
+							      dpdk->timestamp_us
+							      #endif
+							      #if WORKER2_THREAD_SUPPORT
+							      ,dpdk->config.type_worker2_thread != _dpdk_tw2t_rte
+							      #endif
+							      );
+				}
 			}
 			#if WORKER2_THREAD_SUPPORT
 			if(dpdk->config.type_worker2_thread == _dpdk_tw2t_rte) {
@@ -1170,6 +1321,57 @@ static int rte_worker_thread(void *arg) {
 				USLEEP(dpdk->config.worker_usleep_if_no_packet);
 			}
 		}
+	}
+	dpdk->worker_free();
+	return 0;
+}
+
+static int rte_worker_slave_thread(void *arg) {
+	sDpdk *dpdk = (sDpdk*)arg;
+	dpdk->rte_worker_slave_thread_pid = get_unix_tid();
+	syslog(LOG_INFO, "DPDK - WORKER SLAVE (rte) THREAD %i\n", dpdk->rte_worker_slave_thread_pid);
+	pcap_pkthdr header;
+	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
+	while(!dpdk->terminating) {
+		while(dpdk->worker_slave_state != 1) {
+			if(dpdk->terminating) {
+				return 0;
+			}
+			if(dpdk->config.worker_usleep_type == _dpdk_usleep_type_rte) {
+				rte_delay_us_block(dpdk->config.worker_usleep_if_no_packet);
+			} else if(dpdk->config.worker_usleep_type == _dpdk_usleep_type_rte_pause) {
+				rte_pause();
+			} else {
+				USLEEP(dpdk->config.worker_usleep_if_no_packet);
+			}
+		}
+		for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
+			if((i % 2)) {
+				rte_mbuf *mbuff = dpdk->pkts_burst[i];
+				rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+				if(mbuff->nb_segs == 1) {
+					rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot));
+				} else {
+					dpdk_gather_data((u_char*)dpdk->pb_packets[i], dpdk->config.snapshot, mbuff);
+				}
+				rte_pktmbuf_free(mbuff);
+				u_int64_t _timestamp_us = 
+							  #if DPDK_TIMESTAMP_IN_MBUF == 1
+							  *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*);
+							  #elif DPDK_TIMESTAMP_IN_MBUF == 2
+							  *(u_int64_t*)&pkts_burst[i]->dynfield1[0];
+							  #else
+							  dpdk->timestamp_us;
+							  #endif
+				header.ts.tv_sec = _timestamp_us / 1000000;
+				header.ts.tv_usec = _timestamp_us % 1000000;
+				header.caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
+				header.len = dpdk->pkts_len[i];
+				dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
+									     &checkProtocolData);
+			}
+		}
+		dpdk->worker_slave_state = 2;
 	}
 	return 0;
 }
@@ -1303,12 +1505,12 @@ static inline void dpdk_process_packet_2__mbufs_in_packetbuffer(sDpdk *dpdk, rte
 }
 
 
-static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t len, struct rte_mbuf *mbuf) {
+static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf) {
 	uint32_t total_len = 0;
-	while(mbuf && (total_len+mbuf->data_len) < len ){
-		rte_memcpy(data+total_len, rte_pktmbuf_mtod(mbuf,void *),mbuf->data_len);
-		total_len+=mbuf->data_len;
-		mbuf=mbuf->next;
+	while(mbuf && (total_len + mbuf->data_len) < maxlen) {
+		rte_memcpy(data + total_len, rte_pktmbuf_mtod(mbuf,void *), mbuf->data_len);
+		total_len += mbuf->data_len;
+		mbuf = mbuf->next;
 	}
 	return total_len;
 }
@@ -2152,8 +2354,8 @@ bool cGlobalDpdkTools::setThreadsAffinity(string *read, string *worker, string *
 	cCpuCoreInfo coreInfo;
 	bool rslt = true;
 	for(map<unsigned, unsigned>::iterator iter = ci.begin(); iter != ci.end() && rslt; iter++) {
-		if(opt_dpdk_read_thread == 2) {
-			for(unsigned i = 0; i< iter->second && rslt; i++) {
+		if(opt_dpdk_read_thread == _dpdk_trt_rte) {
+			for(unsigned i = 0; i < iter->second && rslt; i++) {
 				int cpu = coreInfo.getFreeCpu(iter->first, true);
 				if(cpu >= 0) {
 					read_affinity.push_back(cpu);
@@ -2162,18 +2364,20 @@ bool cGlobalDpdkTools::setThreadsAffinity(string *read, string *worker, string *
 				}
 			}
 		}
-		if(opt_dpdk_worker_thread == 2) {
-			for(unsigned i = 0; i< iter->second && rslt; i++) {
-				int cpu = coreInfo.getFreeCpu(iter->first, true);
-				if(cpu >= 0) {
-					worker_affinity.push_back(cpu);
-				} else {
-					rslt = false;
+		if(opt_dpdk_worker_thread == _dpdk_trt_rte) {
+			for(unsigned i = 0; i < iter->second && rslt; i++) {
+				for(unsigned j = 0; j < (ENABLE_WORKER_SLAVE ? 2 : 1) && rslt; j++) {
+					int cpu = coreInfo.getFreeCpu(iter->first, true);
+					if(cpu >= 0) {
+						worker_affinity.push_back(cpu);
+					} else {
+						rslt = false;
+					}
 				}
 			}
 		}
-		if(opt_dpdk_worker2_thread == 2) {
-			for(unsigned i = 0; i< iter->second && rslt; i++) {
+		if(opt_dpdk_worker2_thread == _dpdk_trt_rte) {
+			for(unsigned i = 0; i < iter->second && rslt; i++) {
 				int cpu = coreInfo.getFreeCpu(iter->first, true);
 				if(cpu >= 0) {
 					worker2_affinity.push_back(cpu);

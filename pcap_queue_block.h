@@ -306,7 +306,10 @@ struct pcap_block_store {
 	inline void clear(bool prefetch);
 	inline void copy(pcap_block_store *from);
 	inline bool add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size = 0);
-	inline void inc_h(pcap_pkthdr_plus2 *header);
+	inline void inc_h(pcap_pkthdr_plus2 *header) {
+		inc_h(header->get_caplen());
+	}
+	void inc_h(u_int32_t caplen);
 	inline bool get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **packet, unsigned min_size_for_packet);
 	inline void add_dpdk(pcap_pkthdr_plus2 *header, void *mbuf);
 	inline bool is_dpkd_data_full();

@@ -444,7 +444,7 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	return(this->add((pcap_pkthdr*)header, packet, header->offset, header->dlink));
 }*/
 
-void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
+void pcap_block_store::inc_h(u_int32_t caplen) {
 	if(this->count == this->offsets_size) {
 		uint32_t *offsets_old = this->offsets;
 		size_t offsets_size_old = this->offsets_size;
@@ -473,8 +473,8 @@ void pcap_block_store::inc_h(pcap_pkthdr_plus2 *header) {
 		#endif
 	}
 	this->offsets[this->count] = this->size;
-	this->size += sizeof(pcap_pkthdr_plus2) + header->get_caplen();
-	this->size_packets += header->get_caplen();
+	this->size += sizeof(pcap_pkthdr_plus2) + caplen;
+	this->size_packets += caplen;
 	++this->count;
 }
 
@@ -5084,7 +5084,10 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			dpdkConfig.callback.header_packet = &dispatch_data.headerPacket;
 			dpdkConfig.callback.packet_allocation = _dpdk_packet_allocation;
 			dpdkConfig.callback.packet_completion = _dpdk_packet_completion;
+			dpdkConfig.callback.packet_completion_plus = _dpdk_packet_completion_plus;
 			dpdkConfig.callback.packet_process = _dpdk_packet_process;
+			dpdkConfig.callback.packets_get_pointers = _dpdk_packets_get_pointers;
+			dpdkConfig.callback.packets_push = _dpdk_packets_push;
 			dpdkConfig.callback.packet_process__mbufs_in_packetbuffer = _dpdk_packet_process__mbufs_in_packetbuffer;
 			if(opt_dup_check_type != _dedup_na) {
 				this->md1Thread = new FILE_LINE(15041) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this, this->parent);
@@ -5671,11 +5674,6 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 }
 */
 
-u_char* PcapQueue_readFromInterfaceThread::_dpdk_packet_allocation(void *user, u_int32_t *packet_maxlen) {
-	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-	return(dd->me->dpdk_packet_allocation(dd, packet_maxlen));
-}
-
 u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen) {
 	while(!dd->block ||
 	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->pcap_packet, pcap_snaplen) ||
@@ -5711,42 +5709,32 @@ u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_
 	return(dd->pcap_packet);
 }
 
-void PcapQueue_readFromInterfaceThread::_dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet) {
-	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-	dd->me->dpdk_packet_completion(dd, pcap_header, packet);
-}
-
-void PcapQueue_readFromInterfaceThread::dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet) {
+bool PcapQueue_readFromInterfaceThread::_packet_completion(pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
+							   sCheckProtocolData *checkProtocolData) {
 	if(opt_pcap_queue_use_blocks_read_check || filter_ip) {
-		if(!check_protocol((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData) ||
-		   !check_filter_ip((pcap_pkthdr*)pcap_header, (u_char*)packet, &dd->checkProtocolData)) {
-			return;
+		if(!check_protocol(pcap_header, packet, checkProtocolData) ||
+		   !check_filter_ip(pcap_header, packet, checkProtocolData)) {
+			return(false);
 		}
 	}
-	sumPacketsSize[0] += pcap_header->caplen;
-	dd->pcap_header_plus2->clear();
+	pcap_header_plus2->clear();
 	if(opt_pcap_queue_use_blocks_read_check) {
-		dd->pcap_header_plus2->detect_headers = 0x01;
-		dd->pcap_header_plus2->header_ip_encaps_offset = dd->checkProtocolData.header_ip_offset;
-		dd->pcap_header_plus2->header_ip_offset = dd->checkProtocolData.header_ip_offset;
-		dd->pcap_header_plus2->eth_protocol = dd->checkProtocolData.protocol;
-		dd->pcap_header_plus2->pid.vlan = dd->checkProtocolData.vlan;
-		dd->pcap_header_plus2->pid.flags = 0;
+		pcap_header_plus2->detect_headers = 0x01;
+		pcap_header_plus2->header_ip_encaps_offset = checkProtocolData->header_ip_offset;
+		pcap_header_plus2->header_ip_offset = checkProtocolData->header_ip_offset;
+		pcap_header_plus2->eth_protocol = checkProtocolData->protocol;
+		pcap_header_plus2->pid.vlan = checkProtocolData->vlan;
+		pcap_header_plus2->pid.flags = 0;
 	} else {
-		dd->pcap_header_plus2->header_ip_encaps_offset = 0;
-		dd->pcap_header_plus2->header_ip_offset = 0;
+		pcap_header_plus2->header_ip_encaps_offset = 0;
+		pcap_header_plus2->header_ip_offset = 0;
 	}
-	dd->pcap_header_plus2->convertFromStdHeader((pcap_pkthdr*)pcap_header);
-	dd->pcap_header_plus2->dlink = DLT_EN10MB;
-	dd->block->inc_h(dd->pcap_header_plus2);
+	pcap_header_plus2->convertFromStdHeader((pcap_pkthdr*)pcap_header);
+	pcap_header_plus2->dlink = DLT_EN10MB;
+	return(true);
 }
 
-void PcapQueue_readFromInterfaceThread::_dpdk_packet_process(void *user) {
-	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-	dd->me->dpdk_packet_process(dd);
-}
-
-void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *dd){
+void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *dd) {
 	if(dd->headerPacket.packet) {
 		dpdk_packet_completion(dd, &dd->headerPacket.header, dd->headerPacket.packet);
 	}
@@ -5803,9 +5791,30 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 	}
 }
 
-void PcapQueue_readFromInterfaceThread::_dpdk_packet_process__mbufs_in_packetbuffer(void *user, pcap_pkthdr *pcap_header, void *mbuf) {
-	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-	dd->me->dpdk_packet_process__mbufs_in_packetbuffer(dd, pcap_header, mbuf);
+void PcapQueue_readFromInterfaceThread::dpdk_packets_get_pointers(pcap_dispatch_data *dd, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
+								  void **headers, void **packets, u_int32_t *count, bool *filled) {
+	if(!dd->block) {
+		printf("wait for init first block\n");
+		while(!dd->block) {
+			USLEEP(1);
+		}
+	}
+	*count = 0;
+	for(unsigned i = start; i < max; i++) {
+		if(dd->block->count && force_push) {
+			*filled = true;
+			break;
+		}
+		u_int32_t caplen = MIN(pkts_len[i], pcap_snaplen);
+		if(dd->block->get_add_hp_pointers((pcap_pkthdr_plus2**)&headers[i], (u_char**)&packets[i], caplen)) {
+			dd->block->inc_h(caplen);
+			++*count;
+		} else {
+			*filled = true;
+			break;
+		}
+	}
+	force_push = false;
 }
 
 void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf) {
@@ -6161,11 +6170,6 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 	
 	this->restoreOneshotBuffer();
 	this->threadTerminated = true;
-}
-
-void PcapQueue_readFromInterfaceThread::_pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
-	pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-	dd->me->pcap_dispatch_handler(dd, header, packet);
 }
 
 void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *header, const u_char *packet) {
@@ -7151,6 +7155,11 @@ string PcapQueue_readFromInterface::pcapStatString_cpuUsageReadThreads(double *s
 				if(tid_cpu >= 0) {
 					sum += tid_cpu;
 					outStrStat << "%/dpdk_rte_worker:" << setprecision(1) << tid_cpu;
+					double tid_slave_cpu = rte_worker_slave_thread_cpu_usage(this->readThreads[i]->dpdkHandle);
+					if(tid_slave_cpu >= 0) {
+						sum += tid_slave_cpu;
+						outStrStat << "/" << setprecision(1) << tid_slave_cpu;
+					}
 				}
 			}
 			if(this->readThreads[i]->dpdkHandle && dpdk_config(this->readThreads[i]->dpdkHandle)->type_worker2_thread == _dpdk_tw2t_rte) {

@@ -40,7 +40,12 @@ struct sDpdkCallback {
 	sDpdkHeaderPacket *header_packet;
 	u_char* (*packet_allocation)(void *user, u_int32_t *packet_maxlen);
 	void (*packet_completion)(void *user, pcap_pkthdr *pcap_header, u_char *packet);
+	void (*packet_completion_plus)(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
+				       void *checkProtocolData);
 	void (*packet_process)(void *user);
+	void (*packets_get_pointers)(void *user, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
+				     void **headers, void **packets, u_int32_t *count, bool *filled);
+	void (*packets_push)(void *user);
 	void (*packet_process__mbufs_in_packetbuffer)(void *user, pcap_pkthdr *pcap_header, void *mbuf);
 };
 
@@ -79,6 +84,7 @@ sDpdkConfig *dpdk_config(sDpdk *dpdk);
 void dpdk_terminating(sDpdk *dpdk);
 double rte_read_thread_cpu_usage(sDpdk *dpdk);
 double rte_worker_thread_cpu_usage(sDpdk *dpdk);
+double rte_worker_slave_thread_cpu_usage(sDpdk *dpdk);
 double rte_worker2_thread_cpu_usage(sDpdk *dpdk);
 string get_dpdk_cpu_cores(bool without_main, bool detect_ht);
 

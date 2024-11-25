@@ -692,16 +692,72 @@ protected:
 private:
 	void *threadFunction(void *arg, unsigned int arg2);
 	void threadFunction_blocks();
-	inline static void _pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *h, const u_char *bytes);
-	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *h, const u_char *bytes);
-	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t *packet_maxlen);
-	inline u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen);
-	inline static void _dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet);
-	inline void dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet);
-	inline static void _dpdk_packet_process(void *user);
-	inline void dpdk_packet_process(pcap_dispatch_data *dd);
-	inline static void _dpdk_packet_process__mbufs_in_packetbuffer(void *user, pcap_pkthdr *pcap_header, void *mbuf);
-	inline void dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf);
+	inline static void _pcap_dispatch_handler(u_char *user, const struct pcap_pkthdr *header, const u_char *packet) {
+		pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->pcap_dispatch_handler(dd, header, packet);
+	}
+	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *header, const u_char *packet);
+	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t *packet_maxlen) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		return(dd->me->dpdk_packet_allocation(dd, packet_maxlen));
+	}
+	u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen);
+	inline static void _dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packet_completion(dd, pcap_header, packet);
+	}
+	inline void dpdk_packet_completion(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet) {
+		if(_packet_completion(pcap_header, packet, dd->pcap_header_plus2, &dd->checkProtocolData)) {
+			sumPacketsSize[0] += pcap_header->caplen;
+			dd->block->inc_h(dd->pcap_header_plus2);
+		}
+	}
+	inline static void _dpdk_packet_completion_plus(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
+							void *checkProtocolData) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packet_completion_plus(dd, pcap_header, packet, (pcap_pkthdr_plus2*)pcap_header_plus2,
+						    (PcapQueue_readFromInterface_base::sCheckProtocolData*)checkProtocolData);
+	}
+	inline void dpdk_packet_completion_plus(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
+						PcapQueue_readFromInterface_base::sCheckProtocolData *checkProtocolData) {
+		_packet_completion(pcap_header, packet, pcap_header_plus2, checkProtocolData);
+	}
+	bool _packet_completion(pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
+				sCheckProtocolData *checkProtocolData);
+	inline static void _dpdk_packet_process(void *user) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packet_process(dd);
+	}
+	void dpdk_packet_process(pcap_dispatch_data *dd);
+	inline static void _dpdk_packets_get_pointers(void *user, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
+						      void **headers, void **packets, u_int32_t *count, bool *filled) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packets_get_pointers(dd, start, max, pkts_len, snaplen,
+						  headers, packets, count, filled);
+	}
+	void dpdk_packets_get_pointers(pcap_dispatch_data *dd, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
+				       void **headers, void **packets, u_int32_t *count, bool *filled);
+	inline static void _dpdk_packets_push(void *user) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packets_push(dd);
+	}
+	inline void dpdk_packets_push(pcap_dispatch_data *dd) {
+		dd->copy_block_full[dd->copy_block_active_index] = 1;
+		int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
+		if(dd->copy_block_full[copy_block_no_active_index]) {
+			printf("wait for send no-active block\n");
+			while(dd->copy_block_full[copy_block_no_active_index]) {
+				USLEEP(1);
+			}
+		}
+		dd->block = dd->copy_block[copy_block_no_active_index];
+		dd->copy_block_active_index = copy_block_no_active_index;
+	}
+	inline static void _dpdk_packet_process__mbufs_in_packetbuffer(void *user, pcap_pkthdr *pcap_header, void *mbuf) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_packet_process__mbufs_in_packetbuffer(dd, pcap_header, mbuf);
+	}
+	void dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf);
 	void processBlock(pcap_block_store *block);
 	void preparePstatData(int pstatDataIndex);
 	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);
