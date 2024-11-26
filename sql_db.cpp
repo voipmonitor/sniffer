@@ -2951,6 +2951,8 @@ string SqlDb_mysql::getOptimalCompressType_mariadb(bool memoryEngine, bool useCa
 
 bool SqlDb_mysql::testCreateTable(bool memoryEngine, const char *compressType) {
 	bool rslt = false;
+	unsigned int maxQueryPassOld = getMaxQueryPass();
+	setMaxQueryPass(1);
 	string tableName = "_test_compress_type_" + intToString(rand() % 100000);
 	if(existsTable(tableName)) {
 		query("drop table `" + tableName + "`");
@@ -2961,6 +2963,7 @@ bool SqlDb_mysql::testCreateTable(bool memoryEngine, const char *compressType) {
 			query("drop table `" + tableName + "`");
 		}
 	}
+	setMaxQueryPass(maxQueryPassOld);
 	return(rslt);
 }
 
