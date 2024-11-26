@@ -13,24 +13,28 @@ extern int opt_ssl_dtls_handshake_safe;
 extern cDtls dtls_handshake_safe_links;
 
 
+#if HAVE_LIBGNUTLS
+static struct {
+	string crypro_suite;
+	int key_size;
+	int tag_size;
+	int cipher;
+	int md;
+} srtp_crypto_suites[]= {
+	{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+	{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+	{ "AES_128_CM_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+	{ "AES_128_CM_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
+	{ "AES_CM_256_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+	{ "AES_CM_256_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+	{ "AES_256_CM_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
+	{ "AES_256_CM_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 }
+};
+#endif
+
+
 bool RTPsecure::sCryptoConfig::init() {
 	#if HAVE_LIBGNUTLS
-	static struct {
-		string crypro_suite;
-		int key_size;
-		int tag_size;
-		int cipher;
-		int md;
-	} srtp_crypto_suites[]= {
-		{ "AES_CM_128_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-		{ "AES_CM_128_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-		{ "AES_128_CM_HMAC_SHA1_32", 128, 4, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-		{ "AES_128_CM_HMAC_SHA1_80", 128, 10, GCRY_CIPHER_AES, GCRY_MD_SHA1 },
-		{ "AES_CM_256_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-		{ "AES_CM_256_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-		{ "AES_256_CM_HMAC_SHA1_32", 256, 4, GCRY_CIPHER_AES256, GCRY_MD_SHA1 },
-		{ "AES_256_CM_HMAC_SHA1_80", 256, 10, GCRY_CIPHER_AES256, GCRY_MD_SHA1 }
-	};
 	if(suite.length()) {
 		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
 			if(suite == srtp_crypto_suites[i].crypro_suite) {
@@ -49,8 +53,15 @@ bool RTPsecure::sCryptoConfig::init() {
 
 bool RTPsecure::sCryptoConfig::keyDecode() {
 	if(sdes.length() != sdes_ok_length()) {
-		error = err_bad_sdes_length;
-		return(false);
+		if(sdes.length() < sdes_ok_length() && sdes.length() >= sdes_ok_length() - 2 &&
+		   sdes[sdes.length() - 1] != '=') {
+			while(sdes.length() < sdes_ok_length()) {
+				sdes += '=';
+			}
+		} else {
+			error = err_bad_sdes_length;
+			return(false);
+		}
 	}
 	u_char sdes_raw[100];
 	if(base64decode(sdes_raw, sdes.c_str(), key_len() + salt_len()) != (int)(key_len() + salt_len())) {
@@ -118,7 +129,9 @@ bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
 			}
 		}
 	}
-	if(index_ip_port >= 0 && index_ip_port < c_branch->ipport_n &&
+	extern bool opt_srtp_use_all_keys;
+	if(!opt_srtp_use_all_keys &&
+	   index_ip_port >= 0 && index_ip_port < c_branch->ipport_n &&
 	   c_branch->ip_port[index_ip_port].srtp_crypto_config_list &&
 	   cryptoConfigCallSize != c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size()) {
 		for(list<srtp_crypto_config>::iterator iter = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->begin();
@@ -128,7 +141,7 @@ bool RTPsecure::setCryptoConfig(u_int64_t time_us) {
 		}
 		cryptoConfigCallSize = c_branch->ip_port[index_ip_port].srtp_crypto_config_list->size();
 		return(true);
-	} else if(index_ip_port < 0) {
+	} else if(index_ip_port < 0 || opt_srtp_use_all_keys) {
 		unsigned sum_srtp_crypto_config_list_size = 0;
 		for(int i = 0; i < c_branch->ipport_n; i++) {
 			if(c_branch->ip_port[i].srtp_crypto_config_list) {
@@ -567,6 +580,20 @@ void RTPsecure::setError(eError error) {
 
 void RTPsecure::clearError() {
 	this->error = err_na;
+}
+
+bool RTPsecure::isOkCryptoSuite(const char *crypto_suite) {
+	#if HAVE_LIBGNUTLS
+	if(crypto_suite && *crypto_suite) {
+		for(unsigned i = 0; i < sizeof(srtp_crypto_suites) / sizeof(srtp_crypto_suites[0]); i++) {
+			if(crypto_suite == srtp_crypto_suites[i].crypro_suite) {
+				return(true);
+			}
+		}
+	}
+	#endif
+	return(false);
+
 }
 
 bool RTPsecure::init() {

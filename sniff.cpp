@@ -79,6 +79,7 @@ and insert them into Call class.
 #include "sniff_inline.h"
 #include "config_param.h"
 #include "separate_processing.h"
+#include "srtp.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -2796,7 +2797,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 						}
 						pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
 					} while(pointToParam && countParams < 3);
-					if(crypto.suite.length() && crypto.key.length()) {
+					if(crypto.suite.length() && crypto.key.length() &&
+					   RTPsecure::isOkCryptoSuite(crypto.suite.c_str())) {
 						if(!sdp_media_data_item->srtp_crypto_config_list) {
 							sdp_media_data_item->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
 						}

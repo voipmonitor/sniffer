@@ -231,6 +231,7 @@ bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtp_dtmf_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
 bool opt_srtp_rtp_local_instances = true;
+bool opt_srtp_use_all_keys = false;
 int opt_use_libsrtp = 0;
 bool opt_check_diff_ssrc_on_same_ip_port = true;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
@@ -6559,6 +6560,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtmf", &opt_srtp_rtp_dtmf_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_use_all_keys", &opt_srtp_use_all_keys));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem((new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_compresslevel_rtp))
