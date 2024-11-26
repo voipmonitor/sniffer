@@ -205,6 +205,10 @@ struct pcap_pkthdr_plus2 : public pcap_pkthdr_plus {
 		ignore = false;
 		pid.clear();
 	}
+	inline void clear_ext() {
+		memset((void*)this, 0, sizeof(*this));
+		clear();
+	}
 	u_int8_t detect_headers;
 	u_int16_t eth_protocol;
 	sPacketDuplCheck dc;

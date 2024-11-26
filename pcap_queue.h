@@ -720,7 +720,10 @@ private:
 	}
 	inline void dpdk_packet_completion_plus(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
 						PcapQueue_readFromInterface_base::sCheckProtocolData *checkProtocolData) {
-		_packet_completion(pcap_header, packet, pcap_header_plus2, checkProtocolData);
+		if(!_packet_completion(pcap_header, packet, pcap_header_plus2, checkProtocolData)) {
+			pcap_header_plus2->clear_ext();
+			pcap_header_plus2->ignore = true;
+		}
 	}
 	bool _packet_completion(pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
 				sCheckProtocolData *checkProtocolData);
@@ -742,6 +745,13 @@ private:
 		dd->me->dpdk_packets_push(dd);
 	}
 	inline void dpdk_packets_push(pcap_dispatch_data *dd) {
+		/*
+		cout << "push block "
+		     << " size: " << dd->copy_block[dd->copy_block_active_index]->size
+		     << " offsets_size: " << dd->copy_block[dd->copy_block_active_index]->offsets_size
+		     << " count: " << dd->copy_block[dd->copy_block_active_index]->count
+		     << endl;
+		*/
 		dd->copy_block_full[dd->copy_block_active_index] = 1;
 		int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 		if(dd->copy_block_full[copy_block_no_active_index]) {

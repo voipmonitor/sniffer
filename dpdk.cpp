@@ -1208,14 +1208,14 @@ static int rte_worker_thread(void *arg) {
 	pcap_pkthdr header;
 	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
 	dpdk->worker_alloc();
-	//bool enable_slave = false;
+	//bool enable_slave = true;
 	while(!dpdk->terminating) {
 		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
 			#if not DPDK_TIMESTAMP_IN_MBUF
 			dpdk->timestamp_us = get_timestamp_us(dpdk);
 			#endif
-			if(ENABLE_WORKER_SLAVE && nb_rx > 20/* && enable_slave*/) {
+			if(ENABLE_WORKER_SLAVE && nb_rx > 20) {
 				for(uint16_t i = 0; i < nb_rx; i++) {
 					if(dpdk->pkts_burst[i]->nb_segs == 1) {
 						dpdk->pkts_len[i] = rte_pktmbuf_pkt_len(dpdk->pkts_burst[i]);
@@ -1283,6 +1283,8 @@ static int rte_worker_thread(void *arg) {
 					//}
 					if(filled) {
 						dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
+						//static int _cf = 0;
+						//cout << "push block " << (++_cf) << endl;
 					}
 					pkts_i += batch_count;
 				}
