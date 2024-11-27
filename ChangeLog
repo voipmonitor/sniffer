@@ -1,3 +1,10 @@
+2024.11.1 27.11.2024
+====================
+- fix cleanup calls in t2_boost=no [VS-1664]
+- fix srtp: completing the srtp key to the correct length, adding the srtp_use_all_keys (NO/yes) parameter to force the application of all known keys from all directions [VS-1661]
+- limiting the number of attempts when creating a test table to verify compression algorithms in mariadb [VS-1660]
+
+
 2024.11.0 25.11.2024
 ====================
 - increase SIP processing by optimization of sip process split between threads (callid search and call packet processing), reduce locking [VS-1651]
