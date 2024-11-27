@@ -47,6 +47,7 @@ struct sDpdkCallback {
 				     void **headers, void **packets, u_int32_t *count, bool *filled);
 	void (*packets_push)(void *user);
 	void (*packet_process__mbufs_in_packetbuffer)(void *user, pcap_pkthdr *pcap_header, void *mbuf);
+	void (*check_block)(void *user, unsigned pos, unsigned count);
 };
 
 struct sDpdkConfig {

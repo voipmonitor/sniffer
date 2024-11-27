@@ -5089,6 +5089,7 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 			dpdkConfig.callback.packets_get_pointers = _dpdk_packets_get_pointers;
 			dpdkConfig.callback.packets_push = _dpdk_packets_push;
 			dpdkConfig.callback.packet_process__mbufs_in_packetbuffer = _dpdk_packet_process__mbufs_in_packetbuffer;
+			dpdkConfig.callback.check_block = _dpdk_check_block;
 			if(opt_dup_check_type != _dedup_na) {
 				this->md1Thread = new FILE_LINE(15041) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md1, this, this, this->parent);
 				this->md2Thread = new FILE_LINE(15042) PcapQueue_readFromInterfaceThread(this->interfaceName.c_str(), md2, this, this->md1Thread, this->parent);
@@ -5856,6 +5857,35 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuff
 		}
 		dd->block = NULL;
 	}
+}
+
+bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd, unsigned pos, unsigned count, bool only_check) {
+	bool rslt = true;
+	unsigned limit = dd->block->count - count + pos;
+	for(unsigned i = 0; i < limit; i++) {
+		unsigned caplen = dd->block->get_header(i)->get_caplen();
+		if(!caplen && ((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore) {
+			continue;
+		}
+		if(i < dd->block->count - 1) {
+			if(caplen + sizeof(pcap_pkthdr_plus2) != (dd->block->offsets[i + 1] - dd->block->offsets[i])) {
+				rslt = false;
+				if(!only_check) {
+					cout << " * dpdk_check_block "
+					     << "bad caplen/offset " << i << "/" << caplen << "/" << (dd->block->offsets[i + 1] - dd->block->offsets[i]) << endl;
+				}
+			}
+		} else {
+			if(caplen + sizeof(pcap_pkthdr_plus2) != (dd->block->size - dd->block->offsets[i])) {
+				rslt = false;
+				if(!only_check) {
+					cout << " * dpdk_check_block "
+					     << "bad caplen/size " << i << "/" << caplen << "/" << (dd->block->size - dd->block->offsets[i]) << endl;
+				}
+			}
+		}
+	}
+	return(rslt);
 }
 
 #define DEBUG_threadFunction_blocks_LAG 0

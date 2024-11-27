@@ -745,13 +745,26 @@ private:
 		dd->me->dpdk_packets_push(dd);
 	}
 	inline void dpdk_packets_push(pcap_dispatch_data *dd) {
-		/*
-		cout << "push block "
+		#if DPDK_DEBUG
+		cout << " * push dpdk_packets_push "
 		     << " size: " << dd->copy_block[dd->copy_block_active_index]->size
 		     << " offsets_size: " << dd->copy_block[dd->copy_block_active_index]->offsets_size
 		     << " count: " << dd->copy_block[dd->copy_block_active_index]->count
+		     << " set_active: " << (dd->block == dd->copy_block[dd->copy_block_active_index] ? "OK" : "FAILED")
+		     << " check: " << (dpdk_check_block(dd, 0, 0) ? "OK" : "FAILED")
 		     << endl;
-		*/
+		unsigned _clc = 0;
+		for(unsigned i = 0; i < dd->block->count; i++) {
+			u_int32_t _cl = dd->block->get_header(i)->get_caplen();
+			if(_cl > 10000) {
+				cout << dd->block->get_header(i)->get_caplen() << "|";
+				++_clc;
+			}
+		}
+		if(_clc) {
+			cout << endl;
+		}
+		#endif
 		dd->copy_block_full[dd->copy_block_active_index] = 1;
 		int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 		if(dd->copy_block_full[copy_block_no_active_index]) {
@@ -768,6 +781,11 @@ private:
 		dd->me->dpdk_packet_process__mbufs_in_packetbuffer(dd, pcap_header, mbuf);
 	}
 	void dpdk_packet_process__mbufs_in_packetbuffer(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, void *mbuf);
+	inline static void _dpdk_check_block(void *user, unsigned pos, unsigned count) {
+		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
+		dd->me->dpdk_check_block(dd, pos, count);
+	}
+	bool dpdk_check_block(pcap_dispatch_data *dd, unsigned pos, unsigned count, bool only_check = false);
 	void processBlock(pcap_block_store *block);
 	void preparePstatData(int pstatDataIndex);
 	double getCpuUsagePerc(int pstatDataIndex, bool preparePstatData = true);

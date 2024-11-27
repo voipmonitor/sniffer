@@ -1206,9 +1206,12 @@ static int rte_worker_thread(void *arg) {
 		 dpdk_process_packet_2__std;
 	uint16_t nb_rx;
 	pcap_pkthdr header;
+	unsigned caplen;
 	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
 	dpdk->worker_alloc();
-	//bool enable_slave = true;
+	#if DPDK_DEBUG
+	bool enable_slave = false;
+	#endif
 	while(!dpdk->terminating) {
 		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
@@ -1237,17 +1240,26 @@ static int rte_worker_thread(void *arg) {
 										   dpdk->pb_headers, dpdk->pb_packets, &batch_count, &filled);
 					dpdk->batch_start = pkts_i;
 					dpdk->batch_count = batch_count;
-					//if(enable_slave) {
+					#if DPDK_DEBUG
+					if(enable_slave) {
+					#endif
 						__SYNC_SET_TO(dpdk->worker_slave_state, 1);
-					//}
+					#if DPDK_DEBUG
+					}
+					#endif
 					for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
-						if(!(i % 2)/* || !enable_slave*/) {
+						if(!(i % 2)
+						#if DPDK_DEBUG
+						|| !enable_slave
+						#endif
+						) {
 							rte_mbuf *mbuff = dpdk->pkts_burst[i];
 							rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+							caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
 							if(mbuff->nb_segs == 1) {
-								rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot));
+								rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), caplen);
 							} else {
-								dpdk_gather_data((u_char*)dpdk->pb_packets[i], dpdk->config.snapshot, mbuff);
+								dpdk_gather_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
 							}
 							rte_pktmbuf_free(mbuff);
 							u_int64_t _timestamp_us = 
@@ -1260,13 +1272,18 @@ static int rte_worker_thread(void *arg) {
 										  #endif
 							header.ts.tv_sec = _timestamp_us / 1000000;
 							header.ts.tv_usec = _timestamp_us % 1000000;
-							header.caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
+							header.caplen = caplen;
 							header.len = dpdk->pkts_len[i];
 							dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
 												     &checkProtocolData);
+							#if DPDK_DEBUG
+							dpdk->config.callback.check_block(dpdk->config.callback.packet_user, i - pkts_i, batch_count);
+							#endif
 						}
 					}
-					//if(enable_slave) {
+					#if DPDK_DEBUG
+					if(enable_slave) {
+					#endif
 						while(dpdk->worker_slave_state != 2) {
 							if(dpdk->terminating) {
 								dpdk->worker_free();
@@ -1280,7 +1297,9 @@ static int rte_worker_thread(void *arg) {
 								USLEEP(dpdk->config.worker_usleep_if_no_packet);
 							}
 						}
-					//}
+					#if DPDK_DEBUG
+					}
+					#endif
 					if(filled) {
 						dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
 						//static int _cf = 0;
@@ -1334,6 +1353,7 @@ static int rte_worker_slave_thread(void *arg) {
 	dpdk->rte_worker_slave_thread_pid = get_unix_tid();
 	syslog(LOG_INFO, "DPDK - WORKER SLAVE (rte) THREAD %i\n", dpdk->rte_worker_slave_thread_pid);
 	pcap_pkthdr header;
+	unsigned caplen;
 	PcapQueue_readFromInterface_base::sCheckProtocolData checkProtocolData;
 	while(!dpdk->terminating) {
 		while(dpdk->worker_slave_state != 1) {
@@ -1352,10 +1372,11 @@ static int rte_worker_slave_thread(void *arg) {
 			if((i % 2)) {
 				rte_mbuf *mbuff = dpdk->pkts_burst[i];
 				rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+				caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
 				if(mbuff->nb_segs == 1) {
-					rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot));
+					rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), caplen);
 				} else {
-					dpdk_gather_data((u_char*)dpdk->pb_packets[i], dpdk->config.snapshot, mbuff);
+					dpdk_gather_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
 				}
 				rte_pktmbuf_free(mbuff);
 				u_int64_t _timestamp_us = 
@@ -1368,7 +1389,7 @@ static int rte_worker_slave_thread(void *arg) {
 							  #endif
 				header.ts.tv_sec = _timestamp_us / 1000000;
 				header.ts.tv_usec = _timestamp_us % 1000000;
-				header.caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
+				header.caplen = caplen;
 				header.len = dpdk->pkts_len[i];
 				dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
 									     &checkProtocolData);
