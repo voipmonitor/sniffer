@@ -501,10 +501,21 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 		#endif
 		#endif
 	}
+	#if DPDK_DEBUG
+	static unsigned _c = 0;
+	bool log = false;
+	if(log) cout << "B" << (++_c) << ":" << this->size << "/+" << min_size_for_packet;
+	#endif
 	if(this->size + sizeof(pcap_pkthdr_plus2) + min_size_for_packet > opt_pcap_queue_block_max_size) {
+		#if DPDK_DEBUG
+		if(log) cout << " > " << opt_pcap_queue_block_max_size << " FALSE" << endl;
+		#endif
 		this->full = true;
 		return(false);
 	}
+	#if DPDK_DEBUG
+	if(log) cout << ":OK|" << flush;
+	#endif
 	*header = (pcap_pkthdr_plus2*)(this->block + this->size);
 	*packet = (u_char*)(this->block + this->size + sizeof(pcap_pkthdr_plus2));
 	return(true);
@@ -5079,7 +5090,6 @@ void *PcapQueue_readFromInterfaceThread::threadFunction(void */*arg*/, unsigned 
 							opt_dpdk_worker_usleep_type == 2 ? _dpdk_usleep_type_rte_pause : 
 							_dpdk_usleep_type_std;
 			dispatch_data.me = this;
-			dispatch_data.headerPacket.packet_maxlen = pcap_snaplen;
 			dpdkConfig.callback.packet_user = &dispatch_data;
 			dpdkConfig.callback.header_packet = &dispatch_data.headerPacket;
 			dpdkConfig.callback.packet_allocation = _dpdk_packet_allocation;
@@ -5675,39 +5685,80 @@ void PcapQueue_readFromInterfaceThread::pcap_dispatch_handler(pcap_dispatch_data
 }
 */
 
-u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen) {
+u_char* PcapQueue_readFromInterfaceThread::dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen) {
 	while(!dd->block ||
-	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->pcap_packet, pcap_snaplen) ||
-	      (dd->block->count && force_push)) {
-		if(dd->block) {
-			if(opt_dpdk_defer_send_packetbuffer) {
-				if(dd->last_full_block) {
-					printf("wait for free last block\n");
-					while(dd->last_full_block) {
+	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->headerPacket.packet, caplen)
+	      #if not DPDK_DEBUG_DISABLE_FORCE_FLUSH
+	      || (dd->block->count && force_push)
+	      #endif
+	      ) {
+		if(opt_dpdk_copy_packetbuffer) {
+			if(!dd->block) {
+				printf("wait for init first block\n");
+				while(!dd->block) {
+					USLEEP(1);
+				}
+			} else {
+				#if DPDK_DEBUG
+				cout << " * dpdk_packet_allocation -> push "
+				     << " size: " << dd->copy_block[dd->copy_block_active_index]->size
+				     << " count: " << dd->copy_block[dd->copy_block_active_index]->count
+				     << " set_active: " << (dd->block == dd->copy_block[dd->copy_block_active_index] ? "OK" : "FAILED")
+				     << " check: " << (dpdk_check_block(dd, 0, 0, true) ? "OK" : "FAILED")
+				     << endl;
+				unsigned _clc = 0;
+				for(unsigned i = 0; i < dd->block->count; i++) {
+					u_int32_t _cl = dd->block->get_header(i)->get_caplen();
+					if(_cl > 10000 && ((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore != 1) {
+						cout << dd->block->get_header(i)->get_caplen() << "|";
+						++_clc;
+					}
+				}
+				if(_clc) {
+					cout << endl;
+				}
+				#endif
+				dd->copy_block_full[dd->copy_block_active_index] = 1;
+				int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
+				if(dd->copy_block_full[copy_block_no_active_index]) {
+					printf("wait for send no-active block\n");
+					while(dd->copy_block_full[copy_block_no_active_index]) {
+						USLEEP(1);
+					}
+				}
+				dd->block = dd->copy_block[copy_block_no_active_index];
+				dd->copy_block_active_index = copy_block_no_active_index;
+			}
+		} else {
+			if(dd->block) {
+				if(opt_dpdk_defer_send_packetbuffer) {
+					if(dd->last_full_block) {
+						printf("wait for free last block\n");
+						while(dd->last_full_block) {
+							USLEEP(10);
+						}
+					}
+					dd->last_full_block = dd->block;
+				} else {
+					this->push_block(dd->block);
+				}
+			}
+			if(opt_dpdk_prealloc_packetbuffer) {
+				if(!dd->next_free_block) {
+					printf("wait for next free block\n");
+					while(!dd->next_free_block) {
 						USLEEP(10);
 					}
 				}
-				dd->last_full_block = dd->block;
+				dd->block = (pcap_block_store*)dd->next_free_block;
+				dd->next_free_block = NULL;
 			} else {
-				this->push_block(dd->block);
+				dd->block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
 			}
-		}
-		if(opt_dpdk_prealloc_packetbuffer) {
-			if(!dd->next_free_block) {
-				printf("wait for next free block\n");
-				while(!dd->next_free_block) {
-					USLEEP(10);
-				}
-			}
-			dd->block = (pcap_block_store*)dd->next_free_block;
-			dd->next_free_block = NULL;
-		} else {
-			dd->block = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2);
 		}
 		force_push = false;
 	}
-	*packet_maxlen = pcap_snaplen;
-	return(dd->pcap_packet);
+	return(dd->headerPacket.packet);
 }
 
 bool PcapQueue_readFromInterfaceThread::_packet_completion(pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
@@ -5735,13 +5786,16 @@ bool PcapQueue_readFromInterfaceThread::_packet_completion(pcap_pkthdr *pcap_hea
 	return(true);
 }
 
-void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *dd) {
+void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *dd, u_int32_t caplen) {
 	if(dd->headerPacket.packet) {
 		dpdk_packet_completion(dd, &dd->headerPacket.header, dd->headerPacket.packet);
 	}
 	while(!dd->block ||
-	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->headerPacket.packet, pcap_snaplen) ||
-	      (dd->block->count && force_push)) {
+	      !dd->block->get_add_hp_pointers(&dd->pcap_header_plus2, &dd->headerPacket.packet, caplen)
+	      #if not DPDK_DEBUG_DISABLE_FORCE_FLUSH
+	      || (dd->block->count && force_push)
+	      #endif
+	      ) {
 		if(opt_dpdk_copy_packetbuffer) {
 			if(!dd->block) {
 				printf("wait for init first block\n");
@@ -5749,6 +5803,25 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process(pcap_dispatch_data *
 					USLEEP(1);
 				}
 			} else {
+				#if DPDK_DEBUG
+				cout << " * dpdk_packet_process -> push "
+				     << " size: " << dd->copy_block[dd->copy_block_active_index]->size
+				     << " count: " << dd->copy_block[dd->copy_block_active_index]->count
+				     << " set_active: " << (dd->block == dd->copy_block[dd->copy_block_active_index] ? "OK" : "FAILED")
+				     << " check: " << (dpdk_check_block(dd, 0, 0, true) ? "OK" : "FAILED")
+				     << endl;
+				unsigned _clc = 0;
+				for(unsigned i = 0; i < dd->block->count; i++) {
+					u_int32_t _cl = dd->block->get_header(i)->get_caplen();
+					if(_cl > 10000 && ((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore != 1) {
+						cout << dd->block->get_header(i)->get_caplen() << "|";
+						++_clc;
+					}
+				}
+				if(_clc) {
+					cout << endl;
+				}
+				#endif
 				dd->copy_block_full[dd->copy_block_active_index] = 1;
 				int copy_block_no_active_index = (dd->copy_block_active_index + 1) % 2;
 				if(dd->copy_block_full[copy_block_no_active_index]) {
@@ -5802,11 +5875,13 @@ void PcapQueue_readFromInterfaceThread::dpdk_packets_get_pointers(pcap_dispatch_
 	}
 	*count = 0;
 	for(unsigned i = start; i < max; i++) {
+		#if not DPDK_DEBUG_DISABLE_FORCE_FLUSH
 		if(dd->block->count && force_push) {
 			*filled = true;
 			break;
 		}
-		u_int32_t caplen = MIN(pkts_len[i], pcap_snaplen);
+		#endif
+		u_int32_t caplen = MIN(pkts_len[i], snaplen);
 		if(dd->block->get_add_hp_pointers((pcap_pkthdr_plus2**)&headers[i], (u_char**)&packets[i], caplen)) {
 			dd->block->inc_h(caplen);
 			++*count;
@@ -5861,12 +5936,14 @@ void PcapQueue_readFromInterfaceThread::dpdk_packet_process__mbufs_in_packetbuff
 
 bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd, unsigned pos, unsigned count, bool only_check) {
 	bool rslt = true;
+	unsigned start = 0;
 	unsigned limit = dd->block->count - count + pos;
-	for(unsigned i = 0; i < limit; i++) {
-		unsigned caplen = dd->block->get_header(i)->get_caplen();
-		if(!caplen && ((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore) {
+	for(unsigned i = start; i < limit; i++) {
+		if(((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore == 1) {
+			//cout << "skip ignore" << endl;
 			continue;
 		}
+		unsigned caplen = dd->block->get_header(i)->get_caplen();
 		if(i < dd->block->count - 1) {
 			if(caplen + sizeof(pcap_pkthdr_plus2) != (dd->block->offsets[i + 1] - dd->block->offsets[i])) {
 				rslt = false;
@@ -5902,6 +5979,9 @@ void PcapQueue_readFromInterfaceThread::threadFunction_blocks() {
 						dispatch_data.copy_block[i] = new FILE_LINE(0) pcap_block_store(pcap_block_store::plus2, opt_dpdk_mbufs_in_packetbuffer);
 						dispatch_data.copy_block_full[i] = false;
 						dispatch_data.copy_block[i]->init(true);
+						#if DPDK_DEBUG
+						dispatch_data.copy_block_block_orig[i] = dispatch_data.copy_block[i]->block;
+						#endif
 					}
 				} else if(opt_dpdk_prealloc_packetbuffer) {
 					pcap_block_store *next_free_block = NULL;
@@ -8149,6 +8229,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					_opt_pcap_queue_dequeu_window_length = opt_pcap_queue_dequeu_window_length / opt_pcap_queue_dequeu_window_length_div;
 				}
 				if(opt_pcap_queue_dequeu_method == 1) {
+					// TODO: is_ignore / maybe rather delete method 1 - not used
 					u_int64_t at = getTimeUS();
 					if(blockStore) {
 						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
@@ -8225,45 +8306,29 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 					if(blockStore) {
 						buffersControl.add__pb_used_dequeu_size(blockStore->getUseAllSize());
 						blockInfo[blockInfoCount].blockStore = blockStore;
-						blockInfo[blockInfoCount].count_processed = 0;
-						blockInfo[blockInfoCount].utime_first = getTimeUS(
-							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
-							(*blockStore)[0].header->header.ts.tv_sec, 
-							(*blockStore)[0].header->header.ts.tv_usec
-							#else
-							(*blockStore)[0].header->header_fix_size.ts_tv_sec, 
-							(*blockStore)[0].header->header_fix_size.ts_tv_usec
-							#endif
-							);
-						blockInfo[blockInfoCount].utime_last = getTimeUS(
-							#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
-							(*blockStore)[blockStore->count - 1].header->header.ts.tv_sec, 
-							(*blockStore)[blockStore->count - 1].header->header.ts.tv_usec
-							#else
-							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_sec, 
-							(*blockStore)[blockStore->count - 1].header->header_fix_size.ts_tv_usec
-							#endif
-							);
-						blockInfo[blockInfoCount].at = at;
-						if(!blockInfo_utime_first ||
-						   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
-							blockInfo_utime_first = blockInfo[blockInfoCount].utime_first;
+						if(blockInfo[blockInfoCount].set_first_last()) {
+							blockInfo[blockInfoCount].set_time_first_last();
+							blockInfo[blockInfoCount].at = at;
+							if(!blockInfo_utime_first ||
+							   blockInfo[blockInfoCount].utime_first < blockInfo_utime_first) {
+								blockInfo_utime_first = blockInfo[blockInfoCount].utime_first;
+							}
+							if(!blockInfo_utime_last ||
+							   blockInfo[blockInfoCount].utime_last > blockInfo_utime_last) {
+								blockInfo_utime_last = blockInfo[blockInfoCount].utime_last;
+							}
+							if(!blockInfo_at_first ||
+							   blockInfo[blockInfoCount].at < blockInfo_at_first) {
+								blockInfo_at_first = blockInfo[blockInfoCount].at;
+							}
+							if(!blockInfo_at_last ||
+							   blockInfo[blockInfoCount].at > blockInfo_at_last) {
+								blockInfo_at_last = blockInfo[blockInfoCount].at;
+							}
+							++blockInfoCount;
+							buffersControl.set_dequeu_time(blockInfo_utime_last > blockInfo_utime_first ?
+											(blockInfo_utime_last - blockInfo_utime_first) / 1000 : 0);
 						}
-						if(!blockInfo_utime_last ||
-						   blockInfo[blockInfoCount].utime_last > blockInfo_utime_last) {
-							blockInfo_utime_last = blockInfo[blockInfoCount].utime_last;
-						}
-						if(!blockInfo_at_first ||
-						   blockInfo[blockInfoCount].at < blockInfo_at_first) {
-							blockInfo_at_first = blockInfo[blockInfoCount].at;
-						}
-						if(!blockInfo_at_last ||
-						   blockInfo[blockInfoCount].at > blockInfo_at_last) {
-							blockInfo_at_last = blockInfo[blockInfoCount].at;
-						}
-						++blockInfoCount;
-						buffersControl.set_dequeu_time(blockInfo_utime_last > blockInfo_utime_first ?
-										(blockInfo_utime_last - blockInfo_utime_first) / 1000 : 0);
 					}
 					while(blockInfoCount &&
 					      (_opt_pcap_queue_dequeu_need_blocks ?
@@ -8287,20 +8352,19 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 							continue;
 						}
 						sBlockInfo *actBlockInfo = &blockInfo[minUtimeIndexBlockInfo];
-						hp_out.header = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header;
-						hp_out.packet = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].packet;
+						hp_out.header = (*actBlockInfo->blockStore)[actBlockInfo->pos_act].header;
+						hp_out.packet = (*actBlockInfo->blockStore)[actBlockInfo->pos_act].packet;
 						hp_out.block_store = actBlockInfo->blockStore;
-						hp_out.block_store_index = actBlockInfo->count_processed;
-						hp_out.dlt = (*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink ? 
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->dlink :
+						hp_out.block_store_index = actBlockInfo->pos_act;
+						hp_out.dlt = (*actBlockInfo->blockStore)[actBlockInfo->pos_act].header->dlink ? 
+								(*actBlockInfo->blockStore)[actBlockInfo->pos_act].header->dlink :
 								actBlockInfo->blockStore->dlink;
 						hp_out.sensor_id = actBlockInfo->blockStore->sensor_id;
 						hp_out.sensor_ip = actBlockInfo->blockStore->sensor_ip;
 						hp_out.block_store_locked = false;
 						hp_out.header_ip_last_offset = 0xFFFF;
 						this->processPacket(&hp_out);
-						++actBlockInfo->count_processed;
-						if(actBlockInfo->count_processed == actBlockInfo->blockStore->count) {
+						if(!actBlockInfo->inc_pos_act()) {
 							this->blockStoreTrashPush(actBlockInfo->blockStore);
 							buffersControl.sub__pb_used_dequeu_size(actBlockInfo->blockStore->getUseAllSize());
 							--blockInfoCount;
@@ -8330,15 +8394,7 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 								}
 							}
 						} else {
-							actBlockInfo->utime_first = getTimeUS(
-								#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_sec,
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header.ts.tv_usec
-								#else
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_sec,
-								(*actBlockInfo->blockStore)[actBlockInfo->count_processed].header->header_fix_size.ts_tv_usec
-								#endif
-								);
+							actBlockInfo->update_time_first();
 							blockInfo_utime_first = minUtime;
 						}
 						usleepCounter = 0;
@@ -8349,6 +8405,9 @@ void *PcapQueue_readFromFifo::writeThreadFunction(void *arg, unsigned int arg2) 
 			} else {
 				if(blockStore) {
 					for(size_t i = 0; i < blockStore->count && !TERMINATING; i++) {
+						if(blockStore->is_ignore(i)) {
+							continue;
+						}
 						++sumPacketsCounterOut[0];
 						hp_out.header = (*blockStore)[i].header;
 						hp_out.packet = (*blockStore)[i].packet;

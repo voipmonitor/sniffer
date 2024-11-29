@@ -32,17 +32,16 @@ enum eDpdkTypeUsleep {
 struct sDpdkHeaderPacket {
 	pcap_pkthdr header;
 	u_char *packet;
-	u_int32_t packet_maxlen;
 };
 
 struct sDpdkCallback {
 	void *packet_user;
 	sDpdkHeaderPacket *header_packet;
-	u_char* (*packet_allocation)(void *user, u_int32_t *packet_maxlen);
+	u_char* (*packet_allocation)(void *user, u_int32_t caplen);
 	void (*packet_completion)(void *user, pcap_pkthdr *pcap_header, u_char *packet);
-	void (*packet_completion_plus)(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
+	bool (*packet_completion_plus)(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
 				       void *checkProtocolData);
-	void (*packet_process)(void *user);
+	void (*packet_process)(void *user, u_int32_t caplen);
 	void (*packets_get_pointers)(void *user, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
 				     void **headers, void **packets, u_int32_t *count, bool *filled);
 	void (*packets_push)(void *user);

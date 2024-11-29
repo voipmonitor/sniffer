@@ -621,6 +621,9 @@ public:
 		volatile pcap_block_store *next_free_block; 
 		volatile pcap_block_store *last_full_block;
 		pcap_block_store *copy_block[2];
+		#if DPDK_DEBUG
+		void *copy_block_block_orig[2];
+		#endif
 		volatile int copy_block_full[2];
 		volatile int copy_block_active_index;
 		pcap_pkthdr_plus2 *pcap_header_plus2;
@@ -697,11 +700,11 @@ private:
 		dd->me->pcap_dispatch_handler(dd, header, packet);
 	}
 	void pcap_dispatch_handler(pcap_dispatch_data *dd, const struct pcap_pkthdr *header, const u_char *packet);
-	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t *packet_maxlen) {
+	inline static u_char* _dpdk_packet_allocation(void *user, u_int32_t caplen) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-		return(dd->me->dpdk_packet_allocation(dd, packet_maxlen));
+		return(dd->me->dpdk_packet_allocation(dd, caplen));
 	}
-	u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t *packet_maxlen);
+	u_char* dpdk_packet_allocation(pcap_dispatch_data *dd, u_int32_t caplen);
 	inline static void _dpdk_packet_completion(void *user, pcap_pkthdr *pcap_header, u_char *packet) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
 		dd->me->dpdk_packet_completion(dd, pcap_header, packet);
@@ -710,28 +713,38 @@ private:
 		if(_packet_completion(pcap_header, packet, dd->pcap_header_plus2, &dd->checkProtocolData)) {
 			sumPacketsSize[0] += pcap_header->caplen;
 			dd->block->inc_h(dd->pcap_header_plus2);
+		#if DPDK_DEBUG
+		} else {
+			cout << "bad packet" << endl;
+		#endif
 		}
 	}
-	inline static void _dpdk_packet_completion_plus(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
+	inline static bool _dpdk_packet_completion_plus(void *user, pcap_pkthdr *pcap_header, u_char *packet, void *pcap_header_plus2,
 							void *checkProtocolData) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-		dd->me->dpdk_packet_completion_plus(dd, pcap_header, packet, (pcap_pkthdr_plus2*)pcap_header_plus2,
-						    (PcapQueue_readFromInterface_base::sCheckProtocolData*)checkProtocolData);
+		return(dd->me->dpdk_packet_completion_plus(dd, pcap_header, packet, (pcap_pkthdr_plus2*)pcap_header_plus2,
+							   (PcapQueue_readFromInterface_base::sCheckProtocolData*)checkProtocolData));
 	}
-	inline void dpdk_packet_completion_plus(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
+	inline bool dpdk_packet_completion_plus(pcap_dispatch_data *dd, pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
 						PcapQueue_readFromInterface_base::sCheckProtocolData *checkProtocolData) {
 		if(!_packet_completion(pcap_header, packet, pcap_header_plus2, checkProtocolData)) {
 			pcap_header_plus2->clear_ext();
 			pcap_header_plus2->ignore = true;
+			#if DPDK_DEBUG
+			cout << "bad packet" << endl;
+			#endif
+			return(false);
+
 		}
+		return(true);
 	}
 	bool _packet_completion(pcap_pkthdr *pcap_header, u_char *packet, pcap_pkthdr_plus2 *pcap_header_plus2,
 				sCheckProtocolData *checkProtocolData);
-	inline static void _dpdk_packet_process(void *user) {
+	inline static void _dpdk_packet_process(void *user, u_int32_t caplen) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
-		dd->me->dpdk_packet_process(dd);
+		dd->me->dpdk_packet_process(dd, caplen);
 	}
-	void dpdk_packet_process(pcap_dispatch_data *dd);
+	void dpdk_packet_process(pcap_dispatch_data *dd, u_int32_t caplen);
 	inline static void _dpdk_packets_get_pointers(void *user, u_int32_t start, u_int32_t max, u_int32_t *pkts_len, u_int32_t snaplen,
 						      void **headers, void **packets, u_int32_t *count, bool *filled) {
 		PcapQueue_readFromInterfaceThread::pcap_dispatch_data *dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)user;
@@ -746,17 +759,16 @@ private:
 	}
 	inline void dpdk_packets_push(pcap_dispatch_data *dd) {
 		#if DPDK_DEBUG
-		cout << " * push dpdk_packets_push "
+		cout << " * dpdk_packets_push "
 		     << " size: " << dd->copy_block[dd->copy_block_active_index]->size
-		     << " offsets_size: " << dd->copy_block[dd->copy_block_active_index]->offsets_size
 		     << " count: " << dd->copy_block[dd->copy_block_active_index]->count
 		     << " set_active: " << (dd->block == dd->copy_block[dd->copy_block_active_index] ? "OK" : "FAILED")
-		     << " check: " << (dpdk_check_block(dd, 0, 0) ? "OK" : "FAILED")
+		     << " check: " << (dpdk_check_block(dd, 0, 0, true) ? "OK" : "FAILED")
 		     << endl;
 		unsigned _clc = 0;
 		for(unsigned i = 0; i < dd->block->count; i++) {
 			u_int32_t _cl = dd->block->get_header(i)->get_caplen();
-			if(_cl > 10000) {
+			if(_cl > 10000 && ((pcap_pkthdr_plus2*)dd->block->get_header(i))->ignore != 1) {
 				cout << dd->block->get_header(i)->get_caplen() << "|";
 				++_clc;
 			}
@@ -948,10 +960,67 @@ public:
 	};
 	struct sBlockInfo {
 		pcap_block_store *blockStore;
-		size_t count_processed;
+		size_t pos_first;
+		size_t pos_last;
+		size_t pos_act;
 		u_int64_t utime_first;
 		u_int64_t utime_last;
 		u_int64_t at;
+		inline bool set_first_last() {
+			pos_first = 0;
+			while(pos_first < blockStore->count && blockStore->is_ignore(pos_first)) {
+				++pos_first;
+			}
+			if(pos_first == blockStore->count) {
+				return(false);
+			}
+			pos_last = blockStore->count - 1;
+			while(pos_last > pos_first && blockStore->is_ignore(pos_last)) {
+				--pos_last;
+			}
+			pos_act = pos_first;
+			return(true);
+		}
+		inline void set_time_first_last() {
+			utime_first = getTimeUS(
+				#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+				(*blockStore)[pos_first].header->header.ts.tv_sec, 
+				(*blockStore)[pos_first].header->header.ts.tv_usec
+				#else
+				(*blockStore)[pos_first].header->header_fix_size.ts_tv_sec, 
+				(*blockStore)[pos_first].header->header_fix_size.ts_tv_usec
+				#endif
+				);
+			utime_last = getTimeUS(
+				#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+				(*blockStore)[pos_last].header->header.ts.tv_sec, 
+				(*blockStore)[pos_last].header->header.ts.tv_usec
+				#else
+				(*blockStore)[pos_last].header->header_fix_size.ts_tv_sec, 
+				(*blockStore)[pos_last].header->header_fix_size.ts_tv_usec
+				#endif
+				);
+		}
+		inline void update_time_first() {
+			utime_first = getTimeUS(
+				#if PCAP_QUEUE_PCAP_HEADER_FORCE_STD
+				(*blockStore)[pos_act].header->header.ts.tv_sec,
+				(*blockStore)[pos_act].header->header.ts.tv_usec
+				#else
+				(*blockStore)[pos_act].header->header_fix_size.ts_tv_sec,
+				(*blockStore)[pos_act].header->header_fix_size.ts_tv_usec
+				#endif
+				);
+		}
+		inline bool inc_pos_act() {
+			while(pos_act < pos_last) {
+				++pos_act;
+				if(!blockStore->is_ignore(pos_act)) {
+					return(true);
+				}
+			}
+			return(false);
+		}
 	};
 public:
 	PcapQueue_readFromFifo(const char *nameQueue, const char *fileStoreFolder);

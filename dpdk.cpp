@@ -268,18 +268,26 @@ static int rte_worker_slave_thread(void *arg);
 #if WORKER2_THREAD_SUPPORT
 static int rte_worker2_thread(void *arg);
 #endif
-static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf);
 static inline void dpdk_process_packet(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us);
 static inline void dpdk_process_packet_2__std(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
 					      #if WORKER2_THREAD_SUPPORT
 					      ,bool free_mbuff
 					      #endif
 					      );
+static inline void dpdk_process_packet_2__std_2(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
+						#if WORKER2_THREAD_SUPPORT
+						,bool free_mbuff
+						#endif
+						);
 static inline void dpdk_process_packet_2__mbufs_in_packetbuffer(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
 								#if WORKER2_THREAD_SUPPORT
 								,bool free_mbuff
 								#endif
 								);
+static inline void dpdk_copy_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf);
+static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf);
+static inline u_int32_t get_len(rte_mbuf *mbuf);
+static inline u_int32_t get_caplen(u_int32_t len, sDpdk *dpdk);
 static inline u_int64_t get_timestamp_us(sDpdk *dpdk);
 static int dpdk_pre_init(string *error_str);
 static uint16_t portid_by_device(const char * device);
@@ -1192,6 +1200,8 @@ static int rte_read_thread(void *arg) {
 }
 
 
+//PcapQueue_readFromInterfaceThread::pcap_dispatch_data *_dd;
+
 static int rte_worker_thread(void *arg) {
 	sDpdk *dpdk = (sDpdk*)arg;
 	dpdk->rte_worker_thread_pid = get_unix_tid();
@@ -1203,7 +1213,8 @@ static int rte_worker_thread(void *arg) {
 				      ) =
 		opt_dpdk_mbufs_in_packetbuffer ?
 		 dpdk_process_packet_2__mbufs_in_packetbuffer :
-		 dpdk_process_packet_2__std;
+		 //dpdk_process_packet_2__std;
+		 dpdk_process_packet_2__std_2;
 	uint16_t nb_rx;
 	pcap_pkthdr header;
 	unsigned caplen;
@@ -1211,77 +1222,108 @@ static int rte_worker_thread(void *arg) {
 	dpdk->worker_alloc();
 	#if DPDK_DEBUG
 	bool enable_slave = false;
+	bool per_1_packet = true;
+	u_char *last_pb_headers = NULL;
+	unsigned last_caplen = 0;
+	u_int64_t last_timestamp_us = 0;
+	PcapQueue_readFromInterfaceThread::pcap_dispatch_data *_dd = (PcapQueue_readFromInterfaceThread::pcap_dispatch_data*)dpdk->config.callback.packet_user;
 	#endif
+	u_int32_t batch_count = 0;
 	while(!dpdk->terminating) {
 		nb_rx = rte_ring_dequeue_burst(dpdk->rx_to_worker_ring, (void**)dpdk->pkts_burst, MAX_PKT_BURST, NULL);
 		if(likely(nb_rx)) {
+			//cout << " * " << nb_rx << endl;
 			#if not DPDK_TIMESTAMP_IN_MBUF
 			dpdk->timestamp_us = get_timestamp_us(dpdk);
 			#endif
+			//if(false) {
 			if(ENABLE_WORKER_SLAVE && nb_rx > 20) {
 				for(uint16_t i = 0; i < nb_rx; i++) {
-					if(dpdk->pkts_burst[i]->nb_segs == 1) {
-						dpdk->pkts_len[i] = rte_pktmbuf_pkt_len(dpdk->pkts_burst[i]);
-					} else {
-						dpdk->pkts_len[i] = 0;
-						rte_mbuf *mbuf = dpdk->pkts_burst[i];
-						while(mbuf) {
-							dpdk->pkts_len[i] += rte_pktmbuf_pkt_len(mbuf);
-							mbuf = mbuf->next;
-						}
-					}
+					dpdk->pkts_len[i] = get_len(dpdk->pkts_burst[i]);
 				}
 				uint16_t pkts_i = 0;
 				while(pkts_i < nb_rx) {
 					__SYNC_SET_TO(dpdk->worker_slave_state, 0);
-					u_int32_t batch_count = 0;
 					bool filled = false;
-					dpdk->config.callback.packets_get_pointers(dpdk->config.callback.packet_user, pkts_i, nb_rx, dpdk->pkts_len, dpdk->config.snapshot,
-										   dpdk->pb_headers, dpdk->pb_packets, &batch_count, &filled);
-					dpdk->batch_start = pkts_i;
-					dpdk->batch_count = batch_count;
 					#if DPDK_DEBUG
+					if(per_1_packet) {
+						dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, dpdk->pkts_len[pkts_i]);
+						dpdk->pb_headers[pkts_i] = (void*)_dd->pcap_header_plus2; 
+						dpdk->pb_packets[pkts_i] = (void*)_dd->headerPacket.packet;
+						dpdk->batch_start = pkts_i;
+						dpdk->batch_count = 1;
+					} else {
+					#endif
+						dpdk->config.callback.packets_get_pointers(dpdk->config.callback.packet_user, pkts_i, nb_rx, dpdk->pkts_len, dpdk->config.snapshot,
+											   dpdk->pb_headers, dpdk->pb_packets, &batch_count, &filled);
+						dpdk->batch_start = pkts_i;
+						dpdk->batch_count = batch_count;
+					#if DPDK_DEBUG
+					}
 					if(enable_slave) {
 					#endif
 						__SYNC_SET_TO(dpdk->worker_slave_state, 1);
 					#if DPDK_DEBUG
 					}
+					if(dpdk->batch_count > 0) {
 					#endif
-					for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
-						if(!(i % 2)
-						#if DPDK_DEBUG
-						|| !enable_slave
-						#endif
-						) {
-							rte_mbuf *mbuff = dpdk->pkts_burst[i];
-							rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
-							caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
-							if(mbuff->nb_segs == 1) {
-								rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), caplen);
-							} else {
-								dpdk_gather_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
-							}
-							rte_pktmbuf_free(mbuff);
-							u_int64_t _timestamp_us = 
-										  #if DPDK_TIMESTAMP_IN_MBUF == 1
-										  *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*);
-										  #elif DPDK_TIMESTAMP_IN_MBUF == 2
-										  *(u_int64_t*)&pkts_burst[i]->dynfield1[0];
-										  #else
-										  dpdk->timestamp_us;
-										  #endif
-							header.ts.tv_sec = _timestamp_us / 1000000;
-							header.ts.tv_usec = _timestamp_us % 1000000;
-							header.caplen = caplen;
-							header.len = dpdk->pkts_len[i];
-							dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
-												     &checkProtocolData);
+						for(unsigned i = dpdk->batch_start; i < dpdk->batch_start + dpdk->batch_count; i++) {
+							if(!(i % 2)
 							#if DPDK_DEBUG
-							dpdk->config.callback.check_block(dpdk->config.callback.packet_user, i - pkts_i, batch_count);
+							|| !enable_slave
 							#endif
+							) {
+								rte_mbuf *mbuff = dpdk->pkts_burst[i];
+								rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+								caplen = get_caplen(dpdk->pkts_len[i], dpdk);
+								dpdk_copy_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
+								rte_pktmbuf_free(mbuff);
+								u_int64_t _timestamp_us = 
+											  #if DPDK_TIMESTAMP_IN_MBUF == 1
+											  *RTE_MBUF_DYNFIELD(mbuff, timestamp_dynfield_offset, u_int64_t*);
+											  #elif DPDK_TIMESTAMP_IN_MBUF == 2
+											  *(u_int64_t*)&mbuff->dynfield1[0];
+											  #else
+											  dpdk->timestamp_us;
+											  #endif
+								#if DPDK_DEBUG
+								if(_timestamp_us < last_timestamp_us) {
+									cout << "ERR timestamp " << (last_timestamp_us - _timestamp_us) << endl;
+									cout << _dd->block->count << " / " << pkts_i << " / " << nb_rx << endl;
+								}
+								#endif
+								header.ts.tv_sec = _timestamp_us / 1000000;
+								header.ts.tv_usec = _timestamp_us % 1000000;
+								header.caplen = caplen;
+								header.len = dpdk->pkts_len[i];
+								#if DPDK_DEBUG
+								/*if(last_pb_headers &&
+								   ((u_char*)dpdk->pb_headers[i] - last_pb_headers != last_caplen + 58 ||
+								   (u_char*)dpdk->pb_packets[i] - (u_char*)dpdk->pb_headers[i] != 58)) {
+									cout << "ERR offset" << endl;
+									//abort();
+								}*/
+								//bool ok = 
+								#endif
+								dpdk->config.callback.packet_completion_plus(dpdk->config.callback.packet_user, &header, (u_char*)dpdk->pb_packets[i], (u_char*)dpdk->pb_headers[i],
+													     &checkProtocolData);
+								#if DPDK_DEBUG
+								if(per_1_packet) {
+									//if(ok) {
+										_dd->block->inc_h(caplen);
+									//}
+								}
+								last_pb_headers = (u_char*)dpdk->pb_headers[i];
+								last_caplen = caplen;
+								last_timestamp_us = _timestamp_us;
+								//dpdk->config.callback.check_block(dpdk->config.callback.packet_user, i - pkts_i, batch_count);
+								#endif
+							}
 						}
-					}
 					#if DPDK_DEBUG
+					} else {
+						filled = true;
+					}
 					if(enable_slave) {
 					#endif
 						while(dpdk->worker_slave_state != 2) {
@@ -1302,18 +1344,22 @@ static int rte_worker_thread(void *arg) {
 					#endif
 					if(filled) {
 						dpdk->config.callback.packets_push(dpdk->config.callback.packet_user);
+						#if DPDK_DEBUG
 						//static int _cf = 0;
 						//cout << "push block " << (++_cf) << endl;
+						last_pb_headers = NULL;
+						#endif
 					}
-					pkts_i += batch_count;
+					pkts_i += dpdk->batch_count;
 				}
 			} else {
 				for(uint16_t i = 0; i < nb_rx; i++) {
-					dpdk_process_packet_2(dpdk, dpdk->pkts_burst[i], 
+					rte_mbuf *mbuff = dpdk->pkts_burst[i];
+					dpdk_process_packet_2(dpdk, mbuff, 
 							      #if DPDK_TIMESTAMP_IN_MBUF == 1
-							      *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*)
+							      *RTE_MBUF_DYNFIELD(mbuff, timestamp_dynfield_offset, u_int64_t*)
 							      #elif DPDK_TIMESTAMP_IN_MBUF == 2
-							      *(u_int64_t*)&pkts_burst[i]->dynfield1[0]
+							      *(u_int64_t*)&mbuff->dynfield1[0]
 							      #else
 							      dpdk->timestamp_us
 							      #endif
@@ -1328,7 +1374,7 @@ static int rte_worker_thread(void *arg) {
 				u_int16_t nb_rx_enqueue = rte_ring_enqueue_burst(dpdk->worker_to_worker2_ring, (void *const *)pkts_burst, nb_rx, NULL);
 				if(nb_rx_enqueue < nb_rx) {
 					for(u_int16_t i = nb_rx_enqueue; i < nb_rx; i++) {
-						rte_pktmbuf_free(pkts_burst[i]);
+						rte_pktmbuf_free(dpdk->pkts_burst[i]);
 					}
 					dpdk->ring2_full_drop += nb_rx - nb_rx_enqueue;
 				}
@@ -1372,18 +1418,14 @@ static int rte_worker_slave_thread(void *arg) {
 			if((i % 2)) {
 				rte_mbuf *mbuff = dpdk->pkts_burst[i];
 				rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
-				caplen = MIN(dpdk->pkts_len[i], (u_int32_t)dpdk->config.snapshot);
-				if(mbuff->nb_segs == 1) {
-					rte_memcpy(dpdk->pb_packets[i], rte_pktmbuf_mtod(mbuff, void*), caplen);
-				} else {
-					dpdk_gather_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
-				}
+				caplen = get_caplen(dpdk->pkts_len[i], dpdk);
+				dpdk_copy_data((u_char*)dpdk->pb_packets[i], caplen, mbuff);
 				rte_pktmbuf_free(mbuff);
 				u_int64_t _timestamp_us = 
 							  #if DPDK_TIMESTAMP_IN_MBUF == 1
 							  *RTE_MBUF_DYNFIELD(dpdk->pkts_burst[i], timestamp_dynfield_offset, u_int64_t*);
 							  #elif DPDK_TIMESTAMP_IN_MBUF == 2
-							  *(u_int64_t*)&pkts_burst[i]->dynfield1[0];
+							  *(u_int64_t*)&mbuff->dynfield1[0];
 							  #else
 							  dpdk->timestamp_us;
 							  #endif
@@ -1437,27 +1479,22 @@ static inline void dpdk_process_packet(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t t
 	pcap_pkthdr pcap_header;
 	pcap_header.ts.tv_sec = timestamp_us / 1000000;
 	pcap_header.ts.tv_usec = timestamp_us % 1000000;
-	uint32_t pkt_len = rte_pktmbuf_pkt_len(mbuff);
-	uint32_t caplen = pkt_len < (uint32_t)dpdk->config.snapshot ? pkt_len: (uint32_t)dpdk->config.snapshot;
+	uint32_t pkt_len = get_len(mbuff);
+	uint32_t caplen = get_caplen(pkt_len, dpdk);
 	pcap_header.caplen = caplen;
 	pcap_header.len = pkt_len;
 	// volatile prefetch
 	rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
-	u_int32_t packet_maxlen;
 	#if DEBUG_CYCLES
 	dpdk->cycles[4].setEnd();
 	dpdk->cycles[5].setBegin();
 	#endif
-	u_char *packet = dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, &packet_maxlen);
+	u_char *packet = dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen);
 	#if DEBUG_CYCLES
 	dpdk->cycles[5].setEnd();
 	dpdk->cycles[6].setBegin();
 	#endif
-	if(mbuff->nb_segs == 1) {
-                rte_memcpy(packet, rte_pktmbuf_mtod(mbuff, void*), caplen);
-        } else {
-		dpdk_gather_data(packet, packet_maxlen, mbuff);
-	}
+	dpdk_copy_data(packet, caplen, mbuff);
 	#if DEBUG_CYCLES
 	dpdk->cycles[6].setEnd();
 	dpdk->cycles[7].setBegin();
@@ -1480,7 +1517,9 @@ static inline void dpdk_process_packet_2__std(sDpdk *dpdk, rte_mbuf *mbuff, u_in
 	dpdk->cycles[3].setBegin();
 	dpdk->cycles[4].setBegin();
 	#endif
-	dpdk->config.callback.packet_process(dpdk->config.callback.packet_user);
+	uint32_t pkt_len = get_len(mbuff);
+	uint32_t caplen = get_caplen(pkt_len, dpdk);
+	dpdk->config.callback.packet_process(dpdk->config.callback.packet_user, caplen);
 	#if DEBUG_CYCLES
 	dpdk->cycles[4].setEnd();
 	dpdk->cycles[5].setBegin();
@@ -1488,17 +1527,11 @@ static inline void dpdk_process_packet_2__std(sDpdk *dpdk, rte_mbuf *mbuff, u_in
 	sDpdkHeaderPacket *hp = dpdk->config.callback.header_packet;
 	hp->header.ts.tv_sec = timestamp_us / 1000000;
 	hp->header.ts.tv_usec = timestamp_us % 1000000;
-	uint32_t pkt_len = rte_pktmbuf_pkt_len(mbuff);
-	uint32_t caplen = pkt_len < (uint32_t)dpdk->config.snapshot ? pkt_len: (uint32_t)dpdk->config.snapshot;
 	hp->header.caplen = caplen;
 	hp->header.len = pkt_len;
 	// volatile prefetch
 	rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
-	if(mbuff->nb_segs == 1) {
-                rte_memcpy(hp->packet, rte_pktmbuf_mtod(mbuff, void*), caplen);
-        } else {
-		dpdk_gather_data(hp->packet, hp->packet_maxlen, mbuff);
-	}
+	dpdk_copy_data(hp->packet, caplen, mbuff);
 	#if WORKER2_THREAD_SUPPORT
 	if(likely(free_mbuff))
 	#endif
@@ -1512,6 +1545,32 @@ static inline void dpdk_process_packet_2__std(sDpdk *dpdk, rte_mbuf *mbuff, u_in
 }
 
 
+static inline void dpdk_process_packet_2__std_2(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
+						#if WORKER2_THREAD_SUPPORT
+						,bool free_mbuff
+						#endif
+						) {
+	uint32_t pkt_len = get_len(mbuff);
+	uint32_t caplen = get_caplen(pkt_len, dpdk);
+	dpdk->config.callback.packet_allocation(dpdk->config.callback.packet_user, caplen);
+	sDpdkHeaderPacket *hp = dpdk->config.callback.header_packet;
+	hp->header.ts.tv_sec = timestamp_us / 1000000;
+	hp->header.ts.tv_usec = timestamp_us % 1000000;
+	hp->header.caplen = caplen;
+	hp->header.len = pkt_len;
+	// volatile prefetch
+	rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
+	dpdk_copy_data(hp->packet, caplen, mbuff);
+	dpdk->config.callback.packet_completion(dpdk->config.callback.packet_user, &hp->header, hp->packet);
+	#if WORKER2_THREAD_SUPPORT
+	if(likely(free_mbuff))
+	#endif
+	{
+		rte_pktmbuf_free(mbuff);
+	}
+}
+
+
 static inline void dpdk_process_packet_2__mbufs_in_packetbuffer(sDpdk *dpdk, rte_mbuf *mbuff, u_int64_t timestamp_us
 								#if WORKER2_THREAD_SUPPORT
 								,bool free_mbuff
@@ -1520,14 +1579,22 @@ static inline void dpdk_process_packet_2__mbufs_in_packetbuffer(sDpdk *dpdk, rte
 	pcap_pkthdr pcap_header;
 	pcap_header.ts.tv_sec = timestamp_us / 1000000;
 	pcap_header.ts.tv_usec = timestamp_us % 1000000;
-	uint32_t pkt_len = rte_pktmbuf_pkt_len(mbuff);
-	uint32_t caplen = pkt_len < (uint32_t)dpdk->config.snapshot ? pkt_len: (uint32_t)dpdk->config.snapshot;
+	uint32_t pkt_len = get_len(mbuff);
+	uint32_t caplen = get_caplen(pkt_len, dpdk);
 	pcap_header.caplen = caplen;
 	pcap_header.len = pkt_len;
 	rte_prefetch0(rte_pktmbuf_mtod(mbuff, void *));
 	dpdk->config.callback.packet_process__mbufs_in_packetbuffer(dpdk->config.callback.packet_user, &pcap_header, mbuff);
 }
 
+
+static inline void dpdk_copy_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf) {
+	if(mbuf->nb_segs == 1) {
+                rte_memcpy(data, rte_pktmbuf_mtod(mbuf, void*), maxlen);
+        } else {
+		dpdk_gather_data(data, maxlen, mbuf);
+	}
+}
 
 static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, struct rte_mbuf *mbuf) {
 	uint32_t total_len = 0;
@@ -1537,6 +1604,24 @@ static inline uint32_t dpdk_gather_data(unsigned char *data, uint32_t maxlen, st
 		mbuf = mbuf->next;
 	}
 	return total_len;
+}
+
+
+static inline u_int32_t get_len(rte_mbuf *mbuf) {
+	if(mbuf->nb_segs == 1) {
+		return(rte_pktmbuf_pkt_len(mbuf));
+	} else {
+		u_int32_t len = 0;
+		while(mbuf) {
+			len += rte_pktmbuf_pkt_len(mbuf);
+			mbuf = mbuf->next;
+		}
+		return(len);
+	}
+}
+
+static inline u_int32_t get_caplen(u_int32_t len, sDpdk *dpdk) {
+	return(MIN(len, (uint32_t)dpdk->config.snapshot));
 }
 
 
