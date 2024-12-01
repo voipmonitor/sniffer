@@ -372,7 +372,9 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 	if(this->full) {
 		return(false);
 	}
-	if((this->size + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus)) + header->get_caplen()) > opt_pcap_queue_block_max_size ||
+	u_int32_t size_header_a = (hm == plus2 ? PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE : sizeof(pcap_pkthdr_plus));
+	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(header->get_caplen());
+	if((this->size + size_header_a + size_packet_a) > opt_pcap_queue_block_max_size ||
 	   (!(this->count % 20) && this->size && getTimeMS_rdtsc() > (this->timestampMS + opt_pcap_queue_block_max_time_ms))) {
 		this->full = true;
 		return(false);
@@ -429,13 +431,13 @@ bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memc
 			header, NULL,
 			(hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus)),
 			__FILE__, __LINE__);
-	this->size += (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+	this->size += size_header_a;
 	memcpy_heapsafe(this->block + this->size, this->block,
 			packet, NULL,
 			(memcpy_packet_size ? memcpy_packet_size : header->get_caplen()),
 			__FILE__, __LINE__);
-	this->size += header->get_caplen();
-	this->size_packets += header->get_caplen();
+	this->size += size_packet_a;
+	this->size_packets += size_packet_a;
 	++this->count;
 	return(true);
 }
@@ -473,8 +475,10 @@ void pcap_block_store::inc_h(u_int32_t caplen) {
 		#endif
 	}
 	this->offsets[this->count] = this->size;
-	this->size += sizeof(pcap_pkthdr_plus2) + caplen;
-	this->size_packets += caplen;
+	u_int32_t size_header_a = PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE;
+	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(caplen);
+	this->size += size_header_a + size_packet_a;
+	this->size_packets += size_packet_a;
 	++this->count;
 }
 
@@ -501,12 +505,14 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 		#endif
 		#endif
 	}
+	u_int32_t size_header_a = PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE;
+	u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(min_size_for_packet);
 	#if DPDK_DEBUG
 	static unsigned _c = 0;
 	bool log = false;
-	if(log) cout << "B" << (++_c) << ":" << this->size << "/+" << min_size_for_packet;
+	if(log) cout << "B" << (++_c) << ":" << this->size << "/+" << size_packet_a;
 	#endif
-	if(this->size + sizeof(pcap_pkthdr_plus2) + min_size_for_packet > opt_pcap_queue_block_max_size) {
+	if(this->size + size_header_a + size_packet_a > opt_pcap_queue_block_max_size) {
 		#if DPDK_DEBUG
 		if(log) cout << " > " << opt_pcap_queue_block_max_size << " FALSE" << endl;
 		#endif
@@ -517,7 +523,7 @@ bool pcap_block_store::get_add_hp_pointers(pcap_pkthdr_plus2 **header, u_char **
 	if(log) cout << ":OK|" << flush;
 	#endif
 	*header = (pcap_pkthdr_plus2*)(this->block + this->size);
-	*packet = (u_char*)(this->block + this->size + sizeof(pcap_pkthdr_plus2));
+	*packet = (u_char*)(this->block + this->size + size_header_a);
 	return(true);
 }
 
@@ -5944,20 +5950,22 @@ bool PcapQueue_readFromInterfaceThread::dpdk_check_block(pcap_dispatch_data *dd,
 			continue;
 		}
 		unsigned caplen = dd->block->get_header(i)->get_caplen();
+		u_int32_t size_header_a = PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE;
+		u_int32_t size_packet_a = PACKETBUFFER_ALIGN_PCAP_SIZE(caplen);
 		if(i < dd->block->count - 1) {
-			if(caplen + sizeof(pcap_pkthdr_plus2) != (dd->block->offsets[i + 1] - dd->block->offsets[i])) {
+			if(size_packet_a + size_header_a != (dd->block->offsets[i + 1] - dd->block->offsets[i])) {
 				rslt = false;
 				if(!only_check) {
 					cout << " * dpdk_check_block "
-					     << "bad caplen/offset " << i << "/" << caplen << "/" << (dd->block->offsets[i + 1] - dd->block->offsets[i]) << endl;
+					     << "bad caplen/offset " << i << "/" << size_packet_a << "/" << (dd->block->offsets[i + 1] - dd->block->offsets[i]) << endl;
 				}
 			}
 		} else {
-			if(caplen + sizeof(pcap_pkthdr_plus2) != (dd->block->size - dd->block->offsets[i])) {
+			if(size_packet_a + size_header_a != (dd->block->size - dd->block->offsets[i])) {
 				rslt = false;
 				if(!only_check) {
 					cout << " * dpdk_check_block "
-					     << "bad caplen/size " << i << "/" << caplen << "/" << (dd->block->size - dd->block->offsets[i]) << endl;
+					     << "bad caplen/size " << i << "/" << size_packet_a << "/" << (dd->block->size - dd->block->offsets[i]) << endl;
 				}
 			}
 		}

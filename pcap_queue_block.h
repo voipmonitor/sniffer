@@ -21,6 +21,13 @@
 #define FLAG_AUDIOCODES 1
 #define FLAG_FRAGMENTED 2
 
+#if PACKETBUFFER_ALIGNMENT
+#define PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE ((sizeof(pcap_pkthdr_plus2) + PACKETBUFFER_ALIGNMENT - 1) & ~(PACKETBUFFER_ALIGNMENT - 1))
+#define PACKETBUFFER_ALIGN_PCAP_SIZE(size) (((size) + PACKETBUFFER_ALIGNMENT - 1) & ~(PACKETBUFFER_ALIGNMENT - 1))
+#else
+#define PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE (sizeof(pcap_pkthdr_plus2))
+#define PACKETBUFFER_ALIGN_PCAP_SIZE(size) (size)
+#endif
 
 extern int opt_enable_ss7;
 extern int opt_enable_http;
@@ -327,7 +334,7 @@ struct pcap_block_store {
 				headerPcap.packet = this->dpdk_data[indexItem].packet;
 			} else {
 				headerPcap.header = (pcap_pkthdr_plus*)(this->block + this->offsets[indexItem]);
-				headerPcap.packet = (u_char*)headerPcap.header + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+				headerPcap.packet = (u_char*)headerPcap.header + (hm == plus2 ? PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE : sizeof(pcap_pkthdr_plus));
 			}
 		}
 		return(headerPcap);
@@ -340,7 +347,7 @@ struct pcap_block_store {
 	inline u_char* get_packet(size_t indexItem) {
 		return(dpdk ?
 			this->dpdk_data[indexItem].packet :
-			(u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus))));
+			(u_char*)(this->block + this->offsets[indexItem] + (hm == plus2 ? PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE : sizeof(pcap_pkthdr_plus))));
 	}
 	inline u_char* get_space_after_packet(size_t indexItem) {
 		return(get_packet(indexItem) + get_header(indexItem)->get_caplen());
@@ -383,7 +390,7 @@ struct pcap_block_store {
 		if(size_packets) {
 			return(size_packets);
 		}
-		size_t size_headers = count * (hm == plus2 ? sizeof(pcap_pkthdr_plus2) : sizeof(pcap_pkthdr_plus));
+		size_t size_headers = count * (hm == plus2 ? PACKETBUFFER_ALIGN_PCAP_PKTHDR_PLUS2_SIZE : sizeof(pcap_pkthdr_plus));
 		if(size > size_headers) {
 			return(size - size_headers);
 		}
