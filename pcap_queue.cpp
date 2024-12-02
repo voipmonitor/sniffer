@@ -334,6 +334,14 @@ void pcap_block_store::init(bool prefetch) {
 		}
 		this->offsets_size = _opt_pcap_queue_block_offset_init_size;
 		this->offsets = new FILE_LINE(0) uint32_t[this->offsets_size];
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+		#endif
+		#endif
 	}
 }
 
@@ -364,8 +372,23 @@ void pcap_block_store::copy(pcap_block_store *from) {
 		}
 		offsets = new FILE_LINE(0) uint32_t[from->offsets_size];
 		offsets_size = from->offsets_size;
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE
+		delete [] this->_sync_packets_lock;
+		this->_sync_packets_lock = new FILE_LINE(0) volatile int8_t[this->offsets_size];
+		#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+		delete [] this->_sync_packets_flag;
+		this->_sync_packets_flag = new FILE_LINE(0) volatile int8_t[this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH];
+		#endif
+		#endif
 	}
 	dpdk_memcpy(offsets, from->offsets, count * sizeof(uint32_t));
+	_sync_packet_lock = 0;
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE
+	memset((void*)this->_sync_packets_lock, 0, sizeof(int8_t) * this->offsets_size);
+	#if DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH
+	memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
+	#endif
+	#endif
 }
 
 bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size) {
