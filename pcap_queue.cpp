@@ -7665,6 +7665,8 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 	} else {
 		this->mainThreadId = tid;
 	}
+	vmIP _socketClientIP;
+	vmPort _socketClientPort;
 	if(VERBOSE || DEBUG_VERBOSE) {
 		ostringstream outStr;
 		outStr << "start thread t1 (" << this->nameQueue;
@@ -7672,7 +7674,9 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			if(arg2 == (unsigned int)-1) {
 				outStr << " socket server";
 			} else {
-				outStr << " " << this->packetServerConnections[arg2]->socketClientIP.getString() << ":" << this->packetServerConnections[arg2]->socketClientPort.getPort();
+				_socketClientIP = this->packetServerConnections[arg2]->socketClientIP;
+				_socketClientPort = this->packetServerConnections[arg2]->socketClientPort;
+				outStr << " " << _socketClientIP.getString() << ":" << _socketClientPort.getPort();
 			}
 		}
 		outStr << ") /" << tid << endl;
@@ -8005,7 +8009,7 @@ void *PcapQueue_readFromFifo::threadFunction(void *arg, unsigned int arg2) {
 			if(arg2 == (unsigned int)-1) {
 				outStr << " socket server";
 			} else {
-				outStr << " " << this->packetServerConnections[arg2]->socketClientIP.getString() << ":" << this->packetServerConnections[arg2]->socketClientPort.getPort();
+				outStr << " " << _socketClientIP.getString() << ":" << _socketClientPort.getPort();
 			}
 		}
 		outStr << ") /" << tid << endl;
