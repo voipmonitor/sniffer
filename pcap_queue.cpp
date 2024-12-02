@@ -342,6 +342,7 @@ void pcap_block_store::init(bool prefetch) {
 		memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 		#endif
 		#endif
+		timestampMS = getTimeMS_rdtsc();
 	}
 }
 
@@ -356,6 +357,7 @@ void pcap_block_store::clear(bool prefetch) {
 			offset += 128;
 		}
 	}
+	timestampMS = getTimeMS_rdtsc();
 }
 
 void pcap_block_store::copy(pcap_block_store *from) {
@@ -389,6 +391,7 @@ void pcap_block_store::copy(pcap_block_store *from) {
 	memset((void*)this->_sync_packets_flag, 0, sizeof(int8_t) * this->offsets_size * DEBUG_SYNC_PCAP_BLOCK_STORE_FLAGS_LENGTH);
 	#endif
 	#endif
+	timestampMS = getTimeMS_rdtsc();
 }
 
 bool pcap_block_store::add_hp(pcap_pkthdr_plus *header, u_char *packet, int memcpy_packet_size) {
