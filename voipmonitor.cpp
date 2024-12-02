@@ -1081,6 +1081,7 @@ bool opt_thread_affinity_ht = true;
 bool opt_other_thread_affinity_check = true;
 bool opt_other_thread_affinity_set = false;
 int opt_dpdk_timer_reset_interval = 60;
+int opt_dpdk_mtu = 0;
 vector<string> opt_dpdk_vdev;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
@@ -6309,6 +6310,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mtu", &opt_dpdk_mtu));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_vdev", &opt_dpdk_vdev));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
