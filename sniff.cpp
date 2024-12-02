@@ -79,6 +79,7 @@ and insert them into Call class.
 #include "sniff_inline.h"
 #include "config_param.h"
 #include "separate_processing.h"
+#include "srtp.h"
 
 #if HAVE_LIBTCMALLOC    
 #include <gperftools/malloc_extension.h>
@@ -2796,7 +2797,8 @@ int get_ip_port_from_sdp(Call *call, packet_s_process *packetS, char *sdp_text, 
 						}
 						pointToParam = pointToSeparator ? pointToSeparator + 1 : NULL;
 					} while(pointToParam && countParams < 3);
-					if(crypto.suite.length() && crypto.key.length()) {
+					if(crypto.suite.length() && crypto.key.length() &&
+					   RTPsecure::isOkCryptoSuite(crypto.suite.c_str())) {
 						if(!sdp_media_data_item->srtp_crypto_config_list) {
 							sdp_media_data_item->srtp_crypto_config_list = new FILE_LINE(0) list<srtp_crypto_config>;
 						}
@@ -11036,7 +11038,7 @@ void *PreProcessPacket::outThreadFunction() {
 							}
 							break;
 						case ppt_pp_process_call:
-							this->process_PROCESS_CALL(packetS);
+							this->process_PROCESS_CALL(packetS, 0, true);
 							break;
 						#else
 						case ppt_pp_call:
@@ -11816,7 +11818,7 @@ void PreProcessPacket::_process_FIND_CALL_push(packet_s_process *packetS) {
 	}
 }
 
-void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threadIndex) {
+void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threadIndex, bool callCleanupCalls) {
 	if(packetS->typeContentIsSip() && !packetS->is_register()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
@@ -11850,15 +11852,16 @@ void PreProcessPacket::process_PROCESS_CALL(packet_s_process *packetS, int threa
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
 		handle_skinny(packetS->header_pt, packetS->packet, packetS->saddr_(), packetS->source_(), packetS->daddr_(), packetS->dest_(), packetS->data_(), packetS->datalen_(), packetS->dataoffset_(),
 			      get_pcap_handle(packetS->handle_index), packetS->dlt, packetS->sensor_id_(), packetS->sensor_ip);
 	} else if(packetS->typeContentIsMgcp()) {
 		if(opt_ipaccount && packetS->block_store) {
 			packetS->block_store->setVoipPacket(packetS->block_store_index);
 		}
-		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
 		handle_mgcp(packetS);
+	}
+	if(callCleanupCalls) {
+		_process_packet__cleanup_calls(packetS, 0, __FILE__, __LINE__);
 	}
 	PACKET_S_PROCESS_PUSH_TO_STACK(&packetS, 10 + threadIndex);
 }

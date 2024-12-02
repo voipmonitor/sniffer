@@ -1110,7 +1110,7 @@ public:
 				this->process_FIND_CALL(packetS);
 				break;
 			case ppt_pp_process_call:
-				this->process_PROCESS_CALL(packetS);
+				this->process_PROCESS_CALL(packetS, 0, true);
 				break;
 			#else
 			case ppt_pp_call:
@@ -1781,7 +1781,7 @@ private:
 	#if not CALLX_MOD_OLDVER
 	void process_FIND_CALL(packet_s_process *packetS);
 	void _process_FIND_CALL_push(packet_s_process *packetS);
-	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0);
+	void process_PROCESS_CALL(packet_s_process *packetS, int threadIndex = 0, bool callCleanupCalls = false);
 	#else
 	void process_CALL(packet_s_process *packetS);
 	void process_CALLX(packet_s_process *packetS);

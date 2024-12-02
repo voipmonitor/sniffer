@@ -231,6 +231,7 @@ bool opt_srtp_rtp_audio_decrypt = false;
 bool opt_srtp_rtp_dtmf_decrypt = false;
 bool opt_srtp_rtcp_decrypt = true;
 bool opt_srtp_rtp_local_instances = true;
+bool opt_srtp_use_all_keys = false;
 int opt_use_libsrtp = 0;
 bool opt_check_diff_ssrc_on_same_ip_port = true;
 unsigned int opt_ignoreRTCPjitter = 0;	// ignore RTCP over this value (0 = disabled)
@@ -1080,6 +1081,7 @@ bool opt_thread_affinity_ht = true;
 bool opt_other_thread_affinity_check = true;
 bool opt_other_thread_affinity_set = false;
 int opt_dpdk_timer_reset_interval = 60;
+int opt_dpdk_mtu = 0;
 vector<string> opt_dpdk_vdev;
 
 char opt_scanpcapdir[2048] = "";	// Specifies the name of the network device to use for 
@@ -1394,6 +1396,7 @@ bool opt_load_query_from_files_inotify = true;
 bool opt_virtualudppacket = false;
 int opt_sip_tcp_reassembly_stream_timeout = 10 * 60;
 int opt_sip_tcp_reassembly_stream_max_attempts = 200;
+int opt_sip_tcp_reassembly_stream_max_length = 0;
 int opt_sip_tcp_reassembly_clean_period = 10;
 bool opt_sip_tcp_reassembly_ext = true;
 int opt_sip_tcp_reassembly_ext_link_timeout = 0;
@@ -4975,6 +4978,9 @@ int main_init_read() {
 		tcpReassemblySipExt->setEnableSmartCompleteData();
 		tcpReassemblySipExt->setEnableExtStat();
 		tcpReassemblySipExt->setMaxReassemblyAttempts(opt_sip_tcp_reassembly_stream_max_attempts);
+		if(opt_sip_tcp_reassembly_stream_max_length > 0) {
+			tcpReassemblySipExt->setMaxStreamLength(opt_sip_tcp_reassembly_stream_max_length);
+		}
 		tcpReassemblySipExt->setLinkTimeout(opt_sip_tcp_reassembly_ext_link_timeout ? opt_sip_tcp_reassembly_ext_link_timeout : 10);
 		if(opt_sip_tcp_reassembly_ext_quick_mod & 2) {
 			if(!is_read_from_file()) {
@@ -6304,6 +6310,7 @@ void cConfig::addConfigItems() {
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_check", &opt_other_thread_affinity_check));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("other_thread_affinity_set", &opt_other_thread_affinity_set));
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_timer_reset_interval", &opt_dpdk_timer_reset_interval));
+					addConfigItem(new FILE_LINE(0) cConfigItem_integer("dpdk_mtu", &opt_dpdk_mtu));
 					addConfigItem(new FILE_LINE(0) cConfigItem_string("dpdk_vdev", &opt_dpdk_vdev));
 			normal();
 			addConfigItem(new FILE_LINE(42135) cConfigItem_yesno("promisc", &opt_promisc));
@@ -6555,6 +6562,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_audio", &opt_srtp_rtp_audio_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtp_dtmf", &opt_srtp_rtp_dtmf_decrypt));
 				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_rtcp", &opt_srtp_rtcp_decrypt));
+				addConfigItem(new FILE_LINE(0) cConfigItem_yesno("srtp_use_all_keys", &opt_srtp_use_all_keys));
 					expert();
 					addConfigItem(new FILE_LINE(42212) cConfigItem_type_compress("pcap_dump_zip_rtp", &opt_pcap_dump_zip_rtp));
 					addConfigItem((new FILE_LINE(42213) cConfigItem_integer("pcap_dump_ziplevel_rtp", &opt_pcap_dump_compresslevel_rtp))
@@ -7305,6 +7313,7 @@ void cConfig::addConfigItems() {
 				addConfigItem(new FILE_LINE(42461) cConfigItem_yesno("virtualudppacket", &opt_virtualudppacket));
 				addConfigItem(new FILE_LINE(42462) cConfigItem_integer("sip_tcp_reassembly_stream_timeout", &opt_sip_tcp_reassembly_stream_timeout));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_attempts", &opt_sip_tcp_reassembly_stream_max_attempts));
+				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_stream_max_length", &opt_sip_tcp_reassembly_stream_max_length));
 				addConfigItem(new FILE_LINE(42463) cConfigItem_integer("sip_tcp_reassembly_clean_period", &opt_sip_tcp_reassembly_clean_period));
 				addConfigItem(new FILE_LINE(42464) cConfigItem_yesno("sip_tcp_reassembly_ext", &opt_sip_tcp_reassembly_ext));
 				addConfigItem(new FILE_LINE(0) cConfigItem_integer("sip_tcp_reassembly_ext_link_timeout", &opt_sip_tcp_reassembly_ext_link_timeout));

@@ -62,6 +62,7 @@ extern int opt_dpdk_batch_read;
 extern int opt_dpdk_copy_packetbuffer;
 extern int opt_dpdk_mbufs_in_packetbuffer;
 extern int opt_dpdk_timer_reset_interval;
+extern int opt_dpdk_mtu;
 extern vector<string> opt_dpdk_vdev;
 
 
@@ -591,6 +592,15 @@ int dpdk_activate(sDpdkConfig *config, sDpdk *dpdk, std::string *error) {
 				return(PCAP_ERROR);
 			}
 			dpdk_tools->setUseLcore(lcore_id);
+		}
+	}
+	if(opt_dpdk_mtu) {
+		ret = rte_eth_dev_set_mtu(portid, opt_dpdk_mtu);
+		dpdk_eval_res(ret, NULL, 2, error,
+			      "dpdk_activate(%s) - rte_eth_dev_set_mtu",
+			      config->device);
+		if(ret < 0) {
+			return(PCAP_ERROR);
 		}
 	}
 	// Start device

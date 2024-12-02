@@ -998,6 +998,9 @@ public:
 	void setMaxReassemblyAttempts(int maxReassemblyAttempts = 50) {
 		this->maxReassemblyAttempts = maxReassemblyAttempts;
 	}
+	void setMaxStreamLength(int maxStreamLength = 10000) {
+		this->maxStreamLength = maxStreamLength;
+	}
 	void setEnableValidateLastQueueDataViaCheckData(bool enableValidateLastQueueDataViaCheckData = true) {
 		this->enableValidateLastQueueDataViaCheckData = enableValidateLastQueueDataViaCheckData;
 	}
@@ -1172,6 +1175,7 @@ private:
 	bool enableValidateDataViaCheckData;
 	bool unlimitedReassemblyAttempts;
 	int maxReassemblyAttempts;
+	int maxStreamLength;
 	bool enableValidateLastQueueDataViaCheckData;
 	bool enableStrictValidateDataViaCheckData;
 	bool needValidateDataViaCheckData;

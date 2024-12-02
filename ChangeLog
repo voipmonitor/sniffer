@@ -1,3 +1,30 @@
+2024.11.1 27.11.2024
+====================
+- fix cleanup calls in t2_boost=no [VS-1664]
+- fix srtp: completing the srtp key to the correct length, adding the srtp_use_all_keys (NO/yes) parameter to force the application of all known keys from all directions [VS-1661]
+- limiting the number of attempts when creating a test table to verify compression algorithms in mariadb [VS-1660]
+
+
+2024.11.0 25.11.2024
+====================
+- increase SIP processing by optimization of sip process split between threads (callid search and call packet processing), reduce locking [VS-1651]
+- increase RTP processing by thread optimisations: 
+- optimization of packetbuffer output threads, decomposition of detach2 thread into main thread and subthreads [VS-1652]
+- decomposition of defrag thread into main thread and subthreads [VS-1652]
+- optimise distribution of t2 threads to subthreads
+- fix potential crash in adjustSipResponse if set cdr_sip_response_number_max_length [VS-1655]
+- fix issue with parse spd if media record contains zero port [VS-1648]
+- automatic change of row_format parameter to dynamic if alter table fails with error ER_TOO_BIG_ROWSIZE (1118) [VG-2827]
+- rcc fraud alert - 'time period rules' table - apply new gui checkbox to specify whether to convert time zone to gui time [VG-2898]
+- add support for Cisco FabricPath [VS-1650]
+- add CDR filtering by TCP/UDP/both protocol [VS-1609]
+- fix creating sipcallerip_encaps column when creating new db [VS-1653]
+- add parameter server_cp_store_simple_connect_response = yes/NO for enforce compatibility in client/server mode between the new server and the extremely old client [VG-2908]
+- application of the cdr_force_primary_index_in_all_tables parameter to the cdr_stat_values and cdr_stat_sources tables [VS-1656]
+- fix potential crashses when voipmonitor terminates 
+- extension of TcpReassembly::cleanup_simple to clean up infinite streams (applied when new option sip_tcp_reassembly_stream_max_length is set) [VS-1662]
+
+
 2024.10.2 22.10.2024
 ====================
 - better detection of rtp/audiograf using CDR.flags
