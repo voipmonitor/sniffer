@@ -972,6 +972,8 @@ char odbc_user[256];
 char odbc_password[256];
 char odbc_driver[256];
 
+bool opt_sql_log_all_errors = false;
+
 int opt_cloud_activecheck_period = 60;				//0 = disable, how often to check if cloud tunnel is passable in [sec.]
 int cloud_activecheck_timeout = 5;				//2sec by default, how long to wait for response until restart of a cloud tunnel
 volatile bool cloud_activecheck_inprogress = false;		//is currently checking in progress?
@@ -4161,7 +4163,7 @@ int main(int argc, char *argv[]) {
 	
 	if(!is_read_from_file() && !is_set_gui_params() && command_line_data.size() && reloadLoopCounter == 0) {
 		cLogSensor::log(cLogSensor::notice, "start voipmonitor", "version %s", getVersionWithBuild().c_str());
-		if(diffValuesMysqlLoadConfig.size()) {
+		if(diffValuesMysqlLoadConfig.size() || true) {
 			cLogSensor *log = cLogSensor::begin(cLogSensor::notice, "Configuration values in mysql have a higher weight than the values in the text configuration file. (name : text config / mysql config).");
 			for(list<cConfig::sDiffValue>::iterator iter = diffValuesMysqlLoadConfig.begin(); iter != diffValuesMysqlLoadConfig.end(); iter++) {
 				cLogSensor::log(log, iter->format().c_str());
@@ -6068,6 +6070,7 @@ void cConfig::addConfigItems() {
 						->setReadOnly());
 					addConfigItem(new FILE_LINE(0) cConfigItem_integer("alter_rows_limit", &opt_alter_rows_limit));
 					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("mysql_security_invoker_routines", &opt_mysql_security_invoker_routines));
+					addConfigItem(new FILE_LINE(0) cConfigItem_yesno("sql_log_all_errors", &opt_sql_log_all_errors));
 		subgroup("main");
 			addConfigItem((new FILE_LINE(42078) cConfigItem_yesno("query_cache"))
 				->setDefaultValueStr("yes"));
