@@ -1155,7 +1155,7 @@ void CleanSpool::loadOpt() {
 	opt_other.cleanspool_interval = opt_cleanspool_interval;
 	opt_other.cleanspool_sizeMB = opt_cleanspool_sizeMB;
 	opt_other.autocleanspoolminpercent = opt_autocleanspoolminpercent;
-	opt_other.autocleanmingb = opt_autocleanmingb;
+	opt_other.autocleanmingb =  opt_autocleanmingb && GetTotalDiskSpace_GB(getSpoolDir(tsf_main)) > opt_autocleanmingb ? opt_autocleanmingb : 0;
 	opt_other.cleanspool_enable_run_hour_from = opt_cleanspool_enable_run_hour_from;
 	opt_other.cleanspool_enable_run_hour_to = opt_cleanspool_enable_run_hour_to;
 }
@@ -1364,18 +1364,20 @@ void CleanSpool::cleanThreadProcess() {
 						"maxpoolsize set to value",
 					       maxpoolsize_autoclean);
 				} else {
-					u_int32_t actTime = getTimeS();
-					if(!autoclean_log_at ||
-					   autoclean_log_at + 3600 < actTime) {
-						char criticalLowSpoolSpace_str[1024];
-						snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
-							 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
-							 spoolIndex,
-							 getSpoolDir(tsf_main),
-							 usedSizeGB,
-							 freeSpaceGB);
-						cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
-						autoclean_log_at = actTime;
+					if(_maxpoolsize_autoclean < (usedSizeGB * 1024)) {
+						u_int32_t actTime = getTimeS();
+						if(!autoclean_log_at ||
+						   autoclean_log_at + 3600 < actTime) {
+							char criticalLowSpoolSpace_str[1024];
+							snprintf(criticalLowSpoolSpace_str, sizeof(criticalLowSpoolSpace_str),
+								 "cleanspool[%i]: Critical low disk space in spool %s. Used size: %.2lf GB Free space: %.2lf GB (logged once per hour).",
+								 spoolIndex,
+								 getSpoolDir(tsf_main),
+								 usedSizeGB,
+								 freeSpaceGB);
+							cLogSensor::log(cLogSensor::critical, criticalLowSpoolSpace_str);
+							autoclean_log_at = actTime;
+						}
 					}
 					maxpoolsize_autoclean = 0;
 					if(sverb.cleanspool) {
