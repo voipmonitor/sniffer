@@ -2532,8 +2532,17 @@ string SqlDb_mysql::getJsonError() {
 }
 
 int64_t SqlDb_mysql::getInsertId() {
-	if(this->hMysqlConn) {
-		return(mysql_insert_id(this->hMysqlConn));
+	if(isCloud() || snifferClientOptions.isEnableRemoteQuery()) {
+		if(this->query("select last_insert_id()")) {
+			SqlDb_row row;
+			if((row = this->fetchRow()) != 0) {
+				return(atoll(row[0].c_str()));
+			}
+		}
+	} else {
+		if(this->hMysqlConn) {
+			return(mysql_insert_id(this->hMysqlConn));
+		}
 	}
 	return(-1);
 }
